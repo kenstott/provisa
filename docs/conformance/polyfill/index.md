@@ -6,14 +6,14 @@ A polyfill is how Provisa gives a PostgreSQL client PostgreSQL's behaviour on a 
 
 ## [PostgreSQL](postgres.md)
 
-474 of the grid's 474 features are native on PostgreSQL and left out.
+479 of the grid's 479 features are native on PostgreSQL and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 </tbody></table>
 
 ## [DuckDB](duckdb.md)
 
-196 of the grid's 474 features are native on DuckDB and left out.
+196 of the grid's 479 features are native on DuckDB and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -473,6 +473,21 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>pg_encoding_max_length</strong><br>The most bytes of a character of an encoding, by its number.</td><td><pre><code>pg_encoding_max_length($v)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>jsonb_exists</strong><br>Whether a text is a top-level key, a string element, or the scalar string of a jsonb.</td><td><pre><code>jsonb_exists($v, $k)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>jsonb_exists_any</strong><br>Whether any text of an array is a top-level key or string element of a jsonb.</td><td><pre><code>jsonb_exists_any($v, $a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>jsonb_exists_all</strong><br>Whether every text of an array is a top-level key or string element of a jsonb.</td><td><pre><code>jsonb_exists_all($v, $a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>jsonb_object_keys</strong><br>An object&#x27;s distinct keys, in jsonb&#x27;s order: the shorter first, then by bytes.</td><td><pre><code>jsonb_object_keys($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>json_object_keys</strong><br>An object&#x27;s keys as written, a repeated key each time.</td><td><pre><code>json_object_keys($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>ntile</strong><br>The bucket of a row in a window, as an integer.</td><td><pre><code>function provisa.transpiler.polyfill.clickhouse.bucketed: ntile over a window, as PostgreSQL&#x27;s integer: every engine&#x27;s is a bigint. On ClickHouse a</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>numeric_mod</strong><br>The remainder of one numeric divided by another, at the larger scale of the two.</td><td><pre><code>numeric_mod($a, $b)
 =&gt;
@@ -928,7 +943,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Trino](trino.md)
 
-115 of the grid's 474 features are native on Trino and left out.
+115 of the grid's 479 features are native on Trino and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -1489,6 +1504,21 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>datemultirange</strong><br>A multirange of dates, of ranges or of a VARIADIC array of them.</td><td></td><td><ul><li>Of a VARIADIC cast to an array of ranges, of anything but the text of an array of one dimension: refused by name, as no array of a range type is held. <code>0A000</code> datemultirange() has no form on trino</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>tsmultirange</strong><br>A multirange of timestamps, of ranges or of a VARIADIC array of them.</td><td></td><td><ul><li>Of a VARIADIC cast to an array of ranges, of anything but the text of an array of one dimension: refused by name, as no array of a range type is held. <code>0A000</code> tsmultirange() has no form on trino</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>tstzmultirange</strong><br>A multirange of timestamps with time zone, of ranges or of a VARIADIC array of them.</td><td></td><td><ul><li>Of a VARIADIC cast to an array of ranges, of anything but the text of an array of one dimension: refused by name, as no array of a range type is held. <code>0A000</code> tstzmultirange() has no form on trino</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>jsonb_exists</strong><br>Whether a text is a top-level key, a string element, or the scalar string of a jsonb.</td><td><pre><code>jsonb_exists($v, $k)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>jsonb_exists_any</strong><br>Whether any text of an array is a top-level key or string element of a jsonb.</td><td><pre><code>jsonb_exists_any($v, $a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>jsonb_exists_all</strong><br>Whether every text of an array is a top-level key or string element of a jsonb.</td><td><pre><code>jsonb_exists_all($v, $a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>jsonb_object_keys</strong><br>An object&#x27;s distinct keys, in jsonb&#x27;s order: the shorter first, then by bytes.</td><td><pre><code>jsonb_object_keys($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>json_object_keys</strong><br>An object&#x27;s keys as written, a repeated key each time.</td><td><pre><code>json_object_keys($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>json_agg</strong><br>A JSON array of an aggregate&#x27;s values.</td><td><pre><code>function provisa.transpiler.polyfill.json_values.json_agg_of_integers: json_agg of integers the statement says: Trino&#x27;s array of them cast to JSON.</code></pre></td><td><ul><li>Where a rule writes the call, of a literal, a column or a cast of one only: any other value is refused by name.</li><li>Of integers under a FILTER: refused by name.</li><li>Of a value the statement says is text: refused by name, as Trino&#x27;s form parses each value as JSON text.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>json_build_object</strong><br>A JSON object of keys and values; each key is cast to its text.</td><td><pre><code>function provisa.transpiler.polyfill.json_values.object_keys_as_text: json_build_object&#x27;s keys as PostgreSQL&#x27;s text of them, where one is no text.</code></pre></td><td><ul><li>Where a rule writes the call, of a literal, a column or a cast of one only: any other value is refused by name.</li><li>A key of a type the statement says other than text, an integer or a boolean, or a NULL key: refused by name, as Trino&#x27;s text of it may differ.</li><li>An odd count of arguments is refused as the statement is read, not where it runs. <code>22023</code> argument list must have even number of elements</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>jsonb_build_object</strong><br>A JSON object of keys and values; each key is cast to its text.</td><td><pre><code>function provisa.transpiler.polyfill.json_values.object_keys_as_text: json_build_object&#x27;s keys as PostgreSQL&#x27;s text of them, where one is no text.</code></pre></td><td><ul><li>Where a rule writes the call, of a literal, a column or a cast of one only: any other value is refused by name.</li><li>A key of a type the statement says other than text, an integer or a boolean, or a NULL key: refused by name, as Trino&#x27;s text of it may differ.</li><li>An odd count of arguments is refused as the statement is read, not where it runs. <code>22023</code> argument list must have even number of elements</li></ul></td><td></td><td></td></tr>
@@ -1948,7 +1978,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Presto](presto.md)
 
-115 of the grid's 474 features are native on Presto and left out.
+115 of the grid's 479 features are native on Presto and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -2509,6 +2539,21 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>datemultirange</strong><br>A multirange of dates, of ranges or of a VARIADIC array of them.</td><td></td><td><ul><li>Of a VARIADIC cast to an array of ranges, of anything but the text of an array of one dimension: refused by name, as no array of a range type is held. <code>0A000</code> datemultirange() has no form on presto</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>tsmultirange</strong><br>A multirange of timestamps, of ranges or of a VARIADIC array of them.</td><td></td><td><ul><li>Of a VARIADIC cast to an array of ranges, of anything but the text of an array of one dimension: refused by name, as no array of a range type is held. <code>0A000</code> tsmultirange() has no form on presto</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>tstzmultirange</strong><br>A multirange of timestamps with time zone, of ranges or of a VARIADIC array of them.</td><td></td><td><ul><li>Of a VARIADIC cast to an array of ranges, of anything but the text of an array of one dimension: refused by name, as no array of a range type is held. <code>0A000</code> tstzmultirange() has no form on presto</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>jsonb_exists</strong><br>Whether a text is a top-level key, a string element, or the scalar string of a jsonb.</td><td><pre><code>jsonb_exists($v, $k)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>jsonb_exists_any</strong><br>Whether any text of an array is a top-level key or string element of a jsonb.</td><td><pre><code>jsonb_exists_any($v, $a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>jsonb_exists_all</strong><br>Whether every text of an array is a top-level key or string element of a jsonb.</td><td><pre><code>jsonb_exists_all($v, $a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>jsonb_object_keys</strong><br>An object&#x27;s distinct keys, in jsonb&#x27;s order: the shorter first, then by bytes.</td><td><pre><code>jsonb_object_keys($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>json_object_keys</strong><br>An object&#x27;s keys as written, a repeated key each time.</td><td><pre><code>json_object_keys($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>json_agg</strong><br>A JSON array of an aggregate&#x27;s values.</td><td><pre><code>function provisa.transpiler.polyfill.json_values.json_agg_of_integers: json_agg of integers the statement says: Trino&#x27;s array of them cast to JSON.</code></pre></td><td><ul><li>Where a rule writes the call, of a literal, a column or a cast of one only: any other value is refused by name.</li><li>Of integers under a FILTER: refused by name.</li><li>Of a value the statement says is text: refused by name, as Trino&#x27;s form parses each value as JSON text.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>json_build_object</strong><br>A JSON object of keys and values; each key is cast to its text.</td><td><pre><code>function provisa.transpiler.polyfill.json_values.object_keys_as_text: json_build_object&#x27;s keys as PostgreSQL&#x27;s text of them, where one is no text.</code></pre></td><td><ul><li>Where a rule writes the call, of a literal, a column or a cast of one only: any other value is refused by name.</li><li>A key of a type the statement says other than text, an integer or a boolean, or a NULL key: refused by name, as Trino&#x27;s text of it may differ.</li><li>An odd count of arguments is refused as the statement is read, not where it runs. <code>22023</code> argument list must have even number of elements</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>jsonb_build_object</strong><br>A JSON object of keys and values; each key is cast to its text.</td><td><pre><code>function provisa.transpiler.polyfill.json_values.object_keys_as_text: json_build_object&#x27;s keys as PostgreSQL&#x27;s text of them, where one is no text.</code></pre></td><td><ul><li>Where a rule writes the call, of a literal, a column or a cast of one only: any other value is refused by name.</li><li>A key of a type the statement says other than text, an integer or a boolean, or a NULL key: refused by name, as Trino&#x27;s text of it may differ.</li><li>An odd count of arguments is refused as the statement is read, not where it runs. <code>22023</code> argument list must have even number of elements</li></ul></td><td></td><td></td></tr>
@@ -2968,7 +3013,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Athena](athena.md)
 
-115 of the grid's 474 features are native on Athena and left out.
+115 of the grid's 479 features are native on Athena and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -3529,6 +3574,21 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>datemultirange</strong><br>A multirange of dates, of ranges or of a VARIADIC array of them.</td><td></td><td><ul><li>Of a VARIADIC cast to an array of ranges, of anything but the text of an array of one dimension: refused by name, as no array of a range type is held. <code>0A000</code> datemultirange() has no form on athena</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>tsmultirange</strong><br>A multirange of timestamps, of ranges or of a VARIADIC array of them.</td><td></td><td><ul><li>Of a VARIADIC cast to an array of ranges, of anything but the text of an array of one dimension: refused by name, as no array of a range type is held. <code>0A000</code> tsmultirange() has no form on athena</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>tstzmultirange</strong><br>A multirange of timestamps with time zone, of ranges or of a VARIADIC array of them.</td><td></td><td><ul><li>Of a VARIADIC cast to an array of ranges, of anything but the text of an array of one dimension: refused by name, as no array of a range type is held. <code>0A000</code> tstzmultirange() has no form on athena</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>jsonb_exists</strong><br>Whether a text is a top-level key, a string element, or the scalar string of a jsonb.</td><td><pre><code>jsonb_exists($v, $k)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>jsonb_exists_any</strong><br>Whether any text of an array is a top-level key or string element of a jsonb.</td><td><pre><code>jsonb_exists_any($v, $a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>jsonb_exists_all</strong><br>Whether every text of an array is a top-level key or string element of a jsonb.</td><td><pre><code>jsonb_exists_all($v, $a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>jsonb_object_keys</strong><br>An object&#x27;s distinct keys, in jsonb&#x27;s order: the shorter first, then by bytes.</td><td><pre><code>jsonb_object_keys($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>json_object_keys</strong><br>An object&#x27;s keys as written, a repeated key each time.</td><td><pre><code>json_object_keys($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>json_agg</strong><br>A JSON array of an aggregate&#x27;s values.</td><td><pre><code>function provisa.transpiler.polyfill.json_values.json_agg_of_integers: json_agg of integers the statement says: Trino&#x27;s array of them cast to JSON.</code></pre></td><td><ul><li>Where a rule writes the call, of a literal, a column or a cast of one only: any other value is refused by name.</li><li>Of integers under a FILTER: refused by name.</li><li>Of a value the statement says is text: refused by name, as Trino&#x27;s form parses each value as JSON text.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>json_build_object</strong><br>A JSON object of keys and values; each key is cast to its text.</td><td><pre><code>function provisa.transpiler.polyfill.json_values.object_keys_as_text: json_build_object&#x27;s keys as PostgreSQL&#x27;s text of them, where one is no text.</code></pre></td><td><ul><li>Where a rule writes the call, of a literal, a column or a cast of one only: any other value is refused by name.</li><li>A key of a type the statement says other than text, an integer or a boolean, or a NULL key: refused by name, as Trino&#x27;s text of it may differ.</li><li>An odd count of arguments is refused as the statement is read, not where it runs. <code>22023</code> argument list must have even number of elements</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>jsonb_build_object</strong><br>A JSON object of keys and values; each key is cast to its text.</td><td><pre><code>function provisa.transpiler.polyfill.json_values.object_keys_as_text: json_build_object&#x27;s keys as PostgreSQL&#x27;s text of them, where one is no text.</code></pre></td><td><ul><li>Where a rule writes the call, of a literal, a column or a cast of one only: any other value is refused by name.</li><li>A key of a type the statement says other than text, an integer or a boolean, or a NULL key: refused by name, as Trino&#x27;s text of it may differ.</li><li>An odd count of arguments is refused as the statement is read, not where it runs. <code>22023</code> argument list must have even number of elements</li></ul></td><td></td><td></td></tr>
@@ -3988,7 +4048,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [ClickHouse](clickhouse.md)
 
-36 of the grid's 474 features are native on ClickHouse and left out.
+36 of the grid's 479 features are native on ClickHouse and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>an array of dimensions</strong><br>cardinality, unnest and array_to_string of an array of more than one dimension: of every element, in storage order.</td><td><pre><code>function provisa.transpiler.polyfill.array_dimensions.of_dimensions: cardinality, unnest or array_to_string of an array of more than one dimension: of every</code></pre></td><td></td><td></td><td></td></tr>
@@ -4519,6 +4579,21 @@ if(toInt64($v) BETWEEN 0 AND 41, toInt32(arrayElement([1, 3, 2, 3, 4, 3, 4, 4, 1
 <tr><td><strong>tsrange(timestamp, timestamp)</strong><br>A range of timestamps of its two bounds, and of its bounds&#x27; flags.</td><td></td><td><ul><li>A literal bound, and a literal element beside the range, is read where the statement is transpiled (provisa.transpiler.pg_ranges): one outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 raises 0A000 (tsrange() of a value outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 has no exact form on clickhouse), as ClickHouse would hold it at its type&#x27;s end. Every bound a literal: the range is answered there, in full. A bound a row computes is read with the row: a range&#x27;s text whose bound is outside the bound raises the same 0A000 where its value is read, as does a day an inclusive upper bound (or an exclusive lower one) steps past 2299-12-31; a text bound in no ISO form raises 0A000 (tsrange() of a bound not in ISO form has no exact form on clickhouse) there. A range&#x27;s text is written as the row writes it.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>tstzrange(timestamptz, timestamptz)</strong><br>A range of timestamps with time zone of its two bounds, and of its bounds&#x27; flags.</td><td></td><td><ul><li>A literal bound, and a literal element beside the range, is read where the statement is transpiled (provisa.transpiler.pg_ranges): one outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 UTC raises 0A000 (tstzrange() of a value outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 UTC has no exact form on clickhouse), as ClickHouse would hold it at its type&#x27;s end. Every bound a literal: the range is answered there, in full. A bound a row computes is read with the row: a range&#x27;s text whose bound is outside the bound raises the same 0A000 where its value is read, as does a day an inclusive upper bound (or an exclusive lower one) steps past 2299-12-31; a text bound in no ISO form raises 0A000 (tstzrange() of a bound not in ISO form has no exact form on clickhouse) there. A range&#x27;s text is written as the row writes it.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>daterange(date, date)</strong><br>A range of dates of its two bounds, and of its bounds&#x27; flags.</td><td></td><td><ul><li>A literal bound, and a literal element beside the range, is read where the statement is transpiled (provisa.transpiler.pg_ranges): one outside 1900-01-01 .. 2299-12-30 raises 0A000 (daterange() of a value outside 1900-01-01 .. 2299-12-30 has no exact form on clickhouse), as ClickHouse would hold it at its type&#x27;s end. Every bound a literal: the range is answered there, in full. A bound a row computes is read with the row: a range&#x27;s text whose bound is outside the bound raises the same 0A000 where its value is read, as does a day an inclusive upper bound (or an exclusive lower one) steps past 2299-12-31; a text bound in no ISO form raises 0A000 (daterange() of a bound not in ISO form has no exact form on clickhouse) there. A range&#x27;s text is written as the row writes it.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>jsonb_exists</strong><br>Whether a text is a top-level key, a string element, or the scalar string of a jsonb.</td><td><pre><code>jsonb_exists($v, $k)
+=&gt;
+arrayElement(arrayMap((_v, _k) -&gt; CAST(if(_v IS NULL OR _k IS NULL, NULL, has(multiIf(substring(trimLeft(ifNull(_v, &#x27;null&#x27;)), 1, 1) = &#x27;{&#x27;, JSONExtractKeys(ifNull(_v, &#x27;null&#x27;)), substring(trimLeft(ifNull(_v, &#x27;null&#x27;)), 1, 1) = &#x27;[&#x27;, CAST(arrayFilter(_e -&gt; _e IS NOT NULL, arrayMap(_i -&gt; if(JSONType(ifNull(_v, &#x27;null&#x27;), _i) = &#x27;String&#x27;, JSONExtractString(ifNull(_v, &#x27;null&#x27;), _i), NULL), range(1, JSONLength(ifNull(_v, &#x27;null&#x27;)) + 1))) AS Array(String)), substring(trimLeft(ifNull(_v, &#x27;null&#x27;)), 1, 1) = &#x27;&quot;&#x27;, [JSONExtractString(ifNull(_v, &#x27;null&#x27;))], CAST([] AS Array(String))), _k)) AS Nullable(Bool)), [$v], [$k]), 1)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>jsonb_exists_any</strong><br>Whether any text of an array is a top-level key or string element of a jsonb.</td><td><pre><code>jsonb_exists_any($v, $a)
+=&gt;
+arrayElement(arrayMap((_v, _a) -&gt; CAST(if(_v IS NULL OR _a IS NULL, NULL, hasAny(multiIf(substring(trimLeft(ifNull(_v, &#x27;null&#x27;)), 1, 1) = &#x27;{&#x27;, JSONExtractKeys(ifNull(_v, &#x27;null&#x27;)), substring(trimLeft(ifNull(_v, &#x27;null&#x27;)), 1, 1) = &#x27;[&#x27;, CAST(arrayFilter(_e -&gt; _e IS NOT NULL, arrayMap(_i -&gt; if(JSONType(ifNull(_v, &#x27;null&#x27;), _i) = &#x27;String&#x27;, JSONExtractString(ifNull(_v, &#x27;null&#x27;), _i), NULL), range(1, JSONLength(ifNull(_v, &#x27;null&#x27;)) + 1))) AS Array(String)), substring(trimLeft(ifNull(_v, &#x27;null&#x27;)), 1, 1) = &#x27;&quot;&#x27;, [JSONExtractString(ifNull(_v, &#x27;null&#x27;))], CAST([] AS Array(String))), arrayFilter(_t -&gt; _t IS NOT NULL, arrayFlatten(_a)))) AS Nullable(Bool)), [$v], [$a]), 1)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>jsonb_exists_all</strong><br>Whether every text of an array is a top-level key or string element of a jsonb.</td><td><pre><code>jsonb_exists_all($v, $a)
+=&gt;
+arrayElement(arrayMap((_v, _a) -&gt; CAST(if(_v IS NULL OR _a IS NULL, NULL, hasAll(multiIf(substring(trimLeft(ifNull(_v, &#x27;null&#x27;)), 1, 1) = &#x27;{&#x27;, JSONExtractKeys(ifNull(_v, &#x27;null&#x27;)), substring(trimLeft(ifNull(_v, &#x27;null&#x27;)), 1, 1) = &#x27;[&#x27;, CAST(arrayFilter(_e -&gt; _e IS NOT NULL, arrayMap(_i -&gt; if(JSONType(ifNull(_v, &#x27;null&#x27;), _i) = &#x27;String&#x27;, JSONExtractString(ifNull(_v, &#x27;null&#x27;), _i), NULL), range(1, JSONLength(ifNull(_v, &#x27;null&#x27;)) + 1))) AS Array(String)), substring(trimLeft(ifNull(_v, &#x27;null&#x27;)), 1, 1) = &#x27;&quot;&#x27;, [JSONExtractString(ifNull(_v, &#x27;null&#x27;))], CAST([] AS Array(String))), arrayFilter(_t -&gt; _t IS NOT NULL, arrayFlatten(_a)))) AS Nullable(Bool)), [$v], [$a]), 1)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>jsonb_object_keys</strong><br>An object&#x27;s distinct keys, in jsonb&#x27;s order: the shorter first, then by bytes.</td><td><pre><code>jsonb_object_keys($v)
+=&gt;
+arrayJoin(if(throwIf(ifNull($v IS NOT NULL AND substring(trimLeft($v), 1, 1) NOT IN (&#x27;{&#x27;, &#x27;[&#x27;), 0), &#x27;postgresql-error 22023: cannot call jsonb_object_keys on a scalar&lt;end of postgresql-error&gt;&#x27;) + throwIf(ifNull($v IS NOT NULL AND substring(trimLeft($v), 1, 1) = &#x27;[&#x27;, 0), &#x27;postgresql-error 22023: cannot call jsonb_object_keys on an array&lt;end of postgresql-error&gt;&#x27;) = 0 AND $v IS NOT NULL, arraySort(_k -&gt; (length(_k), _k), arrayDistinct(JSONExtractKeys(ifNull($v, &#x27;{}&#x27;)))), CAST([] AS Array(String))))</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>json_object_keys</strong><br>An object&#x27;s keys as written, a repeated key each time.</td><td><pre><code>json_object_keys($v)
+=&gt;
+arrayJoin(if(throwIf(ifNull($v IS NOT NULL AND substring(trimLeft($v), 1, 1) NOT IN (&#x27;{&#x27;, &#x27;[&#x27;), 0), &#x27;postgresql-error 22023: cannot call json_object_keys on a scalar&lt;end of postgresql-error&gt;&#x27;) + throwIf(ifNull($v IS NOT NULL AND substring(trimLeft($v), 1, 1) = &#x27;[&#x27;, 0), &#x27;postgresql-error 22023: cannot call json_object_keys on an array&lt;end of postgresql-error&gt;&#x27;) = 0 AND $v IS NOT NULL, JSONExtractKeys(ifNull($v, &#x27;{}&#x27;)), CAST([] AS Array(String))))</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>json_agg</strong><br>A JSON array of an aggregate&#x27;s values.</td><td><pre><code>function provisa.transpiler.polyfill.json_values.json_array: json_agg of a number, a text or a truth value the statement says: its values as a JSON</code></pre></td><td><ul><li>Of a number, a text or a truth value the statement says the type of: any other value, and an order, DISTINCT, a FILTER or a window, refused by name.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>a NULL array</strong><br>A call PostgreSQL answers NULL for its NULL array argument, as that NULL.</td><td><pre><code>function provisa.transpiler.polyfill.clickhouse.null_of_a_null_array: A call PostgreSQL answers NULL for its NULL array argument, as that NULL, named for the</code></pre></td><td><ul><li>A set-returning call of a NULL array is its own row&#x27;s: generate_subscripts and pg_options_to_table are refused by name.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>array_agg</strong><br>The values of an aggregate as an array, a NULL kept; NULL of no rows.</td><td><pre><code>array_agg($a)
@@ -5089,7 +5164,7 @@ function provisa.transpiler.polyfill.bytea.encode_of_bytes: encode of a bytea he
 
 ## [Snowflake](snowflake.md)
 
-196 of the grid's 474 features are native on Snowflake and left out.
+196 of the grid's 479 features are native on Snowflake and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -5560,6 +5635,21 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>pg_encoding_max_length</strong><br>The most bytes of a character of an encoding, by its number.</td><td><pre><code>pg_encoding_max_length($v)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>jsonb_exists</strong><br>Whether a text is a top-level key, a string element, or the scalar string of a jsonb.</td><td><pre><code>jsonb_exists($v, $k)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>jsonb_exists_any</strong><br>Whether any text of an array is a top-level key or string element of a jsonb.</td><td><pre><code>jsonb_exists_any($v, $a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>jsonb_exists_all</strong><br>Whether every text of an array is a top-level key or string element of a jsonb.</td><td><pre><code>jsonb_exists_all($v, $a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>jsonb_object_keys</strong><br>An object&#x27;s distinct keys, in jsonb&#x27;s order: the shorter first, then by bytes.</td><td><pre><code>jsonb_object_keys($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>json_object_keys</strong><br>An object&#x27;s keys as written, a repeated key each time.</td><td><pre><code>json_object_keys($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>ntile</strong><br>The bucket of a row in a window, as an integer.</td><td><pre><code>function provisa.transpiler.polyfill.clickhouse.bucketed: ntile over a window, as PostgreSQL&#x27;s integer: every engine&#x27;s is a bigint. On ClickHouse a</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>numeric_mod</strong><br>The remainder of one numeric divided by another, at the larger scale of the two.</td><td><pre><code>numeric_mod($a, $b)
 =&gt;
@@ -6014,7 +6104,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Databricks](databricks.md)
 
-196 of the grid's 474 features are native on Databricks and left out.
+196 of the grid's 479 features are native on Databricks and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -6485,6 +6575,21 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>pg_encoding_max_length</strong><br>The most bytes of a character of an encoding, by its number.</td><td><pre><code>pg_encoding_max_length($v)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>jsonb_exists</strong><br>Whether a text is a top-level key, a string element, or the scalar string of a jsonb.</td><td><pre><code>jsonb_exists($v, $k)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>jsonb_exists_any</strong><br>Whether any text of an array is a top-level key or string element of a jsonb.</td><td><pre><code>jsonb_exists_any($v, $a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>jsonb_exists_all</strong><br>Whether every text of an array is a top-level key or string element of a jsonb.</td><td><pre><code>jsonb_exists_all($v, $a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>jsonb_object_keys</strong><br>An object&#x27;s distinct keys, in jsonb&#x27;s order: the shorter first, then by bytes.</td><td><pre><code>jsonb_object_keys($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>json_object_keys</strong><br>An object&#x27;s keys as written, a repeated key each time.</td><td><pre><code>json_object_keys($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>ntile</strong><br>The bucket of a row in a window, as an integer.</td><td><pre><code>function provisa.transpiler.polyfill.clickhouse.bucketed: ntile over a window, as PostgreSQL&#x27;s integer: every engine&#x27;s is a bigint. On ClickHouse a</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>numeric_mod</strong><br>The remainder of one numeric divided by another, at the larger scale of the two.</td><td><pre><code>numeric_mod($a, $b)
 =&gt;
@@ -6939,7 +7044,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [BigQuery](bigquery.md)
 
-196 of the grid's 474 features are native on BigQuery and left out.
+196 of the grid's 479 features are native on BigQuery and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -7410,6 +7515,21 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>pg_encoding_max_length</strong><br>The most bytes of a character of an encoding, by its number.</td><td><pre><code>pg_encoding_max_length($v)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>jsonb_exists</strong><br>Whether a text is a top-level key, a string element, or the scalar string of a jsonb.</td><td><pre><code>jsonb_exists($v, $k)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>jsonb_exists_any</strong><br>Whether any text of an array is a top-level key or string element of a jsonb.</td><td><pre><code>jsonb_exists_any($v, $a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>jsonb_exists_all</strong><br>Whether every text of an array is a top-level key or string element of a jsonb.</td><td><pre><code>jsonb_exists_all($v, $a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>jsonb_object_keys</strong><br>An object&#x27;s distinct keys, in jsonb&#x27;s order: the shorter first, then by bytes.</td><td><pre><code>jsonb_object_keys($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>json_object_keys</strong><br>An object&#x27;s keys as written, a repeated key each time.</td><td><pre><code>json_object_keys($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>ntile</strong><br>The bucket of a row in a window, as an integer.</td><td><pre><code>function provisa.transpiler.polyfill.clickhouse.bucketed: ntile over a window, as PostgreSQL&#x27;s integer: every engine&#x27;s is a bigint. On ClickHouse a</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>numeric_mod</strong><br>The remainder of one numeric divided by another, at the larger scale of the two.</td><td><pre><code>numeric_mod($a, $b)
 =&gt;
@@ -7864,7 +7984,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [T-SQL (SQL Server, Fabric, Synapse)](tsql.md)
 
-196 of the grid's 474 features are native on T-SQL (SQL Server, Fabric, Synapse) and left out.
+196 of the grid's 479 features are native on T-SQL (SQL Server, Fabric, Synapse) and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -8335,6 +8455,21 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>pg_encoding_max_length</strong><br>The most bytes of a character of an encoding, by its number.</td><td><pre><code>pg_encoding_max_length($v)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>jsonb_exists</strong><br>Whether a text is a top-level key, a string element, or the scalar string of a jsonb.</td><td><pre><code>jsonb_exists($v, $k)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>jsonb_exists_any</strong><br>Whether any text of an array is a top-level key or string element of a jsonb.</td><td><pre><code>jsonb_exists_any($v, $a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>jsonb_exists_all</strong><br>Whether every text of an array is a top-level key or string element of a jsonb.</td><td><pre><code>jsonb_exists_all($v, $a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>jsonb_object_keys</strong><br>An object&#x27;s distinct keys, in jsonb&#x27;s order: the shorter first, then by bytes.</td><td><pre><code>jsonb_object_keys($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>json_object_keys</strong><br>An object&#x27;s keys as written, a repeated key each time.</td><td><pre><code>json_object_keys($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>ntile</strong><br>The bucket of a row in a window, as an integer.</td><td><pre><code>function provisa.transpiler.polyfill.clickhouse.bucketed: ntile over a window, as PostgreSQL&#x27;s integer: every engine&#x27;s is a bigint. On ClickHouse a</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>numeric_mod</strong><br>The remainder of one numeric divided by another, at the larger scale of the two.</td><td><pre><code>numeric_mod($a, $b)
 =&gt;
@@ -8789,7 +8924,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Redshift](redshift.md)
 
-196 of the grid's 474 features are native on Redshift and left out.
+196 of the grid's 479 features are native on Redshift and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -9260,6 +9395,21 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>pg_encoding_max_length</strong><br>The most bytes of a character of an encoding, by its number.</td><td><pre><code>pg_encoding_max_length($v)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>jsonb_exists</strong><br>Whether a text is a top-level key, a string element, or the scalar string of a jsonb.</td><td><pre><code>jsonb_exists($v, $k)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>jsonb_exists_any</strong><br>Whether any text of an array is a top-level key or string element of a jsonb.</td><td><pre><code>jsonb_exists_any($v, $a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>jsonb_exists_all</strong><br>Whether every text of an array is a top-level key or string element of a jsonb.</td><td><pre><code>jsonb_exists_all($v, $a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>jsonb_object_keys</strong><br>An object&#x27;s distinct keys, in jsonb&#x27;s order: the shorter first, then by bytes.</td><td><pre><code>jsonb_object_keys($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>json_object_keys</strong><br>An object&#x27;s keys as written, a repeated key each time.</td><td><pre><code>json_object_keys($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>ntile</strong><br>The bucket of a row in a window, as an integer.</td><td><pre><code>function provisa.transpiler.polyfill.clickhouse.bucketed: ntile over a window, as PostgreSQL&#x27;s integer: every engine&#x27;s is a bigint. On ClickHouse a</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>numeric_mod</strong><br>The remainder of one numeric divided by another, at the larger scale of the two.</td><td><pre><code>numeric_mod($a, $b)
 =&gt;
@@ -9714,7 +9864,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [MySQL](mysql.md)
 
-196 of the grid's 474 features are native on MySQL and left out.
+196 of the grid's 479 features are native on MySQL and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -10185,6 +10335,21 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>pg_encoding_max_length</strong><br>The most bytes of a character of an encoding, by its number.</td><td><pre><code>pg_encoding_max_length($v)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>jsonb_exists</strong><br>Whether a text is a top-level key, a string element, or the scalar string of a jsonb.</td><td><pre><code>jsonb_exists($v, $k)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>jsonb_exists_any</strong><br>Whether any text of an array is a top-level key or string element of a jsonb.</td><td><pre><code>jsonb_exists_any($v, $a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>jsonb_exists_all</strong><br>Whether every text of an array is a top-level key or string element of a jsonb.</td><td><pre><code>jsonb_exists_all($v, $a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>jsonb_object_keys</strong><br>An object&#x27;s distinct keys, in jsonb&#x27;s order: the shorter first, then by bytes.</td><td><pre><code>jsonb_object_keys($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>json_object_keys</strong><br>An object&#x27;s keys as written, a repeated key each time.</td><td><pre><code>json_object_keys($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>ntile</strong><br>The bucket of a row in a window, as an integer.</td><td><pre><code>function provisa.transpiler.polyfill.clickhouse.bucketed: ntile over a window, as PostgreSQL&#x27;s integer: every engine&#x27;s is a bigint. On ClickHouse a</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>numeric_mod</strong><br>The remainder of one numeric divided by another, at the larger scale of the two.</td><td><pre><code>numeric_mod($a, $b)
 =&gt;
@@ -10639,7 +10804,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [SingleStore](singlestore.md)
 
-196 of the grid's 474 features are native on SingleStore and left out.
+196 of the grid's 479 features are native on SingleStore and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -11110,6 +11275,21 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>pg_encoding_max_length</strong><br>The most bytes of a character of an encoding, by its number.</td><td><pre><code>pg_encoding_max_length($v)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>jsonb_exists</strong><br>Whether a text is a top-level key, a string element, or the scalar string of a jsonb.</td><td><pre><code>jsonb_exists($v, $k)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>jsonb_exists_any</strong><br>Whether any text of an array is a top-level key or string element of a jsonb.</td><td><pre><code>jsonb_exists_any($v, $a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>jsonb_exists_all</strong><br>Whether every text of an array is a top-level key or string element of a jsonb.</td><td><pre><code>jsonb_exists_all($v, $a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>jsonb_object_keys</strong><br>An object&#x27;s distinct keys, in jsonb&#x27;s order: the shorter first, then by bytes.</td><td><pre><code>jsonb_object_keys($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>json_object_keys</strong><br>An object&#x27;s keys as written, a repeated key each time.</td><td><pre><code>json_object_keys($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>ntile</strong><br>The bucket of a row in a window, as an integer.</td><td><pre><code>function provisa.transpiler.polyfill.clickhouse.bucketed: ntile over a window, as PostgreSQL&#x27;s integer: every engine&#x27;s is a bigint. On ClickHouse a</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>numeric_mod</strong><br>The remainder of one numeric divided by another, at the larger scale of the two.</td><td><pre><code>numeric_mod($a, $b)
 =&gt;
@@ -11564,7 +11744,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [SQLite](sqlite.md)
 
-196 of the grid's 474 features are native on SQLite and left out.
+196 of the grid's 479 features are native on SQLite and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -12035,6 +12215,21 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>pg_encoding_max_length</strong><br>The most bytes of a character of an encoding, by its number.</td><td><pre><code>pg_encoding_max_length($v)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>jsonb_exists</strong><br>Whether a text is a top-level key, a string element, or the scalar string of a jsonb.</td><td><pre><code>jsonb_exists($v, $k)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>jsonb_exists_any</strong><br>Whether any text of an array is a top-level key or string element of a jsonb.</td><td><pre><code>jsonb_exists_any($v, $a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>jsonb_exists_all</strong><br>Whether every text of an array is a top-level key or string element of a jsonb.</td><td><pre><code>jsonb_exists_all($v, $a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>jsonb_object_keys</strong><br>An object&#x27;s distinct keys, in jsonb&#x27;s order: the shorter first, then by bytes.</td><td><pre><code>jsonb_object_keys($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>json_object_keys</strong><br>An object&#x27;s keys as written, a repeated key each time.</td><td><pre><code>json_object_keys($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>ntile</strong><br>The bucket of a row in a window, as an integer.</td><td><pre><code>function provisa.transpiler.polyfill.clickhouse.bucketed: ntile over a window, as PostgreSQL&#x27;s integer: every engine&#x27;s is a bigint. On ClickHouse a</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>numeric_mod</strong><br>The remainder of one numeric divided by another, at the larger scale of the two.</td><td><pre><code>numeric_mod($a, $b)
 =&gt;
@@ -12489,7 +12684,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Oracle](oracle.md)
 
-196 of the grid's 474 features are native on Oracle and left out.
+196 of the grid's 479 features are native on Oracle and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -12960,6 +13155,21 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>pg_encoding_max_length</strong><br>The most bytes of a character of an encoding, by its number.</td><td><pre><code>pg_encoding_max_length($v)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>jsonb_exists</strong><br>Whether a text is a top-level key, a string element, or the scalar string of a jsonb.</td><td><pre><code>jsonb_exists($v, $k)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>jsonb_exists_any</strong><br>Whether any text of an array is a top-level key or string element of a jsonb.</td><td><pre><code>jsonb_exists_any($v, $a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>jsonb_exists_all</strong><br>Whether every text of an array is a top-level key or string element of a jsonb.</td><td><pre><code>jsonb_exists_all($v, $a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>jsonb_object_keys</strong><br>An object&#x27;s distinct keys, in jsonb&#x27;s order: the shorter first, then by bytes.</td><td><pre><code>jsonb_object_keys($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>json_object_keys</strong><br>An object&#x27;s keys as written, a repeated key each time.</td><td><pre><code>json_object_keys($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>ntile</strong><br>The bucket of a row in a window, as an integer.</td><td><pre><code>function provisa.transpiler.polyfill.clickhouse.bucketed: ntile over a window, as PostgreSQL&#x27;s integer: every engine&#x27;s is a bigint. On ClickHouse a</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>numeric_mod</strong><br>The remainder of one numeric divided by another, at the larger scale of the two.</td><td><pre><code>numeric_mod($a, $b)
 =&gt;
@@ -13414,7 +13624,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Hive](hive.md)
 
-196 of the grid's 474 features are native on Hive and left out.
+196 of the grid's 479 features are native on Hive and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -13885,6 +14095,21 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>pg_encoding_max_length</strong><br>The most bytes of a character of an encoding, by its number.</td><td><pre><code>pg_encoding_max_length($v)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>jsonb_exists</strong><br>Whether a text is a top-level key, a string element, or the scalar string of a jsonb.</td><td><pre><code>jsonb_exists($v, $k)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>jsonb_exists_any</strong><br>Whether any text of an array is a top-level key or string element of a jsonb.</td><td><pre><code>jsonb_exists_any($v, $a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>jsonb_exists_all</strong><br>Whether every text of an array is a top-level key or string element of a jsonb.</td><td><pre><code>jsonb_exists_all($v, $a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>jsonb_object_keys</strong><br>An object&#x27;s distinct keys, in jsonb&#x27;s order: the shorter first, then by bytes.</td><td><pre><code>jsonb_object_keys($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>json_object_keys</strong><br>An object&#x27;s keys as written, a repeated key each time.</td><td><pre><code>json_object_keys($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>ntile</strong><br>The bucket of a row in a window, as an integer.</td><td><pre><code>function provisa.transpiler.polyfill.clickhouse.bucketed: ntile over a window, as PostgreSQL&#x27;s integer: every engine&#x27;s is a bigint. On ClickHouse a</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>numeric_mod</strong><br>The remainder of one numeric divided by another, at the larger scale of the two.</td><td><pre><code>numeric_mod($a, $b)
 =&gt;
@@ -14339,7 +14564,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Exasol](exasol.md)
 
-196 of the grid's 474 features are native on Exasol and left out.
+196 of the grid's 479 features are native on Exasol and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -14810,6 +15035,21 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>pg_encoding_max_length</strong><br>The most bytes of a character of an encoding, by its number.</td><td><pre><code>pg_encoding_max_length($v)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>jsonb_exists</strong><br>Whether a text is a top-level key, a string element, or the scalar string of a jsonb.</td><td><pre><code>jsonb_exists($v, $k)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>jsonb_exists_any</strong><br>Whether any text of an array is a top-level key or string element of a jsonb.</td><td><pre><code>jsonb_exists_any($v, $a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>jsonb_exists_all</strong><br>Whether every text of an array is a top-level key or string element of a jsonb.</td><td><pre><code>jsonb_exists_all($v, $a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>jsonb_object_keys</strong><br>An object&#x27;s distinct keys, in jsonb&#x27;s order: the shorter first, then by bytes.</td><td><pre><code>jsonb_object_keys($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>json_object_keys</strong><br>An object&#x27;s keys as written, a repeated key each time.</td><td><pre><code>json_object_keys($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>ntile</strong><br>The bucket of a row in a window, as an integer.</td><td><pre><code>function provisa.transpiler.polyfill.clickhouse.bucketed: ntile over a window, as PostgreSQL&#x27;s integer: every engine&#x27;s is a bigint. On ClickHouse a</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>numeric_mod</strong><br>The remainder of one numeric divided by another, at the larger scale of the two.</td><td><pre><code>numeric_mod($a, $b)
 =&gt;
@@ -15264,7 +15504,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Druid](druid.md)
 
-196 of the grid's 474 features are native on Druid and left out.
+196 of the grid's 479 features are native on Druid and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -15733,6 +15973,21 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>pg_encoding_max_length</strong><br>The most bytes of a character of an encoding, by its number.</td><td><pre><code>pg_encoding_max_length($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>jsonb_exists</strong><br>Whether a text is a top-level key, a string element, or the scalar string of a jsonb.</td><td><pre><code>jsonb_exists($v, $k)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>jsonb_exists_any</strong><br>Whether any text of an array is a top-level key or string element of a jsonb.</td><td><pre><code>jsonb_exists_any($v, $a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>jsonb_exists_all</strong><br>Whether every text of an array is a top-level key or string element of a jsonb.</td><td><pre><code>jsonb_exists_all($v, $a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>jsonb_object_keys</strong><br>An object&#x27;s distinct keys, in jsonb&#x27;s order: the shorter first, then by bytes.</td><td><pre><code>jsonb_object_keys($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>json_object_keys</strong><br>An object&#x27;s keys as written, a repeated key each time.</td><td><pre><code>json_object_keys($v)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>ntile</strong><br>The bucket of a row in a window, as an integer.</td><td><pre><code>function provisa.transpiler.polyfill.clickhouse.bucketed: ntile over a window, as PostgreSQL&#x27;s integer: every engine&#x27;s is a bigint. On ClickHouse a</code></pre></td><td></td><td></td><td></td></tr>

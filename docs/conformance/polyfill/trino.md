@@ -8,9 +8,9 @@ This page lists every feature that has a polyfill or a limitation on Trino. A fe
 
 When Trino is a serving engine reading a source it attaches directly, it may push work into that source, with the source's semantics, so a result can depend on the pair; the cases known are fixed by hints, listed under each source.
 
-Rules on this page: 405, of which 311 are only the name of a rewrite function. A rule is printed as the translator runs it: the PostgreSQL pattern, its holes written `$name` (typed with `::type`), then the dialect's replacement.
+Rules on this page: 410, of which 316 are only the name of a rewrite function. A rule is printed as the translator runs it: the PostgreSQL pattern, its holes written `$name` (typed with `::type`), then the dialect's replacement.
 
-115 of the grid's 474 features are native on Trino and left out.
+115 of the grid's 479 features are native on Trino and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -571,6 +571,21 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>datemultirange</strong><br>A multirange of dates, of ranges or of a VARIADIC array of them.</td><td></td><td><ul><li>Of a VARIADIC cast to an array of ranges, of anything but the text of an array of one dimension: refused by name, as no array of a range type is held. <code>0A000</code> datemultirange() has no form on trino</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>tsmultirange</strong><br>A multirange of timestamps, of ranges or of a VARIADIC array of them.</td><td></td><td><ul><li>Of a VARIADIC cast to an array of ranges, of anything but the text of an array of one dimension: refused by name, as no array of a range type is held. <code>0A000</code> tsmultirange() has no form on trino</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>tstzmultirange</strong><br>A multirange of timestamps with time zone, of ranges or of a VARIADIC array of them.</td><td></td><td><ul><li>Of a VARIADIC cast to an array of ranges, of anything but the text of an array of one dimension: refused by name, as no array of a range type is held. <code>0A000</code> tstzmultirange() has no form on trino</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>jsonb_exists</strong><br>Whether a text is a top-level key, a string element, or the scalar string of a jsonb.</td><td><pre><code>jsonb_exists($v, $k)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>jsonb_exists_any</strong><br>Whether any text of an array is a top-level key or string element of a jsonb.</td><td><pre><code>jsonb_exists_any($v, $a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>jsonb_exists_all</strong><br>Whether every text of an array is a top-level key or string element of a jsonb.</td><td><pre><code>jsonb_exists_all($v, $a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>jsonb_object_keys</strong><br>An object&#x27;s distinct keys, in jsonb&#x27;s order: the shorter first, then by bytes.</td><td><pre><code>jsonb_object_keys($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>json_object_keys</strong><br>An object&#x27;s keys as written, a repeated key each time.</td><td><pre><code>json_object_keys($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>json_agg</strong><br>A JSON array of an aggregate&#x27;s values.</td><td><pre><code>function provisa.transpiler.polyfill.json_values.json_agg_of_integers: json_agg of integers the statement says: Trino&#x27;s array of them cast to JSON.</code></pre></td><td><ul><li>Where a rule writes the call, of a literal, a column or a cast of one only: any other value is refused by name.</li><li>Of integers under a FILTER: refused by name.</li><li>Of a value the statement says is text: refused by name, as Trino&#x27;s form parses each value as JSON text.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>json_build_object</strong><br>A JSON object of keys and values; each key is cast to its text.</td><td><pre><code>function provisa.transpiler.polyfill.json_values.object_keys_as_text: json_build_object&#x27;s keys as PostgreSQL&#x27;s text of them, where one is no text.</code></pre></td><td><ul><li>Where a rule writes the call, of a literal, a column or a cast of one only: any other value is refused by name.</li><li>A key of a type the statement says other than text, an integer or a boolean, or a NULL key: refused by name, as Trino&#x27;s text of it may differ.</li><li>An odd count of arguments is refused as the statement is read, not where it runs. <code>22023</code> argument list must have even number of elements</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>jsonb_build_object</strong><br>A JSON object of keys and values; each key is cast to its text.</td><td><pre><code>function provisa.transpiler.polyfill.json_values.object_keys_as_text: json_build_object&#x27;s keys as PostgreSQL&#x27;s text of them, where one is no text.</code></pre></td><td><ul><li>Where a rule writes the call, of a literal, a column or a cast of one only: any other value is refused by name.</li><li>A key of a type the statement says other than text, an integer or a boolean, or a NULL key: refused by name, as Trino&#x27;s text of it may differ.</li><li>An odd count of arguments is refused as the statement is read, not where it runs. <code>22023</code> argument list must have even number of elements</li></ul></td><td></td><td></td></tr>

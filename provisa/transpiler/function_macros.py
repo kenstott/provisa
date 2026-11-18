@@ -2896,7 +2896,7 @@ def inline(tree: exp.Expr, dialect: str) -> exp.Expr:
                 raise FunctionRefused(refused_call, dialect)
     try:
         tree = pg_forms_textsearch.lowered(tree, dialect)
-        tree = pg_forms_json.lowered(tree, dialect)
+        tree = pg_forms_json.lowered(tree, dialect, lambda n: _answered_by_a_row(n, dialect))
     except (pg_forms_json.NoForm, pg_forms_textsearch.NoForm) as refused:
         raise FunctionRefused(refused.called, dialect) from refused
 
