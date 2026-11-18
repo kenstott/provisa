@@ -17,7 +17,8 @@
       "webhook_exists": "Webhook「{{name}}」はすでに存在します"
     },
     "ai_models": {
-      "vector_model_fields_required": "各 vector_models エントリには id、provider、dimensions が必要です"
+      "vector_model_fields_required": "各 vector_models エントリには id、provider、dimensions が必要です",
+      "embedding_library_missing": "埋め込みモデル {{model}} は {{provider}} プロバイダーを使用しており、{{extra}} エクストラが必要です（モジュール {{module}} がインストールされていません）: pip install 'provisa[{{extra}}]'。"
     },
     "ai": {
       "endpoint_address_from_server": "AI エンドポイント {{vendor}} はサーバーの環境からアドレスを取得しますが、このサーバー上の組織はそれを使用しません。管理 > AIモデルで独自のアドレスを設定してください。",
@@ -768,6 +769,9 @@
       "private_destination": "この組織のソースが到達できるのは公開アドレスだけです。{{host}} は {{address}} で、公開アドレスではありません。",
       "local_path_refused": "この組織のソースは、組織自身のフォルダー外にあるサーバーのディスク上のファイルを読み取りません。{{path}} はそのようなファイルです。ファイルをアップロードするか、{files}/… またはリモートのアドレスで指定してください。"
     },
+    "egress": {
+      "private_destination": "この組織が呼び出せるのは公開アドレスだけです。{{host}} は {{address}} で、公開アドレスではありません。"
+    },
     "sandbox": {
       "wrong_tier": "このサンドボックスは別の場所で提供されています。サンドボックス自身のアドレスから開いてください。",
       "unknown_demo": "{{demo}} という名前の公開デモはありません。",
@@ -917,7 +921,8 @@
       "filter_operator_refused": "{{operator}} は権限フィルターを変換できる演算子ではありません。"
     },
     "relationship": {
-      "name_taken": "名前 '{{name}}' は既にリレーションシップ '{{held_by}}' が使用しています。別の名前を付けてください。"
+      "name_taken": "名前 '{{name}}' は既にリレーションシップ '{{held_by}}' が使用しています。別の名前を付けてください。",
+      "join_through_none": "リレーションシップ '{{first}}' と '{{second}}' には共通の中間テーブルがないか、もう一方の端がすでにそのテーブルを介して結合されています。"
     }
   }
 }

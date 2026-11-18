@@ -17,7 +17,8 @@
       "webhook_exists": "Webhook '{{name}}' 已存在"
     },
     "ai_models": {
-      "vector_model_fields_required": "每个 vector_models 条目都需要 id、provider 和 dimensions"
+      "vector_model_fields_required": "每个 vector_models 条目都需要 id、provider 和 dimensions",
+      "embedding_library_missing": "嵌入模型 {{model}} 使用 {{provider}} 提供方，需要 {{extra}} 扩展（模块 {{module}} 未安装）：pip install 'provisa[{{extra}}]'。"
     },
     "ai": {
       "endpoint_address_from_server": "AI 端点 {{vendor}} 从服务器环境中获取地址，而此服务器上的组织不使用服务器环境。请在 管理 > AI 模型 中为其设置您自己的地址。",
@@ -768,6 +769,9 @@
       "private_destination": "此组织的数据源只能访问公共地址；{{host}} 是 {{address}}，不是公共地址。",
       "local_path_refused": "此组织的数据源不读取服务器自身磁盘上位于其自有文件夹之外的文件；{{path}} 即是这样的文件。请上传文件，或以 {files}/… 或远程地址指定它。"
     },
+    "egress": {
+      "private_destination": "此组织只能调用公共地址；{{host}} 是 {{address}}，不是公共地址。"
+    },
     "sandbox": {
       "wrong_tier": "此沙盒由其他位置提供；请从它自己的地址打开。",
       "unknown_demo": "没有名为 {{demo}} 的已发布演示。",
@@ -917,7 +921,8 @@
       "filter_operator_refused": "{{operator}} 不是可用于转换权限过滤器的运算符。"
     },
     "relationship": {
-      "name_taken": "名称“{{name}}”已被关系“{{held_by}}”使用。请为此关系另行命名。"
+      "name_taken": "名称“{{name}}”已被关系“{{held_by}}”使用。请为此关系另行命名。",
+      "join_through_none": "关系 '{{first}}' 和 '{{second}}' 没有共同的中间表，或者它们的另一端已经通过该表连接。"
     }
   }
 }

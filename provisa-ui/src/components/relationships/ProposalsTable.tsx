@@ -85,7 +85,11 @@ export function ProposalsTable({
   const columns: ListColumn<RunProposal>[] = [
     // A proposal with no score sorts below every scored one.
     { key: "score", label: t("proposalsTable.colScore"), sortValue: (p) => p.score ?? -1 },
-    { key: "model", label: t("proposalsTable.colModel"), sortValue: (p) => p.confidence ?? -1 },
+    {
+      key: "confidence",
+      label: t("proposalsTable.colConfidence"),
+      sortValue: (p) => p.confidence ?? -1,
+    },
     ...(jevScored
       ? [
           {
@@ -142,6 +146,10 @@ export function ProposalsTable({
   // dimension's name must be among them.
   const note = (p: RunProposal) =>
     [
+      // REQ-1586: a junction suggestion names the junction its two ends are joined through.
+      p.via
+        ? t("proposalsTable.through", { table: tableNameById[p.via.table_id] })
+        : "",
       p.dimension
         ? t(
             p.dimension.reused ? "proposalsTable.dimensionJoined" : "proposalsTable.dimensionMade",
@@ -245,7 +253,7 @@ export function ProposalsTable({
               sortGroup={sort}
               columns={[
                 { col: "score" },
-                { col: "model" },
+                { col: "confidence" },
                 ...(jevScored ? [{ col: "jev" }] : []),
                 { col: "source" },
                 { col: "target" },

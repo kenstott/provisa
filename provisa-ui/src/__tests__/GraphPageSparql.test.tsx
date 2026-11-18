@@ -41,9 +41,7 @@ vi.mock("../hooks/useAdminQueries", async (importOriginal) => ({
 const framesSeen: FrameData[] = [];
 const languagesSeen: (string | undefined)[] = [];
 const frameProps = vi.hoisted(() => ({
-  expand: undefined as
-    | undefined
-    | ((frameId: string, iri: string, toggle: boolean) => void),
+  expand: undefined as undefined | ((frameId: string, iri: string, toggle: boolean) => void),
   drop: undefined as undefined | ((frameId: string, drop: SparqlDrop, on: DropNode | null) => void),
   describe: undefined as undefined | ((frameId: string, iri: string) => void),
   describeAll: undefined as undefined | ((frameId: string, iris: string[]) => void),
@@ -103,7 +101,14 @@ const VOCABULARY = {
   // a table's own class, or a Class term's ("term"), with the labels it types and the terms it is
   // a KIND_OF.
   classes: [
-    { iri: `${BASE}/vocab/sales/orders`, kind: "table", labels: ["orders"], parameterized: false, parameterized_labels: [], superclasses: [] },
+    {
+      iri: `${BASE}/vocab/sales/orders`,
+      kind: "table",
+      labels: ["orders"],
+      parameterized: false,
+      parameterized_labels: [],
+      superclasses: [],
+    },
     {
       iri: `${BASE}/vocab/sales/customers`,
       kind: "table",
@@ -155,6 +160,20 @@ const NT = [
   `<${BASE}/id/sales/orders/1> <${BASE}/vocab/sales/amount> "12.50" .`,
 ].join("\n");
 const sent: { url: string; init?: RequestInit }[] = [];
+/** As GET /data/graph-schema answers for the role: its labels' domains, where a drop's path may go. */
+const GRAPH_SCHEMA = {
+  node_labels: ["Orders", "Customers"].map((table_label, i) => ({
+    label: `Sales:${table_label}`,
+    domain_label: "Sales",
+    domain_id: "sales",
+    system_domain: false,
+    table_label,
+    table_id: i + 1,
+    properties: ["id"],
+    pk_columns: ["id"],
+  })),
+  relationship_types: [],
+};
 
 const CONSTRUCT = "CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o } LIMIT 5";
 function Run() {
@@ -199,6 +218,10 @@ describe("the SPARQL tab", () => {
           });
         if (String(url).endsWith("/data/sparql"))
           return new Response(NT, { headers: { "content-type": "application/n-triples" } });
+        if (String(url).endsWith("/data/graph-schema"))
+          return new Response(JSON.stringify(GRAPH_SCHEMA), {
+            headers: { "content-type": "application/json" },
+          });
         return new Response("{}", { headers: { "content-type": "application/json" } });
       }),
     );
@@ -232,8 +255,10 @@ describe("the SPARQL tab", () => {
     expect(await screen.findByTestId("sparql-vocabulary")).toBeInTheDocument();
     const read = sent.find((s) => s.url.endsWith("/data/sparql/vocabulary"));
     expect((read?.init?.headers as Record<string, string>)["X-Provisa-Role"]).toBe("analyst");
-    // No Cypher schema is read.
-    expect(sent.some((s) => s.url.includes("/data/graph-schema"))).toBe(false);
+    // The role's graph schema is read, for the domains a drop's path may go through (REQ-2135);
+    // the Cypher sidebar's counts are not.
+    await waitFor(() => expect(sent.some((s) => s.url.includes("/data/graph-schema"))).toBe(true));
+    expect(sent.some((s) => s.url.includes("/data/graph-counts"))).toBe(false);
     // A class is listed under its prefix, its pill showing the local name.
     expect(screen.getByTestId("sparql-class-prefix-sales")).toHaveTextContent("sales (2)");
     expect(screen.getByTestId("sparql-class-sales:orders")).toHaveTextContent(/^orders$/);
@@ -526,7 +551,9 @@ describe("the SPARQL tab", () => {
     act(() => frameProps.describeAll?.(id, [ORDER, other]));
     act(() => frameProps.describeAll?.(id, [ORDER, other]));
     await waitFor(() => expect(lastFrame().sparqlDescribed?.[other]).toBeDefined());
-    expect(posted().slice(before).sort()).toEqual([`DESCRIBE <${ORDER}>`, `DESCRIBE <${other}>`].sort());
+    expect(posted().slice(before).sort()).toEqual(
+      [`DESCRIBE <${ORDER}>`, `DESCRIBE <${other}>`].sort(),
+    );
     expect(lastFrame().sparqlDescribed?.[ORDER]).toHaveProperty("literals");
     expect(framesSeen.length - updates).toBeLessThanOrEqual(2);
     expect(lastFrame().nodes).toBeDefined();
@@ -556,12 +583,12 @@ describe("the SPARQL tab", () => {
     act(() => void frameProps.rerun?.(id, typed));
     await waitFor(() => expect(lastFrame().query).toBe(typed));
     const asked = posted().length;
-    act(() =>
-      frameProps.drop?.(id, { kind: "class", iri: `${BASE}/vocab/sales/customers` }, null),
-    );
+    act(() => frameProps.drop?.(id, { kind: "class", iri: `${BASE}/vocab/sales/customers` }, null));
     await waitFor(() => expect(posted().length).toBe(asked + 1));
     const sentQuery = posted().at(-1);
-    expect(sentQuery).toContain("OPTIONAL { ?s rel:PLACED_BY ?customers . ?customers a sales:customers . }");
+    expect(sentQuery).toContain(
+      "OPTIONAL { ?s rel:PLACED_BY ?customers . ?customers a sales:customers . }",
+    );
     expect(sentQuery).toContain("LIMIT 250");
     await waitFor(() => expect(lastFrame().query).toBe(sentQuery));
     expect(lastFrame().dropped).toBe(true);
@@ -607,9 +634,7 @@ describe("the SPARQL tab", () => {
     const { id } = lastFrame();
     vi.stubGlobal(
       "fetch",
-      vi.fn(
-        async () => new Response("", { headers: { "content-type": "application/n-triples" } }),
-      ),
+      vi.fn(async () => new Response("", { headers: { "content-type": "application/n-triples" } })),
     );
     act(() => frameProps.expand?.(id, ORDER, true));
     await waitFor(() => expect(lastFrame().sparqlMerge?.nothingMore).toBe(ORDER));
@@ -622,7 +647,9 @@ describe("the SPARQL tab", () => {
     act(() => frameProps.expand?.(id, ORDER, true));
     await waitFor(() => expect(lastFrame().sparqlExpansions).toBeDefined());
     act(() => screen.getByText("run").click());
-    await waitFor(() => expect(framesSeen.filter((f) => f.status === "done").length).toBeGreaterThan(1));
+    await waitFor(() =>
+      expect(framesSeen.filter((f) => f.status === "done").length).toBeGreaterThan(1),
+    );
     const fresh = framesSeen.filter((f) => f.id !== id).at(-1)!;
     expect(fresh.sparqlExpansions).toBeUndefined();
   });

@@ -17,7 +17,8 @@
       "webhook_exists": "O webhook '{{name}}' já existe"
     },
     "ai_models": {
-      "vector_model_fields_required": "cada entrada de vector_models requer id, provider e dimensions"
+      "vector_model_fields_required": "cada entrada de vector_models requer id, provider e dimensions",
+      "embedding_library_missing": "O modelo de embeddings {{model}} usa o provedor {{provider}}, que precisa do extra {{extra}} (o módulo {{module}} não está instalado): pip install 'provisa[{{extra}}]'."
     },
     "ai": {
       "endpoint_address_from_server": "O endpoint de IA {{vendor}} obtém seu endereço do ambiente do servidor, que uma organização neste servidor não usa. Atribua a ele um endereço próprio em Administração, Modelos de IA.",
@@ -768,6 +769,9 @@
       "private_destination": "As fontes desta organização só podem alcançar endereços públicos; {{host}} é {{address}}, que não é um deles.",
       "local_path_refused": "As fontes desta organização não leem arquivos do disco do próprio servidor fora da pasta da organização; {{path}} é um deles. Envie o arquivo ou indique-o como {files}/… ou por um endereço remoto."
     },
+    "egress": {
+      "private_destination": "Esta organização só pode chamar endereços públicos; {{host}} é {{address}}, que não é um deles."
+    },
     "sandbox": {
       "wrong_tier": "Este sandbox é servido em outro lugar; abra-o pelo seu próprio endereço.",
       "unknown_demo": "Não há nenhuma demonstração publicada chamada {{demo}}.",
@@ -917,7 +921,8 @@
       "filter_operator_refused": "{{operator}} não é um operador com o qual um filtro de permissão possa ser convertido."
     },
     "relationship": {
-      "name_taken": "O nome '{{name}}' já é usado pelo relacionamento '{{held_by}}'. Dê outro nome a este."
+      "name_taken": "O nome '{{name}}' já é usado pelo relacionamento '{{held_by}}'. Dê outro nome a este.",
+      "join_through_none": "Os relacionamentos '{{first}}' e '{{second}}' não compartilham uma tabela intermediária, ou suas outras extremidades já estão unidas através dela."
     }
   }
 }

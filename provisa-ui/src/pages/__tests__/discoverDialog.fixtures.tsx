@@ -170,6 +170,7 @@ export const proposal = (over: Partial<RunProposal>): RunProposal => ({
   reduced_information: false,
   admitted_on_key_values: false,
   dimension: null,
+  via: null,
   ...over,
 });
 /** A run's table: a constraint, a suggestion, one the model scored high and Jev low, one

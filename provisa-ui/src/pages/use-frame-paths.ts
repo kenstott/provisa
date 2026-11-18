@@ -12,11 +12,17 @@ import { useCallback, useMemo, type RefObject } from "react";
 import type { DropNotice, FrameData, GNode } from "../components/graph/graph-model";
 import type { SchemaNodeLabel, SchemaRel } from "../components/graph/graph-schema-types";
 import type { SparqlVocabulary } from "../components/graph/sparql";
-import { droppedQuery, type DropNode, type SparqlDrop } from "../components/graph/sparqlDrop";
-import { compoundLabelOf, nodePathQuery, type PathScope } from "./graph-drop";
+import {
+  droppedQuery,
+  vocabularyScope,
+  type DropNode,
+  type SparqlDrop,
+} from "../components/graph/sparqlDrop";
+import { compoundLabelOf, type PathScope } from "../components/graph/dropPath";
+import { nodePathQuery } from "./graph-drop";
 
 /**
- * REQ-2135: what a Cypher drop's path may walk. ``parameterized``: the labels it never reaches (a
+ * REQ-2135: what a drop's path may walk, in the Cypher and the SPARQL view alike. ``parameterized``: the labels it never reaches (a
  * parameterized table has no rows without its arguments). ``pathScope``: the role's labels and the
  * Domains picker's selection, the one the sidebar's labels are narrowed by.
  */
@@ -66,7 +72,14 @@ export function useFramePaths({
     (frameId: string, drop: SparqlDrop, on: DropNode | null) => {
       const frame = framesRef.current.find((fr) => fr.id === frameId);
       if (!frame || !vocabulary) return;
-      const done = droppedQuery(frame.query, drop, { ...vocabulary, prefixes }, on, frame.rows);
+      const done = droppedQuery(
+        frame.query,
+        drop,
+        { ...vocabulary, prefixes },
+        on,
+        frame.rows,
+        vocabularyScope(vocabulary, pathScope),
+      );
       if ("refused" in done) {
         const { refused } = done;
         changeFrame(frameId, () => ({ dropNotices: [refused], dropLimit: undefined }));
@@ -74,7 +87,7 @@ export function useFramePaths({
       }
       void rerunFrame(frameId, done.query, { notices: done.notices, limit: done.limit });
     },
-    [framesRef, vocabulary, prefixes, changeFrame, rerunFrame],
+    [framesRef, vocabulary, prefixes, pathScope, changeFrame, rerunFrame],
   );
 
   /** A node dragged onto another asks for the paths between the two, in a frame of its own; the

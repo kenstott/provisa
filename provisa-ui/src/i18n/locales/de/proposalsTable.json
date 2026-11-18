@@ -2,7 +2,7 @@
   "proposalsTable": {
     "intro": "Eine angehakte Zeile wird beim Anwenden akzeptiert. Zeilen, deren Bewertung mindestens die Schwelle erreicht, sind von Anfang an angehakt. Eine Zeile ohne Haken bleibt unentschieden.",
     "colScore": "Bewertung",
-    "colModel": "Modell",
+    "colConfidence": "Konfidenz",
     "colJev": "Jev",
     "colKind": "Art",
     "colMeasure": "Gemessen",
@@ -63,6 +63,7 @@
     },
     "dimensionMade": "Beim Akzeptieren entsteht die gemeinsame Dimension {{name}}, mit der beide Spalten verknüpft werden.",
     "dimensionJoined": "Beim Akzeptieren werden beide Spalten mit der gemeinsamen Dimension {{name}} verknüpft.",
+    "through": "Über {{table}}.",
     "twoDimensions": "Ihre Spalten sind bereits mit zwei verschiedenen gemeinsamen Dimensionen verknüpft, daher kann sie nicht akzeptiert werden.",
     "admittedOnKeyValues": "Aufgrund übereinstimmender Schlüsselwerte in den Daten aufgenommen; die Messung steht neben der Konfidenz des Modells."
   }

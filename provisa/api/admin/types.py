@@ -1576,6 +1576,26 @@ class RelationshipInput:  # REQ-019, REQ-020, REQ-158, REQ-413
     carry_tags: bool = False
 
 
+@strawberry.type
+class JoinThroughType:  # REQ-1586
+    """What joining two relationships through the table they share makes: one junction-backed
+    relationship from ``source_table`` to ``target_table`` through ``via_table``, many-to-many,
+    named ``name`` (told apart as generated names are, REQ-415). ``shape``: ``junction`` (the two
+    refer from the middle table) or ``shared_dimension`` (the two refer to it). ``attributes``:
+    the middle table's columns that are no key of the join."""
+
+    shape: str
+    name: str
+    source_table: str
+    source_column: str
+    target_table: str
+    target_column: str
+    via_table: str
+    via_source_column: str
+    via_target_column: str
+    attributes: list[str]
+
+
 @strawberry.input
 class CodeResolverInput:  # REQ-2249
     """A code resolver set as the form saves it: the resolver relating ``source_table`` to

@@ -17,7 +17,8 @@
       "webhook_exists": "Il webhook '{{name}}' esiste già"
     },
     "ai_models": {
-      "vector_model_fields_required": "ogni voce di vector_models richiede id, provider e dimensions"
+      "vector_model_fields_required": "ogni voce di vector_models richiede id, provider e dimensions",
+      "embedding_library_missing": "Il modello di embedding {{model}} usa il provider {{provider}}, che richiede l'extra {{extra}} (il modulo {{module}} non è installato): pip install 'provisa[{{extra}}]'."
     },
     "ai": {
       "endpoint_address_from_server": "L'endpoint AI {{vendor}} prende il suo indirizzo dall'ambiente del server, che un'organizzazione su questo server non usa. Assegnagli un indirizzo tuo in Amministrazione, Modelli AI.",
@@ -768,6 +769,9 @@
       "private_destination": "Le origini di questa organizzazione possono raggiungere solo indirizzi pubblici; {{host}} è {{address}}, che non lo è.",
       "local_path_refused": "Le origini di questa organizzazione non leggono file dal disco del server al di fuori della propria cartella; {{path}} è uno di questi. Carica il file, oppure indicalo come {files}/… o con un indirizzo remoto."
     },
+    "egress": {
+      "private_destination": "Questa organizzazione può chiamare solo indirizzi pubblici; {{host}} è {{address}}, che non lo è."
+    },
     "sandbox": {
       "wrong_tier": "Questa sandbox è servita altrove; aprila dal suo indirizzo.",
       "unknown_demo": "Non esiste una demo pubblicata di nome {{demo}}.",
@@ -917,7 +921,8 @@
       "filter_operator_refused": "{{operator}} non è un operatore con cui si possa convertire un filtro di autorizzazione."
     },
     "relationship": {
-      "name_taken": "Il nome '{{name}}' è già usato dalla relazione '{{held_by}}'. Assegna a questa un altro nome."
+      "name_taken": "Il nome '{{name}}' è già usato dalla relazione '{{held_by}}'. Assegna a questa un altro nome.",
+      "join_through_none": "Le relazioni '{{first}}' e '{{second}}' non condividono una tabella intermedia, oppure le loro altre estremità sono già unite tramite essa."
     }
   }
 }

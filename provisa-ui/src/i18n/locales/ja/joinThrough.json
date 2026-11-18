@@ -1,0 +1,15 @@
+{
+  "joinThrough": {
+    "action": "{{table}} を介して結合",
+    "title": "{{table}} を介して結合",
+    "junction": "{{table}} は両方のテーブルを参照しています。その他の列はこのリレーションシップの属性になります。",
+    "sharedDimension": "両方のテーブルが {{table}} を参照しています。",
+    "name": "名前",
+    "cardinality": "カーディナリティ",
+    "manyToMany": "多対多",
+    "from": "開始",
+    "to": "終了",
+    "through": "経由",
+    "attributes": "属性"
+  }
+}

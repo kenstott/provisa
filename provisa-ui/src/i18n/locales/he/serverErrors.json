@@ -17,7 +17,8 @@
       "webhook_exists": "ה-webhook '{{name}}' כבר קיים"
     },
     "ai_models": {
-      "vector_model_fields_required": "כל רשומת vector_models דורשת id, provider ו-dimensions"
+      "vector_model_fields_required": "כל רשומת vector_models דורשת id, provider ו-dimensions",
+      "embedding_library_missing": "מודל ההטמעה {{model}} משתמש בספק {{provider}}, שדורש את התוספת {{extra}} (המודול {{module}} אינו מותקן): pip install 'provisa[{{extra}}]'."
     },
     "ai": {
       "endpoint_address_from_server": "נקודת הקצה של AI‏ {{vendor}} לוקחת את הכתובת שלה מסביבת השרת, שארגון בשרת זה אינו משתמש בה. הגדירו לה כתובת משלכם תחת ניהול, מודלי AI.",
@@ -768,6 +769,9 @@
       "private_destination": "המקורות של הארגון הזה יכולים להגיע רק לכתובות ציבוריות; {{host}} הוא {{address}}, שאינה כזו.",
       "local_path_refused": "המקורות של הארגון הזה אינם קוראים קבצים מהדיסק של השרת מחוץ לתיקייה של הארגון; {{path}} הוא קובץ כזה. העלו את הקובץ, או ציינו אותו כ-{files}/… או בכתובת מרוחקת."
     },
+    "egress": {
+      "private_destination": "הארגון הזה יכול לפנות רק לכתובות ציבוריות; {{host}} הוא {{address}}, שאינה כזו."
+    },
     "sandbox": {
       "wrong_tier": "ארגז החול הזה מוגש ממקום אחר; פתחו אותו מהכתובת שלו.",
       "unknown_demo": "אין הדגמה שפורסמה בשם {{demo}}.",
@@ -917,7 +921,8 @@
       "filter_operator_refused": "{{operator}} אינו אופרטור שבעזרתו ניתן להמיר מסנן הרשאה."
     },
     "relationship": {
-      "name_taken": "השם '{{name}}' כבר תפוס על ידי הקשר '{{held_by}}'. יש לתת לקשר הזה שם אחר."
+      "name_taken": "השם '{{name}}' כבר תפוס על ידי הקשר '{{held_by}}'. יש לתת לקשר הזה שם אחר.",
+      "join_through_none": "לקשרים '{{first}}' ו-'{{second}}' אין טבלת ביניים משותפת, או שהקצוות האחרים שלהם כבר מצורפים דרכה."
     }
   }
 }

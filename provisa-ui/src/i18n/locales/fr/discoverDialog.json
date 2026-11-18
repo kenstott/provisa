@@ -40,10 +40,7 @@
       "whole_number": "nombres entiers",
       "decimal": "décimaux",
       "text": "texte",
-      "uuid": "UUID",
-      "date": "dates",
-      "timestamp": "horodatages",
-      "timestamptz": "horodatages avec fuseau horaire"
+      "uuid": "UUID"
     },
     "starting": "Démarrage...",
     "reading": "Lecture des tables : {{done}} sur {{total}}",

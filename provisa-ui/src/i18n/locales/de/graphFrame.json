@@ -50,7 +50,7 @@
     "sparqlDropSubquery": "Eine Pill lässt sich nicht auf eine Abfrage mit Sub-SELECT ziehen. Nichts wurde hinzugefügt.",
     "sparqlDropNoClass": "Dieses Ergebnis nennt keine Klasse zum Verbinden: Geben Sie einer Variablen eine Klasse und ziehen Sie erneut. Nichts wurde hinzugefügt.",
     "sparqlDropNode": "Dieser Knoten ist keine Variable dieser Abfrage, es gibt also nichts zum Verbinden. Nichts wurde hinzugefügt.",
-    "sparqlDropNoPath": "{{name}} hat keine Beziehung zu {{classes}}. Nichts wurde hinzugefügt.",
+    "sparqlDropNoPath": "{{name}} hat innerhalb der ausgewählten Domänen keine Beziehung zu {{classes}}. Nichts wurde hinzugefügt.",
     "sparqlDropTooFar": "{{name}} ist {{hops}} Beziehungen von {{classes}} entfernt, mehr als die {{most}}, die ein Ablegen durchläuft: kein kurzer Pfad. Nichts wurde hinzugefügt.",
     "sparqlDropNoEnd": "Keines der Enden von {{name}} ist in diesem Ergebnis. Nichts wurde hinzugefügt.",
     "sparqlDropParameterized": "Ein Pfad kann nicht über {{name}} führen: Zum Lesen braucht es Argumente. Nichts wurde hinzugefügt.",
@@ -58,6 +58,9 @@
     "sparqlDropNoProperty": "Keine Klasse in diesem Ergebnis hat {{name}}. Nichts wurde hinzugefügt.",
     "sparqlDropLeftOut": "{{shown}} von {{total}} gleich kurzen Pfaden hinzugefügt; die übrigen wurden ausgelassen.",
     "sparqlDropCut": "Das Ergebnis hat sein LIMIT von {{limit}} erreicht: Weitere Zeilen werden ausgelassen.",
-    "cypherPathNoKey": "Die Pfade zwischen {{from}} und {{to}} brauchen den Schlüssel jedes Knotens, und einer von ihnen hat keinen."
+    "cypherPathNoKey": "Die Pfade zwischen {{from}} und {{to}} brauchen den Schlüssel jedes Knotens, und einer von ihnen hat keinen.",
+    "cypherDropNoLabel": "Die Knoten dieses Ergebnisses haben kein Label, und seine Abfrage hat keine Beziehung, die ihnen eines gibt: Geben Sie einem Knoten ein Label und ziehen Sie erneut. Nichts wurde hinzugefügt.",
+    "cypherDropNoPair": "Keine Beziehung in der Abfrage dieses Ergebnisses verbindet Labels innerhalb der ausgewählten Domänen, daher können seine Knoten keine Labels erhalten. Nichts wurde hinzugefügt.",
+    "cypherDropLabelled": "Die Knoten dieses Ergebnisses ohne Label haben ihre Labels aus dem Schema erhalten, ein MATCH pro Label-Paar."
   }
 }

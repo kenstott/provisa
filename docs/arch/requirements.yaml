@@ -3775,7 +3775,60 @@
     being measured, is the threshold of the person who starts the run (their ''Tick from'' setting, default
     70%), taken when the run starts and recorded with it; it is not a fixed value. The model is told that
     threshold. A run measures the pairs the model rated from the run''s cutoff up to that threshold, and
-    no others.'
+    no others. (Amended 2026-11-18, KEY VALUE OVERLAP IS A JOIN COUNT IN THE ENGINE:) Maintainer 2026-11-18
+    (''you join on the keys and count matches''). The key value overlap of a pair is measured in the engine
+    by joining the source column to the target column and counting matches: how many of the source column''s
+    distinct values find a match in the target, and how many of the target''s distinct values are matched;
+    whether each column is a key is its distinct count against its row count. No column''s values are pulled
+    out and compared outside the engine. The run''s sample size bounds how many distinct source values are
+    joined. The model''s prompt samples only show what kind of values a column holds; they are each column''s
+    distinct values, not its first rows, and overlap is never judged from them. (Amended 2026-11-18, THE
+    JOIN COUNT READS A LIMITED NUMBER OF ROWS, NEVER A FULL SCAN:) Maintainer 2026-11-18 (''perhaps with
+    a limit. if that would prevent full table scans''). The join count reads at most the run''s sample size
+    of rows from the source column, as a limit the engine stops at, and looks those values up in the target
+    column; no distinct count over a whole column is taken. Whether a column is a key, and the overlap,
+    are judged on the rows read, and the measure says when it was limited. (Amended 2026-11-18, THE SEMANTIC
+    CHECK SCORES TABLE PAIRS, BATCHED; A COLUMN PAIR NOT MENTIONED SCORES ZERO:) Maintainer 2026-11-18.
+    The semantic check asks the model about table pairs, not a pile of columns: each source table with each
+    target table, each side listed with only its columns that can be compared (the compared type groups;
+    dates and timestamps never). For each table pair the model names the column pairs likely to hold the
+    same or similar values, each with a score; a column pair of that table pair it does not mention scores
+    zero. Several table pairs may share one call: the prompt states that it is a batch of separate table
+    pairs and asks for each to be scored on its own, and each answer is read against its own table pair.
+    The scores then feed the key value overlap band as before. This replaces packing many tables'' columns
+    into one request and asking for links anywhere among them. (Amended 2026-11-18, EVERY TABLE IS COMPARED
+    WITH EVERY TABLE: CODE LISTS THE TABLE PAIRS, EACH CALL ANSWERS EVERY PAIR IT LISTS:) Maintainer 2026-11-18
+    (''that''s the right approach ... so the llm calls make sure to compare every table to every table'').
+    A run first lists every table pair of its scope (each source table with each target table that shares
+    a compared type group with it), then batches those table pairs into calls. Each call lists its tables
+    once, with their comparable columns and sample values, and then lists its table pairs explicitly, numbered;
+    the model answers under each number, with the column pairs and their scores or with none. The model
+    never chooses which tables to compare. A listed table pair left without an answer is asked again, and
+    if it is still unanswered the run says so by name; it is never taken as a zero. A column pair of an
+    answered table pair that the answer does not mention scores zero. [SUPERSEDED 2026-11-18] (Amended 2026-11-18,
+    THE SEMANTIC CHECK SEES EACH TABLE''S AND COLUMN''S ALIAS:) Maintainer 2026-11-18 (a poorly named column
+    is found through its description or alias; ''the system allows them to be aliased''). The model is given
+    each table''s and each compared column''s alias, where one is set, beside its physical name, along with
+    its description, bound glossary term and tags, so a column named poorly in its source but aliased or
+    described is judged by that. (Amended 2026-11-18, THE SEMANTIC CHECK NAMES TABLES AND COLUMNS BY THE
+    NAMES PEOPLE USE, NEVER PHYSICAL NAMES:) Maintainer 2026-11-18 (''no one fucking cares about physical
+    names''). [SUPERSEDES the 2026-11-18 amendment ''the semantic check sees each table''s and column''s
+    alias''.] The model is given each table and each compared column by the name people see: its alias where
+    one is set, otherwise its name as the model presents it; a physical name is never sent beside an alias.
+    Its description, bound glossary term and tags go with it. The model''s answers name columns the same
+    way and are mapped back by the run. (Amended 2026-11-18, THE JOIN COUNT READS NON-NULL VALUES ONLY:)
+    Maintainer 2026-11-18 (''non null values only''). The rows the join count reads from the source column,
+    up to the sample size, are rows whose value is not null, and only non-null target values are counted
+    as matches; a null never counts toward the overlap, toward a column being a key, or toward the sample
+    size. (Amended 2026-11-18, EVERY THRESHOLD AND SAMPLE SIZE A RUN USES IS SET IN THE DIALOG:) Maintainer
+    2026-11-18 (''in the ui for relationship discovery ALL thresholds and sample sizes can be modified'').
+    Every threshold and sample size a run uses is shown in the discover dialog with its value and can be
+    changed there before the run starts: the threshold rows start ticked from (Tick from), the cutoff the
+    key value overlap band starts at (Measure from), the share of source values found in a key target at
+    which a pair is a key relationship, the ceiling a pair where neither side is a key scores at most, the
+    number of non-null values the join count reads, and the number of distinct sample values per column
+    the model is shown. None is a fixed constant in the code; each starts at its default, is recorded with
+    the run, and the values a person sets are kept for their next runs.'
   use_case: Auto-generated FK relationships reduce manual relationship registration overhead while preserving
     steward control.
   code:
@@ -57549,7 +57602,12 @@
     names are), the cardinality (many-to-many) and the two ends filled in, to confirm. The two relationships
     stay: all three are offered in SQL, GraphQL and Cypher. A discovery run that finds both legs of a junction
     proposes the combined relationship as one suggestion, and accepting a shared dimension (REQ-413) creates
-    its edge the same way.'
+    its edge the same way. (Amended 2026-11-18, A JUNCTION JOINED BY ITS OWN REGISTERED RELATIONSHIPS KEEPS
+    ITS CYPHER NODE:) Maintainer 2026-11-18. A declared junction table''s node and its edges are left out
+    of the Cypher graph only when no registered relationship of its own joins it. A junction that registered
+    relationships join (as after Join through, which keeps the two hops beside the joined relationship)
+    keeps its node and those edges in Cypher, so all three relationships are offered there, as in SQL and
+    GraphQL.'
   use_case: A steward walks a glossary hierarchy three levels deep in one Cypher pattern, and filters
     the edges by an attribute stored on the junction row, instead of traversing a reified node whose half-hops
     make variable-length depth meaningless.
@@ -95671,7 +95729,12 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     acts. With an external identity provider, it decides, and Provisa enforces whatever its claims say.
     With none, the local default applies an expiry cancel at once -- the date was agreed when the grant
     was made, so it needs no second approval -- as the matching ordinary removal, attributed to the expiry;
-    access ends within the run''s interval. Provisa holds no separate read-time check of an expiry date.'
+    access ends within the run''s interval. Provisa holds no separate read-time check of an expiry date.
+    (Amended 2026-11-18, AN EMAIL NAMES A KNOWN PERSON ONLY BY AN ADDRESS VERIFIED AT SIGN-IN:) Maintainer
+    2026-11-18. Each sign-in records whether the person''s email address was verified by the identity provider.
+    A write that names a person by email resolves to a known person only by an address recorded as verified;
+    an address typed by an account holder (a local account''s email) or one never verified names no one,
+    so the write waits as a pending grant and attaches at a verified sign-in with that address.'
   use_case: Alice holds the viewer role with tables [finance.revenue]; she sees only that table of everything
     viewer can see, while another viewer with no list sees all of it.
   scenario: 'Given two people with the viewer role, one whose grant lists tables [finance.revenue]

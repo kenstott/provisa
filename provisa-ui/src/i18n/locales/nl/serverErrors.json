@@ -17,7 +17,8 @@
       "webhook_exists": "Webhook '{{name}}' bestaat al"
     },
     "ai_models": {
-      "vector_model_fields_required": "elk vector_models-item vereist id, provider en dimensions"
+      "vector_model_fields_required": "elk vector_models-item vereist id, provider en dimensions",
+      "embedding_library_missing": "Het embeddingmodel {{model}} gebruikt de provider {{provider}}, die de extra {{extra}} nodig heeft (de module {{module}} is niet geïnstalleerd): pip install 'provisa[{{extra}}]'."
     },
     "ai": {
       "endpoint_address_from_server": "Het AI-eindpunt {{vendor}} haalt zijn adres uit de omgeving van de server, die een organisatie op deze server niet gebruikt. Geef het onder Beheer, AI-modellen een eigen adres.",
@@ -768,6 +769,9 @@
       "private_destination": "De bronnen van deze organisatie mogen alleen openbare adressen bereiken; {{host}} is {{address}}, en dat is er geen.",
       "local_path_refused": "De bronnen van deze organisatie lezen geen bestand van de eigen schijf van de server buiten de eigen map; {{path}} is er zo een. Upload het bestand of geef het op als {files}/… of met een extern adres."
     },
+    "egress": {
+      "private_destination": "Deze organisatie mag alleen openbare adressen aanroepen; {{host}} is {{address}}, en dat is er geen."
+    },
     "sandbox": {
       "wrong_tier": "Deze sandbox wordt elders geserveerd; open hem via zijn eigen adres.",
       "unknown_demo": "Er is geen gepubliceerde demo met de naam {{demo}}.",
@@ -917,7 +921,8 @@
       "filter_operator_refused": "{{operator}} is geen operator waarmee een machtigingsfilter kan worden omgezet."
     },
     "relationship": {
-      "name_taken": "De naam '{{name}}' is al in gebruik door relatie '{{held_by}}'. Geef deze een andere naam."
+      "name_taken": "De naam '{{name}}' is al in gebruik door relatie '{{held_by}}'. Geef deze een andere naam.",
+      "join_through_none": "De relaties '{{first}}' en '{{second}}' delen geen tussentabel, of hun andere uiteinden zijn er al via gekoppeld."
     }
   }
 }
