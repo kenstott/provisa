@@ -61,6 +61,6 @@
     "cypherPathNoKey": "Os caminhos entre {{from}} e {{to}} precisam da chave de cada nó, e um deles não tem.",
     "cypherDropNoLabel": "Os nós deste resultado não têm rótulo, e a consulta não tem nenhuma relação que lhes dê um: dê um rótulo a um nó e solte de novo. Nada foi adicionado.",
     "cypherDropNoPair": "Nenhuma relação na consulta deste resultado une rótulos dentro dos domínios selecionados, então seus nós não podem receber rótulos. Nada foi adicionado.",
-    "cypherDropLabelled": "Os nós sem rótulo deste resultado receberam seus rótulos do esquema: um MATCH por par de rótulos, unidos por UNION ALL."
+    "cypherDropLabelled": "Os nós sem rótulo deste resultado receberam seus rótulos do esquema, um MATCH por par de rótulos."
   }
 }

@@ -242,7 +242,8 @@ function withAttachments(
  * ``query`` with ``drop`` added (REQ-2135), or why it can't be. ``on`` is the node of a drawing it
  * was dropped on, which what is added then starts from and only there; ``rows`` the frame's rows,
  * which say the variable holding that node. ``vocabulary.prefixes`` are the prefixes in use.
- * ``scope`` is where a class's path may go: the selected domains.
+ * ``scope`` is where a class's path may go: the selected domains, in the vocabulary's labels
+ * (``vocabularyScope``).
  */
 export function droppedQuery(
   query: string,
@@ -405,6 +406,34 @@ export function droppedQuery(
   const anchor = holding(found.start)[0];
   const attachments = found.paths.map((steps) => pathFrom(anchor, steps, target.ending));
   return { ...withAttachments(query, attachments, namespaces), notices: [] };
+}
+
+/**
+ * ``scope`` in the vocabulary's own labels (REQ-2135): a vocabulary labels a class by its label-map
+ * key, not by the ``Domain:Table`` label /data/graph-schema gives, so each table class's labels are
+ * placed in the domain its IRI's namespace names (one prefix per domain), and that domain is a
+ * system domain where the graph schema says so. Both are built from the role's one label map: a
+ * class of a domain the graph schema does not list is a fault, not a class to leave out.
+ */
+export function vocabularyScope(vocabulary: SparqlVocabulary, scope: PathScope): PathScope {
+  const system = new Map(scope.nodeLabels.map((n) => [n.domainId, n.systemDomain]));
+  const domains = Object.entries(vocabulary.prefixes).filter(([prefix]) => system.has(prefix));
+  const nodeLabels = vocabulary.classes
+    .filter((c) => c.kind === "table")
+    .flatMap((c) => {
+      const found = domains.find(
+        ([, ns]) => c.iri.startsWith(ns) && !/[/#]/.test(c.iri.slice(ns.length)),
+      );
+      if (!found) throw new Error(`the class ${c.iri} is of no domain the graph schema lists`);
+      const [domainId] = found;
+      return c.labels.map((tableLabel) => ({
+        domainLabel: null,
+        domainId,
+        tableLabel,
+        systemDomain: system.get(domainId) as boolean,
+      }));
+    });
+  return { nodeLabels, checkedDomains: scope.checkedDomains };
 }
 
 function classLabels(vocabulary: SparqlVocabulary, iri: string): string[] {

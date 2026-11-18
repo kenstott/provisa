@@ -61,6 +61,6 @@
     "cypherPathNoKey": "De paden tussen {{from}} en {{to}} hebben de sleutel van elk knooppunt nodig, en een van beide heeft er geen.",
     "cypherDropNoLabel": "De knooppunten van dit resultaat hebben geen label, en de query heeft geen relatie die ze er een geeft: geef een knooppunt een label en zet opnieuw neer. Er is niets toegevoegd.",
     "cypherDropNoPair": "Geen relatie in de query van dit resultaat verbindt labels binnen de geselecteerde domeinen, dus de knooppunten kunnen geen labels krijgen. Er is niets toegevoegd.",
-    "cypherDropLabelled": "De knooppunten zonder label van dit resultaat hebben hun labels uit het schema gekregen: één MATCH per labelpaar, samengevoegd met UNION ALL."
+    "cypherDropLabelled": "De knooppunten zonder label van dit resultaat hebben hun labels uit het schema gekregen, één MATCH per labelpaar."
   }
 }

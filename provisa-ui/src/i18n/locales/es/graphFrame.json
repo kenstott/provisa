@@ -61,6 +61,6 @@
     "cypherPathNoKey": "Las rutas entre {{from}} y {{to}} necesitan la clave de cada nodo, y uno de ellos no tiene.",
     "cypherDropNoLabel": "Los nodos de este resultado no tienen etiqueta y su consulta no tiene ninguna relación que les dé una: dé una etiqueta a un nodo y vuelva a soltar. No se añadió nada.",
     "cypherDropNoPair": "Ninguna relación de la consulta de este resultado une etiquetas dentro de los dominios seleccionados, así que no se pueden dar etiquetas a sus nodos. No se añadió nada.",
-    "cypherDropLabelled": "Los nodos sin etiqueta de este resultado recibieron sus etiquetas del esquema: un MATCH por cada par de etiquetas, unidos con UNION ALL."
+    "cypherDropLabelled": "Los nodos sin etiqueta de este resultado recibieron sus etiquetas del esquema, un MATCH por cada par de etiquetas."
   }
 }

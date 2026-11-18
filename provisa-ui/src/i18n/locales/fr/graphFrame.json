@@ -61,6 +61,6 @@
     "cypherPathNoKey": "Les chemins entre {{from}} et {{to}} nécessitent la clé de chaque nœud, et l’un d’eux n’en a pas.",
     "cypherDropNoLabel": "Les nœuds de ce résultat n’ont pas de label, et sa requête n’a aucune relation pour leur en donner un : donnez un label à un nœud, puis déposez à nouveau. Rien n’a été ajouté.",
     "cypherDropNoPair": "Aucune relation de la requête de ce résultat ne relie des labels dans les domaines sélectionnés : ses nœuds ne peuvent pas recevoir de labels. Rien n’a été ajouté.",
-    "cypherDropLabelled": "Les nœuds sans label de ce résultat ont reçu leurs labels du schéma : un MATCH par paire de labels, réunis par UNION ALL."
+    "cypherDropLabelled": "Les nœuds sans label de ce résultat ont reçu leurs labels du schéma, un MATCH par paire de labels."
   }
 }

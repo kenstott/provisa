@@ -61,6 +61,6 @@
     "cypherPathNoKey": "I percorsi tra {{from}} e {{to}} richiedono la chiave di ogni nodo, e uno dei due non ne ha.",
     "cypherDropNoLabel": "I nodi di questo risultato non hanno un’etichetta e la sua query non ha alcuna relazione che gliene dia una: assegna un’etichetta a un nodo e rilascia di nuovo. Non è stato aggiunto nulla.",
     "cypherDropNoPair": "Nessuna relazione nella query di questo risultato unisce etichette all’interno dei domini selezionati, quindi ai suoi nodi non si possono dare etichette. Non è stato aggiunto nulla.",
-    "cypherDropLabelled": "I nodi senza etichetta di questo risultato hanno ricevuto le etichette dallo schema: un MATCH per coppia di etichette, uniti con UNION ALL."
+    "cypherDropLabelled": "I nodi senza etichetta di questo risultato hanno ricevuto le etichette dallo schema, un MATCH per coppia di etichette."
   }
 }

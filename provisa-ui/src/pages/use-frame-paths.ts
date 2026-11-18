@@ -12,7 +12,12 @@ import { useCallback, useMemo, type RefObject } from "react";
 import type { DropNotice, FrameData, GNode } from "../components/graph/graph-model";
 import type { SchemaNodeLabel, SchemaRel } from "../components/graph/graph-schema-types";
 import type { SparqlVocabulary } from "../components/graph/sparql";
-import { droppedQuery, type DropNode, type SparqlDrop } from "../components/graph/sparqlDrop";
+import {
+  droppedQuery,
+  vocabularyScope,
+  type DropNode,
+  type SparqlDrop,
+} from "../components/graph/sparqlDrop";
 import { compoundLabelOf, type PathScope } from "../components/graph/dropPath";
 import { nodePathQuery } from "./graph-drop";
 
@@ -73,7 +78,7 @@ export function useFramePaths({
         { ...vocabulary, prefixes },
         on,
         frame.rows,
-        pathScope,
+        vocabularyScope(vocabulary, pathScope),
       );
       if ("refused" in done) {
         const { refused } = done;

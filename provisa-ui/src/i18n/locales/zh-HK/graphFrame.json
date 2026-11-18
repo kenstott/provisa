@@ -61,6 +61,6 @@
     "cypherPathNoKey": "{{from}} 與 {{to}} 之間的路徑需要每個節點的鍵，而其中一個沒有。",
     "cypherDropNoLabel": "此結果的節點沒有標籤，其查詢中亦沒有可為其提供標籤的關係：請先為節點指定標籤，再重新拖放。未有加入任何內容。",
     "cypherDropNoPair": "此結果的查詢中沒有關係連接所選領域內的標籤，因此無法為其節點指定標籤。未有加入任何內容。",
-    "cypherDropLabelled": "已根據結構描述為此結果中沒有標籤的節點指定標籤：每個標籤組合一個 MATCH，以 UNION ALL 合併。"
+    "cypherDropLabelled": "已根據結構描述為此結果中沒有標籤的節點指定標籤，每個標籤組合一個 MATCH。"
   }
 }

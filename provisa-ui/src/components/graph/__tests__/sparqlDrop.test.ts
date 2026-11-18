@@ -11,7 +11,7 @@
 // REQ-2135: what a pill dropped on a SPARQL frame does to its query.
 
 import { describe, expect, it } from "vitest";
-import { droppedQuery, type SparqlDrop, type SparqlDropped } from "../sparqlDrop";
+import { droppedQuery, vocabularyScope, type SparqlDrop, type SparqlDropped } from "../sparqlDrop";
 import type { SparqlVocabulary } from "../sparql";
 import type { PathScope } from "../dropPath";
 import type { CyElement, CyInstance } from "../cytoscape-types";
@@ -517,6 +517,78 @@ LIMIT 25`;
     expect(q.match(/OPTIONAL/g)).toHaveLength(1);
     expect(q).toContain(
       "OPTIONAL { ?s rel:TREATED_BY ?vets . ?vets a ps:vets . ?vets rel:EMPLOYS ?staff . ?staff a hr:staff . }",
+    );
+  });
+});
+
+describe("REQ-2135 the selected domains in a vocabulary's own labels", () => {
+  // /data/graph-schema names a label Domain:Table; the vocabulary names it by its label-map key.
+  const graphSchema = (checked: string[]): PathScope => ({
+    nodeLabels: [
+      { domainLabel: "PetStore", domainId: "ps", tableLabel: "Users", systemDomain: false },
+      { domainLabel: "Shelter", domainId: "shelter", tableLabel: "Employees", systemDomain: false },
+      { domainLabel: "Meta", domainId: "meta", tableLabel: "RegisteredTables", systemDomain: true },
+    ],
+    checkedDomains: new Set(checked),
+  });
+  const v: SparqlVocabulary = {
+    ...vocabulary,
+    prefixes: { ...vocabulary.prefixes, shelter: `${B}/shelter/`, meta: `${B}/meta/` },
+    classes: [
+      cls("ps", "users"),
+      cls("ps", "inquiries"),
+      cls("shelter", "employees"),
+      cls("meta", "registered_tables"),
+      { ...cls("ps", "users"), iri: `${B}/term/Customer`, kind: "term" },
+    ],
+    edges: [
+      edge("SUBMITTED_BY", "inquiries", "users"),
+      edge("HAS_TABLE", "users", "registered_tables"),
+      edge("HAS_TABLE", "employees", "registered_tables"),
+    ],
+  };
+
+  it("places each table class's labels in the domain its IRI names, system as the graph schema says", () => {
+    expect(vocabularyScope(v, graphSchema(["ps", "shelter"]))).toEqual({
+      nodeLabels: [
+        { domainLabel: null, domainId: "ps", tableLabel: "users", systemDomain: false },
+        { domainLabel: null, domainId: "ps", tableLabel: "inquiries", systemDomain: false },
+        { domainLabel: null, domainId: "shelter", tableLabel: "employees", systemDomain: false },
+        {
+          domainLabel: null,
+          domainId: "meta",
+          tableLabel: "registered_tables",
+          systemDomain: true,
+        },
+      ],
+      checkedDomains: new Set(["ps", "shelter"]),
+    });
+  });
+
+  it("keeps a drop from the meta domain's registered tables", () => {
+    const q = `PREFIX ps: <${B}/ps/>\nSELECT * WHERE { ?s a ps:users } LIMIT 25`;
+    const d = droppedQuery(
+      q,
+      { kind: "class", iri: `${B}/shelter/employees` },
+      v,
+      null,
+      [],
+      vocabularyScope(v, graphSchema(["ps", "shelter"])),
+    );
+    expect(refusal(d)).toEqual({
+      key: "graphFrame.sparqlDropNoPath",
+      values: { name: "shelter:employees", classes: "ps:users" },
+    });
+  });
+
+  it("says which class is of a domain the graph schema does not list", () => {
+    const stray: SparqlVocabulary = {
+      ...v,
+      prefixes: { ...v.prefixes, hr: `${B}/hr/` },
+      classes: [...v.classes, cls("hr", "staff")],
+    };
+    expect(() => vocabularyScope(stray, graphSchema([]))).toThrow(
+      `the class ${B}/hr/staff is of no domain the graph schema lists`,
     );
   });
 });

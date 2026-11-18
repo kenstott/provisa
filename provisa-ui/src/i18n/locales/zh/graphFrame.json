@@ -61,6 +61,6 @@
     "cypherPathNoKey": "{{from}} 与 {{to}} 之间的路径需要每个节点的键，而其中一个没有。",
     "cypherDropNoLabel": "此结果的节点没有标签，其查询中也没有可为其提供标签的关系：请先为节点指定标签，再重新拖放。未添加任何内容。",
     "cypherDropNoPair": "此结果的查询中没有关系连接所选域内的标签，因此无法为其节点指定标签。未添加任何内容。",
-    "cypherDropLabelled": "已根据架构为此结果中没有标签的节点指定标签：每个标签对一个 MATCH，用 UNION ALL 合并。"
+    "cypherDropLabelled": "已根据架构为此结果中没有标签的节点指定标签，每个标签对一个 MATCH。"
   }
 }

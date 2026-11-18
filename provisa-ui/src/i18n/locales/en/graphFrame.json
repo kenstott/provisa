@@ -61,6 +61,6 @@
     "cypherPathNoKey": "The paths between {{from}} and {{to}} need each node's key, and one of them has none.",
     "cypherDropNoLabel": "This result's nodes have no label, and its query has no relationship to give them one: give a node a label, then drop again. Nothing was added.",
     "cypherDropNoPair": "No relationship in this result's query joins labels within the selected domains, so its nodes can't be given labels. Nothing was added.",
-    "cypherDropLabelled": "This result's unlabelled nodes were given their labels from the schema: one MATCH per label pair, joined by UNION ALL."
+    "cypherDropLabelled": "This result's unlabelled nodes were given their labels from the schema, one MATCH per label pair."
   }
 }
