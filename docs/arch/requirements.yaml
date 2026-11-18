@@ -3805,12 +3805,18 @@
     the model answers under each number, with the column pairs and their scores or with none. The model
     never chooses which tables to compare. A listed table pair left without an answer is asked again, and
     if it is still unanswered the run says so by name; it is never taken as a zero. A column pair of an
-    answered table pair that the answer does not mention scores zero. (Amended 2026-11-18, THE SEMANTIC
-    CHECK SEES EACH TABLE''S AND COLUMN''S ALIAS:) Maintainer 2026-11-18 (a poorly named column is found
-    through its description or alias; ''the system allows them to be aliased''). The model is given each
-    table''s and each compared column''s alias, where one is set, beside its physical name, along with its
-    description, bound glossary term and tags, so a column named poorly in its source but aliased or described
-    is judged by that.'
+    answered table pair that the answer does not mention scores zero. [SUPERSEDED 2026-11-18] (Amended 2026-11-18,
+    THE SEMANTIC CHECK SEES EACH TABLE''S AND COLUMN''S ALIAS:) Maintainer 2026-11-18 (a poorly named column
+    is found through its description or alias; ''the system allows them to be aliased''). The model is given
+    each table''s and each compared column''s alias, where one is set, beside its physical name, along with
+    its description, bound glossary term and tags, so a column named poorly in its source but aliased or
+    described is judged by that. (Amended 2026-11-18, THE SEMANTIC CHECK NAMES TABLES AND COLUMNS BY THE
+    NAMES PEOPLE USE, NEVER PHYSICAL NAMES:) Maintainer 2026-11-18 (''no one fucking cares about physical
+    names''). [SUPERSEDES the 2026-11-18 amendment ''the semantic check sees each table''s and column''s
+    alias''.] The model is given each table and each compared column by the name people see: its alias where
+    one is set, otherwise its name as the model presents it; a physical name is never sent beside an alias.
+    Its description, bound glossary term and tags go with it. The model''s answers name columns the same
+    way and are mapped back by the run.'
   use_case: Auto-generated FK relationships reduce manual relationship registration overhead while preserving
     steward control.
   code:
