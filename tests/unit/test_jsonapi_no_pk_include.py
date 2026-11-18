@@ -74,13 +74,15 @@ def _table(table_id: int, name: str, columns: list[str]) -> dict:
 
 
 def _schema_input() -> SchemaInput:
-    """building_permits -> neighborhoods (permit_neighborhood_dimension) -> districts; no table
-    declares a primary key."""
+    """building_permits -> neighborhoods (permit_neighborhood_dimension) -> districts, and
+    shelters, which has a column named id and no relationship; no table declares a primary
+    key."""
     return SchemaInput(
         tables=[
             _table(1, "building_permits", ["permit_number", "neighborhood", "valuation"]),
             _table(2, "neighborhoods", ["neighborhood_name", "district_code", "population"]),
             _table(3, "districts", ["district_code", "district_name"]),
+            _table(4, "shelters", ["id", "shelter_name"]),
         ],
         relationships=[
             {
@@ -105,6 +107,7 @@ def _schema_input() -> SchemaInput:
             1: [_col("permit_number"), _col("neighborhood"), _col("valuation", "integer")],
             2: [_col("neighborhood_name"), _col("district_code"), _col("population", "integer")],
             3: [_col("district_code"), _col("district_name")],
+            4: [_col("id", "integer"), _col("shelter_name")],
         },
         naming_rules=[],
         role={"id": "org_admin", "capabilities": ["full_results"], "domain_access": ["*"]},
@@ -177,7 +180,7 @@ def client(monkeypatch, answer):
                 "write_refused_forms": [],
             }
             for gql, meta in ctx.tables.items()
-            if gql in ("buildingPermits", "neighborhoods")
+            if gql in ("buildingPermits", "neighborhoods", "shelters")
         }
     }
     with_surfaces(state)
@@ -197,6 +200,7 @@ def client(monkeypatch, answer):
         serve_cached,
         sdl_joins,
     ):
+        answer.setdefault("statements", []).append((sql, exec_params))
         return SimpleNamespace(_is_count="COUNT(*)" in sql)
 
     async def _fake_execute(plan, state):
@@ -339,3 +343,85 @@ async def test_a_dotted_include_naming_no_relationship_is_refused_by_name(client
     err = r.json()["errors"][0]
     assert err["detail"] == "Unknown relationship 'nope'"
     assert err["source"]["parameter"] == "include"
+
+
+_SHELTERS = [{"id": 7, "shelterName": "North"}, {"id": 9, "shelterName": "South"}]
+
+
+@pytest.mark.anyio
+async def test_a_root_with_a_column_named_id_is_identified_by_it(client, answer):
+    """shelters has no primary key and no relationship points at it, but it has a column named
+    id: that is its resources' id, not their position."""
+    answer["rows"] = [dict(r) for r in _SHELTERS]
+    r = await _get(client, "/data/jsonapi/shelter/shelters", {})
+    assert r.status_code == 200, r.text
+    data = r.json()["data"]
+    assert [d["id"] for d in data] == ["7", "9"]
+    assert data[0]["attributes"] == {"shelter_name": "North"}
+
+
+@pytest.mark.anyio
+async def test_a_type_identified_by_its_id_column_offers_a_single_resource_lookup(client, answer):
+    answer["rows"] = [dict(_SHELTERS[1])]
+    r = await _get(client, "/data/jsonapi/shelter/shelters/9", {})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["data"] == {
+        "type": "shelters",
+        "id": "9",
+        "attributes": {"shelter_name": "South"},
+    }
+    assert body["links"] == {"self": "/data/jsonapi/shelter/shelters/9"}
+    sql, params = answer["statements"][-1]
+    assert params is not None and 9 in [*params], (sql, params)
+
+
+@pytest.mark.anyio
+async def test_a_lookup_of_an_id_no_resource_has_is_not_found(client, answer):
+    answer["rows"] = []
+    r = await _get(client, "/data/jsonapi/shelter/shelters/8", {})
+    assert r.status_code == 404, r.text
+    assert r.json()["errors"][0]["detail"] == "No shelters resource has id '8'"
+
+
+@pytest.mark.anyio
+async def test_a_type_identified_by_a_relationship_target_offers_a_lookup(client, answer):
+    answer["rows"] = [dict(_NEIGHBORHOOD)]
+    r = await _get(client, "/data/jsonapi/shelter/neighborhoods/Mission", {})
+    assert r.status_code == 200, r.text
+    assert r.json()["data"]["id"] == "Mission"
+    _, params = answer["statements"][-1]
+    assert "Mission" in [*params]
+
+
+@pytest.mark.anyio
+async def test_a_position_only_type_refuses_a_lookup_by_name(client):
+    """building_permits has no key, no relationship pointing at it and no id column: its ids are
+    positions, so it offers no single-resource lookup."""
+    r = await _get(client, "/data/jsonapi/shelter/building_permits/0", {})
+    assert r.status_code == 404, r.text
+    err = r.json()["errors"][0]
+    assert err["title"] == "Not Found"
+    assert err["detail"] == (
+        "Resource type 'shelter'/'building_permits' offers no single-resource lookup: its "
+        "resources are identified only by their position in a response"
+    )
+
+
+@pytest.mark.anyio
+async def test_a_lookup_refuses_collection_parameters_by_name(client):
+    r = await _get(client, "/data/jsonapi/shelter/shelters/9", {"page[size]": "5"})
+    assert r.status_code == 400, r.text
+    err = r.json()["errors"][0]
+    assert err["source"]["parameter"] == "page[size]"
+
+
+@pytest.mark.anyio
+async def test_the_spec_offers_a_lookup_only_for_types_with_a_real_identifier(client):
+    r = await _get(client, "/data/jsonapi/openapi.json", {"role": "org_admin"})
+    assert r.status_code == 200, r.text
+    paths = r.json()["paths"]
+    assert "/shelter/building_permits" in paths
+    assert "/shelter/building_permits/{id}" not in paths
+    assert "/shelter/shelters/{id}" in paths
+    assert "/shelter/neighborhoods/{id}" in paths

@@ -222,6 +222,9 @@ pub struct JsonApi {
     /// The message of the warning a to-one path that matched several rows for one parent raises,
     /// `{path}` where its path goes (serialize.TO_ONE_TRUNCATED_MESSAGE), and its code.
     pub truncation: (String, String),
+    /// A single-resource lookup (REQ-1929): `data` is the first row's resource, or null for no
+    /// row, and `links` is only `self`, the lookup's `base_path`.
+    pub single: bool,
 }
 
 /// `rename_row_keys` / `_rename_nested`: new objects with keys renamed.
@@ -620,7 +623,10 @@ pub fn jsonapi(batches: &[Batch], spec: &[Col], a: &JsonApi) -> Res<(Vec<u8>, Ve
     let fks: Vec<(String, String)> = a.rel_names.iter().map(|(_, p)| (format!("{p}_id"), p.clone())).collect();
     let ty = a.resource_type.as_bytes();
     let mut out = Vec::new();
-    out.extend_from_slice(b"{\"data\":[");
+    out.extend_from_slice(if a.single { b"{\"data\":" as &[u8] } else { b"{\"data\":[" });
+    if a.single && page.is_empty() {
+        out.extend_from_slice(b"null");
+    }
     for (i, &o) in page.iter().enumerate() {
         if i > 0 {
             out.push(b',');
@@ -665,8 +671,13 @@ pub fn jsonapi(batches: &[Batch], spec: &[Col], a: &JsonApi) -> Res<(Vec<u8>, Ve
             }
         }
         write_resource(&t, &mut out, ty, rid, &attrs, &rels)?;
+        if a.single {
+            break;
+        }
     }
-    out.push(b']');
+    if !a.single {
+        out.push(b']');
+    }
     let filled: Vec<&Bucket> = buckets.iter().filter(|b| !b.items.is_empty()).collect();
     if !filled.is_empty() {
         out.extend_from_slice(b",\"included\":[");
@@ -734,7 +745,13 @@ pub fn jsonapi(batches: &[Batch], spec: &[Col], a: &JsonApi) -> Res<(Vec<u8>, Ve
         out.push(b'}');
     }
     out.extend_from_slice(b",\"links\":");
-    links(&mut out, a, has_next);
+    if a.single {
+        out.extend_from_slice(b"{\"self\":");
+        fmt::write_str(&mut out, a.base_path.as_bytes());
+        out.push(b'}');
+    } else {
+        links(&mut out, a, has_next);
+    }
     out.push(b'}');
     Ok((out, truncated))
 }

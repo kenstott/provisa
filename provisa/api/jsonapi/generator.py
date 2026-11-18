@@ -44,6 +44,7 @@ from provisa.api.jsonapi.pagination import (
     parse_page_params,
     parse_page_total,
 )
+from provisa.api.jsonapi.resource_id import resource_id_columns, split_resource_id
 from provisa.api.jsonapi.naming import (
     physical_rel_name,
     relationship_name_maps,
@@ -202,23 +203,6 @@ def _get_relationship_fields(
             # FK column in serialized rows uses camelCase (e.g. petId), not snake_case (pet_id)
             rels[f"{name}Id"] = name
     return rels
-
-
-def _resource_id_columns(ctx: Any, table_id: int, physical_to_gql: dict[str, str]) -> list[str]:
-    """REQ-1929: a root resource's id columns, physical, in key order: its declared primary key;
-    otherwise the column an approved relationship points at; otherwise none, and its id is its
-    position in the response. No read is refused for want of a primary key."""
-    keys = ctx.pk_columns.get(table_id) or []
-    if keys and all(k in physical_to_gql for k in keys):
-        return list(keys)
-    for join in ctx.joins.values():
-        if (
-            join.target.table_id == table_id
-            and join.target_expr is None
-            and join.target_column in physical_to_gql
-        ):
-            return [join.target_column]
-    return []
 
 
 def _included_id_columns(ctx: Any, join: Any, to_gql: dict[str, str]) -> list[str] | None:
@@ -626,6 +610,47 @@ def _next_page_probe_rows(page_size: int, role_id: str) -> int:  # REQ-257, REQ-
     return 1
 
 
+_COLLECTION_PARAMS = ("sort", "aggregate", "groupBy", "includeNodes")
+
+
+def _lookup_filters(  # REQ-1929
+    domain_id: str,
+    table_name: str,
+    resource_id: str,
+    id_columns: list[str],
+    physical_to_gql: dict[str, str],
+    raw_params: dict[str, str],
+) -> dict[str, dict[str, Any]] | OrjsonResponse:
+    """The filters (GraphQL names) that select the resource ``resource_id`` names, or the refusal:
+    404 for a type identified only by position, which offers no lookup; 400 for a collection
+    parameter (page, filter, sort, aggregate, groupBy), which a single resource does not take, or
+    an id that does not name one value per id column."""
+    if not id_columns:
+        return _jsonapi_error_response(
+            404,
+            "Not Found",
+            f"Resource type {domain_id!r}/{table_name!r} offers no single-resource lookup: its "
+            "resources are identified only by their position in a response",
+        )
+    for key in raw_params:
+        if key in _COLLECTION_PARAMS or key.startswith(("page[", "filter[")):
+            return _jsonapi_error_response(
+                400,
+                "Invalid Query Parameter",
+                f"{key!r} applies to a collection, not a single resource",
+                source_parameter=key,
+            )
+    values = split_resource_id(resource_id, len(id_columns))
+    if values is None:
+        return _jsonapi_error_response(
+            404,
+            "Not Found",
+            f"{resource_id!r} is not an id of {table_name}: it names "
+            f"{len(id_columns)} values ({', '.join(id_columns)}) joined by ':'",
+        )
+    return {physical_to_gql[c]: {"eq": v} for c, v in zip(id_columns, values, strict=True)}
+
+
 def _jsonapi_error_response(status: int, title: str, detail: str | None = None, **kwargs):
     """Return a JSONResponse with JSON:API error format."""
     body = error_response([jsonapi_error(status, title, detail, **kwargs)])
@@ -673,6 +698,19 @@ def create_jsonapi_router(state: Any) -> APIRouter:  # REQ-256, REQ-257, REQ-266
     async def _jsonapi_table_endpoint(  # pyright: ignore[reportUnusedFunction]
         request: Request, domain_id: str, table_name: str
     ):
+        return await _serve(request, domain_id, table_name, None)
+
+    @jsonapi_router.get("/{domain_id}/{table_name}/{resource_id:path}")
+    async def _jsonapi_resource_endpoint(  # pyright: ignore[reportUnusedFunction]
+        request: Request, domain_id: str, table_name: str, resource_id: str
+    ):
+        # REQ-1929: GET /<type>/<id>, offered only for a type whose id is a real identifier.
+        return await _serve(request, domain_id, table_name, resource_id)
+
+    async def _serve(  # REQ-256, REQ-257, REQ-1929
+        request: Request, domain_id: str, table_name: str, resource_id: str | None
+    ):
+        """A collection read, or with ``resource_id`` the single-resource lookup."""
         # Content negotiation
         accept = request.headers.get("accept", "")
         if accept and JSONAPI_CONTENT_TYPE not in accept and "*/*" not in accept:
@@ -776,7 +814,15 @@ def create_jsonapi_router(state: Any) -> APIRouter:  # REQ-256, REQ-257, REQ-266
 
         # A resource's id is made of its key columns (serializer.resource_id): every one is
         # selected, whatever the sparse fieldset asks for. None: its id is its position (REQ-1929).
-        base_keys = _resource_id_columns(ctx, table_meta.table_id, physical_to_gql)
+        base_keys = resource_id_columns(ctx, table_meta.table_id, physical_to_gql)
+        lookup_filters: dict[str, dict[str, Any]] = {}
+        if resource_id is not None:
+            lookup = _lookup_filters(
+                domain_id, table_name, resource_id, base_keys, physical_to_gql, raw_params
+            )
+            if not isinstance(lookup, dict):
+                return lookup
+            lookup_filters = lookup
         selected_fields = [
             *[physical_to_gql[k] for k in base_keys if physical_to_gql[k] not in selected_fields],
             *selected_fields,
@@ -784,7 +830,10 @@ def create_jsonapi_router(state: Any) -> APIRouter:  # REQ-256, REQ-257, REQ-266
 
         physical_filters = _parse_filters(raw_params)
         physical_sort = _parse_sort(raw_params.get("sort"))
-        page = parse_page_params(raw_params)
+        # A lookup reads its one resource: one row, no page (_lookup_filters refused page[...]).
+        page = (
+            {"number": 1, "size": 1} if resource_id is not None else parse_page_params(raw_params)
+        )
         page_number, page_size = page["number"], page["size"]
         limit, pg_offset = page_to_limit_offset(page)
         # REQ-1197: the total is counted only for a request that asks for it.
@@ -813,6 +862,7 @@ def create_jsonapi_router(state: Any) -> APIRouter:  # REQ-256, REQ-257, REQ-266
                     source_parameter=f"filter[{col}]",
                 )
         filters = {physical_to_gql[col]: ops for col, ops in physical_filters.items()}
+        filters.update(lookup_filters)  # a lookup takes no filter[...] (_lookup_filters)
 
         # Validate + translate sort columns
         for s in physical_sort:
@@ -1039,7 +1089,11 @@ def create_jsonapi_router(state: Any) -> APIRouter:  # REQ-256, REQ-257, REQ-266
 
         # Without a total, whether another page follows is read from the page itself: one row past
         # it is fetched and dropped below.
-        probe_rows = 0 if want_total else _next_page_probe_rows(page_size, role_id)
+        probe_rows = (
+            0
+            if want_total or resource_id is not None
+            else _next_page_probe_rows(page_size, role_id)
+        )
         variables = _variables(schema, gql_table, filters, params)
         if not isinstance(variables, RequestVariables):
             return variables
@@ -1166,6 +1220,8 @@ def create_jsonapi_router(state: Any) -> APIRouter:  # REQ-256, REQ-257, REQ-266
 
         # Pagination links — preserve role, sort, sparse fieldset, filters, include and parameters
         base_path = f"/data/jsonapi/{domain_id}/{table_name}"
+        if resource_id is not None:
+            base_path = f"{base_path}/{resource_id}"
         extra = {}
         for k in ("role", "sort", "include", "params"):
             if raw_params.get(k):
@@ -1210,7 +1266,12 @@ def create_jsonapi_router(state: Any) -> APIRouter:  # REQ-256, REQ-257, REQ-266
             base_path=base_path,
             link_params=list(extra.items()),
             warnings=warnings_json(as_entries()),
+            single=resource_id is not None,
         )
+        if resource_id is not None and body.startswith(b'{"data":null'):
+            return _jsonapi_error_response(
+                404, "Not Found", f"No {table_name} resource has id {resource_id!r}"
+            )
         # A to-one that matched several rows for one resource: in meta.warnings (the encoder's)
         # and the response's X-Provisa-Warnings header.
         for path in truncated:

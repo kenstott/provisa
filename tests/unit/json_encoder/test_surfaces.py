@@ -185,6 +185,7 @@ def jsonapi(
     table_name="orders",
     include_fields=None,
     include_names=None,
+    single=False,
 ):
     batches = table.to_batches() if batches is None else batches
     include_keys = (
@@ -216,6 +217,7 @@ def jsonapi(
             warnings=warnings,
             include_fields=include_fields,
             include_names=include_names,
+            single=single,
         ),
         lambda: rs.encode_jsonapi(
             rust_batches(batches),
@@ -236,6 +238,7 @@ def jsonapi(
             warnings=warnings_json(warnings),
             include_fields=include_fields,
             include_names=include_names,
+            single=single,
         ),
     )
 
@@ -410,6 +413,19 @@ def test_jsonapi_position_id_escapes_parent():
         )
         == "ok"
     )
+
+
+@pytest.mark.parametrize(
+    "includes", [(), ("customer",), ("line_items",)], ids=["bare", "m2o", "o2m"]
+)
+@pytest.mark.parametrize("base_keys", [("id",), ("id", "order_status")], ids=["id", "composite"])
+def test_jsonapi_single_resource(includes, base_keys):
+    """REQ-1929: a lookup's document is its one resource (null for none), linked only to self."""
+    cols = JA_INCLUDE if includes else JA_COLS
+    t = project(jsonapi_orders(), cols)
+    kw = {"includes": includes, "base_keys": base_keys, "single": True, "page_size": 1, "probe": 0}
+    assert jsonapi(t, cols, **kw) == "ok"
+    assert jsonapi(t.slice(0, 0), cols, **kw) == "ok"
 
 
 @pytest.mark.parametrize("seed", range(1, 1500, 5))

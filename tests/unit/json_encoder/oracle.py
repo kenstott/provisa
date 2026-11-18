@@ -637,8 +637,10 @@ def jsonapi_document(
     warnings: list[dict] | None,
     include_fields: dict[str, list[str]] | None = None,
     include_names: dict[str, tuple[str, dict[str, str]]] | None = None,
+    single: bool = False,
 ) -> dict:
-    """_jsonapi_table_endpoint, from the rows on."""
+    """_jsonapi_table_endpoint, from the rows on. ``single``: a single-resource lookup
+    (REQ-1929), whose data is its first resource or null and whose only link is self."""
     has_next = len(rows) > page_size if probe_rows else len(rows) == page_size
     rows = rows[:page_size]
     rows = [
@@ -667,7 +669,7 @@ def jsonapi_document(
                 rid=rid,
             )
         )
-    doc: dict[str, Any] = {"data": data}
+    doc: dict[str, Any] = {"data": (data[0] if data else None) if single else data}
     fields = include_fields or {}
     included = [
         row_to_resource(
@@ -687,8 +689,12 @@ def jsonapi_document(
         meta["warnings"] = all_warnings
     if meta:
         doc["meta"] = meta
-    doc["links"] = build_pagination_links(
-        base_path, page_number, page_size, total_count, extra or None, has_next=has_next
+    doc["links"] = (
+        {"self": base_path}
+        if single
+        else build_pagination_links(
+            base_path, page_number, page_size, total_count, extra or None, has_next=has_next
+        )
     )
     return doc
 

@@ -26,6 +26,8 @@ from graphql import (
     GraphQLString,
 )
 
+from provisa.api.jsonapi.naming import scalar_name_maps
+from provisa.api.jsonapi.resource_id import resource_id_columns
 from provisa.api.role_surface import role_surface
 
 _FILTER_OPS = ["eq", "neq", "gt", "gte", "lt", "lte", "like"]
@@ -260,6 +262,19 @@ def generate_jsonapi_openapi_spec(
             }
         }
 
+        # REQ-1929: GET /<type>/<id> only for a type whose id is a real identifier.
+        table_meta = surface.context.tables.get(field_name)
+        if table_meta is not None:
+            scalar_names = [c for c, _, _ in columns if not (c.startswith("_") and c.endswith("_"))]
+            _, physical_to_gql = scalar_name_maps(
+                surface.context, table_meta.table_id, scalar_names
+            )
+            id_columns = resource_id_columns(surface.context, table_meta.table_id, physical_to_gql)
+            if id_columns:
+                paths[f"/{domain_id}/{table_name}/{{id}}"] = _lookup_path(
+                    field_name, domain_id, table_name, id_columns, resource_schema, parameters
+                )
+
     return {
         "openapi": "3.1.0",
         "info": {
@@ -274,6 +289,62 @@ def generate_jsonapi_openapi_spec(
         "servers": [{"url": "/data/jsonapi"}],
         "tags": tags,
         "paths": paths,
+    }
+
+
+def _lookup_path(  # REQ-1929
+    field_name: str,
+    domain_id: str,
+    table_name: str,
+    id_columns: list[str],
+    resource_schema: dict[str, Any],
+    parameters: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """The single-resource lookup's path item: the id, and the list's fields[] and include."""
+    id_desc = (
+        f"The resource's {id_columns[0]}"
+        if len(id_columns) == 1
+        else f"The resource's {', '.join(id_columns)}, joined by ':' (each ':' and '\\' "
+        "escaped by '\\')"
+    )
+    return {
+        "get": {
+            "summary": f"Get one {table_name}",
+            "operationId": f"get_{field_name}",
+            "tags": [domain_id] if domain_id else [table_name],
+            "parameters": [
+                {
+                    "name": "id",
+                    "in": "path",
+                    "required": True,
+                    "schema": {"type": "string"},
+                    "description": id_desc,
+                },
+                *[p for p in parameters if p["name"] in (f"fields[{table_name}]", "include")],
+            ],
+            "responses": {
+                "200": {
+                    "description": "JSON:API document",
+                    "content": {
+                        "application/vnd.api+json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "data": resource_schema,
+                                    "links": {
+                                        "type": "object",
+                                        "properties": {"self": {"type": "string"}},
+                                    },
+                                },
+                            }
+                        }
+                    },
+                },
+                "400": {"description": "Bad request / a collection parameter"},
+                "403": {"description": "Governance policy violation"},
+                "404": {"description": "Resource type or resource not found"},
+            },
+        }
     }
 
 

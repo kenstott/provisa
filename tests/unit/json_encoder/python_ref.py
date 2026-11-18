@@ -93,6 +93,7 @@ def jsonapi(
     warnings: list[dict] | None,
     include_fields: dict[str, list[str]] | None = None,
     include_names: dict[str, tuple[str, dict[str, str]]] | None = None,
+    single: bool = False,
 ) -> bytes:
     rows, truncated = oracle.serialize_rows(oracle.arrow_rows(list(batches)), columns)
     return dumps(
@@ -115,6 +116,7 @@ def jsonapi(
             warnings=warnings,
             include_fields=include_fields,
             include_names=include_names,
+            single=single,
         )
     )
 
