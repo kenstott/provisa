@@ -3085,7 +3085,10 @@
     produces comes from an English dictionary lookup: a word in the dictionary takes its dictionary singular
     or plural; a word not in the dictionary (an abbreviation, a coined table name) is left as written. No
     suffix rule guesses a form. One inflection helper serves every naming path (relationship fields, aliases,
-    glossary terms).'
+    glossary terms). (Amended 2026-11-18, A WORD THE DICTIONARY DOES NOT KNOW TAKES A RULE-BASED FORM:)
+    Maintainer 2026-11-18 (''you could if the word is not known - then use a rule based method''). The dictionary
+    lookup comes first and decides every word it knows; only a word the dictionary does not know takes a
+    rule-based singular or plural. This replaces ''a word not in the dictionary is left as written''.'
   use_case: Consistent multi-language naming with a single authority ensures client-facing names are predictable
     and independent of physical schema.
   code:
