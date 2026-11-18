@@ -2985,7 +2985,7 @@
   - architecture.md
   - configuration.md
 - id: REQ-194
-  status: complete
+  status: in-progress
   group: 3. Source Registration & Data Modeling
   category: Naming Convention
   feature: semantic-model-naming
@@ -3079,7 +3079,13 @@
     check, a product''s quality checks and sample views) are read from the runtime''s published build, never
     from the stored names table, so a table registered and granted at once is found and a rename is granted
     under its new name. The stored names table is written after the answer and is read only by the meta
-    domain''s reports, which may show the previous build until that pass has run.'
+    domain''s reports, which may show the previous build until that pass has run. (Amended 2026-11-18, SINGULAR
+    AND PLURAL COME FROM A DICTIONARY LOOKUP, NEVER RULES:) Maintainer 2026-11-18 (''it should be based
+    on a dictionary lookup''; ''you can''t use rules''). Every singular and plural form the naming authority
+    produces comes from an English dictionary lookup: a word in the dictionary takes its dictionary singular
+    or plural; a word not in the dictionary (an abbreviation, a coined table name) is left as written. No
+    suffix rule guesses a form. One inflection helper serves every naming path (relationship fields, aliases,
+    glossary terms).'
   use_case: Consistent multi-language naming with a single authority ensures client-facing names are predictable
     and independent of physical schema.
   code:
