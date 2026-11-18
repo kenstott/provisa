@@ -1042,3 +1042,25 @@ def test_trino_keeps_its_form(sql):
     written = transpile(sql, "trino")
     assert "reinterpretAsUInt64" not in written and "arrayFlatten" not in written
     assert "reinterpretAsUInt8" not in written
+
+
+@pytest.mark.parametrize(
+    ("sql", "want"),
+    [
+        (
+            "SELECT pg_catalog.cash_div_int2('-92233720368547758.08'::money, 3::smallint)",
+            "-30744573456182586.02",
+        ),
+        (
+            "SELECT pg_catalog.cash_div_int8('92233720368547758.07'::money, 7::bigint)",
+            "13176245766935394.01",
+        ),
+        ("SELECT pg_catalog.cash_div_int4('12.34'::money, -5::integer)", "-2.46"),
+    ],
+)
+def test_money_divided_by_an_integer_keeps_every_cent(runtime, sql, want):
+    """Whole cents back to dollars by a decimal, not a Float64 (past 2^53 cents it lost some)."""
+    from decimal import Decimal
+
+    (got,) = _answers(runtime, sql)
+    assert Decimal(str(got)) == Decimal(want)
