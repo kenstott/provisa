@@ -411,7 +411,12 @@ describe("Discovery dialog: the run in progress", () => {
   });
 
   it("Stop asks the server to stop and keeps what was found", async () => {
-    proposalsMock.mockResolvedValue({ proposals: [proposal({})], threshold: 0.7, kept_at: 0.7 });
+    proposalsMock.mockResolvedValue({
+      proposals: [proposal({})],
+      threshold: 0.7,
+      kept_at: 0.7,
+      score_filter: null,
+    });
     runMock.mockResolvedValue(
       runOf({ requests_total: 3, requests_done: 1, suggestions: 1, report: REPORT }),
     );
@@ -544,7 +549,6 @@ describe("Discovery dialog: the run's proposals, in one table", () => {
     await endedRun();
     expect(acceptBox(500).checked).toBe(true);
     expect(acceptBox(501).checked).toBe(true);
-    // Already waiting from an earlier run: an ordinary row.
     expect(acceptBox(502).checked).toBe(true);
     expect(acceptBox(503).checked).toBe(false);
     // The model's score decides: Jev's 31% beside its 92% does not untick it.
@@ -557,7 +561,9 @@ describe("Discovery dialog: the run's proposals, in one table", () => {
   it("lists a proposal that cannot be decided with its reason and no box", async () => {
     await endedRun();
     const repeated = screen.getByTestId("proposal-505");
-    expect(repeated).toHaveTextContent("Matches a foreign key found in this run");
+    expect(repeated).toHaveTextContent(
+      "The two columns have different classes, so they are not compared",
+    );
     const unknown = screen.getByTestId("proposal-506");
     expect(unknown).toHaveTextContent("Names a table or column the request did not compare");
     expect(unknown).toHaveTextContent(
@@ -624,6 +630,7 @@ describe("Discovery dialog: the run's proposals, in one table", () => {
       proposals: PROPOSALS.filter((p) => ![500, 504].includes(p.id)),
       threshold: 0.7,
       kept_at: 0.7,
+      score_filter: null,
     });
     expect(applyButton()).toHaveTextContent("Accept 2, don't recommend 1 again");
     fireEvent.click(applyButton());
@@ -744,7 +751,12 @@ describe("Discovery dialog: an ended run's layout", () => {
 
   it("shows New run when the run proposed nothing", async () => {
     runMock.mockResolvedValue(runOf({ status: "done", report: REPORT }));
-    proposalsMock.mockResolvedValue({ proposals: [], threshold: 0.7, kept_at: 0.7 });
+    proposalsMock.mockResolvedValue({
+      proposals: [],
+      threshold: 0.7,
+      kept_at: 0.7,
+      score_filter: null,
+    });
     await openDialog();
     fireEvent.click(runButton());
     await screen.findByTestId("discover-no-proposals", {}, SLOW);
@@ -826,7 +838,12 @@ describe("Discovery dialog: each pair measured on its data, ticked from the pers
 
   async function measuredRun(threshold = 0.7) {
     runMock.mockResolvedValue(runOf({ status: "done", report: REPORT }));
-    proposalsMock.mockResolvedValue({ proposals: MEASURED, threshold, kept_at: 0.7 });
+    proposalsMock.mockResolvedValue({
+      proposals: MEASURED,
+      threshold,
+      kept_at: 0.7,
+      score_filter: null,
+    });
     await openDialog();
     fireEvent.click(runButton());
     await screen.findByTestId("proposal-601", {}, SLOW);
@@ -889,6 +906,7 @@ describe("Discovery dialog: each pair measured on its data, ticked from the pers
       ],
       threshold: 0.7,
       kept_at: 0.7,
+      score_filter: null,
     });
     await openDialog();
     fireEvent.click(runButton());
@@ -912,6 +930,7 @@ describe("Discovery dialog: each pair measured on its data, ticked from the pers
       ],
       threshold: 0.7,
       kept_at: 0.7,
+      score_filter: null,
     });
     await openDialog();
     fireEvent.click(runButton());

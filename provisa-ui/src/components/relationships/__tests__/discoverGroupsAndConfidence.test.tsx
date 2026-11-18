@@ -71,6 +71,9 @@ const proposal: RunProposal = {
 
 const state: RunProposalsState = {
   proposals: [proposal],
+  shown: [proposal],
+  scoreFilter: null,
+  setScoreFilter: () => {},
   threshold: 0.7,
   keptAt: 0.7,
   setThreshold: () => {},

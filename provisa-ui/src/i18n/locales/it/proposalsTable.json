@@ -29,15 +29,9 @@
       "not_comparable": "Le due colonne hanno classi diverse, quindi non vengono confrontate",
       "below_threshold": "Punteggio sotto il {{threshold}}% a cui un suggerimento viene mantenuto.",
       "same_column": "Da una colonna a se stessa",
-      "primary_key_to_primary_key": "Da chiave primaria a chiave primaria",
-      "both_repeating": "I valori si ripetono su entrambi i lati, quindi nessuno è il lato uno",
       "existing": "Già registrata",
-      "pending": "Già in attesa tra i suggerimenti",
       "rejected": "Rifiutata in precedenza",
-      "matches_foreign_key": "Corrisponde a una chiave esterna trovata in questa esecuzione",
-      "out_of_scope": "Fuori dalle tabelle di origine e di destinazione scelte",
-      "weaker": "È stata mantenuta una proposta più forte delle stesse due colonne",
-      "many_to_many": "Nessuna delle due colonne è una chiave"
+      "out_of_scope": "Fuori dalle tabelle di origine e di destinazione scelte"
     },
     "threshold": "Spunta da",
     "thresholdHint": "La tua soglia, conservata per le prossime esecuzioni.",
@@ -65,6 +59,8 @@
     "dimensionJoined": "Accettandola, entrambe le colonne si uniscono alla dimensione condivisa {{name}}.",
     "through": "Tramite {{table}}.",
     "twoDimensions": "Le sue colonne si uniscono già a due dimensioni condivise diverse, quindi non può essere accettata.",
-    "admittedOnKeyValues": "Ammessa perché i valori chiave corrispondono nei dati; la misura è mostrata accanto alla confidenza del modello."
+    "admittedOnKeyValues": "Ammessa perché i valori chiave corrispondono nei dati; la misura è mostrata accanto alla confidenza del modello.",
+    "hiddenByFilter_one": "{{count}} riga è nascosta dal filtro.",
+    "hiddenByFilter_other": "{{count}} righe sono nascoste dal filtro."
   }
 }

@@ -21,6 +21,7 @@ ticked).
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
@@ -112,3 +113,36 @@ async def keep_key_values(
         ],
     )
     return settings
+
+
+#: The Score filter of a person who has set none: Score at least 10% (REQ-413, amended
+#: 2026-11-18), the ``server_default`` of ``user_directory.discovery_score_filter``.
+SCORE_FILTER_DEFAULT: dict[str, str] = {"op": "ge", "a": "10"}
+
+
+async def read_score_filter(conn: "Connection", user_id: str) -> dict[str, Any] | None:
+    """The person's filter on a run's Score column; None when they cleared it, and
+    :data:`SCORE_FILTER_DEFAULT` when they have no row."""
+    d = user_directory.c
+    row = (
+        await conn.execute_core(select(d.discovery_score_filter).where(d.user_id == user_id))
+    ).fetchone()
+    if row is None:
+        return dict(SCORE_FILTER_DEFAULT)
+    return None if row[0] is None else json.loads(row[0])
+
+
+async def keep_score_filter(
+    conn: "Connection", user_id: str, spec: dict[str, Any] | None
+) -> dict[str, Any] | None:
+    """Keep ``spec`` (None: cleared) as the person's filter on a run's Score column."""
+    await conn.upsert(
+        user_directory,
+        {
+            "user_id": user_id,
+            "discovery_score_filter": None if spec is None else json.dumps(spec),
+        },
+        index_elements=["user_id"],
+        update_columns=["discovery_score_filter"],
+    )
+    return spec

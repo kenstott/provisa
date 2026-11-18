@@ -25,6 +25,7 @@ import {
   fetchModelLimits,
   fetchRunProposals,
   saveDiscoveryThreshold,
+  saveDiscoveryScoreFilter,
   fetchDiscoveryKeyValues,
   fetchVendorModels,
   startDiscoveryRun,
@@ -144,6 +145,7 @@ export const stopMock = vi.mocked(stopDiscoveryRun);
 export const proposalsMock = vi.mocked(fetchRunProposals);
 export const applyMock = vi.mocked(applyRunDecisions);
 export const saveThresholdMock = vi.mocked(saveDiscoveryThreshold);
+export const saveScoreFilterMock = vi.mocked(saveDiscoveryScoreFilter);
 export const keyValuesMock = vi.mocked(fetchDiscoveryKeyValues);
 /** A proposal as a run lists it. Unless given, its score is the model's (no values compared)
  *  and it can be accepted where it can be decided. */
@@ -173,8 +175,9 @@ export const proposal = (over: Partial<RunProposal>): RunProposal => ({
   via: null,
   ...over,
 });
-/** A run's table: a constraint, a suggestion, one the model scored high and Jev low, one
- *  already waiting, one under the threshold, one repeating the constraint, and one that named no two compared columns. */
+/** A run's table: a constraint, a suggestion, one the model scored high and Jev low, another
+ *  suggestion, one under the threshold, one between columns that are not compared, and one that
+ *  named no two compared columns. */
 export const PROPOSALS: RunProposal[] = [
   proposal({
     id: 500,
@@ -197,7 +200,6 @@ export const PROPOSALS: RunProposal[] = [
     id: 502,
     source_column: "payer_id",
     confidence: 0.9,
-    reason: "pending",
     suggested_name: "order-payer",
   }),
   proposal({
@@ -212,7 +214,7 @@ export const PROPOSALS: RunProposal[] = [
     id: 505,
     source_column: "store_id",
     confidence: 0.9,
-    reason: "matches_foreign_key",
+    reason: "not_comparable",
     decidable: false,
   }),
   proposal({
@@ -237,7 +239,12 @@ export const notAgainBox = (id: number) =>
 export const applyButton = () => screen.getByTestId("discover-apply");
 export async function endedRun() {
   runMock.mockResolvedValue(runOf({ status: "done", report: REPORT }));
-  proposalsMock.mockResolvedValue({ proposals: PROPOSALS, threshold: 0.7, kept_at: 0.7 });
+  proposalsMock.mockResolvedValue({
+    proposals: PROPOSALS,
+    threshold: 0.7,
+    kept_at: 0.7,
+    score_filter: null,
+  });
   await openDialog();
   fireEvent.click(runButton());
   await screen.findByTestId("proposal-501", {}, SLOW);
@@ -297,9 +304,12 @@ export function resetDiscoveryMocks() {
   runMock.mockReset().mockResolvedValue(runOf({}));
   runsMock.mockReset().mockResolvedValue([]);
   stopMock.mockReset().mockResolvedValue(runOf({ stop_requested: true }));
-  proposalsMock.mockReset().mockResolvedValue({ proposals: [], threshold: 0.7, kept_at: 0.7 });
+  proposalsMock
+    .mockReset()
+    .mockResolvedValue({ proposals: [], threshold: 0.7, kept_at: 0.7, score_filter: null });
   applyMock.mockReset().mockResolvedValue([]);
   saveThresholdMock.mockReset().mockImplementation(async (threshold) => ({ threshold }));
+  saveScoreFilterMock.mockReset().mockImplementation(async (filter) => ({ filter }));
   keyValuesMock
     .mockReset()
     .mockResolvedValue({ ...KEY_VALUES_DEFAULT, defaults: KEY_VALUES_DEFAULT });

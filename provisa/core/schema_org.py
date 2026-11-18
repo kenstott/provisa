@@ -1975,6 +1975,10 @@ user_directory = Table(
     Column("discovery_key_values", Boolean, nullable=False, server_default=true()),
     Column("discovery_measure_cutoff", Float, nullable=False, server_default="0.2"),
     Column("discovery_sample_size", Integer, nullable=False, server_default="10000"),
+    # REQ-413 (amended 2026-11-18): the filter on a run's Score column, the person's own as the
+    # threshold is: JSON {"op", "a", "b"} as the list's column filter holds it; NULL when they
+    # cleared it. A person who has set none has Score >= 10%.
+    Column("discovery_score_filter", Text, nullable=True, server_default='{"op": "ge", "a": "10"}'),
     Column("updated_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
 )
 

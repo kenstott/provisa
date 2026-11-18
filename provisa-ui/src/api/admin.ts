@@ -14,6 +14,7 @@ import type { Paging, PagingKind } from "../types/admin";
 import { ORG_HEADER } from "../lib/authFetch";
 import { normalizeRole, type RawRole } from "../lib/roles";
 import type { ApprovedJoin } from "../components/canvas/joinGraph";
+import type { FilterSpec } from "../pages/sql/columnFilter";
 import { serverMessage, requestFailed, type ServerMessageShape } from "../i18n/serverMessage";
 import type { MaskEntry } from "../lib/masks";
 import type { ResultRedirect } from "../types/resultRedirect";
@@ -797,17 +798,7 @@ export interface SemanticsReport {
   stopped: boolean;
 }
 
-export type RemovedKind =
-  | "same_column"
-  | "primary_key_to_primary_key"
-  | "both_repeating"
-  | "existing"
-  | "pending"
-  | "rejected"
-  | "matches_foreign_key"
-  | "out_of_scope"
-  | "weaker"
-  | "many_to_many";
+export type RemovedKind = "same_column" | "existing" | "rejected" | "out_of_scope";
 
 /** Why a proposal is not among a run's suggestions: a reason of an answer's reading, or a
  *  removal. */
@@ -978,6 +969,25 @@ export interface RunProposals {
   threshold: number;
   /** The score a run keeps a suggestion at, which `below_threshold` is against. */
   kept_at: number;
+  /** The signed-in person's filter on the Score column, in percent, applied when the results
+   *  open (REQ-413, amended 2026-11-18); null when they cleared it. */
+  score_filter: ScoreFilter | null;
+}
+
+/** REQ-413: a filter on a run's Score column, as the list's column filter holds it; a number
+ *  column's menu offers only number operators, which are all the server keeps. */
+export type ScoreFilter = FilterSpec;
+
+/** REQ-413: keep the Score filter set in a run's results as the signed-in person's own; null
+ *  keeps it cleared. */
+export function saveDiscoveryScoreFilter(
+  filter: ScoreFilter | null,
+): Promise<{ filter: ScoreFilter | null }> {
+  return discoveryRequest("/score-filter", "Discovery score filter", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ filter }),
+  });
 }
 
 export function fetchRunProposals(runId: number): Promise<RunProposals> {

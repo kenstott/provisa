@@ -29,15 +29,9 @@
       "not_comparable": "2 つの列のクラスが異なるため比較されません",
       "below_threshold": "提案が保持される {{threshold}}% を下回るスコアです。",
       "same_column": "列からその列自身へ",
-      "primary_key_to_primary_key": "主キーから主キーへ",
-      "both_repeating": "両側で値が重複しており、どちらも一の側ではありません",
       "existing": "登録済み",
-      "pending": "提案の中で保留中",
       "rejected": "以前に却下",
-      "matches_foreign_key": "この実行で見つかった外部キーと一致します",
-      "out_of_scope": "選んだソーステーブルとターゲットテーブルの範囲外",
-      "weaker": "同じ 2 列について、より強い候補が残されました",
-      "many_to_many": "どちらの列もキーではありません"
+      "out_of_scope": "選んだソーステーブルとターゲットテーブルの範囲外"
     },
     "threshold": "チェックの基準",
     "thresholdHint": "あなた自身のしきい値。次回以降の実行のために保存されます。",
@@ -65,6 +59,8 @@
     "dimensionJoined": "承認すると、両方の列が共有ディメンション {{name}} に結合します。",
     "through": "{{table}} を経由。",
     "twoDimensions": "列がすでに異なる 2 つの共有ディメンションに結合しているため、承認できません。",
-    "admittedOnKeyValues": "データでキー値が一致したため採用されました。測定値はモデルの信頼度の横に表示されます。"
+    "admittedOnKeyValues": "データでキー値が一致したため採用されました。測定値はモデルの信頼度の横に表示されます。",
+    "hiddenByFilter_one": "{{count}} 行がフィルターで非表示になっています。",
+    "hiddenByFilter_other": "{{count}} 行がフィルターで非表示になっています。"
   }
 }

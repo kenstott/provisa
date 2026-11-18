@@ -172,12 +172,8 @@ def test_after_applying_a_run_no_suggestion_waits_for_a_joined_pair(instance: In
         ("pet_companions", "pet_id", "pets", "id"),
         ("playgroup_members", "pet_id", "pets", "id"),
     }, [edge(p) for p in proposals]
-    # The run's foreign key on each is existing; the model's copy of it repeats that foreign key.
-    assert [
-        (edge(p), p["reason"])
-        for p in legs
-        if p["reason"] not in ("existing", "matches_foreign_key")
-    ] == []
+    # The run's foreign key on each is existing; the model's copy of it is that same pair.
+    assert [(edge(p), p["reason"]) for p in legs if p["reason"] != "existing"] == []
     assert {unordered(p) for p in legs if p["reason"] == "existing"} == {unordered(p) for p in legs}
     assert not any(p["decidable"] for p in legs)
 
@@ -185,7 +181,7 @@ def test_after_applying_a_run_no_suggestion_waits_for_a_joined_pair(instance: In
         p
         for p in proposals
         if p["decidable"]
-        and p["reason"] in (None, "pending")
+        and p["reason"] is None
         and p["confidence"] is not None
         and p["confidence"] >= threshold
     ]
@@ -214,7 +210,7 @@ def test_after_applying_a_run_no_suggestion_waits_for_a_joined_pair(instance: In
     reopened = [
         (edge(p), p["reason"])
         for p in _proposals(instance, again["id"])["proposals"]
-        if p["reason"] in (None, "pending")
+        if p["reason"] is None
     ]
     assert reopened == []
     assert again["suggestions"] == 0, again

@@ -157,6 +157,7 @@ describe("Discovery dialog: Key value overlap", () => {
       proposals: [proposal({ confidence: 0.45, score: 0.95, admitted_on_key_values: true })],
       threshold: 0.7,
       kept_at: 0.7,
+      score_filter: null,
     });
     await openDialog();
     fireEvent.click(runButton());

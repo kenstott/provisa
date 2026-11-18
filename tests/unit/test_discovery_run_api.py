@@ -2457,6 +2457,42 @@ async def test_the_threshold_is_the_persons_own_and_kept_across_a_reload(monkeyp
         discovery.ThresholdBody(threshold=1.5)
 
 
+async def test_the_score_filter_is_the_persons_own_ten_percent_until_set(monkeypatch, tmp_path):
+    """REQ-413 (amended 2026-11-18): a run's results open with Score >= 10% applied; the filter a
+    person sets, or clears, is kept for their next runs, as the threshold is."""
+    db = await _store(f"sqlite+pysqlite:///{tmp_path / 'store.db'}")
+    await _city(db)
+    world = _World(monkeypatch, db, config=_ASSIGNED, api_keys={"openai": "k"})
+    _city_values(world)
+    other = cast(
+        Any,
+        SimpleNamespace(headers={}, state=SimpleNamespace(identity=SimpleNamespace(user_id="b"))),
+    )
+    # A person whose row holds only their threshold has the default filter.
+    await discovery.put_threshold(_REQUEST, discovery.ThresholdBody(threshold=0.55))
+    run, _ = await _answered(world, [_suggestion((2, "permit_id"), (1, "permit_id"), 0.45)])
+    assert (await discovery.list_proposals(_REQUEST, run["id"]))["score_filter"] == {
+        "op": "ge",
+        "a": "10",
+    }
+    body = discovery.ScoreFilterBody(filter=discovery.ScoreFilter(op="between", a="20", b="80"))
+    await discovery.put_score_filter(_REQUEST, body)
+    assert (await discovery.list_proposals(_REQUEST, run["id"]))["score_filter"] == {
+        "op": "between",
+        "a": "20",
+        "b": "80",
+    }
+    assert (await discovery.list_proposals(other, run["id"]))["score_filter"] == {
+        "op": "ge",
+        "a": "10",
+    }
+    # Cleared, it stays cleared.
+    await discovery.put_score_filter(_REQUEST, discovery.ScoreFilterBody(filter=None))
+    assert (await discovery.list_proposals(_REQUEST, run["id"]))["score_filter"] is None
+    with pytest.raises(Exception):
+        discovery.ScoreFilter(op="contains", a="x")  # type: ignore[arg-type]
+
+
 async def test_a_run_takes_its_starters_threshold_records_it_and_tells_the_model(
     monkeypatch, tmp_path
 ):
