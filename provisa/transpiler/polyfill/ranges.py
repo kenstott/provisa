@@ -55,6 +55,9 @@ _REFUSALS = {
     for base in _BASES
 }
 
+#: The family's place in the grid (polyfill.GRID), which tries the rules of one function in
+#: the order of their families.
+ORDER = 160
 FEATURES: tuple[Feature, ...] = tuple(
     Feature(
         f"{base}multirange",

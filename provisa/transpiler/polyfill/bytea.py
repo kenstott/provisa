@@ -662,6 +662,9 @@ def _like_arguments(name: str) -> _Arguments:
     return arguments
 
 
+#: The family's place in the grid (polyfill.GRID), which tries the rules of one function in
+#: the order of their families.
+ORDER = 250
 FEATURES: tuple[Feature, ...] = (
     _feature(
         "octet_length(bytea)", "A bytea's number of bytes.", ("octet_length($a)",),

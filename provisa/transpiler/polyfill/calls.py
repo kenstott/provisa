@@ -124,6 +124,9 @@ _NO_CLICKHOUSE_FORM = frozenset(
     {"pg_conf_load_time", "pg_my_temp_schema", "pg_postmaster_start_time"}
 )
 
+#: The family's place in the grid (polyfill.GRID), which tries the rules of one function in
+#: the order of their families.
+ORDER = 130
 FEATURES: tuple[Feature, ...] = (
     Feature(
         "generate_series",

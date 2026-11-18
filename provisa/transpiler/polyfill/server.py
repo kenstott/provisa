@@ -295,4 +295,7 @@ PG_CHAR_TO_ENCODING = Feature(
     ),
 )
 
+#: The family's place in the grid (polyfill.GRID), which tries the rules of one function in
+#: the order of their families.
+ORDER = 150
 FEATURES: tuple[Feature, ...] = (AGE, MXID_AGE, PG_CHAR_TO_ENCODING)

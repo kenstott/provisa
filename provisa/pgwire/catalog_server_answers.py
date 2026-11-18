@@ -28,13 +28,9 @@ from sqlglot.errors import SqlglotError
 from provisa.core.pg_error import PostgresError, raising
 from provisa.transpiler import pg_zones
 from provisa.transpiler.pg_held_types import HELD_AS
-from provisa.transpiler.function_macros import (
-    SERVER_VALUE_NAMES,
-    WAL_SEGMENT,
-    lsn_number,
-    strict,
-    wal_file,
-)
+from provisa.transpiler.function_macros import SERVER_VALUE_NAMES
+from provisa.transpiler.rows.base import strict
+from provisa.transpiler.rows.system import WAL_SEGMENT, lsn_number, wal_file
 
 #: The aliases that let a statement name them in a cast.
 PG_ONLY_TYPES = tuple(

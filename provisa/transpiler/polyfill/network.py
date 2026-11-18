@@ -223,6 +223,9 @@ TRUNC = Feature(
     ),
 )
 
+#: The family's place in the grid (polyfill.GRID), which tries the rules of one function in
+#: the order of their families.
+ORDER = 90
 FEATURES: tuple[Feature, ...] = (
     *INET_PAIRS,
     *OF_AN_ADDRESS,
