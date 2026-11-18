@@ -48,6 +48,14 @@
     "changeResolver": "Coderesolver wijzigen",
     "retireResolver": "Coderesolver buiten gebruik stellen",
     "retireResolverTitle": "Coderesolver {{resolver}} buiten gebruik stellen?",
-    "retireResolverConsequence": "Zijn overeenkomstenview en zijn drie relaties worden samen buiten gebruik gesteld. Hun namen blijven bezet."
+    "retireResolverConsequence": "Zijn overeenkomstenview en zijn drie relaties worden samen buiten gebruik gesteld. Hun namen blijven bezet.",
+    "queryLinks": {
+      "heading": "Bevragen",
+      "cypher": "{{name}} lezen in Cypher",
+      "sql": "{{name}} lezen in SQL",
+      "sparql": "{{name}} lezen in SPARQL",
+      "graphql": "{{name}} lezen in GraphQL",
+      "jsonapi": "{{name}} lezen in JSON:API"
+    }
   }
 }

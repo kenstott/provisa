@@ -1469,7 +1469,6 @@
   "pt/dataProductsTab.json::dataProductsTab.customPropertiesLabel": "Custom Properties",
   "pt/dataProductsTab.json::dataProductsTab.customPropertiesRemove": "Remove property {{key}}",
   "pt/dataProductsTab.json::dataProductsTab.customPropertiesValuePlaceholder": "Value",
-  "pt/dataProductsTab.json::dataProductsTab.cypherQueryAria": "Run example Cypher query for {{type}}",
   "pt/dataProductsTab.json::dataProductsTab.delete": "Delete",
   "pt/dataProductsTab.json::dataProductsTab.deleteConfirm": "Delete data product \"{{id}}\"? Tables that reference it lose the membership.",
   "pt/dataProductsTab.json::dataProductsTab.deleteDataProduct": "Delete data product {{id}}",
@@ -10921,5 +10920,11 @@
   "pt/proposalsTable.json::proposalsTable.reason.many_to_many": "Neither column is a key",
   "pt/proposalsTable.json::proposalsTable.threshold": "Tick from",
   "pt/proposalsTable.json::proposalsTable.thresholdHint": "Your own threshold, kept for your next runs.",
-  "pt/serverErrors.json::serverErrors.environments.owner_not_member": "{{user}} created environment {{env}} but is not a member of {{org}}; acting in it as its owner requires membership."
+  "pt/serverErrors.json::serverErrors.environments.owner_not_member": "{{user}} created environment {{env}} but is not a member of {{org}}; acting in it as its owner requires membership.",
+  "pt/relationshipRow.json::relationshipRow.queryLinks.heading": "Query it",
+  "pt/relationshipRow.json::relationshipRow.queryLinks.cypher": "Read {{name}} in Cypher",
+  "pt/relationshipRow.json::relationshipRow.queryLinks.sql": "Read {{name}} in SQL",
+  "pt/relationshipRow.json::relationshipRow.queryLinks.sparql": "Read {{name}} in SPARQL",
+  "pt/relationshipRow.json::relationshipRow.queryLinks.graphql": "Read {{name}} in GraphQL",
+  "pt/relationshipRow.json::relationshipRow.queryLinks.jsonapi": "Read {{name}} in JSON:API"
 }
