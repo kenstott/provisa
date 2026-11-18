@@ -472,7 +472,10 @@ async def test_avro_schema_registry_refused_for_a_held_org(held_org, wire):
 async def test_embedding_model_refused_for_a_held_org(held_org, wire, monkeypatch):
     from provisa.vector import providers
 
-    monkeypatch.setattr(providers, "_ollama_address", lambda m: f"http://{_PRIVATE}:11434")
+    async def _private_address(_model: object) -> str:
+        return f"http://{_PRIVATE}:11434"
+
+    monkeypatch.setattr(providers, "_ollama_address", _private_address)
     model = SimpleNamespace(id="nomic-embed-text")
     with pytest.raises(PrivateDestinationRefused):
         await providers.OllamaProvider().embed(["a"], model)  # pyright: ignore[reportArgumentType]

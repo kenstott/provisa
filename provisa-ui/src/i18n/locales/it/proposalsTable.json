@@ -2,7 +2,7 @@
   "proposalsTable": {
     "intro": "Una riga spuntata viene accettata quando applichi. Le righe con un punteggio almeno pari alla soglia partono spuntate. Una riga senza caselle spuntate resta da decidere.",
     "colScore": "Punteggio",
-    "colModel": "Modello",
+    "colConfidence": "Attendibilità",
     "colJev": "Jev",
     "colKind": "Tipo",
     "colMeasure": "Misurato",

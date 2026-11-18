@@ -40,10 +40,7 @@
       "whole_number": "gehele getallen",
       "decimal": "decimalen",
       "text": "tekst",
-      "uuid": "UUID's",
-      "date": "datums",
-      "timestamp": "tijdstempels",
-      "timestamptz": "tijdstempels met tijdzone"
+      "uuid": "UUID's"
     },
     "starting": "Starten...",
     "reading": "Tabellen lezen: {{done}} van {{total}}",

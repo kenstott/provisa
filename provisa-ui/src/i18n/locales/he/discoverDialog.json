@@ -40,10 +40,7 @@
       "whole_number": "מספרים שלמים",
       "decimal": "עשרוניים",
       "text": "טקסט",
-      "uuid": "UUID",
-      "date": "תאריכים",
-      "timestamp": "חותמות זמן",
-      "timestamptz": "חותמות זמן עם אזור זמן"
+      "uuid": "UUID"
     },
     "starting": "מתחיל...",
     "reading": "קורא טבלאות: {{done}} מתוך {{total}}",

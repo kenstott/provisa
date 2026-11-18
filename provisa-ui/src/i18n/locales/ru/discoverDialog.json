@@ -40,10 +40,7 @@
       "whole_number": "целые числа",
       "decimal": "десятичные",
       "text": "текст",
-      "uuid": "UUID",
-      "date": "даты",
-      "timestamp": "метки времени",
-      "timestamptz": "метки времени с часовым поясом"
+      "uuid": "UUID"
     },
     "starting": "Запуск...",
     "reading": "Чтение таблиц: {{done}} из {{total}}",
