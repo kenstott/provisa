@@ -491,9 +491,14 @@ def resource_id(row: dict[str, Any], id_columns: list[str]) -> str:
     return ":".join(_id_text(row[c]).replace("\\", "\\\\").replace(":", "\\:") for c in id_columns)
 
 
-def row_to_resource(row, resource_type, relationship_fields, *, id_columns, links=None):
+def row_to_resource(
+    row, resource_type, relationship_fields, *, id_columns, links=None, rid=None, fields=None
+):
     fk_columns = set(relationship_fields)
-    rid = resource_id(row, id_columns) if id_columns is not None else _id_text(row.get("id", ""))
+    if rid is None:
+        rid = (
+            resource_id(row, id_columns) if id_columns is not None else _id_text(row.get("id", ""))
+        )
     # CORRECTED (6): ``id`` is the id's own column only when the id is that column.
     id_is_column = id_columns is None or list(id_columns) == ["id"]
     attributes: dict[str, Any] = {}
@@ -507,7 +512,7 @@ def row_to_resource(row, resource_type, relationship_fields, *, id_columns, link
             relationships[rel_name] = {
                 "data": {"type": related_type, "id": _id_text(value)} if value is not None else None
             }
-        else:
+        elif fields is None or key in fields:
             attributes[key] = value
     resource: dict[str, Any] = {"type": resource_type, "id": rid, "attributes": attributes}
     relationships.update(links or {})
@@ -516,30 +521,64 @@ def row_to_resource(row, resource_type, relationship_fields, *, id_columns, link
     return resource
 
 
-def extract_included(rows, include_names, id_columns):
-    included_rows: dict[str, list[dict[str, Any]]] = {}
-    seen: dict[str, set[str]] = {}
-    links: list[dict[str, Any]] = []
-    for row in rows:
-        row_links: dict[str, Any] = {}
-        for inc in include_names:
-            nested = row.pop(inc, None)
-            items = nested if isinstance(nested, list) else [nested] if nested else []
-            bucket = included_rows.setdefault(inc, [])
-            ids = seen.setdefault(inc, set())
-            identifiers = []
-            for item in items:
-                rid = resource_id(item, id_columns[inc])
-                identifiers.append({"type": inc, "id": rid})
-                if rid not in ids:
-                    bucket.append(item)
-                    ids.add(rid)
-            if isinstance(nested, list):
-                row_links[inc] = {"data": identifiers}
-            else:
-                row_links[inc] = {"data": identifiers[0] if identifiers else None}
-        links.append(row_links)
-    return {k: v for k, v in included_rows.items() if v}, links
+def position_id(parent: str, n: int) -> str:
+    """REQ-1929: a one-to-many include with no primary key names each child by its parent's id
+    (each ``:`` and ``\\`` escaped) and its position among that parent's included resources."""
+    return parent.replace("\\", "\\\\").replace(":", "\\:") + f":{n}"
+
+
+def _included_id(item: dict[str, Any], keys: list[str] | None, parent: str, n: int) -> str:
+    if keys is None:
+        return _id_text(item["id"]) if "id" in item else ""
+    if not keys:
+        return position_id(parent, n)
+    return resource_id(item, keys)
+
+
+def include_tree(includes: list[str]) -> tuple[dict[str, list[str]], list[str]]:
+    """Each prefix of a dotted ``?include=`` path a node: its child paths, and the root paths."""
+    children: dict[str, list[str]] = {}
+    roots: list[str] = []
+    for inc in includes:
+        parent: str | None = None
+        path = ""
+        for seg in inc.split("."):
+            path = f"{path}.{seg}" if path else seg
+            if path not in children:
+                children[path] = []
+                (children[parent] if parent is not None else roots).append(path)
+            parent = path
+    return children, roots
+
+
+def extract_included(obj, oid, at, children, include_keys, include_names, buckets):
+    """``obj``'s includes at paths ``at`` taken out into each type's bucket (by its last
+    segment, deduplicated by id), recursing past them; returns ``obj``'s relationships."""
+    links: dict[str, Any] = {}
+    for path in at:
+        name = path.rsplit(".", 1)[-1]
+        names = include_names.get(path)
+        nested = obj.pop(names[0] if names else name, None)
+        items = nested if isinstance(nested, list) else [nested] if nested else []
+        bucket = buckets.setdefault(name, {"keys": include_keys.get(path), "items": {}})
+        keys = include_keys.get(path)
+        identifiers = []
+        for n, item in enumerate(items):
+            if not isinstance(item, dict):
+                raise TypeError("an included value is not an object")
+            if names:
+                item = {names[1].get(k, k): v for k, v in item.items()}
+            rid = _included_id(item, keys, oid, n)
+            child_links = extract_included(
+                item, rid, children[path], children, include_keys, include_names, buckets
+            )
+            identifiers.append({"type": name, "id": rid})
+            bucket["items"].setdefault(rid, (item, child_links))
+        if isinstance(nested, list):
+            links[name] = {"data": identifiers}
+        else:
+            links[name] = {"data": identifiers[0] if identifiers else None}
+    return links
 
 
 def _rename_nested(value: Any, column_map: dict[str, str]) -> Any:  # noqa: ANN401
@@ -596,6 +635,8 @@ def jsonapi_document(
     base_path: str,
     extra: dict[str, str],
     warnings: list[dict] | None,
+    include_fields: dict[str, list[str]] | None = None,
+    include_names: dict[str, tuple[str, dict[str, str]]] | None = None,
 ) -> dict:
     """_jsonapi_table_endpoint, from the rows on."""
     has_next = len(rows) > page_size if probe_rows else len(rows) == page_size
@@ -606,23 +647,34 @@ def jsonapi_document(
     ]
     # CORRECTED (5): an include named twice is the one include.
     includes = list(dict.fromkeys(physical_include_names))
+    children, roots = include_tree(includes)
     relationship_fields = {f"{p}_id": p for p in rel_gql_to_physical.values()}
-    included_rows, row_links = extract_included(rows, includes, include_keys)
-    data = [
-        row_to_resource(
-            row,
-            table_name,
-            relationship_fields,
-            id_columns=base_keys,
-            links=row_links[i] if includes else None,
+    buckets: dict[str, dict[str, Any]] = {}
+    data = []
+    for i, row in enumerate(rows):
+        # REQ-1929: the root id (key columns, else position) is read before includes leave the row.
+        rid = str(i) if not base_keys else resource_id(row, base_keys)
+        row_links = extract_included(
+            row, rid, roots, children, include_keys, include_names or {}, buckets
         )
-        for i, row in enumerate(rows)
-    ]
+        data.append(
+            row_to_resource(
+                row,
+                table_name,
+                relationship_fields,
+                id_columns=base_keys,
+                links=row_links if includes else None,
+                rid=rid,
+            )
+        )
     doc: dict[str, Any] = {"data": data}
+    fields = include_fields or {}
     included = [
-        row_to_resource(item, inc, {}, id_columns=include_keys.get(inc))
-        for inc, items in included_rows.items()
-        for item in items
+        row_to_resource(
+            item, name, {}, id_columns=b["keys"], links=links, rid=rid, fields=fields.get(name)
+        )
+        for name, b in buckets.items()
+        for rid, (item, links) in b["items"].items()
     ]
     if included:
         doc["included"] = included
