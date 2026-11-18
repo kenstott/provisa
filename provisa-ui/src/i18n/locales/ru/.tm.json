@@ -10929,5 +10929,13 @@
   "discoverDialog.json::discoverDialog.waiting_one": "{{count}} suggestion waits for a decision.",
   "discoverDialog.json::discoverDialog.waiting_other": "{{count}} suggestions wait for a decision.",
   "relationshipsPage.json::relationshipsPage.openRun": "Open",
-  "ru/serverErrors.json::serverErrors.egress.private_destination": "This org may call only public addresses; {{host}} is {{address}}, which is not one."
+  "ru/serverErrors.json::serverErrors.egress.private_destination": "This org may call only public addresses; {{host}} is {{address}}, which is not one.",
+  "ru/discoverDialog.json::discoverDialog.group.date": "dates",
+  "ru/discoverDialog.json::discoverDialog.group.timestamp": "timestamps",
+  "ru/discoverDialog.json::discoverDialog.group.timestamptz": "timestamps with time zone",
+  "ru/proposalsTable.json::proposalsTable.colModel": "Model",
+  "ru/proposalsTable.json::proposalsTable.manyToMany": "Neither column is a key, so it cannot be accepted.",
+  "ru/serverErrors.json::serverErrors.ai_models.embedding_library_missing": "The embedding model {{model}} uses the {{provider}} provider, which needs the {{extra}} extra (module {{module}} is not installed): pip install 'provisa[{{extra}}]'.",
+  "ru/settings.json::settings.embedding.hub_endpoint.label": "Hugging Face hub address",
+  "ru/settings.json::settings.embedding.hub_endpoint.help": "The Hugging Face hub a local embedding model is downloaded from, such as a mirror inside your network. Applies to the next model download."
 }
