@@ -6034,6 +6034,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         from provisa.api.admin import join_through
         from provisa.core.relationship_naming import RelationshipNameTaken
 
+        require_capability(info, "create_relationship")
         pool = await _get_pool()
         async with pool.acquire() as _conn:
             conn = cast("Connection", _conn)
