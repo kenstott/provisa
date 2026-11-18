@@ -8,13 +8,18 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""What one discovery request sends: per table its context, per compared column its context, and
-the instructions around them (REQ-413).
+"""What one discovery call sends (REQ-413, amended 2026-11-18): its tables listed once, each with
+its context and its comparable columns' contexts, then its numbered table pairs, and the
+instructions around them: the call is a batch of separate table pairs, each answered on its own
+under its number, with column pairs and scores or "none".
 
-A table's context is its name, description, tags, role of fact or dimension, and the names of all
-its columns, those not compared included. A compared column's context is its name, description,
-the glossary term bound to it, classes, tags and sample values, never its type; a column with a sensitive class sends its class
-and no sample values. The prompt states that a shared pii tag alone is weak evidence.
+Tables and columns are named as people see them (:attr:`provisa.discovery.columns.TableFacts.shown`,
+:attr:`provisa.discovery.columns.ColumnFacts.shown`): the alias where one is set, never a physical
+name beside it. A table's context is its name, description, tags, role of fact or dimension, the
+names of all its columns, those not compared included, and its comparable columns (those in a
+compared type group). A compared column's context is its name, description, the glossary term
+bound to it, classes, tags and sample values (a few of its distinct values), never its type; a
+column with a sensitive class sends its class and no sample values. The prompt states that a shared pii tag alone is weak evidence.
 
 A table that requires a parameter is never read (REQ-1986): its context names its required
 parameters with their types and says its values were not read, and its columns send the class
@@ -47,19 +52,21 @@ SAMPLE_VALUE_CHARS = 64
 SAMPLE_VALUES = 5
 
 
-def table_context(table: TableFacts) -> dict[str, Any]:
-    """A table's context. ``id`` is how an answer names the table."""
+def table_context(table: TableFacts, label: str) -> dict[str, Any]:
+    """A table's context, named ``label`` (its name as people see it, :attr:`TableFacts.shown`,
+    made unique among the run's tables): its description, tags, role, every column by the name
+    people see, and its comparable columns' contexts (those in a compared type group)."""
     out: dict[str, Any] = {
-        "id": table.table_id,
-        "name": table.table_name,
+        "name": label,
         "description": table.description,
         "tags": list(table.tags),
         "role": table.role,
-        "columns": [c.name for c in table.columns],
+        "columns": [c.shown for c in table.columns],
+        "comparable_columns": [column_context(c) for c in table.columns if c.groups],
     }
     if table.reduced:
         out["required_parameters"] = [
-            {"column": c.name, "parameter": c.required_parameter, "type": c.data_type}
+            {"column": c.shown, "parameter": c.required_parameter, "type": c.data_type}
             for c in table.columns
             if c.required_parameter is not None
         ]
@@ -68,9 +75,10 @@ def table_context(table: TableFacts) -> dict[str, Any]:
 
 
 def column_context(column: ColumnFacts) -> dict[str, Any]:
-    """A compared column's context: a sensitive column's class stands in for its values."""
+    """A compared column's context, by the name people see (REQ-413, amended 2026-11-18): a
+    sensitive column's class stands in for its values."""
     out: dict[str, Any] = {
-        "name": column.name,
+        "name": column.shown,
         "description": column.description,
         "classes": list(column.classes),
         "tags": list(column.tags),
@@ -117,34 +125,40 @@ def widest(column: ColumnFacts) -> ColumnFacts:
     return max(every, valued, key=lambda c: len(_dump(column_context(c))))
 
 
-def block(table: TableFacts, columns: Sequence[ColumnFacts]) -> dict[str, Any]:
-    """One table of a window: its context and the contexts of its columns compared there."""
-    return {"table": table_context(table), "compared_columns": [column_context(c) for c in columns]}
+def table_weight(table: TableFacts, label: str) -> int:
+    """A table's weight in a call: the length in characters of what is sent for it."""
+    return len(_dump(table_context(table, label)))
 
 
-def render_window(blocks: Sequence[dict[str, Any]]) -> str:
-    """A window as the request sends it."""
-    return _dump(list(blocks))
+def pair_entry(number: int, source: str, target: str) -> dict[str, Any]:
+    """One numbered table pair as a call lists it, its tables by their labels."""
+    return {"pair": number, "source": source, "target": target}
 
 
-def block_weight(table: TableFacts, columns: Sequence[ColumnFacts]) -> int:
-    """A table's weight in a window: the length in characters of what is sent for it."""
-    return len(_dump(block(table, columns)))
+def pair_weight(number: int, source: str, target: str) -> int:
+    return len(_dump(pair_entry(number, source, target)))
 
 
-def window_weight(block_weights: Sequence[int]) -> int:
-    """The length of a rendered window holding blocks of these weights: brackets and commas."""
-    return sum(block_weights) + 2 + max(0, len(block_weights) - 1)
+def list_weight(weights: Sequence[int]) -> int:
+    """The length of a rendered JSON list holding items of these weights: brackets and commas."""
+    return sum(weights) + 2 + max(0, len(weights) - 1)
 
 
-_SHAPE = (
+#: The headers a call puts before its tables and its table pairs.
+TABLES_HEADER = "## Tables\n"
+PAIRS_HEADER = "## Table pairs\n"
+HEADERS = len(TABLES_HEADER) + len(PAIRS_HEADER) + 2
+
+
+_COLUMN_PAIR = (
     "{"
-    '"source_table_id":<int>,"source_column":"<name>",'
-    '"target_table_id":<int>,"target_column":"<name>",'
+    '"source_table":"<table name>","source_column":"<column name>",'
+    '"target_table":"<table name>","target_column":"<column name>",'
     '"cardinality":"many-to-one"|"one-to-many",'
     '"confidence":<0.0-1.0>,"reasoning":"<brief>","suggested_name":"<kebab-case business concept>"'
     "}"
 )
+_SHAPE = '{"pair":<number>,"column_pairs":[' + _COLUMN_PAIR + ', ...] or "none"}'
 
 
 _NOT_READ = (
@@ -156,7 +170,7 @@ _NOT_READ = (
 
 
 #: The decimal places a threshold is written with (:func:`written`), so its text has a known
-#: greatest length, :data:`WIDEST_THRESHOLD`: windows are sized for it.
+#: greatest length, :data:`WIDEST_THRESHOLD`: calls are sized for it.
 THRESHOLD_DECIMALS = 4
 WIDEST_THRESHOLD = "0." + "9" * THRESHOLD_DECIMALS
 
@@ -222,86 +236,85 @@ def measured_score(contained: float, back: float, target_distinct: bool) -> floa
 
 
 def instructions(
-    group: str, at_most: int, *, threshold: float, either_direction: bool, not_read: bool = False
+    pairs: int, *, threshold: float, either_direction: bool, not_read: bool = False
 ) -> str:
-    """The text around the windows. ``threshold``: the run's, the bar a relationship is suggested
-    at. ``either_direction``: the two windows are drawn from one set of tables, so a relationship
-    may start in either. ``not_read``: a table of the windows requires a parameter and was never
-    read, and the text says how to judge it."""
+    """The text before a call's tables and table pairs. ``pairs``: how many table pairs the call
+    lists. ``threshold``: the run's, the bar a relationship is suggested at. ``either_direction``:
+    source and target are one set of tables, so a relationship may start in either table of a
+    pair. ``not_read``: a table of the call requires a parameter and was never read, and the text
+    says how to judge it."""
     return _instructions(
-        group, at_most, written(threshold), either_direction=either_direction, not_read=not_read
+        pairs, written(threshold), either_direction=either_direction, not_read=not_read
     )
 
 
-def instructions_chars(
-    group: str, at_most: int, *, either_direction: bool, not_read: bool = False
-) -> int:
+def instructions_chars(pairs: int, *, either_direction: bool, not_read: bool = False) -> int:
     """The most characters :func:`instructions` holds, whatever the run's threshold: it is
     written at its widest (:data:`WIDEST_THRESHOLD`)."""
     return len(
-        _instructions(
-            group, at_most, WIDEST_THRESHOLD, either_direction=either_direction, not_read=not_read
-        )
+        _instructions(pairs, WIDEST_THRESHOLD, either_direction=either_direction, not_read=not_read)
     )
 
 
-def _instructions(
-    group: str, at_most: int, threshold: str, *, either_direction: bool, not_read: bool
-) -> str:
+def _instructions(pairs: int, threshold: str, *, either_direction: bool, not_read: bool) -> str:
     if either_direction:
         direction = (
-            "Source and target are the same set of tables: a relationship may start in either "
-            "window and end in either, two different columns of one table included."
+            "Source and target are drawn from one set of tables: in a pair, a relationship may "
+            "start in either table and end in the other, and a pair of one table with itself "
+            "compares two different columns of it."
         )
     else:
         direction = (
-            "A relationship starts at a column of the SOURCE window (the referring column) and "
-            "ends at a column of the TARGET window."
+            "In each pair a relationship starts at a column of the source table (the referring "
+            "column) and ends at a column of the target table."
         )
     return (
-        "You are a database relationship analyst. Find columns of the SOURCE window that refer "
-        "to columns of the TARGET window, as a foreign key refers to the key it names: "
-        "many-to-one, the referring column the many side.\n"
-        f"Every compared column here is of the type group '{group}'. Each table lists the "
-        "names of all its columns; only its compared_columns may be proposed. A column's classes "
-        "say what its values were recognised as; 'unknown' is a column none was recognised for. "
-        "A column with a sensitive class shows its class and no sample values.\n"
+        "You are a database relationship analyst. Find columns that refer to other columns, as "
+        "a foreign key refers to the key it names: many-to-one, the referring column the many "
+        "side.\n"
+        f"This is a batch of {pairs} separate table pairs. The tables are listed once under "
+        "'## Tables', then the numbered pairs under '## Table pairs'. Judge each pair on its own, "
+        "comparing only the two tables it names. For each pair name the column pairs of its two "
+        "tables likely to hold the same or similar values, each with a confidence; a column pair "
+        "you do not name scores zero. Answer every pair under its number, with its column pairs "
+        'or "none".\n'
+        "Each table lists the names of all its columns; only its comparable_columns may be "
+        "named, and a column is compared only with one of the same type group (whole number, "
+        "decimal, text, uuid). A column's classes say what its values were recognised as; "
+        "'unknown' is a column none was recognised for. A column with a sensitive class shows "
+        "its class and no sample values. Sample values are a few of a column's distinct values: "
+        "they show what kind of values it holds.\n"
         f"{_NOT_READ if not_read else ''}"
         "A shared pii tag alone is weak evidence of a relationship.\n"
         f"{direction}\n"
-        f"Propose at most {at_most} relationships, the strongest first.\n"
         f"{rubric(threshold)}"
-        "Return ONLY a JSON array, no other text, each element:\n"
+        "Name tables and columns exactly as listed. Return ONLY a JSON array, no other text, "
+        "one element per pair:\n"
         f"{_SHAPE}\n"
         "suggested_name names the business concept the join means, not its tables or columns.\n"
     )
 
 
 def prompt(
-    group: str,
-    at_most: int,
-    source: Sequence[dict[str, Any]],
-    target: Sequence[dict[str, Any]] | None,
+    tables: Sequence[dict[str, Any]],
+    pairs: Sequence[dict[str, Any]],
     *,
     threshold: float,
     either_direction: bool,
 ) -> str:
-    """One request: the instructions, the source window and the target window. ``target`` None:
-    the request compares one window with itself. ``threshold``: the run's. ``either_direction``:
-    source and target are one set of tables (the target is the same as the source)."""
-    not_read = any(b["table"].get("values") == NOT_READ for b in [*source, *(target or [])])
-    parts = [
-        instructions(
-            group,
-            at_most,
-            threshold=threshold,
-            either_direction=either_direction,
-            not_read=not_read,
-        )
-    ]
-    if target is None:
-        parts.append("## SOURCE and TARGET window\n" + render_window(source))
-    else:
-        parts.append("## SOURCE window\n" + render_window(source))
-        parts.append("## TARGET window\n" + render_window(target))
-    return "\n".join(parts)
+    """One call: the instructions, its tables (each :func:`table_context`) listed once, and its
+    numbered table pairs (each :func:`pair_entry`). ``threshold``: the run's.
+    ``either_direction``: source and target are one set of tables."""
+    not_read = any(t.get("values") == NOT_READ for t in tables)
+    return "\n".join(
+        [
+            instructions(
+                len(pairs),
+                threshold=threshold,
+                either_direction=either_direction,
+                not_read=not_read,
+            ),
+            TABLES_HEADER + _dump(list(tables)),
+            PAIRS_HEADER + _dump(list(pairs)),
+        ]
+    )

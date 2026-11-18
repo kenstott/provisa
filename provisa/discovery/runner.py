@@ -8,12 +8,19 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""The semantic requests of a discovery run, asked one at a time (REQ-413).
+"""The semantic calls of a discovery run, asked one at a time (REQ-413, amended 2026-11-18).
 
-An answer that is cut off or full, or a request the vendor refuses as too long, is split in half
-and asked again (:meth:`provisa.discovery.windows.Request.halves`); the complete suggestions of an
-answer are kept either way, so nothing is dropped. One failed request is reported, as a
-catalogued message (:func:`provisa.llm.client.failure`), and the rest continue. Between requests the run's control is asked whether to stop: a stop ends the run after
+Each call lists numbered table pairs (:class:`provisa.discovery.windows.Call`); its answer is read
+per number (:func:`read_answers`), the column names it gives mapped back to the run's columns. A
+column pair of an answered table pair that the answer does not name scores zero and is judged and
+recorded like any other. A listed pair left without an answer -- omitted, cut off, in an
+unreadable answer or a failed call -- is asked once more after the first pass
+(:meth:`provisa.discovery.windows.Plan.again`); still unanswered, the run names it
+(:attr:`Tally.unanswered`). It is never taken as a zero.
+
+A call the vendor refuses as too long is split in half and asked again
+(:meth:`provisa.discovery.windows.Call.halves`). One failed call is reported, as a catalogued
+message (:func:`provisa.llm.client.failure`), and the rest continue. Between requests the run's control is asked whether to stop: a stop ends the run after
 the request in flight and keeps what was returned.
 
 Nothing an answer holds is dropped: an element that is not kept is recorded with why
@@ -32,7 +39,7 @@ from dataclasses import dataclass, field, replace
 from typing import Any, Protocol
 
 from provisa.discovery.analyzer import read_answer_list
-from provisa.discovery.columns import comparable
+from provisa.discovery.columns import ColumnFacts, compared
 from provisa.discovery.direction import Proposal, from_answer
 from provisa.discovery.proposals import (
     BELOW_THRESHOLD,
@@ -41,7 +48,7 @@ from provisa.discovery.proposals import (
     UNKNOWN_COLUMN,
     Recorded,
 )
-from provisa.discovery.windows import Request
+from provisa.discovery.windows import Call, Plan, TablePair
 from provisa.llm.client import failure
 
 # What a vendor says when it refuses a request as longer than the model reads: Anthropic's
@@ -53,13 +60,17 @@ _TOO_LONG = re.compile(
 )
 
 _REQUIRED = (
-    "source_table_id",
+    "source_table",
     "source_column",
-    "target_table_id",
+    "target_table",
     "target_column",
     "cardinality",
     "confidence",
 )
+
+#: An answered table pair's column pair the answer does not name: it scores zero (REQ-413,
+#: amended 2026-11-18).
+NOT_NAMED = "not named by the model for its table pair"
 
 
 #: An answer no list could be read from, as a failed request's catalogued message.
@@ -83,11 +94,19 @@ class Tally:
 
     total: int
     threshold: float
+    #: The run's table pairs (each listed in exactly one call of the first pass).
+    table_pairs: int = 0
     done: int = 0
     split: int = 0
     proposed: int = 0
-    #: Elements that named no two compared columns of their request.
+    #: Elements that named no two compared columns of their table pair.
     invalid: int = 0
+    #: Column pairs of answered table pairs the answers did not name: each scored zero.
+    zero_scored: int = 0
+    #: Table pairs asked a second time, left unanswered the first.
+    asked_again: int = 0
+    #: Table pairs still unanswered after the second asking, each by name (``source × target``).
+    unanswered: list[str] = field(default_factory=list)
     #: Proposals whose two columns are not compared: their classes do not meet.
     not_comparable: int = 0
     #: Proposals left out under :attr:`threshold`: by their measure where they were measured,
@@ -105,7 +124,7 @@ class Tally:
     scoring_failed: int = 0
     cut_short: int = 0
     unreadable: int = 0
-    #: Each failed request: its ``group`` and its catalogued message (``code``, ``params`` and the
+    #: Each failed call: its ``table_pairs`` by name and its catalogued message (``code``, ``params`` and the
     #: English ``message``). An unreadable answer is one of them.
     failed: list[dict[str, Any]] = field(default_factory=list)
     stopped: bool = False
@@ -116,6 +135,10 @@ class Tally:
         return {
             "requests_total": self.total,
             "requests_done": self.done,
+            "table_pairs": self.table_pairs,
+            "zero_scored": self.zero_scored,
+            "asked_again": self.asked_again,
+            "unanswered": list(self.unanswered),
             "split": self.split,
             "proposed": self.proposed,
             "invalid": self.invalid,
@@ -157,57 +180,113 @@ def _written(raw: Any) -> str:
     return json.dumps(raw, ensure_ascii=False, default=str)[:ANSWER_CHARS]
 
 
-def read_items(
-    request: Request, items: list, tally: Tally
-) -> tuple[list[Proposal], list[Proposal]]:
-    """The proposals an answer's elements make: those naming two compared columns of the request
-    whose classes meet, and those naming two whose classes do not (each counted). ``tally``
-    counts every element that makes no proposal and keeps it with why."""
-    columns = {(t.table_id, c.name): c for t, c in request.source.columns()}
-    if request.target is not None:
-        columns.update({(t.table_id, c.name): c for t, c in request.target.columns()})
+def _columns(table: Any) -> dict[str, ColumnFacts]:
+    """A table's columns by the name the model is given (:attr:`ColumnFacts.shown`)."""
+    return {c.shown: c for c in table.columns}
+
+
+def read_answers(
+    call: Call, items: list, tally: Tally
+) -> tuple[set[int], list[Proposal], list[Proposal], list[Proposal]]:
+    """``(answered, proposals, apart, zeros)``: the numbers of the call's pairs that were
+    answered, the proposals the answers make (two compared columns of their pair, mapped back
+    from the names given), those naming two columns whose classes do not meet (each counted), and
+    every column pair of an answered table pair that its answer does not name, as a proposal
+    scored zero (counted in :attr:`Tally.zero_scored`). ``tally`` counts every element that makes no proposal
+    and keeps it with why."""
+    labels = call.labels
+    answered: set[int] = set()
     out: list[Proposal] = []
     apart: list[Proposal] = []
+    named: dict[int, set[frozenset]] = {}
 
     def no_proposal(raw: Any, reason: str) -> None:
         tally.invalid += 1
         tally.left_out.append(Recorded("semantics", reason, answer=_written(raw)))
 
-    for raw in items:
-        tally.proposed += 1
+    for item in items:
+        number = item.get("pair") if isinstance(item, dict) else None
+        pairs = item.get("column_pairs") if isinstance(item, dict) else None
         if (
-            not isinstance(raw, dict)
-            or any(k not in raw for k in _REQUIRED)
-            or raw["cardinality"] not in ("many-to-one", "one-to-many")
+            not isinstance(number, int)
+            or isinstance(number, bool)
+            or not 1 <= number <= len(call.pairs)
+            or not (pairs == "none" or isinstance(pairs, list))
         ):
-            no_proposal(raw, INVALID_SHAPE)
+            no_proposal(item, INVALID_SHAPE)
             continue
-        try:
-            source = (int(raw["source_table_id"]), str(raw["source_column"]))
-            target = (int(raw["target_table_id"]), str(raw["target_column"]))
-            confidence = float(raw["confidence"])
-        except (TypeError, ValueError):
-            no_proposal(raw, INVALID_SHAPE)
+        answered.add(number)
+        pair = call.pairs[number - 1]
+        sides = {
+            labels[pair.source.table_id]: pair.source,
+            labels[pair.target.table_id]: pair.target,
+        }
+        for raw in [] if pairs == "none" else pairs:
+            tally.proposed += 1
+            if (
+                not isinstance(raw, dict)
+                or any(k not in raw for k in _REQUIRED)
+                or raw["cardinality"] not in ("many-to-one", "one-to-many")
+            ):
+                no_proposal(raw, INVALID_SHAPE)
+                continue
+            try:
+                confidence = float(raw["confidence"])
+            except (TypeError, ValueError):
+                no_proposal(raw, INVALID_SHAPE)
+                continue
+            s_table = sides.get(str(raw["source_table"]))
+            t_table = sides.get(str(raw["target_table"]))
+            directed = not pair.either_direction
+            if (
+                s_table is None
+                or t_table is None
+                or (directed and (s_table is not pair.source or t_table is not pair.target))
+                or (s_table is t_table and pair.source is not pair.target)
+            ):
+                no_proposal(raw, UNKNOWN_COLUMN)
+                continue
+            a = _columns(s_table).get(str(raw["source_column"]))
+            b = _columns(t_table).get(str(raw["target_column"]))
+            if a is None or b is None:
+                no_proposal(raw, UNKNOWN_COLUMN)
+                continue
+            source = (s_table.table_id, a.name)
+            target = (t_table.table_id, b.name)
+            named.setdefault(number, set()).add(frozenset({source, target}))
+            proposal = from_answer(
+                "semantics",
+                source,
+                target,
+                str(raw["cardinality"]),
+                confidence,
+                str(raw.get("reasoning", "")),
+                str(raw.get("suggested_name", "")),
+            )
+            if not compared(a, b):
+                tally.not_comparable += 1
+                apart.append(proposal)
+            else:
+                out.append(proposal)
+    zeros = [
+        z
+        for number in sorted(answered)
+        for z in _zeros(call.pairs[number - 1], named.get(number, set()), tally)
+    ]
+    return answered, out, apart, zeros
+
+
+def _zeros(pair: TablePair, named: set[frozenset], tally: Tally) -> list[Proposal]:
+    """The column pairs of an answered ``pair`` its answer did not name, each scored zero."""
+    out: list[Proposal] = []
+    for a, b in pair.column_pairs():
+        source = (pair.source.table_id, a.name)
+        target = (pair.target.table_id, b.name)
+        if frozenset({source, target}) in named:
             continue
-        a, b = columns.get(source), columns.get(target)
-        if a is None or b is None:
-            no_proposal(raw, UNKNOWN_COLUMN)
-            continue
-        proposal = from_answer(
-            "semantics",
-            source,
-            target,
-            str(raw["cardinality"]),
-            confidence,
-            str(raw.get("reasoning", "")),
-            str(raw.get("suggested_name", "")),
-        )
-        if not comparable(a, b, request.group):
-            tally.not_comparable += 1
-            apart.append(proposal)
-        else:
-            out.append(proposal)
-    return out, apart
+        tally.zero_scored += 1
+        out.append(from_answer("semantics", source, target, "many-to-one", 0.0, NOT_NAMED))
+    return out
 
 
 #: Measures proposals on their data (:meth:`provisa.discovery.measure.Measurer.all`): each with
@@ -255,6 +334,7 @@ async def judged(
     key_values: KeyValues | None,
     refine: Rescore | None,
     tally: Tally,
+    zeros: list[Proposal] | None = None,
 ) -> list[Proposal]:
     """An answer's proposals judged in order of cost (REQ-413, amended 2026-11-16): Jev's
     re-score (``refine``) kept beside the model's confidence; then the key-value measure of only
@@ -263,11 +343,15 @@ async def judged(
     kept on the model's confidence, unmeasured; below the band, or in it without ``key_values``,
     it is left out below the threshold, unmeasured. A band pair is kept when its measure scores
     it at the threshold or more (admitted on matching key values), and is left out with its
-    measure otherwise. Proposals whose columns are not compared are left out unmeasured."""
+    measure otherwise. Proposals whose columns are not compared are left out unmeasured.
+    ``zeros``: column pairs the model was asked about and did not name, scored zero (REQ-413,
+    amended 2026-11-18); the second scorer is not asked of them, and they are judged with the
+    rest, so the band and the list see them."""
     threshold = tally.threshold
     tally.left_out.extend(Recorded("semantics", NOT_COMPARABLE, p) for p in apart)
     if refine is not None and found:
         found = rescored(found, await refine(found), tally)
+    found = [*found, *(zeros or [])]
     out = [p for p in found if p.confidence >= threshold]
     band = (
         []
@@ -293,8 +377,7 @@ async def judged(
 
 
 async def execute(
-    requests: list[Request],
-    k: int,
+    plan: Plan,
     max_tokens: int,
     ask: Ask,
     control: Control,
@@ -304,49 +387,63 @@ async def execute(
     refine: Rescore | None = None,
     to_thread: Callable[..., Awaitable[Any]] = asyncio.to_thread,
 ) -> tuple[Tally, list[Proposal]]:
-    """Ask every request in order, splitting as it must; stop when the control asks. Each request
-    states the run's ``threshold`` to the model, and the proposals are judged against it. Each
-    answer's proposals are judged in order of cost (:func:`judged`): ``refine`` re-scores them
-    (REQ-1789, when a Jev key is configured), its confidence kept beside the model's; then, with
-    Key value overlap chosen (``key_values``), the pairs in its band are measured on their data."""
-    queue = list(requests)
-    tally = Tally(total=len(queue), threshold=threshold)
+    """Ask every call of ``plan`` in order, splitting one refused as too long; then ask once more,
+    batched again, every table pair left unanswered, and name those still unanswered. Stop when
+    the control asks. Each call states the run's ``threshold`` to the model, and the proposals are
+    judged against it, in order of cost (:func:`judged`): ``refine`` re-scores them (REQ-1789,
+    when a Jev key is configured), its confidence kept beside the model's; then, with Key value
+    overlap chosen (``key_values``), the pairs in its band are measured on their data."""
+    queue = list(plan.calls)
+    tally = Tally(total=len(queue), threshold=threshold, table_pairs=plan.table_pairs)
     proposals: list[Proposal] = []
-    while queue:
+    unanswered: list[TablePair] = []
+    second = False
+
+    def left(call: Call, pairs: list[TablePair]) -> None:
+        if second:
+            tally.unanswered.extend(call.named(p) for p in pairs)
+        else:
+            unanswered.extend(pairs)
+
+    while queue or (unanswered and not second):
+        if not queue:
+            second = True
+            queue = plan.again(unanswered)
+            tally.asked_again = len(unanswered)
+            tally.total += len(queue)
+            unanswered = []
         if await control.stop_asked():
             tally.stopped = True
             break
-        request = queue.pop(0)
+        call = queue.pop(0)
         try:
-            answer = await to_thread(ask, request.prompt(k, threshold), max_tokens)
-        except Exception as exc:  # one failed request is reported, the rest go on (REQ-413)
-            if too_long(exc) and request.splittable:
-                halves = request.halves()
+            answer = await to_thread(ask, call.prompt(threshold), max_tokens)
+        except Exception as exc:  # one failed call is reported, the rest go on (REQ-413)
+            if too_long(exc) and call.splittable:
+                halves = call.halves()
                 queue[0:0] = halves
                 tally.split += 1
                 tally.total += len(halves) - 1
                 continue
             tally.done += 1
-            tally.failed.append({"group": request.group, **failure(exc)})
+            tally.failed.append(
+                {"table_pairs": [call.named(p) for p in call.pairs], **failure(exc)}
+            )
+            left(call, list(call.pairs))
             await control.returned(tally, proposals)
             continue
         read = read_answer_list(answer.text, answer.cut_off)
         tally.done += 1
         if read.items is None:
             tally.unreadable += 1
-            tally.failed.append({"group": request.group, **UNREADABLE})
+            tally.failed.append({"table_pairs": [call.named(p) for p in call.pairs], **UNREADABLE})
+            left(call, list(call.pairs))
             await control.returned(tally, proposals)
             continue
-        found = await judged(*read_items(request, read.items, tally), key_values, refine, tally)
-        proposals.extend(found)
-        full = len(read.items) >= k
-        if (answer.cut_off or full) and request.splittable:
-            halves = request.halves()
-            queue[0:0] = halves
-            tally.split += 1
-            # The split request counted as done; its halves are new requests.
-            tally.total += len(halves)
-        elif answer.cut_off:
+        answered, found, apart, zeros = read_answers(call, read.items, tally)
+        proposals.extend(await judged(found, apart, key_values, refine, tally, zeros))
+        left(call, [p for n, p in enumerate(call.pairs, start=1) if n not in answered])
+        if answer.cut_off:
             tally.cut_short += 1
         await control.returned(tally, proposals)
     return tally, proposals

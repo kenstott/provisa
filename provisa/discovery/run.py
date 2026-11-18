@@ -51,7 +51,7 @@ from provisa.discovery.direction import (
 from provisa.discovery.measure import Measurer
 from provisa.discovery.proposals import BELOW_THRESHOLD, Recorded
 from provisa.discovery.runner import Control, KeyValues, Rescore, Tally, execute
-from provisa.discovery.windows import Request, bound, plan
+from provisa.discovery.windows import Plan, bound, plan
 
 if TYPE_CHECKING:
     from provisa.core.database import Connection
@@ -172,8 +172,8 @@ class Prepared:
     source: list[TableFacts]
     #: None: the target set is the source set.
     target: list[TableFacts] | None
-    k: int
-    requests: list[Request]
+    #: The semantic calls; None when semantics is not asked.
+    plan: Plan | None
 
     @property
     def tables(self) -> dict[int, TableFacts]:
@@ -237,9 +237,8 @@ async def prepare(
     source = [facts[i] for i in source_ids]
     target = None if target_ids is None else [facts[i] for i in target_ids]
     if model is None:
-        return Prepared(source, target, 0, [])
-    k, requests = plan(source, target, model.input_tokens, model.output_tokens)
-    return Prepared(source, target, k, requests)
+        return Prepared(source, target, None)
+    return Prepared(source, target, plan(source, target, model.input_tokens, model.output_tokens))
 
 
 #: What the count's ``requests`` are (REQ-413): the most a run of the scope makes, never fewer
@@ -248,8 +247,8 @@ UPPER_BOUND = "upper_bound"
 
 
 async def count(state: Any, spec: RunSpec, model: ChosenModel | None) -> dict[str, Any]:
-    """The request count before Run (REQ-413), by group, for the chosen model: an upper bound,
-    from the model store alone. No table is read, classified or sampled and no source is asked;
+    """The request count before Run (REQ-413), for the chosen model: an upper bound on the calls
+    of the run's first pass, from the model store alone, with the table pairs they list. No table is read, classified or sampled and no source is asked;
     with no model (foreign keys alone) there is no request to count."""
     async with state.model_db.acquire() as _conn:
         conn = cast("Connection", _conn)
@@ -258,14 +257,18 @@ async def count(state: Any, spec: RunSpec, model: ChosenModel | None) -> dict[st
         facts = {t.table_id: t for t in await gather.registered_facts(state, conn, sorted(ids))}
     source = [facts[i] for i in source_ids]
     target = None if target_ids is None else [facts[i] for i in target_ids]
-    k, by_group = (
-        (0, {}) if model is None else bound(source, target, model.input_tokens, model.output_tokens)
+    k, calls, pairs = (
+        (0, 0, 0)
+        if model is None
+        else bound(source, target, model.input_tokens, model.output_tokens)
     )
     return {
-        "requests": sum(by_group.values()),
+        "requests": calls,
         "requests_are": UPPER_BOUND,
-        "by_group": by_group,
-        "suggestions_per_request": k,
+        # REQ-413 (amended 2026-11-18): calls list table pairs, not type groups.
+        "by_group": {},
+        "table_pairs": pairs,
+        "table_pairs_per_request": k,
         "model": None if model is None else model.describe(),
         **sizes(source, target),
     }
@@ -350,7 +353,10 @@ def _semantics_report(tally: Tally, outcome: Outcome) -> dict[str, Any]:
         empty = "unreadable"
     elif tally.proposed == 0:
         empty = "none_proposed"
-    elif tally.below_threshold and tally.below_threshold + tally.invalid == tally.proposed:
+    elif (
+        tally.below_threshold
+        and tally.below_threshold + tally.invalid == tally.proposed + tally.zero_scored
+    ):
         empty = BELOW_THRESHOLD
     else:
         empty = "filtered"
@@ -493,7 +499,14 @@ async def perform(
 
     outcome = await settled([], [])
     latest = report(
-        Tally(total=len(prepared.requests), threshold=spec.threshold) if model else None, outcome
+        Tally(
+            total=len(prepared.plan.calls),
+            threshold=spec.threshold,
+            table_pairs=prepared.plan.table_pairs,
+        )
+        if prepared.plan is not None
+        else None,
+        outcome,
     )
     await progress(latest)
     if model is None:
@@ -517,9 +530,9 @@ async def perform(
             asyncio.to_thread(call, *args), lambda: progress(latest)
         )
 
+    assert prepared.plan is not None
     tally, proposals = await execute(
-        prepared.requests,
-        prepared.k,
+        prepared.plan,
         model.output_tokens,
         ask,
         _Control(),

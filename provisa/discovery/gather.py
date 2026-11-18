@@ -68,9 +68,7 @@ VALUES_PER_COLUMN = 500
 #: The profiler's default sample budget (a profiler source's sample_above_cells, absent by
 #: default: the whole table is read), for a never-profiled table's classification.
 SAMPLE_ABOVE_CELLS: int | None = None
-#: Rows read for a column's sample values, and the distinct values sent of them: what discovery
-#: has read and sent per table since REQ-018 (collect_metadata samples 20 rows, the prompt sent 5).
-CONTEXT_SAMPLE_ROWS = 20
+#: The distinct values read and sent of a column (REQ-413, amended 2026-11-18).
 CONTEXT_SAMPLE_VALUES = SAMPLE_VALUES
 #: The bounded sample of a column read for repeated values when only it can choose a direction.
 UNIQUENESS_SAMPLE_ROWS = 500
@@ -280,25 +278,28 @@ def _quote(name: str) -> str:
 async def _samples(
     state: Any, table_id: int, table_name: str, columns: list[str]
 ) -> dict[str, tuple[str, ...]]:
-    """Up to :data:`CONTEXT_SAMPLE_VALUES` distinct non-null values of each column, from the
-    first :data:`CONTEXT_SAMPLE_ROWS` rows read. A column the org admin's relation does not hold
-    has none."""
+    """Up to :data:`CONTEXT_SAMPLE_VALUES` distinct non-null values of each column (REQ-413,
+    amended 2026-11-18: each column's distinct values, not its first rows), one read per column.
+    They only show what kind of values a column holds. A column the org admin's relation does not
+    hold has none."""
     if not columns:
         return {}
     relation, exposed = _published(state, table_id, table_name)
-    columns = [c for c in columns if c in exposed]
-    if not columns:
-        return {}
-    cols = ", ".join(_quote(exposed[c]) for c in columns)
-    rows = await _rows(table_name, f"SELECT {cols} FROM {relation} LIMIT {CONTEXT_SAMPLE_ROWS}")
-    out: dict[str, list[str]] = {c: [] for c in columns}
-    for row in rows:
-        for name, value in zip(columns, row, strict=True):
-            text = None if value is None else sample_text(value)
-            held = out[name]
-            if text is not None and text not in held and len(held) < CONTEXT_SAMPLE_VALUES:
+    out: dict[str, tuple[str, ...]] = {}
+    for name in (c for c in columns if c in exposed):
+        col = _quote(exposed[name])
+        rows = await _rows(
+            table_name,
+            f"SELECT DISTINCT {col} FROM {relation} WHERE {col} IS NOT NULL "
+            f"LIMIT {CONTEXT_SAMPLE_VALUES}",
+        )
+        held: list[str] = []
+        for (value,) in rows:
+            text = sample_text(value)
+            if text not in held:
                 held.append(text)
-    return {c: tuple(v) for c, v in out.items()}
+        out[name] = tuple(held)
+    return out
 
 
 def _sensitive(classes: tuple[str, ...]) -> bool:
@@ -329,6 +330,7 @@ async def registered_facts(state: Any, conn: "Connection", ids: Sequence[int]) -
                     rt.c.domain_id,
                     rt.c.schema_name,
                     rt.c.table_name,
+                    rt.c.alias,
                     rt.c.description,
                     rt.c.modeling_role,
                 ).where(rt.c.id.in_(id_list))
@@ -341,6 +343,7 @@ async def registered_facts(state: Any, conn: "Connection", ids: Sequence[int]) -
             select(
                 tc.c.table_id,
                 tc.c.column_name,
+                tc.c.alias,
                 tc.c.description,
                 tc.c.data_type,
                 tc.c.subtype,
@@ -388,6 +391,7 @@ async def registered_facts(state: Any, conn: "Connection", ids: Sequence[int]) -
                     parameter_name(c) if reduced and is_parameter(c) and is_required(c) else None
                 ),
                 term=terms.get((tid, str(c["column_name"]))),
+                alias=c["alias"] or None,
             )
             for c in columns.get(tid, [])
         )
@@ -401,6 +405,7 @@ async def registered_facts(state: Any, conn: "Connection", ids: Sequence[int]) -
                 tags=tuple(sorted(table_tags.get(tid, []))),
                 role=t["modeling_role"],
                 columns=facts,
+                alias=t["alias"] or None,
             )
         )
     return out

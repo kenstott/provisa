@@ -102,6 +102,14 @@ class ColumnFacts:
     required_parameter: str | None = None
     #: The glossary term bound to the column, by name; None where none is bound.
     term: str | None = None
+    #: The column's registered alias; None where none is set.
+    alias: str | None = None
+
+    @property
+    def shown(self) -> str:
+        """The name the model is given and answers with (REQ-413, amended 2026-11-18): the alias
+        where one is set, else the registered name; never a physical name beside an alias."""
+        return self.alias or self.name
 
 
 @dataclass(frozen=True)
@@ -117,6 +125,14 @@ class TableFacts:
     #: The recorded modeling role, ``fact`` or ``dimension``; None where none is recorded.
     role: str | None
     columns: tuple[ColumnFacts, ...] = field(default_factory=tuple)
+    #: The table's registered alias; None where none is set.
+    alias: str | None = None
+
+    @property
+    def shown(self) -> str:
+        """The name the model is given (REQ-413, amended 2026-11-18): the alias where one is set,
+        else the registered name."""
+        return self.alias or self.table_name
 
     @property
     def parameters(self) -> tuple[tuple[str, str], ...]:
@@ -164,3 +180,8 @@ def classes_meet(a: ColumnFacts, b: ColumnFacts) -> bool:
 def comparable(a: ColumnFacts, b: ColumnFacts, group: str) -> bool:
     """Whether two columns are compared in ``group``: both in it, and their classes intersect."""
     return group in a.groups and group in b.groups and classes_meet(a, b)
+
+
+def compared(a: ColumnFacts, b: ColumnFacts) -> bool:
+    """Whether two columns are compared in some type group (:func:`comparable`)."""
+    return any(comparable(a, b, g) for g in GROUPS)
