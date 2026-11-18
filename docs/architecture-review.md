@@ -11,7 +11,11 @@ pip install "provisa[embedded]"
 provisa run
 ```
 
+On Linux, add `--extra-index-url https://download.pytorch.org/whl/cpu` to the install command. PyPI's Linux PyTorch wheel is the CUDA build; the CPU index gives you the CPU-only one.
+
 It needs Python 3.12. The embedded profile brings its own PostgreSQL model store (pgserver) and DuckDB query engine, with no Docker or daemon. The wheel is published to PyPI with Sigstore attestation; the dependency set is pinned with hashes in `uv.lock`.
+
+Every install, the wheel and each installer alike, ships the embedding library for the default embedding model: sentence-transformers on a CPU-only PyTorch, about 700 MB installed. The model works with no added step.
 
 To upgrade, install the newer version from PyPI.
 
@@ -20,6 +24,8 @@ To upgrade, install the newer version from PyPI.
 Nothing reaches the vendor. OpenTelemetry data goes wherever you configure the collector to send it. Provisa makes no calls to provisa.dev, to any analytics service, or to any update endpoint.
 
 The only outbound network calls Provisa makes are the ones you configure. Sources are queried at the addresses you register. Authentication requests go to the provider you name. OpenTelemetry data goes to the endpoint you set.
+
+The default configuration registers a local embedding model. Its first use downloads the model from the Hugging Face hub. In an air-gapped network, set `embedding.hub_endpoint` to your internal mirror (Admin → Settings → Network and TLS, or the `HF_ENDPOINT` environment variable).
 
 ## Deployment options
 

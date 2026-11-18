@@ -71,6 +71,9 @@ const proposal: RunProposal = {
 
 const state: RunProposalsState = {
   proposals: [proposal],
+  shown: [proposal],
+  scoreFilter: null,
+  setScoreFilter: () => {},
   threshold: 0.7,
   keptAt: 0.7,
   setThreshold: () => {},
@@ -111,7 +114,7 @@ describe("a junction suggestion", () => {
   const render = (p: RunProposal) =>
     renderWithProviders(
       <ProposalsTable
-        state={{ ...state, proposals: [p] }}
+        state={{ ...state, proposals: [p], shown: [p] }}
         tableDomainById={{ 10: "sales", 20: "sales", 30: "sales" }}
         tableNameById={{ 10: "orders", 20: "customers", 30: "order_customers" }}
         newRun={null}

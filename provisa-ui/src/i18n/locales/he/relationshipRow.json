@@ -55,7 +55,18 @@
       "sql": "קריאת {{name}} ב-SQL",
       "sparql": "קריאת {{name}} ב-SPARQL",
       "graphql": "קריאת {{name}} ב-GraphQL",
-      "jsonapi": "קריאת {{name}} ב-JSON:API"
+      "rest": "קריאת {{name}} ב-REST",
+      "grpc": "קריאת {{name}} ב-gRPC",
+      "jsonapi": "קריאת {{name}} ב-JSON:API",
+      "surfaces": {
+        "cypher": "Cypher",
+        "sql": "SQL",
+        "sparql": "SPARQL",
+        "graphql": "GraphQL",
+        "rest": "REST",
+        "grpc": "gRPC",
+        "jsonapi": "JSON:API"
+      }
     }
   }
 }

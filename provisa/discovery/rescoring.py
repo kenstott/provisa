@@ -49,10 +49,18 @@ def evidence(found: list[Proposal], tables: dict[int, TableFacts]) -> dict[str, 
             named.setdefault(ref[0], {})[ref[1]] = _column(tables, ref)
     return {
         "tables": [
-            {"table": context.table_context(tables[tid]), "columns": list(columns.values())}
+            {"table": _table(tables[tid]), "columns": list(columns.values())}
             for tid, columns in sorted(named.items())
         ]
     }
+
+
+def _table(table: TableFacts) -> dict[str, Any]:
+    """A table's context as Jev is shown it: its id, and the model's context of it without its
+    comparable columns, whose sample values stay with the run's own model."""
+    shown = {"id": table.table_id, **context.table_context(table, table.table_name)}
+    shown.pop("comparable_columns")
+    return shown
 
 
 def question(index: int, p: Proposal, tables: dict[int, TableFacts]) -> dict[str, Any]:

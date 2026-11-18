@@ -1975,6 +1975,16 @@ user_directory = Table(
     Column("discovery_key_values", Boolean, nullable=False, server_default=true()),
     Column("discovery_measure_cutoff", Float, nullable=False, server_default="0.2"),
     Column("discovery_sample_size", Integer, nullable=False, server_default="10000"),
+    # REQ-413 (amended 2026-11-18): the share of values in a key target at which a pair is a key
+    # relationship, the most a pair scores when neither side is a key, and the sample values
+    # shown per column (provisa.discovery.threshold.DEFAULTS), each set in the discover dialog.
+    Column("discovery_contained_at", Float, nullable=False, server_default="0.95"),
+    Column("discovery_shared_ceiling", Float, nullable=False, server_default="0.6"),
+    Column("discovery_samples_per_column", Integer, nullable=False, server_default="5"),
+    # REQ-413 (amended 2026-11-18): the filter on a run's Score column, the person's own as the
+    # threshold is: JSON {"op", "a", "b"} as the list's column filter holds it; NULL when they
+    # cleared it. A person who has set none has Score >= 10%.
+    Column("discovery_score_filter", Text, nullable=True, server_default='{"op": "ge", "a": "10"}'),
     Column("updated_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
 )
 
@@ -2946,12 +2956,14 @@ admin_audit_log = Table(
 )
 
 
-# REQ-2006: every source of the DDL that lands in an org's control-plane schema from code, by its
-# path in this package: its tables (beside this metadata, which ddl_fingerprint compiles), views,
-# functions and triggers. A demo template kept across a cloud patch is trusted only when the code
-# that built it had the same text here (no migrations: one built by older code lacks what is new,
-# e.g. relation "config_stamp" does not exist). A module that runs DDL is in this list or in the
-# guard's list of DDL that never lands in an org's schema
+# REQ-2006: every source of the DDL that lands in an org's control-plane schema from code and stays
+# there, by its path in this package: its tables (beside this metadata, which ddl_fingerprint
+# compiles), functions and triggers. A demo template kept across a cloud patch is trusted only when
+# the code that built it had the same shape here (no migrations: one built by older code lacks what
+# is new, e.g. relation "config_stamp" does not exist). The built-in views are not: every runtime
+# build makes them again from the running code (startup_seed._seed_view) and a sandbox's are made
+# fresh (_make_built_in_views), so a kept template is served the patched code's views. A module
+# that runs DDL is in this list or in the guard's list of DDL that never lands in an org's schema
 # (tests/unit/test_demo_template_warm_start.py), so a new source cannot be missed.
 ORG_SCHEMA_DDL_SOURCES: tuple[str, ...] = (
     "core/schema.sql",
@@ -2961,11 +2973,6 @@ ORG_SCHEMA_DDL_SOURCES: tuple[str, ...] = (
     "core/env_copy.py",
     "audit/query_log.py",
     "mv/schema.sql",
-    "api/_meta_views.py",
-    "api/_ontology_views.py",
-    "api/_ontology_quality_views.py",
-    "api/_pg_catalog_views.py",
-    "api/startup_seed.py",
     "grpc/field_numbering.py",
     "live/watermark.py",
     "profiler/schema.py",
@@ -2990,12 +2997,16 @@ def ddl_sources() -> dict[str, bytes]:
 
 def fingerprint_of(tables: MetaData, sources: dict[str, bytes]) -> str:
     """The first 16 hex of SHA-256 over an org schema's DDL: each of ``tables``' CREATE TABLE and
-    CREATE INDEX, compiled for PostgreSQL in name order, and the text of each of ``sources`` (the
-    modules and scripts that run the rest of it), in path order."""
+    CREATE INDEX, compiled for PostgreSQL in name order, and the shape of each of ``sources`` (the
+    modules and scripts that run the rest of it; ddl_text.source_shape), in path order. A comment,
+    a docstring or a layout change in a source is not a change of shape: each once reset every
+    demo template at the next cloud patch."""
     import hashlib
 
     from sqlalchemy.dialects import postgresql
     from sqlalchemy.schema import CreateIndex, CreateTable
+
+    from provisa.core.ddl_text import source_shape
 
     dialect = postgresql.dialect()
     digest = hashlib.sha256()
@@ -3005,7 +3016,7 @@ def fingerprint_of(tables: MetaData, sources: dict[str, bytes]) -> str:
         for index in sorted(table.indexes, key=lambda i: str(i.name)):
             digest.update(str(CreateIndex(index).compile(dialect=dialect)).encode())
     for path in sorted(sources):
-        digest.update(path.encode() + b"\0" + sources[path])
+        digest.update(path.encode() + b"\0" + source_shape(path, sources[path]))
     return digest.hexdigest()[:16]
 
 
