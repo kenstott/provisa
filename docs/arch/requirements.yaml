@@ -3787,7 +3787,16 @@
     a limit. if that would prevent full table scans''). The join count reads at most the run''s sample size
     of rows from the source column, as a limit the engine stops at, and looks those values up in the target
     column; no distinct count over a whole column is taken. Whether a column is a key, and the overlap,
-    are judged on the rows read, and the measure says when it was limited.'
+    are judged on the rows read, and the measure says when it was limited. (Amended 2026-11-18, THE SEMANTIC
+    CHECK SCORES TABLE PAIRS, BATCHED; A COLUMN PAIR NOT MENTIONED SCORES ZERO:) Maintainer 2026-11-18.
+    The semantic check asks the model about table pairs, not a pile of columns: each source table with each
+    target table, each side listed with only its columns that can be compared (the compared type groups;
+    dates and timestamps never). For each table pair the model names the column pairs likely to hold the
+    same or similar values, each with a score; a column pair of that table pair it does not mention scores
+    zero. Several table pairs may share one call: the prompt states that it is a batch of separate table
+    pairs and asks for each to be scored on its own, and each answer is read against its own table pair.
+    The scores then feed the key value overlap band as before. This replaces packing many tables'' columns
+    into one request and asking for links anywhere among them.'
   use_case: Auto-generated FK relationships reduce manual relationship registration overhead while preserving
     steward control.
   code:
