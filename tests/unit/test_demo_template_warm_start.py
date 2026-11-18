@@ -131,7 +131,11 @@ def test_the_ddl_fingerprint_changes_with_a_column_and_with_schema_sql():
     base = schema_org.fingerprint_of(copy, sources)
     assert len(base) == 16 and int(base, 16) >= 0
     assert schema_org.fingerprint_of(copy, sources) == base
-    changed = {**sources, "core/schema.sql": sources["core/schema.sql"] + b"\n-- a column"}
+    changed = {
+        **sources,
+        "core/schema.sql": sources["core/schema.sql"]
+        + b"\nALTER TABLE sources ADD COLUMN IF NOT EXISTS a_column_added_since TEXT;\n",
+    }
     assert schema_org.fingerprint_of(copy, changed) != base
     copy.tables["calendars"].append_column(Column("a_column_added_since", Text))
     assert schema_org.fingerprint_of(copy, sources) != base
@@ -143,20 +147,75 @@ def test_the_ddl_fingerprint_changes_with_a_column_and_with_schema_sql():
     [
         # config_stamp's trigger function and its triggers (cloud: relation "config_stamp" does not
         # exist in a sandbox opened from a template built before it).
-        ("core/config_stamp.py", b"CREATE OR REPLACE FUNCTION", b"CREATE OR REPLACE FUNCTION  "),
-        ("core/config_stamp.py", b"CREATE TRIGGER", b"CREATE  TRIGGER"),
-        ("core/env_changes.py", b"CreateTable(", b"CreateTable( "),
-        ("api/_meta_views.py", b"CREATE OR REPLACE VIEW", b"CREATE OR REPLACE VIEW "),
+        ("core/config_stamp.py", b"CREATE OR REPLACE FUNCTION", b"CREATE OR REPLACE FUNCTION x_"),
+        ("core/config_stamp.py", b"CREATE TRIGGER", b"CREATE CONSTRAINT TRIGGER"),
+        ("core/env_changes.py", b"CreateTable(", b"CreateIndex("),
     ],
-    ids=["function", "trigger", "env-changes-table", "view"],
+    ids=["function", "trigger", "env-changes-table"],
 )
-def test_the_ddl_fingerprint_changes_with_a_trigger_function_or_view(path, before, after):
+def test_the_ddl_fingerprint_changes_with_a_trigger_function_or_table(path, before, after):
     from provisa.core import schema_org
 
     copy, sources = _metadata_copy(), schema_org.ddl_sources()
     assert before in sources[path]
     changed = {**sources, path: sources[path].replace(before, after, 1)}
     assert schema_org.fingerprint_of(copy, changed) != schema_org.fingerprint_of(copy, sources)
+
+
+@pytest.mark.parametrize(
+    "path, before, after",
+    [
+        # CLOUD-TPL: every landing that touched one of these texts reset every demo template on the
+        # next cloud patch, though what PostgreSQL is sent was the same: a SQL comment, ...
+        (
+            "core/schema.sql",
+            b"CREATE TABLE IF NOT EXISTS",
+            b"-- a note\nCREATE TABLE IF NOT EXISTS",
+        ),
+        # ... SQL laid out on other lines, ...
+        ("core/schema.sql", b"CREATE TABLE IF NOT EXISTS", b"CREATE TABLE\n    IF NOT EXISTS"),
+        # ... a Python comment, a docstring, or a module reformatted ...
+        ("core/config_stamp.py", b"CREATE OR REPLACE FUNCTION", b"CREATE OR REPLACE   FUNCTION"),
+        ("core/env_changes.py", b'"""', b'"""A docstring reworded. '),
+        ("core/env_changes.py", b"\nfrom ", b"\n# a comment\nfrom "),
+        # ... and a SQL comment inside a Python string.
+        ("audit/query_log.py", b"CREATE TABLE", b"CREATE TABLE /* a note */"),
+    ],
+    ids=[
+        "sql-comment",
+        "sql-layout",
+        "sql-in-python-layout",
+        "docstring",
+        "python-comment",
+        "sql-comment-in-python",
+    ],
+)
+def test_the_ddl_fingerprint_keeps_an_unchanged_shape(path, before, after):
+    from provisa.core import schema_org
+
+    copy, sources = _metadata_copy(), schema_org.ddl_sources()
+    assert before in sources[path]
+    changed = {**sources, path: sources[path].replace(before, after, 1)}
+    assert schema_org.fingerprint_of(copy, changed) == schema_org.fingerprint_of(copy, sources)
+
+
+#: CLOUD-TPL: the built-in views, which every runtime build makes again from the running code
+#: (startup_seed._seed_view; a sandbox's are made fresh, _make_built_in_views): a template kept
+#: across a patch is served the patched code's views, so their text is not its shape.
+_REMADE_VIEWS = (
+    "api/_meta_views.py",
+    "api/_ontology_views.py",
+    "api/_ontology_quality_views.py",
+    "api/_pg_catalog_views.py",
+    "api/startup_seed.py",
+)
+
+
+def test_the_built_in_views_every_runtime_makes_again_are_not_a_templates_shape():
+    from provisa.core import schema_org
+
+    assert not set(_REMADE_VIEWS) & set(schema_org.ORG_SCHEMA_DDL_SOURCES)
+    assert set(_REMADE_VIEWS) <= set(_NOT_ORG_SCHEMA_DDL)
 
 
 # Every module that runs DDL, by the statements it names, and where that DDL lands when it is not an
@@ -168,6 +227,11 @@ _DDL = re.compile(
 )
 _NOT_ORG_SCHEMA_DDL = {
     "core/schema_org.py": "this metadata, compiled by the fingerprint itself",
+    "api/_meta_views.py": "built-in views every runtime build makes again (startup_seed._seed_view)",
+    "api/_ontology_views.py": "built-in views every runtime build makes again (startup_seed._seed_view)",
+    "api/_ontology_quality_views.py": "built-in views every runtime build makes again (startup_seed._seed_view)",
+    "api/_pg_catalog_views.py": "built-in views every runtime build makes again (startup_seed._seed_view)",
+    "api/startup_seed.py": "built-in views every runtime build makes again (startup_seed._seed_view)",
     "core/schema_create.py": "creates the schema its caller names, under a lock; no table",
     "core/schema_admin.py": "the platform plane, never an org's schema",
     "core/boot_lock.py": "the platform plane's boot lock",

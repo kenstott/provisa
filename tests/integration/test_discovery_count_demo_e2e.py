@@ -57,9 +57,16 @@ _HEADERS = {"X-Provisa-Role": "org_admin"}
 _MODEL = {"vendor": "anthropic", "model": "claude-haiku-4-5-20251001"}
 
 
+#: The settings the dialog always sends, at their defaults (REQ-413, amended 2026-11-18).
+_SETTINGS = {"threshold": 0.7, "samples_per_column": 5}
+
+
 def _count(inst: Instance, scope: dict) -> httpx.Response:
     return httpx.post(
-        f"{inst.url}/admin/discover/runs/count", json=scope, headers=_HEADERS, timeout=300
+        f"{inst.url}/admin/discover/runs/count",
+        json={**_SETTINGS, **scope},
+        headers=_HEADERS,
+        timeout=300,
     )
 
 
@@ -142,12 +149,19 @@ def test_the_count_before_run_is_answered_for_the_demos_domains(instance: Instan
     assert counted["target_tables"] == counted["source_tables"]
     assert counted["requests_are"] == "upper_bound"
     if "semantics" in scope["kinds"]:
-        assert counted["requests"] >= 1
-        assert sum(counted["by_group"].values()) == counted["requests"]
-        # The demo's string columns are registered varchar: they are text, and are compared.
-        assert counted["by_group"].get("text", 0) >= 1, counted["by_group"]
+        # REQ-413 (amended 2026-11-18): the count is of calls and the table pairs they list,
+        # each call listing at most table_pairs_per_request pairs; no type groups.
+        calls, pairs, k = (
+            counted["requests"],
+            counted["table_pairs"],
+            counted["table_pairs_per_request"],
+        )
+        assert 1 <= calls <= pairs, counted
+        assert calls * k >= pairs, counted
+        assert counted["by_group"] == {}
     else:
-        assert counted["requests"] == 0 and counted["by_group"] == {}
+        assert counted["requests"] == 0 and counted["table_pairs"] == 0, counted
+        assert counted["by_group"] == {}
 
 
 def test_the_demos_string_columns_are_registered_in_their_sources_spelling(instance: Instance):
