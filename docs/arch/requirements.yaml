@@ -3835,7 +3835,12 @@
     filter, so it can be changed or cleared; a line says how many rows it hides. The value a person sets
     is kept for their next runs, as Tick from is. Accept acts only on rows the filter shows. The dialog''s
     request count shows the calls and table pairs a run will ask about, and says a pair left unanswered
-    may be asked again.'
+    may be asked again. (Amended 2026-11-18, THE MEASURE JOIN RUNS GOVERNED, WITHOUT THE APPROVED-RELATIONSHIP
+    CHECK:) Maintainer 2026-11-18. The key value overlap join count runs as one engine query per pair through
+    the governed pipeline as the person who started the run: their role''s rules, masks and row rules apply
+    to each table it reads. Only the check that a join follows an approved relationship is not applied,
+    and only to this discovery measure query, since a candidate pair has no relationship yet. A pair whose
+    tables cannot be read is left unmeasured and says why; it does not fail the run.'
   use_case: Auto-generated FK relationships reduce manual relationship registration overhead while preserving
     steward control.
   code:
