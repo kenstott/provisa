@@ -56,7 +56,8 @@
       "username_exists": "Ce nom d'utilisateur existe déjà",
       "not_permitted": "Non autorisé",
       "token_scopes_required": "Choisissez au moins un rôle pour le jeton.",
-      "token_scope_not_held": "Un jeton ne peut utiliser que des rôles que vous détenez."
+      "token_scope_not_held": "Un jeton ne peut utiliser que des rôles que vous détenez.",
+      "no_role_held": "'{{user}}' n'a aucun rôle dans cette organisation"
     },
     "authz": {
       "mutation_not_permitted": "Mutation « {{field_name}} » non autorisée : {{reason}}"

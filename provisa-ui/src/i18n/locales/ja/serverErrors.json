@@ -56,7 +56,8 @@
       "username_exists": "ユーザー名は既に存在します",
       "not_permitted": "許可されていません",
       "token_scopes_required": "トークンのロールを 1 つ以上選択してください。",
-      "token_scope_not_held": "トークンは、保持しているロールのみ使用できます。"
+      "token_scope_not_held": "トークンは、保持しているロールのみ使用できます。",
+      "no_role_held": "「{{user}}」はこの組織でロールを持っていません"
     },
     "authz": {
       "mutation_not_permitted": "ミューテーション「{{field_name}}」は許可されていません：{{reason}}"

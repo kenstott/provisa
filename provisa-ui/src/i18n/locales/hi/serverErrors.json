@@ -56,7 +56,8 @@
       "username_exists": "यूज़रनेम पहले से मौजूद है",
       "not_permitted": "अनुमति नहीं",
       "token_scopes_required": "टोकन के लिए कम से कम एक भूमिका चुनें।",
-      "token_scope_not_held": "टोकन केवल उन्हीं भूमिकाओं का उपयोग कर सकता है जो आपके पास हैं।"
+      "token_scope_not_held": "टोकन केवल उन्हीं भूमिकाओं का उपयोग कर सकता है जो आपके पास हैं।",
+      "no_role_held": "'{{user}}' के पास इस संगठन में कोई भूमिका नहीं है"
     },
     "authz": {
       "mutation_not_permitted": "म्यूटेशन '{{field_name}}' की अनुमति नहीं है: {{reason}}"
