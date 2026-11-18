@@ -17,7 +17,8 @@
       "webhook_exists": "Der Webhook '{{name}}' existiert bereits"
     },
     "ai_models": {
-      "vector_model_fields_required": "jeder vector_models-Eintrag erfordert id, provider und dimensions"
+      "vector_model_fields_required": "jeder vector_models-Eintrag erfordert id, provider und dimensions",
+      "embedding_library_missing": "Das Embedding-Modell {{model}} verwendet den Anbieter {{provider}}, der das Extra {{extra}} benötigt (das Modul {{module}} ist nicht installiert): pip install 'provisa[{{extra}}]'."
     },
     "ai": {
       "endpoint_address_from_server": "Der KI-Endpunkt {{vendor}} bezieht seine Adresse aus der Umgebung des Servers, die eine Organisation auf diesem Server nicht verwendet. Geben Sie ihm unter Admin, KI-Modelle eine eigene Adresse.",
@@ -768,6 +769,9 @@
       "private_destination": "Die Quellen dieser Organisation dürfen nur öffentliche Adressen erreichen; {{host}} ist {{address}}, und das ist keine.",
       "local_path_refused": "Die Quellen dieser Organisation lesen keine Datei auf dem eigenen Datenträger des Servers außerhalb ihres eigenen Ordners; {{path}} ist eine solche. Laden Sie die Datei hoch oder geben Sie sie als {files}/… oder über eine entfernte Adresse an."
     },
+    "egress": {
+      "private_destination": "Diese Organisation darf nur öffentliche Adressen aufrufen; {{host}} ist {{address}}, und das ist keine."
+    },
     "sandbox": {
       "wrong_tier": "Diese Sandbox wird anderswo bereitgestellt; öffnen Sie sie über ihre eigene Adresse.",
       "unknown_demo": "Es gibt keine veröffentlichte Demo namens {{demo}}.",
@@ -915,6 +919,9 @@
       "include_outside_upload": "{{path}} liegt außerhalb des hochgeladenen Projekts; ein Projekt liest nur seine eigenen Dateien.",
       "filter_value_refused": "{{value}} kann kein Wert in einem Berechtigungsfilter sein: Ein Wert ist eine Zeichenkette, eine Zahl, true, false, null, eine Liste davon oder eine Sitzungsvariable.",
       "filter_operator_refused": "{{operator}} ist kein Operator, mit dem ein Berechtigungsfilter umgewandelt werden kann."
+    },
+    "relationship": {
+      "name_taken": "Der Name '{{name}}' ist bereits von der Beziehung '{{held_by}}' belegt. Benennen Sie diese anders."
     }
   }
 }

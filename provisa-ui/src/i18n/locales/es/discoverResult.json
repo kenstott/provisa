@@ -1,6 +1,7 @@
 {
   "discoverResult": {
     "scopeKinds": "Se buscó: {{kinds}}.",
+    "keyValues": "Coincidencia de valores clave: los pares que el modelo valoró desde el {{cutoff}} % hasta menos del {{threshold}} % se midieron con un máximo de {{size}} valores distintos por columna. {{measured}} medidos, {{admitted}} admitidos por valores clave coincidentes.",
     "scopeSource": "Origen: {{count}} tabla de {{domains}}.",
     "scopeSource_other": "Origen: {{count}} tablas de {{domains}}.",
     "scopeTargetSame": "Destino: el mismo que el origen.",

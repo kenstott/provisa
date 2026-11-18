@@ -16,7 +16,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ReactElement } from "react";
 import { Route, Routes, useLocation } from "react-router-dom";
 import { fireEvent, render, screen } from "../../../test-utils/render";
-import type { ListedTable } from "../../../types/admin";
+import type { ListedTable, Relationship } from "../../../types/admin";
 import type { DataProduct } from "../../../types/admin";
 import type { ProductCore } from "../../../pages/data-products/productCore";
 import { AccessSection } from "../../../pages/data-products/AccessSection";
@@ -147,10 +147,28 @@ function core(): ProductCore {
     description: null,
     dqContract: null,
   });
+  // Each relationship of a member as the meta read serves it (productCore's sourceRelationships).
+  const metaRel = (rel: Relationship, target: (typeof TABLES)[number]) => ({
+    id: String(rel.id),
+    alias: rel.alias,
+    graphqlField: rel.graphqlAlias,
+    cypherType: rel.cypherType as string,
+    cardinality: rel.cardinality,
+    sourceColumn: rel.sourceColumn,
+    targetColumn: rel.targetColumn,
+    disableCypher: rel.disableCypher,
+    targetTable: { id: target.id, domainId: target.domainId, tableName: target.tableName },
+  });
   return {
     product: PRODUCT,
     // orders and customers are the product's; tags is not.
-    tables: [member(TABLES[0]), member(TABLES[1])],
+    tables: [
+      {
+        ...member(TABLES[0]),
+        sourceRelationships: [metaRel(placedBy(), TABLES[1]), metaRel(tagged(), TABLES[3])],
+      },
+      member(TABLES[1]),
+    ],
     queries: { graphql: "", sql: "", jsonapi: "" },
   };
 }
@@ -176,6 +194,24 @@ describe("the data product Access section", () => {
     expect(screen.queryByTestId("data-product-detail-relationship-tagged-query-links")).toBeNull();
     // The Cypher-only link per relationship type is replaced.
     expect(screen.queryByTestId("data-product-detail-cypher-query-PLACED_BY")).toBeNull();
+  });
+
+  it("lists the relationships the meta read serves, linked once the model's are read", async () => {
+    routed(
+      <AccessSection
+        core={core()}
+        reader={reader()}
+        relationships={[]}
+        tables={LISTED}
+        actingRole={`analyst-${role}`}
+      />,
+    );
+    const list = screen.getByTestId("data-product-detail-graphql-queries-p1");
+    expect(list).toHaveTextContent("placed-by");
+    expect(list).not.toHaveTextContent("tagged");
+    expect(
+      screen.queryByTestId("data-product-detail-relationship-placed-by-query-links"),
+    ).toBeNull();
   });
 
   it("opens the GraphQL editor with the relationship's field nested, run at once", async () => {

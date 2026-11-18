@@ -42,21 +42,31 @@ import {
   type ExampleLink,
 } from "./tableExamples";
 
-/** The relationships among a product's tables (both ends members) that reach a table, each with
- * the query reference its links are built from (REQ-2252). */
+/** The relationships among a product's tables (both ends members), as the meta read serves them
+ * (REQ-351), each with the query reference its links are built from (REQ-2252). The reference is
+ * built from the model's relationship of the same id: the names a link needs that meta does not
+ * store (the SQL plane's physical name, a junction's columns) are the admin list's. Until the page
+ * has read that list, a relationship is listed without links, as it is until the role's surfaces
+ * are read. */
 function productRelationships(
   core: ProductCore,
   relationships: readonly Relationship[],
   tables: readonly ListedTable[],
-): { rel: Relationship; ref: RelationshipQueryRef }[] {
+): { id: string; ref: RelationshipQueryRef | null }[] {
   const memberIds = new Set((core.tables ?? []).map((tb) => tb.id));
-  return relationships
-    .filter((r) => memberIds.has(r.sourceTableId))
-    .filter((r) => r.targetTableId !== null && memberIds.has(r.targetTableId))
-    .flatMap((rel) => {
-      const ref = relationshipQueryRef(rel, tables);
-      return ref ? [{ rel, ref }] : [];
-    });
+  const ids = [
+    ...new Set(
+      (core.tables ?? []).flatMap((tb) =>
+        (tb.sourceRelationships ?? [])
+          .filter((r) => r.targetTable != null && memberIds.has(r.targetTable.id))
+          .map((r) => String(r.id)),
+      ),
+    ),
+  ];
+  return ids.map((id) => {
+    const rel = relationships.find((r) => String(r.id) === id);
+    return { id, ref: rel ? relationshipQueryRef(rel, tables) : null };
+  });
 }
 
 export function AccessSection({
@@ -68,7 +78,7 @@ export function AccessSection({
 }: {
   core: ProductCore;
   reader: MetaReader | null;
-  /** The model's relationships: those among the product's tables are listed with their links. */
+  /** The model's relationships: each listed relationship's links are built from its entry. */
   relationships: readonly Relationship[];
   /** Every registered table the reader lists: a relationship's tables are named from them. */
   tables: readonly ListedTable[];
@@ -170,18 +180,20 @@ export function AccessSection({
               </List.Item>
             );
           })}
-          {productRels.map(({ rel, ref }) => (
-            <List.Item key={`rel-${rel.id}`} ff="monospace">
+          {productRels.map(({ id, ref }) => (
+            <List.Item key={`rel-${id}`} ff="monospace">
               <Group gap={4} wrap="nowrap">
                 <Text component="span" size="sm" ff="monospace">
-                  {String(rel.id)}
+                  {id}
                 </Text>
-                <RelationshipQueryLinks
-                  rel={ref}
-                  name={String(rel.id)}
-                  surfaces={surfaces}
-                  testIdPrefix={`data-product-detail-relationship-${rel.id}`}
-                />
+                {ref && (
+                  <RelationshipQueryLinks
+                    rel={ref}
+                    name={id}
+                    surfaces={surfaces}
+                    testIdPrefix={`data-product-detail-relationship-${id}`}
+                  />
+                )}
               </Group>
             </List.Item>
           ))}

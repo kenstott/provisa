@@ -2,7 +2,7 @@
   "proposalsTable": {
     "intro": "Uma linha marcada é aceita ao aplicar. As linhas com pontuação de pelo menos o limite começam marcadas. Uma linha sem nenhuma caixa marcada fica indecisa.",
     "colScore": "Pontuação",
-    "colModel": "Modelo",
+    "colConfidence": "Confiança",
     "colJev": "Jev",
     "colKind": "Tipo",
     "colMeasure": "Medido",
@@ -63,6 +63,7 @@
     },
     "dimensionMade": "Aceitar cria a dimensão compartilhada {{name}}, à qual as duas colunas se juntam.",
     "dimensionJoined": "Aceitar junta as duas colunas à dimensão compartilhada {{name}}.",
-    "twoDimensions": "Suas colunas já se juntam a duas dimensões compartilhadas diferentes, então não pode ser aceita."
+    "twoDimensions": "Suas colunas já se juntam a duas dimensões compartilhadas diferentes, então não pode ser aceita.",
+    "admittedOnKeyValues": "Admitido porque os valores-chave correspondem nos dados; a medida é exibida ao lado da confiança do modelo."
   }
 }

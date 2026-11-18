@@ -8,6 +8,7 @@
     "sqlModelingTool": "Ferramenta de modelagem SQL",
     "viewErd": "Ver DER",
     "discovering": "A descoberta está em andamento. Abra-a para ver o progresso.",
+    "openRun": "Abrir",
     "suggestWithAi": "Sugerir com IA",
     "clearRejections": "Limpar rejeições",
     "clearedRejections": "{{count}} rejeição limpa.",

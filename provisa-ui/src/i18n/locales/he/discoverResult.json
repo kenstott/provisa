@@ -1,6 +1,7 @@
 {
   "discoverResult": {
     "scopeKinds": "חיפשנו: {{kinds}}.",
+    "keyValues": "חפיפת ערכי מפתח: זוגות שהמודל דירג מ-{{cutoff}}% ועד מתחת ל-{{threshold}}% נמדדו על לכל היותר {{size}} ערכים שונים בכל עמודה. {{measured}} נמדדו, {{admitted}} התקבלו על סמך ערכי מפתח תואמים.",
     "scopeSource": "מקור: טבלה {{count}} מתוך {{domains}}.",
     "scopeSource_other": "מקור: {{count}} טבלאות מתוך {{domains}}.",
     "scopeTargetSame": "יעד: זהה למקור.",

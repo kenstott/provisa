@@ -85,7 +85,11 @@ export function ProposalsTable({
   const columns: ListColumn<RunProposal>[] = [
     // A proposal with no score sorts below every scored one.
     { key: "score", label: t("proposalsTable.colScore"), sortValue: (p) => p.score ?? -1 },
-    { key: "model", label: t("proposalsTable.colModel"), sortValue: (p) => p.confidence ?? -1 },
+    {
+      key: "confidence",
+      label: t("proposalsTable.colConfidence"),
+      sortValue: (p) => p.confidence ?? -1,
+    },
     ...(jevScored
       ? [
           {
@@ -155,6 +159,7 @@ export function ProposalsTable({
             threshold: Math.round(state.keptAt * 100),
           }),
       p.reduced_information ? t("candidatesTable.reducedInformation") : "",
+      p.admitted_on_key_values ? t("proposalsTable.admittedOnKeyValues") : "",
     ]
       .filter(Boolean)
       .join(" ");
@@ -220,7 +225,7 @@ export function ProposalsTable({
           {newRun}
           {proposals.length > 0 && (
             <Button
-              onClick={() => void state.apply(nameOf)}
+              onClick={() => void state.apply()}
               disabled={accepting + marking === 0}
               loading={state.applying}
               data-testid="discover-apply"
@@ -244,7 +249,7 @@ export function ProposalsTable({
               sortGroup={sort}
               columns={[
                 { col: "score" },
-                { col: "model" },
+                { col: "confidence" },
                 ...(jevScored ? [{ col: "jev" }] : []),
                 { col: "source" },
                 { col: "target" },
