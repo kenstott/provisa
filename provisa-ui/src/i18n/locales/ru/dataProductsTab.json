@@ -87,7 +87,6 @@
     "graphqlQueriesEmpty": "Нет таблиц или связей, доступных для запросов",
     "graphqlQueryAria": "Выполнить пример запроса GraphQL для {{table}}",
     "sqlQueryAria": "Выполнить пример запроса SQL для {{table}}",
-    "cypherQueryAria": "Выполнить пример запроса Cypher для {{type}}",
     "grpcQueryAria": "Выполнить пример вызова gRPC для {{table}}",
     "jsonapiQueryAria": "Выполнить пример запроса JSON:API для {{table}}",
     "openApiQueryAria": "Выполнить пример запроса REST для {{table}}",

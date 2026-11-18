@@ -87,7 +87,6 @@
     "graphqlQueriesEmpty": "אין טבלאות או קשרים שניתן לשאול",
     "graphqlQueryAria": "הרצת שאילתת GraphQL לדוגמה עבור {{table}}",
     "sqlQueryAria": "הרצת שאילתת SQL לדוגמה עבור {{table}}",
-    "cypherQueryAria": "הרצת שאילתת Cypher לדוגמה עבור {{type}}",
     "grpcQueryAria": "הרצת קריאת gRPC לדוגמה עבור {{table}}",
     "jsonapiQueryAria": "הרצת בקשת JSON:API לדוגמה עבור {{table}}",
     "openApiQueryAria": "הרצת בקשת REST לדוגמה עבור {{table}}",
