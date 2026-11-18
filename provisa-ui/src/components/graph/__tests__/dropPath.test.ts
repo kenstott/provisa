@@ -14,7 +14,11 @@ import { describe, expect, it } from "vitest";
 import { dropPath, noDropPath, type PathScope } from "../dropPath";
 import type { SchemaEdge } from "../schemaPath";
 
-const e = (source: string, target: string, join = `${source}-${target}`): SchemaEdge & { type: string } => ({
+const e = (
+  source: string,
+  target: string,
+  join = `${source}-${target}`,
+): SchemaEdge & { type: string } => ({
   source,
   target,
   join,
@@ -26,7 +30,12 @@ function scope(labels: string[], checked: string[] = []): PathScope {
   return {
     nodeLabels: labels.map((l) => {
       const [domainLabel, tableLabel] = l.split(":");
-      return { domainLabel, domainId: domainLabel, tableLabel, systemDomain: domainLabel === "Meta" };
+      return {
+        domainLabel,
+        domainId: domainLabel,
+        tableLabel,
+        systemDomain: domainLabel === "Meta",
+      };
     }),
     checkedDomains: new Set(checked),
   };
@@ -122,17 +131,26 @@ describe("dropPath: one path", () => {
 
   it("never goes through a parameterized label", () => {
     const rels = [e(USERS, ASSIGNMENTS), e(ASSIGNMENTS, EMPLOYEES)];
-    expect(walks(dropPath(rels, [USERS], [EMPLOYEES], new Set([ASSIGNMENTS]), SELECTED))).toEqual(
-      { hops: null },
-    );
+    expect(walks(dropPath(rels, [USERS], [EMPLOYEES], new Set([ASSIGNMENTS]), SELECTED))).toEqual({
+      hops: null,
+    });
   });
 });
 
 describe("dropPath: refused when none", () => {
   it("says the hops of a path past the cap", () => {
-    const labels = ["PetStore:A", "PetStore:B", "PetStore:C", "PetStore:D", "PetStore:E", "PetStore:F"];
+    const labels = [
+      "PetStore:A",
+      "PetStore:B",
+      "PetStore:C",
+      "PetStore:D",
+      "PetStore:E",
+      "PetStore:F",
+    ];
     const chain = labels.slice(1).map((l, i) => e(labels[i], l));
-    expect(dropPath(chain, [labels[0]], [labels[5]], new Set(), scope(labels))).toEqual({ hops: 5 });
+    expect(dropPath(chain, [labels[0]], [labels[5]], new Set(), scope(labels))).toEqual({
+      hops: 5,
+    });
   });
 
   it("names the dropped class and the held ones", () => {

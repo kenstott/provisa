@@ -87,7 +87,8 @@ interface Labelling {
   types: string[];
 }
 
-export type LabelledEndpoints = { branches: string[]; notice: DropNotice } | { refused: DropNotice };
+export type LabelledEndpoints =
+  { branches: string[]; notice: DropNotice } | { refused: DropNotice };
 
 /**
  * ``query`` with its unlabelled nodes given their labels from ``schemaRels``: one branch per label
@@ -154,7 +155,9 @@ export function labelEndpoints(
     used.add(name);
     return name;
   });
-  const endpoints = variables.filter((_, i) => chain.nodes[i].label === null || !chain.nodes[i].variable);
+  const endpoints = variables.filter(
+    (_, i) => chain.nodes[i].label === null || !chain.nodes[i].variable,
+  );
   const branches = labellings.map(({ labels, types }) => {
     const node = (i: number) => {
       const props = chain.nodes[i].properties ? ` ${chain.nodes[i].properties}` : "";
@@ -165,7 +168,11 @@ export function labelEndpoints(
         const props = rel.properties ? ` ${rel.properties}` : "";
         const body = `[${rel.variable}:${types[i]}${props}]`;
         const hop =
-          rel.direction === "out" ? `-${body}->` : rel.direction === "in" ? `<-${body}-` : `-${body}-`;
+          rel.direction === "out"
+            ? `-${body}->`
+            : rel.direction === "in"
+              ? `<-${body}-`
+              : `-${body}-`;
         return `${hop}${node(i + 1)}`;
       })
       .join("");
@@ -202,8 +209,7 @@ export function neighboursQuery(
   parameterized: ReadonlySet<string>,
   scope: PathScope,
 ): string | null {
-  const pattern =
-    way === "children" ? `(n:${label})-[r]->(child)` : `(parent)-[r]->(n:${label})`;
+  const pattern = way === "children" ? `(n:${label})-[r]->(child)` : `(parent)-[r]->(n:${label})`;
   const other = way === "children" ? "child" : "parent";
   const done = labelEndpoints(
     `MATCH ${pattern} WHERE id(n) IN [${id}] RETURN n, r, ${other}`,

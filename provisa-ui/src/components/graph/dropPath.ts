@@ -18,7 +18,12 @@
 
 import type { DropNotice } from "./graph-model";
 import type { SchemaNodeLabel } from "./graph-schema-types";
-import { MAX_SCHEMA_HOPS, shortestSchemaPaths, type SchemaEdge, type SchemaStep } from "./schemaPath";
+import {
+  MAX_SCHEMA_HOPS,
+  shortestSchemaPaths,
+  type SchemaEdge,
+  type SchemaStep,
+} from "./schemaPath";
 
 /** What /data/graph-schema says of a label that a path's way through depends on. */
 export type ScopedLabel = Pick<
@@ -109,5 +114,8 @@ export function dropPath<E extends SchemaEdge>(
 export function noDropPath(name: string, classes: string, hops: number | null): DropNotice {
   return hops === null
     ? { key: "graphFrame.sparqlDropNoPath", values: { name, classes } }
-    : { key: "graphFrame.sparqlDropTooFar", values: { name, classes, hops, most: MAX_SCHEMA_HOPS } };
+    : {
+        key: "graphFrame.sparqlDropTooFar",
+        values: { name, classes, hops, most: MAX_SCHEMA_HOPS },
+      };
 }

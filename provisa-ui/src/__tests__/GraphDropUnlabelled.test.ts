@@ -113,7 +113,11 @@ describe("REQ-2135 a drop onto a result with unlabelled nodes", () => {
   });
 
   it("names the dropped label's column alike in branches whose paths differ in length", () => {
-    const rels = [rel("HAS_INQUIRY", PETS, INQUIRIES), rel("HAS_INQUIRY", USERS, INQUIRIES), rel("TREATED_BY", PETS, VETS)];
+    const rels = [
+      rel("HAS_INQUIRY", PETS, INQUIRIES),
+      rel("HAS_INQUIRY", USERS, INQUIRIES),
+      rel("TREATED_BY", PETS, VETS),
+    ];
     const out = expand(FRAME, VETS, rels, SELECTED);
     const branches = out.query.split("\nUNION ALL\n");
     expect(branches).toHaveLength(2);
@@ -127,10 +131,17 @@ describe("REQ-2135 a drop onto a result with unlabelled nodes", () => {
   });
 
   it("never labels an endpoint with a meta class or an unselected domain's", () => {
-    const out = expand("MATCH (i:PetStore:Inquiries)-[r]->(x) RETURN i, r, x", USERS, RELS, SELECTED);
+    const out = expand(
+      "MATCH (i:PetStore:Inquiries)-[r]->(x) RETURN i, r, x",
+      USERS,
+      RELS,
+      SELECTED,
+    );
     expect(out.query).not.toContain(REGISTERED);
     expect(out.query).not.toContain("Finance");
-    expect(out.query).toContain("MATCH (i:PetStore:Inquiries)-[r:SUBMITTED_BY]->(x:PetStore:Users)");
+    expect(out.query).toContain(
+      "MATCH (i:PetStore:Inquiries)-[r:SUBMITTED_BY]->(x:PetStore:Users)",
+    );
   });
 
   it("says in Cypher's words when no relationship joins labels within the selected domains", () => {
@@ -232,7 +243,7 @@ describe("REQ-2135 the queries tests/unit/test_cypher_drop_shapes.py runs", () =
         "LIMIT 25",
         "UNION ALL",
         "MATCH (n1:Company)-[r:PARENT]->(n2:Company)",
-        "OPTIONAL MATCH (n1)-[rCompany:PARENT]-(mCompany:Company)",
+        "OPTIONAL MATCH (n1)-[rCompany:PARENT]->(mCompany:Company)",
         "RETURN r, n1, n2, rCompany, mCompany",
         "LIMIT 25",
       ].join("\n"),

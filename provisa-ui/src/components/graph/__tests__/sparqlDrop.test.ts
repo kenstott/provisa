@@ -84,7 +84,11 @@ LIMIT 25`;
 
 /** Every class of ``v`` as a label of the domain its IRI names; ``checked`` the selected domains
  * (none: every domain), ``system`` the system domains. */
-const scopeOf = (v: SparqlVocabulary, checked: string[] = [], system: string[] = []): PathScope => ({
+const scopeOf = (
+  v: SparqlVocabulary,
+  checked: string[] = [],
+  system: string[] = [],
+): PathScope => ({
   nodeLabels: v.classes.map((c) => {
     const domainId = c.iri.slice(B.length + 1).split("/")[0];
     return {
@@ -491,7 +495,11 @@ LIMIT 25`;
   it("never passes through a class of an unselected domain", () => {
     const v: SparqlVocabulary = {
       ...SHOT,
-      edges: [...SHOT.edges, edge("ABOUT", "inquiries", "pets"), edge("CARED", "pets", "employees")],
+      edges: [
+        ...SHOT.edges,
+        edge("ABOUT", "inquiries", "pets"),
+        edge("CARED", "pets", "employees"),
+      ],
     };
     const d = droppedQuery(SHOT_FRAME, employees, v, null, [], scopeOf(v, ["shelter"], ["meta"]));
     expect(refusal(d)?.key).toBe("graphFrame.sparqlDropNoPath");

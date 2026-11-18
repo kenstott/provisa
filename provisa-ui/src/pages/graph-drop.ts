@@ -26,13 +26,12 @@
  */
 import type { DropNotice, GNode } from "../components/graph/graph-model";
 import type { SchemaRel } from "../components/graph/graph-schema-types";
-import { MAX_SCHEMA_HOPS, shortestSchemaPaths, type SchemaStep } from "../components/graph/schemaPath";
 import {
-  dropPath,
-  noDropPath,
-  pathThrough,
-  type PathScope,
-} from "../components/graph/dropPath";
+  MAX_SCHEMA_HOPS,
+  shortestSchemaPaths,
+  type SchemaStep,
+} from "../components/graph/schemaPath";
+import { dropPath, noDropPath, pathThrough, type PathScope } from "../components/graph/dropPath";
 import { labelEndpoints } from "../components/graph/cypherEndpoints";
 
 export interface DropExpansion {
@@ -138,7 +137,9 @@ export function buildDropExpansion(
   const held = [...new Set(routes.flatMap((r) => [...r.vars.keys()]))];
   if (held.length === 0) return { refused: { key: "graphFrame.cypherDropNoLabel" } };
   const joined = routes.flatMap(({ vars, found }) =>
-    "paths" in found ? [{ anchor: (vars.get(found.start) as string[])[0], paths: found.paths }] : [],
+    "paths" in found
+      ? [{ anchor: (vars.get(found.start) as string[])[0], paths: found.paths }]
+      : [],
   );
   if (joined.length === 0) {
     const hops = routes
@@ -189,7 +190,10 @@ export function buildDropExpansion(
       const chain = steps
         .map((s, i) => {
           const { relVar, targetVar } = slotOf(p, i - steps.length, s.to);
-          return `-[${relVar}:${s.edge.type}]-(${targetVar}:${s.to})`;
+          // A relationship of a label to itself is walked along its direction: undirected, an
+          // OPTIONAL hop reaches it both ways, two mappings, which the translator refuses.
+          const arrow = s.edge.source === s.edge.target ? "->" : "-";
+          return `-[${relVar}:${s.edge.type}]${arrow}(${targetVar}:${s.to})`;
         })
         .join("");
       return `OPTIONAL MATCH (${anchor})${chain}`;

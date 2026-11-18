@@ -32,9 +32,7 @@ function everyLabel(rels: SchemaRel[]): PathScope {
   const labels = [...new Set(rels.flatMap((r) => [r.source, r.target]))];
   return {
     nodeLabels: labels.map((label) => {
-      const [domainLabel, tableLabel] = label.includes(":")
-        ? label.split(":")
-        : [null, label];
+      const [domainLabel, tableLabel] = label.includes(":") ? label.split(":") : [null, label];
       return { domainLabel, domainId: domainLabel, tableLabel, systemDomain: false };
     }),
     checkedDomains: new Set(),
@@ -123,7 +121,7 @@ describe("a drop keeps the result's own paging", () => {
   it("keeps a LIMIT after the widened RETURN", () => {
     expect(drop("MATCH (t:GlossaryTerm) RETURN t LIMIT 25")).toBe(
       "MATCH (t:GlossaryTerm)\n" +
-        "OPTIONAL MATCH (t)-[rGlossaryTerm:KIND_OF]-(mGlossaryTerm:GlossaryTerm)\n" +
+        "OPTIONAL MATCH (t)-[rGlossaryTerm:KIND_OF]->(mGlossaryTerm:GlossaryTerm)\n" +
         "RETURN t, rGlossaryTerm, mGlossaryTerm\n" +
         "LIMIT 25",
     );
@@ -132,7 +130,7 @@ describe("a drop keeps the result's own paging", () => {
   it("keeps ORDER BY and LIMIT, in that order", () => {
     expect(drop("MATCH (t:GlossaryTerm) RETURN t ORDER BY t.name DESC LIMIT 10")).toBe(
       "MATCH (t:GlossaryTerm)\n" +
-        "OPTIONAL MATCH (t)-[rGlossaryTerm:KIND_OF]-(mGlossaryTerm:GlossaryTerm)\n" +
+        "OPTIONAL MATCH (t)-[rGlossaryTerm:KIND_OF]->(mGlossaryTerm:GlossaryTerm)\n" +
         "RETURN t, rGlossaryTerm, mGlossaryTerm\n" +
         "ORDER BY t.name DESC LIMIT 10",
     );
@@ -141,7 +139,7 @@ describe("a drop keeps the result's own paging", () => {
   it("keeps a SKIP", () => {
     expect(drop("MATCH (t:GlossaryTerm)\nRETURN t\nSKIP 50 LIMIT 25")).toBe(
       "MATCH (t:GlossaryTerm)\n" +
-        "OPTIONAL MATCH (t)-[rGlossaryTerm:KIND_OF]-(mGlossaryTerm:GlossaryTerm)\n" +
+        "OPTIONAL MATCH (t)-[rGlossaryTerm:KIND_OF]->(mGlossaryTerm:GlossaryTerm)\n" +
         "RETURN t, rGlossaryTerm, mGlossaryTerm\n" +
         "SKIP 50 LIMIT 25",
     );
@@ -151,7 +149,7 @@ describe("a drop keeps the result's own paging", () => {
     const out = drop("MATCH (t:GlossaryTerm) RETURN t");
     expect(out).toBe(
       "MATCH (t:GlossaryTerm)\n" +
-        "OPTIONAL MATCH (t)-[rGlossaryTerm:KIND_OF]-(mGlossaryTerm:GlossaryTerm)\n" +
+        "OPTIONAL MATCH (t)-[rGlossaryTerm:KIND_OF]->(mGlossaryTerm:GlossaryTerm)\n" +
         "RETURN t, rGlossaryTerm, mGlossaryTerm",
     );
     expect(out).not.toMatch(/LIMIT|SKIP|ORDER BY/);
