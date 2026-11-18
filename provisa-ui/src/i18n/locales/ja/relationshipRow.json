@@ -55,7 +55,18 @@
       "sql": "{{name}} を SQL で読む",
       "sparql": "{{name}} を SPARQL で読む",
       "graphql": "{{name}} を GraphQL で読む",
-      "jsonapi": "{{name}} を JSON:API で読む"
+      "rest": "{{name}} を REST で読む",
+      "grpc": "{{name}} を gRPC で読む",
+      "jsonapi": "{{name}} を JSON:API で読む",
+      "surfaces": {
+        "cypher": "Cypher",
+        "sql": "SQL",
+        "sparql": "SPARQL",
+        "graphql": "GraphQL",
+        "rest": "REST",
+        "grpc": "gRPC",
+        "jsonapi": "JSON:API"
+      }
     }
   }
 }

@@ -43,15 +43,9 @@
       "invalid": "no nombran dos columnas comparadas",
       "not_comparable": "entre columnas de clases distintas",
       "same_column": "de una columna a sí misma",
-      "primary_key_to_primary_key": "clave primaria a clave primaria",
-      "both_repeating": "valores repetidos en ambos lados",
       "existing": "ya registradas",
-      "pending": "ya pendientes",
       "rejected": "rechazadas antes",
-      "matches_foreign_key": "coinciden con una clave foránea encontrada en esta ejecución",
-      "out_of_scope": "fuera de las tablas elegidas",
-      "weaker": "repiten un par de columnas para el que se conservó una propuesta más fuerte",
-      "many_to_many": "sin que ninguna columna sea una clave"
+      "out_of_scope": "fuera de las tablas elegidas"
     }
   }
 }

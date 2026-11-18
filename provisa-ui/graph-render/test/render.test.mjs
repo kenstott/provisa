@@ -93,11 +93,12 @@ async function cornerPixel(png) {
 }
 
 for (const layout of ["force", "hierarchy", "elk"]) {
+  // The Cypher graph's canvas colour (graphTokens canvas), the colour every label box is drawn in.
   for (const [theme, background] of [
-    ["light", "#ffffff"],
-    ["dark", "#0f1117"],
+    ["light", "#f8f9fa"],
+    ["dark", "#242424"],
   ]) {
-    test(`${layout} on ${theme}: a PNG on the page's background for the theme`, async () => {
+    test(`${layout} on ${theme}: a PNG on the graph canvas colour for the theme`, async () => {
       const out = render({ elements, layout, theme, width: 800, height: 600 });
       assert.equal(out.status, 0, out.stderr.toString());
       assert.deepEqual(out.stdout.subarray(0, 8), PNG_SIGNATURE);

@@ -55,7 +55,18 @@
       "sql": "{{name}} को SQL में पढ़ें",
       "sparql": "{{name}} को SPARQL में पढ़ें",
       "graphql": "{{name}} को GraphQL में पढ़ें",
-      "jsonapi": "{{name}} को JSON:API में पढ़ें"
+      "rest": "{{name}} को REST में पढ़ें",
+      "grpc": "{{name}} को gRPC में पढ़ें",
+      "jsonapi": "{{name}} को JSON:API में पढ़ें",
+      "surfaces": {
+        "cypher": "Cypher",
+        "sql": "SQL",
+        "sparql": "SPARQL",
+        "graphql": "GraphQL",
+        "rest": "REST",
+        "grpc": "gRPC",
+        "jsonapi": "JSON:API"
+      }
     }
   }
 }

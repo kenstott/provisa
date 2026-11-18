@@ -14,6 +14,7 @@ import type { Paging, PagingKind } from "../types/admin";
 import { ORG_HEADER } from "../lib/authFetch";
 import { normalizeRole, type RawRole } from "../lib/roles";
 import type { ApprovedJoin } from "../components/canvas/joinGraph";
+import type { FilterSpec } from "../pages/sql/columnFilter";
 import { serverMessage, requestFailed, type ServerMessageShape } from "../i18n/serverMessage";
 import type { MaskEntry } from "../lib/masks";
 import type { ResultRedirect } from "../types/resultRedirect";
@@ -698,25 +699,51 @@ export interface DiscoveryScope {
   target_tables: number[] | null;
   vendor: string | null;
   model: string | null;
-  /** Key value overlap's measure cutoff (0 to 1) and sample size (the most distinct values read
-   *  of each column): given while it is chosen, else null. Absent from a run recorded before. */
-  measure_cutoff?: number | null;
-  sample_size?: number | null;
+  /** REQ-413 (amended 2026-11-18): Tick from (0 to 1), the score from which the run's proposals
+   *  start ticked; the model is told it and the key value overlap band runs up to it. */
+  threshold: number;
+  /** The distinct sample values read and shown to the model of each compared column. */
+  samples_per_column: number;
+  /** Key value overlap's settings, given while it is chosen, else null: its measure cutoff (0 to
+   *  1), its sample size (the most non-null values read of each column), the share of a source's
+   *  values in a key target at which a pair is a key relationship (0 to 1), and the most a pair
+   *  scores when neither side is a key (0 to 1). */
+  measure_cutoff: number | null;
+  sample_size: number | null;
+  contained_at: number | null;
+  shared_ceiling: number | null;
 }
 
 /** REQ-413: Key value overlap as the signed-in person last set it, remembered as the threshold
- *  is: chosen, its measure cutoff (0 to 1) and its sample size. */
+ *  is: chosen, and its settings. */
 export interface KeyValueSettings {
   chosen: boolean;
   cutoff: number;
   sample_size: number;
+  contained_at: number;
+  shared_ceiling: number;
 }
 
-/** The person's Key value overlap, and the defaults Reset to defaults restores. */
-export function fetchDiscoveryKeyValues(): Promise<
-  KeyValueSettings & { defaults: KeyValueSettings }
+/** REQ-413 (amended 2026-11-18): every threshold and sample size a run uses, as the person last
+ *  set them in the discover dialog. */
+export interface DiscoveryRunSettings {
+  threshold: number;
+  samples_per_column: number;
+  key_values: KeyValueSettings;
+}
+
+/** REQ-413 (amended 2026-11-18): the person's discovery settings, one store: the run settings
+ *  and the filter on a run's Score column the results open with (null: cleared). */
+export interface DiscoverySettings extends DiscoveryRunSettings {
+  score_filter: ScoreFilter | null;
+}
+
+/** The person's settings, which prefill the dialog, and the defaults Reset to defaults
+ *  restores. */
+export function fetchDiscoverySettings(): Promise<
+  DiscoverySettings & { defaults: DiscoverySettings }
 > {
-  return discoveryRequest("/key-values", "Key value overlap");
+  return discoveryRequest("/settings", "Discovery settings");
 }
 
 /** Where a model's two limits come from: set by hand, the vendor's published figures, or the
@@ -749,12 +776,16 @@ export interface ModelLimits {
 /** The type groups columns are compared within. */
 export type TypeGroup = "whole_number" | "decimal" | "text" | "uuid";
 
-/** At most how many model requests a run of this scope makes, by type group. The count reads no
- *  table: it is an upper bound from what is registered, and the run may make fewer. */
+/** At most how many calls to the model a run of this scope makes, and the table pairs they list.
+ *  The count reads no table: it is an upper bound from what is registered, and the run may make
+ *  fewer. */
 export interface DiscoveryCount {
   requests: number;
   requests_are: "upper_bound";
+  /** Empty: calls list table pairs, not type groups (REQ-413, amended 2026-11-18). */
   by_group: Partial<Record<TypeGroup, number>>;
+  table_pairs: number;
+  table_pairs_per_request: number;
   suggestions_per_request?: number;
   model: DiscoveryModel | null;
   source_tables: number;
@@ -797,17 +828,7 @@ export interface SemanticsReport {
   stopped: boolean;
 }
 
-export type RemovedKind =
-  | "same_column"
-  | "primary_key_to_primary_key"
-  | "both_repeating"
-  | "existing"
-  | "pending"
-  | "rejected"
-  | "matches_foreign_key"
-  | "out_of_scope"
-  | "weaker"
-  | "many_to_many";
+export type RemovedKind = "same_column" | "existing" | "rejected" | "out_of_scope";
 
 /** Why a proposal is not among a run's suggestions: a reason of an answer's reading, or a
  *  removal. */
@@ -867,6 +888,9 @@ export interface RunProposal {
   /** A many-to-many pair: the shared dimension accepting it makes, or the registered one it
    *  joins (``reused``). Null for any other pair. */
   dimension: { name: string; reused: boolean } | null;
+  /** REQ-1586: a junction suggestion, the junction its two ends are joined through. Null for
+   *  any other pair; absent until the server sends it (join through a junction). */
+  via?: { table_id: number; source_column: string; target_column: string } | null;
 }
 
 /** A run's report once semantics is under way or the run has ended. */
@@ -975,6 +999,25 @@ export interface RunProposals {
   threshold: number;
   /** The score a run keeps a suggestion at, which `below_threshold` is against. */
   kept_at: number;
+  /** The signed-in person's filter on the Score column, in percent, applied when the results
+   *  open (REQ-413, amended 2026-11-18); null when they cleared it. */
+  score_filter: ScoreFilter | null;
+}
+
+/** REQ-413: a filter on a run's Score column, as the list's column filter holds it; a number
+ *  column's menu offers only number operators, which are all the server keeps. */
+export type ScoreFilter = FilterSpec;
+
+/** REQ-413: keep the Score filter set in a run's results as the signed-in person's own; null
+ *  keeps it cleared. */
+export function saveDiscoveryScoreFilter(
+  filter: ScoreFilter | null,
+): Promise<{ filter: ScoreFilter | null }> {
+  return discoveryRequest("/score-filter", "Discovery score filter", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ filter }),
+  });
 }
 
 export function fetchRunProposals(runId: number): Promise<RunProposals> {
