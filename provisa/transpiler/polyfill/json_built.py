@@ -73,9 +73,19 @@ def value_of(node: exp.Expr, function: str, dialect: str) -> tuple[str, exp.Expr
     A literal integer is read as PostgreSQL reads it (22003 past its type): what a rule writes is
     not walked again."""
     said = said_of(node)
-    if said not in _SCALAR or not plain(node):
+    if said not in _SCALAR or not held(node):
         raise Refused(trino.no_form(function, dialect))
     return said, integer_literal(node, dialect)
+
+
+def held(node: exp.Expr) -> bool:
+    """Whether a form may hold ``node`` as it stands: a literal, a column or a cast of one, or a
+    value already written in ClickHouse's SQL (a cast to a Nullable type, which no PostgreSQL
+    statement writes: zoned_instants writes c::text so before the grid is read)."""
+    if plain(node):
+        return True
+    to = node.to if isinstance(node, exp.Cast) else None
+    return to is not None and bool(to.args.get("nullable"))
 
 
 def integer_literal(node: exp.Expr, dialect: str) -> exp.Expr:
@@ -187,6 +197,50 @@ def array_json(node: exp.Expr, dialect: str) -> exp.Expr | None:
     holes = {f"a{i}": a for i, a in enumerate(args)}
     nulls = " OR ".join(f"isNull($a{i})" for i in range(len(args)))
     form = f"CAST(if({nulls}, NULL, toJSONString(assumeNotNull($a0))) AS Nullable(String))"
+    return written(form, holes, dialect)
+
+
+def _row_fields(node: exp.Expr) -> list[exp.Expr] | None:
+    """The fields of a ROW(...) the statement writes (cast to record or not), None for any other
+    value."""
+    inner = node.unnest()
+    while isinstance(inner, exp.Cast):
+        inner = inner.this.unnest()
+    if isinstance(inner, exp.Anonymous) and inner.name.lower() == "row":
+        return list(inner.expressions)
+    if isinstance(inner, exp.Tuple):
+        return list(inner.expressions)
+    return None
+
+
+def _null(node: exp.Expr) -> bool:
+    inner = node.unnest()
+    while isinstance(inner, exp.Cast):
+        inner = inner.this.unnest()
+    return isinstance(inner, exp.Null)
+
+
+def row_json(node: exp.Expr, dialect: str) -> exp.Expr | None:
+    """row_to_json of a ROW the statement writes, each field a value of a type it says: an object
+    of its fields f1, f2, ... in order, NULL of a NULL record or flag. Its pretty flag adds only
+    whitespace, which is no difference in JSON."""
+    called = trino.called(node)
+    if called is None or "row_to_json" not in called[0] or not 1 <= len(called[1]) <= 2:
+        return None
+    args = called[1]
+    if len(args) == 2 and (said_of(args[1]) != "boolean" or not plain(args[1])):
+        raise Refused(trino.no_form("row_to_json", dialect))
+    if _null(args[0]) or (len(args) == 2 and _null(args[1])):
+        return written("CAST(NULL AS Nullable(String))", {}, dialect)
+    fields = _row_fields(args[0])
+    if fields is None:
+        raise Refused(trino.no_form("row_to_json", dialect))
+    values = [value_of(f, "row_to_json", dialect) for f in fields]
+    holes = {f"f{i}": value for i, (_, value) in enumerate(values)}
+    members = [
+        f"concat('\"f{i + 1}\":', {element(said, f'$f{i}')})" for i, (said, _) in enumerate(values)
+    ]
+    form = f"concat('{{', arrayStringConcat([{', '.join(members)}], ','), '}}')"
     return written(form, holes, dialect)
 
 
@@ -315,6 +369,12 @@ AGGREGATE_LIMIT = Limitation(
 FEATURES: tuple[Feature, ...] = (
     *(_feature(name, "A value as its JSON.", scalar_json) for name in sorted(_SCALARS)),
     *(_feature(name, "A JSON array of the values given.", built_array) for name in sorted(_BUILT)),
+    _feature(
+        "row_to_json",
+        "A record as a JSON object of its fields.",
+        row_json,
+        Limitation("Of a ROW the statement writes; any other record is refused by name."),
+    ),
     _feature(
         "array_to_json",
         "An array as a JSON array.",

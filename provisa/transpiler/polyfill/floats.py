@@ -47,16 +47,23 @@ def _ch(form: str) -> dict[str, str | Rewrite]:
     return ch_only(ch_once(form))
 
 
+#: The types whose call PostgreSQL resolves to the double precision overload.
+_OF_A_DOUBLE = frozenset({"double precision", "real", "smallint", "integer", "bigint"})
+
+
 def _of_no_numeric(pattern: str, form: str) -> dict[str, str | Rewrite]:
-    """ClickHouse's ``form`` (its holes each read once) of a call none of whose arguments the
-    statement says is a numeric; a numeric's call keeps what it had, refused by name: PostgreSQL
-    answers it in numeric's exact digits, which a double does not hold."""
+    """ClickHouse's ``form`` (its holes each read once) of a call each of whose arguments the
+    statement says is a double, a real or an integer; any other call keeps what it had, refused by
+    name: PostgreSQL answers a numeric in numeric's exact digits, which a double does not hold, and
+    a column of no said type may be a numeric."""
     once = ch_once(form)
 
     def doubles(node: exp.Expr, dialect: str) -> exp.Expr | None:
         call = trino.called(node)
-        if call is None or any(function_types.argument_type(a) == "numeric" for a in call[1]):
-            return None
+        if call is None or any(
+            function_types.argument_type(a) not in _OF_A_DOUBLE for a in call[1]
+        ):
+            return None  # a numeric's, or one of no said type (a column), keeps its refusal
         bindings = match(notation.pattern(pattern), _typed(node))
         if bindings is None:
             return None

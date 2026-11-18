@@ -24,10 +24,10 @@ process, and its answer compared with PostgreSQL 17's. The groups, by ClickHouse
 6. A NULL array: NULL of max, min, array_to_string; no rows of unnest; a bare NULL in a form.
 7. lag, lead, nth_value of a NULL offset; ntile of a constant count, as a grid row.
 8. numeric, bool, oid, xid, random(lo, hi), make_date, transaction_timestamp, generate_series,
-   json_agg, numeric_mod, right: ClickHouse's forms.
+   json_agg, numeric_mod, right, json_object of literal arrays: ClickHouse's forms.
 9. Refused by name where ClickHouse has no form: a collated text order, an inet's host, family,
    broadcast, network, max and min, a range's lower, upper and unnest, string_agg of a delimiter
-   that is no constant, json_object of arrays, three server functions."""
+   that is no constant, three server functions."""
 
 # Requirements: REQ-2167, REQ-2236, REQ-2171
 
@@ -413,7 +413,12 @@ def test_ntile_is_the_grids_row_on_every_engine():
         ("SELECT pg_catalog.right('hello', -2) AS v", "llo"),
         ('SELECT pg_catalog."right"(NULL::text, NULL::integer) AS v', None),
         ('SELECT pg_catalog."json_agg"(NULL::integer) AS v', "[null]"),
-        ("SELECT json_agg(c::text) AS v FROM (VALUES ('a'), ('b')) AS t(c)", '["a","b"]'),
+        # PostgreSQL's text of each (json.c writes ", " between elements and " : " in a member)
+        ("SELECT json_agg(c::text) AS v FROM (VALUES ('a'), ('b')) AS t(c)", '["a", "b"]'),
+        (
+            "SELECT pg_catalog.\"json_object\"('{a,b,c}'::text[], '{a,b,c}'::text[]) AS v",
+            '{"a" : "a", "b" : "b", "c" : "c"}',
+        ),
     ],
 )
 def test_a_form_answers_postgresqls(runtime, sql, answer):
@@ -486,7 +491,6 @@ def test_a_form_raises_postgresqls_error(runtime, sql, sqlstate, message):
         'SELECT pg_catalog."unnest"(NULL::int4multirange) AS v',
         'SELECT pg_catalog."string_agg"(NULL::text, NULL::text) AS v',
         'SELECT pg_catalog."string_agg"(NULL::bytea, NULL::bytea) AS v',
-        "SELECT pg_catalog.\"json_object\"('{a,b,c}'::text[], '{a,b,c}'::text[]) AS v",
         'SELECT pg_catalog."pg_conf_load_time"() AS v',
         'SELECT pg_catalog."pg_my_temp_schema"() AS v',
         'SELECT pg_catalog."pg_postmaster_start_time"() AS v',

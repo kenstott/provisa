@@ -39,6 +39,7 @@ from provisa.transpiler.polyfill import (
     intervals,
     json_built,
     json_keys,
+    json_literal,
     json_members,
     json_values,
     money,
@@ -98,6 +99,7 @@ GRID = Grid(
     + json_keys.FEATURES
     + json_built.FEATURES
     + json_members.FEATURES
+    + json_literal.FEATURES
     + json_values.FEATURES
     + clickhouse.FEATURES
     + clocks.FEATURES
