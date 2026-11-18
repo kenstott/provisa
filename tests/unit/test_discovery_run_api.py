@@ -203,8 +203,43 @@ class _Measured:
             return self.values[(table, column)]
         return [v for v in self.reads.values.get(column, []) if v is not None]
 
+    def _engine(self, sql: str) -> list[tuple]:
+        """A pair's join count (:func:`provisa.discovery.measure.join_count_sql`) run in an
+        in-memory DuckDB holding every table the role reads, each column with its values here,
+        a shorter column padded with nulls (the count reads non-null values only)."""
+        import duckdb
+
+        engine = duckdb.connect()
+        for tid, (domain, columns) in _PUBLISHED.items():
+            name = _TABLE_NAMES[tid]
+            if name in self.unpublished:
+                continue
+            schema = domain_to_sql_name(domain)
+            held = {
+                c.lower(): [None if v is None else str(v) for v in self.column(name, c)]
+                for c in columns
+            }
+            depth = max((len(v) for v in held.values()), default=0)
+            engine.execute(f'CREATE SCHEMA IF NOT EXISTS "{schema}"')
+            engine.execute(
+                f'CREATE TABLE "{schema}"."{name}" ('
+                + ", ".join(f'"{c}" VARCHAR' for c in held)
+                + ")"
+            )
+            rows = [tuple((v + [None] * depth)[i] for v in held.values()) for i in range(depth)]
+            if rows:
+                engine.executemany(
+                    f'INSERT INTO "{schema}"."{name}" VALUES ({", ".join("?" for _ in held)})',
+                    rows,
+                )
+        return engine.execute(sql).fetchall()
+
     async def governed_as(self, sql: str, role: str) -> list[tuple]:
         self.sql.append((sql, role))
+        if sql.startswith("WITH "):
+            for part in sql.split(' FROM "')[1:]:
+                self.reads.refuse(part.split('"."', 1)[1].split('"', 1)[0])
+            return self._engine(sql)
         table = sql.split(' FROM "', 1)[1].split('"."', 1)[1].split('"', 1)[0]
         self.reads.refuse(table)
         column = sql.split('"', 2)[1]

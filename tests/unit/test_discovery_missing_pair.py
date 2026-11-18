@@ -26,17 +26,17 @@ pair, and an answer to the table pair that omits the column pair scores it zero 
 
 from __future__ import annotations
 
-from collections import Counter
 from typing import Any
 
 from provisa.discovery.columns import UNKNOWN, ColumnFacts, TableFacts, comparable, type_groups
 from provisa.discovery.context import SHARED_CEILING
 from provisa.discovery.direction import Known, Proposal, Sampled, settle
-from provisa.discovery.measure import Measurer, Values
+from provisa.discovery.measure import Column, Measurer, Unmeasured
 from provisa.discovery.proposals import ACCEPTABLE, BELOW_THRESHOLD, Recorded
 from provisa.discovery.runner import KeyValues, Tally, execute
 from provisa.discovery.windows import plan
 from tests.unit.discovery_answers import answer, column_pair
+from tests.unit.discovery_engine_reader import EngineReader
 from provisa.llm.client import Completion
 from provisa.llm.limits import DEFAULT_LIMITS
 
@@ -157,30 +157,32 @@ OBSERVED = [
 ]
 
 
-class _Reader:
-    """Columns' values for the measure, as the governed read gives them: distinct values most
-    repeated first, and whether any repeats. Records each column read."""
+def _values(tid: int, column: str) -> list[str]:
+    """A column's values as the generator writes them: each neighborhood repeated as counted, any
+    other column a key of its table (each value once)."""
+    if column == "neighborhood":
+        return [n for n, times in _NEIGHBORHOODS[tid].items() for _ in range(times)]
+    return [f"{BY_ID[tid].table_name}-{i}" for i in range(100)]
+
+
+class _Reader(EngineReader):
+    """The measure's engine holding every column a pair can name; records each column read."""
 
     def __init__(self) -> None:
+        super().__init__(
+            {
+                (t.table_name, c.name): _values(t.table_id, c.name)
+                for t in TABLES
+                for c in t.columns
+                if c.name == "permit_id"
+                or (c.name == "neighborhood" and t.table_id in _NEIGHBORHOODS)
+            }
+        )
         self.read: list[tuple[int, str]] = []
 
-    def _counts(self, table: TableFacts, column: str) -> Counter:
-        if column == "neighborhood":
-            return Counter(_NEIGHBORHOODS[table.table_id])
-        # A key of its table: each value once.
-        return Counter({f"{table.table_name}-{i}": 1 for i in range(100)})
-
-    async def values(self, table: TableFacts, column: str, bound: int) -> Values:
+    def column(self, table: TableFacts, column: str) -> Column | Unmeasured:
         self.read.append((table.table_id, column))
-        counts = self._counts(table, column).most_common()
-        return Values(
-            read=tuple(v for v, _ in counts[:bound]),
-            more=len(counts) > bound,
-            distinct=not counts or counts[0][1] == 1,
-        )
-
-    async def found(self, table: TableFacts, column: str, among: Values) -> frozenset[Any]:
-        return frozenset(among.read) & frozenset(self._counts(table, column))
+        return super().column(table, column)
 
 
 class _Watcher:
