@@ -87,7 +87,6 @@
     "graphqlQueriesEmpty": "Sin tablas ni relaciones consultables",
     "graphqlQueryAria": "Ejecutar consulta GraphQL de ejemplo para {{table}}",
     "sqlQueryAria": "Ejecutar consulta SQL de ejemplo para {{table}}",
-    "cypherQueryAria": "Ejecutar consulta Cypher de ejemplo para {{type}}",
     "grpcQueryAria": "Ejecutar llamada gRPC de ejemplo para {{table}}",
     "jsonapiQueryAria": "Ejecutar solicitud JSON:API de ejemplo para {{table}}",
     "openApiQueryAria": "Ejecutar solicitud REST de ejemplo para {{table}}",

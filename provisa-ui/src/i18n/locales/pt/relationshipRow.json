@@ -48,6 +48,14 @@
     "changeResolver": "Alterar resolver de código",
     "retireResolver": "Retirar resolver de código",
     "retireResolverTitle": "Retirar o resolver de código {{resolver}}?",
-    "retireResolverConsequence": "Sua visão de correspondências e suas três relações são retiradas juntas. Seus nomes continuam ocupados."
+    "retireResolverConsequence": "Sua visão de correspondências e suas três relações são retiradas juntas. Seus nomes continuam ocupados.",
+    "queryLinks": {
+      "heading": "Consultar",
+      "cypher": "Ler {{name}} em Cypher",
+      "sql": "Ler {{name}} em SQL",
+      "sparql": "Ler {{name}} em SPARQL",
+      "graphql": "Ler {{name}} em GraphQL",
+      "jsonapi": "Ler {{name}} em JSON:API"
+    }
   }
 }

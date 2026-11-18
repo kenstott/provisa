@@ -192,8 +192,8 @@ describe("a data product's panel hydrates from the meta query", () => {
     expect(outputs).toHaveTextContent("pet-store.pets");
     expect(outputs).toHaveTextContent("pet-store.vets");
     expect(within(outputs).queryByText(/pets_quality/)).toBeNull();
-    // The relationships between members' Cypher click-through, from the core too.
-    expect(outputs).toHaveTextContent("BELONGS_TO_VET");
+    // The relationships between members, each with its query links (REQ-2252), from the core too.
+    expect(outputs).toHaveTextContent("pets-to-vets");
     // Data Quality is the product lineage endpoint's (REQ-2157): nothing given, nothing listed.
     openSection("quality", "pet_health");
     expect(screen.queryByTestId("data-product-card-dataQuality-pet_health")).toBeNull();
@@ -215,7 +215,9 @@ describe("a data product's panel hydrates from the meta query", () => {
       source.indexOf("\n}\n", source.indexOf("interface DataProductDetailPanelProps")),
     );
     const names = [...props.matchAll(/^ {2}(\w+)\??:/gm)].map((m) => m[1]).sort();
-    expect(names).toEqual([...META, ...NOT_DATA, ...LIFECYCLE, ...LINEAGE, ...PAGE, ...CONTRACTS].sort());
+    expect(names).toEqual(
+      [...META, ...NOT_DATA, ...LIFECYCLE, ...LINEAGE, ...PAGE, ...CONTRACTS].sort(),
+    );
   });
 
   it("reads inside its own parts only where named", () => {
