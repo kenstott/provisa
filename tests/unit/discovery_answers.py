@@ -100,37 +100,42 @@ def answer(
 def from_ids(prompt: str, text: str, names: dict[int, str]) -> str:
     """A stub's answer written as a flat list of column pairs naming tables by id
     (``source_table_id``/``target_table_id``), as the call reads it: each placed under its listed
-    table pair by the tables' ``names``, every other listed pair answered "none". An empty list
-    answers every listed pair "none". Any other text (an unreadable or cut-off answer, or one
-    already per number) is the answer as written."""
+    table pair by the tables' ``names``, every other listed pair answered "none"; one whose
+    tables no listed pair names (an unknown id, a missing key) under the first pair. An empty
+    list answers every listed pair "none". Any other text (an unreadable or cut-off answer, or
+    one already per number) is the answer as written."""
     try:
         items = json.loads(text)
     except json.JSONDecodeError:
         return text
     if not isinstance(items, list) or not all(
-        isinstance(i, dict) and "source_table_id" in i and "target_table_id" in i for i in items
+        isinstance(i, dict) and "source_table_id" in i for i in items
     ):
         return text
     pairs = []
     for i in items:
         pair = dict(i)
-        # A table id the run does not have is written as a name no listed table has.
-        pair["source_table"] = names.get(int(pair.pop("source_table_id")), "no such table")
-        pair["target_table"] = names.get(int(pair.pop("target_table_id")), "no such table")
+        for side in ("source", "target"):
+            if f"{side}_table_id" in pair:
+                tid = int(pair.pop(f"{side}_table_id"))
+                # A table id the run does not have is written as a name no listed table has.
+                pair[f"{side}_table"] = names.get(tid, "no such table")
         pairs.append(pair)
-    out = answer_items(prompt, pairs)
-    placed = [
-        id(c)
-        for item in out
-        if isinstance(item["column_pairs"], list)
-        for c in item["column_pairs"]
-    ]
-    stray = [c for c in pairs if id(c) not in placed]
-    if stray and out:
-        # A column pair whose tables no listed pair names is answered under the first pair.
-        first = out[0]
-        first["column_pairs"] = [
-            *([] if first["column_pairs"] == "none" else first["column_pairs"]),
-            *stray,
-        ]
+    listed = listed_pairs(prompt)
+    out: list[dict[str, Any]] = [{"pair": p["pair"], "column_pairs": []} for p in listed]
+    for c in pairs:
+        tables = {c.get("source_table"), c.get("target_table")}
+        same = c.get("source_table") == c.get("target_table")
+        at = next(
+            (
+                n
+                for n, p in enumerate(listed)
+                if tables == {p["source"], p["target"]} and same == (p["source"] == p["target"])
+            ),
+            0,
+        )
+        if out:
+            out[at]["column_pairs"].append(c)
+    for item in out:
+        item["column_pairs"] = item["column_pairs"] or "none"
     return json.dumps(out)

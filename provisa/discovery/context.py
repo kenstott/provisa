@@ -259,39 +259,29 @@ def instructions_chars(pairs: int, *, either_direction: bool, not_read: bool = F
 def _instructions(pairs: int, threshold: str, *, either_direction: bool, not_read: bool) -> str:
     if either_direction:
         direction = (
-            "Source and target are drawn from one set of tables: in a pair, a relationship may "
-            "start in either table and end in the other, and a pair of one table with itself "
-            "compares two different columns of it."
+            "A relationship may start in either table of a pair; a table paired with itself "
+            "compares two of its columns."
         )
     else:
-        direction = (
-            "In each pair a relationship starts at a column of the source table (the referring "
-            "column) and ends at a column of the target table."
-        )
+        direction = "A relationship starts at the pair's source table and ends at its target."
     return (
-        "You are a database relationship analyst. Find columns that refer to other columns, as "
-        "a foreign key refers to the key it names: many-to-one, the referring column the many "
-        "side.\n"
-        f"This is a batch of {pairs} separate table pairs. The tables are listed once under "
-        "'## Tables', then the numbered pairs under '## Table pairs'. Judge each pair on its own, "
-        "comparing only the two tables it names. For each pair name the column pairs of its two "
-        "tables likely to hold the same or similar values, each with a confidence; a column pair "
-        "you do not name scores zero. Answer every pair under its number, with its column pairs "
-        'or "none".\n'
-        "Each table lists the names of all its columns; only its comparable_columns may be "
-        "named, and a column is compared only with one of the same type group (whole number, "
-        "decimal, text, uuid). A column's classes say what its values were recognised as; "
-        "'unknown' is a column none was recognised for. A column with a sensitive class shows "
-        "its class and no sample values. Sample values are a few of a column's distinct values: "
-        "they show what kind of values it holds.\n"
+        "You are a database relationship analyst. Find columns that refer to others as a "
+        "foreign key refers to the key it names (many-to-one).\n"
+        f"This is a batch of {pairs} separate table pairs: tables listed once, then numbered "
+        "pairs. Judge each pair on its own, its two tables only. Name its column pairs likely "
+        "to hold the same or similar values, each with a confidence; a column pair not named "
+        'scores zero. Answer every pair under its number, or "none".\n'
+        "Only comparable_columns may be named, each with one of its type group. classes say "
+        "what values were recognised as ('unknown': none); a sensitive class shows no sample "
+        "values. Sample values are a few distinct values.\n"
         f"{_NOT_READ if not_read else ''}"
         "A shared pii tag alone is weak evidence of a relationship.\n"
         f"{direction}\n"
         f"{rubric(threshold)}"
-        "Name tables and columns exactly as listed. Return ONLY a JSON array, no other text, "
-        "one element per pair:\n"
+        "Name tables and columns as listed. Return ONLY a JSON array, no other text, one "
+        "element per pair:\n"
         f"{_SHAPE}\n"
-        "suggested_name names the business concept the join means, not its tables or columns.\n"
+        "suggested_name names the business concept the join means.\n"
     )
 
 

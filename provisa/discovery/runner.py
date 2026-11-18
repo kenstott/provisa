@@ -38,7 +38,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field, replace
 from typing import Any, Protocol
 
-from provisa.discovery.analyzer import read_answer_list
+from provisa.discovery.analyzer import AnswerList
 from provisa.discovery.columns import ColumnFacts, compared
 from provisa.discovery.direction import Proposal, from_answer
 from provisa.discovery.proposals import (
@@ -79,6 +79,43 @@ UNREADABLE = {
     "params": {},
     "message": "The model's answer held no readable list.",
 }
+
+
+#: Where an answer's list of table pairs can open: a ``[`` before an object or its own end.
+_LIST_OPENING = re.compile(r"\[(?=\s*[{\]])")
+
+
+def _of_pairs(value: Any) -> bool:
+    return isinstance(value, list) and all(isinstance(v, dict) and "pair" in v for v in value)
+
+
+def read_pair_answers(text: str, cut_off: bool) -> AnswerList:
+    """The answer's list of table pair answers, whatever text or code fence is around it: the
+    first JSON list whose elements each name a ``pair``, so a pair's own list of column pairs is
+    never taken for it. An answer that stopped at its token limit (``cut_off``) and whose list
+    never closed gives the pair answers that were complete, marked ``cut_short``."""
+    decoder = json.JSONDecoder()
+    opens = [m.start() for m in _LIST_OPENING.finditer(text)]
+    for i in opens:
+        try:
+            value, _ = decoder.raw_decode(text, i)
+        except json.JSONDecodeError:
+            continue
+        if _of_pairs(value):
+            return AnswerList(value)
+    if cut_off and opens:
+        items: list = []
+        pos = opens[0] + 1
+        while True:
+            while pos < len(text) and text[pos] in " \t\r\n,":
+                pos += 1
+            try:
+                item, pos = decoder.raw_decode(text, pos)
+            except json.JSONDecodeError:
+                break
+            items.append(item)
+        return AnswerList(items, cut_short=True)
+    return AnswerList(None)
 
 
 def too_long(exc: BaseException) -> bool:
@@ -432,7 +469,7 @@ async def execute(
             left(call, list(call.pairs))
             await control.returned(tally, proposals)
             continue
-        read = read_answer_list(answer.text, answer.cut_off)
+        read = read_pair_answers(answer.text, answer.cut_off)
         tally.done += 1
         if read.items is None:
             tally.unreadable += 1

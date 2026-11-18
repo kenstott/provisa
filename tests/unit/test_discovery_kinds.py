@@ -18,6 +18,7 @@ kind found. On a real model store (SQLite), the model faked at its client bounda
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from typing import Any
 
 import pytest
@@ -34,6 +35,7 @@ from tests.unit.discovery_answers import from_ids
 from tests.unit.test_discovery_run_api import (
     _REQUEST,
     _TABLE_NAMES,
+    _named,
     _World,
     _candidates,
     _nothing_published,  # noqa: F401 -- the autouse fixture the store's tables rely on
@@ -63,7 +65,8 @@ class _Discovery:
     def __init__(self, monkeypatch, db: Database, *, config: dict, api_keys: dict[str, str]):
         self.db = db
         self.world = _World(monkeypatch, db, config=config, api_keys=api_keys)
-        self.answer: str | Exception = "[]"
+        #: The answer as written, or what writes it from the call's prompt.
+        self.answer: str | Exception | Callable[[str], str] = "[]"
         self.cut_off = False
         self.fk_calls = 0
         world = self.world
@@ -74,7 +77,7 @@ class _Discovery:
                 raise self.answer
             answer, self.answer = self.answer, "[]"  # a later call's pairs propose none
             # REQ-413 (amended 2026-11-18): the answer is read per listed table pair.
-            answer = from_ids(prompt, answer, _TABLE_NAMES)
+            answer = answer(prompt) if callable(answer) else from_ids(prompt, answer, _TABLE_NAMES)
             return Completion(answer, vendor, model, None, self.cut_off)
 
         async def fk(source_pools, source_types, conn, table_ids):
@@ -106,7 +109,7 @@ def _fk() -> RelationshipCandidate:
 
 
 async def _listed(run: dict) -> list[dict]:
-    return (await discovery.list_proposals(_REQUEST, run["id"]))["proposals"]
+    return _named((await discovery.list_proposals(_REQUEST, run["id"]))["proposals"])
 
 
 # --- a run, stored as the dialog's ------------------------------------------------------------
@@ -276,7 +279,7 @@ async def test_all_below_the_confidence_threshold_is_reported_with_the_count(mon
     sem = found["semantics"]
     assert sem["suggested"] == 0
     assert sem["empty_reason"] == "below_threshold"
-    assert sem["below_threshold"] == 2
+    assert sem["below_threshold"] - sem["zero_scored"] == 2
     assert sem["proposed"] == 2
     assert abs(sem["threshold"] - 0.7) <= 1e-14 * 0.7
     # Kept with the run all the same, for a reviewer to tick.
@@ -368,7 +371,8 @@ async def test_a_model_failure_is_reported_with_its_message(monkeypatch, tmp_pat
     found = await d.run("foreign_keys", "semantics")
     semantics = found["semantics"]
     assert semantics["empty_reason"] == "requests_failed"
-    assert [said in f["message"] for f in semantics["failed"]] == [True]
+    # The call, then its table pairs asked again: each failure reported.
+    assert [said in f["message"] for f in semantics["failed"]] == [True, True]
     assert found["stored_ids"] == []
 
 
@@ -394,21 +398,33 @@ def _pretty(element: dict) -> str:
     return "  " + json.dumps(element, indent=2).replace("\n", "\n  ")
 
 
-_CUT_OFF_ANSWER = (
-    "```json\n[\n"
-    + _pretty(_suggestion((1, "customer_id"), (2, "id")))
-    + ',\n  {\n    "source_table_id": 2,\n    "source_column": "name",\n'
-    '    "target_table_id": 1,\n    "target_column": "id",\n    "cardin'
-)
+def _per_pair(prompt: str, *suggestions: dict) -> list[dict]:
+    """The answer's elements: ``suggestions`` (tables by id) under their listed table pairs."""
+    return json.loads(from_ids(prompt, json.dumps(list(suggestions)), _TABLE_NAMES))
+
+
+def _cut_off_answer(prompt: str) -> str:
+    """The first pair answered whole with customer_id -> id, the next cut off mid-element."""
+    first, second, *_ = sorted(
+        _per_pair(prompt, _suggestion((1, "customer_id"), (2, "id"))),
+        key=lambda e: e["column_pairs"] == "none",
+    )
+    return (
+        "```json\n[\n"
+        + _pretty(first)
+        + f',\n  {{\n    "pair": {second["pair"]},\n    "column_pairs": [\n      {{\n'
+        '        "source_table": "customers",\n        "source_column": "na'
+    )
 
 
 async def test_a_cut_off_answer_keeps_its_complete_suggestions(monkeypatch, tmp_path):
     d = await _discovery(monkeypatch, tmp_path, config=_ANTHROPIC, api_keys={"anthropic": "k"})
-    d.answer = _CUT_OFF_ANSWER
+    d.answer = _cut_off_answer
     d.cut_off = True
     found = await d.run("semantics")
     assert found["semantics"]["proposed"] == 1
     assert found["semantics"]["suggested"] == 1
+    assert found["semantics"]["cut_short"] == 1
     assert [(c["source_column"], c["target_column"]) for c in await _candidates(d.db)] == [
         ("customer_id", "id")
     ]
@@ -418,7 +434,7 @@ async def test_an_unclosed_list_the_model_did_not_cut_off_is_unreadable(monkeypa
     # Only an answer the vendor says stopped at its limit is read element by element; any other
     # broken list is reported as unreadable, never partly kept.
     d = await _discovery(monkeypatch, tmp_path, config=_ANTHROPIC, api_keys={"anthropic": "k"})
-    d.answer = _CUT_OFF_ANSWER
+    d.answer = _cut_off_answer
     found = await d.run("semantics")
     assert found["semantics"]["empty_reason"] == "unreadable"
     assert found["semantics"]["cut_short"] == 0
@@ -427,8 +443,10 @@ async def test_an_unclosed_list_the_model_did_not_cut_off_is_unreadable(monkeypa
 
 async def test_a_complete_answer_is_not_cut_short(monkeypatch, tmp_path):
     d = await _discovery(monkeypatch, tmp_path, config=_ANTHROPIC, api_keys={"anthropic": "k"})
-    d.answer = (
-        "```json\n" + json.dumps([_suggestion((1, "customer_id"), (2, "id"))], indent=2) + "\n```"
+    d.answer = lambda prompt: (
+        "```json\n"
+        + json.dumps(_per_pair(prompt, _suggestion((1, "customer_id"), (2, "id"))), indent=2)
+        + "\n```"
     )
     found = await d.run("semantics")
     assert found["semantics"]["suggested"] == 1
@@ -437,9 +455,9 @@ async def test_a_complete_answer_is_not_cut_short(monkeypatch, tmp_path):
 
 async def test_a_bracket_in_the_text_after_the_list_is_not_taken_for_its_end(monkeypatch, tmp_path):
     d = await _discovery(monkeypatch, tmp_path, config=_ANTHROPIC, api_keys={"anthropic": "k"})
-    d.answer = (
+    d.answer = lambda prompt: (
         "Here are the relationships:\n"
-        + json.dumps([_suggestion((1, "customer_id"), (2, "id"))])
+        + json.dumps(_per_pair(prompt, _suggestion((1, "customer_id"), (2, "id"))))
         + "\n\nThe ids follow the schema [see the table list] above."
     )
     found = await d.run("semantics")

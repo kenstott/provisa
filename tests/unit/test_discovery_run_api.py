@@ -46,6 +46,7 @@ from provisa.discovery.direction import Sampled
 from provisa.llm.client import Completion
 from provisa.profiler.classify import catalogue
 from provisa.profiler.run import ProfileError
+from provisa.discovery.runner import NOT_NAMED
 from tests.unit.discovery_answers import from_ids
 
 _REQUEST = cast(
@@ -131,6 +132,11 @@ class _Reads:
         self.sql.append(sql)
         self.refuse(sql.split(' FROM "', 1)[1].split('"."', 1)[1].split('"', 1)[0])
         cols = sql.split("SELECT ", 1)[1].split(" FROM", 1)[0]
+        if cols.startswith("DISTINCT "):
+            # A column's distinct sample values (REQ-413, amended 2026-11-18).
+            name = cols.removeprefix("DISTINCT ").strip('"')
+            distinct = list(dict.fromkeys(v for v in self.values.get(name, []) if v is not None))
+            return [name], [(v,) for v in distinct[: int(sql.rsplit("LIMIT ", 1)[1])]]
         names = [c.strip().strip('"') for c in cols.split(",")]
         depth = max(len(self.values.get(n, [])) for n in names)
         rows = [tuple(self.values.get(n, [None] * depth)[i] for n in names) for i in range(depth)]
@@ -214,6 +220,12 @@ class _Measured:
 
 #: Each registered table's name, by id.
 _TABLE_NAMES: dict[int, str] = {}
+
+
+def _named(proposals: list[dict]) -> list[dict]:
+    """A run's listed proposals but the column pairs its model was asked about and did not name,
+    each scored zero (REQ-413, amended 2026-11-18): those are asserted on their own."""
+    return [r for r in proposals if r["reasoning"] != NOT_NAMED]
 
 
 class _World:
@@ -501,7 +513,10 @@ async def test_a_table_that_requires_a_parameter_is_known_from_its_registration_
     assert not any(c.sensitive for c in order.columns)
     # Only the table read whole is classified and sampled.
     assert [c["table_id"] for c in world.classified] == [_ORDERS]
-    assert world.reads.sql == ['SELECT "id", "pet_id" FROM "pet_store"."orders" LIMIT 20']
+    assert world.reads.sql == [
+        'SELECT DISTINCT "id" FROM "pet_store"."orders" WHERE "id" IS NOT NULL LIMIT 5',
+        'SELECT DISTINCT "pet_id" FROM "pet_store"."orders" WHERE "pet_id" IS NOT NULL LIMIT 5',
+    ]
     assert not facts["orders"].reduced and facts["orders"].parameters == ()
 
 
@@ -598,7 +613,9 @@ async def test_a_column_the_relation_read_does_not_hold_sends_no_values(monkeypa
     world.reads.values["manager"] = ["m"]
     world.reads.outside = {"manager"}
     facts = await _facts(db, [1])
-    assert world.reads.sql == ['SELECT "id" FROM "pet_store"."employees" LIMIT 20']
+    assert world.reads.sql == [
+        'SELECT DISTINCT "id" FROM "pet_store"."employees" WHERE "id" IS NOT NULL LIMIT 5'
+    ]
     assert [c.samples for c in facts["employees"].columns] == [("1", "2", "3"), ()]
 
 
@@ -608,7 +625,9 @@ async def test_a_column_is_read_by_the_name_it_is_published_under(monkeypatch):
     world = _World(monkeypatch, db, config=_ASSIGNED, api_keys={"openai": "k"})
     world.reads.values["petid"] = [7, 8]
     facts = await _facts(db, [1])
-    assert world.reads.sql == ['SELECT "petid" FROM "pet_store"."orders" LIMIT 20']
+    assert world.reads.sql == [
+        'SELECT DISTINCT "petid" FROM "pet_store"."orders" WHERE "petid" IS NOT NULL LIMIT 5'
+    ]
     assert facts["orders"].columns[0].samples == ("7", "8")
 
 
@@ -1128,7 +1147,7 @@ async def test_a_model_whose_limits_hold_no_request_is_refused_saying_why(monkey
         await discovery.count_run(_REQUEST, _scope())
     assert caught.value.code == "discovery.model_has_no_room"
     assert caught.value.params["model"] == "openai:gpt-test"
-    assert "100 tokens holds no suggestion" in caught.value.params["reason"]
+    assert "100 tokens answers no table pair" in caught.value.params["reason"]
 
 
 async def test_a_direction_is_decided_without_reading_a_table_that_requires_a_parameter(
@@ -1152,7 +1171,9 @@ async def test_a_direction_is_decided_without_reading_a_table_that_requires_a_pa
     run = await _run(world, _scope(source_domains=["pet-store"]))
     assert run["status"] == "done", run
     assert world.reads.attempted == []
-    assert not any("IS NOT NULL" in sql for sql in world.reads.sql)
+    # No uniqueness sample is read (the sample values' reads are distinct values, never it).
+    uniqueness = f"LIMIT {gather.UNIQUENESS_SAMPLE_ROWS}"
+    assert not any(uniqueness in sql for sql in world.reads.sql)
     assert run["report"]["decided_by"] == {"fixed_order": 1}
     assert run["report"]["on_reduced_information"] == 1
     (stored,) = await _candidates(db)
@@ -1573,7 +1594,7 @@ async def _proposals(db: Database, run_id: int) -> list[dict]:
                 .order_by(so.discovery_run_proposals.c.id)
             )
         ).fetchall()
-    return [dict(r._mapping) for r in rows]
+    return _named([dict(r._mapping) for r in rows])
 
 
 async def _three_tables(db: Database) -> None:
@@ -1619,7 +1640,9 @@ async def test_a_run_keeps_every_proposal_it_read_with_why_it_was_left_out(monke
     report = run["report"]
     semantics = report["semantics"]
     assert (semantics["proposed"], semantics["suggested"]) == (5, 1)
-    assert (semantics["below_threshold"], semantics["invalid"]) == (1, 2)
+    # The column pairs the model did not name are scored zero, below the threshold too.
+    assert semantics["below_threshold"] - semantics["zero_scored"] == 1
+    assert semantics["invalid"] == 2
     assert semantics["not_comparable"] == 0 and semantics["scored"] == 0
     assert report["removed"]["matches_foreign_key"] == 1
     # What the run compared is said, so what it did not is plain.
@@ -1644,7 +1667,7 @@ async def test_a_run_keeps_every_proposal_it_read_with_why_it_was_left_out(monke
 
     answered = await discovery.list_proposals(_REQUEST, run["id"])
     assert answered["threshold"] == 0.7
-    listed = answered["proposals"]
+    listed = _named(answered["proposals"])
     # One table: the foreign key and the suggestion with what was left out, the highest score first.
     assert [(r["kind"], r["reason"], r["decidable"], r["confidence"]) for r in listed] == [
         ("foreign_keys", None, True, 1.0),
@@ -1663,7 +1686,7 @@ async def test_a_run_keeps_every_proposal_it_read_with_why_it_was_left_out(monke
 async def _answered(world: _World, answers: list[dict], **scope: Any) -> tuple[dict, list[dict]]:
     world.answers = [json.dumps(answers)]
     run = await _run(world, _scope(**scope))
-    return run, (await discovery.list_proposals(_REQUEST, run["id"]))["proposals"]
+    return run, _named((await discovery.list_proposals(_REQUEST, run["id"]))["proposals"])
 
 
 def _apply(accept: list[tuple[int, str]] = (), not_again: list[int] = ()) -> Any:
@@ -1719,7 +1742,7 @@ async def test_applying_accepts_what_is_ticked_marks_what_is_not_wanted_and_leav
         ).fetchall()
     assert [r[0] for r in registered] == ["customer-orders", "orders-by-store"]
     # What was decided leaves the run's table; what was not stays.
-    remaining = (await discovery.list_proposals(_REQUEST, run["id"]))["proposals"]
+    remaining = _named((await discovery.list_proposals(_REQUEST, run["id"]))["proposals"])
     assert [r["id"] for r in remaining] == [undecided["id"]]
 
     # A later run reads them again: the undecided one as an ordinary row, the accepted ones as
@@ -1859,10 +1882,10 @@ async def test_a_proposal_jev_scores_under_the_threshold_stays_a_suggestion_on_t
     semantics = run["report"]["semantics"]
     # REQ-1789: the model's score decides; Jev's is shown beside it and removes nothing.
     assert semantics["suggested"] == 2 and semantics["empty_reason"] is None
-    assert semantics["below_threshold"] == 0
+    assert semantics["below_threshold"] == semantics["zero_scored"]
     # The summary says how many Jev scored under the threshold.
     assert (semantics["scored"], semantics["scored_below_threshold"]) == (2, 2)
-    listed = (await discovery.list_proposals(_REQUEST, run["id"]))["proposals"]
+    listed = _named((await discovery.list_proposals(_REQUEST, run["id"]))["proposals"])
     assert [(r["reason"], r["confidence"], r["scored"], r["decidable"]) for r in listed] == [
         (None, 0.95, 0.31, True),
         (None, 0.9, 0.31, True),
@@ -2004,7 +2027,7 @@ async def test_each_proposed_pair_is_measured_as_the_runs_person_and_its_row_sho
     # Every value read for the measure was read as the person who started the run.
     assert world.measured.sql and {role for _, role in world.measured.sql} == {"steward"}
 
-    listed = (await discovery.list_proposals(request, run_id))["proposals"]
+    listed = _named((await discovery.list_proposals(request, run_id))["proposals"])
     by_source = {(r["source_column"], r["source_table_id"]): r for r in listed}
     permit = by_source[("permit_id", 2)]
     assert permit["cardinality"] == "many-to-one"
@@ -2191,7 +2214,7 @@ async def test_a_many_to_many_pair_is_accepted_as_a_shared_dimension_both_sides_
     }
     assert {e.graphql_alias for e in made.edges} == {"neighborhood_dimension"}
     # The pair is decided: accepted, so a later run never reopens it.
-    assert (await discovery.list_proposals(_REQUEST, run["id"]))["proposals"] == []
+    assert _named((await discovery.list_proposals(_REQUEST, run["id"]))["proposals"]) == []
     assert [(c["cardinality"], c["status"]) for c in await _candidates(db)] == [
         ("many-to-many", "accepted")
     ]
@@ -2245,7 +2268,7 @@ async def test_a_dimension_whose_relationship_is_refused_is_not_left_half_made(
     assert "neighborhood" not in await made.tables(db)
     assert await made.relationships(db) == set()
     assert made.rebuilt == 1
-    (still,) = (await discovery.list_proposals(_REQUEST, run["id"]))["proposals"]
+    (still,) = _named((await discovery.list_proposals(_REQUEST, run["id"]))["proposals"])
     assert still["id"] == pair["id"]
 
 
@@ -2330,7 +2353,7 @@ async def test_a_run_takes_its_starters_threshold_records_it_and_tells_the_model
     answered = await discovery.list_proposals(_REQUEST, run["id"])
     assert answered["threshold"] == 0.9 and answered["kept_at"] == 0.5
     # 0.55 is at or above the run's 0.5: kept on the model's confidence, never measured.
-    (row,) = [r for r in answered["proposals"] if r["kind"] == "semantics"]
+    (row,) = [r for r in _named(answered["proposals"]) if r["kind"] == "semantics"]
     assert row["reason"] is None and row["measured"] is False
 
 

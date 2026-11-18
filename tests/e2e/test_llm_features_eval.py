@@ -303,9 +303,8 @@ def test_discovery_suggests_the_permit_key_a_folder_of_files_shares(record_prope
     is recorded with the test's result (``discovery_answer``)."""
     import json
 
-    from provisa.discovery.analyzer import read_answer_list
     from provisa.discovery.run import SYSTEM_PROMPT
-    from provisa.discovery.runner import Tally, read_answers
+    from provisa.discovery.runner import Tally, read_answers, read_pair_answers
     from provisa.discovery.threshold import DEFAULT
     from provisa.discovery.windows import plan
     from provisa.llm.client import ProvisaLLMClient
@@ -319,7 +318,7 @@ def test_discovery_suggests_the_permit_key_a_folder_of_files_shares(record_prope
     ]
     client = ProvisaLLMClient("relationship_inference", config=_OPENROUTER_CONFIG, api_keys={})
     answer = client.complete_sync_detailed(call.prompt(DEFAULT), SYSTEM_PROMPT, max_tokens)
-    read = read_answer_list(answer.text, answer.cut_off)
+    read = read_pair_answers(answer.text, answer.cut_off)
     assert read.items is not None, f"no list in the answer: {answer.text!r}"
     tally = Tally(total=1, threshold=DEFAULT)
     _, found, _, _ = read_answers(call, read.items, tally)

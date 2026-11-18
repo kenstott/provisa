@@ -330,9 +330,9 @@ def _wide(table_id: int, name: str, n: int) -> TableFacts:
 
 def test_pairs_are_batched_in_order_within_the_room_each_listed_once():
     tables = [_wide(i, f"t{i}", 6) for i in range(1, 6)]
-    planned = plan(tables, None, 3_000, 4_096)
+    planned = plan(tables, None, 1_500, 4_096)
     assert len(planned.calls) > 1
-    assert all(len(c.prompt(0.9999)) <= 3_000 * CHARS_PER_TOKEN for c in planned.calls)
+    assert all(len(c.prompt(0.9999)) <= 1_500 * CHARS_PER_TOKEN for c in planned.calls)
     listed = [p.key for c in planned.calls for p in c.pairs]
     assert len(listed) == len(set(listed)) == planned.table_pairs == 15  # 5 tables, 5 + 10 pairs
 
