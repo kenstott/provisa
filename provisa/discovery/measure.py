@@ -11,7 +11,7 @@
 """Every pair a discovery run proposes, measured on its data (REQ-413).
 
 For each pair a run measures (the semantic pairs in the band between the measure cutoff and the
-threshold, with Key value overlap chosen: :func:`provisa.discovery.runner.judged`), each column's
+run's threshold, with Key value overlap chosen: :func:`provisa.discovery.runner.judged`), each column's
 distinct values are read, at most the run's sample size of them (:data:`DISTINCT_BOUND` unless the
 dialog sets another), through the one governed pipeline as the person who started the
 run (:func:`provisa.discovery.gather.values_reader`). The measure is how many of the source

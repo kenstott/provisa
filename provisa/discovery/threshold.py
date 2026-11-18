@@ -27,14 +27,14 @@ from typing import TYPE_CHECKING, Any
 from sqlalchemy import select
 
 from provisa.core.schema_org import user_directory
-from provisa.discovery.context import KEPT_AT
 from provisa.discovery.measure import DISTINCT_BOUND
 
 if TYPE_CHECKING:
     from provisa.core.database import Connection
 
-#: The threshold of a person who has set none: the column's default.
-DEFAULT = KEPT_AT
+#: The threshold of a person who has set none: the column's default (REQ-413: 70%, the
+#: ``server_default`` of ``user_directory.discovery_threshold``).
+DEFAULT = 0.7
 
 
 async def read(conn: "Connection", user_id: str) -> float:

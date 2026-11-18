@@ -103,12 +103,14 @@ class Request:
     target: Window | None
     either_direction: bool
 
-    def prompt(self, at_most: int) -> str:
+    def prompt(self, at_most: int, threshold: float) -> str:
+        """The request as sent, stating the run's ``threshold`` (REQ-413)."""
         return context.prompt(
             self.group,
             at_most,
             self.source.blocks(),
             None if self.target is None else self.target.blocks(),
+            threshold=threshold,
             either_direction=self.either_direction,
         )
 
@@ -152,10 +154,12 @@ def window_chars(
     input_tokens: int, group: str, k: int, *, either_direction: bool, not_read: bool = False
 ) -> int:
     """The characters one window may hold: the input limit in characters, less the instructions
-    and headers, shared by the two windows of a request. ``not_read``: a table of the run is
-    never read, so a request's instructions may carry the text saying so."""
+    and headers, shared by the two windows of a request; the instructions are weighed at the
+    widest threshold they can state (:func:`provisa.discovery.context.instructions_chars`).
+    ``not_read``: a table of the run is never read, so a request's instructions may carry the
+    text saying so."""
     fixed = (
-        len(context.instructions(group, k, either_direction=either_direction, not_read=not_read))
+        context.instructions_chars(group, k, either_direction=either_direction, not_read=not_read)
         + _HEADERS
     )
     room = (input_tokens * CHARS_PER_TOKEN - fixed) // 2

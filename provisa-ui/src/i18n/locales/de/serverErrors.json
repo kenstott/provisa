@@ -17,7 +17,8 @@
       "webhook_exists": "Der Webhook '{{name}}' existiert bereits"
     },
     "ai_models": {
-      "vector_model_fields_required": "jeder vector_models-Eintrag erfordert id, provider und dimensions"
+      "vector_model_fields_required": "jeder vector_models-Eintrag erfordert id, provider und dimensions",
+      "embedding_library_missing": "Das Embedding-Modell {{model}} verwendet den Anbieter {{provider}}, der das Extra {{extra}} benötigt (das Modul {{module}} ist nicht installiert): pip install 'provisa[{{extra}}]'."
     },
     "ai": {
       "endpoint_address_from_server": "Der KI-Endpunkt {{vendor}} bezieht seine Adresse aus der Umgebung des Servers, die eine Organisation auf diesem Server nicht verwendet. Geben Sie ihm unter Admin, KI-Modelle eine eigene Adresse.",

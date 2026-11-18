@@ -875,6 +875,12 @@
         "help": "O máximo de chamadas que uma instrução faz a uma tabela parametrizada. Cada valor que uma instrução dá a um parâmetro é uma chamada à origem: cada valor de uma lista IN, cada ramo de um OR, cada chave distinta de um join. Uma instrução que precise de mais é recusada."
       }
     },
+    "embedding": {
+      "hub_endpoint": {
+        "label": "Endereço do hub do Hugging Face",
+        "help": "O hub do Hugging Face de onde um modelo de embeddings local é baixado, como um espelho dentro da sua rede. Aplica-se ao próximo download de modelo."
+      }
+    },
     "subscriptions": {
       "max_sinks_per_principal": {
         "label": "Sinks do Kafka em execução por pessoa",
