@@ -872,17 +872,19 @@ async def test_a_run_whose_model_fails_every_request_reports_each_and_finishes(
     run = await _run(world, _scope())
     assert run["status"] == "done"
     semantics = run["report"]["semantics"]
-    assert semantics["failed"] == [
-        {
-            "group": "whole_number",
-            "code": "llm.request_failed",
-            "params": {"reason": "vendor unavailable"},
-            "message": "The request to the model failed: vendor unavailable",
-        }
-    ]
+    # The call, then its table pairs asked once more: each failure reported, and the pairs
+    # still unanswered named (REQ-413, amended 2026-11-18).
+    failure = {
+        "table_pairs": ["customers × orders", "orders × orders"],
+        "code": "llm.request_failed",
+        "params": {"reason": "vendor unavailable"},
+        "message": "The request to the model failed: vendor unavailable",
+    }
+    assert semantics["failed"] == [failure, failure]
+    assert semantics["unanswered"] == ["customers × orders", "orders × orders"]
     # Every request failed: that is not the model proposing no relationships.
     assert semantics["empty_reason"] == "requests_failed"
-    assert semantics["requests_done"] == len(semantics["failed"]) == 1
+    assert semantics["requests_done"] == len(semantics["failed"]) == 2
 
 
 _SMALL_WINDOWS = {
@@ -1662,8 +1664,8 @@ async def test_a_run_keeps_every_proposal_it_read_with_why_it_was_left_out(monke
     ]
     assert kept[4]["confidence"] == 0.55 and kept[4]["reasoning"] == "orders name their customer"
     assert kept[4]["score"] == _HALF_IN_A_KEY
-    assert json.loads(kept[2]["answer"])["target_table_id"] == 9
-    assert json.loads(kept[3]["answer"]) == {"source_table_id": 1}
+    assert json.loads(kept[2]["answer"])["target_table"] == "no such table"
+    assert json.loads(kept[3]["answer"]) == {"source_table": "orders"}
 
     answered = await discovery.list_proposals(_REQUEST, run["id"])
     assert answered["threshold"] == 0.7

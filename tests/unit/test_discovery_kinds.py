@@ -424,7 +424,10 @@ async def test_a_cut_off_answer_keeps_its_complete_suggestions(monkeypatch, tmp_
     found = await d.run("semantics")
     assert found["semantics"]["proposed"] == 1
     assert found["semantics"]["suggested"] == 1
-    assert found["semantics"]["cut_short"] == 1
+    # The stub's vendor says each answer stopped at its limit: the cut one, and the answer to
+    # the pair asked again.
+    assert found["semantics"]["cut_short"] == 2
+    assert found["semantics"]["unanswered"] == []
     assert [(c["source_column"], c["target_column"]) for c in await _candidates(d.db)] == [
         ("customer_id", "id")
     ]
