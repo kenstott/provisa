@@ -47,6 +47,7 @@ _OWNED = {
     r"pip install[^\n]*mkdocs": "docs-site-deps",
     r"security import\b": "apple-signing",
     r"key: (\$\{\{ inputs.key-prefix \}\})?trino-plugins-": "trino-plugins",
+    r"key: (\$\{\{ inputs.key-prefix \}\})?provisa-functions-": "trino-plugins",
     r"key: pyodide-downloads-": "pyodide-downloads",
     r"gh release create": "ensure-release",
     r"rm -rf /usr/share/dotnet": "free-runner-disk",

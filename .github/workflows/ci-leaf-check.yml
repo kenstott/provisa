@@ -244,6 +244,7 @@ jobs:
             case "$jar" in trino/plugins/trino-*/trino-*.jar) ;; *) echo "unexpected: $jar"; exit 1 ;; esac
             rm "$jar"
           done
+          rm trino/plugins/provisa-functions/provisa-functions-1.jar
       - name: Restore
         id: restore
         uses: ./.github/actions/trino-plugins
@@ -256,6 +257,7 @@ jobs:
         run: |
           [ "$HIT" = "true" ]
           for jar in $JARS; do [ -s "$jar" ]; done
+          [ -s trino/plugins/provisa-functions/provisa-functions-1.jar ]
       # A key of this run's own, which nobody saved: a lane's restore fails on it.
       - name: Restore a key nobody saved
         id: miss

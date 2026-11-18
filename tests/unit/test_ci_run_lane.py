@@ -275,6 +275,10 @@ def test_the_plugin_cache_action_primes_once_and_every_lane_restores_and_verifie
         "Download Trino plugins",
         "Cache Trino plugins",
         "Verify Trino plugins",
+        "Restore the provisa-functions plugin",
+        "Build the provisa-functions plugin",
+        "Cache the provisa-functions plugin",
+        "Verify the provisa-functions plugin",
     ]
     restored = by_name["Restore Trino plugins"]["with"]
     # The pin behind a prefix that is empty for every caller but the action's own self-test.
@@ -297,6 +301,57 @@ def test_the_plugin_cache_action_primes_once_and_every_lane_restores_and_verifie
     # Every phase verifies each jar's sha256 before the job goes on, and never conditionally.
     assert by_name["Verify Trino plugins"]["run"] == "python3 tests/trino_plugins.py verify"
     assert "if" not in by_name["Verify Trino plugins"]
+
+
+def test_the_plugin_cache_action_builds_provisa_functions_once_and_every_lane_restores_it():
+    """Run 44216356740 (release 510, bench and core 13/18): the cache held only the pinned
+    trino-* jars, so every lane built Provisa's own function plugin with Maven inside collection
+    (conftest's first-use build) and each asked Maven Central for its plugins at the same moment;
+    core 13/18 got HTTP 429 for maven-compiler-plugin, bench a failed resolution of
+    maven-resources-plugin. The priming phase builds it once, keyed by every input of the build,
+    and a lane's restore must hit, so no lane runs Maven."""
+    by_name = {step["name"]: step for step in _plugin_cache_action()}
+    restored = by_name["Restore the provisa-functions plugin"]
+    assert restored["id"] == "provisa-functions"
+    assert restored["uses"] == "actions/cache/restore@v4"
+    assert restored["with"]["path"] == "trino/plugins/provisa-functions"
+    # Every input of the build is in the key: the Maven project, the portable fake definitions
+    # it mounts, and the script that names the Maven image. The prefix goes first, as for the
+    # pinned jars (run 40005357162).
+    assert restored["with"]["key"] == (
+        "${{ inputs.key-prefix }}provisa-functions-${{ hashFiles('trino-functions/**', "
+        "'provisa/fakes/portable/**', 'scripts/build_trino_functions.sh') }}-jar"
+    )
+    assert restored["with"]["fail-on-cache-miss"] == "${{ inputs.phase == 'restore' }}"
+    miss = "inputs.phase == 'prime' && steps.provisa-functions.outputs.cache-hit != 'true'"
+    built = by_name["Build the provisa-functions plugin"]
+    assert built["if"] == miss and built["run"] == "scripts/build_trino_functions.sh"
+    saved = by_name["Cache the provisa-functions plugin"]
+    assert saved["if"] == miss and saved["uses"] == "actions/cache/save@v4"
+    assert saved["with"] == {"path": restored["with"]["path"], "key": restored["with"]["key"]}
+    verify = by_name["Verify the provisa-functions plugin"]
+    assert "if" not in verify
+    assert "trino/plugins/provisa-functions/provisa-functions-1.jar" in verify["run"]
+
+
+def test_the_maven_image_that_builds_provisa_functions_is_pinned_to_one_release():
+    """The plugin's cache key hashes the build script, so the script names one Maven release: a
+    floating tag changes the default plugin versions (and so what Maven fetches) under an
+    unchanged key."""
+    import re
+
+    script = (REPO / "scripts" / "build_trino_functions.sh").read_text()
+    images = re.findall(r"\bmaven:\S+", script)
+    assert len(images) == 1, images
+    assert re.fullmatch(r"maven:\d+\.\d+\.\d+-eclipse-temurin-\d+", images[0]), images
+
+
+def test_no_lane_builds_provisa_functions_itself():
+    """The Trino stack script (UI Trino, swap and functions-conformance lanes) checks the jar its
+    caller restored; it never runs the Maven build of its own."""
+    stack = (REPO / "scripts" / "ci" / "lanes" / "trino-stack-prepare.sh").read_text()
+    assert "build_trino_functions.sh" not in stack
+    assert "trino/plugins/provisa-functions/provisa-functions-1.jar" in stack
 
 
 def test_the_plugin_cache_self_test_keys_cannot_stand_in_for_the_real_key():
