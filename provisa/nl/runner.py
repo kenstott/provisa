@@ -147,6 +147,15 @@ class AggregationPlan(NamedTuple):
     exposes it (``pet.breed_name``) — the split gRPC's include= takes. ``dim_paths_api`` names both
     segments physically (``pet.breed_name``, ``breedGroup.breed_name`` → ``breed_group.breed_name``)
     for JSON:API, whose params are physical end to end (REQ-1417).
+
+    The ``row_*`` fields carry a plain row read's selection, relationships nested (REQ-1929,
+    amended 2026-11-16), in each surface's own form: ``row_paths`` are REST ``?fields=`` dot-paths
+    by GraphQL name (``buildingPermit.permitNumber``); ``row_paths_grpc`` are ``read_mask`` paths,
+    a column by its physical (proto) name and a relationship by the related table's proto field;
+    ``row_fields_api`` is JSON:API's sparse fieldset of the base resource (physical) and
+    ``row_include_api`` its ``include`` (physical relationship paths). ``row_grpc_refusal`` says
+    why the gRPC ``{Type}`` message cannot read a selected relationship: it declares one relation
+    field per related table, the first relationship to it.
     """
 
     meta: Any
@@ -156,6 +165,11 @@ class AggregationPlan(NamedTuple):
     dim_paths: list[str]
     node_scalars: list[str] = []
     dim_paths_api: list[str] = []
+    row_paths: list[str] = []
+    row_paths_grpc: list[str] = []
+    row_grpc_refusal: str | None = None
+    row_fields_api: list[str] = []
+    row_include_api: list[str] = []
 
 
 def _aggregation_plan_from_graphql(ctx: Any, graphql_query: str) -> AggregationPlan | None:
@@ -268,9 +282,76 @@ def _plan_for_root_field(ctx: Any, meta: Any, field_node: Any) -> AggregationPla
                     node_sel, target.type_name, target.table_id, [rel], [physical_rel_name(rel)]
                 )
 
+    row = _RowSelection()
+    if not is_aggregate_only and not is_group_by and field_node.selection_set is not None:
+        row.walk(ctx, field_node, meta, [], [], [])
+
     return AggregationPlan(
-        meta, group_cols, is_aggregate_only, funcs, dim_paths, node_scalars, dim_paths_api
+        meta,
+        group_cols,
+        is_aggregate_only,
+        funcs,
+        dim_paths,
+        node_scalars,
+        dim_paths_api,
+        row.paths,
+        row.paths_grpc,
+        row.grpc_refusal,
+        row.fields_api,
+        list(dict.fromkeys(row.include_api)),
     )
+
+
+class _RowSelection:
+    """A plain row read's GraphQL selection, rewritten into each derived surface's form
+    (REQ-1929): see :class:`AggregationPlan`'s ``row_*`` fields."""
+
+    def __init__(self) -> None:
+        self.paths: list[str] = []
+        self.paths_grpc: list[str] = []
+        self.grpc_refusal: str | None = None
+        self.fields_api: list[str] = []
+        self.include_api: list[str] = []
+
+    def walk(
+        self,
+        ctx: Any,
+        node: Any,
+        meta: Any,
+        gql_path: list[str],
+        grpc_path: list[str],
+        api_path: list[str],
+    ) -> None:
+        from graphql import FieldNode
+
+        from provisa.grpc.proto_gen import _to_proto_field_name
+        from provisa.grpc.query_ir import _relation_field
+
+        for sel in node.selection_set.selections:
+            if not isinstance(sel, FieldNode) or sel.name.value.startswith("__"):
+                continue
+            name = sel.name.value
+            if sel.selection_set is None:
+                physical = ctx.exposed_to_physical.get((meta.table_id, name), name)
+                self.paths.append(".".join([*gql_path, name]))
+                self.paths_grpc.append(".".join([*grpc_path, physical]))
+                if not api_path:
+                    self.fields_api.append(physical)
+                continue
+            # The query is schema-validated, so a field with a selection is a relationship the
+            # compiler registered a join for.
+            join = ctx.joins[(meta.type_name, name)]
+            proto = _to_proto_field_name(join.target.field_name)
+            read_by = _relation_field(ctx, meta, proto)
+            if self.grpc_refusal is None and (read_by is None or read_by[0] != name):
+                held = "no relationship" if read_by is None else f"relationship {read_by[0]!r}"
+                self.grpc_refusal = (
+                    f"the gRPC {_to_proto_type_name(meta.type_name)} message has no field for "
+                    f"relationship {name!r}: its {proto!r} field reads {held}"
+                )
+            rel_api = [*api_path, physical_rel_name(name)]
+            self.include_api.append(".".join(rel_api))
+            self.walk(ctx, sel, join.target, [*gql_path, name], [*grpc_path, proto], rel_api)
 
 
 def _resolve_aggregation_plan(
@@ -452,6 +533,12 @@ def _generate_grpc_query(
                 return f"Query{proto_type}Aggregate({funcs_arg})", None
             return f"Query{proto_type}Aggregate", None
         if not plan.group_cols:
+            if plan.row_grpc_refusal is not None:
+                return None, plan.row_grpc_refusal
+            if plan.row_paths_grpc:
+                # REQ-1929: read_mask names the GraphQL selection, a relationship by the related
+                # table's proto field, so the row's relationships come back nested.
+                return f"Query{proto_type}(read_mask=[{', '.join(plan.row_paths_grpc)}])", None
             return f"Query{proto_type}", None
         args = [f"by=[{', '.join(plan.group_cols)}]"]
         if funcs_arg:
@@ -491,7 +578,14 @@ def _generate_jsonapi_query(
         if plan.is_aggregate_only:
             return f"{base}?aggregate={aggregate_param}", None
         if not plan.group_cols:
-            return f"{base}?{_JSONAPI_ROW_PAGE}", None
+            # REQ-1929: the base resource's sparse fieldset and the relationships as include, both
+            # physical (REQ-1417); an included resource carries its own fields.
+            params = []
+            if plan.row_fields_api:
+                params.append(f"fields[{plan.meta.table_name}]={','.join(plan.row_fields_api)}")
+            if plan.row_include_api:
+                params.append(f"include={','.join(plan.row_include_api)}")
+            return f"{base}?{'&'.join([*params, _JSONAPI_ROW_PAGE])}", None
         # REQ-1408: JSON:API's group-by handler honours includeNodes only as true/1 and takes the
         # relationship projection through its own ?include= list, whose entries are relationship
         # names or "rel.col" dot-paths (generator.py::_build_group_by_node_selection). Naming the
@@ -523,7 +617,10 @@ def _generate_openapi_query(
         if plan.is_aggregate_only:
             return f"{base}?aggregate={aggregate_param}", None
         if not plan.group_cols:
-            return base, None
+            # REQ-1929: ?fields= takes the GraphQL selection as dot-paths through relationships,
+            # and the related row comes back nested. Capped as the plain browse below is.
+            fields = f"fields={','.join(plan.row_paths)}&" if plan.row_paths else ""
+            return f"{base}?{fields}limit=20", None
         # REQ-1408: REST has no ?include= — its group-by handler (provisa/api/rest/generator.py)
         # reads the whole nodes projection off ?includeNodes= as a dot-path list, so scalars and
         # relation columns go into the one param.
