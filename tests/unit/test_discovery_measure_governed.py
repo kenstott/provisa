@@ -27,6 +27,7 @@ import pytest
 
 from provisa.discovery import gather, measure
 from provisa.discovery.columns import UNKNOWN, ColumnFacts, TableFacts, type_groups
+from provisa.discovery.context import CONTAINED_AT, SHARED_CEILING, Scoring
 from provisa.discovery.direction import from_answer
 from provisa.discovery.measure import Measurer
 from tests.unit.test_empty_domain_access_reaches_nothing import (
@@ -170,7 +171,11 @@ def _proposal():
 
 async def test_a_pair_that_cannot_be_read_is_left_unmeasured_saying_why():
     measurer = Measurer(
-        _Unreadable(), {SALES: ORDERS, FINANCE: LEDGER}, decided=frozenset(), bound=500
+        _Unreadable(),
+        {SALES: ORDERS, FINANCE: LEDGER},
+        decided=frozenset(),
+        bound=500,
+        scoring=Scoring(CONTAINED_AT, SHARED_CEILING),
     )
     got = await measurer.measured(_proposal())
     m = got.measure
@@ -184,7 +189,11 @@ async def test_an_unreadable_pair_leaves_the_run_done_with_that_pair_left_out():
     from provisa.discovery.runner import KeyValues, Tally, judged
 
     measurer = Measurer(
-        _Unreadable(), {SALES: ORDERS, FINANCE: LEDGER}, decided=frozenset(), bound=500
+        _Unreadable(),
+        {SALES: ORDERS, FINANCE: LEDGER},
+        decided=frozenset(),
+        bound=500,
+        scoring=Scoring(CONTAINED_AT, SHARED_CEILING),
     )
     tally = Tally(total=1, threshold=0.7)
     kept = await judged([_proposal()], [], KeyValues(measure=measurer.all, cutoff=0.3), None, tally)
