@@ -54,7 +54,7 @@ from provisa.discovery.columns import (
     classes_of,
     type_groups,
 )
-from provisa.discovery.context import SAMPLE_VALUES, sample_text
+from provisa.discovery.context import sample_text
 from provisa.discovery.direction import Edge, Known, Sampled
 
 if TYPE_CHECKING:
@@ -68,10 +68,6 @@ VALUES_PER_COLUMN = 500
 #: The profiler's default sample budget (a profiler source's sample_above_cells, absent by
 #: default: the whole table is read), for a never-profiled table's classification.
 SAMPLE_ABOVE_CELLS: int | None = None
-#: Rows read for a column's sample values, and the distinct values sent of them: what discovery
-#: has read and sent per table since REQ-018 (collect_metadata samples 20 rows, the prompt sent 5).
-CONTEXT_SAMPLE_ROWS = 20
-CONTEXT_SAMPLE_VALUES = SAMPLE_VALUES
 #: The bounded sample of a column read for repeated values when only it can choose a direction.
 UNIQUENESS_SAMPLE_ROWS = 500
 
@@ -278,27 +274,30 @@ def _quote(name: str) -> str:
 
 
 async def _samples(
-    state: Any, table_id: int, table_name: str, columns: list[str]
+    state: Any, table_id: int, table_name: str, columns: list[str], per_column: int
 ) -> dict[str, tuple[str, ...]]:
-    """Up to :data:`CONTEXT_SAMPLE_VALUES` distinct non-null values of each column, from the
-    first :data:`CONTEXT_SAMPLE_ROWS` rows read. A column the org admin's relation does not hold
-    has none."""
+    """Up to ``per_column`` (the run's samples per column, REQ-413, amended 2026-11-18: set in the
+    discover dialog) distinct non-null values of each column (each column's distinct values, not
+    its first rows), one read per column.
+    They only show what kind of values a column holds. A column the org admin's relation does not
+    hold has none."""
     if not columns:
         return {}
     relation, exposed = _published(state, table_id, table_name)
-    columns = [c for c in columns if c in exposed]
-    if not columns:
-        return {}
-    cols = ", ".join(_quote(exposed[c]) for c in columns)
-    rows = await _rows(table_name, f"SELECT {cols} FROM {relation} LIMIT {CONTEXT_SAMPLE_ROWS}")
-    out: dict[str, list[str]] = {c: [] for c in columns}
-    for row in rows:
-        for name, value in zip(columns, row, strict=True):
-            text = None if value is None else sample_text(value)
-            held = out[name]
-            if text is not None and text not in held and len(held) < CONTEXT_SAMPLE_VALUES:
+    out: dict[str, tuple[str, ...]] = {}
+    for name in (c for c in columns if c in exposed):
+        col = _quote(exposed[name])
+        rows = await _rows(
+            table_name,
+            f"SELECT DISTINCT {col} FROM {relation} WHERE {col} IS NOT NULL LIMIT {per_column}",
+        )
+        held: list[str] = []
+        for (value,) in rows:
+            text = sample_text(value)
+            if text not in held:
                 held.append(text)
-    return {c: tuple(v) for c, v in out.items()}
+        out[name] = tuple(held)
+    return out
 
 
 def _sensitive(classes: tuple[str, ...]) -> bool:
@@ -329,6 +328,7 @@ async def registered_facts(state: Any, conn: "Connection", ids: Sequence[int]) -
                     rt.c.domain_id,
                     rt.c.schema_name,
                     rt.c.table_name,
+                    rt.c.alias,
                     rt.c.description,
                     rt.c.modeling_role,
                 ).where(rt.c.id.in_(id_list))
@@ -341,6 +341,7 @@ async def registered_facts(state: Any, conn: "Connection", ids: Sequence[int]) -
             select(
                 tc.c.table_id,
                 tc.c.column_name,
+                tc.c.alias,
                 tc.c.description,
                 tc.c.data_type,
                 tc.c.subtype,
@@ -388,6 +389,7 @@ async def registered_facts(state: Any, conn: "Connection", ids: Sequence[int]) -
                     parameter_name(c) if reduced and is_parameter(c) and is_required(c) else None
                 ),
                 term=terms.get((tid, str(c["column_name"]))),
+                alias=c["alias"] or None,
             )
             for c in columns.get(tid, [])
         )
@@ -401,6 +403,7 @@ async def registered_facts(state: Any, conn: "Connection", ids: Sequence[int]) -
                 tags=tuple(sorted(table_tags.get(tid, []))),
                 role=t["modeling_role"],
                 columns=facts,
+                alias=t["alias"] or None,
             )
         )
     return out
@@ -410,11 +413,13 @@ async def table_facts(
     state: Any,
     conn: "Connection",
     ids: Sequence[int],
+    samples_per_column: int,
     on_table: Callable[[int, int], Awaitable[None]] | None = None,
 ) -> list[TableFacts]:
     """Every table of ``ids`` with its context and its columns' facts, as a run reads them: what
     is registered (:func:`registered_facts`), and for each table that is read, its columns'
-    classes and sample values. ``on_table(read, total)`` is told after each table is read."""
+    classes and up to ``samples_per_column`` (the run's) sample values each.
+    ``on_table(read, total)`` is told after each table is read."""
     registered = await registered_facts(state, conn, ids)
     decided = await _decided(conn, [t.table_id for t in registered])
     out: list[TableFacts] = []
@@ -431,7 +436,7 @@ async def table_facts(
                 classes = classes_of(matched.get(c.name, set()), decided.get((tid, c.name), set()))
                 classed.append(replace(c, classes=classes, sensitive=_sensitive(classes)))
             sampled = [c.name for c in classed if c.groups and not c.sensitive]
-            samples = await _samples(state, tid, table.table_name, sampled)
+            samples = await _samples(state, tid, table.table_name, sampled, samples_per_column)
             table = replace(
                 table, columns=tuple(replace(c, samples=samples.get(c.name, ())) for c in classed)
             )
@@ -541,6 +546,18 @@ async def _governed_as(sql: str, role: str) -> list[tuple]:
     from provisa.profiler import run as profiler
 
     return (await profiler._execute(await _govern_and_route(sql, role)))[1]
+
+
+async def _measured_as(sql: str, role: str) -> list[tuple]:
+    """The rows of a pair's key value overlap join count through the governed pipeline as
+    ``role``: its rules, masks and row rules applied to each table it reads. The query is the
+    product's own (REQ-413, amended 2026-11-18): a candidate pair has no relationship yet, so the
+    approved-relationship check is not held on it; every other check is."""
+    from provisa.pgwire._pipeline import _govern_and_route
+    from provisa.profiler import run as profiler
+
+    plan = await _govern_and_route(sql, role, product_statement=True)
+    return (await profiler._execute(plan))[1]
 
 
 def _literal(value: Any) -> str:

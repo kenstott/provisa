@@ -24,7 +24,6 @@ key, marking no key on customers.
 from __future__ import annotations
 
 import json
-import re
 import sqlite3
 import threading
 import time
@@ -34,6 +33,8 @@ import httpx
 import pytest
 import yaml
 
+from tests.unit.discovery_answers import answer, column_pair
+
 pytestmark = [pytest.mark.integration, pytest.mark.local_platform]
 
 _ROLE = "org_admin"
@@ -42,8 +43,8 @@ _MODEL = "fake-relationship-model"
 
 
 class _Endpoint:
-    """An OpenAI-compatible endpoint: every chat completion answers that orders.customer_id refers
-    to customers.id, the tables named by the ids the request itself carries."""
+    """An OpenAI-compatible endpoint: every chat completion answers each table pair it lists, the
+    orders x customers pair with orders.customer_id referring to customers.id."""
 
     def __init__(self) -> None:
         self.prompts: list[str] = []
@@ -54,24 +55,20 @@ class _Endpoint:
                 body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
                 prompt = body["messages"][-1]["content"]
                 endpoint.prompts.append(prompt)
-                ids = {
-                    name: int(tid)
-                    for tid, name in re.findall(r'"id":(\d+),"name":"(orders|customers)"', prompt)
-                }
-                answer: list[dict] = []
-                if {"orders", "customers"} <= set(ids):
-                    answer.append(
-                        {
-                            "source_table_id": ids["orders"],
-                            "source_column": "customer_id",
-                            "target_table_id": ids["customers"],
-                            "target_column": "id",
-                            "cardinality": "many-to-one",
-                            "confidence": 0.95,
-                            "reasoning": "each order names its customer",
-                            "suggested_name": "customer-orders",
-                        }
-                    )
+                # REQ-413 (amended 2026-11-18): each listed table pair is answered under its
+                # number; the orders x customers pair names customer_id -> id, every other "none".
+                content = answer(
+                    prompt,
+                    [
+                        column_pair(
+                            ("orders", "customer_id"),
+                            ("customers", "id"),
+                            confidence=0.95,
+                            reasoning="each order names its customer",
+                            suggested_name="customer-orders",
+                        )
+                    ],
+                )
                 payload = json.dumps(
                     {
                         "id": "chatcmpl-1",
@@ -81,7 +78,7 @@ class _Endpoint:
                         "choices": [
                             {
                                 "index": 0,
-                                "message": {"role": "assistant", "content": json.dumps(answer)},
+                                "message": {"role": "assistant", "content": content},
                                 "finish_reason": "stop",
                             }
                         ],
@@ -223,7 +220,12 @@ def _columns(srv) -> dict[tuple[str, str], dict]:
 
 
 def test_a_small_discovery_runs_end_to_end(server, endpoint):
-    scope = {"kinds": ["semantics"], "source_domains": ["shop"]}
+    scope = {
+        "kinds": ["semantics"],
+        "source_domains": ["shop"],
+        "threshold": 0.7,
+        "samples_per_column": 5,
+    }
 
     models = _get(server, "/admin/discover/models")
     assert models["assigned"]["vendor"] == "test-endpoint"
@@ -234,8 +236,10 @@ def test_a_small_discovery_runs_end_to_end(server, endpoint):
     )
 
     counted = _post(server, "/admin/discover/runs/count", scope)
-    assert counted["requests"] >= 1
-    assert sum(counted["by_group"].values()) == counted["requests"]
+    # REQ-413 (amended 2026-11-18): the count is of calls and the table pairs they list.
+    assert 1 <= counted["requests"] <= counted["table_pairs"], counted
+    assert counted["requests"] * counted["table_pairs_per_request"] >= counted["table_pairs"]
+    assert counted["by_group"] == {}
     assert endpoint.prompts == []
 
     run = _post(server, "/admin/discover/runs", scope)["run"]

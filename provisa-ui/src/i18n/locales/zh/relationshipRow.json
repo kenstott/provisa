@@ -55,7 +55,18 @@
       "sql": "用 SQL 读取 {{name}}",
       "sparql": "用 SPARQL 读取 {{name}}",
       "graphql": "用 GraphQL 读取 {{name}}",
-      "jsonapi": "用 JSON:API 读取 {{name}}"
+      "rest": "用 REST 读取 {{name}}",
+      "grpc": "用 gRPC 读取 {{name}}",
+      "jsonapi": "用 JSON:API 读取 {{name}}",
+      "surfaces": {
+        "cypher": "Cypher",
+        "sql": "SQL",
+        "sparql": "SPARQL",
+        "graphql": "GraphQL",
+        "rest": "REST",
+        "grpc": "gRPC",
+        "jsonapi": "JSON:API"
+      }
     }
   }
 }

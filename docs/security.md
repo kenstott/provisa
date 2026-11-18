@@ -443,6 +443,12 @@ The list has four parts:
 
 A rule is either a named regular expression or a named `${secret:NAME}` / `${env:NAME}` reference, which matches the value the reference resolves to. A reference that does not resolve is logged at `ERROR` by name and shown as unresolved; the other rules still apply. Values shorter than four characters are not matched.
 
+In a sandbox, and on a server of many organizations, your organization's rules cannot use `${env:NAME}`. Saving one is refused with `redaction.server_reference`. Use `${secret:NAME}` from your organization's vault instead. The deployment's own organization keeps `${env:NAME}`.
+
+Your organization's patterns are checked when you save them. Provisa refuses a pattern that uses a back reference, lookaround, an atomic group, a possessive repeat or a conditional (`redaction.pattern_unsupported`). It also refuses one that nests a repeat inside an unbounded repeat, or puts alternatives that can begin with the same character inside an unbounded repeat (`redaction.pattern_backtracks`). A pattern that compiles too large is refused with `redaction.pattern_too_large`. The deployment's rules keep the full regular-expression syntax.
+
+At run time, your patterns go through a matcher that never backtracks. Each search has a step limit that grows with the length of the text. Should a pattern exceed it, the whole text is withheld and replaced by that rule's marker. Provisa logs the rule by name at `ERROR`, once, and `GET /admin/redaction` lists it under `exceeded`. One organization's pattern therefore can't stall the writing of another organization's records.
+
 Provisa is not responsible for knowing every sensitive format. The built-ins cover common shapes; an organization adds patterns for its own formats, such as employee numbers, account identifiers or internal hostnames. Redaction is best effort: a value written in a shape no rule describes passes through.
 
 The rules are on the **Org Secrets** page, under **Redaction rules**. The page lists the built-ins, the deployment's rules (editable with `platform_settings`), the organization's rules, the automatic rule's secrets by name only, and any reference that does not resolve. The rules are loaded when the server starts and when an organization's runtime is built, and reloaded when the model or the settings change and when an organization secret is stored or removed.
@@ -455,7 +461,7 @@ The list applies at every exit Provisa writes:
 - the error messages a client receives over HTTP, pgwire, gRPC, Arrow Flight, MCP and Bolt. An error inside a successful answer, such as a GraphQL `errors` list in a 200 response or a subscription's last frame, is redacted the same way as one in a 400 response;
 - the text Provisa sends a model, such as a prompt or an embedding input, which carries the bare marker.
 
-Telemetry and client errors are not tied to one organization when they are written, so they are redacted by every organization's rules together. Two errors are passed through unredacted: an HTTP error body larger than 1 MiB, and the error of an Arrow Flight stream that fails after it has started sending.
+Your organization's rules apply only to text your organization produced: its spans, log records, audit entries and administrative trail, and what its requests send to clients and models. Some records come from no organization, such as a line written at startup. Those get the built-in patterns, the deployment's rules and every secret value Provisa holds, so no secret is written out for lack of an organization. Two errors are passed through unredacted: an HTTP error body larger than 1 MiB, and the error of an Arrow Flight stream that fails after it has started sending.
 
 A federated source keeps its own logs, which Provisa does not write and cannot reach. Records a source makes of the statements Provisa sends it are that source's to protect.
 
