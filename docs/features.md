@@ -645,7 +645,7 @@ Org admins run their team from a Team page: create, copy and revoke invitation l
 A public Try it Out link gives each visitor a sandbox. Startup builds the sandbox org itself, and a single invitation admits many people, each into an environment named after them. The environment lasts for a span of use rather than a fixed deadline, so an hour of work does not end it, and reopening the link finds the environment the visitor already holds. Any org admin can mint such an invitation from their own Team page, deployment administrators may use the sandbox, and a visitor's account is deleted when they leave.
 { #organizations-sandbox }
 
-An org can make the workspace its own. An admin sets a display name and logo for the surfaces its people meet, including the glossary and Explore pages of a data portal. On a multi-tenant deployment the org also picks the AI model it uses, with its own API key per vendor and a model picker read live from the vendor. Files that Provisa generates for an org, such as conversion caches and crawl downloads, are kept under the org.
+An org can make the workspace its own. An admin sets a display name and logo for the surfaces its people meet, including the glossary and Explore pages of a data portal. On a multi-tenant deployment the org also picks the AI model it uses, with its own API key per vendor and a model picker read live from the vendor. Its AI runs only on the keys it stored, never on a key from the server's environment. Files that Provisa generates for an org, such as conversion caches and crawl downloads, are kept under the org.
 { #organizations-customization }
 
 ### Hasura migration

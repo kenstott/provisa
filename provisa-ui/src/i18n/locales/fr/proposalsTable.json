@@ -29,15 +29,9 @@
       "not_comparable": "Les deux colonnes ont des classes différentes, elles ne sont donc pas comparées",
       "below_threshold": "Score inférieur aux {{threshold}} % à partir desquels une suggestion est conservée.",
       "same_column": "D'une colonne vers elle-même",
-      "primary_key_to_primary_key": "Clé primaire vers clé primaire",
-      "both_repeating": "Les valeurs se répètent des deux côtés, aucun n'est donc le côté un",
       "existing": "Déjà enregistrée",
-      "pending": "Déjà en attente parmi les suggestions",
       "rejected": "Rejetée auparavant",
-      "matches_foreign_key": "Correspond à une clé étrangère trouvée dans cette exécution",
-      "out_of_scope": "Hors des tables source et cible choisies",
-      "weaker": "Une proposition plus forte des deux mêmes colonnes a été gardée",
-      "many_to_many": "Aucune des deux colonnes n'est une clé"
+      "out_of_scope": "Hors des tables source et cible choisies"
     },
     "threshold": "Cocher à partir de",
     "thresholdHint": "Votre propre seuil, conservé pour vos prochaines exécutions.",
@@ -63,7 +57,10 @@
     },
     "dimensionMade": "L'accepter crée la dimension partagée {{name}}, à laquelle les deux colonnes sont jointes.",
     "dimensionJoined": "L'accepter joint les deux colonnes à la dimension partagée {{name}}.",
+    "through": "Via {{table}}.",
     "twoDimensions": "Ses colonnes sont déjà jointes à deux dimensions partagées différentes, elle ne peut donc pas être acceptée.",
-    "admittedOnKeyValues": "Admise parce que les valeurs de clé concordent dans les données ; la mesure est affichée à côté de la confiance du modèle."
+    "admittedOnKeyValues": "Admise parce que les valeurs de clé concordent dans les données ; la mesure est affichée à côté de la confiance du modèle.",
+    "hiddenByFilter_one": "{{count}} ligne est masquée par le filtre.",
+    "hiddenByFilter_other": "{{count}} lignes sont masquées par le filtre."
   }
 }

@@ -19,19 +19,36 @@
 // the table scrolls under its pinned header row in the room the dialog leaves it (REQ-1587's
 // pinned list header). A many-to-many pair (neither column a key) is accepted as a shared
 // dimension: its row names the dimension, and Apply sends that name.
+// The Score column carries the list's column filter, Score >= 10% when the results open, shown as
+// a chip above the rows like any other filter; a line under them says how many it hides
+// (REQ-413, amended 2026-11-18).
 
 import { useMemo, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { Alert, Button, Checkbox, Group, NumberInput, Table, Text } from "@mantine/core";
+import {
+  ActionIcon,
+  Alert,
+  Badge,
+  Button,
+  Checkbox,
+  Group,
+  NumberInput,
+  Table,
+  Text,
+} from "@mantine/core";
+import { X } from "lucide-react";
 import type { RunProposal } from "../../api/admin";
 import { FormField, FormLayout } from "../form/FormLayout";
 import { BreakableName } from "../list/BreakableName";
 import { ListActionsHead, ListHead, ListRow, ListTable } from "../list/ListTable";
 import type { ListSelection } from "../list/listSelection";
 import { useListSortGroup, type ListColumn } from "../list/useListSortGroup";
+import { ColumnFilterMenu } from "../../pages/sql/ColumnFilterMenu";
+import { describeFilter } from "../../pages/sql/columnFilterLabel";
+import { cellKey } from "../../pages/sql/columnFilter";
 import { measureLines } from "./pairMeasure";
 import { candidateName } from "./relationship-types";
-import type { RunProposalsState } from "./useRunProposals";
+import { scorePercent, type RunProposalsState } from "./useRunProposals";
 
 interface ProposalsTableProps {
   state: RunProposalsState;
@@ -111,12 +128,27 @@ export function ProposalsTable({
     },
     { key: "kind", label: t("proposalsTable.colKind"), sortValue: (p) => p.kind },
   ];
-  // Unsorted, the rows keep the order they were read in: the highest score first.
-  const sort = useListSortGroup(proposals, columns, "discover-proposals");
+  // Unsorted, the rows keep the order they were read in: the highest score first. Only the rows
+  // the Score filter shows are listed.
+  const sort = useListSortGroup(state.shown, columns, "discover-proposals");
+  const hidden = proposals.length - state.shown.length;
+  const scoreLabel = t("proposalsTable.colScore");
+  // The Score filter's checklist: the scores the run's rows hold, as their cells show them.
+  const scoreValues = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const p of proposals) {
+      const k = cellKey(scorePercent(p));
+      counts.set(k, (counts.get(k) ?? 0) + 1);
+    }
+    return [...counts.entries()]
+      .map(([value, count]) => ({ value, count }))
+      .sort((a, b) => Number(b.value) - Number(a.value));
+  }, [proposals]);
 
+  // Select-all and Accept act only on the rows the filter shows.
   const acceptable = useMemo(
-    () => proposals.filter((p) => p.acceptable).map((p) => String(p.id)),
-    [proposals],
+    () => state.shown.filter((p) => p.acceptable).map((p) => String(p.id)),
+    [state.shown],
   );
   // The list's own selection column is the accept box.
   const selection: ListSelection = {
@@ -131,7 +163,7 @@ export function ProposalsTable({
 
   const chosen = (ids: ReadonlySet<number>) =>
     proposals.filter((p) => p.decidable && ids.has(p.id)).length;
-  const accepting = proposals.filter((p) => p.acceptable && state.accept.has(p.id)).length;
+  const accepting = state.shown.filter((p) => p.acceptable && state.accept.has(p.id)).length;
   const marking = chosen(state.notAgain);
   const applyLabel =
     accepting > 0 && marking > 0
@@ -146,6 +178,8 @@ export function ProposalsTable({
   // dimension's name must be among them.
   const note = (p: RunProposal) =>
     [
+      // REQ-1586: a junction suggestion names the junction its two ends are joined through.
+      p.via ? t("proposalsTable.through", { table: tableNameById[p.via.table_id] }) : "",
       p.dimension
         ? t(
             p.dimension.reused ? "proposalsTable.dimensionJoined" : "proposalsTable.dimensionMade",
@@ -235,6 +269,29 @@ export function ProposalsTable({
           )}
         </Group>
       </Group>
+      {proposals.length > 0 && state.scoreFilter !== null && (
+        <Group gap="xs" mb="xs" data-testid="discover-filter-chips">
+          <Badge
+            size="md"
+            variant="light"
+            tt="none"
+            data-testid="discover-filter-chip-score"
+            rightSection={
+              <ActionIcon
+                size="xs"
+                variant="transparent"
+                aria-label={t("columnFilter.removeFilter", { column: scoreLabel })}
+                data-testid="discover-filter-chip-remove-score"
+                onClick={() => state.setScoreFilter(null)}
+              >
+                <X size={11} />
+              </ActionIcon>
+            }
+          >
+            {describeFilter(t, { col: scoreLabel, kind: "number", spec: state.scoreFilter })}
+          </Badge>
+        </Group>
+      )}
       {proposals.length > 0 && (
         // The list's pinned header (REQ-1587): the rows scroll beneath it in the height the
         // dialog leaves, and sideways where the columns cannot fit.
@@ -248,7 +305,20 @@ export function ProposalsTable({
             <ListHead
               sortGroup={sort}
               columns={[
-                { col: "score" },
+                {
+                  col: "score",
+                  filter: (
+                    <ColumnFilterMenu
+                      col={scoreLabel}
+                      kind="number"
+                      current={state.scoreFilter}
+                      values={scoreValues}
+                      valuesFromPage={false}
+                      rowsHeld={proposals.length}
+                      onApply={state.setScoreFilter}
+                    />
+                  ),
+                },
                 { col: "confidence" },
                 ...(jevScored ? [{ col: "jev" }] : []),
                 { col: "source" },
@@ -331,6 +401,11 @@ export function ProposalsTable({
             </Table.Tbody>
           </ListTable>
         </div>
+      )}
+      {proposals.length > 0 && state.scoreFilter !== null && (
+        <Text fz="sm" c="dimmed" mt="xs" data-testid="discover-filter-hidden">
+          {t("proposalsTable.hiddenByFilter", { count: hidden })}
+        </Text>
       )}
     </>
   );
