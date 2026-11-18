@@ -63,6 +63,7 @@
     },
     "dimensionMade": "Al aceptarla se crea la dimensión compartida {{name}}, a la que se unen ambas columnas.",
     "dimensionJoined": "Al aceptarla, ambas columnas se unen a la dimensión compartida {{name}}.",
+    "through": "A través de {{table}}.",
     "twoDimensions": "Sus columnas ya se unen a dos dimensiones compartidas distintas, así que no se puede aceptar.",
     "admittedOnKeyValues": "Admitido porque los valores clave coinciden en los datos; la medida se muestra junto a la confianza del modelo."
   }

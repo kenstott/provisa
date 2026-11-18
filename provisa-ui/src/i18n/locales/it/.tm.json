@@ -10914,6 +10914,7 @@
   "it/proposalsTable.json::proposalsTable.colConfidence": "Confidence",
   "it/proposalsTable.json::proposalsTable.dimensionMade": "Accepting makes the shared dimension {{name}}, which both columns join.",
   "it/proposalsTable.json::proposalsTable.dimensionJoined": "Accepting joins both columns to the shared dimension {{name}}.",
+  "it/proposalsTable.json::proposalsTable.through": "Through {{table}}.",
   "it/proposalsTable.json::proposalsTable.twoDimensions": "Its columns already join two different shared dimensions, so it cannot be accepted.",
   "it/proposalsTable.json::proposalsTable.measure.both": "Both columns are keys.",
   "it/proposalsTable.json::proposalsTable.measure.inSource": "{{found}} of {{values}} target values in the source.",

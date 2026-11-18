@@ -66,6 +66,7 @@ const proposal: RunProposal = {
   reduced_information: false,
   admitted_on_key_values: false,
   dimension: null,
+  via: null,
 };
 
 const state: RunProposalsState = {
@@ -101,5 +102,32 @@ describe("proposals table", () => {
     const score = headers.findIndex((h) => h.startsWith("Score"));
     expect(headers[score + 1]).toMatch(/^Confidence/);
     expect(headers.some((h) => h.startsWith("Model"))).toBe(false);
+  });
+});
+
+describe("a junction suggestion", () => {
+  // REQ-1586: a discovery run that finds both legs of a junction proposes the combined
+  // relationship as one suggestion; its row names the junction its two ends are joined through.
+  const render = (p: RunProposal) =>
+    renderWithProviders(
+      <ProposalsTable
+        state={{ ...state, proposals: [p] }}
+        tableDomainById={{ 10: "sales", 20: "sales", 30: "sales" }}
+        tableNameById={{ 10: "orders", 20: "customers", 30: "order_customers" }}
+        newRun={null}
+      />,
+    );
+
+  it("names the junction it joins through", () => {
+    render({
+      ...proposal,
+      via: { table_id: 30, source_column: "order_id", target_column: "customer_id" },
+    });
+    expect(screen.getByText(/Through order_customers\./)).toBeInTheDocument();
+  });
+
+  it("names none on an ordinary suggestion", () => {
+    render(proposal);
+    expect(screen.queryByText(/Through /)).toBeNull();
   });
 });

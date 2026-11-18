@@ -867,6 +867,9 @@ export interface RunProposal {
   /** A many-to-many pair: the shared dimension accepting it makes, or the registered one it
    *  joins (``reused``). Null for any other pair. */
   dimension: { name: string; reused: boolean } | null;
+  /** REQ-1586: a junction suggestion, the junction its two ends are joined through. Null for
+   *  any other pair. */
+  via: { table_id: number; source_column: string; target_column: string } | null;
 }
 
 /** A run's report once semantics is under way or the run has ended. */

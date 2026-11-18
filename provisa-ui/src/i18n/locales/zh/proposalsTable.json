@@ -63,6 +63,7 @@
     },
     "dimensionMade": "接受后会创建共享维度 {{name}}，两列都与其关联。",
     "dimensionJoined": "接受后，两列都会关联到共享维度 {{name}}。",
+    "through": "经由 {{table}}。",
     "twoDimensions": "其列已关联到两个不同的共享维度，因此无法接受。",
     "admittedOnKeyValues": "因数据中键值匹配而采纳；测量结果显示在模型置信度旁边。"
   }

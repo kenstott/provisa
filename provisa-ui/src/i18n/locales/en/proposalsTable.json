@@ -63,6 +63,7 @@
     },
     "dimensionMade": "Accepting makes the shared dimension {{name}}, which both columns join.",
     "dimensionJoined": "Accepting joins both columns to the shared dimension {{name}}.",
+    "through": "Through {{table}}.",
     "twoDimensions": "Its columns already join two different shared dimensions, so it cannot be accepted.",
     "admittedOnKeyValues": "Admitted on key values matching in the data; the measure is shown beside the model's confidence."
   }

@@ -10909,6 +10909,7 @@
   "ru/proposalsTable.json::proposalsTable.colConfidence": "Confidence",
   "ru/proposalsTable.json::proposalsTable.dimensionMade": "Accepting makes the shared dimension {{name}}, which both columns join.",
   "ru/proposalsTable.json::proposalsTable.dimensionJoined": "Accepting joins both columns to the shared dimension {{name}}.",
+  "ru/proposalsTable.json::proposalsTable.through": "Through {{table}}.",
   "ru/proposalsTable.json::proposalsTable.twoDimensions": "Its columns already join two different shared dimensions, so it cannot be accepted.",
   "ru/proposalsTable.json::proposalsTable.measure.both": "Both columns are keys.",
   "ru/proposalsTable.json::proposalsTable.measure.inSource": "{{found}} of {{values}} target values in the source.",

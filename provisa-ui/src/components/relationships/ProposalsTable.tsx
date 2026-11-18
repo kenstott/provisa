@@ -146,6 +146,10 @@ export function ProposalsTable({
   // dimension's name must be among them.
   const note = (p: RunProposal) =>
     [
+      // REQ-1586: a junction suggestion names the junction its two ends are joined through.
+      p.via
+        ? t("proposalsTable.through", { table: tableNameById[p.via.table_id] })
+        : "",
       p.dimension
         ? t(
             p.dimension.reused ? "proposalsTable.dimensionJoined" : "proposalsTable.dimensionMade",
