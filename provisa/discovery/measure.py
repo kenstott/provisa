@@ -43,6 +43,7 @@ from typing import TYPE_CHECKING, Any, Literal, Protocol
 
 from provisa.discovery.columns import TableFacts
 from provisa.discovery.context import measured_score
+from provisa.discovery.gather import TableUnreadable
 
 if TYPE_CHECKING:
     from provisa.discovery.direction import ColumnRef, Edge, Proposal
@@ -55,7 +56,10 @@ DISTINCT_BOUND = 10_000
 #: (REQ-1986); or the person who started the run cannot read it.
 NOT_READ = "not_read"
 NOT_READABLE = "not_readable"
-Unmeasured = Literal["not_read", "not_readable"]
+#: The pair's query could not be read (a table of it refused or failed the read): the reason is
+#: on the measure (:attr:`Measure.unreadable`).
+UNREADABLE = "unreadable"
+Unmeasured = Literal["not_read", "not_readable", "unreadable"]
 
 Cardinality = Literal["many-to-one", "one-to-one", "many-to-many", "one-to-many"]
 
@@ -164,7 +168,7 @@ def governed_reader(state: Any, role: str) -> Reader:
 
         async def rows(self, tables: Sequence[TableFacts], sql: str) -> list[tuple]:
             names = ", ".join(dict.fromkeys(t.table_name for t in tables))
-            return await gather._reading(names, gather._governed_as(sql, role))
+            return await gather._reading(names, gather._measured_as(sql, role))
 
     return _Reader()
 
@@ -202,13 +206,15 @@ def _read(counts: Sequence[Any], bound: int) -> Side:
 class Measure:
     """A proposed pair measured on its data. ``source_in_target``: how many of the source's
     distinct values read occur in the target; ``target_in_source`` the reverse. Both None when a
-    side was not measured."""
+    side was not measured. ``unreadable``: why the pair's query could not be read (None: it was
+    read)."""
 
     source: Side
     target: Side
     source_in_target: int | None
     target_in_source: int | None
     bound: int
+    unreadable: str | None = None
 
     @property
     def compared(self) -> bool:
@@ -255,7 +261,12 @@ class Measure:
     def turned(self) -> Measure:
         """The measure of the same pair read the other way round."""
         return Measure(
-            self.target, self.source, self.target_in_source, self.source_in_target, self.bound
+            self.target,
+            self.source,
+            self.target_in_source,
+            self.source_in_target,
+            self.bound,
+            self.unreadable,
         )
 
     def as_dict(self) -> dict[str, Any]:
@@ -265,6 +276,7 @@ class Measure:
             "target": self.target.as_dict(),
             "source_in_target": self.source_in_target,
             "target_in_source": self.target_in_source,
+            "unreadable": self.unreadable,
         }
 
 
@@ -300,7 +312,13 @@ class Measurer:
             None if isinstance(s, str) else s, None if isinstance(t, str) else t, self._bound
         )
         read = [tables[i] for i, c in enumerate((s, t)) if not isinstance(c, str)]
-        row = (await self._reader.rows(read, sql))[0]
+        try:
+            row = (await self._reader.rows(read, sql))[0]
+        except TableUnreadable as exc:
+            # REQ-413 (amended 2026-11-18): a pair whose tables cannot be read is left
+            # unmeasured, saying why; the run goes on.
+            side = _unmeasured(UNREADABLE)
+            return Measure(side, side, None, None, self._bound, str(exc))
         if isinstance(s, str):
             return Measure(_unmeasured(s), _read(row[0:3], self._bound), None, None, self._bound)
         if isinstance(t, str):

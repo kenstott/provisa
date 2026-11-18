@@ -548,6 +548,18 @@ async def _governed_as(sql: str, role: str) -> list[tuple]:
     return (await profiler._execute(await _govern_and_route(sql, role)))[1]
 
 
+async def _measured_as(sql: str, role: str) -> list[tuple]:
+    """The rows of a pair's key value overlap join count through the governed pipeline as
+    ``role``: its rules, masks and row rules applied to each table it reads. The query is the
+    product's own (REQ-413, amended 2026-11-18): a candidate pair has no relationship yet, so the
+    approved-relationship check is not held on it; every other check is."""
+    from provisa.pgwire._pipeline import _govern_and_route
+    from provisa.profiler import run as profiler
+
+    plan = await _govern_and_route(sql, role, product_statement=True)
+    return (await profiler._execute(plan))[1]
+
+
 def _literal(value: Any) -> str:
     """A value read from a compared column, written as an SQL literal to look it up in another.
     The compared type groups are whole numbers, decimals, text and uuid."""
