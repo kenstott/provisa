@@ -922,6 +922,21 @@
     },
     "relationship": {
       "name_taken": "名稱「{{name}}」已被關係「{{held_by}}」使用。請為此關係另行命名。"
+    },
+    "syncing": {
+      "not_found": "不存在項目 {{entry}}。",
+      "no_connection": "{{entry}} 沒有可讀取的目錄。",
+      "no_role": "{{entry}} 沒有用於發佈的角色，因此暫無可比較的內容。請在其設定中選擇角色。",
+      "read_not_supported": "尚未支援從 {{provider}} 讀回值。",
+      "no_such_difference": "差異 {{difference}} 已不存在。請重新讀取清單。",
+      "decided_twice": "{{difference}} 被決定了兩次。",
+      "direction_off": "{{entry}} 不在該方向同步。",
+      "import_kind_unsupported": "尚未支援將目錄的 {{kind}} 帶入 Provisa。",
+      "publish_failed": "發佈至 {{entry}} 未成功，因此未套用任何內容。",
+      "object_gone": "{{object}} 已不再於 Provisa 中登記。",
+      "unknown_direction": "{{direction}} 不是方向：請使用匯出或匯入。",
+      "unknown_kind": "{{kind}} 不是差異類型。",
+      "unknown_choice": "{{choice}} 不是固定選擇。"
     }
   }
 }

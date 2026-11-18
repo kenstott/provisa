@@ -922,6 +922,21 @@
     },
     "relationship": {
       "name_taken": "השם '{{name}}' כבר תפוס על ידי הקשר '{{held_by}}'. יש לתת לקשר הזה שם אחר."
+    },
+    "syncing": {
+      "not_found": "אין רשומה {{entry}}.",
+      "no_connection": "ל-{{entry}} אין קטלוג לקריאה.",
+      "no_role": "ל-{{entry}} אין תפקיד שבשמו מפרסמים, ולכן אין עדיין מה להשוות. בחר תפקיד בהגדרות שלה.",
+      "read_not_supported": "קריאת ערכים בחזרה מ-{{provider}} עדיין אינה נתמכת.",
+      "no_such_difference": "ההבדל {{difference}} כבר אינו קיים. קרא את הרשימה שוב.",
+      "decided_twice": "{{difference}} הוכרע פעמיים.",
+      "direction_off": "{{entry}} אינה מסנכרנת בכיוון הזה.",
+      "import_kind_unsupported": "לקיחת {{kind}} של קטלוג אל Provisa עדיין אינה נתמכת.",
+      "publish_failed": "הפרסום אל {{entry}} לא הצליח, ולכן דבר לא הוחל.",
+      "object_gone": "{{object}} כבר אינו רשום ב-Provisa.",
+      "unknown_direction": "{{direction}} אינו כיוון: השתמש בייצוא או בייבוא.",
+      "unknown_kind": "{{kind}} אינו סוג הבדל.",
+      "unknown_choice": "{{choice}} אינה בחירה קבועה."
     }
   }
 }

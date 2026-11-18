@@ -922,6 +922,21 @@
     },
     "relationship": {
       "name_taken": "名前 '{{name}}' は既にリレーションシップ '{{held_by}}' が使用しています。別の名前を付けてください。"
+    },
+    "syncing": {
+      "not_found": "エントリ {{entry}} はありません。",
+      "no_connection": "{{entry}} には読み取るカタログがありません。",
+      "no_role": "{{entry}} にはパブリッシュに使うロールがないため、まだ比較対象がありません。設定でロールを選択してください。",
+      "read_not_supported": "{{provider}} からの値の読み戻しはまだサポートされていません。",
+      "no_such_difference": "差異 {{difference}} はもう存在しません。一覧を再読み込みしてください。",
+      "decided_twice": "{{difference}} が二重に決定されました。",
+      "direction_off": "{{entry}} はその方向に同期しません。",
+      "import_kind_unsupported": "カタログの {{kind}} を Provisa に取り込む機能はまだサポートされていません。",
+      "publish_failed": "{{entry}} へのパブリッシュが成功しなかったため、何も適用されませんでした。",
+      "object_gone": "{{object}} は Provisa に登録されていません。",
+      "unknown_direction": "{{direction}} は方向ではありません。エクスポートまたはインポートを使用してください。",
+      "unknown_kind": "{{kind}} は差異の種類ではありません。",
+      "unknown_choice": "{{choice}} は固定の選択ではありません。"
     }
   }
 }

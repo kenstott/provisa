@@ -922,6 +922,21 @@
     },
     "relationship": {
       "name_taken": "Der Name '{{name}}' ist bereits von der Beziehung '{{held_by}}' belegt. Benennen Sie diese anders."
+    },
+    "syncing": {
+      "not_found": "Es gibt keinen Eintrag {{entry}}.",
+      "no_connection": "{{entry}} hat keinen Katalog zum Lesen.",
+      "no_role": "{{entry}} hat keine Rolle, als die veröffentlicht wird, daher gibt es noch nichts zu vergleichen. Wählen Sie eine Rolle in seinen Einstellungen.",
+      "read_not_supported": "Werte aus {{provider}} zurückzulesen, wird noch nicht unterstützt.",
+      "no_such_difference": "Es gibt keinen Unterschied {{difference}} mehr. Lesen Sie die Liste erneut.",
+      "decided_twice": "{{difference}} wurde zweimal entschieden.",
+      "direction_off": "{{entry}} synchronisiert nicht in diese Richtung.",
+      "import_kind_unsupported": "{{kind}} eines Katalogs in Provisa zu übernehmen, wird noch nicht unterstützt.",
+      "publish_failed": "Die Veröffentlichung an {{entry}} war nicht erfolgreich, daher wurde nichts übernommen.",
+      "object_gone": "{{object}} ist in Provisa nicht mehr registriert.",
+      "unknown_direction": "{{direction}} ist keine Richtung: Verwenden Sie Export oder Import.",
+      "unknown_kind": "{{kind}} ist keine Art von Unterschied.",
+      "unknown_choice": "{{choice}} ist keine feste Wahl."
     }
   }
 }

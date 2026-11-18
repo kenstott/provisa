@@ -922,6 +922,21 @@
     },
     "relationship": {
       "name_taken": "नाम '{{name}}' पहले से संबंध '{{held_by}}' द्वारा लिया गया है। इसे कोई और नाम दें।"
+    },
+    "syncing": {
+      "not_found": "{{entry}} नाम की कोई प्रविष्टि नहीं है।",
+      "no_connection": "{{entry}} के पास पढ़ने के लिए कोई कैटलॉग नहीं है।",
+      "no_role": "{{entry}} के पास प्रकाशित करने के लिए कोई भूमिका नहीं है, इसलिए अभी तुलना करने को कुछ नहीं है। इसकी सेटिंग्स में एक भूमिका चुनें।",
+      "read_not_supported": "{{provider}} से मान वापस पढ़ना अभी समर्थित नहीं है।",
+      "no_such_difference": "अब कोई अंतर {{difference}} नहीं है। सूची फिर से पढ़ें।",
+      "decided_twice": "{{difference}} पर दो बार निर्णय लिया गया।",
+      "direction_off": "{{entry}} उस दिशा में सिंक नहीं करती।",
+      "import_kind_unsupported": "किसी कैटलॉग का {{kind}} Provisa में लेना अभी समर्थित नहीं है।",
+      "publish_failed": "{{entry}} पर प्रकाशन सफल नहीं हुआ, इसलिए कुछ भी लागू नहीं किया गया।",
+      "object_gone": "{{object}} अब Provisa में पंजीकृत नहीं है।",
+      "unknown_direction": "{{direction}} कोई दिशा नहीं है: निर्यात या आयात का उपयोग करें।",
+      "unknown_kind": "{{kind}} अंतर का कोई प्रकार नहीं है।",
+      "unknown_choice": "{{choice}} कोई स्थायी विकल्प नहीं है।"
     }
   }
 }

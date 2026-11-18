@@ -922,6 +922,21 @@
     },
     "relationship": {
       "name_taken": "De naam '{{name}}' is al in gebruik door relatie '{{held_by}}'. Geef deze een andere naam."
+    },
+    "syncing": {
+      "not_found": "Er is geen vermelding {{entry}}.",
+      "no_connection": "{{entry}} heeft geen catalogus om te lezen.",
+      "no_role": "{{entry}} heeft geen rol om als te publiceren, dus er valt nog niets te vergelijken. Kies een rol in de instellingen.",
+      "read_not_supported": "Waarden terug lezen uit {{provider}} wordt nog niet ondersteund.",
+      "no_such_difference": "Er is geen verschil {{difference}} meer. Lees de lijst opnieuw.",
+      "decided_twice": "{{difference}} is twee keer beslist.",
+      "direction_off": "{{entry}} synchroniseert niet in die richting.",
+      "import_kind_unsupported": "De {{kind}} van een catalogus in Provisa overnemen wordt nog niet ondersteund.",
+      "publish_failed": "Publiceren naar {{entry}} is niet gelukt, dus er is niets toegepast.",
+      "object_gone": "{{object}} is niet meer geregistreerd in Provisa.",
+      "unknown_direction": "{{direction}} is geen richting: gebruik Exporteren of Importeren.",
+      "unknown_kind": "{{kind}} is geen soort verschil.",
+      "unknown_choice": "{{choice}} is geen vaste keuze."
     }
   }
 }

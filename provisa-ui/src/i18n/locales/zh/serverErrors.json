@@ -922,6 +922,21 @@
     },
     "relationship": {
       "name_taken": "名称“{{name}}”已被关系“{{held_by}}”使用。请为此关系另行命名。"
+    },
+    "syncing": {
+      "not_found": "不存在条目 {{entry}}。",
+      "no_connection": "{{entry}} 没有可读取的目录。",
+      "no_role": "{{entry}} 没有用于发布的角色，因此暂无可比较的内容。请在其设置中选择一个角色。",
+      "read_not_supported": "尚不支持从 {{provider}} 回读值。",
+      "no_such_difference": "差异 {{difference}} 已不存在。请重新读取列表。",
+      "decided_twice": "{{difference}} 被决定了两次。",
+      "direction_off": "{{entry}} 不在该方向同步。",
+      "import_kind_unsupported": "尚不支持将目录的 {{kind}} 带入 Provisa。",
+      "publish_failed": "发布到 {{entry}} 未成功，因此未应用任何内容。",
+      "object_gone": "{{object}} 已不再在 Provisa 中注册。",
+      "unknown_direction": "{{direction}} 不是一个方向：请使用导出或导入。",
+      "unknown_kind": "{{kind}} 不是一种差异类型。",
+      "unknown_choice": "{{choice}} 不是固定选择。"
     }
   }
 }

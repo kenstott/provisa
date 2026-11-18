@@ -926,7 +926,7 @@
     "syncing": {
       "not_found": "There is no entry {{entry}}.",
       "no_connection": "{{entry}} has no catalog to read.",
-      "no_role": "{{entry}} names no role to publish as, so what it is compared on is not decided. Choose a role in its settings.",
+      "no_role": "{{entry}} has no role to publish as, so there is nothing to compare yet. Choose a role in its settings.",
       "read_not_supported": "Reading values back from {{provider}} is not supported yet.",
       "no_such_difference": "There is no longer a difference {{difference}}. Read the list again.",
       "decided_twice": "{{difference}} was decided twice.",
