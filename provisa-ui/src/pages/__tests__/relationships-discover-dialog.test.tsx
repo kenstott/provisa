@@ -722,7 +722,12 @@ describe("Discovery dialog: its size by what it shows", () => {
 
   it("keeps the standard size when the ended run proposed nothing", async () => {
     runMock.mockResolvedValue(runOf({ status: "done", report: REPORT }));
-    proposalsMock.mockResolvedValue({ proposals: [], threshold: 0.7, kept_at: 0.7 });
+    proposalsMock.mockResolvedValue({
+      proposals: [],
+      threshold: 0.7,
+      kept_at: 0.7,
+      score_filter: null,
+    });
     await openDialog();
     fireEvent.click(runButton());
     await screen.findByTestId("discover-no-proposals", {}, SLOW);
@@ -740,7 +745,12 @@ describe("Discovery dialog: its size by what it shows", () => {
         relationship_id: `r-${p.id}`,
       })),
     );
-    proposalsMock.mockResolvedValue({ proposals: [], threshold: 0.7, kept_at: 0.7 });
+    proposalsMock.mockResolvedValue({
+      proposals: [],
+      threshold: 0.7,
+      kept_at: 0.7,
+      score_filter: null,
+    });
     fireEvent.click(applyButton());
     await screen.findByTestId("discover-applied");
     await screen.findByTestId("discover-no-proposals");
