@@ -3088,7 +3088,11 @@
     glossary terms). (Amended 2026-11-18, A WORD THE DICTIONARY DOES NOT KNOW TAKES A RULE-BASED FORM:)
     Maintainer 2026-11-18 (''you could if the word is not known - then use a rule based method''). The dictionary
     lookup comes first and decides every word it knows; only a word the dictionary does not know takes a
-    rule-based singular or plural. This replaces ''a word not in the dictionary is left as written''.'
+    rule-based singular or plural. This replaces ''a word not in the dictionary is left as written''. (Amended
+    2026-11-18, THE DICTIONARY IS A GENERAL ENGLISH ONE:) Maintainer 2026-11-18. The dictionary the naming
+    authority looks words up in is a general English noun-forms dictionary (so person and people, loss and
+    losses take their everyday forms), bundled with Provisa under a licence compatible with Provisa''s own;
+    a specialist lexicon is not used as the dictionary. Words it lacks take a rule-based form.'
   use_case: Consistent multi-language naming with a single authority ensures client-facing names are predictable
     and independent of physical schema.
   code:
