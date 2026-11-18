@@ -3769,7 +3769,13 @@
     measures the name and value matches the model left out'', which is withdrawn.] Key value overlap measures
     only the pairs the model rated from the run''s cutoff (''Measure from'') up to the threshold; no pair
     the model did not propose, and none it rated below the cutoff, is read or measured. The cutoff bounds
-    the cost of the check.'
+    the cost of the check. (Amended 2026-11-18, THE BAND''S UPPER BOUND IS THE PERSON''S TICK THRESHOLD,
+    NOT A FIXED 70%:) Maintainer 2026-11-18 (''its not a fixed 70% - its whatever the ticked threshold is'').
+    The threshold that bounds the key value overlap band from above, and above which a pair is kept without
+    being measured, is the threshold of the person who starts the run (their ''Tick from'' setting, default
+    70%), taken when the run starts and recorded with it; it is not a fixed value. The model is told that
+    threshold. A run measures the pairs the model rated from the run''s cutoff up to that threshold, and
+    no others.'
   use_case: Auto-generated FK relationships reduce manual relationship registration overhead while preserving
     steward control.
   code:
