@@ -82,7 +82,7 @@ _ANSWERS = [
 ]
 
 
-def _listed(prompt: str) -> tuple[list[dict], list[dict]]:
+def _call_listing(prompt: str) -> tuple[list[dict], list[dict]]:
     """The tables and the numbered table pairs a call lists."""
     tables = json.loads(prompt.split(TABLES_HEADER, 1)[1].split("\n" + PAIRS_HEADER, 1)[0])
     return tables, json.loads(prompt.split(PAIRS_HEADER, 1)[1])
@@ -90,7 +90,7 @@ def _listed(prompt: str) -> tuple[list[dict], list[dict]]:
 
 def _compared(prompt: str) -> dict[tuple[str, str], dict]:
     """Every comparable column of a call, by (table name, column): its context."""
-    tables, _ = _listed(prompt)
+    tables, _ = _call_listing(prompt)
     return {(t["name"], c["name"]): c for t in tables for c in t["comparable_columns"]}
 
 
@@ -107,7 +107,7 @@ class _Endpoint:
                 body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
                 prompt = body["messages"][-1]["content"]
                 endpoint.prompts.append(prompt)
-                _, pairs = _listed(prompt)
+                _, pairs = _call_listing(prompt)
                 answer = [
                     {
                         "pair": pair["pair"],
@@ -378,7 +378,7 @@ def test_a_run_over_the_files_suggests_their_key_and_lists_all_it_read(
     # One call lists every table pair; it holds both permit columns and every neighborhood. The
     # files' date and timestamp columns are in no group (REQ-413): no call lists them.
     (text,) = prompts
-    _, pairs = _listed(text)
+    _, pairs = _call_listing(text)
     assert {frozenset({p["source"], p["target"]}) for p in pairs} >= {
         frozenset({"inspections", "building_permits"}),
         frozenset({"complaints_2026_08", "budget_2026__budget"}),
