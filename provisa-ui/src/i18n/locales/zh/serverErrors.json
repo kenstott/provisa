@@ -910,6 +910,9 @@
       "include_outside_upload": "{{path}} 位于上传的项目之外；项目只读取自身的文件。",
       "filter_value_refused": "{{value}} 不能作为权限过滤器中的值：值是字符串、数字、true、false、null、它们的列表或会话变量。",
       "filter_operator_refused": "{{operator}} 不是可用于转换权限过滤器的运算符。"
+    },
+    "relationship": {
+      "name_taken": "名称“{{name}}”已被关系“{{held_by}}”使用。请为此关系另行命名。"
     }
   }
 }

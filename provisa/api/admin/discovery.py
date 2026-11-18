@@ -25,6 +25,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from provisa.api.admin import discovery_dimension
 from provisa.api.app import state
 from provisa.api.errors import ApiError
+from provisa.core.relationship_naming import RelationshipNameTaken
 from provisa.discovery import candidates as candidates_repo
 from provisa.discovery import proposals as proposals_repo
 from provisa.discovery import runs as runs_repo
@@ -783,9 +784,14 @@ async def accept_candidate(
     pool = state.model_db
     assert pool is not None
     async with pool.acquire() as _conn:
-        return await candidates_repo.accept(
-            cast("Connection", _conn), candidate_id, body.name if body else None
-        )
+        try:
+            return await candidates_repo.accept(
+                cast("Connection", _conn), candidate_id, body.name if body else None
+            )
+        except RelationshipNameTaken as exc:  # REQ-415: a typed name that is taken
+            raise ApiError(
+                409, exc.code, str(exc), kind=exc.kind, name=exc.name, held_by=exc.held_by
+            ) from exc
 
 
 @router.post("/candidates/{candidate_id}/reject")

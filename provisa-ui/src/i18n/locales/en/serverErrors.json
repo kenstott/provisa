@@ -910,6 +910,9 @@
       "include_outside_upload": "{{path}} is outside the uploaded project; a project reads only its own files.",
       "filter_value_refused": "{{value}} cannot be a value in a permission filter: a value is a string, a number, true, false, null, a list of these, or a session variable.",
       "filter_operator_refused": "{{operator}} is not an operator a permission filter can be converted with."
+    },
+    "relationship": {
+      "name_taken": "The name '{{name}}' is taken by relationship '{{held_by}}'. Name this one otherwise."
     }
   }
 }
