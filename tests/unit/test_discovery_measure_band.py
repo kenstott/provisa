@@ -29,10 +29,11 @@ from provisa.discovery import gather, measure, proposals
 from provisa.discovery.columns import UNKNOWN, ColumnFacts, TableFacts, type_groups
 from provisa.discovery.context import KEY_SCORE
 from provisa.discovery.direction import Proposal, from_answer
-from provisa.discovery.measure import Measurer, Values
+from provisa.discovery.measure import Measurer
 from provisa.discovery.proposals import BELOW_THRESHOLD, NOT_COMPARABLE
 from provisa.discovery.runner import KeyValues, Tally, execute, judged
 from provisa.discovery.windows import plan
+from tests.unit.discovery_engine_reader import EngineReader
 from provisa.llm.client import Completion
 from provisa.llm.limits import DEFAULT_LIMITS
 
@@ -335,28 +336,18 @@ async def test_a_run_tells_the_model_its_threshold_and_judges_against_it():
 # --- the sample size reaches the measurer ----------------------------------------------------------
 
 
-class _Reader:
-    def __init__(self, data: dict[str, list[Any]]):
-        self.data = data
-        self.bounds: list[int] = []
-
-    async def values(self, table: TableFacts, column: str, bound: int) -> Values:
-        self.bounds.append(bound)
-        held = self.data[column]
-        return Values(read=tuple(held[:bound]), more=len(held) > bound, distinct=True)
-
-    async def found(self, table: TableFacts, column: str, among: Values) -> frozenset[Any]:
-        return frozenset(among.keys & set(self.data[column]))
-
-
-async def test_the_sample_size_is_the_most_distinct_values_read_of_each_column():
+async def test_the_sample_size_is_the_most_non_null_values_read_of_each_column():
     tables = {1: _tbl(1, "a", _col("x")), 2: _tbl(2, "b", _col("y"))}
-    reader = _Reader({"x": list(range(100)), "y": list(range(200))})
+    reader = EngineReader(
+        {("a", "x"): list(range(100)), ("b", "y"): list(range(200))}, sql_type="BIGINT"
+    )
     measurer = Measurer(reader, tables, decided=frozenset(), bound=40)
     got = await measurer.measured(_semantic((1, "x"), (2, "y"), 0.5))
-    assert reader.bounds == [40, 40]
+    [(_, sql)] = reader.queries
+    assert sql.count("IS NOT NULL LIMIT 40)") == 2
     assert got.measure is not None and got.measure.bound == 40
     assert got.measure.source.values == 40 and got.measure.source.more is True
+    assert got.measure.target.values == 40 and got.measure.target.more is True
 
 
 async def test_the_values_reader_reads_at_most_the_sample_size(monkeypatch):

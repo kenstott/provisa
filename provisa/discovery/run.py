@@ -48,7 +48,7 @@ from provisa.discovery.direction import (
     reduced_tables,
     settle,
 )
-from provisa.discovery.measure import Measurer
+from provisa.discovery.measure import Measurer, governed_reader
 from provisa.discovery.proposals import BELOW_THRESHOLD, Recorded
 from provisa.discovery.runner import Control, KeyValues, Rescore, Tally, execute
 from provisa.discovery.windows import Request, bound, plan
@@ -382,7 +382,7 @@ def _key_values(
     if spec.key_values is None:
         return None
     measurer = Measurer(
-        gather.values_reader(state, spec.role),
+        governed_reader(state, spec.role),
         tables,
         decided=known.existing | known.rejected,
         bound=spec.key_values.sample_size,
