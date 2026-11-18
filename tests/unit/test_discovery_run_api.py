@@ -27,9 +27,10 @@ from typing import Any, cast
 
 import json
 import random
-from collections import Counter
+import re
 from dataclasses import replace
 
+import duckdb
 import pytest
 from sqlalchemy import func, insert, select
 
@@ -87,6 +88,7 @@ _PUBLISHED: dict[int, tuple[str, list[str]]] = {}
 def _nothing_published():
     _PUBLISHED.clear()
     _TABLE_NAMES.clear()
+    _TYPES.clear()
 
 
 class _Reads:
@@ -158,6 +160,7 @@ async def _table(db: Database, tid: int, domain: str, name: str, columns: list[t
     """``columns``: (name, type, primary key), or with a fourth, the kind of the required
     parameter the column is."""
     _PUBLISHED[tid] = (domain, [c[0] for c in columns])
+    _TYPES[tid] = {c[0]: c[1] for c in columns}
     _TABLE_NAMES[tid] = name
     async with db.acquire() as conn:
         await conn.execute_core(
@@ -204,18 +207,44 @@ class _Measured:
         return [v for v in self.reads.values.get(column, []) if v is not None]
 
     async def governed_as(self, sql: str, role: str) -> list[tuple]:
+        """The measure's query run as the engine runs it: each table it reads is created in an
+        in-memory DuckDB with its published columns, of their registered types, holding the
+        values given (REQ-413)."""
         self.sql.append((sql, role))
-        table = sql.split(' FROM "', 1)[1].split('"."', 1)[1].split('"', 1)[0]
-        self.reads.refuse(table)
-        column = sql.split('"', 2)[1]
-        values = self.column(table, column)
-        if " IN (" in sql:
-            wanted = sql.rsplit(" IN (", 1)[1].rstrip(")").split(", ")
-            held = {str(v): v for v in values}
-            return [(held[w.strip("'")],) for w in wanted if w.strip("'") in held]
-        counts = Counter(values)
-        limit = int(sql.rsplit("LIMIT ", 1)[1])
-        return sorted(counts.items(), key=lambda kv: -kv[1])[:limit]
+        db = duckdb.connect()
+        for schema, table in dict.fromkeys(re.findall(r'"([^"]+)"\."([^"]+)"', sql)):
+            self.reads.refuse(table)
+            tid = next(t for t, name in _TABLE_NAMES.items() if name == table)
+            columns = _PUBLISHED[tid][1]
+            held = {c: self.column(table, c) for c in columns}
+            depth = max((len(v) for v in held.values()), default=0)
+            db.execute(f'CREATE SCHEMA IF NOT EXISTS "{schema}"')
+            db.execute(
+                f'CREATE TABLE "{schema}"."{table}" ('
+                + ", ".join(f'"{c.lower()}" {_ENGINE_TYPES[_TYPES[tid][c]]}' for c in columns)
+                + ")"
+            )
+            rows = [
+                tuple(held[c][i] if i < len(held[c]) else None for c in columns)
+                for i in range(depth)
+            ]
+            if rows:
+                marks = ", ".join("?" for _ in columns)
+                db.executemany(f'INSERT INTO "{schema}"."{table}" VALUES ({marks})', rows)
+        return db.execute(sql).fetchall()
+
+
+#: The engine type of each registered column type the tests give.
+_ENGINE_TYPES = {
+    "integer": "BIGINT",
+    "text": "VARCHAR",
+    "date": "DATE",
+    "timestamp": "TIMESTAMP",
+    "timestamp with time zone": "TIMESTAMPTZ",
+}
+
+#: Each registered table's column types, by id.
+_TYPES: dict[int, dict[str, str]] = {}
 
 
 #: Each registered table's name, by id.

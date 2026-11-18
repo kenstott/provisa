@@ -14,7 +14,7 @@ The ``test`` instance: the smoke check's isolated instance of the default demo. 
 pet-store and shelter, foreign keys and semantics (a stand-in model on the loopback proposing each
 junction's keys both ways round), reads every foreign key constraint of their tables. A junction's
 key already joined through its many-to-many relationship (pets-treated-by-vets through pet_visits,
-the pets' companions, the playgroups' members) is left out as existing, never suggested. A
+the pets' companions, the playgroups' members) is left out as existing, never listed. A
 reviewer applies what starts ticked, and afterwards no suggestion is left waiting; a second run
 suggests none of the pairs decided. The Relationships page lists no suggestions: they are decided
 only in a run's result. Every registered relationship names the columns it joins.
@@ -164,22 +164,10 @@ def test_after_applying_a_run_no_suggestion_waits_for_a_joined_pair(instance: In
     listed = _proposals(instance, run["id"])
     proposals, threshold = listed["proposals"], listed["threshold"]
 
-    # Each junction's keys, proposed both ways round, are left out: the pair is joined already.
-    legs = [p for p in proposals if unordered(p) in _JUNCTION_LEGS]
-    assert {unordered(p) for p in legs} >= {
-        ("pet_visits", "pet_id", "pets", "id"),
-        ("pet_visits", "vet_id", "vets", "id"),
-        ("pet_companions", "pet_id", "pets", "id"),
-        ("playgroup_members", "pet_id", "pets", "id"),
-    }, [edge(p) for p in proposals]
-    # The run's foreign key on each is existing; the model's copy of it repeats that foreign key.
-    assert [
-        (edge(p), p["reason"])
-        for p in legs
-        if p["reason"] not in ("existing", "matches_foreign_key")
-    ] == []
-    assert {unordered(p) for p in legs if p["reason"] == "existing"} == {unordered(p) for p in legs}
-    assert not any(p["decidable"] for p in legs)
+    # Each junction's keys, proposed both ways round, are joined already: the run leaves them out
+    # as existing and lists none of them (REQ-413, amended 2026-11-18), so none can be decided.
+    assert run["report"]["removed"]["existing"] >= 4, run["report"]
+    assert [edge(p) for p in proposals if unordered(p) in _JUNCTION_LEGS] == []
 
     ticked = [
         p
