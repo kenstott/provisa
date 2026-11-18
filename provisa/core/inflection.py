@@ -8,22 +8,43 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""Singular and plural noun forms, dictionary first (REQ-194).
+"""Singular and plural noun forms, general-English dictionary first (REQ-194).
 
-A word the English dictionary (lemminflect's lexicon) knows takes only its dictionary forms: a
-noun its dictionary singular or plural, a word known only as another part of speech (``by``,
-``placed``) is left as written. A word the dictionary does not know (an abbreviation, a coined
+The dictionary is ``data/noun_plurals.tsv.gz``: English noun singular/plural pairs extracted from
+the English Speller Database (scripts/gen_noun_plurals.py; notice in ``data/THIRD_PARTY_NOTICES``).
+A noun in it takes only its dictionary forms; a word it does not list (an abbreviation, a coined
 table name) takes lemminflect's rule-based out-of-vocabulary form. This is the one inflection
 helper every naming path uses (relationship fields, aliases, glossary terms).
 """
 
 # Requirements: REQ-194
 
-from lemminflect import getAllInflections, getAllInflectionsOOV, getAllLemmas, getAllLemmasOOV
+import functools
+import gzip
+from pathlib import Path
+
+from lemminflect import getAllInflectionsOOV, getAllLemmasOOV
+
+_TABLE = Path(__file__).parent / "data" / "noun_plurals.tsv.gz"
+
+
+@functools.cache
+def _dictionary() -> tuple[dict[str, str], dict[str, str]]:
+    """(singular -> its plural, plural -> its singular). The table lists each noun's chosen plural
+    first, then its other plurals; a noun listed with itself as plural has no other form."""
+    plural_of: dict[str, str] = {}
+    singular_of: dict[str, str] = {}
+    with gzip.open(_TABLE, "rt", encoding="utf-8") as f:
+        for line in f:
+            singular_form, plural_form = line.rstrip("\n").split("\t")
+            plural_of.setdefault(singular_form, plural_form)
+            if plural_form != singular_form:
+                singular_of.setdefault(plural_form, singular_form)
+    return plural_of, singular_of
 
 
 def _match_case(form: str, written: str) -> str:
-    """``form`` (lower case, from the lexicon) in the case ``written`` was given in."""
+    """``form`` (lower case) in the case ``written`` was given in."""
     if written.isupper() and len(written) > 1:
         return form.upper()
     if written[:1].isupper():
@@ -31,47 +52,35 @@ def _match_case(form: str, written: str) -> str:
     return form
 
 
-def _noun_lemmas(lower: str) -> tuple[str, ...] | None:
-    """``lower``'s noun lemmas, dictionary-first; the rule-based lemma when the dictionary does
-    not know the word; None when the dictionary knows it only as another part of speech."""
-    known = getAllLemmas(lower)
-    if "NOUN" in known:
-        return known["NOUN"]
-    if known:
-        return None
-    return getAllLemmasOOV(lower, upos="NOUN")["NOUN"]
-
-
 def is_plural(word: str) -> bool:
     """True when ``word`` is the plural of a different noun."""
-    lemmas = _noun_lemmas(word.lower())
-    return lemmas is not None and lemmas[0] != word.lower()
+    lower = word.lower()
+    plural_of, singular_of = _dictionary()
+    if lower in singular_of:
+        return True
+    if lower in plural_of:
+        return False
+    return getAllLemmasOOV(lower, upos="NOUN")["NOUN"][0] != lower
 
 
 def singular(word: str) -> str:
-    """``word``'s singular; ``word`` as written when the dictionary knows it as no noun."""
-    lemmas = _noun_lemmas(word.lower())
-    if lemmas is None:
+    """``word``'s singular: the dictionary's for a word it lists, else the rule-based form."""
+    lower = word.lower()
+    plural_of, singular_of = _dictionary()
+    if lower in singular_of:
+        return _match_case(singular_of[lower], word)
+    if lower in plural_of:
         return word
-    return _match_case(lemmas[0], word)
+    return _match_case(getAllLemmasOOV(lower, upos="NOUN")["NOUN"][0], word)
 
 
 def plural(word: str) -> str:
-    """``word``'s plural; ``word`` as written when it is already a plural or the dictionary
-    knows it as no noun.
-
-    The lexicon lists a noun used both as a mass noun and as a count noun with its mass form
-    first (``mapping``: mapping, mappings); the first listed form that differs from ``word`` is
-    its count plural. A noun whose only listed plural is itself (``data``, ``sheep``) keeps it."""
-    lower = word.lower()
-    lemmas = _noun_lemmas(lower)
-    if lemmas is None or lemmas[0] != lower:
+    """``word``'s plural: as written when it is already one, the dictionary's for a noun it
+    lists, else the rule-based form."""
+    if is_plural(word):
         return word
-    if getAllLemmas(lower):
-        # A known noun the dictionary lists no plural for (``behalf``, ``dearth``) has none: it
-        # stays as written, never a rule form (REQ-194).
-        forms = getAllInflections(lower, upos="NOUN").get("NNS", (lower,))
-    else:
-        forms = getAllInflectionsOOV(lower, upos="NOUN")["NNS"]
-    counted = [f for f in forms if f != lower]
-    return _match_case(counted[0] if counted else forms[0], word)
+    lower = word.lower()
+    plural_of, _ = _dictionary()
+    if lower in plural_of:
+        return _match_case(plural_of[lower], word)
+    return _match_case(getAllInflectionsOOV(lower, upos="NOUN")["NNS"][0], word)

@@ -8,11 +8,11 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""REQ-194 (amended 2026-11-18): singular and plural come from the dictionary first.
+"""REQ-194 (amended 2026-11-18): singular and plural come from a general-English dictionary first.
 
 Every naming path -- relationship fields, OpenAPI aliases, Cypher types, glossary concepts --
-takes the dictionary form of a word the dictionary knows, never a rule form; only a word the
-dictionary does not know takes the rule-based form.
+takes the dictionary form of a noun the dictionary lists, never a rule form; only a word it does
+not list takes the rule-based form.
 """
 
 import pytest
@@ -20,8 +20,11 @@ import pytest
 from provisa.compiler import naming
 from provisa.core import glossary, relationship_names
 
-# (singular, plural) pairs the dictionary lists.
+# (singular, plural) pairs the dictionary (provisa/core/data/noun_plurals.tsv.gz) lists.
 PAIRS = [
+    ("person", "people"),
+    ("doc", "docs"),
+    ("dataset", "datasets"),
     ("loss", "losses"),
     ("address", "addresses"),
     ("access", "accesses"),
@@ -67,28 +70,24 @@ def test_glossary_concept_takes_dictionary_singular(one, many):
     assert glossary.table_concept(one) == one
 
 
-def test_uncountable_dictionary_word_unchanged():
+def test_plural_only_dictionary_word_unchanged_in_plural():
     assert naming._rel_words("data", "one-to-many") == "data"
-    assert naming._rel_words("data", "many-to-one") == "data"
-    assert glossary.table_concept("data") == "data"
+    assert naming._rel_words("customer_data", "one-to-many") == "customer_data"
 
 
-@pytest.mark.parametrize(
-    ("one", "many"), [("fct_ordr", "fct_ordrs"), ("lineitem", "lineitems"), ("doc", "docs")]
-)
+@pytest.mark.parametrize("word", ["series", "news", "sheep"])
+def test_dictionary_noun_without_other_plural_unchanged(word):
+    # Listed with no plural but itself: never the rule form ("serieses").
+    assert naming._rel_words(word, "one-to-many") == word
+    assert naming._rel_words(word, "many-to-one") == word
+
+
+@pytest.mark.parametrize(("one", "many"), [("fct_ordr", "fct_ordrs"), ("lineitm", "lineitms")])
 def test_word_outside_dictionary_takes_rule_form(one, many):
     assert naming._rel_words(one, "one-to-many") == many
     assert naming._rel_words(many, "one-to-many") == many
     assert naming._rel_words(many, "many-to-one") == one
     assert naming._rel_words(one, "many-to-one") == one
-
-
-@pytest.mark.parametrize("word", ["by", "placed", "behalf", "dearth"])
-def test_dictionary_word_never_takes_rule_form(word):
-    # Known to the dictionary with no plural listed (a non-noun, or a noun without one): the rule
-    # form ("bies", "placeds", "behalfs") is never used.
-    assert naming._rel_words(word, "one-to-many") == word
-    assert naming._rel_words(word, "many-to-one") == word
 
 
 def test_out_of_dictionary_cypher_and_glossary_take_rule_singular():

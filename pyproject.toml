@@ -436,8 +436,9 @@ include = ["provisa", "provisa.*", "buenavista", "buenavista.*"]
 "provisa.fakes" = ["portable/*.json", "portable/THIRD_PARTY_NOTICES"]
 # REQ-2147: the profiler's classification kinds and the reference lists they test, and their notice.
 "provisa.profiler" = ["classification_kinds.yaml", "reference/*.txt.gz", "reference/THIRD_PARTY_NOTICES"]
-# REQ-2155: the standard roles' definitions, read by provisa.core.db.
-"provisa.core" = ["standard_roles.yaml", "apoc_commands.yaml", "platform_connectors.yaml"]
+# REQ-2155: the standard roles' definitions, read by provisa.core.db. REQ-194: the English noun
+# singular/plural table (scripts/gen_noun_plurals.py) and its notice, read by provisa.core.inflection.
+"provisa.core" = ["standard_roles.yaml", "apoc_commands.yaml", "platform_connectors.yaml", "data/noun_plurals.tsv.gz", "data/THIRD_PARTY_NOTICES"]
 # REQ-1984: the reader a Node source's declarations are read with, run by the source's runtime.
 "provisa.node" = ["reader.mjs", "host.mjs"]
 # REQ-2200: the reader a Go source's package is read with, compiled by the pinned Go toolchain.

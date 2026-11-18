@@ -1,0 +1,235 @@
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 5e1a9c37-82d4-4b6f-a0e3-c47d9b2f8a15
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+
+"""Extract English noun singular/plural pairs from ESDB (SCOWLv2) into provisa/core/data (REQ-194).
+
+Source: ``data/scowl-pre.txt`` of https://github.com/en-wl/wordlist (branch v2), Kevin Atkinson's
+English Speller Database; its notice is kept beside the table in ``THIRD_PARTY_NOTICES``.
+
+Usage:
+
+    python scripts/gen_noun_plurals.py <scowl-pre.txt> <Copyright>
+
+What is taken (the file's notation is documented in the source's README.md):
+
+- Only entries at ESDB size 80 or below (sizes 70 and below are words "found in most
+  dictionaries"; the Copyright's UKACD clause covers generated lists above 80), and only American
+  spellings: no ``AU`` region and no ``D``-only spelling (the Copyright's AU clause). A line's
+  size is the first number of its SCOWL-INFO, its spelling the VARIANT-INFO token for ``A``,
+  ``_`` or every spelling.
+- Only common nouns: lemmas tagged ``<n>`` with no POS class (no places, names, trademarks) that
+  are one lower-case word.
+- A group's first ENTRY on a ``<n>`` line is the plural slot (then the possessives); ``-`` leaves
+  it to another line of the group. Each plural alternative of ``(a | V: b)`` keeps its variant
+  level; an alternative annotated ``~`` (generally not used), ``!`` (nearly non-existent) or ``@``
+  (archaic), or at level ``x`` (invalid), is dropped.
+- A noun's plural is chosen across its groups (senses, in file order), each alternative ranked by
+  - first, an alternative other than the singular that the database also lists as a common noun
+    lemma of its own (the everyday word: ``person``'s plurals are ``persons`` and ``~: people``,
+    and ``people`` is itself a size-35 noun, so ``person`` -> ``people``);
+  - then its variant level (non-variant, ``.``, ``=``, ``?``, ``v``, ``~``, ``V``, ``-``);
+  - then file order.
+- A common noun with no plural in any group (``news``, ``series``) is listed as its own plural:
+  the dictionary knows the word and gives it no other form.
+
+The table has one row per (singular, plural) pair: the chosen plural first, then every other
+accepted alternative, so each plural maps back to its singular.
+"""
+
+from __future__ import annotations
+
+import gzip
+import re
+import sys
+from pathlib import Path
+
+_OUT = Path(__file__).resolve().parents[1] / "provisa" / "core" / "data"
+_MAX_SIZE = 80
+_LEVELS = ["", ".", "=", "?", "v", "~", "V", "-"]  # x (invalid) and @ (archaic) are dropped
+_VARIANT_TOKEN = re.compile(r"^[ABZCD_]?[.=?v~V@\-x]?$")
+_WORD = re.compile(r"^[a-z]+$")
+
+
+def _american_level(info: str) -> str | None:
+    """The variant level a VARIANT-INFO gives American spelling; None when it gives none."""
+    tokens = [t for t in info.split() if not t.startswith("{")]
+    if not tokens:
+        return ""
+    for token in tokens:
+        spelling = token[0] if token[:1] in "ABZCD_" and token[:1] else ""
+        if spelling in ("", "A", "_"):
+            return token[len(spelling) :]
+    return None
+
+
+def _split_line(line: str) -> tuple[int, bool, str, str | None, str, list[str]] | None:
+    """(size, au, variant info, its American level, lemma info, entries) of one LINE; None for a
+    non-entry line."""
+    body = line.split("#", 1)[0].rstrip()
+    if not body or not body[0].isdigit():
+        return None
+    info, _, rest = body.partition(": ")
+    size = int(info.split()[0])
+    au = "AU" in info.split()
+    variant_info, level = "", ""
+    head, sep, tail = rest.partition(": ")
+    if (
+        sep
+        and "<" not in head
+        and all(_VARIANT_TOKEN.match(t) for t in head.split() if t[0] != "{")
+    ):
+        variant_info, level = head, _american_level(head)
+        rest = tail
+    lemma_info, _, entries = rest.partition(": ")
+    return size, au, variant_info, level, lemma_info, _entries(entries)
+
+
+def _entries(text: str) -> list[str]:
+    """The ENTRY list, split on top-level ', '."""
+    out, depth, cur = [], 0, ""
+    for ch in text:
+        depth += ch == "("
+        depth -= ch == ")"
+        if ch == "," and depth == 0:
+            out.append(cur.strip())
+            cur = ""
+        else:
+            cur += ch
+    if cur.strip():
+        out.append(cur.strip())
+    return out
+
+
+def _alternatives(entry: str) -> list[tuple[str, str]]:
+    """(word, American variant level) of each acceptable alternative of one ENTRY."""
+    if entry.startswith("("):
+        parts = entry[1:-1].split(" | ")
+    else:
+        parts = [entry]
+    out = []
+    for part in parts:
+        info, sep, word = part.rpartition(": ")
+        level = _american_level(info) if sep else ""
+        if level is None or level in ("x", "@"):
+            continue
+        if word[-1:] in "~!@":
+            continue
+        word = word.rstrip("*-†")
+        if _WORD.match(word):
+            out.append((word, level))
+    return out
+
+
+def _lemma(lemma_info: str) -> tuple[str, str] | None:
+    """(word, pos) of a LEMMA-INFO; None without a POS."""
+    m = re.match(r"^([-@!]?)(\S+?)[*\-@~!†]? <([^>]+)>", lemma_info)
+    if not m:
+        return None
+    return m.group(2), m.group(3)
+
+
+def extract(scowl_pre: Path) -> list[tuple[str, str]]:
+    plurals: dict[str, list[tuple[str, str, int]]] = {}  # singular -> (plural, level, order)
+    nouns: list[str] = []
+    order = 0
+    # The group's lemmas by variant info: a "-" line belongs to the lemma with its variant info
+    # (a line without one, to the group's first lemma). None marks a lemma not taken.
+    group: dict[str, str | None] = {}
+    first: str | None = None
+    for raw in scowl_pre.read_text(encoding="utf-8").splitlines():
+        if not raw.strip():
+            group, first = {}, None
+            continue
+        parsed = _split_line(raw)
+        if parsed is None:
+            continue
+        size, au, variant_info, level, lemma_info, entries = parsed
+        lemma = _lemma(lemma_info)
+        if lemma is None or lemma[1] != "n":
+            continue
+        word = lemma[0]
+        if word != "-":
+            taken = not (
+                size > _MAX_SIZE
+                or au
+                or level is None
+                or level in ("x", "@")
+                or not _WORD.match(word)
+            )
+            group[variant_info] = word if taken else None
+            if first is None:
+                first = variant_info
+            if not taken:
+                continue
+            if word not in plurals:
+                plurals[word] = []
+                nouns.append(word)
+            target: str | None = word
+        else:
+            key = variant_info if variant_info in group else (first if not variant_info else None)
+            target = group.get(key) if key is not None else None
+        if target is None or size > _MAX_SIZE or au or level is None or not entries:
+            continue
+        for plural, alt_level in _alternatives(entries[0]):
+            order += 1
+            plurals[target].append((plural, alt_level, order))
+    lemmas = set(nouns)
+    rows: list[tuple[str, str]] = []
+    for singular in nouns:
+        alts = plurals[singular]
+        if not alts:
+            rows.append((singular, singular))
+            continue
+        ranked = sorted(
+            alts,
+            key=lambda a: (
+                not (a[0] != singular and a[0] in lemmas),
+                _LEVELS.index(a[1]) if a[1] in _LEVELS else len(_LEVELS),
+                a[2],
+            ),
+        )
+        seen: set[str] = set()
+        for plural, _, _ in ranked:
+            if plural not in seen:
+                seen.add(plural)
+                rows.append((singular, plural))
+    return rows
+
+
+_NOTICE_HEAD = """Third-party notices
+===================
+
+provisa/core/data/noun_plurals.tsv.gz
+-------------------------------------
+The English noun singular/plural pairs (REQ-194) are extracted from the English Speller Database
+(ESDB, previously SCOWLv2) by Kevin Atkinson, file data/scowl-pre.txt of
+https://github.com/en-wl/wordlist (branch v2), by scripts/gen_noun_plurals.py: common nouns at
+ESDB size 80 or below, American spelling only (no AU region, no D spelling), one plural chosen per
+noun as that script describes. Its notice follows, verbatim.
+
+"""
+
+
+def main(argv: list[str]) -> int:
+    scowl_pre, copyright_file = Path(argv[0]), Path(argv[1])
+    rows = extract(scowl_pre)
+    _OUT.mkdir(parents=True, exist_ok=True)
+    data = "".join(f"{s}\t{p}\n" for s, p in rows).encode("utf-8")
+    # mtime=0: the same source gives the same bytes.
+    (_OUT / "noun_plurals.tsv.gz").write_bytes(gzip.compress(data, mtime=0))
+    (_OUT / "THIRD_PARTY_NOTICES").write_text(
+        _NOTICE_HEAD + copyright_file.read_text(encoding="utf-8"), encoding="utf-8"
+    )
+    print(f"{len(rows)} pairs, {len({s for s, _ in rows})} nouns")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))
