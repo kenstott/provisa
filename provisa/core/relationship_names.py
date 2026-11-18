@@ -12,7 +12,8 @@
 
 The names a relationship is reached by are derived when no steward pinned them -- the Cypher type
 from its foreign-key column and cardinality, or a junction's nominated label (REQ-1586); the
-GraphQL field from its target table and cardinality, in the deployment's naming convention. They
+GraphQL field by the schema build's own rule (``naming.relationship_field_name``): named for the
+GraphQL field of the table it reaches and its cardinality, in the deployment's naming convention. They
 are derived here, once, and stored, so every reader -- the schema build, the admin API, the meta
 domain (a product's panel, the knowledge graph, SPARQL) -- reads the same names rather than each
 deriving its own (REQ-351)."""
