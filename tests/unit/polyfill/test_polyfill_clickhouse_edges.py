@@ -1064,3 +1064,10 @@ def test_money_divided_by_an_integer_keeps_every_cent(runtime, sql, want):
 
     (got,) = _answers(runtime, sql)
     assert Decimal(str(got)) == Decimal(want)
+
+
+def test_ts_lexize_of_no_lexeme_is_a_text_array(runtime):
+    """An empty array of no type is ClickHouse's Array(Nothing), described as json (oid 114)."""
+    sql = "SELECT pg_catalog.\"ts_lexize\"('simple'::regdictionary, ''::text) AS v"
+    assert "Array(Nullable(String))" in transpile(sql, "clickhouse")
+    assert _answers(runtime, sql) == [[]]
