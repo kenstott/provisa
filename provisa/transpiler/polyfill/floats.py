@@ -38,7 +38,7 @@ from provisa.transpiler import pg_forms
 from provisa.transpiler.polyfill import notation, trino
 from provisa.transpiler.polyfill.matching import graft, match
 from provisa.transpiler.polyfill.notation import Rewrite, replacement
-from provisa.transpiler.polyfill.grid import Feature, Rule, Side
+from provisa.transpiler.polyfill.grid import Feature, Limitation, Rule, Side
 from provisa.transpiler.polyfill.numbers import FAMILY, ch_checked, ch_fail, ch_once, ch_only
 
 
@@ -222,6 +222,62 @@ LOGS: tuple[Feature, ...] = (
         FAMILY,
         "The base 10 logarithm of a value above zero.",
         read=Side(rules=(Rule("log10($x)", _of_no_numeric("log10($x)", _LOG10)),)),
+    ),
+)
+
+_UNDERFLOW = ch_fail("22003", "value out of range: underflow")
+
+#: dexp: exp of a finite value overflowing or underflowing to zero raises 22003; of NaN NaN, of an
+#: infinity infinity or zero.
+_EXP = ch_checked(
+    [
+        _OVERFLOW.format(condition=f"isInfinite(exp($x)) AND {_FINITE.format('$x')}"),
+        _UNDERFLOW.format(condition=f"exp($x) = 0 AND {_FINITE.format('$x')}"),
+    ],
+    "exp($x)",
+)
+#: dlog1: ln of a negative or zero raises 2201E.
+_LN = ch_checked(
+    [
+        ch_fail("2201E", "cannot take logarithm of a negative number").format(condition="$x < 0"),
+        ch_fail("2201E", "cannot take logarithm of zero").format(condition="$x = 0"),
+    ],
+    "log($x)",
+)
+
+#: tanh as sinh / cosh, each of which ClickHouse answers as libm does; past 22 both overflow toward
+#: infinity where tanh is 1 to a double's precision.
+_TANH = "if(abs($x) > 22, if($x > 0, 1.0, -1.0), sinh($x) / cosh($x))"
+
+EXPONENTIALS: tuple[Feature, ...] = (
+    Feature(
+        "exp",
+        FAMILY,
+        "e raised to a power; 22003 where a finite power overflows or underflows.",
+        read=Side(rules=(Rule("exp($x)", _of_no_numeric("exp($x)", _EXP)),)),
+    ),
+    Feature(
+        "ln",
+        FAMILY,
+        "The natural logarithm of a value above zero.",
+        read=Side(rules=(Rule("ln($x)", _of_no_numeric("ln($x)", _LN)),)),
+    ),
+    Feature(
+        "tanh",
+        FAMILY,
+        "The hyperbolic tangent.",
+        read=Side(
+            rules=(Rule("tanh($x)", _of_no_numeric("tanh($x)", _TANH)),),
+            limitations={
+                "clickhouse": (
+                    Limitation(
+                        "The ratio of ClickHouse's sinh and cosh, within 2 units in the last place "
+                        "of libm's tanh (ClickHouse's own tanh answers 0 for a value below 1e-90); "
+                        "1 in magnitude past 22, where tanh rounds to 1."
+                    ),
+                )
+            },
+        ),
     ),
 )
 
@@ -549,6 +605,7 @@ FEATURES: tuple[Feature, ...] = (
     *DOMAINS,
     SQRT,
     *LOGS,
+    *EXPONENTIALS,
     *POWERS,
     DEGREES,
     *DEGREE_TRIGONOMETRY,
