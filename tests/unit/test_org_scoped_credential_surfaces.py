@@ -60,6 +60,8 @@ class _State:
     multitenancy = True
     org_id = "root"
     admin_db = _AdminDb()
+    # The cross-org right is judged from what the principal holds (REQ-802): here, its claims.
+    auth_config: dict = {"default_role": "analyst", "assignments_source": "claims"}
     roles: dict = {}
     platform_roles: dict = {}
 

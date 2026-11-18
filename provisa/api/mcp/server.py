@@ -45,8 +45,8 @@ from provisa.core.request_thread import run_on_request_thread
 from provisa.otel_compat import get_tracer as _get_tracer
 from provisa.otel_compat import in_request_span as _in_request_span
 from provisa.otel_compat import request_span as _request_span
-from provisa.security.rights import can_act_cross_org, capabilities_for_claims
 from provisa.api.engine_error_names import client_text
+from provisa.security.rights import capabilities_for_claims
 
 log = logging.getLogger(__name__)
 _tracer = _get_tracer(__name__)
@@ -217,12 +217,14 @@ async def _org_for_identity(identity: Any, state: Any, requested_org: str | None
         return state.org_id
     from provisa.api.org_resolve import resolve_session_org
 
-    # REQ-1337: resolve the claims to RIGHTS and test cross_org — never the role name.
-    caps = capabilities_for_claims(getattr(identity, "roles", []) or [], state.platform_roles)
+    from provisa.auth.held_assignments import may_act_cross_org
+
+    # REQ-1337, REQ-802: the cross_org RIGHT of the roles the principal holds — never the role
+    # name, and never the role claims the credential carries.
     return await resolve_session_org(
         state,
         user_id=getattr(identity, "user_id", None),
-        can_act_any_org=can_act_cross_org(caps),
+        can_act_any_org=await may_act_cross_org(state, identity),
         requested_org=requested_org,
         credential_org=getattr(identity, "active_org_id", None),  # REQ-1235
         named_by=_MCP_NAMES_AN_ORG,

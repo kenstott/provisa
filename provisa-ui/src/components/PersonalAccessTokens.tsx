@@ -231,7 +231,14 @@ export function PersonalAccessTokens() {
                 <Table.Td data-testid={`pat-env-${tok.token_hash}`}>{tok.env_name}</Table.Td>
                 <Table.Td ta="right">
                   {tok.revoked_at ? (
-                    <Badge size="xs" color="gray" data-testid={`profile-pat-revoked-${tok.prefix}`}>
+                    <Badge
+                      size="xs"
+                      color="gray"
+                      // The table sizes this column to the word's fractional width and the label
+                      // clips past its box, which cut the word by a pixel into an ellipsis.
+                      styles={{ label: { overflow: "visible" } }}
+                      data-testid={`profile-pat-revoked-${tok.prefix}`}
+                    >
                       {t("userProfileModal.patRevoked")}
                     </Badge>
                   ) : (
