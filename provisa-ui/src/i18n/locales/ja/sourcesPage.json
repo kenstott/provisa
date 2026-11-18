@@ -45,6 +45,8 @@
     "purposeAdd": "ソースを追加しただけではテーブルは登録されません。行の「Discover」からスキーマを閲覧し、ガバナンス対象にしたいテーブルを登録してください。",
     "purposeAria": "データソースについて",
     "registrationMissing": "{{list}} にソース {{source}} の登録がありません。",
-    "duplicateCredentialsNote": "{{source}} の認証情報はコピーされません。ここで入力するか、シークレットへの参照を入力してください。"
+    "duplicateCredentialsNote": "{{source}} の認証情報はコピーされません。ここで入力するか、シークレットへの参照を入力してください。",
+    "withdrawn": "取り下げ中",
+    "withdrawnTitle": "本番外：戻すまで、そのテーブルはどのロールにも提供されません"
   }
 }

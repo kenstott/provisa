@@ -9,14 +9,16 @@
 // permission from the copyright holder.
 
 // REQ-413: the Relationships page's discovery button, which animates while a run is in progress
-// and still opens the dialog (where the run and its Stop are), and the banner that says what the
-// run last watched found once it has ended, on the page as well as in the dialog.
+// and still opens the dialog (where the run and its Stop are), and the one line the page shows
+// about the latest run (amended 2026-11-16): going, with its progress, or ended, with how many of
+// its suggestions wait, and Open, which shows it in the dialog. The line goes once the run's
+// suggestions are all decided; the run's summary is in the dialog, never on the page.
 
 import { useTranslation } from "react-i18next";
-import { ActionIcon, Alert, Loader, Text } from "@mantine/core";
+import { ActionIcon, Button, Group, Loader, Text } from "@mantine/core";
 import { Sparkles } from "lucide-react";
-import { isReading, type DiscoveryRun } from "../../api/admin";
-import { discoveryResultLines } from "./discoveryResult";
+import type { DiscoveryRun } from "../../api/admin";
+import { runLine } from "./runLine";
 
 export function DiscoverButton({ running, onOpen }: { running: boolean; onOpen: () => void }) {
   const { t } = useTranslation();
@@ -36,18 +38,29 @@ export function DiscoverButton({ running, onOpen }: { running: boolean; onOpen: 
   );
 }
 
-export function DiscoverResultBanner({ run }: { run: DiscoveryRun | null }) {
+export function DiscoverRunLine({
+  latest,
+  waiting,
+  onOpen,
+}: {
+  latest: DiscoveryRun | null;
+  /** How many of the ended run's suggestions wait; null while not counted. */
+  waiting: number | null;
+  onOpen: () => void;
+}) {
   const { t } = useTranslation();
-  if (!run || run.status === "running" || run.report === null || isReading(run.report)) {
-    return null;
-  }
+  if (latest === null) return null;
+  const going = latest.status === "running";
+  if (!going && (waiting === null || waiting === 0)) return null;
   return (
-    <Alert color="blue" mb="md" data-testid="rels-discover-result">
-      {discoveryResultLines(run.report, t).map((line) => (
-        <Text key={line} fz="0.875rem">
-          {line}
-        </Text>
-      ))}
-    </Alert>
+    <Group gap="xs" mb="md" wrap="nowrap" data-testid="rels-discover-line" aria-live="polite">
+      {going && <Loader size={14} aria-hidden />}
+      <Text fz="0.875rem" c={latest.status === "failed" ? "red" : undefined}>
+        {runLine(latest, waiting, t)}
+      </Text>
+      <Button variant="subtle" size="compact-sm" onClick={onOpen} data-testid="rels-discover-open">
+        {t("relationshipsPage.openRun")}
+      </Button>
+    </Group>
   );
 }

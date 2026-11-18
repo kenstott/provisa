@@ -11,7 +11,8 @@
 """Unit tests for LLM relationship discovery as a run asks and reads it (REQ-413).
 
 Source files:
-  - provisa/discovery/runner.py  — read_items(), execute(), MIN_CONFIDENCE
+  - provisa/discovery/runner.py  — read_items(), execute()
+  - provisa/discovery/threshold.py — DEFAULT: the threshold of a person who has set none
   - provisa/discovery/context.py — prompt(): the request a run sends
   - provisa/discovery/windows.py — plan(): the requests of a run
 
@@ -31,8 +32,9 @@ import pytest
 
 from provisa.discovery.columns import UNKNOWN, ColumnFacts, TableFacts, type_groups
 from provisa.discovery.direction import Proposal
-from provisa.discovery.runner import MIN_CONFIDENCE, Tally, execute, read_items
-from provisa.discovery.runner import kept as judged
+from provisa.discovery import threshold
+from provisa.discovery.runner import Tally, execute, read_items
+from provisa.discovery.runner import judged
 from provisa.discovery.windows import Request, plan
 from provisa.llm.client import Completion
 from provisa.llm.limits import DEFAULT_LIMITS
@@ -101,20 +103,14 @@ def _candidate_json(
     }
 
 
-async def _not_measured(found: list[Proposal]) -> list[Proposal]:
-    """No values to measure here: each proposal keeps the model's confidence, as one whose values
-    were not compared does (REQ-413). The measure itself: test_discovery_pair_measure."""
-    return found
-
-
 async def _read(
     items: list, tables: list[TableFacts] | None = None
 ) -> tuple[list[Proposal], Tally]:
-    """The proposals an answer's elements make, judged as the run judges them (measured, then
+    """The proposals an answer's elements make, judged as the run judges them (Key value overlap not chosen,
     held to the threshold)."""
     _, request = _request(tables)
-    tally = Tally(total=1)
-    return await judged(*read_items(request, items, tally), _not_measured, tally), tally
+    tally = Tally(total=1, threshold=threshold.DEFAULT)
+    return await judged(*read_items(request, items, tally), None, None, tally), tally
 
 
 class _Watcher:
@@ -132,7 +128,14 @@ async def _direct(fn, *args):
 async def _run(ask) -> tuple[Tally, list[Proposal]]:
     k, request = _request()
     return await execute(
-        [request], k, 4_096, ask, _Watcher(), measure=_not_measured, to_thread=_direct
+        [request],
+        k,
+        4_096,
+        ask,
+        _Watcher(),
+        threshold=threshold.DEFAULT,
+        key_values=None,
+        to_thread=_direct,
     )
 
 
@@ -187,8 +190,8 @@ class TestFKSuggestionRequestResponseShape:
 class TestConfidenceThresholdBoundary:
     """Proposals exactly at the run's threshold are kept; just below are left out."""
 
-    def test_the_threshold_is_0_7(self):
-        assert MIN_CONFIDENCE == 0.7
+    def test_the_default_threshold_is_0_7(self):
+        assert threshold.DEFAULT == 0.7
 
     async def test_exactly_at_threshold_is_included(self):
         """confidence == the threshold is kept (inclusive lower bound)."""
@@ -348,7 +351,7 @@ class TestPromptOutputFormat:
 
     def _prompt(self, tables: list[TableFacts] | None = None) -> str:
         k, request = _request(tables)
-        return request.prompt(k)
+        return request.prompt(k, threshold.DEFAULT)
 
     def test_output_format_section_present(self):
         assert "Return ONLY a JSON array, no other text, each element:" in self._prompt()

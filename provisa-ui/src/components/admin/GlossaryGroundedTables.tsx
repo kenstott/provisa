@@ -59,7 +59,7 @@ export function GlossaryGroundedTables({
   const options = useMemo(() => {
     const byId = new Map<string, string>();
     for (const tb of tables)
-      if (!tb.draft)
+      if (!tb.withdrawn)
         byId.set(String(tb.id), label({ domain_id: tb.domainId, table_name: tb.tableName }));
     // A grounded table the table list does not hold (outside the domains it is read for) is named.
     for (const g of grounded ?? []) byId.set(String(g.table_id), label(g));

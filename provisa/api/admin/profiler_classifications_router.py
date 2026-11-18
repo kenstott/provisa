@@ -29,7 +29,7 @@ A decision is the steward's: it needs ``sensitive_data`` in the table's own doma
 in its domains; org_admin, in every one). The kinds are listed for a holder of ``sensitive_data``
 or ``org_settings``, and enabled or disabled by a holder of ``org_settings`` alone. A scan is run
 and read by those who may register tables in the table's own domain -- it is asked for while
-registering a table, a draft as well as one in service -- and shows hints only on the columns the
+registering a table, a withdrawn one as well as one in service -- and shows hints only on the columns the
 caller is served.
 """
 

@@ -70,7 +70,8 @@ COPY vendor/ ./vendor/
 #   docker build --build-arg PROVISA_EXTRAS=firebase,vector,soda .
 # Every package at the version uv.lock pins — the versions the tests ran on — never pip's newest
 # (an unpinned install shipped sqlglot 30.23 while the suite ran 30.9). torch comes from the CPU
-# index at the locked version; its CUDA-only dependencies (triton, nvidia-*, cuda-*) are left out.
+# index at the locked version: the lock takes Linux's torch from that index ([tool.uv.sources]), so
+# its line is the `+cpu` one; the export names no index, so it is installed on its own.
 ARG PROVISA_EXTRAS=firebase,vector
 COPY uv.lock .
 # REQ-2071: provisa-notebook (the Data Science area's Pyodide) is a dependency that lives beside
@@ -84,7 +85,7 @@ RUN --mount=type=bind,from=pyodide-downloads,target=/pyodide-downloads,rw \
     uv export --frozen --no-dev --no-emit-project --no-hashes --no-annotate --no-header \
       $(echo "${PROVISA_EXTRAS}" | tr ',' '\n' | sed 's/^/--extra /') -o /tmp/locked.txt \
  && grep -vE '^(torch|triton|nvidia-|cuda-|-e )' /tmp/locked.txt > /tmp/requirements.txt \
- && pip install --no-cache-dir "$(grep '^torch==' /tmp/locked.txt | cut -d' ' -f1)" \
+ && pip install --no-cache-dir "$(grep -E '^torch==[^ ]+\+cpu ' /tmp/locked.txt | cut -d' ' -f1)" \
       --index-url https://download.pytorch.org/whl/cpu \
  && pip install --no-cache-dir --no-deps -r /tmp/requirements.txt \
  && PROVISA_NOTEBOOK_DOWNLOADS=/pyodide-downloads PYTHONPATH=provisa-notebook \
@@ -106,8 +107,6 @@ RUN pip install --no-cache-dir --no-deps /tmp/provisa-wheel/provisa-*.whl \
 # bundled with the packages provisa-ui/graph-render's lockfile pins, drawn by Node into a PNG.
 # npm and the build tools stay in this stage; the runtime takes node, the bundle and the two
 # packages the bundle loads at run time (jsdom, and canvas with its native build for this arch).
-# The graph's colours come from Mantine's scales and the brand theme (provisa-graph/tokens.ts),
-# so @mantine/core is a build-only dependency of graph-render, bundled like cytoscape.
 FROM node:24.22.3-bookworm-slim@sha256:dc26ae92c9fb15cf6b1d63e20f0944b2efe0f115b20e00be48fb23fceb061c54 AS graph-render
 WORKDIR /build/provisa-ui
 COPY provisa-ui/graph-render/package.json provisa-ui/graph-render/package-lock.json ./graph-render/
@@ -115,7 +114,7 @@ RUN cd graph-render && npm ci --no-audit --no-fund
 COPY provisa-ui/graph-render/src ./graph-render/src
 COPY provisa-ui/src/components/graph ./src/components/graph
 COPY provisa-ui/src/components/provisa-graph ./src/components/provisa-graph
-COPY provisa-ui/src/theme/theme.ts ./src/theme/theme.ts
+COPY provisa-ui/src/theme/palette.ts ./src/theme/palette.ts
 RUN cd graph-render && npm run build && npm prune --omit=dev
 
 # Stage 4: lean runtime image — no wheels, only app source + installed packages

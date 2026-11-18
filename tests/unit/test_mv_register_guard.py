@@ -73,7 +73,7 @@ def test_deterministic_mv_registers(fake_state):
             "sales",
             "SELECT region, sum(amt) AS t FROM o GROUP BY region",
             300,
-            draft=False,
+            withdrawn=False,
             region=None,
             bitemporal_columns=[],
         )
@@ -94,7 +94,7 @@ def test_non_deterministic_mv_rejected(fake_state, sql):
     with pytest.raises(ValueError, match="non-deterministic MV"):
         asyncio.run(
             schema_common._sync_view_mv(
-                "bad", sql, 300, draft=False, region=None, bitemporal_columns=[]
+                "bad", sql, 300, withdrawn=False, region=None, bitemporal_columns=[]
             )
         )
     assert fake_state.registered == []
@@ -110,7 +110,7 @@ def test_a_view_of_another_org_targets_that_org_s_store(fake_state):
             "sales",
             "SELECT region, sum(amt) AS t FROM o GROUP BY region",
             300,
-            draft=False,
+            withdrawn=False,
             region=None,
             bitemporal_columns=[],
         )
@@ -130,7 +130,7 @@ def test_consistency_tier_sets_mvdefinition(fake_state, tier):
             _DET_SQL,
             300,
             consistency=tier,
-            draft=False,
+            withdrawn=False,
             region=None,
             bitemporal_columns=[],
         )
@@ -141,7 +141,7 @@ def test_consistency_tier_sets_mvdefinition(fake_state, tier):
 def test_consistency_defaults_to_shared(fake_state):
     asyncio.run(
         schema_common._sync_view_mv(
-            "sales", _DET_SQL, 300, draft=False, region=None, bitemporal_columns=[]
+            "sales", _DET_SQL, 300, withdrawn=False, region=None, bitemporal_columns=[]
         )
     )
     assert fake_state.registered[0].consistency == "shared"
@@ -155,7 +155,7 @@ def test_invalid_consistency_rejected(fake_state):
                 _DET_SQL,
                 300,
                 consistency="bogus",
-                draft=False,
+                withdrawn=False,
                 region=None,
                 bitemporal_columns=[],
             )
@@ -235,7 +235,7 @@ def test_a_view_over_a_row_level_table_is_refused_and_not_registered(fake_state,
                 "clicks_by_region",
                 "SELECT region, count(*) AS n FROM clicks GROUP BY region",
                 300,
-                draft=False,
+                withdrawn=False,
                 region=None,
                 bitemporal_columns=[],
             )
@@ -247,12 +247,12 @@ def test_a_view_over_a_row_level_table_is_refused_and_not_registered(fake_state,
     assert fake_state.registered == []
 
 
-def test_a_draft_view_is_held_to_every_rule_and_registered_for_nothing(fake_state):
-    """REQ-1921: saved as draft, a view is checked as any saved view is — and nothing builds it
-    until it is released."""
+def test_a_withdrawn_view_is_held_to_every_rule_and_registered_for_nothing(fake_state):
+    """REQ-1921: saved while withdrawn, a view is checked as any saved view is — and nothing
+    builds it until it is put back."""
     asyncio.run(
         schema_common._sync_view_mv(
-            "sales", _DET_SQL, 300, draft=True, region=None, bitemporal_columns=[]
+            "sales", _DET_SQL, 300, withdrawn=True, region=None, bitemporal_columns=[]
         )
     )
     assert fake_state.registered == []
@@ -262,7 +262,7 @@ def test_a_draft_view_is_held_to_every_rule_and_registered_for_nothing(fake_stat
                 "bad",
                 "SELECT now() AS t, random() AS r FROM o",
                 300,
-                draft=True,
+                withdrawn=True,
                 region=None,
                 bitemporal_columns=[],
             )

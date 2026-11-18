@@ -63,6 +63,7 @@ import {
   useListedNames, // REQ-2153
 } from "../hooks/useAdminQueries";
 import { usePurgeCacheByTable, useReplicaBuilds } from "../hooks/useAdminOpsQueries";
+import { usePutBackRegions, useTableWithdrawal } from "../hooks/useWithdrawal";
 import type { RegisteredTable, ColumnDependentsResult } from "../types/admin";
 import { DERIVED_SOURCE_ID } from "../types/admin";
 import { FilterInput } from "../components/admin/FilterInput";
@@ -137,7 +138,10 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
     loading: tablesLoading,
     error: tablesError,
     refetch: refetchTables,
-  } = useTableDetails();
+    // REQ-1921: the withdrawn tables are listed too, marked, so they can be put back.
+  } = useTableDetails({ includeWithdrawn: true });
+  const { withdrawTable, putBackTable } = useTableWithdrawal();
+  const putBackRegions = usePutBackRegions();
   const { sources, refetch: refetchSources } = useSources();
   const { domains, refetch: refetchDomains } = useDomains();
   const { dataProducts } = useDataProducts(); // REQ-1634
@@ -1007,6 +1011,9 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
             startEditing={startEditing}
             onDuplicate={handleDuplicate}
             handleDelete={handleDelete}
+            onWithdraw={withdrawTable}
+            onPutBack={putBackTable}
+            putBackRegions={putBackRegions}
             handleProfile={handleProfile}
             onPreview={(tb) => setPreviewTable((open) => (open?.id === tb.id ? null : tb))}
             source={sources.find((s) => s.id === t.sourceId)}
@@ -1399,6 +1406,24 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                             >
                               <Group gap="0.35rem">
                                 {t.alias || t.tableName}
+                                {/* REQ-1921: out of production, by itself or through its source. */}
+                                {(t.withdrawn || t.sourceWithdrawn) && (
+                                  <Badge
+                                    size="xs"
+                                    variant="outline"
+                                    color="gray"
+                                    title={
+                                      t.withdrawn
+                                        ? translate("tablesPage.withdrawnTitle")
+                                        : translate("tablesPage.sourceWithdrawnTitle", {
+                                            source: t.sourceId,
+                                          })
+                                    }
+                                    data-testid={`tables-withdrawn-${t.tableName}`}
+                                  >
+                                    {translate("tablesPage.withdrawn")}
+                                  </Badge>
+                                )}
                                 <ReplicatingMark build={buildOf(replicaBuilds?.builds, t)} />
                                 <EndpointErrorMark
                                   error={t.apiEndpointError}

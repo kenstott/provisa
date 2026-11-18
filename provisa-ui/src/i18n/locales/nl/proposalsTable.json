@@ -2,7 +2,7 @@
   "proposalsTable": {
     "intro": "Een aangevinkte rij wordt geaccepteerd wanneer je toepast. Rijen met een score van ten minste de drempel staan bij het begin aangevinkt. Een rij zonder vinkje blijft onbeslist.",
     "colScore": "Score",
-    "colModel": "Model",
+    "colConfidence": "Betrouwbaarheid",
     "colJev": "Jev",
     "colKind": "Soort",
     "colMeasure": "Gemeten",
@@ -63,6 +63,7 @@
     },
     "dimensionMade": "Accepteren maakt de gedeelde dimensie {{name}}, waaraan beide kolommen worden gekoppeld.",
     "dimensionJoined": "Accepteren koppelt beide kolommen aan de gedeelde dimensie {{name}}.",
-    "twoDimensions": "De kolommen zijn al gekoppeld aan twee verschillende gedeelde dimensies, dus deze kan niet worden geaccepteerd."
+    "twoDimensions": "De kolommen zijn al gekoppeld aan twee verschillende gedeelde dimensies, dus deze kan niet worden geaccepteerd.",
+    "admittedOnKeyValues": "Toegelaten omdat de sleutelwaarden in de gegevens overeenkomen; de meting staat naast de betrouwbaarheid van het model."
   }
 }

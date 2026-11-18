@@ -2,7 +2,7 @@
   "proposalsTable": {
     "intro": "Una fila marcada se acepta al aplicar. Las filas cuya puntuación alcanza al menos el umbral empiezan marcadas. Una fila sin ninguna casilla marcada queda sin decidir.",
     "colScore": "Puntuación",
-    "colModel": "Modelo",
+    "colConfidence": "Confianza",
     "colJev": "Jev",
     "colKind": "Tipo",
     "colMeasure": "Medido",
@@ -63,6 +63,7 @@
     },
     "dimensionMade": "Al aceptarla se crea la dimensión compartida {{name}}, a la que se unen ambas columnas.",
     "dimensionJoined": "Al aceptarla, ambas columnas se unen a la dimensión compartida {{name}}.",
-    "twoDimensions": "Sus columnas ya se unen a dos dimensiones compartidas distintas, así que no se puede aceptar."
+    "twoDimensions": "Sus columnas ya se unen a dos dimensiones compartidas distintas, así que no se puede aceptar.",
+    "admittedOnKeyValues": "Admitido porque los valores clave coinciden en los datos; la medida se muestra junto a la confianza del modelo."
   }
 }

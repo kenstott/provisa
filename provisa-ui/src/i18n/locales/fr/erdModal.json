@@ -34,6 +34,7 @@
     "focusDomains": "Domaines : {{names}}",
     "focusTables": "Tables : {{names}}",
     "focusMissing": "Introuvable : {{names}}",
-    "showAll": "Tout afficher"
+    "showAll": "Tout afficher",
+    "showWithdrawn": "Afficher les éléments retirés"
   }
 }

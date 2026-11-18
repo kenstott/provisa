@@ -25,7 +25,17 @@ import {
 import React, { useState, useEffect, useMemo, useRef, type ReactNode } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { ActionIcon, Alert, Button, Group, Select, Table, Text, TextInput } from "@mantine/core";
+import {
+  ActionIcon,
+  Alert,
+  Badge,
+  Button,
+  Group,
+  Select,
+  Table,
+  Text,
+  TextInput,
+} from "@mantine/core";
 import { FilterInput } from "../components/admin/FilterInput";
 import { HelpBubble } from "../components/HelpBubble";
 import { TipSurface } from "../components/Tip";
@@ -114,6 +124,7 @@ import { icebergCatalogHints } from "./sources/icebergCatalog";
 import { CLOUD_FILE_TYPES, objectStoreHints, objectStoreOf } from "./sources/objectStoreHints";
 import { draftTable, fileLocationOf } from "./sources/sourceUpload";
 import { SourceDetailPanel } from "./sources/SourceDetailPanel";
+import { usePutBackRegions, useSourceWithdrawal } from "../hooks/useWithdrawal";
 import { SourceSectionTabs } from "./sources/SourceSectionTabs";
 import { SourceTablesList } from "./sources/SourceTablesList";
 import { SourceOperations } from "./sources/SourceOperations";
@@ -160,7 +171,8 @@ export function SourcesPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const { sources, loading: sourcesLoading, refetch: refetchSources } = useSources();
   // The tables registered from each source, for its panel's Tables section.
-  const { tables: registeredTables } = useTables({ columns: false });
+  // REQ-1921: a source's Tables section lists its withdrawn tables too, marked.
+  const { tables: registeredTables } = useTables({ columns: false, includeWithdrawn: true });
   // REQ-2241: the open source and its panel's section are the URL (`?expanded=<id>&section=`).
   // The section is the same in its read view and its edit form.
   const detail = useDetailParam("sources");
@@ -179,6 +191,8 @@ export function SourcesPage() {
   const { updateSource } = useUpdateSource();
   const { renameSource } = useRenameSource();
   const { deleteSource } = useDeleteSource();
+  const { withdrawSource, putBackSource } = useSourceWithdrawal();
+  const putBackRegions = usePutBackRegions();
   const { updateSourceCache } = useUpdateSourceCache();
   const setSourceRegion = useSetSourceRegion();
   const { updateSourceLoadProtection } = useUpdateSourceLoadProtection();
@@ -1784,6 +1798,9 @@ export function SourcesPage() {
                 onNavigate={() => navigate(`/tables?source=${encodeURIComponent(s.id)}`)}
                 // REQ-2198: resolves once the list is read again without the source; the
                 // panel's Delete closes the panel and says why a failed one did not go through.
+                onWithdraw={() => withdrawSource(s.id)}
+                onPutBack={(region) => putBackSource(s.id, region)}
+                putBackRegions={putBackRegions}
                 onDelete={async () => {
                   const result = await deleteSource(s.id);
                   if (refusal.refused(result, s.id)) return false;
@@ -1948,6 +1965,18 @@ export function SourcesPage() {
                                 {/* As on Tables: the tag chips follow the identifier, the edit-tags control follows the chips. */}
                                 <Group gap="0.35rem">
                                   {s.id}
+                                  {/* REQ-1921: out of production until put back. */}
+                                  {s.withdrawn && (
+                                    <Badge
+                                      size="xs"
+                                      variant="outline"
+                                      color="gray"
+                                      title={t("sourcesPage.withdrawnTitle")}
+                                      data-testid={`sources-withdrawn-${s.id}`}
+                                    >
+                                      {t("sourcesPage.withdrawn")}
+                                    </Badge>
+                                  )}
                                   <TagControl objectType="source" sourceId={s.id} />
                                 </Group>
                               </Table.Td>

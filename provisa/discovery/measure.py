@@ -10,13 +10,15 @@
 
 """Every pair a discovery run proposes, measured on its data (REQ-413).
 
-For each proposed pair, foreign key or semantic, each column's distinct values are read, at most
-:data:`DISTINCT_BOUND` of them, through the one governed pipeline as the person who started the
+For each pair a run measures (the semantic pairs in the band between the measure cutoff and the
+run's threshold, with Key value overlap chosen: :func:`provisa.discovery.runner.judged`), each column's
+distinct values are read, at most the run's sample size of them (:data:`DISTINCT_BOUND` unless the
+dialog sets another), through the one governed pipeline as the person who started the
 run (:func:`provisa.discovery.gather.values_reader`). The measure is how many of the source
 column's distinct values occur in the target column and the reverse, and whether each column's
 values are distinct (a key). Whether a column is distinct is exact whatever the bound: its values
 are read most repeated first, so the first one read says whether any repeats. A column holding
-more distinct values than the bound is counted on the first :data:`DISTINCT_BOUND` read, and the
+more distinct values than the bound is counted on the first values read up to the bound, and the
 measure says so; where the other column holds more than the bound, the values read are looked up
 in it rather than compared with its first values.
 
@@ -45,7 +47,8 @@ from provisa.discovery.context import measured_score
 if TYPE_CHECKING:
     from provisa.discovery.direction import ColumnRef, Edge, Proposal
 
-#: The most distinct values read of one column for a pair's measure.
+#: The sample size a run measures with unless the dialog sets another (REQ-413): the most
+#: distinct values read of one column for a pair's measure.
 DISTINCT_BOUND = 10_000
 
 #: Why a column was not measured: its table requires a parameter and is never read
@@ -59,7 +62,7 @@ Cardinality = Literal["many-to-one", "one-to-one", "many-to-many", "one-to-many"
 
 @dataclass(frozen=True)
 class Values:
-    """A column's distinct non-null values as read: at most :data:`DISTINCT_BOUND`, most repeated
+    """A column's distinct non-null values as read: at most the run's sample size, most repeated
     first. ``more``: the column holds more distinct values than were read. ``distinct``: no value
     occurs twice in the whole column."""
 
@@ -88,8 +91,8 @@ def comparable_value(value: Any) -> Any:
 class Reader(Protocol):
     """How a run reads columns' values for the measure."""
 
-    async def values(self, table: TableFacts, column: str) -> Values | Unmeasured:
-        """The column's distinct values, or why it is not measured."""
+    async def values(self, table: TableFacts, column: str, bound: int) -> Values | Unmeasured:
+        """The column's distinct values, at most ``bound`` of them, or why it is not measured."""
         ...
 
     async def found(self, table: TableFacts, column: str, among: Values) -> frozenset[Any]:
@@ -133,7 +136,7 @@ class Measure:
     target: Side
     source_in_target: int | None
     target_in_source: int | None
-    bound: int = DISTINCT_BOUND
+    bound: int
 
     @property
     def compared(self) -> bool:
@@ -200,9 +203,16 @@ class Measurer:
     as a new pair and each is left out for what it already is."""
 
     def __init__(
-        self, reader: Reader, tables: dict[int, TableFacts], *, decided: Collection[Edge]
+        self,
+        reader: Reader,
+        tables: dict[int, TableFacts],
+        *,
+        decided: Collection[Edge],
+        bound: int,
     ) -> None:
         self._reader = reader
+        #: The run's sample size: the most distinct values read of each column.
+        self._bound = bound
         self._decided = decided
         self._tables = tables
         self._values: dict[ColumnRef, Values | Unmeasured] = {}
@@ -210,7 +220,7 @@ class Measurer:
 
     async def _read(self, ref: ColumnRef) -> Values | Unmeasured:
         if ref not in self._values:
-            self._values[ref] = await self._reader.values(self._tables[ref[0]], ref[1])
+            self._values[ref] = await self._reader.values(self._tables[ref[0]], ref[1], self._bound)
         return self._values[ref]
 
     async def _found(self, of: Values, in_ref: ColumnRef, there: Values) -> int:
@@ -227,13 +237,14 @@ class Measurer:
         if (source, target) not in self._pairs:
             s, t = await self._read(source), await self._read(target)
             if isinstance(s, str) or isinstance(t, str):
-                measure = Measure(_side(s), _side(t), None, None)
+                measure = Measure(_side(s), _side(t), None, None, self._bound)
             else:
                 measure = Measure(
                     _side(s),
                     _side(t),
                     await self._found(s, target, t),
                     await self._found(t, source, s),
+                    self._bound,
                 )
             self._pairs[(source, target)] = measure
         return self._pairs[(source, target)]

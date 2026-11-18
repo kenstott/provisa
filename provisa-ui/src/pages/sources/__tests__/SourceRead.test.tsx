@@ -144,6 +144,7 @@ function source(type: string, extra: Partial<Source> = {}): Source {
     changeSignal: "",
     rowFetchByKeys: false,
     isSystem: false,
+    withdrawn: false,
     cdc: null,
     ...extra,
   };

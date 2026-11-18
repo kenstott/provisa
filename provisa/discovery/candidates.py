@@ -19,7 +19,7 @@ from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import delete as _delete, select, update
 
-from provisa.core.schema_org import registered_tables, relationship_candidates, relationships
+from provisa.core.schema_org import registered_tables, relationship_candidates
 from provisa.discovery.analyzer import RelationshipCandidate
 
 if TYPE_CHECKING:
@@ -95,6 +95,7 @@ async def accept(
     derivation (:func:`provisa.core.repositories.relationship.upsert`), which marks the referring
     column a foreign key. No column is marked a primary or alternate key (REQ-413)."""
     from provisa.core.models import Cardinality, Relationship
+    from provisa.core import relationship_naming
     from provisa.core.repositories import relationship as relationship_repo
 
     async with conn.transaction():
@@ -109,15 +110,8 @@ async def accept(
             raise ValueError(f"Candidate {candidate_id} not found or not in suggested status")
         row = dict(found._mapping)
 
-        name: str = rel_id or row.get("suggested_name") or f"disc-{uuid.uuid4().hex[:12]}"
-        taken = await conn.execute_core(
-            select(relationships.c.id).where(relationships.c.id == name)
-        )
-        if taken.fetchone() is not None:
-            raise ValueError(f"A relationship named {name!r} already exists; name this one")
-
-        names = {
-            int(r.id): r.alias or r.table_name
+        tables = {
+            int(r.id): r
             for r in (
                 await conn.execute_core(
                     select(
@@ -130,6 +124,28 @@ async def accept(
                 )
             ).fetchall()
         }
+        source, target = tables[int(row["source_table_id"])], tables[int(row["target_table_id"])]
+        suggested = row.get("suggested_name") or f"disc-{uuid.uuid4().hex[:12]}"
+        # REQ-415: a generated name is told apart from the names already registered; one a person
+        # typed is never changed, and refused when taken. The run's result sends each proposal
+        # with the name it shows, its suggested name: that name is the generated one, not typed.
+        (named,) = await relationship_naming.unique_names(
+            conn,
+            [
+                relationship_naming.Generated(
+                    rel_id=rel_id or suggested,
+                    id_typed=bool(rel_id) and rel_id != row.get("suggested_name"),
+                    source_table_id=int(row["source_table_id"]),
+                    target_table_id=int(row["target_table_id"]),
+                    source_column=row["source_column"],
+                    target_column=row["target_column"],
+                    cardinality=row["cardinality"],
+                    target_name=target.alias or target.table_name,
+                    target_table=target.table_name,
+                )
+            ],
+        )
+        name = named.rel_id
         await conn.execute_core(
             update(relationship_candidates)
             .where(
@@ -142,11 +158,13 @@ async def accept(
             conn,
             Relationship(
                 id=name,
-                source_table_id=names[int(row["source_table_id"])],
-                target_table_id=names[int(row["target_table_id"])],
+                source_table_id=source.alias or source.table_name,
+                target_table_id=target.alias or target.table_name,
                 source_column=row["source_column"],
                 target_column=row["target_column"],
                 cardinality=Cardinality(row["cardinality"]),
+                alias=named.alias,
+                graphql_alias=named.graphql_alias,
             ),
             derive_target_key=False,
         )

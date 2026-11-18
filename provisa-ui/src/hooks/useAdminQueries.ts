@@ -116,6 +116,7 @@ import {
 import { useBulkDelete } from "./useBulkDelete";
 import { firstLoad } from "./firstLoad";
 import { useShownTableQueries } from "./useTableQueries";
+export { useAllRelationships } from "./useRelationshipQueries";
 
 export { firstLoad } from "./firstLoad";
 export {
@@ -477,19 +478,6 @@ export function useRelationships() {
   );
   return {
     relationships: data?.relationships ?? NO_RELATIONSHIPS,
-    loading: firstLoad(loading, data),
-    error,
-    refetch,
-  };
-}
-
-export function useAllRelationships() {
-  const { data, loading, error, refetch } = useQuery<{ allRelationships: Relationship[] }>(
-    ALL_RELATIONSHIPS_QUERY,
-    { fetchPolicy: "cache-and-network" },
-  );
-  return {
-    relationships: data?.allRelationships ?? NO_RELATIONSHIPS,
     loading: firstLoad(loading, data),
     error,
     refetch,

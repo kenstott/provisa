@@ -281,11 +281,9 @@ registered_tables = Table(
     Column("role_ttl", JSON, nullable=False, default=dict, server_default="{}"),
     Column("replicate", Integer),  # REQ-826: NULL = inherit source
     Column("region", Text),  # REQ-1921: the org region its data lives in; NULL = none
-    # REQ-1921: the waypoint of a move between regions -- out of service while set, read and
-    # written nowhere, offered in no schema, copied nowhere. Set by the move, never chosen.
-    Column("draft", Boolean, nullable=False, default=False, server_default=false()),
     # REQ-1921: withdrawn -- out of production while set: serves no role, attached by no engine,
-    # keeps no replica; its definition, grants and relationships stay. Put back by one action.
+    # keeps no replica; its definition, grants and relationships stay. Put back by one action,
+    # naming a region: the waypoint of a move between regions.
     Column("withdrawn", Boolean, nullable=False, default=False, server_default=false()),
     Column("load_protected", Boolean),  # REQ-1141: NULL = inherit source
     Column("off_peak_window", Text),  # REQ-1141
@@ -1971,6 +1969,12 @@ user_directory = Table(
     Column("email_opt_in", Boolean, nullable=False, server_default=true()),
     # REQ-413: the score from which a discovery run's proposals start ticked, the person's own.
     Column("discovery_threshold", Float, nullable=False, server_default="0.7"),
+    # REQ-413 (amended 2026-11-16): Key value overlap, the person's own as the threshold is:
+    # whether it is chosen, its measure cutoff, and its sample size (the most distinct values
+    # read of each column; provisa.discovery.measure.DISTINCT_BOUND).
+    Column("discovery_key_values", Boolean, nullable=False, server_default=true()),
+    Column("discovery_measure_cutoff", Float, nullable=False, server_default="0.2"),
+    Column("discovery_sample_size", Integer, nullable=False, server_default="10000"),
     Column("updated_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
 )
 

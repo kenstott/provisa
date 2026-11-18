@@ -54,6 +54,27 @@ const report = (over: Partial<DiscoveryReport>): DiscoveryReport => ({
 const found = (r: DiscoveryReport, tr: typeof t) => discoveryResultLines(r, tr).slice(1);
 
 describe("discoveryResultLines", () => {
+  it("lists Key value overlap among what the run looked for and states its two settings", () => {
+    const lines = discoveryResultLines(
+      report({
+        semantics: { ...SEMANTICS, measured: 4, admitted: 1 },
+        key_values: { cutoff: 0.2, sample_size: 10000 },
+      }),
+      t,
+    );
+    expect(lines[0]).toBe("Looked for: Semantics, Key value overlap.");
+    expect(lines[1]).toBe(
+      "Key value overlap: pairs the model rated from 20% to under 70% were measured on at most " +
+        "10,000 distinct values of each column. 4 measured, 1 admitted on matching key values.",
+    );
+  });
+
+  it("says nothing of Key value overlap when the run did not choose it", () => {
+    const lines = discoveryResultLines(report({ semantics: SEMANTICS }), t);
+    expect(lines[0]).toBe("Looked for: Semantics.");
+    expect(lines.join(" ")).not.toContain("Key value overlap");
+  });
+
   it("counts foreign keys found and suggested", () => {
     expect(found(report({ foreign_keys: { found: 3, suggested: 2 } }), t)).toEqual([
       "Foreign keys: 3 found, 2 suggested.",
@@ -107,9 +128,9 @@ describe("discoveryResultLines", () => {
           empty_reason: "requests_failed",
           failed: [
             failedRequest("whole_number", "overloaded"),
-            failedRequest("date", "overloaded"),
+            failedRequest("text", "overloaded"),
             {
-              group: "timestamp",
+              group: "uuid",
               code: "llm.no_answer_in_time",
               params: { seconds: 3600 },
               message: "The model gave no answer within 3600 seconds.",
@@ -123,8 +144,8 @@ describe("discoveryResultLines", () => {
       "Foreign keys: 6 found, 6 suggested.",
       "Semantics failed: all 3 requests to the model failed.",
       "For whole numbers columns: The request to the model failed: overloaded",
-      "For dates columns: The request to the model failed: overloaded",
-      "For timestamps columns: The model gave no answer within 3600 seconds.",
+      "For text columns: The request to the model failed: overloaded",
+      "For UUIDs columns: The model gave no answer within 3600 seconds.",
     ]);
     expect(lines.join(" ")).not.toContain("proposed no relationships");
   });

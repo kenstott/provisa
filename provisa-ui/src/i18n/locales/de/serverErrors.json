@@ -17,7 +17,8 @@
       "webhook_exists": "Der Webhook '{{name}}' existiert bereits"
     },
     "ai_models": {
-      "vector_model_fields_required": "jeder vector_models-Eintrag erfordert id, provider und dimensions"
+      "vector_model_fields_required": "jeder vector_models-Eintrag erfordert id, provider und dimensions",
+      "embedding_library_missing": "Das Embedding-Modell {{model}} verwendet den Anbieter {{provider}}, der das Extra {{extra}} benötigt (das Modul {{module}} ist nicht installiert): pip install 'provisa[{{extra}}]'."
     },
     "ai": {
       "endpoint_address_from_server": "Der KI-Endpunkt {{vendor}} bezieht seine Adresse aus der Umgebung des Servers, die eine Organisation auf diesem Server nicht verwendet. Geben Sie ihm unter Admin, KI-Modelle eine eigene Adresse.",
@@ -137,7 +138,6 @@
       "unknown_command": "Unbekannter Befehl '{{name}}'",
       "write_not_admitted": "Die Rolle '{{role}}' darf diesen Schreibvorgang nicht ausführen: Ein Schreibvorgang erfordert das Schreibrecht, Schreibzugriff auf jede geschriebene Spalte und Zeilen, die der Zeilenfilter der Rolle zulässt.",
       "write_not_supported": "'{{table}}' nimmt kein {{operation}} an: seine Quelle kann es nicht ausführen",
-      "table_is_draft": "{{table}} ist ein Entwurf: außer Betrieb, bis die Verantwortlichen ihrer Domäne sie freigeben",
       "source_unbound": "Die Quelle '{{source}}' hat in der Umgebung '{{env}}' keine Verbindung: Binden Sie sie oder kopieren Sie sie erneut aus der übergeordneten Umgebung",
       "system_catalog_unavailable": "Der Katalog '{{catalog}}' der Engine wird gerade registriert. Versuchen Sie es in Kürze erneut.",
       "domain_not_accessible": "Rolle '{{role_id}}' hat keinen Zugriff auf die Domäne '{{domain}}'",
@@ -154,7 +154,6 @@
       "source_starting": "Die Quelle {{source}} wird noch gestartet. Versuchen Sie es gleich noch einmal.",
       "source_unavailable": "Die Quelle {{source}} konnte nicht antworten. Versuchen Sie es in Kürze erneut.",
       "view_outside_load_window": "Die View {{view}} kann nur innerhalb ihres Lesefensters gelesen werden. Es öffnet sich wieder um {{opens_at}}.",
-      "view_awaits_rule_rebuild": "Die Ansicht {{view}} wird wegen einer Änderung der Zeilenregeln für ihre Eingaben neu erstellt. Diese Rolle kann sie lesen, sobald dieser Build veröffentlicht ist.",
       "graphql_body_missing": "Die Anfrage hat keinen Body: Eine GraphQL-Anfrage ist ein JSON-Objekt mit einer Abfrage.",
       "graphql_body_not_json": "Der Body der Anfrage ist kein JSON: {{error}}",
       "graphql_request_not_object": "Eine GraphQL-Anfrage ist ein JSON-Objekt mit einer Abfrage.",
@@ -166,6 +165,8 @@
       "parameter_conflict": "Der Parameter {{parameter}} erhält gleichzeitig zwei verschiedene Werte ({{first}} und {{second}}). Geben Sie ihm einen Wert oder führen Sie die Werte mit IN oder OR auf.",
       "parameter_calls_over_cap": "Die Anweisung benötigt {{calls}} Aufrufe an {{table}}, einen für jeden Wert ihrer Parameter, und für eine Anweisung werden höchstens {{cap}} ausgeführt (Einstellung {{setting}}). Geben Sie weniger Werte an.",
       "parameter_not_written": "Die Beziehung {{relationship}} verbindet über den Parameter {{parameter}}, den eine Anweisung an einen Wert bindet und nie schreibt. Ein Schreibvorgang erzeugt {{relationship}} nicht.",
+      "table_is_withdrawn": "{{table}} ist zurückgezogen: außer Produktion, bis sie wieder in Betrieb genommen wird",
+      "view_awaits_rule_rebuild": "Die Ansicht {{view}} wird wegen einer Änderung der Zeilenregeln für ihre Eingaben neu erstellt. Diese Rolle kann sie lesen, sobald dieser Build veröffentlicht ist.",
       "parameter_required": "Die Tabelle '{{table}}' erfordert den Parameter bzw. die Parameter {{parameters}}: Geben Sie jedem einen Wert (in SQL eine WHERE-Bedingung auf seiner Spalte, in GraphQL ein Argument).",
       "parameter_wrong_type": "Der Parameter {{parameter}} nimmt einen Wert vom Typ {{type}}; '{{value}}' ist keiner."
     },
@@ -328,13 +329,6 @@
     "query": {
       "catalog_view_refused": "{{view}} ist eine Katalogsicht der Meta-Domäne und kann nicht in einer Anweisung zusammen mit einer Tabelle einer Datenquelle gelesen werden: Lesen Sie sie in zwei Anweisungen.",
       "function_unsupported": "{{function}}() hat auf {{dialect}} keine Entsprechung."
-    },
-    "redaction": {
-      "rule_invalid": "Schwärzungsregel {{rule}}: {{why}}",
-      "pattern_backtracks": "Schwärzungsregel {{rule}}: Das Muster kann katastrophales Backtracking auslösen (eine Wiederholung innerhalb einer unbegrenzten Wiederholung oder Alternativen darin, die mit demselben Text beginnen können). Formulieren Sie es ohne diese Form.",
-      "pattern_unsupported": "Schwärzungsregel {{rule}}: Die Regel einer Organisation kann keine Rückverweise, Lookahead oder Lookbehind, atomaren Gruppen, possessiven Wiederholungen oder bedingten Gruppen verwenden.",
-      "pattern_too_large": "Schwärzungsregel {{rule}}: Das Muster ist zu groß, wenn seine Wiederholungen ausgezählt werden. Verwenden Sie eine kleinere Wiederholungsanzahl.",
-      "server_reference": "Schwärzungsregel {{rule}}: Eine Organisation auf diesem Server kann nicht auf die Umgebung des Servers verweisen. Verwenden Sie ${secret:NAME} aus dem eigenen Tresor der Organisation."
     },
     "replication": {
       "answer_not_json": "Die für das Replikat von {{table}} gelesene Antwort ist kein gültiges JSON: [{{content_type}}] {{cause}} (in den {{kib}} KiB vor Byte {{before_byte}} der Antwort).",
@@ -565,7 +559,10 @@
       "source_withdrawn": "Quelle {{source}} zurückgezogen",
       "source_put_back": "Quelle {{source}} wieder in Betrieb genommen",
       "withdrawn_source_not_previewable": "Für Tabelle {{table}} ist keine Vorschau möglich: Ihre Quelle {{source}} ist zurückgezogen, und keine Engine liest eine zurückgezogene Quelle.",
-      "withdrawn_table_not_previewable": "Für Tabelle {{table}} ist keine Vorschau möglich: Sie ist zurückgezogen und hält kein Replikat, und die Engine liest ihre Quelle nur über ein solches."
+      "withdrawn_table_not_previewable": "Für Tabelle {{table}} ist keine Vorschau möglich: Sie ist zurückgezogen und hält kein Replikat, und die Engine liest ihre Quelle nur über ein solches.",
+      "table_not_withdrawn": "Tabelle {{table}} ist nicht zurückgezogen: nur eine zurückgezogene Tabelle wird wieder in Betrieb genommen. Um eine Tabelle in Produktion in eine andere Region zu verschieben, setzen Sie ihre Region.",
+      "source_not_withdrawn": "Quelle {{source}} ist nicht zurückgezogen: nur eine zurückgezogene Quelle wird wieder in Betrieb genommen. Um ihre Region zu ändern, setzen Sie ihre Region.",
+      "put_back_needs_region": "Wer {{object}} wieder in Betrieb nimmt, nennt eine Region: geben Sie eine an, oder keine für keine Region."
     },
     "secrets": {
       "env_reference_object_locked": "Dieses Objekt gehört dem Betreiber: Es liest die eigene Umgebung des Servers und kann hier nicht geändert werden. Legen Sie stattdessen ein eigenes an.",
@@ -578,7 +575,8 @@
     "security": {
       "unknown_mode": "unbekannter Sicherheitsmodus '{{mode}}'",
       "data_residency_refused": "Die Region von {{object}} kann nicht gesetzt werden: die data_residency-Berechtigung deckt {{value}} nicht ab; eine data_residency-Berechtigung, die es aufführt, erlaubt es",
-      "data_residency_missing": "Die Region von {{object}} kann nicht gesetzt werden: keine data_residency-Berechtigung des Aufrufers deckt {{value}} ab; eine data_residency-Berechtigung, die es aufführt, erlaubt es"
+      "data_residency_missing": "Die Region von {{object}} kann nicht gesetzt werden: keine data_residency-Berechtigung des Aufrufers deckt {{value}} ab; eine data_residency-Berechtigung, die es aufführt, erlaubt es",
+      "withdraw_residency_refused": "{{object}} kann nicht zurückgezogen werden: keine data_residency-Berechtigung des Aufrufers deckt {{value}} ab, wo es gehalten wird; eine data_residency-Berechtigung, die es aufführt, erlaubt es"
     },
     "settings": {
       "auth_required": "{{field}} kann erst geändert werden, wenn die Authentifizierung konfiguriert ist.",
@@ -744,10 +742,6 @@
     "dbt_sources": {
       "unknown_role": "Es gibt keine Rolle namens {{role}}."
     },
-    "debug_logs": {
-      "pattern_refused": "Das Filtermuster für Protokolle wird abgelehnt: {{why}}",
-      "pattern_exceeded": "Das Filtermuster für Protokolle wird abgelehnt: Es hat sein Schrittlimit ({{steps}} Schritte) bei einer Protokollzeile mit {{length}} Zeichen überschritten."
-    },
     "dbt": {
       "products": {
         "none_offered": "Die Quelle {{source_id}} hat kein öffentliches Modell mit erzwungenem Vertrag.",
@@ -774,6 +768,9 @@
     "sources": {
       "private_destination": "Die Quellen dieser Organisation dürfen nur öffentliche Adressen erreichen; {{host}} ist {{address}}, und das ist keine.",
       "local_path_refused": "Die Quellen dieser Organisation lesen keine Datei auf dem eigenen Datenträger des Servers außerhalb ihres eigenen Ordners; {{path}} ist eine solche. Laden Sie die Datei hoch oder geben Sie sie als {files}/… oder über eine entfernte Adresse an."
+    },
+    "egress": {
+      "private_destination": "Diese Organisation darf nur öffentliche Adressen aufrufen; {{host}} ist {{address}}, und das ist keine."
     },
     "sandbox": {
       "wrong_tier": "Diese Sandbox wird anderswo bereitgestellt; öffnen Sie sie über ihre eigene Adresse.",
@@ -907,10 +904,24 @@
       "confined_unavailable": "Die Vorabprüfung von {{subject}} wurde nicht ausgeführt: In dieser Organisation läuft sie nur in einem abgeschotteten Prozess, und ein solcher konnte nicht gestartet werden ({{reason}}).",
       "confined_failed": "Die Vorabprüfung von {{subject}} hat kein Urteil geliefert: Ihr abgeschotteter Prozess endete vorher ({{reason}})."
     },
+    "redaction": {
+      "rule_invalid": "Schwärzungsregel {{rule}}: {{why}}",
+      "pattern_backtracks": "Schwärzungsregel {{rule}}: Das Muster kann katastrophales Backtracking auslösen (eine Wiederholung innerhalb einer unbegrenzten Wiederholung oder Alternativen darin, die mit demselben Text beginnen können). Formulieren Sie es ohne diese Form.",
+      "pattern_unsupported": "Schwärzungsregel {{rule}}: Die Regel einer Organisation kann keine Rückverweise, Lookahead oder Lookbehind, atomaren Gruppen, possessiven Wiederholungen oder bedingten Gruppen verwenden.",
+      "pattern_too_large": "Schwärzungsregel {{rule}}: Das Muster ist zu groß, wenn seine Wiederholungen ausgezählt werden. Verwenden Sie eine kleinere Wiederholungsanzahl.",
+      "server_reference": "Schwärzungsregel {{rule}}: Eine Organisation auf diesem Server kann nicht auf die Umgebung des Servers verweisen. Verwenden Sie ${secret:NAME} aus dem eigenen Tresor der Organisation."
+    },
+    "debug_logs": {
+      "pattern_refused": "Das Filtermuster für Protokolle wird abgelehnt: {{why}}",
+      "pattern_exceeded": "Das Filtermuster für Protokolle wird abgelehnt: Es hat sein Schrittlimit ({{steps}} Schritte) bei einer Protokollzeile mit {{length}} Zeichen überschritten."
+    },
     "import": {
       "include_outside_upload": "{{path}} liegt außerhalb des hochgeladenen Projekts; ein Projekt liest nur seine eigenen Dateien.",
       "filter_value_refused": "{{value}} kann kein Wert in einem Berechtigungsfilter sein: Ein Wert ist eine Zeichenkette, eine Zahl, true, false, null, eine Liste davon oder eine Sitzungsvariable.",
       "filter_operator_refused": "{{operator}} ist kein Operator, mit dem ein Berechtigungsfilter umgewandelt werden kann."
+    },
+    "relationship": {
+      "name_taken": "Der Name '{{name}}' ist bereits von der Beziehung '{{held_by}}' belegt. Benennen Sie diese anders."
     }
   }
 }

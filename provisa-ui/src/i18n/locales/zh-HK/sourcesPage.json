@@ -45,6 +45,8 @@
     "purposeAdd": "只加入來源並不會註冊任何資料表。請在該列使用 Discover 瀏覽其結構描述，並註冊你想納入治理的資料表。",
     "purposeAria": "關於資料來源",
     "registrationMissing": "{{list}} 中沒有資料來源 {{source}} 的註冊。",
-    "duplicateCredentialsNote": "{{source}} 的憑證不會被複製：請在此輸入，或輸入對密鑰的引用。"
+    "duplicateCredentialsNote": "{{source}} 的憑證不會被複製：請在此輸入，或輸入對密鑰的引用。",
+    "withdrawn": "已撤回",
+    "withdrawnTitle": "已停止生產使用：在恢復之前，其任何數據表都不為任何角色提供服務"
   }
 }

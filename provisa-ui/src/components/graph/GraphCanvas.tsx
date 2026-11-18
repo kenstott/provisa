@@ -886,6 +886,10 @@ export function GraphCanvas({
   return (
     <div
       className="gf-canvas-wrap"
+      // The canvas is the graph tokens' canvas, the colour the label boxes are drawn in, so a
+      // label box never shows as a patch on the canvas (and matches provisa-graph's canvas).
+      style={{ backgroundColor: graphTokens(isDark).canvas }}
+      data-testid="graph-canvas-wrap"
       tabIndex={0}
       onKeyDown={(e) => {
         if ((e.metaKey || e.ctrlKey) && e.key === "a") {

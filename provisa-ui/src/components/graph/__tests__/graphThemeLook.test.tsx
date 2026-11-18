@@ -16,7 +16,7 @@
 
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { render } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import { MantineProvider } from "@mantine/core";
 import { MemoryRouter } from "react-router-dom";
 import { I18nextProvider } from "react-i18next";
@@ -206,5 +206,53 @@ describe("a theme switch restyles the drawn graph without a reload", () => {
     expect(metaBox(cy.style.mock.calls.at(-1)![0])).toBe(look("light").canvas);
     // Restyled in place: the drawing (and its layout) is not rebuilt for a theme switch.
     expect(cytoscape.mock.calls.length).toBe(builds);
+  });
+});
+
+/** jsdom reports an inline colour as rgb(r, g, b). */
+const rgb = (hex: string) => {
+  const n = parseInt(hex.slice(1), 16);
+  return `rgb(${n >> 16}, ${(n >> 8) & 255}, ${n & 255})`;
+};
+
+describe("the canvas is the colour the label boxes are drawn in", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        observe() {}
+        disconnect() {}
+      },
+    );
+  });
+  afterEach(() => vi.unstubAllGlobals());
+
+  it.each(["light", "dark"] as const)("paints the %s canvas in the tokens' canvas colour", (scheme) => {
+    render(
+      <Providers scheme={scheme}>
+        <GraphCanvas {...BASE_PROPS} />
+      </Providers>,
+    );
+    const created = cytoscape.mock.calls.at(-1)![0] as { style: unknown };
+    const canvas = screen.getByTestId("graph-canvas-wrap").style.backgroundColor;
+    expect(canvas).toBe(rgb(look(scheme).canvas));
+    expect(canvas).toBe(rgb(metaBox(created.style) as string));
+  });
+
+  it("repaints the canvas on a theme switch", () => {
+    const { rerender } = render(
+      <Providers scheme="light">
+        <GraphCanvas {...BASE_PROPS} />
+      </Providers>,
+    );
+    rerender(
+      <Providers scheme="dark">
+        <GraphCanvas {...BASE_PROPS} />
+      </Providers>,
+    );
+    expect(screen.getByTestId("graph-canvas-wrap").style.backgroundColor).toBe(
+      rgb(look("dark").canvas),
+    );
   });
 });

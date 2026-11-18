@@ -70,6 +70,7 @@ def test_closing_the_engine_drops_its_runtime_and_the_next_app_builds_its_own(
         first.connection.execute("SELECT 1")  # its connection is closed, not left open
 
     monkeypatch.setenv("PROVISA_MATERIALIZE_URL", f"duckdb:///{tmp_path / 'second.duckdb'}")
+    backend.open(state)  # the next app's lifespan
     second = backend._store_runtime()  # noqa: SLF001
     try:
         assert second is not first

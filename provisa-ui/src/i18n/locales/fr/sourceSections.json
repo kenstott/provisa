@@ -8,7 +8,7 @@
     "operations": "Opérations",
     "tableName": "Table",
     "tableDomain": "Domaine",
-    "draft": "Brouillon",
+    "withdrawn": "Retirée",
     "commands": "Commandes",
     "commandName": "Commande",
     "commandKind": "Type"

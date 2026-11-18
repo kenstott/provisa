@@ -197,7 +197,7 @@ async def test_a_registration_carrying_every_setting_stores_all_of_them(plane):
     assert table["gql_naming_convention"] == "snake"
     assert dict(table["role_ttl"]) == {"support": 60}
     assert table["replicate"] == -1
-    assert table["draft"] is False
+    assert table["withdrawn"] is False
     assert cols == ["id", "status"]
     assert [(g["role"], g["operation"]) for g in grants] == [("support", "update")]
 
@@ -296,21 +296,40 @@ async def test_registering_a_stored_table_again_keeps_its_grants(plane):
 
 async def test_left_out_a_registration_takes_a_new_tables_values(plane):
     """REQ-1921 (amended 2026-11-16): a table registered in production is live on
-    registration, never a draft, and not withdrawn."""
+    registration: not withdrawn, and there is no draft."""
     result = await _register()
     assert result.success, result.message
     table, _cols, grants = await _stored(plane)
     assert table is not None
-    assert (table["draft"], table["withdrawn"]) == (False, False)
+    assert table["withdrawn"] is False and "draft" not in table
     assert (table["replicate"], dict(table["role_ttl"])) == (None, {})
     assert grants == []
 
 
-def test_a_registration_or_an_update_takes_no_draft():
-    """REQ-1921: draft is the waypoint of a region move, never a person's choice: the table
-    input has no draft to send."""
+def test_a_registration_or_an_update_takes_no_draft_and_no_withdrawn():
+    """REQ-1921: there is no draft, and withdrawn is set only by withdrawTable / putBackTable:
+    the table input has neither to send."""
     with pytest.raises(TypeError):
         _input(draft=True)
+    with pytest.raises(TypeError):
+        _input(withdrawn=True)
+
+
+async def test_an_update_of_a_withdrawn_table_keeps_it_withdrawn(plane):
+    """REQ-1921: an edit is not a put back: the table stays out of production."""
+    from sqlalchemy import update as _update
+
+    assert (await _register()).success
+    async with plane.acquire() as conn:
+        await conn.execute_core(
+            _update(registered_tables)
+            .where(registered_tables.c.table_name == "orders")
+            .values(withdrawn=True)
+        )
+    result = await schema_mutation.Mutation().update_table(_info(), _input(description="x"))
+    assert result.success, result.message
+    table, _cols, _grants = await _stored(plane)
+    assert table is not None and table["withdrawn"] is True
 
 
 @pytest.mark.parametrize(
@@ -338,7 +357,7 @@ async def test_an_update_carrying_every_setting_stores_all_of_them(plane):
     assert result.success, result.message
     table, cols, grants = await _stored(plane)
     assert table is not None
-    assert (table["gql_naming_convention"], table["replicate"], table["draft"]) == (
+    assert (table["gql_naming_convention"], table["replicate"], table["withdrawn"]) == (
         "snake",
         -1,
         False,
@@ -370,7 +389,7 @@ async def test_an_update_leaving_a_setting_out_keeps_the_stored_one(plane):
     assert result.success, result.message
     table, _cols, grants = await _stored(plane)
     assert table is not None
-    assert (table["gql_naming_convention"], table["replicate"], table["draft"]) == (
+    assert (table["gql_naming_convention"], table["replicate"], table["withdrawn"]) == (
         "snake",
         -1,
         False,
@@ -508,7 +527,7 @@ async def test_an_update_refused_on_a_carried_setting_leaves_the_table_as_it_was
     if refused.pop("_residency", False):
         from provisa.security.residency import ResidencyRefused
 
-        def _refuse(_info, what, _before, after, *, draft=False):
+        def _refuse(_info, what, _before, after):
             raise ResidencyRefused(what, after or "", holds_right=True)
 
         monkeypatch.setattr("provisa.api.admin.capabilities.require_residency_change", _refuse)

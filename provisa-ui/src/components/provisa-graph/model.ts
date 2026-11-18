@@ -32,6 +32,8 @@ export interface GraphNodeSpec {
   lines?: GraphLine[];
   /** A term's status: how far it is drawn back. */
   status?: "draft" | "deprecated" | "retired";
+  /** Out of production (REQ-1921): its border is dashed, as a pending line is. */
+  withdrawn?: boolean;
   /** Hover text. */
   description?: string;
   /** The view's own identifiers, handed back on a click; never styled. */
@@ -216,6 +218,7 @@ export function graphElements(
         ...(n.parent !== undefined ? { parent: n.parent } : {}),
         ...(n.lane !== undefined ? { lane: n.lane } : {}),
         ...(n.status !== undefined ? { status: n.status } : {}),
+        ...(n.withdrawn ? { withdrawn: "yes" } : {}),
       },
       classes: kind === "more" ? "pg-node pg-more" : "pg-node",
     };

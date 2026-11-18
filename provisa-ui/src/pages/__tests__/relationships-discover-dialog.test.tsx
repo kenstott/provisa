@@ -26,6 +26,7 @@ import {
   PROPOSALS,
   REPORT,
   SCOPE,
+  UNMEASURED,
   SLOW,
   acceptBox,
   applyButton,
@@ -164,7 +165,7 @@ describe("Discovery dialog: the run's scope", () => {
     ).toBe(semanticsBox());
     fireEvent.click(runButton());
     await waitFor(() =>
-      expect(startMock).toHaveBeenCalledWith({ ...SCOPE, kinds: ["foreign_keys"] }),
+      expect(startMock).toHaveBeenCalledWith({ ...SCOPE, ...UNMEASURED, kinds: ["foreign_keys"] }),
     );
   });
 
@@ -365,8 +366,8 @@ describe("Discovery dialog: the run in progress", () => {
     );
   });
 
-  it("a run whose every request failed says so, in the dialog and in the page's banner", async () => {
-    const failed = (group: "whole_number" | "date") => ({
+  it("a run whose every request failed says so in the dialog's run block, never on the page", async () => {
+    const failed = (group: "whole_number" | "text") => ({
       group,
       code: "llm.request_failed",
       params: { reason: "overloaded" },
@@ -384,7 +385,7 @@ describe("Discovery dialog: the run in progress", () => {
         requests_done: 2,
         proposed: 0,
         below_threshold: 0,
-        failed: [failed("whole_number"), failed("date")],
+        failed: [failed("whole_number"), failed("text")],
       },
     };
     runMock.mockResolvedValue(
@@ -394,19 +395,19 @@ describe("Discovery dialog: the run in progress", () => {
     fireEvent.click(runButton());
     const progress = await screen.findByTestId("discover-progress");
     await waitFor(() => expect(progress).toHaveTextContent("Finished."), SLOW);
-    for (const shown of [
-      screen.getByTestId("discover-result"),
-      screen.getByTestId("rels-discover-result"),
-    ]) {
-      expect(shown).toHaveTextContent("Semantics failed: all 2 requests to the model failed.");
-      expect(shown).toHaveTextContent(
-        "For whole numbers columns: The request to the model failed: overloaded",
-      );
-      expect(shown).toHaveTextContent(
-        "For dates columns: The request to the model failed: overloaded",
-      );
-      expect(shown).not.toHaveTextContent("proposed no relationships");
-    }
+    const shown = screen.getByTestId("discover-result");
+    expect(shown).toHaveTextContent("Semantics failed: all 2 requests to the model failed.");
+    expect(shown).toHaveTextContent(
+      "For whole numbers columns: The request to the model failed: overloaded",
+    );
+    expect(shown).toHaveTextContent(
+      "For text columns: The request to the model failed: overloaded",
+    );
+    expect(shown).not.toHaveTextContent("proposed no relationships");
+    // REQ-413 (amended 2026-11-16): the page shows no run summary, and with no suggestion
+    // waiting no line either.
+    expect(screen.queryByTestId("rels-discover-result")).toBeNull();
+    expect(screen.queryByTestId("rels-discover-line")).toBeNull();
   });
 
   it("Stop asks the server to stop and keeps what was found", async () => {
@@ -416,14 +417,14 @@ describe("Discovery dialog: the run in progress", () => {
     );
     await openDialog();
     fireEvent.click(runButton());
-    fireEvent.click(await screen.findByTestId("discover-stop"));
+    fireEvent.click(await screen.findByTestId("discover-stop-7"));
     await waitFor(() => expect(stopMock).toHaveBeenCalledWith(7));
     await waitFor(() =>
       expect(screen.getByTestId("discover-progress")).toHaveTextContent(
         "Stopping after the request in flight.",
       ),
     );
-    expect(screen.getByTestId("discover-stop")).toBeDisabled();
+    expect(screen.getByTestId("discover-stop-7")).toBeDisabled();
     runMock.mockResolvedValue(
       runOf({
         status: "stopped",
@@ -628,10 +629,8 @@ describe("Discovery dialog: the run's proposals, in one table", () => {
     fireEvent.click(applyButton());
     await waitFor(() =>
       expect(applyMock).toHaveBeenCalledWith(7, {
-        accept: [
-          { id: 500, name: "order-store" },
-          { id: 501, name: "customer-orders" },
-        ],
+        // REQ-415: nobody typed a name, so none is sent: the server names each relationship.
+        accept: [{ id: 500 }, { id: 501 }],
         not_again: [504],
       }),
     );
@@ -705,7 +704,7 @@ describe("Discovery dialog: its size by what it shows", () => {
     runMock.mockResolvedValue(runOf({ status: "running", requests_total: 4, requests_done: 1 }));
     await openDialog();
     fireEvent.click(runButton());
-    await screen.findByTestId("discover-stop", {}, SLOW);
+    await screen.findByTestId("discover-stop-7", {}, SLOW);
     expect(modalSize()).toBe(STANDARD);
   });
 
@@ -740,7 +739,7 @@ describe("Discovery dialog: an ended run's layout", () => {
     expect(body.style.display).toBe("flex");
     expect(body.style.flexDirection).toBe("column");
     expect(body.style.minHeight).toBe("0px");
-    expect(screen.getByTestId("discover-result").style.flexShrink).toBe("0");
+    expect(screen.getByTestId("discover-run-block").style.flexShrink).toBe("0");
   });
 
   it("shows New run when the run proposed nothing", async () => {
@@ -866,10 +865,10 @@ describe("Discovery dialog: each pair measured on its data, ticked from the pers
     fireEvent.click(acceptBox(603));
     fireEvent.click(acceptBox(602));
     fireEvent.click(screen.getByTestId("discover-apply"));
-    // The name sent is the dimension's.
+    // No name is sent (REQ-415): the server names the dimension as the row says.
     await waitFor(() =>
       expect(applyMock).toHaveBeenCalledWith(7, {
-        accept: [{ id: 602, name: "neighborhood" }],
+        accept: [{ id: 602 }],
         not_again: [],
       }),
     );

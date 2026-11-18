@@ -88,3 +88,46 @@ runs:
     - name: Verify Trino plugins
       shell: bash
       run: python3 tests/trino_plugins.py verify
+
+    # REQ-1494: Provisa's own function plugin, built from trino-functions/ by Maven. It is built
+    # here, once per change to any input of the build (the Maven project, the portable fake
+    # definitions it mounts, and the script that names the Maven image), and every lane restores
+    # it. Lanes that each built it on first use asked Maven Central for its Maven plugins at the
+    # same moment: core 13/18 got HTTP 429 for maven-compiler-plugin and bench a failed resolution
+    # of maven-resources-plugin, both at collection (run 44216356740).
+    # The key is computed once, before the build: the build writes trino-functions/target/, so a
+    # hash taken again at the save named a key no lane's restore asks for (run 44299143758). Only
+    # the build's inputs are hashed: the pom, the sources, the portable fake definitions the build
+    # mounts, and the script that names the Maven image.
+    - name: provisa-functions key
+      id: provisa-functions-key
+      shell: bash
+      env:
+        KEY: ${{ inputs.key-prefix }}provisa-functions-${{ hashFiles('trino-functions/pom.xml', 'trino-functions/src/**', 'provisa/fakes/portable/**', 'scripts/build_trino_functions.sh') }}-jar
+      run: echo "key=$KEY" >> "$GITHUB_OUTPUT"
+
+    - name: Restore the provisa-functions plugin
+      id: provisa-functions
+      uses: actions/cache/restore@v4
+      with:
+        path: trino/plugins/provisa-functions
+        key: ${{ steps.provisa-functions-key.outputs.key }}
+        fail-on-cache-miss: ${{ inputs.phase == 'restore' }}
+
+    - name: Build the provisa-functions plugin
+      if: inputs.phase == 'prime' && steps.provisa-functions.outputs.cache-hit != 'true'
+      shell: bash
+      run: scripts/build_trino_functions.sh
+
+    - name: Cache the provisa-functions plugin
+      if: inputs.phase == 'prime' && steps.provisa-functions.outputs.cache-hit != 'true'
+      uses: actions/cache/save@v4
+      with:
+        path: trino/plugins/provisa-functions
+        key: ${{ steps.provisa-functions-key.outputs.key }}
+
+    - name: Verify the provisa-functions plugin
+      shell: bash
+      run: |
+        jar=trino/plugins/provisa-functions/provisa-functions-1.jar
+        [ -s "$jar" ] || { echo "::error::$jar is missing after the cache step"; exit 1; }

@@ -93,6 +93,9 @@
     "history": {
       "badge": "historie",
       "title": "Bewaart historie: bevraag het per een datum of zoals vastgelegd (Tijdreizen)"
-    }
+    },
+    "withdrawn": "Teruggetrokken",
+    "withdrawnTitle": "Buiten productie: geen rol leest haar totdat ze wordt teruggezet",
+    "sourceWithdrawnTitle": "Haar bron {{source}} is teruggetrokken: geen rol leest haar totdat de bron wordt teruggezet"
   }
 }

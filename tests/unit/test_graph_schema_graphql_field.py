@@ -76,7 +76,6 @@ def state(monkeypatch):
         gql_object_cols={},
         rls_rules=[],
         metrics=[],
-        draft_tables=[],
         withdrawn_tables=[],
         withdrawn_relationships=[],
     )

@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import asyncio
 import logging as _logging
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, Any, Literal, cast
 
 from fastapi import APIRouter, Request
@@ -25,12 +25,15 @@ from pydantic import BaseModel, ConfigDict, Field
 from provisa.api.admin import discovery_dimension
 from provisa.api.app import state
 from provisa.api.errors import ApiError
+from provisa.core.relationship_naming import RelationshipNameTaken
 from provisa.discovery import candidates as candidates_repo
 from provisa.discovery import proposals as proposals_repo
 from provisa.discovery import runs as runs_repo
 from provisa.discovery import threshold as threshold_repo
+from provisa.discovery.direction import Kind
 from provisa.discovery.run import (
     ChosenModel,
+    KeyValueOverlap,
     RunSpec,
     choose_model,
     count,
@@ -51,12 +54,15 @@ _tracer = _get_tracer(__name__)
 
 router = APIRouter(prefix="/admin/discover")
 
-#: The confidence a semantic suggestion needs to be kept.
-MIN_CONFIDENCE = 0.7
-
 #: The kinds of discovery a run can be asked for: foreign keys read from the sources' own
 #: constraints, and semantics inferred by the model assigned to relationship inference.
 DiscoveryKind = Literal["foreign_keys", "semantics"]
+
+#: What a run the dialog starts can look for: the kinds, and Key value overlap, the measure of the
+#: semantic pairs in the band between its cutoff and the threshold (REQ-413, amended 2026-11-16),
+#: chosen only with semantics.
+RunKind = Literal["foreign_keys", "semantics", "key_values"]
+KEY_VALUES = "key_values"
 
 #: Where a model and its key are set, as the admin UI names it.
 WHERE_TO_SET = "Admin, AI Models"
@@ -148,7 +154,7 @@ class RunScope(BaseModel):  # REQ-413
     """A run's kinds, model and sets, as the dialog sends them. Tables None: every table of the
     chosen domains. ``model`` None: the model assigned to relationship inference."""
 
-    kinds: list[DiscoveryKind] = Field(min_length=1)
+    kinds: list[RunKind] = Field(min_length=1)
     source_domains: list[str] = Field(default_factory=list)
     source_tables: list[int] | None = None
     target_same_as_source: bool = True
@@ -156,9 +162,39 @@ class RunScope(BaseModel):  # REQ-413
     target_tables: list[int] | None = None
     vendor: str | None = None
     model: str | None = None
+    #: Key value overlap's settings, given exactly when it is chosen: the measure cutoff, and the
+    #: sample size (the most distinct values read of each column).
+    measure_cutoff: float | None = Field(default=None, ge=0.0, le=1.0)
+    sample_size: int | None = Field(default=None, ge=1)
 
-    def spec(self, role: str) -> RunSpec:
-        """The run asked for, by the person acting as ``role``: its pairs are measured as it."""
+    def key_values(self) -> KeyValueOverlap | None:
+        """Key value overlap as asked: refused without semantics, whose pairs it measures, and
+        refused unless its two settings are given exactly when it is chosen."""
+        if KEY_VALUES not in self.kinds:
+            if self.measure_cutoff is not None or self.sample_size is not None:
+                raise ApiError(
+                    400,
+                    "discovery.key_values_settings_unchosen",
+                    "A measure cutoff and sample size are given only with Key value overlap",
+                )
+            return None
+        if "semantics" not in self.kinds:
+            raise ApiError(
+                400,
+                "discovery.key_values_needs_semantics",
+                "Key value overlap measures the pairs Semantic proposes: choose Semantic with it",
+            )
+        if self.measure_cutoff is None or self.sample_size is None:
+            raise ApiError(
+                400,
+                "discovery.key_values_settings_missing",
+                "Key value overlap needs its measure cutoff and its sample size",
+            )
+        return KeyValueOverlap(self.measure_cutoff, self.sample_size)
+
+    def spec(self, role: str, threshold: float) -> RunSpec:
+        """The run asked for, by the person acting as ``role``: its pairs are measured as it.
+        ``threshold``: that person's tick threshold, taken now (REQ-413, amended 2026-11-18)."""
         if (self.vendor is None) != (self.model is None):
             raise ApiError(
                 400,
@@ -166,7 +202,7 @@ class RunScope(BaseModel):  # REQ-413
                 "A chosen model names both its vendor and its model",
             )
         return RunSpec(
-            kinds=frozenset(self.kinds),
+            kinds=frozenset(cast("Kind", k) for k in self.kinds if k != KEY_VALUES),
             source_domains=tuple(self.source_domains),
             source_tables=None if self.source_tables is None else tuple(self.source_tables),
             target_domains=tuple(self.target_domains),
@@ -174,6 +210,8 @@ class RunScope(BaseModel):  # REQ-413
             same_as_source=self.target_same_as_source,
             model=None if self.vendor is None or self.model is None else (self.vendor, self.model),
             role=role,
+            key_values=self.key_values(),
+            threshold=threshold,
         )
 
 
@@ -324,7 +362,7 @@ async def count_run(request: Request, body: RunScope):  # REQ-413
     asked and no model is called, so it can be asked again on every change of the scope. It is
     an upper bound (``requests_are``): the run reads the tables and may make fewer."""
     require_capability_request(request, "create_relationship")
-    spec = body.spec(_acting(request))
+    spec = body.spec(_acting(request), await _person_threshold(request))
     model = await _run_model(spec)
     await _require_tables(spec)
     try:
@@ -417,7 +455,7 @@ def _launch(run_id: int, spec: RunSpec, model: ChosenModel | None) -> None:
 async def start_run(request: Request, body: RunScope):  # REQ-413
     """Start a run in the background; answered at once with the run, running."""
     require_capability_request(request, "create_relationship")
-    spec = body.spec(_acting(request))
+    spec = body.spec(_acting(request), await _person_threshold(request))
     model = await _run_model(spec)
     await _require_tables(spec)
     pool = state.model_db
@@ -426,14 +464,29 @@ async def start_run(request: Request, body: RunScope):  # REQ-413
         conn = cast("Connection", _conn)
         run_id = await runs_repo.start(
             conn,
-            scope=body.model_dump(),
+            scope=_recorded(body, spec),
             model=None if model is None else model.label,
             started_by=_caller(request),
         )
+        await _remember_key_values(conn, request, body)
         started = await runs_repo.run(conn, run_id)
     assert started is not None
     _launch(run_id, spec, model)
     return {"run": started.view()}
+
+
+def _recorded(body: RunScope, spec: RunSpec) -> dict[str, Any]:
+    """The scope a run is recorded with: what was asked, and the threshold it runs against
+    (REQ-413, amended 2026-11-18: taken when the run starts and recorded with it)."""
+    return {**body.model_dump(), "threshold": spec.threshold}
+
+
+async def _person_threshold(request: Request) -> float:
+    """The tick threshold of the signed-in person, as a run they start now takes it."""
+    pool = state.model_db
+    assert pool is not None
+    async with pool.acquire() as _conn:
+        return await threshold_repo.read(cast("Connection", _conn), _person(request))
 
 
 async def _source_domains(conn: "Connection", body: DiscoverRequest) -> list[str]:
@@ -479,13 +532,13 @@ async def trigger_discovery(
     with _stage(_tracer, "admin.discovery") as span:
         async with pool.acquire() as _conn:
             domains = await _source_domains(cast("Connection", _conn), body)
-        scope = RunScope(kinds=body.kinds, source_domains=domains)
-        spec = scope.spec(_acting(request))
+        scope = RunScope(kinds=list[RunKind](body.kinds), source_domains=domains)
+        spec = scope.spec(_acting(request), await _person_threshold(request))
         model = await _run_model(spec)
         async with pool.acquire() as _conn:
             run_id = await runs_repo.start(
                 cast("Connection", _conn),
-                scope=scope.model_dump(),
+                scope=_recorded(scope, spec),
                 model=None if model is None else model.label,
                 started_by=_caller(request),
             )
@@ -581,13 +634,14 @@ async def list_proposals(request: Request, run_id: int):  # REQ-413
     assert pool is not None
     async with pool.acquire() as _conn:
         conn = cast("Connection", _conn)
-        await _held(conn, run_id)
+        held = await _held(conn, run_id)
         return {
             "proposals": await proposals_repo.listed(conn, state, run_id),
             "threshold": await threshold_repo.read(conn, _person(request)),
-            # The score a run keeps a suggestion at: a proposal's reason below_threshold is
-            # against it, whatever the person's threshold.
-            "kept_at": MIN_CONFIDENCE,
+            # The score the run keeps a suggestion at: the threshold it was started with
+            # (REQ-413, amended 2026-11-18); a proposal's reason below_threshold is against it,
+            # whatever the person's threshold is now.
+            "kept_at": held.scope["threshold"],
         }
 
 
@@ -603,6 +657,34 @@ class ThresholdBody(BaseModel):  # REQ-413
     """The score from which a run's proposals start ticked, from 0 to 1."""
 
     threshold: float = Field(ge=0.0, le=1.0)
+
+
+async def _remember_key_values(conn: "Connection", request: Request, body: RunScope) -> None:
+    """Keep Key value overlap as the run's person set it (REQ-413, amended 2026-11-16): chosen
+    or not, and, chosen, its cutoff and sample size. It is offered only with semantics, so a run
+    without semantics leaves it as it was; unchosen, the cutoff and sample size last set stay."""
+    if "semantics" not in body.kinds:
+        return
+    person = _person(request)
+    asked = body.key_values()
+    if asked is None:
+        last = await threshold_repo.read_key_values(conn, person)
+        kept = replace(last, chosen=False)
+    else:
+        kept = threshold_repo.KeyValueSettings(True, asked.cutoff, asked.sample_size)
+    await threshold_repo.keep_key_values(conn, person, kept)
+
+
+@router.get("/key-values")
+async def get_key_values(request: Request):  # REQ-413
+    """The signed-in person's Key value overlap, remembered as the threshold is, and the
+    defaults Reset to defaults restores."""
+    require_capability_request(request, "create_relationship")
+    pool = state.model_db
+    assert pool is not None
+    async with pool.acquire() as _conn:
+        kept = await threshold_repo.read_key_values(cast("Connection", _conn), _person(request))
+    return {**kept.as_dict(), "defaults": threshold_repo.KEY_VALUES_DEFAULT.as_dict()}
 
 
 @router.get("/threshold")
@@ -716,9 +798,14 @@ async def accept_candidate(
     pool = state.model_db
     assert pool is not None
     async with pool.acquire() as _conn:
-        return await candidates_repo.accept(
-            cast("Connection", _conn), candidate_id, body.name if body else None
-        )
+        try:
+            return await candidates_repo.accept(
+                cast("Connection", _conn), candidate_id, body.name if body else None
+            )
+        except RelationshipNameTaken as exc:  # REQ-415: a typed name that is taken
+            raise ApiError(
+                409, exc.code, str(exc), kind=exc.kind, name=exc.name, held_by=exc.held_by
+            ) from exc
 
 
 @router.post("/candidates/{candidate_id}/reject")

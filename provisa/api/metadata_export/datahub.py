@@ -1257,7 +1257,7 @@ class DataHubExport(MetadataExport):  # REQ-1069
         now_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
         provisa_prefix = glossary_term_urn(snapshot.org_id, "")
         async with httpx.AsyncClient(
-            timeout=self._config.timeout_seconds, event_hooks=sandbox_egress.http_event_hooks()
+            timeout=self._config.timeout_seconds, event_hooks=sandbox_egress.endpoint_event_hooks()
         ) as client:
             for proposal in proposals:
                 if (
@@ -1349,7 +1349,7 @@ class DataHubExport(MetadataExport):  # REQ-1069
 
     async def health(self) -> None:
         async with httpx.AsyncClient(
-            timeout=self._config.timeout_seconds, event_hooks=sandbox_egress.http_event_hooks()
+            timeout=self._config.timeout_seconds, event_hooks=sandbox_egress.endpoint_event_hooks()
         ) as client:
             response = await client.get(self._url(self.health_path), headers=self._headers())
         response.raise_for_status()

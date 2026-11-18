@@ -15,7 +15,7 @@ serves no role and the lists that draw the model (the ERD's tables and relations
 schema) leave it out, and its relationships with it -- a relationship is withdrawn while either
 end (or its junction) is withdrawn or retired, a derived state stored nowhere. Each such list
 takes an include-withdrawn flag, honoured only for a person who may preview the withdrawn table:
-one holding table registration reaching its domain, the right a draft's preview needs.
+one holding table registration reaching its domain.
 """
 
 # Requirements: REQ-1921
@@ -29,7 +29,7 @@ from sqlalchemy import or_, select
 if TYPE_CHECKING:
     from provisa.core.database import Connection
 
-#: The right whose reach decides who previews a withdrawn table (as a draft's preview).
+#: The right whose reach decides who previews a withdrawn table.
 PREVIEW_RIGHT = "table_registration"
 
 

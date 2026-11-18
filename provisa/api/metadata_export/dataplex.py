@@ -217,15 +217,15 @@ class DataplexExport(MetadataExport):  # REQ-2118
             return self._config.token.get_secret_value()
         import json
 
-        from google.auth.transport.requests import Request
         from google.oauth2 import service_account
 
         info = json.loads(self._config.google_service_account_json.get_secret_value())
         credentials = service_account.Credentials.from_service_account_info(info, scopes=[SCOPE])
         # REQ-2006: the key names the address it is exchanged at (from_service_account_info
-        # requires it); a held org's is a public destination.
-        sandbox_egress.require_url_allowed(info["token_uri"])
-        await asyncio.to_thread(credentials.refresh, Request())
+        # requires it); a held org's is a public destination, checked at the call and sent to the
+        # address the check resolved (CheckedTokenRequest), never resolved again.
+        request = CheckedTokenRequest(sandbox_egress.endpoint_sync_event_hooks())
+        await asyncio.to_thread(credentials.refresh, request)
         return credentials.token
 
     async def _done(self, client: httpx.AsyncClient, response: httpx.Response) -> dict:
@@ -256,7 +256,7 @@ class DataplexExport(MetadataExport):  # REQ-2118
         async with httpx.AsyncClient(
             timeout=self._config.timeout_seconds,
             headers=headers,
-            event_hooks=sandbox_egress.http_event_hooks(),
+            event_hooks=sandbox_egress.endpoint_event_hooks(),
         ) as client:
             if snapshot.glossary_terms:
                 try:
@@ -678,9 +678,50 @@ class DataplexExport(MetadataExport):  # REQ-2118
         async with httpx.AsyncClient(
             timeout=self._config.timeout_seconds,
             headers=headers,
-            event_hooks=sandbox_egress.http_event_hooks(),
+            event_hooks=sandbox_egress.endpoint_event_hooks(),
         ) as client:
             response = await client.get(
                 self._url(f"{self._parent()}/dataProducts"), params={"pageSize": 1}
             )
         response.raise_for_status()
+
+
+#: google-auth's own transport's default timeout for a token exchange.
+_TOKEN_TIMEOUT_S = 120
+
+
+class _TokenResponse:
+    """An httpx response as google-auth's transport reads one."""
+
+    def __init__(self, response: httpx.Response) -> None:
+        self.status = response.status_code
+        self.headers = dict(response.headers)
+        self.data = response.content
+
+
+class CheckedTokenRequest:
+    """google-auth's transport (``google.auth.transport.Request``) over httpx, with the event
+    hooks given: a held org's token exchange is checked at the call and sent to the address the
+    check resolved, its name kept for Host and TLS (REQ-2006). google-auth's own transport
+    resolves the name again when it connects."""
+
+    def __init__(self, event_hooks: dict) -> None:
+        self._event_hooks = event_hooks
+
+    def __call__(
+        self,
+        url: str,
+        method: str = "GET",
+        body: bytes | None = None,
+        headers: dict | None = None,
+        timeout: float = _TOKEN_TIMEOUT_S,
+        **_kwargs: object,
+    ) -> _TokenResponse:
+        import google.auth.exceptions
+
+        try:
+            with httpx.Client(timeout=timeout, event_hooks=self._event_hooks) as client:
+                response = client.request(method, url, content=body, headers=headers)
+        except httpx.HTTPError as exc:
+            raise google.auth.exceptions.TransportError(str(exc)) from exc
+        return _TokenResponse(response)

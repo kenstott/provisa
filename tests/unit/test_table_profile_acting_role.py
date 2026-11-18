@@ -39,7 +39,7 @@ def governed(monkeypatch) -> list[str]:
 
     monkeypatch.setattr(router_mod, "read_as_caller", _read)
     monkeypatch.setattr(
-        router_mod, "table_for_steward", lambda request, state, table_id: {"draft": False}
+        router_mod, "table_for_steward", lambda request, state, table_id: {"withdrawn": False}
     )
     state = types.SimpleNamespace(model_db=object(), federation_engine=object(), roles={})
     monkeypatch.setattr(router_mod, "state", state)
@@ -67,7 +67,7 @@ def _request(role: str | None):
 async def test_the_sample_is_governed_as_the_established_role(governed, header, established):
     out = await router_mod.profile_table(_request(established), 7, x_provisa_role=header)
     assert governed == [established]
-    assert out == {"columns": ["id"], "rows": [{"id": 1}], "rowCount": 1, "draft": False}
+    assert out == {"columns": ["id"], "rows": [{"id": 1}], "rowCount": 1, "withdrawn": False}
 
 
 async def test_with_no_auth_layer_the_header_names_the_role(governed):
@@ -94,7 +94,7 @@ async def test_the_read_runs_inside_the_roles_own_time(monkeypatch):
         return types.SimpleNamespace(column_names=["id"], rows=[])
 
     monkeypatch.setattr(router_mod, "read_as_caller", _read)
-    monkeypatch.setattr(router_mod, "table_for_steward", lambda *a: {"draft": True})
+    monkeypatch.setattr(router_mod, "table_for_steward", lambda *a: {"withdrawn": True})
     monkeypatch.setattr(router_mod, "header_role", lambda *a: "r")
     monkeypatch.setattr(router_mod, "require_role", lambda roles, role_id: {"id": role_id})
     monkeypatch.setattr(router_mod, "role_max_query_time_ms", lambda role: 5000)

@@ -28,11 +28,12 @@ import pytest
 
 from provisa.discovery import gather, measure
 from provisa.discovery.columns import UNKNOWN, ColumnFacts, TableFacts, type_groups
-from provisa.discovery.context import KEPT_AT, KEY_SCORE, SHARED_CEILING
+from provisa.discovery.context import KEY_SCORE, SHARED_CEILING
+from provisa.discovery.threshold import DEFAULT as THRESHOLD
 from provisa.discovery.direction import from_answer
 from provisa.discovery.measure import Measurer, Values
 from provisa.discovery.proposals import BELOW_THRESHOLD, NOT_COMPARABLE
-from provisa.discovery.runner import Tally, kept
+from provisa.discovery.runner import KeyValues, Tally, judged
 
 
 def _column(name: str, *, parameter: str | None = None) -> ColumnFacts:
@@ -99,7 +100,9 @@ class _Reader:
         self.reads: list[tuple[str, str]] = []
         self.lookups: list[tuple[str, str, int]] = []
 
-    async def values(self, table: TableFacts, column: str) -> Values | measure.Unmeasured:
+    async def values(
+        self, table: TableFacts, column: str, bound: int
+    ) -> Values | measure.Unmeasured:
         if table.reduced:
             return measure.NOT_READ
         self.reads.append((table.table_name, column))
@@ -109,8 +112,8 @@ class _Reader:
             counts[v] = counts.get(v, 0) + 1
         ranked = sorted(counts, key=lambda v: -counts[v])
         return Values(
-            read=tuple(ranked[: self.bound]),
-            more=len(ranked) > self.bound,
+            read=tuple(ranked[:bound]),
+            more=len(ranked) > bound,
             distinct=all(c == 1 for c in counts.values()),
         )
 
@@ -125,7 +128,7 @@ def _semantic(source: tuple[int, str], target: tuple[int, str], confidence: floa
 
 async def _measured(p, *, bound: int = measure.DISTINCT_BOUND, data=DATA):
     reader = _Reader(data, bound)
-    return await Measurer(reader, TABLES, decided=frozenset()).measured(p), reader
+    return await Measurer(reader, TABLES, decided=frozenset(), bound=bound).measured(p), reader
 
 
 async def test_neighborhood_shared_by_tables_none_of_which_it_keys_is_many_to_many():
@@ -140,7 +143,7 @@ async def test_neighborhood_shared_by_tables_none_of_which_it_keys_is_many_to_ma
     assert m.source.distinct is False and m.target.distinct is False
     # A shared value, not a key relationship: under the threshold whatever the model said.
     assert got.score == SHARED_CEILING
-    assert got.rank < KEPT_AT
+    assert got.rank < THRESHOLD
     assert got.confidence == 0.45  # the model's own is kept beside it
 
 
@@ -152,7 +155,7 @@ async def test_permit_id_contained_in_a_distinct_target_scores_as_a_key_relation
     assert (m.source_in_target, m.source.values) == (30, 30)
     assert (m.target_in_source, m.target.values) == (30, 100)
     assert m.target.distinct is True and m.source.distinct is False
-    assert got.score == KEY_SCORE and got.rank >= KEPT_AT
+    assert got.score == KEY_SCORE and got.rank >= THRESHOLD
     assert got.confidence == 0.45
 
 
@@ -163,7 +166,7 @@ async def test_a_pair_whose_values_barely_meet_scores_low_however_alike_the_name
     assert (m.source_in_target, m.source.values) == (1, 50)
     assert got.cardinality == "one-to-one"
     assert got.score is not None and got.score < 0.05
-    assert got.rank < KEPT_AT
+    assert got.rank < THRESHOLD
 
 
 async def test_a_semantic_pair_whose_source_alone_is_distinct_is_turned_to_start_at_the_referrer():
@@ -206,7 +209,7 @@ async def test_a_column_holding_more_than_the_bound_is_looked_up_not_compared_wi
 
 async def test_each_column_is_read_once_for_the_run():
     reader = _Reader(DATA, measure.DISTINCT_BOUND)
-    measurer = Measurer(reader, TABLES, decided=frozenset())
+    measurer = Measurer(reader, TABLES, decided=frozenset(), bound=measure.DISTINCT_BOUND)
     await measurer.all(
         [
             _semantic((2, "neighborhood"), (1, "neighborhood"), 0.5),
@@ -223,16 +226,18 @@ async def test_each_column_is_read_once_for_the_run():
     )
 
 
-async def test_the_threshold_is_judged_on_the_measured_score_and_the_rest_are_kept_with_why():
+async def test_a_band_pair_is_judged_on_its_measured_score_and_the_rest_are_kept_with_why():
     reader = _Reader(DATA, measure.DISTINCT_BOUND)
-    tally = Tally(total=1)
-    out = await kept(
+    tally = Tally(total=1, threshold=THRESHOLD)
+    measurer = Measurer(reader, TABLES, decided=frozenset(), bound=measure.DISTINCT_BOUND)
+    out = await judged(
         [
             _semantic((3, "permit_id"), (2, "permit_id"), 0.45),
-            _semantic((2, "neighborhood"), (1, "neighborhood"), 0.95),
+            _semantic((2, "neighborhood"), (1, "neighborhood"), 0.5),
         ],
-        [_semantic((4, "code"), (5, "code"), 0.9)],
-        Measurer(reader, TABLES, decided=frozenset()).all,
+        [_semantic((4, "code"), (5, "code"), 0.5)],
+        KeyValues(measurer.all, 0.2),
+        None,
         tally,
     )
     assert [(p.start, p.score) for p in out] == [((3, "permit_id"), KEY_SCORE)]
@@ -240,8 +245,12 @@ async def test_the_threshold_is_judged_on_the_measured_score_and_the_rest_are_ke
     reasons = [(r.left_out, r.proposal.start if r.proposal else None) for r in tally.left_out]
     assert (NOT_COMPARABLE, (4, "code")) in reasons
     assert (BELOW_THRESHOLD, (2, "neighborhood")) in reasons
-    # A proposal left out keeps its measure, to be shown on its row.
-    assert all(r.proposal is not None and r.proposal.measure is not None for r in tally.left_out)
+    # A measured proposal left out keeps its measure, to be shown on its row; one whose columns
+    # are not compared is never measured.
+    by_start = {r.proposal.start: r.proposal for r in tally.left_out if r.proposal is not None}
+    assert by_start[(2, "neighborhood")].measure is not None
+    assert by_start[(4, "code")].measure is None
+    assert ("complaints", "code") not in reader.reads
 
 
 # --- the reader: the governed pipeline as the run's role ------------------------------------------
@@ -270,7 +279,7 @@ def pipeline(monkeypatch):
 async def test_values_are_read_through_the_governed_pipeline_as_the_runs_role(pipeline):
     reader = gather.values_reader(SimpleNamespace(), "steward")
     pipeline.answers.append([("BP-0001", 3), ("BP-0002", 1)])
-    got = await reader.values(INSPECTIONS, "permit_id")
+    got = await reader.values(INSPECTIONS, "permit_id", measure.DISTINCT_BOUND)
     assert isinstance(got, Values)
     assert got.read == ("BP-0001", "BP-0002") and got.distinct is False and got.more is False
     sql, role = pipeline.calls[0]
@@ -284,24 +293,24 @@ async def test_values_are_read_through_the_governed_pipeline_as_the_runs_role(pi
 async def test_a_column_whose_most_repeated_value_occurs_once_is_distinct(pipeline):
     reader = gather.values_reader(SimpleNamespace(), "steward")
     pipeline.answers.append([("BP-0001", 1), ("BP-0002", 1)])
-    got = await reader.values(PERMITS, "permit_id")
+    got = await reader.values(PERMITS, "permit_id", measure.DISTINCT_BOUND)
     assert isinstance(got, Values) and got.distinct is True
 
 
 async def test_a_table_the_role_cannot_read_is_not_measured(pipeline):
     reader = gather.values_reader(SimpleNamespace(), "outsider")
-    assert await reader.values(PERMITS, "permit_id") == measure.NOT_READABLE
+    assert await reader.values(PERMITS, "permit_id", measure.DISTINCT_BOUND) == measure.NOT_READABLE
     assert pipeline.calls == []
 
 
 async def test_a_table_that_requires_a_parameter_is_never_read_by_the_measure(pipeline):
     reader = gather.values_reader(SimpleNamespace(), "steward")
-    assert await reader.values(VISITS, "permit_id") == measure.NOT_READ
+    assert await reader.values(VISITS, "permit_id", measure.DISTINCT_BOUND) == measure.NOT_READ
     assert pipeline.calls == []
 
 
 async def test_values_are_looked_up_in_another_column_as_literals_of_their_type(pipeline):
-    from datetime import date
+    from datetime import UTC, date, datetime
 
     reader = gather.values_reader(SimpleNamespace(), "steward")
     pipeline.answers.append([("BP-0001",)])
@@ -310,5 +319,9 @@ async def test_values_are_looked_up_in_another_column_as_literals_of_their_type(
     )
     assert found == frozenset({"BP-0001"})
     assert pipeline.calls[0][0].endswith("""WHERE "permit_id" IN ('BP-0001', 'O''Hare')""")
-    assert gather._literal(date(2026, 1, 2)) == "DATE '2026-01-02'"
     assert gather._literal(12) == "12"
+    # REQ-413 (amended 2026-11-16): a date or timestamp column is in no compared group, so its
+    # values are never looked up in another column.
+    for value in (date(2026, 1, 2), datetime(2026, 1, 2, 3, 4), datetime(2026, 1, 2, tzinfo=UTC)):
+        with pytest.raises(TypeError):
+            gather._literal(value)

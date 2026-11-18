@@ -105,11 +105,11 @@ async def test_the_rebuilds_table_read_is_a_fixed_number_of_queries(control_plan
             await _seed(conn)
             counting = _CountingFetch(conn)
             tables = await fetch_tables(cast(Any, counting))
-            drafts = await fetch_tables(cast(Any, counting), draft=True)
+            withdrawn = await fetch_tables(cast(Any, counting), withdrawn=True)
     finally:
         await db.close()
 
-    assert [t["id"] for t in tables] == list(range(1, _TABLES + 1)) and drafts == []
+    assert [t["id"] for t in tables] == list(range(1, _TABLES + 1)) and withdrawn == []
     assert [c["column_name"] for c in tables[1]["columns"]] == ["zeta", "alpha", "c2"]
     assert [c["column_name"] for c in tables[4]["columns"]] == ["zeta", "alpha", "c5"]
     # Two reads: tables, columns and write grants each, whatever the number of tables.

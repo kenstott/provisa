@@ -21,6 +21,7 @@ import { injectExclusion } from "./graph-model";
 import type { GNode, GEdge, GraphStats, RelLineOverride, FrameData } from "./graph-model";
 import type { FrameView } from "./graph-model";
 import type { SchemaRel } from "./graph-schema-types";
+import type { PathScope } from "./dropPath";
 import { useRequestedView } from "./use-requested-view";
 import { useColumnWidths } from "./use-column-widths";
 import CodeMirror from "@uiw/react-codemirror";
@@ -120,6 +121,10 @@ interface GraphFrameProps {
   /** The acting role's relationship types (/data/graph-schema): what a query this frame writes to
    * expand a node names (REQ-1586). */
   schemaRels: SchemaRel[];
+  /** The labels no expansion reaches: their tables take arguments to read (REQ-2135). */
+  parameterized: ReadonlySet<string>;
+  /** Where Show children and Show parents may reach: the selected domains (REQ-2135). */
+  pathScope: PathScope;
   autoImpute?: boolean;
   onSaveEdgeAlias?: (relId: number, cqlAlias: string, gqlAlias: string) => Promise<string | null>;
   onSelectedLabelChange?: (label: string | null) => void;
@@ -172,6 +177,8 @@ export function GraphFrame({
   relationships,
   graphRelationships = relationships,
   schemaRels,
+  parameterized,
+  pathScope,
   autoImpute: autoImputeProp = false,
   onSaveEdgeAlias,
   onSelectedLabelChange,
@@ -280,6 +287,8 @@ export function GraphFrame({
     setOverlayData,
     frameNodes: frame.nodes,
     schemaRels,
+    parameterized,
+    pathScope,
   });
 
   const handleExcludeNode = useCallback(

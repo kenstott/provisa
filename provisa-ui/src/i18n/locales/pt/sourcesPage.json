@@ -45,6 +45,8 @@
     "purposeAdd": "Adicionar uma fonte não registra tabelas por si só. Use Discover na linha para navegar pelos esquemas e registrar as tabelas que você quer governar.",
     "purposeAria": "Sobre as fontes de dados",
     "registrationMissing": "{{list}} não contém nenhum registro da fonte {{source}}.",
-    "duplicateCredentialsNote": "As credenciais de {{source}} não são copiadas: introduza-as aqui, ou uma referência a um segredo."
+    "duplicateCredentialsNote": "As credenciais de {{source}} não são copiadas: introduza-as aqui, ou uma referência a um segredo.",
+    "withdrawn": "Retirada",
+    "withdrawnTitle": "Fora de produção: nenhuma de suas tabelas atende a nenhum papel até que seja restabelecida"
   }
 }

@@ -104,7 +104,6 @@ export function IdentityRead({ table, source }: { table: RegisteredTable; source
       value: table.description || null,
       testId: "table-identity-description",
     },
-    { label: t("tableEditForm.draftLabel"), value: yesNo(t, table.draft) },
     ...(regions.length > 0
       ? [
           {

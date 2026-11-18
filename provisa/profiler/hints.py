@@ -20,8 +20,7 @@ sets them.
 
 A scan runs when a person asks for it, at registration or from a column's access settings, in the
 background, since reading a sample may take time. It reads up to :data:`SCAN_ROWS` rows of the
-table as the org admin reads it -- a draft as well as a table in service (``table_read``), so a
-table being registered can be scanned before it is released -- tests each text column's values in
+table as the org admin reads it -- a withdrawn table as well as one in service (``table_read``) -- tests each text column's values in
 memory, and keeps only the share of values that held each kind. The values and the matched text
 are never stored, logged or returned. A column that classifies as a kind by whole value gets no
 hint of that kind: the classification is what it is.
@@ -147,14 +146,14 @@ async def _store(conn: Any, table_id: int, scan_id: str, rows: list[dict], read:
 
 async def run(state: Any, table_id: int, scan_id: str) -> None:
     """Scan ``table_id`` and record what was found. Always ends: succeeded, or failed with why."""
-    from provisa.api.admin.table_read import _in_service, draft_table, read_as_caller
+    from provisa.api.admin.table_read import _in_service, read_as_caller, withdrawn_table
     from provisa.profiler.classifications import enabled_kinds
     from provisa.profiler.run import PROFILE_ROLE
 
     pool = state.model_db
     try:
         async with asyncio.timeout(SCAN_TIMEOUT.total_seconds()):
-            table = _in_service(state, table_id) or draft_table(state, table_id)
+            table = _in_service(state, table_id) or withdrawn_table(state, table_id)
             if table is None:
                 raise ValueError(f"table {table_id} is no longer registered")
             columns = text_columns(table)
