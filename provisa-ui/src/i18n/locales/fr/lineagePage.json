@@ -1,9 +1,9 @@
 {
   "lineagePage": {
     "title": "Lignage des données",
-    "intro": "Retracez l'origine des données. Collez une requête ci-dessous et Provisa relie chaque colonne du résultat, à travers ses transformations et ses appels de commandes, aux colonnes sources d'origine — vous pouvez ainsi répondre à « qu'est-ce qui alimente cette colonne ? » avant de publier une vue ou une commande. Ou choisissez <b>Lignage complet</b> pour voir la provenance de toutes les vues et de tous les jeux de données enregistrés à la fois.",
+    "intro": "Collez une requête ci-dessous et Provisa remonte chaque colonne du résultat à travers ses transformations et appels de commandes jusqu'aux colonnes sources d'origine, pour que vous voyiez ce qui alimente une colonne avant de publier une vue ou une commande. Ou choisissez <b>Traçabilité complète</b> pour voir la provenance à travers toutes les vues et tous les jeux de données enregistrés.",
     "queryLabel": "Requête à analyser",
-    "queryHelp": "Tout SELECT qui lit vos tables, vues ou commandes enregistrées. Cette requête est seulement analysée, jamais exécutée — rien n'est exécuté et aucune donnée n'est lue.",
+    "queryHelp": "Tout SELECT qui lit vos tables, vues ou commandes enregistrées. Il est analysé et jamais exécuté : aucune donnée n'est lue.",
     "copy": "Copier la requête",
     "copied": "Copié",
     "roleLabel": "Lignage pour le rôle",
@@ -12,9 +12,9 @@
     "complete": "Lignage complet",
     "error": "Erreur de lignage",
     "cyclesTitle": "Cycles détectés",
-    "cycleFeedback": "(valide — traverse une limite matérialisée)",
-    "cycleError": "(aucune limite de matérialisation — probablement une erreur de conception)",
+    "cycleFeedback": "(légal : franchit une frontière matérialisée)",
+    "cycleError": "(aucune frontière de matérialisation : probablement une erreur de conception)",
     "emptyTitle": "Rien à afficher",
-    "emptyBody": "Aucun lignage trouvé. Le lignage complet couvre vos vues enregistrées, et aucune n'est encore définie. Enregistrez une vue (Dérivés → Vues) ou analysez une requête ci-dessus pour voir son lignage."
+    "emptyBody": "Aucune traçabilité trouvée. La traçabilité complète couvre vos vues enregistrées, et aucune n'est encore définie. Enregistrez une vue (Dérivés → Vues) ou analysez une requête ci-dessus pour voir sa traçabilité."
   }
 }

@@ -24,7 +24,7 @@
     "history": "Historique",
     "noHistory": "Aucun historique pour l'instant",
     "favorites": "Favoris",
-    "noFavorites": "Aucun favori pour l'instant — cliquez sur ★ dans un cadre de résultat",
+    "noFavorites": "Aucun favori pour l'instant. Cliquez sur ★ dans un cadre de résultats.",
     "matchAllNodes": "MATCH (n) RETURN n LIMIT 25",
     "matchAllRels": "MATCH p=()-->() RETURN p LIMIT 25",
     "firstPage": "Première page",
