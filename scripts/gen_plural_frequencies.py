@@ -19,8 +19,9 @@ Usage, in two steps (the first streams about 6.4 GB and keeps only the listed wo
     python scripts/gen_plural_frequencies.py fetch <scowl-pre.txt> <counts.tsv>
     python scripts/gen_plural_frequencies.py table <scowl-pre.txt> <counts.tsv>
 
-A word's count is its exact lower-case 1-gram's match count over 2000-2019 (current usage; the
-POS-tagged forms such as ``schemas_NOUN`` are other 1-grams and are not added). ``table`` writes
+A word's count is the match count over 2000-2019 (current usage) of its lower-case 1-gram tagged
+as a noun, ``schemas_NOUN``: the untagged 1-gram also counts every other word of the same spelling
+(``does``, ``dies`` as verbs). ``table`` writes
 ``provisa/core/data/plural_frequencies.tsv``: every form gen_noun_plurals.tsv's ``tied_forms``
 lists, with 0 for a form the corpus does not carry (Google Books keeps only 1-grams seen 40 times
 or more), sorted by word.
@@ -37,6 +38,7 @@ from pathlib import Path
 _SHARDS = 24
 _URL = "http://storage.googleapis.com/books/ngrams/books/20200217/eng/1-{:05d}-of-{:05d}.gz"
 _FIRST_YEAR, _LAST_YEAR = 2000, 2019
+_NOUN_TAG = "_NOUN"
 _HERE = Path(__file__).resolve().parent
 
 
@@ -50,7 +52,9 @@ def _generator():
 
 
 def fetch(words: set[str], out: Path) -> None:
-    """Stream every shard and write ``word<TAB>count`` for each listed word the corpus carries."""
+    """Stream every shard and write ``word<TAB>count`` for each listed word the corpus carries as a
+    noun."""
+    tagged = {f"{word}{_NOUN_TAG}": word for word in words}
     with out.open("w", encoding="utf-8") as sink:
         for shard in range(_SHARDS):
             with (
@@ -59,14 +63,15 @@ def fetch(words: set[str], out: Path) -> None:
             ):
                 for line in lines:
                     token, _, years = line.partition("\t")
-                    if token not in words:
+                    word = tagged.get(token)
+                    if word is None:
                         continue
                     count = 0
                     for record in years.rstrip("\n").split("\t"):
                         year, matches, _ = record.split(",")
                         if _FIRST_YEAR <= int(year) <= _LAST_YEAR:
                             count += int(matches)
-                    sink.write(f"{token}\t{count}\n")
+                    sink.write(f"{word}\t{count}\n")
             print(f"shard {shard}", file=sys.stderr, flush=True)
 
 

@@ -176,41 +176,64 @@ def _lemma(lemma_info: str) -> tuple[str, str] | None:
     return m.group(2), m.group(3)
 
 
-def _rank(
-    alt: Alternative,
-    singular: str,
-    lemmas: set[str],
-    alts: list[Alternative],
-    frequencies: dict[str, int],
-) -> tuple[bool, int, int, int, int]:
-    """One plural alternative's sort key: the everyday-word rule, the variant level's tie class,
-    then the general-English frequency inside a tie, then the level itself, then file order."""
-    word, level, order = alt
-    tie_class = _TIE_CLASS.get(level, len(_LEVELS))
-    count = frequencies[word] if _tied(alt, alts) else 0  # outside a tie frequency has no say
-    return (
-        not (word != singular and word in lemmas),
-        tie_class,
-        -count,
-        _LEVELS.index(level) if level in _LEVELS else len(_LEVELS),
-        order,
+def _database_order(singular: str, alts: list[Alternative], lemmas: set[str]) -> list[Alternative]:
+    """``alts`` in the database's order, one per word: the everyday-word rule, then the variant
+    level, then file order."""
+    ranked = sorted(
+        alts,
+        key=lambda a: (
+            not (a[0] != singular and a[0] in lemmas),
+            _LEVELS.index(a[1]) if a[1] in _LEVELS else len(_LEVELS),
+            a[2],
+        ),
     )
+    seen: set[str] = set()
+    out = []
+    for alt in ranked:
+        if alt[0] not in seen:
+            seen.add(alt[0])
+            out.append(alt)
+    return out
 
 
-def _tied(alt: Alternative, alts: list[Alternative]) -> bool:
-    """True when another alternative of the same noun shares ``alt``'s tie class."""
-    tie_class = _TIE_CLASS.get(alt[1])
-    return tie_class is not None and any(
-        other[0] != alt[0] and _TIE_CLASS.get(other[1]) == tie_class for other in alts
-    )
+def _ties(singular: str, ordered: list[Alternative], lemmas: set[str]) -> list[list[int]]:
+    """The positions in ``ordered`` of each tie: two or more alternatives under the same everyday-word
+    rule and in the same tie class. An alternative spelled as the singular (``head``'s plural
+    ``head``) is never in a tie: a word count cannot tell its plural uses from its singular ones, so
+    it keeps the database's position."""
+    groups: dict[tuple[bool, int], list[int]] = {}
+    for i, (word, level, _) in enumerate(ordered):
+        if word == singular or level not in _TIE_CLASS:
+            continue
+        groups.setdefault((word in lemmas, _TIE_CLASS[level]), []).append(i)
+    return [positions for positions in groups.values() if len(positions) > 1]
+
+
+def _ranked(
+    singular: str, alts: list[Alternative], lemmas: set[str], frequencies: dict[str, int]
+) -> list[str]:
+    """``alts``' words, best first: the database's order, with each tie reordered by general-English
+    frequency (more frequent first, the database's order between equal counts). Frequency moves a
+    form only among the positions its tie holds."""
+    ordered = _database_order(singular, alts, lemmas)
+    words = [a[0] for a in ordered]
+    for positions in _ties(singular, ordered, lemmas):
+        tied = sorted((words[i] for i in positions), key=lambda w: -frequencies[w])
+        for i, word in zip(positions, tied, strict=True):
+            words[i] = word
+    return words
 
 
 def tied_forms(scowl_pre: Path) -> list[str]:
     """Every plural alternative in a tie, whose frequency decides: the words the frequency table
     must cover."""
-    nouns, own_words = _nouns(scowl_pre)
-    del own_words
-    forms = {a[0] for _, alts in nouns for a in alts if _tied(a, alts)}
+    nouns, _ = _nouns(scowl_pre)
+    lemmas = {singular for singular, _ in nouns}
+    forms: set[str] = set()
+    for singular, alts in nouns:
+        ordered = _database_order(singular, alts, lemmas)
+        for positions in _ties(singular, ordered, lemmas):
+            forms.update(ordered[i][0] for i in positions)
     return sorted(forms)
 
 
@@ -314,12 +337,7 @@ def extract(
         if not alts:
             rows.append((singular, singular))
             continue
-        ranked = sorted(alts, key=lambda a: _rank(a, singular, lemmas, alts, frequencies))
-        seen: set[str] = set()
-        for plural, _, _ in ranked:
-            if plural not in seen:
-                seen.add(plural)
-                rows.append((singular, plural))
+        rows.extend((singular, plural) for plural in _ranked(singular, alts, lemmas, frequencies))
     return rows, own_words
 
 
