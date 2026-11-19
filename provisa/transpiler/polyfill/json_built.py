@@ -348,7 +348,7 @@ def for_name(name: str, rewrite: Callable[[exp.Expr, str], exp.Expr | None]) -> 
 
     only.__doc__ = rewrite.__doc__
     only.__qualname__ = only.__name__ = f"{rewrite.__name__}_{name}"
-    return Rewrite(only)
+    return Rewrite(only, mentions=rf"\b{name}\s*\(")  # a call by its name alone is read too
 
 
 def _feature(name: str, summary: str, rewrite, *extra: Limitation) -> Feature:

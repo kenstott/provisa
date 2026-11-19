@@ -6,14 +6,14 @@ A polyfill is how Provisa gives a PostgreSQL client PostgreSQL's behaviour on a 
 
 ## [PostgreSQL](postgres.md)
 
-548 of the grid's 548 features are native on PostgreSQL and left out.
+554 of the grid's 554 features are native on PostgreSQL and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 </tbody></table>
 
 ## [DuckDB](duckdb.md)
 
-198 of the grid's 548 features are native on DuckDB and left out.
+204 of the grid's 554 features are native on DuckDB and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -1020,7 +1020,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Trino](trino.md)
 
-117 of the grid's 548 features are native on Trino and left out.
+123 of the grid's 554 features are native on Trino and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -2132,7 +2132,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Presto](presto.md)
 
-117 of the grid's 548 features are native on Presto and left out.
+123 of the grid's 554 features are native on Presto and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -3244,7 +3244,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Athena](athena.md)
 
-117 of the grid's 548 features are native on Athena and left out.
+123 of the grid's 554 features are native on Athena and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -4356,7 +4356,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [ClickHouse](clickhouse.md)
 
-34 of the grid's 548 features are native on ClickHouse and left out.
+19 of the grid's 554 features are native on ClickHouse and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>an array of dimensions</strong><br>cardinality, unnest and array_to_string of an array of more than one dimension: of every element, in storage order.</td><td><pre><code>function provisa.transpiler.polyfill.array_dimensions.of_dimensions: cardinality, unnest or array_to_string of an array of more than one dimension: of every</code></pre></td><td></td><td></td><td></td></tr>
@@ -4596,10 +4596,31 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 <tr><td><strong>ts_delete</strong><br>A vector without the lexemes a list holds; a NULL item of the list is skipped.</td><td><pre><code>ts_delete_array($v, $x)
 =&gt;
 CASE WHEN $v IS NULL THEN NULL ELSE if(throwIf(coalesce(NOT match($v, &#x27;\\A(?:&#x27;&#x27;(?:[^&#x27;&#x27;]|&#x27;&#x27;&#x27;&#x27;)*&#x27;&#x27;(?::[0-9]+[A-C]?(?:,[0-9]+[A-C]?)*)?(?: &#x27;&#x27;(?:[^&#x27;&#x27;]|&#x27;&#x27;&#x27;&#x27;)*&#x27;&#x27;(?::[0-9]+[A-C]?(?:,[0-9]+[A-C]?)*)?)*)?\\z&#x27;), false), &#x27;postgresql-error 0A000: ts_delete does not read this value &lt;end of postgresql-error&gt;&#x27;) = 0, arrayStringConcat(arrayFilter(_t -&gt; NOT has($x, replace(replace(extract(_t, &#x27;\\A&#x27;&#x27;((?:[^&#x27;&#x27;]|&#x27;&#x27;&#x27;&#x27;)*)&#x27;&#x27;&#x27;), &#x27;&#x27;&#x27;&#x27;&#x27;&#x27;, &#x27;&#x27;&#x27;&#x27;), &#x27;\\\\&#x27;, &#x27;\\&#x27;)), extractAll(ifNull($v, &#x27;&#x27;), &#x27;&#x27;&#x27;(?:[^&#x27;&#x27;]|&#x27;&#x27;&#x27;&#x27;)*&#x27;&#x27;(?::[0-9]+[A-C]?(?:,[0-9]+[A-C]?)*)?&#x27;)), &#x27; &#x27;), NULL) END</code></pre></td><td></td><td></td><td></td></tr>
-<tr><td><strong>broadcast</strong><br>The broadcast address of a network.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_broadcast: broadcast of an inet or cidr: refused by name, as the dialect has no such type.</code></pre></td><td><ul><li>Refused by name: the dialect has no inet type, and no form of it.</li></ul></td><td></td><td></td></tr>
-<tr><td><strong>family</strong><br>An address&#x27;s family: 4 or 6.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_family: family of an inet or cidr: refused by name, as the dialect has no such type.</code></pre></td><td><ul><li>Refused by name: the dialect has no inet type, and no form of it.</li></ul></td><td></td><td></td></tr>
-<tr><td><strong>host</strong><br>An address&#x27;s text, without its mask length.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_host: host of an inet or cidr: refused by name, as the dialect has no such type.</code></pre></td><td><ul><li>Refused by name: the dialect has no inet type, and no form of it.</li></ul></td><td></td><td></td></tr>
-<tr><td><strong>network</strong><br>A network&#x27;s address, its host bits cleared.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_network: network of an inet or cidr: refused by name, as the dialect has no such type.</code></pre></td><td><ul><li>Refused by name: the dialect has no inet type, and no form of it.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>inetand</strong><br>The bitwise AND of two addresses.</td><td><pre><code>function provisa.transpiler.polyfill.inet_literal.inetand_of_literal_addresses: A call of one of ``NAMES`` of literal addresses: its answer, computed as the statement is</code></pre></td><td><ul><li>Of literal addresses (and a literal mask length) only, computed as the statement is read as network.c computes them: ClickHouse has no inet type, and holds an address as its text. Any other argument is refused by name.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>inetor</strong><br>The bitwise OR of two addresses.</td><td><pre><code>function provisa.transpiler.polyfill.inet_literal.inetor_of_literal_addresses: A call of one of ``NAMES`` of literal addresses: its answer, computed as the statement is</code></pre></td><td><ul><li>Of literal addresses (and a literal mask length) only, computed as the statement is read as network.c computes them: ClickHouse has no inet type, and holds an address as its text. Any other argument is refused by name.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>network_eq</strong><br>Two networks equal.</td><td><pre><code>function provisa.transpiler.polyfill.inet_literal.network_eq_of_literal_addresses: A call of one of ``NAMES`` of literal addresses: its answer, computed as the statement is</code></pre></td><td><ul><li>Of literal addresses (and a literal mask length) only, computed as the statement is read as network.c computes them: ClickHouse has no inet type, and holds an address as its text. Any other argument is refused by name.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>network_ne</strong><br>Two networks not equal.</td><td><pre><code>function provisa.transpiler.polyfill.inet_literal.network_ne_of_literal_addresses: A call of one of ``NAMES`` of literal addresses: its answer, computed as the statement is</code></pre></td><td><ul><li>Of literal addresses (and a literal mask length) only, computed as the statement is read as network.c computes them: ClickHouse has no inet type, and holds an address as its text. Any other argument is refused by name.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>network_lt</strong><br>One network before another.</td><td><pre><code>function provisa.transpiler.polyfill.inet_literal.network_lt_of_literal_addresses: A call of one of ``NAMES`` of literal addresses: its answer, computed as the statement is</code></pre></td><td><ul><li>Of literal addresses (and a literal mask length) only, computed as the statement is read as network.c computes them: ClickHouse has no inet type, and holds an address as its text. Any other argument is refused by name.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>network_le</strong><br>One network before or equal to another.</td><td><pre><code>function provisa.transpiler.polyfill.inet_literal.network_le_of_literal_addresses: A call of one of ``NAMES`` of literal addresses: its answer, computed as the statement is</code></pre></td><td><ul><li>Of literal addresses (and a literal mask length) only, computed as the statement is read as network.c computes them: ClickHouse has no inet type, and holds an address as its text. Any other argument is refused by name.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>network_gt</strong><br>One network after another.</td><td><pre><code>function provisa.transpiler.polyfill.inet_literal.network_gt_of_literal_addresses: A call of one of ``NAMES`` of literal addresses: its answer, computed as the statement is</code></pre></td><td><ul><li>Of literal addresses (and a literal mask length) only, computed as the statement is read as network.c computes them: ClickHouse has no inet type, and holds an address as its text. Any other argument is refused by name.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>network_ge</strong><br>One network after or equal to another.</td><td><pre><code>function provisa.transpiler.polyfill.inet_literal.network_ge_of_literal_addresses: A call of one of ``NAMES`` of literal addresses: its answer, computed as the statement is</code></pre></td><td><ul><li>Of literal addresses (and a literal mask length) only, computed as the statement is read as network.c computes them: ClickHouse has no inet type, and holds an address as its text. Any other argument is refused by name.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>network_larger</strong><br>The later of two networks.</td><td><pre><code>function provisa.transpiler.polyfill.inet_literal.network_larger_of_literal_addresses: A call of one of ``NAMES`` of literal addresses: its answer, computed as the statement is</code></pre></td><td><ul><li>Of literal addresses (and a literal mask length) only, computed as the statement is read as network.c computes them: ClickHouse has no inet type, and holds an address as its text. Any other argument is refused by name.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>network_smaller</strong><br>The earlier of two networks.</td><td><pre><code>function provisa.transpiler.polyfill.inet_literal.network_smaller_of_literal_addresses: A call of one of ``NAMES`` of literal addresses: its answer, computed as the statement is</code></pre></td><td><ul><li>Of literal addresses (and a literal mask length) only, computed as the statement is read as network.c computes them: ClickHouse has no inet type, and holds an address as its text. Any other argument is refused by name.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>network_overlap</strong><br>Two networks that hold an address in common.</td><td><pre><code>function provisa.transpiler.polyfill.inet_literal.network_overlap_of_literal_addresses: A call of one of ``NAMES`` of literal addresses: its answer, computed as the statement is</code></pre></td><td><ul><li>Of literal addresses (and a literal mask length) only, computed as the statement is read as network.c computes them: ClickHouse has no inet type, and holds an address as its text. Any other argument is refused by name.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>network_sub</strong><br>A network strictly within another.</td><td><pre><code>function provisa.transpiler.polyfill.inet_literal.network_sub_of_literal_addresses: A call of one of ``NAMES`` of literal addresses: its answer, computed as the statement is</code></pre></td><td><ul><li>Of literal addresses (and a literal mask length) only, computed as the statement is read as network.c computes them: ClickHouse has no inet type, and holds an address as its text. Any other argument is refused by name.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>network_subeq</strong><br>A network within or equal to another.</td><td><pre><code>function provisa.transpiler.polyfill.inet_literal.network_subeq_of_literal_addresses: A call of one of ``NAMES`` of literal addresses: its answer, computed as the statement is</code></pre></td><td><ul><li>Of literal addresses (and a literal mask length) only, computed as the statement is read as network.c computes them: ClickHouse has no inet type, and holds an address as its text. Any other argument is refused by name.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>network_sup</strong><br>A network strictly holding another.</td><td><pre><code>function provisa.transpiler.polyfill.inet_literal.network_sup_of_literal_addresses: A call of one of ``NAMES`` of literal addresses: its answer, computed as the statement is</code></pre></td><td><ul><li>Of literal addresses (and a literal mask length) only, computed as the statement is read as network.c computes them: ClickHouse has no inet type, and holds an address as its text. Any other argument is refused by name.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>network_supeq</strong><br>A network holding or equal to another.</td><td><pre><code>function provisa.transpiler.polyfill.inet_literal.network_supeq_of_literal_addresses: A call of one of ``NAMES`` of literal addresses: its answer, computed as the statement is</code></pre></td><td><ul><li>Of literal addresses (and a literal mask length) only, computed as the statement is read as network.c computes them: ClickHouse has no inet type, and holds an address as its text. Any other argument is refused by name.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>broadcast</strong><br>The broadcast address of a network.</td><td><pre><code>function provisa.transpiler.polyfill.inet_literal.broadcast_of_literal_addresses: A call of one of ``NAMES`` of literal addresses: its answer, computed as the statement is</code></pre></td><td><ul><li>Of literal addresses (and a literal mask length) only, computed as the statement is read as network.c computes them: ClickHouse has no inet type, and holds an address as its text. Any other argument is refused by name.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>family</strong><br>An address&#x27;s family: 4 or 6.</td><td><pre><code>function provisa.transpiler.polyfill.inet_literal.family_of_literal_addresses: A call of one of ``NAMES`` of literal addresses: its answer, computed as the statement is</code></pre></td><td><ul><li>Of literal addresses (and a literal mask length) only, computed as the statement is read as network.c computes them: ClickHouse has no inet type, and holds an address as its text. Any other argument is refused by name.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>host</strong><br>An address&#x27;s text, without its mask length.</td><td><pre><code>function provisa.transpiler.polyfill.inet_literal.host_of_literal_addresses: A call of one of ``NAMES`` of literal addresses: its answer, computed as the statement is</code></pre></td><td><ul><li>Of literal addresses (and a literal mask length) only, computed as the statement is read as network.c computes them: ClickHouse has no inet type, and holds an address as its text. Any other argument is refused by name.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>network</strong><br>A network&#x27;s address, its host bits cleared.</td><td><pre><code>function provisa.transpiler.polyfill.inet_literal.network_of_literal_addresses: A call of one of ``NAMES`` of literal addresses: its answer, computed as the statement is</code></pre></td><td><ul><li>Of literal addresses (and a literal mask length) only, computed as the statement is read as network.c computes them: ClickHouse has no inet type, and holds an address as its text. Any other argument is refused by name.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>abbrev</strong><br>An address&#x27;s abbreviated text.</td><td><pre><code>function provisa.transpiler.polyfill.inet_literal.abbrev_of_literal_addresses: A call of one of ``NAMES`` of literal addresses: its answer, computed as the statement is</code></pre></td><td><ul><li>Of literal addresses (and a literal mask length) only, computed as the statement is read as network.c computes them: ClickHouse has no inet type, and holds an address as its text. Any other argument is refused by name.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>hostmask</strong><br>The host mask of an address&#x27;s network.</td><td><pre><code>function provisa.transpiler.polyfill.inet_literal.hostmask_of_literal_addresses: A call of one of ``NAMES`` of literal addresses: its answer, computed as the statement is</code></pre></td><td><ul><li>Of literal addresses (and a literal mask length) only, computed as the statement is read as network.c computes them: ClickHouse has no inet type, and holds an address as its text. Any other argument is refused by name.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>masklen</strong><br>An address&#x27;s mask length.</td><td><pre><code>function provisa.transpiler.polyfill.inet_literal.masklen_of_literal_addresses: A call of one of ``NAMES`` of literal addresses: its answer, computed as the statement is</code></pre></td><td><ul><li>Of literal addresses (and a literal mask length) only, computed as the statement is read as network.c computes them: ClickHouse has no inet type, and holds an address as its text. Any other argument is refused by name.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>netmask</strong><br>The net mask of an address&#x27;s network.</td><td><pre><code>function provisa.transpiler.polyfill.inet_literal.netmask_of_literal_addresses: A call of one of ``NAMES`` of literal addresses: its answer, computed as the statement is</code></pre></td><td><ul><li>Of literal addresses (and a literal mask length) only, computed as the statement is read as network.c computes them: ClickHouse has no inet type, and holds an address as its text. Any other argument is refused by name.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>set_masklen</strong><br>An address with another mask length.</td><td><pre><code>function provisa.transpiler.polyfill.inet_literal.set_masklen_of_literal_addresses: A call of one of ``NAMES`` of literal addresses: its answer, computed as the statement is</code></pre></td><td><ul><li>Of literal addresses (and a literal mask length) only, computed as the statement is read as network.c computes them: ClickHouse has no inet type, and holds an address as its text. Any other argument is refused by name.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>cidr</strong><br>An inet as a cidr, its host bits cleared.</td><td><pre><code>function provisa.transpiler.polyfill.inet_literal.cidr_of_literal_addresses: A call of one of ``NAMES`` of literal addresses: its answer, computed as the statement is</code></pre></td><td><ul><li>Of literal addresses (and a literal mask length) only, computed as the statement is read as network.c computes them: ClickHouse has no inet type, and holds an address as its text. Any other argument is refused by name.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>macaddr_and</strong><br>The bitwise AND of two MAC addresses.</td><td><pre><code>macaddr_and($a, $b)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
@@ -5553,7 +5574,7 @@ function provisa.transpiler.polyfill.bytea.encode_of_bytes: encode of a bytea he
 
 ## [Snowflake](snowflake.md)
 
-198 of the grid's 548 features are native on Snowflake and left out.
+204 of the grid's 554 features are native on Snowflake and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -6570,7 +6591,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Databricks](databricks.md)
 
-198 of the grid's 548 features are native on Databricks and left out.
+204 of the grid's 554 features are native on Databricks and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -7587,7 +7608,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [BigQuery](bigquery.md)
 
-198 of the grid's 548 features are native on BigQuery and left out.
+204 of the grid's 554 features are native on BigQuery and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -8604,7 +8625,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [T-SQL (SQL Server, Fabric, Synapse)](tsql.md)
 
-198 of the grid's 548 features are native on T-SQL (SQL Server, Fabric, Synapse) and left out.
+204 of the grid's 554 features are native on T-SQL (SQL Server, Fabric, Synapse) and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -9621,7 +9642,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Redshift](redshift.md)
 
-198 of the grid's 548 features are native on Redshift and left out.
+204 of the grid's 554 features are native on Redshift and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -10638,7 +10659,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [MySQL](mysql.md)
 
-198 of the grid's 548 features are native on MySQL and left out.
+204 of the grid's 554 features are native on MySQL and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -11655,7 +11676,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [SingleStore](singlestore.md)
 
-198 of the grid's 548 features are native on SingleStore and left out.
+204 of the grid's 554 features are native on SingleStore and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -12672,7 +12693,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [SQLite](sqlite.md)
 
-198 of the grid's 548 features are native on SQLite and left out.
+204 of the grid's 554 features are native on SQLite and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -13689,7 +13710,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Oracle](oracle.md)
 
-198 of the grid's 548 features are native on Oracle and left out.
+204 of the grid's 554 features are native on Oracle and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -14706,7 +14727,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Hive](hive.md)
 
-198 of the grid's 548 features are native on Hive and left out.
+204 of the grid's 554 features are native on Hive and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -15723,7 +15744,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Exasol](exasol.md)
 
-198 of the grid's 548 features are native on Exasol and left out.
+204 of the grid's 554 features are native on Exasol and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -16740,7 +16761,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Druid](druid.md)
 
-198 of the grid's 548 features are native on Druid and left out.
+204 of the grid's 554 features are native on Druid and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
