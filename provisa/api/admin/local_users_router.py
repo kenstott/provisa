@@ -318,6 +318,9 @@ async def delete_user(user_id: str, request: Request):  # REQ-1302, REQ-1305, RE
                 f"{refused}. Grant platform_admin to another user first.",
                 user=user_id,
             ) from refused
+        from provisa.api.effective_rows import record_removed_account
+
+        await record_removed_account(removed)
         return {"scope": "account", **removed}
 
     org_id = getattr(request.state, "active_org_id", None)
@@ -338,7 +341,12 @@ async def delete_user(user_id: str, request: Request):  # REQ-1302, REQ-1305, RE
             user=user_id,
             orgs=org_id,
         ) from exc
-    if not await remove_from_org(admin_db, model_db, user_id, org_id):
+    removed = await remove_from_org(admin_db, model_db, user_id, org_id)
+    from provisa.api.effective_rows import record_people
+
+    # REQ-2219: their role grants went with the removal, a membership row or not.
+    await record_people(org_id, [user_id])
+    if not removed:
         raise ApiError(404, "users.user_not_found", "User not found")
     await record_admin_action(
         model_db,

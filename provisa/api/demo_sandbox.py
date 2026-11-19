@@ -502,6 +502,9 @@ async def _build(demo: PublishedDemo, org_id: str, person: str, kind: str) -> st
                     rt.user_attributes = await record_visitor_attributes(
                         conn, person, demo.directory
                     )
+        from provisa.api.effective_rows import record_people
+
+        await record_people(org_id, [person])
     async with _stage(org_id, demo.name, "its record, environments and ready mark"):
         async with _stage(org_id, demo.name, "its record"):
             await _record(rt.model_db, demo, org_id, person)

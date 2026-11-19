@@ -521,6 +521,9 @@ async def _provision_org_task(
             await grant_org_role(
                 rt.model_db, created_by, "org_admin", granter_capabilities=DEPLOYMENT_GRANTER
             )
+            from provisa.api.effective_rows import record_people
+
+            await record_people(org_id, [created_by])
         # REQ-1524: the repository is created by the act that produces an organization, not lazily
         # by its first change, and with the same failure semantics as the schema — ensure_repo
         # raises, so an org whose repository could not be created does not reach "ready". Prod's
@@ -1245,7 +1248,12 @@ async def remove_member(org_id: str, user_id: str, request: Request):  # REQ-130
         await assert_not_last_org_admin(model_db, user_id, org_id)
     except LastOrgAdminError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
-    if not await remove_from_org(_admin_pool(), model_db, user_id, org_id):
+    removed = await remove_from_org(_admin_pool(), model_db, user_id, org_id)
+    from provisa.api.effective_rows import record_people
+
+    # REQ-2219: their role grants went with the removal, a membership row or not.
+    await record_people(org_id, [user_id])
+    if not removed:
         raise ApiError(404, "orgs.membership_not_found", "Membership not found")
     await record_admin_action(
         model_db,
@@ -1282,7 +1290,12 @@ async def leave_org(org_id: str, request: Request):  # REQ-1306
         await assert_not_last_org_admin(model_db, user_id, org_id)
     except LastOrgAdminError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
-    if not await remove_from_org(_admin_pool(), model_db, user_id, org_id):
+    removed = await remove_from_org(_admin_pool(), model_db, user_id, org_id)
+    from provisa.api.effective_rows import record_people
+
+    # REQ-2219: their role grants went with the removal, a membership row or not.
+    await record_people(org_id, [user_id])
+    if not removed:
         raise ApiError(404, "orgs.membership_not_found", "Membership not found")
     await suppress_auto_join(_admin_pool(), user_id, org_id)
     await record_admin_action(
@@ -1398,6 +1411,9 @@ async def grant_org_admin_role(org_id: str, user_id: str, request: Request):  # 
             raise ApiError(404, "orgs.not_found", "Org not found")
     model_db = await _org_model_db(org_id)
     await grant_org_admin(_admin_pool(), model_db, user_id, org_id, joined_via=JOINED_VIA_ADMIN)
+    from provisa.api.effective_rows import record_people
+
+    await record_people(org_id, [user_id])
     await record_admin_action(
         model_db,
         org_id=org_id,
@@ -1457,6 +1473,9 @@ async def revoke_org_admin_role(org_id: str, user_id: str, request: Request):  #
             user=user_id,
             org=org_id,
         )
+    from provisa.api.effective_rows import record_people
+
+    await record_people(org_id, [user_id])
     await record_admin_action(
         model_db,
         org_id=org_id,

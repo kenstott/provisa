@@ -40,7 +40,10 @@ _NOW = datetime.now(timezone.utc)
 
 
 @pytest.fixture
-async def org(control_plane):
+async def org(control_plane, monkeypatch):
+    # The sweep recomputes a removed grant's holder's effective rows from the runtime its caller
+    # bound (REQ-2219); this one has no model built, so there is nothing to compute against.
+    monkeypatch.setattr("provisa.api.app.state", SimpleNamespace(names_table=None), raising=False)
     db = control_plane.org()
     async with db.acquire() as conn:
         for role_id, days in (("reader", None), ("checker", None), ("contractor", 30)):
