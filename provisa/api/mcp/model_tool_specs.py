@@ -492,8 +492,61 @@ async def dispatch(state: Any, role: str, name: str, args: dict, request: Any) -
     """Run tool ``name`` with ``args`` as keywords (only the fields the model sent)."""
     if request is None:
         raise ValueError(f"{name} requires a verified request context")
+    await _refuse_outside_selection(name, args)
     fn = getattr(model_tools, name)
     return await fn(state, role, request, **args)
+
+
+#: The arguments that name a registered table by id.
+_TABLE_ARGS = ("table_id", "expectations_table_id", "checker_table_id")
+
+#: The tools that act on what spans every domain: an environment's data, the synthetic datasets
+#: (each over tables of any domain), the whole model's config.
+_WHOLE_ORG = {
+    "list_synthetic_datasets": "The synthetic datasets",
+    "list_synthetic_profile_runs": "An environment's synthetic profile runs",
+    "define_synthetic_dataset": "A synthetic dataset",
+    "generate_synthetic_dataset": "A synthetic dataset",
+    "get_synthetic_report": "A synthetic dataset",
+    "drop_synthetic_dataset": "A synthetic dataset",
+    "get_environment_detail": "An environment's data",
+    "set_environment_data": "An environment's data",
+    "set_source_binding": "An environment's data",
+    "recopy_environment_sources": "An environment's data",
+    "get_environment_synthetic_plan": "An environment's data",
+    "generate_environment_model": "An environment's data",
+    "reset_environment_mutations": "An environment's data",
+    "export_model_config": "The model's config",
+}
+
+
+async def _refuse_outside_selection(name: str, args: dict) -> None:
+    """REQ-2253: under a selection in the domain filter, a tool reads and changes nothing outside
+    it -- a table named by id, a domain named, a profiler's member tables -- and a tool acting on
+    what spans every domain is refused by name. No selection: nothing is asked."""
+    from provisa.security.selected_domains import current, refuse_object, refuse_whole_org
+
+    if current() is None:
+        return
+    if name in _WHOLE_ORG:
+        refuse_whole_org(_WHOLE_ORG[name])
+    if name == "find_table_id":
+        refuse_object(f"Domain {args['domain']!r}", {args["domain"]})
+    from provisa.api.admin.domain_guard import table_domain
+    from provisa.api.admin.schema_helpers import _get_pool
+
+    pool = await _get_pool()
+    async with pool.acquire() as conn:
+        for key in _TABLE_ARGS:
+            if args.get(key) is not None:
+                table_id = int(args[key])
+                refuse_object(f"Table {table_id}", {await table_domain(conn, table_id)})
+        if name == "run_profiler":
+            from provisa.profiler.source import members
+
+            for member in await members(conn, args["source_id"]):
+                domain = await table_domain(conn, member["id"])
+                refuse_object(f"Table {member['table_name']!r}", {domain})
 
 
 SYSTEM_SECTION = (
