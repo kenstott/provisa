@@ -50,9 +50,7 @@ def _state(a_status: MVStatus) -> SimpleNamespace:
     registry = MVRegistry()
     registry.register(_mv("e2e_mv_a", A_SQL, a_status))
     registry.register(_mv("e2e_mv_b", B_SQL, MVStatus.STALE))
-    return SimpleNamespace(
-        mv_registry=registry, role_build_inputs={"draft_tables": [], "withdrawn_tables": []}
-    )
+    return SimpleNamespace(mv_registry=registry, role_build_inputs={"withdrawn_tables": []})
 
 
 def _admin() -> GovernanceContext:

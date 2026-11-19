@@ -196,18 +196,17 @@ async def test_a_local_huggingface_model_reports_its_snapshot_commit(monkeypatch
     from provisa.vector.providers import HuggingFaceLocalProvider
 
     hub = SimpleNamespace(
-        snapshot_download=lambda repo, local_files_only, token: (
-            f"/cache/models--{repo}/snapshots/0f1e2d3c" if local_files_only else None
-        )
+        snapshot_download=lambda repo, **_: f"/cache/models--{repo}/snapshots/0f1e2d3c"
     )
     monkeypatch.setitem(sys.modules, "huggingface_hub", hub)
-    # The model is loaded before its snapshot is read (a host that never had it fetches it).
+    # The model is loaded from the snapshot fetched for it, whose directory names its commit.
     monkeypatch.setitem(
         sys.modules,
         "sentence_transformers",
-        SimpleNamespace(SentenceTransformer=lambda _id, token: None),
+        SimpleNamespace(SentenceTransformer=lambda _path, token: None),
     )
     monkeypatch.setattr(HuggingFaceLocalProvider, "_cache", {})
+    monkeypatch.setattr(HuggingFaceLocalProvider, "_snapshots", {})
     model = VectorModel(id="all-MiniLM", provider="huggingface", dimensions=3)
     assert await HuggingFaceLocalProvider().reported_version(model) == "0f1e2d3c"
 
@@ -266,7 +265,6 @@ async def test_a_plan_that_embeds_rows_does_not_stream_from_its_terminal():
 
     plan = SimpleNamespace(
         embedded=None,
-        reads_in=None,  # as _Plan: no draft read (REQ-1921)
         two_step=None,
         code_write=None,
         keyed_write=None,

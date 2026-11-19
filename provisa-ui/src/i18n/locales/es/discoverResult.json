@@ -1,6 +1,7 @@
 {
   "discoverResult": {
     "scopeKinds": "Se buscó: {{kinds}}.",
+    "keyValues": "Coincidencia de valores clave: los pares que el modelo valoró desde el {{cutoff}} % hasta menos del {{threshold}} % se midieron con un máximo de {{size}} valores distintos por columna. {{measured}} medidos, {{admitted}} admitidos por valores clave coincidentes.",
     "scopeSource": "Origen: {{count}} tabla de {{domains}}.",
     "scopeSource_other": "Origen: {{count}} tablas de {{domains}}.",
     "scopeTargetSame": "Destino: el mismo que el origen.",
@@ -42,15 +43,9 @@
       "invalid": "no nombran dos columnas comparadas",
       "not_comparable": "entre columnas de clases distintas",
       "same_column": "de una columna a sí misma",
-      "primary_key_to_primary_key": "clave primaria a clave primaria",
-      "both_repeating": "valores repetidos en ambos lados",
       "existing": "ya registradas",
-      "pending": "ya pendientes",
       "rejected": "rechazadas antes",
-      "matches_foreign_key": "coinciden con una clave foránea encontrada en esta ejecución",
-      "out_of_scope": "fuera de las tablas elegidas",
-      "weaker": "repiten un par de columnas para el que se conservó una propuesta más fuerte",
-      "many_to_many": "sin que ninguna columna sea una clave"
+      "out_of_scope": "fuera de las tablas elegidas"
     }
   }
 }

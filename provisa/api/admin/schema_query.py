@@ -424,11 +424,11 @@ def _names_read(state: Any, scope: CatalogScope) -> Callable[[str], bool]:
     held by a table it is not served is not told) -- for the observability lists, which name
     tables rather than address them (REQ-2152, ruling Q3)."""
     ids: dict[str, list[int]] = {}
-    # The compiled tables and the drafts, which no context compiles: the scope serves a draft by
-    # its stored columns (catalog_scope), so its builds are its readers' as well.
-    # REQ-1921: and the withdrawn ones, whose kept builds are their stewards' to see.
+    # The compiled tables and the withdrawn ones, which no context compiles: the scope serves a
+    # withdrawn table by its stored columns to its stewards (catalog_scope, REQ-1921), so its
+    # kept builds are theirs to see as well.
     inputs = state.role_build_inputs
-    for t in [*state.tables, *inputs["draft_tables"], *inputs["withdrawn_tables"]]:
+    for t in [*state.tables, *inputs["withdrawn_tables"]]:
         ids.setdefault(t["table_name"], []).append(t["id"])
 
     def _reads(name: str) -> bool:
@@ -986,7 +986,7 @@ class Query:  # REQ-021, REQ-042
                     )
                     .where(
                         table_columns.c.scope == "listed",
-                        registered_tables.c.draft.is_(False),
+                        registered_tables.c.withdrawn.is_(False),  # REQ-1921
                         registered_tables.c.retired.is_(False),  # REQ-2248
                         table_columns.c.retired.is_(False),
                         registered_tables.c.domain_id.not_in(sorted(scope.reach)),

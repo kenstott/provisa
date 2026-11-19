@@ -8,6 +8,7 @@
     "sqlModelingTool": "SQL-modelleertool",
     "viewErd": "ERD bekijken",
     "discovering": "De detectie loopt. Open deze om de voortgang te zien.",
+    "openRun": "Openen",
     "suggestWithAi": "Voorstellen met AI",
     "clearRejections": "Afwijzingen wissen",
     "clearedRejections": "{{count}} afwijzing gewist.",

@@ -39,6 +39,7 @@ from provisa.core.schema_org import (
 
 if TYPE_CHECKING:
     from provisa.core.database import Database
+    from provisa.llm.client import Completion, ProvisaLLMClient
 
 from provisa.api_source.openapi_endpoint import normalize_op_id
 from provisa.core.models import DERIVED_SOURCE_ID
@@ -526,7 +527,6 @@ async def _fetch_table_with_columns(
         cache_ttl=row.get("cache_ttl"),
         replicate=row["replicate"],  # REQ-826
         region=row["region"],  # REQ-1921
-        draft=row["draft"],  # REQ-1921
         withdrawn=row["withdrawn"],  # REQ-1921
         source_withdrawn=row["source_id"] in listing.withdrawn_sources,  # REQ-1921
         row_materialize=row["row_materialize"],  # REQ-1865
@@ -601,17 +601,38 @@ async def _fetch_table_with_columns(
     )
 
 
-async def _call_llm(prompt: str, operation: str, max_tokens: int = 256) -> str:
+async def _catalog_client(operation: str) -> ProvisaLLMClient:
     # REQ-1395, REQ-1398: the acting org's own per-vendor keys, when set.
     from provisa.api.app import state
     from provisa.core.org_secrets import read_org_api_keys
     from provisa.llm.client import ProvisaLLMClient
 
     api_keys = await read_org_api_keys(state.model_db) if state.model_db else None
-    client = ProvisaLLMClient(operation, api_keys=api_keys)
+    return ProvisaLLMClient(operation, api_keys=api_keys)
+
+
+async def _call_llm(prompt: str, operation: str, max_tokens: int = 256) -> str:
+    client = await _catalog_client(operation)
     return await client.complete(
         prompt, system="You are a data catalog assistant.", max_tokens=max_tokens
     )
+
+
+async def _call_llm_detailed(prompt: str, operation: str, max_tokens: int = 256) -> Completion:
+    """:func:`_call_llm` with the answer's ``cut_off`` (:class:`provisa.llm.client.Completion`):
+    a caller reading a structured answer learns it stopped at ``max_tokens``. An answer that
+    stopped at its limit before any text is that answer, with no text."""
+    from provisa.llm.client import LLMEmptyResponseError
+
+    client = await _catalog_client(operation)
+    try:
+        return await client.complete_detailed(
+            prompt, system="You are a data catalog assistant.", max_tokens=max_tokens
+        )
+    except LLMEmptyResponseError as exc:
+        if not exc.answer.cut_off:
+            raise
+        return exc.answer
 
 
 from provisa.api.admin._table_ops import (  # noqa: E402

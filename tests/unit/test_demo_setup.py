@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import tomllib
 from pathlib import Path
 
 import httpx
@@ -291,7 +292,12 @@ def test_the_sonnets_setup_names_its_own_commands_and_views():
 
 
 def test_a_demo_s_extras_are_the_packages_of_the_groups_it_names(tmp_path):
-    assert extras.requirements(_REPO / "demo" / "named" / "sonnets") == ["sentence-transformers"]
+    groups = tomllib.loads((_REPO / "pyproject.toml").read_text())["project"][
+        "optional-dependencies"
+    ]
+    # sonnets names the vector group (its local sentence-transformers embedding model).
+    assert groups["vector"]
+    assert extras.requirements(_REPO / "demo" / "named" / "sonnets") == groups["vector"]
     assert extras.requirements(_REPO / "demo" / "named" / "weblogs") == []
     (tmp_path / "demo.yaml").write_text("extras: [nosuch]\n")
     with pytest.raises(SystemExit, match="'nosuch'"):

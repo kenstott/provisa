@@ -98,24 +98,15 @@ def _joined_columns(rel: dict) -> set[tuple[int, str]]:
 
 
 async def fetch_tables(  # REQ-155, REQ-393, REQ-399
-    conn: "Connection", *, draft: bool = False, withdrawn: bool = False, catalog: bool = True
+    conn: "Connection", *, withdrawn: bool = False, catalog: bool = True
 ) -> list[dict]:
-    """Fetch registered tables with columns — the data plane's: those in service. ``draft``
-    True fetches the ones at a region move's waypoint instead (REQ-1921), which no schema offers
-    and no statement reads: fetched to be refused by name, for their steward's preview
-    (admin/table_read.py) and for the replica such a preview lands. ``withdrawn`` True fetches
-    the withdrawn ones (REQ-1921: the table, or its source, taken out of production), which serve
-    no role and keep no replica: fetched only for their steward's preview. ``catalog`` False
-    leaves out a SQL catalog's views, for a reader of the tables that hold data."""
-    if draft and withdrawn:
-        raise ValueError("fetch_tables: draft and withdrawn are two different fetches")
-    # REQ-2248: a retired table is in no schema, drafts or not, and serves nothing.
-    if withdrawn:
-        state = WITHDRAWN_TABLE
-    elif draft:
-        state = f"draft AND NOT {WITHDRAWN_TABLE}"
-    else:
-        state = f"NOT draft AND NOT {WITHDRAWN_TABLE}"
+    """Fetch registered tables with columns — the data plane's: those in service. ``withdrawn``
+    True fetches the withdrawn ones instead (REQ-1921: the table, or its source, taken out of
+    production, as at a region move's waypoint), which serve no role and keep no replica:
+    fetched only for their steward's preview. ``catalog`` False leaves out a SQL catalog's
+    views, for a reader of the tables that hold data."""
+    # REQ-2248: a retired table is in no schema, withdrawn or not, and serves nothing.
+    state = WITHDRAWN_TABLE if withdrawn else f"NOT {WITHDRAWN_TABLE}"
     served = (
         f"{state} AND NOT retired"
         if catalog
@@ -126,7 +117,7 @@ async def fetch_tables(  # REQ-155, REQ-393, REQ-399
         "alias, description, unique_constraints, l1_cluster, l2_cluster, l3_cluster, "
         "enable_aggregates, enable_group_by, view_sql, dq_contract, profiler_source_id, "  # REQ-1443/1934
         "live, push_debounce_quiet, push_debounce_max_delay, cache_ttl, "  # REQ-1733, REQ-1730
-        "row_materialize, role_ttl, replicate, load_protected, region, draft, "  # REQ-1865/1907/826/1141/1921
+        "row_materialize, role_ttl, replicate, load_protected, region, "  # REQ-1865/1907/826/1141/1921
         f"{WITHDRAWN_TABLE} AS withdrawn, "  # REQ-1921: the table's or its source's
         f"{WITHDRAWN_SOURCE} AS source_withdrawn, "  # REQ-1921: its source's alone
         "off_peak_window, off_peak_tz, "  # REQ-1141: when a load-protected table is refreshed

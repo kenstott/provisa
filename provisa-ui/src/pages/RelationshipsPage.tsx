@@ -28,7 +28,7 @@ import { useDomainFilter } from "../context/DomainFilterContext";
 import { useAuth } from "../context/AuthContext";
 import { SqlModelingModal } from "../components/SqlModelingModal";
 import { DiscoverDialog } from "../components/relationships/DiscoverDialog";
-import { DiscoverButton, DiscoverResultBanner } from "../components/relationships/DiscoverControls";
+import { DiscoverButton, DiscoverRunLine } from "../components/relationships/DiscoverControls";
 import { useDiscoveryRun } from "../components/relationships/useDiscoveryRun";
 import { fetchRejectedCount, clearRejectedCandidates, fetchSettings } from "../api/admin";
 import {
@@ -123,7 +123,7 @@ export function RelationshipsPage() {
   const { domainsEnabled, domains: filterDomains, checkedDomains } = useDomainFilter();
   const erdCheckedDomains =
     checkedDomains.size > 0 && checkedDomains.size < filterDomains.length ? checkedDomains : null;
-  const { capabilities } = useAuth();
+  const { capabilities, actingRoles } = useAuth();
   const canManage = capabilities.includes("create_relationship");
 
   const updateSearch = (v: string) => {
@@ -359,12 +359,20 @@ export function RelationshipsPage() {
     setDiscoverAsk(true);
     void discovery.refresh();
   };
+  // REQ-413 (amended 2026-11-16): the page's line about the latest run opens it in the dialog.
+  const openLatestRun = () => {
+    discovery.openLatest();
+    setDiscoverAsk(true);
+  };
 
-  // REQ-413: a run's proposals were decided in the dialog: relationships and suggestions changed.
+  // REQ-413: a run's proposals were decided in the dialog: relationships and suggestions changed,
+  // and the page's line counts again how many of the run's suggestions wait.
+  const refreshDiscovery = discovery.refresh;
   const handleApplied = useCallback(() => {
     void refetchRels();
     load();
-  }, [load, refetchRels]);
+    void refreshDiscovery();
+  }, [load, refetchRels, refreshDiscovery]);
 
   // The form's values for a relationship, as its edit form holds them.
   const formOf = useCallback(
@@ -673,6 +681,7 @@ export function RelationshipsPage() {
       problem={saveProblem}
       tables={tables}
       functions={functions}
+      actingRole={actingRoles}
       tableDomainById={tableDomainById}
       domainsEnabled={domainsEnabled}
     />
@@ -777,7 +786,11 @@ export function RelationshipsPage() {
           {settingsError}
         </Alert>
       )}
-      <DiscoverResultBanner run={discovery.run} />
+      <DiscoverRunLine
+        latest={discovery.latest}
+        waiting={discovery.waiting}
+        onOpen={openLatestRun}
+      />
       <DiscoverDialog
         opened={discoverAsk}
         onClose={() => setDiscoverAsk(false)}

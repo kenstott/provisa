@@ -400,6 +400,59 @@ def _build_nodes_selection(schema: GraphQLSchema, table: str, paths: list[str]) 
     return _render_node_selection(_node_item_type(schema, table), tree)
 
 
+def _table_row_type(schema: GraphQLSchema, table: str) -> GraphQLObjectType:
+    """The row type of root field ``table``, which the caller has already found on Query."""
+    query_type = schema.query_type
+    assert query_type is not None and table in query_type.fields
+    row_type = _unwrap_type(query_type.fields[table].type)
+    assert isinstance(row_type, GraphQLObjectType)
+    return row_type
+
+
+def _render_fields_selection(row_type: GraphQLObjectType, tree: dict[str, dict]) -> str:
+    """Render a checked ``?fields=`` dot-path tree as GraphQL selection text against
+    ``row_type``, each segment translated by ``apply_gql_name``. A relationship named as a leaf
+    reads its scalar fields."""
+    parts = []
+    for seg, children in tree.items():
+        name = apply_gql_name(seg)
+        field_type = _unwrap_type(row_type.fields[name].type)
+        if not isinstance(field_type, GraphQLObjectType):
+            parts.append(name)
+        elif children:
+            parts.append(f"{name} {{ {_render_fields_selection(field_type, children)} }}")
+        else:
+            parts.append(f"{name} {{ {' '.join(_scalar_field_names(field_type))} }}")
+    return " ".join(parts)
+
+
+def _check_fields_path(row_type: GraphQLObjectType, path: str, where: str) -> None:
+    """Refuse a ``?fields=`` path naming it whole when one of its segments is not a field of the
+    role's type, or it continues past a scalar field. A field the role cannot see and one that does
+    not exist are answered alike (REQ-1929)."""
+    current: GraphQLObjectType | None = row_type
+    for seg in path.split("."):
+        field = current.fields.get(apply_gql_name(seg)) if current is not None else None
+        if field is None:
+            raise HTTPException(
+                status_code=400, detail=f"fields: {path!r} is not a field of {where}"
+            )
+        field_type = _unwrap_type(field.type)
+        current = field_type if isinstance(field_type, GraphQLObjectType) else None
+
+
+def _fields_selection(schema: GraphQLSchema, table: str, paths: list[str], where: str) -> str:
+    """``?fields=`` as the GraphQL selection of a row read (REQ-1929): a bare name selects a field
+    of the row; each further dot segment goes one relationship further (``customer.name``), and the
+    related row comes back nested, as the GraphQL selection nests it."""
+    row_type = _table_row_type(schema, table)
+    tree: dict[str, dict] = {}
+    for path in paths:
+        _check_fields_path(row_type, path, where)
+        _insert_node_path(tree, path)
+    return _render_fields_selection(row_type, tree)
+
+
 def _build_group_by_graphql_query(
     schema: GraphQLSchema,
     table: str,
@@ -614,9 +667,14 @@ def rest_read_graphql(  # REQ-222, REQ-2222
             schema, table, agg_funcs or [], variables, requested_fields
         )
     else:
-        # Determine fields
-        if fields:
-            selected_fields = requested_fields or []
+        # REQ-1929: ?fields= takes dot-paths through relationships; the related row is nested.
+        if requested_fields:
+            paths = [p for p in requested_fields if p]
+            selected_fields = (
+                [_fields_selection(schema, table, paths, f"{domain_id}/{table_name}")]
+                if paths
+                else []
+            )
         else:
             selected_fields = _get_scalar_fields(schema, table)
 
@@ -759,21 +817,10 @@ def create_rest_router(state: Any) -> APIRouter:  # REQ-222, REQ-256, REQ-266, R
         table, gql_query, variables = read.table, read.gql_query, read.variables
         is_group_by, is_aggregate = read.is_group_by, read.is_aggregate
 
-        # REQ-1921, A DRAFT IS SERVED TO ORG_ADMIN: a read of a draft by a role it is served to
-        # is compiled, governed and run in the drafts' own view of the state (admin/table_read),
-        # as the same read sent as GraphQL is.
-        from provisa.api.admin.table_read import drafts_a_document_reads, reading_drafts
-
-        reads = state
-        _drafts = drafts_a_document_reads(state, gql_query, role_id)
-        if _drafts:
-            reads = await reading_drafts(state, role_id, _drafts)
-            ctx = reads.surfaces[role_id].context
-
         # REQ-1877: one compiled plan is kept per request shape; values are bound into it.
         try:
             compiled_queries = compile_generated_graphql(
-                reads, role_id, schema, ctx, gql_query, variables.values
+                state, role_id, schema, ctx, gql_query, variables.values
             )
         except (GraphQLValidationError, GraphQLError) as e:
             raise HTTPException(status_code=400, detail=str(e))
@@ -800,7 +847,7 @@ def create_rest_router(state: Any) -> APIRouter:  # REQ-222, REQ-256, REQ-266, R
                 compiled.sql,
                 role_id,
                 exec_params=compiled.params or None,
-                state=reads,
+                state=state,
                 deliver=delivery,
                 # REQ-1224: buffered transport (terminal auto-thresholds inline vs CTAS) only applies
                 # to raw row queries, which can be large; aggregate/group-by results are always small,
@@ -811,7 +858,7 @@ def create_rest_router(state: Any) -> APIRouter:  # REQ-222, REQ-256, REQ-266, R
                 serve_cached=True,  # REQ-1897: _execute_plan serves the pre-route HIT
                 sdl_joins=True,
             )
-            result = await _execute_plan(plan, reads)
+            result = await _execute_plan(plan, state)
 
         except ComplexityLimitExceeded:
             raise  # REQ-1174: answered as 413 by the app's handler

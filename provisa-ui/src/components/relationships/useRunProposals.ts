@@ -13,16 +13,31 @@
 // undecided and nothing is recorded against it. The two ticks exclude each other. Rows whose
 // score is at the threshold or above start ticked to accept; Apply sends both lists. The
 // threshold is the signed-in person's own: set here, it is kept for them and re-ticks the rows.
+// The rows are filtered on their Score, Score >= 10% until the person sets another filter or
+// clears it, which is kept for them as the threshold is; Accept and the select-all act only on the
+// rows the filter shows (REQ-413, amended 2026-11-18).
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   applyRunDecisions,
   fetchRunProposals,
+  saveDiscoveryScoreFilter,
   saveDiscoveryThreshold,
+  type ScoreFilter,
   type DecisionResult,
   type DiscoveryRun,
   type RunProposal,
 } from "../../api/admin";
+import { matchesFilter } from "../../pages/sql/columnFilter";
+
+/** A row's Score as its cell shows it, in whole percent: what the Score filter is against. */
+export const scorePercent = (p: RunProposal): number | null =>
+  p.score === null ? null : Number((p.score * 100).toFixed(0));
+
+/** Whether the Score filter shows a row; every row with none. */
+export function scoreShown(p: RunProposal, filter: ScoreFilter | null): boolean {
+  return filter === null || matchesFilter("number", filter, scorePercent(p));
+}
 
 /** Whether a proposal starts ticked to accept: it can be accepted, the run's rules removed it
  *  for nothing but its score or already waiting from an earlier run, and its score (the
@@ -31,7 +46,7 @@ import {
 export function startsAccepted(p: RunProposal, threshold: number): boolean {
   return (
     p.acceptable &&
-    (p.reason === null || p.reason === "pending" || p.reason === "below_threshold") &&
+    (p.reason === null || p.reason === "below_threshold") &&
     p.score !== null &&
     p.score >= threshold
   );
@@ -43,6 +58,12 @@ const ticked = (proposals: RunProposal[], threshold: number) =>
 export interface RunProposalsState {
   /** The shown run's undecided proposals, the highest score first; null until read. */
   proposals: RunProposal[] | null;
+  /** Those of them the Score filter shows. */
+  shown: RunProposal[];
+  /** The person's filter on the Score column; null when cleared. */
+  scoreFilter: ScoreFilter | null;
+  /** Set the Score filter (null clears it): kept for the person's next runs. */
+  setScoreFilter: (filter: ScoreFilter | null) => void;
   threshold: number;
   /** The score the run kept a suggestion at, which a row's below_threshold reason is against. */
   keptAt: number;
@@ -52,10 +73,12 @@ export interface RunProposalsState {
   notAgain: ReadonlySet<number>;
   toggleAccept: (id: number) => void;
   toggleNotAgain: (id: number) => void;
-  /** Every row that can be decided ticked to accept, or none where all already are. */
+  /** Every shown row that can be accepted ticked, or none where all already are. */
   toggleAcceptAll: () => void;
-  /** Send what is ticked, each accepted proposal under the name ``nameOf`` gives it. */
-  apply: (nameOf: (p: RunProposal) => string) => Promise<void>;
+  /** Send what is ticked. No accepted proposal carries a name: nobody types one in the run's
+   *  result, so the server names each and tells apart a name another relationship holds
+   *  (REQ-415, amended 2026-11-16). */
+  apply: () => Promise<void>;
   applying: boolean;
   /** What the last Apply could not do, by proposal. */
   failures: { proposal: RunProposal; error: string }[];
@@ -79,6 +102,7 @@ export function useRunProposals(
     proposals: RunProposal[];
     threshold: number;
     keptAt: number;
+    scoreFilter: ScoreFilter | null;
   } | null>(null);
   const [accept, setAccept] = useState<ReadonlySet<number>>(new Set());
   const [notAgain, setNotAgain] = useState<ReadonlySet<number>>(new Set());
@@ -91,8 +115,8 @@ export function useRunProposals(
   const ended = run !== null && run.status !== "running";
 
   const load = useCallback(async (id: number) => {
-    const { proposals, threshold, kept_at: keptAt } = await fetchRunProposals(id);
-    setRead({ runId: id, proposals, threshold, keptAt });
+    const { proposals, threshold, kept_at: keptAt, score_filter } = await fetchRunProposals(id);
+    setRead({ runId: id, proposals, threshold, keptAt, scoreFilter: score_filter });
     setAccept(ticked(proposals, threshold));
     setNotAgain(new Set());
   }, []);
@@ -112,8 +136,18 @@ export function useRunProposals(
   }, [runId, ended, load]);
 
   const shown = read !== null && read.runId === runId && ended ? read : null;
-  const acceptable = useMemo(
-    () => (shown ? shown.proposals.filter((p) => p.acceptable).map((p) => p.id) : []),
+  const visible = useMemo(
+    () => (shown ? shown.proposals.filter((p) => scoreShown(p, shown.scoreFilter)) : []),
+    [shown],
+  );
+  const acceptable = useMemo(() => visible.filter((p) => p.acceptable).map((p) => p.id), [visible]);
+
+  const setScoreFilter = useCallback(
+    (scoreFilter: ScoreFilter | null) => {
+      if (!shown) return;
+      setRead({ ...shown, scoreFilter });
+      saveDiscoveryScoreFilter(scoreFilter).catch((e) => setError(errorText(e)));
+    },
     [shown],
   );
 
@@ -155,43 +189,43 @@ export function useRunProposals(
     if (!all) setNotAgain((prev) => new Set([...prev].filter((id) => !acceptable.includes(id))));
   }, [acceptable, accept]);
 
-  const apply = useCallback(
-    async (nameOf: (p: RunProposal) => string) => {
-      if (!shown) return;
-      const byId = new Map(shown.proposals.map((p) => [p.id, p]));
-      const chosen = (ids: ReadonlySet<number>) =>
-        shown.proposals.filter((p) => p.decidable && ids.has(p.id));
-      setApplying(true);
-      setError("");
-      try {
-        const results: DecisionResult[] = await applyRunDecisions(shown.runId, {
-          accept: chosen(accept)
-            .filter((p) => p.acceptable)
-            .map((p) => ({ id: p.id, name: nameOf(p) })),
-          not_again: chosen(notAgain).map((p) => p.id),
-        });
-        setFailures(
-          results.flatMap((r) => {
-            const proposal = byId.get(r.id);
-            return !r.ok && proposal ? [{ proposal, error: r.error ?? "" }] : [];
-          }),
-        );
-        const ok = (action: DecisionResult["action"]) =>
-          results.filter((r) => r.ok && r.action === action).length;
-        setApplied({ accepted: ok("accept"), notAgain: ok("not_again") });
-        await load(shown.runId);
-        if (results.some((r) => r.ok)) onApplied();
-      } catch (e) {
-        setError(errorText(e));
-      } finally {
-        setApplying(false);
-      }
-    },
-    [shown, accept, notAgain, load, onApplied],
-  );
+  const apply = useCallback(async () => {
+    if (!shown) return;
+    const byId = new Map(shown.proposals.map((p) => [p.id, p]));
+    const chosen = (ids: ReadonlySet<number>) =>
+      shown.proposals.filter((p) => p.decidable && ids.has(p.id));
+    setApplying(true);
+    setError("");
+    try {
+      const results: DecisionResult[] = await applyRunDecisions(shown.runId, {
+        accept: chosen(accept)
+          .filter((p) => p.acceptable && scoreShown(p, shown.scoreFilter))
+          .map((p) => ({ id: p.id })),
+        not_again: chosen(notAgain).map((p) => p.id),
+      });
+      setFailures(
+        results.flatMap((r) => {
+          const proposal = byId.get(r.id);
+          return !r.ok && proposal ? [{ proposal, error: r.error ?? "" }] : [];
+        }),
+      );
+      const ok = (action: DecisionResult["action"]) =>
+        results.filter((r) => r.ok && r.action === action).length;
+      setApplied({ accepted: ok("accept"), notAgain: ok("not_again") });
+      await load(shown.runId);
+      if (results.some((r) => r.ok)) onApplied();
+    } catch (e) {
+      setError(errorText(e));
+    } finally {
+      setApplying(false);
+    }
+  }, [shown, accept, notAgain, load, onApplied]);
 
   return {
     proposals: shown ? shown.proposals : null,
+    shown: visible,
+    scoreFilter: shown ? shown.scoreFilter : null,
+    setScoreFilter,
     threshold: shown ? shown.threshold : 0,
     keptAt: shown ? shown.keptAt : 0,
     setThreshold,

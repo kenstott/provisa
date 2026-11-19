@@ -26,6 +26,7 @@ import {
   PROPOSALS,
   REPORT,
   SCOPE,
+  UNMEASURED,
   SLOW,
   acceptBox,
   applyButton,
@@ -54,6 +55,7 @@ import {
   startMock,
   stopMock,
   vendorModelsMock,
+  SELECTED,
 } from "./discoverDialog.fixtures";
 
 vi.mock("../../hooks/useAdminQueries", async () =>
@@ -103,8 +105,7 @@ describe("Discovery dialog: the run's scope", () => {
 
   it("never offers a system domain's table, which a run would leave out", async () => {
     await openDialog();
-    // Every domain offered (shop is ticked from the Domains picker): every table a run could read.
-    await pick("Source domains", "crm");
+    // Every domain ticked in the Domains picker is offered and chosen: every table a run could read.
     await userEvent.click(screen.getByRole("textbox", { name: "Source tables" }));
     const offered = (await screen.findAllByRole("option", { hidden: true })).map(
       (o) => o.textContent,
@@ -117,7 +118,7 @@ describe("Discovery dialog: the run's scope", () => {
     await openDialog();
     fireEvent.click(runButton());
     await waitFor(() => expect(startMock).toHaveBeenCalledTimes(1));
-    expect(startMock).toHaveBeenCalledWith(SCOPE);
+    expect(startMock).toHaveBeenCalledWith(SCOPE, SELECTED);
   });
 
   it("sends the source tables chosen", async () => {
@@ -125,7 +126,9 @@ describe("Discovery dialog: the run's scope", () => {
     await pick("Source tables", "orders");
     await waitFor(() => expect(lastScope().source_tables).toEqual([1]), SLOW);
     fireEvent.click(runButton());
-    await waitFor(() => expect(startMock).toHaveBeenCalledWith({ ...SCOPE, source_tables: [1] }));
+    await waitFor(() =>
+      expect(startMock).toHaveBeenCalledWith({ ...SCOPE, source_tables: [1] }, SELECTED),
+    );
   });
 
   it("hides the target while Same as source is ticked, and sends the target set when it is not", async () => {
@@ -144,11 +147,14 @@ describe("Discovery dialog: the run's scope", () => {
     );
     fireEvent.click(runButton());
     await waitFor(() =>
-      expect(startMock).toHaveBeenCalledWith({
-        ...SCOPE,
-        target_same_as_source: false,
-        target_domains: ["crm"],
-      }),
+      expect(startMock).toHaveBeenCalledWith(
+        {
+          ...SCOPE,
+          target_same_as_source: false,
+          target_domains: ["crm"],
+        },
+        SELECTED,
+      ),
     );
   });
 
@@ -164,7 +170,10 @@ describe("Discovery dialog: the run's scope", () => {
     ).toBe(semanticsBox());
     fireEvent.click(runButton());
     await waitFor(() =>
-      expect(startMock).toHaveBeenCalledWith({ ...SCOPE, kinds: ["foreign_keys"] }),
+      expect(startMock).toHaveBeenCalledWith(
+        { ...SCOPE, ...UNMEASURED, kinds: ["foreign_keys"] },
+        SELECTED,
+      ),
     );
   });
 
@@ -184,12 +193,12 @@ describe("Discovery dialog: the run's scope", () => {
 });
 
 describe("Discovery dialog: the request count before Run", () => {
-  it("shows at most how many requests the run makes, by type group, and that it is a bound", async () => {
+  it("shows at most how many calls the run makes, the table pairs they cover, and that it is a bound", async () => {
     await openDialog();
     await waitFor(
       () =>
         expect(screen.getByTestId("discover-count")).toHaveTextContent(
-          "At most 3 requests to the model: whole numbers 2, text 1.",
+          "At most 3 calls to the model, covering 40 table pairs. A pair left unanswered may be asked again.",
         ),
       SLOW,
     );
@@ -257,12 +266,12 @@ describe("Discovery dialog: the request count before Run", () => {
   it("counts again when the scope changes", async () => {
     await openDialog();
     await waitFor(() => expect(countMock).toHaveBeenCalled(), SLOW);
-    countMock.mockResolvedValue({ ...COUNT, requests: 5, by_group: { text: 5 } });
+    countMock.mockResolvedValue({ ...COUNT, requests: 1, table_pairs: 1 });
     await pick("Source domains", "crm");
-    await waitFor(() => expect(lastScope().source_domains).toEqual(["shop", "crm"]), SLOW);
+    await waitFor(() => expect(lastScope().source_domains).toEqual(["shop"]), SLOW);
     await waitFor(() =>
       expect(screen.getByTestId("discover-count")).toHaveTextContent(
-        "At most 5 requests to the model: text 5.",
+        "At most 1 call to the model, covering 1 table pair. A pair left unanswered may be asked again.",
       ),
     );
   });
@@ -311,7 +320,10 @@ describe("Discovery dialog: the model for this run", () => {
     await waitFor(() => expect(runButton()).toBeEnabled());
     fireEvent.click(runButton());
     await waitFor(() =>
-      expect(startMock).toHaveBeenCalledWith({ ...SCOPE, vendor: "openai", model: "gpt-4.1" }),
+      expect(startMock).toHaveBeenCalledWith(
+        { ...SCOPE, vendor: "openai", model: "gpt-4.1" },
+        SELECTED,
+      ),
     );
   });
 
@@ -365,8 +377,8 @@ describe("Discovery dialog: the run in progress", () => {
     );
   });
 
-  it("a run whose every request failed says so, in the dialog and in the page's banner", async () => {
-    const failed = (group: "whole_number" | "date") => ({
+  it("a run whose every request failed says so in the dialog's run block, never on the page", async () => {
+    const failed = (group: "whole_number" | "text") => ({
       group,
       code: "llm.request_failed",
       params: { reason: "overloaded" },
@@ -384,7 +396,7 @@ describe("Discovery dialog: the run in progress", () => {
         requests_done: 2,
         proposed: 0,
         below_threshold: 0,
-        failed: [failed("whole_number"), failed("date")],
+        failed: [failed("whole_number"), failed("text")],
       },
     };
     runMock.mockResolvedValue(
@@ -394,36 +406,41 @@ describe("Discovery dialog: the run in progress", () => {
     fireEvent.click(runButton());
     const progress = await screen.findByTestId("discover-progress");
     await waitFor(() => expect(progress).toHaveTextContent("Finished."), SLOW);
-    for (const shown of [
-      screen.getByTestId("discover-result"),
-      screen.getByTestId("rels-discover-result"),
-    ]) {
-      expect(shown).toHaveTextContent("Semantics failed: all 2 requests to the model failed.");
-      expect(shown).toHaveTextContent(
-        "For whole numbers columns: The request to the model failed: overloaded",
-      );
-      expect(shown).toHaveTextContent(
-        "For dates columns: The request to the model failed: overloaded",
-      );
-      expect(shown).not.toHaveTextContent("proposed no relationships");
-    }
+    const shown = screen.getByTestId("discover-result");
+    expect(shown).toHaveTextContent("Semantics failed: all 2 requests to the model failed.");
+    expect(shown).toHaveTextContent(
+      "For whole numbers columns: The request to the model failed: overloaded",
+    );
+    expect(shown).toHaveTextContent(
+      "For text columns: The request to the model failed: overloaded",
+    );
+    expect(shown).not.toHaveTextContent("proposed no relationships");
+    // REQ-413 (amended 2026-11-16): the page shows no run summary, and with no suggestion
+    // waiting no line either.
+    expect(screen.queryByTestId("rels-discover-result")).toBeNull();
+    expect(screen.queryByTestId("rels-discover-line")).toBeNull();
   });
 
   it("Stop asks the server to stop and keeps what was found", async () => {
-    proposalsMock.mockResolvedValue({ proposals: [proposal({})], threshold: 0.7, kept_at: 0.7 });
+    proposalsMock.mockResolvedValue({
+      proposals: [proposal({})],
+      threshold: 0.7,
+      kept_at: 0.7,
+      score_filter: null,
+    });
     runMock.mockResolvedValue(
       runOf({ requests_total: 3, requests_done: 1, suggestions: 1, report: REPORT }),
     );
     await openDialog();
     fireEvent.click(runButton());
-    fireEvent.click(await screen.findByTestId("discover-stop"));
+    fireEvent.click(await screen.findByTestId("discover-stop-7"));
     await waitFor(() => expect(stopMock).toHaveBeenCalledWith(7));
     await waitFor(() =>
       expect(screen.getByTestId("discover-progress")).toHaveTextContent(
         "Stopping after the request in flight.",
       ),
     );
-    expect(screen.getByTestId("discover-stop")).toBeDisabled();
+    expect(screen.getByTestId("discover-stop-7")).toBeDisabled();
     runMock.mockResolvedValue(
       runOf({
         status: "stopped",
@@ -543,7 +560,6 @@ describe("Discovery dialog: the run's proposals, in one table", () => {
     await endedRun();
     expect(acceptBox(500).checked).toBe(true);
     expect(acceptBox(501).checked).toBe(true);
-    // Already waiting from an earlier run: an ordinary row.
     expect(acceptBox(502).checked).toBe(true);
     expect(acceptBox(503).checked).toBe(false);
     // The model's score decides: Jev's 31% beside its 92% does not untick it.
@@ -556,7 +572,9 @@ describe("Discovery dialog: the run's proposals, in one table", () => {
   it("lists a proposal that cannot be decided with its reason and no box", async () => {
     await endedRun();
     const repeated = screen.getByTestId("proposal-505");
-    expect(repeated).toHaveTextContent("Matches a foreign key found in this run");
+    expect(repeated).toHaveTextContent(
+      "The two columns have different classes, so they are not compared",
+    );
     const unknown = screen.getByTestId("proposal-506");
     expect(unknown).toHaveTextContent("Names a table or column the request did not compare");
     expect(unknown).toHaveTextContent(
@@ -623,15 +641,14 @@ describe("Discovery dialog: the run's proposals, in one table", () => {
       proposals: PROPOSALS.filter((p) => ![500, 504].includes(p.id)),
       threshold: 0.7,
       kept_at: 0.7,
+      score_filter: null,
     });
     expect(applyButton()).toHaveTextContent("Accept 2, don't recommend 1 again");
     fireEvent.click(applyButton());
     await waitFor(() =>
       expect(applyMock).toHaveBeenCalledWith(7, {
-        accept: [
-          { id: 500, name: "order-store" },
-          { id: 501, name: "customer-orders" },
-        ],
+        // REQ-415: nobody typed a name, so none is sent: the server names each relationship.
+        accept: [{ id: 500 }, { id: 501 }],
         not_again: [504],
       }),
     );
@@ -705,13 +722,50 @@ describe("Discovery dialog: its size by what it shows", () => {
     runMock.mockResolvedValue(runOf({ status: "running", requests_total: 4, requests_done: 1 }));
     await openDialog();
     fireEvent.click(runButton());
-    await screen.findByTestId("discover-stop", {}, SLOW);
+    await screen.findByTestId("discover-stop-7", {}, SLOW);
     expect(modalSize()).toBe(STANDARD);
   });
 
   it("takes the window's width only to show a run's results", async () => {
     await endedRun();
     expect(modalSize()).toBe("100%");
+  });
+
+  it("keeps the standard size when the ended run proposed nothing", async () => {
+    runMock.mockResolvedValue(runOf({ status: "done", report: REPORT }));
+    proposalsMock.mockResolvedValue({
+      proposals: [],
+      threshold: 0.7,
+      kept_at: 0.7,
+      score_filter: null,
+    });
+    await openDialog();
+    fireEvent.click(runButton());
+    await screen.findByTestId("discover-no-proposals", {}, SLOW);
+    expect(modalSize()).toBe(STANDARD);
+  });
+
+  it("returns to the standard size once Apply leaves nothing to decide", async () => {
+    await endedRun();
+    expect(modalSize()).toBe("100%");
+    applyMock.mockResolvedValue(
+      PROPOSALS.filter((p) => p.acceptable).map((p) => ({
+        id: p.id,
+        action: "accept",
+        ok: true,
+        relationship_id: `r-${p.id}`,
+      })),
+    );
+    proposalsMock.mockResolvedValue({
+      proposals: [],
+      threshold: 0.7,
+      kept_at: 0.7,
+      score_filter: null,
+    });
+    fireEvent.click(applyButton());
+    await screen.findByTestId("discover-applied");
+    await screen.findByTestId("discover-no-proposals");
+    expect(modalSize()).toBe(STANDARD);
   });
 });
 
@@ -740,12 +794,17 @@ describe("Discovery dialog: an ended run's layout", () => {
     expect(body.style.display).toBe("flex");
     expect(body.style.flexDirection).toBe("column");
     expect(body.style.minHeight).toBe("0px");
-    expect(screen.getByTestId("discover-result").style.flexShrink).toBe("0");
+    expect(screen.getByTestId("discover-run-block").style.flexShrink).toBe("0");
   });
 
   it("shows New run when the run proposed nothing", async () => {
     runMock.mockResolvedValue(runOf({ status: "done", report: REPORT }));
-    proposalsMock.mockResolvedValue({ proposals: [], threshold: 0.7, kept_at: 0.7 });
+    proposalsMock.mockResolvedValue({
+      proposals: [],
+      threshold: 0.7,
+      kept_at: 0.7,
+      score_filter: null,
+    });
     await openDialog();
     fireEvent.click(runButton());
     await screen.findByTestId("discover-no-proposals", {}, SLOW);
@@ -827,7 +886,12 @@ describe("Discovery dialog: each pair measured on its data, ticked from the pers
 
   async function measuredRun(threshold = 0.7) {
     runMock.mockResolvedValue(runOf({ status: "done", report: REPORT }));
-    proposalsMock.mockResolvedValue({ proposals: MEASURED, threshold, kept_at: 0.7 });
+    proposalsMock.mockResolvedValue({
+      proposals: MEASURED,
+      threshold,
+      kept_at: 0.7,
+      score_filter: null,
+    });
     await openDialog();
     fireEvent.click(runButton());
     await screen.findByTestId("proposal-601", {}, SLOW);
@@ -866,10 +930,10 @@ describe("Discovery dialog: each pair measured on its data, ticked from the pers
     fireEvent.click(acceptBox(603));
     fireEvent.click(acceptBox(602));
     fireEvent.click(screen.getByTestId("discover-apply"));
-    // The name sent is the dimension's.
+    // No name is sent (REQ-415): the server names the dimension as the row says.
     await waitFor(() =>
       expect(applyMock).toHaveBeenCalledWith(7, {
-        accept: [{ id: 602, name: "neighborhood" }],
+        accept: [{ id: 602 }],
         not_again: [],
       }),
     );
@@ -890,6 +954,7 @@ describe("Discovery dialog: each pair measured on its data, ticked from the pers
       ],
       threshold: 0.7,
       kept_at: 0.7,
+      score_filter: null,
     });
     await openDialog();
     fireEvent.click(runButton());
@@ -913,6 +978,7 @@ describe("Discovery dialog: each pair measured on its data, ticked from the pers
       ],
       threshold: 0.7,
       kept_at: 0.7,
+      score_filter: null,
     });
     await openDialog();
     fireEvent.click(runButton());

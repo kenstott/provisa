@@ -33,18 +33,15 @@ UNKNOWN = "unknown"
 #: was read, so nothing is known of its classes and it is compared with every class.
 NOT_READ = "not_read"
 
-#: The type groups, each compared only with itself. A timestamp type is a group of its own.
+#: The type groups, each compared only with itself. A date or timestamp is never a key
+#: candidate, so neither is a group (REQ-413).
 WHOLE = "whole_number"
 DECIMAL = "decimal"
 TEXT = "text"
 UUID = "uuid"
-DATE = "date"
-TIMESTAMP = "timestamp"
-TIMESTAMPTZ = "timestamptz"
-GROUPS: tuple[str, ...] = (WHOLE, DECIMAL, TEXT, UUID, DATE, TIMESTAMP, TIMESTAMPTZ)
+GROUPS: tuple[str, ...] = (WHOLE, DECIMAL, TEXT, UUID)
 
 _WHOLE_TYPES = frozenset({"smallint", "integer", "bigint"})
-_ALONE = {"uuid": UUID, "date": DATE, "timestamp": TIMESTAMP, "timestamptz": TIMESTAMPTZ}
 # A sized exact decimal, as a registered column records it (REQ-1961): numeric(precision,scale).
 _NUMERIC = re.compile(r"^numeric(?:\s*\(\s*(\d+)\s*(?:,\s*(\d+)\s*)?\))?$")
 
@@ -53,8 +50,9 @@ def type_groups(data_type: str, *, subtype: str | None, array_depth: int) -> fro
     """The type groups a registered column is compared in (REQ-413): whole numbers (integer types
     and decimals with no decimal places); decimals (exact decimals, those with no decimal places
     included, so such a column is in both); text (the character types: the IR's ``text`` with no
-    subtype); uuid; date; each timestamp type alone. Every other column -- boolean, floating point,
-    JSON, binary, array, geometry, vector, and a subtype held as text -- is in none.
+    subtype); uuid. Every other column -- date, timestamp, boolean, floating point, JSON, binary,
+    array, geometry, vector, and a subtype held as text -- is in none: a date or timestamp is never
+    a key candidate.
 
     A column's ``data_type`` is read as the IR reads it (:func:`provisa.core.ir_types.to_ir`): a
     live source's column keeps the spelling its source reports (``varchar``, ``varchar collate
@@ -81,8 +79,7 @@ def type_groups(data_type: str, *, subtype: str | None, array_depth: int) -> fro
         return frozenset({DECIMAL})  # a decimal in a source's spelling, its scale not known
     if named == "text":
         return frozenset({TEXT})
-    group = _ALONE.get(named)
-    return frozenset() if group is None else frozenset({group})
+    return frozenset({UUID}) if named == "uuid" else frozenset()
 
 
 @dataclass(frozen=True)
@@ -105,6 +102,14 @@ class ColumnFacts:
     required_parameter: str | None = None
     #: The glossary term bound to the column, by name; None where none is bound.
     term: str | None = None
+    #: The column's registered alias; None where none is set.
+    alias: str | None = None
+
+    @property
+    def shown(self) -> str:
+        """The name the model is given and answers with (REQ-413, amended 2026-11-18): the alias
+        where one is set, else the registered name; never a physical name beside an alias."""
+        return self.alias or self.name
 
 
 @dataclass(frozen=True)
@@ -120,6 +125,14 @@ class TableFacts:
     #: The recorded modeling role, ``fact`` or ``dimension``; None where none is recorded.
     role: str | None
     columns: tuple[ColumnFacts, ...] = field(default_factory=tuple)
+    #: The table's registered alias; None where none is set.
+    alias: str | None = None
+
+    @property
+    def shown(self) -> str:
+        """The name the model is given (REQ-413, amended 2026-11-18): the alias where one is set,
+        else the registered name."""
+        return self.alias or self.table_name
 
     @property
     def parameters(self) -> tuple[tuple[str, str], ...]:
@@ -167,3 +180,8 @@ def classes_meet(a: ColumnFacts, b: ColumnFacts) -> bool:
 def comparable(a: ColumnFacts, b: ColumnFacts, group: str) -> bool:
     """Whether two columns are compared in ``group``: both in it, and their classes intersect."""
     return group in a.groups and group in b.groups and classes_meet(a, b)
+
+
+def compared(a: ColumnFacts, b: ColumnFacts) -> bool:
+    """Whether two columns are compared in some type group (:func:`comparable`)."""
+    return any(comparable(a, b, g) for g in GROUPS)

@@ -36,9 +36,8 @@ def _load(name: str, path: Path):
     return module
 
 
-# by_design is imported, not loaded again: a second copy in sys.modules would leave a script
-# already holding the first (function_support) apart from the one a later test reads.
-by_design = importlib.import_module("by_design")
+import by_design  # noqa: E402  # the scripts' sibling: one module object, never re-executed
+
 junit = _load("junit_summary", CONFORMANCE / "junit_summary.py")
 fill_docs = _load("fill_docs", CONFORMANCE / "fill_docs.py")
 fixtures = _load("flightsql_fixtures", CONFORMANCE / "flightsql" / "fixtures.py")

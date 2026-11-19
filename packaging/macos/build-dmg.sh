@@ -258,6 +258,12 @@ assert (pathlib.Path(provisa.__file__).parent / '_encoders.THIRD_PARTY_NOTICES')
     err "native runtime is missing provisa/sqlite3/mcp_proxy/provisa._encoders (or its notices) after install."
     exit 1
   }
+  # The embedded extra carries the vector extra: the default config's embedding model runs on
+  # sentence-transformers over torch (macOS arm64 wheels are CPU-only; no CUDA build exists).
+  "$py" -I -c "import sentence_transformers, torch; assert torch.version.cuda is None" || {
+    err "native runtime is missing the embedding library (sentence-transformers, CPU torch) after install."
+    exit 1
+  }
   # `build` is a build-host tool — it has no business in the shipped tree.
   "$py" -m pip uninstall --quiet --yes build
 

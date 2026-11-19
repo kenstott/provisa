@@ -8,12 +8,13 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""A draft view's build is kept and never scheduled; its steward's preview asks for it (REQ-1921).
+"""A withdrawn view's build is kept and never scheduled; its steward's preview asks for it
+(REQ-1921).
 
-A draft view is offered to no reader: no statement expands it. A materialized one stays
+A withdrawn view is offered to no reader: no statement expands it. A materialized one stays
 registered with its build disabled -- the scheduler and the rewriter skip a disabled build, and
-the reclamation sweep keeps a registered build's stored table -- so a view set back to draft
-keeps what it has built. Its steward's preview starts the build and does not wait for it."""
+the reclamation sweep keeps a registered build's stored table -- so a withdrawn view keeps what it
+has built. Its steward's preview starts the build and does not wait for it."""
 
 # Requirements: REQ-1921
 
@@ -49,7 +50,7 @@ def model(control_plane):
 
 
 async def _save_view(
-    conn, name: str, *, draft: bool, materialize: bool, view_sql: str = "SELECT id FROM orders"
+    conn, name: str, *, withdrawn: bool, materialize: bool, view_sql: str = "SELECT id FROM orders"
 ) -> None:
     from sqlalchemy import insert, update
 
@@ -59,7 +60,7 @@ async def _save_view(
         await conn.execute_core(
             update(registered_tables)
             .where(registered_tables.c.table_name == name)
-            .values(draft=draft, materialize=materialize)
+            .values(withdrawn=withdrawn, materialize=materialize)
             .returning(registered_tables.c.id)
         )
     ).fetchall()
@@ -71,7 +72,7 @@ async def _save_view(
                 schema_name="views",
                 table_name=name,
                 view_sql=view_sql,
-                draft=draft,
+                withdrawn=withdrawn,
                 materialize=materialize,
             )
         )
@@ -96,17 +97,17 @@ def rebuilt(model, monkeypatch):
     monkeypatch.setattr(state, "view_context", object(), raising=False)
     monkeypatch.setattr(app_rebuild, "compile_view_sql_to_physical", lambda sql, ctx: sql)
 
-    async def _rebuild(name: str, *, draft: bool, materialize: bool = True, **saved):
+    async def _rebuild(name: str, *, withdrawn: bool, materialize: bool = True, **saved):
         async with model.acquire() as conn:
-            await _save_view(conn, name, draft=draft, materialize=materialize, **saved)
+            await _save_view(conn, name, withdrawn=withdrawn, materialize=materialize, **saved)
             await app_rebuild._register_user_views_in_state(conn, None, [], [])
         return state
 
     return _rebuild
 
 
-async def test_a_materialized_draft_view_stays_registered_with_its_build_disabled(rebuilt):
-    state = await rebuilt("big_orders", draft=True)
+async def test_a_materialized_withdrawn_view_stays_registered_with_its_build_disabled(rebuilt):
+    state = await rebuilt("big_orders", withdrawn=True)
     mv = state.mv_registry.get("view-big_orders")
     assert mv is not None and mv.enabled is False
     # No statement expands it, and nothing schedules or reads its build.
@@ -118,21 +119,21 @@ async def test_a_materialized_draft_view_stays_registered_with_its_build_disable
     assert [m.target_table for m in state.mv_registry.all()] == ["mv_big_orders"]
 
 
-async def test_a_view_set_back_to_draft_keeps_its_build_and_its_release_enables_it(rebuilt):
-    state = await rebuilt("big_orders", draft=False)
-    released = state.mv_registry.get("view-big_orders")
-    assert released.enabled is True and "big_orders" in state.view_sql_map
-    released.status, released.last_refresh_at = MVStatus.FRESH, 1.0  # built
+async def test_a_withdrawn_view_keeps_its_build_and_putting_it_back_enables_it(rebuilt):
+    state = await rebuilt("big_orders", withdrawn=False)
+    put_back = state.mv_registry.get("view-big_orders")
+    assert put_back.enabled is True and "big_orders" in state.view_sql_map
+    put_back.status, put_back.last_refresh_at = MVStatus.FRESH, 1.0  # built
 
-    state = await rebuilt("big_orders", draft=True)
+    state = await rebuilt("big_orders", withdrawn=True)
     kept = state.mv_registry.get("view-big_orders")
-    assert kept is released, "the same registration, with what it has built"
+    assert kept is put_back, "the same registration, with what it has built"
     assert kept.enabled is False and kept.last_refresh_at == 1.0
     assert "big_orders" not in state.view_sql_map
     assert state.mv_registry.get_fresh() == []
 
-    state = await rebuilt("big_orders", draft=False)
-    assert state.mv_registry.get("view-big_orders") is released and released.enabled is True
+    state = await rebuilt("big_orders", withdrawn=False)
+    assert state.mv_registry.get("view-big_orders") is put_back and put_back.enabled is True
     assert "big_orders" in state.view_sql_map
 
 
@@ -144,14 +145,14 @@ async def test_a_deleted_view_leaves_no_build_registered(rebuilt, model):
 
     from provisa.core.schema_org import registered_tables
 
-    await rebuilt("e2e_mv_a", draft=False)
-    state = await rebuilt("e2e_mv_b", draft=False, view_sql="SELECT id FROM views.e2e_mv_a")
+    await rebuilt("e2e_mv_a", withdrawn=False)
+    state = await rebuilt("e2e_mv_b", withdrawn=False, view_sql="SELECT id FROM views.e2e_mv_a")
     assert {m.id for m in state.mv_registry.all()} == {"view-e2e_mv_a", "view-e2e_mv_b"}
     async with model.acquire() as conn:
         await conn.execute_core(
             delete(registered_tables).where(registered_tables.c.table_name == "e2e_mv_b")
         )
-    state = await rebuilt("e2e_mv_a", draft=False)
+    state = await rebuilt("e2e_mv_a", withdrawn=False)
     assert {m.id for m in state.mv_registry.all()} == {"view-e2e_mv_a"}
     async with model.acquire() as conn:
         await conn.execute_core(
@@ -168,7 +169,7 @@ async def test_a_materialized_view_not_built_from_a_view_survives_whatever_its_i
     """What is unregistered is decided by what a build was made from, never by its name: a
     materialized view declared in the config is no view's build, so a rebuild keeps it, even one
     whose id reads like a view's."""
-    state = await rebuilt("big_orders", draft=False)
+    state = await rebuilt("big_orders", withdrawn=False)
     declared = MVDefinition(
         id="view-declared_in_config",
         source_tables=["orders"],
@@ -178,21 +179,21 @@ async def test_a_materialized_view_not_built_from_a_view_survives_whatever_its_i
         sql="SELECT id FROM orders",
     )
     state.mv_registry.register(declared)
-    state = await rebuilt("big_orders", draft=False)
+    state = await rebuilt("big_orders", withdrawn=False)
     assert state.mv_registry.get("view-declared_in_config") is declared
     assert state.mv_registry.get("view-big_orders").view_table == "big_orders"
 
 
 async def test_a_view_no_longer_materialized_has_no_build(rebuilt):
-    state = await rebuilt("big_orders", draft=False)
+    state = await rebuilt("big_orders", withdrawn=False)
     assert state.mv_registry.get("view-big_orders") is not None
-    state = await rebuilt("big_orders", draft=False, materialize=False)
+    state = await rebuilt("big_orders", withdrawn=False, materialize=False)
     assert state.mv_registry.get("view-big_orders") is None
     assert "big_orders" in state.view_sql_map  # still read, through its SQL
 
 
-async def test_a_draft_view_that_is_not_materialized_has_no_build(rebuilt):
-    state = await rebuilt("big_orders", draft=True, materialize=False)
+async def test_a_withdrawn_view_that_is_not_materialized_has_no_build(rebuilt):
+    state = await rebuilt("big_orders", withdrawn=True, materialize=False)
     assert state.mv_registry.get("view-big_orders") is None
     assert "big_orders" not in state.view_sql_map
 
@@ -200,7 +201,7 @@ async def test_a_draft_view_that_is_not_materialized_has_no_build(rebuilt):
 # --- the preview: starts the build, waits for nothing it does not need ---------------------------
 
 
-def _draft_view(**over) -> dict:
+def _withdrawn_view(**over) -> dict:
     return {"id": 10, "table_name": "big_orders", "view_sql": "SELECT id FROM orders;", **over}
 
 
@@ -257,14 +258,15 @@ def _state(mv: MVDefinition | None) -> SimpleNamespace:
 async def test_a_table_and_a_plain_view_start_no_build(builds):
     assert table_read._view_body(_state(None), {"id": 9, "table_name": "refunds"}) is None
     assert (
-        table_read._view_body(_state(None), _draft_view()) == "/*physical*/ SELECT id FROM orders"
+        table_read._view_body(_state(None), _withdrawn_view())
+        == "/*physical*/ SELECT id FROM orders"
     )
     await asyncio.sleep(0)
     assert builds == []
 
 
-async def test_a_materialized_draft_views_preview_starts_its_build_and_reads_live(builds):
-    body = table_read._view_body(_state(_registered()), _draft_view())
+async def test_a_materialized_withdrawn_views_preview_starts_its_build_and_reads_live(builds):
+    body = table_read._view_body(_state(_registered()), _withdrawn_view())
     assert body == "/*physical*/ SELECT id FROM orders"  # answered now, from its inputs
     await asyncio.sleep(0)
     assert builds == ["view-big_orders"]
@@ -274,12 +276,14 @@ async def test_a_materialized_draft_views_preview_starts_its_build_and_reads_liv
 async def test_a_build_that_is_fresh_or_running_is_not_started_again(builds, status):
     mv = _registered()
     mv.status = status
-    assert table_read._view_body(_state(mv), _draft_view()) == "/*physical*/ SELECT id FROM orders"
+    assert (
+        table_read._view_body(_state(mv), _withdrawn_view()) == "/*physical*/ SELECT id FROM orders"
+    )
     await asyncio.sleep(0)
     assert builds == []
 
 
-async def test_a_bitemporal_draft_view_answers_as_building_until_its_log_exists(builds):
+async def test_a_bitemporal_withdrawn_view_answers_as_building_until_its_log_exists(builds):
     from provisa.federation.replica_state import ReplicaBuilding
     from provisa.mv.bitemporal import BitemporalSpec, view_read_sql
 
@@ -288,14 +292,14 @@ async def test_a_bitemporal_draft_view_answers_as_building_until_its_log_exists(
     mv = _registered(bitemporal=spec)
     state = _state(mv)
     with pytest.raises(ReplicaBuilding) as building:
-        table_read._view_body(state, _draft_view())
+        table_read._view_body(state, _withdrawn_view())
     assert building.value.replica == "big_orders"
     await asyncio.sleep(0)
     assert builds == ["view-big_orders"]
 
     mv.status, mv.last_refresh_at = MVStatus.FRESH, 1.0  # the build the preview started, done
     stored = '"store"."views"."mv_big_orders"'
-    assert table_read._view_body(state, _draft_view()) == view_read_sql(stored, spec)
+    assert table_read._view_body(state, _withdrawn_view()) == view_read_sql(stored, spec)
     await asyncio.sleep(0)
     assert builds == ["view-big_orders"]  # and not started again
 
@@ -321,7 +325,7 @@ async def test_a_view_applying_a_column_transform_is_landed_and_read_from_its_st
         )
     state = await rebuilt(
         "clean_suppliers",
-        draft=False,
+        withdrawn=False,
         materialize=False,
         view_sql="SELECT id, clean_address(raw_address) FROM suppliers",
     )

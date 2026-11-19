@@ -221,6 +221,22 @@ def test_the_core_job_runs_one_worker_per_runner_in_shards():
     assert given["name"] == "ui-core ${{ matrix.shard }}/2"
 
 
+def test_the_warehouse_ui_job_runs_one_worker_on_its_runner():
+    """The warehouse UI job runs the same backends on the same 4-vCPU runner as a core shard: two
+    workers there held a core runner at a load of about 10 (run 43995449668). It runs one, and is
+    not sharded: two shards would each hold the live-cloud-warehouses group, and each one's
+    after-script would stop the warehouses the other was still using."""
+    job = yaml.safe_load((REPO / ".github/workflows/integration-suite-lanes.yml").read_text())[
+        "jobs"
+    ]["warehouse-ui"]
+    assert "strategy" not in job
+    assert job["concurrency"]["group"] == "live-cloud-warehouses"
+    given = job["with"]
+    env = dict(line.split("=", 1) for line in given["env"].splitlines() if line)
+    assert env["PROVISA_E2E_WORKERS"] == "1"
+    assert "--shard" not in given["run"] and "--workers" not in given["run"]
+
+
 def test_each_embedded_control_plane_stops_after_its_backend():
     """Playwright stops its webServers after globalTeardown, in the reverse of their order. Stopped
     by globalTeardown, the control planes went while their backends still ran, whose replica

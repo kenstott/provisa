@@ -17,7 +17,8 @@
       "webhook_exists": "Il webhook '{{name}}' esiste già"
     },
     "ai_models": {
-      "vector_model_fields_required": "ogni voce di vector_models richiede id, provider e dimensions"
+      "vector_model_fields_required": "ogni voce di vector_models richiede id, provider e dimensions",
+      "embedding_library_missing": "Il modello di embedding {{model}} usa il provider {{provider}}, che richiede l'extra {{extra}} (il modulo {{module}} non è installato): pip install 'provisa[{{extra}}]'."
     },
     "ai": {
       "endpoint_address_from_server": "L'endpoint AI {{vendor}} prende il suo indirizzo dall'ambiente del server, che un'organizzazione su questo server non usa. Assegnagli un indirizzo tuo in Amministrazione, Modelli AI.",
@@ -137,7 +138,6 @@
       "unknown_command": "Comando '{{name}}' sconosciuto",
       "write_not_admitted": "Il ruolo '{{role}}' non può eseguire questa scrittura: una scrittura richiede il diritto di scrittura, l'accesso in scrittura a ogni colonna scritta e righe ammesse dal filtro di riga del ruolo.",
       "write_not_supported": "'{{table}}' non accetta {{operation}}: la sua origine non può eseguirlo",
-      "table_is_draft": "{{table}} è una bozza: fuori servizio finché i responsabili del suo dominio non la rilasciano",
       "source_unbound": "L'origine '{{source}}' non ha una connessione nell'ambiente '{{env}}': collegala o copiala di nuovo dall'ambiente padre",
       "system_catalog_unavailable": "Il catalogo '{{catalog}}' del motore è in fase di registrazione. Riprova tra poco.",
       "domain_not_accessible": "Il ruolo '{{role_id}}' non ha accesso al dominio '{{domain}}'",
@@ -154,7 +154,6 @@
       "source_starting": "L'origine {{source}} è ancora in fase di avvio. Riprova tra un momento.",
       "source_unavailable": "L'origine {{source}} non ha potuto rispondere. Riprova tra poco.",
       "view_outside_load_window": "La vista {{view}} può essere letta solo nella sua finestra di lettura. Si riapre alle {{opens_at}}.",
-      "view_awaits_rule_rebuild": "La vista {{view}} è in fase di ricostruzione per una modifica alle regole di riga sui suoi input. Questo ruolo potrà leggerla quando quella build sarà pubblicata.",
       "graphql_body_missing": "La richiesta non ha corpo: una richiesta GraphQL è un oggetto JSON con una query.",
       "graphql_body_not_json": "Il corpo della richiesta non è JSON: {{error}}",
       "graphql_request_not_object": "Una richiesta GraphQL è un oggetto JSON con una query.",
@@ -166,6 +165,8 @@
       "parameter_conflict": "Il parametro {{parameter}} riceve due valori diversi insieme ({{first}} e {{second}}). Dagli un solo valore, oppure elenca i valori con IN o OR.",
       "parameter_calls_over_cap": "L'istruzione richiede {{calls}} chiamate a {{table}}, una per ogni valore dato ai suoi parametri, e per un'istruzione ne vengono fatte al massimo {{cap}} (impostazione {{setting}}). Indica meno valori.",
       "parameter_not_written": "La relazione {{relationship}} si unisce sul parametro {{parameter}}, che un'istruzione associa a un valore e non scrive mai. Una scrittura non crea {{relationship}}.",
+      "table_is_withdrawn": "{{table}} è ritirata: fuori produzione finché non viene ripristinata",
+      "view_awaits_rule_rebuild": "La vista {{view}} è in fase di ricostruzione per una modifica alle regole di riga sui suoi input. Questo ruolo potrà leggerla quando quella build sarà pubblicata.",
       "parameter_required": "La tabella '{{table}}' richiede il parametro o i parametri {{parameters}}: dai un valore a ciascuno (una condizione WHERE sulla sua colonna in SQL, un argomento in GraphQL).",
       "parameter_wrong_type": "Il parametro {{parameter}} accetta un valore di tipo {{type}}; '{{value}}' non lo è."
     },
@@ -192,10 +193,12 @@
       "source_domains_empty": "I domini di origine scelti non contengono alcuna tabella che il rilevamento legge.",
       "source_not_found": "Origine '{{source_id}}' non trovata",
       "source_tables_not_read": "Nessuna delle tabelle di origine scelte ({{count}}) viene letta: il rilevamento esclude le tabelle di un dominio di sistema e quelle fuori servizio.",
+      "source_tables_outside_domains": "Le tabelle di origine scelte sono al di fuori dei domini selezionati nel filtro dei domini: {{names}}.",
       "table_id_required": "table_id richiesto per l'ambito tabella",
       "table_not_found": "La tabella {{table_id}} non è registrata.",
       "target_domains_empty": "I domini di destinazione scelti non contengono alcuna tabella che il rilevamento legge.",
       "target_tables_not_read": "Nessuna delle tabelle di destinazione scelte ({{count}}) viene letta: il rilevamento esclude le tabelle di un dominio di sistema e quelle fuori servizio.",
+      "target_tables_outside_domains": "Le tabelle di destinazione scelte sono al di fuori dei domini selezionati nel filtro dei domini: {{names}}.",
       "unknown_source_type": "Tipo di origine sconosciuto: {{type}}",
       "vendor_unknown": "{{vendor}} non elenca modelli qui; inserisci il nome del modello."
     },
@@ -328,13 +331,6 @@
     "query": {
       "catalog_view_refused": "{{view}} è una vista di catalogo del dominio meta e non può essere letta in un'unica istruzione con una tabella di un'origine dati: leggile in due istruzioni.",
       "function_unsupported": "{{function}}() non ha un equivalente su {{dialect}}."
-    },
-    "redaction": {
-      "rule_invalid": "Regola di oscuramento {{rule}}: {{why}}",
-      "pattern_backtracks": "Regola di oscuramento {{rule}}: il modello può causare un backtracking catastrofico (una ripetizione annidata in una ripetizione illimitata, o alternative al suo interno che possono iniziare con lo stesso testo). Riscrivilo senza quella forma.",
-      "pattern_unsupported": "Regola di oscuramento {{rule}}: la regola di un'organizzazione non può usare riferimenti all'indietro, lookahead o lookbehind, gruppi atomici, ripetizioni possessive o gruppi condizionali.",
-      "pattern_too_large": "Regola di oscuramento {{rule}}: il modello è troppo grande una volta espanse le ripetizioni. Usa un numero di ripetizioni minore.",
-      "server_reference": "Regola di oscuramento {{rule}}: un'organizzazione su questo server non può fare riferimento all'ambiente del server. Usa ${secret:NAME} dal vault dell'organizzazione stessa."
     },
     "replication": {
       "answer_not_json": "La risposta letta per la replica di {{table}} non è JSON valido: [{{content_type}}] {{cause}} (nei {{kib}} KiB prima del byte {{before_byte}} della risposta).",
@@ -565,7 +561,10 @@
       "source_withdrawn": "Origine {{source}} ritirata",
       "source_put_back": "Origine {{source}} ripristinata",
       "withdrawn_source_not_previewable": "Impossibile visualizzare l'anteprima della tabella {{table}}: la sua origine {{source}} è ritirata e nessun motore legge un'origine ritirata.",
-      "withdrawn_table_not_previewable": "Impossibile visualizzare l'anteprima della tabella {{table}}: è ritirata e non conserva alcuna replica, e il motore legge la sua origine solo tramite una replica."
+      "withdrawn_table_not_previewable": "Impossibile visualizzare l'anteprima della tabella {{table}}: è ritirata e non conserva alcuna replica, e il motore legge la sua origine solo tramite una replica.",
+      "table_not_withdrawn": "La tabella {{table}} non è ritirata: si ripristina solo una tabella ritirata. Per spostare in un'altra regione una tabella in produzione, impostane la regione.",
+      "source_not_withdrawn": "L'origine {{source}} non è ritirata: si ripristina solo un'origine ritirata. Per cambiarne la regione, impostane la regione.",
+      "put_back_needs_region": "Ripristinare {{object}} indica una regione: indicane una, o nessuna per nessuna regione."
     },
     "secrets": {
       "env_reference_object_locked": "Questo oggetto è dell'operatore: legge l'ambiente proprio del server e non può essere modificato qui. Aggiungine invece uno tuo.",
@@ -578,7 +577,8 @@
     "security": {
       "unknown_mode": "modalità di sicurezza '{{mode}}' sconosciuta",
       "data_residency_refused": "Impossibile impostare la regione di {{object}}: la concessione data_residency non copre {{value}}; lo consente una concessione data_residency che lo elenca",
-      "data_residency_missing": "Impossibile impostare la regione di {{object}}: nessuna concessione data_residency del chiamante copre {{value}}; lo consente una concessione data_residency che lo elenca"
+      "data_residency_missing": "Impossibile impostare la regione di {{object}}: nessuna concessione data_residency del chiamante copre {{value}}; lo consente una concessione data_residency che lo elenca",
+      "withdraw_residency_refused": "Impossibile ritirare {{object}}: nessuna concessione data_residency del chiamante copre {{value}}, dove è conservato; lo consente una concessione data_residency che lo elenca"
     },
     "settings": {
       "auth_required": "{{field}} non può essere modificato finché l'autenticazione non è configurata.",
@@ -744,10 +744,6 @@
     "dbt_sources": {
       "unknown_role": "Non esiste alcun ruolo chiamato {{role}}."
     },
-    "debug_logs": {
-      "pattern_refused": "Il modello di filtro dei log è rifiutato: {{why}}",
-      "pattern_exceeded": "Il modello di filtro dei log è rifiutato: ha superato il suo limite di passi ({{steps}} passi) su una riga di log di {{length}} caratteri."
-    },
     "dbt": {
       "products": {
         "none_offered": "L'origine {{source_id}} non ha alcun modello pubblico con contratto applicato.",
@@ -774,6 +770,9 @@
     "sources": {
       "private_destination": "Le origini di questa organizzazione possono raggiungere solo indirizzi pubblici; {{host}} è {{address}}, che non lo è.",
       "local_path_refused": "Le origini di questa organizzazione non leggono file dal disco del server al di fuori della propria cartella; {{path}} è uno di questi. Carica il file, oppure indicalo come {files}/… o con un indirizzo remoto."
+    },
+    "egress": {
+      "private_destination": "Questa organizzazione può chiamare solo indirizzi pubblici; {{host}} è {{address}}, che non lo è."
     },
     "sandbox": {
       "wrong_tier": "Questa sandbox è servita altrove; aprila dal suo indirizzo.",
@@ -907,10 +906,24 @@
       "confined_unavailable": "Il controllo preliminare di {{subject}} non è stato eseguito: in questa organizzazione viene eseguito solo in un processo confinato, e non è stato possibile avviarne uno ({{reason}}).",
       "confined_failed": "Il controllo preliminare di {{subject}} non ha restituito alcun verdetto: il suo processo confinato è terminato prima ({{reason}})."
     },
+    "redaction": {
+      "rule_invalid": "Regola di oscuramento {{rule}}: {{why}}",
+      "pattern_backtracks": "Regola di oscuramento {{rule}}: il modello può causare un backtracking catastrofico (una ripetizione annidata in una ripetizione illimitata, o alternative al suo interno che possono iniziare con lo stesso testo). Riscrivilo senza quella forma.",
+      "pattern_unsupported": "Regola di oscuramento {{rule}}: la regola di un'organizzazione non può usare riferimenti all'indietro, lookahead o lookbehind, gruppi atomici, ripetizioni possessive o gruppi condizionali.",
+      "pattern_too_large": "Regola di oscuramento {{rule}}: il modello è troppo grande una volta espanse le ripetizioni. Usa un numero di ripetizioni minore.",
+      "server_reference": "Regola di oscuramento {{rule}}: un'organizzazione su questo server non può fare riferimento all'ambiente del server. Usa ${secret:NAME} dal vault dell'organizzazione stessa."
+    },
+    "debug_logs": {
+      "pattern_refused": "Il modello di filtro dei log è rifiutato: {{why}}",
+      "pattern_exceeded": "Il modello di filtro dei log è rifiutato: ha superato il suo limite di passi ({{steps}} passi) su una riga di log di {{length}} caratteri."
+    },
     "import": {
       "include_outside_upload": "{{path}} è fuori dal progetto caricato; un progetto legge solo i propri file.",
       "filter_value_refused": "{{value}} non può essere un valore in un filtro di autorizzazione: un valore è una stringa, un numero, true, false, null, un elenco di questi o una variabile di sessione.",
       "filter_operator_refused": "{{operator}} non è un operatore con cui si possa convertire un filtro di autorizzazione."
+    },
+    "relationship": {
+      "name_taken": "Il nome '{{name}}' è già usato dalla relazione '{{held_by}}'. Assegna a questa un altro nome."
     }
   }
 }

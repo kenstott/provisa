@@ -497,7 +497,6 @@ class RegisteredTableType:  # REQ-013, REQ-014, REQ-016, REQ-135
     cache_ttl: int | None
     replicate: int | None  # REQ-826: NULL = inherit source
     region: str | None  # REQ-1921: where its data lives; null = no region
-    draft: bool  # REQ-1921: at a region move's waypoint -- out of service until the move ends
     # REQ-1921: out of production until put back -- itself (withdrawTable / putBackTable), and
     # its source (withdrawSource / putBackSource). Listed only to a caller who may preview it.
     withdrawn: bool
@@ -2244,15 +2243,13 @@ class MutationResult(ClientText):  # REQ-533
 @strawberry.type
 class TableAccessType:  # REQ-2234
     """The ways to reach a registered table, each ready to copy. ``pgwire`` and ``rest`` are None
-    where that listener or surface is not serving. ``draft``: the table is a draft, reached this
-    way by a role holding org_admin alone (REQ-1921, A DRAFT IS SERVED TO ORG_ADMIN)."""
+    where that listener or surface is not serving."""
 
     graphql: str
     sql: str
     pgwire: str | None
     rest: str | None
     mcp: str
-    draft: bool
 
 
 @strawberry.type

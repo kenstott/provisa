@@ -12,11 +12,12 @@
 
 A run discards nothing: its rows hold every foreign key it found and every element of every
 answer, with the confidence and reasoning given. A proposal that is not among the run's
-suggestions carries why (:data:`REASONS`). The run's result lists them all in one table; a
-reviewer accepts those he ticks and marks those he does not want recommended again
-(:func:`apply`), and what he leaves alone stays undecided: nothing is recorded against it.
-One that names no two compared columns, or that repeats what is already there
-(:data:`ACCEPTABLE`), is listed with its reason and cannot be decided.
+suggestions carries why (:data:`REASONS`). The run's result lists them in one table, leaving out
+only a pair already registered and one marked not to be recommended again (:data:`NOT_LISTED`,
+amended 2026-11-18); a reviewer accepts those he ticks and marks those he does not want
+recommended again (:func:`apply`), and what he leaves alone stays undecided: nothing is recorded
+against it. One that names no two compared columns (:data:`ACCEPTABLE`) is listed with its reason
+and cannot be decided.
 """
 
 # Requirements: REQ-413
@@ -57,31 +58,19 @@ REASONS: tuple[str, ...] = (
     NOT_COMPARABLE,
     BELOW_THRESHOLD,
     "same_column",
-    "primary_key_to_primary_key",
-    "both_repeating",
     "existing",
-    "pending",
     "rejected",
-    "matches_foreign_key",
     "out_of_scope",
-    "weaker",
-    "many_to_many",
 )
+
+#: The reasons a proposal is not listed for (REQ-413, amended 2026-11-18): its pair is already
+#: registered, or marked not to be recommended again.
+NOT_LISTED: frozenset[str] = frozenset({"existing", "rejected"})
 
 #: The reasons a proposal left out for can still be decided by a reviewer. Not these: one that
 #: names no two compared columns; two columns that are not compared; a column to itself; one
-#: already registered; one already decided (rejected: a decided pair keeps its decision); one
-#: repeating a foreign key or a stronger proposal listed beside it.
-ACCEPTABLE: frozenset[str] = frozenset(
-    {
-        BELOW_THRESHOLD,
-        "primary_key_to_primary_key",
-        "both_repeating",
-        "pending",
-        "out_of_scope",
-        "many_to_many",
-    }
-)
+#: already registered; one already decided (rejected: a decided pair keeps its decision).
+ACCEPTABLE: frozenset[str] = frozenset({BELOW_THRESHOLD, "out_of_scope"})
 
 #: The reason a proposal marked not to be recommended again is rejected with.
 NOT_AGAIN = "Not to be recommended again"
@@ -182,6 +171,9 @@ def _view(row: Any, never_read: set[int], shared: Shared | None) -> dict[str, An
         "acceptable": acceptable(row.left_out, shared),
         # REQ-1986: one of its tables is never read, so no values were compared.
         "reduced_information": bool(ends & never_read),
+        # REQ-413 (amended 2026-11-16): only a pair in the band under the threshold is measured,
+        # so a suggestion with a measure was admitted on key values matching in the data.
+        "admitted_on_key_values": row.left_out is None and row.measure is not None,
         # A many-to-many pair: the shared dimension accepting it joins, and whether it is one
         # already registered (a second pair on the same values reuses it).
         "dimension": None
@@ -191,15 +183,20 @@ def _view(row: Any, never_read: set[int], shared: Shared | None) -> dict[str, An
 
 
 async def listed(conn: "Connection", state: Any, run_id: int) -> list[dict[str, Any]]:
-    """Every proposal of the run no reviewer has decided, the highest score first (the measure's,
-    else the model's), those with none last. A second scorer's score is shown beside it and does
-    not order (REQ-1789)."""
+    """Every proposal of the run no reviewer has decided, but those already registered or marked
+    not to be recommended again (:data:`NOT_LISTED`), the highest score first (the measure's, else
+    the model's), those with none last. A second scorer's score is shown beside it and does not
+    order (REQ-1789)."""
     from provisa.discovery.gather import tables_never_read
 
     found = (
         await conn.execute_core(
             select(rows_t)
-            .where(rows_t.c.run_id == run_id, rows_t.c.decision.is_(None))
+            .where(
+                rows_t.c.run_id == run_id,
+                rows_t.c.decision.is_(None),
+                rows_t.c.left_out.is_(None) | rows_t.c.left_out.notin_(sorted(NOT_LISTED)),
+            )
             .order_by(rows_t.c.id)
         )
     ).fetchall()

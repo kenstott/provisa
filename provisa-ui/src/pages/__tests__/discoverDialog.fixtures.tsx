@@ -25,6 +25,8 @@ import {
   fetchModelLimits,
   fetchRunProposals,
   saveDiscoveryThreshold,
+  saveDiscoveryScoreFilter,
+  fetchDiscoverySettings,
   fetchVendorModels,
   startDiscoveryRun,
   stopDiscoveryRun,
@@ -32,10 +34,11 @@ import {
   type DiscoveryModels,
   type DiscoveryRun,
   type DiscoveryScope,
+  type DiscoverySettings,
   type RunProposal,
 } from "../../api/admin";
 
-import { REGISTERED, TABLES } from "./discoverDialog.state";
+import { CHECKED, FILTER, REGISTERED, TABLES } from "./discoverDialog.state";
 
 export const HAIKU = {
   vendor: "anthropic",
@@ -57,22 +60,51 @@ export const NO_VENDOR: DiscoveryModels = {
 export const COUNT: DiscoveryCount = {
   requests: 3,
   requests_are: "upper_bound",
-  by_group: { whole_number: 2, text: 1 },
-  suggestions_per_request: 27,
+  by_group: {},
+  table_pairs: 40,
+  table_pairs_per_request: 27,
   model: HAIKU,
   source_tables: 2,
   target_tables: 2,
   tables_not_read: 0,
 };
+/** Key value overlap as a person who has set none has it: the defaults. */
+export const KEY_VALUES_DEFAULT = {
+  chosen: true,
+  cutoff: 0.2,
+  sample_size: 10000,
+  contained_at: 0.95,
+  shared_ceiling: 0.6,
+};
+/** Every run setting as a person who has set none has them: the defaults. */
+export const SETTINGS_DEFAULT: DiscoverySettings = {
+  threshold: 0.7,
+  samples_per_column: 5,
+  key_values: KEY_VALUES_DEFAULT,
+  score_filter: { op: "ge", a: "10" },
+};
 export const SCOPE: DiscoveryScope = {
-  kinds: ["foreign_keys", "semantics"],
-  source_domains: ["shop"],
+  kinds: ["foreign_keys", "semantics", "key_values"],
+  source_domains: ["shop", "crm"],
   source_tables: null,
   target_same_as_source: true,
   target_domains: [],
   target_tables: null,
   vendor: null,
   model: null,
+  threshold: 0.7,
+  samples_per_column: 5,
+  measure_cutoff: 0.2,
+  sample_size: 10000,
+  contained_at: 0.95,
+  shared_ceiling: 0.6,
+};
+/** The scope with Key value overlap not chosen (or not offered, without Semantics). */
+export const UNMEASURED = {
+  measure_cutoff: null,
+  sample_size: null,
+  contained_at: null,
+  shared_ceiling: null,
 };
 export const runOf = (over: Partial<DiscoveryRun>): DiscoveryRun => ({
   id: 7,
@@ -137,6 +169,8 @@ export const stopMock = vi.mocked(stopDiscoveryRun);
 export const proposalsMock = vi.mocked(fetchRunProposals);
 export const applyMock = vi.mocked(applyRunDecisions);
 export const saveThresholdMock = vi.mocked(saveDiscoveryThreshold);
+export const saveScoreFilterMock = vi.mocked(saveDiscoveryScoreFilter);
+export const settingsMock = vi.mocked(fetchDiscoverySettings);
 /** A proposal as a run lists it. Unless given, its score is the model's (no values compared)
  *  and it can be accepted where it can be decided. */
 export const proposal = (over: Partial<RunProposal>): RunProposal => ({
@@ -160,11 +194,14 @@ export const proposal = (over: Partial<RunProposal>): RunProposal => ({
   answer: null,
   decidable: true,
   reduced_information: false,
+  admitted_on_key_values: false,
   dimension: null,
+  via: null,
   ...over,
 });
-/** A run's table: a constraint, a suggestion, one the model scored high and Jev low, one
- *  already waiting, one under the threshold, one repeating the constraint, and one that named no two compared columns. */
+/** A run's table: a constraint, a suggestion, one the model scored high and Jev low, another
+ *  suggestion, one under the threshold, one between columns that are not compared, and one that
+ *  named no two compared columns. */
 export const PROPOSALS: RunProposal[] = [
   proposal({
     id: 500,
@@ -187,7 +224,6 @@ export const PROPOSALS: RunProposal[] = [
     id: 502,
     source_column: "payer_id",
     confidence: 0.9,
-    reason: "pending",
     suggested_name: "order-payer",
   }),
   proposal({
@@ -202,7 +238,7 @@ export const PROPOSALS: RunProposal[] = [
     id: 505,
     source_column: "store_id",
     confidence: 0.9,
-    reason: "matches_foreign_key",
+    reason: "not_comparable",
     decidable: false,
   }),
   proposal({
@@ -227,7 +263,12 @@ export const notAgainBox = (id: number) =>
 export const applyButton = () => screen.getByTestId("discover-apply");
 export async function endedRun() {
   runMock.mockResolvedValue(runOf({ status: "done", report: REPORT }));
-  proposalsMock.mockResolvedValue({ proposals: PROPOSALS, threshold: 0.7, kept_at: 0.7 });
+  proposalsMock.mockResolvedValue({
+    proposals: PROPOSALS,
+    threshold: 0.7,
+    kept_at: 0.7,
+    score_filter: null,
+  });
   await openDialog();
   fireEvent.click(runButton());
   await screen.findByTestId("proposal-501", {}, SLOW);
@@ -240,6 +281,8 @@ export const semanticsBox = () => screen.getByTestId("discover-kind-semantics") 
 export const runButton = () => screen.getByTestId("discover-run");
 export const sameBox = () => screen.getByTestId("discover-same-as-source") as HTMLInputElement;
 export const SLOW = { timeout: 4000 };
+/** The navbar filter's selection (FILTER), sent with every count and run (REQ-2253). */
+export const SELECTED = new Set(CHECKED);
 
 export async function openDialog() {
   render(<RelationshipsPage />);
@@ -269,6 +312,7 @@ export function resetDiscoveryMocks() {
   // A panel opens as this viewer left it: each test starts with nothing remembered.
   window.localStorage.clear();
   TABLES.tables = REGISTERED;
+  FILTER.checkedDomains = new Set(CHECKED);
   modelsMock.mockReset().mockResolvedValue(MODELS);
   vendorModelsMock
     .mockReset()
@@ -287,9 +331,13 @@ export function resetDiscoveryMocks() {
   runMock.mockReset().mockResolvedValue(runOf({}));
   runsMock.mockReset().mockResolvedValue([]);
   stopMock.mockReset().mockResolvedValue(runOf({ stop_requested: true }));
-  proposalsMock.mockReset().mockResolvedValue({ proposals: [], threshold: 0.7, kept_at: 0.7 });
+  proposalsMock
+    .mockReset()
+    .mockResolvedValue({ proposals: [], threshold: 0.7, kept_at: 0.7, score_filter: null });
   applyMock.mockReset().mockResolvedValue([]);
   saveThresholdMock.mockReset().mockImplementation(async (threshold) => ({ threshold }));
+  saveScoreFilterMock.mockReset().mockImplementation(async (filter) => ({ filter }));
+  settingsMock.mockReset().mockResolvedValue({ ...SETTINGS_DEFAULT, defaults: SETTINGS_DEFAULT });
 }
 
 export const LAST: DiscoveryScope = {
@@ -301,4 +349,11 @@ export const LAST: DiscoveryScope = {
   target_tables: [2],
   vendor: "openai",
   model: "gpt-4.1-mini",
+  threshold: 0.7,
+  samples_per_column: 5,
+  // That run did not choose Key value overlap.
+  measure_cutoff: null,
+  sample_size: null,
+  contained_at: null,
+  shared_ceiling: null,
 };

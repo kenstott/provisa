@@ -473,7 +473,8 @@ async def _upsert_sources(conn: "Connection", config: ProvisaConfig) -> None:  #
     """Add each source the config declares to the store, or replace its definition. Stored as
     written: a credential's reference, never its value."""
     for src in config.written.sources:
-        await source_repo.upsert(conn, src)
+        # REQ-1921: a configuration carries a withdrawn source as withdrawn.
+        await source_repo.upsert(conn, src, withdrawn=src.withdrawn)
 
 
 def resolved_source(source: Source) -> Source:  # REQ-1919
@@ -764,7 +765,8 @@ async def _upsert_single_table(
     # REQ-1426: data_type is design-time metadata — the config carries it and nothing infers it
     # here. A column that reaches this point untyped means the design was never completed; the
     # repository refuses it rather than persisting a hole the catalog renders as "unknown".
-    await table_repo.upsert(conn, tbl)
+    # REQ-1921: a configuration carries a withdrawn table as withdrawn.
+    await table_repo.upsert(conn, tbl, withdrawn=tbl.withdrawn)
 
     if src and src.type.value == "openapi" and src.base_url:
         spec = openapi_specs.get(src.id, {})
@@ -1825,6 +1827,21 @@ def _validate_triggers(config) -> None:  # REQ-2054
             raise ValueError(refused)
 
 
+def _validate_destinations(config) -> None:  # REQ-2006
+    """A configuration a held org's admin applies names public destinations only for its webhooks
+    and the URLs its scheduled triggers call, refused by name as a save of either is (REQ-2006,
+    amended 2026-11-16); each is checked again at each call. Any other org's reaches what it
+    names. A demo's own configuration, which builds its template and the orgs seeded with it, is
+    the operator's (``sandbox_egress``) and is not judged here."""
+    from provisa.security import sandbox_egress
+
+    for webhook in config.webhooks:
+        sandbox_egress.require_endpoint_url_allowed(webhook.url)
+    for trigger in config.scheduled_triggers:
+        if trigger.url:
+            sandbox_egress.require_endpoint_url_allowed(trigger.url)
+
+
 def _validate_paging(config) -> None:  # REQ-318
     """A table's paging must suit what reads the table, and a connection table's max_rows may only
     lower the operator's graphql_remote.max_rows -- refused at load as it is at save."""
@@ -2433,6 +2450,7 @@ async def apply_config(  # REQ-1919, REQ-164
     ``engine`` decides only the names tables are registered under. Returns the source ids whose
     change feed could not be reached.
     """
+    _validate_destinations(config)
     # Nothing registers a table after an admin's apply: every relationship registers now.
     return await _apply(
         config, conn, engine, label="configuration applied", defer_unregistered=False
@@ -2475,6 +2493,7 @@ async def dry_run_config(  # REQ-2222
     from provisa.core.model_row_rules import unnarrowed
     from provisa.core.store_config import model_changes, store_model
 
+    _validate_destinations(config)
     async with model_change.committed_by_caller():
         with domain_policy.trial(), unnarrowed():
             try:

@@ -68,9 +68,6 @@ class SchemaInput:
     metrics: list[dict] = field(
         default_factory=list
     )  # REQ-1319: config metric registry [{name, expression, datatype, description, ai_context, visible_to}]
-    # REQ-1921: tables out of service (draft) — in no schema; named only so a statement naming one
-    # is refused as draft rather than as unknown.
-    draft_tables: list[dict] = field(default_factory=list)
 
 
 def offers_domain(si: SchemaInput, domain_id: str) -> bool:

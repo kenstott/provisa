@@ -1,6 +1,7 @@
 {
   "discoverResult": {
     "scopeKinds": "查找内容：{{kinds}}。",
+    "keyValues": "键值重叠：模型评分从 {{cutoff}}% 到低于 {{threshold}}% 的配对，已按每列最多 {{size}} 个不同值进行测量。已测量 {{measured}} 个，因键值匹配而采纳 {{admitted}} 个。",
     "scopeSource": "源：{{domains}} 中的 {{count}} 个表。",
     "scopeSource_other": "源：{{domains}} 中的 {{count}} 个表。",
     "scopeTargetSame": "目标：与源相同。",
@@ -42,15 +43,9 @@
       "invalid": "未指明两个被比较的列",
       "not_comparable": "位于不同类别的列之间",
       "same_column": "从某列指向其自身",
-      "primary_key_to_primary_key": "主键到主键",
-      "both_repeating": "两侧均有重复值",
       "existing": "已注册",
-      "pending": "已在等待",
       "rejected": "之前已拒绝",
-      "matches_foreign_key": "与本次运行中找到的外键相同",
-      "out_of_scope": "不在所选表之内",
-      "weaker": "与已保留更强提议的列对重复",
-      "many_to_many": "两列都不是键"
+      "out_of_scope": "不在所选表之内"
     }
   }
 }

@@ -38,6 +38,7 @@ const base: Relationship = {
   autoSuggested: false,
   disableCypher: false,
   sameEntity: false,
+  withdrawn: false,
   parameters: [],
   viaTableId: 9,
   viaTableName: "pet_relations",
@@ -68,6 +69,7 @@ function show(rel: Relationship, domainsEnabled = true) {
       functions={[]}
       tableDomainById={{ "2": "zoo" }}
       domainsEnabled={domainsEnabled}
+      actingRole={null}
     />,
   );
 }

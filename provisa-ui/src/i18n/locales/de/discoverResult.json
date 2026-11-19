@@ -1,6 +1,7 @@
 {
   "discoverResult": {
     "scopeKinds": "Gesucht: {{kinds}}.",
+    "keyValues": "Schlüsselwert-Überlappung: Paare, die das Modell von {{cutoff}} % bis unter {{threshold}} % bewertet hat, wurden an höchstens {{size}} unterschiedlichen Werten je Spalte gemessen. {{measured}} gemessen, {{admitted}} aufgrund übereinstimmender Schlüsselwerte aufgenommen.",
     "scopeSource": "Quelle: {{count}} Tabelle aus {{domains}}.",
     "scopeSource_other": "Quelle: {{count}} Tabellen aus {{domains}}.",
     "scopeTargetSame": "Ziel: dieselben wie die Quelle.",
@@ -42,15 +43,9 @@
       "invalid": "nennt keine zwei verglichenen Spalten",
       "not_comparable": "zwischen Spalten unterschiedlicher Klassen",
       "same_column": "von einer Spalte zu sich selbst",
-      "primary_key_to_primary_key": "Primärschlüssel zu Primärschlüssel",
-      "both_repeating": "Werte auf beiden Seiten wiederholt",
       "existing": "bereits registriert",
-      "pending": "wartet bereits",
       "rejected": "zuvor abgelehnt",
-      "matches_foreign_key": "entspricht einem in diesem Lauf gefundenen Fremdschlüssel",
-      "out_of_scope": "außerhalb der gewählten Tabellen",
-      "weaker": "wiederholt ein Spaltenpaar, für das ein stärkerer Vorschlag behalten wurde",
-      "many_to_many": "ohne Schlüssel in einer der beiden Spalten"
+      "out_of_scope": "außerhalb der gewählten Tabellen"
     }
   }
 }

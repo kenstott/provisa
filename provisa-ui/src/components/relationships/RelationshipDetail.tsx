@@ -27,6 +27,9 @@ import { PanelActions } from "../list/SplitPane";
 import { PanelDelete } from "../list/PanelDelete";
 import { PanelDuplicate } from "../list/PanelDuplicate";
 import { Tip } from "../Tip";
+import { RelationshipQueryLinks } from "./RelationshipQueryLinks";
+import { relationshipQueryRef } from "./relationshipQueries";
+import { useRelationshipSurfaces } from "./useRelationshipSurfaces";
 
 interface RelationshipDetailProps {
   rel: Relationship;
@@ -52,6 +55,8 @@ interface RelationshipDetailProps {
   onChangeResolver?: (set: string) => void;
   /** REQ-2249: retires the code resolver set ``set``, all of it. */
   onRetireResolver?: (set: string) => Promise<boolean | void>;
+  /** REQ-2252: the acting roles, whose names the relationship's query links use; null while none. */
+  actingRole: string | null;
 }
 
 export function RelationshipDetail({
@@ -72,8 +77,11 @@ export function RelationshipDetail({
   domainsEnabled,
   onChangeResolver,
   onRetireResolver,
+  actingRole,
 }: RelationshipDetailProps) {
   const { t } = useTranslation();
+  const surfaces = useRelationshipSurfaces(actingRole);
+  const queryRef = relationshipQueryRef(r, tables);
   // REQ-2249: one of a code resolver set's objects is changed and retired with the set.
   const set = r.codeResolver ?? null;
 
@@ -158,6 +166,15 @@ export function RelationshipDetail({
             </Group>
           </fieldset>
         </PanelActions>
+      )}
+      {!editingRel && queryRef !== null && (
+        <RelationshipQueryLinks
+          rel={queryRef}
+          name={String(r.id)}
+          heading={t("relationshipRow.queryLinks.heading")}
+          surfaces={surfaces}
+          testIdPrefix="relationship-detail"
+        />
       )}
       {!editingRel ? (
         <RelationshipRead

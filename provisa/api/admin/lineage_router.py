@@ -781,7 +781,7 @@ def _consumer(table: dict) -> dict:
 
 
 async def _fetch_checkers(state) -> list[dict]:
-    """Every checker table that is not a draft (REQ-2157): its names, description, owning product,
+    """Every checker table that is not withdrawn (REQ-2157, REQ-1921): its names, description, owning product,
     the table its contract scans as the runtime's published build resolved it
     (``state.checked_targets``, REQ-2125; the stored checker targets are the meta domain's), the
     columns its checks name (dq_rules), its latest run and the checks of that run that did not
@@ -813,7 +813,7 @@ async def _fetch_checkers(state) -> list[dict]:
             .where(
                 rt.c.id.in_(list(targets)),
                 rt.c.dq_contract.is_not(None),
-                rt.c.draft.is_(False),
+                rt.c.withdrawn.is_(False),  # REQ-1921
                 rt.c.retired.is_(False),
             )
         )
@@ -906,7 +906,7 @@ def _input(relation: str, graph: LineageGraph, by_relation: dict, types: dict) -
 
 
 async def _fetch_tables(state) -> list[dict]:
-    """Every registered table that is not a draft: its id, names, source, products (REQ-1634: any
+    """Every registered table that is not withdrawn (REQ-1921): its id, names, source, products (REQ-1634: any
     number) and contract."""
     if getattr(state, "model_db", None) is None:
         return []
@@ -924,7 +924,7 @@ async def _fetch_tables(state) -> list[dict]:
                 rt.c.source_id,
                 rt.c.dq_contract,
                 rt.c.materialize,
-            ).where(rt.c.draft.is_(False), rt.c.retired.is_(False))  # REQ-2248
+            ).where(rt.c.withdrawn.is_(False), rt.c.retired.is_(False))  # REQ-1921, REQ-2248
         )
         products = await data_product_repo.table_memberships(conn)
         return [{**dict(r._mapping), "product_ids": products.get(r.id, [])} for r in res.fetchall()]

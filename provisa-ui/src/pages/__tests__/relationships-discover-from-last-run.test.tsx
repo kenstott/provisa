@@ -91,7 +91,12 @@ describe("Discovery dialog: a run starts from the fields of the one before", () 
   it("opening the dialog starts from the defaults, after a run whose proposals were applied too", async () => {
     runMock.mockResolvedValue(runOf({ status: "done", scope: LAST, report: REPORT }));
     startMock.mockResolvedValue(runOf({ scope: LAST }));
-    proposalsMock.mockResolvedValue({ proposals: [proposal({})], threshold: 0.7, kept_at: 0.7 });
+    proposalsMock.mockResolvedValue({
+      proposals: [proposal({})],
+      threshold: 0.7,
+      kept_at: 0.7,
+      score_filter: null,
+    });
     await openDialog();
     fireEvent.click(runButton());
     await screen.findByTestId("proposal-501", {}, SLOW);
@@ -99,8 +104,10 @@ describe("Discovery dialog: a run starts from the fields of the one before", () 
     await waitFor(() => expect(applyMock).toHaveBeenCalled());
     fireEvent.keyDown(screen.getByTestId("discover-dialog"), { key: "Escape" });
     await waitFor(() => expect(screen.queryByTestId("proposal-501")).not.toBeInTheDocument());
-    // The page's banner keeps the run's result.
-    expect(screen.getByTestId("rels-discover-result")).toBeInTheDocument();
+    // The page's line keeps the run: one of its suggestions still waits.
+    expect(screen.getByTestId("rels-discover-line")).toHaveTextContent(
+      "1 suggestion waits for a decision.",
+    );
     countMock.mockClear();
     fireEvent.click(screen.getByTestId("rels-discover"));
     await waitFor(() => expect(runButton()).toBeEnabled(), SLOW);
@@ -190,7 +197,7 @@ describe("Discovery dialog: a run starts from the fields of the one before", () 
       table(7, "files", "inspections", SINCE),
       table(8, "shop", "returns", SINCE),
     ];
-    await newRunFrom(SCOPE);
+    await newRunFrom({ ...SCOPE, source_domains: ["shop"] });
     // The new shop table is in the run already: only the files tables are outside it.
     expect(screen.getByTestId("discover-new-tables")).toHaveTextContent(
       "2 tables registered since your last run are in files, which it did not look at.",

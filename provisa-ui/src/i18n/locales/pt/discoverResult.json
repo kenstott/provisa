@@ -1,6 +1,7 @@
 {
   "discoverResult": {
     "scopeKinds": "Procurado: {{kinds}}.",
+    "keyValues": "Sobreposição de valores-chave: os pares que o modelo avaliou de {{cutoff}}% até menos de {{threshold}}% foram medidos com no máximo {{size}} valores distintos por coluna. {{measured}} medidos, {{admitted}} admitidos por valores-chave correspondentes.",
     "scopeSource": "Origem: {{count}} tabela de {{domains}}.",
     "scopeSource_other": "Origem: {{count}} tabelas de {{domains}}.",
     "scopeTargetSame": "Destino: o mesmo que a origem.",
@@ -42,15 +43,9 @@
       "invalid": "sem citar duas colunas comparadas",
       "not_comparable": "entre colunas de classes diferentes",
       "same_column": "de uma coluna para ela mesma",
-      "primary_key_to_primary_key": "chave primária para chave primária",
-      "both_repeating": "valores repetidos nos dois lados",
       "existing": "já registradas",
-      "pending": "já aguardando",
       "rejected": "rejeitadas antes",
-      "matches_foreign_key": "iguais a uma chave estrangeira encontrada nesta execução",
-      "out_of_scope": "fora das tabelas escolhidas",
-      "weaker": "repetindo um par de colunas para o qual uma proposta mais forte foi mantida",
-      "many_to_many": "sem que nenhuma coluna seja uma chave"
+      "out_of_scope": "fora das tabelas escolhidas"
     }
   }
 }

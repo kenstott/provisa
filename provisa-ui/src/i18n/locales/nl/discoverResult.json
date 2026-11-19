@@ -1,6 +1,7 @@
 {
   "discoverResult": {
     "scopeKinds": "Gezocht naar: {{kinds}}.",
+    "keyValues": "Overlap van sleutelwaarden: paren die het model van {{cutoff}}% tot onder {{threshold}}% beoordeelde, zijn gemeten op hoogstens {{size}} verschillende waarden per kolom. {{measured}} gemeten, {{admitted}} toegelaten op overeenkomende sleutelwaarden.",
     "scopeSource": "Bron: {{count}} tabel van {{domains}}.",
     "scopeSource_other": "Bron: {{count}} tabellen van {{domains}}.",
     "scopeTargetSame": "Doel: hetzelfde als de bron.",
@@ -42,15 +43,9 @@
       "invalid": "noemt geen twee vergeleken kolommen",
       "not_comparable": "tussen kolommen van verschillende klassen",
       "same_column": "van een kolom naar zichzelf",
-      "primary_key_to_primary_key": "primaire sleutel naar primaire sleutel",
-      "both_repeating": "herhaalde waarden aan beide kanten",
       "existing": "al geregistreerd",
-      "pending": "wacht al",
       "rejected": "eerder afgewezen",
-      "matches_foreign_key": "komt overeen met een refererende sleutel uit deze run",
-      "out_of_scope": "buiten de gekozen tabellen",
-      "weaker": "herhaalt een kolompaar waarvoor een sterker voorstel is behouden",
-      "many_to_many": "zonder dat een van beide kolommen een sleutel is"
+      "out_of_scope": "buiten de gekozen tabellen"
     }
   }
 }

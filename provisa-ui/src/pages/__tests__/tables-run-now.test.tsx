@@ -79,7 +79,8 @@ function table(
     pagingCeilingRows: null,
     replicate: null,
     region: null,
-    draft: false,
+    withdrawn: false,
+    sourceWithdrawn: false,
     rowMaterialize: false,
     loadProtected: null,
     offPeakWindow: null,
@@ -288,15 +289,17 @@ describe("TablesPage — a table that is replicating says so", () => {
     expect(replicaBuilds.asked[0]).toEqual({ watching: false });
   });
 
-  it("on a draft table's row like any other: a draft's replica lands the normal way", async () => {
-    const drafted = TABLES.map((t) => (t.tableName === "orders" ? { ...t, draft: true } : t));
-    TABLES.splice(0, TABLES.length, ...drafted);
+  // REQ-1921: there is no draft state. A withdrawn table's row draws the mark from the build the
+  // server reports, as any row does: the list judges nothing of a replica itself.
+  it("on a withdrawn table's row like any other: the mark follows the build reported", async () => {
+    const withdrawn = TABLES.map((t) => (t.tableName === "orders" ? { ...t, withdrawn: true } : t));
+    TABLES.splice(0, TABLES.length, ...withdrawn);
     try {
       renderPage();
       const mark = await screen.findByTestId("replicating-orders");
       expect(row("orders")).toContainElement(mark);
     } finally {
-      TABLES.splice(0, TABLES.length, ...drafted.map((t) => ({ ...t, draft: false })));
+      TABLES.splice(0, TABLES.length, ...withdrawn.map((t) => ({ ...t, withdrawn: false })));
     }
   });
 

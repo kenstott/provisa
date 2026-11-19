@@ -70,7 +70,8 @@ COPY vendor/ ./vendor/
 #   docker build --build-arg PROVISA_EXTRAS=firebase,vector,soda .
 # Every package at the version uv.lock pins — the versions the tests ran on — never pip's newest
 # (an unpinned install shipped sqlglot 30.23 while the suite ran 30.9). torch comes from the CPU
-# index at the locked version; its CUDA-only dependencies (triton, nvidia-*, cuda-*) are left out.
+# index at the locked version: the lock takes Linux's torch from that index ([tool.uv.sources]), so
+# its line is the `+cpu` one; the export names no index, so it is installed on its own.
 ARG PROVISA_EXTRAS=firebase,vector
 COPY uv.lock .
 # REQ-2071: provisa-notebook (the Data Science area's Pyodide) is a dependency that lives beside
@@ -84,7 +85,7 @@ RUN --mount=type=bind,from=pyodide-downloads,target=/pyodide-downloads,rw \
     uv export --frozen --no-dev --no-emit-project --no-hashes --no-annotate --no-header \
       $(echo "${PROVISA_EXTRAS}" | tr ',' '\n' | sed 's/^/--extra /') -o /tmp/locked.txt \
  && grep -vE '^(torch|triton|nvidia-|cuda-|-e )' /tmp/locked.txt > /tmp/requirements.txt \
- && pip install --no-cache-dir "$(grep '^torch==' /tmp/locked.txt | cut -d' ' -f1)" \
+ && pip install --no-cache-dir "$(grep -E '^torch==[^ ]+\+cpu ' /tmp/locked.txt | cut -d' ' -f1)" \
       --index-url https://download.pytorch.org/whl/cpu \
  && pip install --no-cache-dir --no-deps -r /tmp/requirements.txt \
  && PROVISA_NOTEBOOK_DOWNLOADS=/pyodide-downloads PYTHONPATH=provisa-notebook \
@@ -113,6 +114,7 @@ RUN cd graph-render && npm ci --no-audit --no-fund
 COPY provisa-ui/graph-render/src ./graph-render/src
 COPY provisa-ui/src/components/graph ./src/components/graph
 COPY provisa-ui/src/components/provisa-graph ./src/components/provisa-graph
+COPY provisa-ui/src/theme/palette.ts ./src/theme/palette.ts
 RUN cd graph-render && npm run build && npm prune --omit=dev
 
 # Stage 4: lean runtime image — no wheels, only app source + installed packages

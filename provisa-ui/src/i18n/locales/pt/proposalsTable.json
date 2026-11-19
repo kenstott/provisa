@@ -2,7 +2,7 @@
   "proposalsTable": {
     "intro": "Uma linha marcada é aceita ao aplicar. As linhas com pontuação de pelo menos o limite começam marcadas. Uma linha sem nenhuma caixa marcada fica indecisa.",
     "colScore": "Pontuação",
-    "colModel": "Modelo",
+    "colConfidence": "Confiança",
     "colJev": "Jev",
     "colKind": "Tipo",
     "colMeasure": "Medido",
@@ -29,15 +29,9 @@
       "not_comparable": "As duas colunas têm classes diferentes, então não são comparadas",
       "below_threshold": "Pontuação abaixo dos {{threshold}}% com que uma sugestão é mantida.",
       "same_column": "De uma coluna para ela mesma",
-      "primary_key_to_primary_key": "Chave primária para chave primária",
-      "both_repeating": "Os valores se repetem nos dois lados, então nenhum é o lado um",
       "existing": "Já registrada",
-      "pending": "Já aguardando entre as sugestões",
       "rejected": "Rejeitada antes",
-      "matches_foreign_key": "Igual a uma chave estrangeira encontrada nesta execução",
-      "out_of_scope": "Fora das tabelas de origem e destino escolhidas",
-      "weaker": "Uma proposta mais forte das mesmas duas colunas foi mantida",
-      "many_to_many": "Nenhuma das colunas é uma chave"
+      "out_of_scope": "Fora das tabelas de origem e destino escolhidas"
     },
     "threshold": "Marcar a partir de",
     "thresholdHint": "Seu próprio limite, guardado para suas próximas execuções.",
@@ -63,6 +57,10 @@
     },
     "dimensionMade": "Aceitar cria a dimensão compartilhada {{name}}, à qual as duas colunas se juntam.",
     "dimensionJoined": "Aceitar junta as duas colunas à dimensão compartilhada {{name}}.",
-    "twoDimensions": "Suas colunas já se juntam a duas dimensões compartilhadas diferentes, então não pode ser aceita."
+    "through": "Através de {{table}}.",
+    "twoDimensions": "Suas colunas já se juntam a duas dimensões compartilhadas diferentes, então não pode ser aceita.",
+    "admittedOnKeyValues": "Admitido porque os valores-chave correspondem nos dados; a medida é exibida ao lado da confiança do modelo.",
+    "hiddenByFilter_one": "{{count}} linha está oculta pelo filtro.",
+    "hiddenByFilter_other": "{{count}} linhas estão ocultas pelo filtro."
   }
 }

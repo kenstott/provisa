@@ -1,6 +1,7 @@
 {
   "discoverResult": {
     "scopeKinds": "חיפשנו: {{kinds}}.",
+    "keyValues": "חפיפת ערכי מפתח: זוגות שהמודל דירג מ-{{cutoff}}% ועד מתחת ל-{{threshold}}% נמדדו על לכל היותר {{size}} ערכים שונים בכל עמודה. {{measured}} נמדדו, {{admitted}} התקבלו על סמך ערכי מפתח תואמים.",
     "scopeSource": "מקור: טבלה {{count}} מתוך {{domains}}.",
     "scopeSource_other": "מקור: {{count}} טבלאות מתוך {{domains}}.",
     "scopeTargetSame": "יעד: זהה למקור.",
@@ -42,15 +43,9 @@
       "invalid": "אינן מציינות שתי עמודות שהושוו",
       "not_comparable": "בין עמודות ממחלקות שונות",
       "same_column": "מעמודה לעצמה",
-      "primary_key_to_primary_key": "ממפתח ראשי למפתח ראשי",
-      "both_repeating": "ערכים חוזרים בשני הצדדים",
       "existing": "כבר רשומות",
-      "pending": "כבר ממתינות",
       "rejected": "נדחו בעבר",
-      "matches_foreign_key": "תואמות מפתח זר שנמצא בהרצה זו",
-      "out_of_scope": "מחוץ לטבלאות שנבחרו",
-      "weaker": "חוזרות על זוג עמודות שעבורו נשמרה הצעה חזקה יותר",
-      "many_to_many": "כשאף אחת מהעמודות אינה מפתח"
+      "out_of_scope": "מחוץ לטבלאות שנבחרו"
     }
   }
 }

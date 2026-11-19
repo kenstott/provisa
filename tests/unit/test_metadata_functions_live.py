@@ -116,8 +116,8 @@ def _register(conn) -> None:
         source_id="src",
         domain_id="sales",
         schema_name="sales",
-        table_name="drafted",
-        draft=True,
+        table_name="withdrawn_one",
+        withdrawn=True,
     )
     descriptions = {"region": "Where it shipped", "number": "Its number"}
     for table_id, column, primary, alias in _COLUMNS:
@@ -307,7 +307,7 @@ def test_the_views_list_only_what_a_catalog_lists_as_keys(live):
             "FROM meta.table_keys WHERE kind = 'f' AND column_name NOT IN ('_domain_', '_name_') "
             "ORDER BY key_id, position"
         ).fetchall()
-        # A composite key in the target's order; no semantic join; nothing on a draft.
+        # A composite key in the target's order; no semantic join; nothing on a withdrawn table.
         assert [tuple(r) for r in rows] == [
             ("f", 3, 1, 1, "customerId", "id"),
             ("f", 3, 2, 1, "rb", "b"),

@@ -1,6 +1,7 @@
 {
   "discoverResult": {
     "scopeKinds": "対象: {{kinds}}。",
+    "keyValues": "キー値の重なり: モデルが {{cutoff}}% 以上 {{threshold}}% 未満と評価したペアを、各列最大 {{size}} 個の異なる値で測定しました。測定 {{measured}} 件、キー値の一致で採用 {{admitted}} 件。",
     "scopeSource": "ソース: {{domains}} のテーブル {{count}} 件。",
     "scopeSource_other": "ソース: {{domains}} のテーブル {{count}} 件。",
     "scopeTargetSame": "ターゲット: ソースと同じ。",
@@ -42,15 +43,9 @@
       "invalid": "比較対象の 2 列を指定していない",
       "not_comparable": "クラスの異なる列どうし",
       "same_column": "列からその列自身へ",
-      "primary_key_to_primary_key": "主キーから主キーへ",
-      "both_repeating": "両側で値が重複",
       "existing": "登録済み",
-      "pending": "保留中",
       "rejected": "以前に却下",
-      "matches_foreign_key": "この実行で見つかった外部キーと一致",
-      "out_of_scope": "選んだテーブルの範囲外",
-      "weaker": "より強い候補を残した列の組の重複",
-      "many_to_many": "どちらの列もキーではない"
+      "out_of_scope": "選んだテーブルの範囲外"
     }
   }
 }

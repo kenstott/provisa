@@ -38,9 +38,8 @@ def _load(name: str):
     return module
 
 
-# by_design is imported, not loaded again: a second copy in sys.modules would leave a script
-# already holding the first (function_support) apart from the one a later test reads.
-by_design = importlib.import_module("by_design")
+import by_design  # noqa: E402  # the scripts' sibling: one module object, never re-executed
+
 bolt = _load("cypher_tck_bolt")  # cypher_tck's sibling too
 procedures = _load("cypher_tck_procedures")  # and this
 tck = _load("cypher_tck")

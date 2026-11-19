@@ -414,7 +414,9 @@ async def cypher_field_names(state: Any, role: str, schema: str, table: str) -> 
     }
 
 
-async def generate_explore_queries(state: Any, role: str, question: str) -> dict:  # REQ-1852
+async def generate_explore_queries(  # REQ-1852
+    state: Any, role: str, question: str, domains: list[str] | None = None
+) -> dict:
     """Generate ready-to-run queries for EVERY Explore query surface from one natural-language
     question, using the SAME pipeline the NL Explore page runs (REQ-355..359) — an LLM call of
     its own that resolves table selection, joins, and aggregation shape, not a guess. Use this
@@ -433,7 +435,10 @@ async def generate_explore_queries(state: Any, role: str, question: str) -> dict
     already the exact, complete value to navigate with: for jsonapi/openapi it IS the full
     deep-link path/method (do not reassemble it from schema/table names — see REQ-1851), for grpc
     it IS the exact rpc call signature, for sql/graphql/cypher it IS the query text. Use it
-    verbatim; never rewrite, simplify, or re-derive it yourself."""
+    verbatim; never rewrite, simplify, or re-derive it yourself.
+
+    ``domains`` (REQ-2253): the domains to work within, intersected with the role's; ``None`` is
+    every domain the role reaches."""
     require_role(role, state)
     from provisa.core.org_secrets import read_org_api_keys
     from provisa.core.org_settings import resolve_org_config
@@ -465,7 +470,13 @@ async def generate_explore_queries(state: Any, role: str, question: str) -> dict
     # untyped `llm` param relies on) rather than subclassing it.
     llm: Any = ProvisaLLMClient("sql_generation", config=cfg, api_keys=api_keys)
 
-    await run_nl_job(job_id, question, role, state, job_store, llm, strict=strict, deliver=None)
+    from provisa.nl.scope import selected_scope
+    from provisa.security.rights import require_role as _role_of
+
+    scope = selected_scope(_role_of(state.roles, role), domains)
+    await run_nl_job(
+        job_id, question, role, state, job_store, llm, strict=strict, deliver=None, scope=scope
+    )
 
     job = await job_store.get(job_id)
     if job is None:

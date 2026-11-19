@@ -12,13 +12,19 @@
 
 The runtime holds what it attached -- a DuckDB-attached Postgres source keeps a pool of its own --
 so a runtime left open at shutdown kept those connections until the process exited. Close
-releases it and forgets its attaches; a later use builds a new runtime."""
+releases it and forgets its attaches. A use after close is refused by name (``EngineClosed``,
+REQ-1316) and builds nothing; once the next lifespan opens the engine, a use builds a new
+runtime."""
 
-# Requirements: REQ-825
+# Requirements: REQ-825, REQ-1316
 
 from __future__ import annotations
 
+import pytest
+
+from provisa.federation.engine import build_engine
 from provisa.federation.native_backend import NativeEngineBackend
+from provisa.federation.runtime_support import EngineClosed
 
 
 class _Runtime:
@@ -31,7 +37,7 @@ class _Runtime:
 
 class _Backend(NativeEngineBackend):
     def __init__(self) -> None:
-        super().__init__(engine=object())
+        super().__init__(engine=build_engine("duckdb"))
         self.built: list[_Runtime] = []
 
     def _new_runtime(self) -> _Runtime:
@@ -40,15 +46,20 @@ class _Backend(NativeEngineBackend):
         return runtime
 
 
-def test_close_releases_the_runtime_and_a_later_use_builds_a_new_one():
+def test_close_releases_the_runtime_refuses_use_until_open_then_builds_a_new_one():
     backend = _Backend()
     first = backend._store_runtime()
-    backend._attached.add(("src", "public", "orders"))
+    backend._attached.add(("cat", "src", "public", "orders"))
     backend.close(state=None)
     assert first.closed
     assert backend._attached == set()
+    with pytest.raises(EngineClosed, match="duckdb"):
+        backend._store_runtime()
+    assert backend.built == [first]
+    backend.open(state=None)
     second = backend._store_runtime()
     assert second is not first and not second.closed
+    assert backend.built == [first, second]
 
 
 def test_close_with_no_runtime_built_is_a_no_op():

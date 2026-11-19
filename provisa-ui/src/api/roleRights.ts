@@ -66,8 +66,8 @@ export interface TableAccess {
   domain: string;
   name: string;
   table_name: string;
-  /** REQ-1921: the table is a draft, answered to a caller holding the right its preview needs. */
-  draft: boolean;
+  /** REQ-1921: the table is withdrawn, answered to a caller holding the right its preview needs. */
+  withdrawn: boolean;
   columns: {
     name: string;
     scope: string;

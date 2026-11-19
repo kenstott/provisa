@@ -17,7 +17,8 @@
       "webhook_exists": "Webhook「{{name}}」はすでに存在します"
     },
     "ai_models": {
-      "vector_model_fields_required": "各 vector_models エントリには id、provider、dimensions が必要です"
+      "vector_model_fields_required": "各 vector_models エントリには id、provider、dimensions が必要です",
+      "embedding_library_missing": "埋め込みモデル {{model}} は {{provider}} プロバイダーを使用しており、{{extra}} エクストラが必要です（モジュール {{module}} がインストールされていません）: pip install 'provisa[{{extra}}]'。"
     },
     "ai": {
       "endpoint_address_from_server": "AI エンドポイント {{vendor}} はサーバーの環境からアドレスを取得しますが、このサーバー上の組織はそれを使用しません。管理 > AIモデルで独自のアドレスを設定してください。",
@@ -137,7 +138,6 @@
       "unknown_command": "不明なコマンド「{{name}}」です",
       "write_not_admitted": "ロール '{{role}}' はこの書き込みを実行できません。書き込みには、書き込み権限、書き込む各列への書き込みアクセス、およびロールの行フィルターが許可する行が必要です。",
       "write_not_supported": "'{{table}}' は {{operation}} を受け付けません: そのソースでは実行できません",
-      "table_is_draft": "{{table}} は下書きです: ドメインの所有者が公開するまで停止中です",
       "source_unbound": "ソース '{{source}}' は環境 '{{env}}' に接続がありません: バインドするか、親から再コピーしてください",
       "system_catalog_unavailable": "エンジンのカタログ '{{catalog}}' を登録中です。しばらくしてからもう一度お試しください。",
       "domain_not_accessible": "ロール「{{role_id}}」はドメイン「{{domain}}」にアクセスできません",
@@ -154,7 +154,6 @@
       "source_starting": "ソース {{source}} はまだ起動中です。しばらくしてからもう一度お試しください。",
       "source_unavailable": "ソース {{source}} は応答できませんでした。しばらくしてからもう一度お試しください。",
       "view_outside_load_window": "ビュー {{view}} は読み取り時間帯の間だけ読み取れます。次に開くのは {{opens_at}} です。",
-      "view_awaits_rule_rebuild": "入力の行ルールが変更されたため、ビュー {{view}} を再構築しています。このロールは、そのビルドが公開された後に読み取れます。",
       "graphql_body_missing": "リクエストに本文がありません。GraphQL リクエストはクエリを含む JSON オブジェクトです。",
       "graphql_body_not_json": "リクエスト本文が JSON ではありません: {{error}}",
       "graphql_request_not_object": "GraphQL リクエストはクエリを含む JSON オブジェクトです。",
@@ -166,6 +165,8 @@
       "parameter_conflict": "パラメータ {{parameter}} に同時に 2 つの異なる値({{first}} と {{second}})が与えられています。値を 1 つにするか、IN または OR で値を列挙してください。",
       "parameter_calls_over_cap": "このステートメントは {{table}} に {{calls}} 回の呼び出しを必要とします(パラメータに与えた値ごとに 1 回)。1 つのステートメントで行われるのは最大 {{cap}} 回です(設定 {{setting}})。値を減らしてください。",
       "parameter_not_written": "リレーションシップ {{relationship}} はパラメータ {{parameter}} で結合します。パラメータはステートメントが値にバインドするもので、書き込まれることはありません。書き込みで {{relationship}} は作成されません。",
+      "table_is_withdrawn": "{{table}} は取り下げられています: 元に戻されるまで本番環境の外にあります",
+      "view_awaits_rule_rebuild": "入力の行ルールが変更されたため、ビュー {{view}} を再構築しています。このロールは、そのビルドが公開された後に読み取れます。",
       "parameter_required": "テーブル '{{table}}' にはパラメーター {{parameters}} が必要です。それぞれに値を指定してください（SQL ではその列に対する WHERE 条件、GraphQL では引数）。",
       "parameter_wrong_type": "パラメーター {{parameter}} は型 {{type}} の値を取ります。'{{value}}' はその型の値ではありません。"
     },
@@ -192,10 +193,12 @@
       "source_domains_empty": "選択したソースドメインには、検出が読み取るテーブルがありません。",
       "source_not_found": "ソース「{{source_id}}」が見つかりません",
       "source_tables_not_read": "選択したソーステーブル ({{count}} 件) はどれも読み取られません: 検出はシステムドメインのテーブルと停止中のテーブルを除外します。",
+      "source_tables_outside_domains": "選択したソーステーブルは、ドメインフィルターで選択したドメインの外にあります: {{names}}。",
       "table_id_required": "table スコープには table_id が必要です",
       "table_not_found": "テーブル {{table_id}} は登録されていません。",
       "target_domains_empty": "選択したターゲットドメインには、検出が読み取るテーブルがありません。",
       "target_tables_not_read": "選択したターゲットテーブル ({{count}} 件) はどれも読み取られません: 検出はシステムドメインのテーブルと停止中のテーブルを除外します。",
+      "target_tables_outside_domains": "選択したターゲットテーブルは、ドメインフィルターで選択したドメインの外にあります: {{names}}。",
       "unknown_source_type": "不明なソースタイプ：{{type}}",
       "vendor_unknown": "{{vendor}} はここではモデルを一覧表示しません。モデル名を入力してください。"
     },
@@ -328,13 +331,6 @@
     "query": {
       "catalog_view_refused": "{{view}} は meta ドメインのカタログビューであり、データソースのテーブルと同じ 1 つのステートメントでは読み取れません。2 つのステートメントに分けて読み取ってください。",
       "function_unsupported": "{{function}}() には {{dialect}} での対応する形式がありません。"
-    },
-    "redaction": {
-      "rule_invalid": "マスキングルール {{rule}}: {{why}}",
-      "pattern_backtracks": "マスキングルール {{rule}}: このパターンは壊滅的なバックトラックを起こす可能性があります（無制限の繰り返しの中に入れ子になった繰り返し、またはその中で同じテキストから始まりうる選択肢）。その形を使わずに書き直してください。",
-      "pattern_unsupported": "マスキングルール {{rule}}: 組織のルールでは、後方参照、先読みまたは後読み、アトミックグループ、強欲な繰り返し、条件付きグループは使用できません。",
-      "pattern_too_large": "マスキングルール {{rule}}: 繰り返しを展開するとパターンが大きすぎます。繰り返し回数を小さくしてください。",
-      "server_reference": "マスキングルール {{rule}}: このサーバー上の組織はサーバーの環境を参照できません。組織自身の保管庫の ${secret:NAME} を使用してください。"
     },
     "replication": {
       "answer_not_json": "{{table}} のレプリカ用に読み取った応答は有効な JSON ではありません: [{{content_type}}] {{cause}}（応答のバイト {{before_byte}} より前の {{kib}} KiB 内）。",
@@ -565,7 +561,10 @@
       "source_withdrawn": "ソース {{source}} を取り下げました",
       "source_put_back": "ソース {{source}} を元に戻しました",
       "withdrawn_source_not_previewable": "テーブル {{table}} はプレビューできません: ソース {{source}} が取り下げられており、取り下げられたソースを読むエンジンはありません。",
-      "withdrawn_table_not_previewable": "テーブル {{table}} はプレビューできません: 取り下げられていてレプリカを保持しておらず、エンジンはレプリカ経由でしかそのソースを読めません。"
+      "withdrawn_table_not_previewable": "テーブル {{table}} はプレビューできません: 取り下げられていてレプリカを保持しておらず、エンジンはレプリカ経由でしかそのソースを読めません。",
+      "table_not_withdrawn": "テーブル {{table}} は取り下げられていません: 元に戻せるのは取り下げられたテーブルだけです。本番環境のテーブルを別のリージョンへ移すには、そのリージョンを設定してください。",
+      "source_not_withdrawn": "ソース {{source}} は取り下げられていません: 元に戻せるのは取り下げられたソースだけです。リージョンを変えるには、そのリージョンを設定してください。",
+      "put_back_needs_region": "{{object}} を元に戻すにはリージョンを指定します: 1 つ指定するか、リージョンなしなら指定なしにしてください。"
     },
     "secrets": {
       "env_reference_object_locked": "このオブジェクトは運用者のものです。サーバー自身の環境を読み取るため、ここでは変更できません。代わりに独自のものを追加してください。",
@@ -578,7 +577,8 @@
     "security": {
       "unknown_mode": "不明なセキュリティモード「{{mode}}」です",
       "data_residency_refused": "{{object}} のリージョンを設定できません: data_residency の付与は {{value}} を含みません。それを含む data_residency 付与があれば可能です",
-      "data_residency_missing": "{{object}} のリージョンを設定できません: 呼び出し元の data_residency 付与はいずれも {{value}} を含みません。それを含む data_residency 付与があれば可能です"
+      "data_residency_missing": "{{object}} のリージョンを設定できません: 呼び出し元の data_residency 付与はいずれも {{value}} を含みません。それを含む data_residency 付与があれば可能です",
+      "withdraw_residency_refused": "{{object}} を取り下げられません: 保持されている {{value}} を含む data_residency 付与が呼び出し元にありません。それを含む data_residency 付与があれば可能です"
     },
     "settings": {
       "auth_required": "認証が設定されるまで {{field}} は変更できません。",
@@ -744,10 +744,6 @@
     "dbt_sources": {
       "unknown_role": "{{role}} という名前のロールはありません。"
     },
-    "debug_logs": {
-      "pattern_refused": "ログのフィルターパターンは拒否されました: {{why}}",
-      "pattern_exceeded": "ログのフィルターパターンは拒否されました: {{length}} 文字のログ行でステップ上限（{{steps}} ステップ）を超えました。"
-    },
     "dbt": {
       "products": {
         "none_offered": "ソース {{source_id}} には、契約が適用された公開モデルがありません。",
@@ -774,6 +770,9 @@
     "sources": {
       "private_destination": "この組織のソースが到達できるのは公開アドレスだけです。{{host}} は {{address}} で、公開アドレスではありません。",
       "local_path_refused": "この組織のソースは、組織自身のフォルダー外にあるサーバーのディスク上のファイルを読み取りません。{{path}} はそのようなファイルです。ファイルをアップロードするか、{files}/… またはリモートのアドレスで指定してください。"
+    },
+    "egress": {
+      "private_destination": "この組織が呼び出せるのは公開アドレスだけです。{{host}} は {{address}} で、公開アドレスではありません。"
     },
     "sandbox": {
       "wrong_tier": "このサンドボックスは別の場所で提供されています。サンドボックス自身のアドレスから開いてください。",
@@ -907,10 +906,24 @@
       "confined_unavailable": "{{subject}} のプリフライトチェックは実行されませんでした。この組織では隔離されたプロセス内でのみ実行されますが、そのプロセスを起動できませんでした ({{reason}})。",
       "confined_failed": "{{subject}} のプリフライトチェックは判定を返しませんでした。隔離されたプロセスが先に終了しました ({{reason}})。"
     },
+    "redaction": {
+      "rule_invalid": "マスキングルール {{rule}}: {{why}}",
+      "pattern_backtracks": "マスキングルール {{rule}}: このパターンは壊滅的なバックトラックを起こす可能性があります（無制限の繰り返しの中に入れ子になった繰り返し、またはその中で同じテキストから始まりうる選択肢）。その形を使わずに書き直してください。",
+      "pattern_unsupported": "マスキングルール {{rule}}: 組織のルールでは、後方参照、先読みまたは後読み、アトミックグループ、強欲な繰り返し、条件付きグループは使用できません。",
+      "pattern_too_large": "マスキングルール {{rule}}: 繰り返しを展開するとパターンが大きすぎます。繰り返し回数を小さくしてください。",
+      "server_reference": "マスキングルール {{rule}}: このサーバー上の組織はサーバーの環境を参照できません。組織自身の保管庫の ${secret:NAME} を使用してください。"
+    },
+    "debug_logs": {
+      "pattern_refused": "ログのフィルターパターンは拒否されました: {{why}}",
+      "pattern_exceeded": "ログのフィルターパターンは拒否されました: {{length}} 文字のログ行でステップ上限（{{steps}} ステップ）を超えました。"
+    },
     "import": {
       "include_outside_upload": "{{path}} はアップロードされたプロジェクトの外にあります。プロジェクトは自身のファイルのみを読み取ります。",
       "filter_value_refused": "{{value}} は権限フィルターの値にできません。値は文字列、数値、true、false、null、それらのリスト、またはセッション変数です。",
       "filter_operator_refused": "{{operator}} は権限フィルターを変換できる演算子ではありません。"
+    },
+    "relationship": {
+      "name_taken": "名前 '{{name}}' は既にリレーションシップ '{{held_by}}' が使用しています。別の名前を付けてください。"
     }
   }
 }

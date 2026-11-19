@@ -65,29 +65,19 @@ async def registration_region(conn: "Connection", inp, *, is_view: bool) -> str 
     return await new_table_region(conn, inp.source_id, is_view=is_view)
 
 
-async def kept_draft(conn: "Connection", source_id: str, schema_name: str, table_name: str) -> bool:
-    """The draft a table a bulk admin registration writes keeps (REQ-1921): a table it creates is
-    live; one already registered keeps what it has -- a re-sync is not a registration, and draft
-    is a region move's waypoint, which a re-sync leaves as it is."""
-    from provisa.core.repositories import table as table_repo
-
-    held = await table_repo.get_by_name(conn, source_id, schema_name, table_name)
-    return False if held is None else bool(held["draft"])
-
-
-async def kept_placement(conn: "Connection", model) -> tuple[str | None, bool, bool]:
-    """The region, draft and withdrawn an edit of a registered table keeps: the stored ones. A
-    table's region changes only through ``setTableRegion``, its draft only by a region move and
-    its withdrawn only through ``withdrawTable`` / ``putBackTable`` (REQ-1921); an edit that
-    rebuilt the table from the form wrote over them — moving its data (its copies retired
-    wherever it had been kept), or putting it back in service."""
+async def kept_placement(conn: "Connection", model) -> tuple[str | None, bool]:
+    """The region and withdrawn an edit of a registered table keeps: the stored ones. A table's
+    region changes only through ``setTableRegion`` and ``putBackTable``, and its withdrawn only
+    through ``withdrawTable`` / ``putBackTable`` (REQ-1921); an edit that rebuilt the table from
+    the form wrote over them -- moving its data (its copies retired wherever it had been kept),
+    or putting it back in service."""
     from sqlalchemy import select
 
     from provisa.core.schema_org import registered_tables as t
 
     row = (
         await conn.execute_core(
-            select(t.c.region, t.c.draft, t.c.withdrawn).where(
+            select(t.c.region, t.c.withdrawn).where(
                 t.c.source_id == model.source_id,
                 t.c.schema_name == model.schema_name,
                 t.c.table_name == model.table_name,
@@ -98,4 +88,4 @@ async def kept_placement(conn: "Connection", model) -> tuple[str | None, bool, b
         raise LookupError(
             f"table {model.source_id}/{model.schema_name}.{model.table_name} is not registered"
         )
-    return row.region, row.draft, row.withdrawn
+    return row.region, row.withdrawn

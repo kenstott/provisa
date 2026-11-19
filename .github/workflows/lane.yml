@@ -68,6 +68,12 @@ on:
           image, which takes them from there).
         type: boolean
         default: false
+      zaychik-image:
+        description: >-
+          Load the zaychik image the core services start, so the lane never builds it; the caller
+          primes it in a job this one needs (.github/actions/zaychik-image).
+        type: boolean
+        default: false
       image-cache:
         description: Keep the lane's pulled images between runs.
         type: boolean
@@ -312,6 +318,14 @@ jobs:
       - name: Load images
         if: inputs.image-cache && steps.images.outputs.cache-hit == 'true'
         run: zstd -dc ~/images.tar.zst | docker load
+
+      # After the lane's own image cache, so a zaychik:latest kept there from an older zaychik/ is
+      # replaced by the one built from this commit's.
+      - name: Restore the zaychik image
+        if: inputs.zaychik-image
+        uses: ./.github/actions/zaychik-image
+        with:
+          phase: restore
 
       # The itest splunk service bind-mounts the Splunk CIM add-on (docker-compose.test.yml), which
       # is licensed from Splunkbase and gitignored. tests/conftest.py fetches it

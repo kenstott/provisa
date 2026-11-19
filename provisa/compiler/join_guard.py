@@ -1034,13 +1034,22 @@ def _unrelated_in(
                         resolver.resolve(scope, left) if isinstance(left, exp.Column) else set()
                     )
                     touching: set[int] = set()
+                    in_views: set[int] = set()
                     for column in left.find_all(exp.Column):
                         touching |= resolver.touched(scope, column)
-                    # x IN (SELECT y ...) matches the rows around it with the rows selected.
+                        # A column a marked view passes through is that view's column too.
+                        in_views |= {
+                            v.instance for b in resolver.resolve(scope, column) for v in b.views
+                        }
+                    # x IN (SELECT y ...) matches the rows around it with the rows selected, and
+                    # with the view each side is read through, along whose relationship pair()
+                    # relates them.
                     for outer_part in project(own, touching):
                         if outer_part:
                             groups.append(
-                                resolver.all_of([resolver.one(outer_part), resolver.choices(inner)])
+                                resolver.all_of(
+                                    [resolver.one(outer_part | in_views), resolver.choices(inner)]
+                                )
                             )
                     if mine_plain and given:
                         sides = (
@@ -1109,11 +1118,16 @@ def _unrelated_in(
         # A column of the statement around it: a correlated subquery is combined with the
         # instance it reaches out to.
         for column in _own_columns(scope):
+            # A column a marked view passes through is that view's column too: the subquery is
+            # combined with the view's own instance as well, which is what its condition relates
+            # it to along the view's relationships (pair's ``through``).
+            through_views = {v.instance for b in resolver.resolve(scope, column) for v in b.views}
             for instance in resolver.touched(scope, column):
                 if instance in reach:
                     continue  # one of its own, whichever branch of a union it reads it from
                 if own.reach:
-                    groups.append(resolver.all_of([own, resolver.one(frozenset({instance}))]))
+                    outer = frozenset({instance} | (through_views - reach))
+                    groups.append(resolver.all_of([own, resolver.one(outer)]))
 
     # A view is combined with the instances its own SQL reads (that SQL is checked as written).
     edges |= resolver.view_edges

@@ -2985,7 +2985,7 @@
   - architecture.md
   - configuration.md
 - id: REQ-194
-  status: complete
+  status: in-progress
   group: 3. Source Registration & Data Modeling
   category: Naming Convention
   feature: semantic-model-naming
@@ -3079,7 +3079,25 @@
     check, a product''s quality checks and sample views) are read from the runtime''s published build, never
     from the stored names table, so a table registered and granted at once is found and a rename is granted
     under its new name. The stored names table is written after the answer and is read only by the meta
-    domain''s reports, which may show the previous build until that pass has run.'
+    domain''s reports, which may show the previous build until that pass has run. (Amended 2026-11-18, SINGULAR
+    AND PLURAL COME FROM A DICTIONARY LOOKUP, NEVER RULES:) Maintainer 2026-11-18 (''it should be based
+    on a dictionary lookup''; ''you can''t use rules''). Every singular and plural form the naming authority
+    produces comes from an English dictionary lookup: a word in the dictionary takes its dictionary singular
+    or plural; a word not in the dictionary (an abbreviation, a coined table name) is left as written. No
+    suffix rule guesses a form. One inflection helper serves every naming path (relationship fields, aliases,
+    glossary terms). (Amended 2026-11-18, A WORD THE DICTIONARY DOES NOT KNOW TAKES A RULE-BASED FORM:)
+    Maintainer 2026-11-18 (''you could if the word is not known - then use a rule based method''). The dictionary
+    lookup comes first and decides every word it knows; only a word the dictionary does not know takes a
+    rule-based singular or plural. This replaces ''a word not in the dictionary is left as written''. (Amended
+    2026-11-18, THE DICTIONARY IS A GENERAL ENGLISH ONE:) Maintainer 2026-11-18. The dictionary the naming
+    authority looks words up in is a general English noun-forms dictionary (so person and people, loss and
+    losses take their everyday forms), bundled with Provisa under a licence compatible with Provisa''s own;
+    a specialist lexicon is not used as the dictionary. Words it lacks take a rule-based form. (Amended
+    2026-11-18, THE EVERYDAY FORM WINS; A WORD KNOWN ONLY IN ANOTHER SENSE IS NOT INFLECTED:) Maintainer
+    2026-11-18. Where the dictionary gives a noun more than one form, the naming authority takes the one
+    in everyday use (schema to schemas; data stays data, its own singular and plural; person to people).
+    A word the dictionary knows only in an unrelated sense of the same spelling, such as by (read as the
+    noun bye), is not inflected. This is part of the rule, not a per-word list.'
   use_case: Consistent multi-language naming with a single authority ensures client-facing names are predictable
     and independent of physical schema.
   code:
@@ -3741,7 +3759,106 @@
     run''s whole life: while the run is going it shows its progress (requests done of the total, suggestions
     so far, the model) with Stop and Run in background; when the run ends the same block holds its summary,
     collapsed to its first line. Its first line is the line the Relationships page shows. Runs going at
-    once are each a line in that block.'
+    once are each a line in that block. (Amended 2026-11-16, DATE AND TIMESTAMP COLUMNS ARE NEVER KEY CANDIDATES:)
+    Maintainer 2026-11-16 (''dates are supposed to be excluded as key candidates''). Discovery does not
+    compare date or timestamp columns: they are in no compared type group, so no request asks the model
+    about them, no pair is measured on them, and no suggestion, shared dimension or junction is offered
+    on them. The dialog''s count of requests and the run''s summary say so. (Amended 2026-11-18, A RUN SHOWS
+    EVERY PAIR IT FOUND, LEAVING OUT ONLY EXISTING AND NOT-AGAIN PAIRS:) Maintainer 2026-11-18 (''no pairs
+    should drop out. the entire list should be shown except for existing pairs or do not recommend pairs'').
+    Every pair of columns a run finds, by any check, is listed in its results, scored, for a reviewer to
+    decide. The only pairs left out are those already registered as a relationship (a junction''s legs among
+    them) and those marked not to be recommended again. No other rule removes a pair from the list: not
+    both columns repeating their values, not many-to-many, not key-to-key, not a foreign key''s semantic
+    duplicate (shown once, as the foreign key), not a pair still waiting from an earlier run. Two directions
+    of one pair are one row. Rules that judged a pair now only set its score, cardinality and note. This
+    supersedes each earlier rule that left a found pair out for any other reason. [SUPERSEDED 2026-11-18]
+    (Amended 2026-11-18, KEY VALUE OVERLAP ALSO MEASURES THE NAME AND VALUE MATCHES THE MODEL LEFT OUT:)
+    Maintainer 2026-11-18, after a run where the model proposed 2 of the 6 same-name pairs it was shown
+    and the other 4 were never measured or listed. With key value overlap chosen, every compared pair of
+    columns (same type group, classes that meet) that shares a column name, or whose sampled values intersect,
+    is measured on its data and listed with its score, whether or not the model proposed it; the model''s
+    confidence is shown beside the measure where the model gave one, and is empty where it gave none. These
+    pairs follow the rule that a run lists every pair it found except existing and not-again pairs. This
+    widens the earlier rule that the measure covers only the pairs the semantic check proposed in its band.
+    (Amended 2026-11-18, KEY VALUE OVERLAP MEASURES ONLY THE PAIRS THE MODEL RATED IN ITS BAND:) Maintainer
+    2026-11-18 (''only test pairs that are above the threshold is the rule''; ''its important to bound key
+    overlap test because its expensive''). [SUPERSEDES the 2026-11-18 amendment ''key value overlap also
+    measures the name and value matches the model left out'', which is withdrawn.] Key value overlap measures
+    only the pairs the model rated from the run''s cutoff (''Measure from'') up to the threshold; no pair
+    the model did not propose, and none it rated below the cutoff, is read or measured. The cutoff bounds
+    the cost of the check. (Amended 2026-11-18, THE BAND''S UPPER BOUND IS THE PERSON''S TICK THRESHOLD,
+    NOT A FIXED 70%:) Maintainer 2026-11-18 (''its not a fixed 70% - its whatever the ticked threshold is'').
+    The threshold that bounds the key value overlap band from above, and above which a pair is kept without
+    being measured, is the threshold of the person who starts the run (their ''Tick from'' setting, default
+    70%), taken when the run starts and recorded with it; it is not a fixed value. The model is told that
+    threshold. A run measures the pairs the model rated from the run''s cutoff up to that threshold, and
+    no others. (Amended 2026-11-18, KEY VALUE OVERLAP IS A JOIN COUNT IN THE ENGINE:) Maintainer 2026-11-18
+    (''you join on the keys and count matches''). The key value overlap of a pair is measured in the engine
+    by joining the source column to the target column and counting matches: how many of the source column''s
+    distinct values find a match in the target, and how many of the target''s distinct values are matched;
+    whether each column is a key is its distinct count against its row count. No column''s values are pulled
+    out and compared outside the engine. The run''s sample size bounds how many distinct source values are
+    joined. The model''s prompt samples only show what kind of values a column holds; they are each column''s
+    distinct values, not its first rows, and overlap is never judged from them. (Amended 2026-11-18, THE
+    JOIN COUNT READS A LIMITED NUMBER OF ROWS, NEVER A FULL SCAN:) Maintainer 2026-11-18 (''perhaps with
+    a limit. if that would prevent full table scans''). The join count reads at most the run''s sample size
+    of rows from the source column, as a limit the engine stops at, and looks those values up in the target
+    column; no distinct count over a whole column is taken. Whether a column is a key, and the overlap,
+    are judged on the rows read, and the measure says when it was limited. (Amended 2026-11-18, THE SEMANTIC
+    CHECK SCORES TABLE PAIRS, BATCHED; A COLUMN PAIR NOT MENTIONED SCORES ZERO:) Maintainer 2026-11-18.
+    The semantic check asks the model about table pairs, not a pile of columns: each source table with each
+    target table, each side listed with only its columns that can be compared (the compared type groups;
+    dates and timestamps never). For each table pair the model names the column pairs likely to hold the
+    same or similar values, each with a score; a column pair of that table pair it does not mention scores
+    zero. Several table pairs may share one call: the prompt states that it is a batch of separate table
+    pairs and asks for each to be scored on its own, and each answer is read against its own table pair.
+    The scores then feed the key value overlap band as before. This replaces packing many tables'' columns
+    into one request and asking for links anywhere among them. (Amended 2026-11-18, EVERY TABLE IS COMPARED
+    WITH EVERY TABLE: CODE LISTS THE TABLE PAIRS, EACH CALL ANSWERS EVERY PAIR IT LISTS:) Maintainer 2026-11-18
+    (''that''s the right approach ... so the llm calls make sure to compare every table to every table'').
+    A run first lists every table pair of its scope (each source table with each target table that shares
+    a compared type group with it), then batches those table pairs into calls. Each call lists its tables
+    once, with their comparable columns and sample values, and then lists its table pairs explicitly, numbered;
+    the model answers under each number, with the column pairs and their scores or with none. The model
+    never chooses which tables to compare. A listed table pair left without an answer is asked again, and
+    if it is still unanswered the run says so by name; it is never taken as a zero. A column pair of an
+    answered table pair that the answer does not mention scores zero. [SUPERSEDED 2026-11-18] (Amended 2026-11-18,
+    THE SEMANTIC CHECK SEES EACH TABLE''S AND COLUMN''S ALIAS:) Maintainer 2026-11-18 (a poorly named column
+    is found through its description or alias; ''the system allows them to be aliased''). The model is given
+    each table''s and each compared column''s alias, where one is set, beside its physical name, along with
+    its description, bound glossary term and tags, so a column named poorly in its source but aliased or
+    described is judged by that. (Amended 2026-11-18, THE SEMANTIC CHECK NAMES TABLES AND COLUMNS BY THE
+    NAMES PEOPLE USE, NEVER PHYSICAL NAMES:) Maintainer 2026-11-18 (''no one fucking cares about physical
+    names''). [SUPERSEDES the 2026-11-18 amendment ''the semantic check sees each table''s and column''s
+    alias''.] The model is given each table and each compared column by the name people see: its alias where
+    one is set, otherwise its name as the model presents it; a physical name is never sent beside an alias.
+    Its description, bound glossary term and tags go with it. The model''s answers name columns the same
+    way and are mapped back by the run. (Amended 2026-11-18, THE JOIN COUNT READS NON-NULL VALUES ONLY:)
+    Maintainer 2026-11-18 (''non null values only''). The rows the join count reads from the source column,
+    up to the sample size, are rows whose value is not null, and only non-null target values are counted
+    as matches; a null never counts toward the overlap, toward a column being a key, or toward the sample
+    size. (Amended 2026-11-18, EVERY THRESHOLD AND SAMPLE SIZE A RUN USES IS SET IN THE DIALOG:) Maintainer
+    2026-11-18 (''in the ui for relationship discovery ALL thresholds and sample sizes can be modified'').
+    Every threshold and sample size a run uses is shown in the discover dialog with its value and can be
+    changed there before the run starts: the threshold rows start ticked from (Tick from), the cutoff the
+    key value overlap band starts at (Measure from), the share of source values found in a key target at
+    which a pair is a key relationship, the ceiling a pair where neither side is a key scores at most, the
+    number of non-null values the join count reads, and the number of distinct sample values per column
+    the model is shown. None is a fixed constant in the code; each starts at its default, is recorded with
+    the run, and the values a person sets are kept for their next runs. (Amended 2026-11-18, THE RESULTS
+    ARE A STANDARD LIST WITH A DEFAULT SCORE FILTER:) Maintainer 2026-11-18. A run''s results are shown
+    in the standard list (the shared list component with column sort and filters the other lists use), not
+    a table of their own. When they open, a filter of Score at least 10% is applied and shown like any other
+    filter, so it can be changed or cleared; a line says how many rows it hides. The value a person sets
+    is kept for their next runs, as Tick from is. Accept acts only on rows the filter shows. The dialog''s
+    request count shows the calls and table pairs a run will ask about, and says a pair left unanswered
+    may be asked again. (Amended 2026-11-18, THE MEASURE JOIN RUNS GOVERNED, WITHOUT THE APPROVED-RELATIONSHIP
+    CHECK:) Maintainer 2026-11-18. The key value overlap join count runs as one engine query per pair through
+    the governed pipeline as the person who started the run: their role''s rules, masks and row rules apply
+    to each table it reads. Only the check that a join follows an approved relationship is not applied,
+    and only to this discovery measure query, since a candidate pair has no relationship yet. A pair whose
+    tables cannot be read is left unmeasured and says why; it does not fail the run.'
   use_case: Auto-generated FK relationships reduce manual relationship registration overhead while preserving
     steward control.
   code:
@@ -25217,7 +25334,7 @@
   stakeholders:
   - data-engineer
 - id: REQ-812
-  status: in-progress
+  status: complete
   group: 8. Client Access & Protocols
   category: API & Integration
   feature: subscriptions-and-live-queries-sinks
@@ -25249,7 +25366,8 @@
   - tests/unit/test_subscription_sink_header.py
   - tests/integration/test_kafka_publish.py
   - tests/unit/test_subscription_operator_floor.py
-  since: 2026-04
+  - tests/unit/test_subscription_owner_bound.py
+  since: 2026-11
   scenario: 'Given a subscription request with the header "X-Provisa-Sink" set to a Kafka target
 
     When the request is accepted
@@ -47772,7 +47890,14 @@
     the vendor''s deprecation, or a description note where it has none, and in RDF by owl:deprecated true,
     with dcterms:isReplacedBy only when a person named a successor. Its catalog binding is kept and no successor
     is inferred. A table or column missing at the source keeps its model object and its links and raises
-    a finding; its links are no longer dropped and its generated tables no longer deleted automatically.'
+    a finding; its links are no longer dropped and its generated tables no longer deleted automatically.
+    (Amended 2026-11-18, THE DEFINITION ASSISTANT IS GIVEN THE BOUND COLUMNS'' AND TABLES'' OWN DESCRIPTIONS:)
+    Maintainer 2026-11-18. When the assistant drafts a definition for a term grounded to columns, it is
+    given, for each bound column within the selected domains: the column''s description or comment and its
+    type; its table''s name or alias and description; and a few distinct sample values read as the curator
+    through the governed path (masks and redaction applied; none for a sensitive column). It is also given
+    the definitions of related terms that have one, not only their names. The draft still defines the business
+    concept, not the column.'
   use_case: 'Bottom-up bootstrap means the glossary is never empty: every column name seeds the vocabulary, avoiding the failure mode of top-down glossary projects. Concept-level discovery ("show every physical field that means order date"), expert routing for data questions, grounded vocabulary for NL-to-SQL and agent surfaces via the MCP term-lookup tool, and glossary interchange with external catalogs through metadata export.'
   scenario: 'Given tables with columns cust_id, customerId, and CUSTOMER_KEY registered in the semantic
     layer
@@ -48212,8 +48337,8 @@
   - pgwire.md
   - security.md
 - id: REQ-1395
-  status: in-progress
-  since: 2026-08
+  status: complete
+  since: 2026-11
   group: 13. Multi-Tenancy & Organizations
   category: Org AI Model Configuration
   feature: organizations-customization
@@ -48244,6 +48369,12 @@
   docs:
   - api-reference.md
   - architecture.md
+  tests:
+  - tests/unit/test_ai_keys_org_only.py
+  - tests/unit/test_ai_clients_explicit.py
+  - tests/unit/test_vector_keys_org_only.py
+  - tests/integration/test_org_secrets.py
+  - provisa-ui/src/__tests__/AiModelsTab.test.tsx
 - id: REQ-1402
   status: complete
   since: 2026-08
@@ -57508,7 +57639,15 @@
     names are), the cardinality (many-to-many) and the two ends filled in, to confirm. The two relationships
     stay: all three are offered in SQL, GraphQL and Cypher. A discovery run that finds both legs of a junction
     proposes the combined relationship as one suggestion, and accepting a shared dimension (REQ-413) creates
-    its edge the same way.'
+    its edge the same way. (Amended 2026-11-18, A JUNCTION JOINED BY ITS OWN REGISTERED RELATIONSHIPS KEEPS
+    ITS CYPHER NODE:) Maintainer 2026-11-18. A declared junction table''s node and its edges are left out
+    of the Cypher graph only when no registered relationship of its own joins it. A junction that registered
+    relationships join (as after Join through, which keeps the two hops beside the joined relationship)
+    keeps its node and those edges in Cypher, so all three relationships are offered there, as in SQL and
+    GraphQL. (Amended 2026-11-18, A RELATIONSHIP NOT SERVED TO CYPHER DOES NOT KEEP A JUNCTION''S NODE:)
+    Lead 2026-11-18, clarifying the junction-node rule: only relationships served to Cypher count as joining
+    a junction; a relationship excluded from Cypher (such as the meta catalog''s own hop rows into the glossary
+    junctions, which serve GraphQL only) does not keep the junction''s node.'
   use_case: A steward walks a glossary hierarchy three levels deep in one Cypher pattern, and filters
     the edges by an attribute stored on the junction row, instead of traversing a reified node whose half-hops
     make variable-length depth meaningless.
@@ -75278,7 +75417,7 @@
   - tests/unit/test_config_stamp.py
   notes: 'Roadmap audit 2026-10-13: delivered; verified against the code'
 - id: REQ-1921
-  status: in-progress
+  status: complete
   group: 1. Access Governance & Security
   category: Data Residency
   feature: regions-and-residency-residency-rules
@@ -75525,7 +75664,7 @@
   - REQ-544
   - REQ-1915
   - REQ-1920
-  since: 2026-10
+  since: 2026-11
   notes: 'Accepted by the maintainer 2026-10-03 for the feature-complete line; audit found it not built. Roadmap audit 2026-10-13: delivered; verified against the code'
   code:
   - provisa/core/regions.py
@@ -75534,6 +75673,18 @@
   - tests/unit/test_regions_model.py
   - tests/unit/test_region_defaults.py
   - provisa-ui/src/hooks/__tests__/useRegionChoice.test.tsx
+  - tests/unit/test_withdrawn.py
+  - tests/unit/test_withdrawn_reached_by_no_statement.py
+  - tests/unit/test_withdrawn_row_read_by_steward.py
+  - tests/unit/test_withdrawn_graphql_rest_reach_nothing.py
+  - tests/unit/test_withdrawn_not_exported.py
+  - tests/unit/test_withdrawn_view_build.py
+  - tests/unit/test_config_withdrawn.py
+  - tests/integration/test_withdrawn_e2e.py
+  - provisa-ui/src/pages/__tests__/SchemaExplorer.withdrawn.test.tsx
+  - provisa-ui/src/components/list/__tests__/PanelWithdraw.test.tsx
+  - provisa-ui/src/pages/sources/__tests__/SourceDetailPanel.withdraw.test.tsx
+  - provisa-ui/src/components/__tests__/GovernedTableViewer.withdrawn.test.tsx
   docs:
   - regions.md
   - security.md
@@ -75804,7 +75955,22 @@
     REQ-1960) asks for none. (Amended 2026-11-02, Shopify:) Maintainer 2026-11-02: Shopify''s Admin GraphQL
     API is the next branded source, a GraphQL brand over the remote GraphQL source like GitHub and GitLab:
     a per-store URL carrying the API version, the X-Shopify-Access-Token header, its shipped schema, and
-    Shopify''s query-cost limits priced at table registration as GitLab''s are.'
+    Shopify''s query-cost limits priced at table registration as GitLab''s are. (Amended 2026-11-18, THE
+    SPARQL SOURCE CARRIES BRANDED SOURCES TOO; WIKIDATA IS THE FIRST:) Maintainer 2026-11-18 (''it would
+    just be a branded sparql endpoint''). The generic SPARQL source is a third carrier of branded sources.
+    Wikidata is a branded SPARQL source: its preset is the Wikidata query service endpoint, needing no credential,
+    and everything else is the generic SPARQL source as it is (its User-Agent and result-format handling
+    included); tables are defined as on any SPARQL source. (Amended 2026-11-18, WIKIDATA: STARTER REFERENCE
+    TABLES, A TABLE OF ANY CLASS, REPLICATED BY DEFAULT:) Maintainer 2026-11-18 (''I think your more expanded
+    approach was fine''; ''you need to be able to add other classes''). Beyond the preset, the Wikidata
+    source offers: starter reference tables people join to (countries with their ISO codes, capital and
+    population; currencies; languages; administrative regions; organizations with identifiers such as LEI,
+    ticker and ISIN), each a bounded query exposed as a typed table; and a table of the instances of any
+    class, chosen by searching classes by name or browsing their broader and narrower classes (subclass
+    of), with the properties its instances most use offered as columns, the class''s instance count shown,
+    and a filter asked for when the class is too large to read whole. Every query stays within the public
+    endpoint''s time limit. Wikidata tables are replicated on a schedule by default rather than read live.
+    Glossary terms may be grounded to Wikidata items.'
   use_case: A team wants its Stripe, HubSpot or GitHub data beside its databases. A preset over a generic
     API source reaches it with no container to run, no Docker prerequisite on a desktop install, and on
     every engine, where a Postgres instance per source would be a heavy way to run a periodic fetch.
@@ -76144,20 +76310,54 @@
     more. COMMANDS: the other surfaces derive their command operations from the role''s GraphQL command
     fields, never from the raw command list (REQ-1156). A field on Query, a query-kind command, is a read:
     REST `GET` with the same where, order_by, limit and offset parameters tables take; a gRPC RPC returning
-    rows; a JSON:API read under its conventions for non-resource operations. A field on Mutation is a
-    write: REST `POST`, a gRPC RPC, and a JSON:API write. Arguments and return types follow the GraphQL
-    field. A command a role''s GraphQL schema does not offer is not offered on any other surface. Every
-    call is still checked by the one command admission in the executor, as defence in depth. NAMES follow
-    each API''s own conventions. GraphQL names are translated by one deterministic function per surface:
-    proto3 style for gRPC (PascalCase messages, services and RPCs; snake_case fields), JSON:API''s member-name
-    conventions, and the REST surface''s path and parameter conventions for OpenAPI. Two GraphQL names
-    that would collide after translation are refused at schema build, with an error naming both. gRPC
-    field numbers stay stable across regenerations (REQ-1903). (Amended 2026-10-03, THE DERIVATION IS
-    THE CONTRACT, NOT NECESSARILY THE EXECUTION PATH:) gRPC, JSON:API and OpenAPI are derived from GraphQL
-    in what they offer, in their names and in their shapes. A surface may compile a request straight to
-    semantic SQL as an optimization, as gRPC table reads do, provided it produces the same semantic SQL
-    as the equivalent GraphQL request would, and so the same governed result. That equivalence is held
-    by a test for each optimized path, which compares the two lowerings.'
+    rows; a JSON:API read under its conventions for non-resource operations. A field on Mutation is a write:
+    REST `POST`, a gRPC RPC, and a JSON:API write. Arguments and return types follow the GraphQL field.
+    A command a role''s GraphQL schema does not offer is not offered on any other surface. Every call is
+    still checked by the one command admission in the executor, as defence in depth. NAMES follow each API''s
+    own conventions. GraphQL names are translated by one deterministic function per surface: proto3 style
+    for gRPC (PascalCase messages, services and RPCs; snake_case fields), JSON:API''s member-name conventions,
+    and the REST surface''s path and parameter conventions for OpenAPI. Two GraphQL names that would collide
+    after translation are refused at schema build, with an error naming both. gRPC field numbers stay stable
+    across regenerations (REQ-1903). (Amended 2026-10-03, THE DERIVATION IS THE CONTRACT, NOT NECESSARILY
+    THE EXECUTION PATH:) gRPC, JSON:API and OpenAPI are derived from GraphQL in what they offer, in their
+    names and in their shapes. A surface may compile a request straight to semantic SQL as an optimization,
+    as gRPC table reads do, provided it produces the same semantic SQL as the equivalent GraphQL request
+    would, and so the same governed result. That equivalence is held by a test for each optimized path,
+    which compares the two lowerings. (Amended 2026-11-16, REST AND GRPC READ A ROW''S RELATIONSHIPS NESTED,
+    AS GRAPHQL DOES:) Maintainer 2026-11-16. Every surface reads a row with its relationships nested, as
+    the GraphQL it is derived from does. REST''s fields parameter takes dot-paths through relationships
+    (building_permit.permit_id), the form its node includes already take; gRPC''s read_mask takes relationship
+    paths and the response fills the relationship''s field the proto already declares; JSON:API uses include
+    with fields per type. The NL page derives its gRPC, JSON:API and OpenAPI panels from the GraphQL with
+    the relationships nested in each surface''s own form, so each panel shows a request its real endpoint
+    accepts and the nested data it returns. (Amended 2026-11-18, JSON:API INCLUDED FIELDS AND DOTTED INCLUDES
+    ON ROW READS; A GRPC FIELD PER RELATIONSHIP:) Maintainer 2026-11-18. A JSON:API row read honours fields[<type>]
+    for included resources and dotted includes that go more than one relationship deep, as a group-by read
+    already does. In gRPC each relationship has its own field on the row message, named by its GraphQL relationship
+    name, so a read_mask path names the relationship itself and every relationship to the same table can
+    be read; field numbers stay stable for fields that already exist. (Amended 2026-11-18, A JSON:API READ
+    AND ITS INCLUDES NEED NO PRIMARY KEY; THEY FOLLOW APPROVED RELATIONSHIPS:) Maintainer 2026-11-18 (''pk
+    should be irrelevant. it should just work on approved relationships''). No JSON:API read or include
+    is refused because a table declares no primary key. An include follows the approved relationship, and
+    an included resource''s id is the value of the column that relationship points at. A root resource''s
+    id is its primary key where one is declared; otherwise the column an approved relationship points at;
+    otherwise its position in the response. (Amended 2026-11-18, A ONE-TO-MANY INCLUDE NEVER COLLAPSES ITS
+    RESOURCES:) Lead 2026-11-18, refining the no-primary-key rule so no row is lost: an included resource
+    reached by a many-to-one relationship is identified by the column that relationship points at; one reached
+    by a one-to-many relationship is identified by its primary key where one is declared, otherwise by its
+    position among its parent''s included resources, so every child row stays a resource of its own. (Amended
+    2026-11-18, A ONE-TO-MANY INCLUDE''S POSITION ID CARRIES ITS PARENT''S ID:) Lead 2026-11-18, making
+    the one-to-many rule exact: an included resource with no declared primary key, reached by a one-to-many
+    relationship, has the id ''<parent id>:<n>'', n its 0-based position among that parent''s included resources
+    (a '':'' or ''\\'' in the parent id escaped), so children of different parents never share an id; resource
+    linkage uses the same ids. (Amended 2026-11-18, A REAL IDENTIFIER WHERE ONE EXISTS; NO SINGLE-RESOURCE
+    LOOKUP WHERE NONE DOES:) Maintainer 2026-11-18 (''if graphql can do it, why can''t other apis''; ''i
+    think not offering it is better for that scenario''). Reads and includes never require a key. A root
+    resource''s id is, in order: its declared primary key; otherwise the column an approved relationship
+    points at; otherwise a column named id; otherwise its position in the response. A single-resource lookup
+    (GET /<type>/<id>) is offered only for a type whose id is a real identifier (one of the first three),
+    never a position; for a type identified only by position the lookup is not offered, in the API and its
+    spec.'
   use_case: An operator who assigns a command to a role, hides a column, or moves an object to another
     domain changes what every API offers in one place, and no surface can offer what another surface hides.
   scenario: 'Given a query-kind command find_pets in domain petstore, assigned to role analyst
@@ -89704,7 +89904,23 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     could still extend fails by name ("variable-length path exceeded the maximum depth N") instead of returning
     a cut result with the statement.path_cut warning; SPARQL property paths keep the warning. graph.depth_limit
     defaults to 1000, a very large fixed number, since a Cypher walk never repeats a relationship and so
-    ends on its own long before it.'
+    ends on its own long before it. (Amended 2026-11-16, A DROP ONTO A RESULT WITH UNLABELLED NODES LABELS
+    THEM FROM THE SCHEMA, THEN JOINS:) Maintainer 2026-11-16 (''you could just do this when dragging a node
+    onto the result and you have anonymous nodes in the query''). When a node or label is dropped onto a
+    result whose query has nodes with no label, the drop is not refused: the unlabelled endpoints are given
+    their labels from the schema, one MATCH per label pair the relationship joins within the selected domains,
+    unioned, each returning its endpoints; the dropped label then joins from those labelled nodes with OPTIONAL
+    MATCH. The rewritten query is put in the editor and run, with a one-line note that the endpoints were
+    labelled. Show children uses the same rewrite, and both keep to the selected domains. (Amended 2026-11-16,
+    ONE PATH FINDER FOR DROPS IN CYPHER AND SPARQL, WITHIN THE SELECTED DOMAINS:) Maintainer 2026-11-16
+    (''the cypher path finding ... is different than sparql, and further it should restrict the path to
+    nodes within the selected domains''). A drop onto a result finds the path to the dropped class with
+    one path finder shared by the Cypher and SPARQL views (one implementation, each view writing the path
+    in its own language). The path uses only classes in the selected domains: it never passes through a
+    class of an unselected domain (the meta domain''s registered tables included). It joins the dropped
+    class along one path from the result''s nodes, so the query never combines branches with no condition
+    relating them; when no path exists within the selected domains, the drop is refused by name and nothing
+    is added.'
   use_case: >-
     A knowledge-graph team queries the governed model with the language and RDF clients it already
     uses, and gets the same rows, rules and routing as a SQL or Cypher query, with nothing copied
@@ -95595,7 +95811,12 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     acts. With an external identity provider, it decides, and Provisa enforces whatever its claims say.
     With none, the local default applies an expiry cancel at once -- the date was agreed when the grant
     was made, so it needs no second approval -- as the matching ordinary removal, attributed to the expiry;
-    access ends within the run''s interval. Provisa holds no separate read-time check of an expiry date.'
+    access ends within the run''s interval. Provisa holds no separate read-time check of an expiry date.
+    (Amended 2026-11-18, AN EMAIL NAMES A KNOWN PERSON ONLY BY AN ADDRESS VERIFIED AT SIGN-IN:) Maintainer
+    2026-11-18. Each sign-in records whether the person''s email address was verified by the identity provider.
+    A write that names a person by email resolves to a known person only by an address recorded as verified;
+    an address typed by an account holder (a local account''s email) or one never verified names no one,
+    so the write waits as a pending grant and attaches at a verified sign-in with that address.'
   use_case: Alice holds the viewer role with tables [finance.revenue]; she sees only that table of everything
     viewer can see, while another viewer with no list sees all of it.
   scenario: 'Given two people with the viewer role, one whose grant lists tables [finance.revenue]
@@ -96941,7 +97162,7 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
 
     '
 - id: REQ-2246
-  status: in-progress
+  status: complete
   since: 2026-11
   target: 2026-Q4
   group: 10. UI & Admin Surfaces
@@ -97000,6 +97221,7 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
   tests:
   - tests/unit/test_mcp_sip_mode.py
   - provisa-ui/src/__tests__/McpServerTab.test.tsx
+  - tests/unit/test_mcp_tools_by_role.py
 - id: REQ-2247
   status: in-progress
   target: 2027-Q1
@@ -97167,7 +97389,7 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
   - tests/unit/test_retired_not_served.py
   - tests/unit/test_meta_seed_retires_undeclared.py
 - id: REQ-2249
-  status: in-progress
+  status: complete
   target: 2026-Q4
   group: 4. Source Connectors
   category: Source Connectors
@@ -97231,6 +97453,14 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     Then the @change function is not called
 
     '
+  tests:
+  - tests/unit/test_code_resolver_change.py
+  - tests/unit/test_code_resolver_set.py
+  - tests/unit/test_code_resolver_view_inputs.py
+  - tests/integration/test_code_resolver_change_e2e.py
+  - tests/integration/test_transform_view_reader_rules_e2e.py
+  - provisa-ui/src/components/relationships/__tests__/codeResolver.test.tsx
+  since: 2026-11
 - id: REQ-2250
   status: proposed
   group: 10. UI & Admin Surfaces
@@ -97313,3 +97543,17 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     patterns''). A data product''s Access section lists each relationship in the product with the same set
     of links as the relationship''s detail panel, one per surface that exposes it, built by the one shared
     component and query builder; it replaces the Cypher-only link per relationship type it shows today.'
+- id: REQ-2253
+  status: proposed
+  group: 3. Source Registration & Data Modeling
+  category: Registration & Governance
+  feature: semantic-model-relationships
+  priority: MUST
+  type: behavioral
+  description: 'Maintainer 2026-11-18 (''all AI assisted features should narrow their concerns to the filtered
+    domains (for example the ontology relationships assistant should only work against the selected domains)'').
+    Every AI-assisted feature works only within the domains selected in the domain filter when it is started:
+    what it sends the model, what it proposes and what it writes are limited to the tables, columns, terms
+    and relationships of those domains. This covers, among others, relationship discovery, the ontology''s
+    relationship suggestions and term finding, natural-language query, generated descriptions and any other
+    feature that asks a model. Nothing outside the selected domains is read, sent or changed.'

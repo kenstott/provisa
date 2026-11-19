@@ -133,7 +133,14 @@ async def test_discovery_runs_for_the_named_table_as_a_stored_run_jev_asked_by_n
     import json
 
     from provisa.api.admin import discovery
-    from tests.unit.test_discovery_run_api import _REQUEST, _World, _store, _suggestion, _table
+    from tests.unit.test_discovery_run_api import (
+        _REQUEST,
+        _World,
+        _named,
+        _store,
+        _suggestion,
+        _table,
+    )
 
     db = await _store(f"sqlite+pysqlite:///{tmp_path / 'store.db'}")
     await _table(
@@ -188,15 +195,31 @@ async def test_discovery_runs_for_the_named_table_as_a_stored_run_jev_asked_by_n
         ("customer_id", "id")
     ]
     assert found["semantics"]["suggested"] == 1
-    # Jev is asked about what the model put at the threshold or above, and scored it under.
-    assert (found["semantics"]["scored"], found["semantics"]["scored_below_threshold"]) == (1, 1)
+    # Jev re-scores every semantic proposal of the model, before the band is judged on the
+    # model's confidence (REQ-413, amended 2026-11-16), and scored both under the threshold.
+    assert (found["semantics"]["scored"], found["semantics"]["scored_below_threshold"]) == (2, 2)
     # Every proposal it read is stored with the run, with both scores.
     stored = (await discovery.list_proposals(_REQUEST, found["run_id"]))["proposals"]
     assert found["proposals"] == stored
-    assert [(r["source_column"], r["confidence"], r["scored"], r["reason"]) for r in stored] == [
+    named = _named(stored)
+    assert [(r["source_column"], r["confidence"], r["scored"], r["reason"]) for r in named] == [
         ("customer_id", 0.95, 0.31, None),
-        ("id", 0.3, None, "below_threshold"),
+        ("id", 0.3, 0.31, "below_threshold"),
     ]
+    # The column pair of a listed table pair the model did not name is listed too, scored zero
+    # (REQ-413, amended 2026-11-18): orders' own id and customer_id.
+    assert [
+        (
+            r["source_table_id"],
+            r["source_column"],
+            r["target_table_id"],
+            r["target_column"],
+            r["confidence"],
+            r["reason"],
+        )
+        for r in stored
+        if r not in named
+    ] == [(7, "id", 7, "customer_id", 0.0, "below_threshold")]
     # Jev was asked with the tables and columns by name and their context, no sample values.
     ((jev_state, questions),) = asked
     assert [t["table"]["name"] for t in jev_state["tables"]] == ["orders", "customers"]

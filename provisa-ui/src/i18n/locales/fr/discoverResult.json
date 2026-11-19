@@ -1,6 +1,7 @@
 {
   "discoverResult": {
     "scopeKinds": "Recherché : {{kinds}}.",
+    "keyValues": "Recouvrement des valeurs de clé : les paires que le modèle a notées de {{cutoff}} % à moins de {{threshold}} % ont été mesurées sur au plus {{size}} valeurs distinctes par colonne. {{measured}} mesurées, {{admitted}} admises sur des valeurs de clé concordantes.",
     "scopeSource": "Source : {{count}} table de {{domains}}.",
     "scopeSource_other": "Source : {{count}} tables de {{domains}}.",
     "scopeTargetSame": "Cible : la même que la source.",
@@ -42,15 +43,9 @@
       "invalid": "ne nommant pas deux colonnes comparées",
       "not_comparable": "entre colonnes de classes différentes",
       "same_column": "d'une colonne vers elle-même",
-      "primary_key_to_primary_key": "clé primaire vers clé primaire",
-      "both_repeating": "valeurs répétées des deux côtés",
       "existing": "déjà enregistrées",
-      "pending": "déjà en attente",
       "rejected": "rejetées auparavant",
-      "matches_foreign_key": "correspondant à une clé étrangère trouvée dans cette exécution",
-      "out_of_scope": "hors des tables choisies",
-      "weaker": "répétant une paire de colonnes pour laquelle une proposition plus forte a été gardée",
-      "many_to_many": "sans clé dans aucune des deux colonnes"
+      "out_of_scope": "hors des tables choisies"
     }
   }
 }

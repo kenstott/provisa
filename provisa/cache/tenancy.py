@@ -76,16 +76,16 @@ def cache_tenant(state: Any) -> str:
     return f"{cache_place(state)}:m{state.model_stamp}"
 
 
-async def purge_when_drafted(state: Any, draft_ids: frozenset[int]) -> int:
-    """REQ-1921: when a table or view has gone draft since the runtime's last build, remove the
-    cached responses of this region's place — no reader is answered from a draft. Entries are kept by
-    place, not by table, so the place is purged whole (every model it held). Records the draft
-    set for the next build. Returns how many entries went."""
+async def purge_when_withdrawn(state: Any, withdrawn_ids: frozenset[int]) -> int:
+    """REQ-1921: when a table or view has been withdrawn since the runtime's last build, remove
+    the cached responses of this region's place -- no reader is answered from a withdrawn table.
+    Entries are kept by place, not by table, so the place is purged whole (every model it held).
+    Records the withdrawn set for the next build. Returns how many entries went."""
     runtime = state._active_runtime()
     purged = 0
-    if draft_ids - runtime.draft_table_ids:
+    if withdrawn_ids - runtime.withdrawn_table_ids:
         purged = await purge_acting_place(state)
-    runtime.draft_table_ids = draft_ids
+    runtime.withdrawn_table_ids = withdrawn_ids
     return purged
 
 

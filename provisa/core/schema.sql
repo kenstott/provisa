@@ -249,11 +249,9 @@ CREATE TABLE IF NOT EXISTS registered_tables (
     role_ttl    JSONB NOT NULL DEFAULT '{}',  -- REQ-1907: role -> TTL seconds; effective = max(cache_ttl, role_ttl)
     replicate   INTEGER,  -- REQ-826: NULL = inherit source; -1 never, N > 0 once it passes N statements per interval, 0 always
     region      TEXT,     -- REQ-1921: the org region its data lives in; NULL = no region
-    -- REQ-1921: the waypoint of a move between regions -- out of service while set, read and
-    -- written nowhere, offered in no schema, copied nowhere. Set by the move, never chosen.
-    draft       BOOLEAN NOT NULL DEFAULT FALSE,
     -- REQ-1921: withdrawn -- out of production while set: serves no role, attached by no engine,
-    -- keeps no replica; its definition, grants and relationships stay. Put back by one action.
+    -- keeps no replica; its definition, grants and relationships stay. Put back by one action,
+    -- naming a region: the waypoint of a move between regions.
     withdrawn   BOOLEAN NOT NULL DEFAULT FALSE,
     load_protected BOOLEAN,  -- REQ-1141: NULL = inherit source; overrides scheduled-refresh-only load protection
     off_peak_window TEXT,    -- REQ-1141: per-table "HH:MM-HH:MM" window override; NULL = inherit source
@@ -317,7 +315,6 @@ ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS status_at TIMESTAMPTZ;
 ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS role_ttl JSONB NOT NULL DEFAULT '{}';
 ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS replicate INTEGER;
 ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS region TEXT;
-ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS draft BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS withdrawn BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS load_protected BOOLEAN;
 ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS off_peak_window TEXT;
@@ -332,6 +329,9 @@ ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS hot BOOLEAN;
 ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS promotions JSONB NOT NULL DEFAULT '[]';
 ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS query_template TEXT;
 ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS relay_pagination BOOLEAN;
+ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS mv_rebuild_every INTEGER;
+ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS code_resolver TEXT;
+ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT now();
 
 CREATE TABLE IF NOT EXISTS table_columns (
     id          SERIAL PRIMARY KEY,
@@ -547,6 +547,7 @@ ALTER TABLE relationships ADD COLUMN IF NOT EXISTS status_by TEXT;
 ALTER TABLE relationships ADD COLUMN IF NOT EXISTS status_at TIMESTAMPTZ;
 ALTER TABLE relationships ADD COLUMN IF NOT EXISTS hide_target_meta BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE relationships ADD COLUMN IF NOT EXISTS parameters JSONB NOT NULL DEFAULT '{}';
+ALTER TABLE relationships ADD COLUMN IF NOT EXISTS code_resolver TEXT;
 
 -- Migration: add materialize columns if missing
 DO $$ BEGIN
@@ -1212,6 +1213,8 @@ CREATE TABLE IF NOT EXISTS mv_build_state (
     change_rebuilt_at TIMESTAMPTZ
 );
 ALTER TABLE mv_build_state ADD COLUMN IF NOT EXISTS index_state JSONB;
+ALTER TABLE mv_build_state ADD COLUMN IF NOT EXISTS change_cursor TEXT;
+ALTER TABLE mv_build_state ADD COLUMN IF NOT EXISTS change_rebuilt_at TIMESTAMPTZ;
 
 -- REQ-1317: governed metric definitions — named aggregates with query-time grain.
 -- from_fact marks a metric auto-registered from a fact spec's measure (REQ-1320).
@@ -1699,6 +1702,8 @@ ALTER TABLE tracked_functions ADD COLUMN IF NOT EXISTS output_columns JSONB;
 ALTER TABLE tracked_functions ADD COLUMN IF NOT EXISTS requires_approval BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE tracked_functions ADD COLUMN IF NOT EXISTS writes_table TEXT;
 ALTER TABLE tracked_functions ADD COLUMN IF NOT EXISTS language_bindings JSONB NOT NULL DEFAULT '{}';
+ALTER TABLE tracked_functions ADD COLUMN IF NOT EXISTS source_type TEXT;
+ALTER TABLE tracked_functions ADD COLUMN IF NOT EXISTS exposed_as_table BOOLEAN;
 
 -- Tracked webhooks exposed as GraphQL mutations (REQ-211)
 CREATE TABLE IF NOT EXISTS tracked_webhooks (
@@ -2227,9 +2232,29 @@ CREATE TABLE IF NOT EXISTS user_directory (
     email_opt_in BOOLEAN NOT NULL DEFAULT TRUE,
     -- REQ-413: the score from which a discovery run's proposals start ticked, the person's own.
     discovery_threshold DOUBLE PRECISION NOT NULL DEFAULT 0.7,
+    -- REQ-413: Key value overlap, the person's own: chosen, its measure cutoff, its sample size.
+    discovery_key_values BOOLEAN NOT NULL DEFAULT TRUE,
+    discovery_measure_cutoff DOUBLE PRECISION NOT NULL DEFAULT 0.2,
+    discovery_sample_size INTEGER NOT NULL DEFAULT 10000,
+    -- REQ-413 (amended 2026-11-18): the share of values in a key target at which a pair is a key
+    -- relationship, the most a pair scores when neither side is a key, the sample values shown
+    -- per column: the person's own, each set in the discover dialog.
+    discovery_contained_at DOUBLE PRECISION NOT NULL DEFAULT 0.95,
+    discovery_shared_ceiling DOUBLE PRECISION NOT NULL DEFAULT 0.6,
+    discovery_samples_per_column INTEGER NOT NULL DEFAULT 5,
+    -- REQ-413: the filter on a run's Score column, the person's own: JSON; NULL when cleared.
+    discovery_score_filter TEXT DEFAULT '{"op": "ge", "a": "10"}',
     updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 ALTER TABLE user_directory ADD COLUMN IF NOT EXISTS email_opt_in BOOLEAN NOT NULL DEFAULT TRUE;
+ALTER TABLE user_directory ADD COLUMN IF NOT EXISTS discovery_threshold DOUBLE PRECISION NOT NULL DEFAULT 0.7;
+ALTER TABLE user_directory ADD COLUMN IF NOT EXISTS discovery_key_values BOOLEAN NOT NULL DEFAULT TRUE;
+ALTER TABLE user_directory ADD COLUMN IF NOT EXISTS discovery_measure_cutoff DOUBLE PRECISION NOT NULL DEFAULT 0.2;
+ALTER TABLE user_directory ADD COLUMN IF NOT EXISTS discovery_sample_size INTEGER NOT NULL DEFAULT 10000;
+ALTER TABLE user_directory ADD COLUMN IF NOT EXISTS discovery_contained_at DOUBLE PRECISION NOT NULL DEFAULT 0.95;
+ALTER TABLE user_directory ADD COLUMN IF NOT EXISTS discovery_shared_ceiling DOUBLE PRECISION NOT NULL DEFAULT 0.6;
+ALTER TABLE user_directory ADD COLUMN IF NOT EXISTS discovery_samples_per_column INTEGER NOT NULL DEFAULT 5;
+ALTER TABLE user_directory ADD COLUMN IF NOT EXISTS discovery_score_filter TEXT DEFAULT '{"op": "ge", "a": "10"}';
 
 -- REQ-1382: attributes the org records for a member, beside what their identity provider
 -- supplies. Bound as session variables (current_setting('provisa.<name>')); where the provider

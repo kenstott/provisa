@@ -1,6 +1,7 @@
 {
   "discoverResult": {
     "scopeKinds": "尋找內容：{{kinds}}。",
+    "keyValues": "鍵值重疊：模型評分由 {{cutoff}}% 至低於 {{threshold}}% 的配對，已按每欄最多 {{size}} 個不同值進行測量。已測量 {{measured}} 個，因鍵值相符而採納 {{admitted}} 個。",
     "scopeSource": "來源：{{domains}} 中的 {{count}} 個表。",
     "scopeSource_other": "來源：{{domains}} 中的 {{count}} 個表。",
     "scopeTargetSame": "目標：與來源相同。",
@@ -42,15 +43,9 @@
       "invalid": "未指明兩個被比較的欄",
       "not_comparable": "位於不同類別的欄之間",
       "same_column": "由某欄指向其本身",
-      "primary_key_to_primary_key": "主索引鍵到主索引鍵",
-      "both_repeating": "兩邊均有重複值",
       "existing": "已登記",
-      "pending": "已在等候",
       "rejected": "之前已拒絕",
-      "matches_foreign_key": "與今次執行中找到的外部索引鍵相同",
-      "out_of_scope": "不在所選表之內",
-      "weaker": "與已保留更強提議的欄對重複",
-      "many_to_many": "兩欄都不是鍵"
+      "out_of_scope": "不在所選表之內"
     }
   }
 }

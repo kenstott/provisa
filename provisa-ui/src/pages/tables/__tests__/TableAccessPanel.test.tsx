@@ -22,7 +22,7 @@ const ACCESS: TableAccess = {
   domain: "claims",
   name: "claims.claims",
   table_name: "claims",
-  draft: false,
+  withdrawn: false,
   columns: [
     {
       name: "amount",
@@ -72,9 +72,10 @@ const ACCESS: TableAccess = {
   ],
 };
 
-// Table 2 is a draft (REQ-1921): answered to a caller holding the right its preview needs.
+// Table 2 is withdrawn (REQ-1921): answered to a caller holding the right its preview needs.
 vi.mock("../../../api/roleRights", () => ({
-  fetchTableAccess: (id: number) => Promise.resolve({ ...ACCESS, table_id: id, draft: id === 2 }),
+  fetchTableAccess: (id: number) =>
+    Promise.resolve({ ...ACCESS, table_id: id, withdrawn: id === 2 }),
 }));
 
 describe("who can read a table's columns (REQ-2162)", () => {
@@ -95,13 +96,13 @@ describe("who can read a table's columns (REQ-2162)", () => {
     expect(steward).toHaveTextContent("standard role");
   });
 
-  it("marks a draft's access as a draft's, and no other table's", async () => {
+  it("marks a withdrawn table's access as withdrawn, and no other table's", async () => {
     const { unmount } = render(<TableAccessPanel tableId={1} />);
     await screen.findByTestId("table-access-roles");
-    expect(screen.queryByTestId("table-access-draft")).toBeNull();
+    expect(screen.queryByTestId("table-access-withdrawn")).toBeNull();
     unmount();
     render(<TableAccessPanel tableId={2} />);
-    expect(await screen.findByTestId("table-access-draft")).toHaveTextContent("Draft");
+    expect(await screen.findByTestId("table-access-withdrawn")).toHaveTextContent("Withdrawn");
   });
 
   it("asks nothing of a table not yet saved", () => {

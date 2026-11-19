@@ -23,6 +23,8 @@ import {
   fetchDiscoveryRuns,
   fetchDiscoveryModels,
   countDiscoveryRun,
+  fetchRunProposals,
+  type RunProposal,
 } from "../../api/admin";
 
 const REGISTERED = {
@@ -97,7 +99,25 @@ vi.mock("../../api/admin", async (importOriginal) => ({
   startDiscoveryRun: vi.fn(),
   fetchDiscoveryRun: vi.fn(),
   fetchDiscoveryRuns: vi.fn(),
-  fetchRunProposals: vi.fn().mockResolvedValue({ proposals: [], threshold: 0.7, kept_at: 0.7 }),
+  fetchRunProposals: vi
+    .fn()
+    .mockResolvedValue({ proposals: [], threshold: 0.7, kept_at: 0.7, score_filter: null }),
+  // REQ-413: the run settings of a person who has set none; the form waits for them.
+  fetchDiscoverySettings: vi.fn().mockImplementation(async () => {
+    const defaults = {
+      threshold: 0.7,
+      samples_per_column: 5,
+      key_values: {
+        chosen: true,
+        cutoff: 0.2,
+        sample_size: 10000,
+        contained_at: 0.95,
+        shared_ceiling: 0.6,
+      },
+      score_filter: { op: "ge", a: "10" },
+    };
+    return { ...defaults, defaults };
+  }),
 }));
 vi.mock("../../api/actions", () => ({
   fetchActions: vi.fn().mockResolvedValue({ functions: [], webhooks: [] }),
@@ -158,7 +178,7 @@ describe("RelationshipsPage: no suggested section", () => {
 });
 
 describe("RelationshipsPage: a run's result leaves the page without a suggested section", () => {
-  it("renders the banner above the registered relationships and no suggestions after the run", async () => {
+  it("renders the run's one line above the registered relationships and no suggestions after the run", async () => {
     vi.mocked(fetchDiscoveryModels).mockResolvedValue({
       assigned: {
         vendor: "anthropic",
@@ -175,6 +195,8 @@ describe("RelationshipsPage: a run's result leaves the page without a suggested 
       requests: 0,
       requests_are: "upper_bound",
       by_group: {},
+      table_pairs: 0,
+      table_pairs_per_request: 27,
       model: null,
       source_tables: 2,
       target_tables: 2,
@@ -192,6 +214,12 @@ describe("RelationshipsPage: a run's result leaves the page without a suggested 
         target_tables: null,
         vendor: null,
         model: null,
+        threshold: 0.7,
+        samples_per_column: 5,
+        measure_cutoff: null,
+        sample_size: null,
+        contained_at: null,
+        shared_ceiling: null,
       },
       model: null,
       requests_total: 0,
@@ -217,15 +245,34 @@ describe("RelationshipsPage: a run's result leaves the page without a suggested 
         foreign_keys: { found: 3, suggested: 3 },
       },
     });
+    // The run's three suggestions wait for a decision in its result.
+    const waiting = [7, 8, 9].map((id) => ({ id, decidable: true, reason: null }) as RunProposal);
+    vi.mocked(fetchRunProposals).mockResolvedValue({
+      proposals: waiting,
+      threshold: 0.7,
+      kept_at: 0.7,
+      score_filter: null,
+    });
     render(<RelationshipsPage />);
     await screen.findByTestId("relationships-split");
     fireEvent.click(screen.getByTestId("rels-discover"));
     await waitFor(() => expect(screen.getByTestId("discover-run")).toBeEnabled());
     fireEvent.click(screen.getByTestId("discover-run"));
-    // The dialog is closed; the result stays on the page.
+    // The dialog is closed; the page keeps one line about the run (REQ-413, amended 2026-11-16),
+    // never its summary.
     await screen.findByTestId("discover-progress");
     fireEvent.keyDown(screen.getByTestId("discover-dialog"), { key: "Escape" });
-    const banner = await screen.findByTestId("rels-discover-result", {}, { timeout: 4000 });
+    // Going when the dialog closed; read about a second later, it has ended, and the line
+    // comes back once its suggestions waiting are counted.
+    await waitFor(
+      () =>
+        expect(screen.getByTestId("rels-discover-line")).toHaveTextContent(
+          "Finished. 3 suggestions wait for a decision.",
+        ),
+      { timeout: 4000 },
+    );
+    const banner = screen.getByTestId("rels-discover-line");
+    expect(screen.queryByTestId("rels-discover-result")).toBeNull();
 
     const page = banner.parentElement as HTMLElement;
     expect(page).toHaveClass("page-sticky-head");
@@ -234,7 +281,7 @@ describe("RelationshipsPage: a run's result leaves the page without a suggested 
     const at = (el: Element | null) => items.indexOf(el as Element);
     expect(at(banner)).toBeGreaterThan(-1);
     expect(at(split.closest(".split-pane"))).toBeGreaterThan(at(banner));
-    // The registered relationship is listed beneath the banner.
+    // The registered relationship is listed beneath the line.
     expect(within(split).getByText(/orders/)).toBeInTheDocument();
     // The run stored three suggestions: they are decided in its result, never listed here.
     await waitFor(() => expect(vi.mocked(fetchDiscoveryRun)).toHaveBeenCalled());

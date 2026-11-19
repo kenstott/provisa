@@ -157,8 +157,8 @@ def _registered_view_name(view: str, gov: "GovernanceContext") -> str | None:
 
 def _said_names(row: dict) -> set[str]:
     """Every name a view's SQL could give the registered table ``row``: its table name and alias,
-    bare and qualified by its domain or its schema — the one rule a served table and a draft are
-    named by (:mod:`provisa.compiler.naming`)."""
+    bare and qualified by its domain or its schema — the one rule a served table and a withdrawn
+    one are named by (:mod:`provisa.compiler.naming`)."""
     from provisa.compiler.naming import (  # noqa: PLC0415
         apply_sql_name,
         semantic_relation_names,
@@ -175,29 +175,29 @@ def _said_names(row: dict) -> set[str]:
 
 def require_inputs_in_service(view_sql: str, state: Any) -> None:
     """REQ-1921: a view's inputs are in service for its readers. A view is answered from the
-    tables its SQL names; one of them out of service (a draft) is offered to no reader — through
-    a view either. Raises :class:`TableIsDraft` naming it, as a statement naming it directly is
-    refused. The view stays as it is: it is answered again once its input is released.
+    tables its SQL names; one of them withdrawn is offered to no reader -- through a view either.
+    Raises :class:`TableIsWithdrawn` naming it. The view stays as it is: it is answered again
+    once its input is put back.
 
     A name a table in service also answers to is that table's."""
     import sqlglot  # noqa: PLC0415
     from sqlglot import exp  # noqa: PLC0415
 
-    from provisa.compiler.definitions import TableIsDraft  # noqa: PLC0415
+    from provisa.compiler.definitions import TableIsWithdrawn  # noqa: PLC0415
 
-    drafts = state.role_build_inputs["draft_tables"]
-    if not drafts:
+    withdrawn = state.role_build_inputs["withdrawn_tables"]
+    if not withdrawn:
         return
     served: set[str] = set()
     for row in state.tables:
         served |= _said_names(row)
     out_of_service = {
-        said: row["table_name"] for row in drafts for said in _said_names(row) - served
+        said: row["table_name"] for row in withdrawn for said in _said_names(row) - served
     }
     for table in sqlglot.parse_one(view_sql, read="postgres").find_all(exp.Table):
         qualified = f"{table.db}.{table.name}" if table.db else table.name
         if qualified in out_of_service:
-            raise TableIsDraft(out_of_service[qualified])
+            raise TableIsWithdrawn(out_of_service[qualified])
 
 
 def require_inputs_reached(view_sql: str, gov: "GovernanceContext") -> None:

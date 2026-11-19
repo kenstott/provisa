@@ -17,7 +17,8 @@
       "webhook_exists": "Webhook '{{name}}' already exists"
     },
     "ai_models": {
-      "vector_model_fields_required": "each vector_models entry requires id, provider, and dimensions"
+      "vector_model_fields_required": "each vector_models entry requires id, provider, and dimensions",
+      "embedding_library_missing": "The embedding model {{model}} uses the {{provider}} provider, which needs the {{extra}} extra (module {{module}} is not installed): pip install 'provisa[{{extra}}]'."
     },
     "ai": {
       "key_required": "{{vendor}} has no API key. Add one under Admin, AI Models.",
@@ -137,7 +138,6 @@
       "unknown_command": "Unknown command '{{name}}'",
       "write_not_admitted": "Role '{{role}}' may not make this write: a write needs the write right, write access to every column it writes, and rows the role's row filter admits.",
       "write_not_supported": "'{{table}}' does not take {{operation}}: its source cannot carry it",
-      "table_is_draft": "{{table}} is a draft: out of service until its domain's owners release it",
       "source_unbound": "Source '{{source}}' has no connection in environment '{{env}}': bind it, or re-copy it from the parent",
       "system_catalog_unavailable": "The engine's '{{catalog}}' catalog is being registered. Try again shortly.",
       "domain_not_accessible": "Role '{{role_id}}' does not reach domain '{{domain}}'",
@@ -154,7 +154,6 @@
       "source_starting": "The source {{source}} is still starting. Try again in a moment.",
       "source_unavailable": "The source {{source}} could not answer. Try again shortly.",
       "view_outside_load_window": "The view {{view}} can be read only within its read window. It next opens at {{opens_at}}.",
-      "view_awaits_rule_rebuild": "The view {{view}} is being built again for a change to the row rules on its inputs. This role can read it once that build has published.",
       "graphql_body_missing": "The request has no body: a GraphQL request is a JSON object with a query.",
       "graphql_body_not_json": "The request body is not JSON: {{error}}",
       "graphql_request_not_object": "A GraphQL request is a JSON object with a query.",
@@ -166,6 +165,8 @@
       "parameter_conflict": "The parameter {{parameter}} is given two different values at once ({{first}} and {{second}}). Give it one value, or list the values with IN or OR.",
       "parameter_calls_over_cap": "The statement needs {{calls}} calls to {{table}}, one for each value given to its parameters, and at most {{cap}} are made for one statement (the setting {{setting}}). Give fewer values.",
       "parameter_not_written": "The relationship {{relationship}} joins on the parameter {{parameter}}, which a statement binds to a value and never writes. A write does not make {{relationship}}.",
+      "table_is_withdrawn": "{{table}} is withdrawn: out of production until it is put back",
+      "view_awaits_rule_rebuild": "The view {{view}} is being built again for a change to the row rules on its inputs. This role can read it once that build has published.",
       "parameter_required": "Table '{{table}}' requires the parameter(s) {{parameters}}: give each a value (a WHERE condition on its column in SQL, an argument in GraphQL).",
       "parameter_wrong_type": "The parameter {{parameter}} takes a value of type {{type}}; '{{value}}' is not one."
     },
@@ -191,10 +192,12 @@
       "source_domains_empty": "The chosen source domains hold no table discovery reads.",
       "source_not_found": "Source '{{source_id}}' not found",
       "source_tables_not_read": "None of the chosen source tables ({{count}}) is read: discovery leaves out a table of a system domain or one out of service.",
+      "source_tables_outside_domains": "The chosen source tables are outside the domains selected in the domain filter: {{names}}.",
       "table_id_required": "table_id required for table scope",
       "table_not_found": "Table {{table_id}} is not registered.",
       "target_domains_empty": "The chosen target domains hold no table discovery reads.",
       "target_tables_not_read": "None of the chosen target tables ({{count}}) is read: discovery leaves out a table of a system domain or one out of service.",
+      "target_tables_outside_domains": "The chosen target tables are outside the domains selected in the domain filter: {{names}}.",
       "unknown_source_type": "Unknown source type: {{type}}",
       "vendor_unknown": "{{vendor}} lists no models here; enter the model name.",
       "answer_unreadable": "The model's answer held no readable list."
@@ -328,13 +331,6 @@
     "query": {
       "catalog_view_refused": "{{view}} is a catalog view of the meta domain and cannot be read in one statement with a table of a data source: read them in two statements.",
       "function_unsupported": "{{function}}() has no form on {{dialect}}."
-    },
-    "redaction": {
-      "rule_invalid": "Redaction rule {{rule}}: {{why}}",
-      "pattern_backtracks": "Redaction rule {{rule}}: the pattern can backtrack catastrophically (a repeat nested inside an unbounded repeat, or alternatives inside one that can begin with the same text). Rewrite it without that shape.",
-      "pattern_unsupported": "Redaction rule {{rule}}: an organization's rule cannot use backreferences, lookahead or lookbehind, atomic groups, possessive repeats or conditional groups.",
-      "pattern_too_large": "Redaction rule {{rule}}: the pattern is too large once its repeats are counted out. Use a smaller repeat count.",
-      "server_reference": "Redaction rule {{rule}}: an organization on this server cannot reference the server's environment. Use ${secret:NAME} from the organization's own vault."
     },
     "replication": {
       "answer_not_json": "The answer read for the replica of {{table}} is not valid JSON: [{{content_type}}] {{cause}} (in the {{kib}} KiB before byte {{before_byte}} of the answer).",
@@ -565,7 +561,10 @@
       "source_withdrawn": "Source {{source}} withdrawn",
       "source_put_back": "Source {{source}} put back",
       "withdrawn_source_not_previewable": "Table {{table}} cannot be previewed: its source {{source}} is withdrawn, and no engine reads a withdrawn source.",
-      "withdrawn_table_not_previewable": "Table {{table}} cannot be previewed: it is withdrawn and keeps no replica, and the engine reads its source only through one."
+      "withdrawn_table_not_previewable": "Table {{table}} cannot be previewed: it is withdrawn and keeps no replica, and the engine reads its source only through one.",
+      "table_not_withdrawn": "Table {{table}} is not withdrawn: only a withdrawn table is put back. To move a table in production to another region, set its region.",
+      "source_not_withdrawn": "Source {{source}} is not withdrawn: only a withdrawn source is put back. To change its region, set its region.",
+      "put_back_needs_region": "Putting back {{object}} names a region: give one, or none for no region."
     },
     "secrets": {
       "env_reference_object_locked": "This object is the operator's: it reads the server's own environment and cannot be changed here. Add one of your own instead.",
@@ -578,7 +577,8 @@
     "security": {
       "unknown_mode": "unknown security mode '{{mode}}'",
       "data_residency_refused": "The region of {{object}} cannot be set: the data_residency grant does not cover {{value}}; a data_residency grant listing it allows it",
-      "data_residency_missing": "The region of {{object}} cannot be set: no data_residency grant of the caller's covers {{value}}; a data_residency grant listing it allows it"
+      "data_residency_missing": "The region of {{object}} cannot be set: no data_residency grant of the caller's covers {{value}}; a data_residency grant listing it allows it",
+      "withdraw_residency_refused": "{{object}} cannot be withdrawn: no data_residency grant of the caller's covers {{value}}, where it is kept; a data_residency grant listing it allows it"
     },
     "settings": {
       "auth_required": "{{field}} cannot be changed until authentication is configured.",
@@ -744,10 +744,6 @@
     "dbt_sources": {
       "unknown_role": "No role named {{role}} exists."
     },
-    "debug_logs": {
-      "pattern_refused": "The log filter pattern is refused: {{why}}",
-      "pattern_exceeded": "The log filter pattern is refused: it exceeded its step limit ({{steps}} steps) on a log line of {{length}} characters."
-    },
     "dbt": {
       "products": {
         "none_offered": "Source {{source_id}} has no public model with an enforced contract.",
@@ -774,6 +770,9 @@
     "sources": {
       "private_destination": "This org's sources may reach only public addresses; {{host}} is {{address}}, which is not one.",
       "local_path_refused": "This organization's sources read no file on the server's own disk outside its own folder; {{path}} is one. Upload the file, or name it as {files}/… or by a remote address."
+    },
+    "egress": {
+      "private_destination": "This org may call only public addresses; {{host}} is {{address}}, which is not one."
     },
     "sandbox": {
       "wrong_tier": "This sandbox is served elsewhere; open it from its own address.",
@@ -907,10 +906,24 @@
       "confined_unavailable": "The preflight of {{subject}} was not run: in this organization it runs only in a confined process, and one could not be started ({{reason}}).",
       "confined_failed": "The preflight of {{subject}} returned no verdict: its confined process ended first ({{reason}})."
     },
+    "redaction": {
+      "rule_invalid": "Redaction rule {{rule}}: {{why}}",
+      "pattern_backtracks": "Redaction rule {{rule}}: the pattern can backtrack catastrophically (a repeat nested inside an unbounded repeat, or alternatives inside one that can begin with the same text). Rewrite it without that shape.",
+      "pattern_unsupported": "Redaction rule {{rule}}: an organization's rule cannot use backreferences, lookahead or lookbehind, atomic groups, possessive repeats or conditional groups.",
+      "pattern_too_large": "Redaction rule {{rule}}: the pattern is too large once its repeats are counted out. Use a smaller repeat count.",
+      "server_reference": "Redaction rule {{rule}}: an organization on this server cannot reference the server's environment. Use ${secret:NAME} from the organization's own vault."
+    },
+    "debug_logs": {
+      "pattern_refused": "The log filter pattern is refused: {{why}}",
+      "pattern_exceeded": "The log filter pattern is refused: it exceeded its step limit ({{steps}} steps) on a log line of {{length}} characters."
+    },
     "import": {
       "include_outside_upload": "{{path}} is outside the uploaded project; a project reads only its own files.",
       "filter_value_refused": "{{value}} cannot be a value in a permission filter: a value is a string, a number, true, false, null, a list of these, or a session variable.",
       "filter_operator_refused": "{{operator}} is not an operator a permission filter can be converted with."
+    },
+    "relationship": {
+      "name_taken": "The name '{{name}}' is taken by relationship '{{held_by}}'. Name this one otherwise."
     }
   }
 }

@@ -61,6 +61,7 @@ import { TermRoleBadge, TermStatusBadge } from "./TermRoleBadge";
 import { changes, draftOf, type Change, type TermDraft, type TermTags } from "./termDraft";
 import { useAssignTag, useUnassignTag } from "../../hooks/useTagQueries";
 import { refusalError } from "../../i18n/serverMessage";
+import { useViewDomains } from "../../lib/viewDomains";
 
 type Option = { value: string; label: string };
 
@@ -96,6 +97,7 @@ export function TermEditForm({
   onTermCreated: () => void;
 }) {
   const { t } = useTranslation();
+  const viewDomains = useViewDomains();
   const { actingRoles } = useAuth();
   const { tables } = useTables({ inPage: true });
   const { relationships } = useRelationships();
@@ -169,7 +171,7 @@ export function TermEditForm({
   const claimOptions = useMemo(() => {
     const out: (Option & { from: ColumnTerm | null })[] = [];
     for (const tb of tables) {
-      if (tb.draft) continue;
+      if (tb.withdrawn) continue;
       for (const c of tb.columns ?? []) {
         const key = columnKey(tb.id, c.columnName);
         if (own.has(key)) continue;
@@ -185,7 +187,7 @@ export function TermEditForm({
   const tableOptions = useMemo(
     () =>
       tables
-        .filter((tb) => !tb.draft)
+        .filter((tb) => !tb.withdrawn)
         .map((tb) => ({ value: String(tb.id), label: relationName(tb) }))
         .sort((a, b) => a.label.localeCompare(b.label)),
     [tables],
@@ -264,7 +266,7 @@ export function TermEditForm({
   const generate = async () => {
     setGenerating(true);
     try {
-      const text = await generateGlossaryDefinition(term.id);
+      const text = await generateGlossaryDefinition(term.id, viewDomains);
       if (text) set({ definition: text });
     } catch (e) {
       setRefused({ field: "fields", message: e instanceof Error ? e.message : String(e) });

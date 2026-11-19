@@ -40,6 +40,7 @@ const rel: Relationship = {
   autoSuggested: false,
   disableCypher: false,
   sameEntity: false,
+  withdrawn: false,
   parameters: [],
   viaTableId: null,
   viaTableName: null,
@@ -69,6 +70,7 @@ function panel(r: Relationship) {
       functions={[]}
       tableDomainById={{}}
       domainsEnabled={false}
+      actingRole={null}
     />,
   );
 }

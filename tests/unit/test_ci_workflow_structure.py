@@ -47,6 +47,7 @@ _OWNED = {
     r"pip install[^\n]*mkdocs": "docs-site-deps",
     r"security import\b": "apple-signing",
     r"key: (\$\{\{ inputs.key-prefix \}\})?trino-plugins-": "trino-plugins",
+    r"KEY: (\$\{\{ inputs.key-prefix \}\})?provisa-functions-": "trino-plugins",
     r"key: pyodide-downloads-": "pyodide-downloads",
     r"gh release create": "ensure-release",
     r"rm -rf /usr/share/dotnet": "free-runner-disk",
@@ -1070,7 +1071,7 @@ def test_the_reusable_workflows_are_checked_only_after_every_action_is():
     assert level_zero == {
         job for job, body in jobs.items() if str(body.get("name", "")).startswith("action / ")
     }
-    assert len(level_zero) == 13
+    assert len(level_zero) == 14
     assert jobs["level-1"]["needs"] == ["lane-results", "release-results"]
 
 
