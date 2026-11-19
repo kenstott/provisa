@@ -15,7 +15,7 @@
     },
     "welcome": {
       "title": "开始向导式浏览？",
-      "body": "五分钟的快速浏览：连接一个数据源，然后用你已在使用的语言或工具查询它。随时可以退出——工具栏中的指南针可随时重新打开浏览。",
+      "body": "五分钟内连接一个数据源，然后用您已在使用的语言或工具查询它。可以随时退出。工具栏中的指南针可重新打开导览。",
       "never": "不再显示",
       "later": "以后再说",
       "start": "开始浏览",
@@ -24,7 +24,7 @@
     },
     "menu": {
       "title": "深入探索",
-      "intro": "一个模型承载你的数据、元数据和处理,保持同步,并在各处复用。选择一个主题:每个主题都是一段独立的简短导览,点击“完成”即可返回此处。工具栏中的指南针可随时重新打开此菜单。",
+      "intro": "一个模型承载您的数据、元数据和处理，保持同步并随处复用。每个主题都是一段简短的独立导览，点击“完成”即可回到这里。工具栏中的指南针可随时重新打开此菜单。",
       "completed": "已完成",
       "steps": "步骤数:{{count}}",
       "coreTour": "从头开始",
@@ -45,7 +45,7 @@
       },
       "quality": {
         "title": "数据质量",
-        "summary": "我的真实数据好吗？质量检查器、契约、画像运行、漂移，以及随数据产品一起发布的结果。"
+        "summary": "使用质量检查器、契约、剖析器运行和漂移检测来检查真实数据，并通过数据产品传递结果。"
       },
       "query": {
         "title": "随处查询",
@@ -53,7 +53,7 @@
       },
       "testdata": {
         "title": "测试数据与环境",
-        "summary": "如何获得安全、真实的数据用于构建和测试：环境、画像器、虚构值和合成数据。"
+        "summary": "环境、剖析器、虚构值和合成数据为您提供安全、逼真的数据，用于构建和测试。"
       },
       "publish": {
         "title": "发布",
@@ -67,7 +67,7 @@
     "steps": {
       "step0": {
         "title": "欢迎，来看看导览",
-        "description": "🧭 此指南针可随时重新打开导览。要离开，请点击应用或按 <kbd>Esc</kbd>。<p><strong>Provisa</strong> 是一个统一的模型，承载你的数据、数据的元数据以及两者之间的处理。同一个模型既定义你的数据资产，也负责运行它，并且不介入数据路径。</p><p>因此<strong>一切保持同步</strong>，<strong>复用是内置的</strong>：关系、指标、脱敏或规则只需定义一次，就为每个接口、环境和角色所用。重复的表和指标、重复的命令和规则，甚至两个提供相同数据的系统，都并排出现在模型里，所以重复很容易发现，也很容易清除。</p><p>它小巧、可扩展、可组合。它嵌入你现有的体系旁边，为杂乱带来秩序。</p><p>🎯 <strong>核心是一个简短的练习：</strong>连接一个数据库，然后用你已在使用的语言或工具查询它，或者直接用自然语言提问。大约五分钟，<strong>直接在你的桌面上</strong>完成，无需搭建任何基础设施。</p><div class='tour-tags'><span>自然语言</span><span>SQL</span><span>GraphQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span><span>MCP</span><span>Postgres · pgwire</span><span>Neo4j · Bolt</span><span>JDBC · Java/JVM</span><span>Arrow Flight SQL · ADBC</span><span>DuckDB · airport</span></div><p>之后的一切都是<strong>深入探索</strong>，准备好时从菜单中选择。</p><p>准备好了吗？让我们连接一个数据源。→</p>"
+        "description": "🧭 这个指南针可随时重新打开导览。要退出，请点击应用或按 <kbd>Esc</kbd>。<p><strong>Provisa</strong> 是一个模型，承载您的数据、数据的元数据以及两者之间的处理。同一个模型既定义您的数据资产，也负责运营它，并且不介入数据路径。</p><p>因此<strong>一切保持同步</strong>，<strong>复用是内置的</strong>：关系、指标、脱敏或规则只需定义一次，即可服务于每个接口、环境和角色。重复的表和指标、重复的命令和规则，甚至提供相同数据的两个系统，都会在模型中并列呈现，因此重复一目了然，也很容易消除。</p><p>它紧凑、可扩展、可组合，并与您现有的系统并存。</p><p>🎯 <strong>核心只是一个简短的练习：</strong>连接一个数据库，然后用您已在使用的语言或工具查询它，或用自然语言提问。大约五分钟，<strong>直接在您的桌面上完成</strong>，无需搭建任何基础设施。</p><div class='tour-tags'><span>自然语言</span><span>SQL</span><span>GraphQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span><span>MCP</span><span>Postgres · pgwire</span><span>Neo4j · Bolt</span><span>JDBC · Java/JVM</span><span>Arrow Flight SQL · ADBC</span><span>DuckDB · airport</span></div><p>之后的所有内容都是<strong>深入探索</strong>，准备好后可从菜单中选择。</p><p>接下来，连接一个数据源。→</p>"
       },
       "stepPolly": {
         "title": "认识 Polly,你的设置助手",
@@ -79,7 +79,7 @@
       },
       "step2": {
         "title": "注册一个数据源",
-        "description": "➕ 新连接从这个按钮开始：PostgreSQL、Snowflake、MongoDB、REST API、CSV，以及其余的 79 个连接器。"
+        "description": "➕ 新连接从这个按钮开始：PostgreSQL、Snowflake、MongoDB、REST API、CSV，以及 79 个连接器中的其余选项。"
       },
       "step3": {
         "title": "79 种数据源类型，14 个类别",
@@ -96,7 +96,7 @@
       },
       "step5": {
         "title": "选择列与策略",
-        "description": "选择数据源、架构和表，然后选择列，每一列都有自己的策略：<ul><li>🎭 <strong>脱敏</strong>：按角色屏蔽值</li><li>👁️ <strong>可见性</strong>：显示或隐藏该列</li><li>🏷️ <strong>别名</strong>：为模型重命名</li></ul><p>设置就这么简单：一个数据源加几张表。🚀 现在来查询它。→</p>"
+        "description": "选择数据源、架构和表，然后选择列，每一列都有自己的策略：<ul><li>🎭 <strong>脱敏</strong>：按角色隐去值</li><li>👁️ <strong>可见性</strong>：显示或隐藏该列</li><li>🏷️ <strong>别名</strong>：为模型重命名</li></ul><p>一个数据源加几张表就是全部设置。🚀 接下来，查询它。→</p>"
       },
       "stepQuery": {
         "title": "用你的方式查询",
@@ -108,7 +108,7 @@
       },
       "step7": {
         "title": "GraphQL（九种界面之二）",
-        "description": "◈ 同样的查询，用 GraphQL 表达：<p><code>{ inquiries { groupBy { user }, count } }</code></p><p>对你的关系进行分组和聚合：🎯 一个端点，📖 自描述的架构。</p><p>🔌 从<strong>任意 GraphQL 客户端</strong>调用，例如 Apollo、Relay 或 urql。启用联邦功能后，Provisa 会作为子图接入 <strong>Apollo 超图（supergraph）</strong>，让你的联邦模型与现有的图组合在一起。</p>"
+        "description": "◈ 同一个查询，用 GraphQL 编写：<p><code>{ inquiries { groupBy { user }, count } }</code></p><p>它沿着您的关系进行分组和聚合，🎯 只有一个终结点，📖 架构自带文档。</p><p>🔌 可从<strong>任意 GraphQL 客户端</strong>调用，例如 Apollo、Relay 或 urql。启用联邦后，Provisa 会作为<strong>子图加入 Apollo 超级图</strong>，让您的联邦模型与现有图组合在一起。</p>"
       },
       "step8": {
         "title": "Cypher（九种界面之三）",
@@ -116,7 +116,7 @@
       },
       "step9": {
         "title": "gRPC（九种界面之四）",
-        "description": "⚙️ 每个注册的实体同时也是一个 gRPC 服务：<p><code>rpc QueryInquiries(...) returns (...)</code></p><p>从任意 gRPC 客户端调用它：📐 强类型，🚀 高吞吐量。</p>"
+        "description": "⚙️ 每个已注册的实体同时也是一个 gRPC 服务：<p><code>rpc QueryInquiries(...) returns (...)</code></p><p>任何 gRPC 客户端都可以调用它，📐 强类型，🚀 高吞吐。</p>"
       },
       "step10": {
         "title": "JSON:API（九种界面之五）",
@@ -136,19 +136,19 @@
       },
       "stepNotebook": {
         "title": "笔记本（九种界面之九）",
-        "description": "📓 笔记本标签页就是 JupyterLite：在你浏览器中运行的 Jupyter 笔记本。第一个单元格完成登录，下一个单元格把同一条查询读成 DataFrame，可以画成图表或与其他数据关联。<p>⬇️ 下载这个笔记本，它可以在任何桌面 Jupyter 中打开，同样的单元格会像在这里一样从 Provisa 读取。</p><p>还剩一种界面：替你写出查询的那种。→</p>"
+        "description": "📓 Notebook 选项卡是 JupyterLite，一个在浏览器中运行的 Jupyter 笔记本。第一个单元格负责登录，下一个单元格将同一条语句读取为 DataFrame，用于绘图或与其他数据连接。<p>⬇️ 下载该笔记本后，可在任意桌面版 Jupyter 中打开，相同的单元格会像这里一样从 Provisa 读取数据。</p><p>最后一个接口会为您编写查询。→</p>"
       },
       "step13": {
-        "title": "直接提问：替你写出查询的界面",
-        "description": "💬 <em>“按物种统计宠物数量”</em><p><strong>这些查询语言你一种都不用学。</strong>用日常语言提问，Provisa 会一次把你的问题编译成全部七种：下面每个面板都是同一句话写成的 SQL、GraphQL、Cypher、gRPC、JSON:API 和 REST。</p><p>它不能直接打开 Python 或笔记本，但你随时可以让 Polly 把查询移到其中任何一个。</p><p>🔑 实时的自然语言查询使用你自己的 LLM 密钥；这里是一个预先准备的示例。</p><p>✅ 一个模型支撑全部<strong>九种界面</strong>，日常语言替你写出查询。</p><div class='tour-tags'><span>自然语言</span><span>SQL</span><span>GraphQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span><span>MCP</span><span>Python</span><span>笔记本</span></div>"
+        "title": "为您编写查询的接口",
+        "description": "💬 <em>“每个物种有多少只宠物”</em><p><strong>用自然语言提问</strong>，Provisa 会将问题同时编译为全部七种形式。下方每个面板都是这句话对应的 SQL、GraphQL、Cypher、gRPC、JSON:API 和 REST。</p><p>它无法直接打开 Python 或 Notebook，但您随时可以让 Polly 将查询移到其中任何一个。</p><p>🔑 实时自然语言查询使用您自己的 LLM 密钥；这里展示的是预置示例。</p><p>✅ 一个模型支撑全部<strong>九个接口</strong>，自然语言为您编写查询。</p><div class='tour-tags'><span>自然语言</span><span>SQL</span><span>GraphQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span><span>MCP</span><span>Python</span><span>Notebook</span></div>"
       },
       "step14": {
         "title": "这就是五分钟核心内容",
-        "description": "✅ 你刚刚完整看完了一遍：<strong>一个数据源，用你已在使用的语言或工具查询，或者干脆用大白话提问。</strong>你完全可以就此打住。<p>其余的都是<strong>深入专题</strong>:连接数据、关系、建模、治理、查询、测试数据、发布和运维。点击“完成”将打开深入专题目录。</p>"
+        "description": "✅ 您已完整体验了一遍：<strong>一个数据源，用您已在使用的语言或工具查询，或用自然语言提问。</strong>您可以在此结束。<p>其余内容都是<strong>深入探索</strong>：连接数据、关系、建模、治理、查询、测试数据、发布和运营。点击“完成”可打开深入探索目录。</p>"
       },
       "step15": {
         "title": "连接图谱",
-        "description": "<svg class='tour-graph' viewBox='0 0 260 96' role='img' aria-label='Tables in two different sources linked into one graph'><line x1='42' y1='30' x2='118' y2='24' /><line x1='42' y1='30' x2='58' y2='72' /><line x1='58' y1='72' x2='142' y2='74' /><line class='xsrc' x1='118' y1='24' x2='210' y2='30' /><line class='xsrc' x1='142' y1='74' x2='210' y2='30' /><line x1='210' y1='30' x2='222' y2='70' /><circle cx='42' cy='30' r='9' /><circle cx='58' cy='72' r='9' /><circle cx='118' cy='24' r='9' /><circle class='n2' cx='142' cy='74' r='9' /><circle class='n2' cx='210' cy='30' r='9' /><circle class='n2' cx='222' cy='70' r='9' /></svg><p>关系有两个作用。它塑造你的<strong>数据模型</strong>：跨数据源和域的表如何连接，而每一种查询入口（GraphQL 嵌套、Cypher 路径或 SQL 连接（join））都沿着它走。</p><p>它同时也是一条<strong>规则</strong>。连接受治理管控：没有 <code>ignore_relationships</code> 权限的角色只能沿已注册的关系做连接，所以存在哪些关系，决定了哪些查询是合法的。你可以有意把这项权限授予你信任的角色，该角色就可以自由连接（高安全模式下不适用）。</p><p>关系把跨数据源的表连接起来，即便是跨不同的数据库，也能把平面的表变成一个可遍历的<strong>图</strong>。</p>"
+        "description": "<svg class='tour-graph' viewBox='0 0 260 96' role='img' aria-label='来自两个不同数据源的表连接成一张图'><line x1='42' y1='30' x2='118' y2='24' /><line x1='42' y1='30' x2='58' y2='72' /><line x1='58' y1='72' x2='142' y2='74' /><line class='xsrc' x1='118' y1='24' x2='210' y2='30' /><line class='xsrc' x1='142' y1='74' x2='210' y2='30' /><line x1='210' y1='30' x2='222' y2='70' /><circle cx='42' cy='30' r='9' /><circle cx='58' cy='72' r='9' /><circle cx='118' cy='24' r='9' /><circle class='n2' cx='142' cy='74' r='9' /><circle class='n2' cx='210' cy='30' r='9' /><circle class='n2' cx='222' cy='70' r='9' /></svg><p>关系承担两项职责。它塑造您的<strong>数据模型</strong>：跨数据源和域的表如何相连，每个查询接口都遵循这一点，无论是 GraphQL 嵌套、Cypher 路径还是 SQL 连接。</p><p>它也是一条<strong>规则</strong>。连接受到治理。没有 <code>ignore_relationships</code> 权限的角色只能沿已注册的关系进行连接，因此存在哪些关系决定了哪些查询合法。有意将此权限授予您信任的角色，它就可以自由连接（高安全模式下除外）。</p><p>关系可以跨数据源连接表，甚至跨不同的数据库，将扁平的表变成可遍历的<strong>图</strong>。</p>"
       },
       "step16": {
         "title": "定义一个关系",
@@ -156,7 +156,7 @@
       },
       "stepRelsSuggest": {
         "title": "建议关系",
-        "description": "✨ 闪光按钮会查找可能的连接:它读取你的数据源声明的外键,并在配置了 AI 模型密钥时,让模型推断更多。在你接受候选之前不会声明任何内容,被拒绝的候选会一直排除在外,直到你清除拒绝记录。"
+        "description": "✨ 闪光按钮会查找可能的连接。它读取数据源声明的外键，并在配置了 AI 模型密钥时请模型推断更多。在您接受候选项之前不会声明任何内容，被拒绝的候选项在您清除拒绝记录前会一直被排除。"
       },
       "stepRelsList": {
         "title": "所有关系集中在一个列表",
@@ -164,7 +164,7 @@
       },
       "step17": {
         "title": "查看 ERD",
-        "description": "实体关系图渲染出你整个联邦模型：每一张已注册的表以及它们之间的关系。"
+        "description": "实体关系图呈现联邦模型中的每张已注册表以及它们之间的关系。"
       },
       "step18": {
         "title": "访问控制（RBAC）",
@@ -172,7 +172,7 @@
       },
       "stepRoleInherit": {
         "title": "角色可以继承",
-        "description": "👪 角色可以继承父角色:它获得父角色的授权、列可见性和行规则,而它自己针对某张表的行规则会取代父角色的规则。角色还带有自己的能力以及速率和复杂度限制。"
+        "description": "👪 角色可以继承父角色。它会获得父角色的授权、列可见性和行规则，而它自己针对某张表的行规则会替换父角色的规则。角色还带有自身的能力以及速率和复杂度限制。"
       },
       "step19": {
         "title": "行级安全",
@@ -184,19 +184,19 @@
       },
       "stepTags": {
         "title": "标签承载含义",
-        "description": "🏷️ 标签是全组织统一、含义固定的标记,可应用于数据源、表、列、关系或命令。标签承载的是行为,而不只是文档,并且标签在应用时可以要求填写原因、到期日期或参数。"
+        "description": "🏷️ 标签是组织范围内具有固定含义的标记，可应用于数据源、表、列、关系或命令。标签会改变行为，并且应用标签时可以要求填写原因、到期日期或参数。"
       },
       "stepRequests": {
         "title": "关系请求",
-        "description": "✋ 有个自己不能创建关系的人，想把他的表和您的表关联起来。他通常来自另一个域，而这往往是他向您索要数据的第一步。由于关系受治理，批准一个关系会改变哪些查询合法：原本只能沿已批准关系连接的角色，现在也能跨这条关系连接了。关系请求在执行前需要两次批准，跨两个域的请求需要双方各自同意。您可以批准、执行，或从固定列表中选一个理由拒绝。已处理的请求会移到“已处理”标签页。"
+        "description": "✋ 一位无法创建关系的人请求将其表与您的表关联。对方通常来自另一个域，而这往往是他们申请您数据的第一步。由于关系受到治理，批准一个关系会改变哪些查询合法。只能沿已批准关系连接的角色，现在可以通过这个关系进行连接。关系请求在运行前需要两次批准，跨两个域的请求需要双方各自同意。您可以批准、运行，或从固定列表中选择原因拒绝。已处理的请求会移到“已处理”选项卡。"
       },
       "stepQualityTable": {
         "title": "质量检查器也只是一个数据源",
-        "description": "🧪 数据质量检查器（Soda 或 Great Expectations）注册为一个<strong>数据源</strong>。它通过 Provisa 自身的 postgres 终结点回扫，因此同一套契约方言可以同等地覆盖 Snowflake 表、Iceberg 表和 Mongo 集合。其结果以普通表落地：展开该行，像打开任何其他表一样打开它。"
+        "description": "🧪 数据质量检查器（Soda 或 Great Expectations）注册为<strong>数据源</strong>。它通过 Provisa 自带的 postgres 终结点回扫，因此同一种契约方言可以同样覆盖 Snowflake 表、Iceberg 表和 Mongo 集合。其结果以普通表的形式落地，展开该行即可像其他表一样打开。"
       },
       "stepQualityPanel": {
         "title": "构建质量契约",
-        "description": "✅ 手写契约，或逐列构建检查（空值率、行数、取值范围、新鲜度），并在保存前<strong>试运行</strong>。每次扫描都会追加，因此这张表<em>就是</em>质量历史：可以绘图、设置告警，也可以与任何数据关联。"
+        "description": "✅ 手写契约，或逐列构建检查（空值率、行数、取值范围、新鲜度），并在保存前进行<strong>试运行</strong>。每次扫描都会追加记录，因此这张表<em>就是</em>质量历史，您可以为它绘图、设置告警，或将其与任何数据连接。"
       },
       "stepQualityProfile": {
         "title": "为表做画像",
@@ -240,11 +240,11 @@
       },
       "step20": {
         "title": "构建你的交付管道",
-        "description": "🔧 在这里直接组建整条交付管道，不需要单独的 ETL 工具：<ul><li>👁️ <strong>视图</strong>：基于任意表，可以是临时的也可以是物化的，还支持视图之上的视图。</li><li>⚡ <strong>命令</strong>：受治理的、类型化的操作（一个 HTTP 服务、一个 Python 模型、一个存储过程），身兼两职：既是管道中的一个步骤，<em>也</em>是下游应用和智能体可调用的一等 API，用于对数据执行操作，可从每一种界面调用，受治理且可追踪。</li><li>⭐ <strong>实体与事实</strong>：声明一次维度或事实，Provisa 就会生成数据仓库，方法论中立：3NF（Inmon）、星型模式（Kimball）或 Data Vault。</li><li>📏 <strong>指标</strong>：受治理的聚合定义（“净收入”），粒度在查询时绑定。定义一次，每一种界面（SQL、GraphQL、AI 智能体）都计算出相同的数字；基于某个指标构建的视图会在该指标定义变化时自动重新生成。</li></ul>"
+        "description": "🔧 直接在这里组装整个交付管道，无需单独的 ETL 工具：<ul><li>👁️ <strong>视图</strong>：基于任意表，临时或物化，也可以是视图之上的视图。</li><li>⚡ <strong>命令</strong>：受治理的类型化操作（HTTP 服务、Python 模型、存储过程），既是管道中的一个步骤，<em>也是</em>下游应用和代理调用以操作数据的 API，可从每个接口调用，受治理且可追踪。</li><li>⭐ <strong>实体与事实</strong>：只需声明一次维度或事实，Provisa 即可生成数据仓库，且与方法论无关：3NF（Inmon）、星型架构（Kimball）或 Data Vault。</li><li>📏 <strong>指标</strong>：受治理的聚合定义（&ldquo;净收入&rdquo;），粒度在查询时绑定。定义一次，每个接口（SQL、GraphQL、AI 代理）都会算出相同的数字，基于指标构建的视图会在其定义变化时重新生成。</li></ul>"
       },
       "step21": {
         "title": "物化为一个实时数据仓库",
-        "description": "🏗️ 物化一个视图，你就得到了一个完整的 ETL 引擎，声明式而非脚本式：<ul><li>📅 基于真实<strong>业务日历</strong>的<strong>定时快照</strong>：重复规则、节假日、工作日限定，以及结账宽限期，让它按<em>你</em>的报表日历触发。</li><li>🗄️ <strong>存储方式……</strong>：<strong>替换</strong>、<strong>更新插入（upsert）</strong>，或用<strong>快照</strong> / <strong>增量</strong>保留历史记录，外加增量计算。</li><li>🕰️ <strong>时间旅行</strong>：双时态历史；可查询模型在任意时间点的状态。</li><li>⚡ 带防抖的<strong>近实时</strong>刷新，或随输入变化驱动的新鲜度触发式重新发布。</li></ul>"
+        "description": "🏗️ 物化一个视图，即可获得完整的声明式 ETL 引擎：<ul><li>📅 基于真实<strong>业务日历</strong>的<strong>定时快照</strong>：重复规则、节假日、工作日判定和结账宽限期，让它按<em>您的</em>报表日历触发。</li><li>🗄️ <strong>存储为…</strong>：<strong>替换</strong>、<strong>upsert</strong>，或通过<strong>快照</strong> / <strong>增量</strong>保留历史，并支持增量计算。</li><li>🕰️ <strong>Time Travel</strong>：双时态历史；可查询模型在任意时间点的状态。</li><li>⚡ 带防抖的<strong>近实时</strong>刷新，或随输入变化按新鲜度驱动重新发布。</li></ul>"
       },
       "stepMetrics": {
         "title": "指标,定义一次",
@@ -256,7 +256,7 @@
       },
       "step22": {
         "title": "端到端的血缘",
-        "description": "🧬 <strong>血缘是你的派生对象留下的依赖轨迹:</strong>每个视图、计算列或指标由什么构成,以及什么依赖于它。这是一条经过分析的真实查询：沿着 <code>name_upper</code> 的转换一路追溯到为它提供数据的精确<strong>源列</strong>。<p>不会执行任何内容；查询只会被分析。</p>"
+        "description": "🧬 <strong>血缘是派生结果留下的依赖轨迹：</strong>每个视图、计算列或指标由什么构建而成，又有什么依赖于它。这是一个经过分析的真实查询。沿着 <code>name_upper</code> 的转换向前追溯，直到为其提供数据的确切<strong>数据源列</strong>。<p>不会运行任何内容；查询仅被分析。</p>"
       },
       "stepObservability": {
         "title": "追踪与调试追踪",
@@ -272,7 +272,7 @@
       },
       "step23": {
         "title": "运维它",
-        "description": "管理页面负责运行整个平台：<ul><li>⚙️ 选择并配置你的<strong>联邦引擎</strong>：DuckDB（内嵌、零配置）、Trino、PostgreSQL、ClickHouse，或将云数据仓库作为一等引擎（Snowflake、BigQuery、Databricks、Microsoft Fabric、Azure Synapse）。随时切换；模型、界面，以及其上的治理都不会改变。</li><li>🔗 无论选择哪个引擎，都自带其自身的<strong>实时外部数据</strong>接入能力：原地读取 Parquet、Iceberg 和 Delta，零拷贝，凭证为你预配。任何无法实时连接的数据，都会落地为一份受治理的副本。</li><li>🔑 管理<strong>加密密钥</strong>并接入<strong>身份验证提供方</strong></li><li>📊 完整的<strong>可观测性</strong>：可重定向到任意 OpenTelemetry 采集器，实现企业级的追踪管理</li><li>📤 <strong>导出模型配置</strong>，整个模型或选定部分，为文件，用于审阅、比对并通过 CI/CD 发布</li></ul><p>同一个模型可以从本地开发一路走到生产环境，每一步都经过验证，无需重写：</p><ul><li><strong>开发</strong>：内嵌 DuckDB，无需 Docker。在本地构建与验证。</li><li><strong>规模化验证</strong>：使用 Docker，启动一个引擎加可观测性组件。针对生产级引擎验证行为。</li><li><strong>晋级</strong>：指向你自己的基础设施，通过 CI/CD 构建，上线到生产环境。</li></ul>"
+        "description": "管理页面负责运营平台：<ul><li>⚙️ 选择并配置您的<strong>联邦引擎</strong>：DuckDB（嵌入式，零配置）、Trino、PostgreSQL、ClickHouse，或将云数据仓库作为一等引擎（Snowflake、BigQuery、Databricks、Microsoft Fabric、Azure Synapse）。可随时更换；其上的模型、接口和治理都不会改变。</li><li>🔗 无论选择哪个引擎，它都会带来自己对<strong>实时外部数据</strong>的访问能力：Parquet、Iceberg 和 Delta 就地读取、零复制，凭据会为您预配。无法实时链接的内容会作为受治理的副本落地。</li><li>🔑 管理<strong>加密密钥</strong>并接入<strong>身份验证提供程序</strong></li><li>📊 <strong>可观测性</strong>：将追踪发送到任意 OpenTelemetry 收集器</li><li>📤 <strong>导出模型配置</strong>：整个模型或所选部分，导出为文件以便审阅、比较并通过 CI/CD 交付</li></ul><p>同一个模型从本地开发一路走到生产，每一步都经过验证，无需重写：</p><ul><li><strong>开发</strong>：嵌入式 DuckDB，无需 Docker。在本地构建和验证。</li><li><strong>规模化验证</strong>：使用 Docker 启动引擎和可观测性组件。在生产引擎上验证行为。</li><li><strong>晋升</strong>：指向您自己的基础设施，通过 CI/CD 构建，交付到生产环境。</li></ul>"
       },
       "stepPreview": {
         "title": "预览任意表",
@@ -292,7 +292,7 @@
       },
       "stepDataProducts": {
         "title": "数据产品，发布在消费者已经在看的地方",
-        "description": "📦 这里的每个产品都遵循 <strong>ODPS</strong>（Open Data Product Standard）：所有者、团队、用途、限制、使用方式、SLA、支持和自定义属性。Provisa 会将其直接发布到 <strong>Snowflake Horizon</strong> 和 <strong>BigQuery Dataplex</strong>，使其在您的消费者已在使用的目录中显示为原生产品。<p>🔁 没有需要您记得去做的单独导出步骤：规范每次都<strong>由实时模型派生</strong>（表、血缘、标签、本体术语），因此发布的内容不会像手工维护的 ODPS 文件那样过时。</p><p>✅ 发布还会发送一份<strong>本体摘录</strong>：本体中与所发布内容相关的部分，即定义其列的术语、它们所连接的更宽泛和相关的术语，以及这些术语之间的类型化关系。扫描它的检查器给出的数据质量结果随之一并发送。产品的<strong>相关术语</strong>面板会列出它的术语。</p>"
+        "description": "📦 这里的每个产品都遵循 <strong>ODPS</strong>（Open Data Product Standard）：所有者、团队、用途、限制、使用方式、SLA、支持和自定义属性。Provisa 将其直接发布到 <strong>Snowflake Horizon</strong> 和 <strong>BigQuery Dataplex</strong>，使其作为原生产品出现在使用者已在使用的目录中。<p>🔁 没有单独的导出步骤。规范每次都<strong>从实时模型推导</strong>（表、血缘、标签、本体术语），因此已发布的内容不会过时。</p><p>✅ 发布时还会发送一份<strong>本体摘录</strong>，即本体中与发布内容相关的部分：定义其列的术语、这些术语连接的上位术语和相关术语，以及它们之间的类型化关系。扫描它的检查器的数据质量结果也会一并发送。产品的<strong>相关术语</strong>面板会列出其术语。</p>"
       },
       "stepGlossaryTerm": {
         "title": "添加术语",
@@ -304,7 +304,7 @@
       },
       "stepRelsAgents": {
         "title": "关系与 AI 智能体",
-        "description": "🤖 模型及其关系对 AI 智能体开放（包括 Polly 和通过 MCP 连接的智能体），并决定这些智能体编写的查询。<p>智能体在某个角色下运行，因此适用与人相同的规则：在已注册关系之外做连接的查询会<strong>失败</strong>。这是强制执行的，而不只是建议。</p><p>这也由你决定。想让智能体发现关系，就把 <code>ignore_relationships</code> 权限授予它的角色；想把它限制在护栏之内，就不要授予。这与授予可信身份的有意授权相同（高安全模式下永不生效）。</p>"
+        "description": "🤖 模型及其关系可供 AI 代理（Polly 以及通过 MCP 连接的代理）使用，并决定这些代理编写的查询。<p>代理在某个角色下运行，因此适用于它的规则与适用于人的相同。在已注册关系之外进行连接的查询会<strong>失败</strong>。</p><p>要让代理发现关系，请为其角色授予 <code>ignore_relationships</code> 权限；要让它保持在防护范围内，就不要授予。这与授予受信任身份的权限一样，都是有意为之（高安全模式下始终不生效）。</p>"
       },
       "weblogsSources": {
         "title": "这个演示是什么",
@@ -324,7 +324,7 @@
       },
       "weblogsRest": {
         "title": "通过 REST 问同一个问题",
-        "description": "再次查看最慢的页面，这次是一次 REST 调用：每个路径及其请求数、平均耗时和最长耗时。Provisa 提供的每个接口都读取同一个受管控的模型，因此在相同权限下，REST 给出的答案与 SQL 或 GraphQL 相同。"
+        "description": "此 REST 调用再次返回最慢的页面，每个路径附带请求数以及平均和最长耗时。Provisa 提供的每个接口都读取同一个受治理的模型，因此在相同权限下，REST 给出的答案与 SQL 或 GraphQL 相同。"
       },
       "weblogsDone": {
         "title": "您刚才看到的",
@@ -332,7 +332,7 @@
       },
       "sonnetsIntro": {
         "title": "按意义读莎士比亚十四行诗",
-        "description": "莎士比亚的 154 首十四行诗存放在 Postgres 中，被嵌入 Qdrant，按含义搜索，并扩展成一张图。问题是：这些十四行诗贯穿着哪些主题，莎士比亚又在哪里与自己相互呼应？<strong>sonnets</strong> 是 Postgres 数据源，每首诗一行，2,155 个诗行也各占一行。"
+        "description": "莎士比亚的 154 首十四行诗存储在 Postgres 中，在 Qdrant 中嵌入，按语义检索，并扩展成一张图。本导览探讨哪些主题贯穿这些十四行诗，以及莎士比亚在哪些地方呼应了自己。<strong>sonnets</strong> 是 Postgres 数据源，每首诗和 2,155 行诗句各有一行记录。"
       },
       "sonnetsVectors": {
         "title": "向量存储",
@@ -344,7 +344,7 @@
       },
       "sonnetsSearch": {
         "title": "按意义搜索",
-        "description": "<strong>lines_like</strong> 是一张搜索表。Provisa 用您的语句传入的参数在 Qdrant 中实时执行搜索：这里是一个短语和要返回的诗行数量。每个诗行返回时都带有一个分数，表示它与短语有多接近。"
+        "description": "<strong>lines_like</strong> 是一张搜索表。Provisa 使用语句传入的参数（这里是一个短语和要返回的行数）在 Qdrant 中实时执行搜索。每一行诗句都会附带一个分数，表示它与该短语的接近程度。"
       },
       "sonnetsThemeView": {
         "title": "保存下来的主题",
@@ -356,11 +356,11 @@
       },
       "sonnetsGraph": {
         "title": "十四行诗的图",
-        "description": "三个关系把这些表变成一张图：诗行 IN 它的诗，EVOKES 一个主题，并 ECHOES 另一首诗的诗行（带得分）。Cypher 像遍历任何图一样遍历它们。"
+        "description": "三种关系让这些表成为一张图。一行诗句 IN 其所属的十四行诗，EVOKES 一个主题，并 ECHOES 另一首诗中的一行（带有分数）。Cypher 像遍历任何图一样遍历它们。"
       },
       "sonnetsEchoNetwork": {
         "title": "呼应网络",
-        "description": "由 Cypher 画出的呼应网络：紧密呼应另一首诗中某一行的诗行，以及它们所在的诗。请找出由不止一处呼应连在一起的诗。"
+        "description": "Cypher 绘制出与另一首诗中某行高度呼应的诗句，以及它们所在的十四行诗。留意那些由不止一处呼应连接起来的十四行诗。"
       },
       "sonnetsThemesBySequence": {
         "title": "两个组诗中的主题",
@@ -376,7 +376,7 @@
       },
       "filesIntro": {
         "title": "即时数据湖",
-        "description": "一座城市以文件形式发布开放数据：居民投诉每月一个 CSV 文件，建筑许可为 Parquet，预算为 Excel，检查记录为 JSON。<strong>drop</strong> 是基于该文件夹的一个文件数据源：每个文件都是一张表，在原处读取，无需加载步骤。问题是：哪些街区在施工现场附近的投诉最多？"
+        "description": "一座城市以文件形式发布开放数据：311 投诉每月一个 CSV 文件，建筑许可为 Parquet，预算为 Excel，检查记录为 JSON。<strong>drop</strong> 是基于该文件夹的一个文件数据源。每个文件都是一张表，就地读取，无需加载步骤。城市希望了解哪些街区在施工工地附近的投诉最多。"
       },
       "filesComplaints": {
         "title": "一张表覆盖多个文件",
@@ -384,7 +384,7 @@
       },
       "filesMonths": {
         "title": "来自每个文件的行",
-        "description": "按月统计的投诉：每个月都来自各自的文件，作为一张表读取。请找到每个月度文件对应的一行。"
+        "description": "按月统计的投诉。每个月都来自各自的文件，作为一张表读取。每个月度文件应对应一行。"
       },
       "filesFormats": {
         "title": "每种格式一个文件",
@@ -396,7 +396,7 @@
       },
       "filesTerm": {
         "title": "什么是未结投诉",
-        "description": "本体说明了什么是未结投诉：城市尚未结案的投诉。这样的术语说明了目录中数据的含义。"
+        "description": "本体将未结投诉定义为城市尚未关闭的投诉。这类术语说明了目录中数据的含义。"
       },
       "filesAnswer": {
         "title": "答案",
@@ -408,7 +408,7 @@
       },
       "filesDone": {
         "title": "一个文件夹变成了目录",
-        "description": "一个文件夹变成了受治理的目录：表、关系、一个术语和一个存储视图，没有加载任何数据。新的月度投诉文件不需要新表：通配模式已经包含了它。"
+        "description": "一个文件夹变成了受治理的目录：表、关系、一个本体术语和一个存储的视图，而没有加载任何数据。新月份的投诉文件不需要新表，因为 glob 模式已经涵盖了它。"
       },
       "reviewsCatalog": {
         "title": "这个演示是什么",
@@ -416,23 +416,23 @@
       },
       "reviewsSearchStore": {
         "title": "评论存放在 Elasticsearch",
-        "description": "<strong>reviews</strong> 是 Elasticsearch：客户撰写的 5,000 条评论，每条都有对应的产品、星级和文本。"
+        "description": "<strong>reviews</strong> 是 Elasticsearch，保存着客户撰写的 5,000 条评论，每条都有其产品、星级和文本。"
       },
       "reviewsGraphStore": {
         "title": "谁买了什么，存放在 Neo4j",
-        "description": "<strong>purchases</strong> 是 Neo4j：2,000 位客户，每位都通过 BOUGHT 关系与所购产品相连。三个存储用同一个 id 指代产品。"
+        "description": "<strong>purchases</strong> 是 Neo4j，保存着 2,000 位客户，每位客户都通过 BOUGHT 关系与其购买的产品相连。三个存储都用相同的 ID 标识产品。"
       },
       "reviewsPipeline": {
         "title": "把 MongoDB 管道当作表",
-        "description": "<strong>ratings_by_product</strong> 是一个 MongoDB 聚合管道，已注册为表：它按产品对星级评分分组，给出每个产品的评分数、平均分和一星评分。查询读取它的方式与其他表无异。"
+        "description": "<strong>ratings_by_product</strong> 是注册为表的 MongoDB 聚合管道。它按产品对星级评分分组，给出每个产品的评分数、平均分和一星评分数。查询可以像读取其他表一样读取它。"
       },
       "reviewsSearchTable": {
         "title": "把 Elasticsearch 搜索当作表",
-        "description": "<strong>reviews_matching</strong> 是一个 Elasticsearch 搜索，已注册为表。它的短语是参数，由查询设定；每一行是文本包含该短语的评论，短语会高亮显示。"
+        "description": "<strong>reviews_matching</strong> 是注册为表的 Elasticsearch 搜索。查询设置其短语参数，每一行都是文本包含该短语的一条评论，短语会高亮显示。"
       },
       "reviewsCypherTable": {
         "title": "把 Cypher 查询当作表",
-        "description": "<strong>bought_together</strong> 是针对 Neo4j 的 Cypher 查询，已注册为表：对每个产品，给出其买家买过的所有其他产品，以及有多少人买过。"
+        "description": "<strong>bought_together</strong> 是注册为表的 Neo4j Cypher 查询。对每个产品，它列出其买家购买过的所有其他产品，以及有多少买家购买过。"
       },
       "reviewsJoin": {
         "title": "按产品关联",
@@ -444,10 +444,10 @@
       },
       "reviewsBoughtWith": {
         "title": "买家还买了什么",
-        "description": "第二个问题，用 Cypher 提出：评分低于三星的产品，以及它们的买家还买了什么。该图跨越 MongoDB 的评分和 Neo4j 的购买记录，移动电源不断出现。"
+        "description": "第二个问题用 Cypher 查询评分低于三星的产品及其买家还购买了什么。这张图横跨 MongoDB 的评分和 Neo4j 的购买记录，充电宝频频出现。"
       },
       "reviewsBoughtWithByDegree": {
-        "title": "我们可以把它画成图。但它意味着什么?",
+        "title": "按度分组",
         "description": "同一个结果，按度数分组，用来回答它当初要回答的问题。分组会突出那些最常与低评分产品一起被购买的产品，数字越大，经过该产品的组合就越多。度数只在这个结果内部计算：评分低于三星的产品，以及其中五位或更多买家还一起买了什么。红色节点是产品，评分节点和配对节点也都已分组。"
       },
       "reviewsRest": {
@@ -456,7 +456,7 @@
       },
       "reviewsExample": {
         "title": "通过 GraphQL 搜索",
-        "description": "示例查询：用 GraphQL 查询电池投诉，返回每条评论的高亮文本，其产品通过关系嵌套在下方。"
+        "description": "此示例查询用 GraphQL 读取有关电池的投诉，包含每条评论的高亮文本，以及通过关系嵌套在其下的产品。"
       },
       "reviewsDone": {
         "title": "你刚刚看到了什么",
@@ -484,7 +484,7 @@
       },
       "insuranceBook": {
         "title": "保险公司的保单组合",
-        "description": "每份有效保单：所在县、险种、总保险价值、保费和免赔额。"
+        "description": "每份有效保单，包括所在县、险种、总保额、保费和免赔额。"
       },
       "insuranceRisk": {
         "title": "FEMA 的 National Risk Index",
@@ -496,7 +496,7 @@
       },
       "insuranceByRating": {
         "title": "按风险等级，用 GraphQL",
-        "description": "同一视图按 FEMA 风险等级分组：保单组合的保险价值中有多少位于等级为 Relatively High 或 Very High 的县。"
+        "description": "按 FEMA 风险评级分组后，同一视图显示了保单组合的保额中有多少位于评级为 Relatively High 或 Very High 的县。"
       },
       "insuranceRest": {
         "title": "通过 REST 得到同样的答案",
@@ -504,7 +504,7 @@
       },
       "qualityIntro": {
         "title": "可信的数据",
-        "description": "一家有五家门店的连锁店以每日数据流的形式发送销售数据。每个批次都作为青铜层落地到连锁店的数据库 <strong>sales</strong> 中。青铜层之后的一切都是物化视图（检查、白银和黄金），只要落地一个批次，就能全部刷新。问题是：在数据进入黄金层之前，我能信任它吗？"
+        "description": "一家拥有五家门店的连锁店以每日数据源的形式发送销售数据。每个批次以青铜层的形式落地到连锁店的数据库 <strong>sales</strong> 中。青铜层之后的一切（检查、白银层和黄金层）都是物化视图，落地一个批次就足以刷新全部视图。您需要在数据进入黄金层之前判断它是否可信。"
       },
       "qualityBronze": {
         "title": "青铜层：干净之处已定型",
@@ -512,11 +512,11 @@
       },
       "qualityRaw": {
         "title": "原始，按数据流的写法",
-        "description": "第一个批次中落入时的产品：同一产品有多种拼写，例如 COFFEE、Coffee 和 cofee。白银层把它们统一。"
+        "description": "第一批产品落地时的原样，同一产品有多种拼写，例如 COFFEE、Coffee 和 cofee。白银层会将它们统一。"
       },
       "qualityChecks": {
         "title": "检查，作用于每个批次",
-        "description": "<strong>dq_results</strong> 是一个物化视图，用 SQL 对每个落入的批次计算检查：每项检查有多少行失败，以及通过还是失败。批次 1 全部通过；批次 2 有三项失败。"
+        "description": "<strong>dq_results</strong> 是一个物化视图，在每个落地批次上用 SQL 计算检查，统计每项检查未通过的行数，并将其标记为通过或失败。第 1 批全部通过；第 2 批有三项失败。"
       },
       "qualityAdmitted": {
         "title": "从一行到放行它的检查",
@@ -524,7 +524,7 @@
       },
       "qualityWhichChecks": {
         "title": "哪些检查放行了白银层",
-        "description": "白银层的一笔销售，以及沿 ADMITTED_BY 找到的放行它的那次运行的每项检查：全部通过，没有失败的行。"
+        "description": "一笔白银层销售记录，以及沿 ADMITTED_BY 找到的、接纳它的那次运行中的每项检查。全部通过，没有失败的行。"
       },
       "qualityRefused": {
         "title": "有问题的批次在哪些检查上失败",
@@ -536,7 +536,7 @@
       },
       "qualityGold": {
         "title": "黄金层：汇总",
-        "description": "黄金层是白银层上的一个 GROUP BY：按日期和产品统计销售笔数、件数、营收和价格区间，只来自已检查的数据。"
+        "description": "黄金层是对白银层的一次 GROUP BY，仅基于已检查的数据，按日期和产品给出销售额、件数、收入和价格区间。"
       },
       "qualityProduct": {
         "title": "可以交付的数据产品",
@@ -548,19 +548,19 @@
       },
       "insiderIntro": {
         "title": "银行的内幕信息审查",
-        "description": "Northgate Partners 是一家虚构的银行，为正在推进的交易维护一份观察名单。问题是：是否有人把交易敏感数据或客户数据发送到银行之外？<strong>bank</strong> 是它的数据库：观察名单、员工及其邮件，以及客户和谁读取过他们的记录。这里的每个名称和每条记录都是生成的。"
+        "description": "虚构的银行 Northgate Partners 维护着一份其正在处理的交易观察名单。它想知道是否有人把交易敏感数据或客户数据发送到银行外部。<strong>bank</strong> 是它的数据库：观察名单、员工及其邮件，以及客户和查看过其记录的人。这里所有的姓名和记录都是生成的。"
       },
       "insiderWatchList": {
         "title": "观察名单",
-        "description": "<strong>deal</strong> 是控制室的观察名单：每笔交易的公司、它的别名、股票代码、项目代号，以及是否已经公开。它是这里限制最严的表：控制室可以读取，交易团队只能读取自己的交易，一线审查员永远不能。"
+        "description": "<strong>deal</strong> 是控制室的观察名单，包含每笔交易的公司、其别称、股票代码、项目代号以及是否已公开。这是这里限制最严格的表。控制室可以读取，交易团队只能读取自己的交易，一线审核员则完全不能读取。"
       },
       "insiderMail": {
         "title": "邮件",
-        "description": "<strong>message</strong> 保存员工的外发邮件：谁发送、何时发送，以及有多少收件人位于银行之外或使用个人地址。"
+        "description": "<strong>message</strong> 保存员工的外发邮件，包括发件人、发送时间，以及有多少收件人在银行外部或使用个人地址。"
       },
       "insiderMatch": {
         "title": "每封邮件对照每笔交易",
-        "description": "<strong>deal_match</strong> 是 match_deals 命令的发现：对每封邮件和每笔交易，它是否提到公司、别名、股票代码或项目代号，以及通过本地嵌入模型衡量它与交易描述的接近程度。完全避开名称的转述同样会得分。"
+        "description": "<strong>deal_match</strong> 是 match_deals 命令的发现结果。对于每封邮件和每笔交易，它记录邮件是否提到了公司、别称、股票代码或项目代号，以及通过本地嵌入模型衡量与交易描述的接近程度。即使改写措辞避开了所有名称，仍然会得到分数。"
       },
       "insiderQueue": {
         "title": "审查队列",
@@ -572,11 +572,11 @@
       },
       "insiderCustomerData": {
         "title": "客户数据",
-        "description": "同样的邮件用 SQL 模式检查客户数据：社会保障号和账号。客户表的列标记为 pii，因此这次读取本身也会被记录。"
+        "description": "SQL 模式检查同一批邮件中是否含有客户数据，即社会保障号和账号。客户表的列带有 pii 标签，因此这次读取本身也会被记录。"
       },
       "insiderPiiAccess": {
         "title": "谁读取了客户数据",
-        "description": "<strong>ops.pii_access</strong> 列出对标记为 pii 的表的每次读取：这里就是你刚才的那次读取。队列根据银行自己的访问日志，对银行员工做同样的事：那一周读取过客户记录、随后把客户数据外发的运营员工排在第一。"
+        "description": "<strong>ops.pii_access</strong> 列出对带 pii 标签的表的每一次读取，这里就是您刚刚执行的那次。队列根据银行自己的访问日志，对银行员工执行同样的操作。那一周查看过客户记录、随后又把客户数据通过邮件发出的运营部门员工排在首位。"
       },
       "insiderAsReviewer": {
         "title": "以一线审查员身份",
@@ -584,7 +584,7 @@
       },
       "insiderReviewerQueue": {
         "title": "只有自己的案例",
-        "description": "同一个队列，以审查员身份读取：只有他所审查各台的案例，被标记的实体可见，交易被隐去。这是邮件及其匹配上的行规则实现的；没有复制任何数据。观察名单本身对他不可见。"
+        "description": "以审核员身份读取时，同一队列只包含其负责审核的部门的案例，显示被标记的实体而隐去交易。这是由邮件及其匹配结果上的行规则实现的；没有复制任何数据。观察名单本身对其拒绝访问。"
       },
       "insiderAsControlRoom": {
         "title": "回到控制室",
@@ -592,7 +592,7 @@
       },
       "insiderAudit": {
         "title": "每次读取都有记录",
-        "description": "<strong>ops.queries</strong> 记录每条语句：谁运行、以哪个角色、针对哪张表。审查员对队列和观察名单的读取都在这里，你的读取也在。"
+        "description": "<strong>ops.queries</strong> 记录每条语句由谁运行、以哪个角色、针对哪张表。审核员对队列和观察名单的读取都在这里，您的读取也在。"
       },
       "insiderWhyFlagged": {
         "title": "为什么被标记？",
@@ -604,11 +604,11 @@
       },
       "insiderDone": {
         "title": "它是什么，不是什么",
-        "description": "观察名单中的交易按名称和含义与外发邮件比对，排序供审查，而名单本身从未向审查员展示。这是实时控制之后的事后审查分析，不能替代数据防泄漏。附件、图片、编码文本和个人渠道不在其范围内。监控员工需要事先告知，在某些地方还需要与员工代表达成协议。"
+        "description": "观察名单中的交易按名称和语义与外发邮件进行了匹配，并排序以供审核，而名单本身从未向审核员展示。这是实时控制之后的事后分析，不能取代数据防泄漏。附件、图片、编码文本和个人渠道不在其范围内。监控员工需要事先告知，在某些地区还需要与职工委员会达成协议。"
       },
       "vulnerabilitiesScenario": {
         "title": "这个演示是什么",
-        "description": "一家软件公司想知道其代码中的漏洞有哪些正被攻击者实际利用，以及每个漏洞已经多久未修复。它的代码仓库、这些仓库的软件包以及针对它们的 Dependabot 告警都在自己的数据库中；CVE 记录和 CISA 的 Known Exploited Vulnerabilities 目录是公开的。本导览展示 Provisa 如何按 CVE 将两者关联，并用 SQL、GraphQL、Cypher 和 REST 回答这个问题。"
+        "description": "一家软件公司想知道其代码中的哪些漏洞正被攻击者利用，以及每个漏洞已经多久未修复。其代码仓库、软件包以及相关的 Dependabot 警报都在自己的数据库中；CVE 记录和 CISA 的已知被利用漏洞目录是公开的。本导览展示 Provisa 如何按 CVE 连接两者，并用 SQL、GraphQL、Cypher 和 REST 回答这个问题。"
       },
       "vulnerabilitiesGovdata": {
         "title": "公开的漏洞数据",
@@ -616,11 +616,11 @@
       },
       "vulnerabilitiesAlerts": {
         "title": "Dependabot 告警",
-        "description": "每个有已发布安全公告的固定软件包版本对应一条告警：仓库、软件包、CVE、修复它的版本，以及告警是未处理、已修复还是已忽略。"
+        "description": "每个已锁定且有已发布安全公告的软件包版本对应一条警报，包含代码仓库、软件包、CVE、修复版本，以及警报是未处理、已修复还是已忽略。"
       },
       "vulnerabilitiesNvd": {
         "title": "经筛选条件加载的 CVE 记录",
-        "description": "NVD 收录了约二十五万个 CVE，而公司的告警只涉及其中十九个。该表的落地筛选条件（针对其自身列的条件）在加载时只保留这些，因此副本只包含告警需要的记录。"
+        "description": "NVD 收录了二十五万个 CVE，而公司的警报只涉及十九个。表的落地筛选条件（基于其自身列的条件）在落地时只保留这些，因此副本只包含警报所需的记录。"
       },
       "vulnerabilitiesKev": {
         "title": "CISA 的已知被利用漏洞",
@@ -636,15 +636,15 @@
       },
       "vulnerabilitiesAnswer": {
         "title": "SQL 中的答案",
-        "description": "视图 exploited_in_our_code 是存储的。它保留每一个 CVE 在 CISA 目录中的未处理告警，并附上 CISA 截止日期过后的天数。面向互联网的代码库排在最前，然后是逾期最久的。就从那里开始。"
+        "description": "视图 exploited_in_our_code 已存储。它保留 CVE 在 CISA 目录中的每条未处理警报，并附带超过 CISA 截止日期的天数。面向互联网的代码仓库排在最前，然后是逾期最久的。"
       },
       "vulnerabilitiesByTeam": {
         "title": "GraphQL 中的答案",
-        "description": "同一个视图，在服务器上按团队分组：每个团队有多少未处理的被利用漏洞，以及最早的那个已逾期多久。"
+        "description": "在服务器上按团队分组后，同一视图显示每个团队有多少未修复的被利用漏洞，以及最早的一个逾期了多久。"
       },
       "vulnerabilitiesGraph": {
         "title": "以图呈现的答案",
-        "description": "在 Cypher 中以图呈现相同的关联：仓库、其中未处理的告警、告警的 CVE，以及将它们标记为被利用的目录条目。"
+        "description": "Cypher 以图的形式展示相同的连接：代码仓库、其中未处理的警报、对应的 CVE，以及将其标记为已被利用的目录条目。"
       },
       "vulnerabilitiesRest": {
         "title": "通过 REST 获得同样的答案",
@@ -656,7 +656,7 @@
       },
       "streamingScenario": {
         "title": "实时订单",
-        "description": "一家咖啡店的订单每秒几笔地到达一个 Kafka 主题,它的商品目录在它的 Postgres 中。问题:过去五分钟内哪些地区下单最多?<strong>orders</strong> 是订单到达的 broker。"
+        "description": "一家咖啡店的订单通过 Kafka 主题到达，每秒几单，其产品目录存放在自己的 Postgres 中。咖啡店想知道过去五分钟内哪些地区下单最多。<strong>orders</strong> 是订单到达的代理。"
       },
       "streamingJoin": {
         "title": "按目录价格计价的订单",
@@ -672,7 +672,7 @@
       },
       "streamingCatalog": {
         "title": "商品目录",
-        "description": "<strong>catalog</strong> 是咖啡店的 Postgres:每种商品是什么、价格多少,以及咖啡店销售的地区。"
+        "description": "<strong>catalog</strong> 是咖啡店的 Postgres，记录每种产品是什么、价格多少，以及咖啡店的销售地区。"
       },
       "streamingOrders": {
         "title": "主题变成表",
@@ -684,11 +684,11 @@
       },
       "streamingCached": {
         "title": "GraphQL 中的答案(已缓存)",
-        "description": "同一视图的 GraphQL 形式。<strong>@cached(ttl: 10)</strong> 请求响应缓存:十秒内的相同问题由缓存回答,X-Provisa-Cache 头显示 HIT。"
+        "description": "同一视图的 GraphQL 版本。<strong>@cached(ttl: 10)</strong> 请求响应缓存。十秒内的相同问题会从缓存中返回，X-Provisa-Cache 响应头显示 HIT。"
       },
       "streamingLive": {
         "title": "看着订单到达",
-        "description": "对订单的 GraphQL 订阅:每载入一批,就会在到达时重新发送最新订单。让它保持运行,看着列表变化。"
+        "description": "对订单的 GraphQL 订阅。每有一个批次落地，就会再次推送最新订单。让它保持运行，看列表不断变化。"
       },
       "streamingRest": {
         "title": "通过 REST 的答案",
@@ -696,15 +696,15 @@
       },
       "profilingScenario": {
         "title": "这个演示是什么",
-        "description": "一家户外用品零售商收购了一家较小的公司 Harbor Outfitters，并收到了其 CRM 中的客户和订单。在任何人以此为基础之前，问题是：这些数据里到底有什么？Provisa 内置的 Data Profiler 回答了这个问题，其结果与其他表一样是受治理的表，可通过 SQL、GraphQL 和 REST 读取。"
+        "description": "一家户外零售商收购了一家较小的公司 Harbor Outfitters，并获得了其 CRM 中的客户和订单。在任何人基于这些数据开展工作之前，需要先了解数据里有什么。Provisa 内置的 Data Profiler 可以回答这个问题，其结果与其他表一样是受治理的表，可通过 SQL、GraphQL 和 REST 读取。"
       },
       "profilingProfiler": {
         "title": "Data Profiler",
-        "description": "分析器只包含一个计划及其运行设置：这个分析器每晚 02:00 运行。它的首次运行在构建演示时完成，所以结果已经在这里了。"
+        "description": "剖析器只保存一个计划及其运行设置。这个剖析器每晚 02:00 运行。首次运行在构建演示时完成，因此结果已经在这里了。"
       },
       "profilingMember": {
         "title": "表加入分析器",
-        "description": "customers 和 orders 表是分析器的成员。在成员的编辑器中，可以立即运行分析，或查看其运行记录：每次运行、读取的行数和耗时。"
+        "description": "customers 表和 orders 表是剖析器的成员。在成员的编辑器中，可以立即运行剖析或查看其运行记录，每条记录都有行数和耗时。"
       },
       "profilingRuns": {
         "title": "每次运行都会保留",
@@ -713,7 +713,7 @@
       "profilingTerrain": {
         "title": "以地形呈现的运行",
         "acting": "正在地形视图中打开 customers 表的画像运行",
-        "description": "customers 的最新一次运行，以地形绘制：每列一道山脊，高度是每个取值区间的行数，每列前方是它的空值。"
+        "description": "customers 的最新一次运行以地形形式绘制，每列一道山脊，高度表示各取值区间的行数，每列的空值显示在其前方。"
       },
       "profilingTerms": {
         "title": "术语",
@@ -729,7 +729,7 @@
       },
       "profilingPhones": {
         "title": "一列，四种格式",
-        "description": "每个电话号码都化为其形态：数字变为 9。CRM 从未检查格式，所以一列中有四种格式，连接或拨号程序必须先统一它们。"
+        "description": "每个电话号码都被简化为其格式，每个数字变为 9。CRM 从未校验格式，因此一列中有四种格式，连接或拨号程序必须先将其统一。"
       },
       "profilingCountries": {
         "title": "一个国家，多种写法",
@@ -737,16 +737,16 @@
       },
       "profilingDuplicates": {
         "title": "写了两次的行",
-        "description": "模型将 customer_id 声明为键，但导出中没有约束：150 位客户出现了两次，所有字段都相同。画像统计重复的行以及出现在多行中的键值。"
+        "description": "模型声明 customer_id 为键，但导出数据没有约束，有 150 位客户出现了两次，所有字段完全相同。剖析结果统计了重复行以及被多行共用的键值。"
       },
       "profilingDrift": {
         "title": "自上次运行以来有什么变化",
-        "description": "设置运行了两次分析器，在两次运行之间，CRM 的下一次同步把每个美国邮政编码都写成了 ZIP+4。漂移表把每个度量与上一次运行的度量比较：postal_code 的变化所改变的度量被标记为漂移，同步没有触及的列则没有。"
+        "description": "设置时运行了两次剖析器，在两次运行之间，CRM 的下一次同步将每个美国邮政编码都写成了 ZIP+4 格式。漂移表将每项度量与上一次运行进行比较。受 postal_code 变化影响的度量被标记为漂移，同步未触及的列则没有。"
       },
       "profilingStrata": {
         "title": "postal_code，逐次运行",
         "acting": "正在打开漂移层",
-        "description": "每次运行中的 postal_code，最早的在最后方：每个值所占的行比例。正如漂移表所示，最新一次运行被标记为漂移，之前那次没有。"
+        "description": "每次运行中 postal_code 各取值所占的行比例，最早的运行在最后面。正如漂移表所示，最新一次运行被标记为漂移，而之前那次没有。"
       },
       "profilingOriginal": {
         "title": "真实的客户",
@@ -758,7 +758,7 @@
       },
       "profilingSynthetic": {
         "title": "从分析结果生成",
-        "description": "在 synthetic 中运行同一条语句：每一行都从客户的分析结果生成，列、取值形态和分布都相同，却没有一位真实客户。有了分析结果就足以生成测试数据。"
+        "description": "在 synthetic 中，同一语句返回的每一行都是根据客户的剖析结果生成的，列、取值形态和分布都相同，但不含任何真实客户。剖析结果足以生成测试数据。"
       },
       "profilingToProd": {
         "title": "回到生产",
@@ -770,7 +770,7 @@
       },
       "profilingRecap": {
         "title": "你看到了什么",
-        "description": "您看到了被收购公司的表以及内置画像器为它们生成并保存为受治理表的画像。空值、范围、格式、合理类型和重复项各自用 SQL、GraphQL 和 REST 回答这些数据里到底有什么，每个角色只能看到被允许的内容。"
+        "description": "您已看到被收购公司的表，以及内置剖析器生成并保存为受治理表的剖析结果。空值、取值范围、格式、可能的类型和重复项各自说明了数据里有什么，均可通过 SQL、GraphQL 和 REST 读取，且每个角色只能看到其被允许看到的内容。"
       },
       "opioidsScenario": {
         "title": "这个演示是什么",
@@ -794,7 +794,7 @@
       },
       "opioidsAllocations": {
         "title": "基金的拨款",
-        "description": "基金的每一笔拨款：县、财政年度、项目领域、获得付款的服务机构、批准金额和已支出金额。工作人员能看到每一行；public 角色一行也看不到。"
+        "description": "基金进行的每一笔拨款，包括所在县、财年、项目领域、获付款的服务提供方、拨付金额和已支出金额。工作人员可以看到所有行；公众角色一行也看不到。"
       },
       "opioidsDeaths": {
         "title": "CDC 的药物过量死亡率",
@@ -810,11 +810,11 @@
       },
       "opioidsPublic": {
         "title": "公众看到的样子",
-        "description": "以 public 角色运行的议会仪表板：视图 overdose_burden_by_county。它显示每个县的居民、死亡人数、死亡率和人均联邦资金，不读取基金的任何拨款或受付款的服务方。"
+        "description": "理事会的仪表板是视图 overdose_burden_by_county，这里以公众角色运行。它显示每个县的居民人数、死亡人数、死亡率和人均联邦资金，不读取基金的任何拨款或获付款的服务提供方。"
       },
       "opioidsByRegion": {
         "title": "按地区，用 GraphQL",
-        "description": "按基金五个地区分组的仪表板：每个地区有多少居民，以及在那里用于治疗和康复的支出。"
+        "description": "按基金的五个地区分组后，仪表板显示每个地区的居民人数，以及在当地用于治疗和康复的支出。"
       },
       "opioidsRest": {
         "title": "通过 REST 的同一答案",
@@ -822,7 +822,7 @@
       },
       "datavaultScenario": {
         "title": "两个系统，一个问题",
-        "description": "一个订单系统和一个 CRM，都来自 Northwind，各自保存每位客户的一份副本。问题是：我们对这位客户知道什么，来自哪个来源，又是什么时候知道的？数据保险库通过保留每个来源的每个版本来回答这个问题。这里的保险库以视图声明，由引擎构建和刷新。不需要运行 ETL 平台、作业服务器或管道代码。工作在引擎上运行，在那里可以扩展，一个声明好的保险库就能为数据集市、受治理的 API 和血缘提供数据。"
+        "description": "一个订单系统和一个 CRM（都来自 Northwind）各自保存着每位客户的副本。您想知道关于某位客户，当时知道什么、来自哪个数据源、在什么时间。Data Vault 通过保留每个数据源的每个版本来回答这个问题。这里 Vault 被声明为视图，由引擎构建和刷新。无需运行 ETL 平台、作业服务器或管道代码。工作在可扩展的引擎上运行，一个声明的 Vault 即可供给数据集市、受治理的 API 和血缘。"
       },
       "datavaultCrm": {
         "title": "CRM 自己的副本",
@@ -830,7 +830,7 @@
       },
       "datavaultInsertOnly": {
         "title": "每一行都保留",
-        "description": "客户表是仅插入的，正如 Vault 的暂存区接收它的方式：变更以带有加载日期的新行到达，不会覆盖任何内容。"
+        "description": "客户表只允许插入，正如 Vault 的暂存区接收它的方式。变更以带有加载日期的新行到达，不会覆盖任何内容。"
       },
       "datavaultArrived": {
         "title": "到达了什么",
@@ -862,15 +862,15 @@
       },
       "datavaultWalk": {
         "title": "在 GraphQL 中遍历 Vault",
-        "description": "从 Hub 到 Link 再到 Hub：客户、其订单、订单中的产品，以及每个产品名称和价格的每个版本。"
+        "description": "遍历从中心表到链接表再到中心表，经过客户、其订单、订单中的产品，以及每个产品名称和价格的每个版本。"
       },
       "datavaultRest": {
         "title": "通过 REST 提供的数据集市",
-        "description": "基于 Vault 构建的当前状态客户维度是一个 REST 端点：下游应用读取它，而无需知道背后有 Vault。"
+        "description": "基于 Vault 构建的当前状态客户维度是一个 REST 终结点，因此下游应用无需知道 Vault 的存在即可读取它。"
       },
       "datavaultLineage": {
         "title": "数据集市的列来自哪里",
-        "description": "数据集市各列的血缘：每一列都经由时点视图和卫星表追溯到其来源字段。"
+        "description": "数据集市各列的血缘会经过时点视图和卫星表，追溯到其来源的数据源字段。"
       },
       "datavaultMasked": {
         "title": "在个人数据所在处脱敏",
@@ -878,7 +878,7 @@
       },
       "datavaultRecap": {
         "title": "你看到了什么",
-        "description": "两个在线系统和其上的 Data Vault，以视图声明：保留每个版本的 Hub、Link 和 Satellite，由引擎在行到达时刷新，在 Satellite 中治理，并以时间点方式在 SQL、GraphQL 和 REST 中查询，血缘可追溯到来源字段。无需单独的 ETL 平台、作业服务器或管道代码。"
+        "description": "两个实时系统及其之上的 Data Vault，声明为视图：中心表、链接表和卫星表保留每个版本，随行到达由引擎刷新，在卫星表中受治理，并可通过 SQL、GraphQL 和 REST 进行时点查询，血缘可追溯到数据源字段。"
       },
       "agricultureScenario": {
         "title": "这个演示是什么",
@@ -890,7 +890,7 @@
       },
       "agricultureClaims": {
         "title": "保险公司的理赔",
-        "description": "保险公司支付的每一笔赔款:农场、作物年度、损失原因、月份和金额。"
+        "description": "保险公司支付的每笔赔款，包括农场、作物年度、损失原因、月份和金额。"
       },
       "agricultureMarket": {
         "title": "整个市场的损失",
@@ -898,7 +898,7 @@
       },
       "agricultureWeather": {
         "title": "各县的每日天气",
-        "description": "NOAA 提供的每个县的日最高气温和降水量,取其观测站的平均值,覆盖生长季,即 5 月至 8 月:雨水和高温决定产量的时期。"
+        "description": "NOAA 记录的每个县的每日最高气温和降水量（取其报告站点的平均值），时间为 5 月至 8 月的生长季，这一时期的降雨和高温决定产量。"
       },
       "agricultureJoin": {
         "title": "按县连接",
@@ -910,7 +910,7 @@
       },
       "agricultureAnswer": {
         "title": "用 SQL 得出答案",
-        "description": "视图 losses_and_weather 把每个县的季节与投资组合的结果并排放置,并以存储方式保留。按作物年度看:2012 年是最干旱、最炎热的季节,也是投资组合亏损的一年,主要由于干旱和高温,整个市场也是如此;雨水充足的 2010 年和 2013 年损失较小。"
+        "description": "视图 losses_and_weather 将每个县的生长季与保单组合的结果并列，并保持存储状态。按作物年度来看，最干旱、最炎热的 2012 年正是保单组合亏损的一年，主要源于干旱和高温，与整个市场一样；多雨的 2010 年和 2013 年损失较小。"
       },
       "agricultureWorstSeasons": {
         "title": "最糟的季节",
@@ -918,11 +918,11 @@
       },
       "agricultureDrySeasons": {
         "title": "最干旱的季节,用 GraphQL",
-        "description": "同一视图用 GraphQL 呈现,降水最少的季节排在最前:它们正是赔付率最高、产量最低的季节。"
+        "description": "同一视图的 GraphQL 版本，按降雨量从少到多排列生长季。这些正是赔付率最高、产量最低的季节。"
       },
       "agricultureNotebook": {
         "title": "天气能解释多少？",
-        "description": "在浏览器中运行演示的笔记本：以 analyst 身份将每个县的每一季读入 pandas，将赔付率与该季的降雨、高于 32 °C 的天数以及市场损失中归因于干旱和高温的份额做相关分析，拟合回归并绘图。"
+        "description": "演示的笔记本在您的浏览器中运行。它以分析师身份将每个县的每个生长季读入 pandas，计算赔付率与该季降雨量、超过 32 °C 的天数以及市场损失中由干旱和高温造成的比例之间的相关性，基于这些变量拟合回归并绘图。"
       },
       "agricultureRest": {
         "title": "用 REST 按年度",
@@ -930,11 +930,11 @@
       },
       "agricultureRecap": {
         "title": "您看到了什么",
-        "description": "您看到了保险公司自己的数据，按县和作物年份与公共损失、天气和产量数据匹配，全部位于同一个受治理的模型中。一个视图用 SQL、GraphQL 和 REST 回答天气是否能解释这些损失。 笔记本对此做了度量：天气解释了赔付率变动的 54%，而在当前业务上，类似 2012 年的一季预期赔付率为 1.75。"
+        "description": "您已看到保险公司自身的数据按县和作物年度与公开的损失、天气和产量数据进行匹配，全部位于一个受治理的模型中。一个视图即可通过 SQL、GraphQL 和 REST 回答天气是否能解释损失。笔记本对此进行了量化。天气解释了赔付率变化的 54%，以当前保单组合计算，类似 2012 年的生长季预期赔付率为 1.75。"
       },
       "retailScenario": {
-        "title": "两个区域的故事",
-        "description": "一家零售集团把 EU 和 US 两家子公司作为一个业务来经营。它能做到这一点而不违反 GDPR 吗？每家子公司都有自己的数据库：这是 EU 的数据库，包含其会员客户、他们的营销同意、订单、员工，以及员工发往集团外部的邮件。"
+        "title": "双区记",
+        "description": "一家零售集团将其欧盟子公司和美国子公司作为一个整体业务运营。本导览探讨它能否做到这一点而不违反 GDPR。每家子公司都有自己的数据库。这是欧盟的数据库，包含会员客户、他们的营销同意、订单、员工，以及员工发往集团外部的邮件。"
       },
       "retailPlatformRegions": {
         "title": "区域始于一份配置",
@@ -954,31 +954,31 @@
       },
       "retailRegions": {
         "title": "归属：每个数据源指明其归属区域",
-        "description": "US 子公司的数据库位于 US，EU 子公司的数据库位于 EU。归属是引擎关于数据存放位置的规则。有归属的表，其副本和缓存留在其归属区域，其他区域只能通过该区域访问它。"
+        "description": "美国子公司的数据库归属美国，欧盟子公司的数据库归属欧盟。归属是引擎关于数据存放位置的规则。有归属的表，其副本和缓存都留在归属区域，其他区域只能通过该区域访问它。"
       },
       "retailEuCustomers": {
         "title": "一张位于 EU 的 EU 表",
-        "description": "EU 的客户。这张表的区域是 EU，所以它的副本和缓存只存放在 EU 的存储中。归属决定行存放在哪里。它不决定谁可以读取。那是下一层。"
+        "description": "欧盟客户。该表的区域是欧盟，因此其副本和缓存只存放在欧盟的存储中。归属决定行存放在哪里，但不决定谁可以读取。那是下一层。"
       },
       "retailRequests": {
         "title": "数据主体请求",
-        "description": "集团的请求登记册：谁要求查看自己的数据，谁要求删除数据，以及时间。它本身不包含任何客户数据。"
+        "description": "集团的登记簿记录了谁要求查看自己的数据、谁要求删除数据，以及时间。它本身不包含客户数据。"
       },
       "retailJoin": {
         "title": "请求如何找到本人",
         "description": "请求通过电子邮件地址与每家子公司的客户关联。一个请求就是这样在两家子公司中找到同一个人的。"
       },
       "retailAsAnalyst": {
-        "title": "数据管家的规则，以集团分析师身份",
-        "description": "第二层是安全：数据管家的规则按角色和读者所在区域，决定每位读者得到什么。这些规则在归属区域中执行，在任何数据离开之前。接下来，角色选择器切换到 <strong>group_analyst</strong>，他在 US 负责集团报表，因此之后的 SQL 和 GraphQL 都以 group_analyst 身份运行。"
+        "title": "以集团分析师身份查看数据管家的规则",
+        "description": "第二层是安全：数据管家的规则根据角色和读者所在区域决定每位读者获得什么。这些规则在归属区域内、在任何数据离开之前生效。接下来，角色选择器切换到 <strong>group_analyst</strong>，该角色在美国负责集团报表，因此之后的 SQL 和 GraphQL 都以 group_analyst 身份运行。"
       },
       "retailGroupView": {
         "title": "集团报表，EU 客户已假名化",
-        "description": "集团的每一位会员客户。US 客户按原样显示。EU 客户以假名显示，因为管家的规则规定 EU 以外的读者得不到姓名或地址。EU 在其行离开之前执行了这条规则，这次查询的记录将 EU 标为作答的区域。"
+        "description": "集团的每位会员客户。美国客户按原样显示。欧盟客户以化名显示，因为数据管家的规则规定欧盟以外的读者不能获得姓名或地址。欧盟在其行离开之前应用了该规则，此查询的记录将欧盟列为作出响应的区域。"
       },
       "retailGroupGraphql": {
         "title": "同样的内容，用 GraphQL",
-        "description": "通过 GraphQL 访问同一个集团视图：一个模型，所有传输方式，相同的规则。"
+        "description": "通过 GraphQL 查看的同一集团视图，适用相同的规则。"
       },
       "retailEveryRole": {
         "title": "回到所有角色",
@@ -986,7 +986,7 @@
       },
       "retailAudience": {
         "title": "只有同意的客户",
-        "description": "SQL 浏览器现在以 <strong>marketing_eu</strong> 身份运行。管家的规则让 EU 市场部只读取同意接收营销的 EU 客户。该视图在 EU 中由 EU 的行构建。"
+        "description": "SQL 浏览器现在以 <strong>marketing_eu</strong> 身份运行。数据管家的规则允许欧盟营销团队读取同意接收营销的欧盟客户，且仅限这些客户。视图在欧盟境内基于欧盟的行构建。"
       },
       "retailAsDpo": {
         "title": "以数据保护官身份",
@@ -998,7 +998,7 @@
       },
       "retailErasure": {
         "title": "一次删除，已规划",
-        "description": "针对每项删除请求，集团要删除的每一行：所属子公司、所在表及其键。每家子公司在自己的区域中删除自己的行。"
+        "description": "对于每个删除请求，列出集团删除的每一行，以及其所属子公司、表和键。每家子公司在自己的区域删除自己的行。"
       },
       "retailAsReviewer": {
         "title": "以内幕信息审查员身份",
@@ -1010,11 +1010,11 @@
       },
       "retailAsEuReviewer": {
         "title": "以 EU 的审查员身份",
-        "description": "接下来，SQL 浏览器以带有 region__eu 的 reviewer 身份运行：一位区域为 EU 的审查员。"
+        "description": "接下来，SQL 浏览器以带有 region__eu 的 reviewer 身份运行，即区域为欧盟的审核员。"
       },
       "retailReveal": {
         "title": "发件人，在 EU 中显示",
-        "description": "同一个队列。管家对发件人列设置的掩码，只向分配区域为 EU（region__eu）的审核员显示发件人。其他人读到的是隐藏的值。读者得到什么，既取决于角色，也取决于其区域，而且没有为这种组合创建任何角色。"
+        "description": "同一个队列。数据管家对发件人列设置的脱敏，只向分配区域为欧盟（region__eu）的审核员显示发件人。其他所有人看到的都是隐去后的内容。读者获得什么既取决于角色，也取决于所在区域，而且并没有为这种组合专门创建角色。"
       },
       "retailAsAdmin": {
         "title": "回到所有角色",
@@ -1022,7 +1022,7 @@
       },
       "retailAudit": {
         "title": "一份记录，两个区域",
-        "description": "导览运行过的每条语句：谁运行的、针对什么、由哪个区域作答。一条覆盖两个区域的审计跟踪。"
+        "description": "本导览运行的每条语句，汇集在一条横跨两个区域的审计轨迹中：谁运行的、针对什么、由哪个区域响应。"
       },
       "retailLimits": {
         "title": "这是什么，不是什么",
@@ -1030,19 +1030,19 @@
       },
       "retailRecap": {
         "title": "你看到了什么",
-        "description": "一份配置授予了两个区域，每个都有自己的引擎和存储：两个数据处理环境。归属把 EU 的表、其副本和缓存留在 EU。数据管家的规则按角色和读者所在区域决定每位读者得到什么，EU 在任何数据离开之前执行了它们。集团报表以假名读取 EU 客户，EU 市场部只读取同意的客户，访问和删除各只需一次查询，发件人只向 EU 的审核员显示，每一次读取都在同一份记录中。"
+        "description": "一份配置授予了两个区域，各自拥有引擎和存储：两个数据处理环境。归属让欧盟的表、副本和缓存都留在欧盟。数据管家的规则根据角色和读者所在区域决定每位读者获得什么，欧盟在任何数据离开之前应用这些规则。集团报表读取的是化名后的欧盟客户，欧盟营销只读取已同意的客户，查阅和删除各只需一次查询，发件人只向欧盟的审核员显示，每次读取都记录在同一份记录中。"
       },
       "provisioningScenario": {
         "title": "这个演示是什么",
-        "description": "一家咖啡烘焙商的数据仓库接收三个数据流（订单、价格和库存盘点），并在数据到达时据此构建数据集。下游两个团队需要其中的大数据集，即每笔订单及其利润：财务用于报表，数据科学用于 feature store。问题是：如何在数据集一就绪就拿到它，而不必复制它或编写抽取作业？"
+        "description": "一家咖啡烘焙商的数据仓库接收三路数据源（订单、价格和库存盘点），并在数据落地时构建数据集。下游两个团队需要其中最大的那个数据集，即每笔订单及其利润：财务用于报表，数据科学用于特征存储。他们希望数据集一就绪就能拿到，无需副本，也无需提取作业。"
       },
       "provisioningJoin": {
         "title": "数据流如何关联",
-        "description": "订单指明它的产品，产品知道自己的成本和类别。数据集把每个订单连接到它的产品。结账建立在数据集以及库存和价格数据流之上：一个视图叠在另一个视图上，依次刷新。"
+        "description": "订单指明其产品，产品知道自己的成本和类别。数据集将每笔订单与其产品连接。结账是基于该视图的视图，建立在数据集以及库存和价格数据源之上，并依次刷新。"
       },
       "provisioningRecap": {
         "title": "你看到了什么",
-        "description": "数据流一到就落地，数据集由它们构建和刷新。每个团队都会在数据集就绪时收到 Kafka 通知，并通过 Arrow Flight 拉取那一刻的数据，只能看到其角色允许的内容，且只在数据集的窗口内。没有副本，也没有抽取作业。"
+        "description": "数据源到达即落地，并据此构建和刷新数据集。每当数据集就绪，各团队都会通过 Kafka 收到通知，并通过 Arrow Flight 拉取当时的数据，只能看到其角色允许的内容，且仅限数据集的时间窗内，无需副本，也无需提取作业。"
       },
       "provisioningWarehouse": {
         "title": "仓库自己的数据库",
@@ -1062,7 +1062,7 @@
       },
       "provisioningPulls": {
         "title": "拉取",
-        "description": "每个团队的使用方读取通知，并通过 Arrow Flight 按其版本时间的记录状态拉取整个数据集：即到那时已到达的订单，因此无论是拉取中途到达的刷新，还是之后到达的订单，都无法改变它读取的内容。它记录行数、秒数和每秒行数。"
+        "description": "每个团队的消费者读取通知，并通过 Arrow Flight 拉取整个数据集在其版本时间点记录的状态，即截至那时已落地的订单，因此无论是拉取过程中落地的刷新，还是之后落地的订单，都不会改变它读取的内容。它会记录行数、秒数和每秒行数。"
       },
       "provisioningAsFinance": {
         "title": "以财务身份运行",
@@ -1070,7 +1070,7 @@
       },
       "provisioningFinanceView": {
         "title": "财务拉取的内容",
-        "description": "财务看到的最新订单：收入、成本和利润，所有类别。"
+        "description": "财务看到的最新订单，包含每个类别的收入、成本和利润。"
       },
       "provisioningAsDataScience": {
         "title": "以数据科学身份运行",
@@ -1078,7 +1078,7 @@
       },
       "provisioningDataScienceView": {
         "title": "数据科学拉取的内容",
-        "description": "同一个数据集、同一个查询：成本和利润显示为 0，服务类订单不见了（行规则）。一个数据集，两个受治理的视图，没有副本。"
+        "description": "在同一数据集和同一查询下，成本和利润显示为 0，服务类订单则不出现（行规则）。"
       },
       "provisioningAsFinanceAgain": {
         "title": "回到财务",
@@ -1090,7 +1090,7 @@
       },
       "provisioningRest": {
         "title": "通过 REST 查看拉取",
-        "description": "各团队的拉取情况，在服务器上分组汇总：次数和平均速度。"
+        "description": "每个团队拉取了多少次、平均速度多快，在服务器上分组统计。"
       },
       "pharmaScenario": {
         "title": "这个演示是什么",
@@ -1102,11 +1102,11 @@
       },
       "pharmaFormulary": {
         "title": "药房的处方集",
-        "description": "药房所备的每种药品：NDC、通用名、生产商、治疗类别以及是否为关键药品。各院区的库存列在旁边。"
+        "description": "药房库存的每种产品，包括 NDC、通用名、生产商、治疗类别以及是否为关键药品。其在各站点的库存列于旁边。"
       },
       "pharmaShortages": {
         "title": "FDA 的药品短缺",
-        "description": "FDA 发布的每一次短缺，每个包装一行：状态、药品的可得性及其 NDC 产品代码。召回信息和 Medicaid 处方数据列在旁边。"
+        "description": "FDA 公布的每项短缺，每个包装一行，包括状态、产品供应情况及其 NDC 产品代码。召回信息和 Medicaid 处方列于旁边。"
       },
       "pharmaJoin": {
         "title": "按 NDC 和企业关联",
@@ -1122,7 +1122,7 @@
       },
       "pharmaByRisk": {
         "title": "按风险，在 GraphQL 中",
-        "description": "同一视图按风险分组：有多少药品面临短缺、召回或两者兼有，它们的库存，以及 Medicaid 的处方量。"
+        "description": "按风险分组后，同一视图显示有多少产品面临短缺、召回或两者兼有，它们的库存量，以及 Medicaid 开具这些药品的频率。"
       },
       "pharmaRest": {
         "title": "通过 REST 得到同样的答案",
@@ -1142,7 +1142,7 @@
       },
       "storefrontShipping": {
         "title": "配送，通过 REST",
-        "description": "每个订单的配送来自内部配送服务，通过 <strong>REST</strong> 获取，并经由其 OpenAPI 文档读取：承运商、运单号，以及承诺送达和实际送达的时间。"
+        "description": "每笔订单的发货信息来自内部物流服务的 <strong>REST</strong> 接口，通过其 OpenAPI 文档读取，包括承运商、运单号以及承诺送达和实际送达时间。"
       },
       "storefrontRelations": {
         "title": "关系，只声明一次",
@@ -1174,11 +1174,11 @@
       },
       "storefrontPoint": {
         "title": "一个模型，两个使用方",
-        "description": "<strong>SHIPPED_AS</strong> 将订单与其配送连接起来。应用和 BI 工具都通过它以及其他所有关系、在同样的规则下读取：顾客只看到自己的订单，分析师看不到邮箱。在这里修改一个关系或一条规则，两个使用方都会得到它。没有什么需要保持同步。"
+        "description": "<strong>SHIPPED_AS</strong> 将订单与其发货记录连接。应用和 BI 工具都在相同的规则下通过此关系及其他所有关系读取数据，因此客户只看到自己的订单，分析师看不到邮箱。在这里修改关系或规则，两个使用方都会同步获得。"
       },
       "hasuramigrationScenario": {
         "title": "从 Hasura 迁出的应用",
-        "description": "一家户外用品店的商店和客服台在这个 PostgreSQL 数据库上通过 Hasura v2 运行：客户、商品目录、订单及其明细，并为客户、客服人员和分析师设置了角色。团队把应用迁到 Provisa，获得了 Hasura 给不了的能力：销售团队的 Salesforce 账户与订单并列，适用同样的规则。"
+        "description": "一家户外装备商的网店和客服台运行在这个 PostgreSQL 数据库之上的 Hasura v2 上：客户、产品目录、订单及其明细，并为客户、客服人员和分析师设置了角色。团队将应用迁移到 Provisa，并在相同规则下，将销售团队的 Salesforce 账户与订单并列使用。"
       },
       "hasuramigrationImport": {
         "title": "一次导入，即可运行",
@@ -1194,10 +1194,10 @@
       },
       "hasuramigrationProfile": {
         "title": "按键读取",
-        "description": "Hasura 的 <strong>customers_by_pk</strong> 变成了对这张表的一个过滤。计算字段 <strong>full_name</strong> 只是页面拼起来的两个名字，导入把它列为需要手动重做的项。Ana 能看到什么，仍然由行规则决定：只有她自己的那一行。"
+        "description": "Hasura 的 <strong>customers_by_pk</strong> 变成了表上的一个筛选条件。计算字段 <strong>full_name</strong> 是界面拼接起来的两个名字，导入时将其列为需要手动重建的项目。行规则仍将 Ana 限制在她自己的那一行。"
       },
       "hasuramigrationSalesforce": {
-        "title": "Hasura 做不到的：Salesforce",
+        "title": "连接 Salesforce",
         "description": "销售团队把账户放在 Salesforce 中。Provisa 将该组织注册为数据源，将其 <strong>Account</strong> 对象注册为表。商店中的每个企业客户都指明其所购买的账户。"
       },
       "hasuramigrationAccount": {
@@ -1214,27 +1214,27 @@
       },
       "hasuramigrationRecap": {
         "title": "你所看到的",
-        "description": "一个 Hasura 应用一步导入并立即运行：表、名称、关系、角色、行规则、写入权限、action 和触发器。查询的形状变了一次；规则则丝毫未变。再加一个关系之后，应用就能把 Salesforce 账户与订单并列读取，无需保持任何同步。"
+        "description": "Hasura 应用一步即完成导入并立即可用，包括其表、名称、关系、角色、行规则、写入权限、动作和触发器。查询的形式改变了一次，规则则完全没有变化。再加一个关系，应用即可将 Salesforce 账户与订单并列读取，无需保持任何同步。"
       },
       "reproduceScenario": {
         "title": "这个演示讲什么",
-        "description": "一家银行向监管机构报送截至 9 月 30 日的敞口报告。监管机构询问利率交易台的数字从何而来，并要求提供与报送时完全一致的报告：此后有一个汇率被更正了。银行的交易账簿从其自己的数据库实时读取。"
+        "description": "一家银行向监管机构提交了截至 9 月 30 日的风险敞口报告。监管机构询问利率交易台的数字从何而来，并要求提供与提交时完全一致的报告，因为此后有一个汇率被更正过。银行的交易账簿从其自己的数据库实时读取。"
       },
       "reproduceBook": {
         "title": "交易账簿",
-        "description": "每个头寸：所属交易台、以其本币计的 notional，以及其换算为 USD 所用的汇率，自 9 月 30 日起生效。其中一个汇率在报告首次报送后被更正。"
+        "description": "每个头寸，包括其交易台、以本币计的名义金额，以及自 9 月 30 日起生效的折算为美元的汇率。其中一个汇率在报告首次提交后被更正。"
       },
       "reproduceLineage": {
         "title": "数字从何而来",
-        "description": "向上追溯报告的敞口列：每个交易台的敞口是其各头寸 notional 乘以 fx_rate 之和。报告的每一列都指向计算它所用的源列。"
+        "description": "报告的风险敞口列，向前追溯。每个交易台的风险敞口是其头寸的名义金额乘以 fx_rate 之和。报告的每一列都能追溯到计算它的数据源列。"
       },
       "reproduceRefreshes": {
         "title": "构建它的刷新",
-        "description": "报告的每次构建都会记录其构建来源：报告定义的版本、其输入的版本及其确定方式。两次构建：一次是首次报送时的，一次是更正之后的。"
+        "description": "报告的每次构建都会记录它由什么构建而成：报告定义的版本，以及其输入的版本和确定方式。共有两次构建，一次是首次提交时的，一次是更正之后的。"
       },
       "reproduceImpact": {
         "title": "重命名会破坏什么",
-        "description": "在这里重命名 fx_rate，Provisa 会在你保存之前列出读取它的对象：其中包括这份报告。任何依赖某一列的对象，都不会在未被先行列出的情况下发生变化。"
+        "description": "在这里重命名 fx_rate，Provisa 会在保存前列出读取它的所有内容，其中包括这份报告。"
       },
       "reproduceNow": {
         "title": "现在的报告",
@@ -1242,11 +1242,11 @@
       },
       "reproduceAsOf": {
         "title": "截至 9 月 30 日",
-        "description": "截至业务日期的报告：9 月 30 日的数字是多少。"
+        "description": "按业务日期查看报告，可以看到 9 月 30 日的数字是多少。"
       },
       "reproduceAsOfNow": {
         "title": "截至 9 月 30 日，记录于现在",
-        "description": "按 Provisa 今天的记录读取，9 月 30 日显示的是更正后的数字：利率交易台为 1,550,000。这是账簿现在的内容，而不是当时报送的内容。"
+        "description": "按 Provisa 今天的记录读取，9 月 30 日显示的是更正后的数字，利率交易台为 1,550,000。这是现在账面上的数字，与提交时不同。"
       },
       "reproduceAsFiled": {
         "title": "记录于报送之时",
@@ -1254,11 +1254,11 @@
       },
       "reproduceFiled": {
         "title": "报送时的报告",
-        "description": "截至 9 月 30 日、记录于报送之时：利率交易台显示 1,540,000，即监管机构收到的数字。此后记录的更正不会改变已报送的内容。"
+        "description": "截至 9 月 30 日、并按提交时的记录读取，利率交易台显示 1,540,000，即监管机构收到的数字。此后记录的更正不会改变已提交的内容。"
       },
       "reproduceAudit": {
         "title": "谁读取了它，截至何时",
-        "description": "审计日志记录每一次读取：谁执行的、以哪个角色，以及读取报告时所用的“截至”和“记录于”时间。监管机构的复现本身也记录在案。"
+        "description": "审计日志记录每次读取由谁执行、以哪个角色，以及读取的是哪个时间点的报告、按哪个时间点的记录。为监管机构所做的复现本身也有记录。"
       },
       "reproduceRecap": {
         "title": "你看到了什么",
@@ -1270,7 +1270,7 @@
       },
       "churnCustomers": {
         "title": "客户",
-        "description": "每位客户的套餐、地区、在网时长，以及取消订阅的日期（如已取消）。对 analyst 角色，其电子邮件地址已脱敏：显示为 *** 加域名。"
+        "description": "每位客户的套餐、地区、在网时长以及取消日期（如已取消）。其邮箱地址对分析师角色进行了脱敏，显示为 *** 加域名。"
       },
       "churnUsage": {
         "title": "他们的使用情况",
@@ -1282,15 +1282,15 @@
       },
       "churnFeatures": {
         "title": "模型学习所用的特征",
-        "description": "每位客户一行：套餐、在网时长、每月登录次数、全年工单数，以及是否已取消订阅。这是一个通过受治理流水线构建的物化视图。电子邮件地址已脱敏，与提供给 analyst 的一致。"
+        "description": "每位客户一行，包括套餐、在网时长、每月登录次数、年内工单数以及是否已取消。这是一个通过受治理管道构建的物化视图。邮箱地址已脱敏，与提供给分析师的形式一致。"
       },
       "churnGraphql": {
         "title": "通过 GraphQL 获取相同特征",
-        "description": "演示的示例查询以 analyst 身份读取同一视图，使用同样的脱敏：每个接口都提供同一个受治理的答案。"
+        "description": "演示的示例查询以分析师身份读取同一视图，使用相同的脱敏。"
       },
       "churnNotebook": {
         "title": "在你的浏览器中训练的模型",
-        "description": "在 Notebook 标签页中运行演示的笔记本：以 analyst 身份将特征读入 pandas，用它们训练 scikit-learn 模型，并列出风险最高的客户。Python 在你的浏览器中运行，电子邮件地址仍然是脱敏的。"
+        "description": "演示的笔记本在 Notebook 选项卡中运行，以分析师身份将特征读入 pandas，在其上训练 scikit-learn 模型，并列出流失风险最高的客户。Python 在您的浏览器中运行，邮箱地址仍保持脱敏。"
       },
       "churnEveryRole": {
         "title": "回到所有角色",
@@ -1298,15 +1298,15 @@
       },
       "churnRecap": {
         "title": "你看到了什么",
-        "description": "受治理的数据直接进入数据科学家的笔记本：读取时即应用 analyst 的脱敏，模型训练过程中数据不离开浏览器。在桌面版 Jupyter 中，同样的代码通过 Arrow Flight 读取大批量数据。churnprod 演示将这个模型投入生产。"
+        "description": "受治理的数据直接进入了数据科学家的笔记本，读取时就应用了分析师的脱敏，模型的训练也没有让数据离开浏览器。在桌面版 Jupyter 中，同样的代码通过 Arrow Flight 读取大批量数据。churnprod 演示会将此模型投入生产。"
       },
       "dataroomIntro": {
         "title": "没有导出的数据室",
-        "description": "Northfield Supply 正在出售自身，每位潜在买家的 clean team 需要在报价前了解业务。卖方不把数据导出到数据室，而是将 Provisa 连接到自己的系统，并为每位竞买方提供在交易日结束的受管访问。没有任何内容被复制出去，也没有任何客户身份离开数据室。这是订单与财务系统，一个就地读取的 Postgres 数据库：2,400 位客户、他们自 2023 年以来的订单以及每笔订单的发票。"
+        "description": "Northfield Supply 正在出售自身，每位潜在买家的 clean team 都需要在出价前了解业务。卖方没有将数据摘录导出到数据室，而是将 Provisa 连接到自己的系统，并为每位竞标方提供在交易日终止的受治理访问权限。没有任何内容被复制出去，也没有任何客户身份离开数据室。这是订单和财务系统，一个就地读取的 Postgres 数据库，包含 2,400 位客户、他们自 2023 年以来的订单以及每笔订单的发票。"
       },
       "dataroomCrm": {
         "title": "CRM",
-        "description": "销售团队的 Salesforce：每位企业客户的账户及其商机。其行只导入数据室一次，之后从数据室读取，因此竞买方的提问不会到达 Salesforce。"
+        "description": "销售团队的 Salesforce 保存着每位企业客户的账户及其商机。其行一次性落地到数据室中，并从那里读取，因此竞标方的问题永远不会到达 Salesforce。"
       },
       "dataroomInvite": {
         "title": "设置数据室：邀请分析师",
@@ -1314,7 +1314,7 @@
       },
       "dataroomGrant": {
         "title": "在交易日结束的授权",
-        "description": "bidder_a 授予每位分析师的权限带有结束日期：交易日。从那一刻起，该角色不再属于他们，无论请求以何种方式到达。账户本身没有结束日期；授权的结束即结束访问。"
+        "description": "每位分析师获得的 bidder_a 授权在交易日终止。从那一刻起，无论请求以何种方式到达，该角色都不再属于他们。账户本身没有结束日期；授权的结束即终止访问。"
       },
       "dataroomSignedIn": {
         "title": "分析师看到什么",
@@ -1326,7 +1326,7 @@
       },
       "dataroomCounts": {
         "title": "客户数量",
-        "description": "每个细分市场和地区有多少客户，以及过去十二个月有多少客户下过单。是计数，而不是客户。"
+        "description": "每个细分市场和地区有多少客户，以及其中多少人在过去十二个月内下过单。"
       },
       "dataroomAnswer": {
         "title": "按细分市场的收入",
@@ -1338,15 +1338,15 @@
       },
       "dataroomQuality": {
         "title": "数据质量评分",
-        "description": "对卖方记录的每项检查及未通过的行数：没有电子邮件的客户、不是十位数字的电话号码、从未支付的发票。买家会寻找的缺陷，已被计数。"
+        "description": "对卖方记录的每项检查以及未通过的行数：没有邮箱的客户、不是十位数字的电话号码、从未支付的发票。"
       },
       "dataroomSample": {
         "title": "脱敏样本",
-        "description": "每五十位客户取一位，按竞买方读取的样子呈现：没有姓名，电子邮件的用户名部分和电话号码的数字被脱敏。呈现数据的形态，而不是个人。"
+        "description": "每五十位客户抽取一位，按竞标方看到的形式显示，不含姓名，邮箱的用户名部分和电话号码的数字均已脱敏。"
       },
       "dataroomRefused": {
         "title": "客户姓名被拒绝",
-        "description": "竞买方 A 请求客户的姓名。Provisa 拒绝：任何客户姓名都未授予 bidder_a，CRM 中的企业名称和交易名称同样如此。如果分析师指定了竞买方 B 的角色（他们并不持有），请求同样会被拒绝，并作为角色探测记录在组织的安全审计轨迹中。"
+        "description": "竞标方 A 请求获取客户姓名。Provisa 拒绝了，因为 bidder_a 没有被授予任何客户姓名，也没有被授予 CRM 中的企业名称和商机名称。如果分析师指定了自己并不持有的竞标方 B 的角色，该请求同样会被拒绝，并作为角色探测记录在组织的安全轨迹中。"
       },
       "dataroomBidderB": {
         "title": "现在以竞买方 B 的身份",
@@ -1354,7 +1354,7 @@
       },
       "dataroomBidderBCohorts": {
         "title": "同期群，以竞买方 B 的身份",
-        "description": "2023 年第一季度首次下单的客户，以及此后每个季度仍下单的客户数量和消费额。留存情况，而不涉及任何一位客户。"
+        "description": "在 2023 年第一季度首次下单的客户，以及其后每个季度仍在下单的人数和消费金额。"
       },
       "dataroomSeller": {
         "title": "回到卖方",
@@ -1362,7 +1362,7 @@
       },
       "dataroomAudit": {
         "title": "每位竞买方查看了什么",
-        "description": "每条语句都会被审计：谁运行了它、使用哪个角色、读取了哪些表、是否得到响应以及返回了多少行。这里是您刚才以竞买方 A 和竞买方 B 身份运行的语句。卖方确切知道哪些内容离开了数据室。"
+        "description": "每条语句都会被审计：由谁运行、以哪个角色、读取了哪些表、是否得到响应以及返回了多少行。这里是您刚才以竞标方 A 和竞标方 B 身份运行的语句。"
       },
       "dataroomExpiry": {
         "title": "访问在交易日结束",
@@ -1370,11 +1370,11 @@
       },
       "dataroomRevoke": {
         "title": "立即结束竞买方的访问",
-        "description": "退出的竞买方通过一个操作即失去访问：移除其授权，或移除角色本身。下一个请求会被拒绝。对其读取内容的审计依然保留。"
+        "description": "退出的竞标方只需一个操作即可失去访问权限：移除其授权或角色本身。下一个请求就会被拒绝。对其读取过的一切内容的审计记录将保留。"
       },
       "dataroomRecap": {
         "title": "您看到了什么",
-        "description": "没有导出的数据室：卖方自己的系统被就地读取，并以聚合、概要、质量评分、脱敏样本和不含身份的记录的形式展示给每位竞买方。没有任何客户身份离开数据室。每位竞买方持有自己的角色，授权至交易日，每条语句都被审计。"
+        "description": "没有导出的数据室。卖方自己的系统被就地读取，并以聚合、剖析结果、质量评分、脱敏样本和不含身份的记录形式展示给每位竞标方。没有任何客户身份离开数据室。每位竞标方都持有自己的角色，授权至交易日，每条语句都会被审计。"
       },
       "testdataScenario": {
         "title": "同一生产数据库上的三个环境",
@@ -1390,7 +1390,7 @@
       },
       "testdataCoverageNow": {
         "title": "每个敏感列都已覆盖",
-        "description": "敏感覆盖是报表页面上的一份标准报表：每个敏感列、它的标签，以及是否有虚构值覆盖它，均从当前模型读取。全部已覆盖，因此预发布可以打开并作答。"
+        "description": "敏感数据覆盖率是“报表”页面上的一份标准报表：每个敏感列、其标签以及是否有虚构值覆盖，此刻从模型中读取。所有列均已覆盖，因此预生产环境可以打开并作出响应。"
       },
       "testdataPollyProposes": {
         "title": "从画像提出的虚构值",
@@ -1398,7 +1398,7 @@
       },
       "testdataProd": {
         "title": "生产：真实的行",
-        "description": "在 prod 中，您看到的是客户的真实情况。"
+        "description": "在 prod 中您看到的是真实客户。"
       },
       "testdataProdAnswer": {
         "title": "生产的答案",
@@ -1430,7 +1430,7 @@
       },
       "testdataDev": {
         "title": "Dev：生成的，没有真实数据",
-        "description": "dev 中的每一行都由生产的画像生成：相同的列、值的形态和分布，没有任何真实的行。当连预发布的真实行也不能离开生产边界时，这也是答案：给测试人员一份合成副本。"
+        "description": "dev 中的每一行都是根据生产环境的剖析结果生成的，列、取值形态和分布都相同，但不含任何真实行。当连预生产环境的真实行都不能离开生产边界时，请将这份合成副本交给测试人员。"
       },
       "testdataDevAnswer": {
         "title": "形态相同，数字不同",
@@ -1510,7 +1510,7 @@
       },
       "worldcupKaggle": {
         "title": "Kaggle 数据集以表的形式到达",
-        "description": "这是一个 Kaggle 数据源：FIFA World Cup 数据集，收录 1930 年至 2014 年的每届赛事、每场比赛和每位球员的出场。它的每个文件都以一张表的形式到达。第二个 Kaggle 数据源收录 1916 年以来的每个国际比赛进球。和维基百科的表一样，它们是公开数据，几分钟即可注册，并像任何内部数据库一样受治理。"
+        "description": "这是一个 Kaggle 数据源，即 FIFA 世界杯数据集，包含 1930 年至 2014 年的每届赛事、每场比赛和每次球员出场。它的每个文件都作为一张表到达。第二个 Kaggle 数据源包含自 1916 年以来的每个国际比赛进球。与维基百科的表一样，这些都是公开数据，几分钟即可注册，并像任何内部数据库一样受到治理。"
       },
       "worldcupMatches": {
         "title": "以当时名称记录的比赛",
@@ -1526,7 +1526,7 @@
       },
       "worldcupAlias": {
         "title": "每个名称都已匹配并复核",
-        "description": "这些是与其会员名称不同的名称。Germany FR 和 West Germany 是 Germany，Zaire 是 DR Congo，Soviet Union 是 Russia。每一项匹配都在本演示冻结前经过复核，237 项中有 27 项被更正。成绩未由任何会员继承的球队保留自己的名称：East Germany 仍是 East Germany，因此它在 1974 年对 West Germany 的比赛不会变成 Germany 对 Germany。"
+        "description": "这些是与其成员名称不同的名称。Germany FR 和西德即德国，扎伊尔即刚果（金），苏联即俄罗斯。每场比赛都在本演示冻结之前经过审核，237 场中有 27 场被更正。成绩未转给任何成员的球队保留自己的名称。东德仍然是东德，因此其 1974 年对阵西德的比赛不是德国对德国。"
       },
       "worldcupJunction": {
         "title": "经过函数的关系",
@@ -1638,7 +1638,7 @@
       },
       "bankingScenario": {
         "title": "日终报表，总账留在原处",
-        "description": "银行在每个营业日 18:00 日终时报送汇总，如果之后收到更正，就重报过去的某一天。通常的做法是先把总账复制到数据仓库。这个演示不这样做。一路上请留意四件事。报表的计算成本是多少。仓库保存多少数据，因而要治理多少。仪表板、BI 和智能体给出的答案是否一致。以及以后改变决定要付出多少代价。"
+        "description": "一家银行在每个工作日 18:00 结账时报告其总额，当之后收到更正时会重述过去某一天的数据。通常的做法是先将总账复制到数据仓库，而本演示并不这样做。在此过程中，请关注计算报表的成本、数据仓库需要保存和治理的数据量、仪表板、BI 和代理是否给出相同的答案，以及日后改变决策的代价。"
       },
       "bankingJoin": {
         "title": "从汇总到它的记账",
@@ -1646,11 +1646,11 @@
       },
       "bankingRecap": {
         "title": "你看到了什么",
-        "description": "日终汇总在总账一侧计算，仓库只为它保存的内容付费。仓库保存汇总，从不保存记账，所以不存在需要治理的第二份总账副本。仪表板、BI 和智能体读取同一个声明的关系，给出同样的数字。如果把总账留在本地被证明是错的，一个两行的部署变更就能把它迁走，读取它的一切都不用改。现在就选轻量的方式：做错了也只是两行，而不是一个项目。"
+        "description": "日终总额在总账端计算，数据仓库只为其保留的内容付费。数据仓库只保存总额，从不保存过账明细，因此不存在需要治理的第二份总账副本。仪表板、BI 和代理读取同一个声明的关系，给出了相同的数字。如果事后发现将总账留在原处是错误的，只需两行放置变更即可迁移，而读取它的任何内容都不会改变。"
       },
       "bankingLedger": {
         "title": "总账留在本地",
-        "description": "交易表归属于 ledger 区域，从不复制。任何一条记账都不会复制到仓库，对这张表的每个查询都在总账中运行。日终汇总和下钻不再计入仓库的账单，代价是总账一侧少量的计算。到达仓库的只有汇总，以及下钻时顺带显示的记账。成本更低，占用更小。"
+        "description": "交易表归属总账区域，从不复制。任何过账明细的副本都不会落地到数据仓库，对该表的每次查询都在总账中运行。日终总额和下钻查询不再计入数据仓库的账单，只需在总账端付出少量计算。只有总额会到达数据仓库，外加下钻时临时显示的过账明细。"
       },
       "bankingVersions": {
         "title": "更正就是新的一行",
@@ -1674,7 +1674,7 @@
       },
       "bankingReported": {
         "title": "当时报送了什么",
-        "description": "按 10 月 1 日日终报送的 10 月 1 日和 2 日的公司业务汇总：视图的 as_recorded 参数按当时的记录读取它们，通过 pgwire 连接的 BI 工具用 SET provisa.as_recorded 做同样的事。伦敦的 GBP 汇总仍包含后来被冲销的那笔付款。10 月 2 日当时还没有日终，所以没有数字。"
+        "description": "截至 10 月 1 日结账时报告的 10 月 1 日和 2 日公司总额。视图的 as_recorded 参数按当时的记录读取，通过 pgwire 连接的 BI 工具用 SET provisa.as_recorded 也能做到同样的事。伦敦的英镑总额仍包含后来被冲回的那笔付款。10 月 2 日尚未结账，因此没有数字。"
       },
       "bankingRestated": {
         "title": "现在的结果",
@@ -1694,7 +1694,7 @@
       },
       "bankingChange": {
         "title": "改主意只需两行",
-        "description": "假设数据量超出了总账的计算能力。把这张表的区域设为 warehouse，把复制设为始终，总账就会复制到仓库。这是两行的部署变更，每个查询、仪表板、BI 视图和智能体都照常回答。手工完成同样的迁移，意味着新的数据管道、历史回填、重写聚合和版本管理、重新指向的报表，以及第二套访问规则。接着还有对账测试、审计与血缘检查、架构与安全评审，以及变更委员会。在这里，变更是一个经过评审的两行 diff，所以测试、审计和架构评审审的是一个 diff，而不是一次迁移。"
+        "description": "假设交易量超出了总账的计算能力。将此表的区域设置为 warehouse，并将其复制设置设为“始终”，总账就会复制到数据仓库。这是两行放置变更，每个查询、仪表板、BI 视图和代理的回答都与之前相同。若手工实现，同样的迁移意味着新建管道、回填数据、重写聚合和版本管理、重新指向报表，以及第二套访问规则。之后还有对账测试、审计和血缘检查、架构和安全评审以及变更委员会。在这里，变更只是一份经过审阅的两行差异，而测试、审计和架构评审审阅的正是这份差异。"
       },
       "bankingAsAdmin": {
         "title": "回到管理员身份",
@@ -1702,7 +1702,7 @@
       },
       "groupexposureScenario": {
         "title": "这个演示讲什么",
-        "description": "一家布拉格银行向企业放贷，并按法人识别编码（LEI）记录每家企业的所有者。欧盟规定，银行对单一客户或同一所有者控制的企业集团的授信不得超过其一级资本（Tier 1）的 25%。问题是：银行对哪些集团超出了这一限额？银行的账簿记录了每个借款人的所有者，却不记录谁拥有这个所有者。银行、借款人及其贷款是虚构的，拥有它们的集团是真实的。"
+        "description": "布拉格的一家银行向企业放贷，并通过法人机构识别编码（LEI）记录拥有每家企业的公司。欧盟规则将其可借给单个客户或由同一所有者控制的企业集团的金额上限设为其一级资本的 25%。它需要知道对哪些集团超出了该上限。其账簿记录了每个借款人的所有者，但没有记录所有者又归谁所有。银行、其借款人和贷款都是虚构的；拥有它们的集团是真实的。"
       },
       "groupexposureWikidata": {
         "title": "谁拥有这些所有者：来自 Wikidata",
@@ -1750,19 +1750,19 @@
       },
       "agentdataCustomers": {
         "title": "谁能看到哪些客户",
-        "description": "规则在客户表上:West 区的客服只能读取 West 的客户及其订单,电子邮件地址被脱敏,看不到价格。BI 分析师可读取所有区域和订单金额,但看不到任何电子邮件地址。"
+        "description": "客户表承载规则。西区支持代理只能读取西区客户及其订单，邮箱地址已脱敏，且看不到价格。BI 分析师可以读取每个地区以及订单金额，但完全看不到邮箱地址。"
       },
       "agentdataSupportAsks": {
         "title": "客服的问题",
         "description": "智能体以页眉中的角色身份操作，现在是 West 区客服，因此它的每次工具调用都以该角色运行。智能体查找表、编写 SQL 并通过 MCP 工具运行,工具在运行时显示。只返回 West 的客户,其电子邮件地址以脱敏形式到达:该角色只能得到这些。"
       },
       "agentdataExplain": {
-        "title": "实际运行了什么",
-        "description": "打开智能体的 run_sql 调用:先是它发送的语句,然后是为其角色实际运行的语句。West 行过滤和电子邮件脱敏由 Provisa 添加。智能体两者都没写,也从不会被告知。"
+        "title": "实际运行的内容",
+        "description": "打开代理的 run_sql 调用，可以看到它发送的语句，以及为其角色实际运行的语句。Provisa 添加了西区行筛选和邮箱脱敏。代理没有编写其中任何一项，也从未被告知。"
       },
       "agentdataOutOfReach": {
         "title": "超出范围的问题",
-        "description": "当被问到每位客户的订单总额时,智能体在其角色可读的表中找不到价格,并如实说明。它无法绕过角色:每次工具调用都适用同样的规则。"
+        "description": "被问及每位客户的订单金额时，代理在其角色可读的表中找不到价格，并如实说明。它无法绕过角色，因为每次工具调用都适用相同的规则。"
       },
       "agentdataAnalystRole": {
         "title": "现在以 BI 分析师身份",
@@ -1770,7 +1770,7 @@
       },
       "agentdataAnalystAsks": {
         "title": "同一问题,不同角色",
-        "description": "以分析师身份问同一问题:返回所有区域,完全没有电子邮件列,收入视图也在其表中。同一个智能体、同一台服务器,得到不同的表、行和列。"
+        "description": "以分析师身份提问时，每个地区的数据都会返回，完全没有邮箱列，收入视图也在其可用表中。同一个代理、同一台服务器，返回的是不同的表、行和列。"
       },
       "agentdataConnect": {
         "title": "你自己的智能体,同一台服务器",
@@ -1806,7 +1806,7 @@
       },
       "auditFiled": {
         "title": "在公开申报上做同样的核对",
-        "description": "三个州的被审计单位为 2023 年申报的每一行资助，旁边是 USAspending 当年在同一项目下记录的对其承付金额。未对上的行本身并不代表缺漏。经转拨取得的资助行是经州机构转来的，联邦资助上不会写明被审计单位，所以本就不应对上；而在以前年度承付的资助在审计年度不会显示承付。未对上的行照常显示，不予隐藏。"
+        "description": "三个州的被审计单位为 2023 年申报的每一条资助明细，旁边是 USAspending 记录的同年同一项目下对其承诺的金额。未匹配的明细本身并不代表缺口。转拨明细经由州机构到达被审计单位，因此没有联邦资助会指明它，也不应期望匹配；而在更早年份承诺的资助在审计年度不会显示承诺金额。未匹配的明细会被保留，而不是隐藏。"
       },
       "auditCounty": {
         "title": "按县统计的联邦资金",
@@ -1895,7 +1895,7 @@
       },
       "banksecrecyLibrary": {
         "title": "保存在参考库中",
-        "description": "演示的构建已将每份扫描过的文档保留在参考库中，因此法规作为受治理的参考文档留在模型身边：Polly 和组织的代理在回答时会引用其中的段落。"
+        "description": "演示构建时将每份扫描文档保存在参考资料库中，因此该法规作为受治理的参考资料与模型保存在一起：Polly 和组织的代理在回答时会引用其中的段落。"
       },
       "banksecrecyGrounded": {
         "title": "法律的词语，落实到数据",
@@ -2070,7 +2070,7 @@
         "summary": "天气能否解释一家农作物保险公司投资组合中的损失？它自己的农场、保单和理赔，按县和作物年份与 USDA 的按原因损失、NOAA 的天气和 NASS 的产量连接，用 SQL、GraphQL 和 REST 给出答案。"
       },
       "retail": {
-        "title": "两个区域的故事",
+        "title": "双区记",
         "summary": "一家拥有 EU 和 US 子公司的零售集团，在 GDPR 下作为一个业务经营：EU 数据留在 EU，集团报表以假名化方式读取，访问、删除、内幕信息审查和审计各自只是一次查询。"
       },
       "provisioning": {
