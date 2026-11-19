@@ -21,7 +21,7 @@
     "emailRuleLabel": "允許的電郵規則（選填）",
     "emailRuleDesc": "受邀者的電郵必須符合此正規表達式才能加入，例如 \"@acme\\.com$\"。留空則允許任何電郵。",
     "autoJoinLabel": "自動加入符合條件的帳戶",
-    "autoJoinDesc": "電郵符合上述規則的新帳戶會以下方角色自動加入——無需邀請。",
+    "autoJoinDesc": "已驗證電郵符合上述規則的新帳戶會以下方角色自動加入——無需邀請。",
     "autoJoinRoleLabel": "自動加入帳戶的預設角色",
     "autoJoinRoleDesc": "自動加入時授予的角色，例如唯讀的 \"analyst\"。",
     "autoJoinBreadthTitle": "此規則的涵蓋範圍超出你的網域",
