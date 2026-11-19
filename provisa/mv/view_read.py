@@ -41,6 +41,7 @@ from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from provisa.compiler.stage2 import GovernanceContext
+    from provisa.compiler.view_expand import ViewNames
 
 
 def _input_tables(sql: str) -> list[Any]:
@@ -281,68 +282,67 @@ def _answered_after_governance(
     return _stored_rows(view, state) is not None and sees_everything(view, view_sql_map, gov)
 
 
-def view_names(view_sql_map: Mapping[str, str], table_map: Mapping[str, int]) -> dict[str, str]:
-    """Each qualified name (``schema.name``) governance resolves a view's registered table by,
-    other than the view's key, to that key: its domain's name and its semantic name's, which a
-    statement not yet lowered to the stored names calls it by. Read from the reader's
+def view_names(
+    view_sql_map: Mapping[str, str], table_map: Mapping[str, int]
+) -> dict[str, str | None]:
+    """Each qualified name governance resolves a view's registered table by, other than the view's
+    key, to that key: its domain's name and its semantic name's (``schema.name``), which a
+    statement not yet lowered to the stored names calls it by, and its catalog-physical name
+    (``catalog.schema.name``). Every other table's catalog-physical name maps to None: under its
+    catalog the name is that table, though its ``schema.name`` is a view's -- governance reads a
+    catalog-qualified reference by that name first (``naming.table_id_of``). Read from the reader's
     ``table_map`` -- the names governance itself reads the reference by -- so a name is the view's
     exactly when governance would read it as the view's table."""
     ids = {table_map[view]: view for view in view_sql_map if view in table_map}
-    return {
-        name: ids[table_id]
-        for name, table_id in table_map.items()
-        if table_id in ids and name.count(".") == 1 and name not in view_sql_map
-    }
+    names: dict[str, str | None] = {}
+    for name, table_id in table_map.items():
+        if name in view_sql_map:
+            continue
+        dots = name.count(".")
+        if dots == 1 and table_id in ids:
+            names[name] = ids[table_id]
+        elif dots == 2:
+            names[name] = ids.get(table_id)
+    return names
 
 
-def _mentions(
-    text: str, view: str, unqualified: Collection[str], others: Mapping[str, list[str]]
-) -> bool:
+def _mentions(text: str, view: str, unqualified: Collection[str], names: ViewNames | None) -> bool:
     """Whether ``text`` reads the view keyed ``view``: a reference to it as a table, quoted or
     not, which is what its expansion replaces (``compiler.view_expand.reads_view``) -- by its name
-    alone too when it is among ``unqualified``, and by its ``others`` names. A column named like
-    the view (a shared dimension is named for its column, REQ-413) is not a read of it."""
+    alone too when it is among ``unqualified``, and by the names ``names`` gives it. A column
+    named like the view (a shared dimension is named for its column, REQ-413) is not a read of
+    it."""
     from provisa.compiler.view_expand import reads_view  # noqa: PLC0415
 
-    return reads_view(text, view, unqualified=view in unqualified, also=others.get(view, ()))
-
-
-def _other_names(names: Mapping[str, str] | None) -> dict[str, list[str]]:
-    """``names`` (a name to its view's key) by view."""
-    found: dict[str, list[str]] = {}
-    for name, view in (names or {}).items():
-        found.setdefault(view, []).append(name)
-    return found
+    return reads_view(text, view, unqualified=view in unqualified, names=names)
 
 
 def views_read(
-    sql: str, view_sql_map: dict[str, str], names: Mapping[str, str] | None = None
+    sql: str, view_sql_map: dict[str, str], names: ViewNames | None = None
 ) -> dict[str, str]:
     """Every view ``sql`` reads, directly or through another view, with its SQL; ``names``, each
     view's other qualified names (:func:`view_names`)."""
     from provisa.compiler.view_expand import unqualified_keys  # noqa: PLC0415
 
     unqualified = unqualified_keys(view_sql_map)
-    others = _other_names(names)
     read: dict[str, str] = {}
     pending = [sql]
     while pending:
         text = pending.pop()
         for view, view_sql in view_sql_map.items():
-            if view not in read and _mentions(text, view, unqualified, others):
+            if view not in read and _mentions(text, view, unqualified, names):
                 read[view] = view_sql
                 pending.append(view_sql)
     return read
 
 
 def _views_read_here(
-    sql: str, view_sql_map: dict[str, str], home_copies: set[str], names: Mapping[str, str]
+    sql: str, view_sql_map: dict[str, str], home_copies: set[str], names: ViewNames
 ) -> dict[str, str]:
     """``views_read`` stopping at a view another region keeps: what its SQL reads is read there."""
     from provisa.compiler.view_expand import unqualified_keys  # noqa: PLC0415
 
     unqualified = unqualified_keys(view_sql_map)
-    others = _other_names(names)
     read: dict[str, str] = {}
     pending = [sql]
     while pending:
@@ -350,7 +350,7 @@ def _views_read_here(
         for view, view_sql in view_sql_map.items():
             if view in read or view in home_copies:
                 continue
-            if not _mentions(text, view, unqualified, others):
+            if not _mentions(text, view, unqualified, names):
                 continue
             read[view] = view_sql
             pending.append(view_sql)
@@ -485,7 +485,8 @@ def unnarrowed_view_bodies(
         for view, view_sql in view_sql_map.items():
             if view in bodies or view_table(view) not in text:
                 continue
-            if not _mentions(text, view, unqualified, {}):
+            # A lowered statement: every catalog in it is a real one (no reader's names).
+            if not _mentions(text, view, unqualified, None):
                 continue
             if view in bitemporal:
                 bodies[view] = as_of_reads[view]

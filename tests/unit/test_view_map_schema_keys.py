@@ -131,3 +131,86 @@ def test_a_nested_view_is_read_only_under_its_schema() -> None:
     assert set(views_read("SELECT * FROM views.outer_v", views)) == {"views.outer_v"}
     out = expand_view_refs("SELECT * FROM views.outer_v", views)
     assert "otherschema.v1" in out and "vault" not in out
+
+
+# A view is a table of the derived source, read under its catalog (``__derived__``). A three-part
+# name under another catalog is that catalog's table -- governance reads it by its catalog-physical
+# name first (naming.table_id_of) -- never the view, though its schema and name are the view's.
+_PG_TABLE = 'SELECT * FROM "pg"."views"."v1"'
+
+
+@pytest.mark.parametrize("mark", [False, True])
+@pytest.mark.parametrize(
+    "sql",
+    [
+        _PG_TABLE,
+        'SELECT * FROM "pg"."views"."v1" AS t',
+        "SELECT * FROM pg.views.v1",
+        'SELECT * FROM pg."views"."v1"',
+        'SELECT * FROM "pg".views.v1 t',
+    ],
+)
+def test_a_three_part_name_in_another_catalog_is_not_the_view(sql: str, mark: bool) -> None:
+    out = expand_view_refs(sql, _VIEWS, mark=mark)
+    assert "vault" not in out
+    assert VIEW_MARK not in out
+
+
+@pytest.mark.parametrize("mark", [False, True])
+@pytest.mark.parametrize(
+    "sql",
+    [
+        'SELECT * FROM "__derived__"."views"."v1"',
+        'SELECT * FROM "__derived__"."views"."v1" AS t',
+        "SELECT * FROM __derived__.views.v1",
+        "SELECT * FROM views.v1",
+        "SELECT * FROM v1",
+    ],
+)
+def test_the_views_own_catalog_still_names_it(sql: str, mark: bool) -> None:
+    assert "vault.keys" in expand_view_refs(sql, _VIEWS, mark=mark)
+
+
+#: The reader's table map: ``pg.views.v1`` is another source's table of the view's schema and name.
+_GOV_PG = GovernanceContext(
+    table_map={"views.v1": 7, "__derived__.views.v1": 7, "pg.views.v1": 9, "v1": 7}
+)
+
+
+@pytest.mark.parametrize("mark", [False, True])
+def test_read_against_the_readers_names_another_catalogs_table_is_that_table(mark: bool) -> None:
+    names = view_names(_VIEWS, _GOV_PG.table_map)
+    assert "vault" not in expand_view_refs(_PG_TABLE, _VIEWS, mark=mark, names=names)
+    assert views_read(_PG_TABLE, _VIEWS, names) == {}
+    state = SimpleNamespace(mv_registry=SimpleNamespace(get=lambda _id: None))
+    assert "vault" not in statement_as_read(_PG_TABLE, _VIEWS, state, _GOV_PG)
+    own = 'SELECT * FROM "__derived__"."views"."v1"'
+    assert "vault" in expand_view_refs(own, _VIEWS, mark=mark, names=names)
+    assert views_read(own, _VIEWS, names) == _VIEWS
+
+
+@pytest.mark.parametrize("mark", [False, True])
+def test_a_virtual_database_name_reads_the_view_as_governance_does(mark: bool) -> None:
+    """A client qualifying with the database it connected to (no catalog of the reader's) names
+    the table by its schema and name, as governance reads it (naming.table_id_of)."""
+    names = view_names(_VIEWS, _GOV_PG.table_map)
+    sql = 'SELECT * FROM "provisa"."views"."v1"'
+    assert "vault" in expand_view_refs(sql, _VIEWS, mark=mark, names=names)
+    assert views_read(sql, _VIEWS, names) == _VIEWS
+
+
+def test_the_write_guard_and_time_travel_take_the_catalog() -> None:
+    import sqlglot
+
+    from provisa.compiler.view_expand import view_of
+
+    names = view_names(_VIEWS, _GOV_PG.table_map)
+    pg = sqlglot.parse_one(_PG_TABLE, read="postgres").find(sqlglot.exp.Table)
+    own = sqlglot.parse_one('SELECT * FROM "__derived__"."views"."v1"', read="postgres").find(
+        sqlglot.exp.Table
+    )
+    assert pg is not None and own is not None
+    assert view_of(pg, _VIEWS, names) is None
+    assert view_of(pg, _VIEWS) is None
+    assert view_of(own, _VIEWS, names) == "views.v1"
+    assert view_of(own, _VIEWS) == "views.v1"
