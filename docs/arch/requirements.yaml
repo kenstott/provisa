@@ -4387,7 +4387,9 @@
     page follows every other list page: clicking a domain opens its detail panel, where its description,
     GraphQL alias, parent domain and steward are edited and saved. Its id is its identity and is shown,
     not edited. A change that renames what clients see (the alias, or a parent that changes the domain''s
-    place in the tree) says so before it is saved, and the schema is rebuilt when it is.'
+    place in the tree) says so before it is saved, and the schema is rebuilt when it is. (Amended 2026-11-19,
+    OWNERSHIP READ FROM ENTITLEMENTS:) Maintainer 2026-11-19. The steward gate reads the domain_steward
+    entitlement; domains.steward is removed (REQ-2219, 2026-11-19).'
   use_case: Steward requirement ensures accountability is always assigned before governed data is exposed.
   code:
   - provisa/core/domain_policy.py
@@ -59898,7 +59900,9 @@
     product it belongs to; an owner of any of those products may change it (maintainer 2026-11-08). (Amended
     2026-11-08, EXPORT KEEPS SEEDED MEMBERS:) A config export lists a data product''s members that are seeded
     tables, and relationships to seeded tables. On import the loader holds those names until the seeded
-    tables exist, so a round trip restores what was exported. (Maintainer 2026-11-08.)'
+    tables exist, so a round trip restores what was exported. (Maintainer 2026-11-08.) (Amended 2026-11-19,
+    OWNERSHIP READ FROM ENTITLEMENTS:) Maintainer 2026-11-19. The ODPS export reads the data product''s
+    owner from its data_product_owner entitlements (REQ-2219, 2026-11-19).'
   use_case: Lets a domain create named, owned data products bundling one or more datasets for publication
     (mirroring the collection-oriented "data product" concept in Snowflake Marketplace, Starburst Data
     Products, and data-mesh implementations like Nextdata), with per-product ownership distinct from domain-level
@@ -86867,7 +86871,9 @@ And a cell that reads shop.orders into a DataFrame, fits a model and plots it sh
     it decides, and Provisa enforces whatever its claims say. With none, the local default applies an expiry
     cancel at once -- the date was agreed when the grant was made, so it needs no second approval -- as
     the matching ordinary removal, attributed to the expiry; access ends within the run''s interval. Provisa
-    holds no separate read-time check of an expiry date.'
+    holds no separate read-time check of an expiry date. (Amended 2026-11-19, EXPIRY AFTER THE RUN, NOT
+    PER REQUEST:) Maintainer 2026-11-19. Expiry is never checked on a request; an expired entitlement is
+    gone after the expiry run (REQ-2219, 2026-11-19), superseding ''absent on every request''.'
   use_case: "An org administrator gives a contractor the analyst role until the end of the engagement and sets the contractor role to lapse after 30 days unused; on the last day the grant stops working without anyone remembering to remove it, and a role nobody uses is removed from its holders automatically, with everyone told beforehand."
   scenario: "Given ada holds analyst until tomorrow and bo holds contractor, a role with inactivity_days 30, last used 31 days ago\n\nWhen the next request after ada's expiry arrives\n\nThen it is served without analyst\n\nAnd the sweep deletes both grants, records role.expired and role.removed_inactive, and emails the org's administrators\n\nAnd seven days before either end, ada and bo and the administrators were emailed"
   related_reqs:
@@ -89089,7 +89095,9 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     with REQ-194''s amendment of the same day. The meta domain''s views over stored build output (names,
     tags, checker targets, lineage) may show the previous build until the after-answer pass has run, as
     REQ-2129 allows for lineage. A request that acts on a product (a grant, a bid, a quality check, a sample
-    view) reads the runtime''s published build instead.'
+    view) reads the runtime''s published build instead. (Amended 2026-11-19, OWNERSHIP READ FROM ENTITLEMENTS:)
+    Maintainer 2026-11-19. The owner shown for a data product is read from its data_product_owner entitlements;
+    the owner_role column is removed (REQ-2219, 2026-11-19).'
   use_case: >-
     An analyst, a BI tool or an MCP agent finds a data product and everything that makes it up (its
     domain, members, commands, tags, terms, data-quality evidence and profiles) by querying the meta
@@ -92672,7 +92680,9 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     at three hops, where before the column and the table each took a further hop. A product''s graph follows
     the same rule: the product''s own tables, columns and the terms grounded on them come with it, and hops
     count steps onward between terms. The control stays a row of buttons and gains All after 4: All follows
-    the connected part to its end, under the existing limit on how many nodes a graph draws.'
+    the connected part to its end, under the existing limit on how many nodes a graph draws. (Amended 2026-11-19,
+    OWNERSHIP READ FROM ENTITLEMENTS:) Maintainer 2026-11-19. The Consumers card reads the data product''s
+    owners from its data_product_owner entitlements (REQ-2219, 2026-11-19).'
   scenario: 'Given a graph whose nodes lie mostly in one plane
 
     When its 3D stage settles
@@ -93907,7 +93917,9 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     The rule editor shows the rights as three checkboxes. (Amended 2026-10-29, A METRIC HAS A DOMAIN AND
     AN OWNER:) Maintainer 2026-10-30: metrics are a model table, meta.metric_definitions, the name that
     does not collide with ops metrics. A metric belongs to a domain and names an owner role, as a data product
-    does, so the same rule applies: an org admin or the named owner edits it.'
+    does, so the same rule applies: an org admin or the named owner edits it. (Amended 2026-11-19, OWNERSHIP
+    READ FROM ENTITLEMENTS:) Maintainer 2026-11-19. The update and delete rules read the data_product_owner
+    entitlement, not data_products.owner_role, which is removed (REQ-2219, 2026-11-19).'
   scenario: 'Given data products owned by role pets_team and role sales_team
 
     And pets_team holds RW on data_products with U and D rules naming the product''s owner role
@@ -95863,7 +95875,19 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     2026-11-18. Each sign-in records whether the person''s email address was verified by the identity provider.
     A write that names a person by email resolves to a known person only by an address recorded as verified;
     an address typed by an account holder (a local account''s email) or one never verified names no one,
-    so the write waits as a pending grant and attaches at a verified sign-in with that address.'
+    so the write waits as a pending grant and attaches at a verified sign-in with that address. (Amended
+    2026-11-19, EXPIRY, VALID TIME, EFFECTIVE ROWS, ENFORCEMENT AND OWNER KINDS SETTLED:) Maintainer 2026-11-19.
+    Expiry is never checked at read time; the 2026-11-07 sentence on lazy enforcement in the session is
+    superseded. When an entitlement expires, access Provisa holds is removed at once and announced to the
+    outbound hook; access an external identity provider holds goes to the hook only, and with no hook configured
+    it is recorded as an event only. A stored row''s valid-to is the next row''s valid-from as recorded:
+    rows are append-only and carry no valid-to column. Every person Provisa knows to hold a role gets stored
+    effective rows. Requests are enforced from the in-memory mask, and the stored effective row is its record.
+    The owner kinds are named flat, except terms: a term_owner entitlement names its term as domain.term
+    (an asterisk allowed at either level), and a judgment_basis_owner names a judgment basis by its id.
+    Ownership held in columns moves to entitlements: data_products.owner_role, domains.steward and relationships.owner
+    are removed, and the rules that read them read the data_product_owner, domain_steward and relationship_owner
+    entitlements instead.'
   use_case: Alice holds the viewer role with tables [finance.revenue]; she sees only that table of everything
     viewer can see, while another viewer with no list sees all of it.
   scenario: 'Given two people with the viewer role, one whose grant lists tables [finance.revenue]
