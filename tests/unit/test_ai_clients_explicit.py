@@ -267,11 +267,11 @@ async def _chat_turn(chat_mod, vendor: str) -> list[dict]:
     convo = [{"role": "user", "content": "hi"}]
     if vendor == "anthropic":
         turns = chat_mod._run_chat_anthropic(
-            state, "analyst", convo, max_iterations=1, budget=_Budget()
+            state, "analyst", convo, max_iterations=1, budget=_Budget(), scope=None
         )
     else:
         turns = chat_mod._run_chat_aisuite(
-            state, "analyst", convo, vendor, max_iterations=1, budget=_Budget()
+            state, "analyst", convo, vendor, max_iterations=1, budget=_Budget(), scope=None
         )
     return [event async for event in turns]
 

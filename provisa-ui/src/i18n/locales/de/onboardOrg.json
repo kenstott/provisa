@@ -21,7 +21,7 @@
     "emailRuleLabel": "Regel für zulässige E-Mails (optional)",
     "emailRuleDesc": "Ein regulärer Ausdruck, dem die E-Mail-Adresse eines Eingeladenen entsprechen muss, z. B. \"@acme\\.com$\". Leer lassen, um jede E-Mail zuzulassen.",
     "autoJoinLabel": "Passende Konten automatisch beitreten lassen",
-    "autoJoinDesc": "Jedes neue Konto, dessen E-Mail der obigen Regel entspricht, tritt automatisch mit der unten stehenden Rolle bei — keine Einladung nötig.",
+    "autoJoinDesc": "Jedes neue Konto, dessen verifizierte E-Mail der obigen Regel entspricht, tritt automatisch mit der unten stehenden Rolle bei — keine Einladung nötig.",
     "autoJoinRoleLabel": "Standardrolle für automatisch beigetretene Konten",
     "autoJoinRoleDesc": "Die beim automatischen Beitritt vergebene Rolle, z. B. ein schreibgeschützter \"analyst\".",
     "autoJoinBreadthTitle": "Diese Regel reicht über Ihre Domäne hinaus",
