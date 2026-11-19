@@ -61,8 +61,9 @@ test.beforeAll(async () => {
   }
   // REQ-1921: registered, the fact is live: listed and read with no further step.
   const listed = await gql(`{ tables { id tableName draft } }`);
+  if (listed.errors) throw new Error(`tables query failed: ${JSON.stringify(listed.errors)}`);
   const fact = (
-    (listed.data?.tables ?? []) as Array<{ id: number; tableName: string; draft: boolean }>
+    listed.data!.tables as Array<{ id: number; tableName: string; draft: boolean }>
   ).find((t) => t.tableName === FACT_NAME);
   if (!fact) throw new Error(`registered fact ${FACT_NAME} is not listed`);
   if (fact.draft) throw new Error(`registered fact ${FACT_NAME} is a draft`);
