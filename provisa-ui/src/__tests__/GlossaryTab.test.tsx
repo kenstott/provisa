@@ -627,7 +627,7 @@ describe("GlossaryTab", () => {
     await edit();
 
     fireEvent.click(screen.getByTestId("description-field-generate"));
-    await waitFor(() => expect(mockGenerate).toHaveBeenCalledWith(1));
+    await waitFor(() => expect(mockGenerate).toHaveBeenCalledWith(1, null));
 
     // The draft lands in the form only; Save sends it.
     const input = within(screen.getByTestId("glossary-definition-input")).getByRole("textbox");

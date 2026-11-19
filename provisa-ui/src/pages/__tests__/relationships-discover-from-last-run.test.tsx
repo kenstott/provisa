@@ -197,7 +197,7 @@ describe("Discovery dialog: a run starts from the fields of the one before", () 
       table(7, "files", "inspections", SINCE),
       table(8, "shop", "returns", SINCE),
     ];
-    await newRunFrom(SCOPE);
+    await newRunFrom({ ...SCOPE, source_domains: ["shop"] });
     // The new shop table is in the run already: only the files tables are outside it.
     expect(screen.getByTestId("discover-new-tables")).toHaveTextContent(
       "2 tables registered since your last run are in files, which it did not look at.",

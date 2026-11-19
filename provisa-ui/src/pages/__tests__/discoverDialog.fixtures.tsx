@@ -38,7 +38,7 @@ import {
   type RunProposal,
 } from "../../api/admin";
 
-import { REGISTERED, TABLES } from "./discoverDialog.state";
+import { CHECKED, FILTER, REGISTERED, TABLES } from "./discoverDialog.state";
 
 export const HAIKU = {
   vendor: "anthropic",
@@ -85,7 +85,7 @@ export const SETTINGS_DEFAULT: DiscoverySettings = {
 };
 export const SCOPE: DiscoveryScope = {
   kinds: ["foreign_keys", "semantics", "key_values"],
-  source_domains: ["shop"],
+  source_domains: ["shop", "crm"],
   source_tables: null,
   target_same_as_source: true,
   target_domains: [],
@@ -281,6 +281,8 @@ export const semanticsBox = () => screen.getByTestId("discover-kind-semantics") 
 export const runButton = () => screen.getByTestId("discover-run");
 export const sameBox = () => screen.getByTestId("discover-same-as-source") as HTMLInputElement;
 export const SLOW = { timeout: 4000 };
+/** The navbar filter's selection (FILTER), sent with every count and run (REQ-2253). */
+export const SELECTED = new Set(CHECKED);
 
 export async function openDialog() {
   render(<RelationshipsPage />);
@@ -310,6 +312,7 @@ export function resetDiscoveryMocks() {
   // A panel opens as this viewer left it: each test starts with nothing remembered.
   window.localStorage.clear();
   TABLES.tables = REGISTERED;
+  FILTER.checkedDomains = new Set(CHECKED);
   modelsMock.mockReset().mockResolvedValue(MODELS);
   vendorModelsMock
     .mockReset()
