@@ -3102,7 +3102,13 @@
     more than one acceptable form and gives no ranking between them (schema: schemata, schemas), the form
     used more often in general English wins, read from a bundled word-frequency table under a licence compatible
     with Provisa''s (schema to schemas). Frequency only breaks such ties; it never overrides a single dictionary
-    form.'
+    form. (Amended 2026-11-18, AMONG ACCEPTED FORMS THE REGULAR PLURAL WINS; A NOUN''S MAIN SENSE IS THE
+    ONE MOST DICTIONARIES LIST:) Maintainer 2026-11-18, replacing the word-frequency tie-break of 59d7aa17cf.
+    Where the dictionary accepts more than one plural of a noun (at any of its accepted levels), the regularly
+    formed plural wins (schema to schemas, index to indexes, maximum to maximums, focus to focuses); word
+    frequency only chooses between irregular forms when no regular form is accepted. Where a noun has more
+    than one sense with different plurals, the sense listed by the most standard dictionaries is the one
+    used (axis to axes).'
   use_case: Consistent multi-language naming with a single authority ensures client-facing names are predictable
     and independent of physical schema.
   code:
