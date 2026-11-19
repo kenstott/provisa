@@ -428,7 +428,7 @@ export interface RegisteredColumnEdits {
 
 /**
  * REQ-1921: a table or view registered through the admin is live on registration. Asserts every
- * table matching ``match`` (a source's, or one table by name) is listed and none is a draft, and
+ * table matching ``match`` (a source's, or one table by name) is listed and none is withdrawn, and
  * returns how many matched.
  */
 export async function expectRegisteredLive(
@@ -437,7 +437,7 @@ export async function expectRegisteredLive(
   baseUrl = "",
 ): Promise<number> {
   const res = await page.request.post(`${baseUrl}/admin/graphql`, {
-    data: { query: "{ tables { id sourceId tableName draft } }" },
+    data: { query: "{ tables { id sourceId tableName withdrawn } }" },
   });
   expect(res.ok(), await res.text()).toBeTruthy();
   const body = await res.json();
@@ -446,7 +446,7 @@ export async function expectRegisteredLive(
     id: number;
     sourceId: string;
     tableName: string;
-    draft: boolean;
+    withdrawn: boolean;
   }[];
   const matched = tables.filter(
     (t) =>
@@ -455,8 +455,8 @@ export async function expectRegisteredLive(
   );
   expect(matched.length, `no registered table matches ${JSON.stringify(match)}`).toBeGreaterThan(0);
   expect(
-    matched.filter((t) => t.draft).map((t) => t.tableName),
-    "a registered table is live, never a draft",
+    matched.filter((t) => t.withdrawn).map((t) => t.tableName),
+    "a registered table is live, never withdrawn",
   ).toEqual([]);
   return matched.length;
 }
