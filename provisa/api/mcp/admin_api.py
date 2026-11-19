@@ -226,6 +226,10 @@ async def discover_relationships(state: Any, schema: str, table: str, *, request
         raise ValueError(
             f"{schema}.{table} names {len(matches)} registered tables; name exactly one"
         )
+    from provisa.security.selected_domains import refuse_object
+
+    # REQ-2253: a table outside the domains selected in the domain filter is not discovered on.
+    refuse_object(f"Table {schema}.{table}", {matches[0]["domain_id"]})
     # Semantics runs where the model assigned to relationship inference has its key; the answer
     # says which kinds ran and what each found.
     kinds: list = ["foreign_keys"]

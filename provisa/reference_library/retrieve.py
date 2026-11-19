@@ -378,11 +378,14 @@ async def search_for_role(state: Any, role: str, question: str, k: int = 5) -> l
     """:func:`retrieve_with_neighbours` for ``role`` in the bound org, as an assistant's tool
     answers: the ``k`` passages nearest the question, and up to as many again of the glossary
     walk's candidates and neighbours."""
+    from provisa.security.selected_domains import narrowed
+
     embedder = await org_embedder(state)
     pool = state.model_db
     assert pool is not None
     async with pool.acquire() as conn:
+        # REQ-2253: an AI-assisted call draws only on the selected domains' documents.
         found = await retrieve_with_neighbours(
-            conn, question, role_domains(state, role), embedder, k=k
+            conn, question, narrowed(role_domains(state, role)), embedder, k=k
         )
     return [c.as_dict() for c in found]
