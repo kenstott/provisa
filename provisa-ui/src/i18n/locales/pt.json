@@ -101,6 +101,6 @@
   },
   "pageError": {
     "title": "Não foi possível mostrar esta página",
-    "body": "Ocorreu uma falha na renderização. O resto do aplicativo continua funcionando: vá para outra página ou recarregue esta."
+    "body": "Ocorreu uma falha durante a renderização. O resto do aplicativo continua funcionando, então vá para outra página ou recarregue esta."
   }
 }

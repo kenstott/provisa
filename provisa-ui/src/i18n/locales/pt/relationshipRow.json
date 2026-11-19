@@ -1,6 +1,6 @@
 {
   "relationshipRow": {
-    "fkBadge": "De FK",
+    "fkBadge": "Da FK",
     "fkBadgeTitle": "Criada a partir de uma chave estrangeira na origem",
     "yes": "Sim",
     "no": "Não",

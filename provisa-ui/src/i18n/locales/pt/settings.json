@@ -194,7 +194,7 @@
       },
       "hot_threshold": {
         "label": "Limite de tabela movimentada",
-        "help": "Quantas instruções governadas uma tabela precisa receber dentro da janela de tabela movimentada antes de ser replicada, para que as leituras seguintes venham da sua réplica."
+        "help": "Quantas instruções governadas uma tabela precisa receber dentro da janela de tabelas movimentadas antes de ser replicada, para que as leituras seguintes venham da sua réplica."
       },
       "hot_interval": {
         "label": "Janela de tabela movimentada",
@@ -247,8 +247,8 @@
         }
       },
       "role_grant_notice_days": {
-        "label": "Aviso antes do fim de uma atribuição de função ou de suas entradas",
-        "help": "Quantos dias antes de uma atribuição de função, ou uma de suas entradas de direitos, terminar, ou de a atribuição ser removida por falta de uso, o titular e os administradores da organização recebem um e-mail."
+        "label": "Aviso antes que uma concessão de função ou suas entradas terminem",
+        "help": "Quantos dias antes que uma concessão de função, ou uma de suas entradas de direito, termine, ou que a concessão seja removida por falta de uso, o titular e os administradores da organização recebem um e-mail."
       }
     },
     "server": {
@@ -291,6 +291,12 @@
       "node_url": {
         "label": "Endereço deste nó",
         "help": "O endereço em que os clientes alcançam este nó. A interface de um coordenador o lista como nó de dados quando a região não lista nenhum. O inicializador o define para cada nó; sem ele, o nó não é listado."
+      }
+    },
+    "embedding": {
+      "hub_endpoint": {
+        "label": "Endereço do hub do Hugging Face",
+        "help": "O hub do Hugging Face de onde um modelo de embeddings local é baixado, como um espelho dentro da sua rede. Aplica-se ao próximo download de modelo."
       }
     },
     "tls": {
@@ -598,7 +604,7 @@
       },
       "principal": {
         "label": "Principal local do MCP",
-        "help": "O principal (id de usuário) em nome de quem as chamadas MCP locais (stdio) agem, ao lado da função local; os direitos dessa pessoa restringem a função. Enquanto não estiver definido, essas chamadas são recusadas. Protegido porque qualquer pessoa que possa iniciar o cliente local age com o acesso dessa pessoa."
+        "help": "O principal (ID de usuário) em nome de quem as chamadas MCP locais (stdio) agem, ao lado da função local; os direitos dessa pessoa restringem a função. Até que seja definido, essas chamadas são recusadas. Protegido porque age com o acesso dessa pessoa para qualquer um que possa iniciar o cliente local."
       },
       "tools": {
         "label": "Ferramentas MCP listadas",
@@ -683,7 +689,7 @@
     "logs": {
       "allowed_roots": {
         "label": "Diretórios dos quais arquivos de log podem ser lidos",
-        "help": "Os diretórios em que os arquivos de uma fonte Logs podem estar, depois de seguidos seus links; por padrão /var/log. Adicione um, como ~/Library/Logs, para ler em tabelas os arquivos do próprio servidor que estejam nele. Uma organização sandbox e, num servidor de muitas organizações, toda organização exceto a própria da implantação não lê nenhum arquivo do servidor fora da sua própria pasta, exceto os que as fontes da sua demo nomeiam, diga o que disser esta configuração."
+        "help": "Os diretórios em que os arquivos de uma fonte Logs podem estar, depois de seguidos os links; por padrão /var/log. Adicione um, como ~/Library/Logs, para ler em tabelas os arquivos do próprio servidor que estão nele. Uma organização sandbox, e em um servidor com muitas organizações todas exceto a da própria implantação, não lê nenhum arquivo do próprio servidor fora da sua própria pasta, exceto os que as fontes da sua demo nomeiam, independentemente desta configuração."
       },
       "preview_lines": {
         "label": "Linhas lidas para achar as colunas de um log",
@@ -711,7 +717,7 @@
       },
       "download_roots": {
         "label": "Diretórios dos quais arquivos de fontes podem ser baixados",
-        "help": "Os diretórios dos quais o arquivo de uma fonte CSV ou Parquet pode ser baixado pelo seu caminho neste servidor, depois de seguidos os seus links; nenhum por padrão. Adicione um para que um steward possa copiar um arquivo dentro dele para a pasta da organização. Uma organização sandbox e, num servidor de muitas organizações, toda organização exceto a própria da implantação não copia nenhum arquivo do servidor fora da sua própria pasta, exceto os que as fontes da sua demo nomeiam, diga o que disser esta configuração."
+        "help": "Os diretórios dos quais o arquivo de uma fonte CSV ou Parquet pode ser baixado pelo seu caminho neste servidor, depois de seguidos os links; nenhum por padrão. Adicione um para permitir que um steward copie um arquivo que está nele para a pasta da organização. Uma organização sandbox, e em um servidor com muitas organizações todas exceto a da própria implantação, não copia nenhum arquivo do próprio servidor fora da sua própria pasta, exceto os que as fontes da sua demo nomeiam, independentemente desta configuração."
       }
     },
     "polly": {
@@ -814,7 +820,7 @@
     "graph": {
       "depth_limit": {
         "label": "Caminho de grafo mais profundo",
-        "help": "O máximo de saltos que um caminho de comprimento variável do Cypher ou um caminho de propriedades do SPARQL percorre quando a consulta não define seu próprio limite. Um resultado cortado nessa profundidade indica isso."
+        "help": "O máximo de saltos que um caminho de comprimento variável do Cypher ou um property path do SPARQL percorre quando a consulta não define um limite próprio. Um caminho Cypher não repete nenhum relacionamento e, se fosse além, falha com um erro explícito; um resultado SPARQL cortado nesta profundidade informa que foi cortado. Muito grande por padrão (1000)."
       },
       "union_limit": {
         "label": "Máximo de predicados que um predicado variável abrange",
@@ -873,12 +879,6 @@
       "max_calls_per_statement": {
         "label": "Chamadas por instrução a uma tabela parametrizada",
         "help": "O máximo de chamadas que uma instrução faz a uma tabela parametrizada. Cada valor que uma instrução dá a um parâmetro é uma chamada à origem: cada valor de uma lista IN, cada ramo de um OR, cada chave distinta de um join. Uma instrução que precise de mais é recusada."
-      }
-    },
-    "embedding": {
-      "hub_endpoint": {
-        "label": "Endereço do hub do Hugging Face",
-        "help": "O hub do Hugging Face de onde um modelo de embeddings local é baixado, como um espelho dentro da sua rede. Aplica-se ao próximo download de modelo."
       }
     },
     "subscriptions": {

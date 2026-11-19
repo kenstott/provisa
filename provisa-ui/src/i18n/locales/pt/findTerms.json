@@ -121,7 +121,7 @@
     "roleSynthesis": "Usado",
     "roleSupporting": "De apoio",
     "conflicts": "Explicações divergentes",
-    "conflictsHint": "Estes trechos não podem ser verdadeiros ao mesmo tempo. São mostrados lado a lado, nunca misturados.",
+    "conflictsHint": "Estes trechos não podem ser ambos verdadeiros, então são mostrados lado a lado.",
     "accept": "Aceitar",
     "merge": "Mesclar",
     "mergeInto": "Mesclar em",
