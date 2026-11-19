@@ -128,7 +128,7 @@ def _rel_words(target_field_name: str, cardinality: str) -> str:
 
 
 def junction_field_name(  # REQ-1586
-    label_source: str,
+    label_source: str | None,
     cardinality: str,
     *,
     type_value: str | None = None,
@@ -164,6 +164,38 @@ def junction_field_name(  # REQ-1586
     # A nominated label is prose ("bonded pair") or a Cypher type (BONDED_PAIR); rel_field_name
     # splits on underscores, so give it the words separated the way it expects.
     return rel_field_name(re.sub(r"[^A-Za-z0-9]+", "_", label).strip("_"), cardinality)
+
+
+def relationship_field_name(  # REQ-194, REQ-351, REQ-1586
+    cardinality: str,
+    *,
+    target_field_name: str,
+    graphql_alias: str | None = None,
+    via_label_source: str | None = None,
+    via_type_value: str | None = None,
+    via_table_name: str | None = None,
+    cypher_alias: str | None = None,
+) -> str:
+    """The GraphQL field a relationship is served under: the field a steward pinned
+    (``graphql_alias``), else a junction-backed edge's nominated label (:func:`junction_field_name`),
+    else the field of the table it reaches -- ``target_field_name``, that table's own GraphQL field
+    name (:func:`generate_name`: its alias, else its name under the naming rules) without any system
+    schema prefix -- in the cardinality's number (:func:`rel_field_name`).
+
+    The one rule: the schema build serves this name and ``core.relationship_names`` stores it, so
+    the stored name and the served field are always the same."""
+    if graphql_alias:
+        return graphql_alias
+    if via_table_name is not None or via_label_source:
+        # A junction's nomination is required: junction_field_name refuses a missing one.
+        return junction_field_name(
+            via_label_source,
+            cardinality,
+            type_value=via_type_value,
+            via_table_name=via_table_name,
+            cypher_alias=cypher_alias,
+        )
+    return rel_field_name(target_field_name, cardinality)
 
 
 def ontology_name(term_name: str) -> str | None:  # REQ-2163
