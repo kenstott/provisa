@@ -75,6 +75,38 @@ def test_plural_only_dictionary_word_unchanged_in_plural():
     assert naming._rel_words("customer_data", "one-to-many") == "customer_data"
 
 
+# REQ-194 (amended 2026-11-18): a plural that more standard dictionaries list as a headword than
+# its singular is an everyday word of its own -- its own singular and plural.
+def test_everyday_plural_is_its_own_singular():
+    assert naming._rel_words("data", "many-to-one") == "data"
+    assert naming._rel_words("customer_data", "many-to-one") == "customer_data"
+    assert glossary.table_concept("data") == "data"
+    assert relationship_names.derive_cypher_alias("data_id", "many-to-one") == "BELONGS_TO_DATA"
+
+
+def test_singular_of_everyday_plural_still_takes_it():
+    assert naming._rel_words("datum", "one-to-many") == "data"
+
+
+def test_everyday_plural_that_is_also_a_noun_keeps_its_own_plural():
+    assert naming._rel_words("opera", "many-to-one") == "opera"
+    assert naming._rel_words("opera", "one-to-many") == "operas"
+    assert naming._rel_words("operas", "many-to-one") == "opera"
+
+
+# REQ-194 (amended 2026-11-18): a word the dictionary knows only in an unrelated sense of the same
+# spelling (by, read as the noun bye) is not inflected.
+@pytest.mark.parametrize("rel_type", ["one-to-many", "many-to-one"])
+def test_word_known_only_in_unrelated_sense_not_inflected(rel_type):
+    assert naming._rel_words("by", rel_type) == "by"
+    assert naming._rel_words("treated_by", rel_type) == "treated_by"
+
+
+def test_unrelated_sense_leaves_the_other_noun_inflected():
+    assert naming._rel_words("bye", "one-to-many") == "byes"
+    assert naming._rel_words("byes", "many-to-one") == "bye"
+
+
 @pytest.mark.parametrize("word", ["series", "news", "sheep"])
 def test_dictionary_noun_without_other_plural_unchanged(word):
     # Listed with no plural but itself: never the rule form ("serieses").

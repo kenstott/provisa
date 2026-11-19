@@ -12,9 +12,11 @@
 
 The dictionary is ``data/noun_plurals.tsv.gz``: English noun singular/plural pairs extracted from
 the English Speller Database (scripts/gen_noun_plurals.py; notice in ``data/THIRD_PARTY_NOTICES``).
-A noun in it takes only its dictionary forms; a word it does not list (an abbreviation, a coined
-table name) takes lemminflect's rule-based out-of-vocabulary form. This is the one inflection
-helper every naming path uses (relationship fields, aliases, glossary terms).
+A noun in it takes only its dictionary forms; a form the table marks as a word of its own
+(``data``) is its own singular and plural, though it is another noun's plural too; a word it does
+not list (an abbreviation, a coined table name) takes lemminflect's rule-based out-of-vocabulary
+form. This is the one inflection helper every naming path uses (relationship fields, aliases,
+glossary terms).
 """
 
 # Requirements: REQ-194
@@ -29,18 +31,23 @@ _TABLE = Path(__file__).parent / "data" / "noun_plurals.tsv.gz"
 
 
 @functools.cache
-def _dictionary() -> tuple[dict[str, str], dict[str, str]]:
-    """(singular -> its plural, plural -> its singular). The table lists each noun's chosen plural
-    first, then its other plurals; a noun listed with itself as plural has no other form."""
+def _dictionary() -> tuple[dict[str, str], dict[str, str], frozenset[str]]:
+    """(singular -> its plural, plural -> its singular, words of their own). The table lists each
+    noun's chosen plural first, then its other plurals; a noun listed with itself as plural has no
+    other form; a row marked ``own`` (after every pair) is a word that is its own singular, whatever
+    else it is the plural of."""
     plural_of: dict[str, str] = {}
     singular_of: dict[str, str] = {}
+    own: set[str] = set()
     with gzip.open(_TABLE, "rt", encoding="utf-8") as f:
         for line in f:
-            singular_form, plural_form = line.rstrip("\n").split("\t")
+            singular_form, plural_form, *mark = line.rstrip("\n").split("\t")
             plural_of.setdefault(singular_form, plural_form)
-            if plural_form != singular_form:
+            if mark == ["own"]:
+                own.add(singular_form)
+            elif plural_form != singular_form:
                 singular_of.setdefault(plural_form, singular_form)
-    return plural_of, singular_of
+    return plural_of, singular_of, frozenset(own)
 
 
 def _match_case(form: str, written: str) -> str:
@@ -55,7 +62,9 @@ def _match_case(form: str, written: str) -> str:
 def is_plural(word: str) -> bool:
     """True when ``word`` is the plural of a different noun."""
     lower = word.lower()
-    plural_of, singular_of = _dictionary()
+    plural_of, singular_of, own = _dictionary()
+    if lower in own:
+        return False
     if lower in singular_of:
         return True
     if lower in plural_of:
@@ -66,7 +75,9 @@ def is_plural(word: str) -> bool:
 def singular(word: str) -> str:
     """``word``'s singular: the dictionary's for a word it lists, else the rule-based form."""
     lower = word.lower()
-    plural_of, singular_of = _dictionary()
+    plural_of, singular_of, own = _dictionary()
+    if lower in own:
+        return word
     if lower in singular_of:
         return _match_case(singular_of[lower], word)
     if lower in plural_of:
@@ -80,7 +91,7 @@ def plural(word: str) -> str:
     if is_plural(word):
         return word
     lower = word.lower()
-    plural_of, _ = _dictionary()
+    plural_of, _, _ = _dictionary()
     if lower in plural_of:
         return _match_case(plural_of[lower], word)
     return _match_case(getAllInflectionsOOV(lower, upos="NOUN")["NNS"][0], word)

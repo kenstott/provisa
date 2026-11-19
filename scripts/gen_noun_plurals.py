@@ -38,9 +38,18 @@ What is taken (the file's notation is documented in the source's README.md):
   - then file order.
 - A common noun with no plural in any group (``news``, ``series``) is listed as its own plural:
   the dictionary knows the word and gives it no other form.
+- A non-variant plural that the 12dicts source (the count of standard dictionaries listing a word
+  as a headword) places at a more common size than its singular is a word of its own: it is listed as
+  its own singular as well (``data`` is at 12dicts size 35, ``datum`` at 50, so ``data`` stays
+  ``data`` both ways while ``datum`` -> ``data``). Its row carries a third field, ``own``.
+- A noun whose spelling is also a function word (preposition, conjunction, pronoun, determiner)
+  and whose every plural is the plural of a different noun is that other noun's spelling, not the
+  function word's (``by`` read as ``bye``, plural ``byes``): it is listed as its own plural only,
+  so it is not inflected.
 
 The table has one row per (singular, plural) pair: the chosen plural first, then every other
-accepted alternative, so each plural maps back to its singular.
+accepted alternative, so each plural maps back to its singular. A word of its own (12dicts rule)
+follows every pair as ``word<TAB>word<TAB>own``.
 """
 
 from __future__ import annotations
@@ -55,6 +64,19 @@ _MAX_SIZE = 80
 _LEVELS = ["", ".", "=", "?", "v", "~", "V", "-"]  # x (invalid) and @ (archaic) are dropped
 _VARIANT_TOKEN = re.compile(r"^[ABZCD_]?[.=?v~V@\-x]?$")
 _WORD = re.compile(r"^[a-z]+$")
+_FUNCTION_POS = frozenset({"pp", "c", "pn", "d"})
+_HEADWORD_TAG = "[12dicts]"
+
+
+def _tag_size(line: str, tag: str) -> int | None:
+    """The size at which a SCOWL-INFO lists ``tag``'s source; None when that source lacks it."""
+    size = None
+    for token in line.split(": ", 1)[0].split():
+        if token.isdigit():
+            size = int(token)
+        elif token == tag:
+            return size
+    return None
 
 
 def _american_level(info: str) -> str | None:
@@ -135,23 +157,34 @@ def _lemma(lemma_info: str) -> tuple[str, str] | None:
     return m.group(2), m.group(3)
 
 
-def extract(scowl_pre: Path) -> list[tuple[str, str]]:
+def extract(scowl_pre: Path) -> tuple[list[tuple[str, str]], list[str]]:
+    """(the (singular, plural) rows, the plurals that are words of their own)."""
     plurals: dict[str, list[tuple[str, str, int]]] = {}  # singular -> (plural, level, order)
     nouns: list[str] = []
+    function_words: set[str] = set()
+    own_words: list[str] = []  # plurals that are words of their own (12dicts rule)
     order = 0
     # The group's lemmas by variant info: a "-" line belongs to the lemma with its variant info
     # (a line without one, to the group's first lemma). None marks a lemma not taken.
     group: dict[str, str | None] = {}
+    headword: dict[str, int | None] = {}  # the group's lemma 12dicts sizes, by variant info
     first: str | None = None
     for raw in scowl_pre.read_text(encoding="utf-8").splitlines():
         if not raw.strip():
-            group, first = {}, None
+            group, headword, first = {}, {}, None
             continue
         parsed = _split_line(raw)
         if parsed is None:
             continue
         size, au, variant_info, level, lemma_info, entries = parsed
         lemma = _lemma(lemma_info)
+        if (
+            lemma is not None
+            and lemma[0] != "-"
+            and lemma[1] in _FUNCTION_POS
+            and size <= _MAX_SIZE
+        ):
+            function_words.add(lemma[0])
         if lemma is None or lemma[1] != "n":
             continue
         word = lemma[0]
@@ -164,6 +197,7 @@ def extract(scowl_pre: Path) -> list[tuple[str, str]]:
                 or not _WORD.match(word)
             )
             group[variant_info] = word if taken else None
+            headword[variant_info] = _tag_size(raw, _HEADWORD_TAG)
             if first is None:
                 first = variant_info
             if not taken:
@@ -177,13 +211,36 @@ def extract(scowl_pre: Path) -> list[tuple[str, str]]:
             target = group.get(key) if key is not None else None
         if target is None or size > _MAX_SIZE or au or level is None or not entries:
             continue
+        lemma_key = variant_info if variant_info in group else first
+        singular_dicts = headword.get(lemma_key) if lemma_key is not None else None
+        plural_dicts = _tag_size(raw, _HEADWORD_TAG)
         for plural, alt_level in _alternatives(entries[0]):
             order += 1
             plurals[target].append((plural, alt_level, order))
+            if (
+                plural != target
+                and alt_level == ""
+                and plural_dicts is not None
+                and singular_dicts is not None
+                and plural_dicts < singular_dicts
+                and plural not in own_words
+            ):
+                own_words.append(plural)
     lemmas = set(nouns)
+    owners: dict[str, set[str]] = {}
+    for singular in nouns:
+        for plural, _, _ in plurals[singular]:
+            if plural != singular:
+                owners.setdefault(plural, set()).add(singular)
     rows: list[tuple[str, str]] = []
     for singular in nouns:
         alts = plurals[singular]
+        if (
+            alts
+            and singular in function_words
+            and all(owners.get(a[0], set()) - {singular} for a in alts)
+        ):
+            alts = []
         if not alts:
             rows.append((singular, singular))
             continue
@@ -200,7 +257,7 @@ def extract(scowl_pre: Path) -> list[tuple[str, str]]:
             if plural not in seen:
                 seen.add(plural)
                 rows.append((singular, plural))
-    return rows
+    return rows, own_words
 
 
 _NOTICE_HEAD = """Third-party notices
@@ -219,15 +276,19 @@ noun as that script describes. Its notice follows, verbatim.
 
 def main(argv: list[str]) -> int:
     scowl_pre, copyright_file = Path(argv[0]), Path(argv[1])
-    rows = extract(scowl_pre)
+    rows, own_words = extract(scowl_pre)
     _OUT.mkdir(parents=True, exist_ok=True)
-    data = "".join(f"{s}\t{p}\n" for s, p in rows).encode("utf-8")
+    # Own words after every pair, so a noun that is also a lemma (opera -> operas) keeps its plural.
+    text = "".join(f"{s}\t{p}\n" for s, p in rows) + "".join(f"{w}\t{w}\town\n" for w in own_words)
+    data = text.encode("utf-8")
     # mtime=0: the same source gives the same bytes.
     (_OUT / "noun_plurals.tsv.gz").write_bytes(gzip.compress(data, mtime=0))
     (_OUT / "THIRD_PARTY_NOTICES").write_text(
         _NOTICE_HEAD + copyright_file.read_text(encoding="utf-8"), encoding="utf-8"
     )
-    print(f"{len(rows)} pairs, {len({s for s, _ in rows})} nouns")
+    print(
+        f"{len(rows)} pairs, {len({s for s, _ in rows})} nouns, own words: {', '.join(own_words)}"
+    )
     return 0
 
 
