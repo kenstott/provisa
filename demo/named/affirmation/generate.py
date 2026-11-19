@@ -21,6 +21,7 @@ break each (BREAKS); the others agree in every system."""
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import date
 from pathlib import Path
 
 DB = Path(__file__).parent / "db"
@@ -169,7 +170,7 @@ ORDERS = (
 
 #: The seeded break of each allocation that carries one, by its trade reference.
 BREAKS = {
-    "A-1002-1": "price",  # the broker confirms five cents off the average price
+    "A-1002-1": "price",  # the broker confirms 15 cents (about 3 bp) off the average price
     "A-1003-2": "quantity",  # the broker confirms 1,500 shares for 15,000
     "A-1004-1": "no_confirmation",  # the broker has not confirmed
     "A-1005-2": "ssi",  # the broker delivers to the fund's closed account
@@ -290,35 +291,97 @@ def ems() -> str:
     )
 
 
+def allocations() -> list[tuple[Order, str, str, int]]:
+    """Each allocation: its order, its trade reference, its fund and its quantity."""
+    return [
+        (o, f"A-{o.order_id[2:]}-{i}", fund, qty)
+        for o in ORDERS
+        for i, (fund, qty) in enumerate(o.allocations, 1)
+    ]
+
+
+Value = str | int | float
+
+
+def confirmation(o: Order, ref: str, fund: str, qty: int) -> dict[str, Value] | None:
+    """The broker's confirmation of an allocation, its seeded break in it; None when unsent."""
+    seeded = BREAKS.get(ref)
+    if seeded == "no_confirmation":
+        return None
+    price = round(o.avg_price + 0.15, 4) if seeded == "price" else o.avg_price
+    quantity = 1500 if seeded == "quantity" else qty
+    fee = commission(o.market, quantity, price, 10.0 if seeded == "net_amount" else 5.0)
+    return {
+        "side": o.side,
+        "quantity": quantity,
+        "price": price,
+        "commission": fee,
+        "net_amount": net(o.side, quantity, price, fee),
+        "settle_date": TRADE_DATE[:-2] + "19" if seeded == "settlement_date" else SETTLE[o.market],
+        "custodian_bic": CUSTODIAN[o.market],
+        "safekeeping_account": account(fund, o.market, 9 if seeded == "ssi" else 1),
+    }
+
+
+def instruction(o: Order, ref: str, qty: int) -> dict[str, Value] | None:
+    """The custodian's instruction for an allocation; None when it was never sent."""
+    if BREAKS.get(ref) == "no_instruction":
+        return None
+    fee = commission(o.market, qty, o.avg_price)
+    return {
+        "quantity": qty,
+        "net_amount": net(o.side, qty, o.avg_price, fee),
+        "settle_date": SETTLE[o.market],
+    }
+
+
+def trade_legs(o: Order, ref: str, fund: str, qty: int) -> dict[str, Value | date]:
+    """An allocation's four records as the legs view reads them: what trade_match is given."""
+    legs: dict[str, Value | date] = {
+        "trade_ref": ref,
+        "side": o.side,
+        "quantity": float(qty),
+        "settle_date": date.fromisoformat(SETTLE[o.market]),
+        "exec_price": sum(q * p for q, p in o.fills) / o.quantity,
+        "ssi_custodian": CUSTODIAN[o.market],
+        "ssi_account": account(fund, o.market),
+    }
+    c = confirmation(o, ref, fund, qty)
+    if c is not None:
+        legs |= {
+            "confirm_side": c["side"],
+            "confirm_quantity": float(c["quantity"]),
+            "confirm_price": c["price"],
+            "confirm_net": c["net_amount"],
+            "confirm_settle_date": date.fromisoformat(str(c["settle_date"])),
+            "confirm_custodian": c["custodian_bic"],
+            "confirm_account": c["safekeeping_account"],
+        }
+    i = instruction(o, ref, qty)
+    if i is not None:
+        legs |= {
+            "instruction_quantity": float(i["quantity"]),
+            "instruction_net": i["net_amount"],
+            "instruction_settle_date": date.fromisoformat(str(i["settle_date"])),
+        }
+    return legs
+
+
 def broker() -> str:
     rows = []
-    for o in ORDERS:
-        for i, (fund, qty) in enumerate(o.allocations, 1):
-            ref = f"A-{o.order_id[2:]}-{i}"
-            seeded = BREAKS.get(ref)
-            if seeded == "no_confirmation":
-                continue
-            price = round(o.avg_price + 0.05, 4) if seeded == "price" else o.avg_price
-            quantity = 1500 if seeded == "quantity" else qty
-            settle = TRADE_DATE[:-2] + "19" if seeded == "settlement_date" else SETTLE[o.market]
-            number = 9 if seeded == "ssi" else 1
-            fee = commission(o.market, quantity, price, 10.0 if seeded == "net_amount" else 5.0)
-            rows.append(
-                (
-                    f"C-{o.broker}-{ref[2:]}",
-                    ref,
-                    o.broker,
-                    o.side,
-                    quantity,
-                    price,
-                    fee,
-                    net(o.side, quantity, price, fee),
-                    settle,
-                    CUSTODIAN[o.market],
-                    account(fund, o.market, number),
-                    f"{TRADE_DATE} 19:{len(rows):02d}:00",
-                )
+    for o, ref, fund, qty in allocations():
+        c = confirmation(o, ref, fund, qty)
+        if c is None:
+            continue
+        rows.append(
+            (
+                f"C-{o.broker}-{ref[2:]}",
+                ref,
+                o.broker,
+                *c.values(),
+                f"{TRADE_DATE} 19:{len(rows):02d}:00",
             )
+        )
     return (
         _HEADER
         + "-- The brokers' confirmations, as they arrive through the matching platform: each\n"
@@ -338,24 +401,11 @@ def broker() -> str:
 
 def custody() -> str:
     rows = []
-    for o in ORDERS:
-        for i, (fund, qty) in enumerate(o.allocations, 1):
-            ref = f"A-{o.order_id[2:]}-{i}"
-            if BREAKS.get(ref) == "no_instruction":
-                continue
-            fee = commission(o.market, qty, o.avg_price)
-            rows.append(
-                (
-                    f"I-{ref[2:]}",
-                    ref,
-                    fund,
-                    o.side,
-                    qty,
-                    net(o.side, qty, o.avg_price, fee),
-                    SETTLE[o.market],
-                    "pending",
-                )
-            )
+    for o, ref, fund, qty in allocations():
+        i = instruction(o, ref, qty)
+        if i is None:
+            continue
+        rows.append((f"I-{ref[2:]}", ref, fund, o.side, *i.values(), "pending"))
     return (
         _HEADER
         + "-- The custodian's settlement instructions, as Larkspur sent them: what each fund\n"

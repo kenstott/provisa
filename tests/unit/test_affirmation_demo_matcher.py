@@ -1,4 +1,5 @@
 # Copyright (c) 2026 Kenneth Stott
+# Canary: a40c47e1-51a0-4dc3-aba8-4c9e2b7d19e8
 #
 # This source code is licensed under the Business Source License 1.1
 # found in the LICENSE file in the root directory of this source tree.
@@ -59,47 +60,10 @@ _GEN = _load("affirmation_generate", _DEMO / "generate.py")
 
 def _legs_of_every_allocation() -> dict[str, Any]:
     """Each allocation's TradeLegs, as the legs view reads them from what generate.py writes."""
-    out = {}
-    for o in _GEN.ORDERS:
-        for i, (fund, qty) in enumerate(o.allocations, 1):
-            ref = f"A-{o.order_id[2:]}-{i}"
-            seeded = _GEN.BREAKS.get(ref)
-            settle = date.fromisoformat(_GEN.SETTLE[o.market])
-            legs = {
-                "trade_ref": ref,
-                "side": o.side,
-                "quantity": float(qty),
-                "settle_date": settle,
-                "exec_price": sum(q * p for q, p in o.fills) / o.quantity,
-                "ssi_custodian": _GEN.CUSTODIAN[o.market],
-                "ssi_account": _GEN.account(fund, o.market),
-            }
-            if seeded != "no_confirmation":
-                price = round(o.avg_price + 0.05, 4) if seeded == "price" else o.avg_price
-                quantity = 1500 if seeded == "quantity" else qty
-                fee = _GEN.commission(
-                    o.market, quantity, price, 10.0 if seeded == "net_amount" else 5.0
-                )
-                legs |= {
-                    "confirm_side": o.side,
-                    "confirm_quantity": float(quantity),
-                    "confirm_price": price,
-                    "confirm_net": _GEN.net(o.side, quantity, price, fee),
-                    "confirm_settle_date": date(2026, 11, 19)
-                    if seeded == "settlement_date"
-                    else settle,
-                    "confirm_custodian": _GEN.CUSTODIAN[o.market],
-                    "confirm_account": _GEN.account(fund, o.market, 9 if seeded == "ssi" else 1),
-                }
-            if seeded != "no_instruction":
-                fee = _GEN.commission(o.market, qty, o.avg_price)
-                legs |= {
-                    "instruction_quantity": float(qty),
-                    "instruction_net": _GEN.net(o.side, qty, o.avg_price, fee),
-                    "instruction_settle_date": settle,
-                }
-            out[ref] = _MATCH.TradeLegs(**legs)
-    return out
+    return {
+        ref: _MATCH.TradeLegs(**_GEN.trade_legs(o, ref, fund, qty))
+        for o, ref, fund, qty in _GEN.allocations()
+    }
 
 
 _LEGS = _legs_of_every_allocation()
