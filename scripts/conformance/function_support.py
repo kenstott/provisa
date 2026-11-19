@@ -176,6 +176,7 @@ import pgwire_function_probe as function_probe
 from function_report import (
     ARRAY_ORDER,
     CLOCK_FIELD,
+    COMPARISON_SIGN,
     ENUM_LABEL,
     FLOAT_CLOSE,
     JSON_KEY_ORDER,
@@ -328,6 +329,78 @@ MODEL_FUNCTIONS = frozenset(
         "schema_to_xmlschema",
     }
 )
+
+#: The comparison functions: btree support function 1 (BTORDER_PROC) and GIN's compare and
+#: compare_partial. PostgreSQL documents only the sign of their result, "less than zero, zero, or
+#: greater than zero" (https://www.postgresql.org/docs/current/btree-support-funcs.html,
+#: https://www.postgresql.org/docs/current/gin-extensibility.html); the magnitude several return
+#: is a memcmp difference that varies with the reference platform (runs 44424562465 and
+#: 44451548477 disagreed). Their answers compare by sign (function_report.COMPARISON_SIGN).
+COMPARISON_FUNCTIONS = frozenset(
+    {
+        "bitcmp",
+        "bpcharcmp",
+        "btarraycmp",
+        "btboolcmp",
+        "btbpchar_pattern_cmp",
+        "btcharcmp",
+        "btfloat48cmp",
+        "btfloat4cmp",
+        "btfloat84cmp",
+        "btfloat8cmp",
+        "btint24cmp",
+        "btint28cmp",
+        "btint2cmp",
+        "btint42cmp",
+        "btint48cmp",
+        "btint4cmp",
+        "btint82cmp",
+        "btint84cmp",
+        "btint8cmp",
+        "btnamecmp",
+        "btnametextcmp",
+        "btoidcmp",
+        "btoidvectorcmp",
+        "btrecordcmp",
+        "btrecordimagecmp",
+        "bttext_pattern_cmp",
+        "bttextcmp",
+        "bttextnamecmp",
+        "bttidcmp",
+        "byteacmp",
+        "cash_cmp",
+        "date_cmp",
+        "date_cmp_timestamp",
+        "date_cmp_timestamptz",
+        "enum_cmp",
+        "gin_cmp_prefix",
+        "gin_cmp_tslexeme",
+        "gin_compare_jsonb",
+        "interval_cmp",
+        "jsonb_cmp",
+        "macaddr8_cmp",
+        "macaddr_cmp",
+        "multirange_cmp",
+        "network_cmp",
+        "numeric_cmp",
+        "pg_lsn_cmp",
+        "range_cmp",
+        "time_cmp",
+        "timestamp_cmp",
+        "timestamp_cmp_date",
+        "timestamp_cmp_timestamptz",
+        "timestamptz_cmp",
+        "timestamptz_cmp_date",
+        "timestamptz_cmp_timestamp",
+        "timetz_cmp",
+        "tsquery_cmp",
+        "tsvector_cmp",
+        "uuid_cmp",
+        "varbitcmp",
+        "xid8cmp",
+    }
+)
+_SIGNED_INTEGER = re.compile(r"-?\d+")
 
 _FLOAT_OIDS = frozenset({700, 701})
 _FLOAT_ARRAY_OIDS = frozenset({1021, 1022})
@@ -2151,7 +2224,24 @@ def _value_rules(
         return json_rules(want, got, sql)
     if oid == _RECORD_OID:
         return _record_rules(want, got, sql, function)
+    if function in COMPARISON_FUNCTIONS:
+        return _sign_rules(want, got)
     return None
+
+
+def _sign(text: str) -> int | None:
+    if _SIGNED_INTEGER.fullmatch(text) is None:
+        return None
+    number = int(text)
+    return (number > 0) - (number < 0)
+
+
+def _sign_rules(want: str, got: str) -> Rules:
+    """A comparison function's answer by its sign, the only part PostgreSQL documents."""
+    sign = _sign(want)
+    if sign is None or sign != _sign(got):
+        return None
+    return frozenset({COMPARISON_SIGN})
 
 
 def _model_answer(function: str, want: str | None, got: str | None) -> bool:
