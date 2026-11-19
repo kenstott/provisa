@@ -50,6 +50,13 @@ roles:
   description: "The settlements desk: every system's records, the break queue and the affirmation log."
   capabilities: [data_product_read, glossary_read, query_development, usage]
   domain_access: [postrade]
+vector_models:
+# A local sentence-transformers model: no key, no network once it is cached (provisa[vector],
+# which demo.yaml declares), so Polly can search the demo's catalog.
+- id: sentence-transformers/all-MiniLM-L6-v2
+  provider: huggingface
+  dimensions: 384
+  enabled: true
 server:
   limits:
     default_row_limit: 100
