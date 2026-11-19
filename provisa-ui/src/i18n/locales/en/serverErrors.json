@@ -893,6 +893,7 @@
       "unknown_kind": "{{kind}} is not a kind of entitlement list.",
       "idp_supersedes": "The identity provider sends this person's {{kind}} list for role {{role_id}}. That list wins, so it is changed there, not here.",
       "blank_identifier": "An entry cannot be blank.",
+      "invalid_identifier": "{{identifier}} is not a valid {{kind}} entry.",
       "expiry_in_past": "An end date must be in the future.",
       "expiry_removes_nothing": "An end date on this {{kind}} list would remove nothing.",
       "pending_not_found": "No grant waits on {{email}} for role {{role_id}} and {{kind}}."

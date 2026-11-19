@@ -893,6 +893,7 @@
       "unknown_kind": "{{kind}} אינו סוג של רשימת הרשאות.",
       "idp_supersedes": "ספק הזהויות שולח את רשימת {{kind}} של אדם זה עבור התפקיד {{role_id}}. רשימה זו גוברת, ולכן היא משתנה שם ולא כאן.",
       "blank_identifier": "פריט אינו יכול להיות ריק.",
+      "invalid_identifier": "{{identifier}} אינו פריט {{kind}} תקין.",
       "expiry_in_past": "תאריך סיום חייב להיות בעתיד.",
       "expiry_removes_nothing": "תאריך סיום ברשימת {{kind}} זו לא היה מסיר דבר.",
       "pending_not_found": "אין הענקה הממתינה ל-{{email}} עבור התפקיד {{role_id}} ו-{{kind}}."

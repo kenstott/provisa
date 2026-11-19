@@ -893,6 +893,7 @@
       "unknown_kind": "{{kind}} is geen soort rechtenlijst.",
       "idp_supersedes": "De identiteitsprovider stuurt de lijst {{kind}} van deze persoon voor rol {{role_id}}. Die lijst gaat voor en wordt daar gewijzigd, niet hier.",
       "blank_identifier": "Een item mag niet leeg zijn.",
+      "invalid_identifier": "{{identifier}} is geen geldige {{kind}}-vermelding.",
       "expiry_in_past": "Een einddatum moet in de toekomst liggen.",
       "expiry_removes_nothing": "Een einddatum op deze lijst {{kind}} zou niets verwijderen.",
       "pending_not_found": "Er wacht geen verlening op {{email}} voor rol {{role_id}} en {{kind}}."

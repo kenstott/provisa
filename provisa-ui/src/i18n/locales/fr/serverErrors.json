@@ -893,6 +893,7 @@
       "unknown_kind": "{{kind}} n'est pas un type de liste de droits d'accès.",
       "idp_supersedes": "Le fournisseur d'identité envoie la liste {{kind}} de cette personne pour le rôle {{role_id}}. Cette liste prévaut : elle se modifie chez lui, pas ici.",
       "blank_identifier": "Une entrée ne peut pas être vide.",
+      "invalid_identifier": "{{identifier}} n'est pas une entrée {{kind}} valide.",
       "expiry_in_past": "Une date de fin doit être dans le futur.",
       "expiry_removes_nothing": "Une date de fin sur cette liste {{kind}} ne retirerait rien.",
       "pending_not_found": "Aucun octroi n'attend {{email}} pour le rôle {{role_id}} et {{kind}}."

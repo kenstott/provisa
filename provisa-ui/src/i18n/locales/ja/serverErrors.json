@@ -893,6 +893,7 @@
       "unknown_kind": "{{kind}} はエンタイトルメント リストの種類ではありません。",
       "idp_supersedes": "ID プロバイダーがロール {{role_id}} についてこのユーザーの {{kind}} リストを送信しています。そのリストが優先されるため、ここではなくそちらで変更します。",
       "blank_identifier": "エントリを空にすることはできません。",
+      "invalid_identifier": "{{identifier}} は有効な {{kind}} のエントリではありません。",
       "expiry_in_past": "終了日は将来の日付にする必要があります。",
       "expiry_removes_nothing": "この {{kind}} リストに終了日を設定しても何も削除されません。",
       "pending_not_found": "ロール {{role_id}} と {{kind}} について {{email}} を待っている付与はありません。"

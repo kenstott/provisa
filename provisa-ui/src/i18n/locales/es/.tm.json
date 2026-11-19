@@ -11010,5 +11010,11 @@
   "es/wikidataTable.json::wikidataTable.filterValue": "Value",
   "es/wikidataTable.json::wikidataTable.useClass": "Use this class",
   "es/serverErrors.json::serverErrors.discovery.source_tables_outside_domains": "The chosen source tables are outside the domains selected in the domain filter: {{names}}.",
-  "es/serverErrors.json::serverErrors.discovery.target_tables_outside_domains": "The chosen target tables are outside the domains selected in the domain filter: {{names}}."
+  "es/serverErrors.json::serverErrors.discovery.target_tables_outside_domains": "The chosen target tables are outside the domains selected in the domain filter: {{names}}.",
+  "es/capabilityHelp.json::capabilityHelp.data_product_owner": "Own data products: see their consumers, approve access requests, grant read-write, change their status and hand ownership over.",
+  "es/capabilityHelp.json::capabilityHelp.relationship_owner": "Own relationships: approve access requests to them, grant read-write on them and hand ownership over.",
+  "es/capabilityHelp.json::capabilityHelp.domain_steward": "Steward domains: a domain serves governed data only while a role holds this on it.",
+  "es/capabilityHelp.json::capabilityHelp.term_owner": "Own glossary terms: receive questions and proposed changes to a term's definition, and approve those changes.",
+  "es/capabilityHelp.json::capabilityHelp.judgment_basis_owner": "Own judgment bases: answer for them, grant read-write on them and hand ownership over.",
+  "es/serverErrors.json::serverErrors.entitlements.invalid_identifier": "{{identifier}} is not a valid {{kind}} entry."
 }

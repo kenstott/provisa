@@ -893,6 +893,7 @@
       "unknown_kind": "{{kind}} 不是权益列表的类型。",
       "idp_supersedes": "身份提供方为角色 {{role_id}} 发送了此人员的 {{kind}} 列表。该列表优先，因此需在那里更改，而非此处。",
       "blank_identifier": "条目不能为空。",
+      "invalid_identifier": "{{identifier}} 不是有效的 {{kind}} 条目。",
       "expiry_in_past": "结束日期必须是将来的日期。",
       "expiry_removes_nothing": "在此 {{kind}} 列表上设置结束日期不会移除任何内容。",
       "pending_not_found": "没有等待 {{email}} 的角色 {{role_id}} 和 {{kind}} 授予。"
