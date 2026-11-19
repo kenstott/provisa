@@ -5,7 +5,7 @@
     "emailRuleLabel": "Regla de correo electrónico",
     "emailRuleDesc": "Una expresión regular que se compara con la dirección. Déjela vacía para aceptar cualquier dirección mediante invitación.",
     "autoJoinLabel": "Unirse automáticamente",
-    "autoJoinDesc": "Una dirección coincidente pasa a ser miembro en el primer inicio de sesión, sin invitación. Solo para un dominio que su organización controle.",
+    "autoJoinDesc": "Una dirección verificada coincidente pasa a ser miembro en el primer inicio de sesión, sin invitación. Solo para un dominio que su organización controle.",
     "autoJoinRoleLabel": "Rol concedido en la unión automática",
     "autoJoinRoleDesc": "El rol que recibe toda persona admitida por la regla.",
     "acceptRisk": "Acepto que esta regla puede admitir a personas ajenas a mi organización",

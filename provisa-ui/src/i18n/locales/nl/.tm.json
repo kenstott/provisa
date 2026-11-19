@@ -4376,7 +4376,7 @@
   "nl/orgFilesTab.json::orgFilesTab.warn6": "To rotate it, generate a new key, store it in your vault, and update the reference.",
   "nl/orgFilesTab.json::orgFilesTab.warnTitle": "Keep this key safe",
   "nl/orgJoin.json::orgJoin.acceptRisk": "I accept that this rule may admit people from outside my organization",
-  "nl/orgJoin.json::orgJoin.autoJoinDesc": "A matching address becomes a member on first sign-in, with no invitation. Only for a domain your organization controls.",
+  "nl/orgJoin.json::orgJoin.autoJoinDesc": "A matching verified address becomes a member on first sign-in, with no invitation. Only for a domain your organization controls.",
   "nl/orgJoin.json::orgJoin.autoJoinLabel": "Join automatically",
   "nl/orgJoin.json::orgJoin.autoJoinRoleDesc": "The role everyone admitted by the rule receives.",
   "nl/orgJoin.json::orgJoin.autoJoinRoleLabel": "Role granted on auto-join",
