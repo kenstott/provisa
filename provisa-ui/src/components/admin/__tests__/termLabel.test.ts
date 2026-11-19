@@ -12,7 +12,7 @@
 // are told apart by their domains, and a name no other term holds is shown alone.
 
 import { describe, expect, it } from "vitest";
-import { termLabel } from "../termLabel";
+import { pipedDomains, termLabel, termOptions } from "../termLabel";
 
 const sales = { id: 1, name: "client", domains: ["sales"] };
 const pets = { id: 2, name: "client", domains: ["pet-store", "vet"] };
@@ -33,5 +33,27 @@ describe("termLabel", () => {
 
   it("marks a same-named term with no domain", () => {
     expect(termLabel(unscoped, [sales, unscoped])).toBe("client (—)");
+  });
+});
+
+describe("termOptions", () => {
+  it("labels each option among the shown terms and keeps its plain name and domains", () => {
+    expect(termOptions([sales, pets, party])).toEqual([
+      { value: "1", label: "client (sales)", name: "client", domains: ["sales"] },
+      {
+        value: "2",
+        label: "client (pet-store, vet)",
+        name: "client",
+        domains: ["pet-store", "vet"],
+      },
+      { value: "3", label: "party", name: "party", domains: [] },
+    ]);
+  });
+});
+
+describe("pipedDomains", () => {
+  it("reads the ontology schema's |a|b| form", () => {
+    expect(pipedDomains("|sales|pet-store|")).toEqual(["sales", "pet-store"]);
+    expect(pipedDomains(null)).toEqual([]);
   });
 });

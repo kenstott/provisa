@@ -113,7 +113,7 @@ import {
   writeStoredBool,
 } from "./useGlossaryPanel";
 import { assignableDomainIds } from "../../lib/internalDomains";
-import { termLabel } from "./termLabel";
+import { termLabel, termOptions } from "./termLabel";
 
 export function GlossaryTab() {
   const { t } = useTranslation();
@@ -501,9 +501,7 @@ export function GlossaryTab() {
       options.find((o) => o.value === relType)?.label ?? relType,
     [],
   );
-  const otherTermOptions = terms
-    .filter((term) => term.id !== detail?.id)
-    .map((term) => ({ value: String(term.id), label: termLabel(term, terms) }));
+  const otherTermOptions = termOptions(terms.filter((term) => term.id !== detail?.id));
   const displayedTerms = terms.filter(
     (term) =>
       (statusFilter.length === 0 || statusFilter.includes(term.status)) &&

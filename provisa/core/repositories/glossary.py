@@ -1111,8 +1111,14 @@ async def get_term(conn: "Connection", term_id: int) -> dict | None:
             .where(glossary_term_edges.c.to_term_id == term_id)
         )
     ).fetchall()
-    term["edges_out"] = [dict(r._mapping) for r in outgoing]
-    term["edges_in"] = [dict(r._mapping) for r in incoming]
+    # REQ-1591: each related term's domains, which tell two related terms of one name apart
+    scopes = await term_domains(conn)
+
+    def edge(r: Any) -> dict:
+        return {**r._mapping, "domains": sorted(scopes.get(r.term_id, set()))}
+
+    term["edges_out"] = [edge(r) for r in outgoing]
+    term["edges_in"] = [edge(r) for r in incoming]
     experts = (
         await conn.execute_core(
             select(glossary_term_experts.c.user_id, glossary_term_experts.c.kind)
@@ -1125,7 +1131,7 @@ async def get_term(conn: "Connection", term_id: int) -> dict | None:
     # REQ-1591: the same rule the list and the gates use, rather than reading the refs above —
     # those are empty for an abstract term and for a deprecated one whose columns have gone,
     # which are exactly the two cases the declared rows exist to answer.
-    term["domains"] = sorted((await term_domains(conn)).get(term_id, set()))
+    term["domains"] = sorted(scopes.get(term_id, set()))
     # REQ-2237: what an imported ontology stated about it that a term does not model.
     term["statements"] = (await term_statements(conn, [term_id])).get(term_id, [])
     return term

@@ -106,11 +106,11 @@ const detailOf = (term: GlossaryTermSummary): GlossaryTermDetail => ({
 });
 const REVENUE_DETAIL: GlossaryTermDetail = {
   ...detailOf(REVENUE),
-  edges_out: [{ term_id: 2, rel_type: "RELATED_TO", name: "Churn" }],
+  edges_out: [{ term_id: 2, rel_type: "RELATED_TO", name: "Churn", domains: [] }],
 };
 const CHURN_DETAIL: GlossaryTermDetail = {
   ...detailOf(CHURN),
-  edges_in: [{ term_id: 1, rel_type: "RELATED_TO", name: "Revenue" }],
+  edges_in: [{ term_id: 1, rel_type: "RELATED_TO", name: "Revenue", domains: [] }],
 };
 
 describe("the RELATED_TO review link", () => {

@@ -279,7 +279,7 @@ const REVENUE_DETAIL: GlossaryTermDetail = {
       domain_id: "sales",
     },
   ],
-  edges_out: [{ term_id: 2, rel_type: "RELATED_TO", name: "Churn" }],
+  edges_out: [{ term_id: 2, rel_type: "RELATED_TO", name: "Churn", domains: [] }],
   edges_in: [],
   experts: [{ user_id: "u1", kind: "expert" }],
   tags: [],
@@ -291,7 +291,7 @@ const CHURN_DETAIL: GlossaryTermDetail = {
   ...CHURN,
   refs: [],
   edges_out: [],
-  edges_in: [{ term_id: 1, rel_type: "RELATED_TO", name: "Revenue" }],
+  edges_in: [{ term_id: 1, rel_type: "RELATED_TO", name: "Revenue", domains: [] }],
   experts: [],
   tags: [],
   pending_on: [],
@@ -426,7 +426,7 @@ describe("GlossaryTab", () => {
             status: "retired",
             status_reason: "merged into Churn",
             status_by: "alice",
-            edges_in: [{ term_id: 2, rel_type: "REPLACES", name: "Churn" }],
+            edges_in: [{ term_id: 2, rel_type: "REPLACES", name: "Churn", domains: [] }],
           }
         : CHURN_DETAIL,
     );

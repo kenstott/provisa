@@ -248,3 +248,19 @@ async def test_the_router_refuses_a_rename_or_rescope_into_a_domain_holding_the_
         with pytest.raises(ApiError) as err:
             await glossary_router.update_term(_with_json({"name": "client"}), buyer)
         assert err.value.code == "glossary.name_taken"
+
+
+async def test_a_terms_related_terms_carry_their_domains(control_plane):
+    # A term's page shows its related terms together; their domains tell two of one name apart.
+    async with _conn(control_plane) as conn:
+        sales = await glossary_repo.create_abstract_term(conn, "client", domains={"sales"})
+        pets = await glossary_repo.create_abstract_term(conn, "client", domains={"pet-store"})
+        party = await glossary_repo.create_abstract_term(conn, "party", domains={"hr"})
+        await glossary_repo.add_edge(conn, sales, party, "KIND_OF")
+        await glossary_repo.add_edge(conn, party, pets, "RELATED_TO")
+        detail = await glossary_repo.get_term(conn, party)
+        assert detail is not None
+        assert [(e["term_id"], e["domains"]) for e in detail["edges_in"]] == [(sales, ["sales"])]
+        assert [(e["term_id"], e["domains"]) for e in detail["edges_out"]] == [
+            (pets, ["pet-store"])
+        ]

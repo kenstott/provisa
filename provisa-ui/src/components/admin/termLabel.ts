@@ -13,6 +13,25 @@
 
 type Named = { id: number; name: string; domains: string[] };
 
+/** A term as a picker offers it: its label, and its plain name and domains for what is built
+ * from the choice. */
+export type TermOption = { value: string; label: string; name: string; domains: string[] };
+
+/** ``shown`` as picker options, each labelled as it reads among ``shown``. */
+export function termOptions(shown: Named[]): TermOption[] {
+  return shown.map((term) => ({
+    value: String(term.id),
+    label: termLabel(term, shown),
+    name: term.name,
+    domains: term.domains,
+  }));
+}
+
+/** A term's domains as the ontology schema states them, ``|a|b|``. */
+export function pipedDomains(piped: string | null | undefined): string[] {
+  return (piped ?? "").split("|").filter((d) => d !== "");
+}
+
 /** ``term``'s name, followed by its domains when another of ``terms`` shares the name. */
 export function termLabel(term: Named, terms: Named[]): string {
   const shared = terms.some((o) => o.id !== term.id && o.name === term.name);
