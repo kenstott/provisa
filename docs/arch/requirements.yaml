@@ -83368,7 +83368,13 @@
     accounts and its public sandbox invite). The sandbox org''s public visitor invite is part of the deployment''s
     configuration, with a stable token, re-created by every start and every reset, so no deploy removes
     the link the public site publishes. Deploying code or configuration keeps accounts, orgs, invites and
-    the platform-admin claim; only an explicit reset returns a deployment to its first start.'
+    the platform-admin claim; only an explicit reset returns a deployment to its first start. (Amended 2026-11-19,
+    TRADE AFFIRMATION DEMO FIGURES:) Maintainer 2026-11-19. The trade affirmation demo reads its desk clock
+    as 2026-11-18 21:15 UTC. A trade''s cutoff is 9 pm New York time on trade date for US trades and 11
+    pm local time for German, French and Dutch trades. A failed settlement accrues 1.25 basis points a day
+    for US trades (as funding cost) and 1 basis point a day for EU trades (the CSDR rate for liquid shares).
+    Polly''s part in the tour uses the existing step kinds: stored Polly answers and a live Explore-agent
+    step.'
   use_case: A visitor to provisa.dev picks a scenario close to their own (a web shop's logs, say) and is querying it in Provisa
     a few seconds later, without an account.
   scenario: 'Given demo/named/weblogs/demo.yaml says published: true
