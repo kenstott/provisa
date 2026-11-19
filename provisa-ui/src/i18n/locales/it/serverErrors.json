@@ -893,6 +893,7 @@
       "unknown_kind": "{{kind}} non è un tipo di lista di autorizzazioni.",
       "idp_supersedes": "Il provider di identità invia la lista {{kind}} di questa persona per il ruolo {{role_id}}. Quella lista prevale: si modifica lì, non qui.",
       "blank_identifier": "Una voce non può essere vuota.",
+      "invalid_identifier": "{{identifier}} non è una voce {{kind}} valida.",
       "expiry_in_past": "La data di fine deve essere futura.",
       "expiry_removes_nothing": "Una data di fine su questa lista {{kind}} non rimuoverebbe nulla.",
       "pending_not_found": "Nessuna concessione attende {{email}} per il ruolo {{role_id}} e {{kind}}."

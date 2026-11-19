@@ -893,6 +893,7 @@
       "unknown_kind": "{{kind}} ist keine Art von Berechtigungsliste.",
       "idp_supersedes": "Der Identitätsanbieter sendet die Liste {{kind}} dieser Person für Rolle {{role_id}}. Diese Liste hat Vorrang und wird dort geändert, nicht hier.",
       "blank_identifier": "Ein Eintrag darf nicht leer sein.",
+      "invalid_identifier": "{{identifier}} ist kein gültiger Eintrag vom Typ {{kind}}.",
       "expiry_in_past": "Ein Enddatum muss in der Zukunft liegen.",
       "expiry_removes_nothing": "Ein Enddatum für diese Liste {{kind}} würde nichts entfernen.",
       "pending_not_found": "Keine Gewährung wartet auf {{email}} für Rolle {{role_id}} und {{kind}}."

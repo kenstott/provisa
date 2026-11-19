@@ -134,6 +134,20 @@ class TestWhatEachHolds:
             "org_glossary_rw",
         } <= _rights("org_admin")
 
+    def test_org_admin_holds_the_five_owner_capabilities(self):
+        """REQ-2219 (amended 2026-11-19): with no list, so an org admin owns every object of
+        those kinds; other owners are granted on lists or by the creator's owner row."""
+        owners = {
+            "data_product_owner",
+            "relationship_owner",
+            "domain_steward",
+            "term_owner",
+            "judgment_basis_owner",
+        }
+        assert owners <= set(STANDARD_ROLES["org_admin"].capabilities)
+        holders = {r for r in STANDARD_ROLES if owners & _rights(r)}
+        assert holders == {"org_admin"}
+
     def test_platform_admin_holds_the_platform_rights_alone(self):
         assert _rights("platform_admin") == {"platform_settings", "cross_org"}
 
