@@ -54,6 +54,7 @@ from provisa.entitlements.lists import (
     rule_ends,
 )
 from provisa.entitlements.mask import EntitlementMask, MemberInput, compute_mask
+from provisa.security.inheritance import OWN_DOMAIN_ACCESS
 from provisa.security.rights import role_ids_from_claims
 
 log = logging.getLogger(__name__)
@@ -133,12 +134,12 @@ def _role_context(state: Any, role_id: str) -> Any:
 
 
 def role_defaults(role: Mapping[str, Any]) -> Mapping[str, list[str]]:
-    """The role's default lists. Defaults naming exactly the domains the role is offered to are
-    the role itself, so a plain role grant is unchanged; they narrow nothing."""
+    """The role's default lists. Defaults naming exactly the domains the role is offered to (its
+    ceiling: its own stored domain access, before the domain tree and its inherited domains are
+    folded in) are the role itself, so a plain role grant is unchanged; they narrow nothing."""
     defaults = dict(role.get("default_entitlements") or {})
     domains = defaults.get("domains")
-    offered = role.get("domain_access")
-    if domains is not None and offered is not None and set(domains) == set(offered):
+    if domains is not None and set(domains) == set(role[OWN_DOMAIN_ACCESS]):
         defaults.pop("domains")
     return defaults
 

@@ -3458,6 +3458,48 @@ async def _rebuild_schemas(
     return False
 
 
+async def _load_roles(conn: Any) -> list[dict[str, Any]]:
+    """The model's roles as the build reads them, each with its default lists as the entitlement
+    store holds them (REQ-2219): the build writes the role rows (``write_role_rows``) before it
+    reads them here, so a role's defaults are what the model states at this build."""
+    from provisa.entitlements.store import load_role_rows
+
+    roles = [
+        dict(r._mapping)
+        for r in (
+            await conn.execute_core(
+                # REQ-1174: include rate_limit so state.roles carries the per-role rate +
+                # query-complexity limits the data endpoint enforces.
+                select(
+                    _roles_t.c.id,
+                    _roles_t.c.description,  # REQ-2080: what the role is for
+                    _roles_t.c.capabilities,
+                    _roles_t.c.domain_access,
+                    _roles_t.c.rate_limit,
+                    _roles_t.c.parents,  # REQ-2155
+                    # REQ-1921: the data_residency grant's covered values. state.roles feeds
+                    # residency_values_for_claims (the region-edit gate); without this column a
+                    # role holding data_residency resolves to a dict with no residency_values
+                    # and every region change raises KeyError.
+                    _roles_t.c.residency_values,
+                    # REQ-1682: the role's constant session values; flatten_role_dicts folds
+                    # the ancestors' in under the role's own.
+                    _roles_t.c.session_vars,
+                    # REQ-005, REQ-1919: the role's own ceiling and join guard, as stored.
+                    _roles_t.c.max_rows,
+                    _roles_t.c.relationship_guard,
+                )
+            )
+        ).fetchall()
+    ]
+    role_rows = await load_role_rows(conn)
+    for role in roles:
+        role["default_entitlements"] = {
+            kind: list(identifiers) for kind, identifiers in role_rows[role["id"]].defaults.items()
+        }
+    return roles
+
+
 async def _rebuild_schemas_impl(
     raw_config: dict | None = None, *, announce: bool = True, converge: bool = True
 ) -> None:
@@ -3758,34 +3800,7 @@ async def _rebuild_schemas_impl(
 
         await reconcile_sources(_connection_rows)
         _build.phase(rebuild_trace.ROLES)
-        roles = [
-            dict(r._mapping)
-            for r in (
-                await conn.execute_core(
-                    # REQ-1174: include rate_limit so state.roles carries the per-role rate +
-                    # query-complexity limits the data endpoint enforces.
-                    select(
-                        _roles_t.c.id,
-                        _roles_t.c.description,  # REQ-2080: what the role is for
-                        _roles_t.c.capabilities,
-                        _roles_t.c.domain_access,
-                        _roles_t.c.rate_limit,
-                        _roles_t.c.parents,  # REQ-2155
-                        # REQ-1921: the data_residency grant's covered values. state.roles feeds
-                        # residency_values_for_claims (the region-edit gate); without this column a
-                        # role holding data_residency resolves to a dict with no residency_values
-                        # and every region change raises KeyError.
-                        _roles_t.c.residency_values,
-                        # REQ-1682: the role's constant session values; flatten_role_dicts folds
-                        # the ancestors' in under the role's own.
-                        _roles_t.c.session_vars,
-                        # REQ-005, REQ-1919: the role's own ceiling and join guard, as stored.
-                        _roles_t.c.max_rows,
-                        _roles_t.c.relationship_guard,
-                    )
-                )
-            ).fetchall()
-        ]
+        roles = await _load_roles(conn)
         # REQ-1677: fold each role's inheritance chain into the build's own copies here, once, so
         # every role-keyed lookup below (rights, visibility, write grants, RLS) sees
         # the inherited grants under the acting role's own id.
