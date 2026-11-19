@@ -185,17 +185,27 @@ mutation {
 
 `updateCodeResolver` takes the same input and changes the set. `retireCodeResolver(id: "store_regions")` retires the view and its three relationships. `codeResolvers` lists the sets in service. Each relationship of a set carries its id in `codeResolver`, and `updateRelationship`, `deleteRelationship`, `updateTable`, `deleteTable` and `setTableDraft` refuse an object of a set, naming it.
 
-### AI Relationship Discovery
+### Relationship Discovery
 
-Ask Claude for FK candidates over REST:
+The discovery dialog on the Relationships page finds structural join candidates from your tables' column names and foreign key declarations, then ranks them by evidence strength. Run it over a domain, a table or the whole estate.
+
+A run works through every pair of columns it finds within the selected domains. Each pair is answered and scored. The only pairs left out are those already registered as a relationship and those an earlier run marked not to recommend again. No other rule drops a pair from the results.
+
+The score reflects key-value overlap: how many rows from one table's column match rows in the other's. This measure runs as one governed query per pair through Provisa's access pipeline—your role's row rules, masks and redaction apply. Only the check that a join follows an approved relationship is waived for these candidate queries, since the candidate pair has no relationship yet. A pair whose tables your role cannot read is left unscored and says why; it does not stop the rest of the run.
+
+The result is a standard list. By default it shows pairs with a Score of 10% or above, and every column—score, cardinality, source table, target table, and the matching column names—has its own filter. Change the Score threshold or any other filter to refine the view. Each row shows what the evidence found; a steward accepts a candidate to register it as a relationship, or rejects it to keep it off future runs.
+
+**Scoping.** Discovery works within the domains currently selected in the domain filter. What it checks and what it proposes are limited to those domains.
+
+**API.** Start a run:
 
 ```bash
 curl -X POST http://localhost:8001/admin/discover/relationships \
   -H "Content-Type: application/json" \
-  -d '{"scope": "domain", "domain_id": "sales"}'
+  -d '{"scope": "domain", "domain_id": "sales", "kinds": ["foreign_keys", "semantics"]}'
 ```
 
-Returns FK candidates ranked by confidence. Accept a candidate:
+Accept a candidate:
 
 ```bash
 curl -X POST http://localhost:8001/admin/discover/candidates/{id}/accept \
@@ -501,7 +511,9 @@ WHERE d.title = 'Privacy policy';
 
 ## Table preview
 
-Expand any table row on the Tables page. The **Preview** button opens a 90%-width modal with the table's live governed data.
+Expand any table row on the Tables page. The **Identity** section shows one link per query surface the table is exposed on—the same icons and component the data product Access section and the relationship detail panel use. Each link opens that surface's Explore editor with a ready-to-run query against the table, at a row limit, using the names the role sees. A surface the table is not exposed on shows no link.
+
+The **Preview** button opens a 90%-width modal with the table's live governed data.
 
 Tables backed by APIs with required path parameters block preview until those values are supplied. An inline form collects each required parameter before the first query runs; optional query parameters appear in the same form.
 

@@ -359,8 +359,8 @@ Approving, retiring and binding a term each change what reaches data. Before any
 
 **Edit** opens the whole term as one form. Save applies every change together.
 
-- **Rename** the term to change its wording without moving its columns.
-- **Add a definition** by typing one, or click the AI draft button to generate a starting point from the term's name, its columns and its relationships. The draft isn't saved until you save the form.
+- **Rename** the term to change its wording without moving its columns. A term's name must be unique within each of its domains; creating or renaming a term is refused only when another term with the same name already belongs to one of its domains. Two terms may carry the same name when they belong to different domains.
+- **Add a definition** by typing one, or click the AI draft button to generate a starting point. The assistant is given each bound column's description and type, its table's name and description, and a few sample values read as you through the governed path—masks and redaction applied, none for a sensitive column. It is also given the definitions of related terms that have one. The draft defines the business concept, not the column, and it isn't saved until you save the form. Where a bound column's table cannot be read for samples—its source is unreachable, or your role cannot read it—the assistant drafts without that table's samples and names the tables that gave none.
 - **Claim columns** to move columns from other terms onto this one, or pick **Move to term** beside one of its own columns. Each column belongs to one term. Key columns follow their Class and can't be moved.
 - **Ground tables** on a Class, or remove them.
 - **Mark PII** on a Property.
@@ -369,7 +369,7 @@ Approving, retiring and binding a term each change what reaches data. Before any
 
 Beside Edit, the panel offers the status actions the term allows: **Approve** a defined draft, **Deprecate** an approved term, **Retire** any term in service, and **Restore** a deprecated or retired one.
 
-From the ✨ menu, **Definitions** fills every blank definition in one pass and never overwrites a person's text. **Relationships** adds typed edges across the term list; proposals naming unknown terms, the same term twice or an unrecognized type are dropped. Each Related to it adds is listed for review, as [How the relationship assistant chooses](#how-the-relationship-assistant-chooses) describes.
+From the ✨ menu, **Definitions** fills every blank definition in one pass and never overwrites a person's text. **Relationships** adds typed edges across the term list; proposals naming unknown terms, the same term twice or an unrecognized type are dropped. Each Related to it adds is listed for review, as [How the relationship assistant chooses](#how-the-relationship-assistant-chooses) describes. Both assistants work within the domains currently selected in the domain filter: what they read, propose and write is limited to those domains.
 
 The **Draft** banner on a term tells you whether it still needs a definition (alias the column or add one) or only your approval. A separate banner says when a term reaches no data. Relate it to a term that has data.
 

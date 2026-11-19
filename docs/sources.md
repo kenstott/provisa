@@ -1886,6 +1886,35 @@ All of a source's inferred tables share one classification, and it is reused for
 
 HermiT runs as a separate program, never inside the server. It runs on a pinned Eclipse Temurin JDK 21 with HermiT, the OWL API and their libraries on its class path. Each piece is fetched on first use, checked against the SHA-256 Provisa pins, and cached under the runtime-deps cache root (`$PROVISA_RUNTIME_DEPS_CACHE`, default `~/.cache/provisa/runtime_deps`). A download that fails, or a file whose sum differs from the pin, fails the read by name.
 
+### Wikidata
+
+Wikidata is a branded SPARQL source: its endpoint is preset to the Wikidata Query Service and needs no credential. Everything else is the generic SPARQL source—the same User-Agent header, result-format handling and pushdown rules apply. Tables are defined with SPARQL SELECT queries, as on any SPARQL source.
+
+**Starter tables.** The Wikidata source ships a set of reference tables your organization is likely to join to its own data:
+
+- Countries with their ISO codes, capital and population
+- Currencies
+- Languages
+- Administrative regions
+- Organizations with identifiers such as LEI, ticker and ISIN
+
+Each is a bounded query exposed as a typed table. Register the ones you need; none are registered automatically.
+
+**Tables from any class.** Beyond the starter tables, the Wikidata source lets you build a table from the instances of any class. Search for a class by name, or browse from a broad class down through its narrower ones (subclass of). Once you pick a class, the source offers its most-used properties as columns and shows the class's instance count. For large classes a filter is asked before the table is registered, so the query stays within the Wikidata endpoint's time limit.
+
+**Replication.** Wikidata tables replicate on a schedule by default rather than being read live, since the public endpoint has rate limits and the data changes slowly.
+
+**Glossary grounding.** Glossary terms can be grounded to Wikidata items, so a term binds to both a column in your data and to the concept that item represents.
+
+```yaml
+sources:
+- id: wikidata
+  type: wikidata
+```
+
+No `host` is required. The endpoint is preset.
+
+
 ## Connection Examples
 
 ### PostgreSQL

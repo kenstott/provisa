@@ -649,6 +649,14 @@ When `domain_prefix: true`, all GraphQL field and type names are prefixed with t
 
 This prevents name collisions when different domains have tables with the same name, and makes queries self-documenting.
 
+### Inflection
+
+Singular and plural forms throughout the naming authority—relationship fields, aliases, glossary terms—come from an English dictionary lookup. A word the dictionary knows takes its dictionary form (`person` to `people`, `loss` to `losses`). A word not in the dictionary takes a rule-based form.
+
+Where a noun has more than one accepted plural, the regularly formed one wins (`schema` to `schemas`, `index` to `indexes`, `maximum` to `maximums`). Word frequency breaks ties only between irregular forms when no regular form is accepted. Where the zero plural and a regular plural are both accepted, the zero plural wins (`fish` stays `fish`, `salmon` stays `salmon`).
+
+The dictionary is a general English noun-forms dictionary bundled with Provisa under a compatible license. Specialist lexicons are not consulted.
+
 ### Naming Rules
 
 Regex rules applied to table names when generating GraphQL field names. Applied in order before uniqueness resolution.
