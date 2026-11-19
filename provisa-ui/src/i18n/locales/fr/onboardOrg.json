@@ -21,7 +21,7 @@
     "emailRuleLabel": "Règle d'e-mail autorisé (facultatif)",
     "emailRuleDesc": "Une expression régulière à laquelle l'e-mail d'un invité doit correspondre pour rejoindre, p. ex. \"@acme\\.com$\". Laissez vide pour autoriser tout e-mail.",
     "autoJoinLabel": "Adhésion automatique des comptes correspondants",
-    "autoJoinDesc": "Tout nouveau compte dont l'e-mail correspond à la règle ci-dessus rejoint automatiquement avec le rôle ci-dessous — aucune invitation nécessaire.",
+    "autoJoinDesc": "Tout nouveau compte dont l'e-mail vérifié correspond à la règle ci-dessus rejoint automatiquement avec le rôle ci-dessous — aucune invitation nécessaire.",
     "autoJoinRoleLabel": "Rôle par défaut des comptes en adhésion automatique",
     "autoJoinRoleDesc": "Le rôle accordé à l'adhésion automatique, p. ex. un \"analyst\" en lecture seule.",
     "autoJoinBreadthTitle": "Cette règle dépasse votre domaine",

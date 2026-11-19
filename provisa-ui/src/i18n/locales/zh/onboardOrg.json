@@ -21,7 +21,7 @@
     "emailRuleLabel": "允许的邮箱规则（可选）",
     "emailRuleDesc": "受邀者的邮箱必须匹配才能加入的正则表达式，例如 \"@acme\\.com$\"。留空则允许任何邮箱。",
     "autoJoinLabel": "自动加入匹配的账号",
-    "autoJoinDesc": "邮箱匹配上述规则的任何新账号都会以下面的角色自动加入——无需邀请。",
+    "autoJoinDesc": "已验证邮箱匹配上述规则的任何新账号都会以下面的角色自动加入——无需邀请。",
     "autoJoinRoleLabel": "自动加入账号的默认角色",
     "autoJoinRoleDesc": "自动加入时授予的角色，例如只读的 \"analyst\"。",
     "autoJoinBreadthTitle": "此规则的范围超出了您的域",

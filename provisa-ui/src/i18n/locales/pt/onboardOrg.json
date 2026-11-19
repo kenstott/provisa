@@ -21,7 +21,7 @@
     "emailRuleLabel": "Regra de e-mail permitido (opcional)",
     "emailRuleDesc": "Uma expressão regular com a qual o e-mail do convidado deve corresponder para entrar, por exemplo, \"@acme\\.com$\". Deixe em branco para permitir qualquer e-mail.",
     "autoJoinLabel": "Entrada automática de contas correspondentes",
-    "autoJoinDesc": "Qualquer conta nova cujo e-mail corresponda à regra acima entra automaticamente com a função abaixo — sem necessidade de convite.",
+    "autoJoinDesc": "Qualquer conta nova cujo e-mail verificado corresponda à regra acima entra automaticamente com a função abaixo — sem necessidade de convite.",
     "autoJoinRoleLabel": "Função padrão para contas com entrada automática",
     "autoJoinRoleDesc": "A função concedida na entrada automática, por exemplo, um \"analyst\" somente leitura.",
     "autoJoinBreadthTitle": "Esta regra vai além do seu domínio",
