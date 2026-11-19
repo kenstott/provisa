@@ -756,6 +756,28 @@ CREATE TABLE IF NOT EXISTS entitlement_pending (
 );
 CREATE INDEX IF NOT EXISTS entitlement_pending_email_idx ON entitlement_pending (email);
 
+-- REQ-2219: one effective row per person, role and capability, computed after precedence and
+-- within the ceiling. bits is the mask over the role's schema, in hex, for a data-plane capability
+-- (NULL for one with no mask); model_version is the version of the bit positions it is over
+-- (provisa.entitlements.mask.index_version); expansion is the identifiers it covers (NULL for an
+-- unscoped capability, held wherever the role is). Append-only as the source rows are: a change
+-- appends a row whose valid_from ends the one before it; ``removed`` ends it with none. Derived
+-- state, written from the source rows: it advances no config stamp.
+CREATE TABLE IF NOT EXISTS effective_entitlements (
+    id             BIGSERIAL PRIMARY KEY,
+    principal      TEXT NOT NULL,
+    role_id        TEXT NOT NULL,
+    capability     TEXT NOT NULL,
+    bits           TEXT,
+    model_version  TEXT NOT NULL,
+    expansion      JSONB,
+    removed        BOOLEAN NOT NULL DEFAULT FALSE,
+    valid_from     TIMESTAMPTZ NOT NULL DEFAULT now(),
+    recorded_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS effective_entitlements_principal_idx
+    ON effective_entitlements (principal, role_id, capability);
+
 CREATE TABLE IF NOT EXISTS rls_rules (
     id          SERIAL PRIMARY KEY,
     table_id    INTEGER REFERENCES registered_tables(id) ON DELETE CASCADE,

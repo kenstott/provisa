@@ -222,6 +222,17 @@ def compute_mask(
     return EntitlementMask(role_id, index, bits, model_version, next_expiry, findings)
 
 
+def index_version(index: ObjectIndex) -> str:
+    """The version of ``index``'s bit positions: a digest of its objects in bit order. A stored
+    mask's bits are read only against an index of the same version (REQ-2219: the model version
+    its bit positions belong to, never read against another). Two builds that place every object
+    at the same bit share it, whatever else changed; any move of a bit changes it."""
+    digest = hashlib.sha256()
+    for obj in index.objects:
+        digest.update(f"{obj.kind}\x1f{obj.oid}\x1e".encode())
+    return digest.hexdigest()
+
+
 class MaskCache:
     """Masks and the indexes they are over, bounded, per org. Key: (role, IdP lists hash,
     Provisa-held version, model version). A mask past its next expiry is recomputed."""

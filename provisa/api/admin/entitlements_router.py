@@ -61,7 +61,7 @@ from provisa.api.admin.capabilities import _resolved_capabilities, require_capab
 from provisa.api.errors import ApiError
 from provisa.auth import role_grants
 from provisa.core.org_membership import record_admin_action
-from provisa.entitlements import pending, people, roles, store
+from provisa.entitlements import effective_store, pending, people, roles, store
 from provisa.entitlements.effective import (
     ExpiryPreview,
     access_view,
@@ -178,6 +178,14 @@ def _require_role(state: Any, role_id: str) -> None:
         raise ApiError(
             404, "entitlements.role_not_found", f"Role {role_id!r} not found", role_id=role_id
         )
+
+
+async def _reload_held(conn: Any, state: Any, principal: str) -> None:
+    """After a write to ``principal``'s lists, rules or grants: this worker's copy of what Provisa
+    holds (the write advances the org's config stamp, which reloads the others), and their
+    effective rows recomputed from it (REQ-2219)."""
+    state.held_entitlements = await store.load_held(conn)
+    await effective_store.write_person(conn, state, principal)
 
 
 def _admin_db(state: Any) -> Any:
@@ -405,7 +413,7 @@ async def set_list(body: SetListBody, request: Request) -> dict:
                 reason=body.reason,
             )
         # This worker now; the write advances the org's config stamp, which reloads the others.
-        state.held_entitlements = await store.load_held(conn)
+        await _reload_held(conn, state, principal)
     await record_admin_action(
         db,
         org_id=require_active_org_id(request),
@@ -464,7 +472,7 @@ async def end_list(body: EndListBody, request: Request) -> dict:
             await store.remove_list(
                 conn, principal, body.role_id, body.kind, set_by=actor, reason=body.reason
             )
-        state.held_entitlements = await store.load_held(conn)
+        await _reload_held(conn, state, principal)
     await record_admin_action(
         db,
         org_id=require_active_org_id(request),
@@ -692,7 +700,7 @@ async def add_access(body: AddAccessBody, request: Request) -> dict:
                 set_by=actor,
                 reason=body.reason,
             )
-        state.held_entitlements = await store.load_held(conn)
+        await _reload_held(conn, state, body.principal)
     await record_admin_action(
         db,
         org_id=require_active_org_id(request),
@@ -812,6 +820,8 @@ async def _end_grant(
     db = _db(state)
     async with db.acquire() as conn:
         ended = await role_grants.end_grant(conn, principal, role_id, ends_at)
+        if ended:
+            await effective_store.write_person(conn, state, principal)
     if not ended:
         raise ApiError(
             409,
@@ -876,7 +886,7 @@ async def add_expiry(body: ExpiryBody, request: Request) -> dict:
             set_by=actor,
             reason=body.reason,
         )
-        state.held_entitlements = await store.load_held(conn)
+        await _reload_held(conn, state, body.principal)
     await record_admin_action(
         db,
         org_id=require_active_org_id(request),
@@ -911,7 +921,7 @@ async def change_expiry(rule_key: str, body: ChangeExpiryBody, request: Request)
         await _end_grant(request, state, principal, rule.role_id, body.ends_at, actor, body.reason)
         async with db.acquire() as conn:
             await store.withdraw_expiry(conn, rule, principal, set_by=actor, reason=body.reason)
-            state.held_entitlements = await store.load_held(conn)
+            await _reload_held(conn, state, principal)
         return await _view(state, principal, rule.role_id)
     await _refuse_past_grant(state, principal, rule.role_id, body.ends_at)
     if _preview(state, principal, rule.role_id, body, rule_key).removes_nothing:
@@ -920,7 +930,7 @@ async def change_expiry(rule_key: str, body: ChangeExpiryBody, request: Request)
         await store.change_expiry(
             conn, rule, principal, body.ends_at, body.ends, set_by=actor, reason=body.reason
         )
-        state.held_entitlements = await store.load_held(conn)
+        await _reload_held(conn, state, principal)
     await record_admin_action(
         db,
         org_id=require_active_org_id(request),
@@ -950,7 +960,7 @@ async def withdraw_expiry(rule_key: str, body: EndExpiryBody, request: Request) 
     db = _db(state)
     async with db.acquire() as conn:
         await store.withdraw_expiry(conn, rule, principal, set_by=actor, reason=body.reason)
-        state.held_entitlements = await store.load_held(conn)
+        await _reload_held(conn, state, principal)
     await record_admin_action(
         db,
         org_id=require_active_org_id(request),

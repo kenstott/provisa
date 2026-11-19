@@ -391,6 +391,15 @@ async def list_assignments(user_id: str, request: Request):
     return [dict(r._mapping) for r in rows]
 
 
+async def _record_effective(conn: Any, user_id: str) -> None:
+    """REQ-2219: a role granted or removed changes what the person holds; their effective rows
+    are recomputed."""
+    from provisa.api.app import state
+    from provisa.entitlements import effective_store
+
+    await effective_store.write_person(conn, state, user_id)
+
+
 @router.post("/{user_id}/assignments")
 async def add_assignment(user_id: str, body: AssignmentBody, request: Request):  # REQ-042
     _require_user_management(request)
@@ -402,6 +411,7 @@ async def add_assignment(user_id: str, body: AssignmentBody, request: Request): 
         # Idempotent assignment, then read the row back. REQ-2077: a grant given again keeps the
         # latest of its expiries, and no expiry is later than any date.
         await regrant(conn, user_id, body.role_id, body.domain_id, body.expires_at)
+        await _record_effective(conn, user_id)
         result = await conn.execute_core(
             select(t.c.id, t.c.role_id, t.c.domain_id, t.c.expires_at).where(
                 t.c.user_id == user_id,
@@ -434,6 +444,8 @@ async def remove_assignment(user_id: str, assignment_id: int, request: Request):
             _delete(t).where(t.c.id == assignment_id, t.c.user_id == user_id).returning(t.c.id)
         )
         row = result.fetchone()
+        if row is not None:
+            await _record_effective(conn, user_id)
     if row is None:
         raise ApiError(404, "users.assignment_not_found", "Assignment not found")
     return {"deleted": row[0]}

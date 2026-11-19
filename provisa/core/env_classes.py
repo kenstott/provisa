@@ -138,6 +138,9 @@ NEVER_SENSITIVE: frozenset[str] = frozenset(
         "entitlement_expiries",
         # REQ-2219: a grant waiting on a typed email attaches to this environment's principal.
         "entitlement_pending",
+        # REQ-2219: what each person's entitlements come to, computed from those rows: this
+        # environment's own, as they are.
+        "effective_entitlements",
         # REQ-2180: a bid is keyed by this environment's principals and what accepting it granted
         # them, as the entitlements are.
         "data_product_bids",

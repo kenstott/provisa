@@ -435,6 +435,10 @@ _CREATE_ONLY = {
         "stop_requested stopped_by started_by started_at finished_at launch progress_at tenant_id"
     ),
     "domains": "id description",
+    "effective_entitlements": (
+        "id principal role_id capability bits model_version expansion removed valid_from "
+        "recorded_at"
+    ),
     "email_send_authority_audit": (
         "id email_address user_id granted_by org_id action reason created_at"
     ),
