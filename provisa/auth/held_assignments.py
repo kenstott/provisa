@@ -309,15 +309,12 @@ async def may_act_cross_org(state: Any, identity: AuthIdentity) -> bool:  # REQ-
     """Whether ``identity`` holds the cross_org right, judged from what its principal holds on the
     platform plane (the deployment's own org) -- its assignments where Provisa holds them, a
     token's scopes its owner still holds -- as the HTTP API judges it, never from the role claims
-    a credential carries. Read before any org is bound to the sign-in."""
-    from provisa.core.request_context import current_org
+    a credential carries. Read before any org is bound to the sign-in, with the deployment's own
+    org bound: the platform plane lives in its schema, as the HTTP middleware reads it (REQ-1266,
+    REQ-1327)."""
     from provisa.security.rights import can_act_cross_org, capabilities_for_claims
 
-    unbound = current_org.set(None)
-    try:
-        held = await held_assignments(state, identity, None)
-    finally:
-        current_org.reset(unbound)
+    held = await held_assignments(state, identity, _root_org_id(state))
     return can_act_cross_org(
         capabilities_for_claims({a.role_id for a in held}, state.platform_roles)
     )

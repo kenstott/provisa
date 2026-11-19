@@ -1,5 +1,5 @@
 # Copyright (c) 2026 Kenneth Stott
-# Canary: 3b224be7-137a-4864-ad0e-f231a251526d
+# Canary: df6db77a-f3cc-4e83-befd-ac2b8cc184b5
 #
 # This source code is licensed under the Business Source License 1.1
 # found in the LICENSE file in the root directory of this source tree.
@@ -65,11 +65,13 @@ def platform_reads(monkeypatch):
 
     monkeypatch.setattr(held_assignments, "read_assignments", _read)
     monkeypatch.setattr(held_assignments, "is_bootstrap_claimant", _not_claimant)
-    return read_in
+    # A wire sign-in arrives with no org bound (the suite's session binds one).
+    unbound = current_org.set(None)
+    yield read_in
+    current_org.reset(unbound)
 
 
 def test_cross_org_is_judged_with_the_deployment_org_bound(platform_reads):
-    assert current_org.get() is None
     asyncio.run(held_assignments.may_act_cross_org(_state(), _USER))
     assert platform_reads == ["root"]
     assert current_org.get() is None  # the binding does not outlive the read
