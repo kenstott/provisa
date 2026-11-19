@@ -47657,283 +47657,291 @@
   feature: glossary-tags-ontology-terms
   priority: SHOULD
   type: behavioral
-  description: 'Dictionary/ontology of business terms over the semantic layer. Every physical field name
-    in the semantic layer normalizes deterministically into a term via rules based on common enterprise
-    DB naming conventions (case folding, separator/camelCase tokenization, standard abbreviation expansion,
-    and stripping of TRAILING proxy tokens — id/key/code/index/reference and their expansions — because
-    a column named for a key or code refers to its concept through a stand-in value, so cust_id and the
-    customer concept share one term; concept-FORMING suffixes never strip: temporal (order_dt → "order date"),
+  description: 'Dictionary/ontology of business terms over the semantic layer. Every physical field name in the
+    semantic layer normalizes deterministically into a term via rules based on common enterprise DB naming
+    conventions (case folding, separator/camelCase tokenization, standard abbreviation expansion, and
+    stripping of TRAILING proxy tokens — id/key/code/index/reference and their expansions — because a column
+    named for a key or code refers to its concept through a stand-in value, so cust_id and the customer
+    concept share one term; concept-FORMING suffixes never strip: temporal (order_dt → "order date"),
     locational (cust_city → "customer city") and actor/activity ("created_by" stays the full phrase) tokens
     are what the value is about, and stripping them would merge distinct meanings. The deterministic layer
     may under-merge, curation consolidates, but it must never over-merge; and TOO-GENERIC full phrases —
     bare attribute words like name, identifier, date, location, message, first name, last name — qualify
     with the enclosing table''s concept (singular head noun), so employees.first_name → "employee first
-    name" and orders.id → "order identifier" rather than one meaningless shared term. Native-filter pseudo-columns
-    (_nf_-prefixed / native_filter_type) are query machinery and derive no terms). Terms are deduplicated;
-    each term holds a list of physical refs (catalog-identity resolved: table_id + column name). The term
-    unit is the phrase — the full normalized field name — never decomposed into tokens; users resolve homonyms
-    and granularity by revising terms or creating abstract terms. Users can rename a term, move a physical
-    ref between terms to consolidate, and attach a definition. Terms carry relationships to users designated
-    as experts: people who can answer questions about the term or who authored its definition. Users can
-    create abstract terms with no physical refs, connected to rooted terms through a closed, enum-typed
-    relationship set (KIND_OF, RELATED_TO, PART_OF, SYNONYM_OF); free-form edge types are not permitted.
-    Lifecycle is derived from semantic-layer membership — adding an object creates/links terms; deleting
-    or modifying a schema element removes its ref, and removal of a term''s last physical ref removes the
-    term — unless an abstract term is connected to the rooted graph through it, in which case the term is
-    deprecated (kept) instead so no abstract term is left dangling. The term graph is included in metadata
-    export (REQ-1068 family) and exposed via an MCP tool for term search/lookup. v1 scope is documentation
-    and discovery only; [SUPERSEDED by REQ-2145, 2026-10-23 -- a pii tag on a Property term covers every
-    column with that meaning. Kept here for history; do not implement against it.] term membership does
-    not drive policy (masking/RLS by term is a possible follow-on). [END SUPERSEDED BLOCK] Boundary vs tags
-    (REQ-1373): tags remain flat operator-assigned labels; terms are the normalized vocabulary derived from
-    and linked to schema. Implemented so far: schema (glossary_terms/refs/edges/experts in schema.sql +
-    schema_org, tenant-scoped), deterministic normalizer, repository with the full lifecycle (sync rides
-    table_repo.upsert — the single table_columns write path — and refless-term settling rides every deletion
-    path via a departed-table sweep, cascade-independent because the SQLite backend runs without PRAGMA
-    foreign_keys), the dangling check as true reachability (delete the term unless an abstract term would
-    newly lose all paths to rooted terms, judged against a baseline where the candidate still anchors),
-    admin REST router (/admin/glossary, org_settings-gated, every mutation queues a REQ-1072 publish), MCP
-    search_terms tool, term graph in the export snapshot (data_product/technical filters extend to refs;
-    terms with no published refs withheld unless abstract; edges need both endpoints), and the admin UI
-    Glossary tab with 13-locale i18n; Glossary is a TOP-LEVEL nav item ([SUPERSEDED by REQ-2130, 2026-10-22
-    -- the page is named Ontology in the UI and its route is /admin/ontology; the API path /admin/glossary
-    is unchanged. Kept here for history; do not implement against it.] route stays /admin/glossary, [END
-    SUPERSEDED BLOCK] org_settings) and Team moved into the Admin group. Verified: unit, PG integration
-    (real config-load lifecycle), BDD (feature + implemented steps), Playwright e2e (curation flows against
-    the core lane) and MCP protocol-level tests all pass; docs section added to api-reference.md. ADAPTERS
-    (implemented): every vendor publishes the term graph natively into a PROVISA-OWNED glossary container
-    created idempotently — Atlas/Atlan (glossary API, definition on longDescription, isA/synonyms/seeAlso
-    mapping, Atlan deprecation via certificateStatus), DataHub (glossaryNode urn:li:glossaryNode:provisa.<org>,
-    term URNs immutable so renames follow deprecation-succession), OpenMetadata (fqn PUT, renames PATCH-rebind
-    by stored UUID — GlossaryTermRepository allows rename; KIND_OF as native parent hierarchy, entityStatus
-    deprecation), Collibra (Glossary-type domain via the Import API; REPLACE safety re-derived by CONTAINMENT:
-    only Provisa-domain assets and Provisa-term relations are ever mentioned). Updates read-merge so steward
+    name" and orders.id → "order identifier" rather than one meaningless shared term. Native-filter
+    pseudo-columns (_nf_-prefixed / native_filter_type) are query machinery and derive no terms). Terms are
+    deduplicated; each term holds a list of physical refs (catalog-identity resolved: table_id + column
+    name). The term unit is the phrase — the full normalized field name — never decomposed into tokens;
+    users resolve homonyms and granularity by revising terms or creating abstract terms. Users can rename a
+    term, move a physical ref between terms to consolidate, and attach a definition. Terms carry
+    relationships to users designated as experts: people who can answer questions about the term or who
+    authored its definition. Users can create abstract terms with no physical refs, connected to rooted
+    terms through a closed, enum-typed relationship set (KIND_OF, RELATED_TO, PART_OF, SYNONYM_OF);
+    free-form edge types are not permitted. Lifecycle is derived from semantic-layer membership — adding an
+    object creates/links terms; deleting or modifying a schema element removes its ref, and removal of a
+    term''s last physical ref removes the term — unless an abstract term is connected to the rooted graph
+    through it, in which case the term is deprecated (kept) instead so no abstract term is left dangling.
+    The term graph is included in metadata export (REQ-1068 family) and exposed via an MCP tool for term
+    search/lookup. v1 scope is documentation and discovery only; [SUPERSEDED by REQ-2145, 2026-10-23 -- a
+    pii tag on a Property term covers every column with that meaning. Kept here for history; do not
+    implement against it.] term membership does not drive policy (masking/RLS by term is a possible
+    follow-on). [END SUPERSEDED BLOCK] Boundary vs tags (REQ-1373): tags remain flat operator-assigned
+    labels; terms are the normalized vocabulary derived from and linked to schema. Implemented so far:
+    schema (glossary_terms/refs/edges/experts in schema.sql + schema_org, tenant-scoped), deterministic
+    normalizer, repository with the full lifecycle (sync rides table_repo.upsert — the single table_columns
+    write path — and refless-term settling rides every deletion path via a departed-table sweep,
+    cascade-independent because the SQLite backend runs without PRAGMA foreign_keys), the dangling check as
+    true reachability (delete the term unless an abstract term would newly lose all paths to rooted terms,
+    judged against a baseline where the candidate still anchors), admin REST router (/admin/glossary,
+    org_settings-gated, every mutation queues a REQ-1072 publish), MCP search_terms tool, term graph in the
+    export snapshot (data_product/technical filters extend to refs; terms with no published refs withheld
+    unless abstract; edges need both endpoints), and the admin UI Glossary tab with 13-locale i18n; Glossary
+    is a TOP-LEVEL nav item ([SUPERSEDED by REQ-2130, 2026-10-22 -- the page is named Ontology in the UI and
+    its route is /admin/ontology; the API path /admin/glossary is unchanged. Kept here for history; do not
+    implement against it.] route stays /admin/glossary, [END SUPERSEDED BLOCK] org_settings) and Team moved
+    into the Admin group. Verified: unit, PG integration (real config-load lifecycle), BDD (feature +
+    implemented steps), Playwright e2e (curation flows against the core lane) and MCP protocol-level tests
+    all pass; docs section added to api-reference.md. ADAPTERS (implemented): every vendor publishes the
+    term graph natively into a PROVISA-OWNED glossary container created idempotently — Atlas/Atlan (glossary
+    API, definition on longDescription, isA/synonyms/seeAlso mapping, Atlan deprecation via
+    certificateStatus), DataHub (glossaryNode urn:li:glossaryNode:provisa.<org>, term URNs immutable so
+    renames follow deprecation-succession), OpenMetadata (fqn PUT, renames PATCH-rebind by stored UUID —
+    GlossaryTermRepository allows rename; KIND_OF as native parent hierarchy, entityStatus deprecation),
+    Collibra (Glossary-type domain via the Import API; REPLACE safety re-derived by CONTAINMENT: only
+    Provisa-domain assets and Provisa-term relations are ever mentioned). Updates read-merge so steward
     fields on Provisa''s own terms survive; nothing deletes on snapshot absence; [SUPERSEDED by REQ-1389,
-    2026-10-23 -- Provisa now writes its own term-to-asset assignments as each catalog''s automated assignment
-    (REQ-1389, TERM ASSIGNMENT). Kept here for history; do not implement against it.] NO adapter writes
-    term-to-asset assignments (Provisa-authored assignment publishing is the one explicit follow-on). [END
-    SUPERSEDED BLOCK] OWNERSHIP CONSTRAINT (settled): the REQ-1389 authorship contract extends to glossary
-    items. A vendor-side glossary item is modified or deleted ONLY when Provisa created it, tracked the
-    same way as every published asset: the vendor''s own id is captured into catalog_bindings at publish,
-    keyed by the term''s URN (provisa://<org>/terms/<name>), and that binding is the ownership test. A glossary
-    item with no Provisa binding originated in the external system (steward- or vendor-created) and is NEVER
-    modified, re-parented, or deleted, whatever its name; steward term-to-asset assignments remain HUMAN-OWNED
-    per REQ-1389 and are never written. ADMISSION RULE (settled): what any consuming surface may offer is
-    ONE predicate, core.glossary.live_term_ids, shared by the repository and the exporter. A term is LIVE
-    only when it is (1) IN SERVICE: neither retired (a curator withdrew it) nor deprecated (the derivation
-    lost its last column); (2) DEFINED: a term derived from a column name is a token, not a meaning, so
-    an undefined term is a PROPOSAL awaiting a curator, never vocabulary an agent may ground a question
-    on; and (3) GROUNDED: connected, over in-service terms, to a term holding a physical ref. The glossary
-    is an entry point INTO the data, [SUPERSEDED by REQ-1387, 2026-10-22 -- a chain may also end at a table,
-    which a term now grounds with a reference that names no column (REQ-2141); GROUNDED TO A TABLE below.
-    Kept here for history; do not implement against it.] so every term chain must terminate at a physical
-    column: an abstract term wired to nothing physical names no data and is not offered. [END SUPERSEDED
-    BLOCK] Groundedness is a property of the term graph, not of any one row, so it is computed server-side
-    and rides the admin payload as a `live` flag rather than being re-derived in the UI. Connectivity is
-    STRUCTURAL and ignores definitions — an undefined rooted term still CONDUCTS grounding to its neighbours,
-    it is merely not offered itself — but out-of-service terms do not conduct, so retiring a term also withdraws
-    whatever reached data only through it. The rule cannot be enforced at creation (a term must exist before
-    an edge can attach to it), so it is enforced at CONSUMPTION: MCP term search, metadata export, and the
-    admin surface all apply it. Rootedness is the caller''s: the repository counts every ref, the exporter
-    counts only refs whose column actually publishes. CURATION-PRESERVING SETTLE: a term losing its last
-    physical ref is deprecated rather than deleted whenever it carries curator work — a definition, a relationship,
-    a named expert, or a retirement — because a derived term is born blank, so any of those can only have
-    come from a person and deleting the row would discard it silently. Deprecation (system-set) is auto-cleared
-    by _find_or_create_term when a matching column reappears; retirement (curator-set) never auto-clears.
-    Blank refless terms are still hard-deleted. COLUMN-REMOVAL WARNING (REQ-1484 surface): the pre-save
-    dependents check reports each bound term with the outcome already decided by the settle rule — kept
-    (has another column), kept but taken out of service (curated), or deleted with the column (derived and
-    blank) — so an administrator reads the consequence rather than inferring it. RELATIONSHIP RETYPING:
-    rel_type is part of an edge''s identity, so correcting one is a single curation act served by PATCH
-    /admin/glossary/terms/{term_id}/edges. The repository does the delete and the insert together inside
-    one transaction, rather than the UI publishing twice and leaving a window in which the relationship
-    does not exist. An incoming edge is retyped through the same stored forward values shown under reverse
-    labels, so the curator reads the sentence on screen while the server still receives the edge''s own
-    direction. GLOSSARY PURPOSE HELP: a hover bubble beside the add control states what the glossary is
-    for — that terms for real columns are derived automatically, and a hand-added term is warranted only
-    for a concept no single column carries — because the button is self-evident and the purpose is not.
-    The same control (provisa-ui/src/components/HelpBubble.tsx) sits beside the add action on Sources, Tables/Views,
-    Relationships, Metrics, Tags and the Glossary, each carrying purposeTitle/purposeBody/purposeAdd/purposeAria
-    in all 13 locales. The copy says what the object does once it exists and what the curator is deciding
-    by creating one, never what the button does. An icon-only control has no visible label at all, so on
-    Tables/Views and Relationships the icon is itself the hover target (HelpBubble accepts the control as
-    its target instead of rendering a second ''?''): the ERD icon on both pages, and the SQL modeling workbench
-    and Suggest with AI icons on Relationships, each explaining what the tool behind the glyph opens and
-    whether it edits the model or only reads it. The Tables/Views copy carries a third paragraph (purposeModel)
-    because a view is not a saved query: registration also fixes how it is served (live, or materialized
-    on a cadence or a calendar window per REQ-962), what a refresh writes (replace / upsert / append), whether
-    it keeps append-only history for as-of reads (REQ-1162), and its lineage inputs, while + Model lowers
-    an entity or fact onto those same primitives plus the relationships (REQ-1164). Security carries the
-    same control beside + RLS, stating that a rule is a SQL predicate bound to a role and a scope that the
-    server ANDs into the query on reads and writes alike (REQ-038/040), that a table rule wins over a domain
-    rule for that table (REQ-402), and that a rule names a role rather than a person. Security''s Roles
-    surface carries its own bubble beside + Role, stating that a role is the unit every other permission
-    is written against — capabilities decide which operations it may run and domain access which parts of
-    the model it reaches (REQ-003/005/042) — and that it carries its own rate and query-complexity ceilings
-    (REQ-369/1174). The card is the single explanation style: the NL page and the MCP explorer render their
-    control explanations through the same component rather than as Mantine tooltips, with the control itself
-    as the hover target so the row keeps its shape. (Amended 2026-10-22, GROUNDED TO A TABLE:) A term is
-    GROUNDED when it reaches, over in-service terms, a term bound to a column or a table: [SUPERSEDED by
-    REQ-1387, 2026-10-22 -- a table grounding is not stored as a reference with no column (REQ-2141, STORAGE-NEUTRAL).
-    Kept here for history; do not implement against it.] a term reference with no column grounds its term
-    in the table itself (REQ-2141), [END SUPERSEDED BLOCK] a term grounded in a table (REQ-2141) is grounded,
-    and live_term_ids counts it as grounded. An abstract term wired to nothing physical still names no data
-    and is not offered. (Amended 2026-10-23, ABSTRACT DERIVED:) An abstract term is a Concept (REQ-2141),
-    a term holding no column ref and grounding no table. The abstract flag is retired; it is derived from
-    the term''s refs and table groundings, never stored, so a term gaining a column ref is concrete by that
-    ref alone, and the deletion sweep settles the terms that held refs before the deletion and hold none
-    after, rather than every refless term not flagged abstract. (Amended 2026-10-23, PII ON TERMS:) Term
-    membership drives one policy: the pii tag (REQ-2145). A pii tag on a Property term, defined and in service,
-    is on every column the term holds, those it comes to hold included, computed where tags are read and
-    never copied to the columns. (Amended 2026-10-23, STATUS:) A term has one status, as REQ-2144 states
-    it: draft (not admitted), live (admitted by live_term_ids), deprecated or retired. What this requirement
-    calls a proposal is a draft term. Retiring, a curator act with a reason, moves the term''s columns,
-    or its tables with their keys, to a successor; the term stays as an inert record, no longer bound to
-    its columns. (Amended 2026-10-23, CLOUD GLOSSARIES:) The term graph also publishes into the native business
+    2026-10-23 -- Provisa now writes its own term-to-asset assignments as each catalog''s automated
+    assignment (REQ-1389, TERM ASSIGNMENT). Kept here for history; do not implement against it.] NO adapter
+    writes term-to-asset assignments (Provisa-authored assignment publishing is the one explicit follow-on).
+    [END SUPERSEDED BLOCK] OWNERSHIP CONSTRAINT (settled): the REQ-1389 authorship contract extends to
+    glossary items. A vendor-side glossary item is modified or deleted ONLY when Provisa created it, tracked
+    the same way as every published asset: the vendor''s own id is captured into catalog_bindings at
+    publish, keyed by the term''s URN (provisa://<org>/terms/<name>), and that binding is the ownership
+    test. A glossary item with no Provisa binding originated in the external system (steward- or
+    vendor-created) and is NEVER modified, re-parented, or deleted, whatever its name; steward term-to-asset
+    assignments remain HUMAN-OWNED per REQ-1389 and are never written. ADMISSION RULE (settled): what any
+    consuming surface may offer is ONE predicate, core.glossary.live_term_ids, shared by the repository and
+    the exporter. A term is LIVE only when it is (1) IN SERVICE: neither retired (a curator withdrew it) nor
+    deprecated (the derivation lost its last column); (2) DEFINED: a term derived from a column name is a
+    token, not a meaning, so an undefined term is a PROPOSAL awaiting a curator, never vocabulary an agent
+    may ground a question on; and (3) GROUNDED: connected, over in-service terms, to a term holding a
+    physical ref. The glossary is an entry point INTO the data, [SUPERSEDED by REQ-1387, 2026-10-22 -- a
+    chain may also end at a table, which a term now grounds with a reference that names no column
+    (REQ-2141); GROUNDED TO A TABLE below. Kept here for history; do not implement against it.] so every
+    term chain must terminate at a physical column: an abstract term wired to nothing physical names no data
+    and is not offered. [END SUPERSEDED BLOCK] Groundedness is a property of the term graph, not of any one
+    row, so it is computed server-side and rides the admin payload as a `live` flag rather than being
+    re-derived in the UI. Connectivity is STRUCTURAL and ignores definitions — an undefined rooted term
+    still CONDUCTS grounding to its neighbours, it is merely not offered itself — but out-of-service terms
+    do not conduct, so retiring a term also withdraws whatever reached data only through it. The rule cannot
+    be enforced at creation (a term must exist before an edge can attach to it), so it is enforced at
+    CONSUMPTION: MCP term search, metadata export, and the admin surface all apply it. Rootedness is the
+    caller''s: the repository counts every ref, the exporter counts only refs whose column actually
+    publishes. CURATION-PRESERVING SETTLE: a term losing its last physical ref is deprecated rather than
+    deleted whenever it carries curator work — a definition, a relationship, a named expert, or a retirement
+    — because a derived term is born blank, so any of those can only have come from a person and deleting
+    the row would discard it silently. Deprecation (system-set) is auto-cleared by _find_or_create_term when
+    a matching column reappears; retirement (curator-set) never auto-clears. Blank refless terms are still
+    hard-deleted. COLUMN-REMOVAL WARNING (REQ-1484 surface): the pre-save dependents check reports each
+    bound term with the outcome already decided by the settle rule — kept (has another column), kept but
+    taken out of service (curated), or deleted with the column (derived and blank) — so an administrator
+    reads the consequence rather than inferring it. RELATIONSHIP RETYPING: rel_type is part of an edge''s
+    identity, so correcting one is a single curation act served by PATCH
+    /admin/glossary/terms/{term_id}/edges. The repository does the delete and the insert together inside one
+    transaction, rather than the UI publishing twice and leaving a window in which the relationship does not
+    exist. An incoming edge is retyped through the same stored forward values shown under reverse labels, so
+    the curator reads the sentence on screen while the server still receives the edge''s own direction.
+    GLOSSARY PURPOSE HELP: a hover bubble beside the add control states what the glossary is for — that
+    terms for real columns are derived automatically, and a hand-added term is warranted only for a concept
+    no single column carries — because the button is self-evident and the purpose is not. The same control
+    (provisa-ui/src/components/HelpBubble.tsx) sits beside the add action on Sources, Tables/Views,
+    Relationships, Metrics, Tags and the Glossary, each carrying
+    purposeTitle/purposeBody/purposeAdd/purposeAria in all 13 locales. The copy says what the object does
+    once it exists and what the curator is deciding by creating one, never what the button does. An
+    icon-only control has no visible label at all, so on Tables/Views and Relationships the icon is itself
+    the hover target (HelpBubble accepts the control as its target instead of rendering a second ''?''): the
+    ERD icon on both pages, and the SQL modeling workbench and Suggest with AI icons on Relationships, each
+    explaining what the tool behind the glyph opens and whether it edits the model or only reads it. The
+    Tables/Views copy carries a third paragraph (purposeModel) because a view is not a saved query:
+    registration also fixes how it is served (live, or materialized on a cadence or a calendar window per
+    REQ-962), what a refresh writes (replace / upsert / append), whether it keeps append-only history for
+    as-of reads (REQ-1162), and its lineage inputs, while + Model lowers an entity or fact onto those same
+    primitives plus the relationships (REQ-1164). Security carries the same control beside + RLS, stating
+    that a rule is a SQL predicate bound to a role and a scope that the server ANDs into the query on reads
+    and writes alike (REQ-038/040), that a table rule wins over a domain rule for that table (REQ-402), and
+    that a rule names a role rather than a person. Security''s Roles surface carries its own bubble beside +
+    Role, stating that a role is the unit every other permission is written against — capabilities decide
+    which operations it may run and domain access which parts of the model it reaches (REQ-003/005/042) —
+    and that it carries its own rate and query-complexity ceilings (REQ-369/1174). The card is the single
+    explanation style: the NL page and the MCP explorer render their control explanations through the same
+    component rather than as Mantine tooltips, with the control itself as the hover target so the row keeps
+    its shape. (Amended 2026-10-22, GROUNDED TO A TABLE:) A term is GROUNDED when it reaches, over
+    in-service terms, a term bound to a column or a table: [SUPERSEDED by REQ-1387, 2026-10-22 -- a table
+    grounding is not stored as a reference with no column (REQ-2141, STORAGE-NEUTRAL). Kept here for
+    history; do not implement against it.] a term reference with no column grounds its term in the table
+    itself (REQ-2141), [END SUPERSEDED BLOCK] a term grounded in a table (REQ-2141) is grounded, and
+    live_term_ids counts it as grounded. An abstract term wired to nothing physical still names no data and
+    is not offered. (Amended 2026-10-23, ABSTRACT DERIVED:) An abstract term is a Concept (REQ-2141), a term
+    holding no column ref and grounding no table. The abstract flag is retired; it is derived from the
+    term''s refs and table groundings, never stored, so a term gaining a column ref is concrete by that ref
+    alone, and the deletion sweep settles the terms that held refs before the deletion and hold none after,
+    rather than every refless term not flagged abstract. (Amended 2026-10-23, PII ON TERMS:) Term membership
+    drives one policy: the pii tag (REQ-2145). A pii tag on a Property term, defined and in service, is on
+    every column the term holds, those it comes to hold included, computed where tags are read and never
+    copied to the columns. (Amended 2026-10-23, STATUS:) A term has one status, as REQ-2144 states it: draft
+    (not admitted), live (admitted by live_term_ids), deprecated or retired. What this requirement calls a
+    proposal is a draft term. Retiring, a curator act with a reason, moves the term''s columns, or its
+    tables with their keys, to a successor; the term stays as an inert record, no longer bound to its
+    columns. (Amended 2026-10-23, CLOUD GLOSSARIES:) The term graph also publishes into the native business
     glossaries of Purview''s Unified Catalog, Dataplex and DataZone, each into a glossary or governance
     domain Provisa owns or the term''s own domain. Purview Unified Catalog: each term in the governance
     domain named after its Provisa domain (the first, alphabetically, that Purview has; a term none of whose
-    domains it has is reported), its id derived from its Provisa URI, deprecated as EXPIRED, KIND_OF as
-    the parent, SYNONYM_OF as a Synonym relationship and every other edge Related; a Class term is related
-    to the data assets of its tables, and the principal that created a relationship decides ownership. Dataplex:
-    a provisa-<org> glossary with a category per role, the role and deprecation as labels, SYNONYM_OF as
-    a synonym entry link and every other edge a related one, and definition entry links from the BigQuery
-    tables and columns a term grounds, owned by their provisa- id prefix. DataZone: a Provisa glossary in
-    the owning project, deprecated as DISABLED, KIND_OF as isA; DataZone records no author for an assignment,
-    so no term is assigned to data there. The snapshot carries each term''s domains for this. (Amended 2026-10-27,
-    STATUS IS HUMAN, GROUNDING IS COMPUTED:) 2026-10-28: a term carries two facts. Its status is set by
-    people: draft (the default; a term derived from a column name starts here), approved (a steward''s choice,
-    which needs a definition), deprecated or retired. Its grounding is computed and never set: not grounded;
-    grounded (draft), when every path from it to data passes through a draft term; grounded (final), when
-    at least one path is approved all the way. Grounding follows edges through in-service terms whatever
-    their status; a deprecated or retired term breaks the chain, so a parent can become not grounded, which
-    shows in the term''s chips and filters and needs no other handling. What an agent sees (MCP glossary
-    search and every agent-facing surface): an approved term on a path to data; a defined draft term on
-    a path to data that holds at least one approved term, marked draft; an undefined term on such a path
-    only as an anonymous hop, traversed with no name or definition, each hop kept distinct so the shape
-    of the lineage is unchanged; nothing on a path with no approved term, nothing not grounded, nothing
-    deprecated or retired. People see every term with its status and grounding. The metadata export publishes
-    approved terms with their grounding. Findings list approved terms that are not grounded, and terms grounded
-    only through draft terms, naming the term whose approval makes them final. This replaces the admission
-    rule above (in service, defined and grounded). (Amended 2026-10-27, GROUNDING IS ONE FLAG; A PENDING
-    PATH IS A QUALIFIER:) 2026-10-28, replacing the three grounding names above: grounding is grounded or
-    not grounded. A grounded term whose every path to data passes through a term not yet approved is grounded
-    with its path pending approval. On the page the chip reads ''grounded'' or ''~grounded'' (no chip when
-    not grounded); ''~grounded'' carries the tooltip and accessible label ''Reaches data, but only through
-    terms not yet approved''. Filters and findings use the words ''Grounded'' and ''Grounded · path pending
-    approval''. Exports, APIs and agent surfaces carry the values grounded, grounded_pending and not_grounded.
-    (Amended 2026-10-27, GROUNDING LOOKS DOWN, STRICTLY BETWEEN:) 2026-10-28: a term''s grounding looks
-    only down its own paths to data, never at the term itself or at anything above it. It is grounded when
-    some path down has no draft term strictly between the term and the term at the data end that holds the
-    binding; grounded with its path pending approval (~grounded) when every path down has a draft term in
-    between; not grounded when no path reaches data. So a draft abstract term being drafted above an approved
-    chain counts against nothing: it shows grounded (its status chip says draft), and the terms below it
-    are unchanged; an auto-derived draft term at the data end does not make the chain above it pending.
-    (Amended 2026-10-27, WHY: AGENTS FIND AND CITE DATA:) 2026-10-28, the purpose of these rules: they are
-    how autonomous agents, and any other automation, reliably find data they may operate on and cite where
-    it came from. An agent starts from vocabulary a person approved, follows a route to data whose trust
-    it can see (grounded or pending approval, with undefined terms as anonymous hops), and arrives at relations
-    it reads under its role''s grants, row rules and masks; every step can be named in a citation (REQ-2177).
-    (Amended 2026-10-27, TERMS ENRICH DISCOVERY; THEY NEVER GATE IT:) 2026-10-28: these rules decide which
-    terms an agent sees, never which data it can find. Table and column metadata (names, descriptions) are
-    the starting point of discovery, searched for every role its grants allow; the term network enriches
-    meaning where that metadata falls short (definitions, synonyms, hierarchy, relationships) and so adds
-    routes to data. A table that no term reaches is as discoverable as before. Governance (grants, row rules,
-    masks) is the only gate on data. (Amended 2026-10-27, TWO KINDS OF SEARCH: TERM DISCOVERY AND DATA DISCOVERY:)
-    2026-10-28: there are two kinds of search, for people and agents alike. Term discovery answers ''what
-    do we mean by X?'': it searches the vocabulary (names, definitions, synonyms, hierarchy) and returns
-    approved terms whether or not they are grounded, each marked with its status and grounding; draft terms
-    are returned only when asked for (always shown to people), marked draft; deprecated and retired terms
-    only when asked for. Data discovery answers ''where is the data about X?'': it searches table and column
-    metadata plus routes through terms, under the agent-visibility rules above (an ungrounded term is never
-    a route), and returns the relations the role may read, each with its route and trust. The agent-visibility
-    rules above govern data discovery; term discovery follows this amendment. Both are offered on MCP and
-    the API as separate operations (search_terms, find_data). (Amended 2026-10-27, DOWN IS FROM BROADER
-    TO NARROWER:) 2026-10-28: ''down'' follows each edge type''s direction: from a broader term to the terms
-    that are a kind of it, a part of it or a valid value of it, and from a term to its bindings. Synonym
-    edges conduct both ways, as the two words mean the same thing. Related-to, derived-from, replaces, translation-of
-    and antonym-of edges do not conduct grounding. So a term is never grounded in a sibling''s data by going
-    up to a shared parent and back down. The metadata export publishes an approved term a curator later
-    deprecated, marked deprecated, so catalogs keep the marker; retired terms do not publish. (Amended 2026-10-28,
-    DEFINITIONS ARE VERSIONED; EDGES ARE RETIRED, NOT DELETED:) A term''s lifecycle is already kept; its
-    definition is versioned too. [SUPERSEDED by REQ-1387 amendment A NEW DEFINITION VERSION IS EXPLICIT,
-    2026-10-28 -- versioning is the steward''s explicit choice. Kept here for history; do not implement
-    against it.] Editing the definition (and its examples) of an approved term writes the next version and
-    keeps every earlier one read-only; a draft''s definition is edited in place until it is approved. [END
-    SUPERSEDED BLOCK] The term page steps through the definition''s versions with a difference between them.
-    A relationship between terms (KIND_OF, PART_OF, VALID_VALUE_OF, SYNONYM_OF and the others) is never
-    deleted: removing it retires it, kept with the time it was retired. A retired edge does not conduct
-    grounding and is not shown as current, but remains for history and for resolving citations. (Amended
-    2026-10-28, A NEW DEFINITION VERSION IS EXPLICIT:) A new definition version is the steward''s explicit
-    choice, as a contract''s is (REQ-2158): New version copies the current definition and examples to the
-    next number for editing and keeps every earlier version read-only. A minor or cosmetic edit (a typo,
-    wording that does not change the meaning) is made in place on the current version and creates none.
-    A draft''s definition is always edited in place. (Amended 2026-10-28, SAVE, SAVE VERSION, CANCEL:) A
-    term''s definition edit form: The edit form''s actions are Save, Save version and Cancel: Save writes
-    the edit in place on the current version, Save version writes it as the next version and keeps the current
-    one read-only, and Cancel discards it. (Amended 2026-10-28, A CONCEPT''S PROPERTIES ARE ITS PARTS:)
-    A property term that describes a concept (a shift coverage''s start, end and location) is related to
-    it by PART_OF, not RELATED_TO, so the concept is grounded through the properties that reach data. The
-    glossary''s Generate Relationships action proposes PART_OF when it links a concept to one of its property-role
-    terms, and keeps RELATED_TO for loose associations, which conduct no grounding. Demo and shipped vocabularies
-    follow the same rule. (Amended 2026-10-28, RELATED_TO IS THE LAST RESORT:) RELATED_TO links two distinct
-    topics that go together where neither is a kind of the other, part of it, or a value of it (cake and
-    candles); it does not ground. Every place that proposes or picks a relationship type steers to the grounding
-    types first: the type picker shows each type''s test (KIND_OF: every X is a Y; PART_OF: a Y has an X;
-    VALID_VALUE_OF: X is one of Y''s allowed values; RELATED_TO: distinct topics that go together, neither
-    a kind, part or value of the other, and does not ground); the relationship assistant''s prompt carries
-    the same tests, prefers KIND_OF, PART_OF and VALID_VALUE_OF wherever one fits, proposes RELATED_TO only
-    when none does, [SUPERSEDED by REQ-1387 amendment RELATED_TO HOLDS THE PLACE; REVIEW IT, 2026-10-28
-    -- an unresolved pair is RELATED_TO until the user resolves it. Kept here for history; do not implement
-    against it.] and leaves an edge out rather than default to RELATED_TO (a pair that seems related with
-    no structural type may lack an intermediate term, as candles are part of a birthday cake, a kind of
-    cake; adding that term is the user''s call, never the assistant''s); [END SUPERSEDED BLOCK] and a term
-    whose only links are RELATED_TO and which is not grounded says so on its page with that question, as
-    guidance, never a block. The shipped seed models a concept''s properties with PART_OF (shift start,
-    shift end and schedule location are PART_OF shift coverage), not RELATED_TO. (Amended 2026-10-28, RELATED_TO
-    HOLDS THE PLACE; REVIEW IT:) When two terms go together and no grounding type fits, the relationship
-    assistant proposes RELATED_TO, saying that the pair may want resolving; it never invents a term. RELATED_TO
-    holds the place until the user resolves the pair, if ever: by an intermediate term (candles PART_OF
-    birthday cake, KIND_OF cake), or by an umbrella term both are PART_OF (shift start and shift end PART_OF
-    shift coverage). Because RELATED_TO edges are the ones that want review, the ontology term list has
-    a filter checkbox, beside Deprecated and To review, that shows only terms with at least one RELATED_TO
-    edge. (Amended 2026-10-28, THE SHAPES THAT RESOLVE A RELATED PAIR:) The guidance names every one-term
-    shape that turns a RELATED_TO pair into grounding edges, tightest first: COMPONENT TYPE (candles KIND_OF
-    cake decoration, cake decoration PART_OF cake); SPECIALISATION (candles PART_OF birthday cake, birthday
-    cake KIND_OF cake); COMMON WHOLE (cake and candles PART_OF party); COMMON GENUS (cake and candles KIND_OF
-    party supplies); COMMON ENUMERATION (cake and candles VALID_VALUE_OF party item type). It says why the
-    order matters: the broader the new term, the less its grounding tells a reader, since a hub such as
-    party grounds candles without saying which data answers a question about them. The relationship assistant''s
-    "may want resolving" note offers these shapes for the pair in that order, with candidate names for the
-    new term, and the user chooses; the assistant adds nothing unasked. The same guidance (the type tests,
-    RELATED_TO as the placeholder, the five shapes and the breadth caution) is a section of the ontology
-    documentation, written for the people who build a glossary, who rarely get it, and it is reachable from
-    the type picker and from the RELATED_TO review filter. (Amended 2026-10-28, CHOOSING RELATED_TO OPENS
-    THE ALTERNATIVES:) Choosing RELATED_TO for an edge a person is adding opens a dialog, an exception to
-    the minimal-modal rule because this choice should interrupt: it says why RELATED_TO is the least useful
-    edge (it does not ground, so the term still cannot reach data), draws the five resolving shapes for
-    the two terms being linked, tightest first, each with a candidate name for the new term (candles ->
-    cake decoration -> cake), and offers to start one, which opens the new-term form prefilled with that
-    name and both edges for the person to confirm or rename; to add RELATED_TO anyway, as a placeholder
-    the review filter lists, in one click; or to cancel. The relationship assistant''s bulk proposals do
-    not open the dialog per edge; each RELATED_TO proposal carries the same shapes in its note where proposals
-    are reviewed. (Amended 2026-11-14, ENDINGS ARE PUBLISHED, AND A SOURCE LOSS IS A FINDING:) Maintainer
-    2026-11-14 (REQ-2248). A retired object stays in what is published, marked retired: in a catalog by
-    the vendor''s deprecation, or a description note where it has none, and in RDF by owl:deprecated true,
-    with dcterms:isReplacedBy only when a person named a successor. Its catalog binding is kept and no successor
-    is inferred. A table or column missing at the source keeps its model object and its links and raises
-    a finding; its links are no longer dropped and its generated tables no longer deleted automatically.
-    (Amended 2026-11-18, THE DEFINITION ASSISTANT IS GIVEN THE BOUND COLUMNS'' AND TABLES'' OWN DESCRIPTIONS:)
-    Maintainer 2026-11-18. When the assistant drafts a definition for a term grounded to columns, it is
-    given, for each bound column within the selected domains: the column''s description or comment and its
-    type; its table''s name or alias and description; and a few distinct sample values read as the curator
-    through the governed path (masks and redaction applied; none for a sensitive column). It is also given
-    the definitions of related terms that have one, not only their names. The draft still defines the business
-    concept, not the column. (Amended 2026-11-18, A TABLE THE CURATOR CANNOT READ GIVES NO SAMPLES, AND
-    THE DRAFT STILL RUNS:) Maintainer 2026-11-18. When a bound column''s table cannot be read as the curator
-    for samples (its source is unreachable, or the curator''s role cannot read it), the assistant drafts
-    without that table''s samples, still using its descriptions and types, and the result names the tables
-    that gave no samples. Drafting definitions for every term continues past such a table.'
+    domains it has is reported), its id derived from its Provisa URI, deprecated as EXPIRED, KIND_OF as the
+    parent, SYNONYM_OF as a Synonym relationship and every other edge Related; a Class term is related to
+    the data assets of its tables, and the principal that created a relationship decides ownership.
+    Dataplex: a provisa-<org> glossary with a category per role, the role and deprecation as labels,
+    SYNONYM_OF as a synonym entry link and every other edge a related one, and definition entry links from
+    the BigQuery tables and columns a term grounds, owned by their provisa- id prefix. DataZone: a Provisa
+    glossary in the owning project, deprecated as DISABLED, KIND_OF as isA; DataZone records no author for
+    an assignment, so no term is assigned to data there. The snapshot carries each term''s domains for this.
+    (Amended 2026-10-27, STATUS IS HUMAN, GROUNDING IS COMPUTED:) 2026-10-28: a term carries two facts. Its
+    status is set by people: draft (the default; a term derived from a column name starts here), approved (a
+    steward''s choice, which needs a definition), deprecated or retired. Its grounding is computed and never
+    set: not grounded; grounded (draft), when every path from it to data passes through a draft term;
+    grounded (final), when at least one path is approved all the way. Grounding follows edges through
+    in-service terms whatever their status; a deprecated or retired term breaks the chain, so a parent can
+    become not grounded, which shows in the term''s chips and filters and needs no other handling. What an
+    agent sees (MCP glossary search and every agent-facing surface): an approved term on a path to data; a
+    defined draft term on a path to data that holds at least one approved term, marked draft; an undefined
+    term on such a path only as an anonymous hop, traversed with no name or definition, each hop kept
+    distinct so the shape of the lineage is unchanged; nothing on a path with no approved term, nothing not
+    grounded, nothing deprecated or retired. People see every term with its status and grounding. The
+    metadata export publishes approved terms with their grounding. Findings list approved terms that are not
+    grounded, and terms grounded only through draft terms, naming the term whose approval makes them final.
+    This replaces the admission rule above (in service, defined and grounded). (Amended 2026-10-27,
+    GROUNDING IS ONE FLAG; A PENDING PATH IS A QUALIFIER:) 2026-10-28, replacing the three grounding names
+    above: grounding is grounded or not grounded. A grounded term whose every path to data passes through a
+    term not yet approved is grounded with its path pending approval. On the page the chip reads
+    ''grounded'' or ''~grounded'' (no chip when not grounded); ''~grounded'' carries the tooltip and
+    accessible label ''Reaches data, but only through terms not yet approved''. Filters and findings use the
+    words ''Grounded'' and ''Grounded · path pending approval''. Exports, APIs and agent surfaces carry the
+    values grounded, grounded_pending and not_grounded. (Amended 2026-10-27, GROUNDING LOOKS DOWN, STRICTLY
+    BETWEEN:) 2026-10-28: a term''s grounding looks only down its own paths to data, never at the term
+    itself or at anything above it. It is grounded when some path down has no draft term strictly between
+    the term and the term at the data end that holds the binding; grounded with its path pending approval
+    (~grounded) when every path down has a draft term in between; not grounded when no path reaches data. So
+    a draft abstract term being drafted above an approved chain counts against nothing: it shows grounded
+    (its status chip says draft), and the terms below it are unchanged; an auto-derived draft term at the
+    data end does not make the chain above it pending. (Amended 2026-10-27, WHY: AGENTS FIND AND CITE DATA:)
+    2026-10-28, the purpose of these rules: they are how autonomous agents, and any other automation,
+    reliably find data they may operate on and cite where it came from. An agent starts from vocabulary a
+    person approved, follows a route to data whose trust it can see (grounded or pending approval, with
+    undefined terms as anonymous hops), and arrives at relations it reads under its role''s grants, row
+    rules and masks; every step can be named in a citation (REQ-2177). (Amended 2026-10-27, TERMS ENRICH
+    DISCOVERY; THEY NEVER GATE IT:) 2026-10-28: these rules decide which terms an agent sees, never which
+    data it can find. Table and column metadata (names, descriptions) are the starting point of discovery,
+    searched for every role its grants allow; the term network enriches meaning where that metadata falls
+    short (definitions, synonyms, hierarchy, relationships) and so adds routes to data. A table that no term
+    reaches is as discoverable as before. Governance (grants, row rules, masks) is the only gate on data.
+    (Amended 2026-10-27, TWO KINDS OF SEARCH: TERM DISCOVERY AND DATA DISCOVERY:) 2026-10-28: there are two
+    kinds of search, for people and agents alike. Term discovery answers ''what do we mean by X?'': it
+    searches the vocabulary (names, definitions, synonyms, hierarchy) and returns approved terms whether or
+    not they are grounded, each marked with its status and grounding; draft terms are returned only when
+    asked for (always shown to people), marked draft; deprecated and retired terms only when asked for. Data
+    discovery answers ''where is the data about X?'': it searches table and column metadata plus routes
+    through terms, under the agent-visibility rules above (an ungrounded term is never a route), and returns
+    the relations the role may read, each with its route and trust. The agent-visibility rules above govern
+    data discovery; term discovery follows this amendment. Both are offered on MCP and the API as separate
+    operations (search_terms, find_data). (Amended 2026-10-27, DOWN IS FROM BROADER TO NARROWER:)
+    2026-10-28: ''down'' follows each edge type''s direction: from a broader term to the terms that are a
+    kind of it, a part of it or a valid value of it, and from a term to its bindings. Synonym edges conduct
+    both ways, as the two words mean the same thing. Related-to, derived-from, replaces, translation-of and
+    antonym-of edges do not conduct grounding. So a term is never grounded in a sibling''s data by going up
+    to a shared parent and back down. The metadata export publishes an approved term a curator later
+    deprecated, marked deprecated, so catalogs keep the marker; retired terms do not publish. (Amended
+    2026-10-28, DEFINITIONS ARE VERSIONED; EDGES ARE RETIRED, NOT DELETED:) A term''s lifecycle is already
+    kept; its definition is versioned too. [SUPERSEDED by REQ-1387 amendment A NEW DEFINITION VERSION IS
+    EXPLICIT, 2026-10-28 -- versioning is the steward''s explicit choice. Kept here for history; do not
+    implement against it.] Editing the definition (and its examples) of an approved term writes the next
+    version and keeps every earlier one read-only; a draft''s definition is edited in place until it is
+    approved. [END SUPERSEDED BLOCK] The term page steps through the definition''s versions with a
+    difference between them. A relationship between terms (KIND_OF, PART_OF, VALID_VALUE_OF, SYNONYM_OF and
+    the others) is never deleted: removing it retires it, kept with the time it was retired. A retired edge
+    does not conduct grounding and is not shown as current, but remains for history and for resolving
+    citations. (Amended 2026-10-28, A NEW DEFINITION VERSION IS EXPLICIT:) A new definition version is the
+    steward''s explicit choice, as a contract''s is (REQ-2158): New version copies the current definition
+    and examples to the next number for editing and keeps every earlier version read-only. A minor or
+    cosmetic edit (a typo, wording that does not change the meaning) is made in place on the current version
+    and creates none. A draft''s definition is always edited in place. (Amended 2026-10-28, SAVE, SAVE
+    VERSION, CANCEL:) A term''s definition edit form: The edit form''s actions are Save, Save version and
+    Cancel: Save writes the edit in place on the current version, Save version writes it as the next version
+    and keeps the current one read-only, and Cancel discards it. (Amended 2026-10-28, A CONCEPT''S
+    PROPERTIES ARE ITS PARTS:) A property term that describes a concept (a shift coverage''s start, end and
+    location) is related to it by PART_OF, not RELATED_TO, so the concept is grounded through the properties
+    that reach data. The glossary''s Generate Relationships action proposes PART_OF when it links a concept
+    to one of its property-role terms, and keeps RELATED_TO for loose associations, which conduct no
+    grounding. Demo and shipped vocabularies follow the same rule. (Amended 2026-10-28, RELATED_TO IS THE
+    LAST RESORT:) RELATED_TO links two distinct topics that go together where neither is a kind of the
+    other, part of it, or a value of it (cake and candles); it does not ground. Every place that proposes or
+    picks a relationship type steers to the grounding types first: the type picker shows each type''s test
+    (KIND_OF: every X is a Y; PART_OF: a Y has an X; VALID_VALUE_OF: X is one of Y''s allowed values;
+    RELATED_TO: distinct topics that go together, neither a kind, part or value of the other, and does not
+    ground); the relationship assistant''s prompt carries the same tests, prefers KIND_OF, PART_OF and
+    VALID_VALUE_OF wherever one fits, proposes RELATED_TO only when none does, [SUPERSEDED by REQ-1387
+    amendment RELATED_TO HOLDS THE PLACE; REVIEW IT, 2026-10-28 -- an unresolved pair is RELATED_TO until
+    the user resolves it. Kept here for history; do not implement against it.] and leaves an edge out rather
+    than default to RELATED_TO (a pair that seems related with no structural type may lack an intermediate
+    term, as candles are part of a birthday cake, a kind of cake; adding that term is the user''s call,
+    never the assistant''s); [END SUPERSEDED BLOCK] and a term whose only links are RELATED_TO and which is
+    not grounded says so on its page with that question, as guidance, never a block. The shipped seed models
+    a concept''s properties with PART_OF (shift start, shift end and schedule location are PART_OF shift
+    coverage), not RELATED_TO. (Amended 2026-10-28, RELATED_TO HOLDS THE PLACE; REVIEW IT:) When two terms
+    go together and no grounding type fits, the relationship assistant proposes RELATED_TO, saying that the
+    pair may want resolving; it never invents a term. RELATED_TO holds the place until the user resolves the
+    pair, if ever: by an intermediate term (candles PART_OF birthday cake, KIND_OF cake), or by an umbrella
+    term both are PART_OF (shift start and shift end PART_OF shift coverage). Because RELATED_TO edges are
+    the ones that want review, the ontology term list has a filter checkbox, beside Deprecated and To
+    review, that shows only terms with at least one RELATED_TO edge. (Amended 2026-10-28, THE SHAPES THAT
+    RESOLVE A RELATED PAIR:) The guidance names every one-term shape that turns a RELATED_TO pair into
+    grounding edges, tightest first: COMPONENT TYPE (candles KIND_OF cake decoration, cake decoration
+    PART_OF cake); SPECIALISATION (candles PART_OF birthday cake, birthday cake KIND_OF cake); COMMON WHOLE
+    (cake and candles PART_OF party); COMMON GENUS (cake and candles KIND_OF party supplies); COMMON
+    ENUMERATION (cake and candles VALID_VALUE_OF party item type). It says why the order matters: the
+    broader the new term, the less its grounding tells a reader, since a hub such as party grounds candles
+    without saying which data answers a question about them. The relationship assistant''s "may want
+    resolving" note offers these shapes for the pair in that order, with candidate names for the new term,
+    and the user chooses; the assistant adds nothing unasked. The same guidance (the type tests, RELATED_TO
+    as the placeholder, the five shapes and the breadth caution) is a section of the ontology documentation,
+    written for the people who build a glossary, who rarely get it, and it is reachable from the type picker
+    and from the RELATED_TO review filter. (Amended 2026-10-28, CHOOSING RELATED_TO OPENS THE ALTERNATIVES:)
+    Choosing RELATED_TO for an edge a person is adding opens a dialog, an exception to the minimal-modal
+    rule because this choice should interrupt: it says why RELATED_TO is the least useful edge (it does not
+    ground, so the term still cannot reach data), draws the five resolving shapes for the two terms being
+    linked, tightest first, each with a candidate name for the new term (candles -> cake decoration ->
+    cake), and offers to start one, which opens the new-term form prefilled with that name and both edges
+    for the person to confirm or rename; to add RELATED_TO anyway, as a placeholder the review filter lists,
+    in one click; or to cancel. The relationship assistant''s bulk proposals do not open the dialog per
+    edge; each RELATED_TO proposal carries the same shapes in its note where proposals are reviewed.
+    (Amended 2026-11-14, ENDINGS ARE PUBLISHED, AND A SOURCE LOSS IS A FINDING:) Maintainer 2026-11-14
+    (REQ-2248). A retired object stays in what is published, marked retired: in a catalog by the vendor''s
+    deprecation, or a description note where it has none, and in RDF by owl:deprecated true, with
+    dcterms:isReplacedBy only when a person named a successor. Its catalog binding is kept and no successor
+    is inferred. A table or column missing at the source keeps its model object and its links and raises a
+    finding; its links are no longer dropped and its generated tables no longer deleted automatically.
+    (Amended 2026-11-18, THE DEFINITION ASSISTANT IS GIVEN THE BOUND COLUMNS'' AND TABLES'' OWN
+    DESCRIPTIONS:) Maintainer 2026-11-18. When the assistant drafts a definition for a term grounded to
+    columns, it is given, for each bound column within the selected domains: the column''s description or
+    comment and its type; its table''s name or alias and description; and a few distinct sample values read
+    as the curator through the governed path (masks and redaction applied; none for a sensitive column). It
+    is also given the definitions of related terms that have one, not only their names. The draft still
+    defines the business concept, not the column. (Amended 2026-11-18, A TABLE THE CURATOR CANNOT READ GIVES
+    NO SAMPLES, AND THE DRAFT STILL RUNS:) Maintainer 2026-11-18. When a bound column''s table cannot be
+    read as the curator for samples (its source is unreachable, or the curator''s role cannot read it), the
+    assistant drafts without that table''s samples, still using its descriptions and types, and the result
+    names the tables that gave no samples. Drafting definitions for every term continues past such a table.
+    (Amended 2026-11-19, PLACED IN THE CONTEXT GROUP:) Maintainer 2026-11-19. Its page sits in the Context
+    navigation group under /context/ (REQ-2259), replacing its former top-level link; any earlier placement
+    stated here is superseded.'
   use_case: 'Bottom-up bootstrap means the glossary is never empty: every column name seeds the vocabulary, avoiding the failure mode of top-down glossary projects. Concept-level discovery ("show every physical field that means order date"), expert routing for data questions, grounded vocabulary for NL-to-SQL and agent surfaces via the MCP term-lookup tool, and glossary interchange with external catalogs through metadata export.'
   scenario: 'Given tables with columns cust_id, customerId, and CUSTOMER_KEY registered in the semantic
     layer
@@ -57842,25 +57850,30 @@
   feature: glossary-tags-ontology-terms
   priority: MUST
   type: behavioral
-  description: 'THE BUSINESS GLOSSARY IS GOVERNED BY TWO RIGHTS, AND READING IT IS NOT ADMINISTERING THE
-    ORG. ``glossary_read`` opens the surface: [SUPERSEDED by REQ-2130, 2026-10-22 -- the page is named Ontology in the UI and its route is /admin/ontology; the API path /admin/glossary is unchanged. Kept here for history; do not implement against it.] the /admin/glossary route, [END SUPERSEDED BLOCK] its top-level nav link, and
-    the read endpoints GET /glossary/terms and GET /glossary/terms/{id}. ``glossary_rw`` is curation on
-    top of that: create, rename, definition, retire, delete, export exclusion, ref moves, edges (add/retype/remove),
-    experts, and the AI generation endpoints that PERSIST what they draft (generate-definition, generate-definitions,
-    generate-relationships). THE GAP: the whole surface was gated on ``org_settings``, so an analyst
-    looking up what a column means was shown "You do not have permission to view this page"; the vocabulary
-    the model is described in was reachable only by an administrator. NO IMPLICATION: the two rights
-    are checked independently and neither implies the other; granting ``glossary_rw`` alone leaves the
-    page unreachable, because the page is gated on read. Both are granted and revoked from the role capability
-    grid like any other right. SEEDS: org_admin and modeler carry both (modeler is the model-curation
-    role); analyst and developer carry ``glossary_read`` only. READ-ONLY RENDERING: without ``glossary_rw``
-    the page still lists terms and shows each term''s definition, refs, relationships and experts, but
-    every control that writes is WITHHELD rather than disabled, and a "Read-only" badge names the missing
-    right; a disabled button says nothing about why, and the endpoint behind it answers 403. GET /glossary/ref
-    stays on ``table_registration``: it serves the Tables surface''s hover popup, and Tables already requires
-    that right. THE TOUR: the glossary step points at the AI generation buttons, so it declares ``glossary_rw``,
-    stricter than its route''s gate, and a read-only viewer skips the step rather than waiting out an
-    anchor that never mounts.'
+  description: 'THE BUSINESS GLOSSARY IS GOVERNED BY TWO RIGHTS, AND READING IT IS NOT ADMINISTERING THE ORG.
+    ``glossary_read`` opens the surface: [SUPERSEDED by REQ-2130, 2026-10-22 -- the page is named Ontology
+    in the UI and its route is /admin/ontology; the API path /admin/glossary is unchanged. Kept here for
+    history; do not implement against it.] the /admin/glossary route, [END SUPERSEDED BLOCK] its top-level
+    nav link, and the read endpoints GET /glossary/terms and GET /glossary/terms/{id}. ``glossary_rw`` is
+    curation on top of that: create, rename, definition, retire, delete, export exclusion, ref moves, edges
+    (add/retype/remove), experts, and the AI generation endpoints that PERSIST what they draft
+    (generate-definition, generate-definitions, generate-relationships). THE GAP: the whole surface was
+    gated on ``org_settings``, so an analyst looking up what a column means was shown "You do not have
+    permission to view this page"; the vocabulary the model is described in was reachable only by an
+    administrator. NO IMPLICATION: the two rights are checked independently and neither implies the other;
+    granting ``glossary_rw`` alone leaves the page unreachable, because the page is gated on read. Both are
+    granted and revoked from the role capability grid like any other right. SEEDS: org_admin and modeler
+    carry both (modeler is the model-curation role); analyst and developer carry ``glossary_read`` only.
+    READ-ONLY RENDERING: without ``glossary_rw`` the page still lists terms and shows each term''s
+    definition, refs, relationships and experts, but every control that writes is WITHHELD rather than
+    disabled, and a "Read-only" badge names the missing right; a disabled button says nothing about why, and
+    the endpoint behind it answers 403. GET /glossary/ref stays on ``table_registration``: it serves the
+    Tables surface''s hover popup, and Tables already requires that right. THE TOUR: the glossary step
+    points at the AI generation buttons, so it declares ``glossary_rw``, stricter than its route''s gate,
+    and a read-only viewer skips the step rather than waiting out an anchor that never mounts. (Amended
+    2026-11-19, PLACED IN THE CONTEXT GROUP:) Maintainer 2026-11-19. Its page sits in the Context navigation
+    group under /context/ (REQ-2259), replacing its former top-level link; any earlier placement stated here
+    is superseded.'
   tests:
   - tests/unit/test_glossary_rights.py
   - provisa-ui/src/__tests__/glossaryReadOnly.test.tsx
@@ -88970,59 +88983,62 @@ Then the form offers Open in VS Code as a vscode://file link to it"
   feature: catalog-and-discovery-warehouse-listings
   priority: SHOULD
   type: behavioral
-  description: 'Catalogs are their own admin panel, and Provisa both publishes to and reads from them. A
-    Catalogs panel, beside Package Registries and Container Registries, holds each catalog connection once:
-    provider (OpenMetadata, DataHub, Collibra, Apache Atlas or Purview, Atlan, Unity Catalog, Snowflake
-    Horizon, Dataplex, DataZone and the others the export supports), endpoint, credentials and a connection
-    test. A catalog connection is assigned to one or more domains, so each domain works with its own catalogs
-    (sales with one, finance with another): a domain''s tables offer only its catalogs in the pick list,
-    Refresh from catalog, import and lock, and its data products publish to its catalogs, [SUPERSEDED by
-    REQ-2122, 2026-10-21 -- a data product has one owning domain and no cross-domain listing; see the amendment
-    below. Kept here for history; do not implement against it.] a product shared across domains appearing
-    in each listing domain''s catalogs. [END SUPERSEDED BLOCK] A metadata export target names a catalog
-    and keeps only its export settings, in place of its own endpoint and credentials. Description import:
-    a table''s description has From catalog, which opens a pick list of the connected catalogs'' assets
-    for it, the asset for the same physical table preselected when a catalog has one, the rest ranked by
-    name similarity and searchable; the steward picks one or none, and the picked asset''s description,
-    column descriptions (matched by column name and adjustable one by one), owners, tags and linked glossary
-    terms are offered to the table, each shown with its catalog. The LLM matches nothing; the existing generated
-    descriptions only fill what the catalog never described, when the steward asks. A pick is stored as
-    the table''s catalog binding, the same binding an export records, so export and import share one link
-    per table per catalog, an export updates the asset the steward picked, and a description can be refreshed
-    from it later. Every export target records the catalog''s id for what it publishes and, where the catalog''s
-    API allows, writes the table''s Provisa address into the catalog asset, so after one export each published
-    table is linked both ways. Catalog import: a catalog''s Import action reads, for every table linked
-    to that catalog (by an export or a pick), its current description, column descriptions, owners, tags
-    and glossary links, and shows them as a review list beside Provisa''s current values; the steward accepts
+  description: 'Catalogs are their own admin panel, and Provisa both publishes to and reads from them. A Catalogs
+    panel, beside Package Registries and Container Registries, holds each catalog connection once: provider
+    (OpenMetadata, DataHub, Collibra, Apache Atlas or Purview, Atlan, Unity Catalog, Snowflake Horizon,
+    Dataplex, DataZone and the others the export supports), endpoint, credentials and a connection test. A
+    catalog connection is assigned to one or more domains, so each domain works with its own catalogs (sales
+    with one, finance with another): a domain''s tables offer only its catalogs in the pick list, Refresh
+    from catalog, import and lock, and its data products publish to its catalogs, [SUPERSEDED by REQ-2122,
+    2026-10-21 -- a data product has one owning domain and no cross-domain listing; see the amendment below.
+    Kept here for history; do not implement against it.] a product shared across domains appearing in each
+    listing domain''s catalogs. [END SUPERSEDED BLOCK] A metadata export target names a catalog and keeps
+    only its export settings, in place of its own endpoint and credentials. Description import: a table''s
+    description has From catalog, which opens a pick list of the connected catalogs'' assets for it, the
+    asset for the same physical table preselected when a catalog has one, the rest ranked by name similarity
+    and searchable; the steward picks one or none, and the picked asset''s description, column descriptions
+    (matched by column name and adjustable one by one), owners, tags and linked glossary terms are offered
+    to the table, each shown with its catalog. The LLM matches nothing; the existing generated descriptions
+    only fill what the catalog never described, when the steward asks. A pick is stored as the table''s
+    catalog binding, the same binding an export records, so export and import share one link per table per
+    catalog, an export updates the asset the steward picked, and a description can be refreshed from it
+    later. Every export target records the catalog''s id for what it publishes and, where the catalog''s API
+    allows, writes the table''s Provisa address into the catalog asset, so after one export each published
+    table is linked both ways. Catalog import: a catalog''s Import action reads, for every table linked to
+    that catalog (by an export or a pick), its current description, column descriptions, owners, tags and
+    glossary links, and shows them as a review list beside Provisa''s current values; the steward accepts
     all or table by table. A table not yet linked is listed as not linked, with the two ways to link it
-    (export once, or pick its asset in the table editor), and nothing is guessed for it. The table editor
-    of a linked table offers Refresh from catalog, which reads the linked asset''s current description,
-    column descriptions, owners, tags and glossary links and offers the changes beside the current values
-    for the steward to accept. Imported metadata records its provenance: a table shows that its descriptions
-    were last imported from a named catalog at a stated time, and they stay editable; Provisa claims no
-    authority it cannot know. A steward may elect to lock a table to a catalog, and only then is that catalog
-    its authority: the locked table''s descriptive fields (descriptions, column descriptions, owners, tags,
+    (export once, or pick its asset in the table editor), and nothing is guessed for it. The table editor of
+    a linked table offers Refresh from catalog, which reads the linked asset''s current description, column
+    descriptions, owners, tags and glossary links and offers the changes beside the current values for the
+    steward to accept. Imported metadata records its provenance: a table shows that its descriptions were
+    last imported from a named catalog at a stated time, and they stay editable; Provisa claims no authority
+    it cannot know. A steward may elect to lock a table to a catalog, and only then is that catalog its
+    authority: the locked table''s descriptive fields (descriptions, column descriptions, owners, tags,
     glossary links) are read-only in Provisa''s editor with a link to edit them in the catalog, and the
-    export no longer writes them to that catalog. Scheduled import, using the existing scheduler, applies
-    a catalog''s current metadata without review to the tables locked to it, and for its other linked tables
+    export no longer writes them to that catalog. Scheduled import, using the existing scheduler, applies a
+    catalog''s current metadata without review to the tables locked to it, and for its other linked tables
     lists what changed for the steward to review, never overwriting a local edit. Governance (grants, row
     rules, masks) stays Provisa''s on every table. (Amended 2026-10-21, DOMAIN SCOPE:) A catalog connection
     serves at least one domain. A table and its columns publish to the catalogs of their domain, a data
-    product to the catalogs of its owning domain, and the glossary to every catalog; there is no cross-domain
-    listing of a data product. Each other published fact (a source, a relationship, a lineage edge, a tag,
-    a quality check, a term''s link to an asset) goes to a catalog only with the assets it is about. The
-    export''s own settings for a catalog are the DataZone project that owns its data products and the Unity
-    Catalog Delta Share; the catalog holds the address, credentials and the DataZone domain. The Catalogs
-    panel''s connection test is the provider''s own health check, the one the export runs. (Amended 2026-11-14,
-    DIFFERENCES, ACCEPT AND STANDING CHOICES:) Maintainer 2026-11-14 (REQ-2247). The Catalogs panel also
-    holds external ontology systems. For every entry, differences between Provisa and the entry are listed
-    with Accept, grouped by kind, and the entry''s page holds the steward''s standing choice per kind of
-    difference, which scheduled export and import apply; a kind with no choice is held for review. The per-table
-    lock to a catalog stays. (Amended 2026-11-14, THE PANEL IS SYNC POINTS:) Maintainer 2026-11-14 (REQ-2247):
-    this panel is named Sync Points and holds two types of entry, Data Catalog and Ontology. (Amended 2026-11-14,
-    THE PAGE IS SYNCING AND HOLDS THE EXPORT SETTINGS:) Maintainer 2026-11-14 (REQ-2247). The panel is named
-    Syncing, not Sync Points. A metadata export target is no longer a separate object on a separate screen:
-    its settings are on the catalog''s entry, and each entry has its own schedules.'
+    product to the catalogs of its owning domain, and the glossary to every catalog; there is no
+    cross-domain listing of a data product. Each other published fact (a source, a relationship, a lineage
+    edge, a tag, a quality check, a term''s link to an asset) goes to a catalog only with the assets it is
+    about. The export''s own settings for a catalog are the DataZone project that owns its data products and
+    the Unity Catalog Delta Share; the catalog holds the address, credentials and the DataZone domain. The
+    Catalogs panel''s connection test is the provider''s own health check, the one the export runs. (Amended
+    2026-11-14, DIFFERENCES, ACCEPT AND STANDING CHOICES:) Maintainer 2026-11-14 (REQ-2247). The Catalogs
+    panel also holds external ontology systems. For every entry, differences between Provisa and the entry
+    are listed with Accept, grouped by kind, and the entry''s page holds the steward''s standing choice per
+    kind of difference, which scheduled export and import apply; a kind with no choice is held for review.
+    The per-table lock to a catalog stays. (Amended 2026-11-14, THE PANEL IS SYNC POINTS:) Maintainer
+    2026-11-14 (REQ-2247): this panel is named Sync Points and holds two types of entry, Data Catalog and
+    Ontology. (Amended 2026-11-14, THE PAGE IS SYNCING AND HOLDS THE EXPORT SETTINGS:) Maintainer 2026-11-14
+    (REQ-2247). The panel is named Syncing, not Sync Points. A metadata export target is no longer a
+    separate object on a separate screen: its settings are on the catalog''s entry, and each entry has its
+    own schedules. (Amended 2026-11-19, IMPORTED GLOSSARY LINKS RESOLVE TO CATALOG-SOURCED TERMS:)
+    Maintainer 2026-11-19. Imported glossary links resolve to the terms created from catalog glossaries
+    (REQ-2247) once they exist; the syncing page lives in the Context group as Context Sync (REQ-2259).'
   use_case: A team that has curated descriptions in Collibra for years connects it once, picks the matching asset for each registered table, and keeps those descriptions in Provisa; Provisa's export then updates the same assets.
   scenario: "Given a Collibra catalog connected in the Catalogs panel holding an asset for the physical table behind sales.orders
 
@@ -93680,14 +93696,14 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
   type: behavioral
   description: 'An org keeps a reference library: documents relevant to its ongoing work in Provisa (policies,
     regulations, contracts, specifications, standards), added as a file or an http(s) URL. The library is
-    read by AI assistance: Polly answers from it, MCP serves it to agents, and the ontology uses it when
-    it finds terms in a document (REQ-2179), drafts definitions and proposes relationships. Whatever uses
-    a passage cites it (document, section or page, quoted text). A role reads only the library documents
-    it may read, so an assistant acting for a role draws only on those. [SUPERSEDED by REQ-2185, 2026-11-04
-    -- the files source reads tables, not prose, and no runtime generates embedding columns; the library
-    keeps its own indexed passages (THE LIBRARY''S STORE AND RETRIEVAL). Kept here for history; do not implement
-    against it.] The library is built from what exists: a files source holds the documents (REQ-1960) and
-    an embedded search table over their passages serves retrieval; it is not a separate store. [END SUPERSEDED
+    read by AI assistance: Polly answers from it, MCP serves it to agents, and the ontology uses it when it
+    finds terms in a document (REQ-2179), drafts definitions and proposes relationships. Whatever uses a
+    passage cites it (document, section or page, quoted text). A role reads only the library documents it
+    may read, so an assistant acting for a role draws only on those. [SUPERSEDED by REQ-2185, 2026-11-04 --
+    the files source reads tables, not prose, and no runtime generates embedding columns; the library keeps
+    its own indexed passages (THE LIBRARY''S STORE AND RETRIEVAL). Kept here for history; do not implement
+    against it.] The library is built from what exists: a files source holds the documents (REQ-1960) and an
+    embedded search table over their passages serves retrieval; it is not a separate store. [END SUPERSEDED
     BLOCK] (Amended 2026-10-28, MAINTAINED IN ADMIN:) The reference library is maintained in Admin, on a
     Reference library page: an admin adds a document by file or URL, sees each document''s title, source,
     when it was added or last fetched and which roles may read it, refreshes a URL document, and removes
@@ -93695,102 +93711,105 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     their citations, marked as citing a removed document. (Amended 2026-10-28, PROPOSED DOCUMENTS AND THEIR
     DOMAINS:) A library document has a status, proposed or kept, and domains: a list of domains, or * for
     the whole org, the same as a glossary term''s. Its domains decide who draws on it: an assistant acting
-    for a role uses a document whose domains the role reads, and every role uses a * document. When a steward
-    has the ontology find terms in a document (REQ-2179), the document is added to the library as proposed,
-    with the domains the steward is working in, which the steward can change; the steward then keeps it
-    or discards it, and a proposed document is listed on the Admin Reference library page until someone
-    does. A document already in the library is not added again; the scan cites the library''s copy. (Amended
-    2026-10-28, RESCANNED ON DEMAND, NEVER RE-REVIEWED AUTOMATICALLY:) Nothing is re-reviewed automatically
-    when a library document changes or is refreshed; terms are not flagged and no review is queued. Instead,
-    whenever someone is working in the glossary they can scan any library document again, or add and scan
-    a new one (REQ-2179): the scan shows the candidate terms the glossary does not hold yet and the ones
-    that match or duplicate existing terms and synonyms, each with its passages, enough to decide whether
-    to change anything. A refreshed URL document is simply scanned from its current content. (Amended 2026-10-28,
-    REFRESH AND NEW VERSIONS:) The Admin Reference library page keeps documents current: Refresh on a URL
-    document fetches it again and replaces its content with what the URL serves now; Upload new version
-    on a file document replaces its content with the uploaded file. The document keeps its place, status
-    and domains, and shows when it was last refreshed or replaced. Earlier content is not kept; citations
-    already made keep their quoted text, and later scans and answers read the current content. (Amended
-    2026-10-28, PASSAGES ARE KEPT, NOT FILES; KEPT DOCUMENTS ONLY; RE-EMBED:) The library keeps a document''s
-    passages (text, section or page, and their embeddings) and its metadata, not the original file; the
-    files source supplies the reading. Assistants draw only on kept documents; a proposed one is used only
-    once a steward keeps it. When the org''s embedding model changes, documents embedded with the earlier
-    model are named as needing re-embedding, and the Admin page offers Re-embed, for one document or all,
-    which re-embeds the stored passage text with the current model. (Amended 2026-11-04, GRAPH RETRIEVAL:)
-    Maintainer 2026-11-04: [SUPERSEDED by REQ-2185 ONE RETRIEVAL, NO SETTING, 2026-11-12 -- retrieval is
-    always what graph retrieval was; there is no setting to choose. Kept here for history; do not implement
-    against it.] the reference library has a retrieval setting, passage or graph, shown and changed on the
-    Admin Reference library page. [END SUPERSEDED BLOCK] Passage retrieval is today''s: the passages nearest
-    the question. Graph retrieval also follows the glossary: it finds the in-service glossary terms the
-    question names, walks their relationships out from those terms, and offers the passages the reached
-    terms cite as further candidates, so an answer can draw on a rule whose wording does not resemble the
-    question (the aggregation rule behind a currency transaction report). A candidate''s priority is the
-    weight of the relationship types on its path, multiplied over the path, so it falls with each hop from
-    the initial terms: SYNONYM_OF and PREFERRED_TERM_FOR weigh 1.0; KIND_OF, PART_OF and VALID_VALUE_OF
-    0.8; DERIVED_FROM and REPLACES 0.6; RELATED_TO 0.4; TRANSLATION_OF and ANTONYM_OF conduct nothing. The
-    walk stops where the priority falls below 0.25. The passages nearest the question come first; graph
-    candidates fill the rest of the same passage budget in priority order, at most two per reached term,
-    so graph retrieval never displaces what passage retrieval found. Each graph candidate reaches the assistant
-    labelled with its path (from which term, over which relationships), and the assistant cites only the
-    passages it used, so an irrelevant candidate never reaches the answer. Only terms, relationships and
-    documents the role may read are walked or offered. Acceptance: in the bank secrecy demo, asked which
-    cash deposits need a currency transaction report, Polly''s answer with graph retrieval cites the aggregation
-    rule (31 CFR 1010.313), and with passage retrieval the answer is recorded for comparison. (Amended 2026-11-04,
-    THE LIBRARY''S STORE AND RETRIEVAL:) Maintainer 2026-11-04: the library reuses Provisa''s fetch and
-    egress rules, its document extraction and the org''s embedding model, and keeps its documents and passages
-    in the org''s control plane, each passage with its section, page, position in its document and embedding
-    in a pgvector column under a vector index; the control plane''s PostgreSQL (embedded and cloud) carries
-    pgvector, and the library refuses to start without it (no unindexed search). Retrieval for a question,
-    within the role''s readable documents, in this order of priority within one passage budget: (1) the
-    passages nearest the question; (2) under graph retrieval, the glossary walk of GRAPH RETRIEVAL, seeded
-    by the in-service terms the question names, the terms whose embedding (name and definition) is nearest
-    the question, and the terms citing the passages of (1); the reached terms'' definitions are returned
-    as context beside the passages they cite; (3) neighbours of the passages of (1) and (2): the passages
-    just before and after each in its document, and the passages nearest each by embedding. Every item reaches
-    the assistant labelled with how it was reached; the assistant cites only what it used. Glossary terms
-    are the graph''s entities and ontology relationships its relations; Provisa runs no separate entity
-    extraction over the library beyond Find terms. A passage that is repeatedly used in answers but cited
-    by no glossary term is offered to Find terms as a proposal for review. (Amended 2026-11-04, A DEMO''S
-    BUILD KEEPS ITS SCANNED DOCUMENTS:) Maintainer approved: a demo''s setup scan step can say keep: true,
-    and the demo''s build then keeps that document through the same keep a steward uses, so the published
-    bundle carries it kept and an assistant in every sandbox of that demo finds its passages without a visitor
-    keeping it. Without keep: true a scanned document joins as proposed, as before. (Amended 2026-11-05,
-    THE ACCEPTANCE IS THE WALK-ONLY QUESTION:) Per the maintainer''s decision of 2026-11-04 (a), graph retrieval
-    is accepted on a question passage search cannot answer: for a customer who keeps depositing cash just
-    under $10,000, graph retrieval reaches and cites 31 CFR 1010.314 (structuring) and 1020.320, while passage
-    retrieval, recorded for comparison, does not. The aggregation question (1010.313), which passage search
-    already finds, stays as a second check. (Amended 2026-11-06, EXCEL WORKBOOKS:) The library also reads
-    Excel workbooks (.xlsx), added as a file or a URL like any document: each worksheet is a section headed
-    by its sheet name, and each of its rows is a paragraph, as a Word table''s rows are read; a cell is
-    read as its value (a formula as the value it last computed), not its formula. (Amended 2026-11-06, CITING
-    A WORKBOOK ROW:) A workbook row is cited by the workbook, its sheet name and the row''s range in Excel''s
-    own terms (e.g. Limits!A12:F12), with the row''s text hash as any citation carries. Each row-paragraph
-    is written with its sheet''s first-row labels (Region: EU · Limit: 500), or the column letters when
-    the first row holds no labels, so a quoted row reads on its own. Rows move when others are inserted:
-    a cited row found again by its hash at another row follows silently, and one whose hash is gone is flagged
-    for review, as any drifted citation is. (Amended 2026-11-07, A TOP-LEVEL LIBRARY; ADD NOW, INDEX IN
-    THE BACKGROUND:) The reference library is a top-level Library page (not in Admin, not under Ontology;
-    not named Documents, beside the product''s Docs), shaped like every other top-level page: a list (title,
-    source, index status, readers, added or refreshed), the shared filter and a detail panel with the same
-    section tabs for viewing and editing (overview and status; sections and passages; cited by: the xtags,
-    terms and security items citing it, drifted citations flagged; readers). Everyone browses and searches
-    what they may read; the library-editing right adds, refreshes and removes on the same page. Adding is
-    one step (a file or URL and its readers): the document exists at once, and extraction, indexing and
-    term finding run in a background job; its index status is a property (indexing with progress where known,
-    ready, failed with the reason and a retry). Citations and assistants use a document once it is ready;
-    citing one still indexing says so (maintainer 2026-11-07). (Amended 2026-11-12, TERMS ARE EMBEDDED AS
-    THEY CHANGE:) Maintainer 2026-11-12: an in-service glossary term is embedded when it enters service
-    and when its name or definition changes, and its embedding is removed when it leaves service, whatever
-    the library''s retrieval setting, as a document''s passages are embedded when the document is added.
-    The embedding runs in the background of the term''s save. Choosing graph retrieval therefore embeds
-    nothing and answers at once. The refresh before a graph search stays, so a search never reads a stale
-    embedding. An org with no vector model embeds nothing. (Amended 2026-11-12, ONE RETRIEVAL, NO SETTING:)
-    Maintainer 2026-11-12: graph retrieval already returns the passages nearest the question first, undisplaced,
-    and only adds the passages the glossary reaches before the neighbours; when the glossary reaches nothing
-    it returns what passage retrieval returns. So there is nothing for a person to choose: the library has
-    one retrieval, the one that was called graph, and the passage-or-graph setting and its control on the
-    Library page are removed. No reranking model is added: the passages nearest the question stay first
-    and each passage still says how it was reached.'
+    for a role uses a document whose domains the role reads, and every role uses a * document. When a
+    steward has the ontology find terms in a document (REQ-2179), the document is added to the library as
+    proposed, with the domains the steward is working in, which the steward can change; the steward then
+    keeps it or discards it, and a proposed document is listed on the Admin Reference library page until
+    someone does. A document already in the library is not added again; the scan cites the library''s copy.
+    (Amended 2026-10-28, RESCANNED ON DEMAND, NEVER RE-REVIEWED AUTOMATICALLY:) Nothing is re-reviewed
+    automatically when a library document changes or is refreshed; terms are not flagged and no review is
+    queued. Instead, whenever someone is working in the glossary they can scan any library document again,
+    or add and scan a new one (REQ-2179): the scan shows the candidate terms the glossary does not hold yet
+    and the ones that match or duplicate existing terms and synonyms, each with its passages, enough to
+    decide whether to change anything. A refreshed URL document is simply scanned from its current content.
+    (Amended 2026-10-28, REFRESH AND NEW VERSIONS:) The Admin Reference library page keeps documents
+    current: Refresh on a URL document fetches it again and replaces its content with what the URL serves
+    now; Upload new version on a file document replaces its content with the uploaded file. The document
+    keeps its place, status and domains, and shows when it was last refreshed or replaced. Earlier content
+    is not kept; citations already made keep their quoted text, and later scans and answers read the current
+    content. (Amended 2026-10-28, PASSAGES ARE KEPT, NOT FILES; KEPT DOCUMENTS ONLY; RE-EMBED:) The library
+    keeps a document''s passages (text, section or page, and their embeddings) and its metadata, not the
+    original file; the files source supplies the reading. Assistants draw only on kept documents; a proposed
+    one is used only once a steward keeps it. When the org''s embedding model changes, documents embedded
+    with the earlier model are named as needing re-embedding, and the Admin page offers Re-embed, for one
+    document or all, which re-embeds the stored passage text with the current model. (Amended 2026-11-04,
+    GRAPH RETRIEVAL:) Maintainer 2026-11-04: [SUPERSEDED by REQ-2185 ONE RETRIEVAL, NO SETTING, 2026-11-12
+    -- retrieval is always what graph retrieval was; there is no setting to choose. Kept here for history;
+    do not implement against it.] the reference library has a retrieval setting, passage or graph, shown and
+    changed on the Admin Reference library page. [END SUPERSEDED BLOCK] Passage retrieval is today''s: the
+    passages nearest the question. Graph retrieval also follows the glossary: it finds the in-service
+    glossary terms the question names, walks their relationships out from those terms, and offers the
+    passages the reached terms cite as further candidates, so an answer can draw on a rule whose wording
+    does not resemble the question (the aggregation rule behind a currency transaction report). A
+    candidate''s priority is the weight of the relationship types on its path, multiplied over the path, so
+    it falls with each hop from the initial terms: SYNONYM_OF and PREFERRED_TERM_FOR weigh 1.0; KIND_OF,
+    PART_OF and VALID_VALUE_OF 0.8; DERIVED_FROM and REPLACES 0.6; RELATED_TO 0.4; TRANSLATION_OF and
+    ANTONYM_OF conduct nothing. The walk stops where the priority falls below 0.25. The passages nearest the
+    question come first; graph candidates fill the rest of the same passage budget in priority order, at
+    most two per reached term, so graph retrieval never displaces what passage retrieval found. Each graph
+    candidate reaches the assistant labelled with its path (from which term, over which relationships), and
+    the assistant cites only the passages it used, so an irrelevant candidate never reaches the answer. Only
+    terms, relationships and documents the role may read are walked or offered. Acceptance: in the bank
+    secrecy demo, asked which cash deposits need a currency transaction report, Polly''s answer with graph
+    retrieval cites the aggregation rule (31 CFR 1010.313), and with passage retrieval the answer is
+    recorded for comparison. (Amended 2026-11-04, THE LIBRARY''S STORE AND RETRIEVAL:) Maintainer
+    2026-11-04: the library reuses Provisa''s fetch and egress rules, its document extraction and the org''s
+    embedding model, and keeps its documents and passages in the org''s control plane, each passage with its
+    section, page, position in its document and embedding in a pgvector column under a vector index; the
+    control plane''s PostgreSQL (embedded and cloud) carries pgvector, and the library refuses to start
+    without it (no unindexed search). Retrieval for a question, within the role''s readable documents, in
+    this order of priority within one passage budget: (1) the passages nearest the question; (2) under graph
+    retrieval, the glossary walk of GRAPH RETRIEVAL, seeded by the in-service terms the question names, the
+    terms whose embedding (name and definition) is nearest the question, and the terms citing the passages
+    of (1); the reached terms'' definitions are returned as context beside the passages they cite; (3)
+    neighbours of the passages of (1) and (2): the passages just before and after each in its document, and
+    the passages nearest each by embedding. Every item reaches the assistant labelled with how it was
+    reached; the assistant cites only what it used. Glossary terms are the graph''s entities and ontology
+    relationships its relations; Provisa runs no separate entity extraction over the library beyond Find
+    terms. A passage that is repeatedly used in answers but cited by no glossary term is offered to Find
+    terms as a proposal for review. (Amended 2026-11-04, A DEMO''S BUILD KEEPS ITS SCANNED DOCUMENTS:)
+    Maintainer approved: a demo''s setup scan step can say keep: true, and the demo''s build then keeps that
+    document through the same keep a steward uses, so the published bundle carries it kept and an assistant
+    in every sandbox of that demo finds its passages without a visitor keeping it. Without keep: true a
+    scanned document joins as proposed, as before. (Amended 2026-11-05, THE ACCEPTANCE IS THE WALK-ONLY
+    QUESTION:) Per the maintainer''s decision of 2026-11-04 (a), graph retrieval is accepted on a question
+    passage search cannot answer: for a customer who keeps depositing cash just under $10,000, graph
+    retrieval reaches and cites 31 CFR 1010.314 (structuring) and 1020.320, while passage retrieval,
+    recorded for comparison, does not. The aggregation question (1010.313), which passage search already
+    finds, stays as a second check. (Amended 2026-11-06, EXCEL WORKBOOKS:) The library also reads Excel
+    workbooks (.xlsx), added as a file or a URL like any document: each worksheet is a section headed by its
+    sheet name, and each of its rows is a paragraph, as a Word table''s rows are read; a cell is read as its
+    value (a formula as the value it last computed), not its formula. (Amended 2026-11-06, CITING A WORKBOOK
+    ROW:) A workbook row is cited by the workbook, its sheet name and the row''s range in Excel''s own terms
+    (e.g. Limits!A12:F12), with the row''s text hash as any citation carries. Each row-paragraph is written
+    with its sheet''s first-row labels (Region: EU · Limit: 500), or the column letters when the first row
+    holds no labels, so a quoted row reads on its own. Rows move when others are inserted: a cited row found
+    again by its hash at another row follows silently, and one whose hash is gone is flagged for review, as
+    any drifted citation is. (Amended 2026-11-07, A TOP-LEVEL LIBRARY; ADD NOW, INDEX IN THE BACKGROUND:)
+    The reference library is a top-level Library page (not in Admin, not under Ontology; not named
+    Documents, beside the product''s Docs), shaped like every other top-level page: a list (title, source,
+    index status, readers, added or refreshed), the shared filter and a detail panel with the same section
+    tabs for viewing and editing (overview and status; sections and passages; cited by: the xtags, terms and
+    security items citing it, drifted citations flagged; readers). Everyone browses and searches what they
+    may read; the library-editing right adds, refreshes and removes on the same page. Adding is one step (a
+    file or URL and its readers): the document exists at once, and extraction, indexing and term finding run
+    in a background job; its index status is a property (indexing with progress where known, ready, failed
+    with the reason and a retry). Citations and assistants use a document once it is ready; citing one still
+    indexing says so (maintainer 2026-11-07). (Amended 2026-11-12, TERMS ARE EMBEDDED AS THEY CHANGE:)
+    Maintainer 2026-11-12: an in-service glossary term is embedded when it enters service and when its name
+    or definition changes, and its embedding is removed when it leaves service, whatever the library''s
+    retrieval setting, as a document''s passages are embedded when the document is added. The embedding runs
+    in the background of the term''s save. Choosing graph retrieval therefore embeds nothing and answers at
+    once. The refresh before a graph search stays, so a search never reads a stale embedding. An org with no
+    vector model embeds nothing. (Amended 2026-11-12, ONE RETRIEVAL, NO SETTING:) Maintainer 2026-11-12:
+    graph retrieval already returns the passages nearest the question first, undisplaced, and only adds the
+    passages the glossary reaches before the neighbours; when the glossary reaches nothing it returns what
+    passage retrieval returns. So there is nothing for a person to choose: the library has one retrieval,
+    the one that was called graph, and the passage-or-graph setting and its control on the Library page are
+    removed. No reranking model is added: the passages nearest the question stay first and each passage
+    still says how it was reached. (Amended 2026-11-19, PLACED IN THE CONTEXT GROUP:) Maintainer 2026-11-19.
+    Its page sits in the Context navigation group under /context/ (REQ-2259), replacing its former top-level
+    link; any earlier placement stated here is superseded.'
   scenario: 'Given a policy document in the reference library that defines "Client"
     When a steward asks the glossary to draft a definition for Client, or an agent asks over MCP what Client means
     Then the answer is drawn from the policy and cites its passage
@@ -97329,11 +97348,11 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
   feature: glossary-tags-ontology-terms
   priority: SHOULD
   type: behavioral
-  description: 'Maintainer 2026-11-14: ''just show a list of differences with Accept buttons''; ''predetermined
-    choices made by the data steward on how to handle diffs''; an ontology ''is just added to the catalog
-    list''; ''the catalog list is where you declare how to handle diffs''. This replaces the earlier wording
-    of the same day about declaring which system owns each kind of fact; no system is declared the owner
-    of anything. An external ontology system is an entry in the Catalogs panel (REQ-2122), beside the data
+  description: 'Maintainer 2026-11-14: ''just show a list of differences with Accept buttons''; ''predetermined choices
+    made by the data steward on how to handle diffs''; an ontology ''is just added to the catalog list'';
+    ''the catalog list is where you declare how to handle diffs''. This replaces the earlier wording of the
+    same day about declaring which system owns each kind of fact; no system is declared the owner of
+    anything. An external ontology system is an entry in the Catalogs panel (REQ-2122), beside the data
     catalogs, and every entry works the same way. Whenever Provisa and an entry hold different values (a
     description, a column description, an owner, a tag, a glossary link, a term''s definition or place in
     the hierarchy, or an ending on either side), the difference is listed with both values and an Accept
@@ -97341,55 +97360,63 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     its count, opens to its rows, and can be accepted as a whole. For runs with nobody watching (a scheduled
     export or import, an uploaded ontology release), the steward sets, on the entry''s page in the Catalogs
     panel, a standing choice for each kind of difference: take Provisa''s value, take the other system''s
-    value, or hold for review. A kind with no standing choice is held. A standing choice can be set from
-    the difference list at the moment a group is accepted, and is shown and changed on the entry''s page.
-    A held difference waits in the list; an unattended run never decides one. To tell which side changed,
-    a run compares each value with the one last exchanged with that entry. An ontology''s releases are uploaded
-    to its entry (REQ-2237); nothing is fetched. (Amended 2026-11-14, THE PANEL IS SYNC POINTS:) Maintainer
+    value, or hold for review. A kind with no standing choice is held. A standing choice can be set from the
+    difference list at the moment a group is accepted, and is shown and changed on the entry''s page. A held
+    difference waits in the list; an unattended run never decides one. To tell which side changed, a run
+    compares each value with the one last exchanged with that entry. An ontology''s releases are uploaded to
+    its entry (REQ-2237); nothing is fetched. (Amended 2026-11-14, THE PANEL IS SYNC POINTS:) Maintainer
     2026-11-14: the Catalogs panel is named Sync Points. It is the one place for every outside system kept
     in sync with Provisa and for that system''s details: its connection, what is kept in sync with it, its
     open differences, the steward''s standing choices, and when it last ran with what it applied and held.
-    An entry has a type, Data Catalog or Ontology, and the list is shown under those two headings; the difference
-    list and the standing choices are the same for both, and a later type of synced system is added as a
-    new type here. The panel''s description says it keeps descriptions, owners, tags and terms in step,
-    not data. (Amended 2026-11-14, THE PAGE IS SYNCING, WITH EXPORT, SCHEDULES AND A WEBHOOK CHOICE:) Maintainer
-    2026-11-14. The page is named Syncing; this replaces the name Sync Points given earlier the same day.
-    The Metadata Export screen becomes part of it: an entry carries what an export target carried (the role
-    it publishes as, its provider''s export settings, Publish now and the result of its last run), so a
-    system is set up in one place and the separate Metadata Export screen and its targets go away. Each
-    entry has its own schedules in place of the one schedule for the whole organisation: one for sending
-    to the system and one for reading from it, each optional, each with Run now and its last result. An
+    An entry has a type, Data Catalog or Ontology, and the list is shown under those two headings; the
+    difference list and the standing choices are the same for both, and a later type of synced system is
+    added as a new type here. The panel''s description says it keeps descriptions, owners, tags and terms in
+    step, not data. (Amended 2026-11-14, THE PAGE IS SYNCING, WITH EXPORT, SCHEDULES AND A WEBHOOK CHOICE:)
+    Maintainer 2026-11-14. The page is named Syncing; this replaces the name Sync Points given earlier the
+    same day. The Metadata Export screen becomes part of it: an entry carries what an export target carried
+    (the role it publishes as, its provider''s export settings, Publish now and the result of its last run),
+    so a system is set up in one place and the separate Metadata Export screen and its targets go away. Each
+    entry has its own schedules in place of the one schedule for the whole organisation: one for sending to
+    the system and one for reading from it, each optional, each with Run now and its last result. An
     ontology entry normally has neither, since its releases are uploaded. Publishing a change as it happens,
-    the plan check and the per-table lock are unchanged. The steward''s standing choice for a kind of difference
-    has a fourth option, ask a webhook: Provisa sends the one difference (the entry and its type, the kind
-    of difference, the object by its name, both values, the value last exchanged and which side changed)
-    and the webhook answers take Provisa''s value, take the other system''s value, or hold. No answer in
-    time, an error or any other answer is a hold, the same as a kind with no standing choice. The webhook
-    is called the way the approval hook is (REQ-247: its transports and timeout setting), and every applied
-    difference records who decided it: the steward by name, a standing choice, or the webhook. (Amended
-    2026-11-14, AN ENTRY SAYS ITS DIRECTION:) Maintainer 2026-11-14. Each entry says which direction it
-    syncs: Export (Provisa to the system), Import (the system to Provisa), or both. The two directions are
-    named Export and Import everywhere, in place of ''sending'' and ''reading'' above, and each has its
-    own schedule, Run now and last result. A direction that is off never runs, on a schedule or by hand,
-    and lists no differences; an entry with Export only never changes Provisa, and one with Import only
-    never changes the other system. (Amended 2026-11-14, A WEBHOOK PER DIRECTION:) Maintainer 2026-11-14:
-    an approval on the receiving system is that system''s feature, and the webhook is how it is reached.
-    An entry''s standing choices are set per direction and per kind of difference, and an entry has one
-    webhook for Export and one for Import, each optional, since the system that must agree differs by direction.
-    A webhook that answers hold (an approval still open on the other system, for example) leaves the difference
-    in the list, and each later run of that direction asks it again until it answers take or a steward accepts
-    the difference by hand; Provisa keeps no approval state of its own for the other system. (Amended 2026-11-14,
-    THE WEBHOOK MAY MODIFY OR HANDLE A CHANGE:) Maintainer 2026-11-14: Provisa knows how to write to a catalog,
-    and cannot know how a customer has set that catalog up (its approval workflow, required fields, starting
-    statuses); the webhook covers that part. A webhook is passed the change in Provisa''s own form, not
-    the vendor''s API call: the entry, the direction, the kind, the object by its name, both values, the
-    value last exchanged, and an open set of extra fields. It answers one of four ways: take as is; take
-    with these changes (a changed value or extra fields, which the adapter writes on Export and Provisa
-    applies on Import); handled (the webhook made the change itself and Provisa writes nothing); or hold.
-    What was actually written is recorded as the value last exchanged. A handled change is not confirmed
-    separately: the next run''s comparison shows whether it happened. This widens the answers given in the
-    earlier amendments of the same day. An entry has a third type, Custom, for a system Provisa has no adapter
-    for: its Export and Import are done entirely by its webhooks.'
+    the plan check and the per-table lock are unchanged. The steward''s standing choice for a kind of
+    difference has a fourth option, ask a webhook: Provisa sends the one difference (the entry and its type,
+    the kind of difference, the object by its name, both values, the value last exchanged and which side
+    changed) and the webhook answers take Provisa''s value, take the other system''s value, or hold. No
+    answer in time, an error or any other answer is a hold, the same as a kind with no standing choice. The
+    webhook is called the way the approval hook is (REQ-247: its transports and timeout setting), and every
+    applied difference records who decided it: the steward by name, a standing choice, or the webhook.
+    (Amended 2026-11-14, AN ENTRY SAYS ITS DIRECTION:) Maintainer 2026-11-14. Each entry says which
+    direction it syncs: Export (Provisa to the system), Import (the system to Provisa), or both. The two
+    directions are named Export and Import everywhere, in place of ''sending'' and ''reading'' above, and
+    each has its own schedule, Run now and last result. A direction that is off never runs, on a schedule or
+    by hand, and lists no differences; an entry with Export only never changes Provisa, and one with Import
+    only never changes the other system. (Amended 2026-11-14, A WEBHOOK PER DIRECTION:) Maintainer
+    2026-11-14: an approval on the receiving system is that system''s feature, and the webhook is how it is
+    reached. An entry''s standing choices are set per direction and per kind of difference, and an entry has
+    one webhook for Export and one for Import, each optional, since the system that must agree differs by
+    direction. A webhook that answers hold (an approval still open on the other system, for example) leaves
+    the difference in the list, and each later run of that direction asks it again until it answers take or
+    a steward accepts the difference by hand; Provisa keeps no approval state of its own for the other
+    system. (Amended 2026-11-14, THE WEBHOOK MAY MODIFY OR HANDLE A CHANGE:) Maintainer 2026-11-14: Provisa
+    knows how to write to a catalog, and cannot know how a customer has set that catalog up (its approval
+    workflow, required fields, starting statuses); the webhook covers that part. A webhook is passed the
+    change in Provisa''s own form, not the vendor''s API call: the entry, the direction, the kind, the
+    object by its name, both values, the value last exchanged, and an open set of extra fields. It answers
+    one of four ways: take as is; take with these changes (a changed value or extra fields, which the
+    adapter writes on Export and Provisa applies on Import); handled (the webhook made the change itself and
+    Provisa writes nothing); or hold. What was actually written is recorded as the value last exchanged. A
+    handled change is not confirmed separately: the next run''s comparison shows whether it happened. This
+    widens the answers given in the earlier amendments of the same day. An entry has a third type, Custom,
+    for a system Provisa has no adapter for: its Export and Import are done entirely by its webhooks.
+    (Amended 2026-11-19, TERMS SOURCED FROM CATALOGS:) Maintainer 2026-11-19. A term present only in a
+    catalog''s business glossary is listed as a new-from-catalog difference in its own kind group, with
+    Accept. Accepting creates a draft term with its definition, its place in the hierarchy and its
+    provenance (the catalog and the time), which goes through normal review, so the Glossary shows it only
+    once approved. Before creating it, matches are proposed from the ontology import''s existing alignment
+    so the steward can merge instead of duplicating. The steward''s standing choice per catalog applies, for
+    example always accepting new terms from one catalog as drafts. The page lives in the Context group as
+    Context Sync (REQ-2259).'
   scenario: 'Given a catalog entry whose asset descriptions differ from Provisa''s for forty columns and
     two owners
 
@@ -97782,3 +97809,38 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     throughput figure for the Trino to Calcite to pgwire to engine path, and whether the user''s
     identity reaches the remote cluster or one service account does. The pack names the Trino dialect
     explicitly.'
+- id: REQ-2259
+  status: proposed
+  target: 2026-Q4
+  group: 10. UI & Admin Surfaces
+  category: Business Glossary & Ontology
+  feature: glossary-tags-ontology-terms
+  priority: MUST
+  type: ui
+  description: 'Maintainer 2026-11-19. The context layer (documents, ontology, glossary, metrics, tags, classification)
+    has one top-level navigation group, Context, which replaces the separate top-level Ontology and Library
+    links. Its pages, in order, live under /context/: Context Health, Glossary, Ontology, Metrics, Tags,
+    Classification, Documents, Context Sync. Context Health (glossary_read) holds the steward summary with
+    its bulk approval as the page''s one action, and cards built only from signals already specified: terms
+    visible to agents, approved from data, approved but reaching no data and drafts in review; grounding
+    drift this period; tags lost; classification detections awaiting a decision; documents with reviews or
+    attestations due; and per catalog the differences waiting, the last sync and failures. Metrics gets no
+    card until a health signal is defined. Glossary (glossary_read) is a new read-only page styled like a
+    book glossary: each approved term with its other names, its plain-prose definition and related terms as
+    in-glossary links in plain words (a kind of, kinds, see also); a term defined differently per domain is
+    one entry with numbered senses labelled by domain; a letter bar, search, a domain filter and a sort by
+    name or recent change; no grounding, provenance, tags, status or drafts. Ontology is the existing editor
+    and graph. Metrics, Tags and Classification are read-only views (glossary_read) reusing the same
+    components, while editing stays where it is: Tags shows each tag, its description, kind, where it is
+    applied and whether a policy or classification depends on it; Classification shows the kinds and where
+    they were detected; only tables and columns the viewer can read are named, a hidden one at most counted.
+    Documents is the library, renamed. Context Sync is the catalog syncing page moved out of Admin, rights
+    unchanged (connection settings keep org_settings, accepting a difference keeps its own right, a reader
+    sees which systems sync, the direction and the last run), with ontology sources in the same catalog list
+    and a kind filter on the differences (terms, descriptions, tags, ontology, data products); whole-model
+    imports stay in Admin. The Data Products page shows each product''s sync status linking to Context Sync
+    filtered to it; differences are accepted only in Context Sync and products edited only on Data Products.
+    Every link to another page goes through the shared entity link helper (metric and classification join
+    its kinds) and is drawn only when the viewer holds the target page''s right, otherwise plain text.
+    Labels are translated in every locale, and tours, end-to-end tests and documentation follow the new
+    names.'
