@@ -302,14 +302,20 @@ def view_command(tbl: exp.Table, view_commands: Mapping[str, dict]) -> dict | No
     command = view_commands.get(target.name.lower())
     if command is None:
         return None
+    return command if _in_view_body(tbl) else None
+
+
+def _in_view_body(node: exp.Expr) -> bool:
+    """Whether ``node`` is inside an administrator's view body, marked where it was expanded
+    (``view_expand.VIEW_MARK``), which no statement a role writes can name."""
     from provisa.compiler.view_expand import marked_view  # noqa: PLC0415
 
-    node = tbl.parent
-    while node is not None:
-        if isinstance(node, exp.Subquery) and marked_view(node.alias) is not None:
-            return command
-        node = node.parent
-    return None
+    parent = node.parent
+    while parent is not None:
+        if isinstance(parent, exp.Subquery) and marked_view(parent.alias) is not None:
+            return True
+        parent = parent.parent
+    return False
 
 
 def _view_command_columns(tree: exp.Expr, view_commands: Mapping[str, dict]) -> None:
@@ -1338,8 +1344,11 @@ def _check_server_functions(tree: exp.Expr) -> list[ValidationViolation]:  # REQ
     call is written with, in any case, quoted or schema-qualified, wherever the statement calls
     it; a function that runs SQL it is given as text is refused whatever the text. A statement
     naming no table is the engine's, which answers a function of its own state as every Provisa
-    server does (server_functions.RUNS_SQL_AS_TEXT says which are refused there too). The XML
-    mappings are refused by their own rule (:func:`_check_xml_mappings`)."""
+    server does (server_functions.RUNS_SQL_AS_TEXT says which are refused there too). A call of
+    the product's own inside a view's body is governance's (a mask on the view's own table,
+    mv.view_read._with_own_rules) or the administrator's, marked where it was expanded
+    (``view_expand.VIEW_MARK``), which no statement a role writes can name. The XML mappings are
+    refused by their own rule (:func:`_check_xml_mappings`)."""
     names_a_table = any(
         isinstance(tbl.this, exp.Identifier) and not names_a_cte_in_scope(tbl)
         for tbl in tree.find_all(exp.Table)
@@ -1348,6 +1357,8 @@ def _check_server_functions(tree: exp.Expr) -> list[ValidationViolation]:  # REQ
     for call in tree.find_all(exp.Anonymous):
         name = call.name.lower()
         why = refused_in_a_governed_statement(name, names_a_table)
+        if why == "own" and _in_view_body(call):
+            continue
         if why is not None and name not in MAPPINGS:
             refused[name] = why
     return [
