@@ -16,11 +16,14 @@ from __future__ import annotations
 import bisect
 import re
 import secrets
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 
 import sqlglot
 from sqlglot import exp
+from sqlglot.errors import ParseError, SqlglotError
 
+from provisa.compiler.definitions import NotAvailableHere
 from provisa.compiler.sql_gen import CompiledQuery
 
 #: The alias prefix a view's SQL is marked with where the statement governance validates is
@@ -34,6 +37,44 @@ VIEW_MARK = f"__view_{secrets.token_hex(8)}__"
 def marked_view(alias: str) -> str | None:
     """The view a derived table aliased ``alias`` expands, when the alias is a view mark."""
     return alias[len(VIEW_MARK) :] if alias.startswith(VIEW_MARK) else None
+
+
+def without_marks(text: str) -> str:
+    """``text`` with every view mark taken out: a marked alias ``"<mark>v"`` reads ``"v"``. The
+    mark is this process's secret (REQ-039): no text that leaves the server carries it."""
+    return text.replace(VIEW_MARK, "")
+
+
+def parse_marked(sql: str, read: object = "postgres") -> exp.Expr:  # pyright: ignore[reportPrivateImportUsage]
+    """``sqlglot.parse_one`` of a statement whose views may be expanded marked. An error parsing
+    it is the error the statement raises read without its marks -- the same tokens, a mark only
+    lengthening a quoted identifier -- so the context sqlglot quotes never holds a mark, whole or
+    cut at its window's edge (REQ-039)."""
+    try:
+        return sqlglot.parse_one(sql, read=read)  # pyright: ignore[reportArgumentType]
+    except SqlglotError:
+        if VIEW_MARK not in sql:
+            raise
+    sqlglot.parse_one(without_marks(sql), read=read)  # pyright: ignore[reportArgumentType]
+    # Read without its marks it parses: what failed is the marks' own text, which no client wrote.
+    raise ParseError("a statement whose views were expanded could not be read") from None
+
+
+@contextmanager
+def marks_withheld() -> Iterator[None]:
+    """Run a step over a marked statement so an error it raises carries no view mark: each
+    string argument of the error, and of every error it was raised from, is read
+    :func:`without_marks`, and the same error is raised on (REQ-039)."""
+    try:
+        yield
+    except Exception as exc:
+        seen: set[int] = set()
+        err: BaseException | None = exc
+        while err is not None and id(err) not in seen:
+            seen.add(id(err))
+            err.args = tuple(without_marks(a) if isinstance(a, str) else a for a in err.args)
+            err = err.__cause__ or err.__context__
+        raise
 
 
 # Keywords that can follow a table reference; never consume one as an alias.
@@ -199,6 +240,25 @@ def _inside(spans: list[tuple[int, int]], pos: int) -> bool:
     return k >= 0 and spans[k][0] <= pos < spans[k][1]
 
 
+#: A CTE a WITH defines: its name, an optional column list, then ``AS [NOT] [MATERIALIZED] (``.
+_CTE = re.compile(
+    r'(?i)(?:\bWITH\s+(?:RECURSIVE\s+)?|,\s*)("(?:[^"]|"")+"|[A-Za-z_]\w*)\s*'
+    r"(?:\([^()]*\)\s*)?AS\s+(?:NOT\s+)?(?:MATERIALIZED\s+)?\("
+)
+
+
+def _folded_name(name: str) -> str:
+    """``name`` as PostgreSQL folds it: quoted exactly, unquoted in lower case."""
+    return name[1:-1].replace('""', '"') if name.startswith('"') else name.lower()
+
+
+def _cte_names(sql: str) -> set[str]:
+    """The names of the CTEs ``sql`` defines, folded, in its code only (:func:`_code_view`). The
+    whole statement's: a bare reference to any of them is not expanded as a view here, where
+    :func:`_mark_tree` reads each CTE's own scope."""
+    return {_folded_name(m.group(1)) for m in _CTE.finditer(_code_view(sql)[0])}
+
+
 def _expand_one(sql: str, view_table: str, view_sql: str) -> str:
     """Replace catalog- and schema-qualified refs to one view table.
 
@@ -218,6 +278,9 @@ def _expand_one(sql: str, view_table: str, view_sql: str) -> str:
             return f"{kw}({view_sql}){alias}"
         return f"{kw}({view_sql}) {view_table}"
 
+    def bare(m: re.Match[str]) -> str | None:
+        return None if _folded_name(m.group("name")) in _cte_names(m.string) else repl(m)
+
     if "." in view_table:
         return _expand_in_schema(sql, view_table, view_sql)
     vt = re.escape(view_table)
@@ -225,16 +288,21 @@ def _expand_one(sql: str, view_table: str, view_sql: str) -> str:
     sql = _sub(rf'"[^"]+"\."[^"]+"\."{vt}"{_ALIAS}', repl, sql)
     # Schema-qualified: "schema"."view_table" [alias]
     sql = _sub(rf'"[^"]+"\."{vt}"{_ALIAS}', repl, sql)
+    if view_table != view_table.lower():
+        return sql  # an unquoted name folds to lower case: none names this view
     # Unquoted schema-qualified: a view's own definition (e.g. `views.e2e_mv_a`) is raw,
     # user-typed semantic SQL — never quoted/catalog-rewritten like the outer query is
     # before this runs. Nested view chains inline that raw text as-is, so a second (or
     # deeper) level of view reference only ever appears in this unquoted form.
     # Never inside a string literal: a compiled read names its table there (``'city.view_x' AS
     # "_name_"``), which is a value, not a reference.
-    sql = _sub(rf'(?<![\w."\'])(?P<kw>FROM\s+|JOIN\s+)?[A-Za-z_]\w*\.{vt}\b{_ALIAS}', repl, sql)
+    sql = _sub(
+        rf'(?<![\w."\'])(?P<kw>(?i:FROM|JOIN)\s+)?[A-Za-z_]\w*\.(?i:{vt})\b{_ALIAS}', repl, sql
+    )
     # Unquoted bare reference (no schema prefix), only directly after FROM/JOIN so a
-    # same-named column or alias elsewhere in the query is never mistaken for the table.
-    sql = _sub(rf"\b(?P<kw>FROM\s+|JOIN\s+){vt}\b{_ALIAS}", repl, sql)
+    # same-named column or alias elsewhere in the query is never mistaken for the table; nor
+    # a CTE of the statement named like it, which PostgreSQL reads first.
+    sql = _sub(rf"\b(?P<kw>(?i:FROM|JOIN)\s+)(?P<name>(?i:{vt}))\b{_ALIAS}", bare, sql)
     return sql
 
 
@@ -254,27 +322,104 @@ def _expand_in_schema(sql: str, view_table: str, view_sql: str) -> str:
     s, n = re.escape(schema), re.escape(name)
     sql = _sub(rf'"[^"]+"\."{s}"\."{n}"{_ALIAS}', repl, sql)
     sql = _sub(rf'(?<![\w."]\.)"{s}"\."{n}"{_ALIAS}', repl, sql)
-    return _sub(rf'(?<![\w."\'])(?P<kw>FROM\s+|JOIN\s+)?{s}\.{n}\b{_ALIAS}', repl, sql)
+    if view_table != view_table.lower():
+        return sql  # an unquoted name folds to lower case: none names this view
+    return _sub(rf'(?<![\w."\'])(?P<kw>(?i:FROM|JOIN)\s+)?(?i:{s})\.(?i:{n})\b{_ALIAS}', repl, sql)
+
+
+class ViewClauseNotSupported(NotAvailableHere):
+    """A view referenced with a clause that applies only to a stored relation (TABLESAMPLE, time
+    travel, WITH ORDINALITY, ...): refused naming the clause, never expanded without it."""
+
+    def __init__(self, view: str, clause: str) -> None:
+        self.view = view
+        self.clause = clause
+        if clause == "sample":
+            # As PostgreSQL refuses it on a view.
+            message = f"TABLESAMPLE clause can only be applied to tables, not view {view!r}"
+        else:
+            message = f"{_CLAUSE_NAMES.get(clause, clause)} cannot be applied to view {view!r}"
+        super().__init__(message)
+
+
+#: What a table reference may carry besides its name: its alias and (in a parenthesised join
+#: group) its joins, both carried onto the view's derived table; ONLY, a no-op on a view, which
+#: has no inheritance children (PostgreSQL reads it so).
+_CARRIED_TABLE_ARGS = frozenset({"this", "db", "catalog", "alias", "joins", "only"})
+_CLAUSE_NAMES = {
+    "version": "time travel (FOR ... AS OF)",
+    "system_time": "time travel (FOR SYSTEM_TIME)",
+    "ordinality": "WITH ORDINALITY",
+    "rows_from": "ROWS FROM",
+    "pivots": "PIVOT",
+    "laterals": "LATERAL VIEW",
+    "partition": "PARTITION",
+    "changes": "CHANGES",
+    "when": "WHEN",
+    "hints": "a table hint",
+    "indexed": "INDEXED BY",
+    "format": "FORMAT",
+    "pattern": "PATTERN",
+}
+
+
+def _folded(ident: exp.Expr) -> str:  # pyright: ignore[reportPrivateImportUsage]
+    """The name ``ident`` is, as PostgreSQL folds it: quoted exactly, unquoted in lower case."""
+    if isinstance(ident, exp.Identifier):
+        return ident.this if ident.quoted else ident.this.lower()
+    return ident.name.lower()
+
+
+def _shadowed_by_cte(tbl: exp.Table) -> bool:
+    """Whether unqualified ``tbl`` names a CTE in its scope, which PostgreSQL reads before any
+    relation of that name: a WITH it sits within -- among a WITH's own CTEs, only those before
+    the one it is in, unless the WITH is RECURSIVE."""
+    if tbl.args.get("db") is not None:
+        return False
+    name = _folded(tbl.this)
+    within: set[int] = {id(tbl)}
+    node = tbl.parent
+    while node is not None:
+        within.add(id(node))
+        with_clause = node.args.get("with_")
+        if isinstance(with_clause, exp.With):
+            for cte in with_clause.expressions:
+                if id(cte) in within and not with_clause.args.get("recursive"):
+                    break  # a non-recursive CTE, and those after it, are not in its own scope
+                if _folded(cte.args["alias"].this) == name:
+                    return True
+        node = node.parent
+    return False
 
 
 def _view_named(tbl: exp.Table, view_sql_map: dict[str, str]) -> str | None:
-    """The view of ``view_sql_map`` the table reference ``tbl`` names, as :func:`_expand_one`
-    reads one: a view keyed ``schema.name`` under that schema, any other by its name."""
+    """The view of ``view_sql_map`` the table reference ``tbl`` names, its identifiers folded as
+    PostgreSQL folds them: a view keyed ``schema.name`` only under that schema, any other by its
+    name. A CTE of that name in scope is the CTE, not the view."""
     if not isinstance(tbl.this, exp.Identifier):
         return None
-    if tbl.db and f"{tbl.db}.{tbl.name}" in view_sql_map:
-        return f"{tbl.db}.{tbl.name}"
-    return tbl.name if tbl.name in view_sql_map else None
+    name = _folded(tbl.this)
+    db = tbl.args.get("db")
+    if db is not None and f"{_folded(db)}.{name}" in view_sql_map:
+        return f"{_folded(db)}.{name}"
+    if name not in view_sql_map or _shadowed_by_cte(tbl):
+        return None
+    return name
 
 
 def _mark_tree(tree: exp.Expr, view_sql_map: dict[str, str], depth: int) -> exp.Expr:  # pyright: ignore[reportPrivateImportUsage]
     """``tree`` with every table reference to a view replaced by the view's parsed SQL, marked:
     ``(SELECT * FROM (<view SQL>) AS "<VIEW_MARK><view>") <alias>``. A view's SQL is expanded the
-    same way first, ``depth`` levels deep (a cycle could never have validated)."""
+    same way first, ``depth`` levels deep (a cycle could never have validated). The reference's
+    alias (with its column list) and its joins are carried onto the derived table; any other
+    clause it carries is refused (:class:`ViewClauseNotSupported`)."""
     for tbl in list(tree.find_all(exp.Table)):
         view = _view_named(tbl, view_sql_map)
         if view is None:
             continue
+        for arg, value in tbl.args.items():
+            if arg not in _CARRIED_TABLE_ARGS and value not in (None, False, []):
+                raise ViewClauseNotSupported(view, arg)
         body = sqlglot.parse_one(view_sql_map[view], read="postgres")
         if depth > 0:
             body = _mark_tree(body, view_sql_map, depth - 1)
@@ -287,7 +432,7 @@ def _mark_tree(tree: exp.Expr, view_sql_map: dict[str, str], depth: int) -> exp.
         alias = tbl.args.get("alias") or exp.TableAlias(
             this=exp.to_identifier(view.rsplit(".", 1)[-1], quoted="." in view)
         )
-        replacement = exp.Subquery(this=marked, alias=alias)
+        replacement = exp.Subquery(this=marked, alias=alias, joins=tbl.args.get("joins"))
         if tbl is tree:
             return replacement
         tbl.replace(replacement)
@@ -298,7 +443,7 @@ def _expand_marked(sql: str, view_sql_map: dict[str, str]) -> str:
     """:func:`expand_view_refs` with ``mark``: on the parsed statement, so a mark can only come
     from a view this process expands -- never from text a comment, a string literal or a quoted
     identifier of the statement holds (REQ-039, REQ-603)."""
-    tree = sqlglot.parse_one(sql, read="postgres")
+    tree = parse_marked(sql)
     return _mark_tree(tree, view_sql_map, len(view_sql_map)).sql(dialect="postgres")
 
 

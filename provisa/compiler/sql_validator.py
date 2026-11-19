@@ -44,7 +44,7 @@ Security model / layer responsibilities:
 from __future__ import annotations
 
 from collections.abc import Collection, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 import sqlglot
 import sqlglot.expressions as exp
@@ -109,6 +109,11 @@ class GovernanceRefused(PermissionError):
     the tables a V002 names back to the model (REQ-603)."""
 
     def __init__(self, violations: list[ValidationViolation]) -> None:
+        from provisa.compiler.view_expand import without_marks  # noqa: PLC0415
+
+        # REQ-039: a violation of a marked statement may name a view body's marked alias; the
+        # mark never leaves the server.
+        violations = [replace(v, message=without_marks(v.message)) for v in violations]
         super().__init__("; ".join(f"[{v.code}] {v.message}" for v in violations))
         self.violations = violations
         # REQ-2222: answered by the app's PermissionError handler under this stable code.
@@ -140,8 +145,39 @@ def validate_sql(  # REQ-001, REQ-002, REQ-038, REQ-266
     reading refuses. The folded reading is what the engine executes; the written one is what stage
     2 matches its rules against, name for name. A spelling only one of them resolves -- ``C.ssn``
     over ``FROM bank.customer c`` -- is refused, so no column reaches the engine past either."""
+    from provisa.compiler.view_expand import marks_withheld  # noqa: PLC0415
+
+    with marks_withheld():  # REQ-039: an error judging a marked statement names no mark
+        return _validate_sql(
+            sql,
+            ctx,
+            gov_ctx,
+            role,
+            raw_tables,
+            bypass_relationship_guard=bypass_relationship_guard,
+            bypass_uncovered_relationships=bypass_uncovered_relationships,
+            table_functions=table_functions,
+            view_commands=view_commands,
+        )
+
+
+def _validate_sql(
+    sql: str,
+    ctx: CompilationContext,
+    gov_ctx: GovernanceContext,
+    role: dict,
+    raw_tables: list[dict],
+    *,
+    bypass_relationship_guard: bool,
+    bypass_uncovered_relationships: bool,
+    table_functions: frozenset[str],
+    view_commands: Mapping[str, dict] | None,
+) -> list[ValidationViolation]:
+    from provisa.compiler.view_expand import parse_marked  # noqa: PLC0415
+
     try:
-        written = sqlglot.parse_one(sql, read=READ)
+        # REQ-039: an error is reported against the statement without its view marks.
+        written = parse_marked(sql, read=READ)
     except Exception as exc:
         return [ValidationViolation("V000", f"SQL parse error: {exc}")]
     flatten_leftmost_join_groups(written)  # as stage 2 does: a leftmost group is the flat join

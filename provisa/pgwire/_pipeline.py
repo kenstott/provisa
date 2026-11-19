@@ -2045,7 +2045,9 @@ async def govern_statement(
             try:
                 # REQ-1882: off-loaded, same rationale as prepare_front_end's parse.
                 # Read as validate_sql reads it: ``explode`` is no unnest (client_table_function).
-                parsed_tree = await _off_loop(lambda: sqlglot.parse_one(_validated_sql, read=READ))
+                from provisa.compiler.view_expand import parse_marked
+
+                parsed_tree = await _off_loop(lambda: parse_marked(_validated_sql, read=READ))
                 _statement_ctes = (
                     {c.alias for c in parsed_tree.find_all(exp.CTE)} if _table_functions else set()
                 )
@@ -2075,9 +2077,13 @@ async def govern_statement(
             except Exception as exc:
                 # SECURITY: never skip the domain-access check on a parse/lookup error — fail closed.
                 await write_denial(sql, role_id, _parsed_input, gov_ctx, state)
+                from provisa.compiler.view_expand import without_marks
+
+                # REQ-039: the statement checked is marked; the mark never leaves the server.
                 raise PermissionError(
-                    f"Domain-access check could not be evaluated for role {role_id!r}: {exc}"
-                ) from exc
+                    f"Domain-access check could not be evaluated for role {role_id!r}: "
+                    f"{without_marks(str(exc))}"
+                ) from None
 
         if violations:
             from provisa.compiler.sql_validator import GovernanceRefused
