@@ -140,6 +140,8 @@ describe("Discovery results: every column has a filter", () => {
   it("a number filter on Confidence and one on Reasoning apply together", async () => {
     await results();
     fireEvent.click(screen.getByTestId("col-filter-Confidence-btn"));
+    fireEvent.click(await screen.findByTestId("col-filter-Confidence-op"));
+    fireEvent.click(await screen.findByRole("option", { name: ">=", hidden: true }));
     fireEvent.change(await screen.findByTestId("col-filter-Confidence-a"), {
       target: { value: "50" },
     });

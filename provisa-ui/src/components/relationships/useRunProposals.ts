@@ -194,36 +194,38 @@ export function useRunProposals(
 
   const apply = useCallback(
     async (listed: ReadonlySet<number>) => {
-    if (!shown) return;
-    const byId = new Map(shown.proposals.map((p) => [p.id, p]));
-    const chosen = (ids: ReadonlySet<number>) =>
-      shown.proposals.filter((p) => p.decidable && ids.has(p.id));
-    setApplying(true);
-    setError("");
-    try {
-      const results: DecisionResult[] = await applyRunDecisions(shown.runId, {
-        accept: chosen(accept)
-          .filter((p) => p.acceptable && listed.has(p.id))
-          .map((p) => ({ id: p.id })),
-        not_again: chosen(notAgain).map((p) => p.id),
-      });
-      setFailures(
-        results.flatMap((r) => {
-          const proposal = byId.get(r.id);
-          return !r.ok && proposal ? [{ proposal, error: r.error ?? "" }] : [];
-        }),
-      );
-      const ok = (action: DecisionResult["action"]) =>
-        results.filter((r) => r.ok && r.action === action).length;
-      setApplied({ accepted: ok("accept"), notAgain: ok("not_again") });
-      await load(shown.runId);
-      if (results.some((r) => r.ok)) onApplied();
-    } catch (e) {
-      setError(errorText(e));
-    } finally {
-      setApplying(false);
-    }
-  }, [shown, accept, notAgain, load, onApplied]);
+      if (!shown) return;
+      const byId = new Map(shown.proposals.map((p) => [p.id, p]));
+      const chosen = (ids: ReadonlySet<number>) =>
+        shown.proposals.filter((p) => p.decidable && ids.has(p.id));
+      setApplying(true);
+      setError("");
+      try {
+        const results: DecisionResult[] = await applyRunDecisions(shown.runId, {
+          accept: chosen(accept)
+            .filter((p) => p.acceptable && listed.has(p.id))
+            .map((p) => ({ id: p.id })),
+          not_again: chosen(notAgain).map((p) => p.id),
+        });
+        setFailures(
+          results.flatMap((r) => {
+            const proposal = byId.get(r.id);
+            return !r.ok && proposal ? [{ proposal, error: r.error ?? "" }] : [];
+          }),
+        );
+        const ok = (action: DecisionResult["action"]) =>
+          results.filter((r) => r.ok && r.action === action).length;
+        setApplied({ accepted: ok("accept"), notAgain: ok("not_again") });
+        await load(shown.runId);
+        if (results.some((r) => r.ok)) onApplied();
+      } catch (e) {
+        setError(errorText(e));
+      } finally {
+        setApplying(false);
+      }
+    },
+    [shown, accept, notAgain, load, onApplied],
+  );
 
   return {
     proposals: shown ? shown.proposals : null,

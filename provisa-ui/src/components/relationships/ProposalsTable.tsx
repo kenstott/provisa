@@ -214,7 +214,8 @@ export function ProposalsTable({
     key: c.key,
     label: c.label,
     // A proposal with no score sorts below every scored one.
-    sortValue: c.kind === "number" ? (p) => (c.cell(p) as number | null) ?? -1 : (p) => c.cell(p) ?? "",
+    sortValue:
+      c.kind === "number" ? (p) => (c.cell(p) as number | null) ?? -1 : (p) => c.cell(p) ?? "",
   }));
 
   // The filters on the columns other than Score, which the run's state keeps.
