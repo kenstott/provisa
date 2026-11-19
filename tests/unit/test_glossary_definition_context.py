@@ -277,3 +277,87 @@ async def test_bulk_definitions_carry_the_same_context(control_plane, monkeypatc
         assert "Do not copy their wording" in sent
         assert "staff" not in sent
         assert {role for role, _sql in reads.issued} == {CURATOR}
+
+
+def _unreadable(monkeypatch, reads: _Reads, relation: str) -> None:
+    """The governed read of ``relation`` fails as an unreachable source does; others answer."""
+
+    async def governed_as(sql: str, role: str) -> list[tuple]:
+        if f"FROM {relation} " in sql:
+            raise ConnectionError("source unreachable")
+        return await reads.governed_as(sql, role)
+
+    monkeypatch.setattr(definition_context, "_governed_as", governed_as)
+
+
+async def _table_ids(conn, term_id: int) -> dict[str, int]:
+    term = await glossary_repo.get_term(conn, term_id)
+    assert term is not None
+    return {r["domain_id"]: int(r["table_id"]) for r in term["refs"]}
+
+
+async def test_an_unreadable_table_gives_no_samples_and_the_draft_still_runs(
+    control_plane, monkeypatch
+):
+    """REQ-1387 (amended 2026-11-18, A TABLE THE CURATOR CANNOT READ GIVES NO SAMPLES)."""
+    prompts = _model(monkeypatch)
+    async with _store(control_plane, monkeypatch) as (conn, reads):
+        ids = await _ids(conn)
+        tables = await _table_ids(conn, ids["customer"])
+        _unreadable(monkeypatch, reads, f'"t{tables["sales"]}"')
+        result = await glossary_router.generate_definition(
+            _request(), ids["customer"], domains=["sales"]
+        )
+        assert result == {
+            "definition": "A drafted definition.",
+            "tables_without_samples": ["Sales Orders"],
+        }
+        prompt = prompts[0]
+        assert "Sales Orders.customer_id (varchar)" in prompt
+        assert "column description: FK to cust_mstr.cust_key, NOT NULL" in prompt
+        assert "table Sales Orders: One row per order placed by a buyer." in prompt
+        assert "sample values" not in prompt
+
+
+async def test_a_table_the_curators_role_cannot_read_is_named(control_plane, monkeypatch):
+    prompts = _model(monkeypatch)
+    async with _store(control_plane, monkeypatch) as (conn, _reads):
+        monkeypatch.setattr(definition_context, "_published_as", lambda state, role, tid: None)
+        ids = await _ids(conn)
+        result = await glossary_router.generate_definition(
+            _request(), ids["customer"], domains=["sales"]
+        )
+        assert result["tables_without_samples"] == ["Sales Orders"]
+        assert "Sales Orders.customer_id (varchar)" in prompts[0]
+        assert "sample values" not in prompts[0]
+
+
+async def test_a_readable_table_names_nothing(control_plane, monkeypatch):
+    _model(monkeypatch)
+    async with _store(control_plane, monkeypatch) as (conn, _reads):
+        ids = await _ids(conn)
+        result = await glossary_router.generate_definition(
+            _request(), ids["customer"], domains=["sales"]
+        )
+        assert result["tables_without_samples"] == []
+
+
+async def test_bulk_definitions_continue_past_an_unreadable_table_and_name_it(
+    control_plane, monkeypatch
+):
+    prompts = _model(monkeypatch)
+    async with _store(control_plane, monkeypatch) as (conn, reads):
+        ids = await _ids(conn)
+        tables = await _table_ids(conn, ids["customer"])
+        _unreadable(monkeypatch, reads, f'"t{tables["sales"]}"')
+        empty = [t for t in await glossary_repo.list_terms(conn) if not t["definition"]]
+        result = await glossary_router.generate_all_definitions(_request(), domains=None)
+        assert result == {"generated": len(empty), "tables_without_samples": ["Sales Orders"]}
+        assert len(prompts) == len(empty)
+        sent = "\n".join(prompts)
+        # staff, which is readable, still sends its samples.
+        assert "staff.customer_id (varchar)" in sent
+        assert "sample values: C-****, X-****" in sent
+        assert not any(f'"t{tables["sales"]}"' in sql for _r, sql in reads.issued)
+        for t in await glossary_repo.list_terms(conn):
+            assert t["definition"] == "A drafted definition."

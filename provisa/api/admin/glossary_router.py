@@ -606,11 +606,12 @@ async def definition_prompt_for(
     term: dict,
     scope: "frozenset[str] | None",
     term_scope: "dict[int, set[str]]",
-) -> str:
-    """``term``'s definition prompt (REQ-2253): only the physical columns of tables in ``scope``
-    and only the related terms readable in ``scope`` ride along, so nothing of a domain the curator
-    has filtered out is sent to the model. ``None`` is no narrowing. The columns' sample values are
-    read as the curator (REQ-1387, :mod:`provisa.api.admin.definition_context`)."""
+) -> tuple[str, tuple[str, ...]]:
+    """``term``'s definition prompt (REQ-2253), and the names of the bound tables that gave no
+    samples: only the physical columns of tables in ``scope`` and only the related terms readable
+    in ``scope`` ride along, so nothing of a domain the curator has filtered out is sent to the
+    model. ``None`` is no narrowing. The columns' sample values are read as the curator; a table
+    the curator cannot read gives none (REQ-1387, :mod:`provisa.api.admin.definition_context`)."""
     from provisa.api.admin.capabilities import acting_role_of_request
     from provisa.api.admin.definition_context import bound_columns, term_definitions
     from provisa.api.app import state
@@ -622,9 +623,12 @@ async def definition_prompt_for(
         for e in term["edges_out"] + term["edges_in"]
         if readable_term(scope, frozenset(term_scope.get(e["term_id"], set())))
     ]
-    columns = await bound_columns(state, conn, acting_role_of_request(request), refs)
+    context = await bound_columns(state, conn, acting_role_of_request(request), refs)
     definitions = await term_definitions(conn, [e["term_id"] for e in related])
-    return definition_prompt(term, columns, related, definitions)
+    return (
+        definition_prompt(term, context.columns, related, definitions),
+        context.tables_without_samples,
+    )
 
 
 @router.post("/terms/{term_id}/definition/generate")
@@ -636,6 +640,7 @@ async def generate_definition(
     Generation only — nothing persists until the user saves the draft through the
     PATCH endpoint, so a bad draft costs nothing. ``domains`` is the navbar filter's selection
     (REQ-2253): the term's columns and related terms outside it are not sent.
+    ``tables_without_samples`` names the bound tables the curator could not read (REQ-1387).
     """
     _require_glossary_rw(request)
     require_active_org_id(request)
@@ -647,13 +652,13 @@ async def generate_definition(
             raise ApiError(404, "glossary.term_not_found", f"term {term_id} not found")
         await _require_term_curatable(_conn, term_id, request)
         term_scope = await glossary_repo.term_domains(_conn)
-        prompt = await definition_prompt_for(
+        prompt, unsampled = await definition_prompt_for(
             _conn, request, term, _view_scope(request, domains), term_scope
         )
     from provisa.api.admin.schema_helpers import _call_llm
 
     definition = await _call_llm(prompt, "glossary_definition", max_tokens=256)
-    return {"definition": definition}
+    return {"definition": definition, "tables_without_samples": list(unsampled)}
 
 
 @router.post("/definitions/generate")
@@ -664,6 +669,8 @@ async def generate_all_definitions(request: Request, domains: SelectedDomains = 
     holding the result — but only ever fills EMPTY definitions; human text is never
     overwritten. One publish notification covers the batch. ``domains`` is the navbar filter's
     selection (REQ-2253): only its terms are defined, from its columns and related terms only.
+    A bound table the curator cannot read gives no samples and the run continues past it;
+    ``tables_without_samples`` names every such table (REQ-1387).
     """
     _require_glossary_rw(request)
     org_id = require_active_org_id(request)
@@ -679,20 +686,22 @@ async def generate_all_definitions(request: Request, domains: SelectedDomains = 
         terms = await glossary_repo.list_terms(_conn, domains=scope)
         term_scope = await glossary_repo.term_domains(_conn)
         generated = 0
+        unsampled: set[str] = set()
         for summary in terms:
             if summary["definition"]:
                 continue
             term = await glossary_repo.get_term(_conn, summary["id"])
             if term is None:
                 continue
-            prompt = await definition_prompt_for(_conn, request, term, scope, term_scope)
+            prompt, unread = await definition_prompt_for(_conn, request, term, scope, term_scope)
+            unsampled.update(unread)
             definition = await _call_llm(prompt, "glossary_definition", max_tokens=256)
             if definition.strip():
                 await glossary_repo.set_definition(_conn, term["id"], definition.strip())
                 generated += 1
     if generated:
         await _notify(org_id, "ontology definitions generated")
-    return {"generated": generated}
+    return {"generated": generated, "tables_without_samples": sorted(unsampled)}
 
 
 # REQ-1387 (THE SHAPES THAT RESOLVE A RELATED PAIR): the one-term shapes that turn a RELATED_TO

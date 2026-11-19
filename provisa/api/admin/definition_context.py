@@ -17,7 +17,9 @@ The values are read as relationship discovery reads a role's values
 the curator's rules, masks and row rules apply, and a column or table the curator cannot read has
 none. A column whose classes are sensitive (discovery's rule: the steward's decided class, else
 the latest profile's matches, else the table classified now) has none, and a table that requires a
-parameter (REQ-1986) is never read.
+parameter (REQ-1986) is never read. A table that cannot be read as the curator (its source is
+unreachable, or the curator's role cannot read it) gives no samples, its descriptions and types
+are still sent, and the result names it (REQ-1387, amended 2026-11-18).
 """
 
 # Requirements: REQ-1387, REQ-2253
@@ -31,8 +33,9 @@ from typing import TYPE_CHECKING, Any
 from sqlalchemy import select
 
 from provisa.discovery.columns import classes_of
-from provisa.discovery.context import SAMPLE_VALUES, sample_text
+from provisa.discovery.context import sample_text
 from provisa.discovery.gather import (
+    TableUnreadable,
     _classified_now,
     _decided,
     _governed_as,
@@ -47,6 +50,10 @@ from provisa.discovery.gather import (
 if TYPE_CHECKING:
     from provisa.core.database import Connection
 
+#: The distinct values sent per bound column: REQ-1387's "a few distinct sample values". The
+#: definition assistant's own count, not discovery's dialog setting, which decides discovery runs.
+DEFINITION_SAMPLE_VALUES = 5
+
 
 @dataclass(frozen=True)
 class BoundColumn:
@@ -60,6 +67,15 @@ class BoundColumn:
     samples: tuple[str, ...]
 
 
+@dataclass(frozen=True)
+class DefinitionContext:
+    """A term's bound columns, and the names of their tables that gave no samples because the
+    curator could not read them (REQ-1387, amended 2026-11-18)."""
+
+    columns: list[BoundColumn]
+    tables_without_samples: tuple[str, ...]
+
+
 async def column_samples(
     state: Any,
     conn: "Connection",
@@ -67,17 +83,17 @@ async def column_samples(
     table_id: int,
     table_name: str,
     columns: Sequence[str],
-    per_column: int = SAMPLE_VALUES,
-) -> dict[str, tuple[str, ...]]:
+    per_column: int = DEFINITION_SAMPLE_VALUES,
+) -> dict[str, tuple[str, ...]] | None:
     """Up to ``per_column`` distinct non-null values of each of ``columns`` (registered names) of
     one table, each read through the governed pipeline as ``role``. A sensitive column, a column
-    ``role`` cannot read, and every column of a table ``role`` cannot read or that requires a
-    parameter have none."""
+    ``role`` cannot read, and every column of a table that requires a parameter have none. None:
+    ``role`` cannot read the table, or a read of it failed (:class:`TableUnreadable`)."""
     if not columns or table_id in await tables_never_read(state, conn, [table_id]):
         return {}
     published = _published_as(state, role, table_id)
     if published is None:
-        return {}
+        return None
     relation, exposed = published
     matched = await _profiled_classes(conn, table_id, table_name)
     if matched is None:
@@ -90,13 +106,19 @@ async def column_samples(
         if _sensitive(classes_of(matched.get(name, set()), decided.get((table_id, name), set()))):
             continue
         col = _quote(exposed[name])
-        rows = await _reading(
-            table_name,
-            _governed_as(
-                f"SELECT DISTINCT {col} FROM {relation} WHERE {col} IS NOT NULL LIMIT {per_column}",
-                role,
-            ),
-        )
+        try:
+            rows = await _reading(
+                table_name,
+                _governed_as(
+                    f"SELECT DISTINCT {col} FROM {relation} WHERE {col} IS NOT NULL "
+                    f"LIMIT {per_column}",
+                    role,
+                ),
+            )
+        except TableUnreadable:
+            # REQ-1387 (amended 2026-11-18): a table the curator cannot read gives no samples and
+            # the draft still runs; the caller names the table.
+            return None
         held: list[str] = []
         for (value,) in rows:
             text = sample_text(value)
@@ -108,15 +130,16 @@ async def column_samples(
 
 async def bound_columns(
     state: Any, conn: "Connection", role: str, refs: Sequence[dict]
-) -> list[BoundColumn]:
+) -> DefinitionContext:
     """Each of ``refs`` (a term's refs already narrowed to the selected domains) with its
-    registered description and type, its table's and the values ``role`` reads of it."""
+    registered description and type, its table's and the values ``role`` reads of it, and the
+    tables ``role`` could not read for samples."""
     from provisa.core.schema_org import registered_tables as rt
     from provisa.core.schema_org import table_columns as tc
 
     table_ids = sorted({int(r["table_id"]) for r in refs})
     if not table_ids:
-        return []
+        return DefinitionContext(columns=[], tables_without_samples=())
     tables = {
         int(r.id): r
         for r in (
@@ -141,10 +164,13 @@ async def bound_columns(
     for r in refs:
         wanted.setdefault(int(r["table_id"]), []).append(str(r["column_name"]))
     samples: dict[int, dict[str, tuple[str, ...]]] = {}
+    unread: set[str] = set()
     for tid, names in wanted.items():
-        samples[tid] = await column_samples(
-            state, conn, role, tid, str(tables[tid].table_name), names
-        )
+        read = await column_samples(state, conn, role, tid, str(tables[tid].table_name), names)
+        if read is None:
+            unread.add(str(tables[tid].alias or tables[tid].table_name))
+            read = {}
+        samples[tid] = read
     out: list[BoundColumn] = []
     for r in refs:
         tid, name = int(r["table_id"]), str(r["column_name"])
@@ -160,7 +186,7 @@ async def bound_columns(
                 samples=samples[tid].get(name, ()),
             )
         )
-    return out
+    return DefinitionContext(columns=out, tables_without_samples=tuple(sorted(unread)))
 
 
 async def term_definitions(conn: "Connection", term_ids: Sequence[int]) -> dict[int, str]:
