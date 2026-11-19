@@ -8729,9 +8729,14 @@
   feature: commands-and-functions-tracked-functions
   priority: SHOULD
   type: behavioral
-  description: Database functions (stored procedures, UDFs) registered in Provisa config and exposed as
+  description: 'Database functions (stored procedures, UDFs) registered in Provisa config and exposed as
     GraphQL mutations or queries. VOLATILE functions exposed as mutations; STABLE/IMMUTABLE as queries.
-    Follows Hasura v2's `pg_track_function` pattern.
+    Follows Hasura v2''s `pg_track_function` pattern. (Amended 2026-11-19, STORED PROCEDURES ARE CALLED
+    IN THEIR SOURCE''S OWN FORM:) Maintainer 2026-11-19. A stored procedure in a relational source can be
+    registered as a command, not only a function: it is invoked in the form its source''s dialect requires
+    (CALL in PostgreSQL, MySQL, MariaDB and Db2; EXEC in SQL Server and Sybase; a procedure call in Oracle),
+    never as SELECT * FROM. A procedure is exposed as a mutation. Its result is the result set it returns;
+    a procedure that returns none gives its OUT parameters as one row, or an empty result when it has none.'
   use_case: Tracked DB functions expose stored procedures as GraphQL mutations so clients use one API
     for all writes.
   code:
@@ -89734,7 +89739,7 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
   - REQ-2104
   target: "2027-Q1"
 - id: REQ-2135
-  status: in-progress
+  status: complete
   since: 2026-10
   group: 5. Query Languages, Compilation & Operations
   category: SPARQL Query Frontend
@@ -90015,6 +90020,10 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     - provisa-ui/src/components/graph/__tests__/SparqlExportModal.test.tsx
     - provisa-ui/src/__tests__/GraphPageSparql.test.tsx
     - provisa-ui/src/__tests__/GraphPageCypherExport.test.tsx
+  - tests/unit/test_cypher_drop_shapes.py
+  - provisa-ui/src/components/graph/__tests__/dropPath.test.ts
+  - provisa-ui/src/components/graph/__tests__/sparqlDrop.test.ts
+  - provisa-ui/src/__tests__/GraphDropUnlabelled.test.ts
 - id: REQ-2136
   value: 'Filter the ontology graph with SPARQL directly from the Ontology page controls, or open it as a query.'
   status: in-progress
@@ -91039,7 +91048,10 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     parents. (Amended 2026-10-29, REGIONS NARROW LIKE CAPABILITIES:) Maintainer 2026-10-31: data_residency''s
     regions follow the same narrowing as capabilities and domains: a role with parents covers its stored
     regions intersected with the union of its parents'' regions, and saving a region no parent covers is
-    refused by name.'
+    refused by name. (Amended 2026-11-19, A ROLE''S ROW RULE NARROWS ITS PARENTS'', NEVER REPLACES THEM:)
+    Maintainer 2026-11-19, correcting the 2026-10-25 sentence that a role''s own row rule stands. A role''s
+    row rule is combined with every parent''s row rule by AND: inheriting a role can only narrow the rows
+    it reads, never widen them.'
   scenario: 'Given an org role ''dq lead'' inheriting from Data quality steward and Data product owner
 
     Then it holds the union of both roles'' capabilities
