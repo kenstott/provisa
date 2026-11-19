@@ -177,6 +177,9 @@ user_profiles = Table(
     metadata,
     Column("user_id", Text, primary_key=True),
     Column("email", Text),
+    # REQ-2219 (amended 2026-11-18): whether the identity provider verified ``email`` at the
+    # person's latest sign-in; only a verified address names this person in a write by email.
+    Column("email_verified", Boolean, nullable=False, server_default=false()),
     Column("display_name", Text),
     # User-owned profile details (REQ-1266). display_name/email mirror the IdP token on every
     # request (_upsert_profile); given_name/family_name are entered by the user via PATCH

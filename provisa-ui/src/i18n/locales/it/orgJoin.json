@@ -1,7 +1,7 @@
 {
   "orgJoin": {
     "heading": "Chi può unirsi",
-    "help": "Quali indirizzi email possono unirsi a questa organizzazione. Un invito viene verificato rispetto a questa regola; con l'adesione automatica attiva, chiunque acceda con un indirizzo corrispondente diventa membro senza invito.",
+    "help": "Quali indirizzi email possono unirsi a questa organizzazione. Un invito viene verificato rispetto a questa regola; con l'adesione automatica attiva, chiunque acceda con un indirizzo verificato corrispondente diventa membro senza invito.",
     "emailRuleLabel": "Regola email",
     "emailRuleDesc": "Un'espressione regolare confrontata con l'indirizzo. Lascia vuoto per accettare qualsiasi indirizzo tramite invito.",
     "autoJoinLabel": "Adesione automatica",
