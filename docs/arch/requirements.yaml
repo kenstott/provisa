@@ -76401,7 +76401,11 @@
     points at; otherwise a column named id; otherwise its position in the response. A single-resource lookup
     (GET /<type>/<id>) is offered only for a type whose id is a real identifier (one of the first three),
     never a position; for a type identified only by position the lookup is not offered, in the API and its
-    spec.'
+    spec. (Amended 2026-11-19, A RELATIONSHIP NEVER HIDES A COLUMN; A NAME CLASH IS REFUSED:) Maintainer
+    2026-11-19. Registering a source does not add a nested object as a column when the same field is offered
+    as a relationship. Any other clash between a column and a relationship of one table, after a surface''s
+    name translation, is refused by name when the model is built, on every surface including GraphQL; a
+    relationship never silently hides a column.'
   use_case: An operator who assigns a command to a role, hides a column, or moves an object to another
     domain changes what every API offers in one place, and no surface can offer what another surface hides.
   scenario: 'Given a query-kind command find_pets in domain petstore, assigned to role analyst
