@@ -16,7 +16,7 @@
     "modelStarSchema": "Schema a stella",
     "modelDataVault": "Data Vault",
     "reportXlsx": "Cartella di lavoro",
-    "reportXlsxTitle": "Scarica il modello come foglio di calcolo per la revisione: origini, tabelle, colonne, relazioni, viste, metriche, viste materializzate, ontologia, prodotti dati, contratti dati, qualità dei dati e profili dei dati, un foglio ciascuno",
+    "reportXlsxTitle": "Scarica il modello come foglio di calcolo da revisionare, con un foglio per origini, tabelle, colonne, relazioni, viste, metriche, viste materializzate, ontologia, prodotti dati, contratti dati, qualità dei dati e profilazione dei dati",
     "viewErd": "Visualizza ERD",
     "colSource": "Origine",
     "colDomain": "Dominio",
@@ -58,25 +58,25 @@
     "modelingRole": {
       "fact": "fatto",
       "dimension": "dimensione",
-      "impliedFactTitle": "Fatto implicito — «Abilita aggregati» è attivo per questa tabella",
-      "impliedDimensionTitle": "Dimensione implicita — «Abilita Group By» è attivo per questa tabella"
+      "impliedFactTitle": "Fatto implicito: 'Abilita aggregati' è attivo per questa tabella",
+      "impliedDimensionTitle": "Dimensione implicita: 'Abilita Group By' è attivo per questa tabella"
     },
     "derived": "derivata",
     "endpointUnread": "Impossibile leggere il documento API della sua origine",
     "checker": {
       "soda": "Soda",
       "great_expectations": "Great Expectations",
-      "title": "Controllo della qualità dei dati — le righe di questa tabella sono i risultati dell'esecuzione del suo contratto"
+      "title": "Verificatore della qualità dei dati: le righe di questa tabella sono i risultati dell'esecuzione del suo contratto"
     },
     "dataProduct": "prodotto",
-    "dataProductTitle": "Data product — incluso in provisa metadata export",
+    "dataProductTitle": "Prodotto dati: incluso nell'esportazione dei metadati di Provisa",
     "purposeTitle": "Cosa fa la registrazione di una tabella",
-    "purposeBody": "La registrazione è ciò che inserisce una tabella nel modello governato: fissa le colonne, i nomi con cui sono esposte e quali ruoli possono vederle. Solo le tabelle registrate sono interrogabili, e tutto ciò che ne deriva — relazioni, metriche, viste, termini dell'ontologia — nomina colonne registrate.",
-    "purposeAdd": "+ Vista registra una relazione definita da SQL o da metriche anziché da una tabella fisica — e registrarla è ciò che la fa smettere di essere una query salvata. La definizione decide anche come viene servita: live, oppure materializzata con una cadenza o su una finestra di calendario, con un aggiornamento che sostituisce, fa upsert o accoda. Se attivi il viaggio nel tempo, la vista conserva la propria storia e i consumatori possono leggerla com'era in un momento passato; i suoi input sono tracciati come lineage, così un aggiornamento attende ciò da cui dipende.",
+    "purposeBody": "Registrare una tabella la inserisce nel modello governato e ne fissa le colonne, i nomi con cui sono esposte e quali ruoli possono vederle. Solo le tabelle registrate possono essere interrogate, e relazioni, metriche, viste e termini dell'ontologia nominano tutti colonne registrate.",
+    "purposeAdd": "+ Vista registra una relazione definita da SQL o da metriche. La definizione decide anche come viene servita: live, oppure materializzata secondo una cadenza o una finestra di calendario, con un aggiornamento che sostituisce, esegue upsert o accoda. Attiva Time Travel e la vista mantiene la propria cronologia, così i consumatori possono leggerla com'era in un momento passato. I suoi input sono tracciati come derivazione, quindi un aggiornamento attende ciò da cui dipende.",
     "purposeAria": "Informazioni sulle tabelle registrate",
     "erdHelpTitle": "Diagramma entità-relazione",
-    "erdHelpBody": "Disegna le tabelle registrate e le relazioni dichiarate tra loro, così i join già esistenti sono visibili prima di scrivere una query. Legge il modello anziché modificarlo: filtra per dominio ed esporta il diagramma come PNG o SVG.",
-    "purposeModel": "+ Modello dichiara un'entità o un fatto — i due mattoni con cui si costruiscono sia uno schema a stella sia un Data Vault — e lo abbassa su quelle stesse primitive, registrando la vista materializzata, il suo viaggio nel tempo e le relazioni verso le entità di cui usa le chiavi.",
+    "erdHelpBody": "Disegna le tabelle registrate e le relazioni dichiarate tra di esse, così si vede quali join esistono prima di scrivere una query. È in sola lettura: filtrare per dominio ed esportare il diagramma in PNG o SVG.",
+    "purposeModel": "+ Modello dichiara un'entità o un fatto, i mattoni di uno schema a stella e di un Data Vault. Registra la vista materializzata, il suo Time Travel e le relazioni con le entità su cui si basa.",
     "empty": "Nessuna tabella registrata.",
     "resizeDetail": "Ridimensiona il pannello dei dettagli",
     "detailPanel": "Dettagli della tabella",
