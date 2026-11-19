@@ -360,6 +360,23 @@ class RelationshipFieldTaken(ModelNotServable):
         )
 
 
+class RelationshipHidesColumn(ModelNotServable):  # REQ-1929
+    """A relationship of one GraphQL type named for a field one of its columns already is:
+    refused, naming both, rather than the relationship silently hiding the column."""
+
+    code = "model.relationship_hides_column"
+
+    def __init__(self, type_name: str, field: str, refused: str) -> None:
+        self.type_name = type_name
+        self.field = field
+        self.refused = refused
+        self.params = {"type": type_name, "field": field, "refused": refused}
+        super().__init__(
+            f"relationship {refused!r} would be field {field!r} of {type_name}, which a column "
+            f"already is: give the relationship its own GraphQL alias"
+        )
+
+
 def _register_relationship_joins(
     si: object,  # object-ok: circular import boundary — SchemaInput imported inside function body
     ctx: CompilationContext,
@@ -372,6 +389,8 @@ def _register_relationship_joins(
     assert isinstance(si, SchemaInput)
     # (type, field) -> the relationship holding it: two relationships never share a field.
     joined_by: dict[tuple[str, str], str] = {}
+    # (table id, GraphQL field) of every column a role reads, as _register_table_in_ctx named it.
+    column_fields = {(tid, gql) for (tid, _phys), gql in ctx.physical_to_gql.items()}
     for rel in si.relationships:
         src_id = rel["source_table_id"]
         tgt_id = rel["target_table_id"]
@@ -424,6 +443,11 @@ def _register_relationship_joins(
         )
 
         join_field_name = _join_field_name(rel, tgt_info, table_lookup)
+        # REQ-1929: a relationship never hides a column; one named for a column's field is refused.
+        if (src_id, join_field_name) in column_fields:
+            raise RelationshipHidesColumn(
+                src_info.type_name, join_field_name, rel.get("id") or "(unnamed)"
+            )
         held = joined_by.get((src_info.type_name, join_field_name))
         if held is not None:
             # Two relationships of one type under one field: the later replaced the earlier and
