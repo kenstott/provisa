@@ -133,3 +133,18 @@ def test_helper_preserves_case():
     assert inflection.plural("Address") == "Addresses"
     assert inflection.singular("LOSSES") == "LOSS"
     assert inflection.plural("Ordr") == "Ordrs"
+
+
+# REQ-194 (amended 2026-11-18): where the dictionary lists more than one form with no ranking
+# between them, the form more frequent in general English wins (schema: schemata, schemas).
+def test_tie_between_dictionary_plurals_broken_by_frequency():
+    assert naming._rel_words("schema", "one-to-many") == "schemas"
+    assert naming._rel_words("schemas", "many-to-one") == "schema"
+    assert naming._rel_words("schemata", "many-to-one") == "schema"
+    assert naming._rel_words("customer_schema", "one-to-many") == "customer_schemas"
+
+
+def test_frequency_keeps_a_single_dictionary_form():
+    # One dictionary plural: frequency never applies (person keeps people, datum keeps data).
+    assert naming._rel_words("person", "one-to-many") == "people"
+    assert naming._rel_words("datum", "one-to-many") == "data"
