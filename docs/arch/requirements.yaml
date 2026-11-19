@@ -97638,3 +97638,44 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     and relationships of those domains. This covers, among others, relationship discovery, the ontology''s
     relationship suggestions and term finding, natural-language query, generated descriptions and any other
     feature that asks a model. Nothing outside the selected domains is read, sent or changed.'
+- id: REQ-2254
+  status: proposed
+  target: 2026-Q3
+  group: 4. Source Connectors
+  category: Replica Strategy
+  feature: replicas-and-freshness-moving-data
+  priority: MUST
+  type: behavioral
+  description: Maintainer 2026-11-19 ('create a req to have pgwire-calcite bundle loaded once and then
+    ref'd at runtime by other pgwire-* servers'). The pgwire-calcite runtime (CPython, the pgwire_calcite
+    package, the JRE and the jars every adapter uses, such as calcite-core, linq4j and avatica) is installed
+    once per engine version and cached by that version. Each pgwire adapter is a pack holding its own
+    jars, its model.json and, optionally, adapter-specific Python packages; the pack names the runtime
+    version it requires, and a pack whose runtime version is absent is refused at start, naming the version.
+    The launcher builds the classpath from the runtime's jars plus the pack's jars, and the Python path
+    from the runtime plus the pack's extras. The runtime and the packs are released separately, and the
+    standalone installers install a runtime plus one pack. Provisa's bundle resolution (REQ-956) resolves
+    the runtime, then the source's pack, each cached by version. Each source still runs in its own process.
+    A Python-only change to pgwire-calcite ships as a new runtime with the packs unchanged.
+- id: REQ-2255
+  status: proposed
+  target: 2026-Q3
+  group: 4. Source Connectors
+  category: Replica Strategy
+  feature: replicas-and-freshness-moving-data
+  priority: MUST
+  type: behavioral
+  description: 'Maintainer 2026-11-19 (''update pgwire-calcite python per provisa pgwire''). pgwire-calcite''s
+    PostgreSQL wire server reaches parity with Provisa''s own for what its clients depend on. Column sizes:
+    numeric(p,s), varchar(n), char(n), time(p) and timestamp(p) carry their size from JDBC metadata in
+    pg_attribute''s atttypmod, in RowDescription and in format_type, so a client reads DECIMAL(7,2) as
+    that type. The extended query protocol: Bind values are decoded by the parameter''s declared type
+    and kept bound; statements and portals keep their described shape across Bind and Execute; after a
+    failure the server discards to Sync and reports the failed transaction state; a cancel request from
+    another connection cancels the running statement. Bounded cursors: NO SCROLL cursors and Execute with
+    a row limit read in batches without holding the whole result. Catalog functions and casts used by
+    introspection: the reg* casts, pg_am.amhandler, pg_index and pg_constraint with composite foreign
+    keys and unique constraints where the adapter declares them, has_table_privilege and pg_get_expr,
+    and typed catalog results. Session items: SET TimeZone is reported and passed to the Calcite connection,
+    a refused statement is logged as a refusal, COPY FROM refuses a format it does not read, and advisory
+    locks are held per connection when writes are allowed.'
