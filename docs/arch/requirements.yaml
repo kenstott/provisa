@@ -76409,7 +76409,10 @@
     relationship never silently hides a column. (Amended 2026-11-19, A STORED RELATIONSHIP TAKES ITS NESTED
     COLUMN:) Maintainer 2026-11-19. When a relationship over a remote nested object is stored after both
     tables were registered one at a time, the nested column it rides on leaves the registered table, as it
-    does when the whole source is mapped at once, so the relationship and a column never share a name.'
+    does when the whole source is mapped at once, so the relationship and a column never share a name.
+    (Amended 2026-11-19, A COLUMN IN USE REFUSES THE REGISTRATION:) Maintainer 2026-11-19. When the nested
+    column a relationship would take is used by a view, metric or row filter, registering the table is
+    refused, naming what uses it, and nothing is written.'
   use_case: An operator who assigns a command to a role, hides a column, or moves an object to another
     domain changes what every API offers in one place, and no surface can offer what another surface hides.
   scenario: 'Given a query-kind command find_pets in domain petstore, assigned to role analyst
