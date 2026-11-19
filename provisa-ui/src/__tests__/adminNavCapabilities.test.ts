@@ -316,6 +316,7 @@ describe("admin surface capabilities", () => {
     const context = NAV_GROUPS.find((g) => g.id === "context")!;
     const open = context.items.filter((i) => !i.comingSoon);
     expect(Object.fromEntries(open.map((i) => [i.to, i.capability]))).toEqual({
+      "/context/glossary": "glossary_read",
       "/context/ontology": "glossary_read",
       "/context/documents": "glossary_read",
       "/context/sync": "org_settings",

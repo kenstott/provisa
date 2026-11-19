@@ -2628,3 +2628,46 @@ async def stewardship_summary(conn: "Connection") -> dict:
             ]
         ),
     }
+
+
+#: REQ-2259: the edges the Glossary page draws, in its plain words -- KIND_OF is "a kind of" from
+#: its tail and "kinds" from its head, RELATED_TO is "see also", SYNONYM_OF is "also called".
+GLOSSARY_PAGE_EDGES = ("KIND_OF", "RELATED_TO", "SYNONYM_OF")
+
+
+async def glossary_entries(conn: "Connection", domains: "frozenset[str] | None") -> dict:
+    """The Glossary page's terms (REQ-2259): the approved terms readable in ``domains`` (REQ-1592's
+    ``readable_term``), each with its name, definition and domains, and the edges of
+    :data:`GLOSSARY_PAGE_EDGES` between two of them. A draft, deprecated or retired term is left
+    out, and so is any edge reaching one, so nothing on the page names a term it does not show."""
+    rows = (
+        await conn.execute_core(
+            select(
+                glossary_terms.c.id,
+                glossary_terms.c.name,
+                glossary_terms.c.definition,
+                glossary_terms.c.approved,
+                glossary_terms.c.deprecated,
+                glossary_terms.c.deprecation_asserted,
+                glossary_terms.c.retired,
+            ).order_by(glossary_terms.c.name)
+        )
+    ).fetchall()
+    scope = await term_domains(conn)
+    terms = [
+        {
+            "id": r.id,
+            "name": r.name,
+            "definition": r.definition,
+            "domains": sorted(scope.get(r.id, set())),
+        }
+        for r in rows
+        if term_status(r._mapping) == "approved" and readable_term(domains, scope.get(r.id, set()))
+    ]
+    shown = {t["id"] for t in terms}
+    edges = [
+        {"from_term_id": f, "to_term_id": t, "rel_type": rel}
+        for f, t, rel in await term_edges(conn)
+        if rel in GLOSSARY_PAGE_EDGES and f in shown and t in shown
+    ]
+    return {"terms": terms, "edges": edges}

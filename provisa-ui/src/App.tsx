@@ -92,6 +92,9 @@ const MetricsPage = lazyPage(() =>
 const LibraryPage = lazyPage(() =>
   import("./pages/library/LibraryPage").then((m) => ({ default: m.LibraryPage })),
 );
+const GlossaryPage = lazyPage(() =>
+  import("./pages/context/GlossaryPage").then((m) => ({ default: m.GlossaryPage })),
+);
 const OntologyPage = lazyPage(() =>
   import("./pages/context/OntologyPage").then((m) => ({ default: m.OntologyPage })),
 );
@@ -585,11 +588,26 @@ function App() {
                                               </CapabilityGate>
                                             }
                                           />
+                                          {/* REQ-2259: the read-only Glossary, approved terms only. */}
+                                          <Route
+                                            path="/context/glossary"
+                                            element={
+                                              <CapabilityGate
+                                                capability="glossary_read"
+                                                fallback={<NotAuthorized />}
+                                              >
+                                                <GlossaryPage />
+                                              </CapabilityGate>
+                                            }
+                                          />
                                           {/* REQ-2259, REQ-1590: the glossary has its own read right; curation inside asks glossary_rw. */}
                                           <Route
                                             path="/context/ontology"
                                             element={
-                                              <CapabilityGate capability="glossary_read" fallback={<NotAuthorized />}>
+                                              <CapabilityGate
+                                                capability="glossary_read"
+                                                fallback={<NotAuthorized />}
+                                              >
                                                 <OntologyPage />
                                               </CapabilityGate>
                                             }
@@ -598,7 +616,10 @@ function App() {
                                           <Route
                                             path="/context/documents"
                                             element={
-                                              <CapabilityGate capability="glossary_read" fallback={<NotAuthorized />}>
+                                              <CapabilityGate
+                                                capability="glossary_read"
+                                                fallback={<NotAuthorized />}
+                                              >
                                                 <LibraryPage />
                                               </CapabilityGate>
                                             }
@@ -607,7 +628,10 @@ function App() {
                                           <Route
                                             path="/context/sync"
                                             element={
-                                              <CapabilityGate capability="org_settings" fallback={<NotAuthorized />}>
+                                              <CapabilityGate
+                                                capability="org_settings"
+                                                fallback={<NotAuthorized />}
+                                              >
                                                 <ContextSyncPage />
                                               </CapabilityGate>
                                             }

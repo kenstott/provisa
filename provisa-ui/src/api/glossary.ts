@@ -742,3 +742,31 @@ export async function fetchStewardshipSummary(): Promise<StewardshipSummary> {
   if (!res.ok) throw await mutationError(res, "fetchStewardshipSummary");
   return res.json();
 }
+
+/** REQ-2259: one approved term as the Glossary page shows it. */
+export interface GlossaryEntryTerm {
+  id: number;
+  name: string;
+  definition: string | null;
+  domains: string[];
+  changed_at: string;
+}
+
+/** REQ-2259: an edge the Glossary page draws: a kind of / kinds, see also, also called. */
+export interface GlossaryEntryEdge {
+  from_term_id: number;
+  to_term_id: number;
+  rel_type: "KIND_OF" | "RELATED_TO" | "SYNONYM_OF";
+}
+
+/** REQ-2259: the approved terms the caller reads and the edges between them. */
+export interface GlossaryEntries {
+  terms: GlossaryEntryTerm[];
+  edges: GlossaryEntryEdge[];
+}
+
+export async function fetchGlossaryEntries(): Promise<GlossaryEntries> {
+  const res = await fetch(`${API_BASE}/admin/glossary/entries`);
+  if (!res.ok) throw await mutationError(res, "fetchGlossaryEntries");
+  return res.json();
+}
