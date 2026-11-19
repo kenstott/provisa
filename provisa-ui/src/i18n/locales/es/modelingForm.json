@@ -30,11 +30,11 @@
     "errorRequired": "El nombre, el origen y el dominio son obligatorios.",
     "submit": "Crear",
     "createdTitle": "{{name}} creado",
-    "createdMv": "Se construyó una vista materializada — el {{kind}} \"{{name}}\" en el dominio {{domain}}. Ahora aparece en Tablas registradas y se puede consultar.",
+    "createdMv": "Se construyó una vista materializada — el {{kind}} \"{{name}}\" en el dominio {{domain}}. Ahora aparece en la página Tablas y se puede consultar.",
     "createdHistory": "El historial se registra: los valores pasados se pueden consultar mediante viaje en el tiempo.",
     "createdDims": "Se registraron {{count}} enlace(s) de dimensión para que el hecho pueda unirse a sus entidades.",
     "reviseTitle": "¿Necesita cambiarlo?",
-    "reviseBody": "Este diálogo solo crea. Para revisar \"{{name}}\" — su clave, atributos, historial o columnas — edítelo en Tablas registradas. Volver a ejecutar este diálogo con el mismo nombre sobrescribe el modelo existente.",
+    "reviseBody": "Este diálogo solo crea. Para revisar \"{{name}}\" — su clave, atributos, historial o columnas — edítelo en la página Tablas. Volver a ejecutar este diálogo con el mismo nombre sobrescribe el modelo existente.",
     "createAnother": "Crear otro",
     "done": "Listo"
   }
