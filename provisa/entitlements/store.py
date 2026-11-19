@@ -29,7 +29,7 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import insert, select
+from sqlalchemy import insert, select, update
 
 from provisa.compiler.naming import domain_to_sql_name
 from provisa.core.schema_org import entitlement_expiries, entitlements, roles
@@ -493,6 +493,55 @@ async def load_idp(conn: "Connection", principal: str | None = None) -> dict[str
             row.identifiers
         )
     return out
+
+
+#: Why a removed account's open lists and rules were ended.
+_REMOVED_ACCOUNT = "account removed"
+
+
+async def remove_person(conn: "Connection", principal: str, tombstone: str) -> None:
+    """After ``principal``'s account was removed: end every list held for them, Provisa's and the
+    identity provider's, and every expiry rule in force on their grants, then rewrite every row
+    naming them, as the person or as who set it, to ``tombstone``, as the account's other
+    references are (:func:`provisa.core.org_membership.remove_account`). The history stays, closed,
+    and stops naming anyone, and the store no longer lists the id among the people it knows, so no
+    model build gives it a role again (REQ-2219: a removed account leaves no rows under its name)."""
+    lists = history.current(await history.entitlement_periods(conn, principal=principal))
+    rules = history.current(await history.expiry_periods(conn, principal=principal))
+    async with conn.transaction():
+        for row in (p.row for p in lists):
+            await conn.execute_core(
+                insert(entitlements).values(
+                    source=row.source,
+                    principal=principal,
+                    role_id=row.role_id,
+                    kind=row.kind,
+                    capability=row.capability,
+                    identifiers=[],
+                    removed=True,
+                    reason=_REMOVED_ACCOUNT,
+                )
+            )
+        for row in (p.row for p in rules):
+            await conn.execute_core(
+                insert(entitlement_expiries).values(
+                    rule_key=row.rule_key,
+                    principal=principal,
+                    role_id=row.role_id,
+                    ends_at=row.ends_at,
+                    ends=row.ends,
+                    list_kind=row.list_kind,
+                    removed=True,
+                    reason=_REMOVED_ACCOUNT,
+                )
+            )
+        for table in (entitlements, entitlement_expiries):
+            await conn.execute_core(
+                update(table).where(table.c.principal == principal).values(principal=tombstone)
+            )
+            await conn.execute_core(
+                update(table).where(table.c.set_by == principal).values(set_by=tombstone)
+            )
 
 
 async def record_product_creator(

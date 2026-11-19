@@ -69,10 +69,12 @@ async def record_people(org_id: str, principals: Iterable[str]) -> None:
 
 async def record_removed_account(removed: dict) -> None:
     """After an account's removal (``removed``, as ``org_membership.remove_account`` returns it):
-    in every org it left, the identity-provider lists held for it are ended in the store and
-    dropped from the runtime, and its effective rows are closed and rewritten to its tombstone.
-    Nothing is recomputed for it: a recompute could give it a role by default. With no lists and
-    no role grants left, no later recompute gives it a role (REQ-2219)."""
+    in every org it left, every list held for it, Provisa's and the identity provider's, is ended
+    in the store and its rows rewritten to its tombstone, the identity provider's are dropped from
+    the runtime, and its effective rows are closed and rewritten to its tombstone. Nothing is
+    recomputed for it: a recompute could give it a role by default. With nothing in the store
+    naming it, no later model build lists it among the people it knows or gives it a role
+    (REQ-2219)."""
     from provisa.api.app import state
     from provisa.auth.middleware import forget_person_idp
     from provisa.entitlements import effective_store, store
@@ -80,7 +82,7 @@ async def record_removed_account(removed: dict) -> None:
     user_id = removed["deleted"]
     for org_id in removed["left_orgs"]:
         async with _prod_store(org_id) as conn:
-            await store.mirror_idp(conn, user_id, {})
+            await store.remove_person(conn, user_id, removed["tombstone"])
             state.idp_entitlements = {
                 p: lists for p, lists in state.idp_entitlements.items() if p != user_id
             }

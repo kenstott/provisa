@@ -246,6 +246,60 @@ async def test_a_recompute_after_removal_gives_no_role_from_cached_idp_lists(org
     assert not await _any_rows(org, "hana")
 
 
+async def _store_rows_naming(state, user: str) -> list[tuple[str, str]]:
+    """(table, column) of every entitlement store row that names ``user``."""
+    from provisa.core.schema_org import entitlement_expiries, entitlements
+
+    out: list[tuple[str, str]] = []
+    async with state.model_db.acquire() as conn:
+        for t in (entitlements, entitlement_expiries):
+            for column in ("principal", "set_by"):
+                rows = await conn.execute_core(select(t.c.id).where(t.c[column] == user))
+                out.extend((t.name, column) for _ in rows.fetchall())
+    return out
+
+
+async def test_a_model_build_after_removal_gives_no_default_role_to_its_lists(org):
+    from provisa.api.effective_rows import record_removed_account
+    from provisa.entitlements import store
+
+    org.auth_config = {
+        **_FROM_PROVISA,
+        "default_assignments": [{"role_id": "viewer", "domain_id": "*"}],
+    }
+    async with org.model_db.acquire() as conn:
+        await store.write_list(
+            conn,
+            "ivy",
+            "viewer",
+            "tables",
+            ["finance.revenue"],
+            expires_at=datetime.now(UTC) + timedelta(days=30),
+            set_by="ivy",
+            reason="own list",
+        )
+        await store.set_list(
+            conn, "jon", "viewer", "tables", ["finance.revenue"], set_by="ivy", reason="for jon"
+        )
+        await store.mirror_idp(conn, "ivy", {"viewer": {"columns": ("finance.revenue.amount",)}})
+        await store.mirror_idp(conn, "ivy", {})  # a closed identity-provider row
+    await _recorded(org, "ivy")
+    assert await _held(org, "ivy")
+
+    await record_removed_account(_removed("ivy"))
+    async with org.model_db.acquire() as conn:
+        assert "ivy" not in await effective_store.known_principals(conn)
+        await effective_store.write_every_holder(conn, org)
+        assert "ivy" not in await store.load_held(conn)
+        # Jon keeps the list ivy set for him, attributed to the tombstone.
+        assert await store.held_list(conn, "jon", "viewer", "tables") == ("finance.revenue",)
+        tomb = (await store.load_held(conn)).get(tombstone_id("ivy"))
+    assert tomb is None  # the tombstone holds nothing: its lists and rules were ended first
+    assert not await _any_rows(org, "ivy")
+    assert await _store_rows_naming(org, "ivy") == []
+    assert await _store_rows_naming(org, tombstone_id("ivy"))
+
+
 # Invitations
 
 
