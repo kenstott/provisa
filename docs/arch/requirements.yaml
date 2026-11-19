@@ -47902,7 +47902,11 @@
     type; its table''s name or alias and description; and a few distinct sample values read as the curator
     through the governed path (masks and redaction applied; none for a sensitive column). It is also given
     the definitions of related terms that have one, not only their names. The draft still defines the business
-    concept, not the column.'
+    concept, not the column. (Amended 2026-11-18, A TABLE THE CURATOR CANNOT READ GIVES NO SAMPLES, AND
+    THE DRAFT STILL RUNS:) Maintainer 2026-11-18. When a bound column''s table cannot be read as the curator
+    for samples (its source is unreachable, or the curator''s role cannot read it), the assistant drafts
+    without that table''s samples, still using its descriptions and types, and the result names the tables
+    that gave no samples. Drafting definitions for every term continues past such a table.'
   use_case: 'Bottom-up bootstrap means the glossary is never empty: every column name seeds the vocabulary, avoiding the failure mode of top-down glossary projects. Concept-level discovery ("show every physical field that means order date"), expert routing for data questions, grounded vocabulary for NL-to-SQL and agent surfaces via the MCP term-lookup tool, and glossary interchange with external catalogs through metadata export.'
   scenario: 'Given tables with columns cust_id, customerId, and CUSTOMER_KEY registered in the semantic
     layer
