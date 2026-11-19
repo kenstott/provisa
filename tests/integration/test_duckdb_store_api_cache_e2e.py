@@ -95,11 +95,25 @@ async def _post(server, path: str, body: dict) -> httpx.Response:
 
 
 def _store_schemas(store_path: Path) -> set[str]:
-    con = duckdb.connect(str(store_path), read_only=True)
-    try:
-        return {r[0] for r in con.execute("SELECT schema_name FROM duckdb_schemas()").fetchall()}
-    finally:
-        con.close()
+    """The store's schemas, read the way every server operation reaches the file (REQ-1901): under
+    the exclusive ``flock`` on its sentinel ``<store>.lock``. The server may hold the file between
+    this test's requests (any store operation it runs, on a request thread or a background one),
+    and DuckDB's file lock refuses a second process while it does; the sentinel lock waits for that
+    operation to end instead."""
+    from provisa.core.host_lock import lock_fd, unlock_fd
+
+    with open(f"{store_path}.lock", "a+") as lockfile:
+        lock_fd(lockfile.fileno(), wait=True)
+        try:
+            con = duckdb.connect(str(store_path), read_only=True)
+            try:
+                return {
+                    r[0] for r in con.execute("SELECT schema_name FROM duckdb_schemas()").fetchall()
+                }
+            finally:
+                con.close()
+        finally:
+            unlock_fd(lockfile.fileno())
 
 
 async def test_a_graphql_read_of_a_remote_table_is_served_through_the_store(cache_server):
@@ -115,8 +129,8 @@ async def test_the_cache_schema_is_created_in_the_store_file(cache_server):
     server, store_path = cache_server
     resp = await _post(server, "/data/graphql", {"query": "{ goodItems { id } }"})
     assert resp.status_code == 200, resp.text
-    # The broker holds the store file only for the length of one operation (REQ-1901), so a
-    # read-only open between requests does not contend with the server.
+    # The broker holds the store file only for the length of one operation, under the store's
+    # sentinel lock (REQ-1901); the read takes that lock too, so it never meets an operation open.
     assert any(s.endswith("_gql_cache") for s in _store_schemas(store_path)), (
         "the API cache schema was not created in the materialize store"
     )
