@@ -238,9 +238,16 @@ function selectedDomainsQuery(domains: ReadonlySet<string> | null): string {
   return `?${params.toString()}`;
 }
 
+// REQ-1387: a draft says which bound tables gave no samples, so the curator knows the AI read no
+// values from them.
+export interface GeneratedDefinition {
+  definition: string;
+  tables_without_samples: string[];
+}
+
 export async function generateAllGlossaryDefinitions(
   domains: ReadonlySet<string> | null,
-): Promise<{ generated: number }> {
+): Promise<{ generated: number; tables_without_samples: string[] }> {
   const res = await fetch(
     `${API_BASE}/admin/glossary/definitions/generate${selectedDomainsQuery(domains)}`,
     {
@@ -370,14 +377,13 @@ export async function generateGlossaryRelationships(domains: ReadonlySet<string>
 export async function generateGlossaryDefinition(
   termId: number,
   domains: ReadonlySet<string> | null,
-): Promise<string> {
+): Promise<GeneratedDefinition> {
   const res = await fetch(
     `${API_BASE}/admin/glossary/terms/${termId}/definition/generate${selectedDomainsQuery(domains)}`,
     { method: "POST" },
   );
   if (!res.ok) throw await mutationError(res, "generateGlossaryDefinition");
-  const data = (await res.json()) as { definition: string };
-  return data.definition;
+  return res.json();
 }
 
 export async function deleteGlossaryTerm(termId: number): Promise<void> {

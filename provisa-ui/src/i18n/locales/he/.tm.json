@@ -11015,5 +11015,6 @@
   "he/capabilityHelp.json::capabilityHelp.domain_steward": "Steward domains: a domain serves governed data only while a role holds this on it.",
   "he/capabilityHelp.json::capabilityHelp.term_owner": "Own glossary terms: receive questions and proposed changes to a term's definition, and approve those changes.",
   "he/capabilityHelp.json::capabilityHelp.judgment_basis_owner": "Own judgment bases: answer for them, grant read-write on them and hand ownership over.",
-  "he/serverErrors.json::serverErrors.entitlements.invalid_identifier": "{{identifier}} is not a valid {{kind}} entry."
+  "he/serverErrors.json::serverErrors.entitlements.invalid_identifier": "{{identifier}} is not a valid {{kind}} entry.",
+  "glossaryTab.json::glossaryTab.tablesWithoutSamples": "No sample values were read from: {{tables}}."
 }

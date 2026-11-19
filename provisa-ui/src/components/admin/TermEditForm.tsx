@@ -118,6 +118,8 @@ export function TermEditForm({
       if (!r.success) throw refusalError(r);
     },
   };
+  // REQ-1387: the bound tables the last draft read no samples from.
+  const [unsampled, setUnsampled] = useState<string[]>([]);
   const [refused, setRefused] = useState<{ field: Change["field"]; message: string } | null>(null);
   // A column's move refused over the tags it takes off (REQ-2145): which change, and what it does.
   const [loss, setLoss] = useState<{
@@ -265,9 +267,14 @@ export function TermEditForm({
 
   const generate = async () => {
     setGenerating(true);
+    setUnsampled([]);
     try {
-      const text = await generateGlossaryDefinition(term.id, viewDomains);
+      const { definition: text, tables_without_samples } = await generateGlossaryDefinition(
+        term.id,
+        viewDomains,
+      );
       if (text) set({ definition: text });
+      setUnsampled(tables_without_samples);
     } catch (e) {
       setRefused({ field: "fields", message: e instanceof Error ? e.message : String(e) });
     } finally {
@@ -339,6 +346,11 @@ export function TermEditForm({
               generating={generating}
               onGenerate={() => void generate()}
             />
+            {unsampled.length > 0 && (
+              <Alert color="yellow" data-testid="glossary-definition-unsampled">
+                {t("glossaryTab.tablesWithoutSamples", { tables: unsampled.join(", ") })}
+              </Alert>
+            )}
           </Stack>
         </FormField>
         <FormField size="long">

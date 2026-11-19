@@ -73,6 +73,7 @@
     "generateMenu": "יצירה באמצעות AI",
     "definitionsGenerated": "הגדרה {{count}} נוצרה.",
     "definitionsGenerated_other": "{{count}} הגדרות נוצרו.",
+    "tablesWithoutSamples": "לא נקראו ערכי דוגמה מ: {{tables}}.",
     "relationshipsGenerated": "קשר {{count}} נוסף.",
     "relationshipsGenerated_other": "{{count}} קשרים נוספו.",
     "retire": "הוצא משימוש",

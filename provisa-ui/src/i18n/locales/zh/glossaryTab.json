@@ -73,6 +73,7 @@
     "generateMenu": "使用 AI 生成",
     "definitionsGenerated": "已生成 {{count}} 个定义。",
     "definitionsGenerated_other": "已生成 {{count}} 个定义。",
+    "tablesWithoutSamples": "未从以下表读取到样本值：{{tables}}。",
     "relationshipsGenerated": "已添加 {{count}} 个关系。",
     "relationshipsGenerated_other": "已添加 {{count}} 个关系。",
     "retire": "停用",

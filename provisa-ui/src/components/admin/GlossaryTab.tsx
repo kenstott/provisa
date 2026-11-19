@@ -427,11 +427,21 @@ export function GlossaryTab() {
     setBulkGeneratingDefinitions(true);
     setActionError("");
     try {
-      const { generated } = await generateAllGlossaryDefinitions(viewDomains);
+      const { generated, tables_without_samples } =
+        await generateAllGlossaryDefinitions(viewDomains);
       notifications.show({
         color: "green",
         message: t("glossaryTab.definitionsGenerated", { count: generated }),
       });
+      // REQ-1387: name the tables the drafts read no samples from; it stays until dismissed.
+      if (tables_without_samples.length > 0)
+        notifications.show({
+          color: "yellow",
+          autoClose: false,
+          message: t("glossaryTab.tablesWithoutSamples", {
+            tables: tables_without_samples.join(", "),
+          }),
+        });
       if (selectedId !== null) await loadDetail(selectedId);
       await refreshList();
     } catch (e) {
