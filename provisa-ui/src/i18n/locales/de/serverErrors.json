@@ -193,10 +193,12 @@
       "source_domains_empty": "Die gewählten Quelldomänen enthalten keine Tabelle, die die Erkennung liest.",
       "source_not_found": "Quelle '{{source_id}}' nicht gefunden",
       "source_tables_not_read": "Keine der gewählten Quelltabellen ({{count}}) wird gelesen: Die Erkennung lässt Tabellen einer Systemdomäne und Tabellen außer Betrieb aus.",
+      "source_tables_outside_domains": "Die gewählten Quelltabellen liegen außerhalb der im Domänenfilter ausgewählten Domänen: {{names}}.",
       "table_id_required": "table_id für den Tabellen-Geltungsbereich erforderlich",
       "table_not_found": "Die Tabelle {{table_id}} ist nicht registriert.",
       "target_domains_empty": "Die gewählten Zieldomänen enthalten keine Tabelle, die die Erkennung liest.",
       "target_tables_not_read": "Keine der gewählten Zieltabellen ({{count}}) wird gelesen: Die Erkennung lässt Tabellen einer Systemdomäne und Tabellen außer Betrieb aus.",
+      "target_tables_outside_domains": "Die gewählten Zieltabellen liegen außerhalb der im Domänenfilter ausgewählten Domänen: {{names}}.",
       "unknown_source_type": "Unbekannter Quellentyp: {{type}}",
       "vendor_unknown": "{{vendor}} listet hier keine Modelle auf; geben Sie den Modellnamen ein."
     },

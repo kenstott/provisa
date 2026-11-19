@@ -193,10 +193,12 @@
       "source_domains_empty": "De gekozen brondomeinen bevatten geen tabel die detectie leest.",
       "source_not_found": "Bron '{{source_id}}' niet gevonden",
       "source_tables_not_read": "Geen van de gekozen brontabellen ({{count}}) wordt gelezen: detectie laat tabellen van een systeemdomein en tabellen buiten gebruik weg.",
+      "source_tables_outside_domains": "De gekozen brontabellen vallen buiten de domeinen die in het domeinfilter zijn geselecteerd: {{names}}.",
       "table_id_required": "table_id vereist voor tabelbereik",
       "table_not_found": "Tabel {{table_id}} is niet geregistreerd.",
       "target_domains_empty": "De gekozen doeldomeinen bevatten geen tabel die detectie leest.",
       "target_tables_not_read": "Geen van de gekozen doeltabellen ({{count}}) wordt gelezen: detectie laat tabellen van een systeemdomein en tabellen buiten gebruik weg.",
+      "target_tables_outside_domains": "De gekozen doeltabellen vallen buiten de domeinen die in het domeinfilter zijn geselecteerd: {{names}}.",
       "unknown_source_type": "Onbekend brontype: {{type}}",
       "vendor_unknown": "{{vendor}} toont hier geen modellen; voer de modelnaam in."
     },

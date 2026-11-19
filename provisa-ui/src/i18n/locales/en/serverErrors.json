@@ -192,10 +192,12 @@
       "source_domains_empty": "The chosen source domains hold no table discovery reads.",
       "source_not_found": "Source '{{source_id}}' not found",
       "source_tables_not_read": "None of the chosen source tables ({{count}}) is read: discovery leaves out a table of a system domain or one out of service.",
+      "source_tables_outside_domains": "The chosen source tables are outside the domains selected in the domain filter: {{names}}.",
       "table_id_required": "table_id required for table scope",
       "table_not_found": "Table {{table_id}} is not registered.",
       "target_domains_empty": "The chosen target domains hold no table discovery reads.",
       "target_tables_not_read": "None of the chosen target tables ({{count}}) is read: discovery leaves out a table of a system domain or one out of service.",
+      "target_tables_outside_domains": "The chosen target tables are outside the domains selected in the domain filter: {{names}}.",
       "unknown_source_type": "Unknown source type: {{type}}",
       "vendor_unknown": "{{vendor}} lists no models here; enter the model name.",
       "answer_unreadable": "The model's answer held no readable list."

@@ -193,10 +193,12 @@
       "source_domains_empty": "選択したソースドメインには、検出が読み取るテーブルがありません。",
       "source_not_found": "ソース「{{source_id}}」が見つかりません",
       "source_tables_not_read": "選択したソーステーブル ({{count}} 件) はどれも読み取られません: 検出はシステムドメインのテーブルと停止中のテーブルを除外します。",
+      "source_tables_outside_domains": "選択したソーステーブルは、ドメインフィルターで選択したドメインの外にあります: {{names}}。",
       "table_id_required": "table スコープには table_id が必要です",
       "table_not_found": "テーブル {{table_id}} は登録されていません。",
       "target_domains_empty": "選択したターゲットドメインには、検出が読み取るテーブルがありません。",
       "target_tables_not_read": "選択したターゲットテーブル ({{count}} 件) はどれも読み取られません: 検出はシステムドメインのテーブルと停止中のテーブルを除外します。",
+      "target_tables_outside_domains": "選択したターゲットテーブルは、ドメインフィルターで選択したドメインの外にあります: {{names}}。",
       "unknown_source_type": "不明なソースタイプ：{{type}}",
       "vendor_unknown": "{{vendor}} はここではモデルを一覧表示しません。モデル名を入力してください。"
     },

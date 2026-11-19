@@ -193,10 +193,12 @@
       "source_domains_empty": "所選來源域中沒有探索會讀取的表。",
       "source_not_found": "找不到數據來源「{{source_id}}」",
       "source_tables_not_read": "所選來源表（{{count}} 個）都不會被讀取：探索會略過系統域的表和已停用的表。",
+      "source_tables_outside_domains": "所選來源表不在域篩選器中選定的域內：{{names}}。",
       "table_id_required": "資料表範圍需要 table_id",
       "table_not_found": "表格 {{table_id}} 未登記。",
       "target_domains_empty": "所選目標域中沒有探索會讀取的表。",
       "target_tables_not_read": "所選目標表（{{count}} 個）都不會被讀取：探索會略過系統域的表和已停用的表。",
+      "target_tables_outside_domains": "所選目標表不在域篩選器中選定的域內：{{names}}。",
       "unknown_source_type": "未知的數據來源類型：{{type}}",
       "vendor_unknown": "{{vendor}} 在此處不列出模型；請輸入模型名稱。"
     },

@@ -55,6 +55,7 @@ import {
   startMock,
   stopMock,
   vendorModelsMock,
+  SELECTED,
 } from "./discoverDialog.fixtures";
 
 vi.mock("../../hooks/useAdminQueries", async () =>
@@ -104,8 +105,7 @@ describe("Discovery dialog: the run's scope", () => {
 
   it("never offers a system domain's table, which a run would leave out", async () => {
     await openDialog();
-    // Every domain offered (shop is ticked from the Domains picker): every table a run could read.
-    await pick("Source domains", "crm");
+    // Every domain ticked in the Domains picker is offered and chosen: every table a run could read.
     await userEvent.click(screen.getByRole("textbox", { name: "Source tables" }));
     const offered = (await screen.findAllByRole("option", { hidden: true })).map(
       (o) => o.textContent,
@@ -118,7 +118,7 @@ describe("Discovery dialog: the run's scope", () => {
     await openDialog();
     fireEvent.click(runButton());
     await waitFor(() => expect(startMock).toHaveBeenCalledTimes(1));
-    expect(startMock).toHaveBeenCalledWith(SCOPE);
+    expect(startMock).toHaveBeenCalledWith(SCOPE, SELECTED);
   });
 
   it("sends the source tables chosen", async () => {
@@ -126,7 +126,9 @@ describe("Discovery dialog: the run's scope", () => {
     await pick("Source tables", "orders");
     await waitFor(() => expect(lastScope().source_tables).toEqual([1]), SLOW);
     fireEvent.click(runButton());
-    await waitFor(() => expect(startMock).toHaveBeenCalledWith({ ...SCOPE, source_tables: [1] }));
+    await waitFor(() =>
+      expect(startMock).toHaveBeenCalledWith({ ...SCOPE, source_tables: [1] }, SELECTED),
+    );
   });
 
   it("hides the target while Same as source is ticked, and sends the target set when it is not", async () => {
@@ -145,11 +147,14 @@ describe("Discovery dialog: the run's scope", () => {
     );
     fireEvent.click(runButton());
     await waitFor(() =>
-      expect(startMock).toHaveBeenCalledWith({
-        ...SCOPE,
-        target_same_as_source: false,
-        target_domains: ["crm"],
-      }),
+      expect(startMock).toHaveBeenCalledWith(
+        {
+          ...SCOPE,
+          target_same_as_source: false,
+          target_domains: ["crm"],
+        },
+        SELECTED,
+      ),
     );
   });
 
@@ -165,7 +170,10 @@ describe("Discovery dialog: the run's scope", () => {
     ).toBe(semanticsBox());
     fireEvent.click(runButton());
     await waitFor(() =>
-      expect(startMock).toHaveBeenCalledWith({ ...SCOPE, ...UNMEASURED, kinds: ["foreign_keys"] }),
+      expect(startMock).toHaveBeenCalledWith(
+        { ...SCOPE, ...UNMEASURED, kinds: ["foreign_keys"] },
+        SELECTED,
+      ),
     );
   });
 
@@ -260,7 +268,7 @@ describe("Discovery dialog: the request count before Run", () => {
     await waitFor(() => expect(countMock).toHaveBeenCalled(), SLOW);
     countMock.mockResolvedValue({ ...COUNT, requests: 1, table_pairs: 1 });
     await pick("Source domains", "crm");
-    await waitFor(() => expect(lastScope().source_domains).toEqual(["shop", "crm"]), SLOW);
+    await waitFor(() => expect(lastScope().source_domains).toEqual(["shop"]), SLOW);
     await waitFor(() =>
       expect(screen.getByTestId("discover-count")).toHaveTextContent(
         "At most 1 call to the model, covering 1 table pair. A pair left unanswered may be asked again.",
@@ -312,7 +320,10 @@ describe("Discovery dialog: the model for this run", () => {
     await waitFor(() => expect(runButton()).toBeEnabled());
     fireEvent.click(runButton());
     await waitFor(() =>
-      expect(startMock).toHaveBeenCalledWith({ ...SCOPE, vendor: "openai", model: "gpt-4.1" }),
+      expect(startMock).toHaveBeenCalledWith(
+        { ...SCOPE, vendor: "openai", model: "gpt-4.1" },
+        SELECTED,
+      ),
     );
   });
 

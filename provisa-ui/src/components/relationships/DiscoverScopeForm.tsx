@@ -11,7 +11,8 @@
 // REQ-413: what a discovery run looks at, set before anything runs. The kinds (Semantics greyed
 // out when no vendor has a key), the model for this run, the source domains and tables, and the
 // target, the same as the source unless that is unticked. Tables default to every table of the
-// chosen domains, domains to those ticked in the Domains picker; system domains are never offered.
+// chosen domains, domains to those ticked in the Domains picker; only those are offered (REQ-2253)
+// and system domains never are.
 // At most how many requests the run makes is shown before Run, counted again as the scope changes:
 // the count reads no table, so it is an upper bound, and it says how many tables are never read.
 //
@@ -49,6 +50,7 @@ import {
   type KeyValueSettings,
 } from "../../api/admin";
 import { isInternalDomain } from "../../lib/internalDomains";
+import { useViewDomains } from "../../lib/viewDomains";
 import { MultiSelect, type MultiSelectOption } from "../MultiSelect";
 import { FormChecks, FormField, FormFooter, FormLayout } from "../form/FormLayout";
 import { DiscoverModelField } from "./DiscoverModelField";
@@ -200,8 +202,9 @@ export function DiscoverScopeForm({
   /** Set the form up from the defaults. */
   onReset: () => void;
   onCancel: () => void;
-  /** Start the run; a refusal is thrown with the server's words. */
-  onRun: (scope: DiscoveryScope) => Promise<void>;
+  /** Start the run within ``domains``, the navbar filter's selection (null: no narrowing); a
+   *  refusal is thrown with the server's words. */
+  onRun: (scope: DiscoveryScope, domains: ReadonlySet<string> | null) => Promise<void>;
 }) {
   const { t } = useTranslation();
   const [models, setModels] = useState<DiscoveryModels | null>(null);
@@ -221,12 +224,15 @@ export function DiscoverScopeForm({
   const setKeyValues = (change: Partial<KeyValueSettings>) =>
     setSettings((s) => (s === null ? s : { ...s, key_values: { ...s.key_values, ...change } }));
 
+  // REQ-2253: only the domains selected in the navbar's domain filter are offered, and the run is
+  // asked within them: no table outside them is counted, read or proposed.
+  const view = useViewDomains();
   const domains = useMemo(
     () =>
       [...new Set(tables.map((tb) => tb.domainId))]
-        .filter((d) => !isInternalDomain(d))
+        .filter((d) => !isInternalDomain(d) && (view === null || view.has(d)))
         .sort((a, b) => a.localeCompare(b)),
-    [tables],
+    [tables, view],
   );
   // Read once, as the form mounts: what the run before asked for, as the form can hold it now.
   const [restored] = useState(() =>
@@ -369,7 +375,7 @@ export function DiscoverScopeForm({
     let live = true;
     setCounted({ state: "counting" });
     const timer = setTimeout(() => {
-      countDiscoveryRun(JSON.parse(scopeKey) as DiscoveryScope)
+      countDiscoveryRun(JSON.parse(scopeKey) as DiscoveryScope, view)
         .then((count) => live && setCounted({ state: "counted", count }))
         .catch((e) => live && setCounted({ state: "failed", error: errorText(e) }));
     }, COUNT_DEBOUNCE_MS);
@@ -377,7 +383,7 @@ export function DiscoverScopeForm({
       live = false;
       clearTimeout(timer);
     };
-  }, [scopeKey, models]);
+  }, [scopeKey, models, view]);
 
   const domainOptions: MultiSelectOption[] = domains.map((d) => ({
     id: d,
@@ -439,7 +445,7 @@ export function DiscoverScopeForm({
     setStarting(true);
     setStartError("");
     try {
-      await onRun(scope);
+      await onRun(scope, view);
     } catch (e) {
       setStartError(errorText(e));
     } finally {

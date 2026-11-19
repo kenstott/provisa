@@ -225,7 +225,12 @@ async def test_chat_routes_the_new_tools_and_lists_them_for_the_model(app_state)
     assert model_tool_specs.SYSTEM_SECTION in chat._SYSTEM
     with pytest.raises(ApiError, match="source_registration"):
         await chat._execute_tool(
-            app_state, "viewer", "run_profiler", {"source_id": "p"}, request=_request("viewer")
+            app_state,
+            "viewer",
+            "run_profiler",
+            {"source_id": "p"},
+            scope=None,
+            request=_request("viewer"),
         )
 
 

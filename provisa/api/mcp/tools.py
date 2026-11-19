@@ -132,7 +132,10 @@ async def _catalog(state: Any, role: str | None) -> list[CatalogTable]:
     failing on that mismatch."""
     if not state.model_db:
         return []
-    raw = await _build_catalog_tables_async(state, role)
+    from provisa.security.selected_domains import admits
+
+    # REQ-2253: an AI-assisted call lists only the domains selected in the domain filter.
+    raw = [t for t in await _build_catalog_tables_async(state, role) if admits(t.domain_id)]
     return _semantic_catalog(raw, _meta_index(state))
 
 
@@ -145,9 +148,12 @@ def _find_role_table(ctx: Any, schema: str, table: str) -> Any:
     """
     from provisa.compiler.naming import domain_to_sql_name
     from provisa.compiler.sql_rewrite import semantic_table_name
+    from provisa.security.selected_domains import admits
 
     for meta in getattr(ctx, "tables", {}).values():
         if domain_to_sql_name(getattr(meta, "domain_id", "")) != schema:
+            continue
+        if not admits(meta.domain_id):  # REQ-2253: outside the selected domains
             continue
         if semantic_table_name(meta) == table:
             return meta
@@ -195,6 +201,7 @@ def _foreign_keys(state: Any, role: str, schema: str, table: str) -> list[dict]:
     """
     from provisa.compiler.naming import domain_to_sql_name
     from provisa.compiler.sql_rewrite import semantic_table_name
+    from provisa.security.selected_domains import admits
 
     ctx = state.contexts[role]
     tmeta = _find_role_table(ctx, schema, table)
@@ -209,6 +216,8 @@ def _foreign_keys(state: Any, role: str, schema: str, table: str) -> list[dict]:
         ):
             continue
         target = jm.target
+        if not admits(target.domain_id):  # REQ-2253: a key into a domain outside the selection
+            continue
         fks.append(
             {
                 "column": jm.source_column,
@@ -378,7 +387,11 @@ async def cypher_field_names(state: Any, role: str, schema: str, table: str) -> 
     meta = _find_role_table(ctx, schema, table)
     if meta is None:
         raise ValueError(f"Table not found: {schema}.{table}")
-    label_map = _build_label_map(ctx, role, state)
+    from provisa.nl.scope import label_map_within
+    from provisa.security.selected_domains import current
+
+    # REQ-2253: no relationship into a domain outside the selection is named.
+    label_map = label_map_within(_build_label_map(ctx, role, state), current())
     node = label_map.nodes.get(meta.type_name)
     if node is None:
         raise ValueError(
@@ -414,7 +427,9 @@ async def cypher_field_names(state: Any, role: str, schema: str, table: str) -> 
     }
 
 
-async def generate_explore_queries(state: Any, role: str, question: str) -> dict:  # REQ-1852
+async def generate_explore_queries(  # REQ-1852
+    state: Any, role: str, question: str, domains: list[str] | None = None
+) -> dict:
     """Generate ready-to-run queries for EVERY Explore query surface from one natural-language
     question, using the SAME pipeline the NL Explore page runs (REQ-355..359) — an LLM call of
     its own that resolves table selection, joins, and aggregation shape, not a guess. Use this
@@ -433,7 +448,10 @@ async def generate_explore_queries(state: Any, role: str, question: str) -> dict
     already the exact, complete value to navigate with: for jsonapi/openapi it IS the full
     deep-link path/method (do not reassemble it from schema/table names — see REQ-1851), for grpc
     it IS the exact rpc call signature, for sql/graphql/cypher it IS the query text. Use it
-    verbatim; never rewrite, simplify, or re-derive it yourself."""
+    verbatim; never rewrite, simplify, or re-derive it yourself.
+
+    ``domains`` (REQ-2253): the domains to work within, intersected with the role's; ``None`` is
+    every domain the role reaches."""
     require_role(role, state)
     from provisa.core.org_secrets import read_org_api_keys
     from provisa.core.org_settings import resolve_org_config
@@ -465,7 +483,13 @@ async def generate_explore_queries(state: Any, role: str, question: str) -> dict
     # untyped `llm` param relies on) rather than subclassing it.
     llm: Any = ProvisaLLMClient("sql_generation", config=cfg, api_keys=api_keys)
 
-    await run_nl_job(job_id, question, role, state, job_store, llm, strict=strict, deliver=None)
+    from provisa.nl.scope import selected_scope
+    from provisa.security.rights import require_role as _role_of
+
+    scope = selected_scope(_role_of(state.roles, role), domains)
+    await run_nl_job(
+        job_id, question, role, state, job_store, llm, strict=strict, deliver=None, scope=scope
+    )
 
     job = await job_store.get(job_id)
     if job is None:
@@ -1494,9 +1518,15 @@ def _visible_metrics(state: Any, role: str) -> list[Any]:
     Sourced from the loaded config (``state.config.metrics``) — the same reachable
     config object _domain_descriptions reads domains from.
     """
+    from provisa.nl.scope import metrics_within
+    from provisa.security.selected_domains import current
+
     config = getattr(state, "config", None)
     metrics = getattr(config, "metrics", None) or []
-    return [m for m in metrics if role in m.visible_to]
+    visible = [m for m in metrics if role in m.visible_to]
+    scope = current()
+    # REQ-2253: an AI-assisted call sees only the metrics whose every table is in the selection.
+    return visible if scope is None else metrics_within(visible, state.contexts[role], scope)
 
 
 def list_metrics(state: Any, role: str) -> list[dict]:

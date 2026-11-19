@@ -19,9 +19,12 @@ queues a metadata publish after every mutation because the term graph exports.
 # Requirements: REQ-1387, REQ-1590, REQ-1591, REQ-2130
 
 import asyncio
+import json
+from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
 
 from provisa.core.repositories.identity import TableInIdentity
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Annotated, Any, cast
 
 from fastapi import APIRouter, Query, Request
 
@@ -29,12 +32,18 @@ from provisa.api.admin._guards import require_active_org_id
 from provisa.api.admin._platform_guard import _require_right
 from provisa.api.errors import ApiError
 from provisa.core.repositories import glossary as glossary_repo
+from provisa.discovery.analyzer import read_answer_list
 from provisa.security.rights import Capability
 
 if TYPE_CHECKING:
+    from provisa.llm.client import Completion
     from datetime import date as _date
 
     from provisa.core.database import Connection, Database
+
+# REQ-2253: the navbar filter's selection, as repeated ``domains=`` parameters (see _view_scope).
+# Annotated so a handler awaited directly defaults to None, not to the Query marker.
+SelectedDomains = Annotated[list[str] | None, Query()]
 
 router = APIRouter(prefix="/admin/glossary", tags=["admin", "glossary"])
 
@@ -546,12 +555,46 @@ async def related_terms_for_tables(
         )
 
 
+def definition_prompt(
+    term: dict, scope: "frozenset[str] | None", term_scope: "dict[int, set[str]]"
+) -> str:
+    """The definition assistant's prompt for ``term`` (REQ-2253): only the physical columns of
+    tables in ``scope`` and only the related terms readable in ``scope`` ride along, so nothing of
+    a domain the curator has filtered out is sent to the model. ``None`` is no narrowing."""
+    from provisa.core.glossary import readable_term
+
+    refs = ", ".join(
+        f"{r['alias'] or r['table_name']}.{r['column_name']}"
+        for r in term["refs"]
+        if scope is None or r["domain_id"] in scope
+    )
+    related = ", ".join(
+        f"{e['rel_type']} {e['name']}"
+        for e in term["edges_out"] + term["edges_in"]
+        if readable_term(scope, frozenset(term_scope.get(e["term_id"], set())))
+    )
+    kind = "an abstract business concept" if term["is_abstract"] else "a business term"
+    return (
+        f"You are a data catalog assistant. Write a concise one-to-two sentence business "
+        f"definition for {kind} named '{term['name']}' in an enterprise data ontology. "
+        f"Define the business concept itself, in plain business language a non-technical "
+        f"reader would use — never describe it as 'this field', 'this column', or any other "
+        f"database-schema wording, even when physical columns are listed below for context. "
+        + (f"It is bound to these physical columns: {refs}. " if refs else "")
+        + (f"Related terms: {related}. " if related else "")
+        + "Respond with only the definition text, no preamble."
+    )
+
+
 @router.post("/terms/{term_id}/definition/generate")
-async def generate_definition(request: Request, term_id: int) -> dict:
+async def generate_definition(
+    request: Request, term_id: int, domains: SelectedDomains = None
+) -> dict:
     """Draft a definition for the term with the org's AI model.
 
     Generation only — nothing persists until the user saves the draft through the
-    PATCH endpoint, so a bad draft costs nothing.
+    PATCH endpoint, so a bad draft costs nothing. ``domains`` is the navbar filter's selection
+    (REQ-2253): the term's columns and related terms outside it are not sent.
     """
     _require_glossary_rw(request)
     require_active_org_id(request)
@@ -562,21 +605,8 @@ async def generate_definition(request: Request, term_id: int) -> dict:
         if term is None:
             raise ApiError(404, "glossary.term_not_found", f"term {term_id} not found")
         await _require_term_curatable(_conn, term_id, request)
-    refs = ", ".join(f"{r['alias'] or r['table_name']}.{r['column_name']}" for r in term["refs"])
-    related = ", ".join(
-        f"{e['rel_type']} {e['name']}" for e in term["edges_out"] + term["edges_in"]
-    )
-    kind = "an abstract business concept" if term["is_abstract"] else "a business term"
-    prompt = (
-        f"You are a data catalog assistant. Write a concise one-to-two sentence business "
-        f"definition for {kind} named '{term['name']}' in an enterprise data ontology. "
-        f"Define the business concept itself, in plain business language a non-technical "
-        f"reader would use — never describe it as 'this field', 'this column', or any other "
-        f"database-schema wording, even when physical columns are listed below for context. "
-        + (f"It is bound to these physical columns: {refs}. " if refs else "")
-        + (f"Related terms: {related}. " if related else "")
-        + "Respond with only the definition text, no preamble."
-    )
+        term_scope = await glossary_repo.term_domains(_conn)
+    prompt = definition_prompt(term, _view_scope(request, domains), term_scope)
     from provisa.api.admin.schema_helpers import _call_llm
 
     definition = await _call_llm(prompt, "glossary_definition", max_tokens=256)
@@ -584,24 +614,27 @@ async def generate_definition(request: Request, term_id: int) -> dict:
 
 
 @router.post("/definitions/generate")
-async def generate_all_definitions(request: Request) -> dict:
+async def generate_all_definitions(request: Request, domains: SelectedDomains = None) -> dict:
     """Draft-and-save definitions for every term that has none.
 
     Bulk generation persists directly — unlike the per-term draft there is no editor
     holding the result — but only ever fills EMPTY definitions; human text is never
-    overwritten. One publish notification covers the batch.
+    overwritten. One publish notification covers the batch. ``domains`` is the navbar filter's
+    selection (REQ-2253): only its terms are defined, from its columns and related terms only.
     """
     _require_glossary_rw(request)
     org_id = require_active_org_id(request)
     from provisa.api.admin.schema_helpers import _call_llm
 
+    scope = _view_scope(request, domains)
     pool = await _pool()
     async with pool.acquire() as conn:
         _conn = cast("Connection", conn)
         # REQ-1591: the bulk fill writes definitions, so it may only reach the terms this caller
         # may curate — narrowed here rather than skipped per-term, so the count it reports is the
-        # count of what it was allowed to touch.
-        terms = await glossary_repo.list_terms(_conn, domains=_authority(request))
+        # count of what it was allowed to touch. REQ-2253: and only those of the selected domains.
+        terms = await glossary_repo.list_terms(_conn, domains=scope)
+        term_scope = await glossary_repo.term_domains(_conn)
         generated = 0
         for summary in terms:
             if summary["definition"]:
@@ -609,24 +642,7 @@ async def generate_all_definitions(request: Request) -> dict:
             term = await glossary_repo.get_term(_conn, summary["id"])
             if term is None:
                 continue
-            refs = ", ".join(
-                f"{r['alias'] or r['table_name']}.{r['column_name']}" for r in term["refs"]
-            )
-            related = ", ".join(
-                f"{e['rel_type']} {e['name']}" for e in term["edges_out"] + term["edges_in"]
-            )
-            kind = "an abstract business concept" if term["is_abstract"] else "a business term"
-            prompt = (
-                f"You are a data catalog assistant. Write a concise one-to-two sentence "
-                f"business definition for {kind} named '{term['name']}' in an enterprise "
-                f"data glossary. Define the business concept itself, in plain business "
-                f"language a non-technical reader would use — never describe it as 'this "
-                f"field', 'this column', or any other database-schema wording, even when "
-                f"physical columns are listed below for context. "
-                + (f"It is bound to these physical columns: {refs}. " if refs else "")
-                + (f"Related terms: {related}. " if related else "")
-                + "Respond with only the definition text, no preamble."
-            )
+            prompt = definition_prompt(term, scope, term_scope)
             definition = await _call_llm(prompt, "glossary_definition", max_tokens=256)
             if definition.strip():
                 await glossary_repo.set_definition(_conn, term["id"], definition.strip())
@@ -656,14 +672,28 @@ def _term_role(term: dict) -> str:
     return "property" if term.get("ref_count") else "concept"
 
 
-def relationship_prompt(terms: list[dict]) -> str:
+def relationship_prompt(terms: list[dict], already: list[dict] | None = None) -> str:
     """The relationship assistant's prompt (REQ-1387, RELATED_TO IS THE LAST RESORT).
 
     It carries each grounding type's test, prefers KIND_OF, PART_OF and VALID_VALUE_OF wherever
     one fits, links a concept to its property-role terms with PART_OF, and proposes RELATED_TO only
     when none fits, with the one-term shapes that would resolve the pair. It never asks for a new
     term: candidate names come back as suggestions for the curator.
+
+    ``already`` names the relationships an earlier answer that stopped at its output limit
+    proposed (:func:`gather_relationships`): the model is asked for the rest only.
     """
+    rest = ""
+    if already:
+        rest = (
+            "These relationships are already proposed; do not repeat them, and give only further "
+            "ones (an empty array when there are none):\n"
+            + "\n".join(
+                json.dumps({k: p[k] for k in ("from", "to", "rel_type")}, ensure_ascii=False)
+                for p in already
+            )
+            + "\n\n"
+        )
     term_lines = "\n".join(
         f"- {t['name']} [{_term_role(t)}]" + (f": {t['definition']}" if t["definition"] else "")
         for t in terms
@@ -696,11 +726,79 @@ def relationship_prompt(terms: list[dict]) -> str:
         "Only propose relationships you are confident in; fewer, correct edges beat many "
         "speculative ones.\n\n"
         f"Terms:\n{term_lines}\n\n"
-        'Respond with only a JSON array like [{"from": "term name", "to": "term name", '
+        + rest
+        + 'Respond with only a JSON array like [{"from": "term name", "to": "term name", '
         '"rel_type": "PART_OF"}, {"from": "term name", "to": "term name", "rel_type": '
         '"RELATED_TO", "resolve": {"component_type": ["candidate"], "common_whole": '
         '["candidate"]}}] — no prose, no code fences.'
     )
+
+
+#: The bulk relationship suggestion's output limit, in tokens, per request (REQ-1387).
+RELATIONSHIP_MAX_TOKENS = 2048
+
+#: The bulk relationship suggestion, as a failure names it.
+_SUGGESTION = "the ontology relationship suggestion"
+
+
+@dataclass(frozen=True)
+class Gathered:
+    """The relationships the model proposed across its answers (:func:`gather_relationships`).
+    ``unanswered`` says, in plain words, why the rest could not be asked for; None when the last
+    answer was complete."""
+
+    proposals: list[dict]
+    unanswered: str | None
+
+
+def _proposal_key(raw: Any) -> tuple[str, str, str] | None:
+    if not isinstance(raw, dict):
+        return None
+    a, b, rel_type = raw.get("from"), raw.get("to"), raw.get("rel_type")
+    if isinstance(a, str) and isinstance(b, str) and isinstance(rel_type, str):
+        return a, b, rel_type
+    return None
+
+
+async def gather_relationships(
+    terms: list[dict], ask: Callable[[str], Awaitable["Completion"]], max_tokens: int
+) -> Gathered:
+    """Ask the model for the glossary's relationships until an answer is complete (REQ-1387).
+
+    One answer can stop at its output limit (``max_tokens``) with its list unclosed: its complete
+    relationships are kept (:func:`provisa.discovery.analyzer.read_answer_list`, discovery's own
+    reader) and the model is asked again for the rest, told what it already proposed. Every
+    answer that stops at its limit adds at least one relationship, or asking ends: what is left is
+    named in :attr:`Gathered.unanswered`. An answer read as no list, or one that stops before a
+    first relationship is complete, fails by name (``ApiError`` 502), never as a parser error.
+    """
+    proposals: list[dict] = []
+    seen: set[tuple[str, str, str]] = set()
+    while True:
+        answer = await ask(relationship_prompt(terms, proposals))
+        read = read_answer_list(answer.text, answer.cut_off)
+        new: list[dict] = []
+        for raw in read.items or []:
+            key = _proposal_key(raw)
+            if key is not None and key not in seen:
+                seen.add(key)
+                new.append(raw)
+        proposals.extend(new)
+        if read.items is not None and not answer.cut_off:
+            return Gathered(proposals, None)
+        if read.items is not None and new:
+            continue
+        what = f"the rest of {_SUGGESTION}" if proposals else _SUGGESTION
+        why = (
+            f"stopped at its limit of {max_tokens} output tokens before a further relationship "
+            "was complete"
+            if answer.cut_off
+            else "was not a list of relationships"
+        )
+        message = f"The model's answer to {what} {why}."
+        if not proposals:
+            raise ApiError(502, "glossary.generation_unparseable", message)
+        return Gathered(proposals, message)
 
 
 def resolve_shapes(raw: object) -> list[dict]:
@@ -767,8 +865,6 @@ async def suggest_resolving_terms(request: Request) -> dict:
     RELATED_TO anyway.
     """
     _require_glossary_rw(request)
-    import json
-
     from provisa.api.admin.schema_helpers import _call_llm
 
     body = await request.json()
@@ -788,50 +884,51 @@ async def suggest_resolving_terms(request: Request) -> dict:
     raw = raw.strip().removeprefix("```json").removeprefix("```").removesuffix("```")
     try:
         proposed = json.loads(raw)
-    except ValueError as exc:
-        raise ApiError(
-            502, "glossary.generation_unparseable", f"Model response was not JSON: {exc}"
-        ) from exc
+    except ValueError:
+        proposed = None
     if not isinstance(proposed, dict):
-        raise ApiError(502, "glossary.generation_unparseable", "Model response was not an object")
+        raise ApiError(
+            502,
+            "glossary.generation_unparseable",
+            f"The model's answer naming terms to resolve {pair[0]['name']} RELATED_TO "
+            f"{pair[1]['name']} was not an object of candidate names.",
+        )
     return {"resolve": resolve_shapes(proposed)}
 
 
 @router.post("/relationships/generate")
-async def generate_relationships(request: Request) -> dict:
-    """Suggest-and-save typed edges (KIND_OF/PART_OF/...) across the whole glossary.
+async def generate_relationships(request: Request, domains: SelectedDomains = None) -> dict:
+    """Suggest-and-save typed edges (KIND_OF/PART_OF/...) across the selected domains' terms.
 
-    The org's AI model reads the full term list and proposes edges within the closed
-    rel-type set; anything malformed — unknown term, self-edge, free-form type — is
+    The org's AI model reads the term list of the navbar filter's selection (``domains``,
+    REQ-2253; absent is every domain the caller reaches) and proposes edges within the closed
+    rel-type set; anything malformed — a term outside that list, self-edge, free-form type — is
     dropped, existing edges upsert idempotently, and one notification covers the batch.
     """
     _require_glossary_rw(request)
     org_id = require_active_org_id(request)
-    import json
-
-    from provisa.api.admin.schema_helpers import _call_llm
+    from provisa.api.admin.schema_helpers import _call_llm_detailed
     from provisa.core.glossary import TERM_EDGE_TYPES
 
     pool = await _pool()
     async with pool.acquire() as conn:
         _conn = cast("Connection", conn)
         terms = await glossary_repo.list_terms(
-            _conn, include_deprecated=False, domains=_authority(request)
-        )  # REQ-1591: propose edges only within the caller's own domains
-        if len(terms) < 2:
-            return {"added": 0, "review": []}
-        by_name = {t["name"]: t["id"] for t in terms}
-        prompt = relationship_prompt(terms)
-        raw = await _call_llm(prompt, "glossary_relationships", max_tokens=2048)
-        raw = raw.strip().removeprefix("```json").removeprefix("```").removesuffix("```")
-        try:
-            proposals = json.loads(raw)
-        except ValueError as exc:
-            raise ApiError(
-                502, "glossary.generation_unparseable", f"Model response was not JSON: {exc}"
-            ) from exc
-        if not isinstance(proposals, list):
-            raise ApiError(502, "glossary.generation_unparseable", "Model response was not a list")
+            _conn, include_deprecated=False, domains=_view_scope(request, domains)
+        )  # REQ-1591, REQ-2253: propose edges only within the caller's selected domains
+    if len(terms) < 2:
+        return {"added": 0, "review": []}
+    by_name = {t["name"]: t["id"] for t in terms}
+
+    async def ask(prompt: str) -> "Completion":
+        return await _call_llm_detailed(
+            prompt, "glossary_relationships", max_tokens=RELATIONSHIP_MAX_TOKENS
+        )
+
+    gathered = await gather_relationships(terms, ask, RELATIONSHIP_MAX_TOKENS)
+    proposals: list = gathered.proposals
+    async with pool.acquire() as conn:
+        _conn = cast("Connection", conn)
 
         # Optional: when a Jev key is configured, drop proposals Jev scores as implausible
         # instead of relying only on the generating model's "only propose relationships
@@ -876,6 +973,13 @@ async def generate_relationships(request: Request) -> dict:
                 )
     if added:
         await _notify(org_id, "ontology relationships generated")
+    if gathered.unanswered is not None:
+        # The relationships already read are saved above; the rest is reported by name.
+        raise ApiError(
+            502,
+            "glossary.generation_incomplete",
+            f"{added} relationships were added. {gathered.unanswered}",
+        )
     return {"added": added, "review": review}
 
 

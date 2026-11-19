@@ -963,12 +963,38 @@ export function fetchModelLimits(vendor: string, model: string): Promise<ModelLi
   return discoveryRequest(`/limits?${q}`, "Model limits");
 }
 
-export function countDiscoveryRun(scope: DiscoveryScope): Promise<DiscoveryCount> {
-  return discoveryRequest("/runs/count", "Discovery count", postJson(scope));
+// REQ-2253: a run carries the navbar filter's selection (useViewDomains; null asks for no
+// narrowing) as repeated ``domains=`` parameters, so the server reads, counts and proposes no table
+// outside it. Repeated rather than comma-joined: the no-domain domain's id is the empty string.
+function selectedDomainsQuery(domains: ReadonlySet<string> | null): string {
+  if (domains === null) return "";
+  const params = new URLSearchParams();
+  for (const d of domains) params.append("domains", d);
+  return `?${params.toString()}`;
 }
 
-export async function startDiscoveryRun(scope: DiscoveryScope): Promise<DiscoveryRun> {
-  return (await discoveryRequest<{ run: DiscoveryRun }>("/runs", "Discovery", postJson(scope))).run;
+export function countDiscoveryRun(
+  scope: DiscoveryScope,
+  domains: ReadonlySet<string> | null,
+): Promise<DiscoveryCount> {
+  return discoveryRequest(
+    `/runs/count${selectedDomainsQuery(domains)}`,
+    "Discovery count",
+    postJson(scope),
+  );
+}
+
+export async function startDiscoveryRun(
+  scope: DiscoveryScope,
+  domains: ReadonlySet<string> | null,
+): Promise<DiscoveryRun> {
+  return (
+    await discoveryRequest<{ run: DiscoveryRun }>(
+      `/runs${selectedDomainsQuery(domains)}`,
+      "Discovery",
+      postJson(scope),
+    )
+  ).run;
 }
 
 export async function fetchDiscoveryRun(id: number): Promise<DiscoveryRun> {
@@ -2267,16 +2293,24 @@ export async function explainSql(
   return resp.json();
 }
 
+// REQ-2253: an NL request carries the navbar filter's selection (useViewDomains) as a list; null
+// asks for no narrowing and sends none. The server intersects it with the role's domains and sends
+// the model, and reads, nothing outside it.
+function selectedDomainsBody(domains: ReadonlySet<string> | null): { domains?: string[] } {
+  return domains ? { domains: [...domains] } : {};
+}
+
 export async function nlToSql(
   question: string,
-  role: string = "org_admin",
-  strict: boolean = true,
+  role: string,
+  strict: boolean,
+  domains: ReadonlySet<string> | null,
 ): Promise<{ sql: string; cypher?: string; attempts: number; error?: string }> {
   try {
     const resp = await fetch(`${API_BASE_RAW}/data/nl-to-sql`, {
       method: "POST",
       headers: { "Content-Type": "application/json", "X-Provisa-Role": role },
-      body: JSON.stringify({ question, strict }),
+      body: JSON.stringify({ question, strict, ...selectedDomainsBody(domains) }),
     });
     if (!resp.ok) {
       return { sql: "", attempts: 0, error: await refusal(resp, "nlToSql") };
@@ -2909,12 +2943,13 @@ export async function recomputeSchemaClusters(): Promise<{
 export async function submitNlQuery(
   q: string,
   role: string,
-  strict: boolean = false,
+  strict: boolean,
+  domains: ReadonlySet<string> | null,
 ): Promise<{ job_id: string }> {
   const res = await fetch(`${API_BASE}/query/nl`, {
     method: "POST",
     headers: { "Content-Type": "application/json", "X-Provisa-Role": role },
-    body: JSON.stringify({ q, strict }),
+    body: JSON.stringify({ q, strict, ...selectedDomainsBody(domains) }),
   });
   if (!res.ok) {
     const data = await res.json().catch(() => ({ error: res.statusText }));

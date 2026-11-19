@@ -1862,7 +1862,8 @@ For Google Cloud sources, set `GOOGLE_APPLICATION_CREDENTIALS` to the path of yo
 | `PROVISA_EXTRAS` | `firebase,vector` | Pyproject extras baked into the app image; `scripts/provisa` derives it from `dq_checker` in `~/.provisa/config.yaml` |
 | `HF_ENDPOINT` | `https://huggingface.co` | Hugging Face hub a local embedding model is downloaded from; sets `embedding.hub_endpoint` when no value is stored. See [Runtime Settings](admin.md#runtime-settings) |
 | `PROVISA_DQ_CHECKER` | `none` | Installer-only: `none`/`soda`/`gx`, read by `first-launch.sh` in non-interactive mode and written to `config.yaml` as `dq_checker` |
-| `ANTHROPIC_API_KEY` | — | Anthropic key for an organization that stored none. Read only on an install of one organization; the other vendors' variables are in [Where an AI key comes from](secrets.md#where-an-ai-key-comes-from) |
+| `ANTHROPIC_API_KEY` | — | Anthropic key used when the organization stored none, on an install of one organization only. Other vendors' variables: [Where an AI key comes from](secrets.md#where-an-ai-key-comes-from) |
+| `ANTHROPIC_CUSTOM_HEADERS`, `OPENAI_CUSTOM_HEADERS` | — | Leave unset with `multitenancy: true`. The vendor's SDK sends these headers on every call, so while either is set, every call through that SDK is refused with `ai.server_environment_sets` |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | — | Overrides `observability.endpoint` |
 | `OTEL_SERVICE_NAME` | `provisa` | Overrides `observability.service_name` |
 | `OTEL_LOG_LEVEL` | `WARNING` | Overrides `observability.log_level` |

@@ -481,6 +481,10 @@ def column_table(doc: dict[str, Any]) -> list[str]:
 
 
 def _column_failure(column: dict[str, Any]) -> str:
+    """What a column call that did not pass did. One skipped by design is its decision's group
+    (function_support.measure_column keeps the group alone); any other carries its detail."""
+    if column["outcome"] == "by_design":
+        return f"skipped by design ({column['group']})".replace("|", "\\|")
     detail = column["detail"]
     said = " ".join((detail.get("error") or detail["difference"]).split())
     return said.replace("|", "\\|")[:200]

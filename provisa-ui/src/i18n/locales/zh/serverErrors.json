@@ -193,10 +193,12 @@
       "source_domains_empty": "所选源域中没有发现会读取的表。",
       "source_not_found": "未找到数据源 '{{source_id}}'",
       "source_tables_not_read": "所选源表（{{count}} 个）都不会被读取：发现会略过系统域的表和已停用的表。",
+      "source_tables_outside_domains": "所选源表不在域筛选器中选定的域内：{{names}}。",
       "table_id_required": "表范围需要 table_id",
       "table_not_found": "表 {{table_id}} 未注册。",
       "target_domains_empty": "所选目标域中没有发现会读取的表。",
       "target_tables_not_read": "所选目标表（{{count}} 个）都不会被读取：发现会略过系统域的表和已停用的表。",
+      "target_tables_outside_domains": "所选目标表不在域筛选器中选定的域内：{{names}}。",
       "unknown_source_type": "未知数据源类型：{{type}}",
       "vendor_unknown": "{{vendor}} 在此处不列出模型；请输入模型名称。"
     },
