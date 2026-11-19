@@ -373,6 +373,7 @@
   "tests/integration/test_operation_functions_e2e.py": 110.0,
   "tests/integration/test_operator_floor_e2e.py": 150.8,
   "tests/integration/test_opioids_demo.py": 0.0,
+  "tests/integration/test_ops_entitlements_e2e.py": 25.6,
   "tests/integration/test_ops_requests_e2e.py": 25.6,
   "tests/integration/test_ops_signal_reads_by_org.py": 89.5,
   "tests/integration/test_oracle_source_e2e.py": 52.7,
