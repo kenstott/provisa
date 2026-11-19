@@ -4164,7 +4164,9 @@ class ProvisaConfig(BaseModel):
     # This embedded-MPP instance's role in the cluster: "coordinator" (also schedules work on itself)
     # or "worker". Drives which template write_trino_config renders into config.properties.
     node_role: str = "coordinator"
-    jvm_heap_gb: int = 8
+    # Fits docker-compose.core.yml's 7g engine container with room for the JVM's native memory;
+    # trino/etc/jvm.config carries the same -Xmx.
+    jvm_heap_gb: int = 5
     query_max_memory: str = "4GB"
     query_max_memory_per_node: str = "2GB"
     query_max_total_memory: str = "8GB"
