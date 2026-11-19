@@ -8,9 +8,9 @@ This page lists every feature that has a polyfill or a limitation on ClickHouse.
 
 When ClickHouse is a serving engine reading a source it attaches directly, it may push work into that source, with the source's semantics, so a result can depend on the pair; the cases known are fixed by hints, listed under each source.
 
-Rules on this page: 582, of which 402 are only the name of a rewrite function. A rule is printed as the translator runs it: the PostgreSQL pattern, its holes written `$name` (typed with `::type`), then the dialect's replacement.
+Rules on this page: 583, of which 403 are only the name of a rewrite function. A rule is printed as the translator runs it: the PostgreSQL pattern, its holes written `$name` (typed with `::type`), then the dialect's replacement.
 
-19 of the grid's 559 features are native on ClickHouse and left out.
+19 of the grid's 560 features are native on ClickHouse and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>an array of dimensions</strong><br>cardinality, unnest and array_to_string of an array of more than one dimension: of every element, in storage order.</td><td><pre><code>function provisa.transpiler.polyfill.array_dimensions.of_dimensions: cardinality, unnest or array_to_string of an array of more than one dimension: of every</code></pre></td><td></td><td></td><td></td></tr>
@@ -341,6 +341,9 @@ function provisa.transpiler.polyfill.numbers.int8_of_jsonb: int8 of a jsonb valu
 <tr><td><strong>float8</strong><br>A jsonb number as double precision.</td><td><pre><code>float8($v)
 =&gt;
 function provisa.transpiler.polyfill.numbers.float8_of_jsonb: float8 of a jsonb value, its JSON number; of a json value, refused.</code></pre></td><td><ul><li>Of a jsonb value: a JSON number answers its value read to the nearest float, 22003 where it overflows or underflows. NULL answers NULL, and any other kind raises PostgreSQL&#x27;s error (22023). Text a jsonb column holds that is not valid JSON, which PostgreSQL refuses when it is stored, raises 22P02 (invalid input syntax for type json) when the call reads it, without PostgreSQL&#x27;s detail line. Of a json value, refused by name.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>float4</strong><br>A jsonb number as real.</td><td><pre><code>float4($v)
+=&gt;
+function provisa.transpiler.polyfill.numbers.float4_of_jsonb: float4 of a jsonb value, its JSON number; of a json value, refused.</code></pre></td><td><ul><li>Of a jsonb value: a JSON number answers its value read to the nearest float, 22003 where it overflows or underflows. NULL answers NULL, and any other kind raises PostgreSQL&#x27;s error (22023). Text a jsonb column holds that is not valid JSON, which PostgreSQL refuses when it is stored, raises 22P02 (invalid input syntax for type json) when the call reads it, without PostgreSQL&#x27;s detail line. Of a json value, refused by name.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>float4eq</strong><br>Whether a real is equal to a real, NaN after every other value.</td><td><pre><code>float4eq($a, $b)
 =&gt;
 arrayElement(arrayMap((_a, _b) -&gt; if(_a IS NULL OR _b IS NULL, NULL, tuple(isNaN(_a), if(isNaN(_a), 0, toFloat64(_a))) = tuple(isNaN(_b), if(isNaN(_b), 0, toFloat64(_b)))), [$a], [$b]), 1)</code></pre></td><td></td><td></td><td></td></tr>

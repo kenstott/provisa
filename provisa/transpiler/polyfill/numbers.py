@@ -452,7 +452,7 @@ _JSONB_INTEGERS = {"int2": ("smallint", "Int16", 16), "int4": ("integer", "Int32
 #: Each float of a jsonb number: PostgreSQL's name of it and ClickHouse's type.
 #: float4 has no row: ClickHouse reads a decimal text to a Float32 through a Float64, which can
 #: round twice where PostgreSQL's strtof rounds once.
-_JSONB_FLOATS = {"float8": ("double precision", "Float64")}
+_JSONB_FLOATS = {"float8": ("double precision", "Float64"), "float4": ("real", "Float32")}
 
 
 def _ch_jsonb_number(function: str) -> str:
@@ -525,6 +525,15 @@ def _ch_jsonb_number(function: str) -> str:
                 condition=f"{number} AND {read} = 0 AND match({mantissa}, '[1-9]')"
             )
         )
+        if ch_type == "Float32":
+            # float4in of the numeric's text: past a real's range, or a nonzero value it holds
+            # as zero, 22003 (the double read first, then the nearest real)
+            real = f"toFloat32({read})"
+            raises.append(
+                ch_fail("22003", f"value out of range for type {name}").format(
+                    condition=f"{number} AND (isInfinite({real}) OR ({real} = 0 AND {read} != 0))"
+                )
+            )
         answer = f"CAST({read} + 0 AS Nullable({ch_type}))"  # + 0: a negative zero is zero
         typed = f"Nullable({ch_type})"
     checked = " + ".join(raises)

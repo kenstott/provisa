@@ -6,14 +6,14 @@ A polyfill is how Provisa gives a PostgreSQL client PostgreSQL's behaviour on a 
 
 ## [PostgreSQL](postgres.md)
 
-559 of the grid's 559 features are native on PostgreSQL and left out.
+560 of the grid's 560 features are native on PostgreSQL and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 </tbody></table>
 
 ## [DuckDB](duckdb.md)
 
-209 of the grid's 559 features are native on DuckDB and left out.
+209 of the grid's 560 features are native on DuckDB and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -270,6 +270,9 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>float8</strong><br>A jsonb number as double precision.</td><td><pre><code>float8($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>float4</strong><br>A jsonb number as real.</td><td><pre><code>float4($v)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>float4eq</strong><br>Whether a real is equal to a real, NaN after every other value.</td><td><pre><code>float4eq($a, $b)
@@ -1020,7 +1023,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Trino](trino.md)
 
-128 of the grid's 559 features are native on Trino and left out.
+128 of the grid's 560 features are native on Trino and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -1359,6 +1362,9 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>float8</strong><br>A jsonb number as double precision.</td><td><pre><code>float8($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>float4</strong><br>A jsonb number as real.</td><td><pre><code>float4($v)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>float4eq</strong><br>Whether a real is equal to a real, NaN after every other value.</td><td><pre><code>float4eq($a, $b)
@@ -2132,7 +2138,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Presto](presto.md)
 
-128 of the grid's 559 features are native on Presto and left out.
+128 of the grid's 560 features are native on Presto and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -2471,6 +2477,9 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>float8</strong><br>A jsonb number as double precision.</td><td><pre><code>float8($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>float4</strong><br>A jsonb number as real.</td><td><pre><code>float4($v)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>float4eq</strong><br>Whether a real is equal to a real, NaN after every other value.</td><td><pre><code>float4eq($a, $b)
@@ -3244,7 +3253,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Athena](athena.md)
 
-128 of the grid's 559 features are native on Athena and left out.
+128 of the grid's 560 features are native on Athena and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -3583,6 +3592,9 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>float8</strong><br>A jsonb number as double precision.</td><td><pre><code>float8($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>float4</strong><br>A jsonb number as real.</td><td><pre><code>float4($v)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>float4eq</strong><br>Whether a real is equal to a real, NaN after every other value.</td><td><pre><code>float4eq($a, $b)
@@ -4356,7 +4368,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [ClickHouse](clickhouse.md)
 
-19 of the grid's 559 features are native on ClickHouse and left out.
+19 of the grid's 560 features are native on ClickHouse and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>an array of dimensions</strong><br>cardinality, unnest and array_to_string of an array of more than one dimension: of every element, in storage order.</td><td><pre><code>function provisa.transpiler.polyfill.array_dimensions.of_dimensions: cardinality, unnest or array_to_string of an array of more than one dimension: of every</code></pre></td><td></td><td></td><td></td></tr>
@@ -4687,6 +4699,9 @@ function provisa.transpiler.polyfill.numbers.int8_of_jsonb: int8 of a jsonb valu
 <tr><td><strong>float8</strong><br>A jsonb number as double precision.</td><td><pre><code>float8($v)
 =&gt;
 function provisa.transpiler.polyfill.numbers.float8_of_jsonb: float8 of a jsonb value, its JSON number; of a json value, refused.</code></pre></td><td><ul><li>Of a jsonb value: a JSON number answers its value read to the nearest float, 22003 where it overflows or underflows. NULL answers NULL, and any other kind raises PostgreSQL&#x27;s error (22023). Text a jsonb column holds that is not valid JSON, which PostgreSQL refuses when it is stored, raises 22P02 (invalid input syntax for type json) when the call reads it, without PostgreSQL&#x27;s detail line. Of a json value, refused by name.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>float4</strong><br>A jsonb number as real.</td><td><pre><code>float4($v)
+=&gt;
+function provisa.transpiler.polyfill.numbers.float4_of_jsonb: float4 of a jsonb value, its JSON number; of a json value, refused.</code></pre></td><td><ul><li>Of a jsonb value: a JSON number answers its value read to the nearest float, 22003 where it overflows or underflows. NULL answers NULL, and any other kind raises PostgreSQL&#x27;s error (22023). Text a jsonb column holds that is not valid JSON, which PostgreSQL refuses when it is stored, raises 22P02 (invalid input syntax for type json) when the call reads it, without PostgreSQL&#x27;s detail line. Of a json value, refused by name.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>float4eq</strong><br>Whether a real is equal to a real, NaN after every other value.</td><td><pre><code>float4eq($a, $b)
 =&gt;
 arrayElement(arrayMap((_a, _b) -&gt; if(_a IS NULL OR _b IS NULL, NULL, tuple(isNaN(_a), if(isNaN(_a), 0, toFloat64(_a))) = tuple(isNaN(_b), if(isNaN(_b), 0, toFloat64(_b)))), [$a], [$b]), 1)</code></pre></td><td></td><td></td><td></td></tr>
@@ -5579,7 +5594,7 @@ function provisa.transpiler.polyfill.bytea.encode_of_bytes: encode of a bytea he
 
 ## [Snowflake](snowflake.md)
 
-209 of the grid's 559 features are native on Snowflake and left out.
+209 of the grid's 560 features are native on Snowflake and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -5847,6 +5862,9 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>float8</strong><br>A jsonb number as double precision.</td><td><pre><code>float8($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>float4</strong><br>A jsonb number as real.</td><td><pre><code>float4($v)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>float4eq</strong><br>Whether a real is equal to a real, NaN after every other value.</td><td><pre><code>float4eq($a, $b)
@@ -6596,7 +6614,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Databricks](databricks.md)
 
-209 of the grid's 559 features are native on Databricks and left out.
+209 of the grid's 560 features are native on Databricks and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -6864,6 +6882,9 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>float8</strong><br>A jsonb number as double precision.</td><td><pre><code>float8($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>float4</strong><br>A jsonb number as real.</td><td><pre><code>float4($v)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>float4eq</strong><br>Whether a real is equal to a real, NaN after every other value.</td><td><pre><code>float4eq($a, $b)
@@ -7613,7 +7634,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [BigQuery](bigquery.md)
 
-209 of the grid's 559 features are native on BigQuery and left out.
+209 of the grid's 560 features are native on BigQuery and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -7881,6 +7902,9 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>float8</strong><br>A jsonb number as double precision.</td><td><pre><code>float8($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>float4</strong><br>A jsonb number as real.</td><td><pre><code>float4($v)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>float4eq</strong><br>Whether a real is equal to a real, NaN after every other value.</td><td><pre><code>float4eq($a, $b)
@@ -8630,7 +8654,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [T-SQL (SQL Server, Fabric, Synapse)](tsql.md)
 
-209 of the grid's 559 features are native on T-SQL (SQL Server, Fabric, Synapse) and left out.
+209 of the grid's 560 features are native on T-SQL (SQL Server, Fabric, Synapse) and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -8898,6 +8922,9 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>float8</strong><br>A jsonb number as double precision.</td><td><pre><code>float8($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>float4</strong><br>A jsonb number as real.</td><td><pre><code>float4($v)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>float4eq</strong><br>Whether a real is equal to a real, NaN after every other value.</td><td><pre><code>float4eq($a, $b)
@@ -9647,7 +9674,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Redshift](redshift.md)
 
-209 of the grid's 559 features are native on Redshift and left out.
+209 of the grid's 560 features are native on Redshift and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -9915,6 +9942,9 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>float8</strong><br>A jsonb number as double precision.</td><td><pre><code>float8($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>float4</strong><br>A jsonb number as real.</td><td><pre><code>float4($v)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>float4eq</strong><br>Whether a real is equal to a real, NaN after every other value.</td><td><pre><code>float4eq($a, $b)
@@ -10664,7 +10694,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [MySQL](mysql.md)
 
-209 of the grid's 559 features are native on MySQL and left out.
+209 of the grid's 560 features are native on MySQL and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -10932,6 +10962,9 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>float8</strong><br>A jsonb number as double precision.</td><td><pre><code>float8($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>float4</strong><br>A jsonb number as real.</td><td><pre><code>float4($v)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>float4eq</strong><br>Whether a real is equal to a real, NaN after every other value.</td><td><pre><code>float4eq($a, $b)
@@ -11681,7 +11714,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [SingleStore](singlestore.md)
 
-209 of the grid's 559 features are native on SingleStore and left out.
+209 of the grid's 560 features are native on SingleStore and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -11949,6 +11982,9 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>float8</strong><br>A jsonb number as double precision.</td><td><pre><code>float8($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>float4</strong><br>A jsonb number as real.</td><td><pre><code>float4($v)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>float4eq</strong><br>Whether a real is equal to a real, NaN after every other value.</td><td><pre><code>float4eq($a, $b)
@@ -12698,7 +12734,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [SQLite](sqlite.md)
 
-209 of the grid's 559 features are native on SQLite and left out.
+209 of the grid's 560 features are native on SQLite and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -12966,6 +13002,9 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>float8</strong><br>A jsonb number as double precision.</td><td><pre><code>float8($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>float4</strong><br>A jsonb number as real.</td><td><pre><code>float4($v)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>float4eq</strong><br>Whether a real is equal to a real, NaN after every other value.</td><td><pre><code>float4eq($a, $b)
@@ -13715,7 +13754,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Oracle](oracle.md)
 
-209 of the grid's 559 features are native on Oracle and left out.
+209 of the grid's 560 features are native on Oracle and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -13983,6 +14022,9 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>float8</strong><br>A jsonb number as double precision.</td><td><pre><code>float8($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>float4</strong><br>A jsonb number as real.</td><td><pre><code>float4($v)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>float4eq</strong><br>Whether a real is equal to a real, NaN after every other value.</td><td><pre><code>float4eq($a, $b)
@@ -14732,7 +14774,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Hive](hive.md)
 
-209 of the grid's 559 features are native on Hive and left out.
+209 of the grid's 560 features are native on Hive and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -15000,6 +15042,9 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>float8</strong><br>A jsonb number as double precision.</td><td><pre><code>float8($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>float4</strong><br>A jsonb number as real.</td><td><pre><code>float4($v)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>float4eq</strong><br>Whether a real is equal to a real, NaN after every other value.</td><td><pre><code>float4eq($a, $b)
@@ -15749,7 +15794,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Exasol](exasol.md)
 
-209 of the grid's 559 features are native on Exasol and left out.
+209 of the grid's 560 features are native on Exasol and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -16017,6 +16062,9 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>float8</strong><br>A jsonb number as double precision.</td><td><pre><code>float8($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>float4</strong><br>A jsonb number as real.</td><td><pre><code>float4($v)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>float4eq</strong><br>Whether a real is equal to a real, NaN after every other value.</td><td><pre><code>float4eq($a, $b)
@@ -16766,7 +16814,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Druid](druid.md)
 
-209 of the grid's 559 features are native on Druid and left out.
+209 of the grid's 560 features are native on Druid and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -17034,6 +17082,9 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>float8</strong><br>A jsonb number as double precision.</td><td><pre><code>float8($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>float4</strong><br>A jsonb number as real.</td><td><pre><code>float4($v)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>float4eq</strong><br>Whether a real is equal to a real, NaN after every other value.</td><td><pre><code>float4eq($a, $b)

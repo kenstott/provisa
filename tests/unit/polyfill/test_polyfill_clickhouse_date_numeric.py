@@ -20,6 +20,7 @@ PostgreSQL's recorded answer (numbers compared by value)."""
 from __future__ import annotations
 
 import datetime
+import struct
 from decimal import Decimal, InvalidOperation
 
 import pytest
@@ -353,3 +354,31 @@ def test_random_of_numerics_out_of_order_raises_22023():
     with pytest.raises(FunctionRefused) as refused:
         transpile('SELECT pg_catalog."random"(2::numeric, 1::numeric) AS v', "clickhouse")
     assert refused.value.sqlstate == "22023"
+
+
+def _real(value: float) -> float:
+    return struct.unpack("<f", struct.pack("<f", value))[0]
+
+
+@pytest.mark.parametrize(
+    ("sql", "want"),
+    [
+        ("SELECT pg_catalog.\"float4\"('3'::jsonb) AS v", 3.0),
+        ('SELECT pg_catalog."float4"(NULL::jsonb) AS v', None),
+        ("SELECT pg_catalog.\"float4\"('12345678901234567890123456789'::jsonb) AS v", 1.2345679e28),
+        ("SELECT pg_catalog.\"float4\"('-0.5'::jsonb) AS v", -0.5),
+    ],
+)
+def test_float4_of_a_jsonb_number_is_its_real(runtime, sql, want):
+    (got,) = _answers(runtime, sql)
+    assert got == want if want is None else _real(got) == _real(want)
+
+
+@pytest.mark.parametrize(
+    ("value", "sqlstate"),
+    [("'{}'", "22023"), ("'\"x\"'", "22023"), ("'1e39'", "22003"), ("'1e-46'", "22003")],
+)
+def test_float4_of_a_jsonb_raises_postgresqls_class(runtime, value, sqlstate):
+    with pytest.raises(Exception) as raised:  # noqa: PT011 -- the engine's raise of PostgreSQL's
+        _answers(runtime, f'SELECT pg_catalog."float4"({value}::jsonb) AS v')
+    assert f"postgresql-error {sqlstate}" in str(raised.value)
