@@ -374,6 +374,7 @@ def _detect_relationships(  # REQ-313
     types: list[dict],
     queryable_type_names: set[str],
     type_to_table: dict[str, str],
+    only: set[str] | None = None,
 ) -> list[dict]:
     """Emit relationships for intra-source OBJECT column references.
 
@@ -383,6 +384,9 @@ def _detect_relationships(  # REQ-313
     no relationship: a relationship joins on columns (rel_repo.RelationshipWithoutColumns), and
     the nested object is read as its own column. A field offered as a relationship is not also
     a column (REQ-1929): it leaves the table's columns, so the relationship never hides one.
+    A relationship is offered only to a table mapped in full here (``only``, as map_schema
+    takes it): a table read on its own, for the picker or for registration, keeps the nested
+    object as a column, and a relationship is stored once both its tables are registered.
     """
     relationships = []
     for table in tables:
@@ -396,6 +400,8 @@ def _detect_relationships(  # REQ-313
             target_table = type_to_table.get(gql_type)
             if not target_table or target_table == table["name"]:
                 continue
+            if only is not None and target_table not in only:
+                continue  # its target is not mapped here: no relationship is offered to it
             if col.get("gql_is_list"):
                 continue  # its key lives on the target side: no column of this table joins
             src_col, tgt_col = _infer_fk_columns(col["name"], gql_type, src_scalars, types)
@@ -877,5 +883,5 @@ def map_schema(  # REQ-308, REQ-312, REQ-313
         )
     )
 
-    relationships = _detect_relationships(tables, types, queryable_type_names, type_to_table)
+    relationships = _detect_relationships(tables, types, queryable_type_names, type_to_table, only)
     return tables, functions, relationships
