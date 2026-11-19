@@ -3114,7 +3114,12 @@
     do not count (deer, criteria, offspring, calves, cacti, curricula, radii stay). Where a noun accepts
     both a zero plural and a regular one, the zero plural wins (fish, salmon, trout, shrimp). The main-sense
     rule applies in reverse when a plural is singularized: where senses tie, the sense whose only plural
-    is this form wins (axes to axis).'
+    is this form wins (axes to axis). (Amended 2026-11-19, WHICH ZERO PLURALS WIN, AND HOW A SHARED PLURAL
+    PICKS ITS WORD:) Maintainer 2026-11-19, refining 9387abb5d2. The zero plural wins only where the dictionary
+    lists it first with the regular form marked as used depending on usage (fish, salmon, trout, shrimp,
+    bear, doe); elsewhere the regular form keeps winning (bucks, yaks, newborns, emojis, percents). When
+    a plural belongs to several words that tie on every dictionary count, a word of its own wins over two
+    spellings of one word (axes to axis, not ax or axe).'
   use_case: Consistent multi-language naming with a single authority ensures client-facing names are predictable
     and independent of physical schema.
   code:
