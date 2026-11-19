@@ -828,7 +828,9 @@
       "not_bulk_approvable": "Só rascunhos definidos e ancorados são aprovados em conjunto; não: {{terms}}.",
       "term_ids_required": "Indique os termos a aprovar.",
       "impact_action": "Não há pré-visualização para essa ação.",
-      "impact_table_required": "Uma vinculação nomeia uma tabela ou uma das suas colunas."
+      "impact_table_required": "Uma vinculação nomeia uma tabela ou uma das suas colunas.",
+      "name_taken": "Já existe um termo chamado '{{name}}' no domínio {{domain}}. Escolha outro nome ou coloque o termo em outro domínio.",
+      "name_taken_unscoped": "Já existe um termo chamado '{{name}}' sem domínio, que portanto alcança todos os domínios. Escolha outro nome."
     },
     "table": {
       "requires_parameters": "A tabela {{table}} não pode ser contada nem perfilada: exige {{parameters}}. Dê um valor a cada um para ler as suas linhas."

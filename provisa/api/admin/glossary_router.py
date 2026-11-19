@@ -383,6 +383,13 @@ async def get_term(request: Request, term_id: int) -> dict:
     return _with_class_refusal(term)
 
 
+def _name_taken(exc: "glossary_repo.TermNameTaken") -> ApiError:
+    """A name already held in one of the term's domains (REQ-1591): 409, naming the domain."""
+    if exc.domain:
+        return ApiError(409, exc.code, str(exc), name=exc.name, domain=exc.domain)
+    return ApiError(409, exc.code, str(exc), name=exc.name)
+
+
 @router.post("/terms")
 async def create_abstract_term(request: Request) -> dict:
     """Create a term with no physical refs -- a Concept until it grounds something."""
@@ -400,6 +407,8 @@ async def create_abstract_term(request: Request) -> dict:
                 definition=body.get("definition"),
                 domains=domains,
             )
+        except glossary_repo.TermNameTaken as exc:  # REQ-1591
+            raise _name_taken(exc) from exc
         except ValueError as exc:
             raise ApiError(400, "glossary.invalid", str(exc)) from exc
     await _notify(org_id, "ontology term created")
@@ -437,13 +446,20 @@ async def update_term(request: Request, term_id: int) -> dict:
                         "a term grounded in columns or tables takes its domains from them; only a "
                         "Concept's domains can be set",
                     )
-                await glossary_repo.set_declared_domains(
-                    _conn,
-                    term_id,
-                    # REQ-1592: the term's CURRENT scope decides whether this write crosses the
-                    # enterprise boundary in either direction, so it is passed rather than re-read.
-                    _declared_domains(request, body["domains"], current=set(existing["domains"])),
+                # REQ-1592: the term's CURRENT scope decides whether this write crosses the
+                # enterprise boundary in either direction, so it is passed rather than re-read.
+                declared = _declared_domains(
+                    request, body["domains"], current=set(existing["domains"])
                 )
+                # REQ-1591: a domain the Concept joins may not already hold a term of its name.
+                await glossary_repo.refuse_name_taken(
+                    _conn,
+                    # REQ-1844: names are stored lowercase, as rename_term stores this one
+                    str(body.get("name", existing["name"])).strip().lower(),
+                    declared,
+                    other_than=term_id,
+                )
+                await glossary_repo.set_declared_domains(_conn, term_id, declared)
                 found = True
             if "name" in body:
                 found = await glossary_repo.rename_term(_conn, term_id, str(body["name"]))
@@ -461,6 +477,8 @@ async def update_term(request: Request, term_id: int) -> dict:
             raise ApiError(
                 409, exc.code, str(exc), term=exc.term, tags=", ".join(exc.tags)
             ) from exc
+        except glossary_repo.TermNameTaken as exc:  # REQ-1591
+            raise _name_taken(exc) from exc
         except ValueError as exc:
             raise ApiError(400, "glossary.invalid", str(exc)) from exc
     if not found:

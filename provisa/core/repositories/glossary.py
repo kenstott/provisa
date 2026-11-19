@@ -28,6 +28,7 @@ both (``core.glossary.agent_view``).
 
 from provisa.core import model_change, model_uri
 from provisa.core.model_row_rules import as_delete
+from collections.abc import Collection
 from typing import TYPE_CHECKING, Any
 
 import json
@@ -123,6 +124,93 @@ async def term_domains(conn: "Connection") -> dict[int, set[str]]:
     ).fetchall():
         declared.setdefault(r.term_id, set()).add(r.domain_id)
     return {**declared, **derived}
+
+
+class TermNameTaken(ValueError):
+    """A term name already held in one of the domains a term belongs to (REQ-1591, amended
+    2026-11-18): a name is unique only within a domain. ``domain`` is the domain both share; an
+    empty one means a term with no domains, which is reachable from every domain."""
+
+    def __init__(self, name: str, domain: str) -> None:
+        if domain:
+            super().__init__(f"a term named {name!r} already exists in domain {domain!r}")
+        else:
+            super().__init__(
+                f"a term named {name!r} already exists with no domain, so it reaches every domain"
+            )
+        self.code = "glossary.name_taken" if domain else "glossary.name_taken_unscoped"
+        self.name = name
+        self.domain = domain
+
+
+class TermNameAmbiguous(ValueError):
+    """A name several terms hold, looked up without the domain that tells them apart
+    (REQ-1591, amended 2026-11-18)."""
+
+    code = "glossary.name_ambiguous"
+
+    def __init__(self, name: str, domains: "list[str]") -> None:
+        super().__init__(
+            f"several terms are named {name!r}, in domains {', '.join(domains)}; name the domain"
+        )
+        self.name = name
+        self.domains = domains
+
+
+async def terms_named(conn: "Connection", name: str) -> dict[int, set[str]]:
+    """Every term named ``name``, with its domains by the one rule (:func:`term_domains`)."""
+    ids = [
+        r.id
+        for r in (
+            await conn.execute_core(
+                select(glossary_terms.c.id).where(glossary_terms.c.name == name)
+            )
+        ).fetchall()
+    ]
+    if not ids:
+        return {}
+    scopes = await term_domains(conn)
+    return {term_id: scopes.get(term_id, set()) for term_id in ids}
+
+
+async def refuse_name_taken(
+    conn: "Connection", name: str, domains: "set[str]", *, other_than: int | None = None
+) -> None:
+    """Refuse ``name`` for a term belonging to ``domains`` when another term of that name already
+    belongs to one of them (REQ-1591, amended 2026-11-18). A term with no domains is reachable
+    from every domain, so it shares one with any term, and an unscoped name shares one with
+    every term of that name."""
+    for term_id, held in sorted((await terms_named(conn, name)).items()):
+        if term_id == other_than:
+            continue
+        shared = held & domains
+        if shared:
+            raise TermNameTaken(name, sorted(shared)[0])
+        if not held or not domains:
+            raise TermNameTaken(name, "")
+
+
+async def resolve_term(
+    conn: "Connection", name: str, *, domains: "Collection[str] | None"
+) -> int | None:
+    """The id of the term named ``name``, told apart by ``domains`` (REQ-1591, amended
+    2026-11-18); None when no such term exists.
+
+    With domains: the term of that name belonging to one of them, else the one with no domains
+    (an unscoped term is reachable from every domain). With None: the only term of that name.
+    Several matches are refused with :class:`TermNameAmbiguous`, naming their domains, never
+    guessed."""
+    found = await terms_named(conn, name)
+    if domains is not None:
+        wanted = set(domains)
+        hits = [t for t, held in found.items() if held & wanted] or [
+            t for t, held in found.items() if not held
+        ]
+    else:
+        hits = list(found)
+    if len(hits) > 1:
+        raise TermNameAmbiguous(name, sorted({d for t in hits for d in found[t]}))
+    return hits[0] if hits else None
 
 
 async def set_declared_domains(conn: "Connection", term_id: int, domain_ids: "set[str]") -> None:
@@ -226,19 +314,22 @@ async def _key_targets(
     return out
 
 
-async def _property_term(conn: "Connection", business: str, table_context: str | None) -> int:
+async def _property_term(
+    conn: "Connection", business: str, table_context: str | None, domain: str
+) -> int:
     """The Property term a column that is no key derives (REQ-1387): its normalized phrase; when
     that names a Class, the phrase qualified with its own table's concept -- a column with no
-    declared relationship is not its Class's (REQ-2141). TermIsClass when that too is a Class."""
+    declared relationship is not its Class's (REQ-2141). TermIsClass when that too is a Class.
+    ``domain`` is the column's table's, which tells same-named terms apart (REQ-1591)."""
     wanted = normalize_term(business, table_context=table_context)
-    term_id = await _find_or_create_term(conn, wanted)
+    term_id = await _find_or_create_term(conn, wanted, domain)
     if table_context is None or not await _term_table_ids(conn, term_id):
         return term_id
     concept = table_concept(table_context)
     qualified = wanted if wanted.startswith(f"{concept} ") else f"{concept} {wanted}"
     if qualified == wanted:
         await refuse_property_on_class(conn, term_id)
-    term_id = await _find_or_create_term(conn, qualified)
+    term_id = await _find_or_create_term(conn, qualified, domain)
     await refuse_property_on_class(conn, term_id)
     return term_id
 
@@ -273,20 +364,30 @@ async def _concept_of(conn: "Connection", table_id: int) -> str:
     return table_concept(row.alias or row.table_name)
 
 
+async def _table_domain(conn: "Connection", table_id: int) -> str:
+    row = (
+        await conn.execute_core(
+            select(registered_tables.c.domain_id).where(registered_tables.c.id == table_id)
+        )
+    ).fetchone()
+    if row is None:
+        raise ValueError(f"table {table_id} is not registered")
+    return row.domain_id
+
+
 async def _derive_class(conn: "Connection", table_id: int, concept: str) -> int | None:
     """Ground a keyed table in a draft Class term named for its concept (REQ-2141): the term of
     that name when it holds no non-key column ref (it may already ground other tables of the same
     concept), else a new one. None -- no draft -- when the concept is already a Property with
     non-key refs; the class_and_attribute finding reports that table."""
-    row = (
-        await conn.execute_core(select(glossary_terms.c.id).where(glossary_terms.c.name == concept))
-    ).fetchone()
-    if row is None:
-        term_id = await _find_or_create_term(conn, concept)
-    elif await _non_key_refs(conn, row.id, also_grounding=table_id):
+    domain = await _table_domain(conn, table_id)
+    held = await _derivation_target(conn, concept, domain)
+    if held is None:
+        term_id = await _find_or_create_term(conn, concept, domain)
+    elif await _non_key_refs(conn, held, also_grounding=table_id):
         return None
     else:
-        term_id = row.id
+        term_id = held
     await conn.execute_core(
         update(registered_tables)
         .where(registered_tables.c.id == table_id)
@@ -325,6 +426,7 @@ async def rehome_keys(
                     table_columns.c.alias,
                     registered_tables.c.alias.label("table_alias"),
                     registered_tables.c.table_name,
+                    registered_tables.c.domain_id,
                 )
                 .join(
                     table_columns,
@@ -344,7 +446,7 @@ async def rehome_keys(
                 if not held_is_class:
                     continue  # a Property, where a column with no key belongs
                 target = await _property_term(
-                    conn, r.alias or r.column_name, r.table_alias or r.table_name
+                    conn, r.alias or r.column_name, r.table_alias or r.table_name, r.domain_id
                 )
             elif not held_is_class and node is not None and _is_curated(graph, node):
                 continue
@@ -414,6 +516,7 @@ async def sync_table_refs(
         if await _primary_keys(conn, table_id):
             await _derive_class(conn, table_id, table_concept(table_context))
     targets = await _key_targets(conn, table_id)
+    domain = await _table_domain(conn, table_id)
     graph = await _load_graph(conn) if existing else None
     for physical, business in columns:
         target = targets.get(physical)
@@ -438,7 +541,9 @@ async def sync_table_refs(
             orphaned.add(held)
         # a key is its Class's, whatever the column is called; any other column is a Property
         term_id = (
-            target if target is not None else await _property_term(conn, business, table_context)
+            target
+            if target is not None
+            else await _property_term(conn, business, table_context, domain)
         )
         await conn.upsert(
             glossary_term_refs,
@@ -510,26 +615,36 @@ async def sweep_refless_terms(conn: "Connection", *, before: RemovalSnapshot) ->
         await _settle_terms(conn, lost, domains_before=before.domains)
 
 
-async def _find_or_create_term(conn: "Connection", name: str) -> int:
-    """Attach a column ref's term by name, creating it if needed; a deprecated one is revived.
-    (Its role follows from the ref it gains: REQ-2141.)"""
-    row = (
-        await conn.execute_core(select(glossary_terms).where(glossary_terms.c.name == name))
-    ).fetchone()
-    if row is not None:
-        if row.deprecated:
-            await conn.execute_core(
-                update(glossary_terms).where(glossary_terms.c.id == row.id).values(deprecated=False)
-            )
-        return row.id
-    term_id = await conn.upsert_returning(
-        glossary_terms,
-        {"name": name, "deprecated": False},
-        index_elements=["name"],
-        returning="id",
-        update_columns=["deprecated"],
+async def _derivation_target(conn: "Connection", name: str, domain: str) -> int | None:
+    """The existing term a ref derived in ``domain`` joins by name (REQ-1591): the term of that
+    name in the ref's own domain (or one with no domains); else, under THE COMBINED MODEL, the
+    only term of that name, which then spans both domains. Several elsewhere and none here: no
+    term -- choosing among another domain's same-named terms would be a guess, and a new term in
+    this domain collides with none of them."""
+    found = await terms_named(conn, name)
+    here = [t for t, held in found.items() if domain in held] or [
+        t for t, held in found.items() if not held
+    ]
+    if here:
+        return min(here)
+    return next(iter(found)) if len(found) == 1 else None
+
+
+async def _find_or_create_term(conn: "Connection", name: str, domain: str) -> int:
+    """Attach a column ref's term by name, told apart by the ref's ``domain`` (REQ-1591),
+    creating it if needed; a deprecated one is revived. (Its role follows from the ref it gains:
+    REQ-2141.)"""
+    term_id = await _derivation_target(conn, name, domain)
+    if term_id is not None:
+        await conn.execute_core(
+            update(glossary_terms)
+            .where(glossary_terms.c.id == term_id, glossary_terms.c.deprecated.is_(True))
+            .values(deprecated=False)
+        )
+        return term_id
+    return await conn.insert_returning(
+        glossary_terms, {"name": name, "deprecated": False}, returning="id"
     )
-    return term_id
 
 
 async def _settle_terms(
@@ -1055,21 +1170,11 @@ async def create_abstract_term(
     model_change.name("create", model_change.uri(model_uri.term_uri, name))  # REQ-1524
     if not name:
         raise ValueError("term name is required")
-    existing = (
-        await conn.execute_core(select(glossary_terms.c.id).where(glossary_terms.c.name == name))
-    ).fetchone()
-    if existing is not None:
-        raise ValueError(f"term {name!r} already exists")
-    term_id = await conn.upsert_returning(
+    await refuse_name_taken(conn, name, domains)  # REQ-1591: unique only within a domain
+    term_id = await conn.insert_returning(
         glossary_terms,
-        {
-            "name": name,
-            "definition": definition,
-            "deprecated": False,
-        },
-        index_elements=["name"],
+        {"name": name, "definition": definition, "deprecated": False},
         returning="id",
-        update_columns=["definition"],
     )
     await set_declared_domains(conn, term_id, domains)
     return term_id
@@ -1095,23 +1200,31 @@ async def upsert_declared_term(
     model_change.name("upsert", model_change.uri(model_uri.term_uri, name))  # REQ-1524
     if not name:
         raise ValueError("term name is required")
-    held = (
-        await conn.execute_core(select(glossary_terms.c.id).where(glossary_terms.c.name == name))
-    ).fetchone()
+    # REQ-1591: the term of this name in one of the declared domains; a name is unique only
+    # within a domain, so a same-named term elsewhere is another term.
+    held = await resolve_term(conn, name, domains=domains)
     if held is not None:
-        await _refuse_clearing_tagged(conn, held.id, definition)  # REQ-2145
-    term_id = await conn.upsert_returning(
-        glossary_terms,
-        {
-            "name": name,
-            "definition": definition,
-            "calculation_method": calculation_method,  # REQ-2243
-            "deprecated": False,
-        },
-        index_elements=["name"],
-        returning="id",
-        update_columns=["definition", "calculation_method"],
-    )
+        await _refuse_clearing_tagged(conn, held, definition)  # REQ-2145
+        await conn.execute_core(
+            update(glossary_terms)
+            .where(glossary_terms.c.id == held)
+            .values(
+                definition=definition,
+                calculation_method=calculation_method,  # REQ-2243
+            )
+        )
+        term_id = held
+    else:
+        term_id = await conn.insert_returning(
+            glossary_terms,
+            {
+                "name": name,
+                "definition": definition,
+                "calculation_method": calculation_method,  # REQ-2243
+                "deprecated": False,
+            },
+            returning="id",
+        )
     await set_declared_domains(conn, term_id, domains)
     return term_id
 
@@ -1120,15 +1233,9 @@ async def rename_term(conn: "Connection", term_id: int, new_name: str) -> bool:
     new_name = new_name.strip().lower()  # REQ-1844: every term name in this catalog is lowercase
     if not new_name:
         raise ValueError("term name is required")
-    taken = (
-        await conn.execute_core(
-            select(glossary_terms.c.id).where(
-                (glossary_terms.c.name == new_name) & (glossary_terms.c.id != term_id)
-            )
-        )
-    ).fetchone()
-    if taken is not None:
-        raise ValueError(f"term {new_name!r} already exists")
+    # REQ-1591: refused only when a term of the new name already belongs to one of its domains.
+    scope = (await term_domains(conn)).get(term_id, set())
+    await refuse_name_taken(conn, new_name, scope, other_than=term_id)
     result = await conn.execute_core(
         update(glossary_terms).where(glossary_terms.c.id == term_id).values(name=new_name)
     )

@@ -1045,9 +1045,12 @@ CREATE TABLE IF NOT EXISTS glossary_terms (
     -- provisa/ontology_import): the term's own IRI when imported as a new term, or the IRI of the
     -- imported concept a steward aligned with it as the same entity. Curator work, like a definition.
     iri             TEXT,
-    tenant_id       UUID,
-    UNIQUE (name)
+    -- REQ-1591 (amended 2026-11-18): a name is unique only within a domain, and a term's domains
+    -- are derived from its refs (glossary.term_domains), so no table constraint can state it; the
+    -- create and rename paths refuse a name already held in one of the term's domains.
+    tenant_id       UUID
 );
+ALTER TABLE glossary_terms DROP CONSTRAINT IF EXISTS glossary_terms_name_key;  -- REQ-1591
 ALTER TABLE glossary_terms ADD COLUMN IF NOT EXISTS retired BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE glossary_terms ADD COLUMN IF NOT EXISTS calculation_method TEXT;  -- REQ-2243
 ALTER TABLE glossary_terms ADD COLUMN IF NOT EXISTS export_excluded BOOLEAN NOT NULL DEFAULT FALSE;

@@ -828,7 +828,9 @@
       "not_bulk_approvable": "Nur definierte, verankerte Entwürfe werden gemeinsam freigegeben; nicht: {{terms}}.",
       "term_ids_required": "Nennen Sie die freizugebenden Begriffe.",
       "impact_action": "Für diese Aktion gibt es keine Vorschau.",
-      "impact_table_required": "Eine Bindung nennt eine Tabelle oder eine ihrer Spalten."
+      "impact_table_required": "Eine Bindung nennt eine Tabelle oder eine ihrer Spalten.",
+      "name_taken": "Ein Begriff namens '{{name}}' existiert bereits in der Domäne {{domain}}. Wählen Sie einen anderen Namen oder ordnen Sie den Begriff einer anderen Domäne zu.",
+      "name_taken_unscoped": "Ein Begriff namens '{{name}}' existiert bereits ohne Domäne und gilt damit in jeder Domäne. Wählen Sie einen anderen Namen."
     },
     "table": {
       "requires_parameters": "Die Tabelle {{table}} kann nicht gezählt oder profiliert werden: Sie verlangt {{parameters}}. Geben Sie jedem einen Wert, um ihre Zeilen zu lesen."
