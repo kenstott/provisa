@@ -1,0 +1,417 @@
+# Copyright (c) 2026 Kenneth Stott
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+#
+# The WHOLE config of the named demo "affirmation" (start-ui-install.sh --demo affirmation; REQ-2006):
+# which of today's trades will not affirm before the cutoff, why, and what a failed settlement
+# would cost? Larkspur Asset Management, a fictional asset manager, keeps each trade in four
+# systems that never see one another: the order system's allocation, the execution system's fills,
+# the broker's confirmation and the custodian's settlement instruction. A Python code table matches
+# each allocation across the four and names each break; a statement command logs the affirmation of
+# every allocation that matched (setup.yaml). The break queue gives each break the time left to its
+# market's cutoff and the penalty a day a failed settlement would accrue.
+#
+#   oms      the order management system: orders and their allocations to the funds
+#   ems      the execution management system: each order's fills
+#   broker   the brokers' confirmations, as the matching platform delivers them
+#   custody  the custodian's settlement instructions
+#   desk     the middle office: the funds' standing settlement instructions, each market's cutoff
+#            and penalty, the desk's clock and the affirmation log
+#   matcher  a code resolver (code/trade_match.tar.gz, its source in matcher/): trade_match, the
+#            table that matches one allocation's four records and names each break
+#
+# All five databases are one Postgres server's (db/, written by generate.py).
+auth:
+  assignments_source: provisa
+  default_assignments:
+  - domain_id: '*'
+    role_id: org_admin
+  provider: none
+cache:
+  default_ttl: 300
+  enabled: true
+domains:
+- id: postrade
+  description: Larkspur Asset Management's post-trade flow -- orders, fills, broker confirmations and
+    custodian instructions -- matched, its breaks named and its matched trades affirmed
+federation_engine: duckdb
+naming:
+  domain_prefix: true
+  rules: []
+roles:
+# The settlements desk: every system, the break queue and the affirmation log.
+- id: settlements
+  parents: [analyst]
+  description: "The settlements desk: every system's records, the break queue and the affirmation log."
+  capabilities: [data_product_read, glossary_read, query_development, usage]
+  domain_access: [postrade]
+server:
+  limits:
+    default_row_limit: 100
+    request_timeout: 120
+    trino_query_timeout: 120
+sources:
+- id: oms
+  type: postgresql
+  host: ${env:AFFIRMATION_PG_HOST:-localhost}
+  port: ${env:AFFIRMATION_PG_PORT:-30632}
+  database: affirmation_oms${env:AFFIRMATION_PG_NS}
+  username: provisa
+  password: provisa
+  description: 'The order management system: orders and their allocations to the funds, read live'
+- id: ems
+  type: postgresql
+  host: ${env:AFFIRMATION_PG_HOST:-localhost}
+  port: ${env:AFFIRMATION_PG_PORT:-30632}
+  database: affirmation_ems${env:AFFIRMATION_PG_NS}
+  username: provisa
+  password: provisa
+  description: 'The execution management system: each order''s fills, read live'
+- id: broker
+  type: postgresql
+  host: ${env:AFFIRMATION_PG_HOST:-localhost}
+  port: ${env:AFFIRMATION_PG_PORT:-30632}
+  database: affirmation_broker${env:AFFIRMATION_PG_NS}
+  username: provisa
+  password: provisa
+  description: 'The brokers'' confirmations from the matching platform, read live'
+- id: custody
+  type: postgresql
+  host: ${env:AFFIRMATION_PG_HOST:-localhost}
+  port: ${env:AFFIRMATION_PG_PORT:-30632}
+  database: affirmation_custody${env:AFFIRMATION_PG_NS}
+  username: provisa
+  password: provisa
+  description: 'The custodian''s settlement instructions, read live'
+- id: desk
+  type: postgresql
+  host: ${env:AFFIRMATION_PG_HOST:-localhost}
+  port: ${env:AFFIRMATION_PG_PORT:-30632}
+  database: affirmation_desk${env:AFFIRMATION_PG_NS}
+  username: provisa
+  password: provisa
+  description: 'The middle office: standing settlement instructions, cutoffs, penalties, the clock and the affirmation log'
+- id: matcher
+  type: python
+  mapping:
+    runtime: python
+    code:
+      kind: upload
+      upload: 8df1af12df0103247048991428345e6a8b69aa133fbea72c85a71435a2ca5c48
+      filename: trade_match.tar.gz
+  description: 'trade_match: one allocation matched across the four systems, each break named (code/trade_match.tar.gz,
+    its source in matcher/)'
+tables:
+- source_id: oms
+  domain_id: postrade
+  schema: public
+  table: orders
+  enable_aggregates: true
+  enable_group_by: true
+  description: 'Each order the traders placed today: the security, side, quantity, market and the broker it went to'
+  columns:
+  - {name: order_id, data_type: varchar, is_primary_key: true, description: 'The order', visible_to: [data_steward, settlements]}
+  - {name: isin, data_type: varchar, description: 'The security''s ISIN', visible_to: [data_steward, settlements]}
+  - {name: security, data_type: varchar, description: 'The security''s name', visible_to: [data_steward, settlements]}
+  - {name: side, data_type: varchar, description: 'BUY or SELL', visible_to: [data_steward, settlements]}
+  - {name: quantity, data_type: integer, description: 'The shares ordered', visible_to: [data_steward, settlements]}
+  - {name: market, data_type: varchar, description: 'Where it settles: US, DE, FR or NL', visible_to: [data_steward, settlements]}
+  - {name: currency, data_type: varchar, description: 'The currency it settles in', visible_to: [data_steward, settlements]}
+  - {name: broker_code, data_type: varchar, description: 'The broker it was placed with', visible_to: [data_steward, settlements]}
+  - {name: trader, data_type: varchar, description: 'The trader who placed it', visible_to: [data_steward, settlements]}
+  - {name: trade_date, data_type: date, description: 'The trade date', visible_to: [data_steward, settlements]}
+- source_id: oms
+  domain_id: postrade
+  schema: public
+  table: allocations
+  enable_aggregates: true
+  enable_group_by: true
+  description: 'Each order split across the funds: the allocation is the trade the broker confirms and the custodian settles'
+  columns:
+  - {name: trade_ref, data_type: varchar, is_primary_key: true, description: 'The allocation''s reference, which the confirmation and the instruction carry', visible_to: [data_steward, settlements]}
+  - {name: order_id, data_type: varchar, description: 'The order it allocates', visible_to: [data_steward, settlements]}
+  - {name: fund_account, data_type: varchar, description: 'The fund it is allocated to', visible_to: [data_steward, settlements]}
+  - {name: quantity, data_type: integer, description: 'The shares allocated to the fund', visible_to: [data_steward, settlements]}
+  - {name: settle_date, data_type: date, description: 'The settlement date the order system expects', visible_to: [data_steward, settlements]}
+- source_id: ems
+  domain_id: postrade
+  schema: public
+  table: executions
+  enable_aggregates: true
+  enable_group_by: true
+  description: 'Each fill of each order, at the price it was done at'
+  columns:
+  - {name: exec_id, data_type: varchar, is_primary_key: true, description: 'The fill', visible_to: [data_steward, settlements]}
+  - {name: order_id, data_type: varchar, description: 'The order it fills', visible_to: [data_steward, settlements]}
+  - {name: quantity, data_type: integer, description: 'The shares filled', visible_to: [data_steward, settlements]}
+  - {name: price, data_type: decimal, description: 'The price it was done at', visible_to: [data_steward, settlements]}
+  - {name: executed_at, data_type: timestamp, description: 'When it was done', visible_to: [data_steward, settlements]}
+- source_id: broker
+  domain_id: postrade
+  schema: public
+  table: confirmations
+  enable_aggregates: true
+  enable_group_by: true
+  description: 'Each broker confirmation: the allocation it confirms, the broker''''s price, commission and net amount, and the settlement instructions it will deliver to'
+  columns:
+  - {name: confirm_id, data_type: varchar, is_primary_key: true, description: 'The confirmation', visible_to: [data_steward, settlements]}
+  - {name: trade_ref, data_type: varchar, description: 'The allocation it confirms', visible_to: [data_steward, settlements]}
+  - {name: broker_code, data_type: varchar, description: 'The broker', visible_to: [data_steward, settlements]}
+  - {name: side, data_type: varchar, description: 'BUY or SELL, as the broker has it', visible_to: [data_steward, settlements]}
+  - {name: quantity, data_type: integer, description: 'The shares, as the broker has them', visible_to: [data_steward, settlements]}
+  - {name: price, data_type: decimal, description: 'The broker''s price', visible_to: [data_steward, settlements]}
+  - {name: commission, data_type: decimal, description: 'The broker''s commission', visible_to: [data_steward, settlements]}
+  - {name: net_amount, data_type: decimal, description: 'What changes hands: the gross with the commission', visible_to: [data_steward, settlements]}
+  - {name: settle_date, data_type: date, description: 'The settlement date, as the broker has it', visible_to: [data_steward, settlements]}
+  - {name: custodian_bic, data_type: varchar, description: 'The custodian the broker will deliver to', visible_to: [data_steward, settlements]}
+  - {name: safekeeping_account, data_type: varchar, description: 'The account the broker will deliver to', visible_to: [data_steward, settlements]}
+  - {name: received_at, data_type: timestamp, description: 'When the confirmation arrived', visible_to: [data_steward, settlements]}
+- source_id: custody
+  domain_id: postrade
+  schema: public
+  table: instructions
+  enable_aggregates: true
+  enable_group_by: true
+  description: 'Each settlement instruction Larkspur sent its custodian: what the fund receives or delivers, against what cash, on what day'
+  columns:
+  - {name: instruction_id, data_type: varchar, is_primary_key: true, description: 'The instruction', visible_to: [data_steward, settlements]}
+  - {name: trade_ref, data_type: varchar, description: 'The allocation it settles', visible_to: [data_steward, settlements]}
+  - {name: fund_account, data_type: varchar, description: 'The fund', visible_to: [data_steward, settlements]}
+  - {name: side, data_type: varchar, description: 'BUY or SELL', visible_to: [data_steward, settlements]}
+  - {name: quantity, data_type: integer, description: 'The shares to receive or deliver', visible_to: [data_steward, settlements]}
+  - {name: net_amount, data_type: decimal, description: 'The cash to pay or receive', visible_to: [data_steward, settlements]}
+  - {name: settle_date, data_type: date, description: 'The settlement date instructed', visible_to: [data_steward, settlements]}
+  - {name: status, data_type: varchar, description: 'The instruction''s status at the custodian', visible_to: [data_steward, settlements]}
+- source_id: desk
+  domain_id: postrade
+  schema: public
+  table: ssi
+  enable_aggregates: true
+  enable_group_by: true
+  description: 'Each fund''''s standing settlement instructions in each market: the custodian and account a broker must deliver to'
+  columns:
+  - {name: fund_account, data_type: varchar, is_primary_key: true, description: 'The fund', visible_to: [data_steward, settlements]}
+  - {name: market, data_type: varchar, is_primary_key: true, description: 'The market', visible_to: [data_steward, settlements]}
+  - {name: custodian_bic, data_type: varchar, description: 'The custodian in that market', visible_to: [data_steward, settlements]}
+  - {name: safekeeping_account, data_type: varchar, description: 'The fund''s account there', visible_to: [data_steward, settlements]}
+- source_id: desk
+  domain_id: postrade
+  schema: public
+  table: settlement_rules
+  enable_aggregates: true
+  enable_group_by: true
+  description: 'Each market''''s settlement cycle, its affirmation cutoff and what a failed settlement costs a day there'
+  columns:
+  - {name: market, data_type: varchar, is_primary_key: true, description: 'The market', visible_to: [data_steward, settlements]}
+  - {name: settlement_cycle_days, data_type: integer, description: 'Days from trade date to settlement', visible_to: [data_steward, settlements]}
+  - {name: cutoff_minutes, data_type: integer, description: 'The cutoff, in minutes after midnight UTC starting the trade date', visible_to: [data_steward, settlements]}
+  - {name: cutoff_rule, data_type: varchar, description: 'The cutoff, in words', visible_to: [data_steward, settlements]}
+  - {name: penalty_bp_per_day, data_type: decimal, description: 'What a failed settlement costs a day, in basis points of its value', visible_to: [data_steward, settlements]}
+  - {name: penalty_basis, data_type: varchar, description: 'What that cost is', visible_to: [data_steward, settlements]}
+- source_id: desk
+  domain_id: postrade
+  schema: public
+  table: desk_clock
+  enable_aggregates: true
+  enable_group_by: true
+  description: 'The time the desk is at: the cutoffs count down from it'
+  columns:
+  - {name: as_at, data_type: timestamp, is_primary_key: true, description: 'The desk''s time, UTC', visible_to: [data_steward, settlements]}
+- source_id: desk
+  domain_id: postrade
+  schema: public
+  table: affirmation_log
+  enable_aggregates: true
+  enable_group_by: true
+  description: 'Each allocation affirmed, when and by what: written by the affirm_matched command'
+  columns:
+  - {name: trade_ref, data_type: varchar, is_primary_key: true, description: 'The allocation affirmed', visible_to: [data_steward, settlements]}
+  - {name: affirmed_at, data_type: timestamp, description: 'When it was affirmed, by the desk''s clock', visible_to: [data_steward, settlements]}
+  - {name: affirmed_by, data_type: varchar, description: 'What affirmed it', visible_to: [data_steward, settlements]}
+  write_grants:
+  - {role: org_admin, operation: insert, columns: [trade_ref, affirmed_at, affirmed_by]}
+# The matching engine, a table: its columns are its Match's fields, its parameters the function's
+# TradeLegs (_nf_ columns), required where the function gives no default. A leg not yet arrived
+# reads as absent.
+- source_id: matcher
+  domain_id: postrade
+  schema: default
+  table: trade_match
+  description: 'One allocation matched across the order, execution, broker and custodian systems: a row a break, naming it and what differs, or one matched row'
+  columns:
+  - {name: trade_ref, data_type: varchar, description: 'The allocation matched', visible_to: [data_steward, settlements]}
+  - {name: status, data_type: varchar, description: 'matched, or break', visible_to: [data_steward, settlements]}
+  - {name: break_type, data_type: varchar, description: 'The break: no_confirmation, no_instruction, side, quantity, price, settlement_date, ssi, instruction_quantity, instruction_settlement_date or net_amount; empty when matched', visible_to: [data_steward, settlements]}
+  - {name: detail, data_type: varchar, description: 'What differs, in words; empty when matched', visible_to: [data_steward, settlements]}
+  - {name: _nf_trade_ref, data_type: varchar, native_filter_type: query_arg, native_filter_required: true, description: 'The allocation''s reference', visible_to: [viewer]}
+  - {name: _nf_side, data_type: varchar, native_filter_type: query_arg, native_filter_required: true, description: 'The order system''s side', visible_to: [viewer]}
+  - {name: _nf_quantity, data_type: double, native_filter_type: query_arg, native_filter_required: true, description: 'The quantity allocated', visible_to: [viewer]}
+  - {name: _nf_settle_date, data_type: date, native_filter_type: query_arg, native_filter_required: true, description: 'The settlement date the order system expects', visible_to: [viewer]}
+  - {name: _nf_exec_price, data_type: double, native_filter_type: query_arg, native_filter_required: true, description: 'The average price of the order''s fills', visible_to: [viewer]}
+  - {name: _nf_ssi_custodian, data_type: varchar, native_filter_type: query_arg, native_filter_required: true, description: 'The custodian the fund''s standing instructions name', visible_to: [viewer]}
+  - {name: _nf_ssi_account, data_type: varchar, native_filter_type: query_arg, native_filter_required: true, description: 'The account the fund''s standing instructions name', visible_to: [viewer]}
+  - {name: _nf_confirm_side, data_type: varchar, native_filter_type: query_arg, native_filter_required: false, description: 'The broker''s side; absent with no confirmation', visible_to: [viewer]}
+  - {name: _nf_confirm_quantity, data_type: double, native_filter_type: query_arg, native_filter_required: false, description: 'The broker''s quantity', visible_to: [viewer]}
+  - {name: _nf_confirm_price, data_type: double, native_filter_type: query_arg, native_filter_required: false, description: 'The broker''s price', visible_to: [viewer]}
+  - {name: _nf_confirm_net, data_type: double, native_filter_type: query_arg, native_filter_required: false, description: 'The broker''s net amount', visible_to: [viewer]}
+  - {name: _nf_confirm_settle_date, data_type: date, native_filter_type: query_arg, native_filter_required: false, description: 'The broker''s settlement date', visible_to: [viewer]}
+  - {name: _nf_confirm_custodian, data_type: varchar, native_filter_type: query_arg, native_filter_required: false, description: 'The custodian the broker will deliver to', visible_to: [viewer]}
+  - {name: _nf_confirm_account, data_type: varchar, native_filter_type: query_arg, native_filter_required: false, description: 'The account the broker will deliver to', visible_to: [viewer]}
+  - {name: _nf_instruction_quantity, data_type: double, native_filter_type: query_arg, native_filter_required: false, description: 'The custodian instruction''s quantity; absent with no instruction', visible_to: [viewer]}
+  - {name: _nf_instruction_net, data_type: double, native_filter_type: query_arg, native_filter_required: false, description: 'The custodian instruction''s net amount', visible_to: [viewer]}
+  - {name: _nf_instruction_settle_date, data_type: date, native_filter_type: query_arg, native_filter_required: false, description: 'The custodian instruction''s settlement date', visible_to: [viewer]}
+views:
+# Each allocation with its four systems' records side by side, a leg not yet arrived empty: what
+# trade_match is given (the legs-to-match relationship feeds it these columns).
+- id: trade_legs
+  domain_id: postrade
+  description: Each allocation with its order, its fills' average price, its fund's standing instructions,
+    the broker's confirmation and the custodian's instruction side by side; a leg not yet arrived is empty
+  sql: >-
+    SELECT a.trade_ref, a.fund_account, o.order_id, o.isin, o.security, o.side,
+      CAST(a.quantity AS DOUBLE) AS quantity, o.market, o.currency, o.broker_code, o.trade_date,
+      a.settle_date, e.exec_price, s.custodian_bic AS ssi_custodian, s.safekeeping_account AS ssi_account,
+      c.confirm_id, c.side AS confirm_side, CAST(c.quantity AS DOUBLE) AS confirm_quantity,
+      CAST(c.price AS DOUBLE) AS confirm_price, CAST(c.net_amount AS DOUBLE) AS confirm_net,
+      c.settle_date AS confirm_settle_date, c.custodian_bic AS confirm_custodian,
+      c.safekeeping_account AS confirm_account, CAST(i.quantity AS DOUBLE) AS instruction_quantity,
+      CAST(i.net_amount AS DOUBLE) AS instruction_net, i.settle_date AS instruction_settle_date
+    FROM "postrade"."allocations" AS a
+    JOIN "postrade"."orders" AS o ON o.order_id = a.order_id
+    JOIN (SELECT x.order_id, CAST(SUM(x.quantity * x.price) / SUM(x.quantity) AS DOUBLE) AS exec_price
+      FROM "postrade"."executions" AS x GROUP BY x.order_id) AS e ON e.order_id = a.order_id
+    JOIN "postrade"."ssi" AS s ON s.fund_account = a.fund_account AND s.market = o.market
+    LEFT JOIN "postrade"."confirmations" AS c ON c.trade_ref = a.trade_ref
+    LEFT JOIN "postrade"."instructions" AS i ON i.trade_ref = a.trade_ref
+  columns:
+  - {name: trade_ref, data_type: varchar, description: 'The allocation', visible_to: [data_steward, settlements]}
+  - {name: fund_account, data_type: varchar, description: 'The fund', visible_to: [data_steward, settlements]}
+  - {name: order_id, data_type: varchar, description: 'The order', visible_to: [data_steward, settlements]}
+  - {name: isin, data_type: varchar, description: 'The security''s ISIN', visible_to: [data_steward, settlements]}
+  - {name: security, data_type: varchar, description: 'The security', visible_to: [data_steward, settlements]}
+  - {name: side, data_type: varchar, description: 'BUY or SELL', visible_to: [data_steward, settlements]}
+  - {name: quantity, data_type: double, description: 'The shares allocated', visible_to: [data_steward, settlements]}
+  - {name: market, data_type: varchar, description: 'Where it settles', visible_to: [data_steward, settlements]}
+  - {name: currency, data_type: varchar, description: 'The currency it settles in', visible_to: [data_steward, settlements]}
+  - {name: broker_code, data_type: varchar, description: 'The broker', visible_to: [data_steward, settlements]}
+  - {name: trade_date, data_type: date, description: 'The trade date', visible_to: [data_steward, settlements]}
+  - {name: settle_date, data_type: date, description: 'The settlement date the order system expects', visible_to: [data_steward, settlements]}
+  - {name: exec_price, data_type: double, description: 'The average price of the order''s fills', visible_to: [data_steward, settlements]}
+  - {name: ssi_custodian, data_type: varchar, description: 'The custodian the fund''s standing instructions name', visible_to: [data_steward, settlements]}
+  - {name: ssi_account, data_type: varchar, description: 'The account they name', visible_to: [data_steward, settlements]}
+  - {name: confirm_id, data_type: varchar, description: 'The broker''s confirmation; empty when none arrived', visible_to: [data_steward, settlements]}
+  - {name: confirm_side, data_type: varchar, description: 'The broker''s side', visible_to: [data_steward, settlements]}
+  - {name: confirm_quantity, data_type: double, description: 'The broker''s quantity', visible_to: [data_steward, settlements]}
+  - {name: confirm_price, data_type: double, description: 'The broker''s price', visible_to: [data_steward, settlements]}
+  - {name: confirm_net, data_type: double, description: 'The broker''s net amount', visible_to: [data_steward, settlements]}
+  - {name: confirm_settle_date, data_type: date, description: 'The broker''s settlement date', visible_to: [data_steward, settlements]}
+  - {name: confirm_custodian, data_type: varchar, description: 'The custodian the broker will deliver to', visible_to: [data_steward, settlements]}
+  - {name: confirm_account, data_type: varchar, description: 'The account the broker will deliver to', visible_to: [data_steward, settlements]}
+  - {name: instruction_quantity, data_type: double, description: 'The custodian instruction''s quantity; empty when none was sent', visible_to: [data_steward, settlements]}
+  - {name: instruction_net, data_type: double, description: 'The custodian instruction''s net amount', visible_to: [data_steward, settlements]}
+  - {name: instruction_settle_date, data_type: date, description: 'The custodian instruction''s settlement date', visible_to: [data_steward, settlements]}
+# Every allocation matched by trade_match: a row a break, or one matched row. Stored, so the
+# affirm_matched command and the break queue read its rows rather than calling the matcher again.
+- id: trade_status
+  domain_id: postrade
+  materialize: true
+  enable_aggregates: true
+  enable_group_by: true
+  description: Every allocation matched across the four systems -- a row a break, naming it and what differs, or one matched row
+  sql: >-
+    SELECT l.trade_ref, l.fund_account, l.security, l.isin, l.side, l.quantity, l.market, l.currency,
+      l.broker_code, l.trade_date, ROUND(l.quantity * l.exec_price, 2) AS gross_amount,
+      m.status, m.break_type, m.detail
+    FROM "postrade"."view_trade_legs" AS l
+    JOIN "postrade"."trade_match" AS m ON m.trade_ref = l.trade_ref
+  columns:
+  - {name: trade_ref, data_type: varchar, description: 'The allocation', visible_to: [data_steward, settlements]}
+  - {name: fund_account, data_type: varchar, description: 'The fund', visible_to: [data_steward, settlements]}
+  - {name: security, data_type: varchar, description: 'The security', visible_to: [data_steward, settlements]}
+  - {name: isin, data_type: varchar, description: 'The security''s ISIN', visible_to: [data_steward, settlements]}
+  - {name: side, data_type: varchar, description: 'BUY or SELL', visible_to: [data_steward, settlements]}
+  - {name: quantity, data_type: double, description: 'The shares allocated', visible_to: [data_steward, settlements]}
+  - {name: market, data_type: varchar, description: 'Where it settles', visible_to: [data_steward, settlements]}
+  - {name: currency, data_type: varchar, description: 'The currency it settles in', visible_to: [data_steward, settlements]}
+  - {name: broker_code, data_type: varchar, description: 'The broker', visible_to: [data_steward, settlements]}
+  - {name: trade_date, data_type: date, description: 'The trade date', visible_to: [data_steward, settlements]}
+  - {name: gross_amount, data_type: double, description: 'The allocation''s value at the average execution price', visible_to: [data_steward, settlements]}
+  - {name: status, data_type: varchar, description: 'matched, or break', visible_to: [data_steward, settlements]}
+  - {name: break_type, data_type: varchar, description: 'The break; empty when matched', visible_to: [data_steward, settlements]}
+  - {name: detail, data_type: varchar, description: 'What differs, in words; empty when matched', visible_to: [data_steward, settlements]}
+# The answer: each break with the time left to its market's cutoff, by the desk's clock, and what a
+# failed settlement would accrue a day there.
+- id: break_queue
+  domain_id: postrade
+  enable_aggregates: true
+  enable_group_by: true
+  description: Each break, with the minutes left before its market's affirmation cutoff and the penalty a day a failed settlement would accrue
+  sql: >-
+    SELECT s.trade_ref, s.fund_account, s.security, s.side, s.quantity, s.market, s.broker_code,
+      s.break_type, s.detail,
+      r.cutoff_minutes - CAST(EXTRACT(EPOCH FROM (k.as_at - CAST(s.trade_date AS TIMESTAMP))) AS INTEGER) / 60
+        AS minutes_to_cutoff,
+      r.cutoff_rule, s.currency, s.gross_amount,
+      CAST(ROUND(s.gross_amount * r.penalty_bp_per_day / 10000, 2) AS DOUBLE) AS penalty_per_day,
+      r.penalty_basis
+    FROM "postrade"."view_trade_status" AS s
+    JOIN "postrade"."settlement_rules" AS r ON r.market = s.market
+    CROSS JOIN "postrade"."desk_clock" AS k
+    WHERE s.status = 'break'
+  columns:
+  - {name: trade_ref, data_type: varchar, description: 'The allocation', visible_to: [data_steward, settlements]}
+  - {name: fund_account, data_type: varchar, description: 'The fund', visible_to: [data_steward, settlements]}
+  - {name: security, data_type: varchar, description: 'The security', visible_to: [data_steward, settlements]}
+  - {name: side, data_type: varchar, description: 'BUY or SELL', visible_to: [data_steward, settlements]}
+  - {name: quantity, data_type: double, description: 'The shares allocated', visible_to: [data_steward, settlements]}
+  - {name: market, data_type: varchar, description: 'Where it settles', visible_to: [data_steward, settlements]}
+  - {name: broker_code, data_type: varchar, description: 'The broker', visible_to: [data_steward, settlements]}
+  - {name: break_type, data_type: varchar, description: 'The break', visible_to: [data_steward, settlements]}
+  - {name: detail, data_type: varchar, description: 'What differs, in words', visible_to: [data_steward, settlements]}
+  - {name: minutes_to_cutoff, data_type: integer, description: 'Minutes left before the market''s affirmation cutoff; below zero once it has passed', visible_to: [data_steward, settlements]}
+  - {name: cutoff_rule, data_type: varchar, description: 'The cutoff, in words', visible_to: [data_steward, settlements]}
+  - {name: currency, data_type: varchar, description: 'The currency of the amounts', visible_to: [data_steward, settlements]}
+  - {name: gross_amount, data_type: double, description: 'The allocation''s value', visible_to: [data_steward, settlements]}
+  - {name: penalty_per_day, data_type: double, description: 'What a failed settlement would accrue a day', visible_to: [data_steward, settlements]}
+  - {name: penalty_basis, data_type: varchar, description: 'What that cost is', visible_to: [data_steward, settlements]}
+functions:
+# Every allocation that matched in all four systems, affirmed: written to the affirmation log at
+# the desk's time, from the stored trade_status.
+- name: affirm_matched
+  function_name: affirm_matched
+  impl_kind: statement
+  domain_id: postrade
+  description: Log the affirmation of every allocation that matched in all four systems, at the desk's time
+  source_id: ''
+  returns: ''
+  visible_to: [data_steward]
+  binding:
+    sql: >-
+      INSERT INTO "postrade"."affirmation_log" (trade_ref, affirmed_at, affirmed_by)
+      SELECT s.trade_ref, k.as_at, 'affirm_matched'
+      FROM "postrade"."view_trade_status" AS s
+      CROSS JOIN "postrade"."desk_clock" AS k
+      WHERE s.status = 'matched'
+relationships:
+# A join from the legs to the matcher feeds each allocation's four records to the function, one
+# call for each allocation.
+- id: legs-to-match
+  alias: MATCHED_AS
+  cardinality: one-to-many
+  source_table_id: view_trade_legs
+  source_column: trade_ref
+  target_table_id: trade_match
+  target_column: trade_ref
+  parameters: {trade_ref: trade_ref, side: side, quantity: quantity, settle_date: settle_date, exec_price: exec_price, ssi_custodian: ssi_custodian, ssi_account: ssi_account, confirm_side: confirm_side, confirm_quantity: confirm_quantity, confirm_price: confirm_price, confirm_net: confirm_net, confirm_settle_date: confirm_settle_date, confirm_custodian: confirm_custodian, confirm_account: confirm_account, instruction_quantity: instruction_quantity, instruction_net: instruction_net, instruction_settle_date: instruction_settle_date}
+- {id: allocation-order, alias: ALLOCATES, cardinality: many-to-one, source_table_id: allocations, source_column: order_id, target_table_id: orders, target_column: order_id}
+- {id: execution-order, alias: FILLS, cardinality: many-to-one, source_table_id: executions, source_column: order_id, target_table_id: orders, target_column: order_id}
+- {id: confirmation-allocation, alias: CONFIRMS, cardinality: one-to-one, source_table_id: confirmations, source_column: trade_ref, target_table_id: allocations, target_column: trade_ref}
+- {id: instruction-allocation, alias: SETTLES, cardinality: one-to-one, source_table_id: instructions, source_column: trade_ref, target_table_id: allocations, target_column: trade_ref}
+- {id: affirmation-allocation, alias: AFFIRMS, cardinality: one-to-one, source_table_id: affirmation_log, source_column: trade_ref, target_table_id: allocations, target_column: trade_ref}
+- {id: queue-allocation, alias: HOLDS_UP, cardinality: many-to-one, source_table_id: view_break_queue, source_column: trade_ref, target_table_id: allocations, target_column: trade_ref}
+- {id: queue-rule, alias: CUT_OFF_BY, cardinality: many-to-one, source_table_id: view_break_queue, source_column: market, target_table_id: settlement_rules, target_column: market}

@@ -2000,6 +2000,30 @@
       "customer360Recap": {
         "title": "Что вы увидели",
         "description": "Четыре SaaS-системы без общего идентификатора, связанные через мастер-данные клиентов; ответ на вопрос в SQL, GraphQL и Cypher; затем проверка: правила заново вывели каждую связь из свидетельств и нашли ошибочное слияние и скрытый им аккаунт. Осмотритесь сами со страницы SQL."
+      },
+      "affirmationScenario": {
+        "title": "What this demo is",
+        "description": "TODO: the scenario, its question and the features it shows."
+      },
+      "affirmationTables": {
+        "title": "The tables",
+        "description": "TODO: the tables the sources become."
+      },
+      "affirmationJoin": {
+        "title": "How they join",
+        "description": "TODO: the relationship that joins the tables."
+      },
+      "affirmationAnswer": {
+        "title": "The answer in SQL",
+        "description": "TODO: the predesigned query that answers the question."
+      },
+      "affirmationExample": {
+        "title": "The answer in GraphQL",
+        "description": "TODO: the example query, and what it shows."
+      },
+      "affirmationRecap": {
+        "title": "What you saw",
+        "description": "TODO: the recap, and where to go next."
       }
     },
     "status": {
@@ -2136,6 +2160,10 @@
       "customer360": {
         "title": "Customer 360",
         "summary": "Salesforce, ServiceNow, Jira и Stripe связаны через мастер-данные клиентов, чтобы найти продления под риском; затем мастер проверяется по свидетельствам каждой системы, которые находят пропущенный аккаунт."
+      },
+      "affirmation": {
+        "title": "Trade affirmation",
+        "summary": "TODO: Trade affirmation, in one sentence."
       }
     }
   }

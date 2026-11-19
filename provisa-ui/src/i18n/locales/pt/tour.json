@@ -2000,6 +2000,30 @@
       "customer360Recap": {
         "title": "O que você viu",
         "description": "Quatro sistemas SaaS sem id compartilhado, unidos por um cadastro mestre de clientes; a pergunta respondida em SQL, GraphQL e Cypher; depois verificada: regras derivaram de novo cada vínculo a partir das evidências e encontraram a fusão errada e a conta que ela escondia. Explore por conta própria a partir da página SQL."
+      },
+      "affirmationScenario": {
+        "title": "What this demo is",
+        "description": "TODO: the scenario, its question and the features it shows."
+      },
+      "affirmationTables": {
+        "title": "The tables",
+        "description": "TODO: the tables the sources become."
+      },
+      "affirmationJoin": {
+        "title": "How they join",
+        "description": "TODO: the relationship that joins the tables."
+      },
+      "affirmationAnswer": {
+        "title": "The answer in SQL",
+        "description": "TODO: the predesigned query that answers the question."
+      },
+      "affirmationExample": {
+        "title": "The answer in GraphQL",
+        "description": "TODO: the example query, and what it shows."
+      },
+      "affirmationRecap": {
+        "title": "What you saw",
+        "description": "TODO: the recap, and where to go next."
       }
     },
     "status": {
@@ -2136,6 +2160,10 @@
       "customer360": {
         "title": "Customer 360",
         "summary": "Salesforce, ServiceNow, Jira e Stripe unidos por um cadastro mestre de clientes para achar as renovações em risco; depois o cadastro é verificado contra as evidências de cada sistema, que encontram a conta que ele deixou de fora."
+      },
+      "affirmation": {
+        "title": "Trade affirmation",
+        "summary": "TODO: Trade affirmation, in one sentence."
       }
     }
   }

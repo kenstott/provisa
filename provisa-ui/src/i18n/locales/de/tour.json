@@ -2000,6 +2000,30 @@
       "customer360Recap": {
         "title": "Was Sie gesehen haben",
         "description": "Vier SaaS-Systeme ohne gemeinsame ID, verbunden über einen Kundenstamm; die Frage beantwortet in SQL, GraphQL und Cypher; dann geprüft: Regeln haben jede Verknüpfung aus Belegen neu abgeleitet und die falsche Zusammenführung samt dem verborgenen Account gefunden. Sehen Sie sich auf der SQL-Seite selbst um."
+      },
+      "affirmationScenario": {
+        "title": "What this demo is",
+        "description": "TODO: the scenario, its question and the features it shows."
+      },
+      "affirmationTables": {
+        "title": "The tables",
+        "description": "TODO: the tables the sources become."
+      },
+      "affirmationJoin": {
+        "title": "How they join",
+        "description": "TODO: the relationship that joins the tables."
+      },
+      "affirmationAnswer": {
+        "title": "The answer in SQL",
+        "description": "TODO: the predesigned query that answers the question."
+      },
+      "affirmationExample": {
+        "title": "The answer in GraphQL",
+        "description": "TODO: the example query, and what it shows."
+      },
+      "affirmationRecap": {
+        "title": "What you saw",
+        "description": "TODO: the recap, and where to go next."
       }
     },
     "status": {
@@ -2136,6 +2160,10 @@
       "customer360": {
         "title": "Customer 360",
         "summary": "Salesforce, ServiceNow, Jira und Stripe, verbunden über einen Kundenstamm, um gefährdete Verlängerungen zu finden; dann wird der Kundenstamm gegen die Belege jedes Systems geprüft und der übersehene Account gefunden."
+      },
+      "affirmation": {
+        "title": "Trade affirmation",
+        "summary": "TODO: Trade affirmation, in one sentence."
       }
     }
   }

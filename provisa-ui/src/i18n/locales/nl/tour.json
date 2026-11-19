@@ -2000,6 +2000,30 @@
       "customer360Recap": {
         "title": "Wat u zag",
         "description": "Vier SaaS-systemen zonder gedeelde id, verbonden via een klantmaster; de vraag beantwoord in SQL, GraphQL en Cypher; daarna gecontroleerd: regels leidden elke koppeling opnieuw af uit bewijs en vonden de foute samenvoeging en het account dat die verborg. Kijk zelf rond vanaf de SQL-pagina."
+      },
+      "affirmationScenario": {
+        "title": "What this demo is",
+        "description": "TODO: the scenario, its question and the features it shows."
+      },
+      "affirmationTables": {
+        "title": "The tables",
+        "description": "TODO: the tables the sources become."
+      },
+      "affirmationJoin": {
+        "title": "How they join",
+        "description": "TODO: the relationship that joins the tables."
+      },
+      "affirmationAnswer": {
+        "title": "The answer in SQL",
+        "description": "TODO: the predesigned query that answers the question."
+      },
+      "affirmationExample": {
+        "title": "The answer in GraphQL",
+        "description": "TODO: the example query, and what it shows."
+      },
+      "affirmationRecap": {
+        "title": "What you saw",
+        "description": "TODO: the recap, and where to go next."
       }
     },
     "status": {
@@ -2136,6 +2160,10 @@
       "customer360": {
         "title": "Customer 360",
         "summary": "Salesforce, ServiceNow, Jira en Stripe verbonden via een klantmaster om verlengingen met risico te vinden; daarna wordt de master gecontroleerd tegen het bewijs van elk systeem, dat het gemiste account vindt."
+      },
+      "affirmation": {
+        "title": "Trade affirmation",
+        "summary": "TODO: Trade affirmation, in one sentence."
       }
     }
   }

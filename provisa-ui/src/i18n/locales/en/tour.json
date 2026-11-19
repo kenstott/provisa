@@ -2000,6 +2000,58 @@
       "customer360Recap": {
         "title": "What you saw",
         "description": "Four SaaS systems with no shared id, joined through a customer master; the question answered in SQL, GraphQL and Cypher; then checked: rules re-derived every link from evidence and found the wrong merge and the account it hid. Look around on your own from the SQL page."
+      },
+      "affirmationScenario": {
+        "title": "One trade, four systems",
+        "description": "Larkspur Asset Management traded ten orders today. Each trade lives in four systems that never see one another: this order management system with its allocations to the funds, the execution system's fills, the broker's confirmation and the custodian's settlement instruction. Which trades will not affirm before the cutoff, why, and what would a failed settlement cost?"
+      },
+      "affirmationBroker": {
+        "title": "The broker's side",
+        "description": "The brokers' confirmations, as the matching platform delivers them: each carries the allocation's reference, the broker's price, commission and net amount, and the account the broker will deliver to."
+      },
+      "affirmationCustody": {
+        "title": "The custodian's side",
+        "description": "The settlement instructions Larkspur sent its custodian: what each fund receives or delivers, against what cash, on what day. A trade the custodian was never told about fails as surely as a wrong one."
+      },
+      "affirmationMatcher": {
+        "title": "The matching engine, in Python",
+        "description": "A Python package registered as a source. Its trade_match function takes one allocation's four records and returns a row for each break it finds, naming the break and what differs, or one matched row."
+      },
+      "affirmationMatchTable": {
+        "title": "A function as a table",
+        "description": "trade_match is a table like any other: its columns are what the function returns, and its parameters are the four systems' fields. A leg that has not arrived is passed as absent, and the function names that as a break of its own."
+      },
+      "affirmationFeed": {
+        "title": "What feeds the matcher",
+        "description": "This relationship joins each allocation's records from the four systems to trade_match and passes them as its parameters: one call for each allocation. Querying the join runs the match."
+      },
+      "affirmationQueue": {
+        "title": "The break queue",
+        "description": "Each break, with the minutes left before its market's affirmation cutoff and what a failed settlement would accrue a day there. The European breaks have under an hour; the US ones have until 9 pm in New York."
+      },
+      "affirmationAffirmed": {
+        "title": "The affirmations, logged",
+        "description": "A command affirmed every allocation that matched in all four systems and logged each one at the desk's time. It ran once, when the demo was built."
+      },
+      "affirmationPollyCutoff": {
+        "title": "Ask Polly: what is most urgent?",
+        "description": "Polly reads the break queue and names the break with the least time to its cutoff. Its answer was made when the demo was built, and is shown as stored."
+      },
+      "affirmationPollyPenalty": {
+        "title": "Ask Polly: what costs most?",
+        "description": "Polly names the break whose failed settlement would cost most a day. Its answer was made when the demo was built, and is shown as stored."
+      },
+      "affirmationExplore": {
+        "title": "The same question, in Explore",
+        "description": "The explorer's agent answers live over Provisa's MCP server, as the header's role, and you can watch each query it runs."
+      },
+      "affirmationExplain": {
+        "title": "The query it ran",
+        "description": "The statement the agent sent, next to the one Provisa ran for the role. The agent read the same governed views and tables you just did."
+      },
+      "affirmationRecap": {
+        "title": "What you saw",
+        "description": "Four systems read live, matched by a Python function registered as a table, every break named with its time to cutoff and its cost, and the matched trades affirmed by a command. Ask the desk's own questions in Explore next."
       }
     },
     "status": {
@@ -2136,6 +2188,10 @@
       "customer360": {
         "title": "Customer 360",
         "summary": "Salesforce, ServiceNow, Jira and Stripe joined through a customer master to find the renewals at risk, then the master checked against each system's own evidence, which finds the account it missed."
+      },
+      "affirmation": {
+        "title": "Trade affirmation",
+        "summary": "An asset manager matches each of today's trades across its order system, its execution system, the broker and the custodian. Each break shows the time left to the cutoff and what a failed settlement would cost, and the trades that matched are affirmed."
       }
     }
   }

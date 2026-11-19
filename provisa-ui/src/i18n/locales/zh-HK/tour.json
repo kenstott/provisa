@@ -2000,6 +2000,30 @@
       "customer360Recap": {
         "title": "您看到了甚麼",
         "description": "四個沒有共用 ID 的 SaaS 系統，透過客戶主數據連接起來；用 SQL、GraphQL 和 Cypher 回答了問題；然後進行檢查：規則根據證據重新推導每條連結，找到錯誤合併及其掩蓋的帳戶。可從 SQL 頁面自行探索。"
+      },
+      "affirmationScenario": {
+        "title": "What this demo is",
+        "description": "TODO: the scenario, its question and the features it shows."
+      },
+      "affirmationTables": {
+        "title": "The tables",
+        "description": "TODO: the tables the sources become."
+      },
+      "affirmationJoin": {
+        "title": "How they join",
+        "description": "TODO: the relationship that joins the tables."
+      },
+      "affirmationAnswer": {
+        "title": "The answer in SQL",
+        "description": "TODO: the predesigned query that answers the question."
+      },
+      "affirmationExample": {
+        "title": "The answer in GraphQL",
+        "description": "TODO: the example query, and what it shows."
+      },
+      "affirmationRecap": {
+        "title": "What you saw",
+        "description": "TODO: the recap, and where to go next."
       }
     },
     "status": {
@@ -2136,6 +2160,10 @@
       "customer360": {
         "title": "Customer 360",
         "summary": "透過客戶主數據連接 Salesforce、ServiceNow、Jira 和 Stripe，找出有風險的續約；再用各系統本身的證據檢查主數據，找出它漏掉的帳戶。"
+      },
+      "affirmation": {
+        "title": "Trade affirmation",
+        "summary": "TODO: Trade affirmation, in one sentence."
       }
     }
   }

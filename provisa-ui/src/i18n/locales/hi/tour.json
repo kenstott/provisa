@@ -2000,6 +2000,30 @@
       "customer360Recap": {
         "title": "आपने क्या देखा",
         "description": "बिना साझा ID के चार SaaS सिस्टम, एक कस्टमर मास्टर से जुड़े; सवाल का जवाब SQL, GraphQL और Cypher में; फिर जाँच: नियमों ने सबूत से हर लिंक दोबारा निकाला और ग़लत मर्ज व उससे छिपा अकाउंट ढूँढा। SQL पेज से ख़ुद देखें।"
+      },
+      "affirmationScenario": {
+        "title": "What this demo is",
+        "description": "TODO: the scenario, its question and the features it shows."
+      },
+      "affirmationTables": {
+        "title": "The tables",
+        "description": "TODO: the tables the sources become."
+      },
+      "affirmationJoin": {
+        "title": "How they join",
+        "description": "TODO: the relationship that joins the tables."
+      },
+      "affirmationAnswer": {
+        "title": "The answer in SQL",
+        "description": "TODO: the predesigned query that answers the question."
+      },
+      "affirmationExample": {
+        "title": "The answer in GraphQL",
+        "description": "TODO: the example query, and what it shows."
+      },
+      "affirmationRecap": {
+        "title": "What you saw",
+        "description": "TODO: the recap, and where to go next."
       }
     },
     "status": {
@@ -2136,6 +2160,10 @@
       "customer360": {
         "title": "Customer 360",
         "summary": "जोखिम वाले रिन्यूअल ढूँढने के लिए Salesforce, ServiceNow, Jira और Stripe एक कस्टमर मास्टर से जुड़े; फिर मास्टर को हर सिस्टम के सबूत से जाँचा जाता है, जो छूटा हुआ अकाउंट ढूँढता है।"
+      },
+      "affirmation": {
+        "title": "Trade affirmation",
+        "summary": "TODO: Trade affirmation, in one sentence."
       }
     }
   }
