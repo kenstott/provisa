@@ -28,7 +28,9 @@ import {
   Title,
   UnstyledButton,
 } from "@mantine/core";
+import { BookA } from "lucide-react";
 import { ENTERPRISE_DOMAIN, fetchGlossaryEntries } from "../../api/glossary";
+import { PageTitle } from "../../components/PageTitle";
 import { EntityLink } from "../../components/EntityLink";
 import {
   buildEntries,
@@ -117,8 +119,8 @@ export function GlossaryPage() {
     <div className="page" data-testid="glossary-page">
       <Stack gap="md" maw={880}>
         <div>
-          <Title order={2}>{t("glossaryPage.title")}</Title>
-          <Text c="dimmed" size="sm">
+          <PageTitle icon={BookA}>{t("glossaryPage.title")}</PageTitle>
+          <Text c="dimmed" size="sm" mt={4}>
             {t("glossaryPage.intro")}
           </Text>
         </div>
@@ -222,19 +224,23 @@ function EntryView({ entry, onTerm }: { entry: GlossaryEntry; onTerm: (id: numbe
   const numbered = entry.senses.length > 1;
   return (
     <div data-testid={`glossary-entry-${entry.key}`}>
-      <Text fw={700} size="lg" component="div">
+      <div>
         {numbered ? (
-          entry.name
+          <Text span fw={700} size="lg">
+            {entry.name}
+          </Text>
         ) : (
           <EntityLink
             kind="term"
             id={entry.senses[0].id}
             testId={`glossary-name-${entry.senses[0].id}`}
           >
-            {entry.name}
+            <Text span fw={700} size="lg" c="inherit">
+              {entry.name}
+            </Text>
           </EntityLink>
         )}
-      </Text>
+      </div>
       <Stack gap={6} mt={2}>
         {entry.senses.map((sense, i) => (
           <SenseView
@@ -271,25 +277,30 @@ function SenseView({
       data-testid={`glossary-sense-${sense.id}`}
       style={{ scrollMarginTop: 80 }}
     >
-      <Group gap={6} wrap="nowrap" align="baseline">
-        {number !== null && (
+      {number !== null && (
+        <Group gap={6} wrap="nowrap" align="baseline">
           <Text fw={600} data-testid={`glossary-sense-number-${sense.id}`}>
             {number}.
           </Text>
-        )}
-        {number !== null && domainLabel !== "" && (
-          <Badge variant="light" size="sm" data-testid={`glossary-sense-domain-${sense.id}`}>
+          {domainLabel !== "" && (
+            <Badge
+              variant="light"
+              size="sm"
+              tt="none"
+              data-testid={`glossary-sense-domain-${sense.id}`}
+            >
+              <EntityLink kind="term" id={sense.id} testId={`glossary-name-${sense.id}`}>
+                {domainLabel}
+              </EntityLink>
+            </Badge>
+          )}
+          {domainLabel === "" && (
             <EntityLink kind="term" id={sense.id} testId={`glossary-name-${sense.id}`}>
-              {domainLabel}
+              {name}
             </EntityLink>
-          </Badge>
-        )}
-        {number !== null && domainLabel === "" && (
-          <EntityLink kind="term" id={sense.id} testId={`glossary-name-${sense.id}`}>
-            {name}
-          </EntityLink>
-        )}
-      </Group>
+          )}
+        </Group>
+      )}
       {sense.alsoCalled.length > 0 && (
         <Related
           label={t("glossaryPage.alsoCalled")}

@@ -1,0 +1,25 @@
+{
+  "glossaryPage": {
+    "title": "शब्दावली",
+    "intro": "आपके संगठन के स्वीकृत शब्द और प्रत्येक का अर्थ।",
+    "search": "शब्द खोजें",
+    "searchPlaceholder": "नाम और परिभाषाएँ खोजें",
+    "domainFilter": "डोमेन",
+    "domainFilterPlaceholder": "सभी डोमेन",
+    "sort": "क्रम",
+    "sortName": "A–Z",
+    "sortRecent": "हाल में बदले गए",
+    "letterBar": "अक्षर पर जाएँ",
+    "otherLetter": "#",
+    "alsoCalled": "इसे यह भी कहते हैं",
+    "kindOf": "एक प्रकार का",
+    "kinds": "प्रकार",
+    "seeAlso": "यह भी देखें",
+    "allDomains": "सभी डोमेन",
+    "loadFailed": "शब्दावली लोड नहीं हो सकी: {{message}}",
+    "empty": "अभी कोई स्वीकृत शब्द नहीं।",
+    "noMatch": "कोई शब्द मेल नहीं खाता।",
+    "count_one": "{{count}} शब्द",
+    "count_other": "{{count}} शब्द"
+  }
+}

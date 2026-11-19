@@ -28,7 +28,7 @@ test("the Context group opens the Ontology, Documents and Context Sync pages", a
   await expect(page.getByTestId("syncing")).toBeVisible();
 
   // The group's pages still to come are listed, not linked.
-  for (const label of ["Context Health", "Glossary", "Metrics", "Tags", "Classification"]) {
+  for (const label of ["Context Health", "Metrics", "Tags", "Classification"]) {
     await expect(subnav.getByText(`${label} — coming soon`)).toBeVisible();
   }
 });
