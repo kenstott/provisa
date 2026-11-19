@@ -289,6 +289,10 @@ _WAREHOUSE_SECRETS = {
 _LIVE_SOURCE_SECRETS = _WAREHOUSE_SECRETS | {
     "SP_TENANT_ID", "SP_CLIENT_ID", "SP_SITE_URL", "SP_CERT_PASSWORD",
     "FREE_ASKAMERICA_KEY", "KAGGLE_API_TOKEN", "STRIPE_API_KEY",
+    # SingleStore Cloud shared-tier workspace: a live source, not a warehouse (its spec is in the
+    # core-provisioning project, source-to-query-community-ext.spec.ts).
+    "SINGLESTORE_HOST", "SINGLESTORE_PORT", "SINGLESTORE_USERNAME", "SINGLESTORE_PASSWORD",
+    "SINGLESTORE_DATABASE",
 }  # fmt: skip
 _WAREHOUSE_UI = ("integration-suite-lanes.yml", "warehouse-ui")
 
