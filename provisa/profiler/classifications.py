@@ -204,7 +204,8 @@ async def accept_effects(
     if await glossary_repo.is_key_column(conn, table_id, physical):
         note = KEY_COLUMN_NOTE
     else:
-        term_id = await glossary_repo._find_or_create_term(conn, kind.term)  # noqa: SLF001
+        domain = await glossary_repo._table_domain(conn, table_id)  # noqa: SLF001
+        term_id = await glossary_repo._find_or_create_term(conn, kind.term, domain)  # noqa: SLF001
         before = await inherited_snapshot(conn, {table_id})
         moved = await glossary_repo.move_ref(conn, table_id, physical, term_id)
         if moved is None:

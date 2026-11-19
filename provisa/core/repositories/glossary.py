@@ -399,12 +399,12 @@ async def _table_domain(conn: "Connection", table_id: int) -> str:
     return row.domain_id
 
 
-async def _derive_class(conn: "Connection", table_id: int, concept: str) -> int | None:
+async def _derive_class(conn: "Connection", table_id: int, concept: str, domain: str) -> int | None:
     """Ground a keyed table in a draft Class term named for its concept (REQ-2141): the term of
     that name when it holds no non-key column ref (it may already ground other tables of the same
     concept), else a new one. None -- no draft -- when the concept is already a Property with
-    non-key refs; the class_and_attribute finding reports that table."""
-    domain = await _table_domain(conn, table_id)
+    non-key refs; the class_and_attribute finding reports that table. ``domain`` is the table's
+    (REQ-1591)."""
     held = await _derivation_target(conn, concept, domain)
     if held is None:
         term_id = await _find_or_create_term(conn, concept, domain)
@@ -490,6 +490,7 @@ async def sync_table_refs(
     table_id: int,
     columns: "list[tuple[str, str]]",
     *,
+    domain: str,
     table_context: str | None = None,
 ) -> None:
     """Reconcile one table's refs with its current column set, in the caller's transaction.
@@ -538,9 +539,8 @@ async def sync_table_refs(
     # draft derived now from its concept -- and the key columns whose refs belong on a Class.
     if await _class_term_of(conn, table_id) is None and table_context is not None:
         if await _primary_keys(conn, table_id):
-            await _derive_class(conn, table_id, table_concept(table_context))
+            await _derive_class(conn, table_id, table_concept(table_context), domain)
     targets = await _key_targets(conn, table_id)
-    domain = await _table_domain(conn, table_id)
     graph = await _load_graph(conn) if existing else None
     for physical, business in columns:
         target = targets.get(physical)
@@ -2426,7 +2426,12 @@ async def unground_table(conn: "Connection", term_id: int, table_id: int) -> boo
     if ungrounded:
         # REQ-2141: the table goes back to its draft class, as a sync would derive it.
         if await _primary_keys(conn, table_id):
-            await _derive_class(conn, table_id, await _concept_of(conn, table_id))
+            await _derive_class(
+                conn,
+                table_id,
+                await _concept_of(conn, table_id),
+                await _table_domain(conn, table_id),
+            )
         await _home_key_refs(conn, table_id, keep=frozenset({term_id}))
     return ungrounded
 

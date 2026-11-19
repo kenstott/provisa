@@ -1001,6 +1001,8 @@ async def _upsert(
             for c in table.columns
             if getattr(c, "native_filter_type", None) is None and not c.name.startswith("_nf_")
         ],
+        # REQ-1591: the domain this upsert writes, which tells same-named terms apart.
+        domain=domain_id,
         table_context=getattr(table, "alias", None) or table.table_name,
     )
     return table_id
