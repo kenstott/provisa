@@ -209,7 +209,8 @@ class OrgRuntime:
     # REQ-147: each Kafka source's entry as declared, its references resolved where a client opens.
     kafka_declared: dict[str, dict] = field(default_factory=dict)
     kafka_table_configs: dict[str, KafkaTableConfig] = field(default_factory=dict)
-    kafka_table_physical: dict[str, str] = field(default_factory=dict)
+    # (source_id, virtual table name) → the topic's physical table (physical_table_map).
+    kafka_table_physical: dict[tuple[str, str], str] = field(default_factory=dict)
     table_approval_hooks: dict[int, bool] = field(default_factory=dict)
     source_approval_hooks: dict[str, bool] = field(default_factory=dict)
     pg_enum_types: dict = field(default_factory=dict)

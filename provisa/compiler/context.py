@@ -27,6 +27,7 @@ from provisa.compiler.naming import (
 )
 from provisa.compiler.native_nested import NestedColumn, NestedColumns
 from provisa.compiler.native_subtype import SubtypeColumns
+from provisa.compiler.schema_types import physical_table_name
 from provisa.compiler.sql_rewrite import _sql_str_literal, semantic_table_name
 from provisa.compiler.sql_where import META_QUERY_NAME
 from provisa.core.ir_types import Subtype
@@ -98,7 +99,7 @@ def _register_table_in_ctx(
     t: _TableInfoProto,
     ctx: CompilationContext,
     si: object,  # object-ok: circular import boundary — SchemaInput imported inside function body
-    physical_map: dict[str, str],
+    physical_map: dict[tuple[str, str], str],
     declared_unique: dict[int, list[dict]],
 ) -> None:
     """Register one visible table and its column metadata into ctx."""
@@ -106,7 +107,7 @@ def _register_table_in_ctx(
     from provisa.compiler.schema_gen import SchemaInput
 
     assert isinstance(si, SchemaInput)
-    physical_name = physical_map.get(t.table_name, t.table_name)
+    physical_name = physical_table_name(physical_map, t.source_id, t.table_name)
     src_type = (si.source_types or {}).get(t.source_id, "")
     meta = TableMeta(
         table_id=t.table_id,
@@ -268,7 +269,7 @@ def _build_junction_meta(  # REQ-1586
     si: object,  # object-ok: circular import boundary — SchemaInput imported inside function body
     rel: Mapping,
     table_lookup: Mapping[int, _TableInfoProto],
-    physical_map: dict[str, str],
+    physical_map: dict[tuple[str, str], str],
 ) -> JunctionMeta | None:
     """Resolve a relationship row's junction declaration into a JunctionMeta.
 
@@ -283,7 +284,7 @@ def _build_junction_meta(  # REQ-1586
     if not via_id or via_id not in table_lookup:
         return None
     via_info = table_lookup[via_id]
-    via_physical = physical_map.get(via_info.table_name, via_info.table_name)
+    via_physical = physical_table_name(physical_map, via_info.source_id, via_info.table_name)
     via_meta = TableMeta(
         table_id=via_info.table_id,
         field_name=via_info.field_name,
@@ -363,7 +364,7 @@ def _register_relationship_joins(
     si: object,  # object-ok: circular import boundary — SchemaInput imported inside function body
     ctx: CompilationContext,
     table_lookup: Mapping[int, _TableInfoProto],
-    physical_map: dict[str, str],
+    physical_map: dict[tuple[str, str], str],
 ) -> None:
     """Register JoinMeta entries for all explicit relationships."""
     from provisa.compiler.schema_gen import SchemaInput
@@ -386,7 +387,9 @@ def _register_relationship_joins(
         src_info = table_lookup[src_id]
         tgt_info = table_lookup[tgt_id]
 
-        _tgt_physical_name = physical_map.get(tgt_info.table_name, tgt_info.table_name)
+        _tgt_physical_name = physical_table_name(
+            physical_map, tgt_info.source_id, tgt_info.table_name
+        )
         tgt_meta = TableMeta(
             table_id=tgt_info.table_id,
             field_name=tgt_info.field_name,
@@ -447,7 +450,7 @@ def _register_meta_synthetic_joins(
     si: object,  # object-ok: circular import boundary — SchemaInput imported inside function body
     ctx: CompilationContext,
     tables: Sequence[_TableInfoProto],
-    physical_map: dict[str, str],
+    physical_map: dict[tuple[str, str], str],
 ) -> _TableInfoProto | None:
     """Inject synthetic _meta join for every non-meta table → meta:registered_tables."""
     from provisa.compiler.schema_gen import SchemaInput
@@ -465,10 +468,12 @@ def _register_meta_synthetic_joins(
         type_name=meta_rt.type_name,
         source_id=meta_rt.source_id,
         catalog_name=_catalog_of(
-            si, meta_rt.source_id, physical_map.get(meta_rt.table_name, meta_rt.table_name)
+            si,
+            meta_rt.source_id,
+            physical_table_name(physical_map, meta_rt.source_id, meta_rt.table_name),
         ),
         schema_name=meta_rt.schema_name,
-        table_name=physical_map.get(meta_rt.table_name, meta_rt.table_name),
+        table_name=physical_table_name(physical_map, meta_rt.source_id, meta_rt.table_name),
         domain_id=meta_rt.domain_id,
     )
     # Each registration answers the name its table is queried by (table_query_name), from the
@@ -527,7 +532,7 @@ def _register_ops_synthetic_joins(
     si: object,  # object-ok: circular import boundary — SchemaInput imported inside function body
     ctx: CompilationContext,
     tables: Sequence[_TableInfoProto],
-    physical_map: dict[str, str],
+    physical_map: dict[tuple[str, str], str],
     meta_rt: _TableInfoProto | None,
 ) -> None:
     """Inject synthetic traversal joins: registered_tables → ops tables with table_name FK."""
@@ -548,10 +553,12 @@ def _register_ops_synthetic_joins(
             type_name=ops_t.type_name,
             source_id=ops_t.source_id,
             catalog_name=_catalog_of(
-                si, ops_t.source_id, physical_map.get(ops_t.table_name, ops_t.table_name)
+                si,
+                ops_t.source_id,
+                physical_table_name(physical_map, ops_t.source_id, ops_t.table_name),
             ),
             schema_name=ops_t.schema_name,
-            table_name=physical_map.get(ops_t.table_name, ops_t.table_name),
+            table_name=physical_table_name(physical_map, ops_t.source_id, ops_t.table_name),
             domain_id=ops_t.domain_id,
         )
         _base = bare_field_name(ops_t.field_name, ops_t.domain_id)
@@ -573,7 +580,7 @@ def _register_ops_synthetic_joins(
 
 def _epoch_columns(
     si: object,  # object-ok: circular-import boundary — SchemaInput imported inside function body
-    physical_map: dict[str, str],
+    physical_map: dict[tuple[str, str], str],
 ) -> dict[tuple[str, str], dict[str, tuple[str, str]]]:
     """REQ-1908: every registered temporal column its source stores as an epoch number, keyed by
     physical (schema, table) and the names emitted SQL uses for it (physical and SQL-exposed). All
@@ -591,7 +598,7 @@ def _epoch_columns(
                 continue
             key = (
                 td["schema_name"].lower(),
-                (physical_map.get(td["table_name"]) or td["table_name"]).lower(),
+                physical_table_name(physical_map, td["source_id"], td["table_name"]).lower(),
             )
             spec = (unit, col["data_type"])
             phys = col["column_name"]
@@ -603,7 +610,7 @@ def _epoch_columns(
 
 def _nested_columns(
     si: object,  # object-ok: circular-import boundary — SchemaInput imported inside function body
-    physical_map: dict[str, str],
+    physical_map: dict[tuple[str, str], str],
 ) -> NestedColumns:
     """REQ-1965: every registered column that is natively an array, a struct or a map at its
     source (its native type is recorded), keyed like ``_epoch_columns``. All registered tables,
@@ -621,7 +628,7 @@ def _nested_columns(
                 continue  # none recorded, or a character column's (REQ-1961)
             key = (
                 td["schema_name"].lower(),
-                (physical_map.get(td["table_name"]) or td["table_name"]).lower(),
+                physical_table_name(physical_map, td["source_id"], td["table_name"]).lower(),
             )
             nested = NestedColumn(native, col.get("array_depth") or 0, col.get("element_type"))
             phys = col["column_name"]
@@ -633,7 +640,7 @@ def _nested_columns(
 
 def _columns_of_subtypes(
     si: object,  # object-ok: circular-import boundary — SchemaInput imported inside function body
-    physical_map: dict[str, str],
+    physical_map: dict[tuple[str, str], str],
     kept: Callable[[Subtype], bool],
 ) -> SubtypeColumns:
     """REQ-2171: every registered column whose subtype is ``kept``, keyed like
@@ -651,7 +658,7 @@ def _columns_of_subtypes(
                 continue
             key = (
                 td["schema_name"].lower(),
-                (physical_map.get(td["table_name"]) or td["table_name"]).lower(),
+                physical_table_name(physical_map, td["source_id"], td["table_name"]).lower(),
             )
             phys = col["column_name"]
             names = out.setdefault(key, {})
@@ -679,7 +686,7 @@ def _is_instant_type(data_type: str) -> bool:
 
 def _instant_columns(
     si: object,  # object-ok: circular-import boundary — SchemaInput imported inside function body
-    physical_map: dict[str, str],
+    physical_map: dict[tuple[str, str], str],
 ) -> SubtypeColumns:
     """REQ-2171: every registered column whose type is timestamptz, keyed like
     ``_columns_of_subtypes``, for to_json to be told what it reads (compiler.json_instants)."""
@@ -697,7 +704,7 @@ def _instant_columns(
                 continue
             key = (
                 td["schema_name"].lower(),
-                (physical_map.get(td["table_name"]) or td["table_name"]).lower(),
+                physical_table_name(physical_map, td["source_id"], td["table_name"]).lower(),
             )
             names = out.setdefault(key, {})
             names[phys.lower()] = INSTANT
