@@ -263,3 +263,43 @@ def test_to_timestamp_of_a_double_raises_postgresqls_class(sql, sqlstate):
     with pytest.raises(FunctionRefused) as refused:
         transpile(sql, "clickhouse")
     assert refused.value.sqlstate[:2] == sqlstate[:2]
+
+
+#: timestamp(timestamp, integer) (AdjustTimestampForTypmod): half away from zero since 2000.
+SCALED = [
+    ('SELECT pg_catalog."timestamp"(NULL::timestamp, 3::integer) AS v', None),
+    ("SELECT pg_catalog.\"timestamp\"('2024-06-15 12:30:45'::timestamp, NULL::integer) AS v", None),
+    (
+        "SELECT pg_catalog.\"timestamp\"('2024-06-15 12:30:45.5'::timestamp, 0) AS v",
+        "2024-06-15 12:30:46",
+    ),
+    (
+        "SELECT pg_catalog.\"timestamp\"('1990-01-01 00:00:00.5'::timestamp, 0) AS v",
+        "1990-01-01 00:00:00",
+    ),
+    (
+        "SELECT pg_catalog.\"timestamp\"('1990-01-01 00:00:00.12345'::timestamp, 4) AS v",
+        "1990-01-01 00:00:00.1234",
+    ),
+    (
+        "SELECT pg_catalog.\"timestamp\"('2024-06-15 12:30:45'::timestamp, 3) AS v",
+        "2024-06-15 12:30:45",
+    ),
+]
+
+
+@pytest.mark.parametrize(("sql", "want"), SCALED)
+def test_a_timestamp_scaled_is_postgresqls(runtime, sql, want):
+    (got,) = _answers(runtime, sql)
+    if want is None:
+        assert got is None
+        return
+    assert got.replace(tzinfo=None) == datetime.datetime.fromisoformat(want)
+
+
+@pytest.mark.parametrize("precision", ["(-7)::integer", "7", "'2147483647'::integer"])
+def test_a_precision_outside_0_to_6_raises_22023(runtime, precision):
+    sql = f"SELECT pg_catalog.\"timestamp\"('2024-06-15 12:30:45'::timestamp, {precision}) AS v"
+    with pytest.raises(Exception) as raised:  # noqa: PT011 -- the engine's raise of PostgreSQL's
+        _answers(runtime, sql)
+    assert "postgresql-error 22023" in str(raised.value)

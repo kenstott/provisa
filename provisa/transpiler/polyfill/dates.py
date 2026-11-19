@@ -319,6 +319,88 @@ def unix_seconds(node: exp.Expr, dialect: str) -> exp.Expr | None:
     return sqlglot.parse_one(f"CAST('{text}' AS {instants.INSTANT})", read="clickhouse")
 
 
+_STAMPS = frozenset({"timestamp without time zone", "timestamp"})
+
+
+def _precision(node: exp.Expr) -> int | None | bool:
+    """A precision the statement writes: its value, None for a NULL, False for any other value."""
+    value = node.unnest()
+    while isinstance(value, exp.Cast):
+        value = value.this.unnest()
+    negative = False
+    while isinstance(value, (exp.Neg, exp.Paren)):
+        negative ^= isinstance(value, exp.Neg)
+        value = value.this.unnest()
+        while isinstance(value, exp.Cast):
+            value = value.this.unnest()
+    if isinstance(value, exp.Null):
+        return None
+    text = value.this.strip() if isinstance(value, exp.Literal) else ""
+    if not text.lstrip("+-").isdigit():
+        return False
+    return -int(text) if negative else int(text)
+
+
+def stamp_scaled(node: exp.Expr, dialect: str) -> exp.Expr | None:
+    """timestamp of a timestamp and a precision (timestamp_scale, AdjustTimestampForTypmod): its
+    microseconds since 2000-01-01 rounded half away from zero to the precision's digits; 22023 of
+    a precision outside 0 to 6 where the timestamp is not NULL; NULL of a NULL."""
+    if dialect != "clickhouse":
+        return None
+    call = trino.called(node)
+    if call is None or "timestamp" not in call[0] or len(call[1]) != 2:
+        return None
+    stamp, precision = call[1]
+    if trino.said(stamp) not in _STAMPS:
+        return None
+    digits = _precision(precision)
+    if digits is False:
+        raise Refused(trino.no_form("timestamp", dialect))
+    if digits is None:
+        return sqlglot.parse_one(f"CAST(NULL AS {instants.INSTANT})", read="clickhouse")
+    assert isinstance(digits, int)
+    if not 0 <= digits <= 6:
+        raised = ch_fail("22023", f"timestamp({digits}) precision must be between 0 and 6").format(
+            condition="provisa_s IS NOT NULL"
+        )
+        form = f"if({raised} = 0, CAST(NULL AS {instants.INSTANT}), NULL)"
+    else:
+        scale = 10 ** (6 - digits)
+        since = "(toUnixTimestamp64Micro(provisa_s) - 946684800000000)"
+        rounded = (
+            f"if({since} >= 0, intDiv({since} + {scale // 2}, {scale}) * {scale}, "
+            f"-(intDiv(-{since} + {scale // 2}, {scale}) * {scale}))"
+        )
+        form = (
+            f"CAST(fromUnixTimestamp64Micro({rounded} + 946684800000000, 'UTC') "
+            f"AS {instants.INSTANT})"
+        )
+    written = sqlglot.parse_one(form, read="clickhouse")
+    return written.transform(
+        lambda n: stamp.copy() if isinstance(n, exp.Column) and n.name == "provisa_s" else n
+    )
+
+
+STAMP_SCALED = Feature(
+    "timestamp(timestamp, integer)",
+    FAMILY,
+    "A timestamp rounded to a precision (timestamp_scale).",
+    read=Side(
+        rules=(Rule(None, {"clickhouse": Rewrite(stamp_scaled, mentions=r"\btimestamp\s*\(")}),),
+        limitations={
+            "clickhouse": (
+                Limitation(
+                    "The precision is read as a literal or a NULL; any other is refused by name. "
+                    "The timestamp is held as DateTime64(6, 'UTC'); its microseconds since "
+                    "2000-01-01 are rounded half away from zero, as AdjustTimestampForTypmod "
+                    "rounds them."
+                ),
+            )
+        },
+    ),
+)
+
+
 UNIX_SECONDS = Feature(
     "to_timestamp(double precision)",
     FAMILY,
@@ -370,5 +452,6 @@ FEATURES: tuple[Feature, ...] = (
     TRANSACTION_TIMESTAMP,
     CLOCK_TIMESTAMP,
     UNIX_SECONDS,
+    STAMP_SCALED,
     TO_CHAR,
 )
