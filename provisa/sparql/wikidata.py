@@ -137,13 +137,17 @@ def _label(var: str, into: str, language: str) -> str:
 
 def _grouped(outer: list[str], inner_select: str, where: str, group_by: str) -> str:
     """A query whose rows are grouped in a subquery and selected by plain name outside it, so
-    its columns are exactly ``outer``."""
+    its columns are exactly ``outer``. Every ``where`` is written anchor first (an identifier or
+    a closed class); the optimizer hint keeps that order, since the query service's own
+    reordering doubles these queries' time and has driven them into gateway errors."""
     names = " ".join(f"?{n}" for n in outer)
     return (
         f"SELECT {names} WHERE {{\n"
         f"  {{\n"
         f"    SELECT {inner_select}\n"
-        f"    WHERE {{\n{where}\n    }}\n"
+        f"    WHERE {{\n"
+        '      hint:SubQuery hint:optimizer "None" .\n'
+        f"{where}\n    }}\n"
         f"    GROUP BY {group_by}\n"
         f"  }}\n"
         f"}}"
