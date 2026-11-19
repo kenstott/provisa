@@ -710,6 +710,32 @@ ALTER TABLE entitlement_expiries ADD COLUMN IF NOT EXISTS list_kind TEXT;
 CREATE INDEX IF NOT EXISTS entitlement_expiries_principal_idx
     ON entitlement_expiries (principal, role_id);
 
+-- REQ-2219: ops.entitlements and ops.entitlement_expiries are subscribable, as ops.requests is.
+-- Every change of either table is reported on its schema's own channel
+-- (subscriptions.pg_provider.schema_channel, named for the table) with the row's id only; the
+-- subscription reads the row back through the governed pipeline as the subscriber.
+CREATE OR REPLACE FUNCTION provisa_notify_entitlement_rows()
+RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE
+  rid bigint;
+BEGIN
+  rid := CASE WHEN TG_OP = 'DELETE' THEN OLD.id ELSE NEW.id END;
+  PERFORM pg_notify(
+    'provisa_' || TG_TABLE_NAME || '_' || substr(md5(TG_TABLE_SCHEMA), 1, 12),
+    json_build_object('op', lower(TG_OP), 'row', json_build_object('id', rid))::text
+  );
+  RETURN CASE WHEN TG_OP = 'DELETE' THEN OLD ELSE NEW END;
+END;
+$$;
+DROP TRIGGER IF EXISTS provisa_sub_entitlements ON entitlements;
+CREATE TRIGGER provisa_sub_entitlements
+AFTER INSERT OR UPDATE OR DELETE ON entitlements
+FOR EACH ROW EXECUTE FUNCTION provisa_notify_entitlement_rows();
+DROP TRIGGER IF EXISTS provisa_sub_entitlement_expiries ON entitlement_expiries;
+CREATE TRIGGER provisa_sub_entitlement_expiries
+AFTER INSERT OR UPDATE OR DELETE ON entitlement_expiries
+FOR EACH ROW EXECUTE FUNCTION provisa_notify_entitlement_rows();
+
 -- REQ-2219, ONE API, THREE WAYS TO USE IT: a list granted by typed email to a person not yet seen.
 -- Append-only, keyed by (email, role_id, kind): the last row is the grant's state. outcome is NULL
 -- while it waits, and ended, attached or refused once it does not; principal names whom a sign-in
