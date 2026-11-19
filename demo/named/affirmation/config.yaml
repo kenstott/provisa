@@ -102,7 +102,7 @@ sources:
     runtime: python
     code:
       kind: upload
-      upload: 8df1af12df0103247048991428345e6a8b69aa133fbea72c85a71435a2ca5c48
+      upload: f15e331fe431c9002568f4ec073ab0a5caccd792819d2c99e0563d7e2841b7b7
       filename: trade_match.tar.gz
   description: 'trade_match: one allocation matched across the four systems, each break named (code/trade_match.tar.gz,
     its source in matcher/)'
