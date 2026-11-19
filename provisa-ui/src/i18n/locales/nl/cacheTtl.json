@@ -2,7 +2,7 @@
   "cacheTtl": {
     "neverExpires": "verloopt nooit",
     "inputHint": "-1: verloopt nooit",
-    "neverExpiresHint": "Verloopt nooit: wordt één keer geladen.",
+    "neverExpiresHint": "Verloopt nooit en wordt één keer geladen.",
     "asOf": "{{ttl}}, per {{when}}",
     "roleTtlUnlisted": "De cache-TTL verloopt nooit, voor elke rol.",
     "roleTtlNoEffect": "De cache-TTL verloopt nooit, dus deze regel heeft geen effect."
