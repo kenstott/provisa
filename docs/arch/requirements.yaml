@@ -97696,4 +97696,8 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     (Amended 2026-11-19, BIND VALUES ARE SUBSTITUTED AS TYPED LITERALS:) Maintainer 2026-11-19, replacing
     ''kept bound''. A Bind value is decoded by the parameter''s declared type and substituted into the statement
     as a typed literal (DATE ''...'', TIMESTAMP ''...'', exact numerics); a $N inside a quoted string is
-    left untouched.'
+    left untouched. (Amended 2026-11-19, SET TIMEZONE STAYS IN THE SESSION:) Maintainer 2026-11-19, replacing
+    ''SET TimeZone is reported and passed to the Calcite connection''. SET TimeZone is validated (an invalid
+    zone fails with 22023), answered by SHOW and current_setting, and reported to the client in ParameterStatus
+    as PostgreSQL does. It is not passed to the Calcite connection: the server shares one Calcite connection
+    whose time zone is fixed at connect, so Calcite keeps computing in that zone (UTC).'
