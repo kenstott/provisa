@@ -18,6 +18,7 @@ RUN apt-get update \
 COPY --from=rust-toolchain /usr/local/cargo /usr/local/cargo
 COPY --from=rust-toolchain /usr/local/rustup /usr/local/rustup
 ENV CARGO_HOME=/usr/local/cargo RUSTUP_HOME=/usr/local/rustup PATH=/usr/local/cargo/bin:$PATH
+ENV PIP_DEFAULT_TIMEOUT=120 PIP_RETRIES=10
 # zig on PATH: the build runs in an isolated environment whose python has no ziglang.
 RUN pip install --no-cache-dir "build==1.6.1" "cargo-zigbuild==0.24.0" "ziglang==0.17.0" \
  && ln -s "$(python -c 'import os, ziglang; print(os.path.dirname(ziglang.__file__))')/zig" /usr/local/bin/zig \
@@ -54,6 +55,9 @@ FROM scratch AS pyodide-downloads
 # Stage 2: install Python deps from pre-built wheels (stays on builder layer only)
 FROM python:3.12-slim AS installer
 WORKDIR /app
+# pip's 15 s default read timeout ended release 510's ninth image build mid-download (run
+# 44446333901, TimeoutError in ssl read); a read that times out partway is not retried.
+ENV PIP_DEFAULT_TIMEOUT=120 PIP_RETRIES=10
 COPY pyproject.toml .
 COPY vendor/ ./vendor/
 # [firebase] pulls firebase-admin — the container is the single artifact for cloud deploys where
@@ -118,6 +122,7 @@ RUN cd graph-render && npm run build && npm prune --omit=dev
 # Stage 4: lean runtime image — no wheels, only app source + installed packages
 FROM python:3.12-slim
 WORKDIR /app
+ENV PIP_DEFAULT_TIMEOUT=120 PIP_RETRIES=10
 # REQ-1992: an org may keep its file folder encrypted (gocryptfs over FUSE). The container needs
 # /dev/fuse and CAP_SYS_ADMIN for it (docker-compose.app.yml, the Helm chart); without them the
 # setting is refused by name and plain folders are unaffected.
