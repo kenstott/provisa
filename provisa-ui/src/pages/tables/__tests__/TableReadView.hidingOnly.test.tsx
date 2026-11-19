@@ -139,6 +139,7 @@ function renderView(hidingOnly: boolean, shown: RegisteredTable = TABLE, acts = 
       handleProfile={vi.fn()}
       onPreview={vi.fn()}
       relationships={[]}
+      actingRole={null}
       {...acts}
     />,
   );
