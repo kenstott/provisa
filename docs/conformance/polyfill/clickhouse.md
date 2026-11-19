@@ -8,9 +8,9 @@ This page lists every feature that has a polyfill or a limitation on ClickHouse.
 
 When ClickHouse is a serving engine reading a source it attaches directly, it may push work into that source, with the source's semantics, so a result can depend on the pair; the cases known are fixed by hints, listed under each source.
 
-Rules on this page: 577, of which 397 are only the name of a rewrite function. A rule is printed as the translator runs it: the PostgreSQL pattern, its holes written `$name` (typed with `::type`), then the dialect's replacement.
+Rules on this page: 578, of which 398 are only the name of a rewrite function. A rule is printed as the translator runs it: the PostgreSQL pattern, its holes written `$name` (typed with `::type`), then the dialect's replacement.
 
-19 of the grid's 554 features are native on ClickHouse and left out.
+19 of the grid's 555 features are native on ClickHouse and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>an array of dimensions</strong><br>cardinality, unnest and array_to_string of an array of more than one dimension: of every element, in storage order.</td><td><pre><code>function provisa.transpiler.polyfill.array_dimensions.of_dimensions: cardinality, unnest or array_to_string of an array of more than one dimension: of every</code></pre></td><td></td><td></td><td></td></tr>
@@ -543,6 +543,7 @@ now64(6, &#x27;UTC&#x27;)</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>clock_timestamp</strong><br>The time now, read as the statement runs.</td><td><pre><code>clock_timestamp()
 =&gt;
 now64(6, &#x27;UTC&#x27;)</code></pre></td><td><ul><li>The time the statement began (now64): ClickHouse has no clock read again for each row, so every row of a statement reads the same instant.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>to_timestamp(double precision)</strong><br>The instant a count of seconds after 1970-01-01 UTC is.</td><td><pre><code>function provisa.transpiler.polyfill.dates.unix_seconds: to_timestamp of a double the statement writes (float8_timestamptz): the instant that many</code></pre></td><td><ul><li>Of a double the statement writes as a literal, computed as the statement is read; an instant outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 UTC (infinity&#x27;s too) raises 0A000; any other value is refused by name.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>to_char(timestamp, text)</strong><br>A timestamp&#x27;s or an instant&#x27;s text in a template.</td><td><pre><code>to_char($a, $b)
 =&gt;
 function provisa.transpiler.polyfill.instants.to_char_written: Each keyword of a literal template written as PostgreSQL&#x27;s text (provisa.transpiler.to_char).</code></pre></td><td><ul><li>Of a timestamp, and of an instant (timestamp with time zone) on a session on UTC, in a literal template: each keyword is written as one expression that yields PostgreSQL&#x27;s text for it, and the pieces are concatenated (provisa.transpiler.to_char); text outside a keyword is a string constant. Exact from 1900-01-01 to 2299-12-31: a literal outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 UTC raises 0A000 (to_char() of a value outside the bound has no exact form on clickhouse). A month&#x27;s or a day&#x27;s name in lc_time&#x27;s language (TM before MONTH, Month, month, MON, Mon, mon, DAY, Day, day, DY, Dy, dy) is refused by name, naming the keyword. A template that is no literal, a value whose type no statement says, and an instant on a session off UTC are refused by name (to_char() has no form on clickhouse).</li></ul></td><td></td><td></td></tr>

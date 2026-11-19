@@ -18,6 +18,7 @@ PostgreSQL's recorded answer (numbers compared by value)."""
 
 from __future__ import annotations
 
+import datetime
 from decimal import Decimal, InvalidOperation
 
 import pytest
@@ -216,3 +217,37 @@ def test_clickhouse_raises_postgresqls_class(runtime, sql, sqlstate):
         assert f"postgresql-error {sqlstate[:2]}" in str(raised), raised
         return
     pytest.fail(f"answered where PostgreSQL raises {sqlstate}")
+
+
+#: to_timestamp of a double (float8_timestamptz), PostgreSQL's answer as an instant in UTC.
+INSTANTS = [
+    ('SELECT pg_catalog."to_timestamp"(NULL::double precision) AS v', None),
+    ("SELECT pg_catalog.\"to_timestamp\"('1999'::double precision) AS v", "1970-01-01 00:33:19"),
+    ("SELECT to_timestamp(0.5)", "1970-01-01 00:00:00.5"),
+    ("SELECT to_timestamp(-1.0000005)", "1969-12-31 23:59:59"),  # rint after the 2000 epoch
+    ("SELECT to_timestamp(1718454645.123456)", "2024-06-15 12:30:45.123456"),
+    ("SELECT to_timestamp(' 1e9 '::double precision)", "2001-09-09 01:46:40"),
+]
+
+
+@pytest.mark.parametrize(("sql", "want"), INSTANTS)
+def test_to_timestamp_of_a_double_is_postgresqls_instant(runtime, sql, want):
+    (got,) = _answers(runtime, sql)
+    if want is None:
+        assert got is None
+        return
+    expected = datetime.datetime.fromisoformat(want).replace(tzinfo=datetime.UTC)
+    assert got.astimezone(datetime.UTC) == expected
+
+
+@pytest.mark.parametrize(
+    ("sql", "sqlstate"),
+    [
+        ("SELECT to_timestamp('NaN'::double precision)", "22008"),
+        ("SELECT pg_catalog.\"to_timestamp\"('15 Jun 2024'::double precision) AS v", "22P02"),
+    ],
+)
+def test_to_timestamp_of_a_double_raises_postgresqls_class(sql, sqlstate):
+    with pytest.raises(FunctionRefused) as refused:
+        transpile(sql, "clickhouse")
+    assert refused.value.sqlstate[:2] == sqlstate[:2]

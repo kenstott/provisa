@@ -32,9 +32,16 @@ instants.to_char_written)."""
 
 from __future__ import annotations
 
+import datetime
+import math
+import re
+
+import sqlglot
+import sqlglot.expressions as exp
+
 from provisa.transpiler.polyfill import instants, trino
 from provisa.transpiler.polyfill.grid import DIALECTS, NATIVE, Feature, Limitation, Rule, Side
-from provisa.transpiler.polyfill.notation import Rewrite
+from provisa.transpiler.polyfill.notation import Refusal, Refused, Rewrite
 from provisa.transpiler.polyfill.numbers import ch_fail, fail, refused
 
 FAMILY = "dates"
@@ -250,6 +257,86 @@ CLOCK_TIMESTAMP = Feature(
     ),
 )
 
+#: float8in's text: a decimal number, an exponent, NaN or infinity, white space around.
+_FLOAT_TEXT = re.compile(
+    r"\s*[+-]?(?:(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?|nan|inf|infinity)\s*", re.I
+)
+_POSTGRES_EPOCH = datetime.datetime(2000, 1, 1)
+_POSTGRES_EPOCH_SECONDS = 946684800.0
+
+
+def _seconds(node: exp.Expr, dialect: str) -> float | None:
+    """A double the statement writes: its value, None for a NULL; 22P02 of a text float8in does
+    not read; refused by name for any other value."""
+    value = node.unnest()
+    while isinstance(value, exp.Cast):
+        value = value.this.unnest()
+    negative = False
+    while isinstance(value, (exp.Neg, exp.Paren)):
+        negative ^= isinstance(value, exp.Neg)
+        value = value.this.unnest()
+        while isinstance(value, exp.Cast):
+            value = value.this.unnest()
+    if isinstance(value, exp.Null):
+        return None
+    if not isinstance(value, exp.Literal):
+        raise Refused(trino.no_form("to_timestamp", dialect))
+    if value.is_string and not _FLOAT_TEXT.fullmatch(value.this):
+        raise Refused(
+            Refusal("22P02", f'invalid input syntax for type double precision: "{value.this}"'),
+            ruling=True,
+        )
+    number = float(value.this.strip())
+    return -number if negative else number
+
+
+def unix_seconds(node: exp.Expr, dialect: str) -> exp.Expr | None:
+    """to_timestamp of a double the statement writes (float8_timestamptz): the instant that many
+    seconds after 1970-01-01 UTC, its microseconds rounded half to even, computed as the statement
+    is read; 22008 of NaN; an instant outside DateTime64's bound, infinity's included, 0A000."""
+    if dialect != "clickhouse" or not isinstance(node, exp.UnixToTime):
+        return None
+    if node.args.get("scale") is not None or node.args.get("zone") is not None:
+        return None
+    seconds = _seconds(node.this, dialect)
+    if seconds is None:
+        return sqlglot.parse_one(f"CAST(NULL AS {instants.INSTANT})", read="clickhouse")
+    if math.isnan(seconds):
+        raise Refused(Refusal("22008", "timestamp cannot be NaN"), ruling=True)
+    outside = Refusal(
+        "0A000",
+        f"to_timestamp() of a value outside {instants.BOUND} has no exact form on clickhouse",
+    )
+    if math.isinf(seconds) or abs(seconds) > 1e13:
+        raise Refused(outside, ruling=True)
+    # As timestamp.c computes it: seconds after 2000-01-01 first, then scaled and rint (half to
+    # even), so the double rounds where PostgreSQL's does.
+    since_2000 = seconds - _POSTGRES_EPOCH_SECONDS
+    stamp = _POSTGRES_EPOCH + datetime.timedelta(microseconds=round(since_2000 * 1_000_000.0))
+    if not instants.FIRST <= stamp <= instants.LAST:
+        raise Refused(outside, ruling=True)
+    text = stamp.strftime("%Y-%m-%d %H:%M:%S.%f")
+    return sqlglot.parse_one(f"CAST('{text}' AS {instants.INSTANT})", read="clickhouse")
+
+
+UNIX_SECONDS = Feature(
+    "to_timestamp(double precision)",
+    FAMILY,
+    "The instant a count of seconds after 1970-01-01 UTC is.",
+    read=Side(
+        rules=(Rule(None, {"clickhouse": Rewrite(unix_seconds, mentions=r"\bto_timestamp\b")}),),
+        limitations={
+            "clickhouse": (
+                Limitation(
+                    "Of a double the statement writes as a literal, computed as the statement is "
+                    f"read; an instant outside {instants.BOUND} (infinity's too) raises 0A000; any "
+                    "other value is refused by name."
+                ),
+            )
+        },
+    ),
+)
+
 TO_CHAR = Feature(
     "to_char(timestamp, text)",
     FAMILY,
@@ -282,5 +369,6 @@ FEATURES: tuple[Feature, ...] = (
     MAKE_DATE,
     TRANSACTION_TIMESTAMP,
     CLOCK_TIMESTAMP,
+    UNIX_SECONDS,
     TO_CHAR,
 )
