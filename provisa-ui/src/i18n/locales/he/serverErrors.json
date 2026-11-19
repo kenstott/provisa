@@ -21,17 +21,17 @@
       "embedding_library_missing": "מודל ההטמעה {{model}} משתמש בספק {{provider}}, שדורש את התוספת {{extra}} (המודול {{module}} אינו מותקן): pip install 'provisa[{{extra}}]'."
     },
     "ai": {
-      "endpoint_address_from_server": "נקודת הקצה של AI‏ {{vendor}} לוקחת את הכתובת שלה מסביבת השרת, שארגון בשרת זה אינו משתמש בה. הגדירו לה כתובת משלכם תחת ניהול, מודלי AI.",
+      "key_required": "ל-{{vendor}} אין מפתח. הגדירו מפתח תחת ניהול, מודלי AI.",
+      "vendor_uses_server_credentials": "הגישה אל {{vendor}} נעשית באישורי השרת עצמו, שארגון בשרת זה אינו משתמש בהם. בחרו ספק שמקבל מפתח, או נקודת קצה של AI, תחת ניהול, מודלי AI.",
       "endpoint_key_from_server": "נקודת הקצה של AI‏ {{vendor}} לוקחת את המפתח שלה מסביבת השרת, שארגון בשרת זה אינו משתמש בה. הגדירו לה מפתח משלכם תחת ניהול, מודלי AI.",
       "endpoint_key_unset": "לנקודת הקצה של AI‏ {{vendor}} אין מפתח: {{field}} אינו מוגדר.",
-      "key_required": "ל-{{vendor}} אין מפתח. הגדירו מפתח תחת ניהול, מודלי AI.",
+      "endpoint_address_from_server": "נקודת הקצה של AI‏ {{vendor}} לוקחת את הכתובת שלה מסביבת השרת, שארגון בשרת זה אינו משתמש בה. הגדירו לה כתובת משלכם תחת ניהול, מודלי AI.",
       "local_server_from_environment": "הגישה אל {{vendor}} נעשית בכתובת של השרת עצמו, שארגון בשרת זה אינו משתמש בה. הגדירו נקודת קצה של AI בכתובת משלכם תחת ניהול, מודלי AI.",
       "server_environment_sets": "לא ניתן לקרוא ל-{{vendor}} כאן: סביבת השרת מגדירה את {{variable}}, שהלקוח שלו היה שולח עבור כל ארגון.",
-      "vector_model_address_from_server": "מודל ה-embedding‏ {{vendor}} לוקח את הכתובת שלו מסביבת השרת, שארגון בשרת זה אינו משתמש בה. הגדירו לו כתובת משלכם תחת ניהול, מודלי AI.",
       "vector_model_key_from_server": "מודל ה-embedding‏ {{vendor}} לוקח את המפתח שלו מסביבת השרת, שארגון בשרת זה אינו משתמש בה. הגדירו לו מפתח משלכם תחת ניהול, מודלי AI.",
       "vector_model_key_unset": "למודל ה-embedding‏ {{vendor}} אין מפתח: {{field}} אינו מוגדר.",
-      "vector_model_local_server": "הגישה אל מודל ה-embedding‏ {{vendor}} נעשית בכתובת של השרת עצמו, שארגון בשרת זה אינו משתמש בה. הגדירו לו כתובת משלכם תחת ניהול, מודלי AI.",
-      "vendor_uses_server_credentials": "הגישה אל {{vendor}} נעשית באישורי השרת עצמו, שארגון בשרת זה אינו משתמש בהם. בחרו ספק שמקבל מפתח, או נקודת קצה של AI, תחת ניהול, מודלי AI."
+      "vector_model_address_from_server": "מודל ה-embedding‏ {{vendor}} לוקח את הכתובת שלו מסביבת השרת, שארגון בשרת זה אינו משתמש בה. הגדירו לו כתובת משלכם תחת ניהול, מודלי AI.",
+      "vector_model_local_server": "הגישה אל מודל ה-embedding‏ {{vendor}} נעשית בכתובת של השרת עצמו, שארגון בשרת זה אינו משתמש בה. הגדירו לו כתובת משלכם תחת ניהול, מודלי AI."
     },
     "api": {
       "answer_cut": "התשובה עבור {{table}} נחתכה ב-max_pages={{max_pages}} ({{rows}} שורות): ל-API יש עוד. הגדילו את max_pages או את גודל העמוד של נקודת הקצה כדי לקרוא הכול.",
@@ -65,7 +65,7 @@
     },
     "billing": {
       "checkout_not_complete": "התשלום הזה לא הושלם, ולכן עדיין אין מינוי לשייך.",
-      "invalid_signature": "חתימת webhook לא חוקית",
+      "invalid_signature": "חתימת Webhook לא תקינה",
       "no_trial": "לארגון הזה אין תקופת ניסיון",
       "org_no_customer": "לארגון הזה עדיין אין חשבון חיוב.",
       "org_not_found": "הארגון לא נמצא",
@@ -147,7 +147,7 @@
       "viewer_column_unknown": "'{{column}}' אינה עמודה של הטבלה '{{table}}'",
       "viewer_filter_unknown": "'{{operator}}' אינו מסנן של העמודה '{{column}}'",
       "viewer_value_invalid": "המסנן על '{{column}}' אינו יכול להשתמש בערך '{{value}}'",
-      "replica_building": "העותק של {{replica}} עדיין נבנה. הבנייה נמשכת; פתחו שוב את התצוגה המקדימה לאחר שתסתיים.",
+      "replica_building": "הרפליקה של {{replica}} עדיין נבנית. הבנייה ממשיכה; יש לפתוח את התצוגה המקדימה שוב לאחר שתסתיים.",
       "address_invalid": "לא ניתן לפענח את הכתובת: {{reason}}",
       "address_not_found": "אין מה לפענח: {{reason}}",
       "mixed_resolve_and_other_fields": "לא ניתן לשלב את resolve עם שדות שורש אחרים באותה פעולה",
@@ -172,14 +172,13 @@
     },
     "discovery": {
       "adapter_missing_discover_schema": "המתאם עבור '{{source_type}}' אינו מממש discover_schema",
-      "answer_unreadable": "תשובת המודל לא הכילה רשימה קריאה.",
       "cassandra_discovery_unsupported": "גילוי סכמה של Cassandra דורש הפעלת CQL חיה, שאינה זמינה. הגדירו עמודות ידנית עבור מקור זה.",
       "database_not_connected": "מסד הנתונים אינו מחובר",
-      "decided_both_ways": "הצעה מתקבלת או שאין להמליץ עליה שוב, לא שניהם.",
       "domain_id_required": "domain_id נדרש עבור היקף domain",
       "elasticsearch_index_hint_required": "גילוי Elasticsearch דורש רמז 'index'.",
       "elasticsearch_mapping_failed": "קריאת ה-mapping של Elasticsearch עבור האינדקס '{{index}}' נכשלה: {{error}}",
       "endpoint_already_registered": "נקודת הקצה כבר רשומה: {{error}}",
+      "decided_both_ways": "הצעה מתקבלת או שאין להמליץ עליה שוב, לא שניהם.",
       "model_has_no_room": "המודל {{model}} אינו יכול להכיל בקשה: {{reason}}",
       "model_incomplete": "מודל שנבחר מציין גם את הספק שלו וגם את המודל שלו.",
       "no_adapter_for_source_type": "לא רשום מתאם עבור סוג המקור '{{source_type}}'",
@@ -200,7 +199,8 @@
       "target_tables_not_read": "אף אחת מטבלאות היעד שנבחרו ({{count}}) אינה נקראת: הגילוי משמיט טבלאות של דומיין מערכת וטבלאות שאינן בשירות.",
       "target_tables_outside_domains": "טבלאות היעד שנבחרו נמצאות מחוץ לדומיינים שנבחרו במסנן הדומיינים: {{names}}.",
       "unknown_source_type": "סוג מקור לא מוכר: {{type}}",
-      "vendor_unknown": "{{vendor}} אינו מציג כאן מודלים; הזינו את שם המודל."
+      "vendor_unknown": "{{vendor}} אינו מציג כאן מודלים; הזינו את שם המודל.",
+      "answer_unreadable": "תשובת המודל לא הכילה רשימה קריאה."
     },
     "llm": {
       "request_failed": "הבקשה למודל נכשלה: {{reason}}",
@@ -290,22 +290,22 @@
       "auth_required_create": "נדרש אימות כדי ליצור ארגון",
       "auth_required_leave": "נדרש אימות כדי לעזוב ארגון",
       "auto_join_breadth_unacknowledged": "סקרו את כלל ההצטרפות האוטומטית הזה בקפידה, אחרת תוכלו לקבל אנשים מחוץ לארגון שלכם: מלבד {{domains}}, הוא מקבל גם כתובות כגון {{admits}}. כל אדם בדומיין שאינכם שולטים בו יוכל אז להצטרף לארגון שלכם אוטומטית. אשרו שאתם מקבלים את הסיכון הזה כדי לשמור.",
-      "auto_join_public_domain": "auto_join מחייב כלל דוא\"ל המוגבל לדומיין שבבעלותכם — כלל זה תואם ל־{{domain}}.",
+      "auto_join_public_domain": "auto_join דורש כלל דוא\"ל המוגבל לדומיין שבשליטתך. הכלל הזה תואם ל-{{domain}}.",
       "auto_join_requires_role": "auto_join דורש auto_join_role",
-      "auto_join_rule_taken": "ארגון אחר כבר מקבל אוטומטית את כל מי שמתאים לכלל זה. שני ארגונים אינם יכולים לתבוע את אותן כתובות — בקשו מהם הזמנה, או צמצמו את הכלל לדומיין שרק הארגון שלכם משתמש בו.",
+      "auto_join_rule_taken": "ארגון אחר כבר מצרף אוטומטית את כל מי שתואם לכלל הזה. שני ארגונים לא יכולים לתבוע את אותן כתובות. אפשר לבקש מהם הזמנה, או לצמצם את הכלל לדומיין שרק הארגון שלך משתמש בו.",
       "auto_join_rule_unbounded": "לכלל ההצטרפות האוטומטית הזה אין גבול: הוא היה מקבל כתובות בדומיינים שאינכם שולטים בהם. עגנו אותו לדומיין שבבעלותכם, לדוגמה \"@acme\\\\.com$\".",
       "cannot_delete_root": "לא ניתן למחוק את ארגון ה-root",
-      "delete_confirm_required": "מחיקת '{{org}}' משמידה את כל הנתונים שלו לצמיתות — איש, כולל מנהל פלטפורמה, לא יוכל לשחזרם. חזרו על מזהה הארגון בפרמטר 'confirm' כדי להמשיך.",
+      "delete_confirm_required": "מחיקת '{{org}}' משמידה את כל הנתונים שלו לצמיתות, ואף אחד, כולל מנהל פלטפורמה, לא יכול לשחזר אותם. יש לחזור על מזהה הארגון בפרמטר 'confirm' כדי להמשיך.",
       "invalid_email_rule": "כלל דוא\"ל לא תקין: {{error}}",
       "invalid_org_id": "מזהה ארגון לא תקין '{{org}}': 2-40 תווים, אותיות לטיניות קטנות וספרות בלבד, המתחילים באות. המזהה הופך לשם סכמת מסד הנתונים ולתת-הדומיין, ולא ניתן לשנותו בהמשך.",
       "limit_reached": "הגעת למגבלת הארגונים: חשבון בודד רשאי ליצור לכל היותר {{limit}} ארגונים. מחקו ארגון שאינו נחוץ עוד כדי ליצור אחד נוסף.",
       "membership_not_found": "החברות לא נמצאה",
-      "no_tenant_runtime": "לארגון '{{org}}' אין סביבת ריצה של דייר — ייתכן שהוא עדיין בתהליך הקצאה.",
+      "no_tenant_runtime": "לארגון '{{org}}' אין סביבת ריצה של דייר. ייתכן שהוא עדיין בהקצאה.",
       "not_found": "הארגון לא נמצא",
       "not_org_admin": "{{user}} אינו מחזיק ב-org_admin ב-{{org}}",
       "org_id_reserved": "מזהה הארגון '{{org}}' שמור. מזהים שמורים: {{reserved}}.",
       "platform_admin_required": "נדרש platform_admin",
-      "retry_not_failed": "הארגון '{{org}}' נמצא במצב '{{state}}', לא 'failed' — אין מה לנסות שוב.",
+      "retry_not_failed": "הארגון '{{org}}' במצב '{{state}}', לא 'failed', ולכן אין מה לנסות שוב.",
       "self_role_change": "משתמש אינו יכול לשנות את התפקיד של עצמו. פנו למנהל אחר.",
       "view_not_permitted": "אין הרשאה לצפות בארגון זה",
       "org_id_sandbox_prefix": "מזהי ארגון שמתחילים ב־{{prefix}} שמורים לארגזי חול של הדגמה.",
@@ -365,13 +365,13 @@
       "cache_purged": "נוקו {{count}} רשומות מטמון",
       "cache_purged_table": "נוקו {{count}} רשומות מטמון עבור הטבלה {{table}}",
       "calendar_deleted": "לוח השנה '{{calendar}}' נמחק",
-      "calendar_in_use": "לוח השנה '{{calendar}}' נמצא בשימוש על ידי Materialized Views — נקו את לוח הזמנים של תמונות המצב שלהם לפני המחיקה",
+      "calendar_in_use": "לוח השנה '{{calendar}}' נמצא בשימוש של תצוגות Materialized View. יש לנקות את תזמון ה-snapshot שלהן לפני המחיקה.",
       "calendar_not_found": "לוח השנה '{{calendar}}' לא נמצא",
       "calendar_saved": "לוח השנה '{{calendar}}' {{version}} נשמר",
       "column_natively_nested": "לא ניתן לרשום: העמודה {{column}} היא באופן מקורי {{native_type}} במקור שלה, ולכן הסוג שלה הוא json ולא {{type}}.",
       "column_types_unresolved": "לא ניתן לרשום: לא נמצא סוג נתונים מהמקור עבור העמודות: {{columns}}. בצעו Introspection לטבלה (Discover schema) או הגדירו Data Type לכל אחת לפני הרישום.",
       "config_not_found": "קובץ התצורה לא נמצא",
-      "creation_request_queued": "נכנס לתור כבקשת יצירה מס' {{id}} — ממתין למשתמש המחזיק ב-'{{capability}}' שיבצע או ידחה אותה.",
+      "creation_request_queued": "הוכנס לתור כבקשת יצירה מס' {{id}}, וממתין למשתמש בעל '{{capability}}' שיבצע או ידחה אותה.",
       "db_pool_unavailable": "מאגר מסד הנתונים אינו זמין",
       "discovery_failed": "גילוי הסכמה נכשל: {{error}}",
       "domain_created": "הדומיין '{{domain}}' נוצר",
@@ -383,7 +383,7 @@
       "invalid_calendar": "לוח שנה לא תקין: {{error}}",
       "invalid_cardinality": "קרדינליות לא תקינה: '{{cardinality}}'",
       "invalid_off_peak_window": "חלון שפל לא תקין: {{error}}",
-      "load_protection_gate_required": "{{who}}: הגנת עומס דורשת לפחות שער רענון אחד — הגדירו חלון שפל, קצב cache_ttl, או change_signal מסוג בדיקה (probe/ttl_probe)",
+      "load_protection_gate_required": "{{who}}: הגנת עומס דורשת לפחות שער רענון אחד. יש להגדיר חלון שעות שפל, קצב cache_ttl או change_signal מתשאל (probe/ttl_probe)",
       "metric_deleted": "המדד '{{metric}}' נמחק",
       "metric_not_found": "המדד '{{metric}}' לא נמצא",
       "metric_saved": "המדד '{{metric}}' נשמר",
@@ -625,7 +625,7 @@
       "schema_not_avro": "סכמה {{schema_id}} ברישום {{registry}} היא {{kind}}, לא Avro",
       "schema_registry_error": "רישום הסכמות {{registry}} השיב HTTP {{http_status}}: {{error}}",
       "schema_registry_refused_credentials": "רישום הסכמות {{registry}} דחה את פרטי הגישה של המקור (HTTP {{http_status}}, אימות '{{method}}')",
-      "schema_registry_unreachable": "לא ניתן להגיע לרישום הסכמות: {{error}}",
+      "schema_registry_unreachable": "לא ניתן להגיע ל-Schema Registry: ‏{{error}}",
       "sse_limit_reached": "הגעת למספר המרבי של מנויי SSE במקביל",
       "table_not_found": "הטבלה '{{table}}' לא נמצאה",
       "unknown_role": "תפקיד לא מוכר '{{role}}'",
@@ -923,7 +923,7 @@
       "filter_operator_refused": "{{operator}} אינו אופרטור שבעזרתו ניתן להמיר מסנן הרשאה."
     },
     "relationship": {
-      "name_taken": "השם '{{name}}' כבר תפוס על ידי הקשר '{{held_by}}'. יש לתת לקשר הזה שם אחר."
+      "name_taken": "השם '{{name}}' תפוס על ידי הקשר '{{held_by}}'. יש לתת לקשר הזה שם אחר."
     }
   }
 }

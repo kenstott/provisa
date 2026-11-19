@@ -18,7 +18,7 @@
     "cargoNone": "אין מאגרי Cargo. ה-crates מגיעים מ-crates.io.",
     "add_cargo": "הוספת מאגר Cargo",
     "gitTitle": "שרתי Git",
-    "gitHelp": "השרתים שמהם מקורות קוד מושכים קוד Git ותלויות Git.",
+    "gitHelp": "המארחים שמהם מקורות קוד מאחזרים קוד Git ותלויות Git.",
     "gitNone": "אין שרתי Git.",
     "add_git": "הוספת שרת Git",
     "npmAddress": "כתובת המאגר",
