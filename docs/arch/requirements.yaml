@@ -97717,7 +97717,12 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     or CHAR) is not pushed to a source whose collation may differ from Calcite''s, as Trino withholds
     them; a database reporting the product name TRINO gets the Trino dialect, not the Presto one; the
     Sybase dialect renders OFFSET without FETCH instead of failing. Each has a RelToSqlConverterTest
-    case.'
+    case. (Amended 2026-11-19, PARTLY PUSHABLE FILTERS SPLIT; TEXT ORDER FOLLOWS THE COLLATION LEVEL:)
+    Maintainer 2026-11-19. Each dialect declares how much text comparison its collation lets Calcite
+    push: all, equality only, or none (an unknown database: none). A filter whose conjuncts are only
+    partly pushable is split: the safe conjuncts go to the source and the rest stay in Calcite, as Trino
+    does. ORDER BY, GROUP BY and MIN or MAX on text are pushed only to a dialect whose level is all.
+    LIKE and SIMILAR TO follow the equality rule.'
 - id: REQ-2257
   status: proposed
   target: 2026-Q3
