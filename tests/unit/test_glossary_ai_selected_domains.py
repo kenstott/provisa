@@ -25,7 +25,7 @@ from unittest.mock import AsyncMock
 import pytest
 from sqlalchemy import insert
 
-from provisa.api.admin import glossary_router, schema_helpers
+from provisa.api.admin import definition_context, glossary_router, schema_helpers
 from provisa.core import org_secrets
 from provisa.core.models import Column, Table
 from provisa.core.repositories import glossary as glossary_repo
@@ -51,6 +51,9 @@ def _request() -> "Request":
         state=types.SimpleNamespace(
             identity=types.SimpleNamespace(user_id="alice", roles=[], acting_roles=[]),
             active_org_id="acme",
+            # REQ-1387: the role the auth middleware binds; the definition assistant reads the
+            # columns' sample values as it.
+            role="steward",
         ),
     )
     return cast("Request", fake)
@@ -94,6 +97,9 @@ async def _two_domains(control_plane, monkeypatch):
     monkeypatch.setattr(glossary_router, "_require_glossary_rw", lambda request: None)
     monkeypatch.setattr(glossary_router, "_authority", lambda request: None)
     monkeypatch.setattr(glossary_router, "_curate_authority", lambda request: None)
+    # REQ-1387 (amended 2026-11-18): the sample values' governed read is
+    # test_glossary_definition_context's; none here.
+    monkeypatch.setattr(definition_context, "column_samples", AsyncMock(return_value={}))
     async with db.acquire() as conn:
         await table_repo.upsert(conn, _tbl("sales", "orders", ["customer_id", "order_dt"]))
         await table_repo.upsert(conn, _tbl("hr", "staff", ["customer_id", "hire_dt"]))

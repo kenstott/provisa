@@ -28,7 +28,7 @@ from sqlalchemy import insert
 if TYPE_CHECKING:
     from fastapi import Request
 
-from provisa.api.admin import glossary_router
+from provisa.api.admin import definition_context, glossary_router
 from provisa.api.errors import ApiError
 from provisa.core.models import Column, Table
 from provisa.core.repositories import table as table_repo
@@ -345,9 +345,14 @@ async def test_generate_definition_drafts_without_persisting(control_plane, monk
         return "A paying party."
 
     monkeypatch.setattr(schema_helpers, "_call_llm", _fake_llm)
+    # REQ-1387 (amended 2026-11-18): the columns' sample values are read as the curator, the role
+    # the auth middleware binds on every request; their read is test_glossary_definition_context's.
+    monkeypatch.setattr(definition_context, "column_samples", AsyncMock(return_value={}))
+    curator = _request()
+    curator.state.role = "steward"
     async with _surface(control_plane, monkeypatch) as (_db, notified):
         customer = await _term_id("customer")
-        result = await glossary_router.generate_definition(_request(), customer)
+        result = await glossary_router.generate_definition(curator, customer)
         assert result == {"definition": "A paying party."}
         # The prompt grounds the model in the term's physical binding.
         assert "customer" in prompts[0] and "orders.cust_id" in prompts[0]
@@ -356,7 +361,7 @@ async def test_generate_definition_drafts_without_persisting(control_plane, monk
         assert detail["definition"] is None
         assert notified == []
         with pytest.raises(ApiError) as err:
-            await glossary_router.generate_definition(_request(), 99999)
+            await glossary_router.generate_definition(curator, 99999)
         assert err.value.status_code == 404
 
 
