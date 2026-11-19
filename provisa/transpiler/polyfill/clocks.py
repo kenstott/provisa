@@ -508,6 +508,32 @@ def made_time(node: exp.Expr, dialect: str) -> exp.Expr | None:
     return held_literal(micros)
 
 
+_TIMES = frozenset({"time without time zone", "time"})
+
+
+def _extreme(name: str) -> Callable[[exp.Expr, str], exp.Expr | None]:
+    """max or min of times the statement says: the held times' own max or min (the order of
+    their microseconds is the order of the times), NULL of none."""
+
+    def extreme(node: exp.Expr, dialect: str) -> exp.Expr | None:
+        call = trino.called(node) if dialect == _CLICKHOUSE else None
+        if call is None or name not in call[0] or len(call[1]) != 1:
+            return None
+        (value,) = call[1]
+        if trino.said(value) not in _TIMES and not time_valued(value):
+            return None
+        outer = node.parent.parent if isinstance(node.parent, exp.Dot) else node.parent
+        if isinstance(outer, (exp.Filter, exp.Window)) or isinstance(value, exp.Distinct):
+            return None
+        held = graft(f"{name}(provisa_t)", provisa_t=value.copy())
+        held.meta[HELD] = True
+        return held
+
+    extreme.__doc__ = f"{name} of times: the held microseconds' {name}."
+    extreme.__qualname__ = extreme.__name__ = f"{name}_of_times"
+    return extreme
+
+
 def _text(argument: exp.Expr) -> str | None | Literal[False]:
     """A text the statement writes (maybe cast): its value; None for a NULL; False for any other."""
     value = argument.unnest()
@@ -630,6 +656,17 @@ FEATURES: tuple[Feature, ...] = (
         _HELD_STATED + " The timestamp is held as DateTime64(6, 'UTC'), exact from 1900-01-01 "
         "to 2299-12-31; its wall time's time of day is read.",
         r"\btime\b",
+    ),
+    *(
+        _row(
+            f"{name}(time)",
+            f"The {'latest' if name == 'max' else 'earliest'} of a group's times of day.",
+            _extreme(name),
+            _HELD_STATED + " Of times the statement says (a cast, or a VALUES column of them); a "
+            "FILTER or a window keeps the function's refusal by name.",
+            rf"\b{name}\b",
+        )
+        for name in ("max", "min")
     ),
     _row(
         "make_time",

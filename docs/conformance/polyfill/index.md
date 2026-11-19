@@ -6,14 +6,14 @@ A polyfill is how Provisa gives a PostgreSQL client PostgreSQL's behaviour on a 
 
 ## [PostgreSQL](postgres.md)
 
-555 of the grid's 555 features are native on PostgreSQL and left out.
+557 of the grid's 557 features are native on PostgreSQL and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 </tbody></table>
 
 ## [DuckDB](duckdb.md)
 
-205 of the grid's 555 features are native on DuckDB and left out.
+207 of the grid's 557 features are native on DuckDB and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -1020,7 +1020,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Trino](trino.md)
 
-124 of the grid's 555 features are native on Trino and left out.
+126 of the grid's 557 features are native on Trino and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -2132,7 +2132,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Presto](presto.md)
 
-124 of the grid's 555 features are native on Presto and left out.
+126 of the grid's 557 features are native on Presto and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -3244,7 +3244,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Athena](athena.md)
 
-124 of the grid's 555 features are native on Athena and left out.
+126 of the grid's 557 features are native on Athena and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -4356,7 +4356,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [ClickHouse](clickhouse.md)
 
-19 of the grid's 555 features are native on ClickHouse and left out.
+19 of the grid's 557 features are native on ClickHouse and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>an array of dimensions</strong><br>cardinality, unnest and array_to_string of an array of more than one dimension: of every element, in storage order.</td><td><pre><code>function provisa.transpiler.polyfill.array_dimensions.of_dimensions: cardinality, unnest or array_to_string of an array of more than one dimension: of every</code></pre></td><td></td><td></td><td></td></tr>
@@ -5041,6 +5041,8 @@ CASE WHEN $v IS NULL THEN NULL ELSE arrayMap(_n -&gt; concat(&#x27;(&#x27;, arra
 <tr><td><strong>timestamp(date, time)</strong><br>The timestamp of a date and a time of day.</td><td><pre><code>function provisa.transpiler.polyfill.clocks.timestamp_of_a_clock: timestamp of a date and a time: their sum, a timestamp held as DateTime64(6, &#x27;UTC&#x27;).</code></pre></td><td><ul><li>ClickHouse&#x27;s server has no Time64: a time is held as an Int64 of its microseconds of the day, and shown in the select list as time_out&#x27;s text (polyfill.clocks). The answer is held as DateTime64(6, &#x27;UTC&#x27;), exact from 1900-01-01 to 2299-12-31: a date there plus 24:00:00 past its last day raises 0A000. The same sum answers the operators date + time and time + date.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>timedate_pl(time, date)</strong><br>A time of day plus a date, a timestamp (+).</td><td><pre><code>function provisa.transpiler.polyfill.clocks.timedate_pl_of_a_clock: timedate_pl of a time and a date: their sum, a timestamp held as DateTime64(6, &#x27;UTC&#x27;).</code></pre></td><td><ul><li>ClickHouse&#x27;s server has no Time64: a time is held as an Int64 of its microseconds of the day, and shown in the select list as time_out&#x27;s text (polyfill.clocks). The answer is held as DateTime64(6, &#x27;UTC&#x27;), exact from 1900-01-01 to 2299-12-31: a date there plus 24:00:00 past its last day raises 0A000. The same sum answers the operators date + time and time + date.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>time(timestamp)</strong><br>The time of day of a timestamp.</td><td><pre><code>function provisa.transpiler.polyfill.clocks.time_of_stamp: time of a timestamp: a cast of it to time, its wall time&#x27;s microseconds of the day.</code></pre></td><td><ul><li>ClickHouse&#x27;s server has no Time64: a time is held as an Int64 of its microseconds of the day, and shown in the select list as time_out&#x27;s text (polyfill.clocks). The timestamp is held as DateTime64(6, &#x27;UTC&#x27;), exact from 1900-01-01 to 2299-12-31; its wall time&#x27;s time of day is read.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>max(time)</strong><br>The latest of a group&#x27;s times of day.</td><td><pre><code>function provisa.transpiler.polyfill.clocks.max_of_times: max of times: the held microseconds&#x27; max.</code></pre></td><td><ul><li>ClickHouse&#x27;s server has no Time64: a time is held as an Int64 of its microseconds of the day, and shown in the select list as time_out&#x27;s text (polyfill.clocks). Of times the statement says (a cast, or a VALUES column of them); a FILTER or a window keeps the function&#x27;s refusal by name.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>min(time)</strong><br>The earliest of a group&#x27;s times of day.</td><td><pre><code>function provisa.transpiler.polyfill.clocks.min_of_times: min of times: the held microseconds&#x27; min.</code></pre></td><td><ul><li>ClickHouse&#x27;s server has no Time64: a time is held as an Int64 of its microseconds of the day, and shown in the select list as time_out&#x27;s text (polyfill.clocks). Of times the statement says (a cast, or a VALUES column of them); a FILTER or a window keeps the function&#x27;s refusal by name.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>make_time</strong><br>The time of day of an hour, a minute and seconds.</td><td><pre><code>function provisa.transpiler.polyfill.clocks.made_time: make_time(hour, min, sec) of literals (date.c): the time of day, computed as the statement</code></pre></td><td><ul><li>ClickHouse&#x27;s server has no Time64: a time is held as an Int64 of its microseconds of the day, and shown in the select list as time_out&#x27;s text (polyfill.clocks). Of literal arguments or NULLs, computed as the statement is read as date.c computes it: a field out of range raises 22008, 24:00:00 the last; any other argument is refused by name.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>time(time, integer)</strong><br>A time of day rounded to a precision (time_scale).</td><td><pre><code>function provisa.transpiler.polyfill.clocks.time_scaled: time of a time and a precision (time_scale): its microseconds rounded half up to the</code></pre></td><td><ul><li>ClickHouse&#x27;s server has no Time64: a time is held as an Int64 of its microseconds of the day, and shown in the select list as time_out&#x27;s text (polyfill.clocks). The microseconds are rounded half up to the precision&#x27;s digits, as AdjustTimeForTypmod rounds them (23:59:59.9999995 to 24:00:00 at six); a precision outside 0 to 6 leaves the time. The precision is read as a literal or a NULL; any other is refused by name.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>avg</strong><br>The mean of a group&#x27;s values.</td><td><pre><code>avg($v)
@@ -5575,7 +5577,7 @@ function provisa.transpiler.polyfill.bytea.encode_of_bytes: encode of a bytea he
 
 ## [Snowflake](snowflake.md)
 
-205 of the grid's 555 features are native on Snowflake and left out.
+207 of the grid's 557 features are native on Snowflake and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -6592,7 +6594,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Databricks](databricks.md)
 
-205 of the grid's 555 features are native on Databricks and left out.
+207 of the grid's 557 features are native on Databricks and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -7609,7 +7611,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [BigQuery](bigquery.md)
 
-205 of the grid's 555 features are native on BigQuery and left out.
+207 of the grid's 557 features are native on BigQuery and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -8626,7 +8628,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [T-SQL (SQL Server, Fabric, Synapse)](tsql.md)
 
-205 of the grid's 555 features are native on T-SQL (SQL Server, Fabric, Synapse) and left out.
+207 of the grid's 557 features are native on T-SQL (SQL Server, Fabric, Synapse) and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -9643,7 +9645,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Redshift](redshift.md)
 
-205 of the grid's 555 features are native on Redshift and left out.
+207 of the grid's 557 features are native on Redshift and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -10660,7 +10662,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [MySQL](mysql.md)
 
-205 of the grid's 555 features are native on MySQL and left out.
+207 of the grid's 557 features are native on MySQL and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -11677,7 +11679,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [SingleStore](singlestore.md)
 
-205 of the grid's 555 features are native on SingleStore and left out.
+207 of the grid's 557 features are native on SingleStore and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -12694,7 +12696,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [SQLite](sqlite.md)
 
-205 of the grid's 555 features are native on SQLite and left out.
+207 of the grid's 557 features are native on SQLite and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -13711,7 +13713,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Oracle](oracle.md)
 
-205 of the grid's 555 features are native on Oracle and left out.
+207 of the grid's 557 features are native on Oracle and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -14728,7 +14730,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Hive](hive.md)
 
-205 of the grid's 555 features are native on Hive and left out.
+207 of the grid's 557 features are native on Hive and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -15745,7 +15747,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Exasol](exasol.md)
 
-205 of the grid's 555 features are native on Exasol and left out.
+207 of the grid's 557 features are native on Exasol and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -16762,7 +16764,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Druid](druid.md)
 
-205 of the grid's 555 features are native on Druid and left out.
+207 of the grid's 557 features are native on Druid and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)

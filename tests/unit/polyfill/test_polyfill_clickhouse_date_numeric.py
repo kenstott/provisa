@@ -8,8 +8,8 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""ClickHouse's rows of make_interval, make_time, int2int4_sum, int4 of a "char" and numeric of a
-double or a real
+"""ClickHouse's rows of make_interval, make_time, max and min of times, to_timestamp of a double,
+int2int4_sum, int4 of a "char" and numeric of a double or a real
 (REQ-2236; REQ-2171), each refused by name on ClickHouse before: the functions measure's own calls
 and the edges the rows read, answered on the embedded engine (chdb) against the embedded
 PostgreSQL's recorded answer (numbers compared by value)."""
@@ -28,6 +28,18 @@ from provisa.transpiler.function_macros import FunctionRefused
 from provisa.transpiler.transpile import transpile
 
 ANSWERED = [
+    # max and min of times: shown as time_out's text
+    (
+        "SELECT pg_catalog.\"max\"(c1) AS v FROM (VALUES ('12:30:45'::time), ('01:00:00.5'::time), "
+        "(NULL::time)) AS t(c1)",
+        ["12:30:45"],
+    ),
+    (
+        "SELECT pg_catalog.\"min\"(c1) AS v FROM (VALUES ('12:30:45'::time), ('01:00:00.5'::time), "
+        "(NULL::time)) AS t(c1)",
+        ["01:00:00.5"],
+    ),
+    ('SELECT pg_catalog."max"(c1) AS v FROM (VALUES (NULL::time)) AS t(c1)', [None]),
     # int4 of a "char" (chartoi4): its byte as a signed char
     ('SELECT pg_catalog."int4"(NULL::"char") AS v', [None]),
     ('SELECT pg_catalog."int4"(\'a\'::"char") AS v', ["97"]),
