@@ -184,6 +184,22 @@ def raising(sqlstate: str, message_sql: str) -> str:
     return f"CAST({SERVER_FORM_RAISE}('{sqlstate}', {message_sql}) AS {_ITS_TYPE})"
 
 
+#: The greatest attnum whose bitmapset member, attnum - FirstLowInvalidHeapAttributeNumber (-7),
+#: fits an AttrNumber (int16): past it the member wraps negative.
+_GREATEST_MEMBER_ATTNUM = 32760
+
+
+def _column_is_updatable(is_table: str) -> str:
+    """pg_column_is_updatable: a system column (attnum of zero or less) is never updatable; past
+    the greatest member attnum bms_make_singleton raises XX000 before the relation is read; a
+    table's column is updatable."""
+    negative = raising("XX000", "'negative bitmapset member not allowed'")
+    return (
+        f"CASE WHEN att <= 0 THEN false WHEN att > {_GREATEST_MEMBER_ATTNUM} THEN {negative} "
+        f"ELSE coalesce({is_table}, false) END"
+    )
+
+
 def strict(params: str, sql_type: str, answer: str) -> str:
     """``answer``, NULL of ``sql_type`` where any of ``params`` is NULL."""
     if not params:
@@ -1506,12 +1522,11 @@ def _catalog_objects(a: _Answers) -> None:
         "INTEGER",
         f"CASE WHEN coalesce({is_table}, false) THEN 28 ELSE 0 END",
     )
-    # A system column (a negative attnum) is never updatable.
     a.strict(
         "pg_column_is_updatable",
         "rel:bigint, att:bigint, cascaded",
         "BOOLEAN",
-        f"att > 0 AND coalesce({is_table}, false)",
+        _column_is_updatable(is_table),
     )
     a.strict("pg_filenode_relation", "tablespace, filenode", "OID", "CAST(NULL AS OID)")
     a.strict("pg_relation_filenode", "rel", "BIGINT", "CAST(NULL AS BIGINT)")

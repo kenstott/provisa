@@ -281,7 +281,8 @@ def test_an_oid_is_held_as_a_bigint_and_reaches_a_call(sql, dialect):
     assert " oid" not in transpile(sql, dialect).lower()
 
 
-@pytest.mark.parametrize("dialect", ["trino", "clickhouse"])
+# ClickHouse answers both: the polyfill grid's rows (tests/unit/polyfill/test_polyfill_clickhouse_texts.py).
+@pytest.mark.parametrize("dialect", ["trino"])
 @pytest.mark.parametrize(
     "sql",
     [

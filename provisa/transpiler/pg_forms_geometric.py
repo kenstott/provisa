@@ -284,7 +284,8 @@ def _float_text(e: Engine, value: str) -> str:
         f"WHEN _p - 1 < -4 OR _p - 1 >= 15 THEN substr(_d, 1, 1) || "
         f"CASE WHEN {e.length.format('_d')} > 1 THEN '.' || substr(_d, 2) ELSE '' END || 'e' || "
         "CASE WHEN _p - 1 < 0 THEN '-' ELSE '+' END || "
-        f"{e.lpad.format(e.text.format('abs(_p - 1)'), 2)} "
+        # At least two digits: an lpad to 2 would cut 308 to 30.
+        f"CASE WHEN abs(_p - 1) < 10 THEN '0' ELSE '' END || {e.text.format('abs(_p - 1)')} "
         f"WHEN _p <= 0 THEN '0.' || {e.lpad.format(chr(39) * 2, '-_p')} || _d "
         f"WHEN {e.length.format('_d')} <= _p THEN {e.rpad.format('_d', '_p')} "
         "ELSE substr(_d, 1, _p) || '.' || substr(_d, _p + 1) END"

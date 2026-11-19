@@ -231,9 +231,10 @@ def _overlay(length: str) -> str:
 
 
 #: bytea_substring: from max($s, 1), to $s + $l (none past the end, nothing before 1).
-_SUBSTRING = "substring($a, greatest($s, 1))"
+#: A NULL start or length answers NULL (ClickHouse's greatest passes over a NULL).
+_SUBSTRING = "if($s IS NULL, NULL, substring($a, greatest($s, 1)))"
 _SUBSTRING_FOR = (
-    f"CASE WHEN $l < 0 THEN {_raise('22011', _LENGTH, _BYTES)} "
+    f"CASE WHEN $s IS NULL OR $l IS NULL THEN NULL WHEN $l < 0 THEN {_raise('22011', _LENGTH, _BYTES)} "
     "ELSE substring($a, greatest($s, 1), greatest($s + $l - greatest($s, 1), 0)) END"
 )
 
