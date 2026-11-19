@@ -241,11 +241,23 @@ async def mcp_chat(request: Request):  # REQ-1008
     role = getattr(request.state, "role", None) or body.get("role") or ""
     messages = body.get("messages") or []
     current_route = body.get("current_route") or None  # REQ-1800
+    # REQ-2253: the domain filter's selection, a list; absent is no selection (every domain the
+    # role reaches), the one case the UI sends none.
+    domains = body.get("domains")
+    if domains is not None and not (
+        isinstance(domains, list) and all(isinstance(d, str) for d in domains)
+    ):
+        raise HTTPException(status_code=400, detail="domains must be a list of domain ids")
 
     async def _events():
         try:
             async for event in run_chat(
-                state, role, messages, request=request, current_route=current_route
+                state,
+                role,
+                messages,
+                request=request,
+                current_route=current_route,
+                domains=domains,
             ):
                 yield f"data: {_json.dumps(event)}\n\n"
         except (PermissionError, ValueError) as exc:
