@@ -27,8 +27,8 @@
     "refused_by_name": 98
    },
    "edge": {
-    "served": 1851,
-    "wrong_answer": 173,
+    "served": 1852,
+    "wrong_answer": 172,
     "engine_error": 281
    }
   },
