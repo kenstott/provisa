@@ -1966,6 +1966,9 @@ user_directory = Table(
     Column("user_id", Text, primary_key=True),
     Column("display_name", Text),
     Column("email", Text),
+    # REQ-2219 (amended 2026-11-18): whether the identity provider verified this address at the
+    # person's latest sign-in; only a verified address names this person in a write by email.
+    Column("email_verified", Boolean, nullable=False, server_default=false()),
     Column("email_opt_in", Boolean, nullable=False, server_default=true()),
     # REQ-413: the score from which a discovery run's proposals start ticked, the person's own.
     Column("discovery_threshold", Float, nullable=False, server_default="0.7"),
