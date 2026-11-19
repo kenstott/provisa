@@ -73,12 +73,13 @@ export interface RunProposalsState {
   notAgain: ReadonlySet<number>;
   toggleAccept: (id: number) => void;
   toggleNotAgain: (id: number) => void;
-  /** Every shown row that can be accepted ticked, or none where all already are. */
-  toggleAcceptAll: () => void;
+  /** Every listed row that can be accepted ticked, or none where all already are. The list
+   *  names its rows: those the Score filter and its other column filters show. */
+  toggleAcceptAll: (listed: readonly number[]) => void;
   /** Send what is ticked. No accepted proposal carries a name: nobody types one in the run's
    *  result, so the server names each and tells apart a name another relationship holds
    *  (REQ-415, amended 2026-11-16). */
-  apply: () => Promise<void>;
+  apply: (listed: ReadonlySet<number>) => Promise<void>;
   applying: boolean;
   /** What the last Apply could not do, by proposal. */
   failures: { proposal: RunProposal; error: string }[];
@@ -140,7 +141,6 @@ export function useRunProposals(
     () => (shown ? shown.proposals.filter((p) => scoreShown(p, shown.scoreFilter)) : []),
     [shown],
   );
-  const acceptable = useMemo(() => visible.filter((p) => p.acceptable).map((p) => p.id), [visible]);
 
   const setScoreFilter = useCallback(
     (scoreFilter: ScoreFilter | null) => {
@@ -183,43 +183,49 @@ export function useRunProposals(
   };
   const toggleAccept = useCallback((id: number) => flip(id, setAccept, setNotAgain), []);
   const toggleNotAgain = useCallback((id: number) => flip(id, setNotAgain, setAccept), []);
-  const toggleAcceptAll = useCallback(() => {
-    const all = acceptable.length > 0 && acceptable.every((id) => accept.has(id));
-    setAccept(all ? new Set() : new Set(acceptable));
-    if (!all) setNotAgain((prev) => new Set([...prev].filter((id) => !acceptable.includes(id))));
-  }, [acceptable, accept]);
+  const toggleAcceptAll = useCallback(
+    (acceptable: readonly number[]) => {
+      const all = acceptable.length > 0 && acceptable.every((id) => accept.has(id));
+      setAccept(all ? new Set() : new Set(acceptable));
+      if (!all) setNotAgain((prev) => new Set([...prev].filter((id) => !acceptable.includes(id))));
+    },
+    [accept],
+  );
 
-  const apply = useCallback(async () => {
-    if (!shown) return;
-    const byId = new Map(shown.proposals.map((p) => [p.id, p]));
-    const chosen = (ids: ReadonlySet<number>) =>
-      shown.proposals.filter((p) => p.decidable && ids.has(p.id));
-    setApplying(true);
-    setError("");
-    try {
-      const results: DecisionResult[] = await applyRunDecisions(shown.runId, {
-        accept: chosen(accept)
-          .filter((p) => p.acceptable && scoreShown(p, shown.scoreFilter))
-          .map((p) => ({ id: p.id })),
-        not_again: chosen(notAgain).map((p) => p.id),
-      });
-      setFailures(
-        results.flatMap((r) => {
-          const proposal = byId.get(r.id);
-          return !r.ok && proposal ? [{ proposal, error: r.error ?? "" }] : [];
-        }),
-      );
-      const ok = (action: DecisionResult["action"]) =>
-        results.filter((r) => r.ok && r.action === action).length;
-      setApplied({ accepted: ok("accept"), notAgain: ok("not_again") });
-      await load(shown.runId);
-      if (results.some((r) => r.ok)) onApplied();
-    } catch (e) {
-      setError(errorText(e));
-    } finally {
-      setApplying(false);
-    }
-  }, [shown, accept, notAgain, load, onApplied]);
+  const apply = useCallback(
+    async (listed: ReadonlySet<number>) => {
+      if (!shown) return;
+      const byId = new Map(shown.proposals.map((p) => [p.id, p]));
+      const chosen = (ids: ReadonlySet<number>) =>
+        shown.proposals.filter((p) => p.decidable && ids.has(p.id));
+      setApplying(true);
+      setError("");
+      try {
+        const results: DecisionResult[] = await applyRunDecisions(shown.runId, {
+          accept: chosen(accept)
+            .filter((p) => p.acceptable && listed.has(p.id))
+            .map((p) => ({ id: p.id })),
+          not_again: chosen(notAgain).map((p) => p.id),
+        });
+        setFailures(
+          results.flatMap((r) => {
+            const proposal = byId.get(r.id);
+            return !r.ok && proposal ? [{ proposal, error: r.error ?? "" }] : [];
+          }),
+        );
+        const ok = (action: DecisionResult["action"]) =>
+          results.filter((r) => r.ok && r.action === action).length;
+        setApplied({ accepted: ok("accept"), notAgain: ok("not_again") });
+        await load(shown.runId);
+        if (results.some((r) => r.ok)) onApplied();
+      } catch (e) {
+        setError(errorText(e));
+      } finally {
+        setApplying(false);
+      }
+    },
+    [shown, accept, notAgain, load, onApplied],
+  );
 
   return {
     proposals: shown ? shown.proposals : null,

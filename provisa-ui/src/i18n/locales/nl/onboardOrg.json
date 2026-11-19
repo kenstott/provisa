@@ -21,7 +21,7 @@
     "emailRuleLabel": "Regel voor toegestane e-mail (optioneel)",
     "emailRuleDesc": "Een reguliere expressie waaraan het e-mailadres van een genodigde moet voldoen om aan te sluiten, bijv. \"@acme\\.com$\". Leeg laten om elk e-mailadres toe te staan.",
     "autoJoinLabel": "Overeenkomende accounts automatisch aansluiten",
-    "autoJoinDesc": "Elk nieuw account waarvan het e-mailadres aan bovenstaande regel voldoet, sluit automatisch aan met de rol hieronder — geen uitnodiging nodig.",
+    "autoJoinDesc": "Elk nieuw account waarvan het geverifieerde e-mailadres aan bovenstaande regel voldoet, sluit automatisch aan met de rol hieronder — geen uitnodiging nodig.",
     "autoJoinRoleLabel": "Standaardrol voor automatisch aangesloten accounts",
     "autoJoinRoleDesc": "De rol die bij automatisch aansluiten wordt toegekend, bijv. een alleen-lezen \"analyst\".",
     "autoJoinBreadthTitle": "Deze regel reikt voorbij je domein",

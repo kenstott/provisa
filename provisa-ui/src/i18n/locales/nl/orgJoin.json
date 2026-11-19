@@ -1,7 +1,7 @@
 {
   "orgJoin": {
     "heading": "Wie kan deelnemen",
-    "help": "Welke e-mailadressen zich bij deze organisatie mogen aansluiten. Een uitnodiging wordt aan deze regel getoetst; bij ingeschakelde automatische deelname wordt iedereen die zich aanmeldt met een passend adres lid zonder uitnodiging.",
+    "help": "Welke e-mailadressen zich bij deze organisatie mogen aansluiten. Een uitnodiging wordt aan deze regel getoetst; bij ingeschakelde automatische deelname wordt iedereen die zich aanmeldt met een passend geverifieerd adres lid zonder uitnodiging.",
     "emailRuleLabel": "E-mailregel",
     "emailRuleDesc": "Een reguliere expressie waartegen het adres wordt vergeleken. Laat leeg om elk adres via uitnodiging te accepteren.",
     "autoJoinLabel": "Automatisch deelnemen",

@@ -2232,6 +2232,9 @@ CREATE TABLE IF NOT EXISTS user_directory (
     user_id      TEXT PRIMARY KEY,
     display_name TEXT,
     email        TEXT,
+    -- REQ-2219 (amended 2026-11-18): whether the identity provider verified this address at the
+    -- person's latest sign-in; only a verified address names this person in a write by email.
+    email_verified BOOLEAN NOT NULL DEFAULT FALSE,
     email_opt_in BOOLEAN NOT NULL DEFAULT TRUE,
     -- REQ-413: the score from which a discovery run's proposals start ticked, the person's own.
     discovery_threshold DOUBLE PRECISION NOT NULL DEFAULT 0.7,
@@ -2250,6 +2253,7 @@ CREATE TABLE IF NOT EXISTS user_directory (
     updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 ALTER TABLE user_directory ADD COLUMN IF NOT EXISTS email_opt_in BOOLEAN NOT NULL DEFAULT TRUE;
+ALTER TABLE user_directory ADD COLUMN IF NOT EXISTS email_verified BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE user_directory ADD COLUMN IF NOT EXISTS discovery_threshold DOUBLE PRECISION NOT NULL DEFAULT 0.7;
 ALTER TABLE user_directory ADD COLUMN IF NOT EXISTS discovery_key_values BOOLEAN NOT NULL DEFAULT TRUE;
 ALTER TABLE user_directory ADD COLUMN IF NOT EXISTS discovery_measure_cutoff DOUBLE PRECISION NOT NULL DEFAULT 0.2;

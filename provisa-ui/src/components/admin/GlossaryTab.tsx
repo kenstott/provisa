@@ -770,6 +770,7 @@ export function GlossaryTab() {
                         name={detail.name}
                         onDuplicate={() => openDuplicateTerm(detail)}
                         testId="glossary-duplicate-btn"
+                        labelled
                       />
                       {/* REQ-1387, REQ-2144: each status change is a person's act. A defined draft is
                         approved, its impact seen first; an approved term deprecated, with a
