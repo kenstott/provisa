@@ -43,6 +43,11 @@ What is taken (the file's notation is documented in the source's README.md):
     ``gooses``, both at 35), and the other senses follow in the same order;
   - then its variant level's class (``_TIE_CLASS``: every level standard dictionaries accept,
     non-variant down to ``V``, is one class; ``-`` is the next);
+  - then, in the accepted class, a zero plural the database lists first with the regular form
+    starred, used depending on usage (``fish <n>: (fish | fishes*)`` -> ``fish``); a zero plural
+    in any other pattern does not win (``buck <n>: (bucks | ?: buck)`` -> ``bucks``,
+    ``percent <n>: (percent | ?: percents)`` -> ``percents``); a legacy ``~`` alternative (no
+    level information) counts for neither rule;
   - then, in the accepted class, the regularly formed plural (the rule-based form
     ``provisa.core.inflection.rule_plural`` gives a word the dictionary does not list) first:
     ``schema`` -> ``schemas``, ``index`` -> ``indexes``, ``maximum`` -> ``maximums``,
@@ -100,8 +105,9 @@ _FREQUENCIES = _OUT / "plural_frequencies.tsv"
 # A sense whose plural no 12dicts source lists ranks after every listed one.
 _UNLISTED = 1_000
 
-# (plural, variant level, file order, sense rank: 0 for the noun's main sense)
-Alternative = tuple[str, str, int, int]
+# (plural, variant level, file order, sense rank: 0 for the noun's main sense, True for a zero plural
+# listed first on a line whose regular form is starred: ``fish <n>: (fish | fishes*)``)
+Alternative = tuple[str, str, int, int, bool]
 # (the sense's 12dicts size, the plurals its lines list, its group number)
 Sense = tuple[int, frozenset[str], int]
 
@@ -167,8 +173,9 @@ def _entries(text: str) -> list[str]:
     return out
 
 
-def _alternatives(entry: str) -> list[tuple[str, str]]:
-    """(word, American variant level) of each acceptable alternative of one ENTRY."""
+def _alternatives(entry: str) -> list[tuple[str, str, bool]]:
+    """(word, American variant level, starred) of each acceptable alternative of one ENTRY. ``*``
+    marks a form used depending on usage."""
     if entry.startswith("("):
         parts = entry[1:-1].split(" | ")
     else:
@@ -181,9 +188,10 @@ def _alternatives(entry: str) -> list[tuple[str, str]]:
             continue
         if word[-1:] in "~!@":
             continue
+        starred = "*" in word
         word = word.rstrip("*-†")
         if _WORD.match(word):
-            out.append((word, level))
+            out.append((word, level, starred))
     return out
 
 
@@ -208,8 +216,11 @@ def _regular(singular: str, alt: Alternative) -> bool:
 
 
 def _zero(singular: str, alt: Alternative) -> bool:
-    """True when ``alt`` is a counted zero plural (spelled as ``singular``)."""
-    return _counted(alt) and alt[0] == singular
+    """True when ``alt`` is a counted zero plural (spelled as ``singular``) that the database lists
+    first with the regular form starred, used depending on usage (``fish <n>: (fish | fishes*)``).
+    Only that pattern lets a zero plural win over a regular one (REQ-194, amended 2026-11-19);
+    elsewhere the regular form keeps winning (``buck <n>: (bucks | ?: buck)`` -> bucks)."""
+    return _counted(alt) and alt[0] == singular and alt[4]
 
 
 def _database_order(singular: str, alts: list[Alternative], lemmas: set[str]) -> list[Alternative]:
@@ -242,7 +253,7 @@ def _owners(nouns: list[tuple[str, list[Alternative]]]) -> dict[str, set[str]]:
     """plural -> the nouns that list it as a plural other than themselves."""
     owners: dict[str, set[str]] = {}
     for singular, alts in nouns:
-        for plural, _, _, _ in alts:
+        for plural, *_ in alts:
             if plural != singular:
                 owners.setdefault(plural, set()).add(singular)
     return owners
@@ -260,7 +271,7 @@ def _ties(
     groups: dict[tuple[bool, int, int], list[int]] = {}
     regular: set[tuple[bool, int, int]] = set()
     for i, alt in enumerate(ordered):
-        word, level, _, sense = alt
+        word, level, _, sense, _ = alt
         if level not in _TIE_CLASS:
             continue
         key = (word in lemmas, sense, _TIE_CLASS[level])
@@ -312,8 +323,8 @@ def _nouns(
 ) -> tuple[list[tuple[str, list[Alternative]]], list[str], dict[str, list[Sense]]]:
     """(each common noun with its plural alternatives, in file order; the plurals that are words of
     their own; each noun's senses). A noun with no alternative is its own plural."""
-    # singular -> (plural, level, order, group number, the plural line's 12dicts size)
-    found: dict[str, list[tuple[str, str, int, int, int]]] = {}
+    # singular -> (plural, level, order, group number, the plural line's 12dicts size, star zero)
+    found: dict[str, list[tuple[str, str, int, int, int, bool]]] = {}
     nouns: list[str] = []
     function_words: set[str] = set()
     own_words: list[str] = []  # plurals that are words of their own (12dicts rule)
@@ -371,9 +382,17 @@ def _nouns(
         singular_dicts = headword.get(lemma_key) if lemma_key is not None else None
         plural_dicts = _tag_size(raw, _HEADWORD_TAG)
         line_dicts = _UNLISTED if plural_dicts is None else plural_dicts
-        for plural, alt_level in _alternatives(entries[0]):
+        alternatives = _alternatives(entries[0])
+        star_zero = (
+            bool(alternatives)
+            and alternatives[0][0] == target
+            and any(w == rule_plural(target) and starred for w, _, starred in alternatives)
+        )
+        for i, (plural, alt_level, _) in enumerate(alternatives):
             order += 1
-            found[target].append((plural, alt_level, order, group_no, line_dicts))
+            found[target].append(
+                (plural, alt_level, order, group_no, line_dicts, star_zero and i == 0)
+            )
             if (
                 plural != target
                 and alt_level == ""
@@ -389,17 +408,17 @@ def _nouns(
         # A sense's size is the most common 12dicts size of its plural lines; senses rank by size,
         # then by the database's group order.
         sense_size: dict[int, int] = {}
-        for _, _, _, number, dicts in found[singular]:
+        for _, _, _, number, dicts, _ in found[singular]:
             sense_size[number] = min(dicts, sense_size.get(number, _UNLISTED))
         rank = {
             number: i
             for i, number in enumerate(sorted(sense_size, key=lambda n: (sense_size[n], n)))
         }
-        plurals[singular] = [(p, lv, o, rank[n]) for p, lv, o, n, _ in found[singular]]
+        plurals[singular] = [(p, lv, o, rank[n], z) for p, lv, o, n, _, z in found[singular]]
         senses[singular] = [
             (
                 sense_size[n],
-                frozenset(p for p, _, _, number, _ in found[singular] if number == n),
+                frozenset(p for p, _, _, number, _, _ in found[singular] if number == n),
                 n,
             )
             for n in sorted(sense_size)

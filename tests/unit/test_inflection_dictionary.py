@@ -199,14 +199,32 @@ def test_legacy_level_does_not_count_for_regular_wins(one, many):
     assert naming._rel_words(many, "many-to-one") == one
 
 
-# REQ-194 (amended 2026-11-18, 9387abb5d2): where a noun accepts both a zero plural and a regular
-# one, the zero plural wins.
+# REQ-194 (amended 2026-11-19, 8e01e88486): the zero plural wins only where the dictionary lists it
+# first with the regular form marked as used depending on usage ("fish <n>: (fish | fishes*)").
 @pytest.mark.parametrize(
-    "word", ["fish", "salmon", "trout", "shrimp", "squid", "quail", "reindeer"]
+    "word", ["fish", "salmon", "trout", "shrimp", "bear", "doe", "squid", "quail", "reindeer"]
 )
 def test_zero_plural_beats_regular(word):
     assert naming._rel_words(word, "one-to-many") == word
     assert naming._rel_words(word, "many-to-one") == word
+
+
+# REQ-194 (amended 2026-11-19, 8e01e88486): a zero plural outside that pattern does not win; the
+# regular form keeps winning ("buck <n>: (bucks | ?: buck)", "percent <n>: (percent | ?: percents)").
+@pytest.mark.parametrize(
+    ("one", "many"),
+    [
+        ("buck", "bucks"),
+        ("yak", "yaks"),
+        ("newborn", "newborns"),
+        ("emoji", "emojis"),
+        ("percent", "percents"),
+    ],
+)
+def test_regular_beats_zero_outside_the_starred_pattern(one, many):
+    assert naming._rel_words(one, "one-to-many") == many
+    assert naming._rel_words(many, "many-to-one") == one
+    assert naming._rel_words(f"customer_{one}", "one-to-many") == f"customer_{many}"
 
 
 # REQ-194 (amended 2026-11-18, 9387abb5d2): the main-sense rule in reverse: singularizing a plural
@@ -225,8 +243,22 @@ def test_main_sense_in_reverse():
         ("mouse", "mice"),
         ("bye", "byes"),
         ("person", "people"),
+        ("schema", "schemas"),
+        ("index", "indexes"),
+        ("maximum", "maximums"),
+        ("focus", "focuses"),
+        ("axis", "axes"),
+        ("deer", "deer"),
+        ("criterion", "criteria"),
+        ("calf", "calves"),
     ],
 )
 def test_unchanged_by_the_refinement(one, many):
     assert naming._rel_words(one, "one-to-many") == many
     assert naming._rel_words(many, "many-to-one") == one
+
+
+@pytest.mark.parametrize("rel_type", ["one-to-many", "many-to-one"])
+def test_data_and_by_unchanged_by_the_refinement(rel_type):
+    assert naming._rel_words("data", rel_type) == "data"
+    assert naming._rel_words("by", rel_type) == "by"
