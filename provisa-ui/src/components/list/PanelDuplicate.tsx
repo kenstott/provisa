@@ -15,10 +15,13 @@
 // may create that kind of object and says what the prefilled form holds (`onDuplicate`).
 //
 // An icon, named "Duplicate", its tip naming the object. It takes the head's one style
-// (PanelHeadStyle): no variant or size of its own.
+// (PanelHeadStyle): no variant or size of its own. In a row of bordered, labelled buttons (a
+// glossary term's toolbar) it is `labelled`: the same bordered button as its siblings, labelled
+// "Duplicate" (maintainer 2026-11-18).
 
-import { ActionIcon } from "@mantine/core";
+import { ActionIcon, Button } from "@mantine/core";
 import { Copy } from "lucide-react";
+import type { MouseEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { Tip } from "../Tip";
 
@@ -29,10 +32,37 @@ export interface PanelDuplicateProps {
   onDuplicate: () => void;
   testId?: string;
   disabled?: boolean;
+  /** In a row of bordered, labelled buttons: a bordered button labelled "Duplicate". */
+  labelled?: boolean;
 }
 
-export function PanelDuplicate({ name, onDuplicate, testId, disabled }: PanelDuplicateProps) {
+export function PanelDuplicate({
+  name,
+  onDuplicate,
+  testId,
+  disabled,
+  labelled,
+}: PanelDuplicateProps) {
   const { t } = useTranslation();
+  const press = (e: MouseEvent) => {
+    e.stopPropagation();
+    onDuplicate();
+  };
+  if (labelled) {
+    return (
+      <Tip text={t("list.duplicateNamed", { name })}>
+        <Button
+          variant="default"
+          leftSection={<Copy size={14} />}
+          data-testid={testId}
+          disabled={disabled}
+          onClick={press}
+        >
+          {t("list.duplicate")}
+        </Button>
+      </Tip>
+    );
+  }
   return (
     <Tip text={t("list.duplicateNamed", { name })}>
       <ActionIcon
@@ -42,10 +72,7 @@ export function PanelDuplicate({ name, onDuplicate, testId, disabled }: PanelDup
         aria-label={t("list.duplicate")}
         data-testid={testId}
         disabled={disabled}
-        onClick={(e) => {
-          e.stopPropagation();
-          onDuplicate();
-        }}
+        onClick={press}
       >
         <Copy size={14} />
       </ActionIcon>
