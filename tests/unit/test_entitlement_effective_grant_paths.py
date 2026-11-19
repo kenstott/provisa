@@ -26,7 +26,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from provisa.api.admin import data_product_offers_router as offers_router
 from provisa.auth import role_grants
-from provisa.core.org_membership import JOINED_VIA_ADMIN, grant_membership
+from provisa.core.org_membership import JOINED_VIA_ADMIN, grant_membership, tombstone_id
 from provisa.core.schema_org import effective_entitlements, user_role_assignments
 from provisa.core.schema_org import roles as roles_table
 from provisa.entitlements import effective_store, runtime
@@ -190,8 +190,60 @@ async def test_a_removed_account_closes_its_rows_in_every_org_it_left(org):
         await _unassign(conn, "fay")
     from provisa.api.effective_rows import record_removed_account
 
-    await record_removed_account({"deleted": "fay", "left_orgs": [ORG]})
+    await record_removed_account(_removed("fay"))
     assert await _held(org, "fay") == set()
+
+
+def _removed(user: str) -> dict:
+    """What ``org_membership.remove_account`` returns for ``user``, a member of the one org."""
+    return {"deleted": user, "tombstone": tombstone_id(user), "left_orgs": [ORG]}
+
+
+async def test_a_removed_account_leaves_no_effective_row_under_its_name(org):
+    await _assign(org, "fay")
+    await _recorded(org, "fay")
+    async with org.model_db.acquire() as conn:
+        await _unassign(conn, "fay")
+    from provisa.api.effective_rows import record_removed_account
+
+    await record_removed_account(_removed("fay"))
+    assert not await _any_rows(org, "fay")
+    # The history stays, closed, under the tombstone.
+    assert await _any_rows(org, tombstone_id("fay"))
+    assert await _held(org, tombstone_id("fay")) == set()
+
+
+async def test_a_removed_account_given_a_default_role_gets_no_row(org):
+    org.auth_config = {
+        **_FROM_PROVISA,
+        "default_assignments": [{"role_id": "viewer", "domain_id": "*"}],
+    }
+    from provisa.api.effective_rows import record_removed_account
+
+    await record_removed_account(_removed("gil"))
+    assert not await _any_rows(org, "gil")
+
+
+async def test_a_recompute_after_removal_gives_no_role_from_cached_idp_lists(org):
+    from provisa.api.effective_rows import record_removed_account
+    from provisa.entitlements import store
+
+    org.auth_config = {"provider": "oidc"}  # role grants are the identity provider's claims
+    lists = {"viewer": {"tables": ("finance.revenue",)}}
+    async with org.model_db.acquire() as conn:
+        await store.mirror_idp(conn, "hana", lists)
+    org.idp_entitlements = {**org.idp_entitlements, "hana": lists}
+    await _recorded(org, "hana")
+    assert await _held(org, "hana")
+
+    await record_removed_account(_removed("hana"))
+    assert "hana" not in org.idp_entitlements
+    async with org.model_db.acquire() as conn:
+        assert await effective_store.write_person(conn, org, "hana") == 0
+        # A runtime rebuilt from the store gets no lists back for it either.
+        assert "hana" not in await store.load_idp(conn)
+        assert await effective_store.write_every_holder(conn, org) == 0
+    assert not await _any_rows(org, "hana")
 
 
 # Invitations

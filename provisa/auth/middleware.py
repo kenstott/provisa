@@ -290,6 +290,15 @@ def _forget_recorded_idp_lists(org_id: str) -> None:
         del _recorded_idp_lists[key]
 
 
+def forget_person_idp(user_id: str) -> None:  # REQ-2219
+    """Forget what this process last recorded of ``user_id``'s identity provider, in every org and
+    environment, once their account is removed: its store copies are gone with it, and a later
+    sign-in under that id records afresh."""
+    for cache in (_recorded_idp, _recorded_idp_roles, _recorded_idp_lists):
+        for key in [k for k in cache if k[2] == user_id]:
+            del cache[key]
+
+
 async def _record_idp_entitlements(  # REQ-2219
     db_pool, identity: AuthIdentity, roles_changed: bool = False
 ) -> None:

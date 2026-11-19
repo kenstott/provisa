@@ -21,24 +21,25 @@ org's prod runtime, so it is bound here for the computation, and written to its 
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import AsyncIterator, Iterable
+from contextlib import asynccontextmanager
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from provisa.core.database import Connection
 
 
-async def record_people(org_id: str, principals: Iterable[str]) -> None:
-    """Recompute each of ``principals``' effective rows in ``org_id``'s prod model, after a role
-    grant there was written or removed."""
-    from provisa.api.app import ensure_org_runtime, state
+@asynccontextmanager
+async def _prod_store(org_id: str) -> AsyncIterator["Connection"]:
+    """A connection to ``org_id``'s prod model store, with the org and its prod runtime bound."""
+    from provisa.api.app import ensure_org_runtime
     from provisa.core.request_context import (
         reset_current_env,
         reset_current_org,
         set_current_env,
         set_current_org,
     )
-    from provisa.entitlements import effective_store
 
-    people = sorted(set(principals))
-    if not people:
-        return
     rt = await ensure_org_runtime(org_id)
     if rt.model_db is None:
         raise RuntimeError(f"org {org_id!r} has no model store to record effective rows in")
@@ -46,16 +47,42 @@ async def record_people(org_id: str, principals: Iterable[str]) -> None:
     env_token = set_current_env(None)
     try:
         async with rt.model_db.acquire() as conn:
-            for principal in people:
-                await effective_store.write_person(conn, state, principal)
+            yield conn
     finally:
         reset_current_env(env_token)
         reset_current_org(org_token)
 
 
+async def record_people(org_id: str, principals: Iterable[str]) -> None:
+    """Recompute each of ``principals``' effective rows in ``org_id``'s prod model, after a role
+    grant there was written or removed."""
+    from provisa.api.app import state
+    from provisa.entitlements import effective_store
+
+    people = sorted(set(principals))
+    if not people:
+        return
+    async with _prod_store(org_id) as conn:
+        for principal in people:
+            await effective_store.write_person(conn, state, principal)
+
+
 async def record_removed_account(removed: dict) -> None:
     """After an account's removal (``removed``, as ``org_membership.remove_account`` returns it):
-    it left every org it was in, its role grants with it, and its effective rows there are
-    recomputed."""
+    in every org it left, the identity-provider lists held for it are ended in the store and
+    dropped from the runtime, and its effective rows are closed and rewritten to its tombstone.
+    Nothing is recomputed for it: a recompute could give it a role by default. With no lists and
+    no role grants left, no later recompute gives it a role (REQ-2219)."""
+    from provisa.api.app import state
+    from provisa.auth.middleware import forget_person_idp
+    from provisa.entitlements import effective_store, store
+
+    user_id = removed["deleted"]
     for org_id in removed["left_orgs"]:
-        await record_people(org_id, [removed["deleted"]])
+        async with _prod_store(org_id) as conn:
+            await store.mirror_idp(conn, user_id, {})
+            state.idp_entitlements = {
+                p: lists for p, lists in state.idp_entitlements.items() if p != user_id
+            }
+            await effective_store.remove_person(conn, user_id, removed["tombstone"])
+    forget_person_idp(user_id)

@@ -35,7 +35,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import insert, select, union
+from sqlalchemy import insert, select, union, update
 
 from provisa.core.schema_org import (
     effective_entitlements,
@@ -301,3 +301,23 @@ async def write_every_holder(conn: "Connection", state: Any, now: datetime | Non
         }
         appended += await _write_batch(conn, wanted)
     return appended
+
+
+async def remove_person(conn: "Connection", principal: str, tombstone: str) -> int:
+    """After ``principal``'s account was removed: close every effective row they hold, then rewrite
+    every row under their name to ``tombstone``, as the account's other references are
+    (:func:`provisa.core.org_membership.remove_account`). The history stays, closed, and stops
+    naming anyone; nothing is computed, so no role they would get by default is written. Returns
+    the rows appended (REQ-2219: a removed account leaves no effective rows under its name)."""
+    t = effective_entitlements
+    async with conn.transaction():
+        for key in sorted((principal, tombstone)):
+            await conn.advisory_xact_lock(_lock_key(key))
+        stored = (await _stored_by_principal(conn, [principal]))[principal]
+        rows = _changes(principal, stored, {})
+        if rows:
+            await conn.execute_core(insert(t).values(rows))
+        await conn.execute_core(
+            update(t).where(t.c.principal == principal).values(principal=tombstone)
+        )
+    return len(rows)
