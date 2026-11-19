@@ -109,7 +109,7 @@ _GOV = GovernanceContext(table_map={"views.v1": 7, "sales.v1": 7, "otherschema.v
 
 @pytest.mark.parametrize("mark", [False, True])
 def test_a_name_governance_gives_the_view_is_the_view(mark: bool) -> None:
-    names = view_names(_VIEWS, _GOV)
+    names = view_names(_VIEWS, _GOV.table_map)
     assert names == {"sales.v1": "views.v1"}
     for sql in ('SELECT * FROM "sales"."v1" AS t', "SELECT * FROM sales.v1"):
         assert "vault" in expand_view_refs(sql, _VIEWS, mark=mark, names=names), sql
@@ -118,7 +118,7 @@ def test_a_name_governance_gives_the_view_is_the_view(mark: bool) -> None:
 
 
 def test_views_read_takes_the_names_governance_gives_the_view() -> None:
-    names = view_names(_VIEWS, _GOV)
+    names = view_names(_VIEWS, _GOV.table_map)
     assert views_read('SELECT * FROM "sales"."v1"', _VIEWS, names) == _VIEWS
     assert views_read("SELECT * FROM otherschema.v1", _VIEWS, names) == {}
     state = SimpleNamespace(mv_registry=SimpleNamespace(get=lambda _id: None))
