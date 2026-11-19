@@ -184,7 +184,9 @@ def test_a_clickhouse_timestamp_keeps_its_fraction():
 
 
 def test_a_clickhouse_refusal_raises_where_a_nullable_cast_reads_null():
-    written = transpile("SELECT masklen('::1'::inet) AS v", "clickhouse")
+    # a literal PostgreSQL refuses as the statement is read (masklen of an inet literal is
+    # answered on ClickHouse since CONF-CH4)
+    written = transpile("SELECT numerictypmodin('{1001}'::cstring[]) AS v", "clickhouse")
     assert "accurateCast(materialize(" in written
 
 
