@@ -85,6 +85,12 @@ def singular(word: str) -> str:
     return _match_case(getAllLemmasOOV(lower, upos="NOUN")["NOUN"][0], word)
 
 
+def rule_plural(word: str) -> str:
+    """``word``'s rule-based plural (lower case): the form a word the dictionary does not list takes,
+    and the regularly formed plural among a listed noun's accepted forms (scripts/gen_noun_plurals.py)."""
+    return getAllInflectionsOOV(word.lower(), upos="NOUN")["NNS"][0]
+
+
 def plural(word: str) -> str:
     """``word``'s plural: as written when it is already one, the dictionary's for a noun it
     lists, else the rule-based form."""
@@ -94,4 +100,4 @@ def plural(word: str) -> str:
     plural_of, _, _ = _dictionary()
     if lower in plural_of:
         return _match_case(plural_of[lower], word)
-    return _match_case(getAllInflectionsOOV(lower, upos="NOUN")["NNS"][0], word)
+    return _match_case(rule_plural(lower), word)

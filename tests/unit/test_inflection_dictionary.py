@@ -172,4 +172,4 @@ def test_regular_plural_wins_among_accepted_forms(one, many, irregular):
 # sense listed by the most standard dictionaries (axis the line, not axis the deer).
 def test_main_sense_plural_used():
     assert naming._rel_words("axis", "one-to-many") == "axes"
-    assert naming._rel_words("axes", "many-to-one") == "axis"
+    assert naming._rel_words("customer_axis", "one-to-many") == "customer_axes"
