@@ -11,8 +11,9 @@
 """The Provisa-held rows of the entitlement store (REQ-2219).
 
 Append-only: setting a list appends a row whose ``valid_from`` ends the row before it for the
-same person, role, kind and capability, and ``removed`` ends one with nothing after it. What a
-person holds now is the last row per key (:func:`load_held`). Publishing the store (the ops
+same person, role, kind and capability, and ``removed`` ends one with nothing after it. Rows carry
+no valid-to: :mod:`provisa.entitlements.history` derives it, and every read here goes through it.
+What a person holds now is each key's open period (:func:`load_held`). Publishing the store (the ops
 tables) and the role's own rows are written elsewhere. The identity provider's rows mirror what a
 sign-in's token carried (:func:`mirror_idp`): enforcement reads the token, and a write for someone
 else can only be refused against the mirror (:func:`load_idp`).
@@ -27,10 +28,11 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import insert, select
+from sqlalchemy import insert
 
 from provisa.compiler.naming import domain_to_sql_name
 from provisa.core.schema_org import entitlement_expiries, entitlements
+from provisa.entitlements import history
 from provisa.entitlements.lists import (
     IDP,
     PROVISA,
@@ -174,21 +176,8 @@ async def withdraw_list_expiries(
 async def _live_rules(conn: "Connection", principal: str, role_id: str) -> dict[str, Any]:
     """The rules in force on ``principal``'s grant of ``role_id``, by key: each key's last row,
     unless it withdrew the rule."""
-    rows = await conn.execute_core(
-        select(entitlement_expiries)
-        .where(
-            entitlement_expiries.c.principal == principal,
-            entitlement_expiries.c.role_id == role_id,
-        )
-        .order_by(entitlement_expiries.c.valid_from, entitlement_expiries.c.id)
-    )
-    live: dict[str, Any] = {}
-    for row in rows.fetchall():
-        if row.removed:
-            live.pop(row.rule_key, None)
-        else:
-            live[row.rule_key] = row
-    return live
+    periods = await history.expiry_periods(conn, principal=principal, role_id=role_id)
+    return {p.row.rule_key: p.row for p in history.current(periods)}
 
 
 async def write_list(
@@ -225,20 +214,11 @@ async def _held_list(
     conn: "Connection", principal: str, role_id: str, kind: str
 ) -> tuple[str, ...] | None:
     """``principal``'s Provisa-held list for ``role_id`` and ``kind`` now; None when none is held."""
-    rows = await conn.execute_core(
-        select(entitlements)
-        .where(
-            entitlements.c.source == PROVISA,
-            entitlements.c.principal == principal,
-            entitlements.c.role_id == role_id,
-            entitlements.c.kind == kind,
-            entitlements.c.capability.is_(None),
-        )
-        .order_by(entitlements.c.valid_from.desc(), entitlements.c.id.desc())
-        .limit(1)
+    periods = await history.entitlement_periods(
+        conn, source=PROVISA, principal=principal, role_id=role_id, kind=kind
     )
-    row = rows.fetchone()
-    return None if row is None or row.removed else tuple(row.identifiers)
+    held = [p.row for p in history.current(periods) if p.row.capability is None]
+    return tuple(held[0].identifiers) if held else None
 
 
 async def add_to_list(
@@ -411,28 +391,15 @@ class Addition:
 async def list_history(conn: "Connection", principal: str, role_id: str) -> list[Addition]:
     """The timeline of what was added to ``principal``'s lists for ``role_id``, oldest first. A
     rule belongs to the change it was set with: set in the same transaction, for the same list."""
-    rows = (
-        await conn.execute_core(
-            select(entitlements)
-            .where(
-                entitlements.c.source == PROVISA,
-                entitlements.c.principal == principal,
-                entitlements.c.role_id == role_id,
-                entitlements.c.capability.is_(None),
-            )
-            .order_by(entitlements.c.valid_from, entitlements.c.id)
-        )
-    ).fetchall()
-    rules = (
-        await conn.execute_core(
-            select(entitlement_expiries)
-            .where(
-                entitlement_expiries.c.principal == principal,
-                entitlement_expiries.c.role_id == role_id,
-            )
-            .order_by(entitlement_expiries.c.valid_from, entitlement_expiries.c.id)
-        )
-    ).fetchall()
+    periods = await history.entitlement_periods(
+        conn, source=PROVISA, principal=principal, role_id=role_id
+    )
+    rows = [p.row for p in periods if p.row.capability is None]
+    rows.sort(key=lambda r: (r.valid_from, r.recorded_at, r.id))
+    rules = [
+        p.row for p in await history.expiry_periods(conn, principal=principal, role_id=role_id)
+    ]
+    rules.sort(key=lambda r: (r.valid_from, r.recorded_at, r.id))
     first: dict[str, Any] = {}
     last: dict[str, Any] = {}
     for rule in rules:
@@ -506,18 +473,13 @@ async def mirror_idp(conn: "Connection", principal: str, lists: IdpLists) -> Non
 async def load_idp(conn: "Connection", principal: str | None = None) -> dict[str, IdpLists]:
     """user id -> the lists their identity provider last sent, per role and kind: the last row of
     each key, unless it ended the key. ``principal`` reads one person's."""
-    query = select(entitlements).where(entitlements.c.source == IDP)
-    if principal is not None:
-        query = query.where(entitlements.c.principal == principal)
-    rows = await conn.execute_core(query.order_by(entitlements.c.valid_from, entitlements.c.id))
-    last: dict[tuple[str, str, str], tuple[str, ...] | None] = {}
-    for row in rows.fetchall():
-        key = (row.principal, row.role_id, row.kind)
-        last[key] = None if row.removed else tuple(row.identifiers)
+    periods = await history.entitlement_periods(conn, source=IDP, principal=principal)
     out: dict[str, IdpLists] = {}
-    for (who, role_id, kind), identifiers in last.items():
-        if identifiers is not None:
-            out.setdefault(who, {}).setdefault(role_id, {})[kind] = identifiers
+    for p in history.current(periods):
+        row = p.row
+        out.setdefault(row.principal, {}).setdefault(row.role_id, {})[row.kind] = tuple(
+            row.identifiers
+        )
     return out
 
 
@@ -548,43 +510,29 @@ async def load_held(conn: "Connection") -> dict[str, HeldEntitlements]:
     """user id -> what Provisa holds for them now: the last row of each key, unless it ended the
     key. What the runtime build holds, so a request's mask reads nothing."""
     held: dict[str, _Held] = {}
-    rows = await conn.execute_core(
-        select(entitlements)
-        .where(entitlements.c.source == PROVISA)
-        .order_by(entitlements.c.valid_from, entitlements.c.id)
-    )
-    for row in rows.fetchall():
+    lists = history.current(await history.entitlement_periods(conn, source=PROVISA))
+    for row in (p.row for p in lists):
         slot = held.setdefault(row.principal, _Held({}, {}))
         key = (row.role_id, row.kind, row.capability)
-        if row.removed:
-            slot.lists.pop(key, None)
-        else:
-            slot.lists[key] = HeldList(
-                row.role_id,
-                row.kind,
-                tuple(row.identifiers),
-                capability=row.capability,
-                set_by=row.set_by,
-                reason=row.reason,
-            )
-    rules = await conn.execute_core(
-        select(entitlement_expiries).order_by(
-            entitlement_expiries.c.valid_from, entitlement_expiries.c.id
+        slot.lists[key] = HeldList(
+            row.role_id,
+            row.kind,
+            tuple(row.identifiers),
+            capability=row.capability,
+            set_by=row.set_by,
+            reason=row.reason,
         )
-    )
-    for row in rules.fetchall():
+    rules = history.current(await history.expiry_periods(conn))
+    for row in (p.row for p in rules):
         slot = held.setdefault(row.principal, _Held({}, {}))
-        if row.removed:
-            slot.expiries.pop(row.rule_key, None)
-        else:
-            slot.expiries[row.rule_key] = ExpiryRule(
-                row.role_id,
-                row.ends_at,
-                {capability: tuple(ids) for capability, ids in row.ends.items()},
-                reason=row.reason,
-                rule_key=row.rule_key,
-                list_kind=row.list_kind,
-            )
+        slot.expiries[row.rule_key] = ExpiryRule(
+            row.role_id,
+            row.ends_at,
+            {capability: tuple(ids) for capability, ids in row.ends.items()},
+            reason=row.reason,
+            rule_key=row.rule_key,
+            list_kind=row.list_kind,
+        )
     return {
         principal: HeldEntitlements(tuple(h.lists.values()), tuple(h.expiries.values()))
         for principal, h in held.items()
