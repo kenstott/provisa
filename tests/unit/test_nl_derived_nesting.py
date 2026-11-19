@@ -13,10 +13,10 @@ surface's own form, as the GraphQL they are derived from does (REQ-1929, amended
 
 For "inspections with their building permit" the GraphQL is
 ``inspections { id result buildingPermit { permitNumber streetAddress } }``. Each derived panel
-names the relationship the way its surface does: gRPC as ``read_mask`` relation paths (the related
-table's proto field), JSON:API as ``include`` with its own sparse fieldset, REST as ``?fields=``
-dot-paths. Each request is run through its surface's real endpoint, and the answer carries the
-building permit nested in each inspection.
+names the relationship the way its surface does: gRPC as ``read_mask`` relation paths (the
+relationship's GraphQL name in proto snake_case), JSON:API as ``include`` with its own sparse
+fieldset, REST as ``?fields=`` dot-paths. Each request is run through its surface's real
+endpoint, and the answer carries the building permit nested in each inspection.
 
 The context and the schema both come from one ``SchemaInput`` through the real ``build_context`` /
 ``generate_schema`` under the apollo (camelCase) convention, where a multi-word name is the only
@@ -154,7 +154,7 @@ def test_the_grpc_request_names_the_relationship_by_its_relation_field(surface):
     assert error is None
     assert query == (
         "QueryInspections(read_mask=[id, result, "
-        "buildingPermit.permit_number, buildingPermit.street_address])"
+        "building_permit.permit_number, building_permit.street_address])"
     )
 
 
@@ -199,12 +199,12 @@ def test_grpc_reads_a_second_relationship_to_the_same_table_by_its_own_field():
     assert error is None
     assert query == (
         "QueryInspections(read_mask=[id, result, "
-        "buildingPermit.permit_number, buildingPermit.street_address])"
+        "building_permit.permit_number, building_permit.street_address])"
     )
     assert error_both is None
     assert query_both == (
-        "QueryInspections(read_mask=[id, buildingPermit.permit_number, "
-        "reinspectionPermit.permit_number])"
+        "QueryInspections(read_mask=[id, building_permit.permit_number, "
+        "reinspection_permit.permit_number])"
     )
 
 
@@ -273,8 +273,8 @@ async def test_the_grpc_panel_returns_the_permit_nested(monkeypatch, surface):
     state, _pipeline = _state(monkeypatch, surface, [(1, "pass", json.dumps(permit))])
     answer = await executor.execute(query, "grpc", _ROLE, state, deliver=None)
     assert answer == {
-        "columns": ["id", "result", "buildingPermit"],
-        "rows": [{"id": 1, "result": "pass", "buildingPermit": permit}],
+        "columns": ["id", "result", "building_permit"],
+        "rows": [{"id": 1, "result": "pass", "building_permit": permit}],
     }
 
 
