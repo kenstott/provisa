@@ -532,6 +532,21 @@ def _ch_jsonb_number(function: str) -> str:
     return f"CASE WHEN $v IS NULL THEN {nothing} ELSE if({checked} = 0, {answer}, {nothing}) END"
 
 
+def _int4_of_char(node: exp.Expr, dialect: str) -> exp.Expr:
+    """int4 of a "char" the statement writes (char.c's chartoi4): its byte as a signed char, 0 of
+    the empty one, computed as the statement is read: ClickHouse holds no "char"."""
+    value = node.unnest()
+    while isinstance(value, exp.Cast):
+        value = value.this.unnest()
+    if isinstance(value, exp.Null):
+        return sqlglot.parse_one("CAST(NULL AS Nullable(Int32))", read="clickhouse")
+    if not (isinstance(value, exp.Literal) and value.is_string):
+        raise Refused(trino.no_form("int4", dialect))
+    first = value.this.encode()[:1]  # charin keeps the first byte
+    signed = int.from_bytes(first, "big", signed=True) if first else 0
+    return sqlglot.parse_one(f"CAST({signed} AS Nullable(Int32))", read="clickhouse")
+
+
 def _number_of(function: str):
     """``function`` of a value: of a jsonb value on ClickHouse, :func:`_ch_jsonb_number`; of a
     json value there, refused by name; int8 of an oid, held as a bigint, that bigint; of anything
@@ -542,6 +557,8 @@ def _number_of(function: str):
         if call is None or len(call[1]) != 1:
             return None
         type_said = trino.said(call[1][0])
+        if type_said == '"char"' and function == "int4" and dialect == "clickhouse":
+            return _int4_of_char(call[1][0], dialect)
         if type_said == "jsonb":
             form = _ch_jsonb_number(function)
         elif type_said == "oid" and function == "int8":

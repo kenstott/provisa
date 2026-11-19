@@ -8,7 +8,8 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""ClickHouse's rows of make_interval, make_time, int2int4_sum and numeric of a double or a real
+"""ClickHouse's rows of make_interval, make_time, int2int4_sum, int4 of a "char" and numeric of a
+double or a real
 (REQ-2236; REQ-2171), each refused by name on ClickHouse before: the functions measure's own calls
 and the edges the rows read, answered on the embedded engine (chdb) against the embedded
 PostgreSQL's recorded answer (numbers compared by value)."""
@@ -26,6 +27,12 @@ from provisa.transpiler.function_macros import FunctionRefused
 from provisa.transpiler.transpile import transpile
 
 ANSWERED = [
+    # int4 of a "char" (chartoi4): its byte as a signed char
+    ('SELECT pg_catalog."int4"(NULL::"char") AS v', [None]),
+    ('SELECT pg_catalog."int4"(\'a\'::"char") AS v', ["97"]),
+    ('SELECT pg_catalog."int4"(\'B\'::"char") AS v', ["66"]),
+    ('SELECT pg_catalog."int4"(\'1\'::"char") AS v', ["49"]),
+    ('SELECT pg_catalog."int4"(\'\'::"char") AS v', ["0"]),
     ('SELECT pg_catalog."int2int4_sum"(NULL::bigint[]) AS v', [None]),
     ("SELECT pg_catalog.\"int2int4_sum\"('{3,6}'::bigint[]) AS v", ["6"]),
     ("SELECT pg_catalog.\"int2int4_sum\"('{1,-7}'::bigint[]) AS v", ["-7"]),
