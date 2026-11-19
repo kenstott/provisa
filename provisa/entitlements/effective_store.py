@@ -30,7 +30,7 @@ row's valid-from for the same key. A row is never read against another model ver
 from __future__ import annotations
 
 import zlib
-from collections.abc import Iterable, Mapping
+from collections.abc import Collection, Iterable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
@@ -121,23 +121,33 @@ def _as_row(row: Any) -> EffectiveRow:
     )
 
 
-async def _latest(conn: "Connection", principal: str | None) -> dict[tuple[str, str, str], Any]:
-    """Each key's last row, by (principal, role, capability), removed or not."""
+async def _latest(
+    conn: "Connection", principals: Collection[str] | None
+) -> dict[tuple[str, str, str], Any]:
+    """Each key's last row, by (principal, role, capability), removed or not; ``principals``
+    reads only theirs."""
     t = effective_entitlements
     query = select(t).order_by(t.c.valid_from, t.c.recorded_at, t.c.id)
-    if principal is not None:
-        query = query.where(t.c.principal == principal)
+    if principals is not None:
+        query = query.where(t.c.principal.in_(sorted(principals)))
     rows = await conn.execute_core(query)
     return {(r.principal, r.role_id, r.capability): r for r in rows.fetchall()}
 
 
+async def _stored_by_principal(
+    conn: "Connection", principals: Collection[str]
+) -> dict[str, dict[_Key, EffectiveRow]]:
+    """Each of ``principals``' effective rows as stored now, in one read."""
+    out: dict[str, dict[_Key, EffectiveRow]] = {p: {} for p in principals}
+    for (principal, role_id, capability), r in (await _latest(conn, principals)).items():
+        if not r.removed:
+            out[principal][(role_id, capability)] = _as_row(r)
+    return out
+
+
 async def stored_rows(conn: "Connection", principal: str) -> dict[_Key, EffectiveRow]:
     """``principal``'s effective rows as stored now, whatever model version they are over."""
-    return {
-        (role_id, capability): _as_row(r)
-        for (_p, role_id, capability), r in (await _latest(conn, principal)).items()
-        if not r.removed
-    }
+    return (await _stored_by_principal(conn, [principal]))[principal]
 
 
 def current_version(state: Any, role_id: str) -> str:
@@ -160,7 +170,7 @@ async def current_rows(
     are positions in an index this model does not have."""
     versions: dict[str, str] = {}
     out: dict[tuple[str, str, str], EffectiveRow] = {}
-    for key, r in (await _latest(conn, principal)).items():
+    for key, r in (await _latest(conn, None if principal is None else [principal])).items():
         if r.removed or r.role_id not in state.roles:
             continue
         if r.role_id not in versions:
@@ -187,24 +197,42 @@ async def write_rows(
     """Make ``principal``'s stored rows equal ``wanted``: append a row per key that changed, and a
     ``removed`` row per stored key not wanted. Returns the rows appended; nothing changed appends
     nothing."""
-    appended = 0
+    return await _write_batch(conn, {principal: wanted})
+
+
+def _changes(
+    principal: str, stored: Mapping[_Key, EffectiveRow], wanted: Mapping[_Key, EffectiveRow]
+) -> list[dict[str, Any]]:
+    """The rows that make ``stored`` equal ``wanted``."""
+    out = [
+        {**_values(principal, key, row), "removed": False}
+        for key, row in wanted.items()
+        if stored.get(key) != row
+    ]
+    out.extend(
+        {**_values(principal, key, stored[key]), "removed": True}
+        for key in stored.keys() - wanted.keys()
+    )
+    return out
+
+
+async def _write_batch(
+    conn: "Connection", wanted: Mapping[str, Mapping[_Key, EffectiveRow]]
+) -> int:
+    """:func:`write_rows` for each person in ``wanted``, in one transaction: their locks taken in
+    order, their stored rows read in one statement, and what changed appended in one."""
     async with conn.transaction():
-        await conn.advisory_xact_lock(_lock_key(principal))
-        stored = await stored_rows(conn, principal)
-        for key, row in wanted.items():
-            if stored.get(key) == row:
-                continue
-            await conn.execute_core(
-                insert(effective_entitlements).values(**_values(principal, key, row))
-            )
-            appended += 1
-        for key in stored.keys() - wanted.keys():
-            gone = stored[key]
-            await conn.execute_core(
-                insert(effective_entitlements).values(**_values(principal, key, gone), removed=True)
-            )
-            appended += 1
-    return appended
+        for principal in sorted(wanted):
+            await conn.advisory_xact_lock(_lock_key(principal))
+        stored = await _stored_by_principal(conn, wanted.keys())
+        rows = [
+            change
+            for principal in sorted(wanted)
+            for change in _changes(principal, stored[principal], wanted[principal])
+        ]
+        if rows:
+            await conn.execute_core(insert(effective_entitlements).values(rows))
+    return len(rows)
 
 
 async def held_role_ids(conn: "Connection", state: Any, principal: str) -> list[str]:
@@ -226,8 +254,8 @@ async def write_person(
     """Recompute ``principal``'s effective rows from what the runtime holds now and store what
     changed. Returns the rows appended. Called after an input changed: their sign-in, or a write
     to their lists or role grants, once the runtime holds it. With no model built yet there is
-    no version for the bits to be over; the build that makes one recomputes every holder's rows
-    (REQ-2219: recomputed on a model build)."""
+    no version for the bits to be over and nothing is written: every build's after-answer pass
+    recomputes every holder's rows (:func:`write_every_holder`), the first build's included."""
     if state.names_table is None:
         return 0
     at = datetime.now(UTC) if now is None else now
@@ -248,13 +276,28 @@ async def known_principals(conn: "Connection") -> list[str]:
     return sorted(r[0] for r in rows.fetchall())
 
 
+#: The people one transaction of :func:`write_every_holder` writes: each holds an advisory lock
+#: until it commits, and the server's lock table is shared by every session.
+_HOLDER_BATCH = 200
+
+
 async def write_every_holder(conn: "Connection", state: Any, now: datetime | None = None) -> int:
-    """:func:`write_person` for every person Provisa knows of: each who holds a role gets rows,
-    and one who holds none has any left closed. Returns the rows appended."""
+    """Recompute the effective rows of every person Provisa knows of in the org ``conn`` is bound
+    to, from the model built now, batched: the stored rows are read and what changed is appended
+    a batch of people at a time. Each who holds a role gets rows over the model's version, and one
+    who holds none has any left closed; a build that moved no bit appends nothing. Called from
+    every model build (REQ-2219: recomputed on a model build). Returns the rows appended."""
     if state.names_table is None:
         return 0
     at = datetime.now(UTC) if now is None else now
+    principals = await known_principals(conn)
     appended = 0
-    for principal in await known_principals(conn):
-        appended += await write_person(conn, state, principal, at)
+    for start in range(0, len(principals), _HOLDER_BATCH):
+        wanted = {
+            principal: compute_rows(
+                state, principal, await held_role_ids(conn, state, principal), at
+            )
+            for principal in principals[start : start + _HOLDER_BATCH]
+        }
+        appended += await _write_batch(conn, wanted)
     return appended

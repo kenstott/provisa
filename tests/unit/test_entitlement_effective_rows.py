@@ -17,6 +17,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from types import SimpleNamespace
+from typing import Any, cast
 
 import httpx
 import pytest
@@ -28,6 +29,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from provisa.api.admin.entitlements_router import router
 from provisa.api.errors import ApiError
 from provisa.auth import middleware
+from provisa.core.environments import PROD
 from provisa.core.schema_org import effective_entitlements, user_role_assignments
 from provisa.core.schema_org import roles as roles_table
 from provisa.entitlements import effective_store, runtime, store
@@ -243,3 +245,90 @@ async def test_a_build_that_moves_no_bit_keeps_the_version(api):
         assert ("alice", "viewer", "read") in await effective_store.current_rows(
             conn, api.state, "alice"
         )
+
+
+async def _build(monkeypatch, env: str = PROD) -> None:
+    """The model build's step that recomputes the effective rows: its after-answer pass's derived
+    writes, with the lineage edges and checker targets it also writes left out."""
+    from provisa.api import app as app_module
+    from provisa.api import rebuild_trace
+
+    monkeypatch.setattr("provisa.api.admin.lineage_router.write_lineage_edges", _no_write)
+    monkeypatch.setattr("provisa.dq.registration.write_checker_targets", _no_write)
+    steps = app_module._after_answer_steps(  # pyright: ignore[reportPrivateUsage]
+        runtime=cast("Any", SimpleNamespace(role_build_inputs=None)),
+        env=env,
+        announce=False,
+        checked={},
+        names=None,
+        build=cast("Any", None),
+    )
+    await steps[rebuild_trace.DERIVED_WRITES]()
+
+
+async def _no_write(*_args: object) -> None:
+    return None
+
+
+async def test_a_build_that_changes_a_roles_schema_moves_every_holder_to_its_version(
+    api, monkeypatch
+):
+    await _assign(api, "alice", "viewer")
+    await _assign(api, "bob", "analyst")
+    await _build(monkeypatch)
+    before = {p: await _rows(api, p) for p in ("alice", "bob")}
+    assert {r.role_id for r in before["alice"]} == {"viewer"}
+    assert {r.role_id for r in before["bob"]} == {"analyst"}
+    # The build drops a table from the roles' schema: every bit position moves.
+    monkeypatch.setattr(runtime, "_role_context", lambda *_: _ctx((1, 2)))
+    api.state.schema_version += 1
+    await _build(monkeypatch)
+    for principal in ("alice", "bob"):
+        rows = await _rows(api, principal)
+        old, new = rows[: len(before[principal])], rows[len(before[principal]) :]
+        role = before[principal][0].role_id
+        version = effective_store.current_version(api.state, role)
+        assert {r.model_version for r in old} != {version}
+        # One new row per key, at the new version: each closes the key's old row.
+        assert {(r.role_id, r.capability) for r in new} == {(r.role_id, r.capability) for r in old}
+        assert {r.model_version for r in new} == {version}
+        assert not any(r.removed for r in new)
+        async with api.db.acquire() as conn:
+            current = await effective_store.current_rows(conn, api.state, principal)
+        assert {(r, c) for _p, r, c in current} == {(r.role_id, r.capability) for r in new}
+
+
+async def test_a_build_that_moves_no_bit_appends_nothing(api, monkeypatch):
+    await _assign(api, "alice", "viewer")
+    await _assign(api, "bob", "analyst")
+    await _build(monkeypatch)
+    before = [await _rows(api, p) for p in ("alice", "bob")]
+    api.state.schema_version += 1
+    await _build(monkeypatch)
+    assert [await _rows(api, p) for p in ("alice", "bob")] == before
+
+
+async def test_a_write_with_no_model_built_is_made_by_the_first_build(api, monkeypatch):
+    await _assign(api, "alice", "viewer")
+    names = api.state.names_table
+    api.state.names_table = None
+    assert await _write(api, "alice") == 0
+    assert await _rows(api, "alice") == []
+    api.state.names_table = names
+    await _build(monkeypatch)
+    assert {r.role_id for r in await _rows(api, "alice")} == {"viewer"}
+
+
+async def test_an_environment_build_leaves_the_rows_to_the_prod_build(api, monkeypatch):
+    await _assign(api, "alice", "viewer")
+    await _build(monkeypatch, env="sandbox")
+    assert await _rows(api, "alice") == []
+
+
+async def test_every_holder_is_written_a_batch_at_a_time(api, monkeypatch):
+    monkeypatch.setattr(effective_store, "_HOLDER_BATCH", 2)
+    for user in ("alice", "bob", "carol"):
+        await _assign(api, user, "viewer")
+    await _build(monkeypatch)
+    for user in ("alice", "bob", "carol"):
+        assert {r.role_id for r in await _rows(api, user)} == {"viewer"}
