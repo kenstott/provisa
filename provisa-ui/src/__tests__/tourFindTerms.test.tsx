@@ -186,7 +186,7 @@ describe("a find_terms step", () => {
     const acted = await runUiActions(inDialog, RUN);
     expect(acted.steps).toHaveLength(4);
     expect(acted.success).toBe(true);
-    expect(api.startScan).toHaveBeenCalledWith({ url: RULE }, ["bank"]);
+    expect(api.startScan).toHaveBeenCalledWith({ url: RULE }, ["bank"], null);
     expect(api.cancelScan).toHaveBeenCalledWith(8);
     await waitFor(() => expect(document.querySelector(find.element)).not.toBeNull());
   });
@@ -221,7 +221,7 @@ describe("a find_terms step", () => {
     const acted = await runUiActions(find.actions as UiAction[], RUN);
     expect(acted.steps.at(-1)).toMatch(/^Pressed/);
     expect(acted.success).toBe(true);
-    expect(api.startScan).toHaveBeenCalledWith({ url: RULE }, ["bank"]);
+    expect(api.startScan).toHaveBeenCalledWith({ url: RULE }, ["bank"], null);
     await waitFor(() => expect(document.querySelector(find.element)).not.toBeNull());
   });
 });
