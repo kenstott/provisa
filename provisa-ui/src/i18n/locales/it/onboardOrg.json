@@ -21,7 +21,7 @@
     "emailRuleLabel": "Regola email consentite (facoltativa)",
     "emailRuleDesc": "Un'espressione regolare a cui l'email dell'invitato deve corrispondere per aderire, ad es. \"@acme\\.com$\". Lasciare vuoto per consentire qualsiasi email.",
     "autoJoinLabel": "Adesione automatica degli account corrispondenti",
-    "autoJoinDesc": "Ogni nuovo account la cui email corrisponde alla regola sopra aderisce automaticamente con il ruolo indicato sotto — nessun invito necessario.",
+    "autoJoinDesc": "Ogni nuovo account la cui email verificata corrisponde alla regola sopra aderisce automaticamente con il ruolo indicato sotto — nessun invito necessario.",
     "autoJoinRoleLabel": "Ruolo predefinito per gli account ad adesione automatica",
     "autoJoinRoleDesc": "Il ruolo concesso all'adesione automatica, ad es. un \"analyst\" in sola lettura.",
     "autoJoinBreadthTitle": "Questa regola va oltre il tuo dominio",

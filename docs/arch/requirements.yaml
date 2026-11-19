@@ -3097,7 +3097,29 @@
     2026-11-18. Where the dictionary gives a noun more than one form, the naming authority takes the one
     in everyday use (schema to schemas; data stays data, its own singular and plural; person to people).
     A word the dictionary knows only in an unrelated sense of the same spelling, such as by (read as the
-    noun bye), is not inflected. This is part of the rule, not a per-word list.'
+    noun bye), is not inflected. This is part of the rule, not a per-word list. (Amended 2026-11-18, A TIE
+    BETWEEN DICTIONARY FORMS IS BROKEN BY WORD FREQUENCY:) Maintainer 2026-11-18. Where the dictionary lists
+    more than one acceptable form and gives no ranking between them (schema: schemata, schemas), the form
+    used more often in general English wins, read from a bundled word-frequency table under a licence compatible
+    with Provisa''s (schema to schemas). Frequency only breaks such ties; it never overrides a single dictionary
+    form. (Amended 2026-11-18, AMONG ACCEPTED FORMS THE REGULAR PLURAL WINS; A NOUN''S MAIN SENSE IS THE
+    ONE MOST DICTIONARIES LIST:) Maintainer 2026-11-18, replacing the word-frequency tie-break of 59d7aa17cf.
+    Where the dictionary accepts more than one plural of a noun (at any of its accepted levels), the regularly
+    formed plural wins (schema to schemas, index to indexes, maximum to maximums, focus to focuses); word
+    frequency only chooses between irregular forms when no regular form is accepted. Where a noun has more
+    than one sense with different plurals, the sense listed by the most standard dictionaries is the one
+    used (axis to axes). (Amended 2026-11-18, THE REGULAR-WINS RULE: WHICH LEVELS COUNT, ZERO PLURALS, AND
+    THE MAIN SENSE IN REVERSE:) Maintainer 2026-11-18, refining 581e2bb02d. A form counts as accepted for
+    the regular-wins rule only when the dictionary gives it a level; legacy entries with no level information
+    do not count (deer, criteria, offspring, calves, cacti, curricula, radii stay). Where a noun accepts
+    both a zero plural and a regular one, the zero plural wins (fish, salmon, trout, shrimp). The main-sense
+    rule applies in reverse when a plural is singularized: where senses tie, the sense whose only plural
+    is this form wins (axes to axis). (Amended 2026-11-19, WHICH ZERO PLURALS WIN, AND HOW A SHARED PLURAL
+    PICKS ITS WORD:) Maintainer 2026-11-19, refining 9387abb5d2. The zero plural wins only where the dictionary
+    lists it first with the regular form marked as used depending on usage (fish, salmon, trout, shrimp,
+    bear, doe); elsewhere the regular form keeps winning (bucks, yaks, newborns, emojis, percents). When
+    a plural belongs to several words that tie on every dictionary count, a word of its own wins over two
+    spellings of one word (axes to axis, not ax or axe).'
   use_case: Consistent multi-language naming with a single authority ensures client-facing names are predictable
     and independent of physical schema.
   code:
@@ -3858,7 +3880,10 @@
     the governed pipeline as the person who started the run: their role''s rules, masks and row rules apply
     to each table it reads. Only the check that a join follows an approved relationship is not applied,
     and only to this discovery measure query, since a candidate pair has no relationship yet. A pair whose
-    tables cannot be read is left unmeasured and says why; it does not fail the run.'
+    tables cannot be read is left unmeasured and says why; it does not fail the run. (Amended 2026-11-18,
+    EVERY COLUMN OF THE PROPOSED RELATIONSHIPS LIST HAS A FILTER:) Maintainer 2026-11-18 (''every column
+    needs a filter'', on the proposed relationships dialog). Every column of the standard list in the discovery
+    dialog has a column filter, as the standard list gives its filterable columns.'
   use_case: Auto-generated FK relationships reduce manual relationship registration overhead while preserving
     steward control.
   code:
@@ -4362,7 +4387,9 @@
     page follows every other list page: clicking a domain opens its detail panel, where its description,
     GraphQL alias, parent domain and steward are edited and saved. Its id is its identity and is shown,
     not edited. A change that renames what clients see (the alias, or a parent that changes the domain''s
-    place in the tree) says so before it is saved, and the schema is rebuilt when it is.'
+    place in the tree) says so before it is saved, and the schema is rebuilt when it is. (Amended 2026-11-19,
+    OWNERSHIP READ FROM ENTITLEMENTS:) Maintainer 2026-11-19. The steward gate reads the domain_steward
+    entitlement; domains.steward is removed (REQ-2219, 2026-11-19).'
   use_case: Steward requirement ensures accountability is always assigned before governed data is exposed.
   code:
   - provisa/core/domain_policy.py
@@ -8704,9 +8731,14 @@
   feature: commands-and-functions-tracked-functions
   priority: SHOULD
   type: behavioral
-  description: Database functions (stored procedures, UDFs) registered in Provisa config and exposed as
+  description: 'Database functions (stored procedures, UDFs) registered in Provisa config and exposed as
     GraphQL mutations or queries. VOLATILE functions exposed as mutations; STABLE/IMMUTABLE as queries.
-    Follows Hasura v2's `pg_track_function` pattern.
+    Follows Hasura v2''s `pg_track_function` pattern. (Amended 2026-11-19, STORED PROCEDURES ARE CALLED
+    IN THEIR SOURCE''S OWN FORM:) Maintainer 2026-11-19. A stored procedure in a relational source can be
+    registered as a command, not only a function: it is invoked in the form its source''s dialect requires
+    (CALL in PostgreSQL, MySQL, MariaDB and Db2; EXEC in SQL Server and Sybase; a procedure call in Oracle),
+    never as SELECT * FROM. A procedure is exposed as a mutation. Its result is the result set it returns;
+    a procedure that returns none gives its OUT parameters as one row, or an empty result when it has none.'
   use_case: Tracked DB functions expose stored procedures as GraphQL mutations so clients use one API
     for all writes.
   code:
@@ -47897,7 +47929,11 @@
     type; its table''s name or alias and description; and a few distinct sample values read as the curator
     through the governed path (masks and redaction applied; none for a sensitive column). It is also given
     the definitions of related terms that have one, not only their names. The draft still defines the business
-    concept, not the column.'
+    concept, not the column. (Amended 2026-11-18, A TABLE THE CURATOR CANNOT READ GIVES NO SAMPLES, AND
+    THE DRAFT STILL RUNS:) Maintainer 2026-11-18. When a bound column''s table cannot be read as the curator
+    for samples (its source is unreachable, or the curator''s role cannot read it), the assistant drafts
+    without that table''s samples, still using its descriptions and types, and the result names the tables
+    that gave no samples. Drafting definitions for every term continues past such a table.'
   use_case: 'Bottom-up bootstrap means the glossary is never empty: every column name seeds the vocabulary, avoiding the failure mode of top-down glossary projects. Concept-level discovery ("show every physical field that means order date"), expert routing for data questions, grounded vocabulary for NL-to-SQL and agent surfaces via the MCP term-lookup tool, and glossary interchange with external catalogs through metadata export.'
   scenario: 'Given tables with columns cust_id, customerId, and CUSTOMER_KEY registered in the semantic
     layer
@@ -57865,35 +57901,41 @@
   feature: glossary-tags-ontology-terms
   priority: MUST
   type: behavioral
-  description: 'A GLOSSARY TERM IS SCOPED TO DOMAINS, AND ONE TERM MAY SPAN SEVERAL. A rooted term''s
-    domains are DERIVED -- the distinct ``registered_tables.domain_id`` of the tables its refs point at
-    -- so nothing is declared and nothing can drift out of sync. An abstract term declares its domains
-    explicitly, one or more, because it holds no refs to derive from. THE COMBINED MODEL: a term whose
-    refs span two domains is ONE term scoped to both, not two terms. Cross-table merging is the mechanism
-    the glossary is built on (``normalize_term`` sheds trailing proxy tokens so ``orders.id`` and every
-    ``order_id`` foreign key land on one term), and a domain boundary is not a reason to stop it: if ``orders``
-    is in sales and ``order_id`` is in pet-store, "order" genuinely spans both. THE STAMP: a rooted
-    term''s domains become underivable the moment its last ref departs, so the departing refs'' domains
-    are recorded on the term at that moment; a deprecated or retired term stays curatable by exactly the
-    people who owned it. The rule is one line: a term''s domains are its refs'' domains while it has refs,
-    and its recorded domains otherwise. AUTHORITY IS ANY, NOT ALL: reading a term requires ANY of its
-    domains to be within the caller''s ``roles.domain_access``, and CURATING it requires the same. This
-    deliberately breaks the symmetry with REQ-1531''s ``require_domains``, which requires ALL: that rule
-    guards acts reaching DATA in two domains, whereas a term definition is prose about a concept both domains already reference; editing it exposes and changes nothing in the other domain. Requiring
-    all would leave a shared term curatable only by someone holding every domain it touches, an unsolvable
-    deadlock manufactured by a name collision. THE ESCAPE HATCH: when two domains genuinely mean different
-    things by one phrase, the answer is coordination, and failing that a SPLIT: create a term and move
-    the refs to it with POST /admin/glossary/refs/move. That machinery already exists, and the split survives
-    the next derivation because ``sync_table_refs`` leaves a held ref alone when its term is curated, so the new term must be given a definition, or the ref drifts back on the next registration. NO DOMAINS
-    IS NOT NO ACCESS: a term with an empty domain set is UNSCOPED and reachable by any holder of the
-    glossary rights; creating an abstract term in multi-domain mode therefore requires at least one domain,
-    so an empty set cannot be minted as a way around the gate. THE NAVBAR FILTER IS A VIEW PREFERENCE,
-    NOT AUTHORITY: the glossary list is filtered by the domains checked in the nav bar, passed as a
-    ``domains`` query parameter, and that selection INTERSECTS with the caller''s domain access and can
-    never widen it: unchecking a box hides terms, checking every box does not reveal a term the role may
-    not see, and the server answers 403 on a term outside the role''s domains whatever the checkboxes
-    say. SINGLE-DOMAIN MODE: where a domain gates nothing, this gate does nothing either, exactly as
-    every other domain gate behaves.'
+  description: 'A GLOSSARY TERM IS SCOPED TO DOMAINS, AND ONE TERM MAY SPAN SEVERAL. A rooted term''s domains
+    are DERIVED -- the distinct ``registered_tables.domain_id`` of the tables its refs point at -- so nothing
+    is declared and nothing can drift out of sync. An abstract term declares its domains explicitly, one
+    or more, because it holds no refs to derive from. THE COMBINED MODEL: a term whose refs span two domains
+    is ONE term scoped to both, not two terms. Cross-table merging is the mechanism the glossary is built
+    on (``normalize_term`` sheds trailing proxy tokens so ``orders.id`` and every ``order_id`` foreign key
+    land on one term), and a domain boundary is not a reason to stop it: if ``orders`` is in sales and ``order_id``
+    is in pet-store, "order" genuinely spans both. THE STAMP: a rooted term''s domains become underivable
+    the moment its last ref departs, so the departing refs'' domains are recorded on the term at that moment;
+    a deprecated or retired term stays curatable by exactly the people who owned it. The rule is one line:
+    a term''s domains are its refs'' domains while it has refs, and its recorded domains otherwise. AUTHORITY
+    IS ANY, NOT ALL: reading a term requires ANY of its domains to be within the caller''s ``roles.domain_access``,
+    and CURATING it requires the same. This deliberately breaks the symmetry with REQ-1531''s ``require_domains``,
+    which requires ALL: that rule guards acts reaching DATA in two domains, whereas a term definition is
+    prose about a concept both domains already reference; editing it exposes and changes nothing in the
+    other domain. Requiring all would leave a shared term curatable only by someone holding every domain
+    it touches, an unsolvable deadlock manufactured by a name collision. THE ESCAPE HATCH: when two domains
+    genuinely mean different things by one phrase, the answer is coordination, and failing that a SPLIT:
+    create a term and move the refs to it with POST /admin/glossary/refs/move. That machinery already exists,
+    and the split survives the next derivation because ``sync_table_refs`` leaves a held ref alone when
+    its term is curated, so the new term must be given a definition, or the ref drifts back on the next
+    registration. NO DOMAINS IS NOT NO ACCESS: a term with an empty domain set is UNSCOPED and reachable
+    by any holder of the glossary rights; creating an abstract term in multi-domain mode therefore requires
+    at least one domain, so an empty set cannot be minted as a way around the gate. THE NAVBAR FILTER IS
+    A VIEW PREFERENCE, NOT AUTHORITY: the glossary list is filtered by the domains checked in the nav bar,
+    passed as a ``domains`` query parameter, and that selection INTERSECTS with the caller''s domain access
+    and can never widen it: unchecking a box hides terms, checking every box does not reveal a term the
+    role may not see, and the server answers 403 on a term outside the role''s domains whatever the checkboxes
+    say. SINGLE-DOMAIN MODE: where a domain gates nothing, this gate does nothing either, exactly as every
+    other domain gate behaves. (Amended 2026-11-18, A TERM''S NAME IS UNIQUE WITHIN A DOMAIN, NOT ACROSS
+    DOMAINS:) Maintainer 2026-11-18 (''terms are differentiated by domain. a domain can use a name from
+    another domain''). Two terms may carry the same name when they belong to different domains; a name is
+    unique only within a domain. Creating or renaming a term is refused only when a term of the same name
+    already belongs to one of its domains. Everywhere a term is found or shown by name, it is told apart
+    by its domain.'
   tests:
   - tests/unit/test_glossary_domain_scope.py
   - tests/integration/test_glossary_domain_authority.py
@@ -59858,7 +59900,9 @@
     product it belongs to; an owner of any of those products may change it (maintainer 2026-11-08). (Amended
     2026-11-08, EXPORT KEEPS SEEDED MEMBERS:) A config export lists a data product''s members that are seeded
     tables, and relationships to seeded tables. On import the loader holds those names until the seeded
-    tables exist, so a round trip restores what was exported. (Maintainer 2026-11-08.)'
+    tables exist, so a round trip restores what was exported. (Maintainer 2026-11-08.) (Amended 2026-11-19,
+    OWNERSHIP READ FROM ENTITLEMENTS:) Maintainer 2026-11-19. The ODPS export reads the data product''s
+    owner from its data_product_owner entitlements (REQ-2219, 2026-11-19).'
   use_case: Lets a domain create named, owned data products bundling one or more datasets for publication
     (mirroring the collection-oriented "data product" concept in Snowflake Marketplace, Starburst Data
     Products, and data-mesh implementations like Nextdata), with per-product ownership distinct from domain-level
@@ -86827,7 +86871,9 @@ And a cell that reads shop.orders into a DataFrame, fits a model and plots it sh
     it decides, and Provisa enforces whatever its claims say. With none, the local default applies an expiry
     cancel at once -- the date was agreed when the grant was made, so it needs no second approval -- as
     the matching ordinary removal, attributed to the expiry; access ends within the run''s interval. Provisa
-    holds no separate read-time check of an expiry date.'
+    holds no separate read-time check of an expiry date. (Amended 2026-11-19, EXPIRY AFTER THE RUN, NOT
+    PER REQUEST:) Maintainer 2026-11-19. Expiry is never checked on a request; an expired entitlement is
+    gone after the expiry run (REQ-2219, 2026-11-19), superseding ''absent on every request''.'
   use_case: "An org administrator gives a contractor the analyst role until the end of the engagement and sets the contractor role to lapse after 30 days unused; on the last day the grant stops working without anyone remembering to remove it, and a role nobody uses is removed from its holders automatically, with everyone told beforehand."
   scenario: "Given ada holds analyst until tomorrow and bo holds contractor, a role with inactivity_days 30, last used 31 days ago\n\nWhen the next request after ada's expiry arrives\n\nThen it is served without analyst\n\nAnd the sweep deletes both grants, records role.expired and role.removed_inactive, and emails the org's administrators\n\nAnd seven days before either end, ada and bo and the administrators were emailed"
   related_reqs:
@@ -89049,7 +89095,9 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     with REQ-194''s amendment of the same day. The meta domain''s views over stored build output (names,
     tags, checker targets, lineage) may show the previous build until the after-answer pass has run, as
     REQ-2129 allows for lineage. A request that acts on a product (a grant, a bid, a quality check, a sample
-    view) reads the runtime''s published build instead.'
+    view) reads the runtime''s published build instead. (Amended 2026-11-19, OWNERSHIP READ FROM ENTITLEMENTS:)
+    Maintainer 2026-11-19. The owner shown for a data product is read from its data_product_owner entitlements;
+    the owner_role column is removed (REQ-2219, 2026-11-19).'
   use_case: >-
     An analyst, a BI tool or an MCP agent finds a data product and everything that makes it up (its
     domain, members, commands, tags, terms, data-quality evidence and profiles) by querying the meta
@@ -89699,7 +89747,7 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
   - REQ-2104
   target: "2027-Q1"
 - id: REQ-2135
-  status: in-progress
+  status: complete
   since: 2026-10
   group: 5. Query Languages, Compilation & Operations
   category: SPARQL Query Frontend
@@ -89980,6 +90028,10 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     - provisa-ui/src/components/graph/__tests__/SparqlExportModal.test.tsx
     - provisa-ui/src/__tests__/GraphPageSparql.test.tsx
     - provisa-ui/src/__tests__/GraphPageCypherExport.test.tsx
+  - tests/unit/test_cypher_drop_shapes.py
+  - provisa-ui/src/components/graph/__tests__/dropPath.test.ts
+  - provisa-ui/src/components/graph/__tests__/sparqlDrop.test.ts
+  - provisa-ui/src/__tests__/GraphDropUnlabelled.test.ts
 - id: REQ-2136
   value: 'Filter the ontology graph with SPARQL directly from the Ontology page controls, or open it as a query.'
   status: in-progress
@@ -91004,7 +91056,10 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     parents. (Amended 2026-10-29, REGIONS NARROW LIKE CAPABILITIES:) Maintainer 2026-10-31: data_residency''s
     regions follow the same narrowing as capabilities and domains: a role with parents covers its stored
     regions intersected with the union of its parents'' regions, and saving a region no parent covers is
-    refused by name.'
+    refused by name. (Amended 2026-11-19, A ROLE''S ROW RULE NARROWS ITS PARENTS'', NEVER REPLACES THEM:)
+    Maintainer 2026-11-19, correcting the 2026-10-25 sentence that a role''s own row rule stands. A role''s
+    row rule is combined with every parent''s row rule by AND: inheriting a role can only narrow the rows
+    it reads, never widen them.'
   scenario: 'Given an org role ''dq lead'' inheriting from Data quality steward and Data product owner
 
     Then it holds the union of both roles'' capabilities
@@ -92625,7 +92680,9 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     at three hops, where before the column and the table each took a further hop. A product''s graph follows
     the same rule: the product''s own tables, columns and the terms grounded on them come with it, and hops
     count steps onward between terms. The control stays a row of buttons and gains All after 4: All follows
-    the connected part to its end, under the existing limit on how many nodes a graph draws.'
+    the connected part to its end, under the existing limit on how many nodes a graph draws. (Amended 2026-11-19,
+    OWNERSHIP READ FROM ENTITLEMENTS:) Maintainer 2026-11-19. The Consumers card reads the data product''s
+    owners from its data_product_owner entitlements (REQ-2219, 2026-11-19).'
   scenario: 'Given a graph whose nodes lie mostly in one plane
 
     When its 3D stage settles
@@ -93860,7 +93917,9 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     The rule editor shows the rights as three checkboxes. (Amended 2026-10-29, A METRIC HAS A DOMAIN AND
     AN OWNER:) Maintainer 2026-10-30: metrics are a model table, meta.metric_definitions, the name that
     does not collide with ops metrics. A metric belongs to a domain and names an owner role, as a data product
-    does, so the same rule applies: an org admin or the named owner edits it.'
+    does, so the same rule applies: an org admin or the named owner edits it. (Amended 2026-11-19, OWNERSHIP
+    READ FROM ENTITLEMENTS:) Maintainer 2026-11-19. The update and delete rules read the data_product_owner
+    entitlement, not data_products.owner_role, which is removed (REQ-2219, 2026-11-19).'
   scenario: 'Given data products owned by role pets_team and role sales_team
 
     And pets_team holds RW on data_products with U and D rules naming the product''s owner role
@@ -95816,7 +95875,22 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     2026-11-18. Each sign-in records whether the person''s email address was verified by the identity provider.
     A write that names a person by email resolves to a known person only by an address recorded as verified;
     an address typed by an account holder (a local account''s email) or one never verified names no one,
-    so the write waits as a pending grant and attaches at a verified sign-in with that address.'
+    so the write waits as a pending grant and attaches at a verified sign-in with that address. (Amended
+    2026-11-19, EXPIRY, VALID TIME, EFFECTIVE ROWS, ENFORCEMENT AND OWNER KINDS SETTLED:) Maintainer 2026-11-19.
+    Expiry is never checked at read time; the 2026-11-07 sentence on lazy enforcement in the session is
+    superseded. When an entitlement expires, access Provisa holds is removed at once and announced to the
+    outbound hook; access an external identity provider holds goes to the hook only, and with no hook configured
+    it is recorded as an event only. A stored row''s valid-to is the next row''s valid-from as recorded:
+    rows are append-only and carry no valid-to column. Every person Provisa knows to hold a role gets stored
+    effective rows. Requests are enforced from the in-memory mask, and the stored effective row is its record.
+    The owner kinds are named flat, except terms: a term_owner entitlement names its term as domain.term
+    (an asterisk allowed at either level), and a judgment_basis_owner names a judgment basis by its id.
+    Ownership held in columns moves to entitlements: data_products.owner_role, domains.steward and relationships.owner
+    are removed, and the rules that read them read the data_product_owner, domain_steward and relationship_owner
+    entitlements instead. (Amended 2026-11-19, ORG ADMINS HOLD THE FIVE OWNER CAPABILITIES:) Maintainer
+    2026-11-19. The standard org_admin role holds data_product_owner, relationship_owner, domain_steward,
+    term_owner and judgment_basis_owner with no list, so an org admin owns every object of those kinds;
+    other owners are granted on lists or by the creator''s owner row.'
   use_case: Alice holds the viewer role with tables [finance.revenue]; she sees only that table of everything
     viewer can see, while another viewer with no list sees all of it.
   scenario: 'Given two people with the viewer role, one whose grant lists tables [finance.revenue]
@@ -97542,7 +97616,14 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     WAY:) Maintainer 2026-11-16 (''add that to the relationship detail panel AND the data product access
     patterns''). A data product''s Access section lists each relationship in the product with the same set
     of links as the relationship''s detail panel, one per surface that exposes it, built by the one shared
-    component and query builder; it replaces the Cypher-only link per relationship type it shows today.'
+    component and query builder; it replaces the Cypher-only link per relationship type it shows today.
+    (Amended 2026-11-18, A TABLE''S DETAIL PANEL HAS THE SAME PREVIEW LINKS:) Maintainer 2026-11-18 (''similar
+    to relationships detail, there should be hyperlinks to preview the table using all of the query surfaces'').
+    A table''s detail panel on the Tables page has one link per query surface the table is exposed on, drawn
+    as the data product Access section draws its per-table links (the same icons, tips and component), in
+    its Identity section. Each opens that surface''s Explore editor with a query that reads the table, run
+    at once, using the names the role sees and a row limit. A surface the table is not exposed on shows
+    no link.'
 - id: REQ-2253
   status: proposed
   group: 3. Source Registration & Data Modeling
@@ -97557,3 +97638,44 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     and relationships of those domains. This covers, among others, relationship discovery, the ontology''s
     relationship suggestions and term finding, natural-language query, generated descriptions and any other
     feature that asks a model. Nothing outside the selected domains is read, sent or changed.'
+- id: REQ-2254
+  status: proposed
+  target: 2026-Q3
+  group: 4. Source Connectors
+  category: Replica Strategy
+  feature: replicas-and-freshness-moving-data
+  priority: MUST
+  type: behavioral
+  description: Maintainer 2026-11-19 ('create a req to have pgwire-calcite bundle loaded once and then
+    ref'd at runtime by other pgwire-* servers'). The pgwire-calcite runtime (CPython, the pgwire_calcite
+    package, the JRE and the jars every adapter uses, such as calcite-core, linq4j and avatica) is installed
+    once per engine version and cached by that version. Each pgwire adapter is a pack holding its own
+    jars, its model.json and, optionally, adapter-specific Python packages; the pack names the runtime
+    version it requires, and a pack whose runtime version is absent is refused at start, naming the version.
+    The launcher builds the classpath from the runtime's jars plus the pack's jars, and the Python path
+    from the runtime plus the pack's extras. The runtime and the packs are released separately, and the
+    standalone installers install a runtime plus one pack. Provisa's bundle resolution (REQ-956) resolves
+    the runtime, then the source's pack, each cached by version. Each source still runs in its own process.
+    A Python-only change to pgwire-calcite ships as a new runtime with the packs unchanged.
+- id: REQ-2255
+  status: proposed
+  target: 2026-Q3
+  group: 4. Source Connectors
+  category: Replica Strategy
+  feature: replicas-and-freshness-moving-data
+  priority: MUST
+  type: behavioral
+  description: 'Maintainer 2026-11-19 (''update pgwire-calcite python per provisa pgwire''). pgwire-calcite''s
+    PostgreSQL wire server reaches parity with Provisa''s own for what its clients depend on. Column sizes:
+    numeric(p,s), varchar(n), char(n), time(p) and timestamp(p) carry their size from JDBC metadata in
+    pg_attribute''s atttypmod, in RowDescription and in format_type, so a client reads DECIMAL(7,2) as
+    that type. The extended query protocol: Bind values are decoded by the parameter''s declared type
+    and kept bound; statements and portals keep their described shape across Bind and Execute; after a
+    failure the server discards to Sync and reports the failed transaction state; a cancel request from
+    another connection cancels the running statement. Bounded cursors: NO SCROLL cursors and Execute with
+    a row limit read in batches without holding the whole result. Catalog functions and casts used by
+    introspection: the reg* casts, pg_am.amhandler, pg_index and pg_constraint with composite foreign
+    keys and unique constraints where the adapter declares them, has_table_privilege and pg_get_expr,
+    and typed catalog results. Session items: SET TimeZone is reported and passed to the Calcite connection,
+    a refused statement is logged as a refusal, COPY FROM refuses a format it does not read, and advisory
+    locks are held per connection when writes are allowed.'

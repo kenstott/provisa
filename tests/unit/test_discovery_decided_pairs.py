@@ -37,6 +37,7 @@ _TABLES = (
     "table_columns",
     "tag_assignments",
     "relationships",
+    "naming_rules",
     "relationship_candidates",
     "discovery_runs",
     "discovery_run_proposals",

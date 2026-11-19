@@ -565,12 +565,15 @@ class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
                 {
                     "user_id": identity.user_id,
                     "email": identity.email,
+                    # REQ-2219: whether this sign-in's provider verified the address; a write by
+                    # email names this person only by a verified one.
+                    "email_verified": identity.email_verified,
                     "display_name": identity.display_name,
                     "provider": provider_name,
                     "last_seen": func.now(),
                 },
                 index_elements=["user_id"],
-                update_columns=["email", "display_name", "provider", "last_seen"],
+                update_columns=["email", "email_verified", "display_name", "provider", "last_seen"],
             )
         # REQ-1439: the same identity, copied into the tenant plane, so the ops report views can
         # LEFT JOIN a name onto the user_id they log. The platform profile above is the record of
@@ -582,11 +585,12 @@ class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
                 {
                     "user_id": identity.user_id,
                     "email": identity.email,
+                    "email_verified": identity.email_verified,
                     "display_name": identity.display_name,
                     "updated_at": func.now(),
                 },
                 index_elements=["user_id"],
-                update_columns=["email", "display_name", "updated_at"],
+                update_columns=["email", "email_verified", "display_name", "updated_at"],
             )
         await _record_idp_attributes(self._db_pool, identity)
         if self._assignments_source == "claims" and identity.credential != "pat":
