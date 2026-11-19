@@ -33,6 +33,9 @@ class _FakeConn:
     def __init__(self):
         self.upsert = AsyncMock()
         self.upsert_returning = AsyncMock(return_value=7)
+        # REQ-1591: a term name is unique only within a domain, so the column's derived term is
+        # inserted, not upserted on its name.
+        self.insert_returning = AsyncMock(return_value=11)
         self.inserted_columns: list[dict] = []
 
     @asynccontextmanager
