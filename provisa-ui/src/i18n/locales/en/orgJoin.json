@@ -1,7 +1,7 @@
 {
   "orgJoin": {
     "heading": "Who can join",
-    "help": "Which email addresses may join this organization. An invitation is checked against this rule; with auto-join on, anyone signing in with a matching address becomes a member without one.",
+    "help": "Which email addresses may join this organization. An invitation is checked against this rule; with auto-join on, anyone signing in with a matching verified address becomes a member without one.",
     "emailRuleLabel": "Email rule",
     "emailRuleDesc": "A regular expression matched against the address. Leave empty to accept any address by invitation.",
     "autoJoinLabel": "Join automatically",

@@ -3102,7 +3102,24 @@
     more than one acceptable form and gives no ranking between them (schema: schemata, schemas), the form
     used more often in general English wins, read from a bundled word-frequency table under a licence compatible
     with Provisa''s (schema to schemas). Frequency only breaks such ties; it never overrides a single dictionary
-    form.'
+    form. (Amended 2026-11-18, AMONG ACCEPTED FORMS THE REGULAR PLURAL WINS; A NOUN''S MAIN SENSE IS THE
+    ONE MOST DICTIONARIES LIST:) Maintainer 2026-11-18, replacing the word-frequency tie-break of 59d7aa17cf.
+    Where the dictionary accepts more than one plural of a noun (at any of its accepted levels), the regularly
+    formed plural wins (schema to schemas, index to indexes, maximum to maximums, focus to focuses); word
+    frequency only chooses between irregular forms when no regular form is accepted. Where a noun has more
+    than one sense with different plurals, the sense listed by the most standard dictionaries is the one
+    used (axis to axes). (Amended 2026-11-18, THE REGULAR-WINS RULE: WHICH LEVELS COUNT, ZERO PLURALS, AND
+    THE MAIN SENSE IN REVERSE:) Maintainer 2026-11-18, refining 581e2bb02d. A form counts as accepted for
+    the regular-wins rule only when the dictionary gives it a level; legacy entries with no level information
+    do not count (deer, criteria, offspring, calves, cacti, curricula, radii stay). Where a noun accepts
+    both a zero plural and a regular one, the zero plural wins (fish, salmon, trout, shrimp). The main-sense
+    rule applies in reverse when a plural is singularized: where senses tie, the sense whose only plural
+    is this form wins (axes to axis). (Amended 2026-11-19, WHICH ZERO PLURALS WIN, AND HOW A SHARED PLURAL
+    PICKS ITS WORD:) Maintainer 2026-11-19, refining 9387abb5d2. The zero plural wins only where the dictionary
+    lists it first with the regular form marked as used depending on usage (fish, salmon, trout, shrimp,
+    bear, doe); elsewhere the regular form keeps winning (bucks, yaks, newborns, emojis, percents). When
+    a plural belongs to several words that tie on every dictionary count, a word of its own wins over two
+    spellings of one word (axes to axis, not ax or axe).'
   use_case: Consistent multi-language naming with a single authority ensures client-facing names are predictable
     and independent of physical schema.
   code:
