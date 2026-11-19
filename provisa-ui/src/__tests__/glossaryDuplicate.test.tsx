@@ -119,6 +119,16 @@ describe("Duplicate, in a term's panel", () => {
     expect(await screen.findByTestId("glossary-duplicate-btn")).toHaveAccessibleName("Duplicate");
   });
 
+  it("is a bordered, labelled button like Edit beside it", async () => {
+    await openTerm();
+    const duplicate = await screen.findByTestId("glossary-duplicate-btn");
+    const edit = screen.getByTestId("glossary-edit-btn");
+    expect(duplicate).toHaveTextContent("Duplicate");
+    expect(duplicate.querySelector("svg.lucide-copy")).not.toBeNull();
+    expect(duplicate).toHaveAttribute("data-variant", "default");
+    expect(duplicate).toHaveAttribute("data-variant", edit.getAttribute("data-variant") ?? "");
+  });
+
   it("is not offered to a caller who may not write the glossary", async () => {
     auth.capabilities = ["glossary_read"];
     await openTerm();

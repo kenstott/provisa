@@ -65,6 +65,7 @@ _TABLES = (
     "table_columns",
     "tag_assignments",
     "relationships",
+    "naming_rules",
     "relationship_candidates",
     "profiler_classifications",
     "glossary_term_refs",

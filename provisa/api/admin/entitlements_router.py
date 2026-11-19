@@ -186,8 +186,8 @@ def _admin_db(state: Any) -> Any:
 
 
 async def _resolve(request: Request, state: Any, body: _ListKey) -> str | None:
-    """The principal a write names: its own, or the one person of the org with its email. None
-    when the email matches no one: the write is a pending grant."""
+    """The principal a write names: its own, or the one person of the org whose verified email it
+    is. None when the email is no one's verified address: the write is a pending grant."""
     if (body.principal is None) == (body.email is None):
         raise ApiError(
             422, "entitlements.principal_or_email", "Name a principal or an email, not both"
@@ -204,7 +204,6 @@ async def _resolve(request: Request, state: Any, body: _ListKey) -> str | None:
         _db(state),
         require_active_org_id(request),
         body.email,
-        multitenancy=state.multitenancy,
     )
     if len(matched) > 1:
         raise ApiError(
