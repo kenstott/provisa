@@ -55,6 +55,7 @@ from provisa.api.data.endpoint_grpc_proxy import router as grpc_proxy_router
 from provisa.api.data.sdl import router as sdl_router
 from provisa.api._ontology_views import ONTOLOGY_TABLE_ALIAS
 from provisa.api.app_loaders import (
+    physical_table_map,
     _META_TABLE_ALIAS,
     _apply_server_and_engine_config,
     _build_and_register_schemas,
@@ -662,12 +663,12 @@ class AppState:
         self._active_runtime().kafka_table_configs = value
 
     @property
-    def kafka_table_physical(self) -> dict[str, str]:
+    def kafka_table_physical(self) -> dict[tuple[str, str], str]:
         """Virtual GraphQL table → the engine's physical table (Kafka sources)."""
         return self._active_runtime().kafka_table_physical
 
     @kafka_table_physical.setter
-    def kafka_table_physical(self, value: dict[str, str]) -> None:
+    def kafka_table_physical(self, value: dict[tuple[str, str], str]) -> None:
         self._active_runtime().kafka_table_physical = value
 
     @property
@@ -3874,7 +3875,6 @@ async def _rebuild_schemas_impl(
             state.engine_conn,
             tables,
             sources,
-            {**_META_TABLE_ALIAS, **ONTOLOGY_TABLE_ALIAS, **(kafka_physical or {})},
         )
 
         _gql_remote_srcs = getattr(state, "graphql_remote_sources", {})
@@ -4101,11 +4101,9 @@ async def _rebuild_schemas_impl(
         "functions": tracked_functions,
         "webhooks": tracked_webhooks,
         "enum_types": state.pg_enum_types,
-        "physical_table_map": {
-            **_META_TABLE_ALIAS,
-            **ONTOLOGY_TABLE_ALIAS,
-            **(kafka_physical or {}),
-        },
+        "physical_table_map": physical_table_map(
+            _META_TABLE_ALIAS, ONTOLOGY_TABLE_ALIAS, kafka_physical=kafka_physical
+        ),
         "metrics": _metric_dicts,  # REQ-1319
     }
     with _schema_version_guard:

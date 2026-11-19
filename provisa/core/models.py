@@ -60,6 +60,10 @@ DERIVED_SOURCE_ID = "__derived__"
 # sources into its allowance.
 BUILT_IN_SOURCE_IDS = frozenset({"provisa-admin", "provisa-otel", DERIVED_SOURCE_ID})
 
+# The control plane's own source: its meta, ontology and ops tables are registered on it, and only
+# its registrations are read through the views the physical table map names (REQ-884).
+ADMIN_SOURCE_ID = "provisa-admin"
+
 
 class SourceType(str, Enum):
     # RDBMS
