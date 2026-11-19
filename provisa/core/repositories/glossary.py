@@ -34,7 +34,7 @@ import json
 import logging
 import re
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime
 
 from sqlalchemy import and_, delete as _delete, func, insert, or_, select, update
 
@@ -61,6 +61,7 @@ from provisa.core.schema_org import (
     glossary_term_edges,
     glossary_term_experts,
     glossary_term_refs,
+    glossary_term_sources,
     glossary_term_statements,
     glossary_terms,
     registered_tables,
@@ -1034,6 +1035,35 @@ async def keep_statements(
         )
     if rows:
         await conn.execute_core_many(insert(glossary_term_statements), rows)
+
+
+async def add_term_source(
+    conn: "Connection", term_id: int, *, catalog: str, catalog_ref: str, at: datetime
+) -> None:  # REQ-2247
+    """Record that the term was sourced from ``catalog``'s term ``catalog_ref`` at ``at``; a
+    later sourcing from the same catalog replaces the earlier one."""
+    await conn.upsert(
+        glossary_term_sources,
+        {"term_id": term_id, "catalog": catalog, "catalog_ref": catalog_ref, "sourced_at": at},
+        index_elements=["term_id", "catalog"],
+        update_columns=["catalog_ref", "sourced_at"],
+    )
+
+
+async def term_sources(conn: "Connection", term_id: int) -> list[dict]:  # REQ-2247
+    """The catalogs the term was sourced from, oldest first."""
+    rows = (
+        await conn.execute_core(
+            select(
+                glossary_term_sources.c.catalog,
+                glossary_term_sources.c.catalog_ref,
+                glossary_term_sources.c.sourced_at,
+            )
+            .where(glossary_term_sources.c.term_id == term_id)
+            .order_by(glossary_term_sources.c.sourced_at, glossary_term_sources.c.catalog)
+        )
+    ).fetchall()
+    return [dict(r._mapping) for r in rows]
 
 
 async def create_abstract_term(

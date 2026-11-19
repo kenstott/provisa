@@ -1152,6 +1152,18 @@ CREATE TABLE IF NOT EXISTS glossary_term_statements (
     UNIQUE (term_id, ordinal)
 );
 
+-- REQ-2247: the catalogs a term was sourced from, one row a catalog: the catalog entry's id, the
+-- catalog's own id for its term (an OpenMetadata entity id, a DataHub URN) and when it was taken.
+CREATE TABLE IF NOT EXISTS glossary_term_sources (
+    id          SERIAL PRIMARY KEY,
+    term_id     INTEGER NOT NULL REFERENCES glossary_terms(id) ON DELETE CASCADE,
+    catalog     TEXT NOT NULL,
+    catalog_ref TEXT NOT NULL,
+    sourced_at  TIMESTAMPTZ NOT NULL,
+    tenant_id   UUID,
+    UNIQUE (term_id, catalog)
+);
+
 -- People who can answer questions about the term or who authored its definition.
 CREATE TABLE IF NOT EXISTS glossary_term_experts (
     id        SERIAL PRIMARY KEY,

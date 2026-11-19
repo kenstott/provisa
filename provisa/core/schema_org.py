@@ -907,6 +907,19 @@ glossary_term_statements = Table(
     UniqueConstraint("term_id", "ordinal"),
 )
 
+# REQ-2247: the catalogs a term was sourced from, one row a catalog. See schema.sql.
+glossary_term_sources = Table(
+    "glossary_term_sources",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("term_id", Integer, ForeignKey("glossary_terms.id", ondelete="CASCADE"), nullable=False),
+    Column("catalog", Text, nullable=False),
+    Column("catalog_ref", Text, nullable=False),
+    Column("sourced_at", DateTime(timezone=True), nullable=False),
+    Column("tenant_id", Uuid),
+    UniqueConstraint("term_id", "catalog"),
+)
+
 # People who can answer questions about the term or who authored its definition.
 glossary_term_experts = Table(
     "glossary_term_experts",
