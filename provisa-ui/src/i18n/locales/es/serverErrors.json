@@ -21,17 +21,17 @@
       "embedding_library_missing": "El modelo de embeddings {{model}} usa el proveedor {{provider}}, que necesita el extra {{extra}} (el módulo {{module}} no está instalado): pip install 'provisa[{{extra}}]'."
     },
     "ai": {
-      "endpoint_address_from_server": "El punto de conexión de IA {{vendor}} toma su dirección del entorno del servidor, que una organización de este servidor no usa. Asígnele una dirección propia en Administración, Modelos de IA.",
+      "key_required": "{{vendor}} no tiene clave. Configure una en Administración, Modelos de IA.",
+      "vendor_uses_server_credentials": "{{vendor}} se alcanza con las credenciales propias del servidor, que una organización de este servidor no usa. Elija un proveedor que acepte una clave, o un punto de conexión de IA, en Administración, Modelos de IA.",
       "endpoint_key_from_server": "El punto de conexión de IA {{vendor}} toma su clave del entorno del servidor, que una organización de este servidor no usa. Asígnele una clave propia en Administración, Modelos de IA.",
       "endpoint_key_unset": "El punto de conexión de IA {{vendor}} no tiene clave: {{field}} no está definido.",
-      "key_required": "{{vendor}} no tiene clave. Configure una en Administración, Modelos de IA.",
+      "endpoint_address_from_server": "El punto de conexión de IA {{vendor}} toma su dirección del entorno del servidor, que una organización de este servidor no usa. Asígnele una dirección propia en Administración, Modelos de IA.",
       "local_server_from_environment": "{{vendor}} se alcanza en la dirección propia del servidor, que una organización de este servidor no usa. Declare un punto de conexión de IA en su propia dirección en Administración, Modelos de IA.",
       "server_environment_sets": "No se puede llamar a {{vendor}} aquí: el entorno del servidor define {{variable}}, que su cliente enviaría para cada organización.",
-      "vector_model_address_from_server": "El modelo de embeddings {{vendor}} toma su dirección del entorno del servidor, que una organización de este servidor no usa. Asígnele una dirección propia en Administración, Modelos de IA.",
       "vector_model_key_from_server": "El modelo de embeddings {{vendor}} toma su clave del entorno del servidor, que una organización de este servidor no usa. Asígnele una clave propia en Administración, Modelos de IA.",
       "vector_model_key_unset": "El modelo de embeddings {{vendor}} no tiene clave: {{field}} no está definido.",
-      "vector_model_local_server": "El modelo de embeddings {{vendor}} se alcanza en la dirección propia del servidor, que una organización de este servidor no usa. Asígnele una dirección propia en Administración, Modelos de IA.",
-      "vendor_uses_server_credentials": "{{vendor}} se alcanza con las credenciales propias del servidor, que una organización de este servidor no usa. Elija un proveedor que acepte una clave, o un punto de conexión de IA, en Administración, Modelos de IA."
+      "vector_model_address_from_server": "El modelo de embeddings {{vendor}} toma su dirección del entorno del servidor, que una organización de este servidor no usa. Asígnele una dirección propia en Administración, Modelos de IA.",
+      "vector_model_local_server": "El modelo de embeddings {{vendor}} se alcanza en la dirección propia del servidor, que una organización de este servidor no usa. Asígnele una dirección propia en Administración, Modelos de IA."
     },
     "api": {
       "answer_cut": "La respuesta para {{table}} se cortó en max_pages={{max_pages}} ({{rows}} filas): la API tiene más. Aumente max_pages o el tamaño de página del endpoint para leerla completa.",
@@ -147,7 +147,7 @@
       "viewer_column_unknown": "'{{column}}' no es una columna de la tabla '{{table}}'",
       "viewer_filter_unknown": "'{{operator}}' no es un filtro de la columna '{{column}}'",
       "viewer_value_invalid": "El filtro de '{{column}}' no puede usar el valor '{{value}}'",
-      "replica_building": "La copia de {{replica}} aún se está creando. La creación continúa; abra la vista previa de nuevo cuando haya terminado.",
+      "replica_building": "La réplica de {{replica}} aún se está construyendo. La construcción continúa; vuelva a abrir la vista previa cuando haya terminado.",
       "address_invalid": "La dirección no se puede resolver: {{reason}}",
       "address_not_found": "Nada que resolver: {{reason}}",
       "mixed_resolve_and_other_fields": "resolve no se puede combinar con otros campos raíz en una misma operación",
@@ -172,14 +172,13 @@
     },
     "discovery": {
       "adapter_missing_discover_schema": "El adaptador para '{{source_type}}' no implementa discover_schema",
-      "answer_unreadable": "La respuesta del modelo no contenía ninguna lista legible.",
       "cassandra_discovery_unsupported": "El descubrimiento de esquemas de Cassandra requiere una sesión CQL activa, que no está disponible. Defina las columnas manualmente para este origen.",
       "database_not_connected": "Base de datos no conectada",
-      "decided_both_ways": "Una propuesta se acepta o no se vuelve a recomendar, no ambas cosas.",
       "domain_id_required": "domain_id es obligatorio para el ámbito de dominio",
       "elasticsearch_index_hint_required": "El descubrimiento de Elasticsearch requiere una indicación 'index'.",
       "elasticsearch_mapping_failed": "Error al leer el mapping de Elasticsearch para el índice '{{index}}': {{error}}",
       "endpoint_already_registered": "Endpoint ya registrado: {{error}}",
+      "decided_both_ways": "Una propuesta se acepta o no se vuelve a recomendar, no ambas cosas.",
       "model_has_no_room": "El modelo {{model}} no puede contener una solicitud: {{reason}}",
       "model_incomplete": "Un modelo elegido indica tanto su proveedor como su modelo.",
       "no_adapter_for_source_type": "No hay adaptador registrado para el tipo de origen '{{source_type}}'",
@@ -200,7 +199,8 @@
       "target_tables_not_read": "Ninguna de las tablas de destino elegidas ({{count}}) se lee: el descubrimiento deja fuera las tablas de un dominio del sistema y las que están fuera de servicio.",
       "target_tables_outside_domains": "Las tablas de destino elegidas están fuera de los dominios seleccionados en el filtro de dominios: {{names}}.",
       "unknown_source_type": "Tipo de origen desconocido: {{type}}",
-      "vendor_unknown": "{{vendor}} no lista modelos aquí; escriba el nombre del modelo."
+      "vendor_unknown": "{{vendor}} no lista modelos aquí; escriba el nombre del modelo.",
+      "answer_unreadable": "La respuesta del modelo no contenía ninguna lista legible."
     },
     "llm": {
       "request_failed": "La solicitud al modelo falló: {{reason}}",
@@ -290,22 +290,22 @@
       "auth_required_create": "Se requiere autenticación para crear una organización",
       "auth_required_leave": "Se requiere autenticación para abandonar una organización",
       "auto_join_breadth_unacknowledged": "Revise con cuidado esta regla de unión automática o podría admitir a personas ajenas a su organización: además de {{domains}}, también acepta direcciones como {{admits}}. Cualquier persona de un dominio que usted no controle podría entonces unirse automáticamente a su organización. Confirme que acepta ese riesgo para guardarla.",
-      "auto_join_public_domain": "auto_join necesita una regla de correo limitada a un dominio que usted controle; esta coincide con {{domain}}.",
+      "auto_join_public_domain": "auto_join necesita una regla de correo limitada a un dominio que usted controle. Esta coincide con {{domain}}.",
       "auto_join_requires_role": "auto_join requiere auto_join_role",
-      "auto_join_rule_taken": "Otra organización ya admite automáticamente a todas las direcciones que coinciden con esta regla. Dos organizaciones no pueden reclamar las mismas direcciones: pídales una invitación o restrinja su regla a un dominio que solo use su organización.",
+      "auto_join_rule_taken": "Otra organización ya une automáticamente a todos los que coinciden con esta regla. Dos organizaciones no pueden reclamar las mismas direcciones. Pídales una invitación o limite su regla a un dominio que solo use su organización.",
       "auto_join_rule_unbounded": "Esta regla de unión automática no tiene límite: admitiría direcciones de dominios que usted no controla. Ancle la regla a un dominio propio, p. ej. \"@acme\\\\.com$\".",
       "cannot_delete_root": "No se puede eliminar la organización raíz",
-      "delete_confirm_required": "Eliminar '{{org}}' destruye todos sus datos de forma permanente — nadie, ni siquiera un administrador de plataforma, puede recuperarlos. Repita el id de la organización en el parámetro 'confirm' para continuar.",
+      "delete_confirm_required": "Eliminar «{{org}}» destruye todos sus datos de forma permanente, y nadie, ni siquiera un administrador de la plataforma, puede recuperarlos. Repita el id de la organización en el parámetro «confirm» para continuar.",
       "invalid_email_rule": "Regla de correo electrónico no válida: {{error}}",
       "invalid_org_id": "Id de organización no válido '{{org}}': de 2 a 40 caracteres, solo letras minúsculas y dígitos, comenzando con una letra. El id se convierte en el nombre del esquema de la base de datos y en el subdominio, y no se puede cambiar después.",
       "limit_reached": "Límite de organizaciones alcanzado: una sola cuenta puede crear como máximo {{limit}} organizaciones. Elimine una que ya no necesite para crear otra.",
       "membership_not_found": "No se encontró la membresía",
-      "no_tenant_runtime": "La organización '{{org}}' no tiene runtime de inquilino — es posible que aún se esté aprovisionando.",
+      "no_tenant_runtime": "La organización «{{org}}» no tiene entorno de ejecución de inquilino. Puede que aún se esté aprovisionando.",
       "not_found": "No se encontró la organización",
       "not_org_admin": "{{user}} no posee org_admin en {{org}}",
       "org_id_reserved": "El id de organización '{{org}}' está reservado. Ids reservados: {{reserved}}.",
       "platform_admin_required": "Se requiere platform_admin",
-      "retry_not_failed": "La organización '{{org}}' está en estado '{{state}}', no 'failed' — no hay nada que reintentar.",
+      "retry_not_failed": "La organización «{{org}}» está en «{{state}}», no en «failed», así que no hay nada que reintentar.",
       "self_role_change": "Un usuario no puede cambiar su propio rol. Solicite a otro administrador.",
       "view_not_permitted": "No tiene permiso para ver esta organización",
       "org_id_sandbox_prefix": "Los identificadores de organización que empiezan por {{prefix}} están reservados para los sandboxes de demostración.",
@@ -365,13 +365,13 @@
       "cache_purged": "Se purgaron {{count}} entradas de caché",
       "cache_purged_table": "Se purgaron {{count}} entradas de caché para la tabla {{table}}",
       "calendar_deleted": "calendario '{{calendar}}' eliminado",
-      "calendar_in_use": "el calendario '{{calendar}}' está en uso por vistas materializadas — borre su programación de instantáneas antes de eliminarlo",
+      "calendar_in_use": "El calendario «{{calendar}}» lo usan vistas materializadas. Quite su programación de instantáneas antes de eliminarlo.",
       "calendar_not_found": "no se encontró el calendario '{{calendar}}'",
       "calendar_saved": "calendario '{{calendar}}' {{version}} guardado",
       "column_natively_nested": "No se puede registrar: la columna {{column}} es nativamente {{native_type}} en su origen, por lo que su tipo es json, no {{type}}.",
       "column_types_unresolved": "No se puede registrar: no se pudo resolver ningún tipo de datos desde el origen para la(s) columna(s): {{columns}}. Introspeccione la tabla (Descubrir esquema) o establezca un tipo de datos para cada una antes de registrar.",
       "config_not_found": "No se encontró el archivo de configuración",
-      "creation_request_queued": "En cola como solicitud de creación #{{id}} — a la espera de que un usuario con '{{capability}}' la ejecute o la rechace.",
+      "creation_request_queued": "En cola como solicitud de creación n.º {{id}}, a la espera de un usuario con «{{capability}}» que la ejecute o la rechace.",
       "db_pool_unavailable": "Pool de base de datos no disponible",
       "discovery_failed": "Error en el descubrimiento de esquemas: {{error}}",
       "domain_created": "Dominio '{{domain}}' creado",
@@ -383,7 +383,7 @@
       "invalid_calendar": "calendario no válido: {{error}}",
       "invalid_cardinality": "Cardinalidad no válida: '{{cardinality}}'",
       "invalid_off_peak_window": "ventana de baja demanda no válida: {{error}}",
-      "load_protection_gate_required": "{{who}}: la protección de carga requiere al menos una condición de actualización — establezca una ventana de baja demanda, una cadencia cache_ttl o un change_signal de sondeo (probe/ttl_probe)",
+      "load_protection_gate_required": "{{who}}: la protección de carga requiere al menos una condición de actualización. Defina una ventana fuera de horas punta, una cadencia cache_ttl o un change_signal de sondeo (probe/ttl_probe)",
       "metric_deleted": "Métrica '{{metric}}' eliminada",
       "metric_not_found": "No se encontró la métrica '{{metric}}'",
       "metric_saved": "Métrica '{{metric}}' guardada",
@@ -923,7 +923,7 @@
       "filter_operator_refused": "{{operator}} no es un operador con el que se pueda convertir un filtro de permiso."
     },
     "relationship": {
-      "name_taken": "El nombre '{{name}}' ya lo usa la relación '{{held_by}}'. Asigne otro nombre a esta."
+      "name_taken": "El nombre «{{name}}» lo ocupa la relación «{{held_by}}». Dé otro nombre a esta."
     }
   }
 }

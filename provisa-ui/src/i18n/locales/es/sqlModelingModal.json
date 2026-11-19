@@ -1,11 +1,11 @@
 {
   "sqlModelingModal": {
     "title": "Modelado SQL",
-    "description": "Extraer condiciones JOIN como nuevas relaciones candidatas — se excluyen las relaciones existentes",
+    "description": "Extraer condiciones JOIN como nuevas relaciones candidatas. Se excluyen las relaciones existentes.",
     "close": "Cerrar",
     "tabSql": "SQL",
     "tabCanvas": "Lienzo",
-    "nlPlaceholder": "Pregunte en lenguaje natural — genera SQL…",
+    "nlPlaceholder": "Pregunte en lenguaje natural para generar SQL…",
     "nlLoading": "Cargando",
     "generateSql": "Generar SQL",
     "generating": "Generando…",

@@ -1,6 +1,6 @@
 {
   "proposalsTable": {
-    "intro": "Una fila marcada se acepta al aplicar. Las filas cuya puntuación alcanza al menos el umbral empiezan marcadas. Una fila sin ninguna casilla marcada queda sin decidir.",
+    "intro": "Una fila marcada se acepta al aplicar. Las filas que puntúan al menos el umbral empiezan marcadas. Una fila sin ninguna casilla marcada queda sin decidir.",
     "colScore": "Puntuación",
     "colConfidence": "Confianza",
     "colJev": "Jev",
@@ -27,7 +27,7 @@
       "invalid_shape": "No es una relación como la solicitada: falta un campo o tiene una forma incorrecta",
       "unknown_column": "Nombra una tabla o columna que la solicitud no comparó",
       "not_comparable": "Las dos columnas tienen clases distintas, así que no se comparan",
-      "below_threshold": "Puntuado por debajo del {{threshold}} % con el que se conserva una sugerencia.",
+      "below_threshold": "Puntuó por debajo del {{threshold}} % a partir del cual se conserva una sugerencia.",
       "same_column": "De una columna a sí misma",
       "existing": "Ya registrada",
       "rejected": "Rechazada antes",

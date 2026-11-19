@@ -1,6 +1,6 @@
 {
   "mcpServerTab": {
-    "intro": "El servidor Model Context Protocol (MCP) expone el descubrimiento gobernado del catálogo y la ejecución de SQL a agentes de IA externos. Cada llamada se gobierna por el rol del llamante — el servidor nunca usa el rol de administrador por defecto.",
+    "intro": "El servidor del Model Context Protocol (MCP) expone a los agentes de IA externos el descubrimiento gobernado del catálogo y la ejecución de SQL. Cada llamada se rige por el rol de quien llama, y el servidor nunca recurre a admin por defecto.",
     "loading": "Cargando…",
     "statusLabel": "Estado",
     "statusEnabled": "Habilitado",
@@ -8,7 +8,7 @@
     "endpointLabel": "Endpoint",
     "transportLabel": "Transporte",
     "stdioRoleLabel": "Rol stdio vinculado",
-    "stdioRoleNone": "sin definir — las llamadas stdio requieren <code>{{envVar}}</code>",
+    "stdioRoleNone": "no definido; las llamadas stdio requieren <code>{{envVar}}</code>",
     "principalLabel": "Principal local",
     "principalNone": "sin definir — las llamadas locales se rechazan hasta que <code>{{envVar}}</code> nombre uno",
     "maxRowsLabel": "Límite de filas (run_sql)",
