@@ -148,3 +148,28 @@ def test_frequency_keeps_a_single_dictionary_form():
     # One dictionary plural: frequency never applies (person keeps people, datum keeps data).
     assert naming._rel_words("person", "one-to-many") == "people"
     assert naming._rel_words("datum", "one-to-many") == "data"
+
+
+# REQ-194 (amended 2026-11-18, 581e2bb02d): where the dictionary accepts more than one plural, the
+# regularly formed plural (the rule-based form) wins; frequency only chooses among irregular forms.
+@pytest.mark.parametrize(
+    ("one", "many", "irregular"),
+    [
+        ("schema", "schemas", "schemata"),
+        ("index", "indexes", "indices"),
+        ("maximum", "maximums", "maxima"),
+        ("focus", "focuses", "foci"),
+    ],
+)
+def test_regular_plural_wins_among_accepted_forms(one, many, irregular):
+    assert naming._rel_words(one, "one-to-many") == many
+    assert naming._rel_words(many, "many-to-one") == one
+    assert naming._rel_words(irregular, "many-to-one") == one
+    assert naming._rel_words(f"customer_{one}", "one-to-many") == f"customer_{many}"
+
+
+# REQ-194 (amended 2026-11-18, 581e2bb02d): a noun whose senses have different plurals takes the
+# sense listed by the most standard dictionaries (axis the line, not axis the deer).
+def test_main_sense_plural_used():
+    assert naming._rel_words("axis", "one-to-many") == "axes"
+    assert naming._rel_words("axes", "many-to-one") == "axis"
