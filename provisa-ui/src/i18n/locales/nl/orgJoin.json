@@ -5,7 +5,7 @@
     "emailRuleLabel": "E-mailregel",
     "emailRuleDesc": "Een reguliere expressie waartegen het adres wordt vergeleken. Laat leeg om elk adres via uitnodiging te accepteren.",
     "autoJoinLabel": "Automatisch deelnemen",
-    "autoJoinDesc": "Een passend adres wordt bij de eerste aanmelding lid, zonder uitnodiging. Alleen voor een domein dat je organisatie beheert.",
+    "autoJoinDesc": "Een passend geverifieerd adres wordt bij de eerste aanmelding lid, zonder uitnodiging. Alleen voor een domein dat je organisatie beheert.",
     "autoJoinRoleLabel": "Rol bij automatische deelname",
     "autoJoinRoleDesc": "De rol die iedereen krijgt die door de regel wordt toegelaten.",
     "acceptRisk": "Ik accepteer dat deze regel mensen van buiten mijn organisatie kan toelaten",
