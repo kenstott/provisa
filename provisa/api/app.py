@@ -977,6 +977,24 @@ class AppState:
         self._active_runtime().data_product_refs = value
 
     @property
+    def glossary_term_refs(self) -> tuple[tuple[str, tuple[str, ...]], ...]:
+        """(name, domain ids) of every glossary term, for term_owner lists (REQ-2219)."""
+        return self._active_runtime().glossary_term_refs
+
+    @glossary_term_refs.setter
+    def glossary_term_refs(self, value: tuple[tuple[str, tuple[str, ...]], ...]) -> None:
+        self._active_runtime().glossary_term_refs = value
+
+    @property
+    def judgment_basis_ids(self) -> tuple[str, ...]:
+        """The id of every judgment basis, for judgment_basis_owner lists (REQ-2219)."""
+        return self._active_runtime().judgment_basis_ids
+
+    @judgment_basis_ids.setter
+    def judgment_basis_ids(self, value: tuple[str, ...]) -> None:
+        self._active_runtime().judgment_basis_ids = value
+
+    @property
     def entitlement_masks(self) -> Any:
         """The masks computed for this runtime's requests (REQ-2219)."""
         return self._active_runtime().entitlement_masks
@@ -3911,14 +3929,18 @@ async def _rebuild_schemas_impl(
         from provisa.core.repositories import user_attribute as _attr_repo
 
         state.user_attributes = await _attr_repo.org_by_user(conn)
-        # REQ-2219: what Provisa holds of its members' entitlements, and the products a list can
-        # name, so a request's mask reads nothing.
+        # REQ-2219: what Provisa holds of its members' entitlements, and the products, glossary
+        # terms and judgment bases a list can name, so a request's mask reads nothing.
         from provisa.core.repositories import data_product as _product_repo
+        from provisa.core.repositories import glossary as _glossary_repo
         from provisa.entitlements import store as _entitlement_store
+        from provisa.judgments import bases as _bases
 
         state.held_entitlements = await _entitlement_store.load_held(conn)
         state.idp_entitlements = await _entitlement_store.load_idp(conn)
         state.data_product_refs = await _product_repo.refs(conn)
+        state.glossary_term_refs = await _glossary_repo.term_refs(conn)
+        state.judgment_basis_ids = await _bases.basis_ids(conn)
         await _check_fakes(conn)  # REQ-1494
 
         tracked_functions, tracked_webhooks = await _load_tracked_functions_and_webhooks(

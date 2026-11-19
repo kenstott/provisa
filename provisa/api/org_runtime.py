@@ -241,6 +241,10 @@ class OrgRuntime:
     # REQ-2219: user id -> the lists their identity provider last sent, per role and kind.
     idp_entitlements: dict[str, dict[str, dict[str, tuple[str, ...]]]] = field(default_factory=dict)
     data_product_refs: tuple[tuple[str, str], ...] = ()
+    # REQ-2219, OWNER KINDS: (name, domain ids) of every glossary term and the id of every
+    # judgment basis, which a term_owner or judgment_basis_owner list can name.
+    glossary_term_refs: tuple[tuple[str, tuple[str, ...]], ...] = ()
+    judgment_basis_ids: tuple[str, ...] = ()
     entitlement_masks: MaskCache = field(default_factory=MaskCache)
     # role id -> everything the role is served through, from ONE build (api/role_surface.py):
     # its schema, compilation context, row filters, REST path map and proto. A build installs a

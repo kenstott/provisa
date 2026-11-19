@@ -35,10 +35,12 @@ from typing import Any
 from provisa.entitlements.index import (
     WILDCARD,
     Finding,
+    OwnedObjects,
     build_index,
     check_lists,
     covers,
     matches,
+    owned_objects,
 )
 from provisa.entitlements.lists import (
     IDP,
@@ -141,6 +143,12 @@ def role_defaults(role: Mapping[str, Any]) -> Mapping[str, list[str]]:
     return defaults
 
 
+def owned_of(state: Any) -> OwnedObjects:
+    """The glossary terms and judgment bases the org holds, as lists naming them are checked
+    (REQ-2219, OWNER KINDS)."""
+    return owned_objects(state.glossary_term_refs, state.judgment_basis_ids)
+
+
 def _members(role_id: str) -> tuple[str, ...]:
     from provisa.security.meta_role import members_of  # noqa: PLC0415
 
@@ -168,13 +176,14 @@ def _compute(
     model_index = cache.index((version, "*"), lambda: build_index(names, None, products))
     members: list[MemberInput] = []
     findings: list[Finding] = []
+    owned = owned_of(state)
     for member in _members(role_id):
         member_context = _role_context(state, member)
         role = state.roles.get(member)
         if member_context is None or role is None:
             continue  # a qualifier with no schema of its own reaches nothing
         lists = effective_lists(member, request.idp, held, role_defaults(role))
-        findings.extend(check_lists(member, role, lists, model_index))
+        findings.extend(check_lists(member, role, lists, model_index, owned))
         expiries = tuple(r for r in held.expiries if r.role_id == member)
         members.append(MemberInput(member, lists, index_of(member, member_context), expiries))
     return compute_mask(role_id, index_of(role_id, context), members, version, now, tuple(findings))

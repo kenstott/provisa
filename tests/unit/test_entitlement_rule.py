@@ -363,6 +363,8 @@ def _runtime_state(held=None):
         held_entitlements=held or {},
         entitlement_masks=MaskCache(),
         data_product_refs=(),
+        glossary_term_refs=(),
+        judgment_basis_ids=(),
     )
 
 
