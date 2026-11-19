@@ -94,12 +94,16 @@ _HEADWORD_TAG = "[12dicts]"
 # with no regular form among them are tied and the more frequent form wins.
 _TIE_CLASS = {"": 0, ".": 0, "=": 0, "?": 0, "v": 0, "~": 0, "V": 0, "-": 1}
 _ACCEPTED = 0
+# ESDB's legacy level: an alternative carried over from SCOWLv1 with no level information.
+_LEGACY = "~"
 _FREQUENCIES = _OUT / "plural_frequencies.tsv"
 # A sense whose plural no 12dicts source lists ranks after every listed one.
 _UNLISTED = 1_000
 
 # (plural, variant level, file order, sense rank: 0 for the noun's main sense)
 Alternative = tuple[str, str, int, int]
+# (the sense's 12dicts size, the plurals its lines list, its group number)
+Sense = tuple[int, frozenset[str], int]
 
 
 def _tag_size(line: str, tag: str) -> int | None:
@@ -191,21 +195,35 @@ def _lemma(lemma_info: str) -> tuple[str, str] | None:
     return m.group(2), m.group(3)
 
 
+def _counted(alt: Alternative) -> bool:
+    """True when ``alt`` counts as accepted for the regular-wins and zero-plural rules: an accepted
+    level the database gives it, not the legacy ``~`` (no level information; REQ-194, amended
+    2026-11-18: deer, criteria, calves stay)."""
+    return alt[1] != _LEGACY and _TIE_CLASS.get(alt[1]) == _ACCEPTED
+
+
 def _regular(singular: str, alt: Alternative) -> bool:
-    """True when ``alt`` is an accepted alternative formed regularly from ``singular``."""
-    return _TIE_CLASS.get(alt[1]) == _ACCEPTED and alt[0] == rule_plural(singular)
+    """True when ``alt`` is a counted alternative formed regularly from ``singular``."""
+    return _counted(alt) and alt[0] == rule_plural(singular)
+
+
+def _zero(singular: str, alt: Alternative) -> bool:
+    """True when ``alt`` is a counted zero plural (spelled as ``singular``)."""
+    return _counted(alt) and alt[0] == singular
 
 
 def _database_order(singular: str, alts: list[Alternative], lemmas: set[str]) -> list[Alternative]:
     """``alts`` in the database's order, one per word: the everyday-word rule, then the sense, then
-    the variant level's class, then the regular accepted form, then the variant level, then file
-    order."""
+    the variant level's class, then a counted zero plural where its sense also has a counted
+    regular one, then the regular counted form, then the variant level, then file order."""
+    regular_senses = {a[3] for a in alts if _regular(singular, a)}
     ranked = sorted(
         alts,
         key=lambda a: (
             not (a[0] != singular and a[0] in lemmas),
             a[3],
             _TIE_CLASS.get(a[1], len(_TIE_CLASS)),
+            not (a[3] in regular_senses and _zero(singular, a)),
             not _regular(singular, a),
             _LEVELS.index(a[1]) if a[1] in _LEVELS else len(_LEVELS),
             a[2],
@@ -278,7 +296,7 @@ def _ranked(
 def tied_forms(scowl_pre: Path) -> list[str]:
     """Every plural alternative in a tie, whose frequency decides: the words the frequency table
     must cover."""
-    nouns, _ = _nouns(scowl_pre)
+    nouns, _, _ = _nouns(scowl_pre)
     lemmas = {singular for singular, _ in nouns}
     owners = _owners(nouns)
     forms: set[str] = set()
@@ -289,9 +307,11 @@ def tied_forms(scowl_pre: Path) -> list[str]:
     return sorted(forms)
 
 
-def _nouns(scowl_pre: Path) -> tuple[list[tuple[str, list[Alternative]]], list[str]]:
+def _nouns(
+    scowl_pre: Path,
+) -> tuple[list[tuple[str, list[Alternative]]], list[str], dict[str, list[Sense]]]:
     """(each common noun with its plural alternatives, in file order; the plurals that are words of
-    their own). A noun with no alternative is its own plural."""
+    their own; each noun's senses). A noun with no alternative is its own plural."""
     # singular -> (plural, level, order, group number, the plural line's 12dicts size)
     found: dict[str, list[tuple[str, str, int, int, int]]] = {}
     nouns: list[str] = []
@@ -364,6 +384,7 @@ def _nouns(scowl_pre: Path) -> tuple[list[tuple[str, list[Alternative]]], list[s
             ):
                 own_words.append(plural)
     plurals: dict[str, list[Alternative]] = {}
+    senses: dict[str, list[Sense]] = {}
     for singular in nouns:
         # A sense's size is the most common 12dicts size of its plural lines; senses rank by size,
         # then by the database's group order.
@@ -375,6 +396,14 @@ def _nouns(scowl_pre: Path) -> tuple[list[tuple[str, list[Alternative]]], list[s
             for i, number in enumerate(sorted(sense_size, key=lambda n: (sense_size[n], n)))
         }
         plurals[singular] = [(p, lv, o, rank[n]) for p, lv, o, n, _ in found[singular]]
+        senses[singular] = [
+            (
+                sense_size[n],
+                frozenset(p for p, _, _, number, _ in found[singular] if number == n),
+                n,
+            )
+            for n in sorted(sense_size)
+        ]
     owners = _owners([(singular, plurals[singular]) for singular in nouns])
     out: list[tuple[str, list[Alternative]]] = []
     for singular in nouns:
@@ -386,15 +415,55 @@ def _nouns(scowl_pre: Path) -> tuple[list[tuple[str, list[Alternative]]], list[s
         ):
             alts = []
         out.append((singular, alts))
-    return out, own_words
+    return out, own_words, senses
+
+
+def _reverse(rows: list[tuple[str, str]], senses: dict[str, list[Sense]]) -> list[tuple[str, str]]:
+    """(singular, plural) for each plural that more than one noun lists: the noun singularizing it
+    gives (REQ-194, amended 2026-11-18, the main-sense rule in reverse). Each candidate stands for
+    the sense that lists the plural, and the candidates rank by
+    - that sense's 12dicts size (most dictionaries first);
+    - then a sense whose only plural is this form;
+    - then a sense that gives the plural to this spelling alone before one whose spelling variants
+      share it (``axes``: ``axis`` the line before ``ax``/``axe``, one sense spelled two ways);
+    - then file order."""
+    candidates: dict[str, list[str]] = {}
+    for singular, plural in rows:
+        if plural != singular and singular not in candidates.setdefault(plural, []):
+            candidates[plural].append(singular)
+
+    def sense(plural: str, singular: str) -> tuple[int, bool, int]:
+        return min(
+            (size, forms != {plural}, group)
+            for size, forms, group in senses[singular]
+            if plural in forms
+        )
+
+    out = []
+    for plural, nouns in candidates.items():
+        if len(nouns) == 1:
+            continue
+        chosen = {noun: sense(plural, noun) for noun in nouns}
+        groups = [group for _, _, group in chosen.values()]
+        out.append(
+            (
+                min(
+                    nouns,
+                    key=lambda n: (chosen[n][:2], groups.count(chosen[n][2]) > 1),
+                ),
+                plural,
+            )
+        )
+    return out
 
 
 def extract(
     scowl_pre: Path, frequencies: dict[str, int]
-) -> tuple[list[tuple[str, str]], list[str]]:
-    """(the (singular, plural) rows, the plurals that are words of their own). ``frequencies``
-    gives the general-English count of every form :func:`tied_forms` lists."""
-    nouns, own_words = _nouns(scowl_pre)
+) -> tuple[list[tuple[str, str]], list[str], list[tuple[str, str]]]:
+    """(the (singular, plural) rows, the plurals that are words of their own, the singular each
+    plural more than one noun lists takes). ``frequencies`` gives the general-English count of every
+    form :func:`tied_forms` lists."""
+    nouns, own_words, senses = _nouns(scowl_pre)
     lemmas = {singular for singular, _ in nouns}
     owners = _owners(nouns)
     rows: list[tuple[str, str]] = []
@@ -405,7 +474,7 @@ def extract(
         rows.extend(
             (singular, plural) for plural in _ranked(singular, alts, lemmas, owners, frequencies)
         )
-    return rows, own_words
+    return rows, own_words, _reverse(rows, senses)
 
 
 _NOTICE_HEAD = """Third-party notices
@@ -442,10 +511,15 @@ def main(argv: list[str]) -> int:
             line.split("\t") for line in _FREQUENCIES.read_text(encoding="utf-8").splitlines()
         )
     }
-    rows, own_words = extract(scowl_pre, frequencies)
+    rows, own_words, reverse = extract(scowl_pre, frequencies)
     _OUT.mkdir(parents=True, exist_ok=True)
-    # Own words after every pair, so a noun that is also a lemma (opera -> operas) keeps its plural.
-    text = "".join(f"{s}\t{p}\n" for s, p in rows) + "".join(f"{w}\t{w}\town\n" for w in own_words)
+    # The singular of a plural several nouns list first, so it is the one singularizing finds; own
+    # words after every pair, so a noun that is also a lemma (opera -> operas) keeps its plural.
+    text = (
+        "".join(f"{s}\t{p}\tmain\n" for s, p in reverse)
+        + "".join(f"{s}\t{p}\n" for s, p in rows)
+        + "".join(f"{w}\t{w}\town\n" for w in own_words)
+    )
     data = text.encode("utf-8")
     # mtime=0: the same source gives the same bytes.
     (_OUT / "noun_plurals.tsv.gz").write_bytes(gzip.compress(data, mtime=0))

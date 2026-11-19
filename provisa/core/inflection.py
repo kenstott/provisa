@@ -32,16 +32,20 @@ _TABLE = Path(__file__).parent / "data" / "noun_plurals.tsv.gz"
 
 @functools.cache
 def _dictionary() -> tuple[dict[str, str], dict[str, str], frozenset[str]]:
-    """(singular -> its plural, plural -> its singular, words of their own). The table lists each
-    noun's chosen plural first, then its other plurals; a noun listed with itself as plural has no
-    other form; a row marked ``own`` (after every pair) is a word that is its own singular, whatever
-    else it is the plural of."""
+    """(singular -> its plural, plural -> its singular, words of their own). A row marked ``main``
+    (before every pair) names the singular of a plural more than one noun lists; then the table lists
+    each noun's chosen plural first, then its other plurals; a noun listed with itself as plural has
+    no other form; a row marked ``own`` (after every pair) is a word that is its own singular,
+    whatever else it is the plural of."""
     plural_of: dict[str, str] = {}
     singular_of: dict[str, str] = {}
     own: set[str] = set()
     with gzip.open(_TABLE, "rt", encoding="utf-8") as f:
         for line in f:
             singular_form, plural_form, *mark = line.rstrip("\n").split("\t")
+            if mark == ["main"]:
+                singular_of.setdefault(plural_form, singular_form)
+                continue
             plural_of.setdefault(singular_form, plural_form)
             if mark == ["own"]:
                 own.add(singular_form)

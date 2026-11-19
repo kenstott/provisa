@@ -173,3 +173,60 @@ def test_regular_plural_wins_among_accepted_forms(one, many, irregular):
 def test_main_sense_plural_used():
     assert naming._rel_words("axis", "one-to-many") == "axes"
     assert naming._rel_words("customer_axis", "one-to-many") == "customer_axes"
+
+
+# REQ-194 (amended 2026-11-18, 9387abb5d2): a legacy alternative with no level ("~") does not count
+# as accepted for the regular-wins rule, so the database's ranked form stays.
+@pytest.mark.parametrize(
+    ("one", "many"),
+    [
+        ("deer", "deer"),
+        ("criterion", "criteria"),
+        ("offspring", "offspring"),
+        ("calf", "calves"),
+        ("cactus", "cacti"),
+        ("curriculum", "curricula"),
+        ("radius", "radii"),
+        ("nucleus", "nuclei"),
+        ("fungus", "fungi"),
+        ("spectrum", "spectra"),
+        ("volcano", "volcanoes"),
+        ("wharf", "wharves"),
+    ],
+)
+def test_legacy_level_does_not_count_for_regular_wins(one, many):
+    assert naming._rel_words(one, "one-to-many") == many
+    assert naming._rel_words(many, "many-to-one") == one
+
+
+# REQ-194 (amended 2026-11-18, 9387abb5d2): where a noun accepts both a zero plural and a regular
+# one, the zero plural wins.
+@pytest.mark.parametrize(
+    "word", ["fish", "salmon", "trout", "shrimp", "squid", "quail", "reindeer"]
+)
+def test_zero_plural_beats_regular(word):
+    assert naming._rel_words(word, "one-to-many") == word
+    assert naming._rel_words(word, "many-to-one") == word
+
+
+# REQ-194 (amended 2026-11-18, 9387abb5d2): the main-sense rule in reverse: singularizing a plural
+# shared by several senses picks the main sense; where senses tie, the sense whose only plural is
+# this form wins (axes -> axis, not ax or axe).
+def test_main_sense_in_reverse():
+    assert naming._rel_words("axes", "many-to-one") == "axis"
+    assert naming._rel_words("customer_axes", "many-to-one") == "customer_axis"
+    assert glossary.table_concept("axes") == "axis"
+
+
+@pytest.mark.parametrize(
+    ("one", "many"),
+    [
+        ("goose", "geese"),
+        ("mouse", "mice"),
+        ("bye", "byes"),
+        ("person", "people"),
+    ],
+)
+def test_unchanged_by_the_refinement(one, many):
+    assert naming._rel_words(one, "one-to-many") == many
+    assert naming._rel_words(many, "many-to-one") == one
