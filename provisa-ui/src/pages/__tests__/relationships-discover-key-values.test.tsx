@@ -34,6 +34,7 @@ import {
   runOf,
   semanticsBox,
   startMock,
+  SELECTED,
 } from "./discoverDialog.fixtures";
 
 vi.mock("../../hooks/useAdminQueries", async () =>
@@ -73,7 +74,7 @@ describe("Discovery dialog: Key value overlap", () => {
     expect(sampleSize()?.value).toBe("10,000");
     await waitFor(() => expect(lastScope()).toEqual(SCOPE), SLOW);
     fireEvent.click(runButton());
-    await waitFor(() => expect(startMock).toHaveBeenCalledWith(SCOPE));
+    await waitFor(() => expect(startMock).toHaveBeenCalledWith(SCOPE, SELECTED));
   });
 
   it("is offered only while Semantics is ticked", async () => {
@@ -100,7 +101,7 @@ describe("Discovery dialog: Key value overlap", () => {
     };
     await waitFor(() => expect(lastScope()).toEqual(unmeasured), SLOW);
     fireEvent.click(runButton());
-    await waitFor(() => expect(startMock).toHaveBeenCalledWith(unmeasured));
+    await waitFor(() => expect(startMock).toHaveBeenCalledWith(unmeasured, SELECTED));
   });
 
   it("sends the cutoff and sample size set", async () => {
@@ -110,7 +111,7 @@ describe("Discovery dialog: Key value overlap", () => {
     const set = { ...SCOPE, measure_cutoff: 0.35, sample_size: 500 };
     await waitFor(() => expect(lastScope()).toEqual(set), SLOW);
     fireEvent.click(runButton());
-    await waitFor(() => expect(startMock).toHaveBeenCalledWith(set));
+    await waitFor(() => expect(startMock).toHaveBeenCalledWith(set, SELECTED));
   });
 
   it("starts as the person last set it", async () => {

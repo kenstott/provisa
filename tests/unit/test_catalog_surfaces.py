@@ -134,8 +134,10 @@ def _input(role: dict = ROLE) -> SchemaInput:
 
 def _state(role: dict = ROLE) -> SimpleNamespace:
     si = _input(role)
-    surface = SimpleNamespace(schema=generate_schema(si), table_path_map=build_table_path_map(si))
     ctx = build_context(si)
+    surface = SimpleNamespace(
+        schema=generate_schema(si), context=ctx, table_path_map=build_table_path_map(si)
+    )
     return SimpleNamespace(
         surfaces={role["id"]: surface},
         contexts={role["id"]: ctx},
