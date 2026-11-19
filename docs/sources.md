@@ -918,7 +918,7 @@ A QuickBooks Online source reads the Accounting API of one company: its customer
 
 | Form field | Source field | Notes |
 | --- | --- | --- |
-| Company ID (realm ID) | `database` | The company's number. Intuit shows it when the app is connected, and in the company's account settings. |
+| Company ID (`realmId`) | `database` | The company's number. Intuit shows it when the app is connected, and in the company's account settings. |
 | Sandbox or production | `mapping.environment` | `sandbox` (default) reads `sandbox-quickbooks.api.intuit.com`; `production` reads `quickbooks.api.intuit.com`. |
 | Client ID | `username` | From the app's Keys and credentials page. |
 | Client secret | `password` | From the same page. |
@@ -926,7 +926,7 @@ A QuickBooks Online source reads the Accounting API of one company: its customer
 
 Any of them may be a `${secret:…}` or `${env:…}` reference. The source's Cache TTL is required, as for every source whose tables are landed.
 
-**The refresh token.** Intuit answers every refresh with the refresh token to send next time, and the one it replaces stops working. The token entered on the form is used once, at the first read. From then on the newest one is kept in the organisation's state store, under the company's realm ID, where a Microsoft 365 source's approval is kept. One refresh of a source runs at a time, across every process, and the replacement is stored before the access token is used. An entered token is never read again once one is kept, so a token entered after the first read does not replace the kept one. A token Intuit refuses (`invalid_grant`) fails the read and names Intuit's reason, never the token. QuickBooks refusing an access token drops it, and the read asks once more with a new one.
+**The refresh token.** Intuit answers every refresh with the refresh token to send next time, and the one it replaces stops working. The token entered on the form is used once, at the first read. From then on the newest one is kept in the organisation's state store, under the company's `realmId`, where a Microsoft 365 source's approval is kept. One refresh of a source runs at a time, across every process, and the replacement is stored before the access token is used. An entered token is never read again once one is kept, so a token entered after the first read does not replace the kept one. A token Intuit refuses (`invalid_grant`) fails the read and names Intuit's reason, never the token. QuickBooks refusing an access token drops it, and the read asks once more with a new one.
 
 **Columns.** Each field of an entity is a column, named in snake case (`TotalAmt` is `total_amt`). A reference is two columns, its id and its name: `CustomerRef` is `customer_ref_value` and `customer_ref_name`. `MetaData` is `meta_create_time` and `meta_last_updated_time`. Any other object or list is one JSON column: an address (`bill_addr`), and the line items of a transaction (`line`), as the generic API source keeps a nested value. `id` is the primary key.
 
