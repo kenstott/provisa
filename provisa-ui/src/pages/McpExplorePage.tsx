@@ -34,6 +34,7 @@ import { Tip } from "../components/Tip";
 import { getStored, getStoredJson, setStored } from "../lib/browserStorage";
 import { explainSql, type ExplainResponse } from "../api/admin";
 import { useScreenInputs } from "../mcp/screenState";
+import { useViewDomains } from "../lib/viewDomains";
 
 /** A copy-to-clipboard button that fades in on bubble hover. */
 function CopyButton({ text }: { text: string }) {
@@ -279,6 +280,7 @@ export function McpExplorePage() {
   const { actingRoles } = useAuth();
   // REQ-1620: the ACTIVE roles — one, or under "Role: All" the set served as their meta-role.
   const roleId = actingRoles ?? "";
+  const viewDomains = useViewDomains();
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [tools, setTools] = useState<ToolEvent[]>([]);
   const [busy, setBusy] = useState(false);
@@ -383,6 +385,8 @@ export function McpExplorePage() {
         headers: { "Content-Type": "application/json", "x-provisa-role": roleId },
         body: JSON.stringify({
           messages: history.map((m) => ({ role: m.role, content: m.text })),
+          // REQ-2253: only within the navbar's selected domains; none selected sends none.
+          domains: viewDomains ? [...viewDomains] : undefined,
         }),
       });
       if (!resp.ok || !resp.body) throw new Error(`chat failed: ${resp.status}`);
