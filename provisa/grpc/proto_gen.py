@@ -19,7 +19,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from provisa.compiler.aggregate_gen import _classify_columns
-from provisa.compiler.naming import to_pascal_case
+from provisa.compiler.context import ModelNotServable, _join_field_name
+from provisa.compiler.naming import _to_snake_case, to_pascal_case
 from provisa.core import command_bindings
 from provisa.core.ir_arrays import ArrayType
 from provisa.compiler.schema_gen import (
@@ -28,7 +29,6 @@ from provisa.compiler.schema_gen import (
     _build_domain_alias_map,
     _build_visible_tables,
     _can_see_relationship,
-    relationship_field_name,
 )
 from provisa.compiler.schema_types import offers_domain
 from provisa.security.rights import META_DOMAIN_ID, SQL_CATALOG_TABLES
@@ -159,6 +159,31 @@ def _to_proto_type_name(gql_name: str) -> str:
 def _to_proto_field_name(gql_name: str) -> str:
     """Convert GQL field name to proto3 snake_case. ps__pets → ps_pets."""
     return gql_name.replace("__", "_")
+
+
+def proto_relation_field_name(graphql_field: str) -> str:  # REQ-1929
+    """The ``{Type}`` message field a relationship takes: its GraphQL relationship field in proto3
+    snake_case (``buildingPermit`` is ``building_permit``). The one translation proto_gen declares
+    the field by and a ``read_mask`` path is resolved by."""
+    return _to_proto_field_name(_to_snake_case(graphql_field))
+
+
+class ProtoFieldCollision(ModelNotServable):  # REQ-1929
+    """Two names of one GraphQL type that translate to one field of its gRPC ``{Type}`` message:
+    refused at model compile, naming both, rather than one hiding the other."""
+
+    code = "model.grpc_field_collision"
+
+    def __init__(self, type_name: str, field: str, held_by: str, refused: str) -> None:
+        self.type_name = type_name
+        self.field = field
+        self.held_by = held_by
+        self.refused = refused
+        self.params = {"type": type_name, "field": field, "held_by": held_by, "refused": refused}
+        super().__init__(
+            f"{refused} would be gRPC field {field!r} of message {type_name}, which {held_by} "
+            f"already is: give the relationship a GraphQL alias that translates to its own field"
+        )
 
 
 # GraphQL scalar name (command argument type) → proto3 type. Mirrors the REST surface's
@@ -400,12 +425,14 @@ def generate_proto(
     )
     table_lookup = {t.table_id: t for t in tables}
     visible_rels = [r for r in si.relationships if _can_see_relationship(r, table_lookup)]
-    # REQ-1929: each relationship is a field of its source's {Type} message named by its GraphQL
-    # relationship field, read off the GraphQL-style names before they are proto-cased below.
-    rel_field_names = {
-        r["id"]: name
+    # REQ-1929: each table relationship is a field of its source's {Type} message named by its
+    # GraphQL relationship field -- the name its join registers under (compiler/context.py) -- read
+    # off the GraphQL-style table names before they are proto-cased below. A computed relationship
+    # reaches a function, not a table message, and has no field here.
+    rel_graphql_names = {
+        r["id"]: _join_field_name(r, table_lookup[r["target_table_id"]], table_lookup)
         for r in visible_rels
-        if (name := relationship_field_name(r, table_lookup)) is not None
+        if not r.get("target_function_name")
     }
 
     # Convert GQL-style names (PS__Pets / ps__pets) to proto3 conventions (PsPets / ps_pets)
@@ -457,20 +484,21 @@ def generate_proto(
             c["column_name"] for c in sorted_cols if t.column_metadata.get(c["column_name"])
         ]
 
-        # REQ-1929: one field per relationship, named by its GraphQL relationship field, so
-        # several relationships to one table are each a field. Two relationships of one type
-        # never share a field (refused where their joins register, compiler/context.py).
-        used_fields: set[str] = set(col_names)
+        # REQ-1929: one field per relationship, named by its GraphQL relationship field translated
+        # to a proto field, so several relationships to one table are each a field. Two names that
+        # translate to one field are refused, naming both.
+        held: dict[str, str] = {c: f"column {c!r}" for c in col_names}
         rel_fields: list[tuple[dict, Any, str]] = []
         for rel in visible_rels:
-            if rel["source_table_id"] != t.table_id or rel["id"] not in rel_field_names:
+            if rel["source_table_id"] != t.table_id or rel["id"] not in rel_graphql_names:
                 continue
-            target = table_lookup[rel["target_table_id"]]
-            name = _to_proto_field_name(rel_field_names[rel["id"]])
-            if name in used_fields:
-                continue
-            used_fields.add(name)
-            rel_fields.append((rel, target, name))
+            graphql_name = rel_graphql_names[rel["id"]]
+            name = proto_relation_field_name(graphql_name)
+            holder = f"relationship {graphql_name!r} ({rel['id']})"
+            if name in held:
+                raise ProtoFieldCollision(t.type_name, name, held[name], holder)
+            held[name] = holder
+            rel_fields.append((rel, table_lookup[rel["target_table_id"]], name))
         rel_names = [name for _rel, _target, name in rel_fields]
 
         # REQ-1903: columns + relation fields share ONE number space per table (they're all fields

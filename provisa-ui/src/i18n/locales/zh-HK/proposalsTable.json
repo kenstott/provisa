@@ -29,15 +29,9 @@
       "not_comparable": "兩欄的類別不同，因此不作比較",
       "below_threshold": "評分低於保留建議所需的 {{threshold}}%。",
       "same_column": "由某欄指向其本身",
-      "primary_key_to_primary_key": "主索引鍵到主索引鍵",
-      "both_repeating": "兩邊均有重複值，因此任何一邊都不是「一」的一方",
       "existing": "已登記",
-      "pending": "已在建議中等候",
       "rejected": "之前已拒絕",
-      "matches_foreign_key": "與今次執行中找到的外部索引鍵相同",
-      "out_of_scope": "不在所選的來源表和目標表之內",
-      "weaker": "同樣兩欄已保留了更強的提議",
-      "many_to_many": "兩欄都不是鍵"
+      "out_of_scope": "不在所選的來源表和目標表之內"
     },
     "threshold": "剔選起點",
     "thresholdHint": "你自己的閾值，會為你之後的執行保留。",
@@ -63,7 +57,10 @@
     },
     "dimensionMade": "接受後會建立共用維度 {{name}}，兩欄都與其關聯。",
     "dimensionJoined": "接受後，兩欄都會關聯到共用維度 {{name}}。",
+    "through": "經由 {{table}}。",
     "twoDimensions": "其欄位已關聯到兩個不同的共用維度，因此無法接受。",
-    "admittedOnKeyValues": "因數據中鍵值相符而採納；測量結果顯示於模型置信度旁邊。"
+    "admittedOnKeyValues": "因數據中鍵值相符而採納；測量結果顯示於模型置信度旁邊。",
+    "hiddenByFilter_one": "篩選器隱藏了 {{count}} 行。",
+    "hiddenByFilter_other": "篩選器隱藏了 {{count}} 行。"
   }
 }

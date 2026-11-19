@@ -71,6 +71,7 @@ def _deny(
     *,
     cause: str | None = None,
     code: str | None = None,
+    params: dict[str, str] | None = None,
 ) -> JSONResponse:
     """Every auth denial records WHY, at WARNING, with the request identity.
 
@@ -87,8 +88,20 @@ def _deny(
         detail,
         f" ({cause})" if cause else "",
     )
-    content = {"detail": detail} if code is None else {"detail": detail, "code": code}
+    content: dict[str, object] = {"detail": detail}
+    if code is not None:
+        content["code"] = code
+    if params is not None:
+        content["params"] = params
     return JSONResponse(status_code=status, content=content)
+
+
+#: The platform-plane endpoints, which serve a principal that belongs to no org and holds no role
+#: yet: /auth/redeem-invite CREATES the first membership, /auth/claim-bootstrap the first grant,
+#: /auth/me reports none, /setup and /admin/orgs run onboarding, /billing pays for an org that is
+#: not a membership yet (REQ-1476). REQ-2006: /sandboxes opens the caller's own demo sandbox, an
+#: org they do not belong to yet. They touch no tenant data.
+_PLATFORM_PLANE_PATHS = ("/auth/", "/setup", "/admin/orgs", "/billing", "/sandboxes/")
 
 
 def _basic_username(scheme: str, token: str) -> str | None:
@@ -552,12 +565,15 @@ class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
                 {
                     "user_id": identity.user_id,
                     "email": identity.email,
+                    # REQ-2219: whether this sign-in's provider verified the address; a write by
+                    # email names this person only by a verified one.
+                    "email_verified": identity.email_verified,
                     "display_name": identity.display_name,
                     "provider": provider_name,
                     "last_seen": func.now(),
                 },
                 index_elements=["user_id"],
-                update_columns=["email", "display_name", "provider", "last_seen"],
+                update_columns=["email", "email_verified", "display_name", "provider", "last_seen"],
             )
         # REQ-1439: the same identity, copied into the tenant plane, so the ops report views can
         # LEFT JOIN a name onto the user_id they log. The platform profile above is the record of
@@ -569,11 +585,12 @@ class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
                 {
                     "user_id": identity.user_id,
                     "email": identity.email,
+                    "email_verified": identity.email_verified,
                     "display_name": identity.display_name,
                     "updated_at": func.now(),
                 },
                 index_elements=["user_id"],
-                update_columns=["email", "display_name", "updated_at"],
+                update_columns=["email", "email_verified", "display_name", "updated_at"],
             )
         await _record_idp_attributes(self._db_pool, identity)
         if self._assignments_source == "claims" and identity.credential != "pat":
@@ -1124,11 +1141,7 @@ class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
             # this the gate below 401'd /billing/trial/start and /billing/reservation and signup
             # could not finish on a commerce deploy. Safe because /billing is control plane — every
             # org-scoped handler authorizes itself with require_org_billing_access_or_creator.
-            platform_plane = request.url.path.startswith(
-                # REQ-2006: /sandboxes opens the caller's own demo sandbox, an org they do not
-                # belong to yet.
-                ("/auth/", "/setup", "/admin/orgs", "/billing", "/sandboxes/")
-            )
+            platform_plane = request.url.path.startswith(_PLATFORM_PLANE_PATHS)
             requested_org = _requested_org_from_host(request)
             credential_org = identity.active_org_id
             if credential_org is not None:
@@ -1394,6 +1407,28 @@ class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
                 return _deny(
                     request, 403, f"platform_admin confers no rights in org {active_org_id!r}"
                 )
+        if (
+            token_roles is None
+            and self._assignments_source == "provisa"
+            and not assignments
+            and not request.url.path.startswith(_PLATFORM_PLANE_PATHS)
+        ):
+            # REQ-120 (amended 2026-11-01), REQ-802: where Provisa holds the assignments, a sign-in
+            # holding no role in the org acts as none -- never as the deployment's default role,
+            # which nobody granted it -- and is refused by name, as every wire sign-in refuses it
+            # (provisa.auth.held_assignments.sign_in_roles). The platform-plane endpoints still
+            # serve it: they exist for a principal that holds nothing yet.
+            from provisa.auth.held_assignments import NoRoleHeld
+
+            refused = NoRoleHeld(identity.user_id)
+            return _deny(
+                request,
+                403,
+                str(refused),
+                cause="no role held",
+                code=refused.code,
+                params=refused.params,
+            )
 
         # REQ-273: a client may request a specific role via X-Provisa-Role, but the server
         # honors it only when the authenticated user is actually assigned that role — a bare

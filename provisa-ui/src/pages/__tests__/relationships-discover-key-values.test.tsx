@@ -18,12 +18,12 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { screen, fireEvent, waitFor } from "@testing-library/react";
 import { type DiscoveryScope } from "../../api/admin";
 import {
-  KEY_VALUES_DEFAULT,
+  SETTINGS_DEFAULT,
   REPORT,
   SCOPE,
   SLOW,
   UNMEASURED,
-  keyValuesMock,
+  settingsMock,
   lastScope,
   openDialog,
   proposal,
@@ -34,6 +34,7 @@ import {
   runOf,
   semanticsBox,
   startMock,
+  SELECTED,
 } from "./discoverDialog.fixtures";
 
 vi.mock("../../hooks/useAdminQueries", async () =>
@@ -73,7 +74,7 @@ describe("Discovery dialog: Key value overlap", () => {
     expect(sampleSize()?.value).toBe("10,000");
     await waitFor(() => expect(lastScope()).toEqual(SCOPE), SLOW);
     fireEvent.click(runButton());
-    await waitFor(() => expect(startMock).toHaveBeenCalledWith(SCOPE));
+    await waitFor(() => expect(startMock).toHaveBeenCalledWith(SCOPE, SELECTED));
   });
 
   it("is offered only while Semantics is ticked", async () => {
@@ -100,7 +101,7 @@ describe("Discovery dialog: Key value overlap", () => {
     };
     await waitFor(() => expect(lastScope()).toEqual(unmeasured), SLOW);
     fireEvent.click(runButton());
-    await waitFor(() => expect(startMock).toHaveBeenCalledWith(unmeasured));
+    await waitFor(() => expect(startMock).toHaveBeenCalledWith(unmeasured, SELECTED));
   });
 
   it("sends the cutoff and sample size set", async () => {
@@ -110,15 +111,20 @@ describe("Discovery dialog: Key value overlap", () => {
     const set = { ...SCOPE, measure_cutoff: 0.35, sample_size: 500 };
     await waitFor(() => expect(lastScope()).toEqual(set), SLOW);
     fireEvent.click(runButton());
-    await waitFor(() => expect(startMock).toHaveBeenCalledWith(set));
+    await waitFor(() => expect(startMock).toHaveBeenCalledWith(set, SELECTED));
   });
 
   it("starts as the person last set it", async () => {
-    keyValuesMock.mockResolvedValue({
-      chosen: false,
-      cutoff: 0.4,
-      sample_size: 2500,
-      defaults: KEY_VALUES_DEFAULT,
+    settingsMock.mockResolvedValue({
+      ...SETTINGS_DEFAULT,
+      key_values: {
+        chosen: false,
+        cutoff: 0.4,
+        sample_size: 2500,
+        contained_at: 0.9,
+        shared_ceiling: 0.5,
+      },
+      defaults: SETTINGS_DEFAULT,
     });
     await openDialog();
     expect(keyValuesBox()?.checked).toBe(false);
@@ -129,11 +135,16 @@ describe("Discovery dialog: Key value overlap", () => {
 
   it("New run takes the ended run's settings; Reset to defaults restores the defaults", async () => {
     const ran: DiscoveryScope = { ...SCOPE, measure_cutoff: 0.3, sample_size: 2000 };
-    keyValuesMock.mockResolvedValue({
-      chosen: false,
-      cutoff: 0.5,
-      sample_size: 700,
-      defaults: KEY_VALUES_DEFAULT,
+    settingsMock.mockResolvedValue({
+      ...SETTINGS_DEFAULT,
+      key_values: {
+        chosen: false,
+        cutoff: 0.5,
+        sample_size: 700,
+        contained_at: 0.9,
+        shared_ceiling: 0.5,
+      },
+      defaults: SETTINGS_DEFAULT,
     });
     runMock.mockResolvedValue(runOf({ status: "done", scope: ran, report: REPORT }));
     startMock.mockResolvedValue(runOf({ scope: ran }));
@@ -157,6 +168,7 @@ describe("Discovery dialog: Key value overlap", () => {
       proposals: [proposal({ confidence: 0.45, score: 0.95, admitted_on_key_values: true })],
       threshold: 0.7,
       kept_at: 0.7,
+      score_filter: null,
     });
     await openDialog();
     fireEvent.click(runButton());

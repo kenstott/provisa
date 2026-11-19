@@ -16,7 +16,7 @@ Domain-scoped, per-role column filtering (REQ-008, REQ-021).
 
 # Requirements: REQ-007, REQ-008, REQ-010, REQ-021, REQ-032, REQ-033, REQ-034, REQ-036, REQ-037, REQ-039, REQ-133, REQ-134, REQ-154, REQ-155, REQ-156, REQ-157, REQ-194, REQ-196, REQ-197, REQ-200, REQ-201, REQ-202, REQ-205, REQ-206, REQ-207, REQ-209, REQ-210, REQ-212, REQ-213, REQ-218, REQ-219, REQ-221, REQ-253, REQ-258, REQ-259, REQ-260, REQ-363, REQ-1614
 
-from collections.abc import Callable, Mapping
+from collections.abc import Callable
 from dataclasses import replace
 from typing import Any, cast
 
@@ -49,8 +49,7 @@ from provisa.compiler.naming import (
     domain_to_sql_name,
     generate_name,
     refuse_taken_sql_addresses,
-    junction_field_name,
-    rel_field_name,
+    relationship_field_name,
     SYSTEM_SCHEMA_GQL_PREFIX,
     system_schema_names,
     to_type_name,
@@ -676,8 +675,10 @@ def _add_computed_relationship_field(
         return None
     # REQ-194: named as a table relationship is — its GraphQL alias, else for the table it
     # reaches (here the one the function returns) and its cardinality.
-    field_key = rel.get("graphql_alias") or rel_field_name(
-        unprefixed_field_name(ret_table.field_name, ret_table.domain_id), rel["cardinality"]
+    field_key = relationship_field_name(
+        rel["cardinality"],
+        target_field_name=unprefixed_field_name(ret_table.field_name, ret_table.domain_id),
+        graphql_alias=rel.get("graphql_alias"),
     )
     fields[field_key] = GraphQLField(GraphQLList(GraphQLNonNull(gql_types[ret_table.table_id])))
     return field_key
@@ -703,42 +704,15 @@ def _where_relationships(  # REQ-2136
             target_where = where_types.get(target.table_id) if target else None
             if target is None or target_where is None:
                 continue
-            name = rel.get("graphql_alias") or rel_field_name(
-                unprefixed_field_name(target.field_name, target.domain_id), rel["cardinality"]
+            name = relationship_field_name(
+                rel["cardinality"],
+                target_field_name=unprefixed_field_name(target.field_name, target.domain_id),
+                graphql_alias=rel.get("graphql_alias"),
             )
             out[name] = GraphQLInputField(target_where)
         return out
 
     return fields
-
-
-def relationship_field_name(rel: dict, table_lookup: Mapping[int, Any]) -> str | None:
-    """The field a table relationship takes on its source type (REQ-194, REQ-1586): its GraphQL
-    alias, else for a junction-backed edge its nomination, else for the table it reaches and its
-    cardinality. None when the table it reaches (or its junction) is not in ``table_lookup``, as
-    the role's schema then has no field for it. The one naming authority GraphQL and the gRPC
-    ``{Type}`` message (proto_gen, REQ-1929) share, so a relationship is one name on both."""
-    target = table_lookup.get(rel["target_table_id"])
-    if target is None:
-        return None
-    if rel.get("graphql_alias"):
-        return rel["graphql_alias"]
-    # REQ-1586: a junction-backed edge is named for its nomination, not for the table it reaches —
-    # several such edges can share one target and would otherwise collapse onto one field.
-    if rel.get("via_table_id"):
-        via = table_lookup.get(rel["via_table_id"])
-        if via is None:
-            return None
-        return junction_field_name(
-            rel["via_label_source"],
-            rel["cardinality"],
-            type_value=rel.get("via_type_value"),
-            via_table_name=via.table_name,
-            cypher_alias=rel.get("alias"),
-        )
-    return rel_field_name(
-        unprefixed_field_name(target.field_name, target.domain_id), rel["cardinality"]
-    )
 
 
 def _add_standard_relationship_field(
@@ -753,11 +727,25 @@ def _add_standard_relationship_field(
     target = table_lookup.get(rel["target_table_id"])
     if not target:
         return None
-    field_name = relationship_field_name(rel, table_lookup)
-    if field_name is None:
-        return None
     target_type = gql_types[target.table_id]
     cardinality = rel["cardinality"]
+    # REQ-1586: a junction-backed edge is named for its nomination, not for the table it reaches —
+    # several such edges can share one target and would otherwise collapse onto one field.
+    via_table_name = None
+    if rel.get("via_table_id"):
+        via = table_lookup.get(rel["via_table_id"])
+        if not via:
+            return None
+        via_table_name = via.table_name
+    field_name = relationship_field_name(
+        cardinality,
+        target_field_name=unprefixed_field_name(target.field_name, target.domain_id),
+        graphql_alias=rel.get("graphql_alias"),
+        via_label_source=rel.get("via_label_source"),
+        via_type_value=rel.get("via_type_value"),
+        via_table_name=via_table_name,
+        cypher_alias=rel.get("alias"),
+    )
     if cardinality in ("many-to-one", "one-to-one"):
         # REQ-1163: a related relation that has versions takes its time-travel arguments here too.
         travel: dict[str, GraphQLArgument] = {}

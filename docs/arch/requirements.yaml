@@ -2985,7 +2985,7 @@
   - architecture.md
   - configuration.md
 - id: REQ-194
-  status: complete
+  status: in-progress
   group: 3. Source Registration & Data Modeling
   category: Naming Convention
   feature: semantic-model-naming
@@ -3079,7 +3079,47 @@
     check, a product''s quality checks and sample views) are read from the runtime''s published build, never
     from the stored names table, so a table registered and granted at once is found and a rename is granted
     under its new name. The stored names table is written after the answer and is read only by the meta
-    domain''s reports, which may show the previous build until that pass has run.'
+    domain''s reports, which may show the previous build until that pass has run. (Amended 2026-11-18, SINGULAR
+    AND PLURAL COME FROM A DICTIONARY LOOKUP, NEVER RULES:) Maintainer 2026-11-18 (''it should be based
+    on a dictionary lookup''; ''you can''t use rules''). Every singular and plural form the naming authority
+    produces comes from an English dictionary lookup: a word in the dictionary takes its dictionary singular
+    or plural; a word not in the dictionary (an abbreviation, a coined table name) is left as written. No
+    suffix rule guesses a form. One inflection helper serves every naming path (relationship fields, aliases,
+    glossary terms). (Amended 2026-11-18, A WORD THE DICTIONARY DOES NOT KNOW TAKES A RULE-BASED FORM:)
+    Maintainer 2026-11-18 (''you could if the word is not known - then use a rule based method''). The dictionary
+    lookup comes first and decides every word it knows; only a word the dictionary does not know takes a
+    rule-based singular or plural. This replaces ''a word not in the dictionary is left as written''. (Amended
+    2026-11-18, THE DICTIONARY IS A GENERAL ENGLISH ONE:) Maintainer 2026-11-18. The dictionary the naming
+    authority looks words up in is a general English noun-forms dictionary (so person and people, loss and
+    losses take their everyday forms), bundled with Provisa under a licence compatible with Provisa''s own;
+    a specialist lexicon is not used as the dictionary. Words it lacks take a rule-based form. (Amended
+    2026-11-18, THE EVERYDAY FORM WINS; A WORD KNOWN ONLY IN ANOTHER SENSE IS NOT INFLECTED:) Maintainer
+    2026-11-18. Where the dictionary gives a noun more than one form, the naming authority takes the one
+    in everyday use (schema to schemas; data stays data, its own singular and plural; person to people).
+    A word the dictionary knows only in an unrelated sense of the same spelling, such as by (read as the
+    noun bye), is not inflected. This is part of the rule, not a per-word list. (Amended 2026-11-18, A TIE
+    BETWEEN DICTIONARY FORMS IS BROKEN BY WORD FREQUENCY:) Maintainer 2026-11-18. Where the dictionary lists
+    more than one acceptable form and gives no ranking between them (schema: schemata, schemas), the form
+    used more often in general English wins, read from a bundled word-frequency table under a licence compatible
+    with Provisa''s (schema to schemas). Frequency only breaks such ties; it never overrides a single dictionary
+    form. (Amended 2026-11-18, AMONG ACCEPTED FORMS THE REGULAR PLURAL WINS; A NOUN''S MAIN SENSE IS THE
+    ONE MOST DICTIONARIES LIST:) Maintainer 2026-11-18, replacing the word-frequency tie-break of 59d7aa17cf.
+    Where the dictionary accepts more than one plural of a noun (at any of its accepted levels), the regularly
+    formed plural wins (schema to schemas, index to indexes, maximum to maximums, focus to focuses); word
+    frequency only chooses between irregular forms when no regular form is accepted. Where a noun has more
+    than one sense with different plurals, the sense listed by the most standard dictionaries is the one
+    used (axis to axes). (Amended 2026-11-18, THE REGULAR-WINS RULE: WHICH LEVELS COUNT, ZERO PLURALS, AND
+    THE MAIN SENSE IN REVERSE:) Maintainer 2026-11-18, refining 581e2bb02d. A form counts as accepted for
+    the regular-wins rule only when the dictionary gives it a level; legacy entries with no level information
+    do not count (deer, criteria, offspring, calves, cacti, curricula, radii stay). Where a noun accepts
+    both a zero plural and a regular one, the zero plural wins (fish, salmon, trout, shrimp). The main-sense
+    rule applies in reverse when a plural is singularized: where senses tie, the sense whose only plural
+    is this form wins (axes to axis). (Amended 2026-11-19, WHICH ZERO PLURALS WIN, AND HOW A SHARED PLURAL
+    PICKS ITS WORD:) Maintainer 2026-11-19, refining 9387abb5d2. The zero plural wins only where the dictionary
+    lists it first with the regular form marked as used depending on usage (fish, salmon, trout, shrimp,
+    bear, doe); elsewhere the regular form keeps winning (bucks, yaks, newborns, emojis, percents). When
+    a plural belongs to several words that tie on every dictionary count, a word of its own wins over two
+    spellings of one word (axes to axis, not ax or axe).'
   use_case: Consistent multi-language naming with a single authority ensures client-facing names are predictable
     and independent of physical schema.
   code:
@@ -3840,7 +3880,10 @@
     the governed pipeline as the person who started the run: their role''s rules, masks and row rules apply
     to each table it reads. Only the check that a join follows an approved relationship is not applied,
     and only to this discovery measure query, since a candidate pair has no relationship yet. A pair whose
-    tables cannot be read is left unmeasured and says why; it does not fail the run.'
+    tables cannot be read is left unmeasured and says why; it does not fail the run. (Amended 2026-11-18,
+    EVERY COLUMN OF THE PROPOSED RELATIONSHIPS LIST HAS A FILTER:) Maintainer 2026-11-18 (''every column
+    needs a filter'', on the proposed relationships dialog). Every column of the standard list in the discovery
+    dialog has a column filter, as the standard list gives its filterable columns.'
   use_case: Auto-generated FK relationships reduce manual relationship registration overhead while preserving
     steward control.
   code:
@@ -8686,9 +8729,14 @@
   feature: commands-and-functions-tracked-functions
   priority: SHOULD
   type: behavioral
-  description: Database functions (stored procedures, UDFs) registered in Provisa config and exposed as
+  description: 'Database functions (stored procedures, UDFs) registered in Provisa config and exposed as
     GraphQL mutations or queries. VOLATILE functions exposed as mutations; STABLE/IMMUTABLE as queries.
-    Follows Hasura v2's `pg_track_function` pattern.
+    Follows Hasura v2''s `pg_track_function` pattern. (Amended 2026-11-19, STORED PROCEDURES ARE CALLED
+    IN THEIR SOURCE''S OWN FORM:) Maintainer 2026-11-19. A stored procedure in a relational source can be
+    registered as a command, not only a function: it is invoked in the form its source''s dialect requires
+    (CALL in PostgreSQL, MySQL, MariaDB and Db2; EXEC in SQL Server and Sybase; a procedure call in Oracle),
+    never as SELECT * FROM. A procedure is exposed as a mutation. Its result is the result set it returns;
+    a procedure that returns none gives its OUT parameters as one row, or an empty result when it has none.'
   use_case: Tracked DB functions expose stored procedures as GraphQL mutations so clients use one API
     for all writes.
   code:
@@ -47872,7 +47920,18 @@
     the vendor''s deprecation, or a description note where it has none, and in RDF by owl:deprecated true,
     with dcterms:isReplacedBy only when a person named a successor. Its catalog binding is kept and no successor
     is inferred. A table or column missing at the source keeps its model object and its links and raises
-    a finding; its links are no longer dropped and its generated tables no longer deleted automatically.'
+    a finding; its links are no longer dropped and its generated tables no longer deleted automatically.
+    (Amended 2026-11-18, THE DEFINITION ASSISTANT IS GIVEN THE BOUND COLUMNS'' AND TABLES'' OWN DESCRIPTIONS:)
+    Maintainer 2026-11-18. When the assistant drafts a definition for a term grounded to columns, it is
+    given, for each bound column within the selected domains: the column''s description or comment and its
+    type; its table''s name or alias and description; and a few distinct sample values read as the curator
+    through the governed path (masks and redaction applied; none for a sensitive column). It is also given
+    the definitions of related terms that have one, not only their names. The draft still defines the business
+    concept, not the column. (Amended 2026-11-18, A TABLE THE CURATOR CANNOT READ GIVES NO SAMPLES, AND
+    THE DRAFT STILL RUNS:) Maintainer 2026-11-18. When a bound column''s table cannot be read as the curator
+    for samples (its source is unreachable, or the curator''s role cannot read it), the assistant drafts
+    without that table''s samples, still using its descriptions and types, and the result names the tables
+    that gave no samples. Drafting definitions for every term continues past such a table.'
   use_case: 'Bottom-up bootstrap means the glossary is never empty: every column name seeds the vocabulary, avoiding the failure mode of top-down glossary projects. Concept-level discovery ("show every physical field that means order date"), expert routing for data questions, grounded vocabulary for NL-to-SQL and agent surfaces via the MCP term-lookup tool, and glossary interchange with external catalogs through metadata export.'
   scenario: 'Given tables with columns cust_id, customerId, and CUSTOMER_KEY registered in the semantic
     layer
@@ -57619,7 +57678,10 @@
     of the Cypher graph only when no registered relationship of its own joins it. A junction that registered
     relationships join (as after Join through, which keeps the two hops beside the joined relationship)
     keeps its node and those edges in Cypher, so all three relationships are offered there, as in SQL and
-    GraphQL.'
+    GraphQL. (Amended 2026-11-18, A RELATIONSHIP NOT SERVED TO CYPHER DOES NOT KEEP A JUNCTION''S NODE:)
+    Lead 2026-11-18, clarifying the junction-node rule: only relationships served to Cypher count as joining
+    a junction; a relationship excluded from Cypher (such as the meta catalog''s own hop rows into the glossary
+    junctions, which serve GraphQL only) does not keep the junction''s node.'
   use_case: A steward walks a glossary hierarchy three levels deep in one Cypher pattern, and filters
     the edges by an attribute stored on the junction row, instead of traversing a reified node whose half-hops
     make variable-length depth meaningless.
@@ -57837,35 +57899,41 @@
   feature: glossary-tags-ontology-terms
   priority: MUST
   type: behavioral
-  description: 'A GLOSSARY TERM IS SCOPED TO DOMAINS, AND ONE TERM MAY SPAN SEVERAL. A rooted term''s
-    domains are DERIVED -- the distinct ``registered_tables.domain_id`` of the tables its refs point at
-    -- so nothing is declared and nothing can drift out of sync. An abstract term declares its domains
-    explicitly, one or more, because it holds no refs to derive from. THE COMBINED MODEL: a term whose
-    refs span two domains is ONE term scoped to both, not two terms. Cross-table merging is the mechanism
-    the glossary is built on (``normalize_term`` sheds trailing proxy tokens so ``orders.id`` and every
-    ``order_id`` foreign key land on one term), and a domain boundary is not a reason to stop it: if ``orders``
-    is in sales and ``order_id`` is in pet-store, "order" genuinely spans both. THE STAMP: a rooted
-    term''s domains become underivable the moment its last ref departs, so the departing refs'' domains
-    are recorded on the term at that moment; a deprecated or retired term stays curatable by exactly the
-    people who owned it. The rule is one line: a term''s domains are its refs'' domains while it has refs,
-    and its recorded domains otherwise. AUTHORITY IS ANY, NOT ALL: reading a term requires ANY of its
-    domains to be within the caller''s ``roles.domain_access``, and CURATING it requires the same. This
-    deliberately breaks the symmetry with REQ-1531''s ``require_domains``, which requires ALL: that rule
-    guards acts reaching DATA in two domains, whereas a term definition is prose about a concept both domains already reference; editing it exposes and changes nothing in the other domain. Requiring
-    all would leave a shared term curatable only by someone holding every domain it touches, an unsolvable
-    deadlock manufactured by a name collision. THE ESCAPE HATCH: when two domains genuinely mean different
-    things by one phrase, the answer is coordination, and failing that a SPLIT: create a term and move
-    the refs to it with POST /admin/glossary/refs/move. That machinery already exists, and the split survives
-    the next derivation because ``sync_table_refs`` leaves a held ref alone when its term is curated, so the new term must be given a definition, or the ref drifts back on the next registration. NO DOMAINS
-    IS NOT NO ACCESS: a term with an empty domain set is UNSCOPED and reachable by any holder of the
-    glossary rights; creating an abstract term in multi-domain mode therefore requires at least one domain,
-    so an empty set cannot be minted as a way around the gate. THE NAVBAR FILTER IS A VIEW PREFERENCE,
-    NOT AUTHORITY: the glossary list is filtered by the domains checked in the nav bar, passed as a
-    ``domains`` query parameter, and that selection INTERSECTS with the caller''s domain access and can
-    never widen it: unchecking a box hides terms, checking every box does not reveal a term the role may
-    not see, and the server answers 403 on a term outside the role''s domains whatever the checkboxes
-    say. SINGLE-DOMAIN MODE: where a domain gates nothing, this gate does nothing either, exactly as
-    every other domain gate behaves.'
+  description: 'A GLOSSARY TERM IS SCOPED TO DOMAINS, AND ONE TERM MAY SPAN SEVERAL. A rooted term''s domains
+    are DERIVED -- the distinct ``registered_tables.domain_id`` of the tables its refs point at -- so nothing
+    is declared and nothing can drift out of sync. An abstract term declares its domains explicitly, one
+    or more, because it holds no refs to derive from. THE COMBINED MODEL: a term whose refs span two domains
+    is ONE term scoped to both, not two terms. Cross-table merging is the mechanism the glossary is built
+    on (``normalize_term`` sheds trailing proxy tokens so ``orders.id`` and every ``order_id`` foreign key
+    land on one term), and a domain boundary is not a reason to stop it: if ``orders`` is in sales and ``order_id``
+    is in pet-store, "order" genuinely spans both. THE STAMP: a rooted term''s domains become underivable
+    the moment its last ref departs, so the departing refs'' domains are recorded on the term at that moment;
+    a deprecated or retired term stays curatable by exactly the people who owned it. The rule is one line:
+    a term''s domains are its refs'' domains while it has refs, and its recorded domains otherwise. AUTHORITY
+    IS ANY, NOT ALL: reading a term requires ANY of its domains to be within the caller''s ``roles.domain_access``,
+    and CURATING it requires the same. This deliberately breaks the symmetry with REQ-1531''s ``require_domains``,
+    which requires ALL: that rule guards acts reaching DATA in two domains, whereas a term definition is
+    prose about a concept both domains already reference; editing it exposes and changes nothing in the
+    other domain. Requiring all would leave a shared term curatable only by someone holding every domain
+    it touches, an unsolvable deadlock manufactured by a name collision. THE ESCAPE HATCH: when two domains
+    genuinely mean different things by one phrase, the answer is coordination, and failing that a SPLIT:
+    create a term and move the refs to it with POST /admin/glossary/refs/move. That machinery already exists,
+    and the split survives the next derivation because ``sync_table_refs`` leaves a held ref alone when
+    its term is curated, so the new term must be given a definition, or the ref drifts back on the next
+    registration. NO DOMAINS IS NOT NO ACCESS: a term with an empty domain set is UNSCOPED and reachable
+    by any holder of the glossary rights; creating an abstract term in multi-domain mode therefore requires
+    at least one domain, so an empty set cannot be minted as a way around the gate. THE NAVBAR FILTER IS
+    A VIEW PREFERENCE, NOT AUTHORITY: the glossary list is filtered by the domains checked in the nav bar,
+    passed as a ``domains`` query parameter, and that selection INTERSECTS with the caller''s domain access
+    and can never widen it: unchecking a box hides terms, checking every box does not reveal a term the
+    role may not see, and the server answers 403 on a term outside the role''s domains whatever the checkboxes
+    say. SINGLE-DOMAIN MODE: where a domain gates nothing, this gate does nothing either, exactly as every
+    other domain gate behaves. (Amended 2026-11-18, A TERM''S NAME IS UNIQUE WITHIN A DOMAIN, NOT ACROSS
+    DOMAINS:) Maintainer 2026-11-18 (''terms are differentiated by domain. a domain can use a name from
+    another domain''). Two terms may carry the same name when they belong to different domains; a name is
+    unique only within a domain. Creating or renaming a term is refused only when a term of the same name
+    already belongs to one of its domains. Everywhere a term is found or shown by name, it is told apart
+    by its domain.'
   tests:
   - tests/unit/test_glossary_domain_scope.py
   - tests/integration/test_glossary_domain_authority.py
@@ -75927,7 +75995,22 @@
     REQ-1960) asks for none. (Amended 2026-11-02, Shopify:) Maintainer 2026-11-02: Shopify''s Admin GraphQL
     API is the next branded source, a GraphQL brand over the remote GraphQL source like GitHub and GitLab:
     a per-store URL carrying the API version, the X-Shopify-Access-Token header, its shipped schema, and
-    Shopify''s query-cost limits priced at table registration as GitLab''s are.'
+    Shopify''s query-cost limits priced at table registration as GitLab''s are. (Amended 2026-11-18, THE
+    SPARQL SOURCE CARRIES BRANDED SOURCES TOO; WIKIDATA IS THE FIRST:) Maintainer 2026-11-18 (''it would
+    just be a branded sparql endpoint''). The generic SPARQL source is a third carrier of branded sources.
+    Wikidata is a branded SPARQL source: its preset is the Wikidata query service endpoint, needing no credential,
+    and everything else is the generic SPARQL source as it is (its User-Agent and result-format handling
+    included); tables are defined as on any SPARQL source. (Amended 2026-11-18, WIKIDATA: STARTER REFERENCE
+    TABLES, A TABLE OF ANY CLASS, REPLICATED BY DEFAULT:) Maintainer 2026-11-18 (''I think your more expanded
+    approach was fine''; ''you need to be able to add other classes''). Beyond the preset, the Wikidata
+    source offers: starter reference tables people join to (countries with their ISO codes, capital and
+    population; currencies; languages; administrative regions; organizations with identifiers such as LEI,
+    ticker and ISIN), each a bounded query exposed as a typed table; and a table of the instances of any
+    class, chosen by searching classes by name or browsing their broader and narrower classes (subclass
+    of), with the properties its instances most use offered as columns, the class''s instance count shown,
+    and a filter asked for when the class is too large to read whole. Every query stays within the public
+    endpoint''s time limit. Wikidata tables are replicated on a schedule by default rather than read live.
+    Glossary terms may be grounded to Wikidata items.'
   use_case: A team wants its Stripe, HubSpot or GitHub data beside its databases. A preset over a generic
     API source reaches it with no container to run, no Docker prerequisite on a desktop install, and on
     every engine, where a Postgres instance per source would be a heavy way to run a periodic fetch.
@@ -76298,7 +76381,23 @@
     is refused because a table declares no primary key. An include follows the approved relationship, and
     an included resource''s id is the value of the column that relationship points at. A root resource''s
     id is its primary key where one is declared; otherwise the column an approved relationship points at;
-    otherwise its position in the response.'
+    otherwise its position in the response. (Amended 2026-11-18, A ONE-TO-MANY INCLUDE NEVER COLLAPSES ITS
+    RESOURCES:) Lead 2026-11-18, refining the no-primary-key rule so no row is lost: an included resource
+    reached by a many-to-one relationship is identified by the column that relationship points at; one reached
+    by a one-to-many relationship is identified by its primary key where one is declared, otherwise by its
+    position among its parent''s included resources, so every child row stays a resource of its own. (Amended
+    2026-11-18, A ONE-TO-MANY INCLUDE''S POSITION ID CARRIES ITS PARENT''S ID:) Lead 2026-11-18, making
+    the one-to-many rule exact: an included resource with no declared primary key, reached by a one-to-many
+    relationship, has the id ''<parent id>:<n>'', n its 0-based position among that parent''s included resources
+    (a '':'' or ''\\'' in the parent id escaped), so children of different parents never share an id; resource
+    linkage uses the same ids. (Amended 2026-11-18, A REAL IDENTIFIER WHERE ONE EXISTS; NO SINGLE-RESOURCE
+    LOOKUP WHERE NONE DOES:) Maintainer 2026-11-18 (''if graphql can do it, why can''t other apis''; ''i
+    think not offering it is better for that scenario''). Reads and includes never require a key. A root
+    resource''s id is, in order: its declared primary key; otherwise the column an approved relationship
+    points at; otherwise a column named id; otherwise its position in the response. A single-resource lookup
+    (GET /<type>/<id>) is offered only for a type whose id is a real identifier (one of the first three),
+    never a position; for a type identified only by position the lookup is not offered, in the API and its
+    spec.'
   use_case: An operator who assigns a command to a role, hides a column, or moves an object to another
     domain changes what every API offers in one place, and no surface can offer what another surface hides.
   scenario: 'Given a query-kind command find_pets in domain petstore, assigned to role analyst
@@ -89640,7 +89739,7 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
   - REQ-2104
   target: "2027-Q1"
 - id: REQ-2135
-  status: in-progress
+  status: complete
   since: 2026-10
   group: 5. Query Languages, Compilation & Operations
   category: SPARQL Query Frontend
@@ -89921,6 +90020,10 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     - provisa-ui/src/components/graph/__tests__/SparqlExportModal.test.tsx
     - provisa-ui/src/__tests__/GraphPageSparql.test.tsx
     - provisa-ui/src/__tests__/GraphPageCypherExport.test.tsx
+  - tests/unit/test_cypher_drop_shapes.py
+  - provisa-ui/src/components/graph/__tests__/dropPath.test.ts
+  - provisa-ui/src/components/graph/__tests__/sparqlDrop.test.ts
+  - provisa-ui/src/__tests__/GraphDropUnlabelled.test.ts
 - id: REQ-2136
   value: 'Filter the ontology graph with SPARQL directly from the Ontology page controls, or open it as a query.'
   status: in-progress
@@ -90945,7 +91048,10 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     parents. (Amended 2026-10-29, REGIONS NARROW LIKE CAPABILITIES:) Maintainer 2026-10-31: data_residency''s
     regions follow the same narrowing as capabilities and domains: a role with parents covers its stored
     regions intersected with the union of its parents'' regions, and saving a region no parent covers is
-    refused by name.'
+    refused by name. (Amended 2026-11-19, A ROLE''S ROW RULE NARROWS ITS PARENTS'', NEVER REPLACES THEM:)
+    Maintainer 2026-11-19, correcting the 2026-10-25 sentence that a role''s own row rule stands. A role''s
+    row rule is combined with every parent''s row rule by AND: inheriting a role can only narrow the rows
+    it reads, never widen them.'
   scenario: 'Given an org role ''dq lead'' inheriting from Data quality steward and Data product owner
 
     Then it holds the union of both roles'' capabilities
@@ -97483,4 +97589,25 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     WAY:) Maintainer 2026-11-16 (''add that to the relationship detail panel AND the data product access
     patterns''). A data product''s Access section lists each relationship in the product with the same set
     of links as the relationship''s detail panel, one per surface that exposes it, built by the one shared
-    component and query builder; it replaces the Cypher-only link per relationship type it shows today.'
+    component and query builder; it replaces the Cypher-only link per relationship type it shows today.
+    (Amended 2026-11-18, A TABLE''S DETAIL PANEL HAS THE SAME PREVIEW LINKS:) Maintainer 2026-11-18 (''similar
+    to relationships detail, there should be hyperlinks to preview the table using all of the query surfaces'').
+    A table''s detail panel on the Tables page has one link per query surface the table is exposed on, drawn
+    as the data product Access section draws its per-table links (the same icons, tips and component), in
+    its Identity section. Each opens that surface''s Explore editor with a query that reads the table, run
+    at once, using the names the role sees and a row limit. A surface the table is not exposed on shows
+    no link.'
+- id: REQ-2253
+  status: proposed
+  group: 3. Source Registration & Data Modeling
+  category: Registration & Governance
+  feature: semantic-model-relationships
+  priority: MUST
+  type: behavioral
+  description: 'Maintainer 2026-11-18 (''all AI assisted features should narrow their concerns to the filtered
+    domains (for example the ontology relationships assistant should only work against the selected domains)'').
+    Every AI-assisted feature works only within the domains selected in the domain filter when it is started:
+    what it sends the model, what it proposes and what it writes are limited to the tables, columns, terms
+    and relationships of those domains. This covers, among others, relationship discovery, the ontology''s
+    relationship suggestions and term finding, natural-language query, generated descriptions and any other
+    feature that asks a model. Nothing outside the selected domains is read, sent or changed.'

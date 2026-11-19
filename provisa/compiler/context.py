@@ -21,8 +21,7 @@ from collections.abc import Callable, Mapping, Sequence  # noqa: F401
 
 from provisa.compiler.naming import (
     bare_field_name,
-    junction_field_name,
-    rel_field_name as _rel_field_name,
+    relationship_field_name,
     unprefixed_field_name,
     source_to_catalog,
 )
@@ -251,17 +250,17 @@ def _join_field_name(  # REQ-194, REQ-1586
     leaves ``ctx.joins`` holding whichever one registered last. Its nominated label names it
     instead — the same nomination the Cypher type takes.
     """
-    if rel.get("via_table_id"):
-        via_info = table_lookup[rel["via_table_id"]]
-        return junction_field_name(
-            rel["via_label_source"],
-            rel["cardinality"],
-            type_value=rel.get("via_type_value"),
-            via_table_name=via_info.table_name,
-            cypher_alias=rel.get("alias"),
-        )
-    return _rel_field_name(
-        unprefixed_field_name(tgt_info.field_name, tgt_info.domain_id), rel["cardinality"]
+    via_table_name = (
+        table_lookup[rel["via_table_id"]].table_name if rel.get("via_table_id") else None
+    )
+    return relationship_field_name(
+        rel["cardinality"],
+        target_field_name=unprefixed_field_name(tgt_info.field_name, tgt_info.domain_id),
+        graphql_alias=rel.get("graphql_alias"),
+        via_label_source=rel.get("via_label_source"),
+        via_type_value=rel.get("via_type_value"),
+        via_table_name=via_table_name,
+        cypher_alias=rel.get("alias"),
     )
 
 
@@ -421,7 +420,7 @@ def _register_relationship_joins(
             table=tgt_info.table_name,
         )
 
-        join_field_name = rel.get("graphql_alias") or _join_field_name(rel, tgt_info, table_lookup)
+        join_field_name = _join_field_name(rel, tgt_info, table_lookup)
         held = joined_by.get((src_info.type_name, join_field_name))
         if held is not None:
             # Two relationships of one type under one field: the later replaced the earlier and

@@ -329,13 +329,14 @@ def resolve_read_mask(ctx: Any, type_name: str, paths: Sequence[str]) -> ReadMas
 def _relation_field(ctx: Any, meta: Any, field: str) -> tuple[str, Any] | None:  # REQ-1929
     """``(GraphQL relationship field, JoinMeta)`` for the relation field ``field`` of ``meta``'s
     ``{Type}`` message. proto_gen declares one relation field per relationship, named by its
-    GraphQL relationship field (proto-cased), so the relation field names the relationship."""
-    from provisa.grpc.proto_gen import _to_proto_field_name
+    GraphQL relationship field (proto_relation_field_name), so the relation field names the
+    relationship."""
+    from provisa.grpc.proto_gen import proto_relation_field_name
 
     for (source_type, graphql_field), join in ctx.joins.items():
         if source_type != meta.type_name or graphql_field == "_meta":
             continue
-        if _to_proto_field_name(graphql_field) == field:
+        if proto_relation_field_name(graphql_field) == field:
             return graphql_field, join
     return None
 

@@ -319,3 +319,56 @@ def test_reflection_describes_each_relationship_field():
             described[message.name] = {f.name: f.type_name for f in message.field}
     assert described["Orders"]["customer"] == ".provisa.v1.Customers"
     assert described["Orders"]["referrer"] == ".provisa.v1.Customers"
+
+
+# --- A relationship's field is its GraphQL name in proto snake_case; a collision is refused --------
+
+
+def _with_aliases(**aliases: str):
+    """The model with ``graphql_alias`` set on relationships by id (``r_customer`` is r-customer)."""
+    si = _schema_input()
+    for rel in si.relationships:
+        alias = aliases.get(rel["id"].replace("-", "_"))
+        if alias is not None:
+            rel["graphql_alias"] = alias
+    return si
+
+
+class TestProtoFieldTranslation:
+    def test_a_camel_case_relationship_name_is_a_snake_case_field_and_readable(self):
+        from provisa.compiler.context import build_context
+        from provisa.grpc.descriptor import OrgDescriptor
+        from provisa.grpc.proto_gen import generate_proto
+        from provisa.grpc.query_ir import resolve_read_mask
+
+        si = _with_aliases(r_referrer="referredBy")
+        orders = _fields(OrgDescriptor(generate_proto(si)).Orders.DESCRIPTOR)
+        assert orders["referred_by"][1:] == ("Customers", False)
+        assert "referredBy" not in orders
+        mask = resolve_read_mask(build_context(si), "Orders", ["referred_by.name"])
+        assert mask is not None
+        assert [(r.field, r.graphql_field) for r in mask.relations] == [
+            ("referred_by", "referredBy")
+        ]
+
+    def test_two_relationships_translating_to_one_field_are_refused_naming_both(self):
+        from provisa.grpc.proto_gen import ProtoFieldCollision, generate_proto
+
+        si = _with_aliases(r_customer="buyer_of", r_referrer="buyerOf")
+        with pytest.raises(ProtoFieldCollision) as refused:
+            generate_proto(si)
+        message = str(refused.value)
+        assert "'buyer_of'" in message and "'buyerOf'" in message
+        assert "r-customer" in message and "r-referrer" in message
+        assert refused.value.params["field"] == "buyer_of"
+        assert refused.value.params["type"] == "Orders"
+
+    def test_a_relationship_translating_to_a_column_field_is_refused_naming_both(self):
+        from provisa.grpc.proto_gen import ProtoFieldCollision, generate_proto
+
+        si = _with_aliases(r_referrer="referrerId")
+        with pytest.raises(ProtoFieldCollision) as refused:
+            generate_proto(si)
+        message = str(refused.value)
+        assert "column 'referrer_id'" in message
+        assert "relationship 'referrerId' (r-referrer)" in message

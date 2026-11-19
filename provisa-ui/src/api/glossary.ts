@@ -228,11 +228,26 @@ export async function updateGlossaryTerm(
   if (!res.ok) throw await mutationError(res, "updateGlossaryTerm");
 }
 
-export async function generateAllGlossaryDefinitions(): Promise<{ generated: number }> {
-  const res = await fetch(`${API_BASE}/admin/glossary/definitions/generate`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-  });
+// REQ-2253: an AI assistant's request carries the navbar filter's selection the same way
+// (repeated ``domains=``; null asks for no narrowing), so the server limits what it reads, sends to
+// the model and writes to the selected domains.
+function selectedDomainsQuery(domains: ReadonlySet<string> | null): string {
+  if (!domains) return "";
+  const params = new URLSearchParams();
+  for (const d of domains) params.append("domains", d);
+  return `?${params.toString()}`;
+}
+
+export async function generateAllGlossaryDefinitions(
+  domains: ReadonlySet<string> | null,
+): Promise<{ generated: number }> {
+  const res = await fetch(
+    `${API_BASE}/admin/glossary/definitions/generate${selectedDomainsQuery(domains)}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+    },
+  );
   if (!res.ok) throw await mutationError(res, "generateAllGlossaryDefinitions");
   return res.json();
 }
@@ -337,22 +352,29 @@ export function onlyRelatedTo(t: GlossaryTermDetail): boolean {
   );
 }
 
-export async function generateGlossaryRelationships(): Promise<{
+export async function generateGlossaryRelationships(domains: ReadonlySet<string> | null): Promise<{
   added: number;
   review: RelatedToReview[];
 }> {
-  const res = await fetch(`${API_BASE}/admin/glossary/relationships/generate`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-  });
+  const res = await fetch(
+    `${API_BASE}/admin/glossary/relationships/generate${selectedDomainsQuery(domains)}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+    },
+  );
   if (!res.ok) throw await mutationError(res, "generateGlossaryRelationships");
   return res.json();
 }
 
-export async function generateGlossaryDefinition(termId: number): Promise<string> {
-  const res = await fetch(`${API_BASE}/admin/glossary/terms/${termId}/definition/generate`, {
-    method: "POST",
-  });
+export async function generateGlossaryDefinition(
+  termId: number,
+  domains: ReadonlySet<string> | null,
+): Promise<string> {
+  const res = await fetch(
+    `${API_BASE}/admin/glossary/terms/${termId}/definition/generate${selectedDomainsQuery(domains)}`,
+    { method: "POST" },
+  );
   if (!res.ok) throw await mutationError(res, "generateGlossaryDefinition");
   const data = (await res.json()) as { definition: string };
   return data.definition;

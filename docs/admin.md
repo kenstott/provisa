@@ -69,6 +69,23 @@ GET  /admin/ai-models
 PUT  /admin/ai-models
 ```
 
+**Hugging Face hub address.** `embedding.hub_endpoint` names the Hugging Face hub a local embedding model is downloaded from. Its default is `https://huggingface.co`. Behind a firewall, set it to a mirror inside your network. It sits on the Network and TLS card of Admin → Settings, and you can also set it with the `HF_ENDPOINT` environment variable or under `embedding.hub_endpoint` in the config file:
+
+```yaml
+embedding:
+  hub_endpoint: https://hf-mirror.internal.example.com
+```
+
+A value saved in Admin → Settings wins over `HF_ENDPOINT`, which wins over the config file. The setting is read at each model download, so a change applies to the next one with no restart. A model already downloaded and loaded is not fetched again while the server runs.
+
+**A model whose library is missing stops the start.** Every install carries sentence-transformers, the library a `huggingface` embedding model runs on. Without it, a config file that registers a `huggingface` model in `vector_models` stops the start, and the error names the model:
+
+```text
+The embedding model sentence-transformers/all-MiniLM-L6-v2 uses the huggingface provider, which needs the vector extra (module sentence_transformers is not installed): pip install 'provisa[vector]'.
+```
+
+Install the extra it names, adding `--extra-index-url https://download.pytorch.org/whl/cpu` on Linux, or remove the model from `vector_models`. The check runs whether or not the model is enabled.
+
 The admin encryption tab derives its provider list live from the encryption registry; unavailable providers appear but are not selectable.
 
 `GET`/`HEAD /health` and `GET /setup/status` never require authentication. They skip the `Authorization: Bearer` requirement even when an auth provider is configured.

@@ -427,7 +427,7 @@ export function GlossaryTab() {
     setBulkGeneratingDefinitions(true);
     setActionError("");
     try {
-      const { generated } = await generateAllGlossaryDefinitions();
+      const { generated } = await generateAllGlossaryDefinitions(viewDomains);
       notifications.show({
         color: "green",
         message: t("glossaryTab.definitionsGenerated", { count: generated }),
@@ -445,7 +445,7 @@ export function GlossaryTab() {
     setBulkGeneratingRelationships(true);
     setActionError("");
     try {
-      const { added, review: toResolve } = await generateGlossaryRelationships();
+      const { added, review: toResolve } = await generateGlossaryRelationships(viewDomains);
       notifications.show({
         color: "green",
         message: t("glossaryTab.relationshipsGenerated", { count: added }),
@@ -771,6 +771,7 @@ export function GlossaryTab() {
                         name={detail.name}
                         onDuplicate={() => openDuplicateTerm(detail)}
                         testId="glossary-duplicate-btn"
+                        labelled
                       />
                       {/* REQ-1387, REQ-2144: each status change is a person's act. A defined draft is
                         approved, its impact seen first; an approved term deprecated, with a

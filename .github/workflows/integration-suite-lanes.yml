@@ -293,15 +293,21 @@ jobs:
   # Maven Central is asked for the pinned Trino plugin jars once per pin, here: each job that
   # mounts them needs this one and restores its cache (.github/actions/trino-plugins), so
   # parallel jobs never fetch at once (release 510: HTTP 429 mid-collection, run 44081179966).
+  # The zaychik image the core services start is built here too, once per change to zaychik/, and
+  # every lane loads it (.github/actions/zaychik-image): a lane that built it asked Maven Central
+  # for its Maven plugins and the kafka lane's lookup failed (run 44379779451).
   trino-plugins:
     name: Trino plugins
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.ref || github.sha }}
       - uses: ./.github/actions/trino-plugins
+        with:
+          phase: prime
+      - uses: ./.github/actions/zaychik-image
         with:
           phase: prime
 
@@ -327,6 +333,7 @@ jobs:
       # with Maven against the server it starts; the driver is built for Java 21.
       java: ${{ matrix.lane == 'core' }}
       trino-plugins: true
+      zaychik-image: true
       # tests/integration/test_master_key_survives_recreate_compose.py builds the app image.
       pyodide-downloads: true
       image-cache: true
@@ -382,6 +389,11 @@ jobs:
         with:
           phase: restore
 
+      - name: Restore the zaychik image
+        uses: ./.github/actions/zaychik-image
+        with:
+          phase: restore
+
       # The image the test builds takes Pyodide from this directory (tests/pyodide_downloads.py).
       - name: Pyodide downloads
         uses: ./.github/actions/pyodide-downloads
@@ -392,13 +404,9 @@ jobs:
           sudo install minikube /usr/local/bin/minikube
           curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
 
-      - name: Build the zaychik image the chart deploys
-        # core.yml interpolates the store credentials even to build: the test instance's.
-        run: |
-          set -a
-          eval "$(bash scripts/ci/test-store-env.sh)"
-          set +a
-          docker compose -f docker-compose.core.yml build zaychik && docker tag zaychik:latest provisa-zaychik:latest
+      # The chart deploys provisa-zaychik:latest: the zaychik image restored above, under that name.
+      - name: Tag the zaychik image the chart deploys
+        run: docker tag zaychik:latest provisa-zaychik:latest
 
       # tests/e2e/test_helm_minikube.py builds provisa:latest, starts a minikube profile of its own
       # under a kubeconfig of its own, installs the chart with auth.provider=local, and deletes the
@@ -525,6 +533,11 @@ jobs:
       - name: Restore Trino plugins
         id: trino-plugins
         uses: ./.github/actions/trino-plugins
+        with:
+          phase: restore
+
+      - name: Restore the zaychik image
+        uses: ./.github/actions/zaychik-image
         with:
           phase: restore
 
@@ -681,10 +694,16 @@ jobs:
       python-extras: dev cassandra saphana gx soda
       ui: chromium
       ui-timeout: 12
+      # One worker, a backend and a browser, on the 4-vCPU runner, as each ui-e2e-core.yml shard
+      # runs: two held a core runner at a load of about 10 (run 43995449668's sampler), several
+      # times slower than the specs' bounds allow. Not sharded: its seven specs took 18.3 min at two
+      # workers (run 44112453390), inside the 50-minute global timeout at one; and two shards would
+      # each hold the live-cloud-warehouses group, and each one's after-script would stop the
+      # warehouses the other was still using.
       env: |
         CI=true
         PROVISA_E2E_LANE=core
-        PROVISA_E2E_WORKERS=2
+        PROVISA_E2E_WORKERS=1
       working-directory: provisa-ui
       # Playwright stops itself after 50 minutes, inside the job's bound, so it still writes its
       # reports.
@@ -752,6 +771,11 @@ jobs:
       - name: Restore Trino plugins
         id: trino-plugins
         uses: ./.github/actions/trino-plugins
+        with:
+          phase: restore
+
+      - name: Restore the zaychik image
+        uses: ./.github/actions/zaychik-image
         with:
           phase: restore
 
@@ -841,6 +865,11 @@ jobs:
         with:
           phase: restore
 
+      - name: Restore the zaychik image
+        uses: ./.github/actions/zaychik-image
+        with:
+          phase: restore
+
       # A missing credential fails the lane by name rather than surfacing as a skipped test.
       - name: Credentials present
         run: |
@@ -899,6 +928,11 @@ jobs:
       - name: Restore Trino plugins
         id: trino-plugins
         uses: ./.github/actions/trino-plugins
+        with:
+          phase: restore
+
+      - name: Restore the zaychik image
+        uses: ./.github/actions/zaychik-image
         with:
           phase: restore
 

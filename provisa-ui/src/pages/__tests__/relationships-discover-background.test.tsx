@@ -136,9 +136,10 @@ describe("Discovery: the ended run's block and the page's line", () => {
   it("collapses the summary to its first line, which opens to the whole summary", async () => {
     runMock.mockResolvedValue(ENDED);
     proposalsMock.mockResolvedValue({
-      proposals: [proposal({}), proposal({ id: 502, reason: "pending" })],
+      proposals: [proposal({}), proposal({ id: 502 })],
       threshold: 0.7,
       kept_at: 0.7,
+      score_filter: null,
     });
     await openDialog();
     fireEvent.click(runButton());
@@ -162,10 +163,11 @@ describe("Discovery: the ended run's block and the page's line", () => {
         proposal({}),
         // Left out by the run's rules: not among the suggestions waiting.
         proposal({ id: 503, reason: "below_threshold", confidence: 0.4 }),
-        proposal({ id: 505, reason: "matches_foreign_key", decidable: false }),
+        proposal({ id: 505, reason: "not_comparable", decidable: false }),
       ],
       threshold: 0.7,
       kept_at: 0.7,
+      score_filter: null,
     });
     render(<RelationshipsPage />);
     await waitFor(() =>
@@ -182,7 +184,12 @@ describe("Discovery: the ended run's block and the page's line", () => {
 
   it("the page's line goes once the run's suggestions are all decided", async () => {
     runsMock.mockResolvedValue([ENDED]);
-    proposalsMock.mockResolvedValue({ proposals: [proposal({})], threshold: 0.7, kept_at: 0.7 });
+    proposalsMock.mockResolvedValue({
+      proposals: [proposal({})],
+      threshold: 0.7,
+      kept_at: 0.7,
+      score_filter: null,
+    });
     render(<RelationshipsPage />);
     await waitFor(() => expect(pageLine()).toBeInTheDocument());
     fireEvent.click(screen.getByTestId("rels-discover-open"));
@@ -190,7 +197,12 @@ describe("Discovery: the ended run's block and the page's line", () => {
     applyMock.mockResolvedValue([
       { id: 501, action: "accept", ok: true, relationship_id: "customer-orders" },
     ]);
-    proposalsMock.mockResolvedValue({ proposals: [], threshold: 0.7, kept_at: 0.7 });
+    proposalsMock.mockResolvedValue({
+      proposals: [],
+      threshold: 0.7,
+      kept_at: 0.7,
+      score_filter: null,
+    });
     fireEvent.click(screen.getByTestId("discover-apply"));
     await waitFor(() =>
       expect(applyMock).toHaveBeenCalledWith(7, { accept: [{ id: 501 }], not_again: [] }),

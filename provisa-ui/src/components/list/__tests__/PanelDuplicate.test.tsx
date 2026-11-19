@@ -35,6 +35,19 @@ describe("PanelDuplicate", () => {
     expect(await screen.findByRole("tooltip")).toHaveTextContent("Duplicate sales-pg");
   });
 
+  it("in a row of bordered, labelled buttons, is a bordered button labelled Duplicate", async () => {
+    render(
+      <PanelDuplicate name="sales-pg" onDuplicate={() => {}} testId="thing-duplicate" labelled />,
+    );
+    const action = screen.getByTestId("thing-duplicate");
+    expect(action).toHaveAccessibleName("Duplicate");
+    expect(action).toHaveTextContent("Duplicate");
+    expect(action.querySelector("svg.lucide-copy")).not.toBeNull();
+    expect(action).toHaveAttribute("data-variant", "default");
+    await userEvent.hover(action);
+    expect(await screen.findByRole("tooltip")).toHaveTextContent("Duplicate sales-pg");
+  });
+
   it("asks the page to duplicate, and nothing behind the head hears the press", async () => {
     const onDuplicate = vi.fn();
     const behind = vi.fn();

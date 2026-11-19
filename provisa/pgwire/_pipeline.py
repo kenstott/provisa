@@ -1824,7 +1824,8 @@ async def govern_statement(
     """Stage one of the one pipeline: parse, validate and apply governance. Value-independent.
 
     ``product_statement`` (REQ-603): the statement is one the product wrote for its own work --
-    the profiler's read of a table, which pairs the table with itself -- not a role's query. The
+    the profiler's read of a table, which pairs the table with itself, or discovery's key value
+    overlap join count of a candidate pair, which has no relationship yet -- not a role's query. The
     relationship guard is about what a role's query may relate, so it is not held on it; every
     other check is. Stated by the product's own call site, as a GraphQL-built statement states
     ``sdl_joins``; no surface that carries a caller's SQL passes it."""
@@ -2089,6 +2090,11 @@ async def govern_statement(
     from provisa.audit.pipeline import resolve_table_ids
 
     _table_ids = tuple(resolve_table_ids(_parsed_input, gov_ctx))  # REQ-1897
+    # REQ-2253: an AI-assisted call reads only the domains selected in the domain filter. Asked
+    # per call, outside the governed-statement cache: the selection is not part of its key.
+    from provisa.security.selected_domains import refuse_outside
+
+    refuse_outside(state, _table_ids)
 
     # REQ-272: apply_governance enforces full Stage-2 governance on this SQL path — RLS,
     # masking, visibility, and the role row-cap ceiling (gov_ctx carries the role, so
@@ -6086,6 +6092,10 @@ async def _route_compiled(
 
     _compiled_tree = compiled_tree
     _table_ids = table_ids
+    # REQ-2253: as on the raw-SQL path -- per call, since the governed half is kept and reused.
+    from provisa.security.selected_domains import refuse_outside
+
+    refuse_outside(state, _table_ids)
     _audit = audit
     _cache_hint = cache_hint
     # A write on a compiled surface (a GraphQL mutation, a Cypher write over HTTP or Bolt) ends

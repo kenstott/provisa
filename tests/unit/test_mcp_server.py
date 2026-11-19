@@ -822,7 +822,7 @@ async def test_generate_explore_queries_returns_per_target_queries_and_errors(st
     fake_store = _FakeJobStore()
 
     async def fake_run_nl_job(
-        job_id, question, role, app_state, job_store, llm, strict=False, *, deliver
+        job_id, question, role, app_state, job_store, llm, strict=False, *, deliver, scope
     ):
         job = await job_store.get(job_id)
         job.branches["sql"] = BranchResult(query="SELECT 1", error=None)
