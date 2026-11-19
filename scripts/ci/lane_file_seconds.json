@@ -81,6 +81,7 @@
   "tests/integration/test_command_assignment_every_surface.py": 32.1,
   "tests/integration/test_command_compose_e2e.py": 39.9,
   "tests/integration/test_command_compose_surfaces.py": 25.8,
+  "tests/integration/test_command_graphql_source_operation_e2e.py": 47.5,
   "tests/integration/test_compile_endpoint.py": 15.9,
   "tests/integration/test_compiler_integration.py": 2.1,
   "tests/integration/test_complexity_guard_every_surface.py": 28.9,
