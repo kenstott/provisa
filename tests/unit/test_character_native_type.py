@@ -58,7 +58,12 @@ def test_a_text_column_carries_no_native_type():
 def _schema_input(columns: list[dict]):
     from provisa.compiler.schema_types import SchemaInput
 
-    table = {"schema_name": "public", "table_name": "people", "columns": columns}
+    table = {
+        "source_id": "pg",
+        "schema_name": "public",
+        "table_name": "people",
+        "columns": columns,
+    }
     return SchemaInput(
         tables=[table],
         relationships=[],
