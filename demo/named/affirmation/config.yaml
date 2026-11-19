@@ -268,9 +268,11 @@ tables:
   - {name: _nf_instruction_settle_date, data_type: date, native_filter_type: query_arg, native_filter_required: false, description: 'The custodian instruction''s settlement date', visible_to: [viewer]}
 views:
 # Each allocation with its four systems' records side by side, a leg not yet arrived empty: what
-# trade_match is given (the legs-to-match relationship feeds it these columns).
+# trade_match is given (the legs-to-match relationship feeds it these columns). Stored: a code
+# table is fed from a table the statement reads, and the stored view is one.
 - id: trade_legs
   domain_id: postrade
+  materialize: true
   description: Each allocation with its order, its fills' average price, its fund's standing instructions,
     the broker's confirmation and the custodian's instruction side by side; a leg not yet arrived is empty
   sql: >-

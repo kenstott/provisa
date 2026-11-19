@@ -150,7 +150,12 @@ def test_the_legs_view_feeds_every_parameter_through_the_relationship():
 def test_the_matched_trades_are_affirmed_after_the_match_is_stored():
     assert _VIEWS["trade_status"]["materialize"] is True
     steps = yaml.safe_load((_DEMO / "setup.yaml").read_text())["steps"]
-    assert steps == [{"refresh": "trade_status"}, {"command": "affirm_matched"}]
+    assert steps == [
+        {"refresh": "trade_legs"},
+        {"refresh": "trade_status"},
+        {"command": "affirm_matched"},
+    ]
+    assert _VIEWS["trade_legs"]["materialize"] is True
     [command] = _CONFIG["functions"]
     assert command["impl_kind"] == "statement"
     assert '"postrade"."view_trade_status"' in command["binding"]["sql"]

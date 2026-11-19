@@ -15,8 +15,10 @@
 #
 # The first step that fails stops the run, naming the step. A demo with nothing to run deletes
 # this file.
-# Every allocation matched across the four systems (trade_status, stored), then the affirmation of
+# The four systems' records side by side (trade_legs, stored), every allocation matched across
+# them (trade_status, stored), then the affirmation of
 # each that matched logged.
 steps:
+- refresh: trade_legs
 - refresh: trade_status
 - command: affirm_matched
