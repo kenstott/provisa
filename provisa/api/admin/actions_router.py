@@ -249,6 +249,10 @@ async def _as_source_operation(body: FunctionInput) -> "Operation | None":
     body.binding = {}
     body.materialize = False
     body.arguments = [{"name": a, "type": "json"} for a in operation.arguments]
+    # Its answer follows from the operation too: the form's empty output columns would declare
+    # it VOID (REQ-2001), which no source operation is.
+    body.outputColumns = None
+    body.returnSchema = None
     body.sourceType = None
     if operation.table is not None:
         # REQ-1986: an operation that reads rows and requires a parameter is a function returning
