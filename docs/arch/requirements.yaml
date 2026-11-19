@@ -91048,7 +91048,10 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     parents. (Amended 2026-10-29, REGIONS NARROW LIKE CAPABILITIES:) Maintainer 2026-10-31: data_residency''s
     regions follow the same narrowing as capabilities and domains: a role with parents covers its stored
     regions intersected with the union of its parents'' regions, and saving a region no parent covers is
-    refused by name.'
+    refused by name. (Amended 2026-11-19, A ROLE''S ROW RULE NARROWS ITS PARENTS'', NEVER REPLACES THEM:)
+    Maintainer 2026-11-19, correcting the 2026-10-25 sentence that a role''s own row rule stands. A role''s
+    row rule is combined with every parent''s row rule by AND: inheriting a role can only narrow the rows
+    it reads, never widen them.'
   scenario: 'Given an org role ''dq lead'' inheriting from Data quality steward and Data product owner
 
     Then it holds the union of both roles'' capabilities
