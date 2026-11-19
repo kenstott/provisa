@@ -246,9 +246,8 @@ def oms() -> str:
         for o in ORDERS
     ]
     allocations = [
-        (f"A-{o.order_id[2:]}-{i}", o.order_id, fund, qty, SETTLE[o.market])
-        for o in ORDERS
-        for i, (fund, qty) in enumerate(o.allocations, 1)
+        (ref, o.order_id, fund, o.market, qty, SETTLE[o.market])
+        for o, ref, fund, qty in allocations_of()
     ]
     return (
         _HEADER
@@ -260,7 +259,7 @@ def oms() -> str:
         + "  trader text NOT NULL, trade_date date NOT NULL);\n"
         + "CREATE TABLE allocations (trade_ref text PRIMARY KEY,\n"
         + "  order_id text NOT NULL REFERENCES orders, fund_account text NOT NULL,\n"
-        + "  quantity integer NOT NULL, settle_date date NOT NULL);\n\n"
+        + "  market text NOT NULL, quantity integer NOT NULL, settle_date date NOT NULL);\n\n"
         + _insert("orders", orders)
         + _insert("allocations", allocations)
         + _grants()
@@ -291,7 +290,7 @@ def ems() -> str:
     )
 
 
-def allocations() -> list[tuple[Order, str, str, int]]:
+def allocations_of() -> list[tuple[Order, str, str, int]]:
     """Each allocation: its order, its trade reference, its fund and its quantity."""
     return [
         (o, f"A-{o.order_id[2:]}-{i}", fund, qty)
@@ -369,7 +368,7 @@ def trade_legs(o: Order, ref: str, fund: str, qty: int) -> dict[str, Value | dat
 
 def broker() -> str:
     rows = []
-    for o, ref, fund, qty in allocations():
+    for o, ref, fund, qty in allocations_of():
         c = confirmation(o, ref, fund, qty)
         if c is None:
             continue
@@ -401,7 +400,7 @@ def broker() -> str:
 
 def custody() -> str:
     rows = []
-    for o, ref, fund, qty in allocations():
+    for o, ref, fund, qty in allocations_of():
         i = instruction(o, ref, qty)
         if i is None:
             continue

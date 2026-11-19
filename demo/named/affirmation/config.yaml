@@ -136,6 +136,7 @@ tables:
   - {name: trade_ref, data_type: varchar, is_primary_key: true, description: 'The allocation''s reference, which the confirmation and the instruction carry', visible_to: [data_steward, settlements]}
   - {name: order_id, data_type: varchar, description: 'The order it allocates', visible_to: [data_steward, settlements]}
   - {name: fund_account, data_type: varchar, description: 'The fund it is allocated to', visible_to: [data_steward, settlements]}
+  - {name: market, data_type: varchar, description: 'Where it settles: US, DE, FR or NL', visible_to: [data_steward, settlements]}
   - {name: quantity, data_type: integer, description: 'The shares allocated to the fund', visible_to: [data_steward, settlements]}
   - {name: settle_date, data_type: date, description: 'The settlement date the order system expects', visible_to: [data_steward, settlements]}
 - source_id: ems
@@ -285,7 +286,7 @@ views:
     JOIN "postrade"."orders" AS o ON o.order_id = a.order_id
     JOIN (SELECT x.order_id, CAST(SUM(x.quantity * x.price) / SUM(x.quantity) AS DOUBLE) AS exec_price
       FROM "postrade"."executions" AS x GROUP BY x.order_id) AS e ON e.order_id = a.order_id
-    JOIN "postrade"."ssi" AS s ON s.fund_account = a.fund_account AND s.market = o.market
+    JOIN "postrade"."ssi" AS s ON s.fund_account = a.fund_account AND s.market = a.market
     LEFT JOIN "postrade"."confirmations" AS c ON c.trade_ref = a.trade_ref
     LEFT JOIN "postrade"."instructions" AS i ON i.trade_ref = a.trade_ref
   columns:
@@ -354,14 +355,13 @@ views:
   sql: >-
     SELECT s.trade_ref, s.fund_account, s.security, s.side, s.quantity, s.market, s.broker_code,
       s.break_type, s.detail,
-      r.cutoff_minutes - CAST(EXTRACT(EPOCH FROM (k.as_at - CAST(s.trade_date AS TIMESTAMP))) AS INTEGER) / 60
-        AS minutes_to_cutoff,
+      r.cutoff_minutes - CAST(EXTRACT(EPOCH FROM ((SELECT k.as_at FROM "postrade"."desk_clock" AS k)
+        - CAST(s.trade_date AS TIMESTAMP))) AS INTEGER) / 60 AS minutes_to_cutoff,
       r.cutoff_rule, s.currency, s.gross_amount,
       CAST(ROUND(s.gross_amount * r.penalty_bp_per_day / 10000, 2) AS DOUBLE) AS penalty_per_day,
       r.penalty_basis
     FROM "postrade"."view_trade_status" AS s
     JOIN "postrade"."settlement_rules" AS r ON r.market = s.market
-    CROSS JOIN "postrade"."desk_clock" AS k
     WHERE s.status = 'break'
   columns:
   - {name: trade_ref, data_type: varchar, description: 'The allocation', visible_to: [data_steward, settlements]}
@@ -393,9 +393,8 @@ functions:
   binding:
     sql: >-
       INSERT INTO "postrade"."affirmation_log" (trade_ref, affirmed_at, affirmed_by)
-      SELECT s.trade_ref, k.as_at, 'affirm_matched'
+      SELECT s.trade_ref, (SELECT k.as_at FROM "postrade"."desk_clock" AS k), 'affirm_matched'
       FROM "postrade"."view_trade_status" AS s
-      CROSS JOIN "postrade"."desk_clock" AS k
       WHERE s.status = 'matched'
 relationships:
 # A join from the legs to the matcher feeds each allocation's four records to the function, one
@@ -409,6 +408,10 @@ relationships:
   target_column: trade_ref
   parameters: {trade_ref: trade_ref, side: side, quantity: quantity, settle_date: settle_date, exec_price: exec_price, ssi_custodian: ssi_custodian, ssi_account: ssi_account, confirm_side: confirm_side, confirm_quantity: confirm_quantity, confirm_price: confirm_price, confirm_net: confirm_net, confirm_settle_date: confirm_settle_date, confirm_custodian: confirm_custodian, confirm_account: confirm_account, instruction_quantity: instruction_quantity, instruction_net: instruction_net, instruction_settle_date: instruction_settle_date}
 - {id: allocation-order, alias: ALLOCATES, cardinality: many-to-one, source_table_id: allocations, source_column: order_id, target_table_id: orders, target_column: order_id}
+- {id: allocation-fills, alias: FILLED_BY, cardinality: one-to-many, source_table_id: allocations, source_column: order_id, target_table_id: executions, target_column: order_id}
+- {id: allocation-ssi-fund, alias: FUND_SSI, cardinality: one-to-many, source_table_id: allocations, source_column: fund_account, target_table_id: ssi, target_column: fund_account}
+- {id: allocation-ssi-market, alias: MARKET_SSI, cardinality: one-to-many, source_table_id: allocations, source_column: market, target_table_id: ssi, target_column: market}
+- {id: status-rule, alias: SETTLES_UNDER, cardinality: many-to-one, source_table_id: view_trade_status, source_column: market, target_table_id: settlement_rules, target_column: market}
 - {id: execution-order, alias: FILLS, cardinality: many-to-one, source_table_id: executions, source_column: order_id, target_table_id: orders, target_column: order_id}
 - {id: confirmation-allocation, alias: CONFIRMS, cardinality: one-to-one, source_table_id: confirmations, source_column: trade_ref, target_table_id: allocations, target_column: trade_ref}
 - {id: instruction-allocation, alias: SETTLES, cardinality: one-to-one, source_table_id: instructions, source_column: trade_ref, target_table_id: allocations, target_column: trade_ref}

@@ -53,9 +53,7 @@ def _generate():
 
 
 _GEN = _generate()
-_ALLOCATIONS = {
-    f"A-{o.order_id[2:]}-{i}" for o in _GEN.ORDERS for i in range(1, len(o.allocations) + 1)
-}
+_ALLOCATIONS = {ref for _, ref, _, _ in _GEN.allocations_of()}
 
 
 class AffirmationStack:

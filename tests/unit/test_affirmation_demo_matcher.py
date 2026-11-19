@@ -62,7 +62,7 @@ def _legs_of_every_allocation() -> dict[str, Any]:
     """Each allocation's TradeLegs, as the legs view reads them from what generate.py writes."""
     return {
         ref: _MATCH.TradeLegs(**_GEN.trade_legs(o, ref, fund, qty))
-        for o, ref, fund, qty in _GEN.allocations()
+        for o, ref, fund, qty in _GEN.allocations_of()
     }
 
 
