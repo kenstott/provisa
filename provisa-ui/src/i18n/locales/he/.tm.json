@@ -10977,5 +10977,7 @@
   "he/discoverDialog.json::discoverDialog.waiting_one": "{{count}} suggestion waits for a decision.",
   "he/discoverDialog.json::discoverDialog.waiting_other": "{{count}} suggestions wait for a decision.",
   "he/proposalsTable.json::proposalsTable.hiddenByFilter_one": "{{count}} row is hidden by the filter.",
-  "he/proposalsTable.json::proposalsTable.hiddenByFilter_other": "{{count}} rows are hidden by the filter."
+  "he/proposalsTable.json::proposalsTable.hiddenByFilter_other": "{{count}} rows are hidden by the filter.",
+  "he/serverErrors.json::serverErrors.discovery.source_tables_outside_domains": "The chosen source tables are outside the domains selected in the domain filter: {{names}}.",
+  "he/serverErrors.json::serverErrors.discovery.target_tables_outside_domains": "The chosen target tables are outside the domains selected in the domain filter: {{names}}."
 }

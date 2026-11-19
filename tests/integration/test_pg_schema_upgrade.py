@@ -425,6 +425,15 @@ _CREATE_ONLY = {
     "data_products": "id domain_id name",
     "dbt_manifests": "source_id definitions updated_at",
     "dbt_node_runs": "source_id unique_id status generated_at built_at",
+    "discovery_run_proposals": (
+        "id run_id kind source_table_id source_column target_table_id target_column confidence "
+        "scored score cardinality measure reasoning suggested_name left_out answer decision "
+        "accepted_as tenant_id"
+    ),
+    "discovery_runs": (
+        "id status scope model requests_total requests_done suggestions report error "
+        "stop_requested stopped_by started_by started_at finished_at launch progress_at tenant_id"
+    ),
     "domains": "id description",
     "email_send_authority_audit": (
         "id email_address user_id granted_by org_id action reason created_at"

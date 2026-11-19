@@ -358,6 +358,28 @@ def allowed_domains_request(request) -> frozenset[str] | None:  # REQ-1591
     return None if allowed is None else frozenset(allowed)
 
 
+def selected_domains_request(  # REQ-1591, REQ-2253
+    request, selected: "list[str] | None"
+) -> frozenset[str] | None:
+    """The caller's authority (:func:`allowed_domains_request`) INTERSECTED with the domains the
+    navbar filter has selected, ``None`` for no narrowing.
+
+    REQ-1591: the filter is a view preference and never widens authority, so a selection is
+    intersected in, and an unlimited role narrowed by a selection sees only the selection. An
+    absent selection leaves authority alone: the UI sends none when every domain is checked.
+    REQ-2253: an AI-assisted feature reads, sends and changes nothing outside the result.
+
+    Sent as repeated ``domains=`` parameters rather than one comma-joined string, because the
+    no-domain domain's id IS the empty string (``schema.sql`` seeds it): joined, a selection of it
+    and an empty selection are the same text.
+    """
+    allowed = allowed_domains_request(request)
+    if selected is None:
+        return allowed
+    chosen = frozenset(selected)
+    return chosen if allowed is None else chosen & allowed
+
+
 def role_definitions_visible(request, role_id_claims) -> "Callable[[str], bool]":
     """Which role definitions the caller may read in full: every one for a ``user_management``
     holder, otherwise only the roles the caller itself holds (the client builds its own rights from
