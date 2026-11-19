@@ -221,7 +221,7 @@ async def write_list(
         )
 
 
-async def _held_list(
+async def held_list(
     conn: "Connection", principal: str, role_id: str, kind: str
 ) -> tuple[str, ...] | None:
     """``principal``'s Provisa-held list for ``role_id`` and ``kind`` now; None when none is held."""
@@ -261,7 +261,7 @@ async def add_to_list(
     is not added again. A person holds an entry once: one already listed keeps the latest of its
     expiries, and no expiry is later than any date, so a rule ending it sooner for these
     capabilities lets it go (:func:`_extend`). The caller holds the transaction."""
-    held = await _held_list(conn, principal, role_id, kind)
+    held = await held_list(conn, principal, role_id, kind)
     current = list(base if held is None else held)
     wanted = tuple(dict.fromkeys(identifiers))
     added = tuple(i for i in wanted if i not in current)
