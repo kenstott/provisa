@@ -931,7 +931,7 @@
       "bad_language": "{{language}} ist kein Sprachcode",
       "bad_column_type": "Für eine Wikidata-Eigenschaft nicht angebotene Spaltentypen: {{types}}",
       "filter_required": "Diese Klasse hat {{count}} Instanzen, mehr als {{limit}}: Wählen Sie einen Filter",
-      "filter_too_wide": "Der Filter lässt {{count}} Instanzen übrig, mehr als {{limit}}",
+      "filter_too_wide": "Der Filter lässt mehr als {{limit}} Instanzen übrig",
       "unreachable": "Wikidata ist nicht erreichbar: {{reason}}"
     }
   }

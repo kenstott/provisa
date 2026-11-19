@@ -10985,7 +10985,7 @@
   "it/serverErrors.json::serverErrors.wikidata.bad_language": "{{language}} is not a language code",
   "it/serverErrors.json::serverErrors.wikidata.bad_column_type": "Column types not offered for a Wikidata property: {{types}}",
   "it/serverErrors.json::serverErrors.wikidata.filter_required": "This class has {{count}} instances, more than {{limit}}: choose a filter",
-  "it/serverErrors.json::serverErrors.wikidata.filter_too_wide": "The filter leaves {{count}} instances, more than {{limit}}",
+  "it/serverErrors.json::serverErrors.wikidata.filter_too_wide": "The filter leaves more than {{limit}} instances",
   "it/serverErrors.json::serverErrors.wikidata.unreachable": "Wikidata could not be reached: {{reason}}",
   "it/wikidataTable.json::wikidataTable.modeLabel": "How the table is chosen",
   "it/wikidataTable.json::wikidataTable.modeStarter": "Starter table",

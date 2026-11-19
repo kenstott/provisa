@@ -399,11 +399,19 @@ def _filter_triple(row_filter: RowFilter | None) -> str:
 
 
 async def count_instances(class_id: str, row_filter: RowFilter | None = None) -> int:
-    """How many instances the class has, under ``row_filter`` when given."""
-    query = (
-        "SELECT (COUNT(DISTINCT ?item) AS ?count) WHERE { "
-        f"?item wdt:P31 wd:{class_id} .{_filter_triple(row_filter)} }}"
-    )
+    """How many instances the class has. Unfiltered, the exact count: a COUNT(*) of one triple
+    pattern, which the query service answers from its index at any size (a COUNT(DISTINCT)
+    reads every instance and times out on a class such as human). Under ``row_filter``, a
+    bounded probe: the count up to ``MAX_ROWS + 1``, enough to tell whether the table may be
+    read, since an exact count of a filtered large class exceeds the endpoint's time limit."""
+    if row_filter is None:
+        query = f"SELECT (COUNT(*) AS ?count) WHERE {{ ?item wdt:P31 wd:{class_id} . }}"
+    else:
+        query = (
+            "SELECT (COUNT(*) AS ?count) WHERE { { SELECT ?item WHERE { "
+            f"?item wdt:P31 wd:{class_id} .{_filter_triple(row_filter)} }} LIMIT {MAX_ROWS + 1} }}"
+            " }"
+        )
     rows = await select(query)
     return int(rows[0]["count"]["value"])
 
@@ -427,15 +435,24 @@ async def _neighbours(class_id: str, language: str) -> tuple[list[dict], list[di
 
 
 async def _properties(class_id: str, language: str) -> list[ClassProperty]:
+    # The uses are counted per predicate over a bounded sample first, and only the counted
+    # predicates are joined to their property and label. The optimizer hint keeps that order:
+    # left to itself the query service starts from every property and times out.
     query = (
-        "SELECT ?prop ?label ?kind (COUNT(DISTINCT ?i) AS ?uses) WHERE {\n"
-        f"  {{ SELECT ?i WHERE {{ ?i wdt:P31 wd:{class_id} }} LIMIT {PROPERTY_SAMPLE} }}\n"
-        "  ?i ?direct ?o .\n"
+        "SELECT ?prop ?label ?kind ?uses WHERE {\n"
+        "  {\n"
+        "    SELECT ?direct (COUNT(DISTINCT ?i) AS ?uses) WHERE {\n"
+        '      hint:SubQuery hint:optimizer "None" .\n'
+        f"      {{ SELECT ?i WHERE {{ ?i wdt:P31 wd:{class_id} }} LIMIT {PROPERTY_SAMPLE} }}\n"
+        "      ?i ?direct ?o .\n"
+        "    }\n"
+        "    GROUP BY ?direct\n"
+        "  }\n"
         "  FILTER(?direct != wdt:P31)\n"
         "  ?prop wikibase:directClaim ?direct ; wikibase:propertyType ?kind .\n"
         f"  {_label('prop', 'label', language)}\n"
         "}\n"
-        f"GROUP BY ?prop ?label ?kind ORDER BY DESC(?uses) LIMIT {PROPERTY_SUGGESTIONS}"
+        f"ORDER BY DESC(?uses) LIMIT {PROPERTY_SUGGESTIONS}"
     )
     return [
         ClassProperty(
@@ -576,8 +593,7 @@ async def class_table(
             )
         raise InvalidWikidataSource(
             "wikidata.filter_too_wide",
-            f"The filter leaves {count} instances of {class_id}, more than {MAX_ROWS}",
-            count=count,
+            f"The filter leaves more than {MAX_ROWS} instances of {class_id}",
             limit=MAX_ROWS,
         )
     return class_table_query(class_id, properties, row_filter, language)

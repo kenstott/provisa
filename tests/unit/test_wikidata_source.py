@@ -326,6 +326,13 @@ async def test_browsing_a_class_reads_its_broader_and_narrower_classes_and_count
     # Subclass of: one hop each way, bounded.
     browsing = next(q for q in queries if "?direction" in q)
     assert "wdt:P279" in browsing and "P279*" not in browsing
+    # The uses are counted per predicate before any property is joined, in that order.
+    assert 'hint:SubQuery hint:optimizer "None"' in counting
+    assert counting.index("GROUP BY ?direct") < counting.index("wikibase:directClaim")
+    # The class is counted exactly from one triple pattern: COUNT(DISTINCT) over a class
+    # such as human times out at the endpoint.
+    counted = next(q for q in queries if "?count" in q)
+    assert "COUNT(*)" in counted and "DISTINCT" not in counted and "LIMIT" not in counted
 
 
 @respx.mock
@@ -415,6 +422,8 @@ async def test_a_filter_bounds_a_large_class_and_is_counted_again():
     assert "wdt:P106 wd:Q82955" in table.query
     counted = _queries(route)[-1]
     assert "wdt:P106 wd:Q82955" in counted and "wdt:P31 wd:Q5" in counted
+    # A filtered count is a bounded probe: enough to tell whether the table may be read.
+    assert f"LIMIT {wikidata.MAX_ROWS + 1}" in counted and "DISTINCT" not in counted
 
 
 @respx.mock
@@ -433,6 +442,7 @@ async def test_a_filter_that_still_leaves_too_many_rows_is_refused():
             language="en",
         )
     assert refused.value.code == "wikidata.filter_too_wide"
+    assert refused.value.params == {"limit": wikidata.MAX_ROWS}
 
 
 def test_column_names_from_property_labels_are_distinct_identifiers():

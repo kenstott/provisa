@@ -931,7 +931,7 @@
       "bad_language": "{{language}} 不是語言代碼",
       "bad_column_type": "Wikidata 屬性不提供的欄類型：{{types}}",
       "filter_required": "此類別有 {{count}} 個實例，超過 {{limit}}：請選擇篩選條件",
-      "filter_too_wide": "篩選後仍有 {{count}} 個實例，超過 {{limit}}",
+      "filter_too_wide": "篩選後仍有超過 {{limit}} 個實例",
       "unreachable": "無法連接 Wikidata：{{reason}}"
     }
   }

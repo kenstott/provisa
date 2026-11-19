@@ -931,7 +931,7 @@
       "bad_language": "{{language}} は言語コードではありません",
       "bad_column_type": "Wikidata のプロパティに提供されない列の型: {{types}}",
       "filter_required": "このクラスのインスタンスは {{count}} 件で {{limit}} 件を超えています。フィルターを選択してください",
-      "filter_too_wide": "フィルター後も {{count}} 件のインスタンスが残り、{{limit}} 件を超えています",
+      "filter_too_wide": "フィルター後も {{limit}} 件を超えるインスタンスが残っています",
       "unreachable": "Wikidata に接続できません: {{reason}}"
     }
   }
