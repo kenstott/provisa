@@ -31,6 +31,13 @@ def _project(name: str) -> str:
     return found.group(1)
 
 
-def test_both_core_projects_ask_for_reduced_motion():
-    for name in ("core", "core-provisioning"):
-        assert re.search(r'use:\s*\{[^}]*reducedMotion:\s*"reduce"', _project(name)), name
+def test_the_ui_projects_ask_for_reduced_motion_through_their_context_options():
+    """``reducedMotion`` is a browser-context option, not a fixture of ``use``: given there
+    directly, TypeScript refused it (TS2769) and Playwright ignored it, so every stage still
+    turned. It is given in ``use.contextOptions``, which Playwright passes to each new context."""
+    for name in ("core", "core-provisioning", "warehouse"):
+        body = _project(name)
+        assert re.search(
+            r'use:\s*\{\s*contextOptions:\s*\{\s*reducedMotion:\s*"reduce" as const\s*\}', body
+        ), name
+        assert not re.search(r"use:\s*\{\s*reducedMotion:", body), name

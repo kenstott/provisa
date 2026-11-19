@@ -3668,3 +3668,16 @@ def test_a_column_call_the_validator_refuses_is_by_design_beside_the_overloads_o
         "outcome": "by_design",
         "group": support.SERVER_FUNCTION_GROUP,
     }
+
+
+def test_a_column_call_skipped_by_design_is_listed_by_its_group(monkeypatch):
+    # Run 44229979813: pg_replication_origin_oid(text) passes on literals; its column call is the
+    # validator's refusal of a server function, a decision (decided_error), kept as its group alone.
+    monkeypatch.setattr(support, "decided_error", lambda name, error: support.SERVER_FUNCTION_GROUP)
+    entry = _measured({"ok": False, "error": REFUSED_ON_COLUMN})
+    assert entry["column"] == {"outcome": "by_design", "group": support.SERVER_FUNCTION_GROUP}
+    doc = _doc(entry)
+    assert doc["by_engine"]["duckdb"]["pass_literal_only_overloads"] == ["to_tsvector(text)"]
+    assert report.literal_only_lists(doc)[4] == (
+        f"| `to_tsvector(text)` | skipped by design ({support.SERVER_FUNCTION_GROUP}) |"
+    )
