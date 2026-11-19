@@ -113,6 +113,7 @@ import {
   writeStoredBool,
 } from "./useGlossaryPanel";
 import { assignableDomainIds } from "../../lib/internalDomains";
+import { termLabel } from "./termLabel";
 
 export function GlossaryTab() {
   const { t } = useTranslation();
@@ -502,7 +503,7 @@ export function GlossaryTab() {
   );
   const otherTermOptions = terms
     .filter((term) => term.id !== detail?.id)
-    .map((term) => ({ value: String(term.id), label: term.name }));
+    .map((term) => ({ value: String(term.id), label: termLabel(term, terms) }));
   const displayedTerms = terms.filter(
     (term) =>
       (statusFilter.length === 0 || statusFilter.includes(term.status)) &&
@@ -708,7 +709,7 @@ export function GlossaryTab() {
                     <NavLink
                       key={term.id}
                       active={term.id === selectedId}
-                      label={term.name}
+                      label={termLabel(term, terms)}
                       onClick={termDeleting ? undefined : () => setSelectedId(term.id)}
                       disabled={termDeleting}
                       data-deleting={termDeleting || undefined}

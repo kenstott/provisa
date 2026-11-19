@@ -173,11 +173,12 @@ async def terms_named(conn: "Connection", name: str) -> dict[int, set[str]]:
     return {term_id: scopes.get(term_id, set()) for term_id in ids}
 
 
-async def refuse_name_taken(
+async def name_taken(
     conn: "Connection", name: str, domains: "set[str]", *, other_than: int | None = None
-) -> None:
-    """Refuse ``name`` for a term belonging to ``domains`` when another term of that name already
-    belongs to one of them (REQ-1591, amended 2026-11-18). A term with no domains is reachable
+) -> str | None:
+    """The domain in which another term already holds ``name`` for a term belonging to
+    ``domains`` (REQ-1591, amended 2026-11-18); "" when the clash is with a term of no domains
+    or ``domains`` is empty, None when the name is free. A term with no domains is reachable
     from every domain, so it shares one with any term, and an unscoped name shares one with
     every term of that name."""
     for term_id, held in sorted((await terms_named(conn, name)).items()):
@@ -185,9 +186,19 @@ async def refuse_name_taken(
             continue
         shared = held & domains
         if shared:
-            raise TermNameTaken(name, sorted(shared)[0])
+            return sorted(shared)[0]
         if not held or not domains:
-            raise TermNameTaken(name, "")
+            return ""
+    return None
+
+
+async def refuse_name_taken(
+    conn: "Connection", name: str, domains: "set[str]", *, other_than: int | None = None
+) -> None:
+    """Refuse ``name`` where :func:`name_taken` finds it held, naming the domain."""
+    domain = await name_taken(conn, name, domains, other_than=other_than)
+    if domain is not None:
+        raise TermNameTaken(name, domain)
 
 
 async def resolve_term(
@@ -197,11 +208,11 @@ async def resolve_term(
     2026-11-18); None when no such term exists.
 
     With domains: the term of that name belonging to one of them, else the one with no domains
-    (an unscoped term is reachable from every domain). With None: the only term of that name.
-    Several matches are refused with :class:`TermNameAmbiguous`, naming their domains, never
-    guessed."""
+    (an unscoped term is reachable from every domain). With None or none (an unscoped lookup
+    reaches every domain): the only term of that name. Several matches are refused with
+    :class:`TermNameAmbiguous`, naming their domains, never guessed."""
     found = await terms_named(conn, name)
-    if domains is not None:
+    if domains:
         wanted = set(domains)
         hits = [t for t, held in found.items() if held & wanted] or [
             t for t, held in found.items() if not held
@@ -211,6 +222,19 @@ async def resolve_term(
     if len(hits) > 1:
         raise TermNameAmbiguous(name, sorted({d for t in hits for d in found[t]}))
     return hits[0] if hits else None
+
+
+async def resolve_reference(
+    conn: "Connection", name: str, *, near: "Collection[str]"
+) -> int | None:
+    """The term one object names from within the domains ``near`` -- an edge's target, a
+    successor (REQ-1591, amended 2026-11-18): the term of that name in one of those domains,
+    else the only term of that name, since such a reference may cross domains. Several elsewhere
+    are refused with :class:`TermNameAmbiguous`."""
+    found = await resolve_term(conn, name, domains=near)
+    if found is not None:
+        return found
+    return await resolve_term(conn, name, domains=None)
 
 
 async def set_declared_domains(conn: "Connection", term_id: int, domain_ids: "set[str]") -> None:
@@ -1180,6 +1204,33 @@ async def create_abstract_term(
     return term_id
 
 
+async def find_declared_term(conn: "Connection", name: str, domains: "set[str]") -> int | None:
+    """The term a configuration entry declaring ``name`` in ``domains`` names (REQ-1591): the term
+    of that name belonging to one of them, by the one rule or by the rows a prior load of the
+    entry declared (a rooted term it defines takes its domains from its refs, but keeps the
+    declared rows), else the one with no domains. A same-named term of other domains is another
+    term. Several are refused with :class:`TermNameAmbiguous`."""
+    found = await terms_named(conn, name)
+    if not found:
+        return None
+    declared: dict[int, set[str]] = {}
+    for r in (
+        await conn.execute_core(
+            select(glossary_term_domains.c.term_id, glossary_term_domains.c.domain_id).where(
+                glossary_term_domains.c.term_id.in_(sorted(found))
+            )
+        )
+    ).fetchall():
+        declared.setdefault(r.term_id, set()).add(r.domain_id)
+    scope = {t: held | declared.get(t, set()) for t, held in found.items()}
+    hits = [t for t, held in scope.items() if held & domains] or [
+        t for t, held in scope.items() if not held
+    ]
+    if len(hits) > 1:
+        raise TermNameAmbiguous(name, sorted({d for t in hits for d in scope[t]}))
+    return hits[0] if hits else None
+
+
 async def upsert_declared_term(
     conn: "Connection",
     name: str,
@@ -1200,9 +1251,7 @@ async def upsert_declared_term(
     model_change.name("upsert", model_change.uri(model_uri.term_uri, name))  # REQ-1524
     if not name:
         raise ValueError("term name is required")
-    # REQ-1591: the term of this name in one of the declared domains; a name is unique only
-    # within a domain, so a same-named term elsewhere is another term.
-    held = await resolve_term(conn, name, domains=domains)
+    held = await find_declared_term(conn, name, domains)  # REQ-1591
     if held is not None:
         await _refuse_clearing_tagged(conn, held, definition)  # REQ-2145
         await conn.execute_core(

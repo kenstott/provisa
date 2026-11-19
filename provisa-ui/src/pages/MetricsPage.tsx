@@ -277,7 +277,9 @@ export function MetricsPage() {
   useEffect(() => {
     let live = true;
     listGlossaryTerms("", false).then(
-      (terms) => live && setTermNames(terms.map((term) => term.name)),
+      // REQ-1591: a metric names its term by name; same-named terms of other domains are one
+      // option here, and the server refuses a name several terms share.
+      (terms) => live && setTermNames([...new Set(terms.map((term) => term.name))]),
       (e: Error) => live && setMsg(e.message),
     );
     return () => {
