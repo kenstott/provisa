@@ -3487,6 +3487,12 @@ async def _rebuild_schemas_impl(
     _build.phase(rebuild_trace.EFFECTIVE_NAMES)
     async with state.model_db.acquire() as _names_conn:
         await store_effective_names(cast("Connection", _names_conn))
+        # REQ-2219: each role's defaults and ceiling are rows of the entitlement store, written
+        # from the model at each build; one that changed neither appends nothing. Before the stamp
+        # read for the same reason: each row appended advances it.
+        from provisa.entitlements.store import write_role_rows
+
+        await write_role_rows(cast("Connection", _names_conn))
 
     _build.phase(rebuild_trace.STAMP_READ)
     _stamped_runtime = state._active_runtime()

@@ -13,8 +13,9 @@
 Append-only: setting a list appends a row whose ``valid_from`` ends the row before it for the
 same person, role, kind and capability, and ``removed`` ends one with nothing after it. Rows carry
 no valid-to: :mod:`provisa.entitlements.history` derives it, and every read here goes through it.
-What a person holds now is each key's open period (:func:`load_held`). Publishing the store (the ops
-tables) and the role's own rows are written elsewhere. The identity provider's rows mirror what a
+What a person holds now is each key's open period (:func:`load_held`). A role's own rows, its
+defaults and its ceiling, are written from the model at each model build (:func:`write_role_rows`).
+Publishing the store (the ops tables) is elsewhere. The identity provider's rows mirror what a
 sign-in's token carried (:func:`mirror_idp`): enforcement reads the token, and a write for someone
 else can only be refused against the mirror (:func:`load_idp`).
 """
@@ -28,14 +29,15 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import insert
+from sqlalchemy import insert, select
 
 from provisa.compiler.naming import domain_to_sql_name
-from provisa.core.schema_org import entitlement_expiries, entitlements
+from provisa.core.schema_org import entitlement_expiries, entitlements, roles
 from provisa.entitlements import history
 from provisa.entitlements.lists import (
     IDP,
     PROVISA,
+    ROLE,
     ExpiryRule,
     HeldEntitlements,
     HeldList,
@@ -50,6 +52,16 @@ if TYPE_CHECKING:
 #: The capability a product's creator holds on it (REQ-2219).
 DATA_PRODUCT_RW = "data_product_rw"
 DATA_PRODUCTS_KIND = "data_products"
+
+#: A role's ceiling is the domains it is offered to (``roles.domain_access``): one role row of kind
+#: ``domains`` under this capability, which bounds every capability of the role. Its defaults are
+#: role rows with no capability, one per kind, as a person's lists are (REQ-2219).
+CEILING = "*"
+CEILING_KIND = "domains"
+
+#: Serializes the role rows' writers: every worker builds the model, and two appending the same
+#: change would record it twice.
+_ROLE_ROWS_LOCK = 2219_000_001
 
 
 async def set_list(
@@ -538,3 +550,85 @@ async def load_held(conn: "Connection") -> dict[str, HeldEntitlements]:
         for principal, h in held.items()
         if h.lists or h.expiries
     }
+
+
+@dataclass(frozen=True)
+class RoleRows:
+    """A role's own rows as the store holds them now: its default list per kind, and its ceiling,
+    the domains it is offered to."""
+
+    defaults: dict[str, tuple[str, ...]]
+    ceiling: tuple[str, ...]
+
+
+_RoleKey = tuple[str, str, str | None]
+
+
+async def _model_role_rows(conn: "Connection") -> dict[_RoleKey, tuple[str, ...]]:
+    """What the model states of each role, by (role, kind, capability): its default lists as
+    stored, and its ceiling. A role with no stored defaults has none: absent kinds are the whole
+    role."""
+    rows = await conn.execute_core(
+        select(roles.c.id, roles.c.domain_access, roles.c.default_entitlements)
+    )
+    out: dict[_RoleKey, tuple[str, ...]] = {}
+    for role_id, domain_access, defaults in rows.fetchall():
+        for kind, identifiers in (defaults or {}).items():
+            out[(role_id, kind, None)] = tuple(identifiers)
+        out[(role_id, CEILING_KIND, CEILING)] = tuple(domain_access)
+    return out
+
+
+async def _held_role_rows(conn: "Connection") -> dict[_RoleKey, tuple[str, ...]]:
+    periods = history.current(await history.entitlement_periods(conn, source=ROLE))
+    return {
+        (p.row.role_id, p.row.kind, p.row.capability): tuple(p.row.identifiers) for p in periods
+    }
+
+
+async def write_role_rows(conn: "Connection") -> None:
+    """Write each role's defaults and ceiling from the model, as a model build does (REQ-2219):
+    a row for each that changed, and a ``removed`` row for each the model no longer states (a
+    removed role, or a kind its defaults dropped). Nothing changed appends nothing. Never edited
+    in the store: changing them is a change to the role."""
+    async with conn.transaction():
+        await conn.advisory_xact_lock(_ROLE_ROWS_LOCK)
+        wanted = await _model_role_rows(conn)
+        held = await _held_role_rows(conn)
+        for (role_id, kind, capability), identifiers in wanted.items():
+            if held.get((role_id, kind, capability)) == identifiers:
+                continue
+            await conn.execute_core(
+                insert(entitlements).values(
+                    source=ROLE,
+                    principal=None,
+                    role_id=role_id,
+                    kind=kind,
+                    capability=capability,
+                    identifiers=list(identifiers),
+                )
+            )
+        for role_id, kind, capability in held.keys() - wanted.keys():
+            await conn.execute_core(
+                insert(entitlements).values(
+                    source=ROLE,
+                    principal=None,
+                    role_id=role_id,
+                    kind=kind,
+                    capability=capability,
+                    identifiers=[],
+                    removed=True,
+                )
+            )
+
+
+async def load_role_rows(conn: "Connection") -> dict[str, RoleRows]:
+    """role id -> its defaults and ceiling as the store holds them now."""
+    out: dict[str, RoleRows] = {}
+    for (role_id, kind, capability), identifiers in (await _held_role_rows(conn)).items():
+        slot = out.setdefault(role_id, RoleRows({}, ()))
+        if capability == CEILING:
+            out[role_id] = RoleRows(slot.defaults, identifiers)
+        else:
+            slot.defaults[kind] = identifiers
+    return out
