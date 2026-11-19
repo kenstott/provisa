@@ -1510,6 +1510,10 @@ setup_native_venv() {
 
   if _online; then
     info "Installing Provisa from PyPI..."
+    # The embedded extra carries the vector extra (the default config's embedding model). PyPI's
+    # Linux torch is the CUDA build, so torch comes first from PyTorch's CPU-only index; the extra's
+    # torch requirement is then already met.
+    "$pip" install --quiet --index-url https://download.pytorch.org/whl/cpu torch
     "$pip" install --quiet "provisa[${extras}]${pin}" uvicorn mcp-proxy
   elif [ -n "$wheels" ]; then
     info "Installing Provisa from bundled wheels (offline)..."
@@ -1521,6 +1525,11 @@ setup_native_venv() {
   # REQ-2194: provisa's encoders are compiled into it; an install without them is a broken install.
   "${venv}/bin/python3" -c "import provisa._encoders.pgwire" || {
     err "Provisa's compiled encoders (provisa._encoders) did not install — reinstall Provisa."
+    exit 1
+  }
+  # The default config's embedding model runs on sentence-transformers over CPU-only torch.
+  "${venv}/bin/python3" -c "import sentence_transformers, torch; assert torch.version.cuda is None" || {
+    err "The embedding library (sentence-transformers on CPU-only torch) did not install — reinstall Provisa."
     exit 1
   }
 

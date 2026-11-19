@@ -36,10 +36,9 @@ export const RUN_POLL_MS = 1000;
 export const RUNS_READ = 20;
 
 /** The suggestions of a run waiting for a decision: its undecided proposals that are its
- *  suggestions (none of its rules left them out, or one waits from an earlier run). */
+ *  suggestions (none of its rules left them out). */
 export function waitingCount(proposals: readonly RunProposal[]): number {
-  return proposals.filter((p) => p.decidable && (p.reason === null || p.reason === "pending"))
-    .length;
+  return proposals.filter((p) => p.decidable && p.reason === null).length;
 }
 
 export interface DiscoveryRunState {

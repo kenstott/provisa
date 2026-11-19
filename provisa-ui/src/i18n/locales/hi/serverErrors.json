@@ -17,7 +17,8 @@
       "webhook_exists": "वेबहुक '{{name}}' पहले से मौजूद है"
     },
     "ai_models": {
-      "vector_model_fields_required": "प्रत्येक vector_models प्रविष्टि के लिए id, provider और dimensions आवश्यक हैं"
+      "vector_model_fields_required": "प्रत्येक vector_models प्रविष्टि के लिए id, provider और dimensions आवश्यक हैं",
+      "embedding_library_missing": "एम्बेडिंग मॉडल {{model}} {{provider}} प्रदाता का उपयोग करता है, जिसके लिए {{extra}} एक्स्ट्रा आवश्यक है (मॉड्यूल {{module}} इंस्टॉल नहीं है): pip install 'provisa[{{extra}}]'."
     },
     "ai": {
       "endpoint_address_from_server": "AI एंडपॉइंट {{vendor}} अपना पता सर्वर के एनवायरनमेंट से लेता है, जिसका उपयोग इस सर्वर का कोई संगठन नहीं करता। एडमिन, AI मॉडल में इसे अपना पता दें।",

@@ -205,9 +205,9 @@ Addresses and local model servers follow the same rule. Each refusal below is a 
 | Ollama or LM Studio as the vendor | `ai.local_server_from_environment` | Declare an AI endpoint at your own model server's address |
 | A vendor reached with the server's own cloud credentials, such as Vertex AI or Bedrock | `ai.vendor_uses_server_credentials` | Choose a vendor that takes a key, or an AI endpoint |
 
-One endpoint belongs to the operator. The endpoint the operator assigns to the sandbox tier takes its key from the deployment; see [AI in the sandbox](hosted-sandbox.md#ai-in-the-sandbox). Any other endpoint in the deployment's configuration whose key comes from an environment variable serves no organization on this server.
+The sandbox tier's endpoint is the one exception. The operator assigns it, and its key is a secret in the deployment organization's vault, named by the `sandbox.ai_api_key` setting; see [AI in the sandbox](hosted-sandbox.md#ai-in-the-sandbox). Any other endpoint whose key is an environment variable is refused with `ai.endpoint_key_from_server`. That includes an endpoint declared in the deployment's configuration.
 
-Provisa builds each vendor's client with every value given, so the vendor's SDK reads none of its settings from the server's environment. A local Hugging Face model is downloaded without the server's `HF_TOKEN`.
+Two vendor SDKs read settings from the environment when they are not given them: Anthropic's and OpenAI's. Provisa builds every client on those SDKs with each value given. That covers Anthropic, OpenAI, and the OpenAI-compatible vendors DeepSeek, Nebius, SambaNova and Inception. Each client gets the key, the vendor's own address and, for an OpenAI client, no organization or project header. Their SDKs read none of these from the server's environment. A local Hugging Face model is downloaded without the server's `HF_TOKEN`.
 
 **For the operator.** Leave `ANTHROPIC_CUSTOM_HEADERS` and `OPENAI_CUSTOM_HEADERS` unset on a server of many organizations. The vendor's SDK sends those headers whatever it is given, so while either is set every call through that SDK is refused with `ai.server_environment_sets`.
 
@@ -237,7 +237,13 @@ Put the variable in the deployment's `.env`, and every Anthropic call uses it un
 ANTHROPIC_API_KEY=sk-ant-...
 ```
 
-With neither a stored key nor the variable, the call gets the same `ai.key_required` refusal. Ollama, LM Studio and an AI endpoint's `api_key_env` variable are read from the environment as configured.
+With neither a stored key nor the variable, the call gets the same `ai.key_required` refusal.
+
+Ollama and LM Studio take no key. Provisa reaches them at the address in `OLLAMA_API_URL` or `LMSTUDIO_API_URL`, or on the server's own localhost.
+
+An AI endpoint's `api_key_env` is read as written. A bare name or `${env:NAME}` comes from the server's environment; `${secret:NAME}` comes from your organization's vault.
+
+In either mode, an endpoint or embedding model whose key resolves to nothing is refused with a `409`: `ai.endpoint_key_unset` for an endpoint, `ai.vector_model_key_unset` for an embedding model. The message names the field that is not set.
 
 ---
 

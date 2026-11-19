@@ -853,12 +853,15 @@ def build_mcp_server(state: Any):
         return Image(data=tools.render_graph(elements, layout, theme, width, height), format="png")
 
     @_tool
-    async def generate_explore_queries(question: str, role: str | None = None) -> dict:
+    async def generate_explore_queries(
+        question: str, role: str | None = None, domains: list[str] | None = None
+    ) -> dict:
         """Generate ready-to-run sql, graphql, cypher, grpc, jsonapi and openapi queries from one
         natural-language question. Use for aggregation, grouping, a business-term filter, or a
-        question spanning several tables."""
+        question spanning several tables. domains: work only within these domain ids; omit for
+        every domain the role reaches."""
         # The pipeline the NL Explore page runs.
-        return await tools.generate_explore_queries(state, _role(role), question)
+        return await tools.generate_explore_queries(state, _role(role), question, domains)
 
     @_tool
     async def list_native_tables(

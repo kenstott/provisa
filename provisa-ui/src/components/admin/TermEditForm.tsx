@@ -61,6 +61,7 @@ import { TermRoleBadge, TermStatusBadge } from "./TermRoleBadge";
 import { changes, draftOf, type Change, type TermDraft, type TermTags } from "./termDraft";
 import { useAssignTag, useUnassignTag } from "../../hooks/useTagQueries";
 import { refusalError } from "../../i18n/serverMessage";
+import { useViewDomains } from "../../lib/viewDomains";
 
 type Option = { value: string; label: string };
 
@@ -96,6 +97,7 @@ export function TermEditForm({
   onTermCreated: () => void;
 }) {
   const { t } = useTranslation();
+  const viewDomains = useViewDomains();
   const { actingRoles } = useAuth();
   const { tables } = useTables({ inPage: true });
   const { relationships } = useRelationships();
@@ -264,7 +266,7 @@ export function TermEditForm({
   const generate = async () => {
     setGenerating(true);
     try {
-      const text = await generateGlossaryDefinition(term.id);
+      const text = await generateGlossaryDefinition(term.id, viewDomains);
       if (text) set({ definition: text });
     } catch (e) {
       setRefused({ field: "fields", message: e instanceof Error ? e.message : String(e) });

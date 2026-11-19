@@ -20,6 +20,7 @@ SQL     → Stage 2 governance + the engine
 
 from __future__ import annotations
 
+import json
 import logging
 import re
 from typing import TYPE_CHECKING, Any, Literal
@@ -297,6 +298,16 @@ async def _execute_grpc(query: str, role: str, app_state: Any, deliver: "Deliver
         top, nested = split_agg_columns(cq.columns, row)
         return {**top, **nested}
 
+    m = re.match(r"^Query(\w+)\(read_mask=\[(.*)\]\)$", query)
+    if m is not None:
+        return await _execute_grpc_masked_read(
+            m.group(1),
+            [p.strip() for p in m.group(2).split(",") if p.strip()],
+            role,
+            app_state,
+            deliver,
+        )
+
     # Query{Type}: the row read the servicer runs, lowered to GraphQL and compiled as it is.
     type_name = query[len("Query") :] if query.startswith("Query") else query
     lowered = grpc_table_to_graphql(ctx, app_state.schemas.get(role), type_name, limit=20)
@@ -306,6 +317,33 @@ async def _execute_grpc(query: str, role: str, app_state: Any, deliver: "Deliver
     _cq, result = await _run_single_compiled_graphql(graphql_text, role, app_state, deliver)
     columns = list(result.column_names)
     return {"columns": columns, "rows": [dict(zip(columns, row)) for row in result.rows]}
+
+
+async def _execute_grpc_masked_read(
+    type_name: str, paths: list[str], role: str, app_state: Any, deliver: "Delivery | None"
+) -> dict:
+    """``Query{Type}`` with a ``read_mask`` (REQ-803, REQ-1929): the servicer's own lowering
+    (``resolve_read_mask`` → ``grpc_table_to_graphql``), compiled and run as every row read is,
+    and each row keyed by proto field with its relations nested, as the servicer and the HTTP
+    proxy answer it (a to-one an object, a to-many a list)."""
+    import json
+
+    from provisa.executor.json_encoders import graphql_field, result_batches
+    from provisa.grpc.query_ir import grpc_table_to_graphql, resolve_read_mask
+
+    ctx = _get_ctx(app_state, role)
+    read_mask = resolve_read_mask(ctx, type_name, paths)
+    lowered = grpc_table_to_graphql(
+        ctx, app_state.schemas.get(role), type_name, limit=20, read_mask=read_mask
+    )
+    if read_mask is None or lowered is None:
+        raise RuntimeError(f"No table matches gRPC type: {type_name}")
+    graphql_text, _no_variables = lowered  # no filter or parameter is passed
+    cq, result = await _run_single_compiled_graphql(graphql_text, role, app_state, deliver)
+    answer = graphql_field(result_batches(result), cq.columns)
+    rows = [read_mask.restrict_row(row) for row in json.loads(answer.body)]
+    columns = [*read_mask.columns, *(relation.field for relation in read_mask.relations)]
+    return {"columns": columns, "rows": rows}
 
 
 def _grpc_aggregate_graphql_text(
@@ -391,10 +429,9 @@ async def _execute_jsonapi(
             _parse_aggregate_funcs(m.group(3)),
             deliver=deliver,
         )
-    m = re.match(r"^/data/jsonapi/([^/]+)/([^/?]+)", query)
-    if m is None:
+    if re.match(r"^/data/jsonapi/[^/]+/[^/?]+(\?.*)?$", query) is None:
         raise RuntimeError(f"Malformed jsonapi query: {query}")
-    return await _execute_domain_table(m.group(1), m.group(2), role, app_state, deliver)
+    return await _endpoint_read(query, _JSONAPI_MEDIA_TYPE, role, app_state, deliver)
 
 
 async def _execute_openapi(
@@ -426,28 +463,68 @@ async def _execute_openapi(
             _parse_aggregate_funcs(m.group(3)),
             deliver=deliver,
         )
-    m = re.match(r"^GET /data/rest/([^/]+)/([^/?]+)", query)
+    m = re.match(r"^GET (/data/rest/[^/]+/[^/?]+(\?.*)?)$", query)
     if m is None:
         raise RuntimeError(f"Malformed openapi query: {query}")
-    return await _execute_domain_table(m.group(1), m.group(2), role, app_state, deliver)
+    return await _endpoint_read(m.group(1), "application/json", role, app_state, deliver)
 
 
-async def _execute_domain_table(
-    domain_id: str, table_name: str, role: str, app_state: Any, deliver: "Delivery | None"
-) -> dict:
-    from provisa.compiler.sql_gen import _q
-    from provisa.compiler.sql_rewrite import semantic_ref
+_JSONAPI_MEDIA_TYPE = "application/vnd.api+json"
 
-    ctx = _get_ctx(app_state, role)
-    meta = next(
-        (m for m in ctx.tables.values() if m.domain_id == domain_id and m.table_name == table_name),
-        None,
-    )
-    if meta is None:
-        raise RuntimeError(f"No table matches {domain_id}/{table_name}")
-    cols = ", ".join(_q(c) for c, _t in ctx.aggregate_columns.get(meta.table_id, [])) or "*"
-    sql = f"SELECT {cols} FROM {semantic_ref(meta)} LIMIT 20"
-    return await _execute_sql(sql, role, app_state, deliver)
+
+async def _endpoint_read(
+    path: str, accept: str, role: str, app_state: Any, deliver: "Delivery | None"
+) -> Any:
+    """A REST or JSON:API row read run through its real route (REQ-1929): the request the panel
+    shows is the one the endpoint accepts, and the panel's answer is the endpoint's body, its
+    relationships nested (REST ``?fields=`` dot-paths) or included (JSON:API ``?include=``).
+
+    The routes are the app's own (``create_rest_router`` / ``create_jsonapi_router``), served
+    in-process as ``role``, the role the auth layer establishes for a request. The NL request's
+    forced delivery (REQ-1194) rides the ``X-Provisa-Redirect*`` headers the routes read it
+    from. A refusal the route answers (4xx/5xx) is this read's error, in the route's words."""
+    from collections.abc import MutableMapping
+
+    import httpx
+    from fastapi import FastAPI
+
+    from provisa.api.jsonapi.generator import create_jsonapi_router
+    from provisa.api.rest.generator import create_rest_router
+
+    app = FastAPI()
+    app.include_router(create_rest_router(app_state))
+    app.include_router(create_jsonapi_router(app_state))
+
+    async def _as_role(scope: MutableMapping[str, Any], receive: Any, send: Any) -> None:
+        if scope["type"] == "http":
+            scope = {**scope, "state": {**scope.get("state", {}), "role": role}}
+        await app(scope, receive, send)
+
+    headers = {"accept": accept}
+    if deliver is not None:
+        headers["x-provisa-redirect"] = "true"
+        headers["x-provisa-redirect-format"] = deliver.output_format
+    transport = httpx.ASGITransport(app=_as_role)
+    async with httpx.AsyncClient(transport=transport, base_url="http://nl") as client:
+        response = await client.get(path, headers=headers)
+    body = response.json()
+    if response.status_code >= 400:
+        raise RuntimeError(_endpoint_refusal(body))
+    meta = body.get("meta") if isinstance(body, dict) else None
+    if isinstance(meta, dict) and meta.get("redirect") is not None:
+        raise _Delivered(meta["redirect"])
+    return body
+
+
+def _endpoint_refusal(body: Any) -> str:
+    """The reason a route's error body gives: JSON:API's first error's detail (or title), or the
+    ``detail`` of FastAPI's HTTP error body."""
+    if isinstance(body, dict) and body.get("errors"):
+        error = body["errors"][0]
+        return str(error.get("detail") or error["title"])
+    if isinstance(body, dict) and "detail" in body:
+        return str(body["detail"])
+    return json.dumps(body, default=str)
 
 
 def _physical_include_path(ctx: Any, meta: Any, entry: str) -> str:

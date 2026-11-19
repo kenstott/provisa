@@ -54,9 +54,6 @@ _tracer = _get_tracer(__name__)
 
 router = APIRouter(prefix="/admin/discover")
 
-#: The confidence a semantic suggestion needs to be kept.
-MIN_CONFIDENCE = 0.7
-
 #: The kinds of discovery a run can be asked for: foreign keys read from the sources' own
 #: constraints, and semantics inferred by the model assigned to relationship inference.
 DiscoveryKind = Literal["foreign_keys", "semantics"]
@@ -165,20 +162,31 @@ class RunScope(BaseModel):  # REQ-413
     target_tables: list[int] | None = None
     vendor: str | None = None
     model: str | None = None
-    #: Key value overlap's settings, given exactly when it is chosen: the measure cutoff, and the
-    #: sample size (the most distinct values read of each column).
+    #: The score from which the run's proposals start ticked, the person's Tick from as set in the
+    #: dialog (REQ-413, amended 2026-11-18): the model is told it, a proposal at it or above is
+    #: kept unmeasured, and the key value overlap band runs up to it.
+    threshold: float = Field(ge=0.0, le=1.0)
+    #: The distinct sample values read and shown to the model of each compared column.
+    samples_per_column: int = Field(ge=1)
+    #: Key value overlap's settings, given exactly when it is chosen: the measure cutoff, the
+    #: sample size (the most non-null values read of each column), the share of a source's values
+    #: in a key target at which the pair is a key relationship, and the most a pair scores when
+    #: neither side is a key.
     measure_cutoff: float | None = Field(default=None, ge=0.0, le=1.0)
     sample_size: int | None = Field(default=None, ge=1)
+    contained_at: float | None = Field(default=None, ge=0.0, le=1.0)
+    shared_ceiling: float | None = Field(default=None, ge=0.0, le=1.0)
 
     def key_values(self) -> KeyValueOverlap | None:
         """Key value overlap as asked: refused without semantics, whose pairs it measures, and
-        refused unless its two settings are given exactly when it is chosen."""
+        refused unless its settings are given exactly when it is chosen."""
+        given = (self.measure_cutoff, self.sample_size, self.contained_at, self.shared_ceiling)
         if KEY_VALUES not in self.kinds:
-            if self.measure_cutoff is not None or self.sample_size is not None:
+            if any(v is not None for v in given):
                 raise ApiError(
                     400,
                     "discovery.key_values_settings_unchosen",
-                    "A measure cutoff and sample size are given only with Key value overlap",
+                    "Key value overlap's settings are given only with Key value overlap",
                 )
             return None
         if "semantics" not in self.kinds:
@@ -187,13 +195,21 @@ class RunScope(BaseModel):  # REQ-413
                 "discovery.key_values_needs_semantics",
                 "Key value overlap measures the pairs Semantic proposes: choose Semantic with it",
             )
-        if self.measure_cutoff is None or self.sample_size is None:
+        if (
+            self.measure_cutoff is None
+            or self.sample_size is None
+            or self.contained_at is None
+            or self.shared_ceiling is None
+        ):
             raise ApiError(
                 400,
                 "discovery.key_values_settings_missing",
-                "Key value overlap needs its measure cutoff and its sample size",
+                "Key value overlap needs its measure cutoff, sample size, key containment share "
+                "and shared value ceiling",
             )
-        return KeyValueOverlap(self.measure_cutoff, self.sample_size)
+        return KeyValueOverlap(
+            self.measure_cutoff, self.sample_size, self.contained_at, self.shared_ceiling
+        )
 
     def spec(self, role: str) -> RunSpec:
         """The run asked for, by the person acting as ``role``: its pairs are measured as it."""
@@ -213,6 +229,8 @@ class RunScope(BaseModel):  # REQ-413
             model=None if self.vendor is None or self.model is None else (self.vendor, self.model),
             role=role,
             key_values=self.key_values(),
+            threshold=self.threshold,
+            samples_per_column=self.samples_per_column,
         )
 
 
@@ -358,7 +376,7 @@ async def _require_tables(spec: RunSpec) -> None:  # REQ-413
 
 @router.post("/runs/count")
 async def count_run(request: Request, body: RunScope):  # REQ-413
-    """Before Run: at most how many requests the run would make, by type group, for the chosen
+    """Before Run: at most how many calls the run would make, and the table pairs they list, for the chosen
     kinds, model and sets. Computed from the model store alone: no table is read, no source is
     asked and no model is called, so it can be asked again on every change of the scope. It is
     an upper bound (``requests_are``): the run reads the tables and may make fewer."""
@@ -469,7 +487,7 @@ async def start_run(request: Request, body: RunScope):  # REQ-413
             model=None if model is None else model.label,
             started_by=_caller(request),
         )
-        await _remember_key_values(conn, request, body)
+        await _remember(conn, request, body)
         started = await runs_repo.run(conn, run_id)
     assert started is not None
     _launch(run_id, spec, model)
@@ -518,8 +536,17 @@ async def trigger_discovery(
     assert pool is not None
     with _stage(_tracer, "admin.discovery") as span:
         async with pool.acquire() as _conn:
-            domains = await _source_domains(cast("Connection", _conn), body)
-        scope = RunScope(kinds=list[RunKind](body.kinds), source_domains=domains)
+            conn = cast("Connection", _conn)
+            domains = await _source_domains(conn, body)
+            # REQ-413 (amended 2026-11-18): a run started here, with no dialog, takes the
+            # settings the person last set in it.
+            kept = await threshold_repo.read_settings(conn, _person(request))
+        scope = RunScope(
+            kinds=list[RunKind](body.kinds),
+            source_domains=domains,
+            threshold=kept.threshold,
+            samples_per_column=kept.samples_per_column,
+        )
         spec = scope.spec(_acting(request))
         model = await _run_model(spec)
         async with pool.acquire() as _conn:
@@ -621,13 +648,18 @@ async def list_proposals(request: Request, run_id: int):  # REQ-413
     assert pool is not None
     async with pool.acquire() as _conn:
         conn = cast("Connection", _conn)
-        await _held(conn, run_id)
+        held = await _held(conn, run_id)
+        kept = await threshold_repo.read_settings(conn, _person(request))
         return {
             "proposals": await proposals_repo.listed(conn, state, run_id),
-            "threshold": await threshold_repo.read(conn, _person(request)),
-            # The score a run keeps a suggestion at: a proposal's reason below_threshold is
-            # against it, whatever the person's threshold.
-            "kept_at": MIN_CONFIDENCE,
+            "threshold": kept.threshold,
+            # The person's filter on the Score column, applied when the results open
+            # (REQ-413, amended 2026-11-18); None when they cleared it.
+            "score_filter": kept.score_filter,
+            # The score the run keeps a suggestion at: the threshold it was started with
+            # (REQ-413, amended 2026-11-18); a proposal's reason below_threshold is against it,
+            # whatever the person's threshold is now.
+            "kept_at": held.scope["threshold"],
         }
 
 
@@ -645,32 +677,41 @@ class ThresholdBody(BaseModel):  # REQ-413
     threshold: float = Field(ge=0.0, le=1.0)
 
 
-async def _remember_key_values(conn: "Connection", request: Request, body: RunScope) -> None:
-    """Keep Key value overlap as the run's person set it (REQ-413, amended 2026-11-16): chosen
-    or not, and, chosen, its cutoff and sample size. It is offered only with semantics, so a run
-    without semantics leaves it as it was; unchosen, the cutoff and sample size last set stay."""
-    if "semantics" not in body.kinds:
-        return
+async def _remember(conn: "Connection", request: Request, body: RunScope) -> None:
+    """Keep the settings the run's person set in the dialog (REQ-413, amended 2026-11-18) for
+    their next runs: their threshold always; with semantics, the samples per column and Key value
+    overlap, chosen or not, and, chosen, its settings. A run without semantics, where those are not
+    offered, leaves them as they were; Key value overlap unchosen keeps its settings last set."""
     person = _person(request)
-    asked = body.key_values()
-    if asked is None:
-        last = await threshold_repo.read_key_values(conn, person)
-        kept = replace(last, chosen=False)
-    else:
-        kept = threshold_repo.KeyValueSettings(True, asked.cutoff, asked.sample_size)
-    await threshold_repo.keep_key_values(conn, person, kept)
+    last = await threshold_repo.read_settings(conn, person)
+    samples, kv = last.samples_per_column, last.key_values
+    if "semantics" in body.kinds:
+        samples = body.samples_per_column
+        asked = body.key_values()
+        kv = (
+            replace(kv, chosen=False)
+            if asked is None
+            else threshold_repo.KeyValueSettings(
+                True, asked.cutoff, asked.sample_size, asked.contained_at, asked.shared_ceiling
+            )
+        )
+    await threshold_repo.keep_settings(
+        conn,
+        person,
+        replace(last, threshold=body.threshold, samples_per_column=samples, key_values=kv),
+    )
 
 
-@router.get("/key-values")
-async def get_key_values(request: Request):  # REQ-413
-    """The signed-in person's Key value overlap, remembered as the threshold is, and the
-    defaults Reset to defaults restores."""
+@router.get("/settings")
+async def get_settings(request: Request):  # REQ-413
+    """The signed-in person's settings: the run settings, which prefill the discover dialog, and
+    the Score filter the results open with; and the defaults Reset to defaults restores."""
     require_capability_request(request, "create_relationship")
     pool = state.model_db
     assert pool is not None
     async with pool.acquire() as _conn:
-        kept = await threshold_repo.read_key_values(cast("Connection", _conn), _person(request))
-    return {**kept.as_dict(), "defaults": threshold_repo.KEY_VALUES_DEFAULT.as_dict()}
+        kept = await threshold_repo.read_settings(cast("Connection", _conn), _person(request))
+    return {**kept.as_dict(), "defaults": threshold_repo.DEFAULTS.as_dict()}
 
 
 @router.get("/threshold")
@@ -680,7 +721,8 @@ async def get_threshold(request: Request):  # REQ-413
     pool = state.model_db
     assert pool is not None
     async with pool.acquire() as _conn:
-        return {"threshold": await threshold_repo.read(cast("Connection", _conn), _person(request))}
+        kept = await threshold_repo.read_settings(cast("Connection", _conn), _person(request))
+    return {"threshold": kept.threshold}
 
 
 @router.put("/threshold")
@@ -690,10 +732,44 @@ async def put_threshold(request: Request, body: ThresholdBody):  # REQ-413
     pool = state.model_db
     assert pool is not None
     async with pool.acquire() as _conn:
-        kept = await threshold_repo.keep(
-            cast("Connection", _conn), _person(request), body.threshold
+        conn = cast("Connection", _conn)
+        person = _person(request)
+        last = await threshold_repo.read_settings(conn, person)
+        kept = await threshold_repo.keep_settings(
+            conn, person, replace(last, threshold=body.threshold)
         )
-    return {"threshold": kept}
+    return {"threshold": kept.threshold}
+
+
+class ScoreFilter(BaseModel):  # REQ-413
+    """A filter on a run's Score column, as the list's column filter holds it: an operator and
+    its operands, in percent."""
+
+    op: Literal["eq", "ne", "lt", "le", "gt", "ge", "between", "isEmpty", "notEmpty", "in"]
+    a: str | None = None
+    b: str | None = None
+    values: list[str] | None = None
+
+
+class ScoreFilterBody(BaseModel):  # REQ-413
+    """The Score filter a person set in a run's results; None: they cleared it."""
+
+    filter: ScoreFilter | None
+
+
+@router.put("/score-filter")
+async def put_score_filter(request: Request, body: ScoreFilterBody):  # REQ-413
+    """Keep the Score filter set in a run's results as the signed-in person's own."""
+    require_capability_request(request, "create_relationship")
+    pool = state.model_db
+    assert pool is not None
+    spec = None if body.filter is None else body.filter.model_dump(exclude_none=True)
+    async with pool.acquire() as _conn:
+        conn = cast("Connection", _conn)
+        person = _person(request)
+        last = await threshold_repo.read_settings(conn, person)
+        kept = await threshold_repo.keep_settings(conn, person, replace(last, score_filter=spec))
+    return {"filter": kept.score_filter}
 
 
 class ApplyRequest(BaseModel):

@@ -2,7 +2,7 @@
   "proposalsTable": {
     "intro": "Eine angehakte Zeile wird beim Anwenden akzeptiert. Zeilen, deren Bewertung mindestens die Schwelle erreicht, sind von Anfang an angehakt. Eine Zeile ohne Haken bleibt unentschieden.",
     "colScore": "Bewertung",
-    "colModel": "Modell",
+    "colConfidence": "Konfidenz",
     "colJev": "Jev",
     "colKind": "Art",
     "colMeasure": "Gemessen",
@@ -29,15 +29,9 @@
       "not_comparable": "Die beiden Spalten haben unterschiedliche Klassen und werden daher nicht verglichen",
       "below_threshold": "Unter den {{threshold}} % bewertet, ab denen ein Vorschlag behalten wird.",
       "same_column": "Von einer Spalte zu sich selbst",
-      "primary_key_to_primary_key": "Primärschlüssel zu Primärschlüssel",
-      "both_repeating": "Werte wiederholen sich auf beiden Seiten, daher ist keine die Eins-Seite",
       "existing": "Bereits registriert",
-      "pending": "Wartet bereits unter den Vorschlägen",
       "rejected": "Zuvor abgelehnt",
-      "matches_foreign_key": "Entspricht einem in diesem Lauf gefundenen Fremdschlüssel",
-      "out_of_scope": "Außerhalb der gewählten Quell- und Zieltabellen",
-      "weaker": "Ein stärkerer Vorschlag für dieselben zwei Spalten wurde behalten",
-      "many_to_many": "Keine der beiden Spalten ist ein Schlüssel"
+      "out_of_scope": "Außerhalb der gewählten Quell- und Zieltabellen"
     },
     "threshold": "Anhaken ab",
     "thresholdHint": "Ihre eigene Schwelle, für Ihre nächsten Läufe gespeichert.",
@@ -63,7 +57,10 @@
     },
     "dimensionMade": "Beim Akzeptieren entsteht die gemeinsame Dimension {{name}}, mit der beide Spalten verknüpft werden.",
     "dimensionJoined": "Beim Akzeptieren werden beide Spalten mit der gemeinsamen Dimension {{name}} verknüpft.",
+    "through": "Über {{table}}.",
     "twoDimensions": "Ihre Spalten sind bereits mit zwei verschiedenen gemeinsamen Dimensionen verknüpft, daher kann sie nicht akzeptiert werden.",
-    "admittedOnKeyValues": "Aufgrund übereinstimmender Schlüsselwerte in den Daten aufgenommen; die Messung steht neben der Konfidenz des Modells."
+    "admittedOnKeyValues": "Aufgrund übereinstimmender Schlüsselwerte in den Daten aufgenommen; die Messung steht neben der Konfidenz des Modells.",
+    "hiddenByFilter_one": "{{count}} Zeile wird vom Filter ausgeblendet.",
+    "hiddenByFilter_other": "{{count}} Zeilen werden vom Filter ausgeblendet."
   }
 }

@@ -2,7 +2,7 @@
   "proposalsTable": {
     "intro": "A ticked row is accepted when you apply. Rows scoring at least the threshold start ticked. A row with neither box ticked stays undecided.",
     "colScore": "Score",
-    "colModel": "Model",
+    "colConfidence": "Confidence",
     "colJev": "Jev",
     "colKind": "Kind",
     "colMeasure": "Measured",
@@ -29,15 +29,9 @@
       "not_comparable": "The two columns have different classes, so they are not compared",
       "below_threshold": "Scored under the {{threshold}}% a suggestion is kept at.",
       "same_column": "From a column to itself",
-      "primary_key_to_primary_key": "Primary key to primary key",
-      "both_repeating": "Values repeat on both sides, so neither is the one side",
       "existing": "Already registered",
-      "pending": "Already waiting among the suggestions",
       "rejected": "Rejected before",
-      "matches_foreign_key": "Matches a foreign key found in this run",
-      "out_of_scope": "Outside the chosen source and target tables",
-      "weaker": "A stronger proposal of the same two columns was kept",
-      "many_to_many": "Neither column is a key"
+      "out_of_scope": "Outside the chosen source and target tables"
     },
     "threshold": "Tick from",
     "thresholdHint": "Your own threshold, kept for your next runs.",
@@ -63,7 +57,10 @@
     },
     "dimensionMade": "Accepting makes the shared dimension {{name}}, which both columns join.",
     "dimensionJoined": "Accepting joins both columns to the shared dimension {{name}}.",
+    "through": "Through {{table}}.",
     "twoDimensions": "Its columns already join two different shared dimensions, so it cannot be accepted.",
-    "admittedOnKeyValues": "Admitted on key values matching in the data; the measure is shown beside the model's confidence."
+    "admittedOnKeyValues": "Admitted on key values matching in the data; the measure is shown beside the model's confidence.",
+    "hiddenByFilter_one": "{{count}} row is hidden by the filter.",
+    "hiddenByFilter_other": "{{count}} rows are hidden by the filter."
   }
 }

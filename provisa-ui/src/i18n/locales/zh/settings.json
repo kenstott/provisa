@@ -875,6 +875,12 @@
         "help": "一条语句对一个参数化表最多发起的调用次数。语句给参数的每个值都是对数据源的一次调用:IN 列表中的每个值、OR 的每个分支、联接的每个不同键。需要更多调用的语句会被拒绝。"
       }
     },
+    "embedding": {
+      "hub_endpoint": {
+        "label": "Hugging Face Hub 地址",
+        "help": "下载本地嵌入模型所用的 Hugging Face Hub，例如您网络内的镜像。从下一次模型下载起生效。"
+      }
+    },
     "subscriptions": {
       "max_sinks_per_principal": {
         "label": "每人正在运行的 Kafka 接收器数",

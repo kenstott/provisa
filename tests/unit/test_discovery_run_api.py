@@ -27,10 +27,12 @@ from typing import Any, cast
 
 import json
 import random
-from collections import Counter
+import re
 from dataclasses import replace
 
+import duckdb
 import pytest
+from pydantic import ValidationError
 from sqlalchemy import func, insert, select
 
 from provisa.api.admin import discovery
@@ -46,6 +48,8 @@ from provisa.discovery.direction import Sampled
 from provisa.llm.client import Completion
 from provisa.profiler.classify import catalogue
 from provisa.profiler.run import ProfileError
+from provisa.discovery.runner import NOT_NAMED
+from tests.unit.discovery_answers import from_ids
 
 _REQUEST = cast(
     Any,
@@ -85,6 +89,7 @@ _PUBLISHED: dict[int, tuple[str, list[str]]] = {}
 def _nothing_published():
     _PUBLISHED.clear()
     _TABLE_NAMES.clear()
+    _TYPES.clear()
 
 
 class _Reads:
@@ -130,6 +135,11 @@ class _Reads:
         self.sql.append(sql)
         self.refuse(sql.split(' FROM "', 1)[1].split('"."', 1)[1].split('"', 1)[0])
         cols = sql.split("SELECT ", 1)[1].split(" FROM", 1)[0]
+        if cols.startswith("DISTINCT "):
+            # A column's distinct sample values (REQ-413, amended 2026-11-18).
+            name = cols.removeprefix("DISTINCT ").strip('"')
+            distinct = list(dict.fromkeys(v for v in self.values.get(name, []) if v is not None))
+            return [name], [(v,) for v in distinct[: int(sql.rsplit("LIMIT ", 1)[1])]]
         names = [c.strip().strip('"') for c in cols.split(",")]
         depth = max(len(self.values.get(n, [])) for n in names)
         rows = [tuple(self.values.get(n, [None] * depth)[i] for n in names) for i in range(depth)]
@@ -151,6 +161,7 @@ async def _table(db: Database, tid: int, domain: str, name: str, columns: list[t
     """``columns``: (name, type, primary key), or with a fourth, the kind of the required
     parameter the column is."""
     _PUBLISHED[tid] = (domain, [c[0] for c in columns])
+    _TYPES[tid] = {c[0]: c[1] for c in columns}
     _TABLE_NAMES[tid] = name
     async with db.acquire() as conn:
         await conn.execute_core(
@@ -197,22 +208,54 @@ class _Measured:
         return [v for v in self.reads.values.get(column, []) if v is not None]
 
     async def governed_as(self, sql: str, role: str) -> list[tuple]:
+        """The measure's query run as the engine runs it: each table it reads is created in an
+        in-memory DuckDB with its published columns, of their registered types, holding the
+        values given (REQ-413)."""
         self.sql.append((sql, role))
-        table = sql.split(' FROM "', 1)[1].split('"."', 1)[1].split('"', 1)[0]
-        self.reads.refuse(table)
-        column = sql.split('"', 2)[1]
-        values = self.column(table, column)
-        if " IN (" in sql:
-            wanted = sql.rsplit(" IN (", 1)[1].rstrip(")").split(", ")
-            held = {str(v): v for v in values}
-            return [(held[w.strip("'")],) for w in wanted if w.strip("'") in held]
-        counts = Counter(values)
-        limit = int(sql.rsplit("LIMIT ", 1)[1])
-        return sorted(counts.items(), key=lambda kv: -kv[1])[:limit]
+        db = duckdb.connect()
+        for schema, table in dict.fromkeys(re.findall(r'"([^"]+)"\."([^"]+)"', sql)):
+            self.reads.refuse(table)
+            tid = next(t for t, name in _TABLE_NAMES.items() if name == table)
+            columns = _PUBLISHED[tid][1]
+            held = {c: self.column(table, c) for c in columns}
+            depth = max((len(v) for v in held.values()), default=0)
+            db.execute(f'CREATE SCHEMA IF NOT EXISTS "{schema}"')
+            db.execute(
+                f'CREATE TABLE "{schema}"."{table}" ('
+                + ", ".join(f'"{c.lower()}" {_ENGINE_TYPES[_TYPES[tid][c]]}' for c in columns)
+                + ")"
+            )
+            rows = [
+                tuple(held[c][i] if i < len(held[c]) else None for c in columns)
+                for i in range(depth)
+            ]
+            if rows:
+                marks = ", ".join("?" for _ in columns)
+                db.executemany(f'INSERT INTO "{schema}"."{table}" VALUES ({marks})', rows)
+        return db.execute(sql).fetchall()
+
+
+#: The engine type of each registered column type the tests give.
+_ENGINE_TYPES = {
+    "integer": "BIGINT",
+    "text": "VARCHAR",
+    "date": "DATE",
+    "timestamp": "TIMESTAMP",
+    "timestamp with time zone": "TIMESTAMPTZ",
+}
+
+#: Each registered table's column types, by id.
+_TYPES: dict[int, dict[str, str]] = {}
 
 
 #: Each registered table's name, by id.
 _TABLE_NAMES: dict[int, str] = {}
+
+
+def _named(proposals: list[dict]) -> list[dict]:
+    """A run's listed proposals but the column pairs its model was asked about and did not name,
+    each scored zero (REQ-413, amended 2026-11-18): those are asserted on their own."""
+    return [r for r in proposals if r["reasoning"] != NOT_NAMED]
 
 
 class _World:
@@ -229,6 +272,8 @@ class _World:
         self.classifies: dict[str, dict[str, list[str]]] = {}
         self.model_calls: list[tuple[str, str, int]] = []
         self.answers: list[str] = []
+        #: Every prompt the run sent the model.
+        self.prompts: list[str] = []
         self.on_call: Any = None
         self.launched: list[tuple] = []
         self.fk_found: list[Any] = []
@@ -268,11 +313,12 @@ class _World:
 
         def respond(client, vendor, model, prompt, system, max_tokens, *args, **kwargs):
             self.model_calls.append((vendor, model, max_tokens))
+            self.prompts.append(prompt)
             if self.on_call is not None:
                 self.on_call(len(self.model_calls))
-            return Completion(
-                self.answers.pop(0) if self.answers else "[]", vendor, model, None, False
-            )
+            text = self.answers.pop(0) if self.answers else "[]"
+            # REQ-413 (amended 2026-11-18): the answer is read per listed table pair.
+            return Completion(from_ids(prompt, text, _TABLE_NAMES), vendor, model, None, False)
 
         async def fk(source_pools, source_types, conn, table_ids):
             return [c for c in self.fk_found if c.source_table_id in table_ids]
@@ -285,6 +331,7 @@ class _World:
         monkeypatch.setattr("provisa.profiler.run._governed", self.reads.governed)
         monkeypatch.setattr(gather, "_published_as", self.measured.published_as)
         monkeypatch.setattr(gather, "_governed_as", self.measured.governed_as)
+        monkeypatch.setattr(gather, "_measured_as", self.measured.governed_as)
         monkeypatch.setattr("provisa.core.org_settings.resolve_org_config", org_config)
         monkeypatch.setattr("provisa.core.org_secrets.read_org_api_keys", org_keys)
         monkeypatch.setattr("provisa.core.org_secrets.org_ai_key_or_none", no_jev)
@@ -295,15 +342,23 @@ _ASSIGNED = {"ai_models": {"relationship_inference": {"vendor": "openai", "model
 
 
 #: Key value overlap as the dialog sends it by default (REQ-413, amended 2026-11-16).
-_KEY_VALUES = {"measure_cutoff": 0.2, "sample_size": 10_000}
+_KEY_VALUES = {
+    "measure_cutoff": 0.2,
+    "sample_size": 10_000,
+    "contained_at": 0.95,
+    "shared_ceiling": 0.6,
+}
 
 
 def _scope(**over: Any) -> discovery.RunScope:
-    """A run as the dialog sends it: by default Semantic with Key value overlap and its two
-    settings, which are sent only while it is chosen."""
+    """A run as the dialog sends it: by default Semantic with Key value overlap and its
+    settings, which are sent only while it is chosen, and the threshold and samples per column
+    always (REQ-413, amended 2026-11-18), at their defaults."""
     body: dict[str, Any] = {
         "kinds": ["semantics", "key_values"],
         "source_domains": ["sales", "crm"],
+        "threshold": 0.7,
+        "samples_per_column": 5,
         **_KEY_VALUES,
     }
     body.update(over)
@@ -372,7 +427,7 @@ async def test_a_never_profiled_table_is_classified_with_the_profiler_defaults_a
 # --- the request count ---------------------------------------------------------------------------------
 
 
-async def test_the_count_is_given_by_group_before_any_model_call(monkeypatch):
+async def test_the_count_is_given_in_calls_before_any_model_call(monkeypatch):
     db = await _store()
     await _orders_customers(db)
     world = _World(monkeypatch, db, config=_ASSIGNED, api_keys={"openai": "k"})
@@ -380,9 +435,10 @@ async def test_the_count_is_given_by_group_before_any_model_call(monkeypatch):
     assert world.model_calls == []
     assert counted["requests"] == 1
     assert counted["requests_are"] == "upper_bound"
-    assert counted["by_group"] == {"whole_number": 1}
+    # REQ-413 (amended 2026-11-18): calls list table pairs: customers x orders, orders x orders.
+    assert counted["table_pairs"] == 2 and counted["by_group"] == {}
     assert counted["model"]["vendor"] == "openai" and counted["model"]["model"] == "gpt-test"
-    assert counted["suggestions_per_request"] == 4_096 // 150
+    assert counted["table_pairs_per_request"] == 4_096 // 150
 
 
 async def test_foreign_keys_alone_count_no_request(monkeypatch):
@@ -409,7 +465,7 @@ async def test_the_count_is_sized_from_the_chosen_models_limits(monkeypatch):
     assigned = await discovery.count_run(_REQUEST, _scope())
     chosen = await discovery.count_run(_REQUEST, _scope(vendor="mistral", model="tiny"))
     assert chosen["model"]["input_tokens"] == 1000 and chosen["model"]["output_tokens"] == 300
-    assert chosen["suggestions_per_request"] == 2
+    assert chosen["table_pairs_per_request"] == 2
     assert chosen["requests"] > assigned["requests"]
 
 
@@ -460,7 +516,9 @@ async def _prepared(scope: discovery.RunScope) -> Any:
 
 async def _facts(db: Database, ids: list[int]) -> dict[str, Any]:
     async with db.acquire() as conn:
-        tables = await gather.table_facts(discovery.state, cast(Any, conn), ids)
+        tables = await gather.table_facts(
+            discovery.state, cast(Any, conn), ids, context.SAMPLE_VALUES
+        )
     return {t.table_name: t for t in tables}
 
 
@@ -496,7 +554,10 @@ async def test_a_table_that_requires_a_parameter_is_known_from_its_registration_
     assert not any(c.sensitive for c in order.columns)
     # Only the table read whole is classified and sampled.
     assert [c["table_id"] for c in world.classified] == [_ORDERS]
-    assert world.reads.sql == ['SELECT "id", "pet_id" FROM "pet_store"."orders" LIMIT 20']
+    assert world.reads.sql == [
+        'SELECT DISTINCT "id" FROM "pet_store"."orders" WHERE "id" IS NOT NULL LIMIT 5',
+        'SELECT DISTINCT "pet_id" FROM "pet_store"."orders" WHERE "pet_id" IS NOT NULL LIMIT 5',
+    ]
     assert not facts["orders"].reduced and facts["orders"].parameters == ()
 
 
@@ -527,12 +588,12 @@ async def test_relationship_requests_are_planned_on_reduced_information(
     counted = await discovery.count_run(_REQUEST, scope)
     assert world.reads.attempted == []
     assert counted["tables_not_read"] == not_read
-    assert counted["by_group"]["whole_number"] >= 1
+    assert counted["table_pairs"] >= 1
     assert world.classified == [] and world.reads.sql == []  # the count reads nothing
     prepared = await _prepared(scope)
     if not_read == len(set(source) | set(target or [])):
         assert world.classified == [] and world.reads.sql == []  # nothing in scope is read
-    sent = "\n".join(r.prompt(prepared.k) for r in prepared.requests)
+    sent = "\n".join(c.prompt(0.7) for c in prepared.plan.calls)
     assert (
         '"required_parameters":[{"column":"_nf_orderId","parameter":"orderId","type":"integer"}],'
         '"values":"not_read"'
@@ -593,7 +654,9 @@ async def test_a_column_the_relation_read_does_not_hold_sends_no_values(monkeypa
     world.reads.values["manager"] = ["m"]
     world.reads.outside = {"manager"}
     facts = await _facts(db, [1])
-    assert world.reads.sql == ['SELECT "id" FROM "pet_store"."employees" LIMIT 20']
+    assert world.reads.sql == [
+        'SELECT DISTINCT "id" FROM "pet_store"."employees" WHERE "id" IS NOT NULL LIMIT 5'
+    ]
     assert [c.samples for c in facts["employees"].columns] == [("1", "2", "3"), ()]
 
 
@@ -603,7 +666,9 @@ async def test_a_column_is_read_by_the_name_it_is_published_under(monkeypatch):
     world = _World(monkeypatch, db, config=_ASSIGNED, api_keys={"openai": "k"})
     world.reads.values["petid"] = [7, 8]
     facts = await _facts(db, [1])
-    assert world.reads.sql == ['SELECT "petid" FROM "pet_store"."orders" LIMIT 20']
+    assert world.reads.sql == [
+        'SELECT DISTINCT "petid" FROM "pet_store"."orders" WHERE "petid" IS NOT NULL LIMIT 5'
+    ]
     assert facts["orders"].columns[0].samples == ("7", "8")
 
 
@@ -848,17 +913,19 @@ async def test_a_run_whose_model_fails_every_request_reports_each_and_finishes(
     run = await _run(world, _scope())
     assert run["status"] == "done"
     semantics = run["report"]["semantics"]
-    assert semantics["failed"] == [
-        {
-            "group": "whole_number",
-            "code": "llm.request_failed",
-            "params": {"reason": "vendor unavailable"},
-            "message": "The request to the model failed: vendor unavailable",
-        }
-    ]
+    # The call, then its table pairs asked once more: each failure reported, and the pairs
+    # still unanswered named (REQ-413, amended 2026-11-18).
+    failure = {
+        "table_pairs": ["customers × orders", "orders × orders"],
+        "code": "llm.request_failed",
+        "params": {"reason": "vendor unavailable"},
+        "message": "The request to the model failed: vendor unavailable",
+    }
+    assert semantics["failed"] == [failure, failure]
+    assert semantics["unanswered"] == ["customers × orders", "orders × orders"]
     # Every request failed: that is not the model proposing no relationships.
     assert semantics["empty_reason"] == "requests_failed"
-    assert semantics["requests_done"] == len(semantics["failed"]) == 1
+    assert semantics["requests_done"] == len(semantics["failed"]) == 2
 
 
 _SMALL_WINDOWS = {
@@ -1101,7 +1168,7 @@ async def test_the_glossary_term_bound_to_a_column_is_sent_whether_or_not_its_ta
     prepared = await _prepared(
         _scope(source_domains=["pet-store"], source_tables=[_ORDER_BY_ID, _ORDERS])
     )
-    sent = prepared.requests[0].prompt(prepared.k)
+    sent = prepared.plan.calls[0].prompt(0.7)
     assert (
         '{"name":"_nf_orderId","description":null,"classes":["not_read"],"tags":[],"term":"Order"}'
     ) in sent
@@ -1123,7 +1190,7 @@ async def test_a_model_whose_limits_hold_no_request_is_refused_saying_why(monkey
         await discovery.count_run(_REQUEST, _scope())
     assert caught.value.code == "discovery.model_has_no_room"
     assert caught.value.params["model"] == "openai:gpt-test"
-    assert "100 tokens holds no suggestion" in caught.value.params["reason"]
+    assert "100 tokens answers no table pair" in caught.value.params["reason"]
 
 
 async def test_a_direction_is_decided_without_reading_a_table_that_requires_a_parameter(
@@ -1147,7 +1214,9 @@ async def test_a_direction_is_decided_without_reading_a_table_that_requires_a_pa
     run = await _run(world, _scope(source_domains=["pet-store"]))
     assert run["status"] == "done", run
     assert world.reads.attempted == []
-    assert not any("IS NOT NULL" in sql for sql in world.reads.sql)
+    # No uniqueness sample is read (the sample values' reads are distinct values, never it).
+    uniqueness = f"LIMIT {gather.UNIQUENESS_SAMPLE_ROWS}"
+    assert not any(uniqueness in sql for sql in world.reads.sql)
     assert run["report"]["decided_by"] == {"fixed_order": 1}
     assert run["report"]["on_reduced_information"] == 1
     (stored,) = await _candidates(db)
@@ -1286,7 +1355,7 @@ async def test_the_count_before_run_reads_no_table_and_calls_no_source(monkeypat
         assert counted["tables_not_read"] == 2
     if "semantics" in scope["kinds"]:
         assert counted["requests"] >= 1
-        assert sum(counted["by_group"].values()) == counted["requests"]
+        assert counted["table_pairs"] >= counted["requests"]
     else:
         assert counted["requests"] == 0 and counted["by_group"] == {}
 
@@ -1329,8 +1398,8 @@ async def test_a_run_never_makes_more_requests_than_the_count_gave(
     monkeypatch, tmp_path, input_tokens, values, kinds, same_as_source
 ):
     """The bound (REQ-413): for never-profiled, profiled and parameterized tables, whatever the
-    run then reads (long values, every kind matched), its requests are at most the count's, in
-    all and in each group."""
+    run then reads (long values, every kind matched), its calls are at most the count's, and its
+    table pairs at most the count's."""
     db = await _store(f"sqlite+pysqlite:///{tmp_path / 'store.db'}")
     config = {
         **_ASSIGNED,
@@ -1387,14 +1456,13 @@ async def test_a_run_never_makes_more_requests_than_the_count_gave(
     counted = await discovery.count_run(_REQUEST, scope)
     assert world.reads.sql == [] and world.classified == []
     prepared = await _prepared(scope)
-    planned = Counter(r.group for r in prepared.requests)
-    assert planned, "the fixture gives the run something to ask"
-    assert len(prepared.requests) <= counted["requests"]
-    for group, asked in planned.items():
-        assert asked <= counted["by_group"][group], (group, planned, counted["by_group"])
+    calls = prepared.plan.calls
+    assert calls, "the fixture gives the run something to ask"
+    assert len(calls) <= counted["requests"]
+    assert prepared.plan.table_pairs <= counted["table_pairs"]
     run = await _run(world, scope)
     assert run["status"] == "done", run
-    assert run["requests_total"] == len(world.model_calls) == len(prepared.requests)
+    assert run["requests_total"] == len(world.model_calls) == len(calls)
     assert len(world.model_calls) <= counted["requests"]
     assert world.reads.attempted == []
 
@@ -1457,20 +1525,20 @@ def test_the_bound_holds_whatever_the_tables_hold(seed):
     target = None if rng.random() < 0.5 else read[cut - 1 :]
     source = read if target is None else read[:cut]
     input_tokens = rng.choice([1000, 1150, 1550, 3350, 100_000])
-    _, requests = windows.plan(source, target, input_tokens, 4096)
-    k, by_group = windows.bound(
+    planned = windows.plan(source, target, input_tokens, 4096)
+    k, calls, pairs = windows.bound(
         _as_registered(source),
         None if target is None else _as_registered(target),
         input_tokens,
         4096,
+        context.SAMPLE_VALUES,
     )
-    planned = Counter(r.group for r in requests)
     assert k == 4096 // 150
-    for group, asked in planned.items():
-        assert asked <= by_group.get(group, 0), (seed, group, planned, by_group)
+    assert len(planned.calls) <= calls, (seed, len(planned.calls), calls)
+    assert planned.table_pairs <= pairs, (seed, planned.table_pairs, pairs)
 
 
-def test_a_group_with_no_two_columns_to_compare_counts_no_request():
+def test_a_scope_with_no_two_columns_to_compare_counts_no_request():
     def table(tid: int, *types: str) -> TableFacts:
         columns = tuple(
             ColumnFacts(
@@ -1489,10 +1557,10 @@ def test_a_group_with_no_two_columns_to_compare_counts_no_request():
         return TableFacts(tid, "d", "public", f"t{tid}", None, (), None, columns)
 
     one_text = [table(1, "integer", "text"), table(2, "integer")]
-    assert windows.bound(one_text, None, 100_000, 4096)[1] == {"whole_number": 1}
+    assert windows.bound(one_text, None, 100_000, 4096, 5)[1:] == (1, 1)  # t1 x t2 alone
     # The one column on both sides is not compared with itself.
-    assert windows.bound([table(1, "text")], [table(1, "text")], 100_000, 4096)[1] == {}
-    assert windows.bound([table(1, "text")], [table(2, "date")], 100_000, 4096)[1] == {}
+    assert windows.bound([table(1, "text")], [table(1, "text")], 100_000, 4096, 5)[1:] == (0, 0)
+    assert windows.bound([table(1, "text")], [table(2, "date")], 100_000, 4096, 5)[1:] == (0, 0)
 
 
 def test_a_sample_value_is_sent_in_a_bounded_length():
@@ -1570,7 +1638,7 @@ async def _proposals(db: Database, run_id: int) -> list[dict]:
                 .order_by(so.discovery_run_proposals.c.id)
             )
         ).fetchall()
-    return [dict(r._mapping) for r in rows]
+    return _named([dict(r._mapping) for r in rows])
 
 
 async def _three_tables(db: Database) -> None:
@@ -1616,9 +1684,12 @@ async def test_a_run_keeps_every_proposal_it_read_with_why_it_was_left_out(monke
     report = run["report"]
     semantics = report["semantics"]
     assert (semantics["proposed"], semantics["suggested"]) == (5, 1)
-    assert (semantics["below_threshold"], semantics["invalid"]) == (1, 2)
+    # The column pairs the model did not name are scored zero, below the threshold too.
+    assert semantics["below_threshold"] - semantics["zero_scored"] == 1
+    assert semantics["invalid"] == 2
     assert semantics["not_comparable"] == 0 and semantics["scored"] == 0
-    assert report["removed"]["matches_foreign_key"] == 1
+    # REQ-413 (amended 2026-11-18): the semantic duplicate of the foreign key is its row.
+    assert "matches_foreign_key" not in report["removed"]
     # What the run compared is said, so what it did not is plain.
     assert report["source_domains"] == report["target_domains"] == ["crm", "sales"]
     assert report["target_same_as_source"] is True
@@ -1632,35 +1703,36 @@ async def test_a_run_keeps_every_proposal_it_read_with_why_it_was_left_out(monke
         ("semantics", "unknown_column", None, None),
         ("semantics", "invalid_shape", None, None),
         ("semantics", "below_threshold", "customer_id", 3),
-        ("semantics", "matches_foreign_key", "region_id", 2),
     ]
+    assert kept[0]["reasoning"] == (
+        "Foreign key constraint; also proposed by the model at 90%: orders name their customer"
+    )
     assert kept[4]["confidence"] == 0.55 and kept[4]["reasoning"] == "orders name their customer"
     assert kept[4]["score"] == _HALF_IN_A_KEY
-    assert json.loads(kept[2]["answer"])["target_table_id"] == 9
-    assert json.loads(kept[3]["answer"]) == {"source_table_id": 1}
+    assert json.loads(kept[2]["answer"])["target_table"] == "no such table"
+    assert json.loads(kept[3]["answer"]) == {"source_table": "orders"}
 
     answered = await discovery.list_proposals(_REQUEST, run["id"])
     assert answered["threshold"] == 0.7
-    listed = answered["proposals"]
+    listed = _named(answered["proposals"])
     # One table: the foreign key and the suggestion with what was left out, the highest score first.
     assert [(r["kind"], r["reason"], r["decidable"], r["confidence"]) for r in listed] == [
         ("foreign_keys", None, True, 1.0),
         ("semantics", None, True, 0.95),
-        ("semantics", "matches_foreign_key", False, 0.9),
         ("semantics", "below_threshold", True, 0.55),
         ("semantics", "unknown_column", False, None),
         ("semantics", "invalid_shape", False, None),
     ]
-    assert listed[3]["source_table_id"] == 1 and listed[3]["target_column"] == "id"
-    assert listed[3]["suggested_name"] == "purchase-history"
-    assert listed[3]["cardinality"] == "many-to-one" and listed[4]["cardinality"] is None
+    assert listed[2]["source_table_id"] == 1 and listed[2]["target_column"] == "id"
+    assert listed[2]["suggested_name"] == "purchase-history"
+    assert listed[2]["cardinality"] == "many-to-one" and listed[3]["cardinality"] is None
     assert not any(r["reduced_information"] for r in listed)
 
 
 async def _answered(world: _World, answers: list[dict], **scope: Any) -> tuple[dict, list[dict]]:
     world.answers = [json.dumps(answers)]
     run = await _run(world, _scope(**scope))
-    return run, (await discovery.list_proposals(_REQUEST, run["id"]))["proposals"]
+    return run, _named((await discovery.list_proposals(_REQUEST, run["id"]))["proposals"])
 
 
 def _apply(accept: list[tuple[int, str]] = (), not_again: list[int] = ()) -> Any:
@@ -1716,12 +1788,12 @@ async def test_applying_accepts_what_is_ticked_marks_what_is_not_wanted_and_leav
         ).fetchall()
     assert [r[0] for r in registered] == ["customer-orders", "orders-by-store"]
     # What was decided leaves the run's table; what was not stays.
-    remaining = (await discovery.list_proposals(_REQUEST, run["id"]))["proposals"]
+    remaining = _named((await discovery.list_proposals(_REQUEST, run["id"]))["proposals"])
     assert [r["id"] for r in remaining] == [undecided["id"]]
 
-    # A later run reads them again: the undecided one as an ordinary row, the accepted ones as
-    # registered (the one the model rates low too), the one marked as rejected before, which keeps
-    # that decision and cannot be decided again (REQ-413, amended 2026-11-16).
+    # A later run reads them again: the undecided one is listed as an ordinary row; the accepted
+    # ones are registered (the one the model rates low too) and the one marked not again keeps
+    # that decision, so neither is listed (REQ-413, amended 2026-11-16 and 2026-11-18).
     _, again = await _answered(
         world,
         [
@@ -1733,12 +1805,7 @@ async def test_applying_accepts_what_is_ticked_marks_what_is_not_wanted_and_leav
     )
     assert [
         (r["source_table_id"], r["target_table_id"], r["reason"], r["decidable"]) for r in again
-    ] == [
-        (1, 2, "existing", False),
-        (3, 1, "rejected", False),
-        (3, 2, "pending", True),
-        (1, 3, "existing", False),
-    ]
+    ] == [(3, 2, None, True)]
 
 
 async def test_a_proposal_that_cannot_be_decided_is_refused_and_the_rest_are_applied(
@@ -1808,7 +1875,8 @@ async def test_the_latest_run_a_person_started_is_listed_for_that_person(monkeyp
     assert [r["id"] for r in everyone] == [theirs["id"]]
     own = (await discovery.list_runs(_REQUEST, limit=1, mine=True))["runs"]
     assert [r["id"] for r in own] == [mine["id"]]
-    # The run keeps every field the dialog sent, so a new run can start from them.
+    # The run keeps every field the dialog sent, so a new run can start from them, and the
+    # threshold it started with (REQ-413, amended 2026-11-18).
     assert own[0]["scope"] == {
         "kinds": ["foreign_keys"],
         "source_domains": ["sales"],
@@ -1818,8 +1886,12 @@ async def test_the_latest_run_a_person_started_is_listed_for_that_person(monkeyp
         "target_tables": None,
         "vendor": None,
         "model": None,
+        "threshold": 0.7,
+        "samples_per_column": 5,
         "measure_cutoff": None,
         "sample_size": None,
+        "contained_at": None,
+        "shared_ceiling": None,
     }
 
 
@@ -1854,10 +1926,10 @@ async def test_a_proposal_jev_scores_under_the_threshold_stays_a_suggestion_on_t
     semantics = run["report"]["semantics"]
     # REQ-1789: the model's score decides; Jev's is shown beside it and removes nothing.
     assert semantics["suggested"] == 2 and semantics["empty_reason"] is None
-    assert semantics["below_threshold"] == 0
+    assert semantics["below_threshold"] == semantics["zero_scored"]
     # The summary says how many Jev scored under the threshold.
     assert (semantics["scored"], semantics["scored_below_threshold"]) == (2, 2)
-    listed = (await discovery.list_proposals(_REQUEST, run["id"]))["proposals"]
+    listed = _named((await discovery.list_proposals(_REQUEST, run["id"]))["proposals"])
     assert [(r["reason"], r["confidence"], r["scored"], r["decidable"]) for r in listed] == [
         (None, 0.95, 0.31, True),
         (None, 0.9, 0.31, True),
@@ -1999,7 +2071,7 @@ async def test_each_proposed_pair_is_measured_as_the_runs_person_and_its_row_sho
     # Every value read for the measure was read as the person who started the run.
     assert world.measured.sql and {role for _, role in world.measured.sql} == {"steward"}
 
-    listed = (await discovery.list_proposals(request, run_id))["proposals"]
+    listed = _named((await discovery.list_proposals(request, run_id))["proposals"])
     by_source = {(r["source_column"], r["source_table_id"]): r for r in listed}
     permit = by_source[("permit_id", 2)]
     assert permit["cardinality"] == "many-to-one"
@@ -2186,7 +2258,7 @@ async def test_a_many_to_many_pair_is_accepted_as_a_shared_dimension_both_sides_
     }
     assert {e.graphql_alias for e in made.edges} == {"neighborhood_dimension"}
     # The pair is decided: accepted, so a later run never reopens it.
-    assert (await discovery.list_proposals(_REQUEST, run["id"]))["proposals"] == []
+    assert _named((await discovery.list_proposals(_REQUEST, run["id"]))["proposals"]) == []
     assert [(c["cardinality"], c["status"]) for c in await _candidates(db)] == [
         ("many-to-many", "accepted")
     ]
@@ -2240,7 +2312,7 @@ async def test_a_dimension_whose_relationship_is_refused_is_not_left_half_made(
     assert "neighborhood" not in await made.tables(db)
     assert await made.relationships(db) == set()
     assert made.rebuilt == 1
-    (still,) = (await discovery.list_proposals(_REQUEST, run["id"]))["proposals"]
+    (still,) = _named((await discovery.list_proposals(_REQUEST, run["id"]))["proposals"])
     assert still["id"] == pair["id"]
 
 
@@ -2297,11 +2369,87 @@ async def test_the_threshold_is_the_persons_own_and_kept_across_a_reload(monkeyp
     # A reload reads it again: the person's own, from the store; another person's is untouched.
     assert (await discovery.get_threshold(_REQUEST))["threshold"] == 0.55
     assert (await discovery.get_threshold(other))["threshold"] == 0.7
-    run, _ = await _answered(world, [_suggestion((2, "permit_id"), (1, "permit_id"), 0.45)])
+    # The dialog prefills Tick from with it and sends it with the run.
+    assert (await discovery.get_settings(_REQUEST))["threshold"] == 0.55
+    run, _ = await _answered(
+        world, [_suggestion((2, "permit_id"), (1, "permit_id"), 0.45)], threshold=0.55
+    )
     answered = await discovery.list_proposals(_REQUEST, run["id"])
-    assert answered["threshold"] == 0.55 and answered["kept_at"] == 0.7
+    # The run started at 0.55 keeps suggestions at 0.55 (REQ-413, amended 2026-11-18).
+    assert answered["threshold"] == 0.55 and answered["kept_at"] == 0.55
     with pytest.raises(Exception):
         discovery.ThresholdBody(threshold=1.5)
+
+
+async def test_the_score_filter_is_the_persons_own_ten_percent_until_set(monkeypatch, tmp_path):
+    """REQ-413 (amended 2026-11-18): a run's results open with Score >= 10% applied; the filter a
+    person sets, or clears, is kept for their next runs, as the threshold is."""
+    db = await _store(f"sqlite+pysqlite:///{tmp_path / 'store.db'}")
+    await _city(db)
+    world = _World(monkeypatch, db, config=_ASSIGNED, api_keys={"openai": "k"})
+    _city_values(world)
+    other = cast(
+        Any,
+        SimpleNamespace(headers={}, state=SimpleNamespace(identity=SimpleNamespace(user_id="b"))),
+    )
+    # A person whose row holds only their threshold has the default filter.
+    await discovery.put_threshold(_REQUEST, discovery.ThresholdBody(threshold=0.55))
+    run, _ = await _answered(world, [_suggestion((2, "permit_id"), (1, "permit_id"), 0.45)])
+    assert (await discovery.list_proposals(_REQUEST, run["id"]))["score_filter"] == {
+        "op": "ge",
+        "a": "10",
+    }
+    body = discovery.ScoreFilterBody(filter=discovery.ScoreFilter(op="between", a="20", b="80"))
+    await discovery.put_score_filter(_REQUEST, body)
+    assert (await discovery.list_proposals(_REQUEST, run["id"]))["score_filter"] == {
+        "op": "between",
+        "a": "20",
+        "b": "80",
+    }
+    assert (await discovery.list_proposals(other, run["id"]))["score_filter"] == {
+        "op": "ge",
+        "a": "10",
+    }
+    # One store: the settings read gives the same filter, and a run started from the dialog,
+    # which keeps the run settings, leaves it as set.
+    await discovery.start_run(_REQUEST, _scope(threshold=0.6))
+    settings = await discovery.get_settings(_REQUEST)
+    assert settings["threshold"] == 0.6
+    assert settings["score_filter"] == {"op": "between", "a": "20", "b": "80"}
+    # Cleared, it stays cleared.
+    await discovery.put_score_filter(_REQUEST, discovery.ScoreFilterBody(filter=None))
+    assert (await discovery.list_proposals(_REQUEST, run["id"]))["score_filter"] is None
+    assert (await discovery.get_settings(_REQUEST))["score_filter"] is None
+    assert (await discovery.get_threshold(_REQUEST))["threshold"] == 0.6
+    with pytest.raises(Exception):
+        discovery.ScoreFilter(op="contains", a="x")  # type: ignore[arg-type]
+
+
+async def test_a_run_takes_its_starters_threshold_records_it_and_tells_the_model(
+    monkeypatch, tmp_path
+):
+    """REQ-413 (amended 2026-11-18): the band's top is the tick threshold of the person who starts
+    the run, set in the dialog before the run (Tick from), recorded with it and kept as the
+    person's own; the model is told it."""
+    db = await _store(f"sqlite+pysqlite:///{tmp_path / 'store.db'}")
+    await _city(db)
+    world = _World(monkeypatch, db, config=_ASSIGNED, api_keys={"openai": "k"})
+    _city_values(world)
+    run, _ = await _answered(
+        world, [_suggestion((2, "permit_id"), (1, "permit_id"), 0.55)], threshold=0.5
+    )
+    assert run["scope"]["threshold"] == 0.5
+    assert (await discovery.get_threshold(_REQUEST))["threshold"] == 0.5
+    assert run["report"]["semantics"]["threshold"] == 0.5
+    assert world.prompts
+    assert all("A relationship is suggested at 0.5 or more" in t for t in world.prompts)
+    # A change to the person's threshold after the run started does not change the run's.
+    await discovery.put_threshold(_REQUEST, discovery.ThresholdBody(threshold=0.9))
+    answered = await discovery.list_proposals(_REQUEST, run["id"])
+    assert answered["threshold"] == 0.9 and answered["kept_at"] == 0.5
+    # 0.55 is at or above the run's 0.5: kept on the model's confidence, never measured.
+    (row,) = [r for r in _named(answered["proposals"]) if r["kind"] == "semantics"]
+    assert row["reason"] is None and row["measured"] is False
 
 
 # --- Key value overlap: a choice with Semantic, its cutoff and sample size (REQ-413) ---------------
@@ -2313,15 +2461,29 @@ def test_key_value_overlap_is_refused_without_semantic():
     assert refused.value.code == "discovery.key_values_needs_semantics"
 
 
-def test_key_value_overlap_needs_its_cutoff_and_sample_size_and_only_it_takes_them():
+_ALWAYS = {"threshold": 0.7, "samples_per_column": 5}
+
+
+@pytest.mark.parametrize("left_out", [None, *_KEY_VALUES])
+def test_key_value_overlap_needs_every_one_of_its_settings(left_out):
+    given = {} if left_out is None else {k: v for k, v in _KEY_VALUES.items() if k != left_out}
     with pytest.raises(ApiError) as missing:
         discovery.RunScope.model_validate(
-            {"kinds": ["semantics", "key_values"], "source_domains": ["sales"]}
+            {"kinds": ["semantics", "key_values"], "source_domains": ["sales"], **_ALWAYS, **given}
         ).spec("steward")
     assert missing.value.code == "discovery.key_values_settings_missing"
+
+
+@pytest.mark.parametrize("given", list(_KEY_VALUES))
+def test_only_key_value_overlap_takes_its_settings(given):
     with pytest.raises(ApiError) as unchosen:
         discovery.RunScope.model_validate(
-            {"kinds": ["semantics"], "source_domains": ["sales"], **_KEY_VALUES}
+            {
+                "kinds": ["semantics"],
+                "source_domains": ["sales"],
+                **_ALWAYS,
+                given: _KEY_VALUES[given],
+            }
         ).spec("steward")
     assert unchosen.value.code == "discovery.key_values_settings_unchosen"
 
@@ -2359,7 +2521,12 @@ async def test_a_band_pair_whose_key_values_match_is_admitted_and_the_summary_st
     # Under the cutoff: left out unmeasured.
     assert hood["reason"] == "below_threshold" and hood["measure"] is None
     report = run["report"]
-    assert report["key_values"] == {"cutoff": 0.3, "sample_size": 500}
+    assert report["key_values"] == {
+        "cutoff": 0.3,
+        "sample_size": 500,
+        "contained_at": 0.95,
+        "shared_ceiling": 0.6,
+    }
     assert (report["semantics"]["measured"], report["semantics"]["admitted"]) == (1, 1)
 
 
@@ -2376,9 +2543,11 @@ async def test_without_key_value_overlap_a_band_pair_is_left_out_unmeasured(monk
     assert "key_values" not in run["report"]
 
 
-async def test_key_value_overlap_is_remembered_for_the_person_as_the_threshold_is(
+async def test_every_setting_is_remembered_for_the_person_and_prefills_their_next_run(
     monkeypatch, tmp_path
 ):
+    """REQ-413 (amended 2026-11-18): the values a person sets in the dialog are kept for their
+    next runs; another person keeps the defaults."""
     db = await _store(f"sqlite+pysqlite:///{tmp_path / 'store.db'}")
     await _city(db)
     world = _World(monkeypatch, db, config=_ASSIGNED, api_keys={"openai": "k"})
@@ -2387,19 +2556,192 @@ async def test_key_value_overlap_is_remembered_for_the_person_as_the_threshold_i
         Any,
         SimpleNamespace(headers={}, state=SimpleNamespace(identity=SimpleNamespace(user_id="b"))),
     )
-    defaults = {"chosen": True, "cutoff": 0.2, "sample_size": 10_000}
-    assert await discovery.get_key_values(_REQUEST) == {**defaults, "defaults": defaults}
-    await discovery.start_run(_REQUEST, _scope(measure_cutoff=0.35, sample_size=500))
-    kept = {"chosen": True, "cutoff": 0.35, "sample_size": 500}
-    assert await discovery.get_key_values(_REQUEST) == {**kept, "defaults": defaults}
-    assert await discovery.get_key_values(other) == {**defaults, "defaults": defaults}
-    # Not chosen: remembered as not chosen, its last cutoff and sample size kept.
-    await discovery.start_run(_REQUEST, _scope(kinds=["semantics"]))
-    assert await discovery.get_key_values(_REQUEST) == {
+    key_defaults = {
+        "chosen": True,
+        "cutoff": 0.2,
+        "sample_size": 10_000,
+        "contained_at": 0.95,
+        "shared_ceiling": 0.6,
+    }
+    defaults = {
+        "threshold": 0.7,
+        "samples_per_column": 5,
+        "key_values": key_defaults,
+        "score_filter": {"op": "ge", "a": "10"},
+    }
+    assert await discovery.get_settings(_REQUEST) == {**defaults, "defaults": defaults}
+    set_now = {
+        "threshold": 0.55,
+        "samples_per_column": 8,
+        "measure_cutoff": 0.35,
+        "sample_size": 500,
+        "contained_at": 0.85,
+        "shared_ceiling": 0.4,
+    }
+    await discovery.start_run(_REQUEST, _scope(**set_now))
+    key_kept = {
+        "chosen": True,
+        "cutoff": 0.35,
+        "sample_size": 500,
+        "contained_at": 0.85,
+        "shared_ceiling": 0.4,
+    }
+    kept = {
+        "threshold": 0.55,
+        "samples_per_column": 8,
+        "key_values": key_kept,
+        "score_filter": {"op": "ge", "a": "10"},
+    }
+    assert await discovery.get_settings(_REQUEST) == {**kept, "defaults": defaults}
+    assert await discovery.get_settings(other) == {**defaults, "defaults": defaults}
+    # Key value overlap not chosen: remembered as not chosen, its last settings kept.
+    await discovery.start_run(
+        _REQUEST, _scope(kinds=["semantics"], threshold=0.6, samples_per_column=8)
+    )
+    assert await discovery.get_settings(_REQUEST) == {
         **kept,
-        "chosen": False,
+        "threshold": 0.6,
+        "key_values": {**key_kept, "chosen": False},
         "defaults": defaults,
     }
-    # A run without Semantic, where it is not offered, leaves it as it was.
-    await discovery.start_run(_REQUEST, _scope(kinds=["foreign_keys"]))
-    assert (await discovery.get_key_values(_REQUEST))["chosen"] is False
+    # A run without Semantic keeps its threshold; the semantic settings, not offered, stay.
+    await discovery.start_run(
+        _REQUEST, _scope(kinds=["foreign_keys"], threshold=0.65, samples_per_column=2)
+    )
+    got = await discovery.get_settings(_REQUEST)
+    assert got["threshold"] == 0.65 and got["samples_per_column"] == 8
+    assert got["key_values"]["chosen"] is False
+
+
+async def test_a_runs_settings_are_recorded_with_it(monkeypatch, tmp_path):
+    db = await _store(f"sqlite+pysqlite:///{tmp_path / 'store.db'}")
+    await _city(db)
+    world = _World(monkeypatch, db, config=_ASSIGNED, api_keys={"openai": "k"})
+    _city_values(world)
+    set_now = {
+        "threshold": 0.55,
+        "samples_per_column": 3,
+        "measure_cutoff": 0.35,
+        "sample_size": 500,
+        "contained_at": 0.85,
+        "shared_ceiling": 0.4,
+    }
+    run, _ = await _answered(world, [], **set_now)
+    assert {k: run["scope"][k] for k in set_now} == set_now
+    assert run["report"]["key_values"] == {
+        "cutoff": 0.35,
+        "sample_size": 500,
+        "contained_at": 0.85,
+        "shared_ceiling": 0.4,
+    }
+
+
+def _partly_contained(world: _World) -> None:
+    """Inspections' permits: 27 of building permits' keys and 3 that are not, so 90% of the
+    source's values are found in a key target."""
+    _city_values(world)
+    permits = world.measured.values[("building_permits", "permit_id")]
+    world.measured.values[("inspections", "permit_id")] = [*permits[:27], "X-1", "X-2", "X-3"]
+
+
+@pytest.mark.parametrize(
+    ("contained_at", "score"),
+    [
+        pytest.param(0.95, round(context.KEY_SCORE * 0.9, 4), id="default-share-partial"),
+        pytest.param(0.85, context.KEY_SCORE, id="lower-share-a-key-relationship"),
+    ],
+)
+async def test_a_runs_key_containment_share_decides_a_key_relationship(
+    monkeypatch, tmp_path, contained_at, score
+):
+    db = await _store(f"sqlite+pysqlite:///{tmp_path / 'store.db'}")
+    await _city(db)
+    world = _World(monkeypatch, db, config=_ASSIGNED, api_keys={"openai": "k"})
+    _partly_contained(world)
+    _, (row,) = await _answered(
+        world,
+        [_suggestion((2, "permit_id"), (1, "permit_id"), 0.45)],
+        measure_cutoff=0.3,
+        contained_at=contained_at,
+    )
+    assert row["measured"] is True and row["score"] == score
+
+
+@pytest.mark.parametrize("ceiling", [0.6, 0.4])
+async def test_a_runs_shared_ceiling_is_the_most_a_pair_of_no_key_scores(
+    monkeypatch, tmp_path, ceiling
+):
+    db = await _store(f"sqlite+pysqlite:///{tmp_path / 'store.db'}")
+    await _city(db)
+    world = _World(monkeypatch, db, config=_ASSIGNED, api_keys={"openai": "k"})
+    _city_values(world)
+    _, (row,) = await _answered(
+        world,
+        [_suggestion((3, "hood"), (1, "hood"), 0.45)],
+        measure_cutoff=0.3,
+        shared_ceiling=ceiling,
+    )
+    assert row["measured"] is True and row["cardinality"] == "many-to-many"
+    assert row["score"] == ceiling
+
+
+@pytest.mark.parametrize("per_column", [1, 2])
+async def test_a_runs_samples_per_column_are_the_values_read_and_shown(
+    monkeypatch, tmp_path, per_column
+):
+    db = await _store(f"sqlite+pysqlite:///{tmp_path / 'store.db'}")
+    await _orders_customers(db)
+    world = _World(monkeypatch, db, config=_ASSIGNED, api_keys={"openai": "k"})
+    run, _ = await _answered(world, [], kinds=["semantics"], samples_per_column=per_column)
+    assert run["status"] == "done", run
+    sampled = [q for q in world.reads.sql if q.startswith("SELECT DISTINCT ")]
+    assert sampled and all(q.endswith(f"LIMIT {per_column}") for q in sampled)
+    assert world.prompts
+    shown = [
+        len(c["sample_values"])
+        for p in world.prompts
+        for t in json.loads(p.split(context.TABLES_HEADER, 1)[1].split("\n", 1)[0])
+        for c in t["comparable_columns"]
+        if "sample_values" in c
+    ]
+    assert shown and max(shown) == per_column
+
+
+def test_the_count_weighs_each_column_at_the_runs_samples_per_column():
+    """More sample values per column weigh more, so a small model makes more calls."""
+
+    def table(tid: int) -> TableFacts:
+        columns = tuple(
+            ColumnFacts(
+                f"c{i}",
+                "text",
+                None,
+                (),
+                ("unknown",),
+                False,
+                (),
+                False,
+                type_groups("text", subtype=None, array_depth=0),
+            )
+            for i in range(3)
+        )
+        return TableFacts(tid, "d", "public", f"t{tid}", None, (), None, columns)
+
+    tables = [table(i) for i in range(1, 7)]
+    few = windows.bound(tables, None, 4000, 4096, 1)[1]
+    many = windows.bound(tables, None, 4000, 4096, 40)[1]
+    assert many > few
+
+
+@pytest.mark.parametrize("missing", ["threshold", "samples_per_column"])
+def test_a_scope_without_its_threshold_or_samples_per_column_is_refused(missing):
+    """No constant stands in for a setting the dialog did not send."""
+    body: dict[str, Any] = {
+        "kinds": ["foreign_keys"],
+        "source_domains": ["sales"],
+        "threshold": 0.7,
+        "samples_per_column": 5,
+    }
+    body.pop(missing)
+    with pytest.raises(ValidationError):
+        discovery.RunScope.model_validate(body)
