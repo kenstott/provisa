@@ -9,6 +9,7 @@
 # permission from the copyright holder.
 
 """ClickHouse's rows of make_interval, make_time, max and min of times, to_timestamp of a double,
+timestamp(timestamp, integer), timestamptz of a date, a timestamp or a date and a time,
 int2int4_sum, int4 of a "char" and numeric of a double or a real
 (REQ-2236; REQ-2171), each refused by name on ClickHouse before: the functions measure's own calls
 and the edges the rows read, answered on the embedded engine (chdb) against the embedded
@@ -239,6 +240,31 @@ INSTANTS = [
     ("SELECT to_timestamp(-1.0000005)", "1969-12-31 23:59:59"),  # rint after the 2000 epoch
     ("SELECT to_timestamp(1718454645.123456)", "2024-06-15 12:30:45.123456"),
     ("SELECT to_timestamp(' 1e9 '::double precision)", "2001-09-09 01:46:40"),
+]
+
+
+#: timestamptz of a date, a timestamp, or a date and a time, in the session zone UTC.
+INSTANTS += [
+    ('SELECT pg_catalog."timestamptz"(NULL::date) AS v', None),
+    ("SELECT pg_catalog.\"timestamptz\"('2000-02-29'::date) AS v", "2000-02-29 00:00:00"),
+    (
+        "SELECT pg_catalog.\"timestamptz\"('2024-06-15 12:30:45'::timestamp without time zone) AS v",
+        "2024-06-15 12:30:45",
+    ),
+    (
+        "SELECT pg_catalog.\"timestamptz\"('2000-02-29'::date, '23:59:59.5'::time without time zone) "
+        "AS v",
+        "2000-02-29 23:59:59.5",
+    ),
+    (
+        "SELECT pg_catalog.\"timestamptz\"('2024-06-15'::date, '24:00:00'::time without time zone) "
+        "AS v",
+        "2024-06-16 00:00:00",
+    ),
+    (
+        "SELECT pg_catalog.\"timestamptz\"('2024-06-15'::date, NULL::time without time zone) AS v",
+        None,
+    ),
 ]
 
 

@@ -401,6 +401,106 @@ STAMP_SCALED = Feature(
 )
 
 
+_UTC_NAMES = frozenset({"UTC", "Etc/UTC", "GMT", "Etc/GMT", "UCT", "Zulu", "Universal"})
+
+
+def _session_is_utc() -> bool:
+    from provisa.core.session_time_zone import current_zone
+
+    zone = current_zone.get()
+    return zone is None or zone.name in _UTC_NAMES or zone.offset in ("+00:00", "+00")
+
+
+_DAYS = frozenset({"date"})
+_CLOCKS = frozenset({"time without time zone", "time"})
+
+
+def _day_read(node: exp.Expr, dialect: str) -> exp.Expr:
+    """A date argument as the statement's own date literal is read (clickhouse.dated: 0A000 of
+    one outside Date32's years or not ISO, 22008 of a day that does not exist): what a rule
+    writes is not walked again."""
+    from provisa.transpiler.polyfill import clickhouse
+
+    try:
+        read = clickhouse.dated(node.unnest(), dialect)
+    except Refused as refused:
+        raise Refused(refused.refusal, ruling=True) from refused
+    return node.copy() if read is None else read
+
+
+def _written_day(node: exp.Expr) -> bool:
+    inner = node.unnest()
+    return isinstance(inner, exp.Anonymous) and inner.name == "toDate32"
+
+
+_LAST_US = (instants.LAST - datetime.datetime(1970, 1, 1)) // datetime.timedelta(microseconds=1)
+
+
+def _day_and_clock(day: exp.Expr, clock: exp.Expr) -> exp.Expr:
+    """A written date (Date32) and a held time (Int64 microseconds) as the instant of their wall
+    time in UTC; one past DateTime64's bound (2299-12-31 24:00:00) raises 0A000."""
+    sum_us = "(toInt64(provisa_d) * 86400000000 + toInt64(provisa_c))"
+    raised = ch_fail(
+        "0A000",
+        f"timestamptz() of a value outside {instants.BOUND} has no exact form on clickhouse",
+    ).format(condition=f"{sum_us} > {_LAST_US}")
+    form = f"CAST(fromUnixTimestamp64Micro({sum_us} + {raised}, 'UTC') AS {instants.INSTANT})"
+    written = sqlglot.parse_one(form, read="clickhouse")
+    nodes = {"provisa_d": day, "provisa_c": clock}
+    return written.transform(
+        lambda n: nodes[n.name].copy() if isinstance(n, exp.Column) and n.name in nodes else n
+    )
+
+
+def instant_of_wall(node: exp.Expr, dialect: str) -> exp.Expr | None:
+    """timestamptz of a date, a timestamp, or a date and a time: the wall time read in the
+    session's zone, the instant it is; as a cast to timestamptz of it (or of their sum), which
+    ClickHouse is told as its instant. In the session zone UTC only: another zone's wall time is
+    refused by name."""
+    if dialect != "clickhouse":
+        return None
+    call = trino.called(node)
+    if call is None or "timestamptz" not in call[0] or not 1 <= len(call[1]) <= 2:
+        return None
+    said = [trino.said(a) for a in call[1]]
+    if len(said) == 2 and said[0] not in _DAYS and _written_day(call[1][0]):
+        # the arguments as the pattern row read them (a date's toDate32, a held time)
+        if not _session_is_utc():
+            raise Refused(trino.no_form("timestamptz", dialect))
+        return _day_and_clock(call[1][0], call[1][1])
+    if not (
+        (len(said) == 1 and said[0] in _DAYS | _STAMPS)
+        or (len(said) == 2 and said[0] in _DAYS and said[1] in _CLOCKS)
+    ):
+        return None
+    args = [_day_read(a, dialect) if s == "date" else a.copy() for a, s in zip(call[1], said)]
+    value = args[0] if len(args) == 1 else exp.Paren(this=exp.Add(this=args[0], expression=args[1]))
+    if not _session_is_utc():
+        raise Refused(trino.no_form("timestamptz", dialect))
+    return exp.Cast(this=value, to=exp.DataType.build("timestamptz", dialect="postgres"))
+
+
+INSTANT_OF_WALL = Feature(
+    "timestamptz(date|timestamp|date, time)",
+    FAMILY,
+    "The instant a date, a timestamp, or a date and a time is in the session's zone.",
+    read=Side(
+        rules=(
+            Rule(None, {"clickhouse": Rewrite(instant_of_wall, mentions=r"\btimestamptz\s*\(")}),
+        ),
+        limitations={
+            "clickhouse": (
+                Limitation(
+                    "In the session TimeZone UTC, where the wall time is the instant: in any "
+                    "other zone refused by name. The answer is held as DateTime64(6, 'UTC'); one "
+                    f"outside {instants.BOUND} raises 0A000."
+                ),
+            )
+        },
+    ),
+)
+
+
 UNIX_SECONDS = Feature(
     "to_timestamp(double precision)",
     FAMILY,
@@ -453,5 +553,6 @@ FEATURES: tuple[Feature, ...] = (
     CLOCK_TIMESTAMP,
     UNIX_SECONDS,
     STAMP_SCALED,
+    INSTANT_OF_WALL,
     TO_CHAR,
 )
