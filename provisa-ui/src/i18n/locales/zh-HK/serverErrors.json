@@ -924,6 +924,15 @@
     },
     "relationship": {
       "name_taken": "名稱「{{name}}」已被關係「{{held_by}}」使用。請為此關係另行命名。"
+    },
+    "wikidata": {
+      "no_credential": "Wikidata 查詢服務毋須憑證",
+      "bad_id": "{{value}} 不是 Wikidata {{kind}}",
+      "bad_language": "{{language}} 不是語言代碼",
+      "bad_column_type": "Wikidata 屬性不提供的欄類型：{{types}}",
+      "filter_required": "此類別有 {{count}} 個實例，超過 {{limit}}：請選擇篩選條件",
+      "filter_too_wide": "篩選後仍有超過 {{limit}} 個實例",
+      "unreachable": "無法連接 Wikidata：{{reason}}"
     }
   }
 }

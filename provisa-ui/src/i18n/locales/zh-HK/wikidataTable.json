@@ -1,0 +1,28 @@
+{
+  "wikidataTable": {
+    "modeLabel": "如何選擇表格",
+    "modeStarter": "入門表格",
+    "modeClass": "類別的表格",
+    "starter": "入門表格",
+    "starterHint": "可供連接的參考表格，從 Wikidata 讀取。",
+    "starters": {
+      "countries": "國家（ISO 代碼、首都、人口）",
+      "currencies": "貨幣（ISO 4217）",
+      "languages": "語言（ISO 639）",
+      "admin_regions": "一級行政區",
+      "organizations": "上市機構（LEI、股票代號、ISIN）"
+    },
+    "class": "類別",
+    "classHint": "按名稱搜尋類別；表格包含該類別的實例。",
+    "nothingFound": "找不到",
+    "instances": "實例數目：{{value}}",
+    "broader": "上位類別",
+    "narrower": "下位類別",
+    "columns": "欄",
+    "columnsHint": "此類別實例最常用的屬性。",
+    "filterRequired": "超過 {{limit}} 個實例：請選擇篩選條件。",
+    "filterProperty": "篩選依據",
+    "filterValue": "值",
+    "useClass": "使用此類別"
+  }
+}

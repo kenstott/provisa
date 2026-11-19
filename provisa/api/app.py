@@ -5678,6 +5678,9 @@ def create_app() -> FastAPI:
     from provisa.api.admin.sparql_router import router as sparql_router
 
     app.include_router(sparql_router)
+    from provisa.api.admin.wikidata_router import router as wikidata_router
+
+    app.include_router(wikidata_router)  # REQ-1923
     from provisa.api.admin.graphql_remote_router import router as graphql_remote_router
 
     app.include_router(graphql_remote_router)

@@ -924,6 +924,15 @@
     },
     "relationship": {
       "name_taken": "Il nome '{{name}}' è già usato dalla relazione '{{held_by}}'. Assegna a questa un altro nome."
+    },
+    "wikidata": {
+      "no_credential": "Il servizio di query di Wikidata non richiede credenziali",
+      "bad_id": "{{value}} non è un {{kind}} di Wikidata",
+      "bad_language": "{{language}} non è un codice di lingua",
+      "bad_column_type": "Tipi di colonna non offerti per una proprietà di Wikidata: {{types}}",
+      "filter_required": "Questa classe ha {{count}} istanze, più di {{limit}}: scegli un filtro",
+      "filter_too_wide": "Il filtro lascia più di {{limit}} istanze",
+      "unreachable": "Impossibile raggiungere Wikidata: {{reason}}"
     }
   }
 }

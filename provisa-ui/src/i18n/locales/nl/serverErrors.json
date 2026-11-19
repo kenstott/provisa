@@ -924,6 +924,15 @@
     },
     "relationship": {
       "name_taken": "De naam '{{name}}' is al in gebruik door relatie '{{held_by}}'. Geef deze een andere naam."
+    },
+    "wikidata": {
+      "no_credential": "De Wikidata-querydienst vraagt geen inloggegevens",
+      "bad_id": "{{value}} is geen Wikidata-{{kind}}",
+      "bad_language": "{{language}} is geen taalcode",
+      "bad_column_type": "Kolomtypen die niet worden aangeboden voor een Wikidata-eigenschap: {{types}}",
+      "filter_required": "Deze klasse heeft {{count}} instanties, meer dan {{limit}}: kies een filter",
+      "filter_too_wide": "Het filter laat meer dan {{limit}} instanties over",
+      "unreachable": "Wikidata is niet bereikbaar: {{reason}}"
     }
   }
 }

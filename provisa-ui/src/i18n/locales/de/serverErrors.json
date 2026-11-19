@@ -924,6 +924,15 @@
     },
     "relationship": {
       "name_taken": "Der Name '{{name}}' ist bereits von der Beziehung '{{held_by}}' belegt. Benennen Sie diese anders."
+    },
+    "wikidata": {
+      "no_credential": "Der Wikidata-Abfragedienst benötigt keine Anmeldedaten",
+      "bad_id": "{{value}} ist keine Wikidata-{{kind}}",
+      "bad_language": "{{language}} ist kein Sprachcode",
+      "bad_column_type": "Für eine Wikidata-Eigenschaft nicht angebotene Spaltentypen: {{types}}",
+      "filter_required": "Diese Klasse hat {{count}} Instanzen, mehr als {{limit}}: Wählen Sie einen Filter",
+      "filter_too_wide": "Der Filter lässt mehr als {{limit}} Instanzen übrig",
+      "unreachable": "Wikidata ist nicht erreichbar: {{reason}}"
     }
   }
 }

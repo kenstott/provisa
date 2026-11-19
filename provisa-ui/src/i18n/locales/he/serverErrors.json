@@ -924,6 +924,15 @@
     },
     "relationship": {
       "name_taken": "השם '{{name}}' כבר תפוס על ידי הקשר '{{held_by}}'. יש לתת לקשר הזה שם אחר."
+    },
+    "wikidata": {
+      "no_credential": "שירות השאילתות של ויקינתונים אינו דורש אישורים",
+      "bad_id": "{{value}} אינו {{kind}} של ויקינתונים",
+      "bad_language": "{{language}} אינו קוד שפה",
+      "bad_column_type": "סוגי עמודות שאינם מוצעים למאפיין של ויקינתונים: {{types}}",
+      "filter_required": "למחלקה זו יש {{count}} מופעים, יותר מ-{{limit}}: בחרו מסנן",
+      "filter_too_wide": "המסנן משאיר יותר מ-{{limit}} מופעים",
+      "unreachable": "לא ניתן להגיע לוויקינתונים: {{reason}}"
     }
   }
 }

@@ -924,6 +924,15 @@
     },
     "relationship": {
       "name_taken": "名前 '{{name}}' は既にリレーションシップ '{{held_by}}' が使用しています。別の名前を付けてください。"
+    },
+    "wikidata": {
+      "no_credential": "Wikidata クエリサービスに認証情報は不要です",
+      "bad_id": "{{value}} は Wikidata の {{kind}} ではありません",
+      "bad_language": "{{language}} は言語コードではありません",
+      "bad_column_type": "Wikidata のプロパティに提供されない列の型: {{types}}",
+      "filter_required": "このクラスのインスタンスは {{count}} 件で {{limit}} 件を超えています。フィルターを選択してください",
+      "filter_too_wide": "フィルター後も {{limit}} 件を超えるインスタンスが残っています",
+      "unreachable": "Wikidata に接続できません: {{reason}}"
     }
   }
 }
