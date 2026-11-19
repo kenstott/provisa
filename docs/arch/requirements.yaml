@@ -3097,7 +3097,12 @@
     2026-11-18. Where the dictionary gives a noun more than one form, the naming authority takes the one
     in everyday use (schema to schemas; data stays data, its own singular and plural; person to people).
     A word the dictionary knows only in an unrelated sense of the same spelling, such as by (read as the
-    noun bye), is not inflected. This is part of the rule, not a per-word list.'
+    noun bye), is not inflected. This is part of the rule, not a per-word list. (Amended 2026-11-18, A TIE
+    BETWEEN DICTIONARY FORMS IS BROKEN BY WORD FREQUENCY:) Maintainer 2026-11-18. Where the dictionary lists
+    more than one acceptable form and gives no ranking between them (schema: schemata, schemas), the form
+    used more often in general English wins, read from a bundled word-frequency table under a licence compatible
+    with Provisa''s (schema to schemas). Frequency only breaks such ties; it never overrides a single dictionary
+    form.'
   use_case: Consistent multi-language naming with a single authority ensures client-facing names are predictable
     and independent of physical schema.
   code:
