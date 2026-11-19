@@ -214,3 +214,44 @@ def test_the_write_guard_and_time_travel_take_the_catalog() -> None:
     assert view_of(pg, _VIEWS) is None
     assert view_of(own, _VIEWS, names) == "views.v1"
     assert view_of(own, _VIEWS) == "views.v1"
+
+
+def _two_catalogs_context():  # noqa: ANN202
+    from provisa.compiler.sql_gen import CompilationContext, TableMeta
+
+    ctx = CompilationContext()
+    # The view first: the base table of its schema and name in another source comes after it.
+    ctx.tables = {
+        "v1": TableMeta(
+            table_id=7,
+            field_name="v1",
+            type_name="V1",
+            source_id="__derived__",
+            catalog_name="__derived__",
+            schema_name="views",
+            table_name="v1",
+            domain_id="sales",
+        ),
+        "pg_v1": TableMeta(
+            table_id=9,
+            field_name="pg_v1",
+            type_name="PgV1",
+            source_id="pg",
+            catalog_name="pg",
+            schema_name="views",
+            table_name="v1",
+            domain_id="ops",
+        ),
+    }
+    return ctx
+
+
+def test_lowering_keeps_the_catalog_a_reference_names() -> None:
+    """Lowered, a reference naming its catalog stays that catalog's table: rewritten to the view's
+    catalog, the expansion after governance read it as the view."""
+    from provisa.compiler.sql_rewrite import normalize_table_refs
+
+    ctx = _two_catalogs_context()
+    assert '"pg"."views"."v1"' in normalize_table_refs(_PG_TABLE, ctx)
+    own = normalize_table_refs('SELECT * FROM "__derived__"."views"."v1"', ctx)
+    assert '"__derived__"."views"."v1"' in own
