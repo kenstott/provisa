@@ -8729,9 +8729,14 @@
   feature: commands-and-functions-tracked-functions
   priority: SHOULD
   type: behavioral
-  description: Database functions (stored procedures, UDFs) registered in Provisa config and exposed as
+  description: 'Database functions (stored procedures, UDFs) registered in Provisa config and exposed as
     GraphQL mutations or queries. VOLATILE functions exposed as mutations; STABLE/IMMUTABLE as queries.
-    Follows Hasura v2's `pg_track_function` pattern.
+    Follows Hasura v2''s `pg_track_function` pattern. (Amended 2026-11-19, STORED PROCEDURES ARE CALLED
+    IN THEIR SOURCE''S OWN FORM:) Maintainer 2026-11-19. A stored procedure in a relational source can be
+    registered as a command, not only a function: it is invoked in the form its source''s dialect requires
+    (CALL in PostgreSQL, MySQL, MariaDB and Db2; EXEC in SQL Server and Sybase; a procedure call in Oracle),
+    never as SELECT * FROM. A procedure is exposed as a mutation. Its result is the result set it returns;
+    a procedure that returns none gives its OUT parameters as one row, or an empty result when it has none.'
   use_case: Tracked DB functions expose stored procedures as GraphQL mutations so clients use one API
     for all writes.
   code:
