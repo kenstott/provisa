@@ -142,7 +142,7 @@ Every 15 minutes each organization's sweep deletes the expired and unused grants
 
 A role grant can name a person by their email address instead of by their user id. Each sign-in records whether the identity provider verified the person's email address. A grant by email attaches only to an account whose address was verified by the identity provider at sign-in. An address typed by an account holder on a local account, or one the provider never verified, matches no one. The grant waits as a pending grant until a person signs in with that verified address, at which point it attaches.
 
-This keeps email-based grants honest. A person who controls a username does not automatically control the grants addressed to that name's email.
+The grant goes to the person the identity provider vouches for. A person who controls a username does not automatically control the grants addressed to that name's email.
 
 
 ### Derived roles
