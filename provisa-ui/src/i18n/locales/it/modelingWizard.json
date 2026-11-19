@@ -210,7 +210,7 @@
       "description": "Bozza di descrizione",
       "notCreatedTitle": "Registrato, non creato",
       "ruleNotCreated": "Regola del business vault «{{rule}}»: registrata nella descrizione della sua tabella; costruiscila come vista su queste tabelle.",
-      "draftNote": "Ogni descrizione è una prima bozza che uno steward rivedrà in Tabelle registrate.",
+      "draftNote": "Ogni descrizione è una prima bozza che uno steward rivedrà nella pagina Tabelle.",
       "create": "Crea",
       "nameRequired": "Dai un nome a ogni tabella.",
       "nameTaken": "Due tabelle hanno lo stesso nome. Dai a ciascuna il proprio."
@@ -219,8 +219,8 @@
       "created_one": "{{count}} tabella creata",
       "created_other": "{{count}} tabelle create",
       "stopped": "Interrotto a {{name}}",
-      "draftNote": "Le loro descrizioni sono prime bozze: rivedile in Tabelle registrate.",
-      "oneWay": "La procedura guidata crea soltanto. Modifica queste tabelle in Tabelle registrate o nel modulo entità/fatto; la procedura non le rigenera.",
+      "draftNote": "Le loro descrizioni sono prime bozze: rivedile nella pagina Tabelle.",
+      "oneWay": "La procedura guidata crea soltanto. Modifica queste tabelle nella pagina Tabelle o nel modulo entità/fatto; la procedura non le rigenera.",
       "relatesTo": "collegato a {{tables}}",
       "status": {
         "created": "Creata",

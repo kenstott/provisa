@@ -2,7 +2,7 @@
   "tablesPage": {
     "loading": "טוען טבלאות...",
     "titleViews": "תצוגות (Views)",
-    "titleTables": "טבלאות רשומות",
+    "titleTables": "טבלאות",
     "filterPlaceholderViews": "סינון תצוגות…",
     "filterPlaceholderTables": "סינון לפי מקור, דומיין או טבלה…",
     "addTable": "+ טבלה",

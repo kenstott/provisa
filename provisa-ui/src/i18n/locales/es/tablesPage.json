@@ -2,7 +2,7 @@
   "tablesPage": {
     "loading": "Cargando tablas...",
     "titleViews": "Vistas",
-    "titleTables": "Tablas registradas",
+    "titleTables": "Tablas",
     "filterPlaceholderViews": "Filtrar vistas…",
     "filterPlaceholderTables": "Filtrar por origen, dominio o tabla…",
     "addTable": "+ Tabla",

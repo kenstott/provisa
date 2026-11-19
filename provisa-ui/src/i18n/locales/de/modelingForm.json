@@ -30,11 +30,11 @@
     "errorRequired": "Name, Quelle und Domäne sind erforderlich.",
     "submit": "Erstellen",
     "createdTitle": "{{name}} erstellt",
-    "createdMv": "Materialisierte Sicht erstellt — {{kind}} „{{name}}“ in Domäne {{domain}}. Sie erscheint jetzt unter „Registrierte Tabellen“ und ist abfragbar.",
+    "createdMv": "Materialisierte Sicht erstellt — {{kind}} „{{name}}“ in Domäne {{domain}}. Sie erscheint jetzt auf der Seite „Tabellen“ und ist abfragbar.",
     "createdHistory": "Historie wird verfolgt: Vergangene Werte sind per Time Travel abfragbar.",
     "createdDims": "{{count}} Dimensionsverknüpfung(en) registriert, damit der Fakt mit seinen Entitäten verknüpft werden kann.",
     "reviseTitle": "Änderung nötig?",
-    "reviseBody": "Dieser Dialog erstellt nur. Um „{{name}}“ zu überarbeiten — Schlüssel, Attribute, Historie oder Spalten — bearbeiten Sie es unter „Registrierte Tabellen“. Ein erneuter Durchlauf dieses Dialogs mit demselben Namen überschreibt das bestehende Modell.",
+    "reviseBody": "Dieser Dialog erstellt nur. Um „{{name}}“ zu überarbeiten — Schlüssel, Attribute, Historie oder Spalten — bearbeiten Sie es auf der Seite „Tabellen“. Ein erneuter Durchlauf dieses Dialogs mit demselben Namen überschreibt das bestehende Modell.",
     "createAnother": "Weitere erstellen",
     "done": "Fertig"
   }

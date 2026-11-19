@@ -30,11 +30,11 @@
     "errorRequired": "名称、数据源和域为必填项。",
     "submit": "创建",
     "createdTitle": "已创建 {{name}}",
-    "createdMv": "已构建物化视图 — 域 {{domain}} 中的{{kind}}“{{name}}”。它现已出现在“已注册表”中并可查询。",
+    "createdMv": "已构建物化视图 — 域 {{domain}} 中的{{kind}}“{{name}}”。它现已出现在“表”页面中并可查询。",
     "createdHistory": "已跟踪历史：可通过时间旅行查询过去的值。",
     "createdDims": "已注册 {{count}} 个维度链接，事实可与其实体联接。",
     "reviseTitle": "需要修改？",
-    "reviseBody": "此对话框仅用于创建。要修订“{{name}}”— 其键、属性、历史或列 — 请在“已注册表”中编辑。使用相同名称重新运行此对话框会覆盖现有模型。",
+    "reviseBody": "此对话框仅用于创建。要修订“{{name}}”— 其键、属性、历史或列 — 请在“表”页面中编辑。使用相同名称重新运行此对话框会覆盖现有模型。",
     "createAnother": "再创建一个",
     "done": "完成"
   }
