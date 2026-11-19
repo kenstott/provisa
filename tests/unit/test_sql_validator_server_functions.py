@@ -340,3 +340,43 @@ def test_the_forms_of_the_meta_path_call_nothing_else_of_the_products_own():
     for form in (*metadata_functions.FORMS.values(), *metadata_functions.RELATION_FORMS.values()):
         for call in sqlglot.parse_one(form.sql, read="postgres").find_all(exp.Anonymous):
             assert refused_in_a_governed_statement(call.name, True) != "own", (form.name, call.name)
+
+
+#: A view's body under a regex mask declared on the view's own table, as governance writes it
+#: (mv.view_read._with_own_rules) before the statement is validated.
+_MASKED_VIEW_BODY = (
+    "SELECT provisa_regex_replace(c.name, '^.*$', '***', '****') AS name FROM bank.customer c"
+)
+
+
+def test_a_mask_governance_writes_into_a_view_body_is_not_refused():
+    from provisa.compiler.view_expand import expand_view_refs
+
+    sql = expand_view_refs(
+        'SELECT f.name FROM "bank"."masked_view" AS f',
+        {"masked_view": _MASKED_VIEW_BODY},
+        mark=True,
+    )
+    assert not [v for v in _violations(sql) if v.startswith("V007")], sql
+
+
+def test_the_same_call_written_by_a_client_is_refused():
+    from provisa.compiler.view_expand import expand_view_refs
+
+    # Unmarked, the body is the client's own derived table.
+    sql = expand_view_refs(
+        'SELECT f.name FROM "bank"."masked_view" AS f', {"masked_view": _MASKED_VIEW_BODY}
+    )
+    assert any(v.startswith("V007") and "provisa_regex_replace" in v for v in _violations(sql))
+
+
+@pytest.mark.parametrize("name", _SERVER[:3])
+def test_a_function_that_reads_the_server_is_refused_in_a_view_body(name):
+    from provisa.compiler.view_expand import expand_view_refs
+
+    sql = expand_view_refs(
+        'SELECT f.v FROM "bank"."v" AS f',
+        {"v": f"SELECT {name}('a') AS v FROM bank.customer c"},
+        mark=True,
+    )
+    assert _refused(name, _violations(sql)), sql
