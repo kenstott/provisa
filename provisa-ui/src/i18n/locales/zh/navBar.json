@@ -10,6 +10,7 @@
     "groupModel": "派生",
     "groupSecurity": "安全",
     "groupExplore": "探索",
+    "groupContext": "上下文",
     "groupAdmin": "管理",
     "itemViews": "视图",
     "itemMetrics": "指标",
@@ -53,7 +54,7 @@
     "itemClassificationKinds": "分类",
     "itemDataProducts": "产品",
     "itemReports": "报表",
-    "itemGlossary": "本体",
+    "itemGlossary": "术语表",
     "itemObservability": "可观测性",
     "itemMcpServer": "MCP 服务器",
     "itemLocalUsers": "本地用户",
@@ -78,8 +79,10 @@
     "itemNotebook": "笔记本",
     "itemContainerRegistries": "容器注册表",
     "itemSparql": "SPARQL",
-    "itemLibrary": "资料库",
     "itemPlatformObservability": "平台可观测性",
-    "itemSyncing": "同步"
+    "itemOntology": "本体",
+    "itemContextHealth": "上下文健康状况",
+    "itemDocuments": "文档",
+    "itemContextSync": "上下文同步"
   }
 }

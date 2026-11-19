@@ -173,7 +173,7 @@ Licensed:     no (no license installed)
 
 ## provisa metadata export
 
-Trigger the running server's on-demand metadata publish. The command posts to `POST /admin/syncing/publish`, the publish the Syncing page's **Publish now** runs, to every entry whose direction includes Export, so both paths send the same full snapshot.
+Trigger the running server's on-demand metadata publish. The command posts to `POST /admin/syncing/publish`, the publish the Context Sync page's **Publish now** runs, to every entry whose direction includes Export, so both paths send the same full snapshot.
 
 ```
 provisa metadata export [--api URL] [--token TOKEN] [--timeout SECONDS]

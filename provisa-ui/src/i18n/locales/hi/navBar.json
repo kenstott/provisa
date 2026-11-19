@@ -10,6 +10,7 @@
     "groupModel": "व्युत्पन्न",
     "groupSecurity": "सुरक्षा",
     "groupExplore": "एक्सप्लोर",
+    "groupContext": "संदर्भ",
     "groupAdmin": "एडमिन",
     "itemViews": "व्यू",
     "itemMetrics": "मेट्रिक्स",
@@ -53,7 +54,7 @@
     "itemClassificationKinds": "वर्गीकरण",
     "itemDataProducts": "प्रोडक्ट",
     "itemReports": "रिपोर्टें",
-    "itemGlossary": "ऑन्टोलॉजी",
+    "itemGlossary": "शब्दावली",
     "itemObservability": "ऑब्ज़र्वेबिलिटी",
     "itemMcpServer": "MCP सर्वर",
     "itemLocalUsers": "स्थानीय उपयोगकर्ता",
@@ -78,8 +79,10 @@
     "itemNotebook": "नोटबुक",
     "itemContainerRegistries": "कंटेनर रजिस्ट्री",
     "itemSparql": "SPARQL",
-    "itemLibrary": "लाइब्रेरी",
     "itemPlatformObservability": "प्लेटफ़ॉर्म ऑब्ज़र्वेबिलिटी",
-    "itemSyncing": "सिंकिंग"
+    "itemOntology": "ऑन्टोलॉजी",
+    "itemContextHealth": "संदर्भ स्वास्थ्य",
+    "itemDocuments": "दस्तावेज़",
+    "itemContextSync": "संदर्भ सिंक"
   }
 }
