@@ -39,7 +39,7 @@ _BODY = (
     "FROM bank.customer c -- it's the customer\n"
     "WHERE c.name <> 'x'"
 )
-_VIEWS = {"v": _BODY}
+_VIEWS = {"bank.v": _BODY}
 
 _FORGES = {
     "line_comment": (
@@ -96,7 +96,7 @@ def test_the_clients_own_call_stays_refused(forge):
 
 @pytest.mark.parametrize("forge", sorted(_FORGES))
 def test_a_reference_in_text_is_no_read_of_the_view(forge):
-    assert not reads_view(_FORGES[forge], "v")
+    assert not reads_view(_FORGES[forge], "bank.v", unqualified=True)
     assert expand_view_refs(_FORGES[forge], _VIEWS) == _FORGES[forge]
 
 
@@ -106,14 +106,14 @@ def test_a_real_reference_beside_one_in_text_is_expanded_and_marked():
     )
     tree = sqlglot.parse_one(sql, read="postgres")
     marked = [s for s in tree.find_all(exp.Subquery) if marked_view(s.alias) is not None]
-    assert [marked_view(s.alias) for s in marked] == ["v"]
+    assert [marked_view(s.alias) for s in marked] == ["bank.v"]
     assert tree.find(exp.Literal, bfs=False).this == "FROM bank.v"
-    assert reads_view("SELECT * FROM bank.v -- FROM bank.w", "v")
+    assert reads_view("SELECT * FROM bank.v -- FROM bank.w", "bank.v", unqualified=True)
 
 
 def test_an_unmarked_reference_after_a_comment_is_expanded():
-    sql = expand_view_refs("SELECT 1 -- FROM bank.v\nFROM bank.v", {"v": "SELECT 1 AS one"})
-    assert sql == "SELECT 1 -- FROM bank.v\nFROM (SELECT 1 AS one) v"
+    sql = expand_view_refs("SELECT 1 -- FROM bank.v\nFROM bank.v", {"bank.v": "SELECT 1 AS one"})
+    assert sql == 'SELECT 1 -- FROM bank.v\nFROM (SELECT 1 AS one) "v"'
 
 
 def test_a_marked_body_keeps_its_alias_and_qualified_columns_resolve():
@@ -121,7 +121,7 @@ def test_a_marked_body_keeps_its_alias_and_qualified_columns_resolve():
     tree = sqlglot.parse_one(sql, read="postgres")
     outer = next(s for s in tree.find_all(exp.Subquery) if s.alias == "f")
     inner = outer.this.args["from_"].this
-    assert marked_view(inner.alias) == "v"
+    assert marked_view(inner.alias) == "bank.v"
     assert sqlglot.parse_one(_BODY, read="postgres") == inner.this
 
 
@@ -140,7 +140,7 @@ def test_a_marked_body_keeps_its_alias_and_qualified_columns_resolve():
     ids=["escape_string", "dollar_tag", "dollar_bare", "nested_comment", "unicode_string"],
 )
 def test_a_reference_in_any_literal_or_comment_form_is_no_read(sql):
-    assert not reads_view(sql, "v")
+    assert not reads_view(sql, "bank.v", unqualified=True)
     assert expand_view_refs(sql, _VIEWS) == sql
     assert VIEW_MARK not in expand_view_refs(sql, _VIEWS, mark=True)
 
@@ -207,7 +207,7 @@ def test_a_clause_a_view_cannot_carry_is_refused_naming_it(sql, clause):
     with pytest.raises(ViewClauseNotSupported) as refused:
         expand_view_refs(sql, _VIEWS, mark=True)
     assert refused.value.clause == clause
-    assert refused.value.view == "v"
+    assert refused.value.view == "bank.v"
 
 
 def test_a_view_in_a_parenthesised_join_keeps_its_join():
@@ -224,7 +224,7 @@ def test_only_on_a_view_reads_the_view():
     sql = expand_view_refs("SELECT * FROM ONLY bank.v", _VIEWS, mark=True)
     tree = sqlglot.parse_one(sql, read="postgres")
     assert [marked_view(s.alias) for s in tree.find_all(exp.Subquery) if marked_view(s.alias)] == [
-        "v"
+        "bank.v"
     ]
 
 
@@ -234,14 +234,14 @@ def test_a_cte_named_like_a_view_is_the_cte():
         dialect="postgres"
     )
     assert expand_view_refs(sql, _VIEWS) == sql
-    assert not reads_view(sql, "v")
+    assert not reads_view(sql, "bank.v", unqualified=True)
 
 
 def test_a_non_recursive_cte_reads_the_view_it_shadows_in_its_own_body():
     sql = expand_view_refs("WITH v AS (SELECT * FROM v) SELECT * FROM v", _VIEWS, mark=True)
     tree = sqlglot.parse_one(sql, read="postgres")
     marked = [marked_view(s.alias) for s in tree.find_all(exp.Subquery) if marked_view(s.alias)]
-    assert marked == ["v"], sql
+    assert marked == ["bank.v"], sql
     assert tree.find(exp.CTE).find(exp.Subquery) is not None  # inside the CTE's body
 
 
@@ -249,16 +249,17 @@ def test_an_unquoted_name_folds_to_lower_case():
     for sql in ("SELECT * FROM bank.V", "select * from V", 'SELECT * FROM "bank"."v"'):
         marked = expand_view_refs(sql, _VIEWS, mark=True)
         assert VIEW_MARK in marked, sql
-        assert reads_view(sql, "v"), sql
+        assert reads_view(sql, "bank.v", unqualified=True), sql
     for sql in ('SELECT * FROM "V"', 'SELECT * FROM bank."V"'):
         assert VIEW_MARK not in expand_view_refs(sql, _VIEWS, mark=True), sql
-        assert not reads_view(sql, "v"), sql
+        assert not reads_view(sql, "bank.v", unqualified=True), sql
 
 
 def test_a_schema_keyed_view_is_read_only_under_its_schema_folded():
-    views = {"onto.thing": "SELECT 1 AS one"}
-    assert VIEW_MARK in expand_view_refs("SELECT * FROM ONTO.Thing", views, mark=True)
+    views = {"ontology.thing": "SELECT 1 AS one"}
+    assert VIEW_MARK in expand_view_refs("SELECT * FROM ONTOLOGY.Thing", views, mark=True)
     assert VIEW_MARK not in expand_view_refs("SELECT * FROM other.thing", views, mark=True)
+    # An ontology Class is never read by its name alone (REQ-2163).
     assert VIEW_MARK not in expand_view_refs("SELECT * FROM thing", views, mark=True)
-    assert reads_view("SELECT * FROM ONTO.Thing", "onto.thing")
-    assert not reads_view("SELECT * FROM other.thing", "onto.thing")
+    assert reads_view("SELECT * FROM ONTOLOGY.Thing", "ontology.thing", unqualified=False)
+    assert not reads_view("SELECT * FROM other.thing", "ontology.thing", unqualified=False)

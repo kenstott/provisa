@@ -354,7 +354,7 @@ def test_a_mask_governance_writes_into_a_view_body_is_not_refused():
 
     sql = expand_view_refs(
         'SELECT f.name FROM "bank"."masked_view" AS f',
-        {"masked_view": _MASKED_VIEW_BODY},
+        {"bank.masked_view": _MASKED_VIEW_BODY},
         mark=True,
     )
     assert not [v for v in _violations(sql) if v.startswith("V007")], sql
@@ -365,7 +365,7 @@ def test_the_same_call_written_by_a_client_is_refused():
 
     # Unmarked, the body is the client's own derived table.
     sql = expand_view_refs(
-        'SELECT f.name FROM "bank"."masked_view" AS f', {"masked_view": _MASKED_VIEW_BODY}
+        'SELECT f.name FROM "bank"."masked_view" AS f', {"bank.masked_view": _MASKED_VIEW_BODY}
     )
     assert any(v.startswith("V007") and "provisa_regex_replace" in v for v in _violations(sql))
 
@@ -376,7 +376,7 @@ def test_a_function_that_reads_the_server_is_refused_in_a_view_body(name):
 
     sql = expand_view_refs(
         'SELECT f.v FROM "bank"."v" AS f',
-        {"v": f"SELECT {name}('a') AS v FROM bank.customer c"},
+        {"bank.v": f"SELECT {name}('a') AS v FROM bank.customer c"},
         mark=True,
     )
     assert _refused(name, _violations(sql)), sql

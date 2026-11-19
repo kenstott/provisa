@@ -222,9 +222,13 @@ class _Lineage:
         transforms: Mapping[str, dict],
         commands: Mapping[str, dict],
     ) -> None:
+        from provisa.mv.view_read import view_names  # noqa: PLC0415
+
         self.table_map = table_map
         self.columns_of = columns_of
         self.views = views
+        # A semantic definition names a view by its domain as well as by its schema.
+        self.view_names = view_names(views, table_map)
         self.transforms = {name.lower(): command for name, command in transforms.items()}
         self.commands = {name.lower(): command for name, command in commands.items()}
 
@@ -263,7 +267,7 @@ class _Lineage:
                     scope.derived[alias] = self._command(relation, command)
                 elif not relation.db and relation.name in ctes:
                     scope.derived[alias] = ctes[relation.name]
-                elif (view := view_of(relation, self.views)) is not None:
+                elif (view := view_of(relation, self.views, self.view_names)) is not None:
                     scope.derived[alias] = self.of_query(_parse(self.views[view]), {})
                 elif (table_id := table_id_of(relation, self.table_map)) is not None:
                     scope.tables[alias] = table_id
@@ -279,7 +283,7 @@ class _Lineage:
 
         inputs: set[tuple[int, str]] = set()
         for table in command_table_arguments(call, command):
-            if (view := view_of(table, self.views)) is not None:
+            if (view := view_of(table, self.views, self.view_names)) is not None:
                 for lineage in self.of_query(_parse(self.views[view]), {}).values():
                     inputs |= lineage
             elif (table_id := table_id_of(table, self.table_map)) is not None:
@@ -376,7 +380,10 @@ def tables_read(
     from provisa.compiler.naming import table_id_of  # noqa: PLC0415
     from provisa.compiler.sql_validator import command_table_arguments  # noqa: PLC0415
 
+    from provisa.mv.view_read import view_names  # noqa: PLC0415
+
     lowered = {name.lower(): command for name, command in commands.items()}
+    names = view_names(views, table_map)
     found: set[int] = set()
     pending, seen = [definition], set()
     while pending:
@@ -385,7 +392,7 @@ def tables_read(
             table = tables.pop()
             if (command := _command_of(table, lowered)) is not None:
                 tables += command_table_arguments(table, command)
-            elif (view := view_of(table, views)) is not None:
+            elif (view := view_of(table, views, names)) is not None:
                 if view not in seen:
                     seen.add(view)
                     pending.append(views[view])

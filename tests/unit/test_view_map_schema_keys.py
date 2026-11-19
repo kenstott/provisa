@@ -17,10 +17,13 @@ own qualification reads it. The same on the marked (parsed) and the unmarked (te
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
 
 from provisa.compiler.view_expand import VIEW_MARK, expand_view_refs, unqualified_keys
-from provisa.mv.view_read import statement_as_read, views_read
+from provisa.compiler.stage2 import GovernanceContext
+from provisa.mv.view_read import statement_as_read, view_names, views_read
 
 pytestmark = pytest.mark.unit
 
@@ -92,9 +95,35 @@ def test_views_read_and_statement_as_read_take_the_same_key() -> None:
     assert views_read("SELECT * FROM otherschema.v1", _VIEWS) == {}
     assert views_read('SELECT * FROM "__derived__"."views"."v1"', _VIEWS) == _VIEWS
     assert views_read("SELECT * FROM v1", _VIEWS) == _VIEWS
-    state = object()
-    assert "vault" not in statement_as_read("SELECT * FROM otherschema.v1", _VIEWS, state)
-    assert "vault" in statement_as_read("SELECT * FROM views.v1", _VIEWS, state)
+    state = SimpleNamespace(mv_registry=SimpleNamespace(get=lambda _id: None))
+    gov = GovernanceContext(table_map={})
+    assert "vault" not in statement_as_read("SELECT * FROM otherschema.v1", _VIEWS, state, gov)
+    assert "vault" in statement_as_read("SELECT * FROM views.v1", _VIEWS, state, gov)
+
+
+#: The reader's governance names the view's registered table by its stored schema and by its
+#: domain (``sales``), as a statement not yet lowered to stored names calls it; ``otherschema.v1``
+#: is another registered table.
+_GOV = GovernanceContext(table_map={"views.v1": 7, "sales.v1": 7, "otherschema.v1": 8, "v1": 7})
+
+
+@pytest.mark.parametrize("mark", [False, True])
+def test_a_name_governance_gives_the_view_is_the_view(mark: bool) -> None:
+    names = view_names(_VIEWS, _GOV)
+    assert names == {"sales.v1": "views.v1"}
+    for sql in ('SELECT * FROM "sales"."v1" AS t', "SELECT * FROM sales.v1"):
+        assert "vault" in expand_view_refs(sql, _VIEWS, mark=mark, names=names), sql
+    other = "SELECT * FROM otherschema.v1"
+    assert "vault" not in expand_view_refs(other, _VIEWS, mark=mark, names=names)
+
+
+def test_views_read_takes_the_names_governance_gives_the_view() -> None:
+    names = view_names(_VIEWS, _GOV)
+    assert views_read('SELECT * FROM "sales"."v1"', _VIEWS, names) == _VIEWS
+    assert views_read("SELECT * FROM otherschema.v1", _VIEWS, names) == {}
+    state = SimpleNamespace(mv_registry=SimpleNamespace(get=lambda _id: None))
+    assert "vault" in statement_as_read('SELECT * FROM "sales"."v1"', _VIEWS, state, _GOV)
+    assert "vault" not in statement_as_read("SELECT * FROM otherschema.v1", _VIEWS, state, _GOV)
 
 
 def test_a_nested_view_is_read_only_under_its_schema() -> None:

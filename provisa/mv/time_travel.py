@@ -213,13 +213,17 @@ def relation_kind(table: Any, state: Any, gov: Any, ctx: Any) -> str | None:
     from provisa.mv.bitemporal_tables import versioned_table_rows  # noqa: PLC0415
 
     from provisa.compiler.view_expand import view_of  # noqa: PLC0415
+    from provisa.mv.view_read import view_names  # noqa: PLC0415
 
-    if view_of(table, getattr(state, "bitemporal_view_reads", None) or {}) is not None:
+    bitemporal = getattr(state, "bitemporal_view_reads", None) or {}
+    if view_of(table, bitemporal, view_names(bitemporal, gov.table_map)) is not None:
         return "bitemporal"
     tid = table_id_of(table, gov.table_map)
     if tid is None:
         views = getattr(state, "view_sql_map", None) or {}
-        return "plain" if view_of(table, views) is not None else None
+        return (
+            "plain" if view_of(table, views, view_names(views, gov.table_map)) is not None else None
+        )
     rows = getattr(state, "tables", None) or []
     if tid in versioned_table_rows(rows) or tid in captured_table_rows(rows):
         return "bitemporal"
@@ -304,8 +308,9 @@ def relation_kinds(state: Any, tables: list[dict]) -> dict[int, str]:
     source_types = getattr(state, "source_types", None) or {}
     kinds: dict[int, str] = {}
     for table in tables:
-        key = view_key(table["schema_name"], table["table_name"])
-        if table["id"] in keeps or (table.get("view_sql") and key in views):
+        if table["id"] in keeps or (
+            table.get("view_sql") and view_key(table["schema_name"], table["table_name"]) in views
+        ):
             kinds[table["id"]] = "bitemporal"
         elif source_types.get(table["source_id"]) in TIME_TRAVEL_SOURCES:
             kinds[table["id"]] = "snapshot"

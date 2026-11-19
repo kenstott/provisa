@@ -51,8 +51,11 @@ def _build_views(state, org: str) -> None:
     """What an org's build records for its view ``summary`` (app_rebuild)."""
 
     def build():
-        state.view_sql_map["summary"] = f'SELECT * FROM "{org}_db"."public"."orders"'
-        state.bitemporal_view_reads["summary"] = (f'"mat"."org_{org}_mv_cache"."mv_summary"', None)
+        state.view_sql_map["sales.summary"] = f'SELECT * FROM "{org}_db"."public"."orders"'
+        state.bitemporal_view_reads["sales.summary"] = (
+            f'"mat"."org_{org}_mv_cache"."mv_summary"',
+            None,
+        )
 
     _in(org, build)
 
@@ -75,7 +78,7 @@ def test_a_view_another_org_built_is_not_expanded(state):
 def test_a_bitemporal_view_read_is_its_own_orgs(state):
     _build_views(state, "acme")
     _build_views(state, "globex")
-    acme = _in("acme", lambda: state.bitemporal_view_reads["summary"][0])
+    acme = _in("acme", lambda: state.bitemporal_view_reads["sales.summary"][0])
     assert acme == '"mat"."org_acme_mv_cache"."mv_summary"'
 
 
