@@ -2002,28 +2002,56 @@
         "description": "Quattro sistemi SaaS senza id condiviso, uniti tramite un'anagrafica clienti; la domanda risolta in SQL, GraphQL e Cypher; poi controllata: le regole hanno ricavato di nuovo ogni collegamento dalle prove e trovato la fusione errata e l'account che nascondeva. Esplora da solo dalla pagina SQL."
       },
       "affirmationScenario": {
-        "title": "What this demo is",
-        "description": "TODO: the scenario, its question and the features it shows."
+        "title": "Un'operazione, quattro sistemi",
+        "description": "Larkspur Asset Management ha negoziato oggi dieci ordini. Ogni operazione vive in quattro sistemi che non si vedono mai: questo sistema di gestione ordini con le allocazioni ai fondi, i fill del sistema di esecuzione, la conferma del broker e l'istruzione di regolamento della banca depositaria. Quali operazioni non saranno affermate prima del cutoff, perché, e quanto costerebbe un regolamento fallito?"
       },
-      "affirmationTables": {
-        "title": "The tables",
-        "description": "TODO: the tables the sources become."
+      "affirmationBroker": {
+        "title": "Il lato del broker",
+        "description": "Le conferme dei broker, come le consegna la piattaforma di matching: ognuna riporta il riferimento dell'allocazione, il prezzo, la commissione e l'importo netto del broker, e il conto a cui il broker consegnerà."
       },
-      "affirmationJoin": {
-        "title": "How they join",
-        "description": "TODO: the relationship that joins the tables."
+      "affirmationCustody": {
+        "title": "Il lato della depositaria",
+        "description": "Le istruzioni di regolamento che Larkspur ha inviato alla sua banca depositaria: cosa ogni fondo riceve o consegna, contro quale importo, in quale giorno. Un'operazione di cui la depositaria non ha mai saputo fallisce quanto una sbagliata."
       },
-      "affirmationAnswer": {
-        "title": "The answer in SQL",
-        "description": "TODO: the predesigned query that answers the question."
+      "affirmationMatcher": {
+        "title": "Il motore di matching, in Python",
+        "description": "Un pacchetto Python registrato come sorgente. La sua funzione trade_match prende i quattro record di un'allocazione e restituisce una riga per ogni discrepanza trovata, con il suo nome e ciò che differisce, oppure una riga riconciliata."
       },
-      "affirmationExample": {
-        "title": "The answer in GraphQL",
-        "description": "TODO: the example query, and what it shows."
+      "affirmationMatchTable": {
+        "title": "Una funzione come tabella",
+        "description": "trade_match è una tabella come le altre: le sue colonne sono ciò che la funzione restituisce e i suoi parametri sono i campi dei quattro sistemi. Un elemento non ancora arrivato viene passato come assente, e la funzione lo indica come una discrepanza a sé."
+      },
+      "affirmationFeed": {
+        "title": "Cosa alimenta il motore",
+        "description": "Questa relazione unisce i record di ogni allocazione nei quattro sistemi a trade_match e li passa come parametri: una chiamata per allocazione. Interrogare il join esegue il matching."
+      },
+      "affirmationQueue": {
+        "title": "La coda delle discrepanze",
+        "description": "Ogni discrepanza, con i minuti rimasti al cutoff di affermazione del suo mercato e quanto un regolamento fallito costerebbe lì al giorno. Le discrepanze europee hanno meno di un'ora; quelle statunitensi hanno tempo fino alle 21 di New York."
+      },
+      "affirmationAffirmed": {
+        "title": "Le affermazioni, registrate",
+        "description": "Un comando ha affermato ogni allocazione concorde in tutti e quattro i sistemi e l'ha registrata all'ora del desk. È stato eseguito una volta, alla creazione della demo."
+      },
+      "affirmationPollyCutoff": {
+        "title": "Chiedi a Polly: cosa è più urgente?",
+        "description": "Polly legge la coda delle discrepanze e indica quella con meno tempo al suo cutoff. La risposta è stata generata alla creazione della demo ed è mostrata come salvata."
+      },
+      "affirmationPollyPenalty": {
+        "title": "Chiedi a Polly: cosa costa di più?",
+        "description": "Polly indica la discrepanza il cui regolamento fallito costerebbe di più al giorno. La risposta è stata generata alla creazione della demo ed è mostrata come salvata."
+      },
+      "affirmationExplore": {
+        "title": "La stessa domanda, in Explore",
+        "description": "L'agente dell'explorer risponde dal vivo tramite il server MCP di Provisa, con il ruolo dell'intestazione, e puoi vedere ogni query che esegue."
+      },
+      "affirmationExplain": {
+        "title": "La query eseguita",
+        "description": "L'istruzione inviata dall'agente, accanto a quella che Provisa ha eseguito per il ruolo. L'agente ha letto le stesse viste e tabelle governate che hai appena letto."
       },
       "affirmationRecap": {
-        "title": "What you saw",
-        "description": "TODO: the recap, and where to go next."
+        "title": "Cosa hai visto",
+        "description": "Quattro sistemi letti dal vivo, riconciliati da una funzione Python registrata come tabella, ogni discrepanza indicata con il tempo al cutoff e il suo costo, e le operazioni riconciliate affermate da un comando. Poni poi le domande del desk in Explore."
       }
     },
     "status": {
@@ -2162,8 +2190,8 @@
         "summary": "Salesforce, ServiceNow, Jira e Stripe uniti tramite un'anagrafica clienti per trovare i rinnovi a rischio; poi l'anagrafica viene controllata con le prove di ciascun sistema, che trovano l'account mancato."
       },
       "affirmation": {
-        "title": "Trade affirmation",
-        "summary": "TODO: Trade affirmation, in one sentence."
+        "title": "Affermazione delle operazioni",
+        "summary": "Un gestore patrimoniale riconcilia ogni operazione di oggi tra il sistema ordini, il sistema di esecuzione, il broker e la banca depositaria. Ogni discrepanza mostra il tempo rimasto al cutoff e quanto costerebbe un regolamento fallito, e le operazioni riconciliate vengono affermate."
       }
     }
   }

@@ -22,3 +22,6 @@ published: false
 # by name. The first release carrying the demo.
 requires_provisa: 0.1.0a497
 group: finance
+# The demo's video: its tagline names what the demo shows Provisa being.
+video:
+  tagline: "Before the Cutoff"

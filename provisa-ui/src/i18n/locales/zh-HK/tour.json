@@ -2002,28 +2002,56 @@
         "description": "四個沒有共用 ID 的 SaaS 系統，透過客戶主數據連接起來；用 SQL、GraphQL 和 Cypher 回答了問題；然後進行檢查：規則根據證據重新推導每條連結，找到錯誤合併及其掩蓋的帳戶。可從 SQL 頁面自行探索。"
       },
       "affirmationScenario": {
-        "title": "What this demo is",
-        "description": "TODO: the scenario, its question and the features it shows."
+        "title": "一宗交易，四個系統",
+        "description": "Larkspur Asset Management 今天成交了十張訂單。每宗交易分佈在四個彼此看不見的系統：這個訂單管理系統及其對各基金的分配、執行系統的成交、經紀商的確認書，以及託管行的結算指示。哪些交易無法在截止前確認，原因為何，結算失敗又要付出甚麼代價？"
       },
-      "affirmationTables": {
-        "title": "The tables",
-        "description": "TODO: the tables the sources become."
+      "affirmationBroker": {
+        "title": "經紀商一方",
+        "description": "經紀商的確認書，由配對平台送達：每份都載有分配的編號、經紀商的價格、佣金和淨額，以及經紀商將交付的戶口。"
       },
-      "affirmationJoin": {
-        "title": "How they join",
-        "description": "TODO: the relationship that joins the tables."
+      "affirmationCustody": {
+        "title": "託管行一方",
+        "description": "Larkspur 發給託管行的結算指示：每隻基金收取或交付甚麼、對應多少資金、在哪一天。託管行從未收到通知的交易，與錯誤的交易一樣必然失敗。"
       },
-      "affirmationAnswer": {
-        "title": "The answer in SQL",
-        "description": "TODO: the predesigned query that answers the question."
+      "affirmationMatcher": {
+        "title": "以 Python 編寫的配對引擎",
+        "description": "一個登記為數據源的 Python 套件。它的 trade_match 函數接收一宗分配的四條記錄，為找到的每個差異傳回一行，寫明差異類型及不一致之處，或傳回一行配對結果。"
       },
-      "affirmationExample": {
-        "title": "The answer in GraphQL",
-        "description": "TODO: the example query, and what it shows."
+      "affirmationMatchTable": {
+        "title": "作為表的函數",
+        "description": "trade_match 和其他表一樣：它的欄是函數的傳回值，參數是四個系統的欄位。尚未到達的一方以缺失傳入，函數會把它本身列為一個差異。"
+      },
+      "affirmationFeed": {
+        "title": "為配對引擎提供輸入",
+        "description": "這個關係把四個系統中每宗分配的記錄連接到 trade_match，並作為參數傳入：每宗分配呼叫一次。查詢這個連接便會執行配對。"
+      },
+      "affirmationQueue": {
+        "title": "差異隊列",
+        "description": "每個差異，附帶距其市場確認截止時間的剩餘分鐘數，以及結算失敗後在該市場每天產生的罰款。歐洲的差異剩不到一小時;美國的則到紐約時間晚上 9 時。"
+      },
+      "affirmationAffirmed": {
+        "title": "已記錄的確認",
+        "description": "一條指令確認了在四個系統中全部一致的每宗分配，並按交易枱時間逐宗記錄。它在建立示範時執行了一次。"
+      },
+      "affirmationPollyCutoff": {
+        "title": "問 Polly：甚麼最緊急？",
+        "description": "Polly 讀取差異隊列，指出距截止時間最近的差異。答案在建立示範時產生，按儲存內容顯示。"
+      },
+      "affirmationPollyPenalty": {
+        "title": "問 Polly：甚麼代價最大？",
+        "description": "Polly 指出結算失敗後每天代價最大的差異。答案在建立示範時產生，按儲存內容顯示。"
+      },
+      "affirmationExplore": {
+        "title": "在 Explore 問同一個問題",
+        "description": "瀏覽器的代理透過 Provisa 的 MCP 伺服器以頁首的角色即時作答，你可以看到它執行的每條查詢。"
+      },
+      "affirmationExplain": {
+        "title": "它執行的查詢",
+        "description": "代理發出的語句，與 Provisa 為該角色實際執行的語句並排顯示。代理讀取的是你剛才讀過的同一批受管治的檢視和表。"
       },
       "affirmationRecap": {
-        "title": "What you saw",
-        "description": "TODO: the recap, and where to go next."
+        "title": "你看到了甚麼",
+        "description": "即時讀取四個系統，由登記為表的 Python 函數完成配對，每個差異都標明距截止的時間和代價，配對一致的交易由指令確認。接下來在 Explore 提出交易枱自己的問題。"
       }
     },
     "status": {
@@ -2162,8 +2190,8 @@
         "summary": "透過客戶主數據連接 Salesforce、ServiceNow、Jira 和 Stripe，找出有風險的續約；再用各系統本身的證據檢查主數據，找出它漏掉的帳戶。"
       },
       "affirmation": {
-        "title": "Trade affirmation",
-        "summary": "TODO: Trade affirmation, in one sentence."
+        "title": "交易確認",
+        "summary": "一家資產管理公司在其訂單系統、執行系統、經紀商及託管行之間核對今天的每宗交易。每個差異都顯示距截止時間還剩多久及結算失敗的代價，核對一致的交易會獲確認。"
       }
     }
   }
