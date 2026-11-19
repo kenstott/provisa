@@ -74,6 +74,8 @@ def _state(model_db):
         idp_entitlements={},
         names_table=_names(),
         data_product_refs=(),
+        glossary_term_refs=(),
+        judgment_basis_ids=(),
         entitlement_masks=MaskCache(),
         schema_boot_id="boot",
         schema_version=1,
