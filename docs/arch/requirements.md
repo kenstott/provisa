@@ -27129,3 +27129,33 @@ Maintainer 2026-11-19 ('update pgwire-calcite python per provisa pgwire'). pgwir
 **Code:** —
 
 **Tests:** —
+
+### REQ-2256 · Replica Strategy {#REQ-2256}
+
+**Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
+
+Maintainer 2026-11-19 (pgwire-calcite plan P6). DIALECT FIRST: a gap in the SQL Calcite sends to a JDBC source is fixed in the Calcite dialect or JdbcRules in the Calcite fork, never in pgwire-calcite or an adapter pack. The Calcite JDBC adapter pushes only what the source can run, correctly: JdbcRules consults the dialect's supportsFunction and supportsAggregateFunction before pushing a call, and a call the dialect does not support stays in Calcite; a text comparison (range or equality on VARCHAR or CHAR) is not pushed to a source whose collation may differ from Calcite's, as Trino withholds them; a database reporting the product name TRINO gets the Trino dialect, not the Presto one; the Sybase dialect renders OFFSET without FETCH instead of failing. Each has a RelToSqlConverterTest case.
+
+**Code:** —
+
+**Tests:** —
+
+### REQ-2257 · Replica Strategy {#REQ-2257}
+
+**Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
+
+Maintainer 2026-11-19 (pgwire-calcite plan P6). The Db2, Trino/Presto, Vertica and Firebolt Calcite dialects reach production quality, one job each: the overrides their SQL needs (OFFSET/FETCH form, casts, supported functions and aggregates, datetime literals, identifier quoting), RelToSqlConverterTest expectations, and a pack probe against a containerized instance in CI (DuckDB ATTACH through the pgwire JdbcSchema pack: projection, filter, LIMIT, join, aggregate, type round trips, the native SQL logged). Under the dialect-first rule the scope widens to the MSSQL, Oracle, ClickHouse, Redshift, Exasol, H2, HSQLDB and Derby dialects as their pack probes require. The long-tail dialects (Teradata, Netezza, Informix, Ingres, Interbase, Firebird, Access, Sybase beyond the OFFSET fix) are out until wanted.
+
+**Code:** —
+
+**Tests:** —
+
+### REQ-2258 · Replica Strategy {#REQ-2258}
+
+**Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
+
+Maintainer 2026-11-19 (pgwire-calcite plan P6). pgwire JDBC packs are built for sources DuckDB or Trino cannot reach well: mssql, oracle, clickhouse, redshift, exasol, trino (a Trino or Presto cluster as a source), db2, firebolt, vertica, h2, hsqldb and derby. Each is a model.json JdbcSchema pack over the shared pgwire-calcite runtime ([REQ-2254](#REQ-2254)) with an explicit dialect and its JDBC driver, bundled where the driver's licence allows redistribution and supplied by the customer otherwise, and each passes the pack probe against a containerized instance in CI. Sources DuckDB and Trino both reach natively (PostgreSQL, MySQL, BigQuery, Snowflake, DuckDB), SQLite (Provisa's own adapter), Firebird and the long-tail dialects get no pack. The packs follow the runtime-and-packs layout landing.
+
+**Code:** —
+
+**Tests:** —
