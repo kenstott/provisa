@@ -31,7 +31,7 @@ from typing import Any
 import sqlglot
 import sqlglot.expressions as exp
 
-from provisa.core.pg_error import raising
+from provisa.core.pg_error import PostgresError, raising
 
 _D, _T, _C = "duckdb", "trino", "clickhouse"
 _ENGINES = (_D, _T, _C)
@@ -358,8 +358,8 @@ def _cast(node: exp.Cast, dialect: str) -> exp.Expr:
 
 
 #: DuckDB's UDF of a function: its name, each parameter's kind (j a json, t a text, p a jsonpath,
-#: a a text[], b a boolean, i a bigint), the defaults of its trailing parameters, whether it answers
-#: a json.
+#: a a text[], k a jsonb path: a text[] of one dimension, b a boolean, i a bigint), the defaults of
+#: its trailing parameters, whether it answers a json.
 _Udf = tuple[str, str, tuple[str, ...], bool]
 _PATH_DEFAULTS = ("'{}'", "FALSE")
 _OPERATOR_DEFAULTS = ("'{}'", "TRUE")
@@ -370,10 +370,10 @@ _DUCKDB: dict[str, _Udf] = {
     "jsonb_exists_any": ("provisa_jsonb_exists_any", "ja", (), False),
     "jsonb_exists_all": ("provisa_jsonb_exists_all", "ja", (), False),
     "jsonb_concat": ("provisa_jsonb_concat", "jj", (), True),
-    "jsonb_delete_path": ("provisa_jsonb_delete_path", "ja", (), True),
-    "jsonb_set": ("provisa_jsonb_set", "jajb", ("TRUE",), True),
-    "jsonb_set_lax": ("provisa_jsonb_set_lax", "jajbt", ("TRUE", "'use_json_null'"), True),
-    "jsonb_insert": ("provisa_jsonb_insert", "jajb", ("FALSE",), True),
+    "jsonb_delete_path": ("provisa_jsonb_delete_path", "jk", (), True),
+    "jsonb_set": ("provisa_jsonb_set", "jkjb", ("TRUE",), True),
+    "jsonb_set_lax": ("provisa_jsonb_set_lax", "jkjbt", ("TRUE", "'use_json_null'"), True),
+    "jsonb_insert": ("provisa_jsonb_insert", "jkjb", ("FALSE",), True),
     "jsonb_pretty": ("provisa_jsonb_pretty", "j", (), False),
     "jsonb_cmp": ("provisa_jsonb_cmp", "jj", (), False),
     "jsonb_hash": ("provisa_jsonb_hash", "j", (), False),
@@ -550,11 +550,33 @@ def _text_array(value: exp.Expr, inner: Callable[[exp.Expr], exp.Expr]) -> exp.E
     return exp.cast(value.transform(inner), "VARCHAR[]", dialect=_D)
 
 
+def _nested(value: exp.Expr) -> bool:
+    """Whether a constant text[] has more than one dimension: a literal's text opening a sub-array,
+    or an ARRAY of ARRAYs."""
+    node = value.unnest()
+    if isinstance(node, exp.Cast):
+        node = node.this.unnest()
+    if isinstance(node, exp.Literal) and node.is_string:
+        return node.this.lstrip().startswith("{") and node.this.lstrip()[1:].lstrip()[:1] == "{"
+    return isinstance(node, exp.Array) and any(
+        isinstance(item.unnest(), exp.Array) for item in node.expressions
+    )
+
+
+def _path_array(value: exp.Expr, inner: Callable[[exp.Expr], exp.Expr]) -> exp.Expr:
+    """A jsonb path: jsonb_set, jsonb_insert and jsonb_delete_path refuse one of more than one
+    dimension (ARR_NDIM(path) > 1)."""
+    if _nested(value):
+        raise PostgresError("2202E", "wrong number of array subscripts")
+    return _text_array(value, inner)
+
+
 _READ_ARGUMENT: dict[str, Callable[[exp.Expr, Callable[[exp.Expr], exp.Expr]], exp.Expr]] = {
     "j": _text,
     "t": _text,
     "p": _jsonpath,
     "a": _text_array,
+    "k": _path_array,
     "b": lambda value, inner: exp.cast(value.transform(inner), "BOOLEAN"),
     "i": lambda value, inner: exp.cast(value.transform(inner), "BIGINT"),
 }

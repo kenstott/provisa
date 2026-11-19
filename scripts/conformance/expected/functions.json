@@ -27,8 +27,8 @@
     "refused_by_name": 98
    },
    "edge": {
-    "served": 1851,
-    "wrong_answer": 173,
+    "served": 1852,
+    "wrong_answer": 172,
     "engine_error": 281
    }
   },
@@ -603,7 +603,6 @@
   {"case": "duckdb::json_to_tsvector(json, jsonb)", "at": "edge", "kind": "engine_error", "calls": 1, "statement": "SELECT pg_catalog.\"json_to_tsvector\"('\"日本語😀\"'::json, '[\"string\"]'::jsonb) AS v LIMIT 1001", "edge": "json multi-byte", "said": "ERROR:  json_to_tsvector() has no form on duckdb", "sqlstate": "XX000", "postgres": "answers", "job": "J1388b", "since": "2026-11-16"},
   {"case": "duckdb::json_to_tsvector(regconfig, json, jsonb)", "at": "edge", "kind": "engine_error", "calls": 1, "statement": "SELECT pg_catalog.\"json_to_tsvector\"('english'::regconfig, '\"日本語😀\"'::json, '[\"string\"]'::jsonb) AS v LIMIT 1001", "edge": "json multi-byte", "said": "ERROR:  json_to_tsvector() has no form on duckdb", "sqlstate": "XX000", "postgres": "answers", "job": "J1388b", "since": "2026-11-16"},
   {"case": "duckdb::jsonb_delete(from_json jsonb, VARIADIC path_elems text[])", "at": "edge", "kind": "wrong_answer", "calls": 2, "statement": "SELECT pg_catalog.\"jsonb_delete\"('{\"a\": 1, \"b\": [1, 2]}'::jsonb, VARIADIC '{NULL}'::text[]) AS v LIMIT 1001", "edge": "text[] special", "said": "None, PostgreSQL '{\"a\": 1, \"b\": [1, 2]}'", "job": "J1388b", "since": "2026-11-16"},
-  {"case": "duckdb::jsonb_delete_path(jsonb, text[])", "at": "edge", "kind": "wrong_answer", "calls": 1, "statement": "SELECT pg_catalog.\"jsonb_delete_path\"('{\"a\": 1, \"b\": [1, 2]}'::jsonb, '{NULL}'::text[]) AS v LIMIT 1001", "edge": "text[] special", "said": "answered [('{\"a\": 1, \"b\": [1, 2]}',)], PostgreSQL raised 22004 ERROR:  path element at position 1 is null", "job": "J1388b", "since": "2026-11-16"},
   {"case": "duckdb::jsonb_exists_all(jsonb, text[])", "at": "edge", "kind": "engine_error", "calls": 1, "statement": "SELECT pg_catalog.\"jsonb_exists_all\"('{\"a\": 1, \"b\": [1, 2]}'::jsonb, '{{a,b},{c,d}}'::text[]) AS v LIMIT 1001", "edge": "text[] special", "said": "ERROR:  Binder Error: No function matches the given name and argument types 'provisa_jsonb_exists_all(VARCHAR, VARCHAR[][])'. You might need to add explicit type casts.\n\tCandidate functions:\n\tprovisa_jsonb_exists_all(col0 VARCHAR, col1 VARCHAR[], /) -> BOOLEAN", "sqlstate": "42703", "postgres": "answers", "job": "J1388b", "since": "2026-11-16"},
   {"case": "duckdb::jsonb_exists_any(jsonb, text[])", "at": "edge", "kind": "engine_error", "calls": 1, "statement": "SELECT pg_catalog.\"jsonb_exists_any\"('{\"a\": 1, \"b\": [1, 2]}'::jsonb, '{{a,b},{c,d}}'::text[]) AS v LIMIT 1001", "edge": "text[] special", "said": "ERROR:  Binder Error: No function matches the given name and argument types 'provisa_jsonb_exists_any(VARCHAR, VARCHAR[][])'. You might need to add explicit type casts.\n\tCandidate functions:\n\tprovisa_jsonb_exists_any(col0 VARCHAR, col1 VARCHAR[], /) -> BOOLEAN", "sqlstate": "42703", "postgres": "answers", "job": "J1388b", "since": "2026-11-16"},
   {"case": "duckdb::jsonb_object(text[])", "at": "edge", "kind": "engine_error", "calls": 1, "statement": "SELECT pg_catalog.\"jsonb_object\"('{{a,b},{c,d}}'::text[]) AS v LIMIT 1001", "edge": "text[] special", "said": "ERROR:  Binder Error: No function matches the given name and argument types 'provisa_json_object(VARCHAR[][], VARCHAR[])'. You might need to add explicit type casts.\n\tCandidate functions:\n\tprovisa_json_object(col0 VARCHAR[], col1 VARCHAR[], /) -> VARCHAR", "sqlstate": "42703", "postgres": "answers", "job": "J1388b", "since": "2026-11-16"},
