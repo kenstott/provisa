@@ -97547,7 +97547,14 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     WAY:) Maintainer 2026-11-16 (''add that to the relationship detail panel AND the data product access
     patterns''). A data product''s Access section lists each relationship in the product with the same set
     of links as the relationship''s detail panel, one per surface that exposes it, built by the one shared
-    component and query builder; it replaces the Cypher-only link per relationship type it shows today.'
+    component and query builder; it replaces the Cypher-only link per relationship type it shows today.
+    (Amended 2026-11-18, A TABLE''S DETAIL PANEL HAS THE SAME PREVIEW LINKS:) Maintainer 2026-11-18 (''similar
+    to relationships detail, there should be hyperlinks to preview the table using all of the query surfaces'').
+    A table''s detail panel on the Tables page has one link per query surface the table is exposed on, drawn
+    as the data product Access section draws its per-table links (the same icons, tips and component), in
+    its Identity section. Each opens that surface''s Explore editor with a query that reads the table, run
+    at once, using the names the role sees and a row limit. A surface the table is not exposed on shows
+    no link.'
 - id: REQ-2253
   status: proposed
   group: 3. Source Registration & Data Modeling
