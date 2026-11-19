@@ -16,7 +16,7 @@ from __future__ import annotations
 import bisect
 import re
 import secrets
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Collection, Iterable, Iterator
 from contextlib import contextmanager
 
 import sqlglot
@@ -25,6 +25,7 @@ from sqlglot.errors import ParseError, SqlglotError
 
 from provisa.compiler.definitions import NotAvailableHere
 from provisa.compiler.sql_gen import CompiledQuery
+from provisa.security.rights import ONTOLOGY_DOMAIN_ID
 
 #: The alias prefix a view's SQL is marked with where the statement governance validates is
 #: expanded (:func:`expand_view_refs` with ``mark``): ``(SELECT * FROM (<view SQL>) AS
@@ -259,58 +260,54 @@ def _cte_names(sql: str) -> set[str]:
     return {_folded_name(m.group(1)) for m in _CTE.finditer(_code_view(sql)[0])}
 
 
-def _expand_one(sql: str, view_table: str, view_sql: str) -> str:
-    """Replace catalog- and schema-qualified refs to one view table.
-
-    Preserves an explicit alias when present; otherwise injects the view-table
-    name as the subquery alias so column references qualified by that name (e.g.
-    ``shelter__animalBreeds.name``) still resolve after expansion. Only a reference in the
-    statement's code is replaced: never text a comment, a string literal or a quoted identifier
-    holds (:func:`_sub`).
-    """
-
-    def repl(m: re.Match[str]) -> str | None:
-        kw = m.groupdict().get("kw") or ""
-        if not kw and not _table_position(m.string, m.start()):
-            return None  # a column named like the view, not the view
-        alias = m.group("alias")
-        if alias:
-            return f"{kw}({view_sql}){alias}"
-        return f"{kw}({view_sql}) {view_table}"
-
-    def bare(m: re.Match[str]) -> str | None:
-        return None if _folded_name(m.group("name")) in _cte_names(m.string) else repl(m)
-
-    if "." in view_table:
-        return _expand_in_schema(sql, view_table, view_sql)
-    vt = re.escape(view_table)
-    # Catalog-qualified: "catalog"."schema"."view_table" [alias]
-    sql = _sub(rf'"[^"]+"\."[^"]+"\."{vt}"{_ALIAS}', repl, sql)
-    # Schema-qualified: "schema"."view_table" [alias]
-    sql = _sub(rf'"[^"]+"\."{vt}"{_ALIAS}', repl, sql)
-    if view_table != view_table.lower():
-        return sql  # an unquoted name folds to lower case: none names this view
-    # Unquoted schema-qualified: a view's own definition (e.g. `views.e2e_mv_a`) is raw,
-    # user-typed semantic SQL — never quoted/catalog-rewritten like the outer query is
-    # before this runs. Nested view chains inline that raw text as-is, so a second (or
-    # deeper) level of view reference only ever appears in this unquoted form.
-    # Never inside a string literal: a compiled read names its table there (``'city.view_x' AS
-    # "_name_"``), which is a value, not a reference.
-    sql = _sub(
-        rf'(?<![\w."\'])(?P<kw>(?i:FROM|JOIN)\s+)?[A-Za-z_]\w*\.(?i:{vt})\b{_ALIAS}', repl, sql
-    )
-    # Unquoted bare reference (no schema prefix), only directly after FROM/JOIN so a
-    # same-named column or alias elsewhere in the query is never mistaken for the table; nor
-    # a CTE of the statement named like it, which PostgreSQL reads first.
-    sql = _sub(rf"\b(?P<kw>(?i:FROM|JOIN)\s+)(?P<name>(?i:{vt}))\b{_ALIAS}", bare, sql)
-    return sql
+def view_key(schema: str, table: str) -> str:
+    """A view's key in the view map: ``<schema>.<table>``, the schema and table name it is
+    registered under -- the names a statement's reference to it is lowered to (``"<catalog>".
+    "<schema>"."<table>"``). A reference is the view only under that schema, or unqualified where
+    no other view shares its name (:func:`_unqualified_views`)."""
+    return f"{schema}.{table}"
 
 
-def _expand_in_schema(sql: str, view_table: str, view_sql: str) -> str:
-    """Replace refs to a view keyed ``schema.name`` -- an ontology Class (REQ-2163), whose name a
-    registered table may share -- only where they name its schema: ``"catalog"."schema"."name"``,
-    ``"schema"."name"`` or ``schema.name``. The name alone, or under another schema, is not it."""
-    schema, name = view_table.split(".", 1)
+def view_table(key: str) -> str:
+    """The table name of the view keyed ``key`` (:func:`view_key`)."""
+    return key.rsplit(".", 1)[-1]
+
+
+def _unqualified_views(keys: Iterable[str]) -> dict[str, str]:
+    """For each name an unqualified reference may give a view, that view's key: the one view of
+    the name -- two views of one name leave it ambiguous, as the statement's own qualification
+    leaves it (``sql_rewrite.normalize_table_refs``). Never an ontology Class: a table grounded in
+    a Class is named for it, and the name alone is the table's (REQ-2163)."""
+    found: dict[str, list[str]] = {}
+    for key in keys:
+        schema, _, name = key.rpartition(".")
+        if schema != ONTOLOGY_DOMAIN_ID:
+            found.setdefault(name, []).append(key)
+    return {name: named[0] for name, named in found.items() if len(named) == 1}
+
+
+def unqualified_keys(keys: Iterable[str]) -> frozenset[str]:
+    """The keys of the views an unqualified reference names (:func:`_unqualified_views`)."""
+    return frozenset(_unqualified_views(keys).values())
+
+
+def view_of(tbl: exp.Table, keys: Collection[str]) -> str | None:
+    """The key, among ``keys``, of the view the table reference ``tbl`` names, as
+    :func:`expand_view_refs` reads it."""
+    return _view_named(tbl, keys, _unqualified_views(keys))
+
+
+def _expand_one(sql: str, key: str, view_sql: str, *, unqualified: bool = False) -> str:
+    """Replace the references to the view keyed ``key`` (``schema.name``): ``"catalog"."schema".
+    "name"``, ``"schema"."name"`` or ``schema.name`` -- the name under another schema is not it --
+    and, ``unqualified``, ``name`` alone directly after FROM or JOIN where no CTE of the statement
+    is named like it (PostgreSQL reads a CTE first).
+
+    Preserves an explicit alias when present; otherwise the view's name is the subquery's alias,
+    so column references qualified by it still resolve. Only a reference in the statement's code
+    is replaced: never text a comment, a string literal or a quoted identifier holds
+    (:func:`_sub`)."""
+    schema, _, name = key.rpartition(".")
 
     def repl(m: re.Match[str]) -> str | None:
         kw = m.groupdict().get("kw") or ""
@@ -319,12 +316,21 @@ def _expand_in_schema(sql: str, view_table: str, view_sql: str) -> str:
         alias = m.group("alias")
         return f"{kw}({view_sql}){alias}" if alias else f'{kw}({view_sql}) "{name}"'
 
+    def bare(m: re.Match[str]) -> str | None:
+        return None if _folded_name(m.group("name")) in _cte_names(m.string) else repl(m)
+
     s, n = re.escape(schema), re.escape(name)
     sql = _sub(rf'"[^"]+"\."{s}"\."{n}"{_ALIAS}', repl, sql)
     sql = _sub(rf'(?<![\w."]\.)"{s}"\."{n}"{_ALIAS}', repl, sql)
-    if view_table != view_table.lower():
+    if key != key.lower():
         return sql  # an unquoted name folds to lower case: none names this view
-    return _sub(rf'(?<![\w."\'])(?P<kw>(?i:FROM|JOIN)\s+)?(?i:{s})\.(?i:{n})\b{_ALIAS}', repl, sql)
+    # Unquoted: a view's own definition is raw, user-typed SQL -- never quoted like the outer
+    # statement is -- and a nested view chain inlines it as it is. Never inside a string literal:
+    # a compiled read names its table there (``'city.view_x' AS "_name_"``), a value.
+    sql = _sub(rf'(?<![\w."\'])(?P<kw>(?i:FROM|JOIN)\s+)?(?i:{s})\.(?i:{n})\b{_ALIAS}', repl, sql)
+    if unqualified:
+        sql = _sub(rf"\b(?P<kw>(?i:FROM|JOIN)\s+)(?P<name>(?i:{n}))\b{_ALIAS}", bare, sql)
+    return sql
 
 
 class ViewClauseNotSupported(NotAvailableHere):
@@ -392,29 +398,36 @@ def _shadowed_by_cte(tbl: exp.Table) -> bool:
     return False
 
 
-def _view_named(tbl: exp.Table, view_sql_map: dict[str, str]) -> str | None:
-    """The view of ``view_sql_map`` the table reference ``tbl`` names, its identifiers folded as
-    PostgreSQL folds them: a view keyed ``schema.name`` only under that schema, any other by its
-    name. A CTE of that name in scope is the CTE, not the view."""
+def _view_named(tbl: exp.Table, keys: Collection[str], unqualified: dict[str, str]) -> str | None:
+    """The key of the view the table reference ``tbl`` names, its identifiers folded as
+    PostgreSQL folds them: ``schema.name`` only under the view's own schema; unqualified, the view
+    ``unqualified`` gives the name (:func:`_unqualified_views`), unless a CTE of that name is in
+    scope, which is the CTE."""
     if not isinstance(tbl.this, exp.Identifier):
         return None
     name = _folded(tbl.this)
     db = tbl.args.get("db")
-    if db is not None and f"{_folded(db)}.{name}" in view_sql_map:
-        return f"{_folded(db)}.{name}"
-    if name not in view_sql_map or _shadowed_by_cte(tbl):
+    if db is not None:
+        key = view_key(_folded(db), name)
+        return key if key in keys else None
+    if name not in unqualified or _shadowed_by_cte(tbl):
         return None
-    return name
+    return unqualified[name]
 
 
-def _mark_tree(tree: exp.Expr, view_sql_map: dict[str, str], depth: int) -> exp.Expr:  # pyright: ignore[reportPrivateImportUsage]
+def _mark_tree(  # pyright: ignore[reportPrivateImportUsage]
+    tree: exp.Expr,  # pyright: ignore[reportPrivateImportUsage]
+    view_sql_map: dict[str, str],
+    unqualified: dict[str, str],
+    depth: int,
+) -> exp.Expr:  # pyright: ignore[reportPrivateImportUsage]
     """``tree`` with every table reference to a view replaced by the view's parsed SQL, marked:
     ``(SELECT * FROM (<view SQL>) AS "<VIEW_MARK><view>") <alias>``. A view's SQL is expanded the
     same way first, ``depth`` levels deep (a cycle could never have validated). The reference's
     alias (with its column list) and its joins are carried onto the derived table; any other
     clause it carries is refused (:class:`ViewClauseNotSupported`)."""
     for tbl in list(tree.find_all(exp.Table)):
-        view = _view_named(tbl, view_sql_map)
+        view = _view_named(tbl, view_sql_map, unqualified)
         if view is None:
             continue
         for arg, value in tbl.args.items():
@@ -422,7 +435,7 @@ def _mark_tree(tree: exp.Expr, view_sql_map: dict[str, str], depth: int) -> exp.
                 raise ViewClauseNotSupported(view, arg)
         body = sqlglot.parse_one(view_sql_map[view], read="postgres")
         if depth > 0:
-            body = _mark_tree(body, view_sql_map, depth - 1)
+            body = _mark_tree(body, view_sql_map, unqualified, depth - 1)
         marked = exp.select("*").from_(
             exp.Subquery(
                 this=body,
@@ -430,7 +443,7 @@ def _mark_tree(tree: exp.Expr, view_sql_map: dict[str, str], depth: int) -> exp.
             )
         )
         alias = tbl.args.get("alias") or exp.TableAlias(
-            this=exp.to_identifier(view.rsplit(".", 1)[-1], quoted="." in view)
+            this=exp.to_identifier(view_table(view), quoted=True)
         )
         replacement = exp.Subquery(this=marked, alias=alias, joins=tbl.args.get("joins"))
         if tbl is tree:
@@ -439,26 +452,34 @@ def _mark_tree(tree: exp.Expr, view_sql_map: dict[str, str], depth: int) -> exp.
     return tree
 
 
-def _expand_marked(sql: str, view_sql_map: dict[str, str]) -> str:
+def _expand_marked(sql: str, view_sql_map: dict[str, str], views: Collection[str]) -> str:
     """:func:`expand_view_refs` with ``mark``: on the parsed statement, so a mark can only come
     from a view this process expands -- never from text a comment, a string literal or a quoted
     identifier of the statement holds (REQ-039, REQ-603)."""
     tree = parse_marked(sql)
-    return _mark_tree(tree, view_sql_map, len(view_sql_map)).sql(dialect="postgres")
+    unqualified = {
+        name: key for name, key in _unqualified_views(views).items() if key in view_sql_map
+    }
+    return _mark_tree(tree, view_sql_map, unqualified, len(view_sql_map)).sql(dialect="postgres")
 
 
 #: What a view's reference is replaced by when only asked whether it is there.
 _PROBE = f"SELECT 1 AS {VIEW_MARK}"
 
 
-def reads_view(sql: str, view_table: str) -> bool:  # REQ-135
-    """Whether ``sql`` reads ``view_table`` as a table: what :func:`expand_view_refs` replaces.
-    A column sharing the view's name is not a read of it."""
-    return _expand_one(sql, view_table, _PROBE) != sql
+def reads_view(sql: str, key: str, *, unqualified: bool) -> bool:  # REQ-135
+    """Whether ``sql`` reads the view keyed ``key`` as a table: what :func:`expand_view_refs`
+    replaces; ``unqualified``, its name alone too (:func:`unqualified_keys`). A column sharing the
+    view's name is not a read of it."""
+    return _expand_one(sql, key, _PROBE, unqualified=unqualified) != sql
 
 
 def expand_view_refs(  # REQ-135
-    sql: str, view_sql_map: dict[str, str], *, mark: bool = False
+    sql: str,
+    view_sql_map: dict[str, str],
+    *,
+    mark: bool = False,
+    views: Collection[str] | None = None,
 ) -> str:
     """Replace view-table references in a SQL string with inline subqueries.
 
@@ -473,15 +494,20 @@ def expand_view_refs(  # REQ-135
 
     ``mark``: each view's SQL is wrapped in a derived table carrying :data:`VIEW_MARK`, for the
     statement governance validates (REQ-603).
+
+    ``views``: every view's key, when ``view_sql_map`` holds only some of them -- an unqualified
+    name is a view's only when no other view has it (:func:`unqualified_keys`).
     """
     if not view_sql_map:
         return sql
+    every = view_sql_map if views is None else views
     if mark:
-        return _expand_marked(sql, view_sql_map)
+        return _expand_marked(sql, view_sql_map, every)
+    unqualified = unqualified_keys(every)
     for _ in range(len(view_sql_map) + 1):
         changed = False
-        for view_table, view_sql in view_sql_map.items():
-            new_sql = _expand_one(sql, view_table, view_sql)
+        for key, view_sql in view_sql_map.items():
+            new_sql = _expand_one(sql, key, view_sql, unqualified=key in unqualified)
             if new_sql != sql:
                 changed = True
                 sql = new_sql

@@ -212,11 +212,14 @@ def relation_kind(table: Any, state: Any, gov: Any, ctx: Any) -> str | None:
     from provisa.mv.bitemporal_capture import captured_table_rows  # noqa: PLC0415
     from provisa.mv.bitemporal_tables import versioned_table_rows  # noqa: PLC0415
 
-    if table.name in (getattr(state, "bitemporal_view_reads", None) or {}):
+    from provisa.compiler.view_expand import view_of  # noqa: PLC0415
+
+    if view_of(table, getattr(state, "bitemporal_view_reads", None) or {}) is not None:
         return "bitemporal"
     tid = table_id_of(table, gov.table_map)
     if tid is None:
-        return "plain" if table.name in (getattr(state, "view_sql_map", None) or {}) else None
+        views = getattr(state, "view_sql_map", None) or {}
+        return "plain" if view_of(table, views) is not None else None
     rows = getattr(state, "tables", None) or []
     if tid in versioned_table_rows(rows) or tid in captured_table_rows(rows):
         return "bitemporal"
@@ -290,6 +293,7 @@ def relation_kinds(state: Any, tables: list[dict]) -> dict[int, str]:
     """How each of the registered ``tables`` travels in time, by id: ``"bitemporal"`` or
     ``"snapshot"`` (as :func:`relation_kind` decides for a statement's reference); a relation that
     keeps no versions is absent. A GraphQL field takes the arguments its relation's kind does."""
+    from provisa.compiler.view_expand import view_key  # noqa: PLC0415
     from provisa.core.source_registry import TIME_TRAVEL_SOURCES  # noqa: PLC0415
     from provisa.mv.bitemporal_capture import captured_table_rows  # noqa: PLC0415
     from provisa.mv.bitemporal_tables import versioned_table_rows  # noqa: PLC0415
@@ -300,7 +304,8 @@ def relation_kinds(state: Any, tables: list[dict]) -> dict[int, str]:
     source_types = getattr(state, "source_types", None) or {}
     kinds: dict[int, str] = {}
     for table in tables:
-        if table["id"] in keeps or (table.get("view_sql") and table["table_name"] in views):
+        key = view_key(table["schema_name"], table["table_name"])
+        if table["id"] in keeps or (table.get("view_sql") and key in views):
             kinds[table["id"]] = "bitemporal"
         elif source_types.get(table["source_id"]) in TIME_TRAVEL_SOURCES:
             kinds[table["id"]] = "snapshot"

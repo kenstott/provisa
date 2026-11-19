@@ -781,8 +781,10 @@ def _kept_refs_view(memo: dict[str, Any], governed_sql: str, view_map: dict) -> 
     import sqlglot
     import sqlglot.expressions as exp
 
+    from provisa.compiler.view_expand import view_of
+
     refs = any(
-        t.name in view_map
+        view_of(t, view_map) is not None
         for t in sqlglot.parse_one(governed_sql, read="postgres").find_all(exp.Table)
     )
     memo["refs_view"] = (view_map, refs)
@@ -1077,6 +1079,7 @@ def _reject_view_writes(parsed: Any, state: Any) -> None:
     view_map = getattr(state, "view_sql_map", None)
     if not view_map:
         return
+    from provisa.compiler.view_expand import view_of
     from provisa.compiler.write_admission import target_table, the_write
 
     # REQ-039: a write wherever it stands in the statement, a data-modifying CTE included.
@@ -1084,7 +1087,7 @@ def _reject_view_writes(parsed: Any, state: Any) -> None:
     if write is None:
         return
     tbl = target_table(write)
-    if tbl is not None and tbl.name in view_map:
+    if tbl is not None and view_of(tbl, view_map) is not None:
         op = type(write).__name__.upper()
         raise PermissionError(
             f"{op} into {tbl.name!r} is not allowed: it is a view/MV-backed relation and is query-only"
