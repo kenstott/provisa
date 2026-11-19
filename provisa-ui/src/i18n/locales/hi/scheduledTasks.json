@@ -46,7 +46,7 @@
     "nextPage": "अगला पेज",
     "lastPage": "अंतिम पेज",
     "roleLabel": "भूमिका के रूप में चलता है",
-    "validationRoleRequired": "SQL या कमांड ट्रिगर किसी भूमिका के रूप में चलता है: एक चुनें।",
+    "validationRoleRequired": "SQL या कमांड ट्रिगर किसी भूमिका के रूप में चलता है, इसलिए एक चुनें।",
     "runsAs": "{{role}} के रूप में चलता है",
     "deleteTitle": "ट्रिगर \"{{name}}\" हटाएँ?",
     "deleteConsequence": "ट्रिगर हटा दिया जाता है और अब नहीं चलता।",
