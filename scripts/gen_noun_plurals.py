@@ -196,28 +196,45 @@ def _database_order(singular: str, alts: list[Alternative], lemmas: set[str]) ->
     return out
 
 
-def _ties(singular: str, ordered: list[Alternative], lemmas: set[str]) -> list[list[int]]:
+def _owners(nouns: list[tuple[str, list[Alternative]]]) -> dict[str, set[str]]:
+    """plural -> the nouns that list it as a plural other than themselves."""
+    owners: dict[str, set[str]] = {}
+    for singular, alts in nouns:
+        for plural, _, _ in alts:
+            if plural != singular:
+                owners.setdefault(plural, set()).add(singular)
+    return owners
+
+
+def _ties(
+    singular: str, ordered: list[Alternative], lemmas: set[str], owners: dict[str, set[str]]
+) -> list[list[int]]:
     """The positions in ``ordered`` of each tie: two or more alternatives under the same everyday-word
-    rule and in the same tie class. An alternative spelled as the singular (``head``'s plural
-    ``head``) is never in a tie: a word count cannot tell its plural uses from its singular ones, so
-    it keeps the database's position."""
+    rule and in the same tie class. An alternative a word count cannot measure is never in a tie and
+    keeps the database's position: one spelled as the singular (``head``'s plural ``head``: its
+    count holds the singular's uses), or one that is also another noun's plural (``axis``'s
+    ``axes``, also ``axe``'s)."""
     groups: dict[tuple[bool, int], list[int]] = {}
     for i, (word, level, _) in enumerate(ordered):
-        if word == singular or level not in _TIE_CLASS:
+        if word == singular or level not in _TIE_CLASS or owners.get(word, set()) - {singular}:
             continue
         groups.setdefault((word in lemmas, _TIE_CLASS[level]), []).append(i)
     return [positions for positions in groups.values() if len(positions) > 1]
 
 
 def _ranked(
-    singular: str, alts: list[Alternative], lemmas: set[str], frequencies: dict[str, int]
+    singular: str,
+    alts: list[Alternative],
+    lemmas: set[str],
+    owners: dict[str, set[str]],
+    frequencies: dict[str, int],
 ) -> list[str]:
     """``alts``' words, best first: the database's order, with each tie reordered by general-English
     frequency (more frequent first, the database's order between equal counts). Frequency moves a
     form only among the positions its tie holds."""
     ordered = _database_order(singular, alts, lemmas)
     words = [a[0] for a in ordered]
-    for positions in _ties(singular, ordered, lemmas):
+    for positions in _ties(singular, ordered, lemmas, owners):
         tied = sorted((words[i] for i in positions), key=lambda w: -frequencies[w])
         for i, word in zip(positions, tied, strict=True):
             words[i] = word
@@ -229,10 +246,11 @@ def tied_forms(scowl_pre: Path) -> list[str]:
     must cover."""
     nouns, _ = _nouns(scowl_pre)
     lemmas = {singular for singular, _ in nouns}
+    owners = _owners(nouns)
     forms: set[str] = set()
     for singular, alts in nouns:
         ordered = _database_order(singular, alts, lemmas)
-        for positions in _ties(singular, ordered, lemmas):
+        for positions in _ties(singular, ordered, lemmas, owners):
             forms.update(ordered[i][0] for i in positions)
     return sorted(forms)
 
@@ -307,11 +325,7 @@ def _nouns(scowl_pre: Path) -> tuple[list[tuple[str, list[Alternative]]], list[s
                 and plural not in own_words
             ):
                 own_words.append(plural)
-    owners: dict[str, set[str]] = {}
-    for singular in nouns:
-        for plural, _, _ in plurals[singular]:
-            if plural != singular:
-                owners.setdefault(plural, set()).add(singular)
+    owners = _owners([(singular, plurals[singular]) for singular in nouns])
     out: list[tuple[str, list[Alternative]]] = []
     for singular in nouns:
         alts = plurals[singular]
@@ -332,12 +346,15 @@ def extract(
     gives the general-English count of every form :func:`tied_forms` lists."""
     nouns, own_words = _nouns(scowl_pre)
     lemmas = {singular for singular, _ in nouns}
+    owners = _owners(nouns)
     rows: list[tuple[str, str]] = []
     for singular, alts in nouns:
         if not alts:
             rows.append((singular, singular))
             continue
-        rows.extend((singular, plural) for plural in _ranked(singular, alts, lemmas, frequencies))
+        rows.extend(
+            (singular, plural) for plural in _ranked(singular, alts, lemmas, owners, frequencies)
+        )
     return rows, own_words
 
 
@@ -348,9 +365,9 @@ provisa/core/data/noun_plurals.tsv.gz
 -------------------------------------
 The English noun singular/plural pairs (REQ-194) are extracted from the English Speller Database
 (ESDB, previously SCOWLv2) by Kevin Atkinson, file data/scowl-pre.txt of
-https://github.com/en-wl/wordlist (branch v2), by scripts/gen_noun_plurals.py: common nouns at
-ESDB size 80 or below, American spelling only (no AU region, no D spelling), one plural chosen per
-noun as that script describes. Its notice follows, verbatim.
+https://github.com/en-wl/wordlist (branch v2, commit 1e5b7d3a72f47a71da5d28686c1dd4b397178485), by
+scripts/gen_noun_plurals.py: common nouns at ESDB size 80 or below, American spelling only (no AU
+region, no D spelling), one plural chosen per noun as that script describes. Its notice follows, verbatim.
 
 """
 
@@ -358,11 +375,12 @@ noun as that script describes. Its notice follows, verbatim.
 _NGRAM_NOTICE = """
 provisa/core/data/plural_frequencies.tsv
 ----------------------------------------
-The counts of the tied noun plurals (REQ-194) are taken from the Google Books Ngram Viewer English
-1-grams, version 20200217 (Google Books Ngram Viewer, http://books.google.com/ngrams), by
-scripts/gen_plural_frequencies.py: each word's match count over 2000-2019. The source is licensed
+The counts of the tied noun plurals (REQ-194) are derived from the Google Books Ngram Viewer
+English 1-grams, version 20200217 (Google Books Ngram Viewer, http://books.google.com/ngrams), used
 under the Creative Commons Attribution 3.0 Unported License
-(https://creativecommons.org/licenses/by/3.0/). Only these counts are bundled, not the corpus.
+(https://creativecommons.org/licenses/by/3.0/). Changes: scripts/gen_plural_frequencies.py keeps
+only the noun-tagged 1-grams (word_NOUN) of the competing plural forms and sums each one's match
+count over 2000-2019; only those counts are bundled, not the corpus.
 """
 
 

@@ -5,9 +5,9 @@ provisa/core/data/noun_plurals.tsv.gz
 -------------------------------------
 The English noun singular/plural pairs (REQ-194) are extracted from the English Speller Database
 (ESDB, previously SCOWLv2) by Kevin Atkinson, file data/scowl-pre.txt of
-https://github.com/en-wl/wordlist (branch v2), by scripts/gen_noun_plurals.py: common nouns at
-ESDB size 80 or below, American spelling only (no AU region, no D spelling), one plural chosen per
-noun as that script describes. Its notice follows, verbatim.
+https://github.com/en-wl/wordlist (branch v2, commit 1e5b7d3a72f47a71da5d28686c1dd4b397178485), by
+scripts/gen_noun_plurals.py: common nouns at ESDB size 80 or below, American spelling only (no AU
+region, no D spelling), one plural chosen per noun as that script describes. Its notice follows, verbatim.
 
 Copyright 2000-2026 by Kevin Atkinson
 
@@ -114,3 +114,12 @@ WordNet was used to help with the initial POS assignment:
   and/or database.  Title to copyright in this software, database and
   any associated documentation shall at all times remain with
   Princeton University and LICENSEE agrees to preserve same.
+
+provisa/core/data/plural_frequencies.tsv
+----------------------------------------
+The counts of the tied noun plurals (REQ-194) are derived from the Google Books Ngram Viewer
+English 1-grams, version 20200217 (Google Books Ngram Viewer, http://books.google.com/ngrams), used
+under the Creative Commons Attribution 3.0 Unported License
+(https://creativecommons.org/licenses/by/3.0/). Changes: scripts/gen_plural_frequencies.py keeps
+only the noun-tagged 1-grams (word_NOUN) of the competing plural forms and sums each one's match
+count over 2000-2019; only those counts are bundled, not the corpus.
