@@ -381,12 +381,15 @@ def _detect_relationships(  # REQ-313
     conventions (e.g. breedName → breed.name). A field that names no join column -- a nested
     object with no key scalar beside it, or a list whose key lives on the target side -- offers
     no relationship: a relationship joins on columns (rel_repo.RelationshipWithoutColumns), and
-    the nested object is read as its own column.
+    the nested object is read as its own column. A field offered as a relationship is not also
+    a column (REQ-1929): it leaves the table's columns, so the relationship never hides one.
     """
     relationships = []
     for table in tables:
         src_scalars = {c["name"] for c in (table.get("columns") or []) if c.get("type") != "jsonb"}
+        kept: list[dict] = []
         for col in table.get("columns") or []:
+            kept.append(col)
             gql_type = col.get("gql_object_type")
             if not gql_type or gql_type not in queryable_type_names:
                 continue
@@ -398,6 +401,7 @@ def _detect_relationships(  # REQ-313
             src_col, tgt_col = _infer_fk_columns(col["name"], gql_type, src_scalars, types)
             if not src_col:
                 continue  # no key scalar beside the nested object: nothing to join on
+            kept.pop()  # REQ-1929: offered as a relationship, so not a column too
             rel_id = f"{REMOTE_OFFERED_PREFIX}{table['source_id']}__{table['name']}__{col['name']}"
             relationships.append(
                 {
@@ -416,6 +420,8 @@ def _detect_relationships(  # REQ-313
                     "remote_managed": True,
                 }
             )
+        if table.get("columns") is not None:
+            table["columns"] = kept
     return relationships
 
 

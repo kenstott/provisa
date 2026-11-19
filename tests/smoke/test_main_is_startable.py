@@ -472,7 +472,8 @@ def test_the_graphql_demo_source_registers_at_startup(instance: Instance):
         assert time.monotonic() < deadline, f"no graphql-demo registration outcome:\n{text[-4000:]}"
         time.sleep(1)
         text = log.read_text(errors="replace")
-    assert failed not in text, text[text.index(failed) - 200 : text.index(failed) + 4000]
+    # The failure line and its traceback, from the start of that line.
+    assert failed not in text, text[text.rfind("\n", 0, text.index(failed)) + 1 :][:4000]
     assert registered in text
 
 
