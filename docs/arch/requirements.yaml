@@ -95887,7 +95887,10 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     (an asterisk allowed at either level), and a judgment_basis_owner names a judgment basis by its id.
     Ownership held in columns moves to entitlements: data_products.owner_role, domains.steward and relationships.owner
     are removed, and the rules that read them read the data_product_owner, domain_steward and relationship_owner
-    entitlements instead.'
+    entitlements instead. (Amended 2026-11-19, ORG ADMINS HOLD THE FIVE OWNER CAPABILITIES:) Maintainer
+    2026-11-19. The standard org_admin role holds data_product_owner, relationship_owner, domain_steward,
+    term_owner and judgment_basis_owner with no list, so an org admin owns every object of those kinds;
+    other owners are granted on lists or by the creator''s owner row.'
   use_case: Alice holds the viewer role with tables [finance.revenue]; she sees only that table of everything
     viewer can see, while another viewer with no list sees all of it.
   scenario: 'Given two people with the viewer role, one whose grant lists tables [finance.revenue]
