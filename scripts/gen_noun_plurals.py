@@ -17,6 +17,8 @@ Usage:
 
     python scripts/gen_noun_plurals.py <scowl-pre.txt> <Copyright>
 
+after scripts/gen_plural_frequencies.py has written the frequency table it reads.
+
 What is taken (the file's notation is documented in the source's README.md):
 
 - Only entries at ESDB size 80 or below (sizes 70 and below are words "found in most
@@ -34,8 +36,16 @@ What is taken (the file's notation is documented in the source's README.md):
   - first, an alternative other than the singular that the database also lists as a common noun
     lemma of its own (the everyday word: ``person``'s plurals are ``persons`` and ``~: people``,
     and ``people`` is itself a size-35 noun, so ``person`` -> ``people``);
-  - then its variant level (non-variant, ``.``, ``=``, ``?``, ``v``, ``~``, ``V``, ``-``);
+  - then its variant level's tie class, then its frequency within a tie (below), then its variant
+    level (non-variant, ``.``, ``=``, ``?``, ``v``, ``~``, ``V``, ``-``);
   - then file order.
+- Alternatives in the same tie class (``_TIE_CLASS``: every level standard dictionaries accept,
+  non-variant down to ``V``, is one class; ``-`` is the next) after the everyday-word rule are
+  ranked by their general-English frequency, ``provisa/core/data/plural_frequencies.tsv``
+  (scripts/gen_plural_frequencies.py, Google Books Ngram 1-grams): ``schema``'s plurals are
+  ``schemata`` and ``V: schemas``, and ``schemas`` is the more frequent, so ``schema`` ->
+  ``schemas``. Frequency never applies to a noun with one plural and never lifts a form over
+  another class.
 - A common noun with no plural in any group (``news``, ``series``) is listed as its own plural:
   the dictionary knows the word and gives it no other form.
 - A non-variant plural that the 12dicts source (the count of standard dictionaries listing a word
@@ -66,6 +76,15 @@ _VARIANT_TOKEN = re.compile(r"^[ABZCD_]?[.=?v~V@\-x]?$")
 _WORD = re.compile(r"^[a-z]+$")
 _FUNCTION_POS = frozenset({"pp", "c", "pn", "d"})
 _HEADWORD_TAG = "[12dicts]"
+# Variant levels by tie class (REQ-194, amended 2026-11-18: a tie between dictionary forms is broken
+# by word frequency). The requirement's own example, schema: schemata | V: schemas, is a tie, so
+# every level the database calls acceptable -- non-variant down to V, the forms standard
+# dictionaries list -- is one class; "-" (generally not in standard dictionaries) ranks below it.
+# Alternatives of one noun in the same class are tied and the more frequent form wins.
+_TIE_CLASS = {"": 0, ".": 0, "=": 0, "?": 0, "v": 0, "~": 0, "V": 0, "-": 1}
+_FREQUENCIES = _OUT / "plural_frequencies.tsv"
+
+Alternative = tuple[str, str, int]  # (plural, variant level, file order)
 
 
 def _tag_size(line: str, tag: str) -> int | None:
@@ -157,9 +176,48 @@ def _lemma(lemma_info: str) -> tuple[str, str] | None:
     return m.group(2), m.group(3)
 
 
-def extract(scowl_pre: Path) -> tuple[list[tuple[str, str]], list[str]]:
-    """(the (singular, plural) rows, the plurals that are words of their own)."""
-    plurals: dict[str, list[tuple[str, str, int]]] = {}  # singular -> (plural, level, order)
+def _rank(
+    alt: Alternative,
+    singular: str,
+    lemmas: set[str],
+    alts: list[Alternative],
+    frequencies: dict[str, int],
+) -> tuple[bool, int, int, int, int]:
+    """One plural alternative's sort key: the everyday-word rule, the variant level's tie class,
+    then the general-English frequency inside a tie, then the level itself, then file order."""
+    word, level, order = alt
+    tie_class = _TIE_CLASS.get(level, len(_LEVELS))
+    count = frequencies[word] if _tied(alt, alts) else 0  # outside a tie frequency has no say
+    return (
+        not (word != singular and word in lemmas),
+        tie_class,
+        -count,
+        _LEVELS.index(level) if level in _LEVELS else len(_LEVELS),
+        order,
+    )
+
+
+def _tied(alt: Alternative, alts: list[Alternative]) -> bool:
+    """True when another alternative of the same noun shares ``alt``'s tie class."""
+    tie_class = _TIE_CLASS.get(alt[1])
+    return tie_class is not None and any(
+        other[0] != alt[0] and _TIE_CLASS.get(other[1]) == tie_class for other in alts
+    )
+
+
+def tied_forms(scowl_pre: Path) -> list[str]:
+    """Every plural alternative in a tie, whose frequency decides: the words the frequency table
+    must cover."""
+    nouns, own_words = _nouns(scowl_pre)
+    del own_words
+    forms = {a[0] for _, alts in nouns for a in alts if _tied(a, alts)}
+    return sorted(forms)
+
+
+def _nouns(scowl_pre: Path) -> tuple[list[tuple[str, list[Alternative]]], list[str]]:
+    """(each common noun with its plural alternatives, in file order; the plurals that are words of
+    their own). A noun with no alternative is its own plural."""
+    plurals: dict[str, list[Alternative]] = {}  # singular -> (plural, level, order)
     nouns: list[str] = []
     function_words: set[str] = set()
     own_words: list[str] = []  # plurals that are words of their own (12dicts rule)
@@ -226,13 +284,12 @@ def extract(scowl_pre: Path) -> tuple[list[tuple[str, str]], list[str]]:
                 and plural not in own_words
             ):
                 own_words.append(plural)
-    lemmas = set(nouns)
     owners: dict[str, set[str]] = {}
     for singular in nouns:
         for plural, _, _ in plurals[singular]:
             if plural != singular:
                 owners.setdefault(plural, set()).add(singular)
-    rows: list[tuple[str, str]] = []
+    out: list[tuple[str, list[Alternative]]] = []
     for singular in nouns:
         alts = plurals[singular]
         if (
@@ -241,17 +298,23 @@ def extract(scowl_pre: Path) -> tuple[list[tuple[str, str]], list[str]]:
             and all(owners.get(a[0], set()) - {singular} for a in alts)
         ):
             alts = []
+        out.append((singular, alts))
+    return out, own_words
+
+
+def extract(
+    scowl_pre: Path, frequencies: dict[str, int]
+) -> tuple[list[tuple[str, str]], list[str]]:
+    """(the (singular, plural) rows, the plurals that are words of their own). ``frequencies``
+    gives the general-English count of every form :func:`tied_forms` lists."""
+    nouns, own_words = _nouns(scowl_pre)
+    lemmas = {singular for singular, _ in nouns}
+    rows: list[tuple[str, str]] = []
+    for singular, alts in nouns:
         if not alts:
             rows.append((singular, singular))
             continue
-        ranked = sorted(
-            alts,
-            key=lambda a: (
-                not (a[0] != singular and a[0] in lemmas),
-                _LEVELS.index(a[1]) if a[1] in _LEVELS else len(_LEVELS),
-                a[2],
-            ),
-        )
+        ranked = sorted(alts, key=lambda a: _rank(a, singular, lemmas, alts, frequencies))
         seen: set[str] = set()
         for plural, _, _ in ranked:
             if plural not in seen:
@@ -274,9 +337,26 @@ noun as that script describes. Its notice follows, verbatim.
 """
 
 
+_NGRAM_NOTICE = """
+provisa/core/data/plural_frequencies.tsv
+----------------------------------------
+The counts of the tied noun plurals (REQ-194) are taken from the Google Books Ngram Viewer English
+1-grams, version 20200217 (Google Books Ngram Viewer, http://books.google.com/ngrams), by
+scripts/gen_plural_frequencies.py: each word's match count over 2000-2019. The source is licensed
+under the Creative Commons Attribution 3.0 Unported License
+(https://creativecommons.org/licenses/by/3.0/). Only these counts are bundled, not the corpus.
+"""
+
+
 def main(argv: list[str]) -> int:
     scowl_pre, copyright_file = Path(argv[0]), Path(argv[1])
-    rows, own_words = extract(scowl_pre)
+    frequencies = {
+        word: int(count)
+        for word, count in (
+            line.split("\t") for line in _FREQUENCIES.read_text(encoding="utf-8").splitlines()
+        )
+    }
+    rows, own_words = extract(scowl_pre, frequencies)
     _OUT.mkdir(parents=True, exist_ok=True)
     # Own words after every pair, so a noun that is also a lemma (opera -> operas) keeps its plural.
     text = "".join(f"{s}\t{p}\n" for s, p in rows) + "".join(f"{w}\t{w}\town\n" for w in own_words)
@@ -284,7 +364,7 @@ def main(argv: list[str]) -> int:
     # mtime=0: the same source gives the same bytes.
     (_OUT / "noun_plurals.tsv.gz").write_bytes(gzip.compress(data, mtime=0))
     (_OUT / "THIRD_PARTY_NOTICES").write_text(
-        _NOTICE_HEAD + copyright_file.read_text(encoding="utf-8"), encoding="utf-8"
+        _NOTICE_HEAD + copyright_file.read_text(encoding="utf-8") + _NGRAM_NOTICE, encoding="utf-8"
     )
     print(
         f"{len(rows)} pairs, {len({s for s, _ in rows})} nouns, own words: {', '.join(own_words)}"
