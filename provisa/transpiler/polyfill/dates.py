@@ -225,6 +225,31 @@ TRANSACTION_TIMESTAMP = Feature(
     ),
 )
 
+CLOCK_TIMESTAMP = Feature(
+    "clock_timestamp",
+    FAMILY,
+    "The time now, read as the statement runs.",
+    read=Side(
+        rules=(
+            Rule(
+                "clock_timestamp()",
+                {
+                    **{d: trino.KEPT for d in DIALECTS if d not in NATIVE},
+                    "clickhouse": "now64(6, 'UTC')",
+                },
+            ),
+        ),
+        limitations={
+            "clickhouse": (
+                Limitation(
+                    "The time the statement began (now64): ClickHouse has no clock read again for "
+                    "each row, so every row of a statement reads the same instant."
+                ),
+            )
+        },
+    ),
+)
+
 TO_CHAR = Feature(
     "to_char(timestamp, text)",
     FAMILY,
@@ -256,5 +281,6 @@ FEATURES: tuple[Feature, ...] = (
     TIME_MI_TIME,
     MAKE_DATE,
     TRANSACTION_TIMESTAMP,
+    CLOCK_TIMESTAMP,
     TO_CHAR,
 )

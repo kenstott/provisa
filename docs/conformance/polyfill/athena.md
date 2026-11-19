@@ -8,9 +8,9 @@ This page lists every feature that has a polyfill or a limitation on Athena. A f
 
 When Athena is a serving engine reading a source it attaches directly, it may push work into that source, with the source's semantics, so a result can depend on the pair; the cases known are fixed by hints, listed under each source.
 
-Rules on this page: 475, of which 381 are only the name of a rewrite function. A rule is printed as the translator runs it: the PostgreSQL pattern, its holes written `$name` (typed with `::type`), then the dialect's replacement.
+Rules on this page: 477, of which 383 are only the name of a rewrite function. A rule is printed as the translator runs it: the PostgreSQL pattern, its holes written `$name` (typed with `::type`), then the dialect's replacement.
 
-115 of the grid's 544 features are native on Athena and left out.
+117 of the grid's 548 features are native on Athena and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -303,6 +303,9 @@ function provisa.transpiler.polyfill.network.truncated_address: trunc of a MAC a
 <tr><td><strong>unnest</strong><br>The ranges of a multirange, or the lexemes of a tsvector, as rows.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_unnest: unnest of a range, multirange or tsvector: refused by name.</code></pre></td><td><ul><li>Of a range or multirange the statement says: refused by name, as Trino has no such type. Of a tsvector: refused by name, as its rows are three columns (lexeme, positions, weights) of a text the engine holds it as. Of anything else, Trino&#x27;s own.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>max</strong><br>The largest value of an aggregate.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_max: max of an inet, a cidr or an xid8: refused by name, as Trino has no such type.</code></pre></td><td><ul><li>Of an inet, a cidr or an xid8 the statement says: refused by name, as Trino has no such type. Of anything else, Trino&#x27;s own.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>min</strong><br>The smallest value of an aggregate.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_min: min of an inet, a cidr or an xid8: refused by name, as Trino has no such type.</code></pre></td><td><ul><li>Of an inet, a cidr or an xid8 the statement says: refused by name, as Trino has no such type. Of anything else, Trino&#x27;s own.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>int2int4_sum</strong><br>The sum of avg(smallint) and avg(integer)&#x27;s {count, sum} state.</td><td><pre><code>int2int4_sum($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>int2_sum</strong><br>A step of an integer sum, in a bigint that wraps past its range.</td><td><pre><code>int2_sum($a, $b)
 =&gt;
 CASE WHEN $a IS NULL THEN CAST($b AS BIGINT) WHEN $b IS NULL THEN CAST($a AS BIGINT) ELSE CAST((((CAST($a AS DECIMAL(38, 0)) + CAST($b AS DECIMAL(38, 0))) + CAST(&#x27;9223372036854775808&#x27; AS DECIMAL(38, 0))) % CAST(&#x27;18446744073709551616&#x27; AS DECIMAL(38, 0)) + CAST(&#x27;18446744073709551616&#x27; AS DECIMAL(38, 0))) % CAST(&#x27;18446744073709551616&#x27; AS DECIMAL(38, 0)) - CAST(&#x27;9223372036854775808&#x27; AS DECIMAL(38, 0)) AS BIGINT) END</code></pre></td><td></td><td></td><td></td></tr>
@@ -547,6 +550,9 @@ CASE WHEN $y IS NULL OR $m IS NULL OR $d IS NULL THEN CAST(NULL AS DATE) WHEN $y
 <tr><td><strong>transaction_timestamp</strong><br>The time the transaction began: now(), as Provisa answers it.</td><td><pre><code>transaction_timestamp()
 =&gt;
 current_timestamp</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>clock_timestamp</strong><br>The time now, read as the statement runs.</td><td><pre><code>clock_timestamp()
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>to_char(timestamp, text)</strong><br>A timestamp&#x27;s or an instant&#x27;s text in a template.</td><td><pre><code>to_char($a, $b)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>

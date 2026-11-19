@@ -37,7 +37,7 @@ import sqlglot.expressions as exp
 
 from provisa.transpiler.polyfill import instants, trino
 from provisa.transpiler.polyfill.grid import Feature, Limitation, Rule, Side
-from provisa.transpiler.polyfill.notation import Refusal, Rewrite
+from provisa.transpiler.polyfill.notation import Refusal, Refused, Rewrite
 from provisa.transpiler.polyfill.numbers import ch_fail
 
 _CLICKHOUSE = "clickhouse"
@@ -455,6 +455,59 @@ _PART_NAMES = {
 _PART_OF = {spelling: unit for unit, names in _PART_NAMES.items() for spelling in names}
 
 
+def _double(argument: exp.Expr) -> float | None | Literal[False]:
+    """A number the statement writes (a literal, signed, maybe cast): its double; None for a NULL;
+    False for any other value."""
+    value = argument.unnest()
+    while isinstance(value, exp.Cast):
+        value = value.this.unnest()
+    if isinstance(value, exp.Null):
+        return None
+    negative = False
+    while isinstance(value, (exp.Neg, exp.Paren)):
+        negative ^= isinstance(value, exp.Neg)
+        value = value.this
+    while isinstance(value, exp.Cast):
+        value = value.this.unnest()
+    if not isinstance(value, exp.Literal):
+        return False
+    try:
+        number = float(value.this)
+    except ValueError:
+        return False
+    return -number if negative else number
+
+
+def made_time(node: exp.Expr, dialect: str) -> exp.Expr | None:
+    """make_time(hour, min, sec) of literals (date.c): the time of day, computed as the statement
+    is read; 22008 of a field out of range (24:00:00 the last), NULL of a NULL."""
+    call = trino.called(node) if dialect == _CLICKHOUSE else None
+    # sqlglot reads make_time as TimeFromParts
+    if call is None or not call[0] & {"make_time", "time_from_parts"} or len(call[1]) != 3:
+        return None
+    hour, minute = _integer(call[1][0]), _integer(call[1][1])
+    sec = _double(call[1][2])
+    if any(v is False for v in (hour, minute, sec)):  # 0 == False: by identity
+        raise Refused(trino.no_form("make_time", dialect))
+    if hour is None or minute is None or sec is None:
+        return held_null()
+    assert isinstance(hour, int) and isinstance(minute, int) and isinstance(sec, float)
+    if (
+        hour < 0
+        or minute < 0
+        or minute > 59
+        or not 0 <= sec <= 60
+        or hour > 24
+        or (hour == 24 and (minute > 0 or sec > 0))
+    ):
+        raise Refused(
+            Refusal("22008", f"time field value out of range: {hour}:{minute:02d}:{sec:02g}"),
+            ruling=True,
+        )
+    micros = (hour * 60 + minute) * 60 * SECOND_US + round(sec * SECOND_US)  # rint: half to even
+    return held_literal(micros)
+
+
 def _text(argument: exp.Expr) -> str | None | Literal[False]:
     """A text the statement writes (maybe cast): its value; None for a NULL; False for any other."""
     value = argument.unnest()
@@ -577,6 +630,15 @@ FEATURES: tuple[Feature, ...] = (
         _HELD_STATED + " The timestamp is held as DateTime64(6, 'UTC'), exact from 1900-01-01 "
         "to 2299-12-31; its wall time's time of day is read.",
         r"\btime\b",
+    ),
+    _row(
+        "make_time",
+        "The time of day of an hour, a minute and seconds.",
+        made_time,
+        _HELD_STATED + " Of literal arguments or NULLs, computed as the statement is read as "
+        "date.c computes it: a field out of range raises 22008, 24:00:00 the last; any other "
+        "argument is refused by name.",
+        r"\bmake_time\b",
     ),
     _row(
         "time(time, integer)",

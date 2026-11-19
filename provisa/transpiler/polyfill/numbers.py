@@ -25,15 +25,19 @@ Trino's form here, every other dialect keeping what it had."""
 
 from __future__ import annotations
 
+import decimal
+import math
 import re
+import struct
 
+import sqlglot
 import sqlglot.expressions as exp
 
 from provisa.core.pg_error import END, MARK
 from provisa.transpiler.polyfill import trino
 from provisa.transpiler.polyfill.grid import DIALECTS, NATIVE, Feature, Limitation, Rule, Side
 from provisa.transpiler.polyfill.matching import graft
-from provisa.transpiler.polyfill.notation import Refused, Rewrite, replacement
+from provisa.transpiler.polyfill.notation import Refusal, Refused, Rewrite, replacement
 
 FAMILY = "integers and numbers"
 
@@ -303,6 +307,59 @@ def _ch_jsonb_cast(function: str) -> str:
     return f"CASE WHEN $v IS NULL THEN {nothing} ELSE if({checked} = 0, {answer}, {nothing}) END"
 
 
+#: The digits float8_numeric and float4_numeric keep of a double and a real (DBL_DIG, FLT_DIG).
+_FLOAT_DIGITS = {"double precision": 15, "real": 6}
+_NUMERIC_PAST = (
+    "numeric() of a float of more than 38 digits, NaN or infinity has no exact form on clickhouse"
+)
+
+
+def _float_literal(node: exp.Expr) -> float | None | bool:
+    """A float the statement writes (a number or a text, signed, cast): its value, None for a NULL,
+    False for any other value."""
+    value = node.unnest()
+    while isinstance(value, exp.Cast):
+        value = value.this.unnest()
+    negative = False
+    while isinstance(value, (exp.Neg, exp.Paren)):
+        negative ^= isinstance(value, exp.Neg)
+        value = value.this.unnest()
+        while isinstance(value, exp.Cast):
+            value = value.this.unnest()
+    if isinstance(value, exp.Null):
+        return None
+    if not isinstance(value, exp.Literal):
+        return False
+    try:
+        number = float(value.this.strip())
+    except ValueError:
+        return False
+    return -number if negative else number
+
+
+def numeric_of_float(node: exp.Expr, said: str, dialect: str) -> exp.Expr:
+    """numeric of a double or a real the statement writes (float8_numeric, float4_numeric): its
+    text of DBL_DIG or FLT_DIG significant digits read as a numeric, computed as the statement is
+    read; past 38 digits, NaN or infinity, 0A000 (ClickHouse's Decimal holds none of them)."""
+    value = _float_literal(node)
+    if value is False:
+        raise Refused(trino.no_form("numeric", dialect))
+    if value is None:
+        return sqlglot.parse_one("CAST(NULL AS Nullable(Decimal(38, 0)))", read="clickhouse")
+    assert isinstance(value, float)
+    if said == "real":
+        value = struct.unpack("<f", struct.pack("<f", value))[0] if math.isfinite(value) else value
+    if not math.isfinite(value):
+        raise Refused(Refusal("0A000", _NUMERIC_PAST), ruling=True)
+    number = decimal.Decimal(f"{value:.{_FLOAT_DIGITS[said]}g}")
+    text = format(abs(number) if number == 0 else number, "f")
+    digits = len(text.lstrip("-").replace(".", "").lstrip("0")) or 1
+    scale = len(text.split(".")[1]) if "." in text else 0
+    if max(digits, scale) > 38 or len(text.lstrip("-").split(".")[0]) + scale > 38:
+        raise Refused(Refusal("0A000", _NUMERIC_PAST), ruling=True)
+    return sqlglot.parse_one(f"CAST('{text}' AS Nullable(Decimal(38, {scale})))", read="clickhouse")
+
+
 def _cast_of(function: str, sources: frozenset[str], sql_type: str):
     """``function`` of a value said to be of ``sources``: its cast to ``sql_type``. Of a jsonb
     value on ClickHouse, :func:`_ch_jsonb_cast`; of a json value there, and of either on Trino,
@@ -320,6 +377,8 @@ def _cast_of(function: str, sources: frozenset[str], sql_type: str):
             return graft(replacement(form, dialect, f"{function}($v)"), {"v": call[1][0]})
         if type_said in _JSON:
             raise Refused(trino.no_form(function, dialect))
+        if function == "numeric" and dialect == "clickhouse" and type_said in _FLOAT_DIGITS:
+            return numeric_of_float(call[1][0], type_said, dialect)
         if type_said not in sources:
             return None
         if dialect == "clickhouse":
@@ -351,10 +410,23 @@ def _cast_feature(function: str, summary: str, sources: frozenset[str], sql_type
                 **dict.fromkeys(
                     trino.TRINO, (Limitation("Of a json or jsonb value, refused by name."),)
                 ),
-                "clickhouse": (Limitation(_CLICKHOUSE_JSONB[function]),),
+                "clickhouse": (
+                    Limitation(_CLICKHOUSE_JSONB[function]),
+                    *(_FLOAT_NUMERIC if function == "numeric" else ()),
+                ),
             },
         ),
     )
+
+
+_FLOAT_NUMERIC = (
+    Limitation(
+        "Of a double or a real the statement writes as a literal: its text of 15 or 6 significant "
+        "digits read as a numeric, computed as the statement is read; past 38 digits, NaN or "
+        "infinity raises 0A000. Of any other double or real, refused by name.",
+        Refusal("0A000", _NUMERIC_PAST),
+    ),
+)
 
 
 #: What differs from PostgreSQL on ClickHouse, where a jsonb value is held as its unchecked text.
@@ -633,7 +705,33 @@ RANDOM = Feature(
     ),
 )
 
+#: int2int4_sum (int.c): the {count, sum} state of avg(int2) and avg(int4), the sum, NULL of no
+#: rows; XX000 of an array of other than two elements.
+INT2INT4_SUM = Feature(
+    "int2int4_sum",
+    FAMILY,
+    "The sum of avg(smallint) and avg(integer)'s {count, sum} state.",
+    read=Side(
+        rules=(
+            Rule(
+                "int2int4_sum($a)",
+                ch_only(
+                    ch_once(
+                        "CAST(if(isNull($a), NULL, if("
+                        + ch_fail("XX000", "expected 2-element int8 array").format(
+                            condition="length($a) != 2 OR has($a, NULL)"
+                        )
+                        + " = 0 AND arrayElement($a, 1) != 0, arrayElement($a, 2), NULL)) "
+                        "AS Nullable(Int64))"
+                    )
+                ),
+            ),
+        ),
+    ),
+)
+
 FEATURES: tuple[Feature, ...] = (
+    INT2INT4_SUM,
     _sum("int2_sum"),
     _sum("int4_sum"),
     INT8SHL,
