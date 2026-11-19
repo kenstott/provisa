@@ -492,7 +492,7 @@ async def dispatch(state: Any, role: str, name: str, args: dict, request: Any) -
     """Run tool ``name`` with ``args`` as keywords (only the fields the model sent)."""
     if request is None:
         raise ValueError(f"{name} requires a verified request context")
-    await _refuse_outside_selection(name, args)
+    await _refuse_outside_selection(state, name, args)
     fn = getattr(model_tools, name)
     return await fn(state, role, request, **args)
 
@@ -520,7 +520,7 @@ _WHOLE_ORG = {
 }
 
 
-async def _refuse_outside_selection(name: str, args: dict) -> None:
+async def _refuse_outside_selection(state: Any, name: str, args: dict) -> None:
     """REQ-2253: under a selection in the domain filter, a tool reads and changes nothing outside
     it -- a table named by id, a domain named, a profiler's member tables -- and a tool acting on
     what spans every domain is refused by name. No selection: nothing is asked."""
@@ -533,9 +533,9 @@ async def _refuse_outside_selection(name: str, args: dict) -> None:
     if name == "find_table_id":
         refuse_object(f"Domain {args['domain']!r}", {args["domain"]})
     from provisa.api.admin.domain_guard import table_domain
-    from provisa.api.admin.schema_helpers import _get_pool
 
-    pool = await _get_pool()
+    pool = state.model_db
+    assert pool is not None
     async with pool.acquire() as conn:
         for key in _TABLE_ARGS:
             if args.get(key) is not None:
