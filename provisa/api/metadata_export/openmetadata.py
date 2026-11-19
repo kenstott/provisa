@@ -1852,7 +1852,7 @@ class OpenMetadataExport(MetadataExport):  # REQ-1069
         """Every glossary term of every glossary on the server, following the ``paging.after``
         cursor to the last page. A term's broader term is its parent term."""
         terms: list[CatalogTerm] = []
-        params: dict[str, str | int] = {"limit": self.glossary_page_size}
+        params: dict[str, str | int] = {"limit": self.glossary_page_size, "fields": "parent"}
         async with httpx.AsyncClient(
             timeout=self._config.timeout_seconds, event_hooks=sandbox_egress.endpoint_event_hooks()
         ) as client:
@@ -1875,4 +1875,4 @@ class OpenMetadataExport(MetadataExport):  # REQ-1069
                 after = (page.get("paging") or {}).get("after")
                 if not after:
                     return terms
-                params = {"limit": self.glossary_page_size, "after": after}
+                params = {"limit": self.glossary_page_size, "fields": "parent", "after": after}
