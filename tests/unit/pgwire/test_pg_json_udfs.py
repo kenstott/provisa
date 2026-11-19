@@ -364,3 +364,26 @@ def test_a_deeply_nested_call_is_rewritten_once():
         nested = f"abs({nested})"
     written = transpile_to_duckdb(f"SELECT jsonb_typeof(a), {nested} FROM t")
     assert written.upper().count("ABS(") == 25
+
+
+@pytest.mark.parametrize(
+    "call",
+    [
+        """jsonb_set('{"a":{"b":1}}', '{a,NULL}', '2')""",
+        """jsonb_delete_path('{"a":{"b":1}}', '{a,NULL}')""",
+        """jsonb_set('{"a":1}', '{NULL}', '2')""",
+        """jsonb_insert('{"a":{"b":1}}', '{a,NULL}', '2')""",
+    ],
+)
+def test_a_null_path_step_into_an_object_is_postgresqls_error(db: Any, call: str):
+    """setPathObject: a NULL step is 22004, path element at position N is null."""
+    with pytest.raises(duckdb.Error) as refused:
+        db.execute(transpile_to_duckdb(f"SELECT {call}")).fetchall()
+    error = from_engine(refused.value)
+    assert error is not None and error.sqlstate == "22004"
+    assert "is null" in str(refused.value)
+
+
+def test_a_null_path_step_into_an_array_appends_as_postgresql_does(db: Any):
+    """setPathArray reads a NULL step as the end of the array."""
+    assert _one(db, """jsonb_set('{"a":[1]}', '{a,NULL}', '2')""") == '{"a": [1, 2]}'
