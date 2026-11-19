@@ -3863,7 +3863,10 @@
     the governed pipeline as the person who started the run: their role''s rules, masks and row rules apply
     to each table it reads. Only the check that a join follows an approved relationship is not applied,
     and only to this discovery measure query, since a candidate pair has no relationship yet. A pair whose
-    tables cannot be read is left unmeasured and says why; it does not fail the run.'
+    tables cannot be read is left unmeasured and says why; it does not fail the run. (Amended 2026-11-18,
+    EVERY COLUMN OF THE PROPOSED RELATIONSHIPS LIST HAS A FILTER:) Maintainer 2026-11-18 (''every column
+    needs a filter'', on the proposed relationships dialog). Every column of the standard list in the discovery
+    dialog has a column filter, as the standard list gives its filterable columns.'
   use_case: Auto-generated FK relationships reduce manual relationship registration overhead while preserving
     steward control.
   code:
@@ -57874,35 +57877,41 @@
   feature: glossary-tags-ontology-terms
   priority: MUST
   type: behavioral
-  description: 'A GLOSSARY TERM IS SCOPED TO DOMAINS, AND ONE TERM MAY SPAN SEVERAL. A rooted term''s
-    domains are DERIVED -- the distinct ``registered_tables.domain_id`` of the tables its refs point at
-    -- so nothing is declared and nothing can drift out of sync. An abstract term declares its domains
-    explicitly, one or more, because it holds no refs to derive from. THE COMBINED MODEL: a term whose
-    refs span two domains is ONE term scoped to both, not two terms. Cross-table merging is the mechanism
-    the glossary is built on (``normalize_term`` sheds trailing proxy tokens so ``orders.id`` and every
-    ``order_id`` foreign key land on one term), and a domain boundary is not a reason to stop it: if ``orders``
-    is in sales and ``order_id`` is in pet-store, "order" genuinely spans both. THE STAMP: a rooted
-    term''s domains become underivable the moment its last ref departs, so the departing refs'' domains
-    are recorded on the term at that moment; a deprecated or retired term stays curatable by exactly the
-    people who owned it. The rule is one line: a term''s domains are its refs'' domains while it has refs,
-    and its recorded domains otherwise. AUTHORITY IS ANY, NOT ALL: reading a term requires ANY of its
-    domains to be within the caller''s ``roles.domain_access``, and CURATING it requires the same. This
-    deliberately breaks the symmetry with REQ-1531''s ``require_domains``, which requires ALL: that rule
-    guards acts reaching DATA in two domains, whereas a term definition is prose about a concept both domains already reference; editing it exposes and changes nothing in the other domain. Requiring
-    all would leave a shared term curatable only by someone holding every domain it touches, an unsolvable
-    deadlock manufactured by a name collision. THE ESCAPE HATCH: when two domains genuinely mean different
-    things by one phrase, the answer is coordination, and failing that a SPLIT: create a term and move
-    the refs to it with POST /admin/glossary/refs/move. That machinery already exists, and the split survives
-    the next derivation because ``sync_table_refs`` leaves a held ref alone when its term is curated, so the new term must be given a definition, or the ref drifts back on the next registration. NO DOMAINS
-    IS NOT NO ACCESS: a term with an empty domain set is UNSCOPED and reachable by any holder of the
-    glossary rights; creating an abstract term in multi-domain mode therefore requires at least one domain,
-    so an empty set cannot be minted as a way around the gate. THE NAVBAR FILTER IS A VIEW PREFERENCE,
-    NOT AUTHORITY: the glossary list is filtered by the domains checked in the nav bar, passed as a
-    ``domains`` query parameter, and that selection INTERSECTS with the caller''s domain access and can
-    never widen it: unchecking a box hides terms, checking every box does not reveal a term the role may
-    not see, and the server answers 403 on a term outside the role''s domains whatever the checkboxes
-    say. SINGLE-DOMAIN MODE: where a domain gates nothing, this gate does nothing either, exactly as
-    every other domain gate behaves.'
+  description: 'A GLOSSARY TERM IS SCOPED TO DOMAINS, AND ONE TERM MAY SPAN SEVERAL. A rooted term''s domains
+    are DERIVED -- the distinct ``registered_tables.domain_id`` of the tables its refs point at -- so nothing
+    is declared and nothing can drift out of sync. An abstract term declares its domains explicitly, one
+    or more, because it holds no refs to derive from. THE COMBINED MODEL: a term whose refs span two domains
+    is ONE term scoped to both, not two terms. Cross-table merging is the mechanism the glossary is built
+    on (``normalize_term`` sheds trailing proxy tokens so ``orders.id`` and every ``order_id`` foreign key
+    land on one term), and a domain boundary is not a reason to stop it: if ``orders`` is in sales and ``order_id``
+    is in pet-store, "order" genuinely spans both. THE STAMP: a rooted term''s domains become underivable
+    the moment its last ref departs, so the departing refs'' domains are recorded on the term at that moment;
+    a deprecated or retired term stays curatable by exactly the people who owned it. The rule is one line:
+    a term''s domains are its refs'' domains while it has refs, and its recorded domains otherwise. AUTHORITY
+    IS ANY, NOT ALL: reading a term requires ANY of its domains to be within the caller''s ``roles.domain_access``,
+    and CURATING it requires the same. This deliberately breaks the symmetry with REQ-1531''s ``require_domains``,
+    which requires ALL: that rule guards acts reaching DATA in two domains, whereas a term definition is
+    prose about a concept both domains already reference; editing it exposes and changes nothing in the
+    other domain. Requiring all would leave a shared term curatable only by someone holding every domain
+    it touches, an unsolvable deadlock manufactured by a name collision. THE ESCAPE HATCH: when two domains
+    genuinely mean different things by one phrase, the answer is coordination, and failing that a SPLIT:
+    create a term and move the refs to it with POST /admin/glossary/refs/move. That machinery already exists,
+    and the split survives the next derivation because ``sync_table_refs`` leaves a held ref alone when
+    its term is curated, so the new term must be given a definition, or the ref drifts back on the next
+    registration. NO DOMAINS IS NOT NO ACCESS: a term with an empty domain set is UNSCOPED and reachable
+    by any holder of the glossary rights; creating an abstract term in multi-domain mode therefore requires
+    at least one domain, so an empty set cannot be minted as a way around the gate. THE NAVBAR FILTER IS
+    A VIEW PREFERENCE, NOT AUTHORITY: the glossary list is filtered by the domains checked in the nav bar,
+    passed as a ``domains`` query parameter, and that selection INTERSECTS with the caller''s domain access
+    and can never widen it: unchecking a box hides terms, checking every box does not reveal a term the
+    role may not see, and the server answers 403 on a term outside the role''s domains whatever the checkboxes
+    say. SINGLE-DOMAIN MODE: where a domain gates nothing, this gate does nothing either, exactly as every
+    other domain gate behaves. (Amended 2026-11-18, A TERM''S NAME IS UNIQUE WITHIN A DOMAIN, NOT ACROSS
+    DOMAINS:) Maintainer 2026-11-18 (''terms are differentiated by domain. a domain can use a name from
+    another domain''). Two terms may carry the same name when they belong to different domains; a name is
+    unique only within a domain. Creating or renaming a term is refused only when a term of the same name
+    already belongs to one of its domains. Everywhere a term is found or shown by name, it is told apart
+    by its domain.'
   tests:
   - tests/unit/test_glossary_domain_scope.py
   - tests/integration/test_glossary_domain_authority.py
