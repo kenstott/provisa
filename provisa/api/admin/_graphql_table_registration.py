@@ -396,10 +396,9 @@ async def sync_detected_relationships(state: Any, source_id: str) -> int:
     """Store the relationships the schema shows between this source's REGISTERED tables
     (REQ-313), and return how many. A relationship is one object-typed column of a registered
     table whose type another registered table returns; it is stored only when that column is
-    among the columns registered. Nothing is stored for a source that is not a remote GraphQL
-    source, or has fewer than two tables registered in this process."""
-    from provisa.core.models import Cardinality, Relationship
-    from provisa.core.repositories import relationship as rel_repo
+    among the columns registered, and storing it takes that column out of the table (REQ-1929).
+    Nothing is stored for a source that is not a remote GraphQL source, or has fewer than two
+    tables registered in this process."""
     from provisa.graphql_remote.mapper import map_schema
 
     if source_id not in getattr(state, "graphql_remote_sources", {}):
@@ -432,20 +431,53 @@ async def sync_detected_relationships(state: Any, source_id: str) -> int:
                 continue
             if via not in {c["name"] for c in source["columns"]}:
                 continue
-            await rel_repo.upsert(
-                conn,
-                Relationship(
-                    id=rel["id"],
-                    source_table_id=source["sql_name"],
-                    target_table_id=target["sql_name"],
-                    source_column=apply_sql_name(rel["source_column"])
-                    if rel["source_column"]
-                    else "",
-                    target_column=apply_sql_name(rel["target_column"])
-                    if rel["target_column"]
-                    else "",
-                    cardinality=Cardinality(rel["cardinality"]),
-                ),
-            )
+            async with conn.transaction():
+                await _store_taking_its_column(conn, reg, source, target, rel, via)
+            # REQ-1929: in this process too, the column is gone from the table it rode on.
+            source["columns"] = [c for c in source["columns"] if c["name"] != via]
             stored += 1
     return stored
+
+
+async def _store_taking_its_column(
+    conn: Any, reg: dict, source: dict, target: dict, rel: dict, via: str
+) -> None:
+    """Store ``rel`` and take the nested column ``via`` it rides on out of its source table's
+    registration (REQ-1929, A STORED RELATIONSHIP TAKES ITS NESTED COLUMN): a source mapped in
+    full never has that column, so a relationship stored once both tables are registered leaves
+    the model as that mapping does, with no column of the relationship's name. A column other
+    objects refer to is not taken: ``ColumnDropRefused`` names them, and nothing is stored."""
+    from provisa.core.models import Cardinality, Relationship
+    from provisa.core.repositories import relationship as rel_repo
+    from provisa.core.repositories.integrity import column_dependents
+    from provisa.core.repositories.table import ColumnDropRefused
+
+    column = apply_sql_name(via)
+    table_id = (
+        await conn.execute_core(
+            select(registered_tables.c.id).where(
+                registered_tables.c.source_id == reg["source_id"],
+                registered_tables.c.schema_name == "graphql",
+                registered_tables.c.table_name == source["sql_name"],
+            )
+        )
+    ).scalar_one()
+    dependents = await column_dependents(conn, table_id, column)
+    if dependents:
+        raise ColumnDropRefused(source["sql_name"], {column: dependents})
+    await conn.execute_core(
+        table_columns.delete().where(
+            table_columns.c.table_id == table_id, table_columns.c.column_name == column
+        )
+    )
+    await rel_repo.upsert(
+        conn,
+        Relationship(
+            id=rel["id"],
+            source_table_id=source["sql_name"],
+            target_table_id=target["sql_name"],
+            source_column=apply_sql_name(rel["source_column"]) if rel["source_column"] else "",
+            target_column=apply_sql_name(rel["target_column"]) if rel["target_column"] else "",
+            cardinality=Cardinality(rel["cardinality"]),
+        ),
+    )
