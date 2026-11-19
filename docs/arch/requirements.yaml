@@ -3108,7 +3108,13 @@
     formed plural wins (schema to schemas, index to indexes, maximum to maximums, focus to focuses); word
     frequency only chooses between irregular forms when no regular form is accepted. Where a noun has more
     than one sense with different plurals, the sense listed by the most standard dictionaries is the one
-    used (axis to axes).'
+    used (axis to axes). (Amended 2026-11-18, THE REGULAR-WINS RULE: WHICH LEVELS COUNT, ZERO PLURALS, AND
+    THE MAIN SENSE IN REVERSE:) Maintainer 2026-11-18, refining 581e2bb02d. A form counts as accepted for
+    the regular-wins rule only when the dictionary gives it a level; legacy entries with no level information
+    do not count (deer, criteria, offspring, calves, cacti, curricula, radii stay). Where a noun accepts
+    both a zero plural and a regular one, the zero plural wins (fish, salmon, trout, shrimp). The main-sense
+    rule applies in reverse when a plural is singularized: where senses tie, the sense whose only plural
+    is this form wins (axes to axis).'
   use_case: Consistent multi-language naming with a single authority ensures client-facing names are predictable
     and independent of physical schema.
   code:
