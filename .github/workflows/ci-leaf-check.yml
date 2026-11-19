@@ -270,6 +270,33 @@ jobs:
           OUTCOME: ${{ steps.miss.outcome }}
         run: '[ "$OUTCOME" = "failure" ]'
 
+  # The real key, primed (a hit builds nothing; a miss builds the image from zaychik/ once and
+  # saves it), then a lane's restore of it on a runner whose image was removed: zaychik:latest is
+  # back without a build.
+  zaychik-image:
+    name: action / zaychik-image (prime, then a restore that loads the image)
+    needs: scope
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prime
+        uses: ./.github/actions/zaychik-image
+        with:
+          phase: prime
+      # A prime that hit loaded nothing; one that missed built the image here.
+      - name: Remove the local image
+        run: |
+          if docker image inspect zaychik:latest > /dev/null 2>&1; then
+            docker image rm zaychik:latest
+          fi
+      - name: Restore
+        uses: ./.github/actions/zaychik-image
+        with:
+          phase: restore
+      - name: The image is loaded
+        run: docker image inspect zaychik:latest --format '{{.Id}}'
+
   # The real key, not one of this run's own: what the action keeps is the pinned files themselves,
   # each checked against its recorded sha256, so a save from here is the entry any job would save.
   # A miss downloads them (the one request to Pyodide's CDN per pin); a hit asks it for nothing.
@@ -403,6 +430,7 @@ jobs:
       - free-runner-disk
       - demo-bundle
       - trino-plugins
+      - zaychik-image
       - pyodide-downloads
       - release-metadata
       - ensure-release-off
@@ -620,6 +648,7 @@ jobs:
       - free-runner-disk
       - demo-bundle
       - trino-plugins
+      - zaychik-image
       - pyodide-downloads
       - release-metadata
       - ensure-release-off

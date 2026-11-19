@@ -190,15 +190,15 @@ async def test_relationship_discovery_never_scopes_a_withdrawn_table(plane):
     from provisa.discovery.gather import scope_table_ids
 
     async with plane.acquire() as conn:
-        everything = await scope_table_ids(conn, ["sales"], None)
+        everything = await scope_table_ids(conn, ["sales"], None, None)
         customers = await _withdraw_table(conn, "customers")
         assert await source_repo.set_withdrawn(conn, "erp", True)
         invoices = await _id(conn, "invoices")
         orders = await _id(conn, "orders")
         assert set(everything) == {orders, customers, invoices}
-        assert await scope_table_ids(conn, ["sales"], None) == [orders]
+        assert await scope_table_ids(conn, ["sales"], None, None) == [orders]
         # Named, it is not scoped either.
-        assert await scope_table_ids(conn, [], [orders, customers, invoices]) == [orders]
+        assert await scope_table_ids(conn, [], [orders, customers, invoices], None) == [orders]
 
 
 async def test_a_withdrawn_source_is_attached_by_no_engine_and_still_listed(plane):

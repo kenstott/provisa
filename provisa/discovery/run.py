@@ -136,6 +136,9 @@ class RunSpec:
     #: The distinct sample values read and shown to the model of each compared column (REQ-413,
     #: amended 2026-11-18: set in the discover dialog).
     samples_per_column: int
+    #: The domains selected in the domain filter, as the person who started the run may reach them
+    #: (REQ-2253): no table outside them is read or proposed, named or not. None: no narrowing.
+    within: frozenset[str] | None
 
 
 @dataclass
@@ -232,10 +235,14 @@ def _left_out(named: tuple[int, ...] | None, kept: list[TableFacts]) -> int:
 
 async def table_sets(conn: "Connection", spec: RunSpec) -> tuple[list[int], list[int] | None]:
     """The ids of the source set and of the target set (None: the same as the source)."""
-    source = await gather.scope_table_ids(conn, spec.source_domains, spec.source_tables)
+    source = await gather.scope_table_ids(
+        conn, spec.source_domains, spec.source_tables, spec.within
+    )
     if spec.same_as_source:
         return source, None
-    target = await gather.scope_table_ids(conn, spec.target_domains, spec.target_tables)
+    target = await gather.scope_table_ids(
+        conn, spec.target_domains, spec.target_tables, spec.within
+    )
     return source, target
 
 
