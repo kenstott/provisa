@@ -31,6 +31,15 @@ grep -q '[[:space:]]host\.docker\.internal$' /etc/hosts \
   || echo "127.0.0.1 host.docker.internal" | sudo tee -a /etc/hosts >/dev/null
 getent hosts host.docker.internal
 
+# The demo sources these lanes provision publish fixed host ports (the specs' own 33xxx-369xx)
+# inside Linux's ephemeral range (32768-60999): an outbound connection held 36920 when the druid
+# coordinator was to bind it, and the druid source-to-query spec failed both attempts (run
+# 44446383071). The band is reserved before any server starts, so none is handed out -- the same
+# reservation ui-core-prepare.sh makes for the core lane.
+if [ "$(uname -s)" = Linux ]; then
+  sudo sysctl -w net.ipv4.ip_local_reserved_ports=33000-39999
+fi
+
 # A skip caused by the wrong arch would be a green run that executed nothing.
 arch="$(uname -m)"
 echo "runner arch: $arch"

@@ -353,7 +353,8 @@ async def test_generate_definition_drafts_without_persisting(control_plane, monk
     async with _surface(control_plane, monkeypatch) as (_db, notified):
         customer = await _term_id("customer")
         result = await glossary_router.generate_definition(curator, customer)
-        assert result == {"definition": "A paying party."}
+        # REQ-1387: every bound table gave samples, so none is named as unsampled.
+        assert result == {"definition": "A paying party.", "tables_without_samples": []}
         # The prompt grounds the model in the term's physical binding.
         assert "customer" in prompts[0] and "orders.cust_id" in prompts[0]
         # Generation is a draft, not a mutation: nothing persisted, no publish queued.
