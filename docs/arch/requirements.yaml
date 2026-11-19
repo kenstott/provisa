@@ -3088,7 +3088,16 @@
     glossary terms). (Amended 2026-11-18, A WORD THE DICTIONARY DOES NOT KNOW TAKES A RULE-BASED FORM:)
     Maintainer 2026-11-18 (''you could if the word is not known - then use a rule based method''). The dictionary
     lookup comes first and decides every word it knows; only a word the dictionary does not know takes a
-    rule-based singular or plural. This replaces ''a word not in the dictionary is left as written''.'
+    rule-based singular or plural. This replaces ''a word not in the dictionary is left as written''. (Amended
+    2026-11-18, THE DICTIONARY IS A GENERAL ENGLISH ONE:) Maintainer 2026-11-18. The dictionary the naming
+    authority looks words up in is a general English noun-forms dictionary (so person and people, loss and
+    losses take their everyday forms), bundled with Provisa under a licence compatible with Provisa''s own;
+    a specialist lexicon is not used as the dictionary. Words it lacks take a rule-based form. (Amended
+    2026-11-18, THE EVERYDAY FORM WINS; A WORD KNOWN ONLY IN ANOTHER SENSE IS NOT INFLECTED:) Maintainer
+    2026-11-18. Where the dictionary gives a noun more than one form, the naming authority takes the one
+    in everyday use (schema to schemas; data stays data, its own singular and plural; person to people).
+    A word the dictionary knows only in an unrelated sense of the same spelling, such as by (read as the
+    noun bye), is not inflected. This is part of the rule, not a per-word list.'
   use_case: Consistent multi-language naming with a single authority ensures client-facing names are predictable
     and independent of physical schema.
   code:
@@ -47881,7 +47890,14 @@
     the vendor''s deprecation, or a description note where it has none, and in RDF by owl:deprecated true,
     with dcterms:isReplacedBy only when a person named a successor. Its catalog binding is kept and no successor
     is inferred. A table or column missing at the source keeps its model object and its links and raises
-    a finding; its links are no longer dropped and its generated tables no longer deleted automatically.'
+    a finding; its links are no longer dropped and its generated tables no longer deleted automatically.
+    (Amended 2026-11-18, THE DEFINITION ASSISTANT IS GIVEN THE BOUND COLUMNS'' AND TABLES'' OWN DESCRIPTIONS:)
+    Maintainer 2026-11-18. When the assistant drafts a definition for a term grounded to columns, it is
+    given, for each bound column within the selected domains: the column''s description or comment and its
+    type; its table''s name or alias and description; and a few distinct sample values read as the curator
+    through the governed path (masks and redaction applied; none for a sensitive column). It is also given
+    the definitions of related terms that have one, not only their names. The draft still defines the business
+    concept, not the column.'
   use_case: 'Bottom-up bootstrap means the glossary is never empty: every column name seeds the vocabulary, avoiding the failure mode of top-down glossary projects. Concept-level discovery ("show every physical field that means order date"), expert routing for data questions, grounded vocabulary for NL-to-SQL and agent surfaces via the MCP term-lookup tool, and glossary interchange with external catalogs through metadata export.'
   scenario: 'Given tables with columns cust_id, customerId, and CUSTOMER_KEY registered in the semantic
     layer

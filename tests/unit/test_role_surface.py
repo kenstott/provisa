@@ -471,10 +471,18 @@ def test_each_organisations_api_documents_list_its_own_tables():
         state = _State()
         schema = build_schema(f"type Query {{ {table}: [Row] }} type Row {{ id: Int }}")
         path_map = {table: {"domain_id": "sales", "table_name": table}}
+        # The role's compilation context, as every built surface has (the JSON:API document
+        # reads each table's id columns from it, REQ-1929).
+        context = SimpleNamespace(
+            tables={table: SimpleNamespace(table_id=1)},
+            pk_columns={},
+            joins={},
+            exposed_to_physical={},
+        )
         install_surface(
             state._active_runtime(),
             "org_admin",
-            RoleSurface(schema=schema, context=object(), rls=None, table_path_map=path_map),
+            RoleSurface(schema=schema, context=context, rls=None, table_path_map=path_map),
         )
         return state
 

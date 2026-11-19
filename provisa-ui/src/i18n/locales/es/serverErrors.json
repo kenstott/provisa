@@ -193,10 +193,12 @@
       "source_domains_empty": "Los dominios de origen elegidos no contienen ninguna tabla que el descubrimiento lea.",
       "source_not_found": "No se encontró el origen '{{source_id}}'",
       "source_tables_not_read": "Ninguna de las tablas de origen elegidas ({{count}}) se lee: el descubrimiento deja fuera las tablas de un dominio del sistema y las que están fuera de servicio.",
+      "source_tables_outside_domains": "Las tablas de origen elegidas están fuera de los dominios seleccionados en el filtro de dominios: {{names}}.",
       "table_id_required": "table_id es obligatorio para el ámbito de tabla",
       "table_not_found": "La tabla {{table_id}} no está registrada.",
       "target_domains_empty": "Los dominios de destino elegidos no contienen ninguna tabla que el descubrimiento lea.",
       "target_tables_not_read": "Ninguna de las tablas de destino elegidas ({{count}}) se lee: el descubrimiento deja fuera las tablas de un dominio del sistema y las que están fuera de servicio.",
+      "target_tables_outside_domains": "Las tablas de destino elegidas están fuera de los dominios seleccionados en el filtro de dominios: {{names}}.",
       "unknown_source_type": "Tipo de origen desconocido: {{type}}",
       "vendor_unknown": "{{vendor}} no lista modelos aquí; escriba el nombre del modelo."
     },

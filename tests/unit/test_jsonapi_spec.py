@@ -48,8 +48,17 @@ def _make_state(role_id: str = "admin") -> SimpleNamespace:
             "domain_description": "Pet store domain",
         }
     }
+    # The role's compilation context, as every built surface has: Pets declares no primary key
+    # and no relationship points at it, so its column named id is its resources' id (REQ-1929).
+    context = SimpleNamespace(
+        tables={"pets": SimpleNamespace(table_id=1)},
+        pk_columns={},
+        joins={},
+        exposed_to_physical={},
+    )
     state = RoleState(
         schemas={role_id: schema},
+        contexts={role_id: context},
         table_path_maps={role_id: path_map},
         schema_build_cache={"domains": [{"id": "store", "description": "Pet store domain"}]},
     )
@@ -209,11 +218,36 @@ class TestDomainFilter:
                 "domain_description": None,
             },
         }
+        context = SimpleNamespace(
+            tables={"pets": SimpleNamespace(table_id=1), "orders": SimpleNamespace(table_id=2)},
+            pk_columns={},
+            joins={},
+            exposed_to_physical={},
+        )
         state = RoleState(
             schemas={"admin": schema},
+            contexts={"admin": context},
             table_path_maps={"admin": path_map},
             schema_build_cache={"domains": []},
         )
         spec = generate_jsonapi_openapi_spec(state, "admin", domains=["store"])
         assert "/store/Pets" in spec["paths"]
         assert "/sales/Orders" not in spec["paths"]
+
+
+class TestSingleResourceLookup:
+    """REQ-1929: GET /<type>/<id> is in the spec only for a type whose id is a real identifier."""
+
+    def test_a_type_with_an_id_column_has_the_lookup(self):
+        spec = generate_jsonapi_openapi_spec(_make_state(), "admin")
+        op = spec["paths"]["/store/Pets/{id}"]["get"]
+        assert op["operationId"] == "get_pets"
+        assert [p["name"] for p in op["parameters"]] == ["id", "fields[Pets]", "include"]
+
+    def test_a_position_only_type_has_no_lookup(self):
+        state = _make_state()
+        pets = state.schemas["admin"].query_type.fields["pets"]
+        del pets.type.of_type.fields["id"]
+        spec = generate_jsonapi_openapi_spec(state, "admin")
+        assert "/store/Pets" in spec["paths"]
+        assert "/store/Pets/{id}" not in spec["paths"]

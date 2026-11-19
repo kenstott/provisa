@@ -24,7 +24,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 
 from provisa.core.repositories.identity import TableInIdentity
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Annotated, Any, cast
 
 from fastapi import APIRouter, Query, Request
 
@@ -40,6 +40,10 @@ if TYPE_CHECKING:
     from datetime import date as _date
 
     from provisa.core.database import Connection, Database
+
+# REQ-2253: the navbar filter's selection, as repeated ``domains=`` parameters (see _view_scope).
+# Annotated so a handler awaited directly defaults to None, not to the Query marker.
+SelectedDomains = Annotated[list[str] | None, Query()]
 
 router = APIRouter(prefix="/admin/glossary", tags=["admin", "glossary"])
 
@@ -551,12 +555,46 @@ async def related_terms_for_tables(
         )
 
 
+def definition_prompt(
+    term: dict, scope: "frozenset[str] | None", term_scope: "dict[int, set[str]]"
+) -> str:
+    """The definition assistant's prompt for ``term`` (REQ-2253): only the physical columns of
+    tables in ``scope`` and only the related terms readable in ``scope`` ride along, so nothing of
+    a domain the curator has filtered out is sent to the model. ``None`` is no narrowing."""
+    from provisa.core.glossary import readable_term
+
+    refs = ", ".join(
+        f"{r['alias'] or r['table_name']}.{r['column_name']}"
+        for r in term["refs"]
+        if scope is None or r["domain_id"] in scope
+    )
+    related = ", ".join(
+        f"{e['rel_type']} {e['name']}"
+        for e in term["edges_out"] + term["edges_in"]
+        if readable_term(scope, frozenset(term_scope.get(e["term_id"], set())))
+    )
+    kind = "an abstract business concept" if term["is_abstract"] else "a business term"
+    return (
+        f"You are a data catalog assistant. Write a concise one-to-two sentence business "
+        f"definition for {kind} named '{term['name']}' in an enterprise data ontology. "
+        f"Define the business concept itself, in plain business language a non-technical "
+        f"reader would use — never describe it as 'this field', 'this column', or any other "
+        f"database-schema wording, even when physical columns are listed below for context. "
+        + (f"It is bound to these physical columns: {refs}. " if refs else "")
+        + (f"Related terms: {related}. " if related else "")
+        + "Respond with only the definition text, no preamble."
+    )
+
+
 @router.post("/terms/{term_id}/definition/generate")
-async def generate_definition(request: Request, term_id: int) -> dict:
+async def generate_definition(
+    request: Request, term_id: int, domains: SelectedDomains = None
+) -> dict:
     """Draft a definition for the term with the org's AI model.
 
     Generation only — nothing persists until the user saves the draft through the
-    PATCH endpoint, so a bad draft costs nothing.
+    PATCH endpoint, so a bad draft costs nothing. ``domains`` is the navbar filter's selection
+    (REQ-2253): the term's columns and related terms outside it are not sent.
     """
     _require_glossary_rw(request)
     require_active_org_id(request)
@@ -567,21 +605,8 @@ async def generate_definition(request: Request, term_id: int) -> dict:
         if term is None:
             raise ApiError(404, "glossary.term_not_found", f"term {term_id} not found")
         await _require_term_curatable(_conn, term_id, request)
-    refs = ", ".join(f"{r['alias'] or r['table_name']}.{r['column_name']}" for r in term["refs"])
-    related = ", ".join(
-        f"{e['rel_type']} {e['name']}" for e in term["edges_out"] + term["edges_in"]
-    )
-    kind = "an abstract business concept" if term["is_abstract"] else "a business term"
-    prompt = (
-        f"You are a data catalog assistant. Write a concise one-to-two sentence business "
-        f"definition for {kind} named '{term['name']}' in an enterprise data ontology. "
-        f"Define the business concept itself, in plain business language a non-technical "
-        f"reader would use — never describe it as 'this field', 'this column', or any other "
-        f"database-schema wording, even when physical columns are listed below for context. "
-        + (f"It is bound to these physical columns: {refs}. " if refs else "")
-        + (f"Related terms: {related}. " if related else "")
-        + "Respond with only the definition text, no preamble."
-    )
+        term_scope = await glossary_repo.term_domains(_conn)
+    prompt = definition_prompt(term, _view_scope(request, domains), term_scope)
     from provisa.api.admin.schema_helpers import _call_llm
 
     definition = await _call_llm(prompt, "glossary_definition", max_tokens=256)
@@ -589,24 +614,27 @@ async def generate_definition(request: Request, term_id: int) -> dict:
 
 
 @router.post("/definitions/generate")
-async def generate_all_definitions(request: Request) -> dict:
+async def generate_all_definitions(request: Request, domains: SelectedDomains = None) -> dict:
     """Draft-and-save definitions for every term that has none.
 
     Bulk generation persists directly — unlike the per-term draft there is no editor
     holding the result — but only ever fills EMPTY definitions; human text is never
-    overwritten. One publish notification covers the batch.
+    overwritten. One publish notification covers the batch. ``domains`` is the navbar filter's
+    selection (REQ-2253): only its terms are defined, from its columns and related terms only.
     """
     _require_glossary_rw(request)
     org_id = require_active_org_id(request)
     from provisa.api.admin.schema_helpers import _call_llm
 
+    scope = _view_scope(request, domains)
     pool = await _pool()
     async with pool.acquire() as conn:
         _conn = cast("Connection", conn)
         # REQ-1591: the bulk fill writes definitions, so it may only reach the terms this caller
         # may curate — narrowed here rather than skipped per-term, so the count it reports is the
-        # count of what it was allowed to touch.
-        terms = await glossary_repo.list_terms(_conn, domains=_authority(request))
+        # count of what it was allowed to touch. REQ-2253: and only those of the selected domains.
+        terms = await glossary_repo.list_terms(_conn, domains=scope)
+        term_scope = await glossary_repo.term_domains(_conn)
         generated = 0
         for summary in terms:
             if summary["definition"]:
@@ -614,24 +642,7 @@ async def generate_all_definitions(request: Request) -> dict:
             term = await glossary_repo.get_term(_conn, summary["id"])
             if term is None:
                 continue
-            refs = ", ".join(
-                f"{r['alias'] or r['table_name']}.{r['column_name']}" for r in term["refs"]
-            )
-            related = ", ".join(
-                f"{e['rel_type']} {e['name']}" for e in term["edges_out"] + term["edges_in"]
-            )
-            kind = "an abstract business concept" if term["is_abstract"] else "a business term"
-            prompt = (
-                f"You are a data catalog assistant. Write a concise one-to-two sentence "
-                f"business definition for {kind} named '{term['name']}' in an enterprise "
-                f"data glossary. Define the business concept itself, in plain business "
-                f"language a non-technical reader would use — never describe it as 'this "
-                f"field', 'this column', or any other database-schema wording, even when "
-                f"physical columns are listed below for context. "
-                + (f"It is bound to these physical columns: {refs}. " if refs else "")
-                + (f"Related terms: {related}. " if related else "")
-                + "Respond with only the definition text, no preamble."
-            )
+            prompt = definition_prompt(term, scope, term_scope)
             definition = await _call_llm(prompt, "glossary_definition", max_tokens=256)
             if definition.strip():
                 await glossary_repo.set_definition(_conn, term["id"], definition.strip())
@@ -886,11 +897,12 @@ async def suggest_resolving_terms(request: Request) -> dict:
 
 
 @router.post("/relationships/generate")
-async def generate_relationships(request: Request) -> dict:
-    """Suggest-and-save typed edges (KIND_OF/PART_OF/...) across the whole glossary.
+async def generate_relationships(request: Request, domains: SelectedDomains = None) -> dict:
+    """Suggest-and-save typed edges (KIND_OF/PART_OF/...) across the selected domains' terms.
 
-    The org's AI model reads the full term list and proposes edges within the closed
-    rel-type set; anything malformed — unknown term, self-edge, free-form type — is
+    The org's AI model reads the term list of the navbar filter's selection (``domains``,
+    REQ-2253; absent is every domain the caller reaches) and proposes edges within the closed
+    rel-type set; anything malformed — a term outside that list, self-edge, free-form type — is
     dropped, existing edges upsert idempotently, and one notification covers the batch.
     """
     _require_glossary_rw(request)
@@ -902,8 +914,8 @@ async def generate_relationships(request: Request) -> dict:
     async with pool.acquire() as conn:
         _conn = cast("Connection", conn)
         terms = await glossary_repo.list_terms(
-            _conn, include_deprecated=False, domains=_authority(request)
-        )  # REQ-1591: propose edges only within the caller's own domains
+            _conn, include_deprecated=False, domains=_view_scope(request, domains)
+        )  # REQ-1591, REQ-2253: propose edges only within the caller's selected domains
     if len(terms) < 2:
         return {"added": 0, "review": []}
     by_name = {t["name"]: t["id"] for t in terms}

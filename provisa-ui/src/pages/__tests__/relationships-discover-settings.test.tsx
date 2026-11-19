@@ -31,6 +31,7 @@ import {
   semanticsBox,
   settingsMock,
   startMock,
+  SELECTED,
 } from "./discoverDialog.fixtures";
 
 vi.mock("../../hooks/useAdminQueries", async () =>
@@ -74,7 +75,7 @@ describe("Discovery dialog: every threshold and sample size", () => {
     expect(screen.getByLabelText("Shared values score at most")).toBe(ceiling());
     await waitFor(() => expect(lastScope()).toEqual(SCOPE), SLOW);
     fireEvent.click(runButton());
-    await waitFor(() => expect(startMock).toHaveBeenCalledWith(SCOPE));
+    await waitFor(() => expect(startMock).toHaveBeenCalledWith(SCOPE, SELECTED));
   });
 
   it("sends each value set", async () => {
@@ -92,7 +93,7 @@ describe("Discovery dialog: every threshold and sample size", () => {
     };
     await waitFor(() => expect(lastScope()).toEqual(set), SLOW);
     fireEvent.click(runButton());
-    await waitFor(() => expect(startMock).toHaveBeenCalledWith(set));
+    await waitFor(() => expect(startMock).toHaveBeenCalledWith(set, SELECTED));
   });
 
   it("offers Tick from without Semantics and the semantic settings only with it", async () => {
