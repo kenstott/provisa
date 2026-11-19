@@ -73,6 +73,16 @@ on:
         required: false
       SP_TENANT_ID:
         required: false
+      SINGLESTORE_HOST:
+        required: false
+      SINGLESTORE_PORT:
+        required: false
+      SINGLESTORE_USERNAME:
+        required: false
+      SINGLESTORE_PASSWORD:
+        required: false
+      SINGLESTORE_DATABASE:
+        required: false
 
 permissions:
   contents: read
@@ -240,3 +250,9 @@ jobs:
       # AskAmerica/govdata (askamerica-*, the govdata case of source-to-query-special-cases): this
       # job's, one worker (playwright.config.ts ASKAMERICA_SPECS); skipped by name without its key.
       FREE_ASKAMERICA_KEY: ${{ secrets.FREE_ASKAMERICA_KEY }}
+      # SingleStore Cloud shared-tier workspace (source-to-query-community-ext.spec.ts singlestore).
+      SINGLESTORE_HOST: ${{ secrets.SINGLESTORE_HOST }}
+      SINGLESTORE_PORT: ${{ secrets.SINGLESTORE_PORT }}
+      SINGLESTORE_USERNAME: ${{ secrets.SINGLESTORE_USERNAME }}
+      SINGLESTORE_PASSWORD: ${{ secrets.SINGLESTORE_PASSWORD }}
+      SINGLESTORE_DATABASE: ${{ secrets.SINGLESTORE_DATABASE }}
