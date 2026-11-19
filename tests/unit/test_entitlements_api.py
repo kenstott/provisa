@@ -79,6 +79,8 @@ def _state(model_db):
         entitlement_masks=MaskCache(),
         schema_boot_id="boot",
         schema_version=1,
+        # AppState.auth_config: None, no auth section (the claims default).
+        auth_config=None,
     )
 
 
