@@ -661,6 +661,8 @@ def random_between(node: exp.Expr, dialect: str) -> exp.Expr | None:
         return None
     lo, hi = call[1]
     said = {trino.said(lo), trino.said(hi)}
+    if said == {"numeric"} and dialect == "clickhouse":
+        return _random_numeric(lo, hi, dialect)
     if not said <= _INTEGERS:
         if said & {"numeric", "decimal"}:
             return None  # refused by name before (provisa.transpiler.engine_refusals)
@@ -677,6 +679,55 @@ def random_between(node: exp.Expr, dialect: str) -> exp.Expr | None:
         f"$hi - $lo) AS {sql_type}) END"
     )
     return trino.written(form, _RANDOM, {"lo": lo, "hi": hi})
+
+
+def _numeric_literal(node: exp.Expr) -> decimal.Decimal | None | bool:
+    """A numeric the statement writes (a literal, signed, cast): its value, None for a NULL, False
+    for any other value."""
+    value = node.unnest()
+    while isinstance(value, exp.Cast):
+        value = value.this.unnest()
+    negative = False
+    while isinstance(value, (exp.Neg, exp.Paren)):
+        negative ^= isinstance(value, exp.Neg)
+        value = value.this.unnest()
+        while isinstance(value, exp.Cast):
+            value = value.this.unnest()
+    if isinstance(value, exp.Null):
+        return None
+    if not isinstance(value, exp.Literal):
+        return False
+    try:
+        number = decimal.Decimal(value.this.strip())
+    except decimal.InvalidOperation:
+        return False
+    return -number if negative else number
+
+
+def _random_numeric(lo: exp.Expr, hi: exp.Expr, dialect: str) -> exp.Expr:
+    """random of two numerics the statement writes (random_numeric): a uniform numeric of the
+    larger of their scales from the one to the other, both included; NULL of a NULL; 22023 of
+    bounds out of order; bounds 2^53 or more steps apart, or not finite, refused with 0A000."""
+    low, high = _numeric_literal(lo), _numeric_literal(hi)
+    if low is False or high is False:
+        raise Refused(trino.no_form("random", dialect))
+    if low is None or high is None:
+        return sqlglot.parse_one("CAST(NULL AS Nullable(Decimal(38, 0)))", read="clickhouse")
+    assert isinstance(low, decimal.Decimal) and isinstance(high, decimal.Decimal)
+    if not (low.is_finite() and high.is_finite()):
+        raise Refused(Refusal("0A000", "random does not read this value"), ruling=True)
+    if low > high:
+        raise Refused(
+            Refusal("22023", "lower bound must be less than or equal to upper bound"), ruling=True
+        )
+    scale = max(0, -low.as_tuple().exponent, -high.as_tuple().exponent)  # type: ignore[operator]
+    first, last = int(low.scaleb(scale)), int(high.scaleb(scale))
+    if last - first >= _EXACT or scale > 38 or max(abs(first), abs(last)) >= 10**38:
+        raise Refused(Refusal("0A000", "random does not read this value"), ruling=True)
+    steps = last - first
+    drawn = f"({first} + least(toInt64(floor(randCanonical() * {steps + 1}.0)), {steps}))"
+    form = f"CAST(toDecimal128({drawn}, {scale}) / {10**scale} AS Nullable(Decimal(38, {scale})))"
+    return sqlglot.parse_one(form, read="clickhouse")
 
 
 def _ch_random(sql_type: str) -> str:
@@ -710,15 +761,25 @@ RANDOM = Feature(
                 },
             ),
         ),
-        limitations=dict.fromkeys(
-            (*trino.TRINO, "clickhouse"),
-            (
-                Limitation(
-                    "Bounds 2^53 or more apart, and bounds of no said integer type, refused by "
-                    "name: a double draws no wider range exactly."
+        limitations={
+            **dict.fromkeys(
+                (*trino.TRINO, "clickhouse"),
+                (
+                    Limitation(
+                        "Bounds 2^53 or more apart, and bounds of no said integer type, refused by "
+                        "name: a double draws no wider range exactly."
+                    ),
                 ),
             ),
-        ),
+            "clickhouse": (
+                Limitation(
+                    "Integer bounds 2^53 or more apart, and bounds of no said integer type, "
+                    "refused by name: a double draws no wider range exactly. Numeric bounds the "
+                    "statement writes as literals draw a numeric of the larger of their scales "
+                    "(random_numeric); 2^53 or more steps apart, or not finite, 0A000."
+                ),
+            ),
+        },
     ),
 )
 

@@ -329,3 +329,27 @@ def test_a_precision_outside_0_to_6_raises_22023(runtime, precision):
     with pytest.raises(Exception) as raised:  # noqa: PT011 -- the engine's raise of PostgreSQL's
         _answers(runtime, sql)
     assert "postgresql-error 22023" in str(raised.value)
+
+
+def test_random_of_two_numerics_draws_between_them_at_the_larger_scale(runtime):
+    for _ in range(20):
+        (got,) = _answers(runtime, 'SELECT pg_catalog."random"(1.5::numeric, 2.25::numeric) AS v')
+        assert Decimal("1.5") <= got <= Decimal("2.25")
+        assert got.as_tuple().exponent >= -2
+
+
+@pytest.mark.parametrize(
+    ("sql", "want"),
+    [
+        ('SELECT pg_catalog."random"((-7)::numeric, (-7)::numeric) AS v', Decimal(-7)),
+        ('SELECT pg_catalog."random"(NULL::numeric, NULL::numeric) AS v', None),
+    ],
+)
+def test_random_of_two_numerics_edges(runtime, sql, want):
+    assert _answers(runtime, sql) == [want]
+
+
+def test_random_of_numerics_out_of_order_raises_22023():
+    with pytest.raises(FunctionRefused) as refused:
+        transpile('SELECT pg_catalog."random"(2::numeric, 1::numeric) AS v', "clickhouse")
+    assert refused.value.sqlstate == "22023"
