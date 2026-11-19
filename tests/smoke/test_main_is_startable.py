@@ -460,6 +460,22 @@ def test_mcp(instance: Instance):
 # --- a read from each source ------------------------------------------------------------------------
 
 
+def test_the_graphql_demo_source_registers_at_startup(instance: Instance):
+    """The boot's graphql-demo auto-registration runs after /health and logs its outcome once:
+    the success line, never the failure line."""
+    log = instance.log_dir / "backend.log"
+    registered = "Auto-registered graphql-demo source"
+    failed = "graphql-demo auto-registration failed"
+    deadline = time.monotonic() + _BOOT_SECONDS
+    text = log.read_text(errors="replace")
+    while registered not in text and failed not in text:
+        assert time.monotonic() < deadline, f"no graphql-demo registration outcome:\n{text[-4000:]}"
+        time.sleep(1)
+        text = log.read_text(errors="replace")
+    assert failed not in text, text[text.index(failed) - 200 : text.index(failed) + 4000]
+    assert registered in text
+
+
 def test_source_graphql_remote(instance: Instance):
     rows = _sql_rows(instance, "SELECT id, last_name FROM graphql.employees ORDER BY id LIMIT 2")
     assert rows == [{"id": 1, "last_name": "Alvarez"}, {"id": 2, "last_name": "Patel"}]

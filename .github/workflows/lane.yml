@@ -220,6 +220,17 @@ on:
         required: false
       SP_CERT_PASSWORD:
         required: false
+      # SingleStore Cloud shared-tier workspace (source-to-query-community-ext.spec.ts)
+      SINGLESTORE_HOST:
+        required: false
+      SINGLESTORE_PORT:
+        required: false
+      SINGLESTORE_USERNAME:
+        required: false
+      SINGLESTORE_PASSWORD:
+        required: false
+      SINGLESTORE_DATABASE:
+        required: false
 
 permissions:
   contents: read
@@ -403,6 +414,11 @@ jobs:
           SP_CLIENT_ID: ${{ secrets.SP_CLIENT_ID }}
           SP_SITE_URL: ${{ secrets.SP_SITE_URL }}
           SP_CERT_PASSWORD: ${{ secrets.SP_CERT_PASSWORD }}
+          SINGLESTORE_HOST: ${{ secrets.SINGLESTORE_HOST }}
+          SINGLESTORE_PORT: ${{ secrets.SINGLESTORE_PORT }}
+          SINGLESTORE_USERNAME: ${{ secrets.SINGLESTORE_USERNAME }}
+          SINGLESTORE_PASSWORD: ${{ secrets.SINGLESTORE_PASSWORD }}
+          SINGLESTORE_DATABASE: ${{ secrets.SINGLESTORE_DATABASE }}
         run: bash ${{ inputs.prepare }}
 
       # REQ-2073: the lane's app runs as the runner's user beside Trino's container (uid and gid
