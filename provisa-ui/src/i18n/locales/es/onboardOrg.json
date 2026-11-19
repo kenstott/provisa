@@ -21,7 +21,7 @@
     "emailRuleLabel": "Regla de correo permitido (opcional)",
     "emailRuleDesc": "Una expresión regular que el correo del invitado debe cumplir para unirse, p. ej. \"@acme\\.com$\". Deje en blanco para permitir cualquier correo.",
     "autoJoinLabel": "Unir automáticamente las cuentas que coincidan",
-    "autoJoinDesc": "Toda cuenta nueva cuyo correo cumpla la regla anterior se une automáticamente con el rol indicado abajo — sin necesidad de invitación.",
+    "autoJoinDesc": "Toda cuenta nueva cuyo correo verificado cumpla la regla anterior se une automáticamente con el rol indicado abajo — sin necesidad de invitación.",
     "autoJoinRoleLabel": "Rol predeterminado para cuentas unidas automáticamente",
     "autoJoinRoleDesc": "El rol otorgado al unirse automáticamente, p. ej. un \"analyst\" de solo lectura.",
     "autoJoinBreadthTitle": "Esta regla va más allá de su dominio",
