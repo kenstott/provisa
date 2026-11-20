@@ -1011,20 +1011,14 @@ OpenMetadata returns only the fields you ask for in its `fields` parameter. Set 
 **Finding disagreements.** The catalog's tables join with the `meta` tables that hold your Provisa model. With an OpenMetadata table registered as `catalog.list_tables`, this query lists the columns the catalog classifies as personal data that Provisa does not mask:
 
 ```sql
-WITH personal AS (
-  SELECT t.name AS table_name, col ->> 'name' AS column_name
-  FROM catalog.list_tables t
-  CROSS JOIN LATERAL jsonb_array_elements(t.columns) AS col
-  CROSS JOIN LATERAL jsonb_array_elements(col -> 'tags') AS tag
-  WHERE tag ->> 'tagFQN' LIKE 'PII.%'
-)
-SELECT p.table_name, p.column_name
-FROM personal p
-JOIN meta.registered_tables r ON r.table_name = p.table_name
-JOIN meta.table_columns c ON c.table_id = r.id AND c.column_name = p.column_name
-WHERE NOT EXISTS (
-  SELECT 1 FROM jsonb_array_elements(c.masks) AS entry WHERE entry -> 'mask' <> 'null'::jsonb
-);
+SELECT r.table_name, c.column_name
+FROM meta.registered_tables r
+JOIN meta.table_columns c ON c.table_id = r.id
+JOIN catalog.list_tables t ON t.name = r.table_name
+WHERE t.columns @> jsonb_build_array(
+    jsonb_build_object('name', c.column_name, 'tags', '[{"tagFQN": "PII.Sensitive"}]'::jsonb)
+  )
+  AND NOT c.masks @> '[{"mask": {}}]'::jsonb;
 ```
 
 The same pattern finds owners that differ between the catalog and your domains, and tables certified in one and missing from the other.
