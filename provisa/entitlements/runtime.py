@@ -118,7 +118,21 @@ def restored_entitlements(captured: dict | None) -> Iterator[None]:
         kind: {name: tuple(values) for name, values in lists.items()}
         for kind, lists in captured["idp"].items()
     }
-    token = _current.set(EntitlementRequest(captured["user_id"], idp, captured["idp_hash"]))
+    with bound_request_scope(EntitlementRequest(captured["user_id"], idp, captured["idp_hash"])):
+        yield
+
+
+def bound_request() -> EntitlementRequest | None:
+    """The person bound to this call, to bind again where later work on their behalf runs outside
+    it (a live poll, REQ-286): without it that work would see the whole role. None for no person."""
+    return _current.get()
+
+
+@contextmanager
+def bound_request_scope(request: EntitlementRequest | None) -> Iterator[None]:
+    """Bind ``request`` (from :func:`bound_request`) for the block: None binds no person, so the
+    block is work no person is doing, never a person from the surrounding context."""
+    token = _current.set(request)
     try:
         yield
     finally:
