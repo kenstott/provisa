@@ -109,6 +109,8 @@
     "brandBaseUrlHint": "The address of your instance, such as https://catalog.example.com. Its API is called here, and its OpenAPI description is read from it.",
     "openmetadataBaseUrlHint": "The address you open OpenMetadata at, such as https://openmetadata.example.com, without /api. Its API is called under /api and its OpenAPI description is read from /swagger.json.",
     "openmetadataTokenHint": "The JWT token of an OpenMetadata bot, from Settings > Bots. Stored in the secrets vault. A ${secret:NAME} or ${env:NAME} reference is also accepted.",
+    "datahubBaseUrlHint": "The address of your DataHub metadata service (GMS), such as https://datahub.example.com/gms. Its OpenAPI description is read from /openapi/v3/api-docs.",
+    "datahubTokenHint": "A DataHub personal access token or service account token, from Settings > Access Tokens. Stored in the secrets vault. A ${secret:NAME} or ${env:NAME} reference is also accepted.",
     "shopifyStore": "Store name",
     "shopifyStoreHint": "The part of your store's admin address before .myshopify.com, such as my-store.",
     "shopifyApiVersion": "API version",
