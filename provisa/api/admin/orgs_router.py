@@ -784,9 +784,13 @@ async def read_org_settings(org_id: str, request: Request):  # REQ-1268, REQ-126
     await _require_org_admin(request, org_id, allow_cross_org=False)  # REQ-1605
     async with _admin_pool().acquire() as conn:
         result = await conn.execute_core(
-            select(orgs.c.id, orgs.c.email_rule, orgs.c.auto_join, orgs.c.auto_join_role).where(
-                orgs.c.id == org_id
-            )
+            select(
+                orgs.c.id,
+                orgs.c.email_rule,
+                orgs.c.auto_join,
+                orgs.c.auto_join_role,
+                orgs.c.open_to_requests,  # REQ-1250
+            ).where(orgs.c.id == org_id)
         )
         row = result.fetchone()
     if row is None:
@@ -819,6 +823,86 @@ async def update_org_settings(org_id: str, body: OrgPolicyBody, request: Request
     if row is None:
         raise ApiError(404, "orgs.not_found", "Org not found")
     return dict(row._mapping)
+
+
+class JoinPolicyBody(BaseModel):  # REQ-1250
+    """Whether the org takes requests to join: False is invite_only, True is open_to_requests."""
+
+    open_to_requests: bool
+
+
+@router.put("/{org_id}/join-policy")
+async def set_join_policy(org_id: str, body: JoinPolicyBody, request: Request):  # REQ-1250
+    """Open the org to requests to join, or close it to invitations only. Org admin of this org."""
+    from provisa.api.admin.invites_router import _require_org_admin
+
+    await _require_org_admin(request, org_id)
+    async with _admin_pool().acquire() as conn:
+        result = await conn.execute_core(
+            update(orgs)
+            .where(orgs.c.id == org_id)
+            .values(open_to_requests=body.open_to_requests)
+            .returning(orgs.c.id, orgs.c.open_to_requests)
+        )
+        row = result.fetchone()
+    if row is None:
+        raise ApiError(404, "orgs.not_found", "Org not found")
+    return dict(row._mapping)
+
+
+def _join_request_ttl():  # REQ-1250
+    """A request lives as long as an invitation does when its inviter sets no other expiry: the
+    invitation form's own default, read from its model so the two cannot drift apart."""
+    from datetime import timedelta
+
+    from provisa.api.admin.invites_router import CreateInviteBody
+
+    return timedelta(days=CreateInviteBody.model_fields["expires_in_days"].default)
+
+
+@router.post("/{org_id}/join-requests", status_code=202)
+async def request_to_join(org_id: str, request: Request):  # REQ-1250
+    """Ask to join ``org_id``.
+
+    The answer is the same 202 whether the request was logged for the org's admins or refused
+    because the org is invite_only, does not exist, already counts the caller as a member, or
+    already holds their open request: telling those apart would let anyone enumerate org names.
+    Only the caller's own standing changes the answer: not signed in with Firebase (403), or over
+    their request rate (429).
+    """
+    from provisa.core.repositories.org_join_request import (
+        REQUIRED_PROVIDER,
+        JoinRequestRateLimited,
+        requester_provider,
+        submit_join_request,
+    )
+
+    user_id = _caller_user_id(request)
+    if user_id is None:
+        raise ApiError(401, "orgs.auth_required_join", "Authentication required to ask to join")
+    identity = request.state.identity
+    pool = _admin_pool()
+    if identity.credential != "idp" or await requester_provider(pool, user_id) != REQUIRED_PROVIDER:
+        raise ApiError(
+            403,
+            "orgs.join_request_firebase_required",
+            "Asking to join an org requires a Firebase sign-in",
+        )
+    try:
+        await submit_join_request(pool, user_id=user_id, org_id=org_id, ttl=_join_request_ttl())
+    except JoinRequestRateLimited as limited:
+        raise ApiError(429, "orgs.join_request_rate_limited", str(limited)) from limited
+    return {"status": "received"}
+
+
+@router.get("/{org_id}/join-requests")
+async def list_join_requests(org_id: str, request: Request):  # REQ-1250
+    """The org's open requests to join, oldest first. Org admin of this org only (REQ-1605)."""
+    from provisa.api.admin.invites_router import _require_org_admin
+    from provisa.core.repositories.org_join_request import list_open_requests
+
+    await _require_org_admin(request, org_id, allow_cross_org=False)
+    return await list_open_requests(_admin_pool(), org_id)
 
 
 class OrgBrandingBody(BaseModel):  # REQ-1486
@@ -1057,6 +1141,7 @@ async def destroy_org(org_id: str) -> None:  # REQ-1300, REQ-1312, REQ-2006
         demo_sandboxes,
         org_auto_join_optouts,
         org_invites,
+        org_join_requests,
         personal_access_tokens,
     )
     from provisa.api.app import state as _app_state
@@ -1094,6 +1179,11 @@ async def destroy_org(org_id: str) -> None:  # REQ-1300, REQ-1312, REQ-2006
         await conn.execute_core(_delete(org_invites).where(org_invites.c.org_id == org_id))
         await conn.execute_core(
             _delete(org_auto_join_optouts).where(org_auto_join_optouts.c.org_id == org_id)
+        )
+        # REQ-1250: org_id carries no foreign key (a refused request may name no org), so nothing
+        # but this removes the org's requests.
+        await conn.execute_core(
+            _delete(org_join_requests).where(org_join_requests.c.org_id == org_id)
         )
         # REQ-1263, REQ-2006: a token names its org, and dies with it (a demo sandbox's visitor
         # holds nothing else).

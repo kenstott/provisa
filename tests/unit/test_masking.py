@@ -15,6 +15,7 @@ import pytest
 from provisa.security.masking import (
     MaskType,
     MaskingRule,
+    MaskConstantNotText,
     MaskingValidationError,
     apply_mask_to_value,
     build_mask_expression,
@@ -86,10 +87,16 @@ class TestValidateMaskingRule:
         with pytest.raises(MaskingValidationError, match="NOT NULL"):
             validate_masking_rule(rule, "email", "varchar", is_nullable=False)
 
-    def test_constant_zero_on_integer_passes(self):
+    def test_constant_zero_on_integer_refused_by_name(self):
+        # REQ-2131 (amended 8fa0d1c262): a constant other than NULL on a non-text column can only
+        # read as NULL, so it is refused, naming the column and its type.
         rule = MaskingRule(mask_type=MaskType.constant, value=0)
-        result = validate_masking_rule(rule, "amount", "integer", True)
-        assert result is None
+        with pytest.raises(MaskConstantNotText, match=r"amount \(integer\)"):
+            validate_masking_rule(rule, "amount", "integer", True)
+
+    def test_constant_null_on_integer_passes(self):
+        rule = MaskingRule(mask_type=MaskType.constant, value=None)
+        assert validate_masking_rule(rule, "amount", "integer", True) is None
 
     def test_constant_string_on_varchar_passes(self):
         rule = MaskingRule(mask_type=MaskType.constant, value="***@***.***")

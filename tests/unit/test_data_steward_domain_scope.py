@@ -47,6 +47,8 @@ from tests.unit.gate_identity import serve_every_column
 # steward (REQ-2188), data_product_rw.
 STEWARD_RIGHTS = [
     "command_execution",  # REQ-870, through analyst
+    "dq_read",  # REQ-2155 (amended 2026-11-20), through analyst
+    "environment_switch",  # REQ-2155 (amended 2026-11-20), through viewer
     "catalog_read",
     "access_config",
     "column_grant",

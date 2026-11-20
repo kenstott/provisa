@@ -151,9 +151,9 @@ def plane(embedded_postgres, control_plane_template):
     held.close()
 
 
-def _told(conn, role="reader_role", can_write=True, **session) -> None:
+def _told(conn, role="reader_role", can_write=True, masked=(), **session) -> None:
     sql, values = set_statement(
-        statement_settings(role, can_write, "provisa", False, session=session)
+        statement_settings(role, can_write, "provisa", False, masked=masked, session=session)
     )
     for n, value in reversed(list(enumerate(values, 1))):
         sql = sql.replace(f"${n}", "'" + value.replace("'", "''") + "'")
@@ -230,6 +230,30 @@ def test_a_column_is_what_the_catalog_says_of_it(plane):
         ("_name_", 5, 1043, -1, False, -1),
         ("_domain_", 6, 1043, -1, False, -1),
     ]
+
+
+def test_a_column_the_role_reads_masked_is_nullable_to_it(plane):
+    """REQ-2131 (amended 8fa0d1c262): a column a reader sees under a mask is reported nullable to
+    that reader, though it is declared NOT NULL; every other reader is told what it declares."""
+    attributes = (
+        "SELECT attname, attnotnull FROM meta.catalog_pg_attribute "
+        f"WHERE attrelid = {table_oid(1)} AND attnum <= 3 ORDER BY attnum"
+    )
+    columns = (
+        "SELECT column_name, is_nullable FROM meta.is_columns "
+        f"WHERE {SCOPE_COLUMN} = 1 AND ordinal_position <= 3 ORDER BY ordinal_position"
+    )
+    with plane.begin() as conn:
+        _told(conn, masked=((1, "code"),))
+        assert _read(conn, attributes) == [
+            ("order_id", True),
+            ("total", False),
+            ("code", False),
+        ]
+        assert _read(conn, columns) == [("order_id", "NO"), ("total", "YES"), ("code", "YES")]
+    with plane.begin() as conn:
+        _told(conn)
+        assert _read(conn, attributes) == [("order_id", True), ("total", False), ("code", True)]
 
 
 def test_a_metric_is_a_relation_of_one_value_with_its_description(plane):
@@ -670,7 +694,8 @@ async def test_the_admin_terminal_tells_a_statement_and_no_later_one(control_pla
     state = SimpleNamespace(model_db=control_plane.org(), federation_engine=None)
     read = "SELECT current_setting('provisa.catalog.role', true) AS role"
     told = await _run_plan_terminal(
-        _admin_plan(read, statement_settings("reader_role", False, "provisa", False)), state
+        _admin_plan(read, statement_settings("reader_role", False, "provisa", False, masked=())),
+        state,
     )
     assert told.rows == [("reader_role",)]
     after = await _run_plan_terminal(_admin_plan(read, None), state)

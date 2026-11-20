@@ -14,7 +14,8 @@
       "webhook_not_found": "Webhook '{{name}}' non trovato",
       "written_table_not_registered": "'{{table}}' non è una tabella registrata della sorgente '{{source_id}}'",
       "function_exists": "La funzione '{{name}}' esiste già",
-      "webhook_exists": "Il webhook '{{name}}' esiste già"
+      "webhook_exists": "Il webhook '{{name}}' esiste già",
+      "mask_constant_not_text": "Una maschera costante su una colonna non di testo viene letta come NULL; si può salvare solo NULL: {{column}} ({{type}})"
     },
     "ai_models": {
       "vector_model_fields_required": "ogni voce di vector_models richiede id, provider e dimensions",
@@ -566,7 +567,8 @@
       "withdrawn_table_not_previewable": "Impossibile visualizzare l'anteprima della tabella {{table}}: è ritirata e non conserva alcuna replica, e il motore legge la sua origine solo tramite una replica.",
       "table_not_withdrawn": "La tabella {{table}} non è ritirata: si ripristina solo una tabella ritirata. Per spostare in un'altra regione una tabella in produzione, impostane la regione.",
       "source_not_withdrawn": "L'origine {{source}} non è ritirata: si ripristina solo un'origine ritirata. Per cambiarne la regione, impostane la regione.",
-      "put_back_needs_region": "Ripristinare {{object}} indica una regione: indicane una, o nessuna per nessuna regione."
+      "put_back_needs_region": "Ripristinare {{object}} indica una regione: indicane una, o nessuna per nessuna regione.",
+      "mask_constant_not_text": "Una maschera costante su una colonna non di testo viene letta come NULL; si può salvare solo NULL: {{column}} ({{type}})"
     },
     "secrets": {
       "env_reference_object_locked": "Questo oggetto è dell'operatore: legge l'ambiente proprio del server e non può essere modificato qui. Aggiungine invece uno tuo.",

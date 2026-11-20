@@ -105,6 +105,8 @@
     "accessToken": "アクセストークン",
     "accessTokenHint": "シークレットボールトに保存されます。${secret:NAME} または ${env:NAME} の参照も指定できます。",
     "brandNamespaceHint": "このソースのテーブル名の接頭辞。既定値を使う場合は空欄のままにします。",
+    "brandBaseUrl": "ベース URL",
+    "brandBaseUrlHint": "インスタンスのアドレスです（例: https://catalog.example.com）。API はここで呼び出され、OpenAPI 定義もここから読み込まれます。",
     "shopifyStore": "ストア名",
     "shopifyStoreHint": "ストアの管理画面アドレスのうち .myshopify.com より前の部分です（例: my-store）。",
     "shopifyApiVersion": "API バージョン",

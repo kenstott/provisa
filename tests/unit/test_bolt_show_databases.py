@@ -70,6 +70,9 @@ def _make_session(
     session = BoltSession(writer, bolt_version)  # type: ignore[arg-type]
     session.roles = list(roles)
     session.role_id = roles[0] if roles else None
+    # The home database a sign-in holding ``roles`` resolves (REQ-2155): their union, written as
+    # the set of roles held; one role, that role (held_assignments.default_request).
+    session.default_role = ",".join(roles) if roles else None
     if not graph_session:
         session._graph_session = _held_in_memory()  # type: ignore[method-assign]
     return session, writer
@@ -304,7 +307,14 @@ class TestUseSelectsRoleAndView:
     def test_use_neo4j_resolves_like_provisa(self):
         """REQ-807: 'neo4j' names the home database exactly as 'provisa' does."""
         session, _ = _make_session(["sales", "finance"])
-        assert session._resolve_db("neo4j") == session._resolve_db("provisa") == ("sales", False)
+        assert (
+            session._resolve_db("neo4j")
+            == session._resolve_db("provisa")
+            == (
+                "sales,finance",
+                False,
+            )
+        )
 
     def test_use_unknown_name_is_still_not_found(self):
         """REQ-807: neo4j is an alias, not a fallback; other names stay DatabaseNotFound."""
@@ -349,17 +359,18 @@ class TestUseSelectsRoleAndView:
         with pytest.raises(RoleNotHeld):  # REQ-2076: a security event
             session._resolve_db("provisa_ops_finance")
 
-    def test_no_db_defaults_to_first_role_business_view(self):
-        """REQ-807: no explicit db → first role, business view (home database)."""
+    def test_no_db_defaults_to_union_of_held_roles_business_view(self):
+        """REQ-807, REQ-2155: no explicit db → the home database, business view, acting as the
+        union of the roles held."""
         session, _ = _make_session(["sales", "finance"])
         result = session._resolve_db(None)
-        assert result == ("sales", False)
+        assert result == ("sales,finance", False)
 
-    def test_empty_db_defaults_to_first_role_business_view(self):
-        """REQ-807: empty db string → first role, business view."""
+    def test_empty_db_defaults_to_union_of_held_roles_business_view(self):
+        """REQ-807, REQ-2155: empty db string → the home database, as the union of held roles."""
         session, _ = _make_session(["sales", "finance"])
         result = session._resolve_db("")
-        assert result == ("sales", False)
+        assert result == ("sales,finance", False)
 
     def test_use_sends_database_not_found_on_unknown_db(self):
         """REQ-807: RUN with db the user cannot access → DatabaseNotFound, no fallback."""

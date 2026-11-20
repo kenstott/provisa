@@ -174,10 +174,21 @@ async def _roles_for_identity(identity: Any, state: Any, org_id: str) -> tuple[s
     transport reads them (provisa.auth.held_assignments.sign_in_roles) -- never the roles the
     credential itself carries, which outlive a role's removal. A personal access token's are its
     scopes its owner still holds (REQ-1263)."""
-    from provisa.auth.held_assignments import sign_in_roles
+    from provisa.auth.held_assignments import default_request, sign_in_roles
+    from provisa.core.request_context import reset_current_org, set_current_org
+    from provisa.security.meta_role import resolve_requested_role
 
     # A tool call may name a role, so what the identity holds is read for every request.
-    return await sign_in_roles(state, identity, org_id, naming=True)
+    acts_as, may_name = await sign_in_roles(state, identity, org_id)
+    # REQ-2155: a call naming no role acts as the union of the roles held, built in ``org_id``.
+    token = set_current_org(org_id)
+    try:
+        acting = resolve_requested_role(
+            state, set(may_name), default_request(state, identity, acts_as, may_name)
+        )
+    finally:
+        reset_current_org(token)
+    return acting, may_name
 
 
 async def _resolve_token_org_async(token: str, state: Any) -> str:

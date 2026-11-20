@@ -350,6 +350,7 @@
   "tests/integration/test_mutations.py": 0.1,
   "tests/integration/test_mv_refresh_lineage_native_e2e.py": 0.0,
   "tests/integration/test_my_invites.py": 0.5,
+  "tests/integration/test_org_join_request_table.py": 1.0,
   "tests/integration/test_native_json_postgres.py": 0.2,
   "tests/integration/test_native_json_trino.py": 0.9,
   "tests/integration/test_native_sql_command_pg.py": 165.0,

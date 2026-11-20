@@ -105,6 +105,8 @@
     "accessToken": "Jeton d'accès",
     "accessTokenHint": "Stocké dans le coffre de secrets. Une référence ${secret:NAME} ou ${env:NAME} est également acceptée.",
     "brandNamespaceHint": "Préfixe des noms de table de cette source. Laissez vide pour la valeur par défaut.",
+    "brandBaseUrl": "URL de base",
+    "brandBaseUrlHint": "L'adresse de votre instance, par exemple https://catalog.example.com. Son API est appelée ici et sa description OpenAPI y est lue.",
     "shopifyStore": "Nom de la boutique",
     "shopifyStoreHint": "La partie de l'adresse d'administration de votre boutique avant .myshopify.com, par exemple my-store.",
     "shopifyApiVersion": "Version de l'API",

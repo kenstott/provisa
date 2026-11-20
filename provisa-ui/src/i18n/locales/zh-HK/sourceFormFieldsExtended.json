@@ -105,6 +105,8 @@
     "accessToken": "存取權杖",
     "accessTokenHint": "儲存於密鑰保管庫。亦接受 ${secret:NAME} 或 ${env:NAME} 參照。",
     "brandNamespaceHint": "此來源資料表名稱的前綴。留空則使用預設值。",
+    "brandBaseUrl": "基礎 URL",
+    "brandBaseUrlHint": "您的實例地址，例如 https://catalog.example.com。在此呼叫其 API，並從此處讀取其 OpenAPI 描述。",
     "shopifyStore": "商店名稱",
     "shopifyStoreHint": "商店管理後台地址中 .myshopify.com 之前的部分，例如 my-store。",
     "shopifyApiVersion": "API 版本",

@@ -606,7 +606,12 @@ async def _load_openapi_specs() -> None:
             dict(_r._mapping)
             for _r in (
                 await conn.execute_core(
-                    select(_sources_t.c.id, _sources_t.c.path, _sources_t.c.mapping).where(
+                    select(
+                        _sources_t.c.id,
+                        _sources_t.c.path,
+                        _sources_t.c.mapping,
+                        _sources_t.c.brand_setup,
+                    ).where(
                         _sources_t.c.type == "openapi",
                         _sources_t.c.path.is_not(None),
                         _sources_t.c.path != "",
@@ -673,6 +678,7 @@ async def _load_openapi_specs() -> None:
                 "base_url": _base_url,
                 "domain_id": "",
                 "cache_ttl": 300,
+                "setup": _row["brand_setup"],  # REQ-2265: what a brand's setup was given
             }
 
 
@@ -1887,6 +1893,7 @@ def schema_input_for(
     from provisa.federation.strategy import row_level_tables
     from provisa.jdbc_source.attach import reach_types
     from provisa.mv.time_travel import relation_kinds
+    from provisa.security.masking import columns_masked_for
 
     inputs = state.role_build_inputs
     return SchemaInput(
@@ -1920,6 +1927,7 @@ def schema_input_for(
         governed_gql_types=inputs["governed_gql_types"],
         gql_governed_object_cols=inputs["gql_governed_object_cols"],
         columns_outside_relation=inputs["columns_outside_relation"],
+        masked_columns=columns_masked_for(state.masking_rules, role["id"]),  # REQ-2131
         metrics=metrics,  # REQ-1319
     )
 

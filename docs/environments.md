@@ -14,6 +14,24 @@ To fill a non-production environment with data that is safe to use, see [Buildin
 
 A name must match `[a-z][a-z0-9_]{1,31}`: two to thirty-two lowercase letters, digits and underscores, starting with a letter. `prod` and names beginning with `pg_` are refused. The maximum length for a given org depends on the org's own id. PostgreSQL silently truncates an identifier longer than 63 bytes, and the cap guards against the longest schema name an environment derives.
 
+## Stages
+
+Every environment declares one of four stages. They are production, preprod, test and development. `prod` starts as production, and a new environment starts as development. Any number of environments may share a stage, so you can run several production environments, one per region for example.
+
+Use preprod for an environment that mirrors production. It holds the same model, and its sources are usually bound to production mirrors. Debug production incidents there.
+
+The stage is a label for reporting and display. It never changes what anyone may do. That comes only from the roles assigned in the environment. You see the stage beside each environment's name in the environment switcher. Usage, query health, policy denial and cost reports can be filtered and grouped by it. The audit log and the catalog and lineage exports carry it too, so a downstream catalog can tell production assets from the rest.
+
+Change a stage in the Stage column of the Environments page, or through the API:
+
+```bash
+curl -X PATCH https://provisa.example.com/admin/orgs/acme/environments/eu_prod \
+  -H 'Content-Type: application/json' \
+  -d '{"stage": "production"}'
+```
+
+The creator of an environment may change its stage, and so may an org admin. Each change is recorded in the audit log with the stage it replaced.
+
 ## What a copy carries
 
 Every table in the org schema falls in exactly one class. The classification is an allow-list: a table added later doesn't travel until someone names its class here, so forgetting a table shows up as a red test.
@@ -27,11 +45,7 @@ Every table in the org schema falls in exactly one class. The classification is 
 | NEVER_SENSITIVE | org_secrets, user_directory | Never copied |
 | NEVER_RUNTIME | mv_refresh_log, relationship_candidates, admin_audit_log, and others | Never copied |
 
-`SEEDED_AT_CREATION` exists to solve one specific problem. A new environment needs roles and
-assignments or it opens with nobody able to act. But a later merge that carried `prod`'s `developer`
-row would overwrite the restricted version a restricted branch might need, making the review path
-the escalation route. So roles and assignments travel once, at creation, and are afterwards each
-environment's own answer.
+`SEEDED_AT_CREATION` exists because a new environment needs roles and assignments, or it opens with nobody able to act. So roles and assignments travel once, at creation, and afterwards each environment keeps its own. A later merge never carries `prod`'s assignments into a branch, or a branch's into `prod`. Who holds which role in an environment stays that environment's decision.
 
 ## Bindings
 
@@ -103,24 +117,26 @@ The `can_undo` and `can_redo` flags come with the environments list response. Bo
 
 ## Authorization
 
-Environments are governed by two rights. Neither is an analyst's by default.
+What you may do in an environment comes only from the roles assigned to you there. Roles and their assignments live in each environment's own schema, so assigning someone Developer in `dev` gives them nothing in `prod`. No environment adds, removes or overrides a right. The standard roles mean the same thing everywhere.
 
-| Right | Who holds it (seeded) | What it governs |
+Shape `prod` by assignment. A member who must not write data or change the model in production holds Analyst there and Developer in their own environments. A pipeline that writes to production holds Data writer in `prod` only. In `prod`, members, role and entitlement assignments, connections, credentials and business metadata are changed directly by whoever holds the right. Model structure and access policy usually arrive by merge or deploy, but a holder of the right may change them in `prod` too.
+
+Four rights govern the environments themselves.
+
+| Right | Who holds it (standard roles) | What it governs |
 | --- | --- | --- |
-| `environment_management` | org_admin, developer | Creating and deleting environments |
-| `environment_switch` | org_admin, developer | Being served by any environment other than prod |
+| `environment_switch` | Viewer, and so every standard role built on it | Being served by an environment other than `prod` |
+| `environment_owned_management` | Developer | Creating an environment, and deleting or changing the stage of one you created |
+| `environment_management` | Org admin | Creating, deleting and protecting any environment |
+| `environment_data` | Org admin | An environment's data choices, such as its data mode and source bindings |
 
-`prod` needs no right. It's what serves a request that names no environment, and refusing it would refuse every request.
+`prod` needs no right. It serves every request that names no environment, and refusing it would refuse every request.
 
-The check happens where the environment is selected, before any route is reached. A member without `environment_switch` is refused on every surface at once (HTTP, GraphQL, SQL and the wire protocols), because the environment is bound in the middleware and not in individual handlers.
-
-An analyst carrying no environment right can query `prod` and cannot see the environment switcher.
-A contractor granted the analyst role sees no environments surface and cannot create or switch into
-any environment other than production.
+The check happens where the environment is selected, before any route is reached. Because the environment is bound in the middleware, one check covers HTTP, GraphQL, SQL and the wire protocols at once. A sign-in that holds no role in the environment it names is refused there, so the environments you can switch into are the ones you are assigned in.
 
 ### Environment owner authority
 
-Creating an environment is the only way a read-only member gains model-editing rights. Inside an environment they created, the creator holds the `developer` role's capabilities, minus the data rights (`write`, `full_results`, `usage`), which gives rights to build the model without rights to the data.
+Inside an environment you created, you hold the Developer role's capabilities whatever roles you are assigned there, minus `usage`. That lets you build the model in your own branch. Querying, writing and full results come only from the roles assigned to you in that environment.
 
 The grant is derived from `environments.created_by` at authorization time, never written into a
 grant table. Deleting the environment removes it in the same act.

@@ -1416,6 +1416,19 @@ CREATE TABLE IF NOT EXISTS openlineage_run_datasets (
         (job_namespace, job_name, run_id, direction, dataset_namespace, dataset_name)
 );
 
+-- REQ-2263: each dataset's latest schema, documentation and ownership facet any OpenLineage event
+-- carried, with the run and event time it came from. One row per dataset and facet.
+CREATE TABLE IF NOT EXISTS openlineage_dataset_facets (
+    dataset_namespace TEXT NOT NULL,
+    dataset_name      TEXT NOT NULL,
+    facet             TEXT NOT NULL CONSTRAINT openlineage_dataset_facets_facet_check
+                      CHECK (facet IN ('schema', 'documentation', 'ownership')),
+    payload           JSONB NOT NULL,
+    run_id            TEXT NOT NULL,
+    event_time        TIMESTAMPTZ NOT NULL,
+    PRIMARY KEY (dataset_namespace, dataset_name, facet)
+);
+
 -- REQ-2125: the governed table each checker table's contract scans, as the model build resolved
 -- it. Derived state: each build replaces every row.
 CREATE TABLE IF NOT EXISTS checker_targets (

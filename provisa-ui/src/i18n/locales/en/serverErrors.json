@@ -14,7 +14,8 @@
       "webhook_not_found": "Webhook '{{name}}' not found",
       "written_table_not_registered": "'{{table}}' is not a registered table of source '{{source_id}}'",
       "function_exists": "Function '{{name}}' already exists",
-      "webhook_exists": "Webhook '{{name}}' already exists"
+      "webhook_exists": "Webhook '{{name}}' already exists",
+      "mask_constant_not_text": "A constant mask on a non-text column reads as NULL; only NULL can be saved: {{column}} ({{type}})"
     },
     "ai_models": {
       "vector_model_fields_required": "each vector_models entry requires id, provider, and dimensions",
@@ -566,7 +567,8 @@
       "withdrawn_table_not_previewable": "Table {{table}} cannot be previewed: it is withdrawn and keeps no replica, and the engine reads its source only through one.",
       "table_not_withdrawn": "Table {{table}} is not withdrawn: only a withdrawn table is put back. To move a table in production to another region, set its region.",
       "source_not_withdrawn": "Source {{source}} is not withdrawn: only a withdrawn source is put back. To change its region, set its region.",
-      "put_back_needs_region": "Putting back {{object}} names a region: give one, or none for no region."
+      "put_back_needs_region": "Putting back {{object}} names a region: give one, or none for no region.",
+      "mask_constant_not_text": "A constant mask on a non-text column reads as NULL; only NULL can be saved: {{column}} ({{type}})"
     },
     "secrets": {
       "env_reference_object_locked": "This object is the operator's: it reads the server's own environment and cannot be changed here. Add one of your own instead.",

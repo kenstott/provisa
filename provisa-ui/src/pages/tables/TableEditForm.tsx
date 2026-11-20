@@ -42,6 +42,7 @@ import { TableQualitySection } from "./TableQualitySection";
 import { TableColumnsSection } from "./TableColumnsSection";
 import { DeclaredDraftColumns } from "./DeclaredDraftColumns";
 import type { CacheTtlEdit, UpdateEditCol } from "./tableEditTypes";
+import { useDescribeUnregistered, type UnregisteredTable } from "../../hooks/useDescribeUnregistered";
 
 interface TableEditFormProps {
   editingTable: RegisteredTable;
@@ -140,6 +141,25 @@ export function TableEditForm({
   // metric view being created has no SQL yet: the server compiles it from its metrics.
   const isView = editingTable.viewSql != null || editingTable.viewMetrics != null;
 
+  // A table being created is described from the source table it will register, by its source,
+  // schema, name and columns; a saved one by its id. A view being created reads no source table.
+  const { describeTable, describeColumn } = useDescribeUnregistered();
+  const unregistered: UnregisteredTable | undefined =
+    creating && !isView
+      ? {
+          sourceId: editingTable.sourceId,
+          schemaName: editingTable.schemaName,
+          tableName: editingTable.tableName,
+          columns: editingTable.columns.map((c) => c.columnName),
+        }
+      : undefined;
+  const describe = creating
+    ? unregistered && (() => describeTable(unregistered))
+    : () => generateTableDescription(editingTable.id);
+  const describeCol = creating
+    ? unregistered && ((column: string) => describeColumn(unregistered, column))
+    : (column: string) => generateColumnDescription(editingTable.id, column);
+
   // REQ-1907/REQ-930: the table's resolved landing cache_ttl — the staged Cache TTL edit, else the
   // saved table value, else the source's. The global default is the response-cache TTL, not a
   // landing clock, so it is not part of this chain. null = neither sets one.
@@ -185,7 +205,7 @@ export function TableEditForm({
             setEditingTable={setEditingTable}
             isView={isView}
             source={editSource}
-            describe={creating ? undefined : () => generateTableDescription(editingTable.id)}
+            describe={describe}
             relationships={relationships}
           />
         ))}
@@ -284,9 +304,7 @@ export function TableEditForm({
             )
           }
           scanTableId={creating ? undefined : editingTable.id}
-          describeColumn={
-            creating ? undefined : (column) => generateColumnDescription(editingTable.id, column)
-          }
+          describeColumn={describeCol}
         />
       )}
       {/* REQ-2162: who can read or write each column, as the read view shows it. */}

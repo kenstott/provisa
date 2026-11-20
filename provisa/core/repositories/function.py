@@ -26,6 +26,7 @@ from provisa.core.host_code import refuse_host_code
 from provisa.core.repositories import data_product as data_product_repo
 from provisa.core.repositories.integrity import Dependent, ObjectRef, guard, remove_parts
 from provisa.core.repositories.mask_lists import refuse_unreachable_masks
+from provisa.security.masking import refuse_non_text_constant
 from provisa.core.schema_org import tracked_functions, tracked_webhooks
 
 if TYPE_CHECKING:
@@ -42,6 +43,8 @@ async def upsert_function(  # REQ-205, REQ-206, REQ-207, REQ-304, REQ-305, REQ-3
     await refuse_unreachable_masks(  # REQ-2059
         conn, {c.name: c.model_dump()["masks"] for c in func.output_columns or []}
     )
+    for _col in func.output_columns or []:  # REQ-2131
+        refuse_non_text_constant(_col.name, _col.model_dump()["masks"], _col.type)
     model_change.name("upsert", model_change.uri(model_uri.command_uri, func.name))  # REQ-1524
     domain_id = domain_policy.command_domain_id(func.domain_id, func.name)  # REQ-1531
     # REQ-1634: a command keeps to the domain of every product it is a member of.
@@ -182,6 +185,8 @@ async def upsert_webhook(
     await refuse_unreachable_masks(  # REQ-2059
         conn, {c.name: c.model_dump()["masks"] for c in wh.inline_return_type}
     )
+    for _col in wh.inline_return_type:  # REQ-2131
+        refuse_non_text_constant(_col.name, _col.model_dump()["masks"], _col.type)
     model_change.name("upsert", model_change.uri(model_uri.command_uri, wh.name))  # REQ-1524
     vals = {
         "name": wh.name,
