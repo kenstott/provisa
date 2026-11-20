@@ -395,8 +395,8 @@ class TestMaskingInheritanceExtended:
         result = governed_for_role(
             'SELECT "amount", "region" FROM "public"."orders"', ctx, "viewer", masking_rules=masking
         )
-        expected = 'SELECT 0 AS "amount", \'HIDDEN\' AS "region" FROM "public"."orders"'
-        assert assert_same_rows(pg, result, expected, _ROWS) == [(0, "HIDDEN")] * 4
+        expected = 'SELECT NULL AS "amount", \'HIDDEN\' AS "region" FROM "public"."orders"'
+        assert assert_same_rows(pg, result, expected, _ROWS) == [(None, "HIDDEN")] * 4
 
     def test_inherited_masking_not_applied_to_different_role(self, pg):
         """Masking rules for 'viewer' must not be applied when role is 'analyst'."""

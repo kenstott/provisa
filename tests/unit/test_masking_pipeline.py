@@ -252,9 +252,9 @@ class TestMaskedViewerConstantMasking:
 
 
 class TestNumericConstantMasking:
-    """Numeric column masked with constant value (REQ-089)."""
+    """Numeric column masked with a constant reads as NULL, keeping its type (REQ-089, REQ-2131)."""
 
-    def test_amount_masked_to_zero(self):
+    def test_amount_masked_to_null(self):
         compiled = CompiledQuery(
             sql='SELECT "t0"."amount" FROM "public"."orders" "t0"',
             params=[],
@@ -277,7 +277,7 @@ class TestNumericConstantMasking:
             }
         }
         result = governed_for_role(compiled.sql, ctx, "masked_viewer", masking_rules=rules)
-        assert '0 AS "amount"' in result
+        assert 'NULL AS "amount"' in result
 
 
 class TestDateTruncateMasking:
