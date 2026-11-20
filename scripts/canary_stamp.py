@@ -13,6 +13,7 @@
 builds .canary_registry.json, and generates canary-site/ static JSON files."""
 
 import fcntl
+import hashlib
 import json
 import os
 import re
@@ -29,6 +30,8 @@ SITE_DIR = Path(os.environ["CANARY_SITE_DIR"]).expanduser()
 # runs this script. One lock serializes them, so two hooks never prune or deploy the directory at
 # the same time.
 SITE_LOCK = SITE_DIR.parent / f".{SITE_DIR.name}.lock"
+# The digest of the site as last deployed, shared like SITE_DIR by every checkout.
+DEPLOYED_DIGEST = SITE_DIR.parent / f".{SITE_DIR.name}.deployed"
 # A worktree's .git is a file pointing at the main repository; the main checkout's is a directory.
 IS_MAIN_CHECKOUT = (PROJECT_ROOT / ".git").is_dir()
 EXCLUDE_DIRS = {
@@ -106,39 +109,6 @@ def is_stampable(rel: str) -> bool:
     if set(Path(rel).parts) & EXCLUDE_DIRS or p.is_symlink() or not p.is_file():
         return False
     return p.suffix == ".py" or p.suffix in TS_EXTENSIONS
-
-
-def head_parents() -> list[str]:
-    """HEAD's parent commits: two or more for a merge commit, one for an ordinary commit."""
-    line = subprocess.run(
-        ["git", "rev-list", "--parents", "-n", "1", "HEAD"],
-        cwd=PROJECT_ROOT,
-        check=True,
-        capture_output=True,
-        text=True,
-    ).stdout.split()
-    return line[1:]
-
-
-def merge_added_files(parents: list[str]) -> list[Path]:
-    """Stampable files HEAD has that no parent has: files a conflict resolution created."""
-    per_parent = [
-        {
-            rel
-            for rel in subprocess.run(
-                ["git", "diff", "--name-only", "--diff-filter=A", "-z", parent, "HEAD"],
-                cwd=PROJECT_ROOT,
-                check=True,
-                capture_output=True,
-            )
-            .stdout.decode("utf-8")
-            .split("\0")
-            if rel
-        }
-        for parent in parents
-    ]
-    added = set.intersection(*per_parent)
-    return sorted(PROJECT_ROOT / rel for rel in added if is_stampable(rel))
 
 
 def extract_canary(content: str, canary_re: re.Pattern) -> str | None:
@@ -222,21 +192,32 @@ def reissue_canary(path: Path) -> str:
     return canary_id
 
 
+def existing_stamped_at(canary_id: str, rel_path: str) -> str | None:
+    """The stamped_at the site already publishes for this canary at this path; None when the
+    canary is new to the site or now names a different path."""
+    site_file = SITE_DIR / f"{canary_id}.json"
+    if not site_file.exists():
+        return None
+    entry = json.loads(site_file.read_text(encoding="utf-8"))
+    return entry["stamped_at"] if entry["path"] == rel_path else None
+
+
 def build_registry(file_canaries: dict[str, str]) -> dict:
-    return {
-        "generated_at": datetime.now(timezone.utc).isoformat(),
-        "files": {
-            canary_id: {
-                "path": rel_path,
-                "stamped_at": datetime.now(timezone.utc).isoformat(),
-            }
-            for rel_path, canary_id in file_canaries.items()
-        },
-    }
+    # A canary's entry never changes once published: re-dating every entry on every commit
+    # rewrote all ~7,500 site files and re-uploaded the whole site on each deploy.
+    now = datetime.now(timezone.utc).isoformat()
+    files = {}
+    for rel_path, canary_id in file_canaries.items():
+        published = existing_stamped_at(canary_id, rel_path)
+        # None means this canary is published at this path for the first time: it is stamped now.
+        files[canary_id] = {"path": rel_path, "stamped_at": now if published is None else published}
+    return {"generated_at": now, "files": files}
 
 
 def write_site(registry: dict) -> None:
+    """Write the site entries that are new or changed; leave identical ones untouched."""
     SITE_DIR.mkdir(exist_ok=True)
+    written = 0
     for canary_id, info in registry["files"].items():
         entry = {
             "uuid": canary_id,
@@ -246,8 +227,14 @@ def write_site(registry: dict) -> None:
             "license": "Business Source License 1.1",
             "notice": AI_NOTICE,
         }
+        text = json.dumps(entry, indent=2) + "\n"
         site_file = SITE_DIR / f"{canary_id}.json"
-        site_file.write_text(json.dumps(entry, indent=2) + "\n", encoding="utf-8")
+        if site_file.exists() and site_file.read_text(encoding="utf-8") == text:
+            continue
+        site_file.write_text(text, encoding="utf-8")
+        written += 1
+    if written:
+        print(f"Wrote {written} site entries")
 
     # Only the main checkout prunes. A worktree's registry holds only its own branch's files, so
     # pruning against it would delete every other branch's entries from the shared directory.
@@ -267,66 +254,37 @@ def write_site(registry: dict) -> None:
         print(f"Pruned {removed} stale site entries")
 
 
-def deploy_site() -> None:
-    """Publish SITE_DIR to Cloudflare Pages when its credentials are configured."""
-    if not (os.environ.get("CLOUDFLARE_API_TOKEN") and os.environ.get("CLOUDFLARE_ACCOUNT_ID")):
-        return
+def site_digest() -> str:
+    """One hash over every site entry's name and content: what a deploy would publish."""
+    digest = hashlib.sha256()
+    for site_file in sorted(SITE_DIR.glob("*.json")):
+        digest.update(site_file.name.encode("utf-8"))
+        digest.update(site_file.read_bytes())
+    return digest.hexdigest()
+
+
+def wrangler_deploy() -> None:
     subprocess.run(
         ["npx", "wrangler", "pages", "deploy", str(SITE_DIR), "--project-name=simpleishard-canary"],
         check=True,
     )
 
 
-def stamp_merge_added(parents: list[str]) -> None:
-    """Stamp only the files a merge commit introduced, and split canaries the merge made shared.
-
-    Every file a merged side brought was stamped on that side: .githooks/post-commit runs this
-    script after every commit on every branch, and the branch's stamps commit carries the result
-    and publishes its site entries. Re-stamping the whole tree on the merge only rewrote 7,481
-    site entries and redeployed the site. A file that exists in no parent was written by the
-    conflict resolution and was never stamped, so it is stamped here. Two sides can each copy
-    the same header into a different new file; each side alone was unique, the merged tree is
-    not, so every duplicate is reissued here: the first path in sorted order keeps the canary,
-    as in stamp_and_publish, and a merge-added file never takes one from a file a side brought.
-    The stamps commit that follows carries these writes and publishes them.
-    """
-    added = merge_added_files(parents)
-    added_set = set(added)
-    claimed: set[str] = set()
-    reissued = 0
-    for path in find_source_files():
-        if path in added_set:
-            continue
-        content = path.read_text(encoding="utf-8")
-        canary_id = extract_canary(
-            content, TS_CANARY_RE if path.suffix in TS_EXTENSIONS else PY_CANARY_RE
-        )
-        # A side's file without a canary is that side's uncommitted stamp; its own stamps
-        # commit carries it, so the merge leaves it alone.
-        if canary_id is None:
-            continue
-        if canary_id in claimed:
-            canary_id = reissue_canary(path)
-            reissued += 1
-        claimed.add(canary_id)
-    for path in added:
-        canary_id = stamp_file(path)
-        if canary_id in claimed:
-            canary_id = reissue_canary(path)
-            reissued += 1
-        claimed.add(canary_id)
-    print(
-        f"Merge commit: skipped full stamp and site deploy (each merged side was stamped on its "
-        f"own commits); stamped {len(added)} file(s) the merge added, reissued {reissued} "
-        f"duplicate canaries"
-    )
+def deploy_site() -> None:
+    """Publish SITE_DIR to Cloudflare Pages when its credentials are configured and its content
+    differs from the last deploy. The digest is shared across checkouts with SITE_DIR, so entries
+    a checkout without credentials wrote are published by the next checkout that has them."""
+    if not (os.environ.get("CLOUDFLARE_API_TOKEN") and os.environ.get("CLOUDFLARE_ACCOUNT_ID")):
+        return
+    digest = site_digest()
+    if DEPLOYED_DIGEST.exists() and DEPLOYED_DIGEST.read_text(encoding="utf-8") == digest:
+        print("Site unchanged since last deploy; not deploying")
+        return
+    wrangler_deploy()
+    DEPLOYED_DIGEST.write_text(digest, encoding="utf-8")
 
 
 def main() -> None:
-    parents = head_parents()
-    if len(parents) > 1:
-        stamp_merge_added(parents)
-        return
     SITE_DIR.mkdir(exist_ok=True)
     with open(SITE_LOCK, "w") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
