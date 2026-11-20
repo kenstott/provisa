@@ -27,12 +27,21 @@ from provisa.federation.clickhouse_runtime import ClickHouseFederationRuntime
 from provisa.pgwire import function_types
 from provisa.transpiler.transpile import transpile
 
+#: range_agg(anymultirange) over values. Its fold is the range overload's, whose 973 reads of an
+#: item took transpiling and ClickHouse's analysis near the measure's 30 s a call: run 44365680057
+#: answered, run 44419931226 (same form, a runner a third slower) did not.
+_MULTIRANGE_FOLD = (
+    'SELECT pg_catalog."range_agg"(c1 ORDER BY c1) AS v FROM (VALUES '
+    "('{[1,5),[7,9)}'::int4multirange), ('{}'::int4multirange), ('{(,3]}'::int4multirange)) AS t(c1)"
+)
+
 #: Each statement and PostgreSQL's answer.
 LISTED = [
     ("SELECT pg_catalog.\"int4range\"(NULL::integer, NULL::integer, '[]'::text) AS v", "(,)"),
     ("SELECT pg_catalog.\"int8range\"(NULL::bigint, NULL::bigint, '[]'::text) AS v", "(,)"),
     ('SELECT pg_catalog."range_agg"(NULL::int4multirange) AS v', None),
     ('SELECT pg_catalog."range_agg"(NULL::int4range) AS v', None),
+    (_MULTIRANGE_FOLD, "{(,5),[7,9)}"),
     (
         'SELECT pg_catalog."range_intersect_agg"(c1 ORDER BY c1) AS v FROM '
         "(VALUES ('[1,5)'::int4range), ('empty'::int4range), ('(,3]'::int4range)) AS t(c1)",
@@ -81,6 +90,8 @@ def test_the_listed_engine_errors_answer_postgresql_s_value(sql, want):
         'SELECT pg_catalog."range_agg"(c1 ORDER BY c1) AS v FROM (VALUES '
         "('[1,5)'::int4range), ('empty'::int4range), ('(,3]'::int4range)) AS t(c1)",
         'SELECT pg_catalog."range_agg"(NULL::int4range) AS v',
+        'SELECT pg_catalog."range_agg"(NULL::int4multirange) AS v',
+        _MULTIRANGE_FOLD,
     ],
 )
 def test_a_range_fold_names_its_item_a_few_times(sql):
