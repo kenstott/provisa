@@ -585,6 +585,7 @@
   "tests/integration/test_transform_view_reader_rules_e2e.py": 60.0,
   "tests/integration/test_triggers_on_change_e2e.py": 30.9,
   "tests/integration/test_trino_clickhouse_catalog_e2e.py": 20.5,
+  "tests/integration/test_trino_edge_answers.py": 20.0,
   "tests/integration/test_trino_flight_engine_e2e.py": 0.7,
   "tests/integration/test_trino_fte_exchange.py": 2.2,
   "tests/integration/test_trino_like_escape.py": 0.5,
