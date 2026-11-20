@@ -64,7 +64,7 @@ if TYPE_CHECKING:
     from provisa.api.metadata_export.model import OfferExport, ServingEndpoints, TableAsset
     from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
-    from provisa.api.metadata_export.model import MetadataSnapshot
+    from provisa.api.metadata_export.model import EnvironmentStage, MetadataSnapshot
 
     from provisa.core.models import ProvisaConfig
 
@@ -248,6 +248,24 @@ def _snapshot_uris(snapshot: Any) -> set[str]:
     return uris
 
 
+async def environment_stage(org_id: str) -> "EnvironmentStage | None":  # REQ-2261
+    """The environment this context is served by and the stage it declares, which every catalog
+    and lineage export carries. None for a deployment without a control plane: it keeps no
+    environment registry, so there is no stage to state."""
+    from provisa.api.app import state
+    from provisa.api.metadata_export.model import EnvironmentStage
+    from provisa.core.env_store import get_env
+    from provisa.core.request_context import active_env
+
+    if state.admin_db is None:
+        return None
+    env = active_env()
+    row = await get_env(state.admin_db, org_id, env)
+    if row is None:
+        raise ExportNotAllowed(f"org {org_id!r} has no environment {env!r} to export from")
+    return EnvironmentStage(name=env, stage=row["stage"])
+
+
 async def org_snapshot(org_id: str, *, product_id: str | None = None) -> "MetadataSnapshot":
     """The bound org's full metadata snapshot: what every target is published (REQ-1072) and
     what its ODPS and ODCS documents are built from (REQ-2118). ``org_id`` is the bound org.
@@ -288,7 +306,8 @@ async def org_snapshot(org_id: str, *, product_id: str | None = None) -> "Metada
     # config, so it is read here and handed to the builder exactly as the term graph is.
     dq_outcomes = await read_latest_outcomes(model, product_id=product_id)
     base_url = state.config.mail.base_url if state.config else None
-    return build_snapshot(
+    environment = await environment_stage(org_id)
+    snapshot = build_snapshot(
         model,
         org_id=org_id,
         uri_org_id=org_id if state.multitenancy else None,
@@ -305,6 +324,7 @@ async def org_snapshot(org_id: str, *, product_id: str | None = None) -> "Metada
         endpoints=serving_endpoints(state, org_id, base_url),
         offers=offers,
     )
+    return dataclasses.replace(snapshot, environment=environment)
 
 
 async def offer_exports(conn: Any) -> dict[str, tuple["OfferExport", ...]]:
