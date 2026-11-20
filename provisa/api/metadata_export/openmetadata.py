@@ -116,6 +116,20 @@ _STEWARD_EMAIL_DOMAIN = "provisa.invalid"
 # would have to drop five of them.
 RELATIONSHIP_PROPERTY = "provisaRelationships"
 
+# REQ-2261: the custom properties a table carries the environment it was published from and that
+# environment's stage under, so a catalog can tell production assets from others. Neither is
+# written when the snapshot names no environment.
+ENVIRONMENT_PROPERTY = "provisaEnvironment"
+STAGE_PROPERTY = "provisaStage"
+
+# Every table custom property Provisa authors, each with the description it is declared with. Each
+# tracks the snapshot, its removal included; a steward's own properties stand.
+TABLE_PROPERTIES = {
+    RELATIONSHIP_PROPERTY: "Relationships a Provisa steward approved on this table, as a JSON array.",
+    ENVIRONMENT_PROPERTY: "The Provisa environment this table was published from.",
+    STAGE_PROPERTY: "The stage of the Provisa environment this table was published from.",
+}
+
 # REQ-2141: the custom property every Provisa glossary term carries its ontology role under, and
 # the group terms the roles' top-level terms sit beneath (OpenMetadata's glossary has no node
 # other than a term, so a role's group is a term of the Provisa glossary). A term with a KIND_OF
@@ -446,6 +460,13 @@ def _table_entity(snapshot: MetadataSnapshot, table: TableAsset) -> Entity:
                 ]
             )
         }
+    if snapshot.environment is not None:  # REQ-2261
+        body.setdefault("extension", {}).update(
+            {
+                ENVIRONMENT_PROPERTY: snapshot.environment.name,
+                STAGE_PROPERTY: snapshot.environment.stage,
+            }
+        )
     return Entity(asset=table.ref, path="/api/v1/tables", kind="table", body=body)
 
 
@@ -1111,14 +1132,10 @@ class OpenMetadataExport(MetadataExport):  # REQ-1069
                 return f"assets/{action}: HTTP {response.status_code}: {response.text[:300]}"
         return None
 
-    async def _register_relationship_property(self, client: httpx.AsyncClient) -> None:
-        """Declare the custom property the relationship extension is stored under."""
-        await self._register_property(
-            client,
-            "table",
-            RELATIONSHIP_PROPERTY,
-            "Relationships a Provisa steward approved on this table, as a JSON array.",
-        )
+    async def _register_table_properties(self, client: httpx.AsyncClient, names: set[str]) -> None:
+        """Declare the table custom properties the extensions being sent are stored under."""
+        for name in sorted(names):
+            await self._register_property(client, "table", name, TABLE_PROPERTIES[name])
 
     async def _register_property(
         self, client: httpx.AsyncClient, entity: str, name: str, description: str
@@ -1238,10 +1255,10 @@ class OpenMetadataExport(MetadataExport):  # REQ-1069
             column["tags"] = self._merged_tags(
                 live_column.get("tags"), column.get("tags"), glossary
             )
-        # Extension keys Provisa does not own are somebody's custom properties; only the
-        # relationship property tracks the snapshot (including its removal).
+        # Extension keys Provisa does not own are somebody's custom properties; Provisa's own
+        # (TABLE_PROPERTIES) track the snapshot, including their removal.
         live_extension = {
-            k: v for k, v in (live.get("extension") or {}).items() if k != RELATIONSHIP_PROPERTY
+            k: v for k, v in (live.get("extension") or {}).items() if k not in TABLE_PROPERTIES
         }
         if live_extension:
             entity.body["extension"] = {**live_extension, **entity.body.get("extension", {})}
@@ -1680,21 +1697,29 @@ class OpenMetadataExport(MetadataExport):  # REQ-1069
             # so the tables can carry Provisa's term assignments (REQ-1389).
             glossary = await self._publish_glossary(client, snapshot, result)
             _assign_terms(snapshot, requests, glossary)
-            if any("extension" in entity.body for entity in requests):
+            table_properties = {
+                name
+                for entity in requests
+                if entity.kind == "table"
+                for name in entity.body.get("extension", {})
+            }
+            if table_properties:
                 try:
-                    await self._register_relationship_property(client)
+                    await self._register_table_properties(client, table_properties)
                 except httpx.HTTPError as exc:
-                    # The relationships cannot be published without the property, but the tables
-                    # they hang off can. Sending the extension anyway would fail every one of
-                    # those tables over an obstacle that only affects the relationship payload,
+                    # The extension cannot be published without its properties, but the tables
+                    # it hangs off can. Sending the extension anyway would fail every one of
+                    # those tables over an obstacle that only affects the extension payload,
                     # so the extension is dropped and the loss is reported here — once, naming
-                    # the property and the reason, rather than once per table.
+                    # the properties and the reason, rather than once per table.
+                    names = ", ".join(sorted(table_properties))
                     result.errors.append(
                         AssetError(
                             asset=AssetRefStub(RELATIONSHIP_PROPERTY),
                             message=(
-                                f"custom property {RELATIONSHIP_PROPERTY}: {describe_http_failure(exc)}. Approved "
-                                "relationships were not published; every other asset was."
+                                f"custom property {names}: {describe_http_failure(exc)}. Approved "
+                                "relationships, environment and stage were not published; every "
+                                "other asset was."
                             ),
                         )
                     )

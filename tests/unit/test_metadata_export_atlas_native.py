@@ -308,3 +308,76 @@ def test_no_derived_container_without_a_view():  # REQ-2119
     snapshot = build_snapshot(_config(), org_id="acme", dialect="postgres", contexts={})
     names = [e.attributes["name"] for e in to_native_entities(snapshot) if e.kind == "source"]
     assert "__derived__" not in names
+
+
+# -- REQ-2261: the environment and its stage --------------------------------------------------
+
+
+def _staged(stage: str | None):
+    import dataclasses
+
+    from provisa.api.metadata_export.model import EnvironmentStage
+
+    environment = EnvironmentStage(name="eu", stage=stage) if stage is not None else None
+    return dataclasses.replace(_snapshot(), environment=environment)
+
+
+def test_an_atlas_table_carries_the_environment_and_its_stage_as_custom_attributes():
+    from provisa.api.metadata_export.atlas import to_entities
+
+    for build in (to_native_entities, to_entities):
+        tables = [e for e in build(_staged("production")) if e.kind == "table"]
+        assert tables
+        for table in tables:
+            assert table.payload()["customAttributes"] == {
+                "provisaEnvironment": "eu",
+                "provisaStage": "production",
+            }
+        # Without an environment registry no stage is claimed.
+        bare = [e for e in build(_staged(None)) if e.kind == "table"]
+        assert all("customAttributes" not in e.payload() for e in bare)
+
+
+def test_an_atlan_table_carries_the_environment_and_its_stage():
+    exporter = AtlanExport.__new__(AtlanExport)
+    tables = [e for e in exporter._atlan_entities(_staged("test")) if e.kind == "table"]
+    assert tables
+    assert all(
+        e.payload()["customAttributes"] == {"provisaEnvironment": "eu", "provisaStage": "test"}
+        for e in tables
+    )
+
+
+async def test_an_atlas_update_keeps_a_stewards_custom_attributes_beside_the_stage():
+    import httpx
+
+    from provisa.api.metadata_export.atlas import AtlasExport
+    from provisa.api.metadata_export.provider import PublishResult
+    from provisa.core.models import MetadataExportTarget
+
+    exporter = AtlasExport(
+        MetadataExportTarget(
+            id="catalog", provider="atlas", endpoint="http://atlas:21000", token="t"
+        )
+    )
+    table = next(e for e in to_native_entities(_staged("preprod")) if e.kind == "table")
+    uri = table.attributes["provisaUri"]
+    exporter.stored_bindings = {uri: ("live-guid", table.attributes["qualifiedName"])}
+    live = {
+        "entity": {
+            "attributes": {"userDescription": "a steward's note"},
+            "customAttributes": {"costCentre": "42", "provisaStage": "development"},
+        }
+    }
+
+    class _Client:
+        async def get(self, url, params=None, headers=None):
+            assert url.endswith("/entity/guid/live-guid")
+            return httpx.Response(200, json=live, request=httpx.Request("GET", url))
+
+    (sent,) = await exporter._canonicalize_identity(_Client(), {}, [table], PublishResult("atlas"))
+    assert sent.payload()["customAttributes"] == {
+        "costCentre": "42",
+        "provisaEnvironment": "eu",
+        "provisaStage": "preprod",
+    }
