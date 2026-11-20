@@ -28,7 +28,7 @@ from provisa.api.admin.types import SourceInput
 from provisa.api_source.models import ApiColumnType
 from provisa.core.replicate import ALWAYS
 from provisa.sparql import wikidata
-from provisa.sparql.source import extract_variables
+from provisa.sparql.source import _probe_limit, extract_variables
 
 # ── 1. The preset ────────────────────────────────────────────────────────────
 
@@ -101,10 +101,23 @@ def test_the_starter_tables_offered():
 
 
 @pytest.mark.parametrize("name", sorted(_STARTERS))
-def test_each_starter_query_selects_exactly_its_typed_columns(name):
+def test_each_starter_s_columns_are_its_select_variables_every_binding_text(name):
+    """REQ-1923 (amended 2026-11-20): a starter's columns are known from its query's SELECT
+    variables, every binding text: registering one never waits on a live query."""
     starter = _STARTERS[name]
     assert extract_variables(starter.query) == [c.name for c in starter.columns]
     assert starter.columns[0].name == "id" and starter.columns[1].name == "name"
+    assert {c.type for c in starter.columns} == {ApiColumnType.string}
+
+
+@pytest.mark.parametrize("name", sorted(_STARTERS))
+def test_each_starter_s_preview_limits_the_pattern_its_rows_come_from(name):
+    """A starter aggregates in a subquery, so its preview's limit is placed on the anchor
+    sub-select that produces the rows the group reads, as well as on the answer."""
+    preview = _probe_limit(_STARTERS[name].query, limit=5)
+    assert "} LIMIT 5 }" in preview, preview
+    assert preview.rstrip().endswith("LIMIT 5")
+    assert preview.index("LIMIT 5") < preview.index("GROUP BY")
 
 
 @pytest.mark.parametrize("name", sorted(_STARTERS))
@@ -129,7 +142,7 @@ def test_countries_carry_their_iso_codes_capital_and_population():
         "iso_alpha3": ApiColumnType.string,
         "capital_id": ApiColumnType.string,
         "capital": ApiColumnType.string,
-        "population": ApiColumnType.integer,
+        "population": ApiColumnType.string,
     }
     query = _STARTERS["countries"].query
     for prop in ("wdt:P297", "wdt:P298", "wdt:P36", "wdt:P1082"):
@@ -223,7 +236,7 @@ _INT = "http://www.w3.org/2001/XMLSchema#integer"
 
 
 @respx.mock
-async def test_class_search_by_name_reads_wbsearchentities():
+async def test_a_value_search_by_name_reads_wbsearchentities():
     route = respx.get(_SEARCH).mock(
         return_value=httpx.Response(
             200,
@@ -235,7 +248,7 @@ async def test_class_search_by_name_reads_wbsearchentities():
             },
         )
     )
-    found = await wikidata.search_entities("city", language="en")
+    found = await wikidata.search_entities("city", language="en", classes=False)
     assert found == [
         {"id": "Q515", "label": "city", "description": "large human settlement"},
         {"id": "Q1549591", "label": "big city", "description": None},

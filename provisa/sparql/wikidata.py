@@ -36,6 +36,7 @@ import httpx
 from provisa.api_source.models import ApiColumn, ApiColumnType
 from provisa.api_source.persist import data_type_for_api_column
 from provisa.core.replicate import ALWAYS
+from provisa.sparql.source import extract_variables, query_timeout
 
 if TYPE_CHECKING:
     from provisa.api.admin.types import SourceInput
@@ -46,9 +47,6 @@ BRAND = "wikidata"
 ENDPOINT = "https://query.wikidata.org/sparql"
 #: Where classes and items are searched by name (wbsearchentities).
 SEARCH_API = "https://www.wikidata.org/w/api.php"
-
-#: The public endpoint's own limit on one query, in seconds.
-QUERY_TIMEOUT = 60.0
 
 #: REQ-1923 (amended 2026-11-18): Wikidata tables are replicated on a schedule by default; a
 #: steward's own choice is kept. The schedule is the source's Cache TTL: once a day.
@@ -62,8 +60,31 @@ PROPERTY_SAMPLE = 500
 PROPERTY_SUGGESTIONS = 30
 #: How many narrower classes a class lists.
 NARROWER_LIMIT = 200
-#: How many matches a search answers.
-SEARCH_LIMIT = 20
+#: How many matches one page of a search asks for.
+SEARCH_LIMIT = 50
+
+#: REQ-1923 (amended 2026-11-20, BROWSE CLASSES): the most-used top-level classes the browse
+#: view starts from when the class search is empty, each a class whose direct instances number in
+#: the hundreds of thousands or more. They are shown ordered by member count, read live.
+BROWSE_CLASSES: tuple[str, ...] = (
+    "Q5",  # human
+    "Q16521",  # taxon
+    "Q13442814",  # scholarly article
+    "Q43229",  # organization
+    "Q4830453",  # business
+    "Q6256",  # country
+    "Q515",  # city
+    "Q486972",  # human settlement
+    "Q11424",  # film
+    "Q7725634",  # literary work
+    "Q482994",  # album
+    "Q3305213",  # painting
+    "Q41176",  # building
+    "Q8502",  # mountain
+    "Q4022",  # river
+    "Q3918",  # university
+    "Q11173",  # chemical compound
+)
 
 _ENTITY = "http://www.wikidata.org/entity/"
 _ONTOLOGY = "http://wikiba.se/ontology#"
@@ -114,13 +135,16 @@ def apply_preset(input: "SourceInput") -> bool:
 
 @dataclass(frozen=True)
 class StarterTable:
+    """A starter reference table: its name and its query. Its columns are the query's SELECT
+    variables, every binding text (REQ-1923, amended 2026-11-20): registering it never waits on
+    a live query, and column types are refined afterwards on the table."""
+
     name: str
     query: str
-    columns: tuple[ApiColumn, ...]
 
-
-def _cols(*spec: tuple[str, ApiColumnType]) -> tuple[ApiColumn, ...]:
-    return tuple(ApiColumn(name=n, type=t) for n, t in spec)
+    @property
+    def columns(self) -> tuple[ApiColumn, ...]:
+        return tuple(ApiColumn(name=v, type=_S) for v in extract_variables(self.query))
 
 
 _S = ApiColumnType.string
@@ -135,19 +159,25 @@ def _label(var: str, into: str, language: str) -> str:
     return f'OPTIONAL {{ ?{var} rdfs:label ?{into} FILTER(LANG(?{into}) = "{language}") }}'
 
 
-def _grouped(outer: list[str], inner_select: str, where: str, group_by: str) -> str:
+def _grouped(
+    outer: list[str], inner_select: str, anchor: tuple[str, str], rest: str, group_by: str
+) -> str:
     """A query whose rows are grouped in a subquery and selected by plain name outside it, so
-    its columns are exactly ``outer``. Every ``where`` is written anchor first (an identifier or
-    a closed class); the optimizer hint keeps that order, since the query service's own
-    reordering doubles these queries' time and has driven them into gateway errors."""
+    its columns are exactly ``outer``. Its rows come from ``anchor`` -- the variables it binds
+    and its pattern (an identifier or a closed class) -- written as a sub-select of its own and
+    joined first: the optimizer hint keeps that order, since the query service's own reordering
+    doubles these queries' time and has driven them into gateway errors. A preview limits that
+    sub-select (provisa.sparql.source._probe_limit), which bounds the rows the group reads."""
     names = " ".join(f"?{n}" for n in outer)
+    anchor_vars, anchor_pattern = anchor
     return (
         f"SELECT {names} WHERE {{\n"
         f"  {{\n"
         f"    SELECT {inner_select}\n"
         f"    WHERE {{\n"
         '      hint:SubQuery hint:optimizer "None" .\n'
-        f"{where}\n    }}\n"
+        f"      {{ SELECT {anchor_vars} WHERE {{ {anchor_pattern} }} }}\n"
+        f"{rest}\n    }}\n"
         f"    GROUP BY {group_by}\n"
         f"  }}\n"
         f"}}"
@@ -161,21 +191,12 @@ _COUNTRIES = StarterTable(
         f"({_qid('c')} AS ?id) (SAMPLE(?label) AS ?name) (SAMPLE(?a2) AS ?iso_alpha2) "
         f"(SAMPLE(?a3) AS ?iso_alpha3) (SAMPLE({_qid('cap')}) AS ?capital_id) "
         f"(SAMPLE(?capLabel) AS ?capital) (MAX(xsd:integer(?pop)) AS ?population)",
-        "      ?c wdt:P297 ?a2 .\n"
+        ("?c ?a2", "?c wdt:P297 ?a2 ."),
         "      OPTIONAL { ?c wdt:P298 ?a3 }\n"
         f"      OPTIONAL {{ ?c wdt:P36 ?cap . {_label('cap', 'capLabel', 'en')} }}\n"
         "      OPTIONAL { ?c wdt:P1082 ?pop }\n"
         f"      {_label('c', 'label', 'en')}",
         "?c",
-    ),
-    columns=_cols(
-        ("id", _S),
-        ("name", _S),
-        ("iso_alpha2", _S),
-        ("iso_alpha3", _S),
-        ("capital_id", _S),
-        ("capital", _S),
-        ("population", ApiColumnType.integer),
     ),
 )
 
@@ -184,10 +205,10 @@ _CURRENCIES = StarterTable(
     query=_grouped(
         ["id", "name", "iso_4217"],
         f"({_qid('c')} AS ?id) (SAMPLE(?label) AS ?name) (SAMPLE(?code) AS ?iso_4217)",
-        f"      ?c wdt:P498 ?code .\n      {_label('c', 'label', 'en')}",
+        ("?c ?code", "?c wdt:P498 ?code ."),
+        f"      {_label('c', 'label', 'en')}",
         "?c",
     ),
-    columns=_cols(("id", _S), ("name", _S), ("iso_4217", _S)),
 )
 
 _LANGUAGES = StarterTable(
@@ -196,14 +217,11 @@ _LANGUAGES = StarterTable(
         ["id", "name", "iso_639_1", "iso_639_2", "iso_639_3"],
         f"({_qid('l')} AS ?id) (SAMPLE(?label) AS ?name) (SAMPLE(?c1) AS ?iso_639_1) "
         "(SAMPLE(?c2) AS ?iso_639_2) (SAMPLE(?c3) AS ?iso_639_3)",
-        "      ?l wdt:P220 ?c3 .\n"
+        ("?l ?c3", "?l wdt:P220 ?c3 ."),
         "      OPTIONAL { ?l wdt:P218 ?c1 }\n"
         "      OPTIONAL { ?l wdt:P219 ?c2 }\n"
         f"      {_label('l', 'label', 'en')}",
         "?l",
-    ),
-    columns=_cols(
-        ("id", _S), ("name", _S), ("iso_639_1", _S), ("iso_639_2", _S), ("iso_639_3", _S)
     ),
 )
 
@@ -215,16 +233,14 @@ _ADMIN_REGIONS = StarterTable(
         ["id", "name", "iso_3166_2", "country_id", "country"],
         f"({_qid('r')} AS ?id) (SAMPLE(?label) AS ?name) (SAMPLE(?code) AS ?iso_3166_2) "
         f"(SAMPLE({_qid('country')}) AS ?country_id) (SAMPLE(?countryLabel) AS ?country)",
-        "      ?kind wdt:P279 wd:Q10864048 .\n"
-        "      ?r wdt:P31 ?kind .\n"
-        "      FILTER NOT EXISTS { ?r wdt:P576 [] }\n"
+        (
+            "?r",
+            "?kind wdt:P279 wd:Q10864048 . ?r wdt:P31 ?kind . FILTER NOT EXISTS { ?r wdt:P576 [] }",
+        ),
         "      OPTIONAL { ?r wdt:P300 ?code }\n"
         f"      OPTIONAL {{ ?r wdt:P17 ?country . {_label('country', 'countryLabel', 'en')} }}\n"
         f"      {_label('r', 'label', 'en')}",
         "?r",
-    ),
-    columns=_cols(
-        ("id", _S), ("name", _S), ("iso_3166_2", _S), ("country_id", _S), ("country", _S)
     ),
 )
 
@@ -237,24 +253,17 @@ _ORGANIZATIONS = StarterTable(
         f"({_qid('org')} AS ?id) (SAMPLE(?label) AS ?name) ({_qid('ex')} AS ?exchange_id) "
         "(SAMPLE(?exLabel) AS ?exchange) (SAMPLE(?tick) AS ?ticker) (SAMPLE(?leiCode) AS ?lei) "
         "(SAMPLE(?isinCode) AS ?isin)",
-        "      ?org p:P414 ?listing .\n"
-        "      ?listing ps:P414 ?ex .\n"
-        "      FILTER NOT EXISTS { ?listing pq:P582 [] }\n"
+        (
+            "?org ?listing ?ex",
+            "?org p:P414 ?listing . ?listing ps:P414 ?ex . "
+            "FILTER NOT EXISTS { ?listing pq:P582 [] }",
+        ),
         "      OPTIONAL { ?listing pq:P249 ?tick }\n"
         "      OPTIONAL { ?org wdt:P1278 ?leiCode }\n"
         "      OPTIONAL { ?org wdt:P946 ?isinCode }\n"
         f"      {_label('ex', 'exLabel', 'en')}\n"
         f"      {_label('org', 'label', 'en')}",
         "?org ?ex",
-    ),
-    columns=_cols(
-        ("id", _S),
-        ("name", _S),
-        ("exchange_id", _S),
-        ("exchange", _S),
-        ("ticker", _S),
-        ("lei", _S),
-        ("isin", _S),
     ),
 )
 
@@ -297,7 +306,7 @@ async def select(query: str) -> list[dict]:
     headers = {**sparql_headers(), "Content-Type": "application/x-www-form-urlencoded"}
     async with _client() as client:
         resp = await client.post(
-            ENDPOINT, data={"query": query}, headers=headers, timeout=QUERY_TIMEOUT
+            ENDPOINT, data={"query": query}, headers=headers, timeout=query_timeout()
         )
         resp.raise_for_status()
     return resp.json()["results"]["bindings"]
@@ -328,9 +337,11 @@ def _text(binding: dict, var: str) -> str | None:
     return term["value"] if term is not None else None
 
 
-async def search_entities(text: str, *, language: str) -> list[dict]:
-    """Items whose label or alias matches ``text`` (Wikidata's wbsearchentities): a class to
-    build a table of, or a value to filter one by."""
+async def search_entities(text: str, *, language: str, classes: bool) -> list[dict]:
+    """Items whose label or alias matches ``text`` (Wikidata's wbsearchentities), one page of
+    them: a value to filter a table by or, with ``classes``, a class to build a table of --
+    only the items of the page that have instances, checked in one query
+    (``_having_instances``), since a name search also finds items that are no class."""
     from provisa.sparql.source import sparql_headers
 
     params = {
@@ -344,13 +355,57 @@ async def search_entities(text: str, *, language: str) -> list[dict]:
     }
     headers = {"User-Agent": sparql_headers()["User-Agent"]}
     async with _client() as client:
-        resp = await client.get(SEARCH_API, params=params, headers=headers, timeout=QUERY_TIMEOUT)
+        resp = await client.get(SEARCH_API, params=params, headers=headers, timeout=query_timeout())
         resp.raise_for_status()
-    return [
+    hits = [
         # An item may have no label or description in the language asked: None, shown by its id.
         {"id": hit["id"], "label": hit.get("label"), "description": hit.get("description")}
         for hit in resp.json()["search"]
     ]
+    if not classes:
+        return hits
+    having = await _having_instances([hit["id"] for hit in hits])
+    return [hit for hit in hits if hit["id"] in having]
+
+
+async def _having_instances(ids: list[str]) -> set[str]:
+    """Those of ``ids`` that some item is an instance of: the classes among them. One query for
+    them all, each an existence probe the query service answers from its index."""
+    if not ids:
+        return set()
+    values = " ".join(f"wd:{_check(_ITEM_ID, i, 'item id')}" for i in ids)
+    query = (
+        f"SELECT ?cls WHERE {{ VALUES ?cls {{ {values} }} FILTER EXISTS {{ ?i wdt:P31 ?cls }} }}"
+    )
+    return {_entity_id(row["cls"]) for row in await select(query)}
+
+
+async def browse_classes(*, language: str) -> list[dict]:
+    """The browse view's classes (``BROWSE_CLASSES``) with their labels and member counts --
+    each count a COUNT(*) of one triple pattern, answered from the index -- most members
+    first. A class with no members is not offered."""
+    _language(language)
+    branches = "\n  UNION\n".join(
+        f"  {{ {{ SELECT (COUNT(*) AS ?count) WHERE {{ ?i wdt:P31 wd:{cls} }} }} "
+        f"BIND(wd:{cls} AS ?cls) }}"
+        for cls in BROWSE_CLASSES
+    )
+    query = (
+        f"SELECT ?cls ?label ?count WHERE {{\n{branches}\n  {_label('cls', 'label', language)}\n}}"
+    )
+    found = [
+        {
+            "id": _entity_id(row["cls"]),
+            "label": _text(row, "label"),
+            "instance_count": int(row["count"]["value"]),
+        }
+        for row in await select(query)
+    ]
+    return sorted(
+        (c for c in found if c["instance_count"] > 0),
+        key=lambda c: c["instance_count"],
+        reverse=True,
+    )
 
 
 @dataclass(frozen=True)
@@ -552,7 +607,8 @@ def class_table_query(
     outer = ["id", "name"]
     columns: list[ApiColumn] = [ApiColumn(name="id", type=_S), ApiColumn(name="name", type=_S)]
     select = [f"({_qid('item')} AS ?id)", "(SAMPLE(?itemLabel) AS ?name)"]
-    where = [f"      ?item wdt:P31 wd:{class_id} .{_filter_triple(row_filter)}"]
+    anchor = ("?item", f"?item wdt:P31 wd:{class_id} .{_filter_triple(row_filter)}")
+    where: list[str] = []
     for prop, name in zip(properties, column_names(properties)):
         pid = _check(_PROPERTY_ID, prop.id, "property id")
         value = f"v_{pid}"
@@ -571,7 +627,7 @@ def class_table_query(
             where.append(f"      OPTIONAL {{ ?item wdt:{pid} ?{value} }}")
     where.append(f"      {_label('item', 'itemLabel', language)}")
     return ClassTable(
-        query=_grouped(outer, " ".join(select), "\n".join(where), "?item"),
+        query=_grouped(outer, " ".join(select), anchor, "\n".join(where), "?item"),
         columns=tuple(columns),
     )
 

@@ -613,6 +613,7 @@
     },
     "sparql": {
       "columns_not_inferred": "Could not infer columns: probe returned no rows and no SELECT variables found.",
+      "no_select_variables": "The query names no SELECT variables (SELECT * or not a SELECT query): its columns cannot be read from it",
       "probe_failed": "SPARQL endpoint probe failed: {{error}}",
       "source_not_found": "SPARQL source '{{source_id}}' not found"
     },
