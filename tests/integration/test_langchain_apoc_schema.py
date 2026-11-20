@@ -117,7 +117,7 @@ def server():
                         "usage",
                         "full_results",
                     ],
-                    "parents": ["developer"],
+                    "parents": ["developer", "data_writer"],
                     "domain_access": ["shelter"],
                 }
             ],

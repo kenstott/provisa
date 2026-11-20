@@ -21,7 +21,7 @@ import pytest
 
 from provisa.core.pg_error import from_engine
 from provisa.federation.clickhouse_runtime import ClickHouseFederationRuntime
-from provisa.transpiler.function_macros import RowRefused
+from provisa.transpiler.function_macros import FunctionRefused, RowRefused
 from provisa.transpiler.transpile import transpile
 
 ANSWERED = [
@@ -105,6 +105,17 @@ ANSWERED = [
     ("SELECT jsonb_exists_any('{\"a\":1}'::jsonb, ARRAY['x','a'])", "t"),
     ("SELECT jsonb_exists_all('[\"a\",\"b\"]'::jsonb, ARRAY['a','b'])", "t"),
 ]
+# A text[] written as a literal of unknown type, which PostgreSQL reads as the parameter's text[]
+# (PostgreSQL 17's answers, tests/unit/pgwire/pg17_json_answers.py).
+UNTYPED = [
+    ("SELECT jsonb_exists_all('{\"a\":1}', '{a,b}')", "f"),
+    ("SELECT jsonb_exists_any('{\"a\":1}', '{a,b}')", "t"),
+    ("SELECT jsonb_exists_all('{\"a\":1}', '{\"a\",NULL}')", "t"),
+    ("SELECT jsonb_exists_any('{\"a\": 1, \"b\": [1, 2]}', '{{a,b},{c,d}}')", "t"),
+    ("SELECT jsonb_exists_all('{\"a\": 1, \"b\": [1, 2]}', '{{a,b},{c,d}}')", "f"),
+    ("SELECT jsonb_exists_any('{\"a\":1}', '{}')", "f"),
+    ("SELECT jsonb_exists_all('{\"a\":1}', '{}')", "t"),
+]
 RAISED = [
     ('SELECT pg_catalog."jsonb_object_keys"(\'[1, "two", null]\'::jsonb) AS v', "22023"),
     ("SELECT pg_catalog.\"jsonb_object_keys\"('3'::jsonb) AS v", "22023"),
@@ -142,6 +153,17 @@ def _text(value: object) -> str | None:
 @pytest.mark.parametrize(("sql", "want"), ANSWERED)
 def test_clickhouse_answers_postgresql_s(runtime, sql, want):
     assert [_text(v) for v in _answers(runtime, sql)] == [want]
+
+
+@pytest.mark.parametrize(("sql", "want"), UNTYPED)
+def test_clickhouse_reads_an_untyped_array_literal_as_text_array(runtime, sql, want):
+    assert [_text(v) for v in _answers(runtime, sql)] == [want]
+
+
+@pytest.mark.parametrize("name", ["jsonb_exists_any", "jsonb_exists_all"])
+def test_an_untyped_literal_not_an_array_is_refused_by_name(name):
+    with pytest.raises(FunctionRefused):
+        transpile(f"SELECT {name}('{{\"a\":1}}', 'abc')", "clickhouse")
 
 
 @pytest.mark.parametrize(("sql", "state"), RAISED)

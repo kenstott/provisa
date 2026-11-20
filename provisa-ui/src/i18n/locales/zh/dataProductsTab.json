@@ -310,6 +310,9 @@
     },
     "detailPanel": "数据产品详情",
     "tagFacetLabel": "标签",
-    "tagFacetPlaceholder": "按标签筛选"
+    "tagFacetPlaceholder": "按标签筛选",
+    "noMatch": "没有符合筛选条件的数据产品",
+    "domainFacetLabel": "域",
+    "domainFacetPlaceholder": "按域筛选"
   }
 }

@@ -11094,5 +11094,8 @@
   "pt/yourData.json::yourData.pgwire": "Connection string for a SQL client (pgwire)",
   "pt/yourData.json::yourData.rest": "REST",
   "pt/yourData.json::yourData.sql": "SQL",
-  "pt/yourData.json::yourData.title": "Your data"
+  "pt/yourData.json::yourData.title": "Your data",
+  "pt/dataProductsTab.json::dataProductsTab.noMatch": "No data products match the filters",
+  "pt/dataProductsTab.json::dataProductsTab.domainFacetLabel": "Domains",
+  "pt/dataProductsTab.json::dataProductsTab.domainFacetPlaceholder": "Filter by domain"
 }

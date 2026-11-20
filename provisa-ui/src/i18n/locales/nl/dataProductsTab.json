@@ -310,6 +310,9 @@
     },
     "detailPanel": "Detail van het dataproduct",
     "tagFacetLabel": "Tags",
-    "tagFacetPlaceholder": "Filteren op tag"
+    "tagFacetPlaceholder": "Filteren op tag",
+    "noMatch": "Geen dataproducten voldoen aan de filters",
+    "domainFacetLabel": "Domeinen",
+    "domainFacetPlaceholder": "Filteren op domein"
   }
 }
