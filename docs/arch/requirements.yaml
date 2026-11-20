@@ -97416,7 +97416,10 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     once approved. Before creating it, matches are proposed from the ontology import''s existing alignment
     so the steward can merge instead of duplicating. The steward''s standing choice per catalog applies, for
     example always accepting new terms from one catalog as drafts. The page lives in the Context group as
-    Context Sync (REQ-2259).'
+    Context Sync (REQ-2259). (Amended 2026-11-19, MERGE FILLS AN EMPTY DEFINITION:) Maintainer 2026-11-19.
+    Merging a catalog term into an existing term records the provenance on the chosen term and copies the
+    catalog''s definition only when the term has none, as the ontology import does for a same-as match. The
+    difference list leaves out the glossary Provisa itself publishes to that catalog, and its group terms.'
   scenario: 'Given a catalog entry whose asset descriptions differ from Provisa''s for forty columns and
     two owners
 
@@ -97752,19 +97755,25 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
   priority: MUST
   type: behavioral
   description: 'Maintainer 2026-11-19 (pgwire-calcite plan P6). DIALECT FIRST: a gap in the SQL Calcite sends to a JDBC
-    source is fixed in the Calcite dialect or JdbcRules in the Calcite fork, never in pgwire-calcite or
-    an adapter pack. The Calcite JDBC adapter pushes only what the source can run, correctly: JdbcRules
-    consults the dialect''s supportsFunction and supportsAggregateFunction before pushing a call, and a
-    call the dialect does not support stays in Calcite; a text comparison (range or equality on VARCHAR
-    or CHAR) is not pushed to a source whose collation may differ from Calcite''s, as Trino withholds
-    them; a database reporting the product name TRINO gets the Trino dialect, not the Presto one; the
-    Sybase dialect renders OFFSET without FETCH instead of failing. Each has a RelToSqlConverterTest
-    case. (Amended 2026-11-19, PARTLY PUSHABLE FILTERS SPLIT; TEXT ORDER FOLLOWS THE COLLATION LEVEL:)
-    Maintainer 2026-11-19. Each dialect declares how much text comparison its collation lets Calcite
-    push: all, equality only, or none (an unknown database: none). A filter whose conjuncts are only
-    partly pushable is split: the safe conjuncts go to the source and the rest stay in Calcite, as Trino
-    does. ORDER BY, GROUP BY and MIN or MAX on text are pushed only to a dialect whose level is all.
-    LIKE and SIMILAR TO follow the equality rule.'
+    source is fixed in the Calcite dialect or JdbcRules in the Calcite fork, never in pgwire-calcite or an
+    adapter pack. The Calcite JDBC adapter pushes only what the source can run, correctly: JdbcRules
+    consults the dialect''s supportsFunction and supportsAggregateFunction before pushing a call, and a call
+    the dialect does not support stays in Calcite; a text comparison (range or equality on VARCHAR or CHAR)
+    is not pushed to a source whose collation may differ from Calcite''s, as Trino withholds them; a
+    database reporting the product name TRINO gets the Trino dialect, not the Presto one; the Sybase dialect
+    renders OFFSET without FETCH instead of failing. Each has a RelToSqlConverterTest case. (Amended
+    2026-11-19, PARTLY PUSHABLE FILTERS SPLIT; TEXT ORDER FOLLOWS THE COLLATION LEVEL:) Maintainer
+    2026-11-19. Each dialect declares how much text comparison its collation lets Calcite push: all,
+    equality only, or none (an unknown database: none). A filter whose conjuncts are only partly pushable is
+    split: the safe conjuncts go to the source and the rest stay in Calcite, as Trino does. ORDER BY, GROUP
+    BY and MIN or MAX on text are pushed only to a dialect whose level is all. LIKE and SIMILAR TO follow
+    the equality rule. (Amended 2026-11-19, ORACLE EMPTY STRING; WINDOWED FILTERS:) Maintainer 2026-11-19. A
+    dialect that evaluates the empty string as NULL declares it, and a text comparison with an empty literal
+    then stays in Calcite; Exasol and Oracle declare it. A filter over a windowed aggregate is pushed with
+    the window when the rest of the plan is pushed: window projects keep their JDBC form so the pushed plan
+    is available to the planner. The text-level rule for DISTINCT, set operations and window keys also
+    covers ordered aggregates (LISTAGG ... WITHIN GROUP ORDER BY text), MIN and MAX of text over a window,
+    and DISTINCT inside window aggregates.'
 - id: REQ-2257
   status: proposed
   target: 2026-Q3
@@ -97843,4 +97852,7 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     Every link to another page goes through the shared entity link helper (metric and classification join
     its kinds) and is drawn only when the viewer holds the target page''s right, otherwise plain text.
     Labels are translated in every locale, and tours, end-to-end tests and documentation follow the new
-    names.'
+    names. (Amended 2026-11-19, RECENT CHANGE IS THE TERM''S LAST WRITE:) Maintainer 2026-11-19. Every
+    glossary term records when it last changed: any write to its name, definition, calculation method,
+    domains, relations on either end or status sets that time. The Glossary''s recent-change sort orders by
+    it.'
