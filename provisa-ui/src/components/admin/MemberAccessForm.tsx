@@ -10,13 +10,13 @@
 
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { ActionIcon, Button, Select, TextInput } from "@mantine/core";
+import { Button, Select, TextInput } from "@mantine/core";
 import { DateInput } from "@mantine/dates";
 import { Plus, X } from "lucide-react";
 import { grantMemberAccess } from "../../api/admin";
 import { useCapability } from "../../hooks/useCapability";
 import { tomorrow, untilEndOf } from "../../lib/grantUntil";
-import { FormField, FormFooter, FormLayout } from "../form/FormLayout";
+import { FieldGroup, FormEntry, FormField, FormFooter, FormLayout } from "../form/FormLayout";
 import { MultiSelect } from "../MultiSelect";
 import { EntitlementPicker } from "../entitlements/EntitlementPicker";
 import { kindInfo, useEntitlementKinds } from "../entitlements/kinds";
@@ -127,83 +127,88 @@ export function MemberAccessForm({
           onChange={chooseRoles}
         />
       </FormField>
-      <FormField size="medium">
-        <Select
-          label={t("localUsers.domainLabel")}
-          data={domainOptions}
-          value={domain}
-          onChange={(v) => setDomain(v ?? "*")}
-          allowDeselect={false}
-          data-testid="member-access-domain"
-        />
-      </FormField>
-      <FormField size="short">
-        <DateInput
-          label={t("localUsers.untilLabel")}
-          placeholder={t("localUsers.untilPlaceholder")}
-          valueFormat="YYYY-MM-DD"
-          clearable
-          minDate={tomorrow()}
-          value={until}
-          onChange={setUntil}
-          popoverProps={{ withinPortal: true }}
-          data-testid="assignment-until"
-        />
-      </FormField>
+      <FieldGroup row>
+        <FormField size="medium">
+          <Select
+            label={t("localUsers.domainLabel")}
+            data={domainOptions}
+            value={domain}
+            onChange={(v) => setDomain(v ?? "*")}
+            allowDeselect={false}
+            data-testid="member-access-domain"
+          />
+        </FormField>
+        <FormField size="short">
+          <DateInput
+            label={t("localUsers.untilLabel")}
+            placeholder={t("localUsers.untilPlaceholder")}
+            valueFormat="YYYY-MM-DD"
+            clearable
+            minDate={tomorrow()}
+            value={until}
+            onChange={setUntil}
+            popoverProps={{ withinPortal: true }}
+            data-testid="assignment-until"
+          />
+        </FormField>
+      </FieldGroup>
       {assigns &&
         lists.map((l) => {
           const info = l.kind === null ? undefined : kindInfo(kinds, l.kind);
-          return [
-            <FormField size="medium" key={`role-${l.key}`}>
-              <Select
-                label={t("entitlements.form.roleLabel")}
-                placeholder={t("entitlements.form.rolePlaceholder")}
-                data={roleIds}
-                value={l.roleId}
-                onChange={(v) => patch(l.key, { roleId: v })}
-                nothingFoundMessage={t("entitlements.form.noRoles")}
-                data-testid={`member-access-list-${l.key}-role`}
-              />
-            </FormField>,
-            <FormField size="medium" key={`kind-${l.key}`}>
-              <Select
-                label={t("entitlements.form.kindLabel")}
-                placeholder={t("entitlements.form.kindPlaceholder")}
-                data={kindOptions}
-                value={l.kind}
-                onChange={(v) => patch(l.key, { kind: v, identifiers: [] })}
-                data-testid={`member-access-list-${l.key}-kind`}
-              />
-            </FormField>,
-            info !== undefined ? (
-              <FormField
-                size="long"
-                key={`entries-${l.key}`}
-                help={t("entitlements.form.entriesHelp")}
-              >
-                <EntitlementPicker
-                  label={t("entitlements.form.entriesLabel")}
-                  kind={info}
-                  names={kinds?.names ?? null}
-                  value={l.identifiers}
-                  onChange={(ids) => patch(l.key, { identifiers: ids })}
-                  roleIds={allRoles}
-                  testId={`member-access-list-${l.key}-picker`}
-                />
-              </FormField>
-            ) : null,
-            <FormField size="short" key={`remove-${l.key}`}>
-              <ActionIcon
-                variant="subtle"
-                color="red"
-                aria-label={t("localUsers.removeList")}
-                onClick={() => setLists((prev) => prev.filter((x) => x.key !== l.key))}
-                data-testid={`member-access-list-${l.key}-remove`}
-              >
-                <X size={14} />
-              </ActionIcon>
-            </FormField>,
-          ];
+          return (
+            <FormEntry key={l.key} data-testid={`member-access-list-${l.key}`}>
+              <FieldGroup row>
+                <FormField size="medium">
+                  <Select
+                    label={t("entitlements.form.roleLabel")}
+                    placeholder={t("entitlements.form.rolePlaceholder")}
+                    data={roleIds}
+                    value={l.roleId}
+                    onChange={(v) => patch(l.key, { roleId: v })}
+                    nothingFoundMessage={t("entitlements.form.noRoles")}
+                    data-testid={`member-access-list-${l.key}-role`}
+                  />
+                </FormField>
+                <FormField size="medium">
+                  <Select
+                    label={t("entitlements.form.kindLabel")}
+                    placeholder={t("entitlements.form.kindPlaceholder")}
+                    data={kindOptions}
+                    value={l.kind}
+                    onChange={(v) => patch(l.key, { kind: v, identifiers: [] })}
+                    data-testid={`member-access-list-${l.key}-kind`}
+                  />
+                </FormField>
+                <FormField size="short">
+                  <Button
+                    variant="subtle"
+                    color="red"
+                    size="xs"
+                    leftSection={<X size={14} />}
+                    onClick={() => setLists((prev) => prev.filter((x) => x.key !== l.key))}
+                    data-testid={`member-access-list-${l.key}-remove`}
+                  >
+                    {t("localUsers.removeList")}
+                  </Button>
+                </FormField>
+              </FieldGroup>
+              {info !== undefined && (
+                <FieldGroup row>
+                  <FormField size="long" help={t("entitlements.form.entriesHelp")}>
+                    <EntitlementPicker
+                      label={t("entitlements.form.entriesLabel")}
+                      kind={info}
+                      names={kinds?.names ?? null}
+                      value={l.identifiers}
+                      onChange={(ids) => patch(l.key, { identifiers: ids })}
+                      roleIds={allRoles}
+                      testId={`member-access-list-${l.key}-picker`}
+                    />
+                  </FormField>
+                </FieldGroup>
+              )}
+            </FormEntry>
+          );
         })}
       {assigns && (
         <FormField size="medium">
