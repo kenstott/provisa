@@ -186,6 +186,7 @@ export function TableEditForm({
             isView={isView}
             source={editSource}
             describe={creating ? undefined : () => generateTableDescription(editingTable.id)}
+            relationships={relationships}
           />
         ))}
       {section === "associations" && (
