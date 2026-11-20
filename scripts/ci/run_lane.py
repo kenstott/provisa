@@ -201,9 +201,9 @@ LANES: dict[str, Lane] = {
     ),
 }
 if CORE_LONG:
-    # The core files a core shard cannot hold (today test_text_search_on_engines.py, about 70
-    # minutes of Trino text search; job R509-T): core's own selection, in a lane of their own with
-    # its own budget, until each is folded in under a core shard's target and rejoins core.
+    # The core files a core shard cannot hold (job R509-T): core's own selection, in a lane of
+    # their own with its own budget, until each is folded in under a core shard's target and
+    # rejoins core.
     LANES["core_long"] = Lane(CORE_LONG, _CORE)
 
 

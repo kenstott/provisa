@@ -810,7 +810,6 @@
       "status_by_action": "O estado de um termo muda através de Aprovar, Descontinuar, Retirar ou Restaurar.",
       "successor_required": "Este termo ainda tem colunas ou tabelas; retirá-lo as move para um sucessor. Escolha um.",
       "successor_role": "O sucessor de um {{role}} deve ser um {{role}} ou um conceito; '{{successor}}' é um {{successor_role}}.",
-      "no_retirement_history": "O histórico do modelo não tem nenhuma retirada deste termo.",
       "finding": {
         "unlinked_tables": "Esta classe está ancorada em tabelas que as relações de mesma entidade não unem todas: {{tables}}.",
         "class_and_attribute": "Esta classe também tem colunas que não são suas chaves: {{columns}}.",

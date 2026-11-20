@@ -144,7 +144,7 @@ import { duplicateRemote, duplicateSeed } from "./sources/sourceDuplicate";
 import { PanelWorking } from "./sources/PanelWorking";
 import { AfterSaveSteps } from "./sources/AfterSaveSteps";
 import { PanelActions, SplitPane } from "../components/list/SplitPane";
-import { useDetailParam } from "../components/list/useDetailParam";
+import { useRememberedDetail } from "../components/list/useDetailParam";
 import { PageLoading } from "../components/PageLoading";
 import { useDependentsDialog } from "../hooks/useDependentsDialog";
 import { ListTable, ListHead, ListRow, ListEmpty, ListItems } from "../components/list/ListTable";
@@ -176,7 +176,11 @@ export function SourcesPage() {
   const { tables: registeredTables } = useTables({ columns: false, includeWithdrawn: true });
   // REQ-2241: the open source and its panel's section are the URL (`?expanded=<id>&section=`).
   // The section is the same in its read view and its edit form.
-  const detail = useDetailParam("sources");
+  // REQ-2260: and the one left open is open again on coming back.
+  const detail = useRememberedDetail(
+    "sources",
+    sourcesLoading ? null : sources.map((s) => s.id),
+  );
   const section = (detail.tab ?? "connection") as SourceSection;
   const setSection = detail.setTab;
   const expanded = detail.id;

@@ -310,6 +310,9 @@
     },
     "detailPanel": "Details des Datenprodukts",
     "tagFacetLabel": "Tags",
-    "tagFacetPlaceholder": "Nach Tag filtern"
+    "tagFacetPlaceholder": "Nach Tag filtern",
+    "noMatch": "Keine Datenprodukte entsprechen den Filtern",
+    "domainFacetLabel": "Domänen",
+    "domainFacetPlaceholder": "Nach Domäne filtern"
   }
 }

@@ -25,6 +25,7 @@
     "deletedWithBranch": "{{env}} en bijbehorende branch verwijderd.",
     "colName": "Naam",
     "colKind": "Verbindingen",
+    "colStage": "Fase",
     "colRepo": "Repository",
     "colCreatedBy": "Aangemaakt door",
     "colExpires": "Verloopt",
@@ -150,6 +151,9 @@
     "pulledIn": "Ook meegenomen, omdat de selectie ze vereist:",
     "rebuild": "Opnieuw opbouwen",
     "rebuilt": "Het model van {{env}} is opnieuw naar de repository gecommit.",
-    "rebuildFailed": "{{env}} is nog steeds afgeweken, omdat de commit niet is aangekomen."
+    "rebuildFailed": "{{env}} is nog steeds afgeweken, omdat de commit niet is aangekomen.",
+    "stageTitle": "Fase",
+    "stageHelp": "Geeft aan waarvoor deze omgeving dient: productie, preproductie, test of ontwikkeling. De oorspronkelijke omgeving van de organisatie begint als productie en een nieuwe als ontwikkeling; een willekeurig aantal omgevingen kan dezelfde fase delen.",
+    "stageHelp2": "De fase markeert de omgeving in de omgevingskiezer, in rapporten en in catalogus- en lineage-exports. Ze verandert nooit wat iemand hier mag doen: dat volgt alleen uit de rollen die in de omgeving zijn toegewezen."
   }
 }

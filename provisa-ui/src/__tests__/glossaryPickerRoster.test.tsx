@@ -31,7 +31,7 @@ vi.mock("../api/glossary", async (importOriginal) => ({
   fetchGlossaryTerm: vi.fn(),
   fetchGlossaryFindings: vi.fn(async () => []),
   listTermTables: vi.fn(async () => []),
-  fetchAppliedHistory: vi.fn(async () => null),
+  fetchAppliedHistory: vi.fn(async () => ({ retired_in: null, as_of: null, columns: [], tables: [] })),
   fetchStewardshipSummary: vi.fn(async () => ({
     agent_visible: [],
     waiting_on_one_approval: [],

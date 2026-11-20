@@ -25,6 +25,7 @@
     "deletedWithBranch": "{{env}} et sa branche supprimés.",
     "colName": "Nom",
     "colKind": "Connexions",
+    "colStage": "Étape",
     "colRepo": "Dépôt",
     "colCreatedBy": "Créé par",
     "colExpires": "Expire",
@@ -150,6 +151,9 @@
     "pulledIn": "Également transportés, car la sélection les requiert :",
     "rebuild": "Reconstruire",
     "rebuilt": "Le modèle de {{env}} a de nouveau été validé dans le dépôt.",
-    "rebuildFailed": "{{env}} est toujours en dérive, car le commit n'a pas abouti."
+    "rebuildFailed": "{{env}} est toujours en dérive, car le commit n'a pas abouti.",
+    "stageTitle": "Étape",
+    "stageHelp": "Déclare à quoi sert cet environnement : production, préproduction, test ou développement. L'environnement d'origine de l'organisation commence en production et un nouvel environnement en développement ; plusieurs environnements peuvent partager la même étape.",
+    "stageHelp2": "L'étape identifie l'environnement dans le sélecteur, dans les rapports et dans les exports de catalogue et de lignage. Elle ne change jamais ce que chacun peut faire ici : cela dépend uniquement des rôles attribués dans l'environnement."
   }
 }

@@ -810,7 +810,6 @@
       "status_by_action": "用語のステータスは、承認・非推奨化・廃止・復元のいずれかで変わります。",
       "successor_required": "この用語にはまだ列またはテーブルがあります。廃止するとそれらは後継に移ります。後継を選んでください。",
       "successor_role": "{{role}} の後継は {{role}} か概念でなければなりません。「{{successor}}」は {{successor_role}} です。",
-      "no_retirement_history": "モデルの履歴にこの用語の廃止はありません。",
       "finding": {
         "unlinked_tables": "このクラスは、同一エンティティのリレーションシップがすべてを結んでいないテーブルにグラウンディングされています: {{tables}}。",
         "class_and_attribute": "このクラスには、キーではない列もあります: {{columns}}。",

@@ -810,7 +810,6 @@
       "status_by_action": "術語的狀態透過「批准」「棄用」「停用」或「還原」來改變。",
       "successor_required": "該詞彙仍有欄位或表；停用它會將其移到繼任者。請選擇一個。",
       "successor_role": "{{role}} 的繼任者必須是 {{role}} 或概念；「{{successor}}」是 {{successor_role}}。",
-      "no_retirement_history": "模型的歷史中沒有該詞彙的停用記錄。",
       "finding": {
         "unlinked_tables": "此類關聯到的表並非全部由同一實體關係連接：{{tables}}。",
         "class_and_attribute": "此類還擁有不是其鍵的欄位：{{columns}}。",

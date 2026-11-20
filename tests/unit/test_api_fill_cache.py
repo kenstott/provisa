@@ -28,6 +28,7 @@ from provisa.api_source.caller import ApiCallError
 from provisa.api_source.models import ApiColumn, ApiColumnType, ApiEndpoint
 from provisa.core.paging import PaginationConfig
 from provisa.executor.session import EngineSession
+from provisa.federation.replica_address import ReplicaRoutes
 
 duckdb = pytest.importorskip("duckdb")
 
@@ -354,6 +355,7 @@ async def test_a_request_fetches_a_path_parameter_table_once_per_parent_key_with
         ],
     )
     state.api_endpoints = {(pets.source_id, "pets"): pets, (by_id.source_id, "pet_by_id"): by_id}
+    state.replica_routes = ReplicaRoutes()
     state.api_sources = {"api": _api_source({"bearer": "t0ken"})}
     state.tables = [_registered(pets), _registered(by_id)]
     state.tenant_db = None
@@ -429,6 +431,7 @@ async def test_an_api_that_answers_nothing_gives_no_rows_through_every_path_that
         ],
     )
     state.api_endpoints = {(pets.source_id, "pets"): pets, (by_id.source_id, "pet_by_id"): by_id}
+    state.replica_routes = ReplicaRoutes()
     state.api_sources = {"api": _api_source()}
     state.tables = [_registered(pets), _registered(by_id)]
     state.tenant_db = None
@@ -620,6 +623,7 @@ async def test_a_fill_is_read_back_by_the_arguments_it_was_fetched_for(api_step)
     state, read = api_step
     pets = _endpoint()
     state.api_endpoints = {("api", "pets"): pets}
+    state.replica_routes = ReplicaRoutes()
     state.tables = [_registered(pets)]
     for args in ({"status": "sold"}, {"status": "available"}, {"status": "sold", "owner": 9}):
         hydration._source_hydration_expiry.clear()
@@ -649,6 +653,7 @@ async def test_each_key_of_a_join_on_a_path_parameter_is_a_read_of_its_own(api_s
     state, read = api_step
     pets, by_id = _endpoint(columns=_endpoint().columns[:2]), _by_id()
     state.api_endpoints = {("api", "pets"): pets, ("api", "pet_by_id"): by_id}
+    state.replica_routes = ReplicaRoutes()
     state.tables = [_registered(pets), _registered(by_id)]
     ctx = _pets_feeding_by_id()
     await hydration._hydrate_api_tables_before_engine(

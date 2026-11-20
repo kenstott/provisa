@@ -923,6 +923,8 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "variables they read), masks by kind, row caps, and for a write its table and columns",
         "as_of": "The time the statement read bitemporal views as of, when it set one",
         "as_recorded": "The time the statement read bitemporal views as recorded at, when it set one",
+        "stage": "Stage the environment declared when the statement ran — production, preprod, "
+        "test or development",
     },
     "usage_ranking": {
         "id": "The registered table this row ranks",
@@ -996,22 +998,25 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "status_code": "401 unauthenticated, 403 denied by governance",
         "duration_ms": "Wall-clock milliseconds before the refusal",
         "logged_at": "When the refusal happened",
+        "stage": "Stage the environment declared when the statement was refused",
     },
     "surface_mix": {
-        "id": "Composite key of the surface, the day, and the org",
+        "id": "Composite key of the surface, the day, and the stage",
         "source": "Protocol surface (http, grpc, pgwire, bolt, …)",
         "day": "Calendar day the counts cover",
         "query_count": "Statements that arrived on the surface that day",
         "distinct_users": "Distinct principals that used it that day",
+        "stage": "Stage the environment declared when those statements ran",
     },
     "query_health": {
-        "id": "Composite key of the surface, the day, and the org",
+        "id": "Composite key of the surface, the day, and the stage",
         "source": "Protocol surface (http, grpc, pgwire, bolt, …)",
         "day": "Calendar day the counts cover",
         "query_count": "Statements that arrived on the surface that day",
         "error_count": "How many of them ended at 400 or above",
         "avg_duration_ms": "Mean wall-clock milliseconds across them",
         "max_duration_ms": "Slowest statement that day, in milliseconds",
+        "stage": "Stage the environment declared when those statements ran",
     },
     "stale_metadata": {
         "id": "Kind-prefixed key of the object with the gap",
@@ -1159,6 +1164,8 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "table_name": "Name of that table",
         "domain_id": "Domain of that table",
         "table_count": "Number of registered tables the statement read",
+        "stage": "Stage the environment declared when the statement ran — production, preprod, "
+        "test or development",
     },
     "replica_builds": {
         "id": "The replica's source, schema and table, dot-joined",

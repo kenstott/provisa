@@ -25,6 +25,7 @@ import pytest
 from provisa.api.data.materialization import _materialize_api_to_engine_cache
 from provisa.api_source.models import ApiColumn, ApiColumnType, ApiEndpoint, ParamType
 from provisa.core.parameter_binding import ParameterRequired
+from provisa.federation.replica_address import ReplicaRoutes
 
 TABLE = 7
 
@@ -68,6 +69,7 @@ def _openapi_state(*params: dict) -> SimpleNamespace:
     return SimpleNamespace(
         hot_manager=None,
         api_endpoints={("src", "orders"): endpoint},
+        replica_routes=ReplicaRoutes(),
         graphql_remote_sources={},
         tables=[_table("orders", *params)],
     )
@@ -91,6 +93,7 @@ def _graphql_state(*params: dict) -> SimpleNamespace:
     return SimpleNamespace(
         hot_manager=None,
         api_endpoints={},
+        replica_routes=ReplicaRoutes(),
         graphql_remote_sources={"src": reg},
         tables=[_table("pets", *params)],
     )
@@ -101,6 +104,7 @@ def _grpc_state(*params: dict) -> SimpleNamespace:
     return SimpleNamespace(
         hot_manager=None,
         api_endpoints={},
+        replica_routes=ReplicaRoutes(),
         graphql_remote_sources={},
         grpc_remote_sources={"src": {"namespace": "", "queries": [query]}},
         tables=[_table("Accounts__List", *params)],

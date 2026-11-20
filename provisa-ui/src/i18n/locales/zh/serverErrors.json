@@ -810,7 +810,6 @@
       "status_by_action": "术语的状态通过“批准”“弃用”“停用”或“恢复”来改变。",
       "successor_required": "该术语仍有列或表；停用它会将其移到继任者。请选择一个。",
       "successor_role": "{{role}} 的继任者必须是 {{role}} 或概念；“{{successor}}”是 {{successor_role}}。",
-      "no_retirement_history": "模型的历史中没有该术语的停用记录。",
       "finding": {
         "unlinked_tables": "此类关联到的表并非全部由同一实体关系连接：{{tables}}。",
         "class_and_attribute": "此类还拥有不是其键的列：{{columns}}。",
