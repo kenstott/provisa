@@ -494,12 +494,8 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>jsonb_exists</strong><br>Whether a text is a top-level key, a string element, or the scalar string of a jsonb.</td><td><pre><code>jsonb_exists($v, $k)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
-<tr><td><strong>jsonb_exists_any</strong><br>Whether any text of an array is a top-level key or string element of a jsonb.</td><td><pre><code>jsonb_exists_any($v, $a)
-=&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
-<tr><td><strong>jsonb_exists_all</strong><br>Whether every text of an array is a top-level key or string element of a jsonb.</td><td><pre><code>jsonb_exists_all($v, $a)
-=&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>jsonb_exists_any</strong><br>Whether any text of an array is a top-level key or string element of a jsonb.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>jsonb_exists_all</strong><br>Whether every text of an array is a top-level key or string element of a jsonb.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>jsonb_object_keys</strong><br>An object&#x27;s distinct keys, in jsonb&#x27;s order: the shorter first, then by bytes.</td><td><pre><code>jsonb_object_keys($v)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
@@ -1605,12 +1601,8 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>jsonb_exists</strong><br>Whether a text is a top-level key, a string element, or the scalar string of a jsonb.</td><td><pre><code>jsonb_exists($v, $k)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
-<tr><td><strong>jsonb_exists_any</strong><br>Whether any text of an array is a top-level key or string element of a jsonb.</td><td><pre><code>jsonb_exists_any($v, $a)
-=&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
-<tr><td><strong>jsonb_exists_all</strong><br>Whether every text of an array is a top-level key or string element of a jsonb.</td><td><pre><code>jsonb_exists_all($v, $a)
-=&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>jsonb_exists_any</strong><br>Whether any text of an array is a top-level key or string element of a jsonb.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>jsonb_exists_all</strong><br>Whether every text of an array is a top-level key or string element of a jsonb.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>jsonb_object_keys</strong><br>An object&#x27;s distinct keys, in jsonb&#x27;s order: the shorter first, then by bytes.</td><td><pre><code>jsonb_object_keys($v)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
@@ -2720,12 +2712,8 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>jsonb_exists</strong><br>Whether a text is a top-level key, a string element, or the scalar string of a jsonb.</td><td><pre><code>jsonb_exists($v, $k)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
-<tr><td><strong>jsonb_exists_any</strong><br>Whether any text of an array is a top-level key or string element of a jsonb.</td><td><pre><code>jsonb_exists_any($v, $a)
-=&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
-<tr><td><strong>jsonb_exists_all</strong><br>Whether every text of an array is a top-level key or string element of a jsonb.</td><td><pre><code>jsonb_exists_all($v, $a)
-=&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>jsonb_exists_any</strong><br>Whether any text of an array is a top-level key or string element of a jsonb.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>jsonb_exists_all</strong><br>Whether every text of an array is a top-level key or string element of a jsonb.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>jsonb_object_keys</strong><br>An object&#x27;s distinct keys, in jsonb&#x27;s order: the shorter first, then by bytes.</td><td><pre><code>jsonb_object_keys($v)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
@@ -3835,12 +3823,8 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>jsonb_exists</strong><br>Whether a text is a top-level key, a string element, or the scalar string of a jsonb.</td><td><pre><code>jsonb_exists($v, $k)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
-<tr><td><strong>jsonb_exists_any</strong><br>Whether any text of an array is a top-level key or string element of a jsonb.</td><td><pre><code>jsonb_exists_any($v, $a)
-=&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
-<tr><td><strong>jsonb_exists_all</strong><br>Whether every text of an array is a top-level key or string element of a jsonb.</td><td><pre><code>jsonb_exists_all($v, $a)
-=&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>jsonb_exists_any</strong><br>Whether any text of an array is a top-level key or string element of a jsonb.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>jsonb_exists_all</strong><br>Whether every text of an array is a top-level key or string element of a jsonb.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>jsonb_object_keys</strong><br>An object&#x27;s distinct keys, in jsonb&#x27;s order: the shorter first, then by bytes.</td><td><pre><code>jsonb_object_keys($v)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
@@ -4944,12 +4928,8 @@ if(toInt64($v) BETWEEN 0 AND 41, toInt32(arrayElement([1, 3, 2, 3, 4, 3, 4, 4, 1
 <tr><td><strong>jsonb_exists</strong><br>Whether a text is a top-level key, a string element, or the scalar string of a jsonb.</td><td><pre><code>jsonb_exists($v, $k)
 =&gt;
 arrayElement(arrayMap((_v, _k) -&gt; CAST(if(_v IS NULL OR _k IS NULL, NULL, has(multiIf(substring(trimLeft(ifNull(_v, &#x27;null&#x27;)), 1, 1) = &#x27;{&#x27;, JSONExtractKeys(ifNull(_v, &#x27;null&#x27;)), substring(trimLeft(ifNull(_v, &#x27;null&#x27;)), 1, 1) = &#x27;[&#x27;, CAST(arrayFilter(_e -&gt; _e IS NOT NULL, arrayMap(_i -&gt; if(JSONType(ifNull(_v, &#x27;null&#x27;), _i) = &#x27;String&#x27;, JSONExtractString(ifNull(_v, &#x27;null&#x27;), _i), NULL), range(1, JSONLength(ifNull(_v, &#x27;null&#x27;)) + 1))) AS Array(String)), substring(trimLeft(ifNull(_v, &#x27;null&#x27;)), 1, 1) = &#x27;&quot;&#x27;, [JSONExtractString(ifNull(_v, &#x27;null&#x27;))], CAST([] AS Array(String))), _k)) AS Nullable(Bool)), [$v], [$k]), 1)</code></pre></td><td></td><td></td><td></td></tr>
-<tr><td><strong>jsonb_exists_any</strong><br>Whether any text of an array is a top-level key or string element of a jsonb.</td><td><pre><code>jsonb_exists_any($v, $a)
-=&gt;
-arrayElement(arrayMap((_v, _a) -&gt; CAST(if(_v IS NULL OR _a IS NULL, NULL, hasAny(multiIf(substring(trimLeft(ifNull(_v, &#x27;null&#x27;)), 1, 1) = &#x27;{&#x27;, JSONExtractKeys(ifNull(_v, &#x27;null&#x27;)), substring(trimLeft(ifNull(_v, &#x27;null&#x27;)), 1, 1) = &#x27;[&#x27;, CAST(arrayFilter(_e -&gt; _e IS NOT NULL, arrayMap(_i -&gt; if(JSONType(ifNull(_v, &#x27;null&#x27;), _i) = &#x27;String&#x27;, JSONExtractString(ifNull(_v, &#x27;null&#x27;), _i), NULL), range(1, JSONLength(ifNull(_v, &#x27;null&#x27;)) + 1))) AS Array(String)), substring(trimLeft(ifNull(_v, &#x27;null&#x27;)), 1, 1) = &#x27;&quot;&#x27;, [JSONExtractString(ifNull(_v, &#x27;null&#x27;))], CAST([] AS Array(String))), arrayFilter(_t -&gt; _t IS NOT NULL, arrayFlatten(_a)))) AS Nullable(Bool)), [$v], [$a]), 1)</code></pre></td><td></td><td></td><td></td></tr>
-<tr><td><strong>jsonb_exists_all</strong><br>Whether every text of an array is a top-level key or string element of a jsonb.</td><td><pre><code>jsonb_exists_all($v, $a)
-=&gt;
-arrayElement(arrayMap((_v, _a) -&gt; CAST(if(_v IS NULL OR _a IS NULL, NULL, hasAll(multiIf(substring(trimLeft(ifNull(_v, &#x27;null&#x27;)), 1, 1) = &#x27;{&#x27;, JSONExtractKeys(ifNull(_v, &#x27;null&#x27;)), substring(trimLeft(ifNull(_v, &#x27;null&#x27;)), 1, 1) = &#x27;[&#x27;, CAST(arrayFilter(_e -&gt; _e IS NOT NULL, arrayMap(_i -&gt; if(JSONType(ifNull(_v, &#x27;null&#x27;), _i) = &#x27;String&#x27;, JSONExtractString(ifNull(_v, &#x27;null&#x27;), _i), NULL), range(1, JSONLength(ifNull(_v, &#x27;null&#x27;)) + 1))) AS Array(String)), substring(trimLeft(ifNull(_v, &#x27;null&#x27;)), 1, 1) = &#x27;&quot;&#x27;, [JSONExtractString(ifNull(_v, &#x27;null&#x27;))], CAST([] AS Array(String))), arrayFilter(_t -&gt; _t IS NOT NULL, arrayFlatten(_a)))) AS Nullable(Bool)), [$v], [$a]), 1)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>jsonb_exists_any</strong><br>Whether any text of an array is a top-level key or string element of a jsonb.</td><td><pre><code>function provisa.transpiler.polyfill.json_built.exists_jsonb_exists_any: arrayElement(arrayMap((_v, _a) -&gt; CAST(if(_v IS NULL OR _a IS NULL, NULL, hasAny(multiIf(substring(trimLeft(ifNull(_v, &#x27;null&#x27;)), 1, 1) = &#x27;{&#x27;, JSONExtractKeys(ifNull(_v, &#x27;null&#x27;)), substring(trimLeft(ifNull(_v, &#x27;null&#x27;)), 1, 1) = &#x27;[&#x27;, CAST(arrayFilter(_e -&gt; _e IS NOT NULL, arrayMap(_i -&gt; if(JSONType(ifNull(_v, &#x27;null&#x27;), _i) = &#x27;String&#x27;, JSONExtractString(ifNull(_v, &#x27;null&#x27;), _i), NULL), range(1, JSONLength(ifNull(_v, &#x27;null&#x27;)) + 1))) AS Array(String)), substring(trimLeft(ifNull(_v, &#x27;null&#x27;)), 1, 1) = &#x27;&quot;&#x27;, [JSONExtractString(ifNull(_v, &#x27;null&#x27;))], CAST([] AS Array(String))), arrayFilter(_t -&gt; _t IS NOT NULL, arrayFlatten(_a)))) AS Nullable(Bool)), [$v], [$a]), 1), $a a text[] argument, or a literal of unknown type written as an array (&#x27;{a,b}&#x27;) as an Array(Nullable(String)) of its elements; another literal is refused by name.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>jsonb_exists_all</strong><br>Whether every text of an array is a top-level key or string element of a jsonb.</td><td><pre><code>function provisa.transpiler.polyfill.json_built.exists_jsonb_exists_all: arrayElement(arrayMap((_v, _a) -&gt; CAST(if(_v IS NULL OR _a IS NULL, NULL, hasAll(multiIf(substring(trimLeft(ifNull(_v, &#x27;null&#x27;)), 1, 1) = &#x27;{&#x27;, JSONExtractKeys(ifNull(_v, &#x27;null&#x27;)), substring(trimLeft(ifNull(_v, &#x27;null&#x27;)), 1, 1) = &#x27;[&#x27;, CAST(arrayFilter(_e -&gt; _e IS NOT NULL, arrayMap(_i -&gt; if(JSONType(ifNull(_v, &#x27;null&#x27;), _i) = &#x27;String&#x27;, JSONExtractString(ifNull(_v, &#x27;null&#x27;), _i), NULL), range(1, JSONLength(ifNull(_v, &#x27;null&#x27;)) + 1))) AS Array(String)), substring(trimLeft(ifNull(_v, &#x27;null&#x27;)), 1, 1) = &#x27;&quot;&#x27;, [JSONExtractString(ifNull(_v, &#x27;null&#x27;))], CAST([] AS Array(String))), arrayFilter(_t -&gt; _t IS NOT NULL, arrayFlatten(_a)))) AS Nullable(Bool)), [$v], [$a]), 1), $a a text[] argument, or a literal of unknown type written as an array (&#x27;{a,b}&#x27;) as an Array(Nullable(String)) of its elements; another literal is refused by name.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>jsonb_object_keys</strong><br>An object&#x27;s distinct keys, in jsonb&#x27;s order: the shorter first, then by bytes.</td><td><pre><code>jsonb_object_keys($v)
 =&gt;
 arrayJoin(if(throwIf(ifNull($v IS NOT NULL AND substring(trimLeft($v), 1, 1) NOT IN (&#x27;{&#x27;, &#x27;[&#x27;), 0), &#x27;postgresql-error 22023: cannot call jsonb_object_keys on a scalar&lt;end of postgresql-error&gt;&#x27;) + throwIf(ifNull($v IS NOT NULL AND substring(trimLeft($v), 1, 1) = &#x27;[&#x27;, 0), &#x27;postgresql-error 22023: cannot call jsonb_object_keys on an array&lt;end of postgresql-error&gt;&#x27;) = 0 AND $v IS NOT NULL, arraySort(_k -&gt; (length(_k), _k), arrayDistinct(JSONExtractKeys(ifNull($v, &#x27;{}&#x27;)))), CAST([] AS Array(String))))</code></pre></td><td></td><td></td><td></td></tr>
@@ -6086,12 +6066,8 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>jsonb_exists</strong><br>Whether a text is a top-level key, a string element, or the scalar string of a jsonb.</td><td><pre><code>jsonb_exists($v, $k)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
-<tr><td><strong>jsonb_exists_any</strong><br>Whether any text of an array is a top-level key or string element of a jsonb.</td><td><pre><code>jsonb_exists_any($v, $a)
-=&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
-<tr><td><strong>jsonb_exists_all</strong><br>Whether every text of an array is a top-level key or string element of a jsonb.</td><td><pre><code>jsonb_exists_all($v, $a)
-=&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>jsonb_exists_any</strong><br>Whether any text of an array is a top-level key or string element of a jsonb.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>jsonb_exists_all</strong><br>Whether every text of an array is a top-level key or string element of a jsonb.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>jsonb_object_keys</strong><br>An object&#x27;s distinct keys, in jsonb&#x27;s order: the shorter first, then by bytes.</td><td><pre><code>jsonb_object_keys($v)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
@@ -7106,12 +7082,8 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>jsonb_exists</strong><br>Whether a text is a top-level key, a string element, or the scalar string of a jsonb.</td><td><pre><code>jsonb_exists($v, $k)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
-<tr><td><strong>jsonb_exists_any</strong><br>Whether any text of an array is a top-level key or string element of a jsonb.</td><td><pre><code>jsonb_exists_any($v, $a)
-=&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
-<tr><td><strong>jsonb_exists_all</strong><br>Whether every text of an array is a top-level key or string element of a jsonb.</td><td><pre><code>jsonb_exists_all($v, $a)
-=&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>jsonb_exists_any</strong><br>Whether any text of an array is a top-level key or string element of a jsonb.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>jsonb_exists_all</strong><br>Whether every text of an array is a top-level key or string element of a jsonb.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>jsonb_object_keys</strong><br>An object&#x27;s distinct keys, in jsonb&#x27;s order: the shorter first, then by bytes.</td><td><pre><code>jsonb_object_keys($v)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
@@ -8126,12 +8098,8 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>jsonb_exists</strong><br>Whether a text is a top-level key, a string element, or the scalar string of a jsonb.</td><td><pre><code>jsonb_exists($v, $k)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
-<tr><td><strong>jsonb_exists_any</strong><br>Whether any text of an array is a top-level key or string element of a jsonb.</td><td><pre><code>jsonb_exists_any($v, $a)
-=&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
-<tr><td><strong>jsonb_exists_all</strong><br>Whether every text of an array is a top-level key or string element of a jsonb.</td><td><pre><code>jsonb_exists_all($v, $a)
-=&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>jsonb_exists_any</strong><br>Whether any text of an array is a top-level key or string element of a jsonb.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>jsonb_exists_all</strong><br>Whether every text of an array is a top-level key or string element of a jsonb.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>jsonb_object_keys</strong><br>An object&#x27;s distinct keys, in jsonb&#x27;s order: the shorter first, then by bytes.</td><td><pre><code>jsonb_object_keys($v)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
@@ -9146,12 +9114,8 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>jsonb_exists</strong><br>Whether a text is a top-level key, a string element, or the scalar string of a jsonb.</td><td><pre><code>jsonb_exists($v, $k)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
-<tr><td><strong>jsonb_exists_any</strong><br>Whether any text of an array is a top-level key or string element of a jsonb.</td><td><pre><code>jsonb_exists_any($v, $a)
-=&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
-<tr><td><strong>jsonb_exists_all</strong><br>Whether every text of an array is a top-level key or string element of a jsonb.</td><td><pre><code>jsonb_exists_all($v, $a)
-=&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>jsonb_exists_any</strong><br>Whether any text of an array is a top-level key or string element of a jsonb.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>jsonb_exists_all</strong><br>Whether every text of an array is a top-level key or string element of a jsonb.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>jsonb_object_keys</strong><br>An object&#x27;s distinct keys, in jsonb&#x27;s order: the shorter first, then by bytes.</td><td><pre><code>jsonb_object_keys($v)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
@@ -10166,12 +10130,8 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>jsonb_exists</strong><br>Whether a text is a top-level key, a string element, or the scalar string of a jsonb.</td><td><pre><code>jsonb_exists($v, $k)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
-<tr><td><strong>jsonb_exists_any</strong><br>Whether any text of an array is a top-level key or string element of a jsonb.</td><td><pre><code>jsonb_exists_any($v, $a)
-=&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
-<tr><td><strong>jsonb_exists_all</strong><br>Whether every text of an array is a top-level key or string element of a jsonb.</td><td><pre><code>jsonb_exists_all($v, $a)
-=&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>jsonb_exists_any</strong><br>Whether any text of an array is a top-level key or string element of a jsonb.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>jsonb_exists_all</strong><br>Whether every text of an array is a top-level key or string element of a jsonb.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>jsonb_object_keys</strong><br>An object&#x27;s distinct keys, in jsonb&#x27;s order: the shorter first, then by bytes.</td><td><pre><code>jsonb_object_keys($v)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
@@ -11186,12 +11146,8 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>jsonb_exists</strong><br>Whether a text is a top-level key, a string element, or the scalar string of a jsonb.</td><td><pre><code>jsonb_exists($v, $k)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
-<tr><td><strong>jsonb_exists_any</strong><br>Whether any text of an array is a top-level key or string element of a jsonb.</td><td><pre><code>jsonb_exists_any($v, $a)
-=&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
-<tr><td><strong>jsonb_exists_all</strong><br>Whether every text of an array is a top-level key or string element of a jsonb.</td><td><pre><code>jsonb_exists_all($v, $a)
-=&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>jsonb_exists_any</strong><br>Whether any text of an array is a top-level key or string element of a jsonb.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>jsonb_exists_all</strong><br>Whether every text of an array is a top-level key or string element of a jsonb.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>jsonb_object_keys</strong><br>An object&#x27;s distinct keys, in jsonb&#x27;s order: the shorter first, then by bytes.</td><td><pre><code>jsonb_object_keys($v)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
@@ -12206,12 +12162,8 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>jsonb_exists</strong><br>Whether a text is a top-level key, a string element, or the scalar string of a jsonb.</td><td><pre><code>jsonb_exists($v, $k)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
-<tr><td><strong>jsonb_exists_any</strong><br>Whether any text of an array is a top-level key or string element of a jsonb.</td><td><pre><code>jsonb_exists_any($v, $a)
-=&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
-<tr><td><strong>jsonb_exists_all</strong><br>Whether every text of an array is a top-level key or string element of a jsonb.</td><td><pre><code>jsonb_exists_all($v, $a)
-=&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>jsonb_exists_any</strong><br>Whether any text of an array is a top-level key or string element of a jsonb.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>jsonb_exists_all</strong><br>Whether every text of an array is a top-level key or string element of a jsonb.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>jsonb_object_keys</strong><br>An object&#x27;s distinct keys, in jsonb&#x27;s order: the shorter first, then by bytes.</td><td><pre><code>jsonb_object_keys($v)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
@@ -13226,12 +13178,8 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>jsonb_exists</strong><br>Whether a text is a top-level key, a string element, or the scalar string of a jsonb.</td><td><pre><code>jsonb_exists($v, $k)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
-<tr><td><strong>jsonb_exists_any</strong><br>Whether any text of an array is a top-level key or string element of a jsonb.</td><td><pre><code>jsonb_exists_any($v, $a)
-=&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
-<tr><td><strong>jsonb_exists_all</strong><br>Whether every text of an array is a top-level key or string element of a jsonb.</td><td><pre><code>jsonb_exists_all($v, $a)
-=&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>jsonb_exists_any</strong><br>Whether any text of an array is a top-level key or string element of a jsonb.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>jsonb_exists_all</strong><br>Whether every text of an array is a top-level key or string element of a jsonb.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>jsonb_object_keys</strong><br>An object&#x27;s distinct keys, in jsonb&#x27;s order: the shorter first, then by bytes.</td><td><pre><code>jsonb_object_keys($v)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
@@ -14246,12 +14194,8 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>jsonb_exists</strong><br>Whether a text is a top-level key, a string element, or the scalar string of a jsonb.</td><td><pre><code>jsonb_exists($v, $k)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
-<tr><td><strong>jsonb_exists_any</strong><br>Whether any text of an array is a top-level key or string element of a jsonb.</td><td><pre><code>jsonb_exists_any($v, $a)
-=&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
-<tr><td><strong>jsonb_exists_all</strong><br>Whether every text of an array is a top-level key or string element of a jsonb.</td><td><pre><code>jsonb_exists_all($v, $a)
-=&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>jsonb_exists_any</strong><br>Whether any text of an array is a top-level key or string element of a jsonb.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>jsonb_exists_all</strong><br>Whether every text of an array is a top-level key or string element of a jsonb.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>jsonb_object_keys</strong><br>An object&#x27;s distinct keys, in jsonb&#x27;s order: the shorter first, then by bytes.</td><td><pre><code>jsonb_object_keys($v)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
@@ -15266,12 +15210,8 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>jsonb_exists</strong><br>Whether a text is a top-level key, a string element, or the scalar string of a jsonb.</td><td><pre><code>jsonb_exists($v, $k)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
-<tr><td><strong>jsonb_exists_any</strong><br>Whether any text of an array is a top-level key or string element of a jsonb.</td><td><pre><code>jsonb_exists_any($v, $a)
-=&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
-<tr><td><strong>jsonb_exists_all</strong><br>Whether every text of an array is a top-level key or string element of a jsonb.</td><td><pre><code>jsonb_exists_all($v, $a)
-=&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>jsonb_exists_any</strong><br>Whether any text of an array is a top-level key or string element of a jsonb.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>jsonb_exists_all</strong><br>Whether every text of an array is a top-level key or string element of a jsonb.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>jsonb_object_keys</strong><br>An object&#x27;s distinct keys, in jsonb&#x27;s order: the shorter first, then by bytes.</td><td><pre><code>jsonb_object_keys($v)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
@@ -16286,12 +16226,8 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>jsonb_exists</strong><br>Whether a text is a top-level key, a string element, or the scalar string of a jsonb.</td><td><pre><code>jsonb_exists($v, $k)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
-<tr><td><strong>jsonb_exists_any</strong><br>Whether any text of an array is a top-level key or string element of a jsonb.</td><td><pre><code>jsonb_exists_any($v, $a)
-=&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
-<tr><td><strong>jsonb_exists_all</strong><br>Whether every text of an array is a top-level key or string element of a jsonb.</td><td><pre><code>jsonb_exists_all($v, $a)
-=&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>jsonb_exists_any</strong><br>Whether any text of an array is a top-level key or string element of a jsonb.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>jsonb_exists_all</strong><br>Whether every text of an array is a top-level key or string element of a jsonb.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>jsonb_object_keys</strong><br>An object&#x27;s distinct keys, in jsonb&#x27;s order: the shorter first, then by bytes.</td><td><pre><code>jsonb_object_keys($v)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
@@ -17306,12 +17242,8 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>jsonb_exists</strong><br>Whether a text is a top-level key, a string element, or the scalar string of a jsonb.</td><td><pre><code>jsonb_exists($v, $k)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
-<tr><td><strong>jsonb_exists_any</strong><br>Whether any text of an array is a top-level key or string element of a jsonb.</td><td><pre><code>jsonb_exists_any($v, $a)
-=&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
-<tr><td><strong>jsonb_exists_all</strong><br>Whether every text of an array is a top-level key or string element of a jsonb.</td><td><pre><code>jsonb_exists_all($v, $a)
-=&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>jsonb_exists_any</strong><br>Whether any text of an array is a top-level key or string element of a jsonb.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>jsonb_exists_all</strong><br>Whether every text of an array is a top-level key or string element of a jsonb.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>jsonb_object_keys</strong><br>An object&#x27;s distinct keys, in jsonb&#x27;s order: the shorter first, then by bytes.</td><td><pre><code>jsonb_object_keys($v)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
