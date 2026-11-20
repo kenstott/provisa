@@ -53,6 +53,8 @@ from provisa.transpiler.polyfill import (
     snapshots,
     texts,
     textsearch,
+    trino_clocks,
+    trino_literals,
     type_io,
     unheld,
     zones,
@@ -77,6 +79,9 @@ from provisa.transpiler.polyfill.notation import Refusal, Rewrite, RuleError, ho
 GRID = Grid(
     # an array of dimensions is read before any row of its call's name
     array_dimensions.FEATURES
+    # a literal Trino's cast reads otherwise, read before any row reads it as a value
+    + trino_literals.FEATURES
+    + trino_clocks.FEATURES
     + arrays.FEATURES
     + array_sets.FEATURES
     + zones.FEATURES

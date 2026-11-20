@@ -967,7 +967,11 @@ _NUMBERS: tuple[Macro, ...] = (
         Macro(
             name,
             ("x",),
-            {_DUCKDB: Pg(f"{name.upper()}(x)"), _EVERY: Pg(form)},
+            {
+                _DUCKDB: Pg(f"{name.upper()}(x)"),
+                **({_TRINO: Pg(pg_forms.TRINO_ASINH)} if name == "asinh" else {}),
+                _EVERY: Pg(form),
+            },
             own={_CLICKHOUSE: MAPPED},
         )
         for name, form in pg_forms.HYPERBOLICS.items()

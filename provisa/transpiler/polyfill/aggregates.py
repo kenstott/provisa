@@ -274,9 +274,28 @@ def exact_of_integers(node: exp.Expr, dialect: str) -> exp.Expr | None:
     return graft(replacement(form, dialect, pattern), {"v": argument})
 
 
+def trino_of_doubles(node: exp.Expr, dialect: str) -> exp.Expr | None:
+    """avg, a variance or a standard deviation of a real or a double on Trino: Trino's own, the
+    overflow of its sums from finite values raised (float_aggregates.trino_of_doubles). Any other
+    call keeps what it had, as does one over a window or under a FILTER."""
+    function = _function(node)
+    if function is None or _over_or_filtered(node):
+        return None
+    double = _double_argument(node)
+    if double is None:
+        return None
+    form = float_aggregates.trino_of_doubles(function)
+    return graft(replacement(form, dialect, _PATTERN.format(function)), {"v": double})
+
+
 _EXACT = Rewrite(exact_of_integers)
-#: Every dialect but ClickHouse keeps what it had (provisa.transpiler.function_macros' forms).
-_FORMS = {**{d: trino.KEPT for d in DIALECTS if d not in NATIVE}, _CLICKHOUSE: _EXACT}
+#: Every dialect but ClickHouse and Trino keeps what it had (provisa.transpiler.function_macros'
+#: forms).
+_FORMS = {
+    **{d: trino.KEPT for d in DIALECTS if d not in NATIVE},
+    _CLICKHOUSE: _EXACT,
+    **trino.on_trino(Rewrite(trino_of_doubles)),
+}
 
 _BOUND = (
     f"A group of more than {MOST_VALUES} (2^40) values raises 0A000 ({{}} of more than "

@@ -6,14 +6,14 @@ A polyfill is how Provisa gives a PostgreSQL client PostgreSQL's behaviour on a 
 
 ## [PostgreSQL](postgres.md)
 
-560 of the grid's 560 features are native on PostgreSQL and left out.
+572 of the grid's 572 features are native on PostgreSQL and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 </tbody></table>
 
 ## [DuckDB](duckdb.md)
 
-209 of the grid's 560 features are native on DuckDB and left out.
+221 of the grid's 572 features are native on DuckDB and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -1019,9 +1019,21 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Trino](trino.md)
 
-128 of the grid's 560 features are native on Trino and left out.
+127 of the grid's 572 features are native on Trino and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
+<tr><td><strong>an oid literal on trino</strong><br>A text cast to an oid.</td><td><pre><code>function provisa.transpiler.polyfill.clickhouse.oid_read: A text cast to an oid, read as oidin reads it: from -2147483648 to 4294967295, a negative</code></pre></td><td><ul><li>A text the statement writes is read as PostgreSQL reads it: past -2147483648 to 4294967295 it raises 22003, a text the input does not read 22P02, and a negative value is its 32 bits unsigned. A column&#x27;s cast keeps Trino&#x27;s own.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>an integer literal on trino</strong><br>A literal cast to smallint, integer or bigint.</td><td><pre><code>function provisa.transpiler.polyfill.clickhouse.integer_read: A literal cast to an integer, read as PostgreSQL reads it: a number rounded half away from</code></pre></td><td><ul><li>A number or a text the statement writes is read as PostgreSQL reads it: a number rounded half away from zero, a text by the integer input; past the type it raises 22003, a text the input does not read 22P02.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>a numeric literal on trino</strong><br>A text cast to a numeric of no precision.</td><td><pre><code>function provisa.transpiler.polyfill.trino_literals.numeric_read: A text cast to a numeric of no precision that exact_inputs left so (it is cast to a decimal</code></pre></td><td><ul><li>A value of up to 38 digits keeps them all; one of more raises 0A000 (numeric_in() of a value of more than 38 digits has no exact form on trino). NaN and infinity raise 0A000 (numeric_in() of NaN or infinity has no form on trino): Trino&#x27;s decimal holds neither. A text the input does not read raises 22P02.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>a timestamp literal on trino</strong><br>A text cast to a timestamp.</td><td><pre><code>function provisa.transpiler.polyfill.trino_literals.stamp_read: A text cast to a timestamp: PostgreSQL&#x27;s 22008 past its range, refused by name past Trino&#x27;s,</code></pre></td><td><ul><li>Held to 294247-01-10 04:00:54.775807, the last microsecond Trino&#x27;s TIMESTAMP holds: a text past it raises 0A000 (timestamp_in() of a value past it has no exact form on trino), one past PostgreSQL&#x27;s range 22008. A fraction of more than milliseconds is read to the microsecond.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>a date literal on trino</strong><br>A text cast to a date.</td><td><pre><code>function provisa.transpiler.polyfill.trino_literals.date_read: A text cast to a date: PostgreSQL&#x27;s 22008 past its last day, which Trino&#x27;s DATE holds.</code></pre></td><td><ul><li>A text past 5874897-12-31, PostgreSQL&#x27;s last day, raises 22008 as PostgreSQL&#x27;s input does, where Trino&#x27;s DATE holds it.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>a &quot;char&quot; literal on trino</strong><br>A text cast to the one-byte &quot;char&quot;.</td><td><pre><code>function provisa.transpiler.polyfill.trino_literals.one_byte_char_read: A text cast to &quot;char&quot;, read as charin reads it: its first byte, or the empty text of an</code></pre></td><td><ul><li>Held as a VARCHAR of its first byte, or empty, as charin reads it; a first character of more than one byte raises 0A000 (charin does not read this value).</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>a character&#x27;s text on trino</strong><br>The text, length or name of a character (bpchar) value.</td><td><pre><code>function provisa.transpiler.polyfill.trino_literals.unpadded: A function of a character (bpchar) value the statement says, of its text without trailing</code></pre></td><td><ul><li>Of a value the statement says is a character: its text without trailing spaces, as bpchar&#x27;s text and length read it, where Trino&#x27;s CHAR keeps them.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>int8_sum on trino</strong><br>A step of a bigint&#x27;s sum: a numeric plus a bigint.</td><td><pre><code>function provisa.transpiler.polyfill.trino_literals.int8_sum_read: int8_sum(numeric, bigint), a step of a bigint&#x27;s sum, not strict: the bigint as a decimal of</code></pre></td><td><ul><li>The bigint is a decimal of its 19 digits. Where the numeric&#x27;s type and a bigint&#x27;s need more than 38 digits (a scale past 18) it raises 0A000 (int8_sum() of a numeric of scale past 18 has no exact form on trino): Trino would hold the sum at a smaller scale.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>numeric_mod on trino</strong><br>The remainder of two numerics.</td><td><pre><code>function provisa.transpiler.polyfill.trino_literals.numeric_mod_read: numeric_mod of a numeric the statement says is of a scale past 18, refused by name: the</code></pre></td><td><ul><li>Computed at scale 18: of a numeric the statement says is of a scale past it it raises 0A000 (numeric_mod() of a numeric of scale past 18 has no exact form on trino).</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>a time literal on trino</strong><br>A text cast to a time of day.</td><td><pre><code>function provisa.transpiler.polyfill.trino_literals.clock_read: A text cast to a time of day of a fraction of more than milliseconds, cast to TIME(6).</code></pre></td><td><ul><li>A fraction of more than milliseconds is read to the microsecond, where Trino&#x27;s TIME of no precision rounds it to the millisecond.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>comparisons of times on trino</strong><br>Two times of day compared, the larger or the smaller of two.</td><td><pre><code>function provisa.transpiler.polyfill.trino_clocks.compared: A comparison of two times the statement says, as TIME(6).</code></pre></td><td><ul><li>Of times the statement says (a cast, a literal), compared or added as Trino&#x27;s TIME(6) and TIMESTAMP(6), to the microsecond as PostgreSQL&#x27;s; any other keeps Trino&#x27;s own, of milliseconds. Trino&#x27;s TIME holds no 24:00:00.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>a date plus a time on trino</strong><br>A date plus a time of day, a timestamp.</td><td><pre><code>function provisa.transpiler.polyfill.trino_clocks.summed: A date plus a time the statement says, as the TIMESTAMP(6) of their texts.</code></pre></td><td><ul><li>Of times the statement says (a cast, a literal), compared or added as Trino&#x27;s TIME(6) and TIMESTAMP(6), to the microsecond as PostgreSQL&#x27;s; any other keeps Trino&#x27;s own, of milliseconds. Trino&#x27;s TIME holds no 24:00:00.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
 =&gt;
 CAST(CASE WHEN cardinality($a) &gt; 0 THEN length(regexp_extract(typeof($a), &#x27;^(array\()+&#x27;)) / 6 END AS INTEGER)</code></pre></td><td></td><td></td><td></td></tr>
@@ -1365,139 +1377,139 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>float4eq</strong><br>Whether a real is equal to a real, NaN after every other value.</td><td><pre><code>float4eq($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+IF($a IS NULL OR $b IS NULL, NULL, CASE WHEN is_nan($a) OR is_nan($b) THEN IF(is_nan($a), 1, 0) = IF(is_nan($b), 1, 0) ELSE $a = $b END)</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>float4ne</strong><br>Whether a real is not equal to a real, NaN after every other value.</td><td><pre><code>float4ne($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+IF($a IS NULL OR $b IS NULL, NULL, CASE WHEN is_nan($a) OR is_nan($b) THEN IF(is_nan($a), 1, 0) != IF(is_nan($b), 1, 0) ELSE $a != $b END)</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>float4lt</strong><br>Whether a real is less than a real, NaN after every other value.</td><td><pre><code>float4lt($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+IF($a IS NULL OR $b IS NULL, NULL, CASE WHEN is_nan($a) OR is_nan($b) THEN IF(is_nan($a), 1, 0) &lt; IF(is_nan($b), 1, 0) ELSE $a &lt; $b END)</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>float4le</strong><br>Whether a real is less than or equal to a real, NaN after every other value.</td><td><pre><code>float4le($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+IF($a IS NULL OR $b IS NULL, NULL, CASE WHEN is_nan($a) OR is_nan($b) THEN IF(is_nan($a), 1, 0) &lt;= IF(is_nan($b), 1, 0) ELSE $a &lt;= $b END)</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>float4gt</strong><br>Whether a real is greater than a real, NaN after every other value.</td><td><pre><code>float4gt($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+IF($a IS NULL OR $b IS NULL, NULL, CASE WHEN is_nan($a) OR is_nan($b) THEN IF(is_nan($a), 1, 0) &gt; IF(is_nan($b), 1, 0) ELSE $a &gt; $b END)</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>float4ge</strong><br>Whether a real is greater than or equal to a real, NaN after every other value.</td><td><pre><code>float4ge($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+IF($a IS NULL OR $b IS NULL, NULL, CASE WHEN is_nan($a) OR is_nan($b) THEN IF(is_nan($a), 1, 0) &gt;= IF(is_nan($b), 1, 0) ELSE $a &gt;= $b END)</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>float8eq</strong><br>Whether a double is equal to a double, NaN after every other value.</td><td><pre><code>float8eq($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+IF($a IS NULL OR $b IS NULL, NULL, CASE WHEN is_nan($a) OR is_nan($b) THEN IF(is_nan($a), 1, 0) = IF(is_nan($b), 1, 0) ELSE $a = $b END)</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>float8ne</strong><br>Whether a double is not equal to a double, NaN after every other value.</td><td><pre><code>float8ne($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+IF($a IS NULL OR $b IS NULL, NULL, CASE WHEN is_nan($a) OR is_nan($b) THEN IF(is_nan($a), 1, 0) != IF(is_nan($b), 1, 0) ELSE $a != $b END)</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>float8lt</strong><br>Whether a double is less than a double, NaN after every other value.</td><td><pre><code>float8lt($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+IF($a IS NULL OR $b IS NULL, NULL, CASE WHEN is_nan($a) OR is_nan($b) THEN IF(is_nan($a), 1, 0) &lt; IF(is_nan($b), 1, 0) ELSE $a &lt; $b END)</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>float8le</strong><br>Whether a double is less than or equal to a double, NaN after every other value.</td><td><pre><code>float8le($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+IF($a IS NULL OR $b IS NULL, NULL, CASE WHEN is_nan($a) OR is_nan($b) THEN IF(is_nan($a), 1, 0) &lt;= IF(is_nan($b), 1, 0) ELSE $a &lt;= $b END)</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>float8gt</strong><br>Whether a double is greater than a double, NaN after every other value.</td><td><pre><code>float8gt($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+IF($a IS NULL OR $b IS NULL, NULL, CASE WHEN is_nan($a) OR is_nan($b) THEN IF(is_nan($a), 1, 0) &gt; IF(is_nan($b), 1, 0) ELSE $a &gt; $b END)</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>float8ge</strong><br>Whether a double is greater than or equal to a double, NaN after every other value.</td><td><pre><code>float8ge($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+IF($a IS NULL OR $b IS NULL, NULL, CASE WHEN is_nan($a) OR is_nan($b) THEN IF(is_nan($a), 1, 0) &gt;= IF(is_nan($b), 1, 0) ELSE $a &gt;= $b END)</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>float48eq</strong><br>Whether a real is equal to a double, NaN after every other value.</td><td><pre><code>float48eq($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+IF($a IS NULL OR $b IS NULL, NULL, CASE WHEN is_nan($a) OR is_nan($b) THEN IF(is_nan($a), 1, 0) = IF(is_nan($b), 1, 0) ELSE $a = $b END)</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>float48ne</strong><br>Whether a real is not equal to a double, NaN after every other value.</td><td><pre><code>float48ne($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+IF($a IS NULL OR $b IS NULL, NULL, CASE WHEN is_nan($a) OR is_nan($b) THEN IF(is_nan($a), 1, 0) != IF(is_nan($b), 1, 0) ELSE $a != $b END)</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>float48lt</strong><br>Whether a real is less than a double, NaN after every other value.</td><td><pre><code>float48lt($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+IF($a IS NULL OR $b IS NULL, NULL, CASE WHEN is_nan($a) OR is_nan($b) THEN IF(is_nan($a), 1, 0) &lt; IF(is_nan($b), 1, 0) ELSE $a &lt; $b END)</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>float48le</strong><br>Whether a real is less than or equal to a double, NaN after every other value.</td><td><pre><code>float48le($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+IF($a IS NULL OR $b IS NULL, NULL, CASE WHEN is_nan($a) OR is_nan($b) THEN IF(is_nan($a), 1, 0) &lt;= IF(is_nan($b), 1, 0) ELSE $a &lt;= $b END)</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>float48gt</strong><br>Whether a real is greater than a double, NaN after every other value.</td><td><pre><code>float48gt($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+IF($a IS NULL OR $b IS NULL, NULL, CASE WHEN is_nan($a) OR is_nan($b) THEN IF(is_nan($a), 1, 0) &gt; IF(is_nan($b), 1, 0) ELSE $a &gt; $b END)</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>float48ge</strong><br>Whether a real is greater than or equal to a double, NaN after every other value.</td><td><pre><code>float48ge($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+IF($a IS NULL OR $b IS NULL, NULL, CASE WHEN is_nan($a) OR is_nan($b) THEN IF(is_nan($a), 1, 0) &gt;= IF(is_nan($b), 1, 0) ELSE $a &gt;= $b END)</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>float84eq</strong><br>Whether a double is equal to a real, NaN after every other value.</td><td><pre><code>float84eq($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+IF($a IS NULL OR $b IS NULL, NULL, CASE WHEN is_nan($a) OR is_nan($b) THEN IF(is_nan($a), 1, 0) = IF(is_nan($b), 1, 0) ELSE $a = $b END)</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>float84ne</strong><br>Whether a double is not equal to a real, NaN after every other value.</td><td><pre><code>float84ne($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+IF($a IS NULL OR $b IS NULL, NULL, CASE WHEN is_nan($a) OR is_nan($b) THEN IF(is_nan($a), 1, 0) != IF(is_nan($b), 1, 0) ELSE $a != $b END)</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>float84lt</strong><br>Whether a double is less than a real, NaN after every other value.</td><td><pre><code>float84lt($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+IF($a IS NULL OR $b IS NULL, NULL, CASE WHEN is_nan($a) OR is_nan($b) THEN IF(is_nan($a), 1, 0) &lt; IF(is_nan($b), 1, 0) ELSE $a &lt; $b END)</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>float84le</strong><br>Whether a double is less than or equal to a real, NaN after every other value.</td><td><pre><code>float84le($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+IF($a IS NULL OR $b IS NULL, NULL, CASE WHEN is_nan($a) OR is_nan($b) THEN IF(is_nan($a), 1, 0) &lt;= IF(is_nan($b), 1, 0) ELSE $a &lt;= $b END)</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>float84gt</strong><br>Whether a double is greater than a real, NaN after every other value.</td><td><pre><code>float84gt($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+IF($a IS NULL OR $b IS NULL, NULL, CASE WHEN is_nan($a) OR is_nan($b) THEN IF(is_nan($a), 1, 0) &gt; IF(is_nan($b), 1, 0) ELSE $a &gt; $b END)</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>float84ge</strong><br>Whether a double is greater than or equal to a real, NaN after every other value.</td><td><pre><code>float84ge($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+IF($a IS NULL OR $b IS NULL, NULL, CASE WHEN is_nan($a) OR is_nan($b) THEN IF(is_nan($a), 1, 0) &gt;= IF(is_nan($b), 1, 0) ELSE $a &gt;= $b END)</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>float4larger</strong><br>The greater of two floats, NaN after every other value.</td><td><pre><code>float4larger($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+CASE WHEN $a IS NULL OR $b IS NULL THEN NULL WHEN CASE WHEN is_nan($a) OR is_nan($b) THEN IF(is_nan($a), 1, 0) &gt; IF(is_nan($b), 1, 0) ELSE $a &gt; $b END THEN $a ELSE $b END</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>float4smaller</strong><br>The less of two floats, NaN after every other value.</td><td><pre><code>float4smaller($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+CASE WHEN $a IS NULL OR $b IS NULL THEN NULL WHEN CASE WHEN is_nan($a) OR is_nan($b) THEN IF(is_nan($a), 1, 0) &lt; IF(is_nan($b), 1, 0) ELSE $a &lt; $b END THEN $a ELSE $b END</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>float8larger</strong><br>The greater of two floats, NaN after every other value.</td><td><pre><code>float8larger($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+CASE WHEN $a IS NULL OR $b IS NULL THEN NULL WHEN CASE WHEN is_nan($a) OR is_nan($b) THEN IF(is_nan($a), 1, 0) &gt; IF(is_nan($b), 1, 0) ELSE $a &gt; $b END THEN $a ELSE $b END</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>float8smaller</strong><br>The less of two floats, NaN after every other value.</td><td><pre><code>float8smaller($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+CASE WHEN $a IS NULL OR $b IS NULL THEN NULL WHEN CASE WHEN is_nan($a) OR is_nan($b) THEN IF(is_nan($a), 1, 0) &lt; IF(is_nan($b), 1, 0) ELSE $a &lt; $b END THEN $a ELSE $b END</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>acos</strong><br>The arc cosine of a value from -1 to 1.</td><td><pre><code>acos($x)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+CASE WHEN abs($x) &gt; 1 THEN fail(&#x27;postgresql-error 22003: input is out of range&lt;end of postgresql-error&gt;&#x27;) ELSE acos($x) END</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>asin</strong><br>The arc sine of a value from -1 to 1.</td><td><pre><code>asin($x)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+CASE WHEN abs($x) &gt; 1 THEN fail(&#x27;postgresql-error 22003: input is out of range&lt;end of postgresql-error&gt;&#x27;) ELSE asin($x) END</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>atanh</strong><br>The inverse hyperbolic tangent of a value from -1 to 1.</td><td><pre><code>atanh($x)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+CASE WHEN abs($x) &gt; 1 THEN fail(&#x27;postgresql-error 22003: input is out of range&lt;end of postgresql-error&gt;&#x27;) ELSE 0.5 * ln((1.0 + $x) / (1.0 - $x)) END</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>acosh</strong><br>The inverse hyperbolic cosine of a value of 1 or more.</td><td><pre><code>acosh($x)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+CASE WHEN $x &lt; 1 THEN fail(&#x27;postgresql-error 22003: input is out of range&lt;end of postgresql-error&gt;&#x27;) ELSE IF($x &gt; 1e8, ln($x) + ln(2.0), ln($x + sqrt($x * $x - 1.0))) END</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>sin</strong><br>The sine of a finite value.</td><td><pre><code>sin($x)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+CASE WHEN is_infinite($x) THEN fail(&#x27;postgresql-error 22003: input is out of range&lt;end of postgresql-error&gt;&#x27;) ELSE sin($x) END</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>cos</strong><br>The cosine of a finite value.</td><td><pre><code>cos($x)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+CASE WHEN is_infinite($x) THEN fail(&#x27;postgresql-error 22003: input is out of range&lt;end of postgresql-error&gt;&#x27;) ELSE cos($x) END</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>tan</strong><br>The tangent of a finite value.</td><td><pre><code>tan($x)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+CASE WHEN is_infinite($x) THEN fail(&#x27;postgresql-error 22003: input is out of range&lt;end of postgresql-error&gt;&#x27;) ELSE tan($x) END</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>cot</strong><br>The cotangent of a finite value.</td><td><pre><code>cot($x)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+CASE WHEN is_infinite($x) THEN fail(&#x27;postgresql-error 22003: input is out of range&lt;end of postgresql-error&gt;&#x27;) ELSE 1.0 / tan($x) END</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>sqrt</strong><br>The square root of a value of zero or more.</td><td><pre><code>sqrt($x)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.floats.of_no_numeric_sqrt: sqrt($x) of no numeric: a double&#x27;s answer, its edges as PostgreSQL&#x27;s.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>log</strong><br>The base 10 logarithm of a value above zero.</td><td><pre><code>log($x)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.floats.of_no_numeric_log: log($x) of no numeric: a double&#x27;s answer, its edges as PostgreSQL&#x27;s.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>log10</strong><br>The base 10 logarithm of a value above zero.</td><td><pre><code>log10($x)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.floats.of_no_numeric_log10: log10($x) of no numeric: a double&#x27;s answer, its edges as PostgreSQL&#x27;s.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>exp</strong><br>e raised to a power; 22003 where a finite power overflows or underflows.</td><td><pre><code>exp($x)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.floats.of_no_numeric_exp: exp($x) of no numeric: a double&#x27;s answer, its edges as PostgreSQL&#x27;s.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>ln</strong><br>The natural logarithm of a value above zero.</td><td><pre><code>ln($x)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.floats.of_no_numeric_ln: ln($x) of no numeric: a double&#x27;s answer, its edges as PostgreSQL&#x27;s.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>tanh</strong><br>The hyperbolic tangent.</td><td><pre><code>tanh($x)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>power</strong><br>A value raised to a power.</td><td><pre><code>power($x, $y)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.floats.of_no_numeric_power: power($x, $y) of no numeric: a double&#x27;s answer, its edges as PostgreSQL&#x27;s.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>pow</strong><br>A value raised to a power.</td><td><pre><code>pow($x, $y)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.floats.of_no_numeric_pow: pow($x, $y) of no numeric: a double&#x27;s answer, its edges as PostgreSQL&#x27;s.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>degrees</strong><br>Radians as degrees.</td><td><pre><code>degrees($x)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+CASE WHEN is_finite($x) AND is_infinite(degrees($x)) THEN fail(&#x27;postgresql-error 22003: value out of range: overflow&lt;end of postgresql-error&gt;&#x27;) ELSE degrees($x) END</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>sind</strong><br>The sin of an angle in degrees, exact at 0, 30, 45, 60 and 90 as PostgreSQL&#x27;s.</td><td><pre><code>sind($x)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
@@ -1512,7 +1524,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>sign</strong><br>The sign of a value: -1, 0 or 1; 0 of NaN.</td><td><pre><code>sign($x)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.floats.of_no_numeric_sign: sign($x) of no numeric: a double&#x27;s answer, its edges as PostgreSQL&#x27;s.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>abs</strong><br>The absolute value; of an integer type&#x27;s least value, out of range.</td><td><pre><code>abs($a)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
@@ -1533,16 +1545,17 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>regr_slope</strong><br>The slope of the least-squares line.</td><td><pre><code>regr_slope($y, $x)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+CASE WHEN count_if($y IS NOT NULL AND $x IS NOT NULL AND NOT is_finite($x)) &gt; 0 THEN nan() WHEN count_if($y IS NOT NULL AND $x IS NOT NULL AND NOT is_finite($y)) &gt; 0 THEN IF(var_pop(IF($y IS NULL, NULL, $x)) = 0, NULL, nan()) ELSE regr_slope($y, $x) END</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>regr_intercept</strong><br>The y-intercept of the least-squares line.</td><td><pre><code>regr_intercept($y, $x)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+CASE WHEN count_if($y IS NOT NULL AND $x IS NOT NULL AND NOT is_finite($x)) &gt; 0 THEN nan() WHEN count_if($y IS NOT NULL AND $x IS NOT NULL AND NOT is_finite($y)) &gt; 0 THEN IF(var_pop(IF($y IS NULL, NULL, $x)) = 0, NULL, nan()) ELSE regr_intercept($y, $x) END</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>regr_r2</strong><br>The square of the correlation coefficient.</td><td><pre><code>regr_r2($y, $x)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>corr</strong><br>The correlation coefficient.</td><td><pre><code>corr($y, $x)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>sum</strong><br>The sum of a group&#x27;s bigints, exact; of its reals or doubles, the overflow raised.</td><td><pre><code>function provisa.transpiler.polyfill.float_aggregates._trino_sum: sum of a real or a double on Trino, as the statement says its argument&#x27;s type: the overflow</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>date_mi</strong><br>The days from one date to another.</td><td><pre><code>date_mi($a, $b)
 =&gt;
 CAST(date_diff(&#x27;day&#x27;, CAST($b AS DATE), CAST($a AS DATE)) AS INTEGER)</code></pre></td><td></td><td></td><td></td></tr>
@@ -1684,25 +1697,25 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>avg</strong><br>The mean of a group&#x27;s values.</td><td><pre><code>avg($v)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.aggregates.trino_of_doubles: avg, a variance or a standard deviation of a real or a double on Trino: Trino&#x27;s own, the</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>variance</strong><br>The sample variance of a group&#x27;s values.</td><td><pre><code>variance($v)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.aggregates.trino_of_doubles: avg, a variance or a standard deviation of a real or a double on Trino: Trino&#x27;s own, the</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>var_samp</strong><br>The sample variance of a group&#x27;s values.</td><td><pre><code>var_samp($v)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.aggregates.trino_of_doubles: avg, a variance or a standard deviation of a real or a double on Trino: Trino&#x27;s own, the</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>var_pop</strong><br>The population variance of a group&#x27;s values.</td><td><pre><code>var_pop($v)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.aggregates.trino_of_doubles: avg, a variance or a standard deviation of a real or a double on Trino: Trino&#x27;s own, the</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>stddev</strong><br>The sample standard deviation of a group&#x27;s values.</td><td><pre><code>stddev($v)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.aggregates.trino_of_doubles: avg, a variance or a standard deviation of a real or a double on Trino: Trino&#x27;s own, the</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>stddev_samp</strong><br>The sample standard deviation of a group&#x27;s values.</td><td><pre><code>stddev_samp($v)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.aggregates.trino_of_doubles: avg, a variance or a standard deviation of a real or a double on Trino: Trino&#x27;s own, the</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>stddev_pop</strong><br>The population standard deviation of a group&#x27;s values.</td><td><pre><code>stddev_pop($v)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.aggregates.trino_of_doubles: avg, a variance or a standard deviation of a real or a double on Trino: Trino&#x27;s own, the</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>xid8eq</strong><br>Two xid8 values equal.</td><td><pre><code>xid8eq($a, $b)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
@@ -2130,9 +2143,21 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Presto](presto.md)
 
-128 of the grid's 560 features are native on Presto and left out.
+127 of the grid's 572 features are native on Presto and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
+<tr><td><strong>an oid literal on trino</strong><br>A text cast to an oid.</td><td><pre><code>function provisa.transpiler.polyfill.clickhouse.oid_read: A text cast to an oid, read as oidin reads it: from -2147483648 to 4294967295, a negative</code></pre></td><td><ul><li>A text the statement writes is read as PostgreSQL reads it: past -2147483648 to 4294967295 it raises 22003, a text the input does not read 22P02, and a negative value is its 32 bits unsigned. A column&#x27;s cast keeps Trino&#x27;s own.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>an integer literal on trino</strong><br>A literal cast to smallint, integer or bigint.</td><td><pre><code>function provisa.transpiler.polyfill.clickhouse.integer_read: A literal cast to an integer, read as PostgreSQL reads it: a number rounded half away from</code></pre></td><td><ul><li>A number or a text the statement writes is read as PostgreSQL reads it: a number rounded half away from zero, a text by the integer input; past the type it raises 22003, a text the input does not read 22P02.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>a numeric literal on trino</strong><br>A text cast to a numeric of no precision.</td><td><pre><code>function provisa.transpiler.polyfill.trino_literals.numeric_read: A text cast to a numeric of no precision that exact_inputs left so (it is cast to a decimal</code></pre></td><td><ul><li>A value of up to 38 digits keeps them all; one of more raises 0A000 (numeric_in() of a value of more than 38 digits has no exact form on trino). NaN and infinity raise 0A000 (numeric_in() of NaN or infinity has no form on trino): Trino&#x27;s decimal holds neither. A text the input does not read raises 22P02.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>a timestamp literal on trino</strong><br>A text cast to a timestamp.</td><td><pre><code>function provisa.transpiler.polyfill.trino_literals.stamp_read: A text cast to a timestamp: PostgreSQL&#x27;s 22008 past its range, refused by name past Trino&#x27;s,</code></pre></td><td><ul><li>Held to 294247-01-10 04:00:54.775807, the last microsecond Trino&#x27;s TIMESTAMP holds: a text past it raises 0A000 (timestamp_in() of a value past it has no exact form on trino), one past PostgreSQL&#x27;s range 22008. A fraction of more than milliseconds is read to the microsecond.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>a date literal on trino</strong><br>A text cast to a date.</td><td><pre><code>function provisa.transpiler.polyfill.trino_literals.date_read: A text cast to a date: PostgreSQL&#x27;s 22008 past its last day, which Trino&#x27;s DATE holds.</code></pre></td><td><ul><li>A text past 5874897-12-31, PostgreSQL&#x27;s last day, raises 22008 as PostgreSQL&#x27;s input does, where Trino&#x27;s DATE holds it.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>a &quot;char&quot; literal on trino</strong><br>A text cast to the one-byte &quot;char&quot;.</td><td><pre><code>function provisa.transpiler.polyfill.trino_literals.one_byte_char_read: A text cast to &quot;char&quot;, read as charin reads it: its first byte, or the empty text of an</code></pre></td><td><ul><li>Held as a VARCHAR of its first byte, or empty, as charin reads it; a first character of more than one byte raises 0A000 (charin does not read this value).</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>a character&#x27;s text on trino</strong><br>The text, length or name of a character (bpchar) value.</td><td><pre><code>function provisa.transpiler.polyfill.trino_literals.unpadded: A function of a character (bpchar) value the statement says, of its text without trailing</code></pre></td><td><ul><li>Of a value the statement says is a character: its text without trailing spaces, as bpchar&#x27;s text and length read it, where Trino&#x27;s CHAR keeps them.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>int8_sum on trino</strong><br>A step of a bigint&#x27;s sum: a numeric plus a bigint.</td><td><pre><code>function provisa.transpiler.polyfill.trino_literals.int8_sum_read: int8_sum(numeric, bigint), a step of a bigint&#x27;s sum, not strict: the bigint as a decimal of</code></pre></td><td><ul><li>The bigint is a decimal of its 19 digits. Where the numeric&#x27;s type and a bigint&#x27;s need more than 38 digits (a scale past 18) it raises 0A000 (int8_sum() of a numeric of scale past 18 has no exact form on trino): Trino would hold the sum at a smaller scale.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>numeric_mod on trino</strong><br>The remainder of two numerics.</td><td><pre><code>function provisa.transpiler.polyfill.trino_literals.numeric_mod_read: numeric_mod of a numeric the statement says is of a scale past 18, refused by name: the</code></pre></td><td><ul><li>Computed at scale 18: of a numeric the statement says is of a scale past it it raises 0A000 (numeric_mod() of a numeric of scale past 18 has no exact form on trino).</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>a time literal on trino</strong><br>A text cast to a time of day.</td><td><pre><code>function provisa.transpiler.polyfill.trino_literals.clock_read: A text cast to a time of day of a fraction of more than milliseconds, cast to TIME(6).</code></pre></td><td><ul><li>A fraction of more than milliseconds is read to the microsecond, where Trino&#x27;s TIME of no precision rounds it to the millisecond.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>comparisons of times on trino</strong><br>Two times of day compared, the larger or the smaller of two.</td><td><pre><code>function provisa.transpiler.polyfill.trino_clocks.compared: A comparison of two times the statement says, as TIME(6).</code></pre></td><td><ul><li>Of times the statement says (a cast, a literal), compared or added as Trino&#x27;s TIME(6) and TIMESTAMP(6), to the microsecond as PostgreSQL&#x27;s; any other keeps Trino&#x27;s own, of milliseconds. Trino&#x27;s TIME holds no 24:00:00.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>a date plus a time on trino</strong><br>A date plus a time of day, a timestamp.</td><td><pre><code>function provisa.transpiler.polyfill.trino_clocks.summed: A date plus a time the statement says, as the TIMESTAMP(6) of their texts.</code></pre></td><td><ul><li>Of times the statement says (a cast, a literal), compared or added as Trino&#x27;s TIME(6) and TIMESTAMP(6), to the microsecond as PostgreSQL&#x27;s; any other keeps Trino&#x27;s own, of milliseconds. Trino&#x27;s TIME holds no 24:00:00.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
 =&gt;
 CAST(CASE WHEN cardinality($a) &gt; 0 THEN length(regexp_extract(typeof($a), &#x27;^(array\()+&#x27;)) / 6 END AS INTEGER)</code></pre></td><td></td><td></td><td></td></tr>
@@ -2476,139 +2501,139 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>float4eq</strong><br>Whether a real is equal to a real, NaN after every other value.</td><td><pre><code>float4eq($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+IF($a IS NULL OR $b IS NULL, NULL, CASE WHEN is_nan($a) OR is_nan($b) THEN IF(is_nan($a), 1, 0) = IF(is_nan($b), 1, 0) ELSE $a = $b END)</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>float4ne</strong><br>Whether a real is not equal to a real, NaN after every other value.</td><td><pre><code>float4ne($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+IF($a IS NULL OR $b IS NULL, NULL, CASE WHEN is_nan($a) OR is_nan($b) THEN IF(is_nan($a), 1, 0) != IF(is_nan($b), 1, 0) ELSE $a != $b END)</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>float4lt</strong><br>Whether a real is less than a real, NaN after every other value.</td><td><pre><code>float4lt($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+IF($a IS NULL OR $b IS NULL, NULL, CASE WHEN is_nan($a) OR is_nan($b) THEN IF(is_nan($a), 1, 0) &lt; IF(is_nan($b), 1, 0) ELSE $a &lt; $b END)</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>float4le</strong><br>Whether a real is less than or equal to a real, NaN after every other value.</td><td><pre><code>float4le($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+IF($a IS NULL OR $b IS NULL, NULL, CASE WHEN is_nan($a) OR is_nan($b) THEN IF(is_nan($a), 1, 0) &lt;= IF(is_nan($b), 1, 0) ELSE $a &lt;= $b END)</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>float4gt</strong><br>Whether a real is greater than a real, NaN after every other value.</td><td><pre><code>float4gt($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+IF($a IS NULL OR $b IS NULL, NULL, CASE WHEN is_nan($a) OR is_nan($b) THEN IF(is_nan($a), 1, 0) &gt; IF(is_nan($b), 1, 0) ELSE $a &gt; $b END)</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>float4ge</strong><br>Whether a real is greater than or equal to a real, NaN after every other value.</td><td><pre><code>float4ge($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+IF($a IS NULL OR $b IS NULL, NULL, CASE WHEN is_nan($a) OR is_nan($b) THEN IF(is_nan($a), 1, 0) &gt;= IF(is_nan($b), 1, 0) ELSE $a &gt;= $b END)</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>float8eq</strong><br>Whether a double is equal to a double, NaN after every other value.</td><td><pre><code>float8eq($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+IF($a IS NULL OR $b IS NULL, NULL, CASE WHEN is_nan($a) OR is_nan($b) THEN IF(is_nan($a), 1, 0) = IF(is_nan($b), 1, 0) ELSE $a = $b END)</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>float8ne</strong><br>Whether a double is not equal to a double, NaN after every other value.</td><td><pre><code>float8ne($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+IF($a IS NULL OR $b IS NULL, NULL, CASE WHEN is_nan($a) OR is_nan($b) THEN IF(is_nan($a), 1, 0) != IF(is_nan($b), 1, 0) ELSE $a != $b END)</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>float8lt</strong><br>Whether a double is less than a double, NaN after every other value.</td><td><pre><code>float8lt($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+IF($a IS NULL OR $b IS NULL, NULL, CASE WHEN is_nan($a) OR is_nan($b) THEN IF(is_nan($a), 1, 0) &lt; IF(is_nan($b), 1, 0) ELSE $a &lt; $b END)</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>float8le</strong><br>Whether a double is less than or equal to a double, NaN after every other value.</td><td><pre><code>float8le($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+IF($a IS NULL OR $b IS NULL, NULL, CASE WHEN is_nan($a) OR is_nan($b) THEN IF(is_nan($a), 1, 0) &lt;= IF(is_nan($b), 1, 0) ELSE $a &lt;= $b END)</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>float8gt</strong><br>Whether a double is greater than a double, NaN after every other value.</td><td><pre><code>float8gt($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+IF($a IS NULL OR $b IS NULL, NULL, CASE WHEN is_nan($a) OR is_nan($b) THEN IF(is_nan($a), 1, 0) &gt; IF(is_nan($b), 1, 0) ELSE $a &gt; $b END)</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>float8ge</strong><br>Whether a double is greater than or equal to a double, NaN after every other value.</td><td><pre><code>float8ge($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+IF($a IS NULL OR $b IS NULL, NULL, CASE WHEN is_nan($a) OR is_nan($b) THEN IF(is_nan($a), 1, 0) &gt;= IF(is_nan($b), 1, 0) ELSE $a &gt;= $b END)</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>float48eq</strong><br>Whether a real is equal to a double, NaN after every other value.</td><td><pre><code>float48eq($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+IF($a IS NULL OR $b IS NULL, NULL, CASE WHEN is_nan($a) OR is_nan($b) THEN IF(is_nan($a), 1, 0) = IF(is_nan($b), 1, 0) ELSE $a = $b END)</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>float48ne</strong><br>Whether a real is not equal to a double, NaN after every other value.</td><td><pre><code>float48ne($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+IF($a IS NULL OR $b IS NULL, NULL, CASE WHEN is_nan($a) OR is_nan($b) THEN IF(is_nan($a), 1, 0) != IF(is_nan($b), 1, 0) ELSE $a != $b END)</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>float48lt</strong><br>Whether a real is less than a double, NaN after every other value.</td><td><pre><code>float48lt($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+IF($a IS NULL OR $b IS NULL, NULL, CASE WHEN is_nan($a) OR is_nan($b) THEN IF(is_nan($a), 1, 0) &lt; IF(is_nan($b), 1, 0) ELSE $a &lt; $b END)</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>float48le</strong><br>Whether a real is less than or equal to a double, NaN after every other value.</td><td><pre><code>float48le($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+IF($a IS NULL OR $b IS NULL, NULL, CASE WHEN is_nan($a) OR is_nan($b) THEN IF(is_nan($a), 1, 0) &lt;= IF(is_nan($b), 1, 0) ELSE $a &lt;= $b END)</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>float48gt</strong><br>Whether a real is greater than a double, NaN after every other value.</td><td><pre><code>float48gt($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+IF($a IS NULL OR $b IS NULL, NULL, CASE WHEN is_nan($a) OR is_nan($b) THEN IF(is_nan($a), 1, 0) &gt; IF(is_nan($b), 1, 0) ELSE $a &gt; $b END)</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>float48ge</strong><br>Whether a real is greater than or equal to a double, NaN after every other value.</td><td><pre><code>float48ge($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+IF($a IS NULL OR $b IS NULL, NULL, CASE WHEN is_nan($a) OR is_nan($b) THEN IF(is_nan($a), 1, 0) &gt;= IF(is_nan($b), 1, 0) ELSE $a &gt;= $b END)</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>float84eq</strong><br>Whether a double is equal to a real, NaN after every other value.</td><td><pre><code>float84eq($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+IF($a IS NULL OR $b IS NULL, NULL, CASE WHEN is_nan($a) OR is_nan($b) THEN IF(is_nan($a), 1, 0) = IF(is_nan($b), 1, 0) ELSE $a = $b END)</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>float84ne</strong><br>Whether a double is not equal to a real, NaN after every other value.</td><td><pre><code>float84ne($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+IF($a IS NULL OR $b IS NULL, NULL, CASE WHEN is_nan($a) OR is_nan($b) THEN IF(is_nan($a), 1, 0) != IF(is_nan($b), 1, 0) ELSE $a != $b END)</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>float84lt</strong><br>Whether a double is less than a real, NaN after every other value.</td><td><pre><code>float84lt($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+IF($a IS NULL OR $b IS NULL, NULL, CASE WHEN is_nan($a) OR is_nan($b) THEN IF(is_nan($a), 1, 0) &lt; IF(is_nan($b), 1, 0) ELSE $a &lt; $b END)</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>float84le</strong><br>Whether a double is less than or equal to a real, NaN after every other value.</td><td><pre><code>float84le($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+IF($a IS NULL OR $b IS NULL, NULL, CASE WHEN is_nan($a) OR is_nan($b) THEN IF(is_nan($a), 1, 0) &lt;= IF(is_nan($b), 1, 0) ELSE $a &lt;= $b END)</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>float84gt</strong><br>Whether a double is greater than a real, NaN after every other value.</td><td><pre><code>float84gt($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+IF($a IS NULL OR $b IS NULL, NULL, CASE WHEN is_nan($a) OR is_nan($b) THEN IF(is_nan($a), 1, 0) &gt; IF(is_nan($b), 1, 0) ELSE $a &gt; $b END)</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>float84ge</strong><br>Whether a double is greater than or equal to a real, NaN after every other value.</td><td><pre><code>float84ge($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+IF($a IS NULL OR $b IS NULL, NULL, CASE WHEN is_nan($a) OR is_nan($b) THEN IF(is_nan($a), 1, 0) &gt;= IF(is_nan($b), 1, 0) ELSE $a &gt;= $b END)</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>float4larger</strong><br>The greater of two floats, NaN after every other value.</td><td><pre><code>float4larger($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+CASE WHEN $a IS NULL OR $b IS NULL THEN NULL WHEN CASE WHEN is_nan($a) OR is_nan($b) THEN IF(is_nan($a), 1, 0) &gt; IF(is_nan($b), 1, 0) ELSE $a &gt; $b END THEN $a ELSE $b END</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>float4smaller</strong><br>The less of two floats, NaN after every other value.</td><td><pre><code>float4smaller($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+CASE WHEN $a IS NULL OR $b IS NULL THEN NULL WHEN CASE WHEN is_nan($a) OR is_nan($b) THEN IF(is_nan($a), 1, 0) &lt; IF(is_nan($b), 1, 0) ELSE $a &lt; $b END THEN $a ELSE $b END</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>float8larger</strong><br>The greater of two floats, NaN after every other value.</td><td><pre><code>float8larger($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+CASE WHEN $a IS NULL OR $b IS NULL THEN NULL WHEN CASE WHEN is_nan($a) OR is_nan($b) THEN IF(is_nan($a), 1, 0) &gt; IF(is_nan($b), 1, 0) ELSE $a &gt; $b END THEN $a ELSE $b END</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>float8smaller</strong><br>The less of two floats, NaN after every other value.</td><td><pre><code>float8smaller($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+CASE WHEN $a IS NULL OR $b IS NULL THEN NULL WHEN CASE WHEN is_nan($a) OR is_nan($b) THEN IF(is_nan($a), 1, 0) &lt; IF(is_nan($b), 1, 0) ELSE $a &lt; $b END THEN $a ELSE $b END</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>acos</strong><br>The arc cosine of a value from -1 to 1.</td><td><pre><code>acos($x)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+CASE WHEN abs($x) &gt; 1 THEN fail(&#x27;postgresql-error 22003: input is out of range&lt;end of postgresql-error&gt;&#x27;) ELSE acos($x) END</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>asin</strong><br>The arc sine of a value from -1 to 1.</td><td><pre><code>asin($x)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+CASE WHEN abs($x) &gt; 1 THEN fail(&#x27;postgresql-error 22003: input is out of range&lt;end of postgresql-error&gt;&#x27;) ELSE asin($x) END</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>atanh</strong><br>The inverse hyperbolic tangent of a value from -1 to 1.</td><td><pre><code>atanh($x)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+CASE WHEN abs($x) &gt; 1 THEN fail(&#x27;postgresql-error 22003: input is out of range&lt;end of postgresql-error&gt;&#x27;) ELSE 0.5 * ln((1.0 + $x) / (1.0 - $x)) END</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>acosh</strong><br>The inverse hyperbolic cosine of a value of 1 or more.</td><td><pre><code>acosh($x)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+CASE WHEN $x &lt; 1 THEN fail(&#x27;postgresql-error 22003: input is out of range&lt;end of postgresql-error&gt;&#x27;) ELSE IF($x &gt; 1e8, ln($x) + ln(2.0), ln($x + sqrt($x * $x - 1.0))) END</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>sin</strong><br>The sine of a finite value.</td><td><pre><code>sin($x)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+CASE WHEN is_infinite($x) THEN fail(&#x27;postgresql-error 22003: input is out of range&lt;end of postgresql-error&gt;&#x27;) ELSE sin($x) END</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>cos</strong><br>The cosine of a finite value.</td><td><pre><code>cos($x)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+CASE WHEN is_infinite($x) THEN fail(&#x27;postgresql-error 22003: input is out of range&lt;end of postgresql-error&gt;&#x27;) ELSE cos($x) END</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>tan</strong><br>The tangent of a finite value.</td><td><pre><code>tan($x)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+CASE WHEN is_infinite($x) THEN fail(&#x27;postgresql-error 22003: input is out of range&lt;end of postgresql-error&gt;&#x27;) ELSE tan($x) END</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>cot</strong><br>The cotangent of a finite value.</td><td><pre><code>cot($x)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+CASE WHEN is_infinite($x) THEN fail(&#x27;postgresql-error 22003: input is out of range&lt;end of postgresql-error&gt;&#x27;) ELSE 1.0 / tan($x) END</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>sqrt</strong><br>The square root of a value of zero or more.</td><td><pre><code>sqrt($x)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.floats.of_no_numeric_sqrt: sqrt($x) of no numeric: a double&#x27;s answer, its edges as PostgreSQL&#x27;s.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>log</strong><br>The base 10 logarithm of a value above zero.</td><td><pre><code>log($x)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.floats.of_no_numeric_log: log($x) of no numeric: a double&#x27;s answer, its edges as PostgreSQL&#x27;s.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>log10</strong><br>The base 10 logarithm of a value above zero.</td><td><pre><code>log10($x)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.floats.of_no_numeric_log10: log10($x) of no numeric: a double&#x27;s answer, its edges as PostgreSQL&#x27;s.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>exp</strong><br>e raised to a power; 22003 where a finite power overflows or underflows.</td><td><pre><code>exp($x)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.floats.of_no_numeric_exp: exp($x) of no numeric: a double&#x27;s answer, its edges as PostgreSQL&#x27;s.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>ln</strong><br>The natural logarithm of a value above zero.</td><td><pre><code>ln($x)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.floats.of_no_numeric_ln: ln($x) of no numeric: a double&#x27;s answer, its edges as PostgreSQL&#x27;s.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>tanh</strong><br>The hyperbolic tangent.</td><td><pre><code>tanh($x)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>power</strong><br>A value raised to a power.</td><td><pre><code>power($x, $y)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.floats.of_no_numeric_power: power($x, $y) of no numeric: a double&#x27;s answer, its edges as PostgreSQL&#x27;s.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>pow</strong><br>A value raised to a power.</td><td><pre><code>pow($x, $y)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.floats.of_no_numeric_pow: pow($x, $y) of no numeric: a double&#x27;s answer, its edges as PostgreSQL&#x27;s.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>degrees</strong><br>Radians as degrees.</td><td><pre><code>degrees($x)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+CASE WHEN is_finite($x) AND is_infinite(degrees($x)) THEN fail(&#x27;postgresql-error 22003: value out of range: overflow&lt;end of postgresql-error&gt;&#x27;) ELSE degrees($x) END</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>sind</strong><br>The sin of an angle in degrees, exact at 0, 30, 45, 60 and 90 as PostgreSQL&#x27;s.</td><td><pre><code>sind($x)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
@@ -2623,7 +2648,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>sign</strong><br>The sign of a value: -1, 0 or 1; 0 of NaN.</td><td><pre><code>sign($x)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.floats.of_no_numeric_sign: sign($x) of no numeric: a double&#x27;s answer, its edges as PostgreSQL&#x27;s.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>abs</strong><br>The absolute value; of an integer type&#x27;s least value, out of range.</td><td><pre><code>abs($a)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
@@ -2644,16 +2669,17 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>regr_slope</strong><br>The slope of the least-squares line.</td><td><pre><code>regr_slope($y, $x)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+CASE WHEN count_if($y IS NOT NULL AND $x IS NOT NULL AND NOT is_finite($x)) &gt; 0 THEN nan() WHEN count_if($y IS NOT NULL AND $x IS NOT NULL AND NOT is_finite($y)) &gt; 0 THEN IF(var_pop(IF($y IS NULL, NULL, $x)) = 0, NULL, nan()) ELSE regr_slope($y, $x) END</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>regr_intercept</strong><br>The y-intercept of the least-squares line.</td><td><pre><code>regr_intercept($y, $x)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+CASE WHEN count_if($y IS NOT NULL AND $x IS NOT NULL AND NOT is_finite($x)) &gt; 0 THEN nan() WHEN count_if($y IS NOT NULL AND $x IS NOT NULL AND NOT is_finite($y)) &gt; 0 THEN IF(var_pop(IF($y IS NULL, NULL, $x)) = 0, NULL, nan()) ELSE regr_intercept($y, $x) END</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>regr_r2</strong><br>The square of the correlation coefficient.</td><td><pre><code>regr_r2($y, $x)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>corr</strong><br>The correlation coefficient.</td><td><pre><code>corr($y, $x)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>sum</strong><br>The sum of a group&#x27;s bigints, exact; of its reals or doubles, the overflow raised.</td><td><pre><code>function provisa.transpiler.polyfill.float_aggregates._trino_sum: sum of a real or a double on Trino, as the statement says its argument&#x27;s type: the overflow</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>date_mi</strong><br>The days from one date to another.</td><td><pre><code>date_mi($a, $b)
 =&gt;
 CAST(date_diff(&#x27;day&#x27;, CAST($b AS DATE), CAST($a AS DATE)) AS INTEGER)</code></pre></td><td></td><td></td><td></td></tr>
@@ -2795,25 +2821,25 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>avg</strong><br>The mean of a group&#x27;s values.</td><td><pre><code>avg($v)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.aggregates.trino_of_doubles: avg, a variance or a standard deviation of a real or a double on Trino: Trino&#x27;s own, the</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>variance</strong><br>The sample variance of a group&#x27;s values.</td><td><pre><code>variance($v)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.aggregates.trino_of_doubles: avg, a variance or a standard deviation of a real or a double on Trino: Trino&#x27;s own, the</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>var_samp</strong><br>The sample variance of a group&#x27;s values.</td><td><pre><code>var_samp($v)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.aggregates.trino_of_doubles: avg, a variance or a standard deviation of a real or a double on Trino: Trino&#x27;s own, the</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>var_pop</strong><br>The population variance of a group&#x27;s values.</td><td><pre><code>var_pop($v)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.aggregates.trino_of_doubles: avg, a variance or a standard deviation of a real or a double on Trino: Trino&#x27;s own, the</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>stddev</strong><br>The sample standard deviation of a group&#x27;s values.</td><td><pre><code>stddev($v)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.aggregates.trino_of_doubles: avg, a variance or a standard deviation of a real or a double on Trino: Trino&#x27;s own, the</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>stddev_samp</strong><br>The sample standard deviation of a group&#x27;s values.</td><td><pre><code>stddev_samp($v)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.aggregates.trino_of_doubles: avg, a variance or a standard deviation of a real or a double on Trino: Trino&#x27;s own, the</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>stddev_pop</strong><br>The population standard deviation of a group&#x27;s values.</td><td><pre><code>stddev_pop($v)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.aggregates.trino_of_doubles: avg, a variance or a standard deviation of a real or a double on Trino: Trino&#x27;s own, the</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>xid8eq</strong><br>Two xid8 values equal.</td><td><pre><code>xid8eq($a, $b)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
@@ -3241,9 +3267,21 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Athena](athena.md)
 
-128 of the grid's 560 features are native on Athena and left out.
+127 of the grid's 572 features are native on Athena and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
+<tr><td><strong>an oid literal on trino</strong><br>A text cast to an oid.</td><td><pre><code>function provisa.transpiler.polyfill.clickhouse.oid_read: A text cast to an oid, read as oidin reads it: from -2147483648 to 4294967295, a negative</code></pre></td><td><ul><li>A text the statement writes is read as PostgreSQL reads it: past -2147483648 to 4294967295 it raises 22003, a text the input does not read 22P02, and a negative value is its 32 bits unsigned. A column&#x27;s cast keeps Trino&#x27;s own.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>an integer literal on trino</strong><br>A literal cast to smallint, integer or bigint.</td><td><pre><code>function provisa.transpiler.polyfill.clickhouse.integer_read: A literal cast to an integer, read as PostgreSQL reads it: a number rounded half away from</code></pre></td><td><ul><li>A number or a text the statement writes is read as PostgreSQL reads it: a number rounded half away from zero, a text by the integer input; past the type it raises 22003, a text the input does not read 22P02.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>a numeric literal on trino</strong><br>A text cast to a numeric of no precision.</td><td><pre><code>function provisa.transpiler.polyfill.trino_literals.numeric_read: A text cast to a numeric of no precision that exact_inputs left so (it is cast to a decimal</code></pre></td><td><ul><li>A value of up to 38 digits keeps them all; one of more raises 0A000 (numeric_in() of a value of more than 38 digits has no exact form on trino). NaN and infinity raise 0A000 (numeric_in() of NaN or infinity has no form on trino): Trino&#x27;s decimal holds neither. A text the input does not read raises 22P02.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>a timestamp literal on trino</strong><br>A text cast to a timestamp.</td><td><pre><code>function provisa.transpiler.polyfill.trino_literals.stamp_read: A text cast to a timestamp: PostgreSQL&#x27;s 22008 past its range, refused by name past Trino&#x27;s,</code></pre></td><td><ul><li>Held to 294247-01-10 04:00:54.775807, the last microsecond Trino&#x27;s TIMESTAMP holds: a text past it raises 0A000 (timestamp_in() of a value past it has no exact form on trino), one past PostgreSQL&#x27;s range 22008. A fraction of more than milliseconds is read to the microsecond.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>a date literal on trino</strong><br>A text cast to a date.</td><td><pre><code>function provisa.transpiler.polyfill.trino_literals.date_read: A text cast to a date: PostgreSQL&#x27;s 22008 past its last day, which Trino&#x27;s DATE holds.</code></pre></td><td><ul><li>A text past 5874897-12-31, PostgreSQL&#x27;s last day, raises 22008 as PostgreSQL&#x27;s input does, where Trino&#x27;s DATE holds it.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>a &quot;char&quot; literal on trino</strong><br>A text cast to the one-byte &quot;char&quot;.</td><td><pre><code>function provisa.transpiler.polyfill.trino_literals.one_byte_char_read: A text cast to &quot;char&quot;, read as charin reads it: its first byte, or the empty text of an</code></pre></td><td><ul><li>Held as a VARCHAR of its first byte, or empty, as charin reads it; a first character of more than one byte raises 0A000 (charin does not read this value).</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>a character&#x27;s text on trino</strong><br>The text, length or name of a character (bpchar) value.</td><td><pre><code>function provisa.transpiler.polyfill.trino_literals.unpadded: A function of a character (bpchar) value the statement says, of its text without trailing</code></pre></td><td><ul><li>Of a value the statement says is a character: its text without trailing spaces, as bpchar&#x27;s text and length read it, where Trino&#x27;s CHAR keeps them.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>int8_sum on trino</strong><br>A step of a bigint&#x27;s sum: a numeric plus a bigint.</td><td><pre><code>function provisa.transpiler.polyfill.trino_literals.int8_sum_read: int8_sum(numeric, bigint), a step of a bigint&#x27;s sum, not strict: the bigint as a decimal of</code></pre></td><td><ul><li>The bigint is a decimal of its 19 digits. Where the numeric&#x27;s type and a bigint&#x27;s need more than 38 digits (a scale past 18) it raises 0A000 (int8_sum() of a numeric of scale past 18 has no exact form on trino): Trino would hold the sum at a smaller scale.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>numeric_mod on trino</strong><br>The remainder of two numerics.</td><td><pre><code>function provisa.transpiler.polyfill.trino_literals.numeric_mod_read: numeric_mod of a numeric the statement says is of a scale past 18, refused by name: the</code></pre></td><td><ul><li>Computed at scale 18: of a numeric the statement says is of a scale past it it raises 0A000 (numeric_mod() of a numeric of scale past 18 has no exact form on trino).</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>a time literal on trino</strong><br>A text cast to a time of day.</td><td><pre><code>function provisa.transpiler.polyfill.trino_literals.clock_read: A text cast to a time of day of a fraction of more than milliseconds, cast to TIME(6).</code></pre></td><td><ul><li>A fraction of more than milliseconds is read to the microsecond, where Trino&#x27;s TIME of no precision rounds it to the millisecond.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>comparisons of times on trino</strong><br>Two times of day compared, the larger or the smaller of two.</td><td><pre><code>function provisa.transpiler.polyfill.trino_clocks.compared: A comparison of two times the statement says, as TIME(6).</code></pre></td><td><ul><li>Of times the statement says (a cast, a literal), compared or added as Trino&#x27;s TIME(6) and TIMESTAMP(6), to the microsecond as PostgreSQL&#x27;s; any other keeps Trino&#x27;s own, of milliseconds. Trino&#x27;s TIME holds no 24:00:00.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>a date plus a time on trino</strong><br>A date plus a time of day, a timestamp.</td><td><pre><code>function provisa.transpiler.polyfill.trino_clocks.summed: A date plus a time the statement says, as the TIMESTAMP(6) of their texts.</code></pre></td><td><ul><li>Of times the statement says (a cast, a literal), compared or added as Trino&#x27;s TIME(6) and TIMESTAMP(6), to the microsecond as PostgreSQL&#x27;s; any other keeps Trino&#x27;s own, of milliseconds. Trino&#x27;s TIME holds no 24:00:00.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
 =&gt;
 CAST(CASE WHEN cardinality($a) &gt; 0 THEN length(regexp_extract(typeof($a), &#x27;^(array\()+&#x27;)) / 6 END AS INTEGER)</code></pre></td><td></td><td></td><td></td></tr>
@@ -3587,139 +3625,139 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>float4eq</strong><br>Whether a real is equal to a real, NaN after every other value.</td><td><pre><code>float4eq($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+IF($a IS NULL OR $b IS NULL, NULL, CASE WHEN is_nan($a) OR is_nan($b) THEN IF(is_nan($a), 1, 0) = IF(is_nan($b), 1, 0) ELSE $a = $b END)</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>float4ne</strong><br>Whether a real is not equal to a real, NaN after every other value.</td><td><pre><code>float4ne($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+IF($a IS NULL OR $b IS NULL, NULL, CASE WHEN is_nan($a) OR is_nan($b) THEN IF(is_nan($a), 1, 0) != IF(is_nan($b), 1, 0) ELSE $a != $b END)</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>float4lt</strong><br>Whether a real is less than a real, NaN after every other value.</td><td><pre><code>float4lt($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+IF($a IS NULL OR $b IS NULL, NULL, CASE WHEN is_nan($a) OR is_nan($b) THEN IF(is_nan($a), 1, 0) &lt; IF(is_nan($b), 1, 0) ELSE $a &lt; $b END)</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>float4le</strong><br>Whether a real is less than or equal to a real, NaN after every other value.</td><td><pre><code>float4le($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+IF($a IS NULL OR $b IS NULL, NULL, CASE WHEN is_nan($a) OR is_nan($b) THEN IF(is_nan($a), 1, 0) &lt;= IF(is_nan($b), 1, 0) ELSE $a &lt;= $b END)</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>float4gt</strong><br>Whether a real is greater than a real, NaN after every other value.</td><td><pre><code>float4gt($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+IF($a IS NULL OR $b IS NULL, NULL, CASE WHEN is_nan($a) OR is_nan($b) THEN IF(is_nan($a), 1, 0) &gt; IF(is_nan($b), 1, 0) ELSE $a &gt; $b END)</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>float4ge</strong><br>Whether a real is greater than or equal to a real, NaN after every other value.</td><td><pre><code>float4ge($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+IF($a IS NULL OR $b IS NULL, NULL, CASE WHEN is_nan($a) OR is_nan($b) THEN IF(is_nan($a), 1, 0) &gt;= IF(is_nan($b), 1, 0) ELSE $a &gt;= $b END)</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>float8eq</strong><br>Whether a double is equal to a double, NaN after every other value.</td><td><pre><code>float8eq($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+IF($a IS NULL OR $b IS NULL, NULL, CASE WHEN is_nan($a) OR is_nan($b) THEN IF(is_nan($a), 1, 0) = IF(is_nan($b), 1, 0) ELSE $a = $b END)</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>float8ne</strong><br>Whether a double is not equal to a double, NaN after every other value.</td><td><pre><code>float8ne($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+IF($a IS NULL OR $b IS NULL, NULL, CASE WHEN is_nan($a) OR is_nan($b) THEN IF(is_nan($a), 1, 0) != IF(is_nan($b), 1, 0) ELSE $a != $b END)</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>float8lt</strong><br>Whether a double is less than a double, NaN after every other value.</td><td><pre><code>float8lt($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+IF($a IS NULL OR $b IS NULL, NULL, CASE WHEN is_nan($a) OR is_nan($b) THEN IF(is_nan($a), 1, 0) &lt; IF(is_nan($b), 1, 0) ELSE $a &lt; $b END)</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>float8le</strong><br>Whether a double is less than or equal to a double, NaN after every other value.</td><td><pre><code>float8le($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+IF($a IS NULL OR $b IS NULL, NULL, CASE WHEN is_nan($a) OR is_nan($b) THEN IF(is_nan($a), 1, 0) &lt;= IF(is_nan($b), 1, 0) ELSE $a &lt;= $b END)</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>float8gt</strong><br>Whether a double is greater than a double, NaN after every other value.</td><td><pre><code>float8gt($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+IF($a IS NULL OR $b IS NULL, NULL, CASE WHEN is_nan($a) OR is_nan($b) THEN IF(is_nan($a), 1, 0) &gt; IF(is_nan($b), 1, 0) ELSE $a &gt; $b END)</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>float8ge</strong><br>Whether a double is greater than or equal to a double, NaN after every other value.</td><td><pre><code>float8ge($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+IF($a IS NULL OR $b IS NULL, NULL, CASE WHEN is_nan($a) OR is_nan($b) THEN IF(is_nan($a), 1, 0) &gt;= IF(is_nan($b), 1, 0) ELSE $a &gt;= $b END)</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>float48eq</strong><br>Whether a real is equal to a double, NaN after every other value.</td><td><pre><code>float48eq($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+IF($a IS NULL OR $b IS NULL, NULL, CASE WHEN is_nan($a) OR is_nan($b) THEN IF(is_nan($a), 1, 0) = IF(is_nan($b), 1, 0) ELSE $a = $b END)</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>float48ne</strong><br>Whether a real is not equal to a double, NaN after every other value.</td><td><pre><code>float48ne($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+IF($a IS NULL OR $b IS NULL, NULL, CASE WHEN is_nan($a) OR is_nan($b) THEN IF(is_nan($a), 1, 0) != IF(is_nan($b), 1, 0) ELSE $a != $b END)</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>float48lt</strong><br>Whether a real is less than a double, NaN after every other value.</td><td><pre><code>float48lt($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+IF($a IS NULL OR $b IS NULL, NULL, CASE WHEN is_nan($a) OR is_nan($b) THEN IF(is_nan($a), 1, 0) &lt; IF(is_nan($b), 1, 0) ELSE $a &lt; $b END)</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>float48le</strong><br>Whether a real is less than or equal to a double, NaN after every other value.</td><td><pre><code>float48le($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+IF($a IS NULL OR $b IS NULL, NULL, CASE WHEN is_nan($a) OR is_nan($b) THEN IF(is_nan($a), 1, 0) &lt;= IF(is_nan($b), 1, 0) ELSE $a &lt;= $b END)</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>float48gt</strong><br>Whether a real is greater than a double, NaN after every other value.</td><td><pre><code>float48gt($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+IF($a IS NULL OR $b IS NULL, NULL, CASE WHEN is_nan($a) OR is_nan($b) THEN IF(is_nan($a), 1, 0) &gt; IF(is_nan($b), 1, 0) ELSE $a &gt; $b END)</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>float48ge</strong><br>Whether a real is greater than or equal to a double, NaN after every other value.</td><td><pre><code>float48ge($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+IF($a IS NULL OR $b IS NULL, NULL, CASE WHEN is_nan($a) OR is_nan($b) THEN IF(is_nan($a), 1, 0) &gt;= IF(is_nan($b), 1, 0) ELSE $a &gt;= $b END)</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>float84eq</strong><br>Whether a double is equal to a real, NaN after every other value.</td><td><pre><code>float84eq($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+IF($a IS NULL OR $b IS NULL, NULL, CASE WHEN is_nan($a) OR is_nan($b) THEN IF(is_nan($a), 1, 0) = IF(is_nan($b), 1, 0) ELSE $a = $b END)</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>float84ne</strong><br>Whether a double is not equal to a real, NaN after every other value.</td><td><pre><code>float84ne($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+IF($a IS NULL OR $b IS NULL, NULL, CASE WHEN is_nan($a) OR is_nan($b) THEN IF(is_nan($a), 1, 0) != IF(is_nan($b), 1, 0) ELSE $a != $b END)</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>float84lt</strong><br>Whether a double is less than a real, NaN after every other value.</td><td><pre><code>float84lt($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+IF($a IS NULL OR $b IS NULL, NULL, CASE WHEN is_nan($a) OR is_nan($b) THEN IF(is_nan($a), 1, 0) &lt; IF(is_nan($b), 1, 0) ELSE $a &lt; $b END)</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>float84le</strong><br>Whether a double is less than or equal to a real, NaN after every other value.</td><td><pre><code>float84le($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+IF($a IS NULL OR $b IS NULL, NULL, CASE WHEN is_nan($a) OR is_nan($b) THEN IF(is_nan($a), 1, 0) &lt;= IF(is_nan($b), 1, 0) ELSE $a &lt;= $b END)</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>float84gt</strong><br>Whether a double is greater than a real, NaN after every other value.</td><td><pre><code>float84gt($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+IF($a IS NULL OR $b IS NULL, NULL, CASE WHEN is_nan($a) OR is_nan($b) THEN IF(is_nan($a), 1, 0) &gt; IF(is_nan($b), 1, 0) ELSE $a &gt; $b END)</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>float84ge</strong><br>Whether a double is greater than or equal to a real, NaN after every other value.</td><td><pre><code>float84ge($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+IF($a IS NULL OR $b IS NULL, NULL, CASE WHEN is_nan($a) OR is_nan($b) THEN IF(is_nan($a), 1, 0) &gt;= IF(is_nan($b), 1, 0) ELSE $a &gt;= $b END)</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>float4larger</strong><br>The greater of two floats, NaN after every other value.</td><td><pre><code>float4larger($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+CASE WHEN $a IS NULL OR $b IS NULL THEN NULL WHEN CASE WHEN is_nan($a) OR is_nan($b) THEN IF(is_nan($a), 1, 0) &gt; IF(is_nan($b), 1, 0) ELSE $a &gt; $b END THEN $a ELSE $b END</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>float4smaller</strong><br>The less of two floats, NaN after every other value.</td><td><pre><code>float4smaller($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+CASE WHEN $a IS NULL OR $b IS NULL THEN NULL WHEN CASE WHEN is_nan($a) OR is_nan($b) THEN IF(is_nan($a), 1, 0) &lt; IF(is_nan($b), 1, 0) ELSE $a &lt; $b END THEN $a ELSE $b END</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>float8larger</strong><br>The greater of two floats, NaN after every other value.</td><td><pre><code>float8larger($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+CASE WHEN $a IS NULL OR $b IS NULL THEN NULL WHEN CASE WHEN is_nan($a) OR is_nan($b) THEN IF(is_nan($a), 1, 0) &gt; IF(is_nan($b), 1, 0) ELSE $a &gt; $b END THEN $a ELSE $b END</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>float8smaller</strong><br>The less of two floats, NaN after every other value.</td><td><pre><code>float8smaller($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+CASE WHEN $a IS NULL OR $b IS NULL THEN NULL WHEN CASE WHEN is_nan($a) OR is_nan($b) THEN IF(is_nan($a), 1, 0) &lt; IF(is_nan($b), 1, 0) ELSE $a &lt; $b END THEN $a ELSE $b END</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>acos</strong><br>The arc cosine of a value from -1 to 1.</td><td><pre><code>acos($x)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+CASE WHEN abs($x) &gt; 1 THEN fail(&#x27;postgresql-error 22003: input is out of range&lt;end of postgresql-error&gt;&#x27;) ELSE acos($x) END</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>asin</strong><br>The arc sine of a value from -1 to 1.</td><td><pre><code>asin($x)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+CASE WHEN abs($x) &gt; 1 THEN fail(&#x27;postgresql-error 22003: input is out of range&lt;end of postgresql-error&gt;&#x27;) ELSE asin($x) END</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>atanh</strong><br>The inverse hyperbolic tangent of a value from -1 to 1.</td><td><pre><code>atanh($x)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+CASE WHEN abs($x) &gt; 1 THEN fail(&#x27;postgresql-error 22003: input is out of range&lt;end of postgresql-error&gt;&#x27;) ELSE 0.5 * ln((1.0 + $x) / (1.0 - $x)) END</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>acosh</strong><br>The inverse hyperbolic cosine of a value of 1 or more.</td><td><pre><code>acosh($x)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+CASE WHEN $x &lt; 1 THEN fail(&#x27;postgresql-error 22003: input is out of range&lt;end of postgresql-error&gt;&#x27;) ELSE IF($x &gt; 1e8, ln($x) + ln(2.0), ln($x + sqrt($x * $x - 1.0))) END</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>sin</strong><br>The sine of a finite value.</td><td><pre><code>sin($x)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+CASE WHEN is_infinite($x) THEN fail(&#x27;postgresql-error 22003: input is out of range&lt;end of postgresql-error&gt;&#x27;) ELSE sin($x) END</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>cos</strong><br>The cosine of a finite value.</td><td><pre><code>cos($x)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+CASE WHEN is_infinite($x) THEN fail(&#x27;postgresql-error 22003: input is out of range&lt;end of postgresql-error&gt;&#x27;) ELSE cos($x) END</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>tan</strong><br>The tangent of a finite value.</td><td><pre><code>tan($x)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+CASE WHEN is_infinite($x) THEN fail(&#x27;postgresql-error 22003: input is out of range&lt;end of postgresql-error&gt;&#x27;) ELSE tan($x) END</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>cot</strong><br>The cotangent of a finite value.</td><td><pre><code>cot($x)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+CASE WHEN is_infinite($x) THEN fail(&#x27;postgresql-error 22003: input is out of range&lt;end of postgresql-error&gt;&#x27;) ELSE 1.0 / tan($x) END</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>sqrt</strong><br>The square root of a value of zero or more.</td><td><pre><code>sqrt($x)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.floats.of_no_numeric_sqrt: sqrt($x) of no numeric: a double&#x27;s answer, its edges as PostgreSQL&#x27;s.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>log</strong><br>The base 10 logarithm of a value above zero.</td><td><pre><code>log($x)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.floats.of_no_numeric_log: log($x) of no numeric: a double&#x27;s answer, its edges as PostgreSQL&#x27;s.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>log10</strong><br>The base 10 logarithm of a value above zero.</td><td><pre><code>log10($x)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.floats.of_no_numeric_log10: log10($x) of no numeric: a double&#x27;s answer, its edges as PostgreSQL&#x27;s.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>exp</strong><br>e raised to a power; 22003 where a finite power overflows or underflows.</td><td><pre><code>exp($x)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.floats.of_no_numeric_exp: exp($x) of no numeric: a double&#x27;s answer, its edges as PostgreSQL&#x27;s.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>ln</strong><br>The natural logarithm of a value above zero.</td><td><pre><code>ln($x)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.floats.of_no_numeric_ln: ln($x) of no numeric: a double&#x27;s answer, its edges as PostgreSQL&#x27;s.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>tanh</strong><br>The hyperbolic tangent.</td><td><pre><code>tanh($x)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>power</strong><br>A value raised to a power.</td><td><pre><code>power($x, $y)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.floats.of_no_numeric_power: power($x, $y) of no numeric: a double&#x27;s answer, its edges as PostgreSQL&#x27;s.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>pow</strong><br>A value raised to a power.</td><td><pre><code>pow($x, $y)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.floats.of_no_numeric_pow: pow($x, $y) of no numeric: a double&#x27;s answer, its edges as PostgreSQL&#x27;s.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>degrees</strong><br>Radians as degrees.</td><td><pre><code>degrees($x)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+CASE WHEN is_finite($x) AND is_infinite(degrees($x)) THEN fail(&#x27;postgresql-error 22003: value out of range: overflow&lt;end of postgresql-error&gt;&#x27;) ELSE degrees($x) END</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>sind</strong><br>The sin of an angle in degrees, exact at 0, 30, 45, 60 and 90 as PostgreSQL&#x27;s.</td><td><pre><code>sind($x)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
@@ -3734,7 +3772,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>sign</strong><br>The sign of a value: -1, 0 or 1; 0 of NaN.</td><td><pre><code>sign($x)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.floats.of_no_numeric_sign: sign($x) of no numeric: a double&#x27;s answer, its edges as PostgreSQL&#x27;s.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>abs</strong><br>The absolute value; of an integer type&#x27;s least value, out of range.</td><td><pre><code>abs($a)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
@@ -3755,16 +3793,17 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>regr_slope</strong><br>The slope of the least-squares line.</td><td><pre><code>regr_slope($y, $x)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+CASE WHEN count_if($y IS NOT NULL AND $x IS NOT NULL AND NOT is_finite($x)) &gt; 0 THEN nan() WHEN count_if($y IS NOT NULL AND $x IS NOT NULL AND NOT is_finite($y)) &gt; 0 THEN IF(var_pop(IF($y IS NULL, NULL, $x)) = 0, NULL, nan()) ELSE regr_slope($y, $x) END</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>regr_intercept</strong><br>The y-intercept of the least-squares line.</td><td><pre><code>regr_intercept($y, $x)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+CASE WHEN count_if($y IS NOT NULL AND $x IS NOT NULL AND NOT is_finite($x)) &gt; 0 THEN nan() WHEN count_if($y IS NOT NULL AND $x IS NOT NULL AND NOT is_finite($y)) &gt; 0 THEN IF(var_pop(IF($y IS NULL, NULL, $x)) = 0, NULL, nan()) ELSE regr_intercept($y, $x) END</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>regr_r2</strong><br>The square of the correlation coefficient.</td><td><pre><code>regr_r2($y, $x)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>corr</strong><br>The correlation coefficient.</td><td><pre><code>corr($y, $x)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>sum</strong><br>The sum of a group&#x27;s bigints, exact; of its reals or doubles, the overflow raised.</td><td><pre><code>function provisa.transpiler.polyfill.float_aggregates._trino_sum: sum of a real or a double on Trino, as the statement says its argument&#x27;s type: the overflow</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>date_mi</strong><br>The days from one date to another.</td><td><pre><code>date_mi($a, $b)
 =&gt;
 CAST(date_diff(&#x27;day&#x27;, CAST($b AS DATE), CAST($a AS DATE)) AS INTEGER)</code></pre></td><td></td><td></td><td></td></tr>
@@ -3906,25 +3945,25 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>avg</strong><br>The mean of a group&#x27;s values.</td><td><pre><code>avg($v)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.aggregates.trino_of_doubles: avg, a variance or a standard deviation of a real or a double on Trino: Trino&#x27;s own, the</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>variance</strong><br>The sample variance of a group&#x27;s values.</td><td><pre><code>variance($v)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.aggregates.trino_of_doubles: avg, a variance or a standard deviation of a real or a double on Trino: Trino&#x27;s own, the</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>var_samp</strong><br>The sample variance of a group&#x27;s values.</td><td><pre><code>var_samp($v)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.aggregates.trino_of_doubles: avg, a variance or a standard deviation of a real or a double on Trino: Trino&#x27;s own, the</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>var_pop</strong><br>The population variance of a group&#x27;s values.</td><td><pre><code>var_pop($v)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.aggregates.trino_of_doubles: avg, a variance or a standard deviation of a real or a double on Trino: Trino&#x27;s own, the</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>stddev</strong><br>The sample standard deviation of a group&#x27;s values.</td><td><pre><code>stddev($v)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.aggregates.trino_of_doubles: avg, a variance or a standard deviation of a real or a double on Trino: Trino&#x27;s own, the</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>stddev_samp</strong><br>The sample standard deviation of a group&#x27;s values.</td><td><pre><code>stddev_samp($v)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.aggregates.trino_of_doubles: avg, a variance or a standard deviation of a real or a double on Trino: Trino&#x27;s own, the</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>stddev_pop</strong><br>The population standard deviation of a group&#x27;s values.</td><td><pre><code>stddev_pop($v)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.aggregates.trino_of_doubles: avg, a variance or a standard deviation of a real or a double on Trino: Trino&#x27;s own, the</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>xid8eq</strong><br>Two xid8 values equal.</td><td><pre><code>xid8eq($a, $b)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
@@ -4352,7 +4391,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [ClickHouse](clickhouse.md)
 
-19 of the grid's 560 features are native on ClickHouse and left out.
+31 of the grid's 572 features are native on ClickHouse and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>an array of dimensions</strong><br>cardinality, unnest and array_to_string of an array of more than one dimension: of every element, in storage order.</td><td><pre><code>function provisa.transpiler.polyfill.array_dimensions.of_dimensions: cardinality, unnest or array_to_string of an array of more than one dimension: of every</code></pre></td><td></td><td></td><td></td></tr>
@@ -5574,7 +5613,7 @@ function provisa.transpiler.polyfill.bytea.encode_of_bytes: encode of a bytea he
 
 ## [Snowflake](snowflake.md)
 
-209 of the grid's 560 features are native on Snowflake and left out.
+221 of the grid's 572 features are native on Snowflake and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -6590,7 +6629,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Databricks](databricks.md)
 
-209 of the grid's 560 features are native on Databricks and left out.
+221 of the grid's 572 features are native on Databricks and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -7606,7 +7645,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [BigQuery](bigquery.md)
 
-209 of the grid's 560 features are native on BigQuery and left out.
+221 of the grid's 572 features are native on BigQuery and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -8622,7 +8661,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [T-SQL (SQL Server, Fabric, Synapse)](tsql.md)
 
-209 of the grid's 560 features are native on T-SQL (SQL Server, Fabric, Synapse) and left out.
+221 of the grid's 572 features are native on T-SQL (SQL Server, Fabric, Synapse) and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -9638,7 +9677,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Redshift](redshift.md)
 
-209 of the grid's 560 features are native on Redshift and left out.
+221 of the grid's 572 features are native on Redshift and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -10654,7 +10693,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [MySQL](mysql.md)
 
-209 of the grid's 560 features are native on MySQL and left out.
+221 of the grid's 572 features are native on MySQL and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -11670,7 +11709,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [SingleStore](singlestore.md)
 
-209 of the grid's 560 features are native on SingleStore and left out.
+221 of the grid's 572 features are native on SingleStore and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -12686,7 +12725,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [SQLite](sqlite.md)
 
-209 of the grid's 560 features are native on SQLite and left out.
+221 of the grid's 572 features are native on SQLite and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -13702,7 +13741,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Oracle](oracle.md)
 
-209 of the grid's 560 features are native on Oracle and left out.
+221 of the grid's 572 features are native on Oracle and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -14718,7 +14757,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Hive](hive.md)
 
-209 of the grid's 560 features are native on Hive and left out.
+221 of the grid's 572 features are native on Hive and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -15734,7 +15773,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Exasol](exasol.md)
 
-209 of the grid's 560 features are native on Exasol and left out.
+221 of the grid's 572 features are native on Exasol and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -16750,7 +16789,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Druid](druid.md)
 
-209 of the grid's 560 features are native on Druid and left out.
+221 of the grid's 572 features are native on Druid and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)

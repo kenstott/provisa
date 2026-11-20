@@ -39,7 +39,13 @@ from provisa.transpiler.native_json import resolve_native_json
 from provisa.transpiler.native_subtype import resolve_reads
 from provisa.transpiler.pg_forms_json import json_member
 from provisa.transpiler.polyfill import ported as polyfill_ported
-from provisa.transpiler.pg_literals import array_inputs, exact_inputs, postgres_literals
+from provisa.transpiler.pg_literals import (
+    ROOM,
+    TIGHT,
+    array_inputs,
+    exact_inputs,
+    postgres_literals,
+)
 from provisa.transpiler.to_char import to_char_for_duckdb
 from provisa.transpiler.transpile_correlated import (
     rewrite_correlated_subqueries_for_trino,
@@ -1981,7 +1987,9 @@ def transpile(
         pg_sql = pg_functions.pg_xml.for_dialect(pg_sql, target_dialect)  # REQ-2167
         pg_sql = _regexp_replace_by_name(pg_sql)  # its flag is read below
     if target_dialect != "postgres":
-        pg_sql = exact_inputs(pg_sql)  # REQ-2171
+        # REQ-2171; on Trino a literal's decimal of its digits alone (pg_literals.TIGHT)
+        room = TIGHT if target_dialect in ("trino", "presto", "athena") else ROOM
+        pg_sql = exact_inputs(pg_sql, room)
     pg_sql = pg_forms_enum.lowered(pg_money.lowered(pg_sql, target_dialect), target_dialect)
     # REQ-1730: an identifier UNQUOTED in the source SQL (the common case for a raw/direct query —
     # governed GraphQL/Cypher-compiled queries already force `quoted=True`, see stage2.py's

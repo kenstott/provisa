@@ -37,9 +37,16 @@ from provisa.pgwire import function_types
 from provisa.transpiler import pg_forms
 from provisa.transpiler.polyfill import notation, trino
 from provisa.transpiler.polyfill.matching import graft, match
-from provisa.transpiler.polyfill.notation import Rewrite, replacement
+from provisa.transpiler.polyfill.notation import Form, Rewrite, replacement
 from provisa.transpiler.polyfill.grid import Feature, Limitation, Rule, Side
-from provisa.transpiler.polyfill.numbers import FAMILY, ch_checked, ch_fail, ch_once, ch_only
+from provisa.transpiler.polyfill.numbers import (
+    FAMILY,
+    ch_checked,
+    ch_fail,
+    ch_once,
+    ch_only,
+    fail,
+)
 
 
 def _ch(form: str) -> dict[str, str | Rewrite]:
@@ -47,11 +54,16 @@ def _ch(form: str) -> dict[str, str | Rewrite]:
     return ch_only(ch_once(form))
 
 
-def _of_no_numeric(pattern: str, form: str) -> dict[str, str | Rewrite]:
-    """ClickHouse's ``form`` (its holes each read once) of a call none of whose arguments the
-    statement says is a numeric; a numeric's call keeps what it had, refused by name: PostgreSQL
-    answers it in numeric's exact digits, which a double does not hold."""
-    once = ch_once(form)
+def _ch_trino(form: str, trino_form: str) -> dict[str, Form]:
+    """ClickHouse's ``form`` (its holes each read once) and Trino's ``trino_form``; every other
+    dialect keeps what it had."""
+    return {**_ch(form), **trino.on_trino(trino_form)}
+
+
+def _doubles(pattern: str, form: str) -> Rewrite:
+    """``form`` of a call none of whose arguments the statement says is a numeric; a numeric's
+    call keeps what it had: PostgreSQL answers it in numeric's exact digits, which a double does
+    not hold."""
 
     def doubles(node: exp.Expr, dialect: str) -> exp.Expr | None:
         call = trino.called(node)
@@ -60,11 +72,29 @@ def _of_no_numeric(pattern: str, form: str) -> dict[str, str | Rewrite]:
         bindings = match(notation.pattern(pattern), _typed(node))
         if bindings is None:
             return None
-        return graft(replacement(once, dialect, pattern), bindings)
+        return graft(replacement(form, dialect, pattern), bindings)
 
     doubles.__doc__ = f"{pattern} of no numeric: a double's answer, its edges as PostgreSQL's."
     doubles.__qualname__ = f"of_no_numeric_{_written(pattern)}"
-    return ch_only(Rewrite(doubles))
+    return Rewrite(doubles)
+
+
+def _of_no_numeric(pattern: str, form: str, trino_form: str | None = None) -> dict[str, Form]:
+    """ClickHouse's ``form`` (its holes each read once), and Trino's ``trino_form`` where one is
+    given, of a call none of whose arguments the statement says is a numeric (_doubles)."""
+    forms: dict[str, Form] = {**ch_only(_doubles(pattern, ch_once(form)))}
+    if trino_form is not None:
+        forms.update(trino.on_trino(_doubles(pattern, trino_form)))
+    return forms
+
+
+def _t_checked(raises: list[tuple[str, str, str]], answer: str) -> str:
+    """Trino's ``answer`` where none of ``raises`` (condition, SQLSTATE, message) holds, else the
+    first's error: Trino reads a CASE's branches in order, and only the branch it takes."""
+    branches = " ".join(
+        f"WHEN {when} THEN {fail(state, message)}" for when, state, message in raises
+    )
+    return f"CASE {branches} ELSE {answer} END"
 
 
 def _typed(node: exp.Expr) -> exp.Expr:
@@ -90,6 +120,20 @@ def _compared(operator: str) -> str:
     return f"if($a IS NULL OR $b IS NULL, NULL, {_ordered('$a')} {operator} {_ordered('$b')})"
 
 
+def _t_nan_compared(operator: str) -> str:
+    """Two floats compared in PostgreSQL's order on Trino, either NULL aside: NaN after every
+    other value and equal to itself, where Trino's comparisons are IEEE's."""
+    return (
+        "CASE WHEN is_nan($a) OR is_nan($b) "
+        f"THEN IF(is_nan($a), 1, 0) {operator} IF(is_nan($b), 1, 0) ELSE $a {operator} $b END"
+    )
+
+
+def _t_compared(operator: str) -> str:
+    """Two floats compared in PostgreSQL's order on Trino; NULL where either is NULL."""
+    return f"IF($a IS NULL OR $b IS NULL, NULL, {_t_nan_compared(operator)})"
+
+
 _COMPARISONS = {
     "eq": ("=", "equal to"),
     "ne": ("!=", "not equal to"),
@@ -111,7 +155,14 @@ COMPARISONS: tuple[Feature, ...] = tuple(
         f"{prefix}{suffix}",
         FAMILY,
         f"Whether {left} is {said} {right}, NaN after every other value.",
-        read=Side(rules=(Rule(f"{prefix}{suffix}($a, $b)", _ch(_compared(operator))),)),
+        read=Side(
+            rules=(
+                Rule(
+                    f"{prefix}{suffix}($a, $b)",
+                    _ch_trino(_compared(operator), _t_compared(operator)),
+                ),
+            )
+        ),
     )
     for prefix, (left, right) in _PAIRS.items()
     for suffix, (operator, said) in _COMPARISONS.items()
@@ -130,7 +181,11 @@ CHOSEN: tuple[Feature, ...] = tuple(
             rules=(
                 Rule(
                     f"{prefix}{suffix}($a, $b)",
-                    _ch(f"if({_compared(operator)}, $a, if($a IS NULL, NULL, $b))"),
+                    _ch_trino(
+                        f"if({_compared(operator)}, $a, if($a IS NULL, NULL, $b))",
+                        f"CASE WHEN $a IS NULL OR $b IS NULL THEN NULL "
+                        f"WHEN {_t_nan_compared(operator)} THEN $a ELSE $b END",
+                    ),
                 ),
             )
         ),
@@ -144,8 +199,16 @@ _OVERFLOW = ch_fail("22003", "value out of range: overflow")
 _FINITE = "NOT isInfinite(toFloat64({}))"
 
 
-def _domain(name: str, outside: str, summary: str, answer: str | None = None) -> Feature:
-    """``name`` of a double, PostgreSQL's 22003 where ``outside`` (of ``$x``) holds."""
+def _domain(
+    name: str,
+    outside: str,
+    summary: str,
+    answer: str | None = None,
+    trino_outside: str = "",
+    trino_answer: str = "",
+) -> Feature:
+    """``name`` of a double, PostgreSQL's 22003 where ``outside`` (of ``$x``) holds; on Trino
+    where ``trino_outside`` holds, else ``trino_answer``."""
     return Feature(
         name,
         FAMILY,
@@ -154,10 +217,13 @@ def _domain(name: str, outside: str, summary: str, answer: str | None = None) ->
             rules=(
                 Rule(
                     f"{name}($x)",
-                    _ch(
+                    _ch_trino(
                         ch_checked(
                             [_OUT_OF_RANGE.format(condition=outside)], answer or f"{name}($x)"
-                        )
+                        ),
+                        _t_checked(
+                            [(trino_outside, "22003", "input is out of range")], trino_answer
+                        ),
                     ),
                 ),
             )
@@ -166,16 +232,69 @@ def _domain(name: str, outside: str, summary: str, answer: str | None = None) ->
 
 
 _INFINITE = "isInfinite(toFloat64($x))"
+_T_INFINITE = "is_infinite($x)"
+#: Past 1e8 x * x - 1 is x * x to a double's precision, and x * x overflows past 1e154: acosh(x)
+#: is ln(2x) there, written as ln(x) + ln(2) (libm's acosh of a large value).
+_T_ACOSH = "IF($x > 1e8, ln($x) + ln(2.0), ln($x + sqrt($x * $x - 1.0)))"
 
 DOMAINS: tuple[Feature, ...] = (
-    _domain("acos", "abs($x) > 1", "The arc cosine of a value from -1 to 1."),
-    _domain("asin", "abs($x) > 1", "The arc sine of a value from -1 to 1."),
-    _domain("atanh", "abs($x) > 1", "The inverse hyperbolic tangent of a value from -1 to 1."),
-    _domain("acosh", "$x < 1", "The inverse hyperbolic cosine of a value of 1 or more."),
-    _domain("sin", _INFINITE, "The sine of a finite value."),
-    _domain("cos", _INFINITE, "The cosine of a finite value."),
-    _domain("tan", _INFINITE, "The tangent of a finite value."),
-    _domain("cot", _INFINITE, "The cotangent of a finite value.", "1.0 / tan($x)"),
+    _domain(
+        "acos",
+        "abs($x) > 1",
+        "The arc cosine of a value from -1 to 1.",
+        trino_outside="abs($x) > 1",
+        trino_answer="acos($x)",
+    ),
+    _domain(
+        "asin",
+        "abs($x) > 1",
+        "The arc sine of a value from -1 to 1.",
+        trino_outside="abs($x) > 1",
+        trino_answer="asin($x)",
+    ),
+    _domain(
+        "atanh",
+        "abs($x) > 1",
+        "The inverse hyperbolic tangent of a value from -1 to 1.",
+        trino_outside="abs($x) > 1",
+        trino_answer="0.5 * ln((1.0 + $x) / (1.0 - $x))",
+    ),
+    _domain(
+        "acosh",
+        "$x < 1",
+        "The inverse hyperbolic cosine of a value of 1 or more.",
+        trino_outside="$x < 1",
+        trino_answer=_T_ACOSH,
+    ),
+    _domain(
+        "sin",
+        _INFINITE,
+        "The sine of a finite value.",
+        trino_outside=_T_INFINITE,
+        trino_answer="sin($x)",
+    ),
+    _domain(
+        "cos",
+        _INFINITE,
+        "The cosine of a finite value.",
+        trino_outside=_T_INFINITE,
+        trino_answer="cos($x)",
+    ),
+    _domain(
+        "tan",
+        _INFINITE,
+        "The tangent of a finite value.",
+        trino_outside=_T_INFINITE,
+        trino_answer="tan($x)",
+    ),
+    _domain(
+        "cot",
+        _INFINITE,
+        "The cotangent of a finite value.",
+        "1.0 / tan($x)",
+        trino_outside=_T_INFINITE,
+        trino_answer="1.0 / tan($x)",
+    ),
 )
 
 SQRT = Feature(
@@ -196,6 +315,10 @@ SQRT = Feature(
                         ],
                         "sqrt($x)",
                     ),
+                    _t_checked(
+                        [("$x < 0", "2201F", "cannot take square root of a negative number")],
+                        "sqrt($x)",
+                    ),
                 ),
             ),
         )
@@ -208,6 +331,11 @@ _LOG_RAISES = [
 ]
 
 _LOG10 = ch_checked(_LOG_RAISES, "log10($x)")
+_T_LOG_RAISES = [
+    ("$x < 0", "2201E", "cannot take logarithm of a negative number"),
+    ("$x = 0", "2201E", "cannot take logarithm of zero"),
+]
+_T_LOG10 = _t_checked(_T_LOG_RAISES, "log10($x)")
 
 
 LOGS: tuple[Feature, ...] = (
@@ -215,13 +343,13 @@ LOGS: tuple[Feature, ...] = (
         "log",
         FAMILY,
         "The base 10 logarithm of a value above zero.",
-        read=Side(rules=(Rule("log($x)", _of_no_numeric("log($x)", _LOG10)),)),
+        read=Side(rules=(Rule("log($x)", _of_no_numeric("log($x)", _LOG10, _T_LOG10)),)),
     ),
     Feature(
         "log10",
         FAMILY,
         "The base 10 logarithm of a value above zero.",
-        read=Side(rules=(Rule("log10($x)", _of_no_numeric("log10($x)", _LOG10)),)),
+        read=Side(rules=(Rule("log10($x)", _of_no_numeric("log10($x)", _LOG10, _T_LOG10)),)),
     ),
 )
 
@@ -245,6 +373,16 @@ _LN = ch_checked(
     "log($x)",
 )
 
+_T_FINITE = "is_finite($x)"
+_T_EXP = _t_checked(
+    [
+        (f"{_T_FINITE} AND is_infinite(exp($x))", "22003", "value out of range: overflow"),
+        (f"{_T_FINITE} AND exp($x) = 0", "22003", "value out of range: underflow"),
+    ],
+    "exp($x)",
+)
+_T_LN = _t_checked(_T_LOG_RAISES, "ln($x)")
+
 #: tanh as sinh / cosh, each of which ClickHouse answers as libm does; past 22 both overflow toward
 #: infinity where tanh is 1 to a double's precision.
 _TANH = "if(abs($x) > 22, if($x > 0, 1.0, -1.0), sinh($x) / cosh($x))"
@@ -254,13 +392,13 @@ EXPONENTIALS: tuple[Feature, ...] = (
         "exp",
         FAMILY,
         "e raised to a power; 22003 where a finite power overflows or underflows.",
-        read=Side(rules=(Rule("exp($x)", _of_no_numeric("exp($x)", _EXP)),)),
+        read=Side(rules=(Rule("exp($x)", _of_no_numeric("exp($x)", _EXP, _T_EXP)),)),
     ),
     Feature(
         "ln",
         FAMILY,
         "The natural logarithm of a value above zero.",
-        read=Side(rules=(Rule("ln($x)", _of_no_numeric("ln($x)", _LN)),)),
+        read=Side(rules=(Rule("ln($x)", _of_no_numeric("ln($x)", _LN, _T_LN)),)),
     ),
     Feature(
         "tanh",
@@ -297,6 +435,23 @@ _POWER_RAISES = [
     ),
 ]
 
+#: dpow on Trino, whose power is Java's: a NaN operand, 1 to any power and -1 or 1 to an infinite
+#: power answer as C's pow does before Java's is read; then dpow's errors.
+_T_BOTH_FINITE = "is_finite($x) AND is_finite($y)"
+_T_POWER = (
+    "CASE WHEN is_nan($x) THEN IF($y = 0, 1.0, nan()) "
+    "WHEN is_nan($y) THEN IF($x = 1, 1.0, nan()) "
+    f"WHEN $x = 0 AND $y < 0 THEN {fail('2201F', 'zero raised to a negative power is undefined')} "
+    "WHEN $x < 0 AND floor($y) != $y THEN "
+    f"{fail('2201F', 'a negative number raised to a non-integer power yields a complex result')} "
+    "WHEN $x = 1 OR (abs($x) = 1 AND is_infinite($y)) THEN 1.0 "
+    f"WHEN {_T_BOTH_FINITE} AND is_infinite(power($x, $y)) "
+    f"THEN {fail('22003', 'value out of range: overflow')} "
+    f"WHEN {_T_BOTH_FINITE} AND $x != 0 AND power($x, $y) = 0 "
+    f"THEN {fail('22003', 'value out of range: underflow')} "
+    "ELSE power($x, $y) END"
+)
+
 POWERS: tuple[Feature, ...] = tuple(
     Feature(
         name,
@@ -306,7 +461,7 @@ POWERS: tuple[Feature, ...] = tuple(
             rules=(
                 Rule(
                     f"{name}($x, $y)",
-                    _of_no_numeric(f"{name}($x, $y)", ch_checked(_POWER_RAISES, _POWER)),
+                    _of_no_numeric(f"{name}($x, $y)", ch_checked(_POWER_RAISES, _POWER), _T_POWER),
                 ),
             )
         ),
@@ -322,7 +477,7 @@ DEGREES = Feature(
         rules=(
             Rule(
                 "degrees($x)",
-                _ch(
+                _ch_trino(
                     ch_checked(
                         [
                             _OVERFLOW.format(
@@ -330,7 +485,17 @@ DEGREES = Feature(
                             )
                         ],
                         "degrees($x)",
-                    )
+                    ),
+                    _t_checked(
+                        [
+                            (
+                                f"{_T_FINITE} AND is_infinite(degrees($x))",
+                                "22003",
+                                "value out of range: overflow",
+                            )
+                        ],
+                        "degrees($x)",
+                    ),
                 ),
             ),
         )
@@ -341,7 +506,17 @@ SIGN = Feature(
     "sign",
     FAMILY,
     "The sign of a value: -1, 0 or 1; 0 of NaN.",
-    read=Side(rules=(Rule("sign($x)", _ch("if(isNaN(toFloat64($x)), 0, sign($x))")),)),
+    read=Side(
+        rules=(
+            Rule(
+                "sign($x)",
+                {
+                    **_ch("if(isNaN(toFloat64($x)), 0, sign($x))"),
+                    **trino.on_trino(_doubles("sign($x)", "IF(is_nan($x), 0, sign($x))")),
+                },
+            ),
+        )
+    ),
 )
 
 #: 2^e mod 360 for e from 0 to 14; past 2 its period is 12 (2^e is 0 mod 8, and 2 has order 12 mod 45).
@@ -561,6 +736,19 @@ _IN_RANGE_FLOATS = ch_checked(
     "isInfinite(toFloat64($o)) AND isInfinite(toFloat64($b)) AND if($s, $b > 0, $b < 0), true, "
     f"if($l, toFloat64($v) <= {_FLOAT_SUM}, toFloat64($v) >= {_FLOAT_SUM}))",
 )
+#: in_range of floats on Trino (float.c's in_range_float8_float8), as 1, 0 or NULL: the caller
+#: compares it with 1, a Trino boolean not being comparable with an integer.
+_T_V, _T_B, _T_O = (f"CAST(${h} AS DOUBLE)" for h in "vbo")
+_T_FLOAT_SUM = f"IF($s, {_T_B} - {_T_O}, {_T_B} + {_T_O})"
+_T_IN_RANGE_FLOATS = (
+    f"CASE WHEN {_IN_RANGE_NULL} THEN NULL "
+    f"WHEN is_nan({_T_O}) OR {_T_O} < 0 THEN "
+    f"{fail('22013', 'invalid preceding or following size in window function')} "
+    f"WHEN is_nan({_T_V}) THEN IF(is_nan({_T_B}) OR NOT $l, 1, 0) "
+    f"WHEN is_nan({_T_B}) THEN IF($l, 1, 0) "
+    f"WHEN is_infinite({_T_O}) AND is_infinite({_T_B}) AND IF($s, {_T_B} > 0, {_T_B} < 0) THEN 1 "
+    f"WHEN IF($l, {_T_V} <= {_T_FLOAT_SUM}, {_T_V} >= {_T_FLOAT_SUM}) THEN 1 ELSE 0 END"
+)
 _IN_RANGE = "in_range($v, $b, $o, $s, $l)"
 _INTEGER_NAMES = frozenset({"smallint", "integer", "bigint"})
 _FLOAT_NAMES = frozenset({"real", "double precision"})
@@ -569,13 +757,18 @@ _FLOAT_NAMES = frozenset({"real", "double precision"})
 def in_range_of_numbers(
     said: list[exp.Expr], args: list[exp.Expr], dialect: str
 ) -> exp.Expr | None:
-    """in_range of integers or of floats on ClickHouse, of ``args``, as the statement says the
-    value's and the offset's types (of ``said``, the arguments as written); None for any other (a
-    date's, a numeric's, a column no statement types), which keeps what it had. pg_ranges lowers
-    every in_range before the grid runs, and asks here first."""
-    if dialect != "clickhouse" or len(args) != 5:  # noqa: PLR2004 -- PostgreSQL's five arguments
+    """in_range of integers or of floats on ClickHouse, and of floats on Trino, of ``args``, as
+    the statement says the value's and the offset's types (of ``said``, the arguments as written);
+    None for any other (a date's, a numeric's, a column no statement types), which keeps what it
+    had. pg_ranges lowers every in_range before the grid runs, and asks here first."""
+    if len(args) != 5:  # noqa: PLR2004 -- PostgreSQL's five arguments
         return None
     value, _, offset = (function_types.argument_type(a) for a in said[:3])
+    if dialect in trino.TRINO and value in _FLOAT_NAMES and offset in _FLOAT_NAMES:
+        bindings = dict(zip("vbosl", args, strict=True))
+        return graft(replacement(_T_IN_RANGE_FLOATS, dialect, _IN_RANGE), bindings)
+    if dialect != "clickhouse":
+        return None
     if value in _INTEGER_NAMES and offset in _INTEGER_NAMES:
         form = _IN_RANGE_INTEGERS
     elif value in _FLOAT_NAMES and offset in _FLOAT_NAMES:
