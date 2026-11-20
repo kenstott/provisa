@@ -8,9 +8,9 @@ This page lists every feature that has a polyfill or a limitation on Presto. A f
 
 When Presto is a serving engine reading a source it attaches directly, it may push work into that source, with the source's semantics, so a result can depend on the pair; the cases known are fixed by hints, listed under each source.
 
-Rules on this page: 497, of which 364 are only the name of a rewrite function. A rule is printed as the translator runs it: the PostgreSQL pattern, its holes written `$name` (typed with `::type`), then the dialect's replacement.
+Rules on this page: 498, of which 365 are only the name of a rewrite function. A rule is printed as the translator runs it: the PostgreSQL pattern, its holes written `$name` (typed with `::type`), then the dialect's replacement.
 
-126 of the grid's 577 features are native on Presto and left out.
+126 of the grid's 578 features are native on Presto and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>an array of dimensions</strong><br>cardinality, unnest and array_to_string of an array of more than one dimension: of every element, in storage order.</td><td><pre><code>function provisa.transpiler.polyfill.array_dimensions.of_dimensions: cardinality, unnest or array_to_string of an array of more than one dimension: of every</code></pre></td><td></td><td></td><td></td></tr>
@@ -525,6 +525,7 @@ function provisa.transpiler.polyfill.floats.of_no_numeric_sign: sign($x) of no n
 =&gt;
 function provisa.transpiler.polyfill.floats._t_abs: abs of an integer the statement says on Trino: PostgreSQL&#x27;s 22003 of its type&#x27;s least</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>mod of integers on trino</strong><br>The remainder of two integers; of a zero divisor, division by zero.</td><td><pre><code>function provisa.transpiler.polyfill.floats._t_mod: mod of two integers the statement says on Trino: PostgreSQL&#x27;s 22012 of a zero divisor,</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>integers of floats on trino</strong><br>int2, int4 or int8 of a real or a double: rounded half to even, out of range of NaN.</td><td><pre><code>function provisa.transpiler.polyfill.floats._t_integer_of_float: int2, int4 or int8 of a value the statement says is a real or a double, on Trino.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>lcm</strong><br>The least common multiple of two integers; out of range past the type.</td><td><pre><code>lcm($a, $b)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>

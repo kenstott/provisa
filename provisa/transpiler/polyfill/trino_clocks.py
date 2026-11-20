@@ -22,6 +22,8 @@ texts. Of times the statement says (a cast, a literal); any other keeps what it 
 
 from __future__ import annotations
 
+import re
+
 import sqlglot.expressions as exp
 
 from provisa.transpiler.polyfill import trino
@@ -83,12 +85,46 @@ def _call(node: exp.Expr, names: frozenset[str]) -> tuple[str, list[exp.Expr]] |
     return (next(iter(named)), call[1]) if len(named) == 1 else None
 
 
+#: PostgreSQL's last time of day, which Trino's TIME does not hold.
+_DAYS_END = re.compile(r"\s*24:00(?::00(?:\.0*)?)?\s*", re.ASCII)
+#: A time's place in the day as text of fixed width ('HH:MM:SS.ffffff'), which orders as the time
+#: does: 24:00:00 after every other.
+_KEY = "CAST(CAST($v AS TIME(6)) AS VARCHAR)"
+_END_KEY = "'24:00:00.000000'"
+
+
+def _keyed(name: str, a: exp.Expr, b: exp.Expr, dialect: str) -> exp.Expr:
+    """A comparison of two times one of which the statement writes as 24:00:00: each time's text of
+    fixed width compared, 24:00:00's after every other. The larger or smaller of two is a time,
+    which Trino's TIME of 24:00:00 is not: refused by name."""
+    if name in ("time_larger", "time_smaller"):
+        raise Refused(
+            Refusal("0A000", f"{name}() of 24:00:00 has no form on {dialect}"), ruling=True
+        )
+    keys = {}
+    for hole, value in (("a", a), ("b", b)):
+        text = _literal_text(value)
+        keys[hole] = (
+            _END_KEY
+            if text is not None and _DAYS_END.fullmatch(text)
+            else (_KEY.replace("$v", f"${hole}"))
+        )
+    form = _COMPARED[name].replace(_A, "$ka").replace(_B, "$kb")
+    form = form.replace("$ka", keys["a"]).replace("$kb", keys["b"])
+    holes = {h: _uncast(v) for h, v in (("a", a), ("b", b)) if f"${h}" in form}
+    return trino.written(form, f"{name}($a, $b)", holes)
+
+
 def compared(node: exp.Expr, dialect: str) -> exp.Expr | None:
     """A comparison of two times the statement says, as TIME(6)."""
     call = _call(node, frozenset(_COMPARED))
     if call is None or not all(_is_time(argument) for argument in call[1]):
         return None
     name, (a, b) = call
+    if any(
+        (text := _literal_text(value)) is not None and _DAYS_END.fullmatch(text) for value in (a, b)
+    ):
+        return _keyed(name, a, b, dialect)
     bindings = {"a": _uncast(a), "b": _uncast(b)}
     return trino.written(_COMPARED[name], f"{name}($a, $b)", bindings)
 

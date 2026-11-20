@@ -655,6 +655,50 @@ def _t_mod(node: exp.Expr, dialect: str) -> exp.Expr | None:
     return trino.written(form, "mod($a, $b)", {"a": args[0], "b": args[1]})
 
 
+#: int2, int4 and int8 of a real or a double (float.c's dtoi4 and kin): rint of the value, and
+#: PostgreSQL's 22003 of NaN or of one past the type, where Trino's cast of NaN raised its own.
+_T_INTEGERS = {
+    "int2": ("SMALLINT", "smallint", 16),
+    "int4": ("INTEGER", "integer", 32),
+    "int8": ("BIGINT", "bigint", 64),
+}
+_T_RINT = "CASE WHEN $x - floor($x) = 0.5 THEN 2 * round($x / 2) ELSE round($x) END"
+
+
+def _t_integer_of_float(node: exp.Expr, dialect: str) -> exp.Expr | None:
+    """int2, int4 or int8 of a value the statement says is a real or a double, on Trino."""
+    call = trino.called(node)
+    if call is None or len(call[1]) != 1:
+        return None
+    names = call[0] & set(_T_INTEGERS)
+    if len(names) != 1 or function_types.argument_type(call[1][0]) not in _FLOAT_NAMES:
+        return None
+    sql_type, pg_name, bits = _T_INTEGERS[next(iter(names))]
+    # past 2^63 a double's bigint bound is no exact double: compare with the bound as a double
+    lowest, past = -(1 << (bits - 1)), 1 << (bits - 1)
+    rint = _T_RINT.replace("$x", "CAST($x AS DOUBLE)")
+    form = (
+        f"CASE WHEN is_nan(CAST($x AS DOUBLE)) OR {rint} < {lowest}e0 OR {rint} >= {past}e0 "
+        f"THEN {fail('22003', f'{pg_name} out of range')} ELSE CAST({rint} AS {sql_type}) END"
+    )
+    return trino.written(form, "f($x)", {"x": call[1][0]})
+
+
+INTEGERS_OF_FLOATS = Feature(
+    "integers of floats on trino",
+    FAMILY,
+    "int2, int4 or int8 of a real or a double: rounded half to even, out of range of NaN.",
+    read=Side(
+        rules=(
+            Rule(
+                None,
+                trino.on_trino(Rewrite(_t_integer_of_float, mentions=r"\bint[248]\b", first=True)),
+            ),
+        )
+    ),
+)
+
+
 MOD = Feature(
     "mod of integers on trino",
     FAMILY,
@@ -859,6 +903,7 @@ FEATURES: tuple[Feature, ...] = (
     SIGN,
     ABS,
     MOD,
+    INTEGERS_OF_FLOATS,
     LCM,
     CHR,
     IN_RANGE,

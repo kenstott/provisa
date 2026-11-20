@@ -349,3 +349,22 @@ def test_a_year_bc_is_its_days_from_the_epoch(sql, days):
 def test_a_day_before_postgresqls_first_raises_22008():
     refused = _refused("\"date_eq\"('4715-01-01 BC'::date, '2024-06-15'::date)")
     assert (refused.sqlstate, str(refused)) == ("22008", 'date out of range: "4715-01-01 BC"')
+
+
+@pytest.mark.parametrize("name", ["int2", "int4", "int8"])
+def test_an_integer_of_nan_raises_22003(name):
+    written = _trino(f"\"{name}\"('NaN'::double precision)")
+    assert "IS_NAN(" in written and "22003" in written
+
+
+@pytest.mark.parametrize(("name", "op"), [("time_eq", "="), ("time_ne", "<>")])
+def test_the_days_end_compares_after_every_time(name, op):
+    written = _trino(
+        f"\"{name}\"('24:00:00'::time without time zone, '12:30:45'::time without time zone)"
+    )
+    assert written.startswith(f"SELECT '24:00:00.000000' {op} CAST(CAST('12:30:45' AS TIME(6))")
+
+
+def test_the_larger_of_the_days_end_is_refused_by_name():
+    sql = "\"time_larger\"('24:00:00'::time without time zone, '12:30:45'::time without time zone)"
+    assert _refused(sql).sqlstate == "0A000"
