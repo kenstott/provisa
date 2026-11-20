@@ -43,7 +43,7 @@ CATALOG = Brand(
     verify_path="/api/v1/users/me",
     url="{base_url}",
     setup_fields=(SetupField("base_url", r"https?://[^\s{}]+"),),
-    instance_spec_path="/swagger.json",
+    instance_spec_url="{base_url}/swagger.json",
     auth_type="oauth2_client_credentials",
     token_url="{base_url}/oauth/token",
     scope="read",
@@ -126,7 +126,7 @@ def test_a_definition_that_cannot_hold_is_refused():
             label="X",
             spec_url="",
             verify_path="/",
-            instance_spec_path="/openapi.json",
+            instance_spec_url="{base_url}/openapi.json",
             version_header="X-Version",
         )
     with pytest.raises(ValueError, match="token_url"):

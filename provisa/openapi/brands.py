@@ -45,6 +45,11 @@ _SPEC_DIR = Path(__file__).parent / "_known_specs"
 SPEC_SCHEME = "brand:"
 
 
+#: A base URL a brand's setup asks for (REQ-2265): an http(s) address without a trailing slash,
+#: so the paths a brand writes after it (``{base_url}/api``) join it once.
+BASE_URL_PATTERN = r"https?://[^\s{}/]+(/[^\s{}]*[^\s{}/])?"
+
+
 #: How a brand's credential is presented: a bearer token, or an OAuth client credentials grant
 #: (the generic source's ``oauth2_client_credentials`` auth, provisa.core.auth_models).
 BrandAuthType = Literal["bearer", "oauth2_client_credentials"]
@@ -75,11 +80,13 @@ class Brand:
     url: str = ""
     # What setup asks for besides the credential (the GraphQL brands' SetupField).
     setup_fields: tuple[SetupField, ...] = ()
-    # REQ-2265: the spec's path on the running instance, relative to the base URL. Empty: the
-    # spec ships with Provisa (``_known_specs/<id>.json.gz``). Set: the source's spec location
-    # is that address, read at registration and again at every refresh, as a steward's own
-    # spec URL is.
-    instance_spec_path: str = ""
+    # REQ-2265: where the running instance publishes its spec, a template filled from the setup
+    # fields as ``url`` is (``"{base_url}/swagger.json"``): an instance may serve its spec beside
+    # its API rather than under it (OpenMetadata: the API under /api, the spec at the host's
+    # root). Empty: the spec ships with Provisa (``_known_specs/<id>.json.gz``). Set: the
+    # source's spec location is that address, read at registration and again at every refresh,
+    # as a steward's own spec URL is.
+    instance_spec_url: str = ""
     auth_type: BrandAuthType = "bearer"
     # The token endpoint of a client credentials brand, a template filled from its setup fields;
     # and the scope it asks for, None for none.
@@ -87,7 +94,7 @@ class Brand:
     scope: str | None = None
 
     def __post_init__(self) -> None:
-        if self.instance_spec_path and self.version_header is not None:
+        if self.instance_spec_url and self.version_header is not None:
             raise ValueError(
                 f"{self.label}: a version header carries the shipped spec's version, and a spec "
                 "read from the instance is not shipped"
@@ -97,7 +104,7 @@ class Brand:
 
     @property
     def ships_spec(self) -> bool:
-        return not self.instance_spec_path
+        return not self.instance_spec_url
 
     @property
     def spec_path(self) -> str:
@@ -120,7 +127,7 @@ class Brand:
         """The spec location a source added with ``setup`` records (``sources.path``)."""
         if self.ships_spec:
             return self.spec_path
-        return self.base_url(setup).rstrip("/") + "/" + self.instance_spec_path.lstrip("/")
+        return self.instance_spec_url.format(**setup)
 
     def auth(self, token: str) -> dict:
         return {"type": "bearer", "token": token}
@@ -170,6 +177,19 @@ BRANDS: dict[str, Brand] = {
         spec_url="https://raw.githubusercontent.com/stripe/openapi/master/openapi/spec3.json",
         verify_path="/v1/balance",
         version_header="Stripe-Version",
+    ),
+    # REQ-2265: a governance catalog, read live; nothing syncs. Each customer runs it at its own
+    # host, which serves its REST API under /api and the spec of that API, which changes between
+    # releases, at /swagger.json beside it. The credential is a bot's JWT token (Settings >
+    # Bots), sent as a bearer token.
+    "openmetadata": Brand(
+        id="openmetadata",
+        label="OpenMetadata",
+        spec_url="",  # read from the instance (instance_spec_url), never baked
+        url="{base_url}/api",
+        setup_fields=(SetupField("base_url", BASE_URL_PATTERN),),
+        instance_spec_url="{base_url}/swagger.json",
+        verify_path="/v1/users/loggedInUser",
     ),
 }
 
