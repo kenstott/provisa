@@ -10,20 +10,24 @@
 
 """The sonnets demo links its echoes with a statement, not host code (REQ-2016, REQ-2134).
 
-link_echoes is an INSERT...SELECT over line joined to lines_like: the line-searches relationship
+The link_echoes commands are INSERT...SELECTs over line joined to lines_like: the line-searches relationship
 feeds the search each line's words and sonnet (REQ-2099), lines_like leaves that sonnet's points
 out through its "@sonnet" filter (REQ-1983), and the points carry the words they were found for,
 which the join matches. A theme still searches lines_like for a phrase of its own."""
 
-# Requirements: REQ-2016, REQ-2099, REQ-2134
+# Requirements: REQ-2016, REQ-2099, REQ-2134, REQ-1986
 from __future__ import annotations
 
 import json
+import re
+from collections import Counter
 from pathlib import Path
 
 import pytest
 import yaml
 
+from provisa.core.parameter_binding import CALLS_SETTING
+from provisa.core.settings_catalog import DECLARED
 from provisa.qdrant.table import check_table
 
 pytestmark = pytest.mark.unit
@@ -40,13 +44,40 @@ def test_the_config_holds_no_host_code():
     assert not (_DEMO / "echoes.py").exists()
 
 
+_LINK = [f for name, f in _FUNCTIONS.items() if name.startswith("link_echoes_")]
+
+
 def test_link_echoes_is_a_statement_joining_each_line_to_its_search():
-    command = _FUNCTIONS["link_echoes"]
-    assert command["impl_kind"] == "statement"
-    sql = command["binding"]["sql"]
-    assert 'INSERT INTO "sonnets"."echo" (line_id, echo_line_id, score)' in sql
-    assert 'JOIN "sonnets"."lines_like" AS s ON s._nf_query = l.text' in sql
-    assert "s._nf_k = 3" in sql
+    assert _LINK
+    for command in _LINK:
+        assert command["impl_kind"] == "statement"
+        sql = command["binding"]["sql"]
+        assert 'INSERT INTO "sonnets"."echo" (line_id, echo_line_id, score)' in sql
+        assert 'JOIN "sonnets"."lines_like" AS s ON s._nf_query = l.text' in sql
+        assert "s._nf_k = 3" in sql
+
+
+def _range(command) -> tuple[int, int]:
+    [bounds] = re.findall(r"l\.sonnet_number BETWEEN (\d+) AND (\d+)", command["binding"]["sql"])
+    return int(bounds[0]), int(bounds[1])
+
+
+def test_the_echoes_are_linked_by_sonnet_in_statements_under_the_call_cap():
+    """REQ-1986: one search a line is one call to lines_like, and a statement makes at most
+    parameters.max_calls_per_statement calls (1000 as shipped). The link_echoes statements split
+    the sonnets between them, each sonnet once, and each runs in setup.yaml."""
+    [cap] = [s.default for s in DECLARED if s.key == CALLS_SETTING]
+    lines = Counter(
+        int(row.split("\t", 1)[0]) for row in (_DEMO / "db" / "lines.tsv").read_text().splitlines()
+    )
+    ranges = sorted(_range(c) for c in _LINK)
+    covered = [n for lo, hi in ranges for n in range(lo, hi + 1)]
+    assert covered == sorted(lines)
+    for lo, hi in ranges:
+        assert sum(lines[n] for n in range(lo, hi + 1)) <= cap, (lo, hi)
+    steps = yaml.safe_load((_DEMO / "setup.yaml").read_text())["steps"]
+    ran = [step["command"] for step in steps if "command" in step]
+    assert sorted(c["name"] for c in _LINK) == sorted(n for n in ran if n.startswith("link_echoes"))
 
 
 def test_the_relationship_feeds_each_lines_words_and_sonnet_and_joins_on_the_words():
