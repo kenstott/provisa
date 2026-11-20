@@ -190,6 +190,16 @@ class _Watcher:
         return None
 
 
+class _Stopped:
+    """Stop pressed before the first request."""
+
+    async def stop_asked(self) -> bool:
+        return True
+
+    async def returned(self, tally: Tally, proposals: list[Proposal]) -> None:
+        return None
+
+
 async def _direct(fn, *args):
     return fn(*args)
 
@@ -199,7 +209,7 @@ async def _no_sample(table: TableFacts, column: str) -> Sampled:
 
 
 async def _run(
-    given: list[dict[str, Any]], respond: Any = None
+    given: list[dict[str, Any]], respond: Any = None, control: Any = None
 ) -> tuple[list[Recorded], _Reader, list[str]]:
     """A run over the four tables with Key value overlap chosen, the model answering each listed
     table pair with the column pairs of ``given`` naming its tables, or "none": every row the run
@@ -225,7 +235,7 @@ async def _run(
         the_plan,
         DEFAULT_LIMITS[1],
         ask,
-        _Watcher(),
+        _Watcher() if control is None else control,
         threshold=0.7,
         key_values=KeyValues(measurer.all, CUTOFF),
         to_thread=_direct,
@@ -335,3 +345,12 @@ async def test_the_pair_proposed_is_listed_as_the_budget_pair_is():
         == (BELOW_THRESHOLD, "many-to-many", SHARED_CEILING)
     )
     assert ours.left_out in ACCEPTABLE
+
+
+async def test_a_stopped_run_measures_no_same_name_pair():
+    """Stopped means stopped: a run stopped before its requests asks nothing and measures no
+    same-name pair of the table pairs it never asked about."""
+    rows, reader, prompts = await _run([], control=_Stopped())
+    assert prompts == []
+    assert reader.read == []
+    assert rows == []
