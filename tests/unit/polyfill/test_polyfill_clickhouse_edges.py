@@ -15,8 +15,8 @@ answered each of these wrong:
 - sind, cosd, tand and cotd of a double past 2^53 (ClickHouse's float % is inexact there), and a
   minus zero's sign;
 - a double literal's text, which ClickHouse's cast reads a unit off its nearest double;
-- percentile_cont and percentile_disc of an array of fractions over only NULL keys (NULL, not an
-  array of NULLs);
+- percentile_cont and percentile_disc of an array of fractions over only NULL keys (refused by
+  name, not an array of NULLs: ClickHouse 24.3 holds no NULL of an array);
 - btree's byte-order comparisons (memcmp's and strncmp's difference, not -1 or 1);
 - cardinality, unnest and array_to_string of an array of more than one dimension;
 - hashbpchar of a character(n) literal past ASCII (padded by bytes);
@@ -91,10 +91,6 @@ ANSWERED = [
         "{-0.875,0.5}",
     ),
     (
-        "SELECT pg_catalog.\"percentile_cont\"('{0.25,0.5}'::double precision[]) WITHIN GROUP (ORDER BY c1) AS v FROM (VALUES (NULL::double precision), (NULL::double precision)) AS t(c1)",
-        None,
-    ),
-    (
         "SELECT pg_catalog.\"percentile_cont\"('{0.25,0.5}'::double precision[]) WITHIN GROUP (ORDER BY c1) AS v FROM (VALUES ('NaN'::double precision), ('NaN'::double precision)) AS t(c1)",
         "{NaN,NaN}",
     ),
@@ -117,10 +113,6 @@ ANSWERED = [
     (
         "SELECT pg_catalog.\"percentile_disc\"('{0.25,0.5}'::double precision[]) WITHIN GROUP (ORDER BY c1) AS v FROM (VALUES (3::integer), ((-7)::integer), (42::integer)) AS t(c1)",
         "{-7,3}",
-    ),
-    (
-        "SELECT pg_catalog.\"percentile_disc\"('{0.25,0.5}'::double precision[]) WITHIN GROUP (ORDER BY c1) AS v FROM (VALUES (NULL::integer), (NULL::integer)) AS t(c1)",
-        None,
     ),
     (
         "SELECT pg_catalog.\"percentile_disc\"('{0.25,0.5}'::double precision[]) WITHIN GROUP (ORDER BY c1) AS v FROM (VALUES ('-2147483648'::integer), ('-2147483648'::integer)) AS t(c1)",
@@ -888,6 +880,18 @@ ANSWERED = [
     ),
 ]
 RAISED = [
+    # Over only NULL keys PostgreSQL answers a NULL array, which ClickHouse 24.3 holds none of
+    # (polyfill.clickhouse PERCENTILE): refused by name.
+    (
+        "SELECT pg_catalog.\"percentile_cont\"('{0.25,0.5}'::double precision[]) WITHIN GROUP (ORDER BY c1) AS v FROM (VALUES (NULL::double precision), (NULL::double precision)) AS t(c1)",
+        "0A000",
+    ),
+    # Over only NULL keys PostgreSQL answers a NULL array, which ClickHouse 24.3 holds none of
+    # (polyfill.clickhouse PERCENTILE): refused by name.
+    (
+        "SELECT pg_catalog.\"percentile_disc\"('{0.25,0.5}'::double precision[]) WITHIN GROUP (ORDER BY c1) AS v FROM (VALUES (NULL::integer), (NULL::integer)) AS t(c1)",
+        "0A000",
+    ),
     ("SELECT pg_catalog.\"sind\"('-Infinity'::double precision) AS v", "22003"),
     ("SELECT pg_catalog.\"cosd\"('-Infinity'::double precision) AS v", "22003"),
     ("SELECT pg_catalog.\"tand\"('-Infinity'::double precision) AS v", "22003"),

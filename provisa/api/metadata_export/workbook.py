@@ -210,6 +210,9 @@ class ReportHeader:  # REQ-1592
 
     org_id: str
     environment: str
+    # REQ-2261: the stage the environment declares; None only for a deployment without a control
+    # plane, which keeps no environment registry.
+    stage: str | None
     domains: str
     generated_at: "datetime"
     included: tuple[str, ...]
@@ -658,6 +661,7 @@ def _write_report_sheet(worksheet, header: ReportHeader) -> None:
     rows = [
         ("Organization", header.org_id),
         ("Environment", header.environment),
+        ("Stage", header.stage if header.stage is not None else "none"),
         ("Domains covered", header.domains),
         ("Generated", header.generated_at.isoformat()),
         ("Sheets included", ", ".join(header.included)),

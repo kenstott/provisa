@@ -31,6 +31,7 @@ from provisa.api.metadata_export.builder import build_snapshot
 from provisa.api.metadata_export.datazone import (
     PRODUCT_FORM,
     TABLE_FORM,
+    TABLE_FORM_MODEL,
     TABLE_TYPE,
     DataZoneExport,
     product_form,
@@ -211,7 +212,7 @@ def test_the_export_to_a_datazone_catalog_names_the_project_that_owns_its_produc
 def test_the_forms_carry_the_members_and_the_products_fields():
     snapshot = _snapshot()
     (table,) = snapshot.tables
-    form = table_form(table)
+    form = table_form(table, None)
     assert form["provisaUri"] == table.semantic_uri
     assert form["freshnessSeconds"] == 3600
     assert json.loads(form["columns"]) == [{"name": "id", "type": "integer"}]
@@ -293,7 +294,7 @@ async def test_the_types_are_created_once_and_a_new_product_is_published(stubbed
                     "formName": TABLE_FORM,
                     "typeIdentifier": TABLE_FORM,
                     "typeRevision": "1",
-                    "content": json.dumps(table_form(table)),
+                    "content": json.dumps(table_form(table, None)),
                 }
             ],
             "owningProjectIdentifier": PROJECT,
@@ -762,3 +763,76 @@ async def test_a_retired_product_is_revised_retired_with_no_assets(stubbed):
     result = await exporter.publish(snapshot)
     assert result.ok, result.errors
     assert json.loads(json.dumps(product_form(product)))["status"] == "retired"
+
+
+async def test_each_asset_carries_the_environment_and_its_stage(stubbed):  # REQ-2261
+    from provisa.api.metadata_export.model import EnvironmentStage
+
+    snapshot = _snapshot()
+    snapshot.environment = EnvironmentStage(name="eu", stage="preprod")
+    (table,) = snapshot.tables
+    assert "environment: String" in TABLE_FORM_MODEL and "stage: String" in TABLE_FORM_MODEL
+    _types_exist(stubbed)
+    _search(stubbed, "ASSET", [])
+    _search(stubbed, "DATA_PRODUCT", [])
+    form = {**table_form(table, None), "environment": "eu", "stage": "preprod"}
+    stubbed.add_response(
+        "create_asset",
+        {
+            "id": "asset-1",
+            "name": table.name,
+            "typeIdentifier": TABLE_TYPE,
+            "typeRevision": "5",
+            "revision": "1",
+            "owningProjectId": PROJECT,
+            "domainId": DOMAIN,
+            "formsOutput": [],
+        },
+        {
+            **SCOPE,
+            "name": table.name,
+            "description": "Orders placed",
+            "externalIdentifier": table.semantic_uri,
+            "typeIdentifier": TABLE_TYPE,
+            "typeRevision": "5",
+            "formsInput": [
+                {
+                    "formName": TABLE_FORM,
+                    "typeIdentifier": TABLE_FORM,
+                    "typeRevision": "3",
+                    "content": json.dumps(form),
+                }
+            ],
+            "owningProjectIdentifier": PROJECT,
+        },
+    )
+    _listing(stubbed, "asset-1", "ASSET", "1")
+    stubbed.add_response(
+        "create_data_product",
+        {
+            "domainId": DOMAIN,
+            "id": "dp-1",
+            "revision": "1",
+            "owningProjectId": PROJECT,
+            "name": "Sales 360",
+            "status": "CREATED",
+        },
+        {
+            **SCOPE,
+            "name": "Sales 360",
+            "description": "Every sale",
+            "owningProjectIdentifier": PROJECT,
+            "items": [{"itemType": "ASSET", "identifier": "asset-1"}],
+            "formsInput": [
+                {
+                    "formName": PRODUCT_FORM,
+                    "typeIdentifier": PRODUCT_FORM,
+                    "typeRevision": "4",
+                    "content": json.dumps(product_form(snapshot.data_products[0])),
+                }
+            ],
+        },
+    )
+    _listing(stubbed, "dp-1", "DATA_PRODUCT", "1")
+    result = await metadata_export(_target()).publish(snapshot)
+    assert result.ok, result.errors

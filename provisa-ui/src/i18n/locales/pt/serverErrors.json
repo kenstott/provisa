@@ -168,7 +168,8 @@
       "table_is_withdrawn": "{{table}} está retirada: fora de produção até ser reposta",
       "view_awaits_rule_rebuild": "A view {{view}} está sendo reconstruída por uma alteração nas regras de linha de suas entradas. Esta função poderá lê-la quando essa construção for publicada.",
       "parameter_required": "A tabela '{{table}}' requer o(s) parâmetro(s) {{parameters}}: dê um valor a cada um (uma condição WHERE sobre a sua coluna em SQL, um argumento em GraphQL).",
-      "parameter_wrong_type": "O parâmetro {{parameter}} recebe um valor do tipo {{type}}; '{{value}}' não é um."
+      "parameter_wrong_type": "O parâmetro {{parameter}} recebe um valor do tipo {{type}}; '{{value}}' não é um.",
+      "statement_failed": "A instrução falhou dentro do servidor ({{kind}}): {{error}}"
     },
     "discovery": {
       "adapter_missing_discover_schema": "O adaptador para '{{source_type}}' não implementa discover_schema",
@@ -243,7 +244,8 @@
       "host_code_refused": "O comando '{{name}}' é do tipo {{impl_kind}}, que executa código no host do servidor. O código do host está desativado nesta implantação; use um resolvedor de código em vez disso.",
       "no_plain_list": "Nenhuma operação da fonte '{{source_id}}' sem um parâmetro obrigatório devolve as linhas de '{{operation}}', por isso a tabela continua ativada",
       "plain_list_unregistered": "'{{operation}}' da fonte '{{source_id}}' devolve as linhas da sua lista {{lists}}; registre primeiro essa lista como tabela",
-      "table_has_dependents": "A tabela '{{table}}' da função '{{name}}' ainda é referenciada por outros objetos; remova primeiro essas referências"
+      "table_has_dependents": "A tabela '{{table}}' da função '{{name}}' ainda é referenciada por outros objetos; remova primeiro essas referências",
+      "statement_failed": "O comando '{{name}}' falhou: {{error}}"
     },
     "graphql_remote": {
       "introspection_failed": "Falha na introspecção: {{error}}",

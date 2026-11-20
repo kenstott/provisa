@@ -168,7 +168,8 @@
       "table_is_withdrawn": "{{table}} 已撤下：在恢復之前不在生產中",
       "view_awaits_rule_rebuild": "由於其輸入的行規則有變更，檢視 {{view}} 正在重新建置。該建置發佈後，此角色即可讀取。",
       "parameter_required": "表 '{{table}}' 需要參數 {{parameters}}：為每個參數提供一個值（在 SQL 中是對其欄的 WHERE 條件，在 GraphQL 中是一個引數）。",
-      "parameter_wrong_type": "參數 {{parameter}} 接受 {{type}} 類型的值；'{{value}}' 不是該類型。"
+      "parameter_wrong_type": "參數 {{parameter}} 接受 {{type}} 類型的值；'{{value}}' 不是該類型。",
+      "statement_failed": "語句在伺服器內部失敗（{{kind}}）：{{error}}"
     },
     "discovery": {
       "adapter_missing_discover_schema": "「{{source_type}}」的配接器未實作 discover_schema",
@@ -243,7 +244,8 @@
       "host_code_refused": "指令 '{{name}}' 的類型為 {{impl_kind}}，會在伺服器主機上執行代碼。此部署已關閉主機代碼；請改用代碼解析器。",
       "no_plain_list": "來源 '{{source_id}}' 中沒有不帶必需參數的操作傳回 '{{operation}}' 的列，因此其表保持開啟",
       "plain_list_unregistered": "來源 '{{source_id}}' 的 '{{operation}}' 傳回其清單 {{lists}} 的列；請先將該清單註冊為表",
-      "table_has_dependents": "函數 '{{name}}' 的表 '{{table}}' 仍被其他物件引用；請先移除這些引用"
+      "table_has_dependents": "函數 '{{name}}' 的表 '{{table}}' 仍被其他物件引用；請先移除這些引用",
+      "statement_failed": "命令 '{{name}}' 失敗：{{error}}"
     },
     "graphql_remote": {
       "introspection_failed": "內省失敗：{{error}}",

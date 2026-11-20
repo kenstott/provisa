@@ -168,7 +168,8 @@
       "table_is_withdrawn": "{{table}} は取り下げられています: 元に戻されるまで本番環境の外にあります",
       "view_awaits_rule_rebuild": "入力の行ルールが変更されたため、ビュー {{view}} を再構築しています。このロールは、そのビルドが公開された後に読み取れます。",
       "parameter_required": "テーブル '{{table}}' にはパラメーター {{parameters}} が必要です。それぞれに値を指定してください（SQL ではその列に対する WHERE 条件、GraphQL では引数）。",
-      "parameter_wrong_type": "パラメーター {{parameter}} は型 {{type}} の値を取ります。'{{value}}' はその型の値ではありません。"
+      "parameter_wrong_type": "パラメーター {{parameter}} は型 {{type}} の値を取ります。'{{value}}' はその型の値ではありません。",
+      "statement_failed": "ステートメントがサーバー内部で失敗しました ({{kind}}): {{error}}"
     },
     "discovery": {
       "adapter_missing_discover_schema": "「{{source_type}}」のアダプターは discover_schema を実装していません",
@@ -243,7 +244,8 @@
       "host_code_refused": "コマンド '{{name}}' は種類 {{impl_kind}} で、サーバーのホスト上でコードを実行します。このデプロイではホストコードはオフです。代わりにコードリゾルバーを使用してください。",
       "no_plain_list": "ソース '{{source_id}}' の必須パラメーターのない操作で '{{operation}}' の行を返すものがないため、そのテーブルはオンのままです",
       "plain_list_unregistered": "ソース '{{source_id}}' の '{{operation}}' はリスト {{lists}} の行を返します。先にそのリストをテーブルとして登録してください",
-      "table_has_dependents": "関数 '{{name}}' のテーブル '{{table}}' はまだ他のオブジェクトから参照されています。先にそれらの参照を削除してください"
+      "table_has_dependents": "関数 '{{name}}' のテーブル '{{table}}' はまだ他のオブジェクトから参照されています。先にそれらの参照を削除してください",
+      "statement_failed": "コマンド '{{name}}' が失敗しました: {{error}}"
     },
     "graphql_remote": {
       "introspection_failed": "イントロスペクションに失敗しました：{{error}}",

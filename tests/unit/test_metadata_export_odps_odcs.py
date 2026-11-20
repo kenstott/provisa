@@ -959,3 +959,20 @@ def test_an_offers_contract_states_the_offers_terms_of_use():
         "usage": "Monthly churn models",
         "limitations": "No credit decisions",
     }
+
+
+def test_the_odps_document_names_the_environment_and_its_stage():  # REQ-2261
+    from provisa.api.metadata_export.model import EnvironmentStage
+
+    snapshot, product = _snapshot(version="1.2.0", status="live")
+    snapshot.environment = EnvironmentStage(name="eu", stage="production")
+    document = odps_document(snapshot, product)
+
+    assert _errors(ODPS, document) == []
+    custom = {p["property"]: p["value"] for p in document["customProperties"]}
+    assert custom["provisaEnvironment"] == "eu"
+    assert custom["provisaStage"] == "production"
+    # Without an environment registry no stage is claimed.
+    snapshot.environment = None
+    bare = odps_document(snapshot, product)
+    assert not any(p["property"] == "provisaStage" for p in bare.get("customProperties", []))

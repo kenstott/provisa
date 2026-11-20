@@ -21,6 +21,7 @@ from contextlib import contextmanager
 
 import sqlglot
 from sqlglot import exp
+from sqlglot.dialects.dialect import DialectType
 from sqlglot.errors import ParseError, SqlglotError
 
 from provisa.compiler.definitions import NotAvailableHere
@@ -48,17 +49,17 @@ def without_marks(text: str) -> str:
     return text.replace(VIEW_MARK, "")
 
 
-def parse_marked(sql: str, read: object = "postgres") -> exp.Expr:  # pyright: ignore[reportPrivateImportUsage]
+def parse_marked(sql: str, read: DialectType = "postgres") -> exp.Expr:  # pyright: ignore[reportPrivateImportUsage]
     """``sqlglot.parse_one`` of a statement whose views may be expanded marked. An error parsing
     it is the error the statement raises read without its marks -- the same tokens, a mark only
     lengthening a quoted identifier -- so the context sqlglot quotes never holds a mark, whole or
     cut at its window's edge (REQ-039)."""
     try:
-        return sqlglot.parse_one(sql, read=read)  # pyright: ignore[reportArgumentType]
+        return sqlglot.parse_one(sql, read=read)
     except SqlglotError:
         if VIEW_MARK not in sql:
             raise
-    sqlglot.parse_one(without_marks(sql), read=read)  # pyright: ignore[reportArgumentType]
+    sqlglot.parse_one(without_marks(sql), read=read)
     # Read without its marks it parses: what failed is the marks' own text, which no client wrote.
     raise ParseError("a statement whose views were expanded could not be read") from None
 
@@ -284,7 +285,12 @@ def view_key(schema: str, table: str) -> str:
 
 
 def _catalog_reads(
-    catalog: str, schema: str, table: str, view: str, names: ViewNames | None
+    catalog: str,
+    schema: str,
+    table: str,
+    view: str,
+    names: ViewNames | None,
+    view_catalog: str = VIEW_CATALOG,
 ) -> bool:
     """Whether ``"<catalog>"."<schema>"."<table>"`` may name the view keyed ``view`` (its
     ``schema.table`` already the view's, or a name ``names`` gives it), as governance reads a
@@ -293,11 +299,15 @@ def _catalog_reads(
     names it; and, read against the reader's names (``names`` given), so does a catalog no table
     of the reader is under by that name -- a client qualifying with the database it connected
     to, which governance reads by schema and name. Without the reader's names (a statement already
-    lowered, every catalog in it a real one) no other catalog names a view."""
+    lowered, every catalog in it a real one) no other catalog names a view.
+
+    ``view_catalog``: the catalog the reader's org lowers its views under (``mv.view_read.
+    lowered_view_catalog``) -- :data:`VIEW_CATALOG` in the default org, prefixed in any other
+    (REQ-1266, REQ-1529). A lowered statement names its views there, and only there."""
     qualified = physical_relation_name(catalog, schema, table)
     if names is not None and qualified in names:
         return names[qualified] == view
-    return catalog == VIEW_CATALOG or names is not None
+    return catalog == view_catalog or names is not None
 
 
 def view_table(key: str) -> str:
@@ -337,10 +347,19 @@ def unqualified_keys(keys: Iterable[str]) -> frozenset[str]:
     return frozenset(_unqualified_views(keys).values())
 
 
-def view_of(tbl: exp.Table, keys: Collection[str], names: ViewNames | None = None) -> str | None:
+def view_of(
+    tbl: exp.Table,
+    keys: Collection[str],
+    names: ViewNames | None = None,
+    *,
+    view_catalog: str = VIEW_CATALOG,
+) -> str | None:
     """The key, among ``keys``, of the view the table reference ``tbl`` names, as
-    :func:`expand_view_refs` reads it; ``names``, the reader's (:data:`ViewNames`)."""
-    return _view_named(tbl, keys, _unqualified_views(keys), names, _unquoted_names(keys, names))
+    :func:`expand_view_refs` reads it; ``names``, the reader's (:data:`ViewNames`);
+    ``view_catalog``, the catalog its org lowers views under (:func:`_catalog_reads`)."""
+    return _view_named(
+        tbl, keys, _unqualified_views(keys), names, _unquoted_names(keys, names), view_catalog
+    )
 
 
 def _other_names(keys: Iterable[str], names: ViewNames | None) -> dict[str, list[str]]:
@@ -361,6 +380,7 @@ def _expand_one(
     unqualified: bool = False,
     also: Iterable[str] = (),
     names: ViewNames | None = None,
+    view_catalog: str = VIEW_CATALOG,
 ) -> str:
     """Replace the references to the view keyed ``key`` (``schema.name``): ``"catalog"."schema".
     "name"``, ``"schema"."name"`` or ``schema.name`` -- the name under another schema is not it --
@@ -376,8 +396,18 @@ def _expand_one(
     ``also``: the view's other qualified names (``schema.name``), each read as its key is -- the
     names governance gives the view's registered table (its domain's, its semantic name's)."""
     for other in also:
-        sql = _expand_one_named(sql, key, other, view_sql, names=names, alias=view_table(key))
-    return _expand_one_named(sql, key, key, view_sql, names=names, unqualified=unqualified)
+        sql = _expand_one_named(
+            sql,
+            key,
+            other,
+            view_sql,
+            names=names,
+            view_catalog=view_catalog,
+            alias=view_table(key),
+        )
+    return _expand_one_named(
+        sql, key, key, view_sql, names=names, view_catalog=view_catalog, unqualified=unqualified
+    )
 
 
 def _expand_one_named(
@@ -387,6 +417,7 @@ def _expand_one_named(
     view_sql: str,
     *,
     names: ViewNames | None,
+    view_catalog: str,
     unqualified: bool = False,
     alias: str | None = None,
 ) -> str:
@@ -401,7 +432,7 @@ def _expand_one_named(
             return None  # a column named like the view, not the view
         catalog = m.groupdict().get("cat")
         if catalog is not None and not _catalog_reads(
-            _folded_name(catalog), schema, name, view, names
+            _folded_name(catalog), schema, name, view, names, view_catalog
         ):
             return None  # another catalog's table of the name
         alias = m.group("alias")
@@ -501,6 +532,7 @@ def _view_named(
     unqualified: dict[str, str],
     names: ViewNames | None,
     unquoted: Mapping[str, str],
+    view_catalog: str,
 ) -> str | None:
     """The key of the view the table reference ``tbl`` names: ``schema.name`` only under the
     view's own schema or another qualified name ``names`` gives it, and catalog-qualified only
@@ -518,7 +550,7 @@ def _view_named(
         catalog = tbl.args.get("catalog")
         if view is None or catalog is None:
             return view
-        if _catalog_reads(_folded(catalog), _folded(db), name, view, names):
+        if _catalog_reads(_folded(catalog), _folded(db), name, view, names, view_catalog):
             return view
         return None
     view = unqualified.get(name.lower())
@@ -553,6 +585,7 @@ def _mark_tree(  # pyright: ignore[reportPrivateImportUsage]
     names: ViewNames | None,
     unquoted: Mapping[str, str],
     depth: int,
+    view_catalog: str,
 ) -> exp.Expr:  # pyright: ignore[reportPrivateImportUsage]
     """``tree`` with every table reference to a view replaced by the view's parsed SQL, marked:
     ``(SELECT * FROM (<view SQL>) AS "<VIEW_MARK><view>") <alias>``. A view's SQL is expanded the
@@ -560,7 +593,7 @@ def _mark_tree(  # pyright: ignore[reportPrivateImportUsage]
     alias (with its column list) and its joins are carried onto the derived table; any other
     clause it carries is refused (:class:`ViewClauseNotSupported`)."""
     for tbl in list(tree.find_all(exp.Table)):
-        view = _view_named(tbl, view_sql_map, unqualified, names, unquoted)
+        view = _view_named(tbl, view_sql_map, unqualified, names, unquoted, view_catalog)
         if view is None:
             continue
         for arg, value in tbl.args.items():
@@ -568,7 +601,9 @@ def _mark_tree(  # pyright: ignore[reportPrivateImportUsage]
                 raise ViewClauseNotSupported(view, arg)
         body = sqlglot.parse_one(view_sql_map[view], read="postgres")
         if depth > 0:
-            body = _mark_tree(body, view_sql_map, unqualified, names, unquoted, depth - 1)
+            body = _mark_tree(
+                body, view_sql_map, unqualified, names, unquoted, depth - 1, view_catalog
+            )
         marked = exp.select("*").from_(
             exp.Subquery(
                 this=body,
@@ -586,7 +621,11 @@ def _mark_tree(  # pyright: ignore[reportPrivateImportUsage]
 
 
 def _expand_marked(
-    sql: str, view_sql_map: dict[str, str], views: Collection[str], names: ViewNames | None
+    sql: str,
+    view_sql_map: dict[str, str],
+    views: Collection[str],
+    names: ViewNames | None,
+    view_catalog: str,
 ) -> str:
     """:func:`expand_view_refs` with ``mark``: on the parsed statement, so a mark can only come
     from a view this process expands -- never from text a comment, a string literal or a quoted
@@ -597,7 +636,7 @@ def _expand_marked(
     }
     unquoted = _unquoted_names(views, names)
     depth = len(view_sql_map)
-    marked = _mark_tree(tree, view_sql_map, unqualified, names, unquoted, depth)
+    marked = _mark_tree(tree, view_sql_map, unqualified, names, unquoted, depth, view_catalog)
     return marked.sql(dialect="postgres")
 
 
@@ -606,14 +645,28 @@ _PROBE = f"SELECT 1 AS {VIEW_MARK}"
 
 
 def reads_view(  # REQ-135
-    sql: str, key: str, *, unqualified: bool, names: ViewNames | None = None
+    sql: str,
+    key: str,
+    *,
+    unqualified: bool,
+    names: ViewNames | None = None,
+    view_catalog: str = VIEW_CATALOG,
 ) -> bool:
     """Whether ``sql`` reads the view keyed ``key`` as a table: what :func:`expand_view_refs`
     replaces; ``unqualified``, its name alone too (:func:`unqualified_keys`); ``names``, the
     reader's (:data:`ViewNames`): under its other qualified names too. A column sharing the view's
     name is not a read of it."""
     also = _other_names([key], names).get(key, ())
-    return _expand_one(sql, key, _PROBE, unqualified=unqualified, also=also, names=names) != sql
+    probed = _expand_one(
+        sql,
+        key,
+        _PROBE,
+        unqualified=unqualified,
+        also=also,
+        names=names,
+        view_catalog=view_catalog,
+    )
+    return probed != sql
 
 
 def expand_view_refs(  # REQ-135
@@ -623,6 +676,7 @@ def expand_view_refs(  # REQ-135
     mark: bool = False,
     views: Collection[str] | None = None,
     names: ViewNames | None = None,
+    view_catalog: str = VIEW_CATALOG,
 ) -> str:
     """Replace view-table references in a SQL string with inline subqueries.
 
@@ -645,12 +699,16 @@ def expand_view_refs(  # REQ-135
     the view's registered table by (``mv.view_read.view_names``): a statement not yet lowered
     names it by its domain. A catalog-qualified reference is a view only under a catalog that
     names it (:func:`_catalog_reads`): without ``names``, the view's own.
+
+    ``view_catalog``: the catalog the reader's org lowers its views under -- what a lowered
+    statement names them by (``mv.view_read.lowered_view_catalog``); :data:`VIEW_CATALOG`, the
+    default org's, for a statement not lowered for an org.
     """
     if not view_sql_map:
         return sql
     every = view_sql_map if views is None else views
     if mark:
-        return _expand_marked(sql, view_sql_map, every, names)
+        return _expand_marked(sql, view_sql_map, every, names, view_catalog)
     unqualified = unqualified_keys(every)
     others = _other_names(view_sql_map, names)
     for _ in range(len(view_sql_map) + 1):
@@ -663,6 +721,7 @@ def expand_view_refs(  # REQ-135
                 unqualified=key in unqualified,
                 also=others.get(key, ()),
                 names=names,
+                view_catalog=view_catalog,
             )
             if new_sql != sql:
                 changed = True

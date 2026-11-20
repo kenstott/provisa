@@ -23,6 +23,7 @@ import { fileURLToPath } from "node:url";
 
 import { test, expect, BACKEND_URL, TRINO_BACKEND_URL, UI_URL } from "./coverage";
 import { WAREHOUSE_SCHEMA } from "./cloud-warehouse";
+import { E2E_PUBLIC_URL } from "./publicUrl";
 import { runSqlOnPage, typeSql } from "./source-to-query-helpers";
 import type { Page } from "./coverage";
 import { retireSourceTables, type AdminGql } from "./retire-source-tables";
@@ -811,6 +812,9 @@ export async function spawnRebootBackend(engineKind: RebootEngineKind): Promise<
     ORG_ID: REBOOT_ORG_ID,
     PROVISA_ENCRYPTION_KEY: REBOOT_ENCRYPTION_KEY,
     PROVISA_ENGINE: engineKind,
+    // The same public address every other e2e backend boots with (publicUrl.ts): without it the
+    // SPARQL vocabulary each relationship surface reads is refused, a 400 the coverage fixture fails.
+    PROVISA_PUBLIC_URL: E2E_PUBLIC_URL,
     // graphql_remote/openapi read these from the APP PROCESS's own env (not a per-source URL
     // field) — same defaults playwright.config.ts's own webServer entries use. No host rewrite is
     // ever needed for them: the app process that reads this env is native on EITHER engine (only

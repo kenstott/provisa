@@ -598,9 +598,8 @@ def _install_two_mvs(monkeypatch) -> None:
             allowed_lateness=None,
         )
 
-    registry = types.SimpleNamespace(
-        _mvs={"a": _mv("mv_orders", ["orders"]), "b": _mv("mv_staff", ["staff"])}
-    )
+    views = [_mv("mv_orders", ["orders"]), _mv("mv_staff", ["staff"])]
+    registry = types.SimpleNamespace(all=lambda: list(views))
     monkeypatch.setattr(appmod.state, "mv_registry", registry, raising=False)
     monkeypatch.setattr("provisa.mv.bitemporal_capture.logged_table_id", lambda mv_id: None)
 

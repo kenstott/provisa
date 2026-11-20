@@ -48081,35 +48081,36 @@
   priority: MUST
   type: constraint
   description: 'Catalog upsert preserves human enrichment: an attribute-ownership contract for every exporter.
-    Publishing is an UPSERT on the vendor''s stable key (Atlas/Atlan: typeName + qualifiedName via /entity/bulk,
-    which merges at attribute level; DataHub: per-aspect URN upsert; OpenMetadata: fqn PUT), never a delete-and-recreate,
-    and entities absent from a later snapshot are never pruned by publish. Every attribute is classified
-    as either PROVISA-OWNED (identity, physical binding, technical facts, governance projections, provisa_*
-    classifications — written on every publish and drift-corrected by the REQ-1072 reconcile) or HUMAN-OWNED
-    (Atlas userDescription, human-added classifications, [SUPERSEDED by REQ-1389, 2026-10-23 -- Provisa
-    writes and withdraws its own automated term assignments; only human assignments are human-owned (TERM
-    ASSIGNMENT below). Kept here for history; do not implement against it.] glossary term assignments, [END
-    SUPERSEDED BLOCK] labels, hand-drawn lineage — NEVER written by the exporter, so steward enrichment
-    in the catalog survives every publish and reconcile). Consequence: the Atlas governance document moves
-    OFF userDescription — the exact field the Atlas UI edits for human descriptions, clobbered today on
-    every publish — onto a Provisa-owned typed attribute (REQ-1388 native typedefs). The reconcile''s drift
-    correction applies to Provisa-owned attributes only. OWNERSHIP RULE (settled): authorship decides. If
-    Provisa authored a value (typed provisa* attributes, the fields it writes, provisa_-prefixed classifications)
-    Provisa overwrites it on every publish; if the value originated in the catalog (userDescription, human-added
-    classifications, [SUPERSEDED by REQ-1389, 2026-10-23 -- Provisa writes and withdraws its own automated
-    term assignments; only human assignments are human-owned (TERM ASSIGNMENT below). Kept here for history;
-    do not implement against it.] terms, [END SUPERSEDED BLOCK] labels, drawn lineage) the catalog wins
-    and Provisa never writes it. This is a single-writer MERGE, not a sync: nothing flows back into Provisa
-    (publication is outbound-only), each data element has exactly ONE owning system, and the read step exists
-    only because replace-style catalog APIs force carrying the catalog-owned fields through unchanged. The
-    merge is NOT optional: the classification read-merge and attribute drift-correction ride the single
-    publish path, so all three triggers get them: Publish now, the event drain, and the scheduled reconcile
-    (reconcile_cron, default hourly). URN-CANONICAL UPSERT: the Provisa URN (REQ-1385, published as the
-    provisaUri attribute) is the canonical identity, not the physical qualifiedName. Before publishing,
-    the exporter indexes live entities by URN; an entity Provisa published before whose physical address
-    changed (re-platform, physical rename) takes the live guid and is UPDATED in place — same catalog entity,
-    new binding, enrichment and lineage intact — never duplicated-and-orphaned. UPDATES MERGE: Atlas bulk
-    createOrUpdate replaces the full attribute map (empirically verified: an update wiped a steward-written
+    Publishing is an UPSERT on the vendor''s stable key (Atlas/Atlan: typeName + qualifiedName via
+    /entity/bulk, which merges at attribute level; DataHub: per-aspect URN upsert; OpenMetadata: fqn PUT),
+    never a delete-and-recreate, and entities absent from a later snapshot are never pruned by publish.
+    Every attribute is classified as either PROVISA-OWNED (identity, physical binding, technical facts,
+    governance projections, provisa_* classifications — written on every publish and drift-corrected by the
+    REQ-1072 reconcile) or HUMAN-OWNED (Atlas userDescription, human-added classifications, [SUPERSEDED by
+    REQ-1389, 2026-10-23 -- Provisa writes and withdraws its own automated term assignments; only human
+    assignments are human-owned (TERM ASSIGNMENT below). Kept here for history; do not implement against
+    it.] glossary term assignments, [END SUPERSEDED BLOCK] labels, hand-drawn lineage — NEVER written by the
+    exporter, so steward enrichment in the catalog survives every publish and reconcile). Consequence: the
+    Atlas governance document moves OFF userDescription — the exact field the Atlas UI edits for human
+    descriptions, clobbered today on every publish — onto a Provisa-owned typed attribute (REQ-1388 native
+    typedefs). The reconcile''s drift correction applies to Provisa-owned attributes only. OWNERSHIP RULE
+    (settled): authorship decides. If Provisa authored a value (typed provisa* attributes, the fields it
+    writes, provisa_-prefixed classifications) Provisa overwrites it on every publish; if the value
+    originated in the catalog (userDescription, human-added classifications, [SUPERSEDED by REQ-1389,
+    2026-10-23 -- Provisa writes and withdraws its own automated term assignments; only human assignments
+    are human-owned (TERM ASSIGNMENT below). Kept here for history; do not implement against it.] terms,
+    [END SUPERSEDED BLOCK] labels, drawn lineage) the catalog wins and Provisa never writes it. This is a
+    single-writer MERGE, not a sync: nothing flows back into Provisa (publication is outbound-only), each
+    data element has exactly ONE owning system, and the read step exists only because replace-style catalog
+    APIs force carrying the catalog-owned fields through unchanged. The merge is NOT optional: the
+    classification read-merge and attribute drift-correction ride the single publish path, so all three
+    triggers get them: Publish now, the event drain, and the scheduled reconcile (reconcile_cron, default
+    hourly). URN-CANONICAL UPSERT: the Provisa URN (REQ-1385, published as the provisaUri attribute) is the
+    canonical identity, not the physical qualifiedName. Before publishing, the exporter indexes live
+    entities by URN; an entity Provisa published before whose physical address changed (re-platform,
+    physical rename) takes the live guid and is UPDATED in place — same catalog entity, new binding,
+    enrichment and lineage intact — never duplicated-and-orphaned. UPDATES MERGE: Atlas bulk createOrUpdate
+    replaces the full attribute map (empirically verified: an update wiped a steward-written
     userDescription), so every update starts from the LIVE attributes and overlays only the fields Provisa
     authors; fields Provisa never populates survive verbatim. VENDOR-ID TRACKING (settled: "track their
     guids and use them to sync"): every successful publish CAPTURES the vendor''s own id per published asset
@@ -48118,29 +48119,33 @@
     is missing or the name changed), DataHub dataset URN — into the catalog_bindings table, one row per
     (provider, semantic_uri) with the vendor-side name-key as physical_key. The next publish USES the stored
     id to rebind on a physical re-address instead of trusting the vendor''s name-keyed upsert: Atlas prefers
-    the STORED guid over the laggy basic-search index (the index only covers URIs with no binding); OpenMetadata
-    cannot rename by PATCH (name/databaseSchema are not PATCH-updatable and TableRepository never opts into
-    renameAllowed), so the rebind is SUCCESSION: the predecessor is read by its stored UUID, its steward
-    enrichment carried onto the successor''s first publish, and its description marked superseded with a
-    pointer to the new FQN and the Provisa URN; Collibra PATCH-renames the live asset by stored UUID BEFORE
-    the name-keyed import so the job matches the SAME asset; DataHub URNs are immutable identity, so the
-    successor publishes as a new URN and the OLD bound URN gets the deprecation aspect naming the successor
-    and the Provisa URN. The binding lifecycle (load before publish, persist capture and prune departed-asset
-    bindings after) rides the single publish path, so all triggers get it: Publish now, the event drain,
-    the scheduled reconcile and the CLI publish. (Amended 2026-10-23, TERM ASSIGNMENT:) Term-to-data assignment
-    is Provisa-owned when Provisa makes it. A Class term (REQ-2141) is assigned to the published tables
-    it grounds and a Property term to its published columns; a Concept is assigned to nothing. Each is written
-    as the catalog''s own automated or system assignment, attributed to Provisa -- OpenMetadata labelType
-    Automated, DataHub term associations attributed to Provisa''s actor, Atlas and Atlan semantic assignments
-    whose source is Provisa, Collibra relations created by Provisa''s own user -- and that attribution is
-    the ownership test. Provisa writes and removes only its own assignments, which track the snapshot: one
-    the snapshot no longer carries, including every assignment of a term that left it, is withdrawn. A human
-    assignment stays human-owned: Provisa never removes or overwrites it, and adds none beside it for the
-    same term on the same asset. An assignment is never withdrawn because a request failed, and a live assignment
-    list that cannot be read is not written over. (Amended 2026-11-11, A CLASS TERM IS ASSIGNED TO ITS KEY
-    COLUMNS TOO:) Lead 2026-11-11, for REQ-2238: a Class term is assigned to its tables and to its key columns
-    (whose references sit on the Class, REQ-2141), so a catalog links a primary or foreign key column to
-    its term.'
+    the STORED guid over the laggy basic-search index (the index only covers URIs with no binding);
+    OpenMetadata cannot rename by PATCH (name/databaseSchema are not PATCH-updatable and TableRepository
+    never opts into renameAllowed), so the rebind is SUCCESSION: the predecessor is read by its stored UUID,
+    its steward enrichment carried onto the successor''s first publish, and its description marked
+    superseded with a pointer to the new FQN and the Provisa URN; Collibra PATCH-renames the live asset by
+    stored UUID BEFORE the name-keyed import so the job matches the SAME asset; DataHub URNs are immutable
+    identity, so the successor publishes as a new URN and the OLD bound URN gets the deprecation aspect
+    naming the successor and the Provisa URN. The binding lifecycle (load before publish, persist capture
+    and prune departed-asset bindings after) rides the single publish path, so all triggers get it: Publish
+    now, the event drain, the scheduled reconcile and the CLI publish. (Amended 2026-10-23, TERM
+    ASSIGNMENT:) Term-to-data assignment is Provisa-owned when Provisa makes it. A Class term (REQ-2141) is
+    assigned to the published tables it grounds and a Property term to its published columns; a Concept is
+    assigned to nothing. Each is written as the catalog''s own automated or system assignment, attributed to
+    Provisa -- OpenMetadata labelType Automated, DataHub term associations attributed to Provisa''s actor,
+    Atlas and Atlan semantic assignments whose source is Provisa, Collibra relations created by Provisa''s
+    own user -- and that attribution is the ownership test. Provisa writes and removes only its own
+    assignments, which track the snapshot: one the snapshot no longer carries, including every assignment of
+    a term that left it, is withdrawn. A human assignment stays human-owned: Provisa never removes or
+    overwrites it, and adds none beside it for the same term on the same asset. An assignment is never
+    withdrawn because a request failed, and a live assignment list that cannot be read is not written over.
+    (Amended 2026-11-11, A CLASS TERM IS ASSIGNED TO ITS KEY COLUMNS TOO:) Lead 2026-11-11, for REQ-2238: a
+    Class term is assigned to its tables and to its key columns (whose references sit on the Class,
+    REQ-2141), so a catalog links a primary or foreign key column to its term. (Amended 2026-11-20, PURVIEW
+    REPLACED BY THE ONELAKE CATALOG:) Maintainer 2026-11-20. Microsoft Purview Data Governance was announced
+    retiring (no new accounts; support ends 2027-11-12; to be confirmed from Microsoft''s own notice before
+    the work starts). A Microsoft Fabric OneLake catalog export target is added and the Purview export
+    adapter is removed; text here naming Purview as an export target is superseded.'
   use_case: Stewards enrich published assets inside the catalog (descriptions, terms, extra classifications);
     a publish or scheduled reconcile that overwrote that work would make the catalog write-once and untrustworthy.
     The ownership split lets Provisa keep its facts current while human curation accumulates safely.
@@ -76082,7 +76087,12 @@
     SHOWN AND EDITED ON THE TABLE:) Maintainer 2026-11-20. A table defined by a SPARQL query shows that
     query in its detail (Identity), read-only to a viewer and editable with the table-edit right. Changing
     it re-derives the columns from the SELECT variables, warns before dropping a column that a relationship,
-    grant or mask uses, and the next replica load reads with the new query.'
+    grant or mask uses, and the next replica load reads with the new query. (Amended 2026-11-20, ENDPOINT
+    CHOICE:) Maintainer 2026-11-20. A Wikidata source''s endpoint is chosen, not typed: the Wikidata Query
+    Service (the default), a QLever mirror of Wikidata (faster for large downloads, without the public
+    service''s 60-second limit), or a custom Wikibase, which reveals the URL field. Help text says what each
+    choice changes. Class search and the starters use wikidata.org for the first two and the custom
+    Wikibase''s own search for the third.'
   use_case: A team wants its Stripe, HubSpot or GitHub data beside its databases. A preset over a generic
     API source reaches it with no container to run, no Docker prerequisite on a desktop install, and on
     every engine, where a Postgres instance per source would be a heavy way to run a periodic fetch.
@@ -82388,113 +82398,118 @@
   feature: source-registration-lookups
   priority: MUST
   type: behavioral
-  description: 'A table declares its parameters: the values a caller passes to the source to read the table.
-    Each parameter has a name, a type, and how it reaches the source: a path parameter or a query parameter
-    of an OpenAPI operation, an argument of a remote GraphQL field, a field of a gRPC request, or an argument
-    of a source''s native query (a MongoDB pipeline, REQ-1980; a Cosmos DB query, REQ-1982). Each parameter
-    is optional or required. It is required when the source requires it, or when a steward has made it required
+  description: 'A table declares its parameters: the values a caller passes to the source to read the table. Each
+    parameter has a name, a type, and how it reaches the source: a path parameter or a query parameter of an
+    OpenAPI operation, an argument of a remote GraphQL field, a field of a gRPC request, or an argument of a
+    source''s native query (a MongoDB pipeline, REQ-1980; a Cosmos DB query, REQ-1982). Each parameter is
+    optional or required. It is required when the source requires it, or when a steward has made it required
     for this table. A parameter the source requires is required for good; a steward can make an optional
     parameter required, and can make it optional again. Registration records every parameter the source
     describes, the optional ones included, with whether the source requires it. One rule holds for every
-    source kind and every surface: a read of the table that leaves a required parameter without a value
-    is refused before anything is sent to the source, and the refusal names the table and the parameter.
+    source kind and every surface: a read of the table that leaves a required parameter without a value is
+    refused before anything is sent to the source, and the refusal names the table and the parameter.
     GraphQL marks a required parameter''s argument non-null. The admin API reads and sets the steward''s
-    switch per parameter. The table page has a Parameters section listing each parameter with its type,
-    how it reaches the source, and the switch, which is on and locked where the source requires the parameter.
+    switch per parameter. The table page has a Parameters section listing each parameter with its type, how
+    it reaches the source, and the switch, which is on and locked where the source requires the parameter.
     (Amended 2026-10-23, a parameterized table keeps nothing unless it says so:) A parameterized table --
     any table that declares a parameter (an OpenAPI/REST argument, a code function''s parameter, a Qdrant
     search''s query, a GraphQL- or gRPC-remote argument, a Cosmos DB partition key) -- has a TTL of 0 unless
     the table itself sets cache_ttl: it is fetched live for each statement and handed to that statement
     alone (inlined as a VALUES CTE, or landed in a scratch table dropped when the statement ends; the engine
     still runs the statement), and nothing it answers is reused by another statement. It does not take its
-    source''s TTL, the organisation''s response-cache default or an endpoint''s TTL. A table that sets cache_ttl
-    keeps the answer to each set of arguments for it, and a statement asking the same arguments within it
-    reuses that answer. A table with no parameter keeps the chain: its own TTL, else its source''s, else
-    the organisation''s default, else (for an API endpoint) the endpoint''s. One resolver decides it for
-    every landing surface (pipeline and native-query tables, OpenAPI/REST endpoints and the fills a compiled
-    GraphQL read fetches for them, GraphQL-remote and gRPC-remote tables); GraphQL-remote keeps for that
-    TTL rather than a fixed 300 seconds. A join''s parent keys are still fetched in one batched call per
-    statement; at a TTL of 0 the next statement fetches them again, and a statement reads only the fills
-    it fetched itself, never another statement''s. (Amended 2026-11-03, The picker marks parameterized tables:)
-    Maintainer 2026-11-03: Register Table''s table picker shows which tables take required parameters (a
-    single-record lookup such as a GraphQL root field with a required id) apart from those that list rows
-    with none: the parameterized ones carry an icon naming their required parameters, or are listed in a
-    group of their own, so a steward is not surprised by a required filter after picking. (Amended 2026-11-16,
-    A PARAMETERIZED TABLE STAYS A TABLE; ITS LIMITS ARE STATED IN ITS METADATA:) Maintainer 2026-11-16 (''keep
-    as parameterized tables but strengthen metadata and discovery functions to account for limitations''),
-    after weighing a function form. A table that requires a parameter stays a table: the parameter is a
-    WHERE condition or a join condition in SQL and an argument in GraphQL, and relationships, row rules
-    and masks apply to it as to any table. What it cannot do is stated in its metadata, where every client
-    and every part of the product reads it before reading the table: that it requires parameters, which
-    ones and of what type, and that it therefore gives no row count, no profile and no sample without them.
-    The meta schema, the catalogs the SQL and graph clients read, and the table''s page show it. Every function
-    of the product that counts, profiles, samples or scans a table (discovery, the profiler, data quality
-    checks, statistics, previews) asks that metadata first and takes its stated reduced path for such a
-    table; none finds out by trying the read (REQ-413 for discovery). (Amended 2026-11-16, AN OPAQUE PARAMETER
-    IS BOUND BY EQUALITY ONLY:) Maintainer 2026-11-16 (''parameterized tables exist because they represent
-    what seems to be an opaque filter (we don''t really know the logic behind it)''; ''the where clause
-    should only accept an eq''; ''agree'' to the points here). A parameter that is an input to the source''s
-    call (a path, query, GraphQL or gRPC argument) is opaque: the product does not know what the source
-    does with it. A statement can only bind it to a value: by equality with one value, by a finite list
-    of values, or by a join''s equality with another table''s column, each value being one call to the source
-    and the results unioned, up to a cap on calls per statement that is an operator setting with its settings
-    field (its default is not settled). Any other condition on it (a range, a pattern, an inequality, a
-    test for null) is refused naming the parameter and saying it takes a value by equality. It must be bound
-    on every branch of the condition: a statement that leaves it unbound on one branch of an OR is refused.
-    Every other column of the table is a result column and takes any condition, applied after the call.
-    The parameter''s column in the result repeats the value that was asked; it is never assumed to be an
-    attribute of the rows returned. The table''s metadata says, for each parameter, whether it is opaque
-    or a real column of the table that the source requires a value for (a partition key, a column value),
-    whose meaning is known. (Amended 2026-11-16, A PARAMETERIZED OPERATION IS ALWAYS A FUNCTION; A TABLE
-    ONLY WHERE NO PLAIN LIST EXISTS:) Maintainer 2026-11-16. This narrows A PARAMETERIZED TABLE STAYS A
-    TABLE: its first sentence, that such a table always stays a table, is [SUPERSEDED by this amendment];
-    the rest of it and AN OPAQUE PARAMETER IS BOUND BY EQUALITY ONLY hold for every parameterized table
-    that exists. Every operation of a source that requires a parameter is a function: its parameters are
-    its arguments, it returns its rows, and it is always kept. A parameterized table is added for it, as
-    a view of that function, only as a help to clients that read tables and cannot call a function (BI tools
-    above all): when the operation returns objects of a type that no operation without a required parameter
-    returns. Where a plain list of the same type exists, that list is the table, it is the one counted,
-    profiled and discovered, and no parameterized table is created beside it. Whether two operations return
-    the same type is read from the source''s own schema, never guessed from column names. A steward may
-    add the parameterized table for an operation that did not get one. (Amended 2026-11-16, THE PARAMETERIZED
-    TABLE IS AN ATTRIBUTE OF ITS FUNCTION:) Maintainer 2026-11-16. Whether a function is also exposed as
-    a parameterized table is an attribute of the function, changed where the function is edited; the table
-    is derived from the function while the attribute is on and is never registered on its own, so it cannot
-    differ from the function''s parameters or columns. This replaces the last sentence of A PARAMETERIZED
-    OPERATION IS ALWAYS A FUNCTION (a steward may add the table) [SUPERSEDED by this amendment]. The attribute''s
-    value when the function is registered follows that amendment''s rule: on when no operation without a
-    required parameter returns the same type, off otherwise. It is set once: a plain list of the same type
-    registered later does not change it, since that would remove a table in use. Turning it off is refused
-    while a relationship, a row rule, a data product or another live object refers to the derived table,
-    naming what refers to it, as deleting a table is. (Amended 2026-11-16, EQUALITY ON A PARAMETER ASSIGNS
-    ITS VALUE:) Maintainer 2026-11-16 (''EQ means the value is assigned to the param''). An equality on
-    an opaque parameter is not a comparison made against rows: it assigns the value to the parameter for
-    the call. The returned rows are not filtered by it again. Two different values assigned to the same
-    parameter on one branch are a conflict and are refused naming the parameter; they are not an empty result.
-    (Amended 2026-11-16, A NEGATED ASSIGNMENT IS AN ERROR:) Maintainer 2026-11-16. IN on an opaque parameter
-    assigns as equality does, one call for each value. NOT IN, not-equal, and any negation of an equality
-    or of an IN on a parameter assign nothing and are an error: the statement is refused naming the parameter,
-    never answered as if the condition were absent and never answered empty. (Amended 2026-11-16, POINTS
-    SETTLED BEFORE BUILDING:) Maintainer 2026-11-16: the cap on calls per statement defaults to 1000; and
-    two operations without a required parameter that return the same type both stay tables, the rule deciding
-    only whether a parameterized operation also gets a table. Lead 2026-11-16, each following from the rules
-    above: (1) the derived table has a table row of its own, since every reference is keyed on one, but
-    the function''s attribute alone creates and removes it and its parameters and columns are not editable
-    on the table; (2) turning the attribute off is refused while a relationship, a row rule, a data product
-    or another live object refers to the table, the function''s own reference to what it returns not counting;
-    (3) a function whose table is off returns the plain list''s type in GraphQL, so its field is unchanged;
-    (4) a join assigns a parameter only when it is on the parameter itself, never on a result column presumed
-    to be it; (5) rows of a parameterized table that were kept (a kept-for-good table, a synthetic environment)
-    hold the asked value as an ordinary stored column, and conditions on that stored column are ordinary
-    filters; (6) a source whose operations have no named return type cannot be compared, so each of its
-    parameterized operations gets its table. (Amended 2026-11-16, THE DERIVED TABLE SHARES ITS FUNCTION''S
-    STATE AND IS EDITED ONLY THROUGH IT:) Lead 2026-11-16, consequences of the table being an attribute
-    of its function. The derived table has its function''s release state: released with it, never a draft
-    of its own, since a draft table would leave a released function unreadable. It is not deleted, and its
-    columns and parameters are not edited, on the table itself: only through its function. Turning the switch
-    off, or deleting the function, is refused while a relationship, view, metric, row rule, data-product
-    membership or write grant refers to the derived table, naming each; glossary references and tags the
-    product made itself do not block it. A parameter is bound under its own name and under its alias alike.'
+    source''s TTL, the organisation''s response-cache default or an endpoint''s TTL. A table that sets
+    cache_ttl keeps the answer to each set of arguments for it, and a statement asking the same arguments
+    within it reuses that answer. A table with no parameter keeps the chain: its own TTL, else its
+    source''s, else the organisation''s default, else (for an API endpoint) the endpoint''s. One resolver
+    decides it for every landing surface (pipeline and native-query tables, OpenAPI/REST endpoints and the
+    fills a compiled GraphQL read fetches for them, GraphQL-remote and gRPC-remote tables); GraphQL-remote
+    keeps for that TTL rather than a fixed 300 seconds. A join''s parent keys are still fetched in one
+    batched call per statement; at a TTL of 0 the next statement fetches them again, and a statement reads
+    only the fills it fetched itself, never another statement''s. (Amended 2026-11-03, The picker marks
+    parameterized tables:) Maintainer 2026-11-03: Register Table''s table picker shows which tables take
+    required parameters (a single-record lookup such as a GraphQL root field with a required id) apart from
+    those that list rows with none: the parameterized ones carry an icon naming their required parameters,
+    or are listed in a group of their own, so a steward is not surprised by a required filter after picking.
+    (Amended 2026-11-16, A PARAMETERIZED TABLE STAYS A TABLE; ITS LIMITS ARE STATED IN ITS METADATA:)
+    Maintainer 2026-11-16 (''keep as parameterized tables but strengthen metadata and discovery functions to
+    account for limitations''), after weighing a function form. A table that requires a parameter stays a
+    table: the parameter is a WHERE condition or a join condition in SQL and an argument in GraphQL, and
+    relationships, row rules and masks apply to it as to any table. What it cannot do is stated in its
+    metadata, where every client and every part of the product reads it before reading the table: that it
+    requires parameters, which ones and of what type, and that it therefore gives no row count, no profile
+    and no sample without them. The meta schema, the catalogs the SQL and graph clients read, and the
+    table''s page show it. Every function of the product that counts, profiles, samples or scans a table
+    (discovery, the profiler, data quality checks, statistics, previews) asks that metadata first and takes
+    its stated reduced path for such a table; none finds out by trying the read (REQ-413 for discovery).
+    (Amended 2026-11-16, AN OPAQUE PARAMETER IS BOUND BY EQUALITY ONLY:) Maintainer 2026-11-16
+    (''parameterized tables exist because they represent what seems to be an opaque filter (we don''t really
+    know the logic behind it)''; ''the where clause should only accept an eq''; ''agree'' to the points
+    here). A parameter that is an input to the source''s call (a path, query, GraphQL or gRPC argument) is
+    opaque: the product does not know what the source does with it. A statement can only bind it to a value:
+    by equality with one value, by a finite list of values, or by a join''s equality with another table''s
+    column, each value being one call to the source and the results unioned, up to a cap on calls per
+    statement that is an operator setting with its settings field (its default is not settled). Any other
+    condition on it (a range, a pattern, an inequality, a test for null) is refused naming the parameter and
+    saying it takes a value by equality. It must be bound on every branch of the condition: a statement that
+    leaves it unbound on one branch of an OR is refused. Every other column of the table is a result column
+    and takes any condition, applied after the call. The parameter''s column in the result repeats the value
+    that was asked; it is never assumed to be an attribute of the rows returned. The table''s metadata says,
+    for each parameter, whether it is opaque or a real column of the table that the source requires a value
+    for (a partition key, a column value), whose meaning is known. (Amended 2026-11-16, A PARAMETERIZED
+    OPERATION IS ALWAYS A FUNCTION; A TABLE ONLY WHERE NO PLAIN LIST EXISTS:) Maintainer 2026-11-16. This
+    narrows A PARAMETERIZED TABLE STAYS A TABLE: its first sentence, that such a table always stays a table,
+    is [SUPERSEDED by this amendment]; the rest of it and AN OPAQUE PARAMETER IS BOUND BY EQUALITY ONLY hold
+    for every parameterized table that exists. Every operation of a source that requires a parameter is a
+    function: its parameters are its arguments, it returns its rows, and it is always kept. A parameterized
+    table is added for it, as a view of that function, only as a help to clients that read tables and cannot
+    call a function (BI tools above all): when the operation returns objects of a type that no operation
+    without a required parameter returns. Where a plain list of the same type exists, that list is the
+    table, it is the one counted, profiled and discovered, and no parameterized table is created beside it.
+    Whether two operations return the same type is read from the source''s own schema, never guessed from
+    column names. A steward may add the parameterized table for an operation that did not get one. (Amended
+    2026-11-16, THE PARAMETERIZED TABLE IS AN ATTRIBUTE OF ITS FUNCTION:) Maintainer 2026-11-16. Whether a
+    function is also exposed as a parameterized table is an attribute of the function, changed where the
+    function is edited; the table is derived from the function while the attribute is on and is never
+    registered on its own, so it cannot differ from the function''s parameters or columns. This replaces the
+    last sentence of A PARAMETERIZED OPERATION IS ALWAYS A FUNCTION (a steward may add the table)
+    [SUPERSEDED by this amendment]. The attribute''s value when the function is registered follows that
+    amendment''s rule: on when no operation without a required parameter returns the same type, off
+    otherwise. It is set once: a plain list of the same type registered later does not change it, since that
+    would remove a table in use. Turning it off is refused while a relationship, a row rule, a data product
+    or another live object refers to the derived table, naming what refers to it, as deleting a table is.
+    (Amended 2026-11-16, EQUALITY ON A PARAMETER ASSIGNS ITS VALUE:) Maintainer 2026-11-16 (''EQ means the
+    value is assigned to the param''). An equality on an opaque parameter is not a comparison made against
+    rows: it assigns the value to the parameter for the call. The returned rows are not filtered by it
+    again. Two different values assigned to the same parameter on one branch are a conflict and are refused
+    naming the parameter; they are not an empty result. (Amended 2026-11-16, A NEGATED ASSIGNMENT IS AN
+    ERROR:) Maintainer 2026-11-16. IN on an opaque parameter assigns as equality does, one call for each
+    value. NOT IN, not-equal, and any negation of an equality or of an IN on a parameter assign nothing and
+    are an error: the statement is refused naming the parameter, never answered as if the condition were
+    absent and never answered empty. (Amended 2026-11-16, POINTS SETTLED BEFORE BUILDING:) Maintainer
+    2026-11-16: the cap on calls per statement defaults to 1000; and two operations without a required
+    parameter that return the same type both stay tables, the rule deciding only whether a parameterized
+    operation also gets a table. Lead 2026-11-16, each following from the rules above: (1) the derived table
+    has a table row of its own, since every reference is keyed on one, but the function''s attribute alone
+    creates and removes it and its parameters and columns are not editable on the table; (2) turning the
+    attribute off is refused while a relationship, a row rule, a data product or another live object refers
+    to the table, the function''s own reference to what it returns not counting; (3) a function whose table
+    is off returns the plain list''s type in GraphQL, so its field is unchanged; (4) a join assigns a
+    parameter only when it is on the parameter itself, never on a result column presumed to be it; (5) rows
+    of a parameterized table that were kept (a kept-for-good table, a synthetic environment) hold the asked
+    value as an ordinary stored column, and conditions on that stored column are ordinary filters; (6) a
+    source whose operations have no named return type cannot be compared, so each of its parameterized
+    operations gets its table. (Amended 2026-11-16, THE DERIVED TABLE SHARES ITS FUNCTION''S STATE AND IS
+    EDITED ONLY THROUGH IT:) Lead 2026-11-16, consequences of the table being an attribute of its function.
+    The derived table has its function''s release state: released with it, never a draft of its own, since a
+    draft table would leave a released function unreadable. It is not deleted, and its columns and
+    parameters are not edited, on the table itself: only through its function. Turning the switch off, or
+    deleting the function, is refused while a relationship, view, metric, row rule, data-product membership
+    or write grant refers to the derived table, naming each; glossary references and tags the product made
+    itself do not block it. A parameter is bound under its own name and under its alias alike. (Amended
+    2026-11-20, A FEEDING RELATIONSHIP IS NOT A JOIN KEY:) Maintainer 2026-11-20. When a statement equates a
+    parameter column with the source column of a relationship that feeds that table (REQ-2099), the
+    relationship''s feed supplies the parameter rather than a per-row join key. The feed is one batched read
+    per statement, not per-row calls, so parameters.max_calls_per_statement does not apply to it.'
   use_case: 'An OpenAPI operation takes an optional region query parameter, and without it returns every region''s rows, millions of them. A steward makes region required on the table; from then on an analyst''s SQL query without a region condition is refused, naming the table and region, and the GraphQL field''s region argument is non-null. The operation''s id path parameter is shown locked on, because the source requires it.'
   scenario: 'Given an OpenAPI table with a required path parameter id and an optional query parameter region, and a remote GraphQL table with an optional argument status
 
@@ -89681,7 +89696,12 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     2026-11-20. A masked value never changes its column''s type: a column or output whose type is not text
     (numeric, boolean, date and time, binary) and is masked by a constant mask reads as NULL, so
     calculators, dashboards and typed clients are not broken; a text column keeps its constant mask (for
-    example ''***''). Earlier text giving a masked numeric output the text ''***'' is superseded.'
+    example ''***''). Earlier text giving a masked numeric output the text ''***'' is superseded. (Amended
+    2026-11-20, CONSTANT MASKS ON NON-TEXT COLUMNS:) Maintainer 2026-11-20. Saving a constant mask with a
+    value other than NULL on a non-text column is refused by name, since it can only read as NULL. A column
+    that a reader sees under a mask is reported nullable to that reader in every catalog the surfaces expose
+    (for example pgwire''s attnotnull, GraphQL and Flight schemas), even when the column is declared NOT
+    NULL.'
   use_case: >-
     A data team cleanses free-text supplier addresses with one @columns function that sends each batch
     of rows to the org's LLM and returns street, city and country; the cleansed columns sit in a
@@ -98021,3 +98041,77 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     across sources. Every candidate, declared foreign keys included, waits for review: each shows its
     cardinality and why it was proposed, and is accepted, edited or skipped; accepted ones follow the normal
     relationship approval rules. Done returns to the source with the count of relationships created.'
+- id: REQ-2263
+  status: proposed
+  target: 2026-Q4
+  group: 3. Source Registration & Data Modeling
+  category: Registration & Governance
+  feature: semantic-model-relationships
+  priority: SHOULD
+  type: behavioral
+  description: 'Maintainer 2026-11-20. OpenLineage is a way to add sources and tables, by two paths. ADMIN IMPORT:
+    Admin > Import gains OpenLineage as a third import type beside Hasura v2 and DDN, modeled on the Hasura
+    import (REQ-1483): everything lands in the import''s default domain (domain_policy.import_default), and
+    the review shows one row per db.schema group taken from the dataset names, filled with that default and
+    editable, changed rows sent as the domain map. One source is created per dataset namespace whose scheme
+    maps to a Provisa source type, after its credentials are entered through the discovered-source step
+    (REQ-1687; never a password stored by the import); a namespace with no matching type, or left without
+    credentials, is reported as skipped. One table is created per dataset name under each created source,
+    its columns from the dataset''s schema facet, or from introspecting the source once its credentials are
+    in when the facet is missing. Descriptions come from the documentation facet and owners from the
+    ownership facet; turning dataQualityAssertions into quality checks is optional. No roles, row rules or
+    relationships are produced (column lineage is not a foreign key). Input, in order: datasets the lineage
+    receiver (REQ-2229) has stored, an uploaded NDJSON file of events, or the Marquez API. SOURCES PATH: the
+    source picker has an OpenLineage entry; the user picks one namespace the receiver has reported, and the
+    add form of the matching source type opens with host, port and database filled from the namespace, so
+    only credentials are entered. This creates an ordinary source of that type: nothing about OpenLineage is
+    stored on the source (no OpenLineage source type, brand or connector change). The usual Register Tables
+    workflow then opens with its table list filtered to the datasets reported for that namespace, a show-all
+    toggle removing the filter, descriptions and owners filled from the facets at registration, and the
+    domain chosen per table as Register Table already does. PREREQUISITE: the lineage receiver stores each
+    dataset''s latest schema, documentation and ownership facets, keyed by dataset namespace and name (today
+    it keeps only job, run, dataset and column lineage). Stated limits: only datasets some job touched are
+    covered, and each reflects only its latest run. (Amended 2026-11-20, A MALFORMED FACET IS SKIPPED:)
+    Maintainer 2026-11-20. A received event with a malformed schema, documentation or ownership facet is
+    stored with its lineage; only the malformed facet is skipped, and it is reported (in the response and
+    the receiver''s log) by name.'
+- id: REQ-2264
+  status: proposed
+  target: 2026-Q4
+  group: 3. Source Registration & Data Modeling
+  category: Registration & Governance
+  feature: semantic-model-relationships
+  priority: MAY
+  type: behavioral
+  description: 'Maintainer 2026-11-20. A Marquez source, branded on top of the OpenAPI source the way the branded
+    sources sit on their base type (REQ-1923), reads Marquez''s published REST API (never its internal
+    database tables, which are not a contract) and exposes jobs, runs, datasets and the lineage graph as
+    queryable tables, for run history, what loaded today, and joining pipeline status to business tables.
+    OpenLineage is a specification with no store of its own, so a lineage store such as Marquez is the only
+    lineage source type there can be.'
+- id: REQ-2265
+  status: proposed
+  target: 2026-Q4
+  group: 3. Source Registration & Data Modeling
+  category: Registration & Governance
+  feature: semantic-model-relationships
+  priority: SHOULD
+  type: behavioral
+  description: 'Maintainer 2026-11-20. Governance catalogs are live branded sources, so their metadata is queryable and
+    joinable with any other Provisa data. Nothing syncs in either direction and a catalog may disagree with
+    Provisa''s model: the disagreement is itself something to query, for example columns the catalog
+    classifies as personal data that Provisa does not mask, owners that do not match, or tables certified in
+    one and missing from the other; catalog facts (certification, stewards, quality scores) beside query
+    results and data products; catalog owners joined to audit and usage data. This is separate from imports,
+    which stay an optional path, and from the metadata export adapters, which push to catalogs. Each catalog
+    is a brand on an existing source type, no new connector: DataHub on the GraphQL source; OpenMetadata,
+    Collibra, Alation and Atlan on the OpenAPI source; the Microsoft Fabric OneLake catalog on the Fabric
+    REST API with Entra client credentials; Dataplex over Google''s published interface. DataHub and
+    OpenMetadata come first, then Collibra, Alation and Atlan. Microsoft Purview Data Governance is not a
+    brand: it was announced retiring (no new accounts; support ends 2027-11-12), with the OneLake catalog as
+    its successor; the announcement is to be confirmed from Microsoft''s own notice before the work starts.
+    The OpenAPI brand mechanism passes through settings the plain OpenAPI source already supports: a base
+    URL setup field for a per-instance host, a spec location that may point at the running instance (whose
+    spec changes between versions), and the authentication type, including OAuth client credentials. The
+    Marquez source (REQ-2264) uses the same mechanism. Until a brand exists, any of these catalogs can be
+    added as a plain OpenAPI source.'
