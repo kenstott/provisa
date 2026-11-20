@@ -86,6 +86,17 @@ class ReportedDataset:
 
 
 @dataclass(frozen=True)
+class SkippedFacet:
+    """A schema, documentation or ownership facet the event carried malformed: not kept, while the
+    rest of the event is (REQ-2263)."""
+
+    dataset_namespace: str
+    dataset_name: str
+    facet: str
+    reason: str
+
+
+@dataclass(frozen=True)
 class RunEvent:
     job_namespace: str
     job_name: str
@@ -93,6 +104,8 @@ class RunEvent:
     event_time: datetime
     inputs: tuple[ReportedDataset, ...]
     outputs: tuple[ReportedDataset, ...]
+    #: The kept facets left out as malformed, in the order the event lists their datasets.
+    skipped_facets: tuple[SkippedFacet, ...]
 
 
 @dataclass(frozen=True)
@@ -179,66 +192,84 @@ def _facet(facets: dict, key: str) -> dict | None:
     return facet
 
 
-def _kept_facets(facets: dict) -> dict[str, dict]:
+def _schema(facet: dict) -> dict:
+    return {
+        "fields": [
+            {
+                "name": _text(f, "name", "schema.fields[]"),
+                "type": _optional_text(f, "type", "schema.fields[]"),
+                "description": _optional_text(f, "description", "schema.fields[]"),
+            }
+            for f in _objects(facet, "fields", "schema")
+        ]
+    }
+
+
+def _documentation(facet: dict) -> dict:
+    return {"description": _text(facet, "description", "documentation")}
+
+
+def _ownership(facet: dict) -> dict:
+    return {
+        "owners": [
+            {
+                "name": _text(o, "name", "ownership.owners[]"),
+                "type": _optional_text(o, "type", "ownership.owners[]"),
+            }
+            for o in _objects(facet, "owners", "ownership")
+        ]
+    }
+
+
+#: Each kept facet: its key in the event, the name it is stored by, and what is read of it.
+_KEPT_FACETS = (
+    ("schema", SCHEMA_FACET, _schema),
+    ("documentation", DOCUMENTATION_FACET, _documentation),
+    ("ownership", OWNERSHIP_FACET, _ownership),
+)
+
+
+def _kept_facets(facets: dict) -> tuple[dict[str, dict], dict[str, str]]:
     """The SchemaDatasetFacet's fields (name, type, description), the DocumentationDatasetFacet's
-    description and the OwnershipDatasetFacet's owners (name, type) the dataset carries."""
+    description and the OwnershipDatasetFacet's owners (name, type) the dataset carries, and why
+    each malformed one is left out, both by the name stored. Each facet is read on its own, so a
+    malformed one costs only itself (REQ-2263)."""
     kept: dict[str, dict] = {}
-    schema = _facet(facets, "schema")
-    if schema is not None:
-        kept[SCHEMA_FACET] = {
-            "fields": [
-                {
-                    "name": _text(f, "name", "schema.fields[]"),
-                    "type": _optional_text(f, "type", "schema.fields[]"),
-                    "description": _optional_text(f, "description", "schema.fields[]"),
-                }
-                for f in _objects(schema, "fields", "schema")
-            ]
-        }
-    documentation = _facet(facets, "documentation")
-    if documentation is not None:
-        kept[DOCUMENTATION_FACET] = {
-            "description": _text(documentation, "description", "documentation")
-        }
-    ownership = _facet(facets, "ownership")
-    if ownership is not None:
-        kept[OWNERSHIP_FACET] = {
-            "owners": [
-                {
-                    "name": _text(o, "name", "ownership.owners[]"),
-                    "type": _optional_text(o, "type", "ownership.owners[]"),
-                }
-                for o in _objects(ownership, "owners", "ownership")
-            ]
-        }
-    return kept
+    skipped: dict[str, str] = {}
+    for key, stored, read in _KEPT_FACETS:
+        try:
+            facet = _facet(facets, key)
+            if facet is not None:
+                kept[stored] = read(facet)
+        except InvalidRunEvent as exc:
+            skipped[stored] = str(exc)
+    return kept, skipped
 
 
-def _datasets(body: dict, key: str) -> tuple[ReportedDataset, ...]:
+def _datasets(body: dict, key: str) -> tuple[tuple[ReportedDataset, ...], tuple[SkippedFacet, ...]]:
+    """The datasets listed under ``key``, and the kept facets left out of them as malformed."""
     listed = body.get(key)
     if listed is None:
-        return ()
+        return (), ()
     if not isinstance(listed, list) or not all(isinstance(d, dict) for d in listed):
         raise InvalidRunEvent(f"{key} must be a list of datasets")
     out = []
+    skips: list[SkippedFacet] = []
     for dataset in listed:
         facets = dataset.get("facets") or {}
         if not isinstance(facets, dict):
             raise InvalidRunEvent(f"{key}[].facets must be an object")
-        out.append(
-            ReportedDataset(
-                _text(dataset, "namespace", key),
-                _text(dataset, "name", key),
-                _column_lineage(facets),
-                _kept_facets(facets),
-            )
-        )
-    return tuple(out)
+        namespace, name = _text(dataset, "namespace", key), _text(dataset, "name", key)
+        kept, skipped = _kept_facets(facets)
+        out.append(ReportedDataset(namespace, name, _column_lineage(facets), kept))
+        skips.extend(SkippedFacet(namespace, name, f, why) for f, why in skipped.items())
+    return tuple(out), tuple(skips)
 
 
 def parse_run_event(body: Any) -> RunEvent:
     """The run event in ``body``, or :class:`InvalidRunEvent`. A dataset or job event carries no
-    run and is refused."""
+    run and is refused. A malformed schema, documentation or ownership facet does not refuse the
+    event: it is left out and listed in the event's ``skipped_facets`` (REQ-2263)."""
     if not isinstance(body, dict):
         raise InvalidRunEvent("a run event is a JSON object")
     run, job = body.get("run"), body.get("job")
@@ -251,13 +282,16 @@ def parse_run_event(body: Any) -> RunEvent:
         raise InvalidRunEvent(f"event.eventTime is not a timestamp: {stamp!r}") from exc
     if event_time.tzinfo is None:
         raise InvalidRunEvent("event.eventTime must carry a UTC offset")
+    inputs, inputs_skipped = _datasets(body, "inputs")
+    outputs, outputs_skipped = _datasets(body, "outputs")
     return RunEvent(
         job_namespace=_text(job, "namespace", "job"),
         job_name=_text(job, "name", "job"),
         run_id=_text(run, "runId", "run"),
         event_time=event_time,
-        inputs=_datasets(body, "inputs"),
-        outputs=_datasets(body, "outputs"),
+        inputs=inputs,
+        outputs=outputs,
+        skipped_facets=inputs_skipped + outputs_skipped,
     )
 
 

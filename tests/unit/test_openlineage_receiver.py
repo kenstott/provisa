@@ -36,6 +36,7 @@ from provisa.lineage.reported import (
     OPENLINEAGE,
     InvalidRunEvent,
     RegisteredTable,
+    SkippedFacet,
     add_reported_lineage,
     dataset_rows,
     parse_run_event,
@@ -489,8 +490,30 @@ class TestTheEndpoint:
     def test_a_run_event_is_accepted_and_stored(self, stored):
         request = _gate_request(json.dumps(READS_AND_WRITES).encode(), {"lineage_report"})
         out = asyncio.run(openlineage_router.receive_run_event(request))
-        assert out == {"status": "accepted"}
+        assert out == {"status": "accepted", "skipped_facets": []}
         assert stored[0].job_name == "load_mart"
+
+    def test_a_malformed_facet_is_accepted_and_named_in_the_response_and_log(self, stored, caplog):
+        body = _event(
+            [_dataset("warehouse.public.orders", documentation={})],
+            [_dataset("warehouse.public.mart", ownership=OWNERS)],
+        )
+        request = _gate_request(json.dumps(body).encode(), {"lineage_report"})
+        with caplog.at_level("WARNING", logger=openlineage_router.__name__):
+            out = asyncio.run(openlineage_router.receive_run_event(request))
+        assert out == {
+            "status": "accepted",
+            "skipped_facets": [
+                {
+                    "dataset_namespace": PG,
+                    "dataset_name": "warehouse.public.orders",
+                    "facet": "documentation",
+                    "reason": "documentation.description must be a non-empty string",
+                }
+            ],
+        }
+        assert stored[0].outputs[0].facets == {"ownership": OWNERS}
+        assert "documentation facet of " + PG + "/warehouse.public.orders" in caplog.text
 
     def test_a_caller_without_the_capability_is_refused(self, stored):
         request = _gate_request(json.dumps(READS_AND_WRITES).encode(), set())
@@ -693,19 +716,59 @@ class TestFacetParsing:
         }
 
     @pytest.mark.parametrize(
-        "facets",
+        ("facets", "skipped", "reason"),
         [
-            {"schema": "x"},
-            {"schema": {"fields": "x"}},
-            {"schema": {"fields": [{"type": "INT"}]}},
-            {"schema": {"fields": [{"name": "c", "type": 3}]}},
-            {"documentation": {}},
-            {"ownership": {"owners": [{"type": "OWNER"}]}},
+            ({"schema": "x"}, "schema", "schema must be an object"),
+            ({"schema": {"fields": "x"}}, "schema", "schema.fields must be a list of objects"),
+            (
+                {"schema": {"fields": [{"type": "INT"}]}},
+                "schema",
+                "schema.fields[].name must be a non-empty string",
+            ),
+            (
+                {"schema": {"fields": [{"name": "c", "type": 3}]}},
+                "schema",
+                "schema.fields[].type must be a string",
+            ),
+            (
+                {"documentation": {}},
+                "documentation",
+                "documentation.description must be a non-empty string",
+            ),
+            (
+                {"ownership": {"owners": [{"type": "OWNER"}]}},
+                "ownership",
+                "ownership.owners[].name must be a non-empty string",
+            ),
         ],
     )
-    def test_a_malformed_kept_facet_is_refused(self, facets):
+    def test_a_malformed_kept_facet_is_skipped_and_the_rest_kept(self, facets, skipped, reason):
+        good = {"schema": SCHEMA, "documentation": DOCS, "ownership": OWNERS}
+        event = parse_run_event(_event([], [_dataset("t", **{**good, **facets})]))
+        assert event.skipped_facets == (SkippedFacet(PG, "t", skipped, reason),)
+        assert event.outputs[0].facets == {k: v for k, v in good.items() if k != skipped}
+        assert event.outputs[0].name == "t"
+
+    def test_skips_are_named_by_dataset_in_event_order(self):
+        event = parse_run_event(
+            _event(
+                [_dataset("a", schema="x", documentation={})],
+                [_dataset("b", ownership={"owners": "x"})],
+            )
+        )
+        assert [(s.dataset_name, s.facet) for s in event.skipped_facets] == [
+            ("a", "schema"),
+            ("a", "documentation"),
+            ("b", "ownership"),
+        ]
+
+    def test_a_well_formed_event_skips_nothing(self):
+        event = parse_run_event(_event([], [_dataset("t", schema=SCHEMA)]))
+        assert event.skipped_facets == ()
+
+    def test_a_malformed_column_lineage_facet_still_refuses_the_event(self):
         with pytest.raises(InvalidRunEvent):
-            parse_run_event(_event([], [_dataset("t", **facets)]))
+            parse_run_event(_event([], [_dataset("t", columnLineage={"fields": "x"})]))
 
 
 class TestTheFacetStore:
@@ -777,3 +840,34 @@ class TestTheFacetStore:
             ),
         )
         assert list(await _facets(db, "s3://bucket")) == [("s3://bucket", "a")]
+
+    async def test_a_malformed_facet_is_skipped_while_its_lineage_and_other_facets_are_stored(
+        self, control_plane
+    ):
+        db = control_plane.org()
+        await _registered(db)
+        await _store_events(
+            db,
+            _run(
+                "r1",
+                "2026-11-09T10:00:00Z",
+                [_dataset("warehouse.public.orders", schema={"fields": "x"}, documentation=DOCS)],
+                [_dataset("warehouse.public.mart", ownership=OWNERS)],
+            ),
+        )
+        graph = await _read_back(db)
+        assert ("sales.orders.amount", f"{JOB}.*") in _pairs(graph)
+        assert (f"{JOB}.*", "sales.mart.total") in _pairs(graph)
+        stored = await _facets(db)
+        assert set(stored[(PG, "warehouse.public.orders")]) == {"documentation"}
+        assert stored[(PG, "warehouse.public.mart")]["ownership"].payload == OWNERS
+
+    async def test_a_malformed_facet_leaves_the_stored_one(self, control_plane):
+        db = control_plane.org()
+        await _store_events(
+            db,
+            _run("r1", "2026-11-09T10:00:00Z", [], [_dataset("t", documentation=DOCS)]),
+            _run("r2", "2026-11-09T11:00:00Z", [], [_dataset("t", documentation={})]),
+        )
+        documentation = (await _facets(db))[(PG, "t")]["documentation"]
+        assert (documentation.payload, documentation.run_id) == (DOCS, "r1")
