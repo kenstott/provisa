@@ -4139,7 +4139,7 @@
   type: behavioral
   description: A datasource may be associated with multiple domains. Any domain owner may register any
     unclaimed table from that source. Once a table is claimed by one domain, no other domain may register it (first-come ownership). Unique constraint enforced on (source_id, normalized_table_name).
-    The UI greys out claimed tables regardless of which domain claimed them.
+    The UI greys out claimed tables regardless of which domain claimed them. (Amended 2026-11-20 by the maintainer. First-come ownership is withdrawn. Every name in the model is unique within its domain, except the names that are unique across the organisation, which are source ids, environment names (REQ-1523) and secrets provider names. A source's table may be registered in more than one domain, once per domain, and the uniqueness checked is (domain, table name), not (source, table name). The UI no longer greys out a table another domain registered. Removing a table frees its name in its domain at once, including a table that was registered with no domain.)
   use_case: Multi-domain with first-claim ownership prevents the same physical table from being registered
     multiple times while allowing flexible domain-to-source associations.
   code:
