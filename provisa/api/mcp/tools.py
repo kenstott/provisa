@@ -530,6 +530,50 @@ def science_surfaces(question: str, sql: dict | None) -> dict[str, dict]:
     return surfaces
 
 
+async def _refuse_source_outside_selection(state: Any, source_id: str) -> None:
+    """REQ-2253: under a selection in the domain filter, a source open to none of its domains is
+    not read. A source naming no domains is open to every one (domain_guard)."""
+    from provisa.security.selected_domains import admits_any, current
+
+    if current() is None:
+        return
+    from provisa.core.repositories import source as source_repo
+
+    pool = state.model_db
+    assert pool is not None
+    async with pool.acquire() as conn:
+        row = await source_repo.get(conn, source_id)
+    if row is None:
+        raise ValueError(f"Source not found: {source_id}")
+    if not admits_any(row["allowed_domains"] or ["*"]):
+        raise PermissionError(
+            f"Source {source_id!r} is open to none of the domains selected in the domain filter"
+        )
+
+
+async def _refuse_term_outside_selection(conn: Any, term_id: int) -> None:
+    """REQ-2253: under a selection in the domain filter, a term of a domain outside it is not
+    changed. A term absent from ``term_domains`` is unscoped: it holds no domain."""
+    from provisa.security.selected_domains import current, refuse_object
+
+    if current() is None:
+        return
+    from provisa.core.repositories import glossary as glossary_repo
+
+    refuse_object(f"Term {term_id}", (await glossary_repo.term_domains(conn)).get(term_id, set()))
+
+
+async def _refuse_table_outside_selection(conn: Any, table_id: int) -> None:
+    """REQ-2253: under a selection in the domain filter, a table outside it is not changed."""
+    from provisa.security.selected_domains import current, refuse_object
+
+    if current() is None:
+        return
+    from provisa.api.admin.domain_guard import table_domain
+
+    refuse_object(f"Table {table_id}", {await table_domain(conn, table_id)})
+
+
 async def list_native_tables(
     state: Any, role: str, source_id: str, schema_name: str = "public"
 ) -> list[dict]:  # REQ-1833
@@ -544,6 +588,7 @@ async def list_native_tables(
     This is the SAME native-introspection path (native_tables/the engine-attach fallback) the
     admin UI's Register Table form calls before ever showing a table picker."""
     require_role(role, state)
+    await _refuse_source_outside_selection(state, source_id)
     from provisa.api.admin.schema_query import Query
 
     tables = await Query().available_tables(source_id, schema_name)  # pyright: ignore[reportCallIssue]
@@ -559,6 +604,7 @@ async def describe_native_table(
     always be accepted, unlike a guessed one. Call list_native_tables first if the exact
     table_name isn't already known."""
     require_role(role, state)
+    await _refuse_source_outside_selection(state, source_id)
     from provisa.api.admin.schema_query import resolve_available_columns_metadata
 
     cols = await resolve_available_columns_metadata(source_id, schema_name, table_name)
@@ -617,6 +663,9 @@ async def create_glossary_term(
     assert pool is not None
     async with pool.acquire() as conn:
         declared = _declared_domains(request, domains, current=set())
+        from provisa.security.selected_domains import refuse_object
+
+        refuse_object(f"Term {name!r}", declared)  # REQ-2253
         try:
             term_id = await glossary_repo.create_abstract_term(
                 conn, name, definition=definition, domains=declared
@@ -656,6 +705,7 @@ async def update_glossary_term(
     found = False
     async with pool.acquire() as conn:
         await _require_term_curatable(conn, term_id, request)
+        await _refuse_term_outside_selection(conn, term_id)
         try:
             if name is not None:
                 found = await glossary_repo.rename_term(conn, term_id, name)
@@ -694,6 +744,7 @@ async def change_glossary_term_status(
     pool = state.model_db
     assert pool is not None
     async with pool.acquire() as conn:
+        await _refuse_term_outside_selection(conn, term_id)
         try:
             changes = await change_status(conn, term_id, action, body, request)
         except ApiError as exc:
@@ -748,6 +799,7 @@ async def delete_glossary_term(
     assert pool is not None
     async with pool.acquire() as conn:
         await _require_term_curatable(conn, term_id, request)
+        await _refuse_term_outside_selection(conn, term_id)
         try:
             deleted = await glossary_repo.delete_term(conn, term_id)
         except ValueError as exc:
@@ -783,6 +835,8 @@ async def add_glossary_term_edge(
     async with pool.acquire() as conn:
         await _require_term_curatable(conn, term_id, request)
         await _require_term_curatable(conn, to_term_id, request)
+        await _refuse_term_outside_selection(conn, term_id)
+        await _refuse_term_outside_selection(conn, to_term_id)
         try:
             await glossary_repo.add_edge(conn, term_id, to_term_id, rel_type)
         except ValueError as exc:
@@ -810,6 +864,8 @@ async def remove_glossary_term_edge(
     assert pool is not None
     async with pool.acquire() as conn:
         await _require_term_curatable(conn, term_id, request)
+        await _refuse_term_outside_selection(conn, term_id)
+        await _refuse_term_outside_selection(conn, to_term_id)
         removed = await glossary_repo.remove_edge(conn, term_id, to_term_id, rel_type)
     if not removed:
         raise ValueError("edge not found")
@@ -833,6 +889,8 @@ async def ground_glossary_term_to_table(
     pool = state.model_db
     assert pool is not None
     async with pool.acquire() as conn:
+        await _refuse_term_outside_selection(conn, term_id)
+        await _refuse_table_outside_selection(conn, table_id)
         try:
             await ground_term_table(conn, term_id, table_id, request)
         except ApiError as exc:
@@ -857,6 +915,8 @@ async def unground_glossary_term_from_table(
     pool = state.model_db
     assert pool is not None
     async with pool.acquire() as conn:
+        await _refuse_term_outside_selection(conn, term_id)
+        await _refuse_table_outside_selection(conn, table_id)
         try:
             await unground_term_table(conn, term_id, table_id, request)
         except ApiError as exc:
@@ -883,6 +943,7 @@ async def tag_glossary_term(
     pool = state.model_db
     assert pool is not None
     async with pool.acquire() as conn:
+        await _refuse_term_outside_selection(conn, term_id)
         try:
             covers = await tag_term(conn, request, term_id, tag_id, reason)
         except ApiError as exc:
@@ -908,6 +969,7 @@ async def untag_glossary_term(
     pool = state.model_db
     assert pool is not None
     async with pool.acquire() as conn:
+        await _refuse_term_outside_selection(conn, term_id)
         removed = await untag_term(conn, request, term_id, tag_id)
     if not removed:
         raise ValueError(f"tag {tag_id!r} is not on term {term_id}")
@@ -926,6 +988,8 @@ async def list_data_products(state: Any, role: str, request: Any) -> list[dict]:
     require_capability_request(request, "data_product_read")
     pool = state.model_db
     assert pool is not None
+    from provisa.security.selected_domains import admits
+
     async with pool.acquire() as conn:
         return [
             {
@@ -934,6 +998,7 @@ async def list_data_products(state: Any, role: str, request: Any) -> list[dict]:
                 "command_names": await data_product_repo.member_command_names(conn, row["id"]),
             }
             for row in await data_product_repo.list_all(conn)
+            if admits(row["domain_id"])  # REQ-2253: only the selected domains' products
         ]
 
 
@@ -964,6 +1029,11 @@ async def set_data_product_members(  # REQ-1634
         if stored is None:
             raise ValueError(f"Data product not found: {id}")
         require_right_in_domains_request(request, "data_product_rw", {stored["domain_id"]})
+        from provisa.security.selected_domains import refuse_object
+
+        refuse_object(f"Data product {id!r}", {stored["domain_id"]})  # REQ-2253
+        for table_id in table_ids:
+            await _refuse_table_outside_selection(conn, table_id)
         await data_product_repo.set_members(conn, id, table_ids=table_ids, commands=command_names)
     await _rebuild_schemas()
     return {"ok": True}
@@ -1009,6 +1079,14 @@ async def create_data_product(  # REQ-1855
         require_right_in_domains_request(
             request,
             "data_product_rw",
+            {domain_id} | ({stored["domain_id"]} if stored is not None else set()),
+        )
+        from provisa.security.selected_domains import refuse_object
+
+        # REQ-2253: neither the domain it is saved in nor one it is moved out of is outside the
+        # selection.
+        refuse_object(
+            f"Data product {id!r}",
             {domain_id} | ({stored["domain_id"]} if stored is not None else set()),
         )
         if await domain_repo.get(conn, domain_id) is None:
@@ -1082,6 +1160,9 @@ async def change_data_product_status(
         if stored is None:
             raise ValueError(f"Data product not found: {id}")
         require_right_in_domains_request(request, "data_product_rw", {stored["domain_id"]})
+        from provisa.security.selected_domains import refuse_object
+
+        refuse_object(f"Data product {id!r}", {stored["domain_id"]})  # REQ-2253
         try:
             async with conn.transaction():
                 if action == "publish":
@@ -1122,11 +1203,19 @@ async def list_data_product_findings(state: Any, role: str, request: Any) -> lis
     require_capability_request(request, "data_product_read")
     pool = state.model_db
     assert pool is not None
+    from provisa.core.repositories import data_product as data_product_repo
+    from provisa.security.selected_domains import admits
+
     async with pool.acquire() as conn:
         found = await product_findings.findings(
             conn, await product_findings.context(datetime.date.today())
         )
-    return [{"product_id": pid, "findings": items} for pid, items in sorted(found.items())]
+        domain_of = {row["id"]: row["domain_id"] for row in await data_product_repo.list_all(conn)}
+    return [
+        {"product_id": pid, "findings": items}
+        for pid, items in sorted(found.items())
+        if admits(domain_of[pid])  # REQ-2253: only the selected domains' products
+    ]
 
 
 async def delete_data_product(state: Any, role: str, request: Any, id: str) -> dict:  # REQ-1855
@@ -1145,6 +1234,9 @@ async def delete_data_product(state: Any, role: str, request: Any, id: str) -> d
         stored = await data_product_repo.get(conn, id)
         if stored is not None:  # REQ-1944: an absent product is the not-found below
             require_right_in_domains_request(request, "data_product_rw", {stored["domain_id"]})
+            from provisa.security.selected_domains import refuse_object
+
+            refuse_object(f"Data product {id!r}", {stored["domain_id"]})  # REQ-2253
         deleted = await data_product_repo.delete(conn, id)
     if not deleted:
         raise ValueError(f"Data product not found: {id}")
@@ -1153,6 +1245,21 @@ async def delete_data_product(state: Any, role: str, request: Any, id: str) -> d
 
         await _rebuild_schemas()  # REQ-2188: the Owner field decides who holds RW
     return {"ok": True}
+
+
+async def _refuse_metric_outside_selection(conn: Any, name: str, expression: str | None) -> None:
+    """REQ-2253: under a selection in the domain filter, a metric reading a table of a domain
+    outside it -- as stored, or as ``expression`` would save it -- is not changed."""
+    from provisa.security.selected_domains import current, refuse_object
+
+    if current() is None:
+        return
+    from provisa.api.admin.domain_guard import expression_domains, metric_domains
+
+    # A metric not stored reads nothing yet: the save creates it, the delete is its not-found.
+    stored = await metric_domains(conn, name) or set()
+    saved = set() if expression is None else await expression_domains(conn, name, expression)
+    refuse_object(f"Metric {name!r}", stored | saved)
 
 
 async def upsert_metric(  # REQ-1856
@@ -1193,6 +1300,7 @@ async def upsert_metric(  # REQ-1856
     pool = state.model_db
     assert pool is not None
     async with pool.acquire() as conn:
+        await _refuse_metric_outside_selection(conn, name, expression)
         await metric_repo.upsert(conn, model)
         from provisa.api.admin._metric_views import regenerate_metric_views
 
@@ -1214,6 +1322,7 @@ async def delete_metric(state: Any, role: str, request: Any, name: str) -> dict:
     pool = state.model_db
     assert pool is not None
     async with pool.acquire() as conn:
+        await _refuse_metric_outside_selection(conn, name, None)
         deleted = await metric_repo.delete(conn, name)
     if not deleted:
         raise ValueError(f"Metric not found: {name}")
@@ -1743,6 +1852,7 @@ async def search_terms(state: Any, role: str, query: str, *, limit: int = 25) ->
     from provisa.core.env_authority import domains_within
     from provisa.core.repositories import glossary as glossary_repo
     from provisa.security.rights import domain_access_for_claims
+    from provisa.security.selected_domains import narrowed
 
     # REQ-1591: an agent reaches the vocabulary of the domains its ROLE reaches, by the same ANY
     # rule the admin list uses. The role name is the whole identity on this surface, so its
@@ -1756,7 +1866,8 @@ async def search_terms(state: Any, role: str, query: str, *, limit: int = 25) ->
             conn,
             query.strip(),
             limit=limit,
-            domains=None if allowed is None else frozenset(allowed),
+            # REQ-2253: an AI-assisted call searches only the selected domains' vocabulary.
+            domains=narrowed(None if allowed is None else frozenset(allowed)),
         )
 
 

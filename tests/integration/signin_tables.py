@@ -14,8 +14,8 @@ AuthMiddleware._upsert_profile, on each sign-in: reads the caller's role assignm
 user_role_assignments), mirrors the identity (user_directory, REQ-1439) and what the identity
 provider said (user_idp_attributes, REQ-1383) and, when assignments come from the token's
 claims, the role claims it carried (user_idp_roles, REQ-2219), and mirrors the token's entitlement
-lists and attaches grants waiting on its email (entitlements, entitlement_expiries,
-entitlement_pending, REQ-2219). Account deletion clears the same copies of who the person was in
+lists, attaches grants waiting on its email and records what the person's entitlements come to
+(entitlements, entitlement_expiries, entitlement_pending, effective_entitlements, REQ-2219). Account deletion clears the same copies of who the person was in
 every org they belong to (REQ-1312), user_idp_roles among them. A test that lays out a partial tenant schema starts from this list, so a table the
 sign-in path comes to need is added here once.
 """
@@ -23,6 +23,7 @@ sign-in path comes to need is added here once.
 from __future__ import annotations
 
 from provisa.core.schema_org import (
+    effective_entitlements,
     entitlement_expiries,
     entitlement_pending,
     entitlements,
@@ -42,4 +43,5 @@ SIGN_IN_TABLES = [
     entitlements,
     entitlement_expiries,
     entitlement_pending,
+    effective_entitlements,
 ]

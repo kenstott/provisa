@@ -337,7 +337,7 @@ def require_dq_read_request(request) -> None:  # REQ-2155
     require_capability_request(request, "dq_read")
 
 
-def allowed_domains_request(request) -> frozenset[str] | None:  # REQ-1591
+def allowed_domains_request(request) -> frozenset[str] | None:  # REQ-1591, REQ-2253
     """The domains a REST caller may act in, or ``None`` when domains gate nothing for it.
 
     ``None`` is an answer, not a missing value: it is returned for the same two exemptions the
@@ -349,13 +349,17 @@ def allowed_domains_request(request) -> frozenset[str] | None:  # REQ-1591
     from provisa.core import domain_policy
     from provisa.core.env_authority import domains_within
 
+    from provisa.security.selected_domains import narrowed
+
+    # REQ-2253: an AI-assisted call (an MCP chat tool call) is answered within the domains
+    # selected in the domain filter; any other request binds none and is unchanged.
     identity = getattr(request.state, "identity", None)
     if identity is None or getattr(identity, "user_id", _ANONYMOUS) == _ANONYMOUS:
-        return None
+        return narrowed(None)
     if domain_policy.single_domain():
-        return None
+        return narrowed(None)
     allowed = domains_within(sorted(_domain_access(identity, state)))
-    return None if allowed is None else frozenset(allowed)
+    return narrowed(None if allowed is None else frozenset(allowed))
 
 
 def selected_domains_request(  # REQ-1591, REQ-2253

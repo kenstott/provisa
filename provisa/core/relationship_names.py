@@ -20,36 +20,12 @@ deriving its own (REQ-351)."""
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
+
+from provisa.core.inflection import singular
 
 if TYPE_CHECKING:
-    from inflect import Word as InflectWord
-    from inflect import engine as _Engine
-
     from provisa.core.database import Connection
-
-_inflect: "_Engine | None" = None
-
-
-def _engine() -> "_Engine":
-    global _inflect
-    if _inflect is None:
-        import inflect
-
-        _inflect = inflect.engine()
-    return _inflect
-
-
-def _to_singular(camel: str) -> str:
-    """Singularize camelCase word using inflect with round-trip validation."""
-    eng = _engine()
-    candidate = eng.singular_noun(cast("InflectWord", camel))
-    if candidate is False:
-        return camel  # already singular
-    # Validate: if round-trip doesn't reconstruct original, inflect got it wrong
-    if eng.plural(cast("InflectWord", candidate)) == camel:
-        return candidate
-    return camel
 
 
 def target_field_name(  # REQ-155, REQ-194
@@ -104,7 +80,7 @@ def derive_cypher_alias(source_column: str, cardinality: str) -> str:  # REQ-351
 
     Rules:
     - Strip _id/_fk/_pk suffix from source_column
-    - Singularize with inflect (same helper as derive_graphql_alias)
+    - Singularize by dictionary lookup (provisa.core.inflection, as every naming path)
     - Prepend direction verb based on cardinality:
       one-to-many  → HAS_<ENTITY>
       many-to-one  → BELONGS_TO_<ENTITY>
@@ -115,8 +91,7 @@ def derive_cypher_alias(source_column: str, cardinality: str) -> str:  # REQ-351
         if col.endswith(suffix) and len(col) > len(suffix):
             col = col[: -len(suffix)]
             break
-    singular = _to_singular(col) if col else col
-    entity = (singular or col).upper()
+    entity = (singular(col) if col else col).upper()
     if cardinality == "one-to-many":
         return f"HAS_{entity}"
     if cardinality == "many-to-one":

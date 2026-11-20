@@ -228,6 +228,7 @@
     "qbRefreshTokenHint": "允許 Provisa 讀取該公司。使用 QuickBooks 登入以取得，或貼上在 Intuit 的 OAuth 2.0 Playground 中使用 Accounting 範圍取得的權杖。QuickBooks 每次使用後都會替換它，Provisa 會保留最新的權杖。在此輸入的新權杖會在儲存時替換保留的權杖。",
     "qbSignIn": "使用 QuickBooks 登入",
     "qbSignedIn": "已登入公司 {{realm}}。儲存資料來源以保留此登入。",
-    "qbSignInFailed": "無法完成登入。"
+    "qbSignInFailed": "無法完成登入。",
+    "wikidataEndpointHint": "Wikidata 查詢服務。毋須憑證；表格每日由此重新整理。"
   }
 }

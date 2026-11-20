@@ -2,7 +2,7 @@
   "tablesPage": {
     "loading": "テーブルを読み込み中...",
     "titleViews": "ビュー",
-    "titleTables": "登録済みテーブル",
+    "titleTables": "テーブル",
     "filterPlaceholderViews": "ビューを絞り込む…",
     "filterPlaceholderTables": "ソース、ドメイン、テーブルで絞り込む…",
     "addTable": "+ テーブル",

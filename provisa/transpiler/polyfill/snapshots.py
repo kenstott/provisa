@@ -34,7 +34,7 @@ from __future__ import annotations
 
 import sqlglot.expressions as exp
 
-from provisa.transpiler.polyfill import trino
+from provisa.transpiler.polyfill import clickhouse, trino
 from provisa.transpiler.polyfill.grid import DIALECTS, NATIVE, Feature, Limitation, Rule, Side
 from provisa.transpiler.polyfill.matching import graft
 from provisa.transpiler.polyfill.notation import Form, Rewrite, replacement
@@ -213,7 +213,11 @@ def _of_digits(function: str, written: str) -> Rewrite:
             return None
         if len(node.expressions) != 1:
             return None
-        return graft(replacement(form, dialect, "f($v)"), {"v": node.expressions[0]})
+        argument = node.expressions[0]
+        # A rule of no pattern binds the argument as written: a literal is read here as
+        # PostgreSQL reads it (past the type, 22003), where ClickHouse's cast answers NULL.
+        read = clickhouse.integer_read(argument, dialect)
+        return graft(replacement(form, dialect, "f($v)"), {"v": read or argument})
 
     rewrite.__doc__ = f"{function} of an integer: the digits of its bits."
     rewrite.__qualname__ = rewrite.__name__ = f"{function}_of_an_integer"

@@ -30,11 +30,11 @@
     "errorRequired": "Le nom, la source et le domaine sont obligatoires.",
     "submit": "Créer",
     "createdTitle": "{{name}} créé",
-    "createdMv": "{{kind}} « {{name}} » construit comme vue matérialisée dans le domaine {{domain}}. Il apparaît maintenant dans Tables enregistrées et peut être interrogé.",
+    "createdMv": "Vue matérialisée construite — le {{kind}} « {{name}} » dans le domaine {{domain}}. Il apparaît désormais sur la page Tables et peut être interrogé.",
     "createdHistory": "L'historique est suivi : les valeurs passées sont interrogeables via le voyage temporel.",
     "createdDims": "{{count}} lien(s) de dimension enregistré(s) pour permettre de joindre le fait à ses entités.",
     "reviseTitle": "Le modifier plus tard",
-    "reviseBody": "Cette boîte de dialogue ne fait que créer. Pour modifier la clé, les attributs, l'historique ou les colonnes de « {{name}} », modifiez-le dans Tables enregistrées. Relancer cette boîte de dialogue avec le même nom écrase le modèle existant.",
+    "reviseBody": "Cette boîte de dialogue ne fait que créer. Pour réviser « {{name}} » — sa clé, ses attributs, son historique ou ses colonnes — modifiez-le sur la page Tables. Relancer cette boîte de dialogue avec le même nom écrase le modèle existant.",
     "createAnother": "Créer un autre",
     "done": "Terminé"
   }

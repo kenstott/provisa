@@ -127,9 +127,9 @@ const DRAFT = {
 
 const STEPS = demoTourSteps(
   [
-    { key: "find", route: "/admin/ontology", capability: "glossary_read", find_terms: RULE },
+    { key: "find", route: "/context/ontology", capability: "glossary_read", find_terms: RULE },
     { key: "scan", scan: RULE },
-    { key: "lib", route: "/library", capability: "glossary_read", library: RULE },
+    { key: "lib", route: "/context/documents", capability: "glossary_read", library: RULE },
   ],
   [],
 );
@@ -158,7 +158,7 @@ beforeEach(() => {
 describe("a find_terms step", () => {
   it("opens Find terms from the glossary's menu, then types the address, starts and cancels", () => {
     const [find] = STEPS;
-    expect(find.route).toBe("/admin/ontology");
+    expect(find.route).toBe("/context/ontology");
     // Opened as a scan step opens it, each click waiting for what it opens: a menu pressed as an
     // action inside a running tour closed again before its item was pressed.
     expect(find.ensureOpen).toEqual(STEPS[1].ensureOpen);
@@ -198,7 +198,7 @@ describe("a find_terms step", () => {
       [
         {
           key: "find",
-          route: "/admin/ontology",
+          route: "/context/ontology",
           capability: "glossary_read",
           find_terms: { url: RULE, domains: ["bank"] },
         },
@@ -287,7 +287,7 @@ describe("a library step", () => {
     ]);
     render(<LibraryPage />);
     const row = await screen.findByTestId("reflib-row-4");
-    expect(lib.route).toBe("/library");
+    expect(lib.route).toBe("/context/documents");
     expect(document.querySelector(lib.element)).toBe(row);
   });
 });

@@ -39,7 +39,6 @@ from provisa.core.schema_org import domains, registered_tables, roles, sources
 from tests.unit.gate_identity import serve_every_column
 
 REGISTER_TABLE = "provisa.api.admin.schema_mutation_ops:register_table"
-REGISTERED_RESULT = "provisa.api.admin.schema_mutation_ops:_registered_result"
 GRPC_REGISTER = "provisa.api.admin.grpc_remote_router:_load_and_register"
 
 
@@ -158,25 +157,25 @@ async def test_registering_n_tables_in_one_action_runs_n_builds_today__one_when_
         assert build.phase_names == list(rebuild_trace.PHASES)
 
 
-async def test_registering_a_table_that_completes_a_relationship_runs_two_builds_today__one_when_a_covered_write_builds_nothing(
+async def test_registering_a_table_that_completes_a_relationship_runs_one_build(
     plane, model_builds, monkeypatch
 ) -> None:
     """A registration that completes a relationship between two of its source's tables stores
-    the relationship after its own build, and builds again for it: two builds for one write.
-    Under the amendment the relationship is stored before the one build."""
+    the relationship in its own transaction (REQ-1929), before its one build."""
+    from provisa.api.admin import _graphql_table_registration as registration
 
-    async def _one_detected(_state, _source_id) -> int:
-        return 1  # REQ-313: the detection itself has its own tests
+    async def _one_detected(_conn, _state, _source_id, _table_name):
+        # REQ-313: the detection itself has its own tests
+        held = {"tables": [{"sql_name": "orders", "columns": [{"name": "customer"}]}]}
+        return registration.StagedRegistration(held, None, [("orders", "customer")])
 
-    monkeypatch.setattr(
-        "provisa.api.admin._graphql_table_registration.sync_detected_relationships", _one_detected
-    )
+    monkeypatch.setattr(registration, "stage_registration", _one_detected)
 
     result = await schema_mutation_ops.register_table(_info(), _table("orders"))
 
     assert result.success, result.message
     assert await _registered(plane) == ["orders"]
-    assert model_builds.causes == [REGISTER_TABLE, REGISTERED_RESULT]
+    assert model_builds.causes == [REGISTER_TABLE]
     for build in model_builds.builds:
         assert build.phase_names == list(rebuild_trace.PHASES)
 

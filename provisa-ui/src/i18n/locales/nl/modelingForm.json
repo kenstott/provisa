@@ -30,11 +30,11 @@
     "errorRequired": "Naam, bron en domein zijn verplicht.",
     "submit": "Aanmaken",
     "createdTitle": "{{name}} aangemaakt",
-    "createdMv": "{{kind}} ‘{{name}}’ gebouwd als gematerialiseerde view in domein {{domain}}. Hij staat nu bij Geregistreerde tabellen en kan worden bevraagd.",
+    "createdMv": "Er is een gematerialiseerde view gebouwd — het {{kind}} \"{{name}}\" in domein {{domain}}. Deze verschijnt nu op de pagina Tabellen en is opvraagbaar.",
     "createdHistory": "Historie wordt bijgehouden: eerdere waarden zijn opvraagbaar via time travel.",
     "createdDims": "{{count}} dimensiekoppeling(en) geregistreerd zodat het feit aan de entiteiten kan worden gekoppeld.",
     "reviseTitle": "Later wijzigen",
-    "reviseBody": "Dit dialoogvenster maakt alleen aan. Om de sleutel, attributen, geschiedenis of kolommen van ‘{{name}}’ te wijzigen, bewerk je hem bij Geregistreerde tabellen. Dit dialoogvenster opnieuw uitvoeren met dezelfde naam overschrijft het bestaande model.",
+    "reviseBody": "Dit dialoogvenster maakt alleen aan. Om \"{{name}}\" te herzien — de sleutel, attributen, historie of kolommen — bewerk het op de pagina Tabellen. Dit dialoogvenster opnieuw uitvoeren met dezelfde naam overschrijft het bestaande model.",
     "createAnother": "Nog een aanmaken",
     "done": "Gereed"
   }

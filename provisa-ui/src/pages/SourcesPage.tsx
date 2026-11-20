@@ -117,6 +117,7 @@ import {
 import { NEW_SOURCE, keepFolderAs, resendHeldFolder } from "./sources/folderZip";
 import { uploadCodeArchive } from "../api/codeUploads";
 import { WIKIPEDIA, wikipediaHints } from "./sources/wikipedia";
+import { WIKIDATA, wikidataHints, wikidataPreset } from "./sources/wikidata";
 import { sourceFormCacheTtl, sourceLoadFieldsValid } from "./sources/loadManagement";
 import { useCacheTtlRequired } from "./sources/sourceKind";
 import { SourceFormFields } from "./sources/SourceFormFields";
@@ -504,14 +505,16 @@ export function SourcesPage() {
     // REQ-929: keep change_signal valid for the new type's capabilities.
     const signals = sourceChangeSignals(type);
     const changeSignal = signals.includes(base.changeSignal) ? base.changeSignal : signals[0];
-    setForm({
+    const pickedForm = {
       ...base,
       type,
       port: getDefaultPort(type),
       description: "",
       changeSignal,
       ...(offered ? connectorFormValues(offered) : {}),
-    });
+    };
+    // REQ-1923: Wikidata fills its endpoint and scheduled replication.
+    setForm(type === WIKIDATA ? wikidataPreset(pickedForm) : pickedForm);
     // REQ-229: hive_s3 DECLARES S3 storage — the Storage Authentication select offers only "aws"
     // for this type (SourceFormFields.tsx), so default straight to it instead of "none".
     setAuthType(type === "hive_s3" ? "aws" : "none");
@@ -781,7 +784,9 @@ export function SourcesPage() {
                 ? kafkaHints(authFields) // REQ-147: how the Kafka source reaches a secured cluster
                 : form.type === WIKIPEDIA
                   ? wikipediaHints(authFields) // REQ-1960: the server makes these the files source's crawl
-                  : form.type === "athena"
+                  : form.type === WIKIDATA
+                    ? wikidataHints() // REQ-1923: the server gives it the query service endpoint
+                    : form.type === "athena"
                     ? athenaHints(authFields) // REQ-1981
                     : form.type === "snowflake"
                       ? Object.fromEntries(

@@ -21,6 +21,15 @@ from graphql import GraphQLField
 from provisa.compiler.introspect import ColumnMetadata
 
 
+def physical_table_name(
+    physical_map: dict[tuple[str, str], str], source_id: str, table_name: str
+) -> str:
+    """The relation the table ``table_name`` registered on ``source_id`` is read as: the view the
+    map names for that source's table, else the table itself. Keyed by source as well as name, so
+    a user-source table named like a control-plane table is never read as its view (REQ-884)."""
+    return physical_map.get((source_id, table_name), table_name)
+
+
 @dataclass
 class SchemaInput:
     """All data needed to generate a GraphQL schema for one role."""
@@ -42,7 +51,8 @@ class SchemaInput:
     # source's: a region's ops views over its own stores (api.region_ops_views, REQ-1922).
     table_catalogs: dict[tuple[str, str], str] | None = None
     domain_prefix: bool = False  # prepend domain_id__ to all names
-    physical_table_map: dict[str, str] | None = None  # virtual → physical table name
+    # (source_id, registered table name) → the relation it is read as (physical_table_name).
+    physical_table_map: dict[tuple[str, str], str] | None = None
     relay_pagination: bool = False  # global opt-in for _connection fields
     functions: list[dict] = field(default_factory=list)  # tracked DB functions
     webhooks: list[dict] = field(default_factory=list)  # tracked webhooks

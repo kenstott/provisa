@@ -79,10 +79,10 @@
       },
       "step2": {
         "title": "Eine Quelle registrieren",
-        "description": "➕ Neue Verbindungen beginnen mit dieser Schaltfläche: PostgreSQL, Snowflake, MongoDB, eine REST-API, eine CSV-Datei und die übrigen der 79 Connectors."
+        "description": "➕ Neue Verbindungen beginnen mit dieser Schaltfläche: PostgreSQL, Snowflake, MongoDB, eine REST-API, eine CSV und die übrigen der 80 Konnektoren."
       },
       "step3": {
-        "title": "79 Quelltypen, 14 Kategorien",
+        "title": "80 Quellentypen, 14 Kategorien",
         "description": "Eine Auswahl listet jeden Typ, nach Kategorie gruppiert: <strong>Abonnements, RDBMS, Cloud-Data-Warehouse, Analytics, Data Lake, NoSQL, Code-Resolver, Graph, Dateien, API, Streaming, Unternehmen, Datenqualität, Sonstige</strong>. Suchen Sie nach Name oder Alias oder grenzen Sie mit den Kategorie-Chips ein. Jeder Typ zeigt sein Logo und ein Reichweiten-Symbol: ⚡ direkt vor Ort gelesen, oder ein Kopie-Symbol, wo Provisa ein aktualisiertes Replikat liest.<p>Wählen Sie einen aus, tragen Sie die Verbindung ein, speichern Sie.</p>"
       },
       "stepBuildSource": {
@@ -2000,6 +2000,58 @@
       "customer360Recap": {
         "title": "Was Sie gesehen haben",
         "description": "Vier SaaS-Systeme ohne gemeinsame ID, verbunden über einen Kundenstamm; die Frage beantwortet in SQL, GraphQL und Cypher; dann geprüft: Regeln haben jede Verknüpfung aus Belegen neu abgeleitet und die falsche Zusammenführung samt dem verborgenen Account gefunden. Sehen Sie sich auf der SQL-Seite selbst um."
+      },
+      "affirmationScenario": {
+        "title": "Ein Trade, vier Systeme",
+        "description": "Larkspur Asset Management hat heute zehn Orders gehandelt. Jeder Trade lebt in vier Systemen, die einander nie sehen: diesem Order-Management-System mit seinen Allokationen an die Fonds, den Fills des Ausführungssystems, der Bestätigung des Brokers und der Settlement-Instruktion der Verwahrstelle. Welche Trades werden vor dem Cutoff nicht affirmiert, warum, und was würde ein gescheitertes Settlement kosten?"
+      },
+      "affirmationBroker": {
+        "title": "Die Seite des Brokers",
+        "description": "Die Bestätigungen der Broker, wie die Matching-Plattform sie liefert: Jede trägt die Referenz der Allokation, Preis, Provision und Nettobetrag des Brokers sowie das Konto, an das der Broker liefern wird."
+      },
+      "affirmationCustody": {
+        "title": "Die Seite der Verwahrstelle",
+        "description": "Die Settlement-Instruktionen, die Larkspur seiner Verwahrstelle geschickt hat: was jeder Fonds erhält oder liefert, gegen welchen Betrag, an welchem Tag. Ein Trade, von dem die Verwahrstelle nie erfahren hat, scheitert so sicher wie ein falscher."
+      },
+      "affirmationMatcher": {
+        "title": "Die Matching-Engine, in Python",
+        "description": "Ein Python-Paket, als Quelle registriert. Seine Funktion trade_match nimmt die vier Datensätze einer Allokation und gibt für jeden gefundenen Break eine Zeile zurück, die den Break und die Abweichung benennt, oder eine abgeglichene Zeile."
+      },
+      "affirmationMatchTable": {
+        "title": "Eine Funktion als Tabelle",
+        "description": "trade_match ist eine Tabelle wie jede andere: Ihre Spalten sind, was die Funktion zurückgibt, und ihre Parameter sind die Felder der vier Systeme. Ein noch nicht eingetroffener Teil wird als fehlend übergeben, und die Funktion benennt das als eigenen Break."
+      },
+      "affirmationFeed": {
+        "title": "Was den Matcher speist",
+        "description": "Diese Beziehung verbindet die Datensätze jeder Allokation aus den vier Systemen mit trade_match und übergibt sie als Parameter: ein Aufruf je Allokation. Eine Abfrage über den Join führt den Abgleich aus."
+      },
+      "affirmationQueue": {
+        "title": "Die Break-Warteschlange",
+        "description": "Jeder Break mit den Minuten bis zum Affirmations-Cutoff seines Markts und dem, was ein gescheitertes Settlement dort pro Tag kosten würde. Die europäischen Breaks haben weniger als eine Stunde; die US-Breaks haben bis 21 Uhr New Yorker Zeit."
+      },
+      "affirmationAffirmed": {
+        "title": "Die Affirmationen, protokolliert",
+        "description": "Ein Befehl hat jede Allokation affirmiert, die in allen vier Systemen übereinstimmte, und jede zur Uhrzeit des Desks protokolliert. Er lief einmal, beim Erstellen der Demo."
+      },
+      "affirmationPollyCutoff": {
+        "title": "Frag Polly: Was ist am dringendsten?",
+        "description": "Polly liest die Break-Warteschlange und nennt den Break mit der wenigsten Zeit bis zu seinem Cutoff. Die Antwort wurde beim Erstellen der Demo erzeugt und wird gespeichert angezeigt."
+      },
+      "affirmationPollyPenalty": {
+        "title": "Frag Polly: Was kostet am meisten?",
+        "description": "Polly nennt den Break, dessen gescheitertes Settlement pro Tag am meisten kosten würde. Die Antwort wurde beim Erstellen der Demo erzeugt und wird gespeichert angezeigt."
+      },
+      "affirmationExplore": {
+        "title": "Dieselbe Frage, in Explore",
+        "description": "Der Agent des Explorers antwortet live über den MCP-Server von Provisa, in der Rolle aus der Kopfzeile, und du siehst jede Abfrage, die er ausführt."
+      },
+      "affirmationExplain": {
+        "title": "Die ausgeführte Abfrage",
+        "description": "Die Anweisung, die der Agent gesendet hat, neben der, die Provisa für die Rolle ausgeführt hat. Der Agent las dieselben gesteuerten Views und Tabellen wie du eben."
+      },
+      "affirmationRecap": {
+        "title": "Was du gesehen hast",
+        "description": "Vier Systeme live gelesen, abgeglichen von einer als Tabelle registrierten Python-Funktion, jeder Break mit seiner Zeit bis zum Cutoff und seinen Kosten benannt, und die abgeglichenen Trades per Befehl affirmiert. Stelle als Nächstes die eigenen Fragen des Desks in Explore."
       }
     },
     "status": {
@@ -2136,6 +2188,10 @@
       "customer360": {
         "title": "Customer 360",
         "summary": "Salesforce, ServiceNow, Jira und Stripe, verbunden über einen Kundenstamm, um gefährdete Verlängerungen zu finden; dann wird der Kundenstamm gegen die Belege jedes Systems geprüft und der übersehene Account gefunden."
+      },
+      "affirmation": {
+        "title": "Handelsbestätigung",
+        "summary": "Ein Vermögensverwalter gleicht jeden heutigen Trade über sein Ordersystem, sein Ausführungssystem, den Broker und die Verwahrstelle ab. Jeder Break zeigt die verbleibende Zeit bis zum Cutoff und was ein gescheitertes Settlement kosten würde, und die abgeglichenen Trades werden affirmiert."
       }
     }
   }

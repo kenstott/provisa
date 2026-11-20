@@ -184,7 +184,7 @@ describe("the Glossary's main panel, after a reload", () => {
 describe("Polly on the glossary", () => {
   it("opens Find terms with her steps and reads that it is open", async () => {
     HTMLElement.prototype.checkVisibility = () => true;
-    window.history.pushState({}, "", "/admin/ontology");
+    window.history.pushState({}, "", "/context/ontology");
     const inputs = async () => {
       const read = await readScreen(500);
       if (typeof read === "string") throw new Error(read);

@@ -148,17 +148,29 @@ def _identity_user(info: StrawberryInfo):
     return _identity_from_info(info)
 
 
+async def _column_drop_refusal(info: StrawberryInfo, conn: Any, drop: Any) -> MutationResult:
+    """A column something still refers to is not dropped (REQ-1918): each is named, with only
+    the dependents the caller may read (REQ-2152)."""
+    from provisa.api.admin.read_rights import (
+        column_drop_text,
+        reader_for,
+        readable_columns_report,
+    )
+
+    report = await readable_columns_report(conn, reader_for(info), drop.columns)
+    return MutationResult(
+        success=False,
+        message=column_drop_text(drop.table_name, report),
+        code="schema.column_has_dependents",
+        params={"table": drop.table_name, "columns": report},
+    )
+
+
 async def _registered_result(input: TableInput, table_id: int | None) -> MutationResult:
     """What a successful registration answers. A table of a remote GraphQL source may have had
     fields left out because the source's credential may not read them (REQ-1923); they are
-    named. Registering it may also complete a relationship between two of the source's
-    registered tables (REQ-313), which is stored here, once both exist."""
-    from provisa.api.admin._graphql_table_registration import sync_detected_relationships
+    named."""
     from provisa.api.admin._table_ops import take_omitted_fields
-    from provisa.api.app import state
-
-    if await sync_detected_relationships(state, input.source_id):
-        await _rebuild_schemas()
 
     omitted = take_omitted_fields(input.source_id, input.table_name)
     if not omitted:
@@ -721,23 +733,8 @@ async def register_table(
                         )
                     )
                 except table_repo.ColumnDropRefused as _drop:
-                    # REQ-1918: a column something still refers to is not dropped; each is named,
-                    # with only the dependents the caller may read (REQ-2152).
-                    from provisa.api.admin.read_rights import (
-                        column_drop_text,
-                        reader_for,
-                        readable_columns_report,
-                    )
-
-                    _report = await readable_columns_report(_conn, reader_for(info), _drop.columns)
-                    raise TableSaveRefused(
-                        MutationResult(
-                            success=False,
-                            message=column_drop_text(_drop.table_name, _report),
-                            code="schema.column_has_dependents",
-                            params={"table": _drop.table_name, "columns": _report},
-                        )
-                    )
+                    # REQ-1918: a column something still refers to is not dropped.
+                    raise TableSaveRefused(await _column_drop_refusal(info, _conn, _drop))
                 except LabelClash as _clash:
                     # REQ-572: a label never names both a domain and a table; both are named.
                     raise TableSaveRefused(label_clash_result(_clash))
@@ -823,9 +820,22 @@ async def register_table(
                 # REQ-1934, REQ-2109: the row rules the registration carries (a profiler result
                 # table's), saved with the table.
                 await save_row_rules(info, _conn, input, model)
+                # REQ-313, REQ-1929: a remote GraphQL table is kept with its source, and the
+                # relationships it completes are stored, each taking its nested column, in this
+                # transaction; a column so taken that is in use refuses the whole registration.
+                from provisa.api.admin._graphql_table_registration import stage_registration
+
+                try:
+                    _staged = await stage_registration(
+                        _conn, _app_state, input.source_id, input.table_name
+                    )
+                except table_repo.ColumnDropRefused as _drop:
+                    raise TableSaveRefused(await _column_drop_refusal(info, _conn, _drop))
     except TableSaveRefused as _refused:
         # The transaction rolled back: nothing of the save is stored.
         return _refused.result
+    if _staged is not None:
+        _staged.apply()  # this process takes what the transaction stored, once it committed
 
     if _effective_view_sql and input.materialize:
         await _sync_view_mv(

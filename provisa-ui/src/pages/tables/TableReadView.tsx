@@ -90,6 +90,8 @@ interface TableReadViewProps {
   source?: Source;
   /** The relationships the table takes part in are listed on Associations. */
   relationships: Relationship[];
+  /** REQ-2252: the acting roles, whose names Identity's query links use. */
+  actingRole: string | null;
   /**
    * Drops the table's cached results, for a table whose source caches them; absent for any
    * other table, which then shows no such action.
@@ -133,6 +135,7 @@ export function TableReadView({
   actionsOnly = false,
   source,
   relationships,
+  actingRole,
   section: sectionIn,
   onSectionChange,
   columnTab,
@@ -350,7 +353,7 @@ export function TableReadView({
       {/* The section in view, as a demo tour step anchors on it (`open: <section>`); Columns
           carries its own. */}
       <div data-testid={section === "columns" ? undefined : `table-section-${section}-panel`}>
-        {section === "identity" && <IdentityRead table={table} source={source} />}
+        {section === "identity" && <IdentityRead table={table} source={source} actingRole={actingRole} />}
         {section === "associations" && (
           <TableAssociations
             table={table}

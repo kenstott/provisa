@@ -131,6 +131,53 @@ export const NAV_GROUPS: NavGroup[] = [
     ],
   },
   {
+    // REQ-2259: the context layer -- documents, ontology, glossary, metrics, tags, classification --
+    // in one group, in this order. Context Health, Glossary, Metrics, Tags and Classification are
+    // separate pages still to be built, so they are listed as coming soon and open no route.
+    id: "context",
+    labelKey: "navBar.groupContext",
+    items: [
+      {
+        to: "/context/health",
+        labelKey: "navBar.itemContextHealth",
+        capability: "glossary_read",
+        comingSoon: true,
+      },
+      {
+        to: "/context/glossary",
+        labelKey: "navBar.itemGlossary",
+        capability: "glossary_read",
+        comingSoon: true,
+      },
+      // REQ-1590: gated on the glossary's own read right, not org_settings -- every seeded role
+      // reads the vocabulary the model is described in.
+      { to: "/context/ontology", labelKey: "navBar.itemOntology", capability: "glossary_read" },
+      {
+        to: "/context/metrics",
+        labelKey: "navBar.itemMetrics",
+        capability: "glossary_read",
+        comingSoon: true,
+      },
+      {
+        to: "/context/tags",
+        labelKey: "navBar.itemTags",
+        capability: "glossary_read",
+        comingSoon: true,
+      },
+      {
+        to: "/context/classification",
+        labelKey: "navBar.itemClassificationKinds",
+        capability: "glossary_read",
+        comingSoon: true,
+      },
+      // REQ-2185: the reference library; everyone browses what they may read.
+      { to: "/context/documents", labelKey: "navBar.itemDocuments", capability: "glossary_read" },
+      // REQ-2247: every outside system kept in step with Provisa, moved out of Admin with its
+      // rights unchanged.
+      { to: "/context/sync", labelKey: "navBar.itemContextSync", capability: "org_settings" },
+    ],
+  },
+  {
     id: "admin",
     labelKey: "navBar.groupAdmin",
     items: [
@@ -268,8 +315,6 @@ export const NAV_GROUPS: NavGroup[] = [
         labelKey: "navBar.itemContainerRegistries",
         capability: "org_settings",
       },
-      // REQ-2247: every outside system kept in step with Provisa, and which way each syncs.
-      { to: "/admin/syncing", labelKey: "navBar.itemSyncing", capability: "org_settings" },
       // REQ-1483, REQ-1327: an import writes objects of several layers; any one of their rights
       // opens the page, and applying checks each declared object's own right.
       {
@@ -294,8 +339,6 @@ export const NAV_GROUPS: NavGroup[] = [
         capability: "sensitive_data",
       },
       { to: "/admin/reports", labelKey: "navBar.itemReports", capability: "observability" }, // REQ-1386
-      // REQ-1387: the ontology route is /admin/ontology (glossary_read), and its nav entry is
-      // the top-level Ontology link in NavBar.tsx, not an item of this group.
       {
         to: "/admin/observability",
         labelKey: "navBar.itemObservability",
@@ -407,24 +450,8 @@ export const NAV_BAR: NavBarEntry[] = [
     tour: "nav-relationships",
     capability: "create_relationship",
   },
-  // REQ-1590: gated on the glossary's own read right, not org_settings — every seeded role reads
-  // the vocabulary the model is described in.
-  {
-    kind: "link",
-    to: "/admin/ontology",
-    labelKey: "navBar.itemGlossary",
-    tour: "nav-glossary",
-    capability: "glossary_read",
-  },
-  // REQ-2185: beside the Ontology (meaning, then the documents that give the reasons) and before
-  // Security; everyone browses what they may read.
-  {
-    kind: "link",
-    to: "/library",
-    labelKey: "navBar.itemLibrary",
-    tour: "nav-library",
-    capability: "glossary_read",
-  },
+  // REQ-2259: the Context group stands where the Ontology and Library links stood.
+  { kind: "group", group: group("context") },
   { kind: "group", group: group("model") },
   // REQ-1634: Data Products is a top-level list/detail page, placed right after Model so it reads
   // as a peer of the modeling surfaces. It is its own entry, gated on the data product read right

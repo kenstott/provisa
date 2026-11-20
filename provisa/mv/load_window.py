@@ -95,10 +95,17 @@ def refuse_named_outside_window(state: Any, sql: str) -> None:
     inputs, and a governed plan is kept and reused while the window opens and closes."""
     if not users_read():
         return
-    named = {view for view in getattr(state, "view_sql_map", None) or {} if view in sql}
+    from provisa.compiler.view_expand import view_key, view_table  # noqa: PLC0415
+
+    # By its name as written: the statement is not yet qualified, and a refusal reaching a view
+    # the name only resembles refuses no read it should serve -- that view is outside its window.
+    named = {view for view in getattr(state, "view_sql_map", None) or {} if view_table(view) in sql}
     if named:
         rows = getattr(state, "tables", None) or []
-        refuse_outside_window(state, [r["id"] for r in rows if r.get("table_name") in named])
+        refuse_outside_window(
+            state,
+            [r["id"] for r in rows if view_key(r["schema_name"], r["table_name"]) in named],
+        )
 
 
 def readable_now(mvs: list, state: Any) -> list:

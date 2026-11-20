@@ -228,6 +228,7 @@
     "qbRefreshTokenHint": "Geeft Provisa toegang om het bedrijf te lezen. Meld u aan met QuickBooks om er een te krijgen, of plak er een uit de OAuth 2.0 Playground van Intuit met de Accounting-scope. QuickBooks vervangt het bij elk gebruik en Provisa bewaart het nieuwste. Een nieuwe die u hier invoert, vervangt bij het opslaan de bewaarde.",
     "qbSignIn": "Aanmelden met QuickBooks",
     "qbSignedIn": "Aangemeld bij bedrijf {{realm}}. Sla de bron op om dit te bewaren.",
-    "qbSignInFailed": "Het inloggen kon niet worden voltooid."
+    "qbSignInFailed": "Het inloggen kon niet worden voltooid.",
+    "wikidataEndpointHint": "De Wikidata-querydienst. Geen inloggegevens; tabellen worden dagelijks vernieuwd."
   }
 }

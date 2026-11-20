@@ -18,7 +18,6 @@ if TYPE_CHECKING:
     from provisa.core.database import Connection
 
 
-# inflect (~0.8s import) lazy-loaded — paid once on first singularization, never at cold start.
 def _as_list(v: Any) -> list:
     """A JSON list column. On PostgreSQL the jsonb codec deserializes it to a list; on a SQLite
     control plane (no codec) a raw-SQL read returns the JSON as TEXT, so decode a string here —

@@ -1,0 +1,28 @@
+{
+  "wikidataTable": {
+    "modeLabel": "Hoe de tabel wordt gekozen",
+    "modeStarter": "Starttabel",
+    "modeClass": "Tabel van een klasse",
+    "starter": "Starttabel",
+    "starterHint": "Een referentietabel om mee te koppelen, gelezen uit Wikidata.",
+    "starters": {
+      "countries": "Landen (ISO-codes, hoofdstad, bevolking)",
+      "currencies": "Valuta (ISO 4217)",
+      "languages": "Talen (ISO 639)",
+      "admin_regions": "Bestuurlijke eenheden van het eerste niveau",
+      "organizations": "Beursgenoteerde organisaties (LEI, ticker, ISIN)"
+    },
+    "class": "Klasse",
+    "classHint": "Zoek klassen op naam; de tabel bevat de instanties van de klasse.",
+    "nothingFound": "Niets gevonden",
+    "instances": "Instanties: {{value}}",
+    "broader": "Bovenliggende klasse",
+    "narrower": "Onderliggende klasse",
+    "columns": "Kolommen",
+    "columnsHint": "De eigenschappen die de instanties van deze klasse het meest gebruiken.",
+    "filterRequired": "Meer dan {{limit}} instanties: kies een filter.",
+    "filterProperty": "Filteren op",
+    "filterValue": "Waarde",
+    "useClass": "Deze klasse gebruiken"
+  }
+}

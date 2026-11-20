@@ -45,8 +45,8 @@ export const DETAIL_VIEWS = {
   tables: { route: "/tables", ...TABLE_VIEW },
   views: { route: "/views", ...TABLE_VIEW },
   relationships: { route: "/relationships", param: "relationship" },
-  ontology: { route: "/admin/ontology", param: "term" },
-  library: { route: "/library", param: "document" },
+  ontology: { route: "/context/ontology", param: "term" },
+  library: { route: "/context/documents", param: "document" },
   metrics: { route: "/metrics", param: "metric" },
   // REQ-2158: a linked contract is the linked product's.
   products: { route: "/data-products", param: "product", alsoClears: ["contract"] },

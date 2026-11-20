@@ -152,7 +152,8 @@ def test_an_outcome_that_compared_nothing_is_unverified(outcome: str):
 
 
 def test_a_function_the_grid_has_no_row_of_is_not_read():
-    assert check.checked(_run("abs", "integer", duckdb=_WRONG)) == []
+    """Read against a grid of the toy row alone: the production grid gains rows (abs has one)."""
+    assert check.checked(_run("abs", "integer", duckdb=_WRONG), Grid((_DIFFERS,))) == []
 
 
 def test_an_overload_no_rule_matches_is_not_read():

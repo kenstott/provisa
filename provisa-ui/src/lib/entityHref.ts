@@ -13,6 +13,8 @@
 // as any link is, and Back returns to the graph as it was.
 
 import { detailHref } from "../components/list/useDetailParam";
+import { NAV_BAR, NAV_GROUPS } from "../components/navGroups";
+import { meetsRequirement, type CapabilityRequirement } from "./capabilities";
 
 /** Each thing a graph draws or joins, by the page it lives on. */
 export type EntityKind =
@@ -27,7 +29,10 @@ export type EntityKind =
   | "tag"
   | "checker"
   | "profile"
-  | "lineage";
+  | "lineage"
+  // REQ-2259: the context layer's metrics and classification kinds.
+  | "metric"
+  | "classification";
 
 const q = (v: string | number) => encodeURIComponent(String(v));
 
@@ -61,7 +66,38 @@ export function entityHref(kind: EntityKind, id: string | number, table?: number
     case "lineage":
       // The lineage graph centred on it: a view of the graph, not a panel.
       return `/lineage?focus=${q(id)}`;
+    case "metric":
+      return detailHref("metrics", id);
+    case "classification":
+      // The classification kinds' page; it has no panel per kind, so the link names the page.
+      return "/admin/classification-kinds";
   }
+}
+
+/** REQ-2259: the right that opens the page ``href`` leads to -- the gate of its navigation entry,
+ * which is the gate of its route (adminNavCapabilities.test). Every page an entity link names has
+ * one, so a path with none is a defect, not a page every member opens. */
+export function pageRequirement(href: string): CapabilityRequirement {
+  const path = href.split("?")[0];
+  const link = NAV_BAR.find((e) => e.kind === "link" && e.to === path);
+  if (link?.kind === "link") return link;
+  for (const group of NAV_GROUPS) {
+    const item = group.items.find((i) => i.to === path && !i.comingSoon);
+    if (item) return item;
+  }
+  throw new Error(`no navigation entry gates ${path}`);
+}
+
+/** REQ-2259: the link to ``kind`` ``id`` when ``capabilities`` open the page it leads to, else
+ * `undefined` -- the caller then shows the name as plain text. */
+export function entityLink(
+  capabilities: string[],
+  kind: EntityKind,
+  id: string | number,
+  table?: number,
+): string | undefined {
+  const href = entityHref(kind, id, table);
+  return meetsRequirement(capabilities, pageRequirement(href)) ? href : undefined;
 }
 
 /** A link to the ERD view of a page (REQ-2187): the focus, and the panel to open. */

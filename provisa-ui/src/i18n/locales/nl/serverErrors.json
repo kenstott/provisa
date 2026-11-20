@@ -893,6 +893,7 @@
       "unknown_kind": "{{kind}} is geen soort rechtenlijst.",
       "idp_supersedes": "De identiteitsprovider stuurt de lijst {{kind}} van deze persoon voor rol {{role_id}}. Die lijst gaat voor en wordt daar gewijzigd, niet hier.",
       "blank_identifier": "Een item mag niet leeg zijn.",
+      "invalid_identifier": "{{identifier}} is geen geldige {{kind}}-vermelding.",
       "expiry_in_past": "Een einddatum moet in de toekomst liggen.",
       "expiry_removes_nothing": "Een einddatum op deze lijst {{kind}} zou niets verwijderen.",
       "pending_not_found": "Er wacht geen verlening op {{email}} voor rol {{role_id}} en {{kind}}."
@@ -924,6 +925,15 @@
     },
     "relationship": {
       "name_taken": "De naam '{{name}}' is al in gebruik door relatie '{{held_by}}'. Geef deze een andere naam."
+    },
+    "wikidata": {
+      "no_credential": "De Wikidata-querydienst vraagt geen inloggegevens",
+      "bad_id": "{{value}} is geen Wikidata-{{kind}}",
+      "bad_language": "{{language}} is geen taalcode",
+      "bad_column_type": "Kolomtypen die niet worden aangeboden voor een Wikidata-eigenschap: {{types}}",
+      "filter_required": "Deze klasse heeft {{count}} instanties, meer dan {{limit}}: kies een filter",
+      "filter_too_wide": "Het filter laat meer dan {{limit}} instanties over",
+      "unreachable": "Wikidata is niet bereikbaar: {{reason}}"
     }
   }
 }

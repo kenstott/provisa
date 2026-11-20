@@ -32,9 +32,16 @@ instants.to_char_written)."""
 
 from __future__ import annotations
 
+import datetime
+import math
+import re
+
+import sqlglot
+import sqlglot.expressions as exp
+
 from provisa.transpiler.polyfill import instants, trino
 from provisa.transpiler.polyfill.grid import DIALECTS, NATIVE, Feature, Limitation, Rule, Side
-from provisa.transpiler.polyfill.notation import Rewrite
+from provisa.transpiler.polyfill.notation import Refusal, Refused, Rewrite
 from provisa.transpiler.polyfill.numbers import ch_fail, fail, refused
 
 FAMILY = "dates"
@@ -225,6 +232,293 @@ TRANSACTION_TIMESTAMP = Feature(
     ),
 )
 
+CLOCK_TIMESTAMP = Feature(
+    "clock_timestamp",
+    FAMILY,
+    "The time now, read as the statement runs.",
+    read=Side(
+        rules=(
+            Rule(
+                "clock_timestamp()",
+                {
+                    **{d: trino.KEPT for d in DIALECTS if d not in NATIVE},
+                    "clickhouse": "now64(6, 'UTC')",
+                },
+            ),
+        ),
+        limitations={
+            "clickhouse": (
+                Limitation(
+                    "The time the statement began (now64): ClickHouse has no clock read again for "
+                    "each row, so every row of a statement reads the same instant."
+                ),
+            )
+        },
+    ),
+)
+
+#: float8in's text: a decimal number, an exponent, NaN or infinity, white space around.
+_FLOAT_TEXT = re.compile(
+    r"\s*[+-]?(?:(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?|nan|inf|infinity)\s*", re.I
+)
+_POSTGRES_EPOCH = datetime.datetime(2000, 1, 1)
+_POSTGRES_EPOCH_SECONDS = 946684800.0
+
+
+def _seconds(node: exp.Expr, dialect: str) -> float | None:
+    """A double the statement writes: its value, None for a NULL; 22P02 of a text float8in does
+    not read; refused by name for any other value."""
+    value = node.unnest()
+    while isinstance(value, exp.Cast):
+        value = value.this.unnest()
+    negative = False
+    while isinstance(value, (exp.Neg, exp.Paren)):
+        negative ^= isinstance(value, exp.Neg)
+        value = value.this.unnest()
+        while isinstance(value, exp.Cast):
+            value = value.this.unnest()
+    if isinstance(value, exp.Null):
+        return None
+    if not isinstance(value, exp.Literal):
+        raise Refused(trino.no_form("to_timestamp", dialect))
+    if value.is_string and not _FLOAT_TEXT.fullmatch(value.this):
+        raise Refused(
+            Refusal("22P02", f'invalid input syntax for type double precision: "{value.this}"'),
+            ruling=True,
+        )
+    number = float(value.this.strip())
+    return -number if negative else number
+
+
+def unix_seconds(node: exp.Expr, dialect: str) -> exp.Expr | None:
+    """to_timestamp of a double the statement writes (float8_timestamptz): the instant that many
+    seconds after 1970-01-01 UTC, its microseconds rounded half to even, computed as the statement
+    is read; 22008 of NaN; an instant outside DateTime64's bound, infinity's included, 0A000."""
+    if dialect != "clickhouse" or not isinstance(node, exp.UnixToTime):
+        return None
+    if node.args.get("scale") is not None or node.args.get("zone") is not None:
+        return None
+    seconds = _seconds(node.this, dialect)
+    if seconds is None:
+        return sqlglot.parse_one(f"CAST(NULL AS {instants.INSTANT})", read="clickhouse")
+    if math.isnan(seconds):
+        raise Refused(Refusal("22008", "timestamp cannot be NaN"), ruling=True)
+    outside = Refusal(
+        "0A000",
+        f"to_timestamp() of a value outside {instants.BOUND} has no exact form on clickhouse",
+    )
+    if math.isinf(seconds) or abs(seconds) > 1e13:
+        raise Refused(outside, ruling=True)
+    # As timestamp.c computes it: seconds after 2000-01-01 first, then scaled and rint (half to
+    # even), so the double rounds where PostgreSQL's does.
+    since_2000 = seconds - _POSTGRES_EPOCH_SECONDS
+    stamp = _POSTGRES_EPOCH + datetime.timedelta(microseconds=round(since_2000 * 1_000_000.0))
+    if not instants.FIRST <= stamp <= instants.LAST:
+        raise Refused(outside, ruling=True)
+    text = stamp.strftime("%Y-%m-%d %H:%M:%S.%f")
+    return sqlglot.parse_one(f"CAST('{text}' AS {instants.INSTANT})", read="clickhouse")
+
+
+_STAMPS = frozenset({"timestamp without time zone", "timestamp"})
+
+
+def _precision(node: exp.Expr) -> int | None | bool:
+    """A precision the statement writes: its value, None for a NULL, False for any other value."""
+    value = node.unnest()
+    while isinstance(value, exp.Cast):
+        value = value.this.unnest()
+    negative = False
+    while isinstance(value, (exp.Neg, exp.Paren)):
+        negative ^= isinstance(value, exp.Neg)
+        value = value.this.unnest()
+        while isinstance(value, exp.Cast):
+            value = value.this.unnest()
+    if isinstance(value, exp.Null):
+        return None
+    text = value.this.strip() if isinstance(value, exp.Literal) else ""
+    if not text.lstrip("+-").isdigit():
+        return False
+    return -int(text) if negative else int(text)
+
+
+def stamp_scaled(node: exp.Expr, dialect: str) -> exp.Expr | None:
+    """timestamp of a timestamp and a precision (timestamp_scale, AdjustTimestampForTypmod): its
+    microseconds since 2000-01-01 rounded half away from zero to the precision's digits; 22023 of
+    a precision outside 0 to 6 where the timestamp is not NULL; NULL of a NULL."""
+    if dialect != "clickhouse":
+        return None
+    call = trino.called(node)
+    if call is None or "timestamp" not in call[0] or len(call[1]) != 2:
+        return None
+    stamp, precision = call[1]
+    if trino.said(stamp) not in _STAMPS:
+        return None
+    digits = _precision(precision)
+    if digits is False:
+        raise Refused(trino.no_form("timestamp", dialect))
+    if digits is None:
+        return sqlglot.parse_one(f"CAST(NULL AS {instants.INSTANT})", read="clickhouse")
+    assert isinstance(digits, int)
+    if not 0 <= digits <= 6:
+        raised = ch_fail("22023", f"timestamp({digits}) precision must be between 0 and 6").format(
+            condition="provisa_s IS NOT NULL"
+        )
+        form = f"if({raised} = 0, CAST(NULL AS {instants.INSTANT}), NULL)"
+    else:
+        scale = 10 ** (6 - digits)
+        since = "(toUnixTimestamp64Micro(provisa_s) - 946684800000000)"
+        rounded = (
+            f"if({since} >= 0, intDiv({since} + {scale // 2}, {scale}) * {scale}, "
+            f"-(intDiv(-{since} + {scale // 2}, {scale}) * {scale}))"
+        )
+        form = (
+            f"CAST(fromUnixTimestamp64Micro({rounded} + 946684800000000, 'UTC') "
+            f"AS {instants.INSTANT})"
+        )
+    written = sqlglot.parse_one(form, read="clickhouse")
+    return written.transform(
+        lambda n: stamp.copy() if isinstance(n, exp.Column) and n.name == "provisa_s" else n
+    )
+
+
+STAMP_SCALED = Feature(
+    "timestamp(timestamp, integer)",
+    FAMILY,
+    "A timestamp rounded to a precision (timestamp_scale).",
+    read=Side(
+        rules=(Rule(None, {"clickhouse": Rewrite(stamp_scaled, mentions=r"\btimestamp\s*\(")}),),
+        limitations={
+            "clickhouse": (
+                Limitation(
+                    "The precision is read as a literal or a NULL; any other is refused by name. "
+                    "The timestamp is held as DateTime64(6, 'UTC'); its microseconds since "
+                    "2000-01-01 are rounded half away from zero, as AdjustTimestampForTypmod "
+                    "rounds them."
+                ),
+            )
+        },
+    ),
+)
+
+
+_UTC_NAMES = frozenset({"UTC", "Etc/UTC", "GMT", "Etc/GMT", "UCT", "Zulu", "Universal"})
+
+
+def _session_is_utc() -> bool:
+    from provisa.core.session_time_zone import current_zone
+
+    zone = current_zone.get()
+    return zone is None or zone.name in _UTC_NAMES or zone.offset in ("+00:00", "+00")
+
+
+_DAYS = frozenset({"date"})
+_CLOCKS = frozenset({"time without time zone", "time"})
+
+
+def _day_read(node: exp.Expr, dialect: str) -> exp.Expr:
+    """A date argument as the statement's own date literal is read (clickhouse.dated: 0A000 of
+    one outside Date32's years or not ISO, 22008 of a day that does not exist): what a rule
+    writes is not walked again."""
+    from provisa.transpiler.polyfill import clickhouse
+
+    try:
+        read = clickhouse.dated(node.unnest(), dialect)
+    except Refused as refused:
+        raise Refused(refused.refusal, ruling=True) from refused
+    return node.copy() if read is None else read
+
+
+def _written_day(node: exp.Expr) -> bool:
+    inner = node.unnest()
+    return isinstance(inner, exp.Anonymous) and inner.name == "toDate32"
+
+
+_LAST_US = (instants.LAST - datetime.datetime(1970, 1, 1)) // datetime.timedelta(microseconds=1)
+
+
+def _day_and_clock(day: exp.Expr, clock: exp.Expr) -> exp.Expr:
+    """A written date (Date32) and a held time (Int64 microseconds) as the instant of their wall
+    time in UTC; one past DateTime64's bound (2299-12-31 24:00:00) raises 0A000."""
+    sum_us = "(toInt64(provisa_d) * 86400000000 + toInt64(provisa_c))"
+    raised = ch_fail(
+        "0A000",
+        f"timestamptz() of a value outside {instants.BOUND} has no exact form on clickhouse",
+    ).format(condition=f"{sum_us} > {_LAST_US}")
+    form = f"CAST(fromUnixTimestamp64Micro({sum_us} + {raised}, 'UTC') AS {instants.INSTANT})"
+    written = sqlglot.parse_one(form, read="clickhouse")
+    nodes = {"provisa_d": day, "provisa_c": clock}
+    return written.transform(
+        lambda n: nodes[n.name].copy() if isinstance(n, exp.Column) and n.name in nodes else n
+    )
+
+
+def instant_of_wall(node: exp.Expr, dialect: str) -> exp.Expr | None:
+    """timestamptz of a date, a timestamp, or a date and a time: the wall time read in the
+    session's zone, the instant it is; as a cast to timestamptz of it (or of their sum), which
+    ClickHouse is told as its instant. In the session zone UTC only: another zone's wall time is
+    refused by name."""
+    if dialect != "clickhouse":
+        return None
+    call = trino.called(node)
+    if call is None or "timestamptz" not in call[0] or not 1 <= len(call[1]) <= 2:
+        return None
+    said = [trino.said(a) for a in call[1]]
+    if len(said) == 2 and said[0] not in _DAYS and _written_day(call[1][0]):
+        # the arguments as the pattern row read them (a date's toDate32, a held time)
+        if not _session_is_utc():
+            raise Refused(trino.no_form("timestamptz", dialect))
+        return _day_and_clock(call[1][0], call[1][1])
+    if not (
+        (len(said) == 1 and said[0] in _DAYS | _STAMPS)
+        or (len(said) == 2 and said[0] in _DAYS and said[1] in _CLOCKS)
+    ):
+        return None
+    args = [_day_read(a, dialect) if s == "date" else a.copy() for a, s in zip(call[1], said)]
+    value = args[0] if len(args) == 1 else exp.Paren(this=exp.Add(this=args[0], expression=args[1]))
+    if not _session_is_utc():
+        raise Refused(trino.no_form("timestamptz", dialect))
+    return exp.Cast(this=value, to=exp.DataType.build("timestamptz", dialect="postgres"))
+
+
+INSTANT_OF_WALL = Feature(
+    "timestamptz(date|timestamp|date, time)",
+    FAMILY,
+    "The instant a date, a timestamp, or a date and a time is in the session's zone.",
+    read=Side(
+        rules=(
+            Rule(None, {"clickhouse": Rewrite(instant_of_wall, mentions=r"\btimestamptz\s*\(")}),
+        ),
+        limitations={
+            "clickhouse": (
+                Limitation(
+                    "In the session TimeZone UTC, where the wall time is the instant: in any "
+                    "other zone refused by name. The answer is held as DateTime64(6, 'UTC'); one "
+                    f"outside {instants.BOUND} raises 0A000."
+                ),
+            )
+        },
+    ),
+)
+
+
+UNIX_SECONDS = Feature(
+    "to_timestamp(double precision)",
+    FAMILY,
+    "The instant a count of seconds after 1970-01-01 UTC is.",
+    read=Side(
+        rules=(Rule(None, {"clickhouse": Rewrite(unix_seconds, mentions=r"\bto_timestamp\b")}),),
+        limitations={
+            "clickhouse": (
+                Limitation(
+                    "Of a double the statement writes as a literal, computed as the statement is "
+                    f"read; an instant outside {instants.BOUND} (infinity's too) raises 0A000; any "
+                    "other value is refused by name."
+                ),
+            )
+        },
+    ),
+)
+
 TO_CHAR = Feature(
     "to_char(timestamp, text)",
     FAMILY,
@@ -256,5 +550,9 @@ FEATURES: tuple[Feature, ...] = (
     TIME_MI_TIME,
     MAKE_DATE,
     TRANSACTION_TIMESTAMP,
+    CLOCK_TIMESTAMP,
+    UNIX_SECONDS,
+    STAMP_SCALED,
+    INSTANT_OF_WALL,
     TO_CHAR,
 )

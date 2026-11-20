@@ -107,8 +107,8 @@ import { HomeEntry } from "../App";
 const SOURCES = "Sources";
 const TABLES = "Tables";
 const RELATIONSHIPS = "Relationships";
-const ONTOLOGY = "Ontology";
-const LIBRARY = "Library";
+// REQ-2259: the Context group stands where the Ontology and Library links stood.
+const CONTEXT = "Context";
 const MODEL = "Derived";
 const PRODUCTS = "Products";
 const SECURITY = "Security";
@@ -118,34 +118,33 @@ const EVERY_ENTRY = [
   SOURCES,
   TABLES,
   RELATIONSHIPS,
-  ONTOLOGY,
-  LIBRARY,
+  CONTEXT,
   MODEL,
   PRODUCTS,
   SECURITY,
   EXPLORE,
 ];
-const READER = [ONTOLOGY, LIBRARY, PRODUCTS];
-const BUILDER = [RELATIONSHIPS, ONTOLOGY, LIBRARY, PRODUCTS, EXPLORE];
-const GOVERNOR = [TABLES, ONTOLOGY, LIBRARY, MODEL, PRODUCTS, SECURITY];
+const READER = [CONTEXT, PRODUCTS];
+const BUILDER = [RELATIONSHIPS, CONTEXT, PRODUCTS, EXPLORE];
+const GOVERNOR = [TABLES, CONTEXT, MODEL, PRODUCTS, SECURITY];
 
 // role → [the bar's entries in order, whether the user menu offers Admin, the landing page]
 const EXPECTED: Record<string, [string[], boolean, string]> = {
-  viewer: [READER, true, "/admin/ontology"],
+  viewer: [READER, true, "/context/ontology"],
   analyst: [[...READER, EXPLORE], true, "/schema"],
   developer: [BUILDER, true, "/schema"],
   modeler: [BUILDER, true, "/schema"],
-  data_product_owner: [READER, true, "/admin/ontology"],
+  data_product_owner: [READER, true, "/context/ontology"],
   security_admin: [GOVERNOR, true, "/tables"],
   data_steward: [
-    [TABLES, RELATIONSHIPS, ONTOLOGY, LIBRARY, MODEL, PRODUCTS, SECURITY, EXPLORE],
+    [TABLES, RELATIONSHIPS, CONTEXT, MODEL, PRODUCTS, SECURITY, EXPLORE],
     true,
     "/schema",
   ],
-  dq_reader: [READER, true, "/admin/ontology"],
-  dq_steward: [READER, true, "/admin/ontology"],
-  source_admin: [[SOURCES, TABLES, ONTOLOGY, LIBRARY, MODEL, PRODUCTS], true, "/sources"],
-  org_operator: [READER, true, "/admin/ontology"],
+  dq_reader: [READER, true, "/context/ontology"],
+  dq_steward: [READER, true, "/context/ontology"],
+  source_admin: [[SOURCES, TABLES, CONTEXT, MODEL, PRODUCTS], true, "/sources"],
+  org_operator: [READER, true, "/context/ontology"],
   org_admin: [EVERY_ENTRY, true, "/schema"],
   sandbox: [EVERY_ENTRY, true, "/schema"],
   platform_admin: [[], true, "/admin/orgs"],
@@ -203,7 +202,7 @@ describe("the standard roles' navigation", () => {
         [SOURCES]: "/sources",
         [TABLES]: "/tables",
         [RELATIONSHIPS]: "/relationships",
-        [ONTOLOGY]: "/admin/ontology",
+        [CONTEXT]: "/context/ontology",
       };
       if (entries.includes(EXPLORE)) expect(landing).toBe("/schema");
       else if (entries.length > 0) expect(landing).toBe(bar[entries[0]]);

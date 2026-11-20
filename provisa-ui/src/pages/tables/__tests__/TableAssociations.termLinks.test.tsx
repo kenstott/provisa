@@ -37,10 +37,10 @@ describe("TableAssociations glossary terms", () => {
     render(<TableAssociations table={{ id: 1 }} relationships={[]} />);
     const care = await screen.findByTestId("table-association-term-7");
     expect(care).toHaveTextContent("care level");
-    expect(care).toHaveAttribute("href", "/admin/ontology?term=7");
+    expect(care).toHaveAttribute("href", "/context/ontology?term=7");
     expect(screen.getByTestId("table-association-term-9")).toHaveAttribute(
       "href",
-      "/admin/ontology?term=9",
+      "/context/ontology?term=9",
     );
     expect(screen.queryByTestId("table-association-term-11")).toBeNull();
   });

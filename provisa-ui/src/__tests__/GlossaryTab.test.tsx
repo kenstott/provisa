@@ -620,7 +620,10 @@ describe("GlossaryTab", () => {
   });
 
   it("drafts a definition with the AI button into the form without saving it", async () => {
-    mockGenerate.mockResolvedValue("Money earned from sales.");
+    mockGenerate.mockResolvedValue({
+      definition: "Money earned from sales.",
+      tables_without_samples: [],
+    });
     render(<GlossaryTab />);
 
     fireEvent.click(await screen.findByTestId("glossary-item-1"));
@@ -761,7 +764,7 @@ describe("GlossaryTab", () => {
   });
 
   it("bulk-generates definitions and shows a count notification", async () => {
-    mockBulkDefinitions.mockResolvedValue({ generated: 3 });
+    mockBulkDefinitions.mockResolvedValue({ generated: 3, tables_without_samples: [] });
     render(<GlossaryTab />);
     await screen.findByTestId("glossary-item-1");
 

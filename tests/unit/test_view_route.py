@@ -66,7 +66,7 @@ def _state(*, kept: bool) -> SimpleNamespace:
             "columns": [{"column_name": "id", "data_type": "integer", "visible_to": ["analyst"]}],
         },
     ]
-    state.view_sql_map = {"order_totals": _VIEW_SQL}
+    state.view_sql_map = {"views.order_totals": _VIEW_SQL}
     registry = MVRegistry()
     if kept:
         # Materialized, fresh, and seen whole by the reader: answered from its stored rows.

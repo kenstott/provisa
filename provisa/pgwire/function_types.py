@@ -21,6 +21,7 @@ matches, its type is not known here."""
 
 from __future__ import annotations
 
+import contextvars
 from typing import Any
 
 import sqlglot.expressions as exp
@@ -308,9 +309,31 @@ def _resolved(returns: str, arg_types: list[str | None], params: tuple[str, ...]
     return returns
 
 
+#: The types of the calls one typing has read, by node: a call's type does not depend on how the
+#: call holding it reads its literals, and each of the four readings call_result_type tries reads
+#: every call it holds again, which is exponential in their nesting (a range form of polyfill's,
+#: typed by a row, ran for minutes).
+_TYPED: contextvars.ContextVar[dict[int, tuple[exp.Expr, str | None]] | None] = (
+    contextvars.ContextVar("_TYPED", default=None)
+)
+
+
 def call_result_type(expression: exp.Expr) -> str | None:
     """The format_type name of what a call of a pg_catalog function returns; None when the
     expression is not such a call or its overload is not known from the statement."""
+    typed = _TYPED.get()
+    if typed is not None:
+        if id(expression) not in typed:  # the node is held with its type: its id is not reused
+            typed[id(expression)] = (expression, _call_result_type(expression))
+        return typed[id(expression)][1]
+    token = _TYPED.set({})  # one typing: the tree is not changed while it is read
+    try:
+        return call_result_type(expression)
+    finally:
+        _TYPED.reset(token)
+
+
+def _call_result_type(expression: exp.Expr) -> str | None:
     if isinstance(expression, exp.Dot):
         expression = expression.expression
     if isinstance(expression, exp.Window):

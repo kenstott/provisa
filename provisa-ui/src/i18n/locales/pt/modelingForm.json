@@ -30,11 +30,11 @@
     "errorRequired": "Nome, fonte e domínio são obrigatórios.",
     "submit": "Criar",
     "createdTitle": "{{name}} criado",
-    "createdMv": "{{kind}} “{{name}}” criado como exibição materializada no domínio {{domain}}. Agora aparece em Tabelas registradas e pode ser consultado.",
+    "createdMv": "Uma exibição materializada foi criada — o {{kind}} \"{{name}}\" no domínio {{domain}}. Agora aparece na página Tabelas e pode ser consultado.",
     "createdHistory": "O histórico é rastreado: valores passados podem ser consultados via viagem no tempo.",
     "createdDims": "{{count}} vínculo(s) de dimensão registrado(s) para que o fato possa ser unido às suas entidades.",
     "reviseTitle": "Alterá-lo depois",
-    "reviseBody": "Esta caixa de diálogo apenas cria. Para alterar a chave, os atributos, o histórico ou as colunas de “{{name}}”, edite-o em Tabelas registradas. Executar esta caixa de diálogo novamente com o mesmo nome sobrescreve o modelo existente.",
+    "reviseBody": "Este diálogo apenas cria. Para revisar \"{{name}}\" — chave, atributos, histórico ou colunas — edite-o na página Tabelas. Executar novamente este diálogo com o mesmo nome sobrescreve o modelo existente.",
     "createAnother": "Criar outro",
     "done": "Concluído"
   }

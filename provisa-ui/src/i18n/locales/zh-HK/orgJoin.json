@@ -5,7 +5,7 @@
     "emailRuleLabel": "電郵規則",
     "emailRuleDesc": "與地址比對的正規表示式。留空表示接受任何受邀的地址。",
     "autoJoinLabel": "自動加入",
-    "autoJoinDesc": "符合的地址首次登入時即成為成員，無需邀請。僅適用於你的組織所控制的網域。",
+    "autoJoinDesc": "符合的已驗證地址首次登入時即成為成員，無需邀請。僅適用於你的組織所控制的網域。",
     "autoJoinRoleLabel": "自動加入時授予的角色",
     "autoJoinRoleDesc": "依此規則加入的每個人所獲得的角色。",
     "acceptRisk": "我接受此規則可能讓我的組織以外的人加入",

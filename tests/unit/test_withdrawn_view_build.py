@@ -111,7 +111,7 @@ async def test_a_materialized_withdrawn_view_stays_registered_with_its_build_dis
     mv = state.mv_registry.get("view-big_orders")
     assert mv is not None and mv.enabled is False
     # No statement expands it, and nothing schedules or reads its build.
-    assert "big_orders" not in state.view_sql_map
+    assert "views.big_orders" not in state.view_sql_map
     assert state.mv_registry.get_enabled() == []
     assert state.mv_registry.get_due_for_refresh() == []
     assert state.mv_registry.get_fresh() == []
@@ -122,19 +122,32 @@ async def test_a_materialized_withdrawn_view_stays_registered_with_its_build_dis
 async def test_a_withdrawn_view_keeps_its_build_and_putting_it_back_enables_it(rebuilt):
     state = await rebuilt("big_orders", withdrawn=False)
     put_back = state.mv_registry.get("view-big_orders")
-    assert put_back.enabled is True and "big_orders" in state.view_sql_map
+    assert put_back.enabled is True and "views.big_orders" in state.view_sql_map
     put_back.status, put_back.last_refresh_at = MVStatus.FRESH, 1.0  # built
 
     state = await rebuilt("big_orders", withdrawn=True)
     kept = state.mv_registry.get("view-big_orders")
     assert kept is put_back, "the same registration, with what it has built"
     assert kept.enabled is False and kept.last_refresh_at == 1.0
-    assert "big_orders" not in state.view_sql_map
+    assert "views.big_orders" not in state.view_sql_map
     assert state.mv_registry.get_fresh() == []
 
     state = await rebuilt("big_orders", withdrawn=False)
     assert state.mv_registry.get("view-big_orders") is put_back and put_back.enabled is True
-    assert "big_orders" in state.view_sql_map
+    assert "views.big_orders" in state.view_sql_map
+
+
+async def test_a_view_is_keyed_by_its_schema_and_name(rebuilt):
+    """A reference is the view only under the view's own schema: the view map keys it
+    ``schema.table``, never by its name alone, which a table under another schema may have."""
+    from provisa.compiler.view_expand import expand_view_refs
+
+    state = await rebuilt("big_orders", withdrawn=False, materialize=False)
+    assert set(state.view_sql_map) == {"views.big_orders"}
+    assert "orders" in expand_view_refs("SELECT * FROM views.big_orders", state.view_sql_map)
+    other = "SELECT * FROM otherschema.big_orders"
+    assert expand_view_refs(other, state.view_sql_map) == other
+    assert expand_view_refs(other, state.view_sql_map, mark=True) == other
 
 
 async def test_a_deleted_view_leaves_no_build_registered(rebuilt, model):
@@ -162,7 +175,7 @@ async def test_a_deleted_view_leaves_no_build_registered(rebuilt, model):
 
         await app_rebuild._register_user_views_in_state(conn, None, [], [])
     assert state.mv_registry.all() == []
-    assert "e2e_mv_a" not in state.view_sql_map and "e2e_mv_b" not in state.view_sql_map
+    assert "views.e2e_mv_a" not in state.view_sql_map and "views.e2e_mv_b" not in state.view_sql_map
 
 
 async def test_a_materialized_view_not_built_from_a_view_survives_whatever_its_id(rebuilt):
@@ -189,13 +202,13 @@ async def test_a_view_no_longer_materialized_has_no_build(rebuilt):
     assert state.mv_registry.get("view-big_orders") is not None
     state = await rebuilt("big_orders", withdrawn=False, materialize=False)
     assert state.mv_registry.get("view-big_orders") is None
-    assert "big_orders" in state.view_sql_map  # still read, through its SQL
+    assert "views.big_orders" in state.view_sql_map  # still read, through its SQL
 
 
 async def test_a_withdrawn_view_that_is_not_materialized_has_no_build(rebuilt):
     state = await rebuilt("big_orders", withdrawn=True, materialize=False)
     assert state.mv_registry.get("view-big_orders") is None
-    assert "big_orders" not in state.view_sql_map
+    assert "views.big_orders" not in state.view_sql_map
 
 
 # --- the preview: starts the build, waits for nothing it does not need ---------------------------
@@ -332,7 +345,7 @@ async def test_a_view_applying_a_column_transform_is_landed_and_read_from_its_st
     mv = state.mv_registry.get("view-clean_suppliers")
     assert mv is not None and mv.enabled is True and mv.target_table == "mv_clean_suppliers"
     assert (
-        state.view_sql_map["clean_suppliers"]
+        state.view_sql_map["views.clean_suppliers"]
         == 'SELECT * FROM "store"."views"."mv_clean_suppliers"'
     )
-    assert state.stored_view_reads == {"clean_suppliers"}
+    assert state.stored_view_reads == {"views.clean_suppliers"}

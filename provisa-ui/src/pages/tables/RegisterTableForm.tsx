@@ -23,6 +23,10 @@ import { NEVER_EXPIRES, cacheTtlHint } from "../../components/form/cacheTtl";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { ProfilerRowRulesField } from "./ProfilerRowRulesField";
 import { QueryTableFields } from "./QueryTableFields";
+import { WikidataTableChooser } from "./WikidataTableChooser";
+import type { WikidataChoice } from "./wikidataChoice";
+import { sourceBrand } from "../sources/sourceHelpers";
+import { WIKIDATA } from "../sources/wikidata";
 import { isPipelineArgument, NATIVE_QUERY_MODES, previewedColumn } from "./queryTables";
 import { QDRANT, QDRANT_SCHEMA, searchQueryArgument } from "../sources/qdrant";
 import { QdrantVectorsNote } from "./QdrantVectorsNote";
@@ -139,7 +143,7 @@ export function RegisterTableForm({
   pickReady = false,
   onRegisteredMany,
 }: RegisterTableFormProps) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [sourceId, setSourceId] = useState(initialSourceId);
   const [chosenDomain, setDomainId] = useState("");
   const [schemaName, setSchemaName] = useState("");
@@ -208,6 +212,17 @@ export function RegisterTableForm({
   // rules and editable here; saved after the table, as the table's own rules.
   const [profilerRowRules, setProfilerRowRules] = useState<ProfilerRowRule[]>([]);
   const isSparql = sourceType === "sparql";
+  // REQ-1923: a Wikidata source's table is chosen: a starter table, or the table of a class.
+  const isWikidata = isSparql && sourceBrand(chosenSource?.federationHintsJson) === WIKIDATA;
+  const chooseWikidataTable = (choice: WikidataChoice) => {
+    const roleIds = roles.map((r) => r.id);
+    setTableName(choice.tableName);
+    setCypher(choice.query);
+    setPreviewRows([]);
+    setColumns(
+      choice.columns.map((c) => previewedColumn({ name: c.name, dataType: c.data_type }, roleIds)),
+    );
+  };
   // REQ-1670/REQ-1683: a query-API source has no tables to list — its table IS a query projection.
   // REQ-1980/REQ-1982: a document source's table is a collection or container, or a native query.
   // REQ-1983: a Qdrant table is a collection, or a search. REQ-2017: an Elasticsearch table is an
@@ -721,6 +736,12 @@ export function RegisterTableForm({
               data-testid={`register-table-${sourceType}-mode`}
             />
           </FormField>
+        )}
+        {isWikidata && (
+          <WikidataTableChooser
+            language={i18n.language.split("-")[0]}
+            onChoose={chooseWikidataTable}
+          />
         )}
         {isQueryApi && (
           <FormField size="medium">

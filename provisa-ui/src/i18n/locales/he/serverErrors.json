@@ -21,17 +21,17 @@
       "embedding_library_missing": "מודל ההטמעה {{model}} משתמש בספק {{provider}}, שדורש את התוספת {{extra}} (המודול {{module}} אינו מותקן): pip install 'provisa[{{extra}}]'."
     },
     "ai": {
-      "key_required": "ל-{{vendor}} אין מפתח. הגדירו מפתח תחת ניהול, מודלי AI.",
-      "vendor_uses_server_credentials": "הגישה אל {{vendor}} נעשית באישורי השרת עצמו, שארגון בשרת זה אינו משתמש בהם. בחרו ספק שמקבל מפתח, או נקודת קצה של AI, תחת ניהול, מודלי AI.",
+      "endpoint_address_from_server": "נקודת הקצה של AI‏ {{vendor}} לוקחת את הכתובת שלה מסביבת השרת, שארגון בשרת זה אינו משתמש בה. הגדירו לה כתובת משלכם תחת ניהול, מודלי AI.",
       "endpoint_key_from_server": "נקודת הקצה של AI‏ {{vendor}} לוקחת את המפתח שלה מסביבת השרת, שארגון בשרת זה אינו משתמש בה. הגדירו לה מפתח משלכם תחת ניהול, מודלי AI.",
       "endpoint_key_unset": "לנקודת הקצה של AI‏ {{vendor}} אין מפתח: {{field}} אינו מוגדר.",
-      "endpoint_address_from_server": "נקודת הקצה של AI‏ {{vendor}} לוקחת את הכתובת שלה מסביבת השרת, שארגון בשרת זה אינו משתמש בה. הגדירו לה כתובת משלכם תחת ניהול, מודלי AI.",
+      "key_required": "ל-{{vendor}} אין מפתח. הגדירו מפתח תחת ניהול, מודלי AI.",
       "local_server_from_environment": "הגישה אל {{vendor}} נעשית בכתובת של השרת עצמו, שארגון בשרת זה אינו משתמש בה. הגדירו נקודת קצה של AI בכתובת משלכם תחת ניהול, מודלי AI.",
       "server_environment_sets": "לא ניתן לקרוא ל-{{vendor}} כאן: סביבת השרת מגדירה את {{variable}}, שהלקוח שלו היה שולח עבור כל ארגון.",
+      "vector_model_address_from_server": "מודל ה-embedding‏ {{vendor}} לוקח את הכתובת שלו מסביבת השרת, שארגון בשרת זה אינו משתמש בה. הגדירו לו כתובת משלכם תחת ניהול, מודלי AI.",
       "vector_model_key_from_server": "מודל ה-embedding‏ {{vendor}} לוקח את המפתח שלו מסביבת השרת, שארגון בשרת זה אינו משתמש בה. הגדירו לו מפתח משלכם תחת ניהול, מודלי AI.",
       "vector_model_key_unset": "למודל ה-embedding‏ {{vendor}} אין מפתח: {{field}} אינו מוגדר.",
-      "vector_model_address_from_server": "מודל ה-embedding‏ {{vendor}} לוקח את הכתובת שלו מסביבת השרת, שארגון בשרת זה אינו משתמש בה. הגדירו לו כתובת משלכם תחת ניהול, מודלי AI.",
-      "vector_model_local_server": "הגישה אל מודל ה-embedding‏ {{vendor}} נעשית בכתובת של השרת עצמו, שארגון בשרת זה אינו משתמש בה. הגדירו לו כתובת משלכם תחת ניהול, מודלי AI."
+      "vector_model_local_server": "הגישה אל מודל ה-embedding‏ {{vendor}} נעשית בכתובת של השרת עצמו, שארגון בשרת זה אינו משתמש בה. הגדירו לו כתובת משלכם תחת ניהול, מודלי AI.",
+      "vendor_uses_server_credentials": "הגישה אל {{vendor}} נעשית באישורי השרת עצמו, שארגון בשרת זה אינו משתמש בהם. בחרו ספק שמקבל מפתח, או נקודת קצה של AI, תחת ניהול, מודלי AI."
     },
     "api": {
       "answer_cut": "התשובה עבור {{table}} נחתכה ב-max_pages={{max_pages}} ({{rows}} שורות): ל-API יש עוד. הגדילו את max_pages או את גודל העמוד של נקודת הקצה כדי לקרוא הכול.",
@@ -172,13 +172,14 @@
     },
     "discovery": {
       "adapter_missing_discover_schema": "המתאם עבור '{{source_type}}' אינו מממש discover_schema",
+      "answer_unreadable": "תשובת המודל לא הכילה רשימה קריאה.",
       "cassandra_discovery_unsupported": "גילוי סכמה של Cassandra דורש הפעלת CQL חיה, שאינה זמינה. הגדירו עמודות ידנית עבור מקור זה.",
       "database_not_connected": "מסד הנתונים אינו מחובר",
+      "decided_both_ways": "הצעה מתקבלת או שאין להמליץ עליה שוב, לא שניהם.",
       "domain_id_required": "domain_id נדרש עבור היקף domain",
       "elasticsearch_index_hint_required": "גילוי Elasticsearch דורש רמז 'index'.",
       "elasticsearch_mapping_failed": "קריאת ה-mapping של Elasticsearch עבור האינדקס '{{index}}' נכשלה: {{error}}",
       "endpoint_already_registered": "נקודת הקצה כבר רשומה: {{error}}",
-      "decided_both_ways": "הצעה מתקבלת או שאין להמליץ עליה שוב, לא שניהם.",
       "model_has_no_room": "המודל {{model}} אינו יכול להכיל בקשה: {{reason}}",
       "model_incomplete": "מודל שנבחר מציין גם את הספק שלו וגם את המודל שלו.",
       "no_adapter_for_source_type": "לא רשום מתאם עבור סוג המקור '{{source_type}}'",
@@ -199,8 +200,7 @@
       "target_tables_not_read": "אף אחת מטבלאות היעד שנבחרו ({{count}}) אינה נקראת: הגילוי משמיט טבלאות של דומיין מערכת וטבלאות שאינן בשירות.",
       "target_tables_outside_domains": "טבלאות היעד שנבחרו נמצאות מחוץ לדומיינים שנבחרו במסנן הדומיינים: {{names}}.",
       "unknown_source_type": "סוג מקור לא מוכר: {{type}}",
-      "vendor_unknown": "{{vendor}} אינו מציג כאן מודלים; הזינו את שם המודל.",
-      "answer_unreadable": "תשובת המודל לא הכילה רשימה קריאה."
+      "vendor_unknown": "{{vendor}} אינו מציג כאן מודלים; הזינו את שם המודל."
     },
     "llm": {
       "request_failed": "הבקשה למודל נכשלה: {{reason}}",
@@ -893,6 +893,7 @@
       "unknown_kind": "{{kind}} אינו סוג של רשימת הרשאות.",
       "idp_supersedes": "ספק הזהויות שולח את רשימת {{kind}} של אדם זה עבור התפקיד {{role_id}}. רשימה זו גוברת, ולכן היא משתנה שם ולא כאן.",
       "blank_identifier": "פריט אינו יכול להיות ריק.",
+      "invalid_identifier": "{{identifier}} אינו פריט {{kind}} תקין.",
       "expiry_in_past": "תאריך סיום חייב להיות בעתיד.",
       "expiry_removes_nothing": "תאריך סיום ברשימת {{kind}} זו לא היה מסיר דבר.",
       "pending_not_found": "אין הענקה הממתינה ל-{{email}} עבור התפקיד {{role_id}} ו-{{kind}}."
@@ -924,6 +925,15 @@
     },
     "relationship": {
       "name_taken": "השם '{{name}}' תפוס על ידי הקשר '{{held_by}}'. יש לתת לקשר הזה שם אחר."
+    },
+    "wikidata": {
+      "no_credential": "שירות השאילתות של ויקינתונים אינו דורש אישורים",
+      "bad_id": "{{value}} אינו {{kind}} של ויקינתונים",
+      "bad_language": "{{language}} אינו קוד שפה",
+      "bad_column_type": "סוגי עמודות שאינם מוצעים למאפיין של ויקינתונים: {{types}}",
+      "filter_required": "למחלקה זו יש {{count}} מופעים, יותר מ-{{limit}}: בחרו מסנן",
+      "filter_too_wide": "המסנן משאיר יותר מ-{{limit}} מופעים",
+      "unreachable": "לא ניתן להגיע לוויקינתונים: {{reason}}"
     }
   }
 }

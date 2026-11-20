@@ -23,7 +23,7 @@ from __future__ import annotations
 
 from provisa.compiler.view_expand import expand_view_refs
 
-_VIEWS = {"neighborhood": "SELECT n FROM d"}
+_VIEWS = {"city_files.neighborhood": "SELECT n FROM d"}
 
 
 def test_a_quoted_column_named_like_a_view_stays_the_column():
