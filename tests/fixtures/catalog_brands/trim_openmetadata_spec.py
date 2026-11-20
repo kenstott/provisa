@@ -15,13 +15,14 @@ tests read a recording. The whole spec is 3.7 MB and 1,400 paths, so the recordi
 GET operations below and every component they reach, unchanged.
 
     curl -s https://<instance>/swagger.json -o swagger.json
-    .venv/bin/python tests/fixtures/catalog_brands/trim_openmetadata_spec.py swagger.json
+    .venv/bin/python -m tests.fixtures.catalog_brands.trim_openmetadata_spec swagger.json
 """
 
-import gzip
 import json
 import sys
 from pathlib import Path
+
+from tests.fixtures.catalog_brands.trim_spec import trim, write
 
 PATHS = (
     "/v1/tables",
@@ -39,42 +40,6 @@ PATHS = (
 OUT = Path(__file__).parent / "openmetadata_swagger.json.gz"
 
 
-def _refs(node, found: set[str]) -> None:
-    if isinstance(node, dict):
-        ref = node.get("$ref")
-        if isinstance(ref, str) and ref.startswith("#/components/schemas/"):
-            found.add(ref.rsplit("/", 1)[1])
-        for v in node.values():
-            _refs(v, found)
-    elif isinstance(node, list):
-        for v in node:
-            _refs(v, found)
-
-
-def trim(spec: dict) -> dict:
-    paths = {p: {"get": spec["paths"][p]["get"]} for p in PATHS}
-    schemas = spec["components"]["schemas"]
-    kept: set[str] = set()
-    todo: set[str] = set()
-    _refs(paths, todo)
-    while todo:
-        name = todo.pop()
-        if name in kept:
-            continue
-        kept.add(name)
-        _refs(schemas[name], todo)
-    components = {"schemas": {n: schemas[n] for n in sorted(kept)}}
-    if "securitySchemes" in spec["components"]:
-        components["securitySchemes"] = spec["components"]["securitySchemes"]
-    return {
-        **{k: v for k, v in spec.items() if k not in ("paths", "components", "tags")},
-        "paths": paths,
-        "components": components,
-    }
-
-
 if __name__ == "__main__":
-    recorded = json.loads(Path(sys.argv[1]).read_text())
-    with gzip.open(OUT, "wt", encoding="utf-8") as fh:
-        json.dump(trim(recorded), fh, sort_keys=True)
+    write(trim(json.loads(Path(sys.argv[1]).read_text()), PATHS), OUT)
     print(OUT, OUT.stat().st_size)

@@ -48,6 +48,7 @@
   "tests/integration/test_cassandra_native_fetch.py": 96.7,
   "tests/integration/test_cassandra_pipeline_e2e.py": 0.0,
   "tests/integration/test_cassandra_source_e2e.py": 78.3,
+  "tests/integration/test_catalog_brands_live.py": 0.0,
   "tests/integration/test_catalog_read_only_e2e.py": 31.5,
   "tests/integration/test_catalog_registrar_pgbouncer.py": 2.2,
   "tests/integration/test_central_secrets_org_namespace_pg.py": 0.3,

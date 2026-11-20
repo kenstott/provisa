@@ -191,6 +191,21 @@ BRANDS: dict[str, Brand] = {
         instance_spec_url="{base_url}/swagger.json",
         verify_path="/v1/users/loggedInUser",
     ),
+    # REQ-2265 (amended 2026-11-20): read through its OpenAPI v3 spec, which the running GMS
+    # generates from its entity registry, so it differs between releases and between instances
+    # with custom aspects. Its paths carry their /openapi/v3 prefix, so the source is called at
+    # the GMS address itself. Each entity is a scroll-paged list (scrollId) whose rows carry
+    # the aspects a read asks for. The credential is a personal access token or a service
+    # account's token, sent as a bearer token; reading one user succeeds only with it.
+    "datahub": Brand(
+        id="datahub",
+        label="DataHub",
+        spec_url="",  # read from the instance (instance_spec_url), never baked
+        url="{base_url}",
+        setup_fields=(SetupField("base_url", BASE_URL_PATTERN),),
+        instance_spec_url="{base_url}/openapi/v3/api-docs",
+        verify_path="/openapi/v3/entity/corpuser?count=1",
+    ),
 }
 
 
