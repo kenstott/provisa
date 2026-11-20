@@ -168,7 +168,8 @@
       "table_is_withdrawn": "{{table}} est retirée : hors production jusqu'à sa remise en service",
       "view_awaits_rule_rebuild": "La vue {{view}} est en cours de reconstruction suite à une modification des règles de ligne sur ses entrées. Ce rôle pourra la lire une fois cette construction publiée.",
       "parameter_required": "La table '{{table}}' exige le ou les paramètres {{parameters}} : donnez une valeur à chacun (une condition WHERE sur sa colonne en SQL, un argument en GraphQL).",
-      "parameter_wrong_type": "Le paramètre {{parameter}} prend une valeur de type {{type}} ; '{{value}}' n'en est pas une."
+      "parameter_wrong_type": "Le paramètre {{parameter}} prend une valeur de type {{type}} ; '{{value}}' n'en est pas une.",
+      "statement_failed": "L'instruction a échoué dans le serveur ({{kind}}) : {{error}}"
     },
     "discovery": {
       "adapter_missing_discover_schema": "L'adaptateur pour « {{source_type}} » n'implémente pas discover_schema",
@@ -243,7 +244,8 @@
       "host_code_refused": "La commande '{{name}}' est de type {{impl_kind}}, qui exécute du code sur l'hôte du serveur. Le code hôte est désactivé sur ce déploiement ; utilisez plutôt un résolveur de code.",
       "no_plain_list": "Aucune opération de la source '{{source_id}}' sans paramètre obligatoire ne renvoie les lignes de '{{operation}}' ; sa table reste donc activée",
       "plain_list_unregistered": "'{{operation}}' de la source '{{source_id}}' renvoie les lignes de sa liste {{lists}} ; enregistrez d'abord cette liste comme table",
-      "table_has_dependents": "La table '{{table}}' de la fonction '{{name}}' est encore référencée par d'autres objets ; supprimez d'abord ces références"
+      "table_has_dependents": "La table '{{table}}' de la fonction '{{name}}' est encore référencée par d'autres objets ; supprimez d'abord ces références",
+      "statement_failed": "La commande '{{name}}' a échoué : {{error}}"
     },
     "graphql_remote": {
       "introspection_failed": "Échec de l'introspection : {{error}}",

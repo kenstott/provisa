@@ -449,7 +449,7 @@ def _mvs_read(state: Any, scope: CatalogScope) -> list[Any]:
         over = [mv.id[len("view-") :]] if mv.id.startswith("view-") else mv.source_tables
         return all(reads(name) for name in over)
 
-    return [mv for mv in state.mv_registry._mvs.values() if _readable(mv)]
+    return [mv for mv in state.mv_registry.all() if _readable(mv)]
 
 
 async def _table_region_maps(

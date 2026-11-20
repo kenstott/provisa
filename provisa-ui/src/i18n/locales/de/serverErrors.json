@@ -168,7 +168,8 @@
       "table_is_withdrawn": "{{table}} ist zurückgezogen: außer Produktion, bis sie wieder in Betrieb genommen wird",
       "view_awaits_rule_rebuild": "Die Ansicht {{view}} wird wegen einer Änderung der Zeilenregeln für ihre Eingaben neu erstellt. Diese Rolle kann sie lesen, sobald dieser Build veröffentlicht ist.",
       "parameter_required": "Die Tabelle '{{table}}' erfordert den Parameter bzw. die Parameter {{parameters}}: Geben Sie jedem einen Wert (in SQL eine WHERE-Bedingung auf seiner Spalte, in GraphQL ein Argument).",
-      "parameter_wrong_type": "Der Parameter {{parameter}} nimmt einen Wert vom Typ {{type}}; '{{value}}' ist keiner."
+      "parameter_wrong_type": "Der Parameter {{parameter}} nimmt einen Wert vom Typ {{type}}; '{{value}}' ist keiner.",
+      "statement_failed": "Die Anweisung ist im Server fehlgeschlagen ({{kind}}): {{error}}"
     },
     "discovery": {
       "adapter_missing_discover_schema": "Adapter für '{{source_type}}' implementiert discover_schema nicht",
@@ -243,7 +244,8 @@
       "host_code_refused": "Befehl '{{name}}' ist vom Typ {{impl_kind}} und führt Code auf dem Host des Servers aus. Host-Code ist in dieser Bereitstellung ausgeschaltet; verwenden Sie stattdessen einen Code-Resolver.",
       "no_plain_list": "Keine Operation der Quelle '{{source_id}}' ohne Pflichtparameter liefert die Zeilen von '{{operation}}', daher bleibt ihre Tabelle eingeschaltet",
       "plain_list_unregistered": "'{{operation}}' der Quelle '{{source_id}}' liefert die Zeilen ihrer Liste {{lists}}; registrieren Sie diese Liste zuerst als Tabelle",
-      "table_has_dependents": "Auf die Tabelle '{{table}}' der Funktion '{{name}}' verweisen noch andere Objekte; entfernen Sie zuerst diese Verweise"
+      "table_has_dependents": "Auf die Tabelle '{{table}}' der Funktion '{{name}}' verweisen noch andere Objekte; entfernen Sie zuerst diese Verweise",
+      "statement_failed": "Befehl '{{name}}' ist fehlgeschlagen: {{error}}"
     },
     "graphql_remote": {
       "introspection_failed": "Introspektion fehlgeschlagen: {{error}}",

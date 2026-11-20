@@ -678,3 +678,40 @@ def test_each_refusal_has_its_message_in_every_locale_over_its_own_params(refusa
         message = json.loads(catalog.read_text())["serverErrors"][group][key]
         assert set(re.findall(r"\{\{(\w+)\}\}", message)) == set(refusal.params), catalog
     assert "REQ-" not in str(refusal)
+
+
+# --- a vector search's query given a text (REQ-430) ---------------------------------------------
+
+#: The governed relation of a vector search whose query parameter is declared a vector.
+_LIKE = (
+    '(SELECT "s"."id" AS "id", "s"."_nf_query" AS "_nf_query" '
+    'FROM "vectors"."default"."lines_like" AS "s") AS s'
+)
+#: The table whose text column feeds the search's query.
+_LINES = '(SELECT "l"."id" AS "id", "l"."text" AS "text" FROM "pg"."public"."line" AS "l") AS l'
+
+
+def test_a_text_joined_to_a_vector_query_is_repeated_as_the_text_asked():
+    """A search's query declared a vector is also given a text, which the search's model embeds
+    (REQ-430): the parameter's column repeats that text, so the join that gave it matches it;
+    cast to the vector type, the text would fail to convert in the engine."""
+    sql = f'SELECT l.id, s.id FROM {_LINES} JOIN {_LIKE} ON s."_nf_query" = l.text'
+    binding = bind_parameters(sql, [], {"_nf_query": "array(double)"})
+    keys = {join: ["From fairest creatures", "Shall I compare thee"] for join in binding.joins}
+    bound = binding.bound(keys)
+    con = duckdb.connect()
+    con.execute("ATTACH ':memory:' AS pg")
+    con.execute(
+        "CREATE TABLE pg.main.line AS SELECT * FROM "
+        "(VALUES (1, 'From fairest creatures'), (2, 'Shall I compare thee')) t(id, text)"
+    )
+    entries = {
+        name: InlineRows([{"id": 10 + int(name.rsplit("nf", 1)[1])}], ["id"])
+        for name in bound.reads
+    }
+    final = sqlglot.transpile(
+        build_values_ctes_sql(bound.sql, entries).replace('"pg"."public"."line"', "pg.main.line"),
+        read="postgres",
+        write="duckdb",
+    )[0]
+    assert sorted(con.execute(final).fetchall()) == [(1, 11), (2, 12)]
