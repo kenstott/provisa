@@ -614,11 +614,52 @@ def _abs(node: exp.Expr, dialect: str) -> exp.Expr | None:
     return graft(replacement(form, dialect, "abs($a)"), {"a": argument})
 
 
+def _t_abs(node: exp.Expr, dialect: str) -> exp.Expr | None:
+    """abs of an integer the statement says on Trino: PostgreSQL's 22003 of its type's least
+    value, where Trino raises its own NUMERIC_VALUE_OUT_OF_RANGE. Any other keeps Trino's abs."""
+    call = trino.called(node)
+    if call is None or len(call[1]) != 1:
+        return None
+    said = function_types.argument_type(call[1][0])
+    if said not in _LEAST:
+        return None
+    form = _t_checked([(f"$a = {_LEAST[said]}", "22003", f"{said} out of range")], "abs($a)")
+    return trino.written(form, "abs($a)", {"a": call[1][0]})
+
+
 ABS = Feature(
     "abs",
     FAMILY,
     "The absolute value; of an integer type's least value, out of range.",
-    read=Side(rules=(Rule("abs($a)", ch_only(Rewrite(_abs))),)),
+    read=Side(
+        rules=(Rule("abs($a)", {**ch_only(Rewrite(_abs)), **trino.on_trino(Rewrite(_t_abs))}),)
+    ),
+)
+
+_INTEGER_TYPES_SAID = frozenset(_LEAST)
+
+
+def _t_mod(node: exp.Expr, dialect: str) -> exp.Expr | None:
+    """mod of two integers the statement says on Trino: PostgreSQL's 22012 of a zero divisor,
+    where Trino raises its own DIVISION_BY_ZERO. Any other keeps Trino's mod."""
+    if isinstance(node, exp.Mod):  # sqlglot's node of mod(a, b) and of a % b, which are one
+        args = [node.this, node.expression]
+    else:
+        call = trino.called(node)
+        if call is None or "mod" not in call[0] or len(call[1]) != 2:  # noqa: PLR2004
+            return None
+        args = call[1]
+    if not all(function_types.argument_type(a) in _INTEGER_TYPES_SAID for a in args):
+        return None
+    form = _t_checked([("$b = 0", "22012", "division by zero")], "$a % $b")
+    return trino.written(form, "mod($a, $b)", {"a": args[0], "b": args[1]})
+
+
+MOD = Feature(
+    "mod of integers on trino",
+    FAMILY,
+    "The remainder of two integers; of a zero divisor, division by zero.",
+    read=Side(rules=(Rule(None, trino.on_trino(Rewrite(_t_mod, mentions=r"\bmod\b|%"))),)),
 )
 
 #: lcm of two integers (int.c's int4lcm and int8lcm): 0 where either is 0, else |a / gcd * b|,
@@ -817,6 +858,7 @@ FEATURES: tuple[Feature, ...] = (
     *DEGREE_TRIGONOMETRY,
     SIGN,
     ABS,
+    MOD,
     LCM,
     CHR,
     IN_RANGE,

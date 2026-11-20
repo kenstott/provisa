@@ -297,3 +297,55 @@ def test_postgresql_fdw_validator_checks_each_options_name(options, catalog, ans
         return
     with pytest.raises(duckdb.Error, match=f"42601: {answer}"):
         con.execute(statement)
+
+
+# --- engine errors: PostgreSQL's error where Trino raised its own ----------------------------------
+
+
+@pytest.mark.parametrize(
+    ("sql", "message"),
+    [
+        ("\"abs\"('-2147483648'::integer)", "22003: integer out of range"),
+        ("\"abs\"('-9223372036854775808'::bigint)", "22003: bigint out of range"),
+        ('"mod"(3::integer, 0::integer)', "22012: division by zero"),
+    ],
+)
+def test_an_integer_edge_raises_postgresqls_error(sql, message):
+    assert f"FAIL('postgresql-error {message}" in _trino(sql)
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "\"float4\"('9223372036854775808'::bigint)",
+        "\"int4pl\"('2147483648'::integer, 1::integer)",
+    ],
+)
+def test_an_integer_literal_past_its_type_raises_22003(sql):
+    assert _refused(sql).sqlstate == "22003"
+
+
+@pytest.mark.parametrize(
+    ("sql", "days"),
+    [
+        ("\"date_lt\"('4713-01-01 BC'::date, '2024-06-15'::date)", -2440550),
+        (
+            "\"timestamp_eq\"('4713-01-01 00:00:00 BC'::timestamp without time zone, "
+            "'2024-06-15 12:30:45'::timestamp without time zone)",
+            -2440550,
+        ),
+        (
+            "\"timestamptz_lt\"('4713-01-01 00:00:00+00 BC'::timestamp with time zone, "
+            "'2024-06-15 12:30:45+00'::timestamp with time zone)",
+            -2440550,
+        ),
+    ],
+)
+def test_a_year_bc_is_its_days_from_the_epoch(sql, days):
+    """Trino's cast reads no BC; 4714-11-24 BC is Julian day 0, 2440588 days before 1970."""
+    assert f"DATE_ADD('DAY', {days}, CAST('1970-01-01' AS DATE))" in _trino(sql)
+
+
+def test_a_day_before_postgresqls_first_raises_22008():
+    refused = _refused("\"date_eq\"('4715-01-01 BC'::date, '2024-06-15'::date)")
+    assert (refused.sqlstate, str(refused)) == ("22008", 'date out of range: "4715-01-01 BC"')

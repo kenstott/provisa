@@ -39,6 +39,7 @@ from __future__ import annotations
 import calendar
 import re
 
+import sqlglot
 import sqlglot.expressions as exp
 
 from provisa.transpiler.polyfill import clickhouse, trino
@@ -91,6 +92,90 @@ def _instant(read: re.Match[str]) -> tuple[int, ...]:
     year, month, day, hour, minute, second = (int(read[i] or 0) for i in range(1, 7))
     micros = int((read[7] or "0")[:6].ljust(6, "0"))
     return (year, month, day, hour, minute, second, micros)
+
+
+#: A date's, a timestamp's or a timestamptz's text of a year before Christ (DecodeDateTime's ISO
+#: form with BC): a year, a month, a day, a time of day with a fraction, an offset, BC.
+_BC_TEXT = re.compile(
+    r"\s*(\d{1,4})-(\d{1,2})-(\d{1,2})"
+    r"(?:[ T](\d{1,2}):(\d{2})(?::(\d{2})(?:\.(\d+))?)?)?"
+    r"\s*(?:([+-])(\d{1,2})(?::?(\d{2}))?)?\s+BC\s*",
+    re.ASCII | re.IGNORECASE,
+)
+#: PostgreSQL's first day, 4714-11-24 BC: astronomical year -4713.
+_PG_FIRST_DAY = (-4713, 11, 24)
+_EPOCH = "DATE '1970-01-01'"
+
+
+def days_from_civil(year: int, month: int, day: int) -> int:
+    """The days from 1970-01-01 to a day of the proleptic Gregorian calendar, its year astronomical
+    (1 BC is 0): Trino's DATE and PostgreSQL's date count the same calendar."""
+    year -= month <= 2  # noqa: PLR2004 -- March starts the computing year
+    era = year // 400  # Python floors a negative quotient, as the C form arranges
+    of_era = year - era * 400
+    of_year = (153 * (month + (-3 if month > 2 else 9)) + 2) // 5 + day - 1  # noqa: PLR2004
+    of_era_days = of_era * 365 + of_era // 4 - of_era // 100 + of_year
+    return era * 146097 + of_era_days - 719468
+
+
+def _bc(text: str, kind: str) -> tuple[int, int] | None:
+    """A text of a year BC as the days from the epoch and the milliseconds of its day (an offset
+    taken off: the instant in UTC); None for another text. PostgreSQL's 22008 before its first day;
+    a fraction of less than a millisecond is refused by name (Trino adds no microseconds)."""
+    read = _BC_TEXT.fullmatch(text)
+    if read is None:
+        return None
+    year, month, day = 1 - int(read[1]), int(read[2]), int(read[3])
+    if not 1 <= month <= 12 or not 1 <= day <= calendar.monthrange(year % 400 + 2000, month)[1]:  # noqa: PLR2004
+        return None  # a day that does not exist: the engine's cast refuses it
+    if (year, month, day) < _PG_FIRST_DAY:
+        raise Refused(Refusal("22008", f'{kind} out of range: "{text}"'))
+    fraction = (read[7] or "").ljust(6, "0")
+    micros = int(fraction[:6])
+    if micros % 1000:
+        raise Refused(
+            Refusal("0A000", f"{kind}_in() of a year BC to the microsecond has no form on trino")
+        )
+    seconds = int(read[4] or 0) * 3600 + int(read[5] or 0) * 60 + int(read[6] or 0)
+    if read[8]:
+        offset = int(read[9]) * 3600 + int(read[10] or 0) * 60
+        seconds -= offset if read[8] == "+" else -offset
+    days, seconds = divmod(seconds, 86400)
+    return days_from_civil(year, month, day) + days, seconds * 1000 + micros // 1000
+
+
+def _bc_day(days: int) -> exp.Expr:
+    return sqlglot.parse_one(f"date_add('day', {days}, {_EPOCH})", read="trino")
+
+
+def _bc_stamp(days: int, millis: int) -> exp.Expr:
+    return sqlglot.parse_one(
+        f"date_add('millisecond', {millis}, CAST(date_add('day', {days}, {_EPOCH}) AS TIMESTAMP(3)))",
+        read="trino",
+    )
+
+
+def bc_read(node: exp.Expr, dialect: str) -> exp.Expr | None:
+    """A text of a year BC cast to a date, a timestamp or a timestamptz: Trino's cast reads no BC,
+    so the value is the days from the epoch (and the milliseconds of its day), which Trino's DATE
+    and TIMESTAMP hold, as Trino's date_add writes them; a timestamptz's instant in UTC."""
+    plain = _plain_text_cast(
+        node, exp.DataType.Type.DATE, exp.DataType.Type.TIMESTAMP, exp.DataType.Type.TIMESTAMPTZ
+    )
+    if plain is None or "bc" not in plain[1].lower():
+        return None
+    cast, text = plain
+    if cast.to.is_type(exp.DataType.Type.DATE):
+        read = _bc(text, "date")
+        return None if read is None else _bc_day(read[0])
+    zoned = cast.to.is_type(exp.DataType.Type.TIMESTAMPTZ)
+    read = _bc(text, "timestamp with time zone" if zoned else "timestamp")
+    if read is None:
+        return None
+    stamp = _bc_stamp(*read)
+    if zoned:
+        return exp.Anonymous(this="with_timezone", expressions=[stamp, exp.Literal.string("UTC")])
+    return stamp
 
 
 def stamp_read(node: exp.Expr, dialect: str) -> exp.Expr | None:
@@ -391,6 +476,16 @@ FEATURES: tuple[Feature, ...] = (
         f"it raises 0A000 (numeric_mod() of a numeric of scale past {_MOD_SCALE} has no exact "
         "form on trino).",
         first=True,
+    ),
+    _row(
+        "a year BC on trino",
+        "A text of a year before Christ cast to a date, a timestamp or a timestamptz.",
+        bc_read,
+        r"\bBC\b",
+        "Trino's cast reads no BC: the value is written as its days from 1970-01-01 (and the "
+        "milliseconds of its day), which Trino's DATE and TIMESTAMP hold, a timestamptz's instant "
+        "in UTC. Before 4714-11-24 BC it raises 22008 as PostgreSQL's input does; a fraction of "
+        "less than a millisecond raises 0A000.",
     ),
     _row(
         "a time literal on trino",
