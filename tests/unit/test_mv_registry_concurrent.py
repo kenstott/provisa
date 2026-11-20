@@ -101,13 +101,14 @@ def test_a_fault_of_the_servers_code_is_a_named_500_not_a_400(fault, caplog):
     from provisa.api.data.endpoint_dev import _sql_error
     from provisa.api.errors import ApiError
 
+    caplog.clear()
     with caplog.at_level("ERROR", logger="provisa.api.data.endpoint_dev"):
         answered = _sql_error(fault)
 
     assert isinstance(answered, ApiError)
     assert (answered.status_code, answered.code) == (500, "data.statement_failed")
     assert answered.params == {"kind": type(fault).__name__, "error": str(fault)}
-    [record] = caplog.records
+    [record] = [r for r in caplog.records if r.name == "provisa.api.data.endpoint_dev"]
     assert record.exc_info is not None and record.exc_info[1] is fault
 
 
