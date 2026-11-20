@@ -92,8 +92,11 @@ test("the Glossary shows approved terms with their definitions and related terms
   } finally {
     // A delete retires the term (REQ-2248). A page still reading these terms would read them
     // retired and ask for their retirement history, which a term retired here has none of (404).
-    // The page leaves before the terms go.
-    await page.goto("about:blank");
+    // The page leaves for the Glossary, which reads its entries once and asks nothing per term,
+    // and has drawn them before the terms go. It stays on the app's origin: the fixture's init
+    // script writes sessionStorage on every load, which an opaque origin (about:blank) refuses.
+    await page.goto("/context/glossary");
+    await expect(page.getByTestId("glossary-page")).toBeVisible({ timeout: 60_000 });
     for (const id of [pet, animal, draft]) await request.delete(`/admin/glossary/terms/${id}`);
   }
 });
