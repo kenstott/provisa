@@ -1,5 +1,6 @@
 {
   "syncingTab": {
+    "title": "Sincronización del contexto",
     "loading": "Cargando…",
     "intro": "Cada sistema externo que se mantiene al día con Provisa: catálogos de datos, ontologías y sistemas propios. Cada uno indica en qué dirección se sincroniza. Se mantienen al día descripciones, responsables, etiquetas y términos, no datos.",
     "heading_data_catalog": "Catálogo de datos",

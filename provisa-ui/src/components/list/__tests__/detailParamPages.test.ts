@@ -59,7 +59,7 @@ describe("every list page's detail panel is in the URL through useDetailParam (R
     expect(detailHref("tables", 7, "columns")).toBe("/tables?table=7&section=columns");
     expect(detailHref("tables", 7, "identity")).toBe("/tables?table=7");
     expect(detailHref("sources", "pets")).toBe("/sources?expanded=pets");
-    expect(detailHref("ontology", 3)).toBe("/admin/ontology?term=3");
+    expect(detailHref("ontology", 3)).toBe("/context/ontology?term=3");
     expect(() => detailHref("metrics", "m", "x")).toThrow();
     // REQ-2240: a mark the panel keeps with its object (a column row), and only such a one.
     expect(detailHref("tables", 7, "columns", { column: "amount" })).toBe(

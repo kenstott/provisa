@@ -36,7 +36,7 @@ steps:
 # The law: read from its public address, a scan started and cancelled -- the one done ahead is
 # opened -- then its aggregation rule and the definitions both use.
 - key: banksecrecyFindTerms
-  route: /admin/ontology
+  route: /context/ontology
   capability: glossary_read
   find_terms:
     url: https://www.ecfr.gov/api/versioner/v1/full/2026-10-15/title-31.xml?part=1010&section=1010.311
@@ -48,12 +48,12 @@ steps:
 - key: banksecrecyDefinitions
   scan: https://www.ecfr.gov/api/versioner/v1/full/2026-10-15/title-31.xml?part=1010&section=1010.100
 - key: banksecrecyLibrary
-  route: /library
+  route: /context/documents
   capability: glossary_read
   library: https://www.ecfr.gov/api/versioner/v1/full/2026-10-15/title-31.xml?part=1010&section=1010.311
 # The terms grounded on the bank's tables.
 - key: banksecrecyGrounded
-  route: /admin/ontology
+  route: /context/ontology
   capability: glossary_read
   term: transaction in currency
 - key: banksecrecyBusinessDay
@@ -95,6 +95,6 @@ steps:
   polly: Which cash needs a currency transaction report?
 # The recap: the report, a concept the law names, reaching the bank's data.
 - key: banksecrecyRecap
-  route: /admin/ontology
+  route: /context/ontology
   capability: glossary_read
   term: currency transaction report

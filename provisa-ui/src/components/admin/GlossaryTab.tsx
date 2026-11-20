@@ -197,7 +197,7 @@ export function GlossaryTab() {
   const [findTermsOpen, setFindTermsOpen] = useState(false);
   // REQ-2115: the open term by name, once the glossary has answered for it, and whether the Find
   // terms dialog is open.
-  useScreenInputs("/admin/ontology", {
+  useScreenInputs("/context/ontology", {
     termName: detail?.id === selectedId ? (detail?.name ?? null) : null,
     findTerms: findTermsOpen,
   });

@@ -10,6 +10,7 @@
     "groupModel": "Производные",
     "groupSecurity": "Безопасность",
     "groupExplore": "Обзор",
+    "groupContext": "Контекст",
     "groupAdmin": "Администрирование",
     "itemViews": "Представления",
     "itemMetrics": "Метрики",
@@ -53,7 +54,7 @@
     "itemClassificationKinds": "Классификация",
     "itemDataProducts": "Продукты",
     "itemReports": "Отчёты",
-    "itemGlossary": "Онтология",
+    "itemGlossary": "Глоссарий",
     "itemObservability": "Наблюдаемость",
     "itemMcpServer": "Сервер MCP",
     "itemLocalUsers": "Локальные пользователи",
@@ -78,8 +79,10 @@
     "itemNotebook": "Блокнот",
     "itemContainerRegistries": "Реестры контейнеров",
     "itemSparql": "SPARQL",
-    "itemLibrary": "Библиотека",
     "itemPlatformObservability": "Наблюдаемость платформы",
-    "itemSyncing": "Синхронизация"
+    "itemOntology": "Онтология",
+    "itemContextHealth": "Состояние контекста",
+    "itemDocuments": "Документы",
+    "itemContextSync": "Синхронизация контекста"
   }
 }

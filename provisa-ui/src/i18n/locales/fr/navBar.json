@@ -10,6 +10,7 @@
     "groupModel": "Dérivés",
     "groupSecurity": "Sécurité",
     "groupExplore": "Explorer",
+    "groupContext": "Contexte",
     "groupAdmin": "Admin",
     "itemViews": "Vues",
     "itemMetrics": "Métriques",
@@ -53,7 +54,7 @@
     "itemClassificationKinds": "Classification",
     "itemDataProducts": "Produits",
     "itemReports": "Rapports",
-    "itemGlossary": "Ontologie",
+    "itemGlossary": "Glossaire",
     "itemObservability": "Observabilité",
     "itemMcpServer": "Serveur MCP",
     "itemLocalUsers": "Utilisateurs locaux",
@@ -78,8 +79,10 @@
     "itemNotebook": "Notebook",
     "itemContainerRegistries": "Registres de conteneurs",
     "itemSparql": "SPARQL",
-    "itemLibrary": "Bibliothèque",
     "itemPlatformObservability": "Observabilité de la plateforme",
-    "itemSyncing": "Synchronisation"
+    "itemOntology": "Ontologie",
+    "itemContextHealth": "Santé du contexte",
+    "itemDocuments": "Documents",
+    "itemContextSync": "Synchronisation du contexte"
   }
 }

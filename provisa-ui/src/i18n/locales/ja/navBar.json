@@ -10,6 +10,7 @@
     "groupModel": "派生",
     "groupSecurity": "セキュリティ",
     "groupExplore": "探索",
+    "groupContext": "コンテキスト",
     "groupAdmin": "管理",
     "itemViews": "ビュー",
     "itemMetrics": "メトリクス",
@@ -53,7 +54,7 @@
     "itemClassificationKinds": "分類",
     "itemDataProducts": "プロダクト",
     "itemReports": "レポート",
-    "itemGlossary": "オントロジー",
+    "itemGlossary": "用語集",
     "itemObservability": "オブザーバビリティ",
     "itemMcpServer": "MCPサーバー",
     "itemLocalUsers": "ローカルユーザー",
@@ -78,8 +79,10 @@
     "itemNotebook": "ノートブック",
     "itemContainerRegistries": "コンテナレジストリ",
     "itemSparql": "SPARQL",
-    "itemLibrary": "ライブラリ",
     "itemPlatformObservability": "プラットフォームのオブザーバビリティ",
-    "itemSyncing": "同期"
+    "itemOntology": "オントロジー",
+    "itemContextHealth": "コンテキストの健全性",
+    "itemDocuments": "ドキュメント",
+    "itemContextSync": "コンテキスト同期"
   }
 }

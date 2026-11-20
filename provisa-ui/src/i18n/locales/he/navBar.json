@@ -10,6 +10,7 @@
     "groupModel": "נגזרים",
     "groupSecurity": "אבטחה",
     "groupExplore": "חקירה",
+    "groupContext": "הקשר",
     "groupAdmin": "ניהול",
     "itemViews": "Views",
     "itemMetrics": "מדדים",
@@ -53,7 +54,7 @@
     "itemClassificationKinds": "סיווג",
     "itemDataProducts": "מוצרים",
     "itemReports": "דוחות",
-    "itemGlossary": "אונטולוגיה",
+    "itemGlossary": "מילון מונחים",
     "itemObservability": "Observability",
     "itemMcpServer": "שרת MCP",
     "itemLocalUsers": "משתמשים מקומיים",
@@ -78,8 +79,10 @@
     "itemNotebook": "מחברת",
     "itemContainerRegistries": "מאגרי קונטיינרים",
     "itemSparql": "SPARQL",
-    "itemLibrary": "ספרייה",
     "itemPlatformObservability": "ניטור הפלטפורמה",
-    "itemSyncing": "סנכרון"
+    "itemOntology": "אונטולוגיה",
+    "itemContextHealth": "תקינות ההקשר",
+    "itemDocuments": "מסמכים",
+    "itemContextSync": "סנכרון הקשר"
   }
 }

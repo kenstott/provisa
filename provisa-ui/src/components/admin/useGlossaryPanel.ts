@@ -165,7 +165,7 @@ export function useGlossaryPanel(canEdit: boolean) {
       graph: { flat, layout, preset, layers, domains, edgeTypes },
     };
   }, [ontology, selectedId, editing]);
-  useScreenInputsReader("/admin/ontology", readInputs);
+  useScreenInputsReader("/context/ontology", readInputs);
 
   // Each term opens read, not in the form the previous term was left in; the term the page opened
   // on keeps its remembered form. Deferred for the same set-state-in-effect rule as the list

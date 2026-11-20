@@ -13,7 +13,7 @@
 
 import { describe, expect, it } from "vitest";
 import { detailHref } from "../../components/list/useDetailParam";
-import { entityHref } from "../entityHref";
+import { entityHref, entityLink, pageRequirement } from "../entityHref";
 
 describe("entityHref is detailHref for each thing with a panel", () => {
   it.each([
@@ -38,5 +38,42 @@ describe("entityHref is detailHref for each thing with a panel", () => {
 
   it("marks a column on its table's Columns tab", () => {
     expect(entityHref("column", "amount", 3)).toBe("/tables?table=3&section=columns&column=amount");
+  });
+});
+
+describe("the context layer's kinds (REQ-2259)", () => {
+  it("links a metric to its panel on the Metrics page", () => {
+    expect(entityHref("metric", "revenue")).toBe(detailHref("metrics", "revenue"));
+  });
+
+  it("links a classification kind to the classification kinds' page", () => {
+    expect(entityHref("classification", "email")).toBe("/admin/classification-kinds");
+  });
+});
+
+describe("a link is drawn only when the viewer holds the target page's right (REQ-2259)", () => {
+  it.each([
+    ["term", "glossary_read"],
+    ["metric", "table_registration"],
+    ["classification", "sensitive_data"],
+    ["product", "data_product_read"],
+    ["source", "source_registration"],
+    ["relationship", "create_relationship"],
+    ["lineage", "view_governance"],
+  ] as const)("%s opens to %s", (kind, right) => {
+    expect(pageRequirement(entityHref(kind, 1))).toMatchObject({ capability: right });
+    expect(entityLink([right], kind, 1)).toBe(entityHref(kind, 1));
+    expect(entityLink(["query_development"], kind, 1)).toBeUndefined();
+  });
+
+  it("gates a column on its table's page", () => {
+    expect(entityLink(["table_registration"], "column", "amount", 3)).toBe(
+      entityHref("column", "amount", 3),
+    );
+    expect(entityLink(["glossary_read"], "column", "amount", 3)).toBeUndefined();
+  });
+
+  it("refuses a page no navigation entry gates", () => {
+    expect(() => pageRequirement("/nowhere")).toThrow("/nowhere");
   });
 });
