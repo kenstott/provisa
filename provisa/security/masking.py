@@ -50,13 +50,27 @@ UNIVERSAL_REGEX_REPLACE = "provisa_regex_replace"
 FULL_MASK_TEXT = "****"
 # REQ-2059: what a save of a list holding an entry no reader reaches is refused with.
 UNREACHABLE_MASK = "You have defined a mask that is not reachable: "
-_TEXT_TYPES = {"varchar", "char", "text"}
+_TEXT_TYPES = {
+    "varchar",
+    "char",
+    "text",
+    "character varying",
+    "character",
+    "bpchar",
+    "nvarchar",
+    "string",
+}
+
+
+def is_text_type(data_type: str) -> bool:
+    """Whether a column of ``data_type`` holds text: the only type a mask may read as a string."""
+    return _base_type(data_type) in _TEXT_TYPES
 
 
 def full_mask(data_type: str) -> str | None:
     """The complete mask of a column of ``data_type``: what a regex mask reads a value it does not
     match as, and what a reader no entry of the column's list matches reads (REQ-2059)."""
-    return FULL_MASK_TEXT if _base_type(data_type) in _TEXT_TYPES else None
+    return FULL_MASK_TEXT if is_text_type(data_type) else None
 
 
 # the engine base types that support regex masking
@@ -164,8 +178,10 @@ def _resolve_constant(value: int | float | str | None, data_type: str) -> exp.Ex
     """Resolve a constant mask value to a literal.
 
     Handles special values: NULL, MAX, MIN (resolved from column type bounds).
+    REQ-2131 (amended 77da388aa6): a masked value keeps its column's type, so a column whose type
+    is not text reads a constant mask as NULL.
     """
-    if value is None:
+    if value is None or not is_text_type(data_type):
         return exp.Null()
 
     if isinstance(value, str):
@@ -245,8 +261,8 @@ def build_mask_expression(  # REQ-040, REQ-263
 
 def _resolve_constant_value(value: int | float | str | None, data_type: str):
     """Python equivalent of _resolve_constant: return the actual masked value, not a SQL literal."""
-    if value is None:
-        return None
+    if value is None or not is_text_type(data_type):
+        return None  # REQ-2131 (amended 77da388aa6): a non-text column reads a constant as NULL
     if isinstance(value, str):
         upper = value.upper()
         base = _base_type(data_type)
