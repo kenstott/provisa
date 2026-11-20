@@ -139,7 +139,7 @@ async def test_clickhouse_config_driven_connector_federates_sqlite(tmp_path, mon
                 source_type: sqlite_custom
                 kind: clickhouse_database
                 ch_engine: SQLite
-                engine_template: "SQLite('{path}')"
+                engine_template: "SQLite({path})"
             """
         )
     )
