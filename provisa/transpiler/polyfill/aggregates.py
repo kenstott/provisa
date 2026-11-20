@@ -41,7 +41,15 @@ from __future__ import annotations
 import sqlglot.expressions as exp
 
 from provisa.transpiler.polyfill import float_aggregates, trino
-from provisa.transpiler.polyfill.grid import DIALECTS, NATIVE, Feature, Limitation, Rule, Side
+from provisa.transpiler.polyfill.grid import (
+    DIALECTS,
+    NATIVE,
+    Feature,
+    Limitation,
+    Rule,
+    Side,
+    written_in,
+)
 from provisa.transpiler.polyfill.matching import graft
 from provisa.transpiler.polyfill.notation import Refused, Rewrite, replacement
 from provisa.transpiler.polyfill.numbers import ch_fail
@@ -285,7 +293,7 @@ def trino_of_doubles(node: exp.Expr, dialect: str) -> exp.Expr | None:
     if double is None:
         return None
     form = float_aggregates.trino_of_doubles(function)
-    return graft(replacement(form, dialect, _PATTERN.format(function)), {"v": double})
+    return graft(replacement(form, written_in(dialect), _PATTERN.format(function)), {"v": double})
 
 
 _EXACT = Rewrite(exact_of_integers)

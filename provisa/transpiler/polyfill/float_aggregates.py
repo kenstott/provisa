@@ -31,7 +31,7 @@ from __future__ import annotations
 import sqlglot.expressions as exp
 
 from provisa.transpiler.polyfill import trino
-from provisa.transpiler.polyfill.grid import Feature, Rule, Side
+from provisa.transpiler.polyfill.grid import Feature, Rule, Side, written_in
 from provisa.transpiler.polyfill.matching import graft
 from provisa.transpiler.polyfill.notation import Rewrite, replacement
 from provisa.transpiler.polyfill.numbers import FAMILY, ch_checked, ch_fail, ch_only
@@ -242,7 +242,9 @@ def _trino_sum(node: exp.Expr, dialect: str) -> exp.Expr | None:
         return None
     if (said_type(argument) or trino.said(argument)) not in ("real", "double precision"):
         return None
-    return graft(replacement(trino_of_doubles("sum"), dialect, "sum($v)"), {"v": argument})
+    return graft(
+        replacement(trino_of_doubles("sum"), written_in(dialect), "sum($v)"), {"v": argument}
+    )
 
 
 def _over_or_filtered(node: exp.Expr) -> bool:

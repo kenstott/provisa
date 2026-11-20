@@ -38,7 +38,7 @@ from provisa.transpiler import pg_forms
 from provisa.transpiler.polyfill import notation, trino
 from provisa.transpiler.polyfill.matching import graft, match
 from provisa.transpiler.polyfill.notation import Form, Rewrite, replacement
-from provisa.transpiler.polyfill.grid import Feature, Limitation, Rule, Side
+from provisa.transpiler.polyfill.grid import Feature, Limitation, Rule, Side, written_in
 from provisa.transpiler.polyfill.numbers import (
     FAMILY,
     ch_checked,
@@ -72,7 +72,7 @@ def _doubles(pattern: str, form: str) -> Rewrite:
         bindings = match(notation.pattern(pattern), _typed(node))
         if bindings is None:
             return None
-        return graft(replacement(form, dialect, pattern), bindings)
+        return graft(replacement(form, written_in(dialect), pattern), bindings)
 
     doubles.__doc__ = f"{pattern} of no numeric: a double's answer, its edges as PostgreSQL's."
     doubles.__qualname__ = f"of_no_numeric_{_written(pattern)}"
@@ -800,7 +800,7 @@ def _chr(node: exp.Expr, dialect: str) -> exp.Expr | None:
     if call is None or len(call[1]) != 1:
         return None
     form = _T_CHR if dialect in trino.TRINO else _CHR_ONCE
-    return graft(replacement(form, dialect, "chr($x)"), {"x": call[1][0]})
+    return graft(replacement(form, written_in(dialect), "chr($x)"), {"x": call[1][0]})
 
 
 CHR = Feature(
@@ -864,7 +864,7 @@ def in_range_of_numbers(
     value, _, offset = (function_types.argument_type(a) for a in said[:3])
     if dialect in trino.TRINO and value in _FLOAT_NAMES and offset in _FLOAT_NAMES:
         bindings = dict(zip("vbosl", args, strict=True))
-        return graft(replacement(_T_IN_RANGE_FLOATS, dialect, _IN_RANGE), bindings)
+        return graft(replacement(_T_IN_RANGE_FLOATS, written_in(dialect), _IN_RANGE), bindings)
     if dialect != "clickhouse":
         return None
     if value in _INTEGER_NAMES and offset in _INTEGER_NAMES:

@@ -532,7 +532,7 @@ EDGES: list[tuple[str, str, Any]] = [
         "value",
         "123456789012345678901234567890.12345678901234567890123456789",
     ),
-    ("SELECT pg_catalog.\"unnest\"('{{1,2},{3,4}}'::integer[]) AS v", "value", None),
+    ("SELECT pg_catalog.\"unnest\"('{{1,2},{3,4}}'::integer[]) AS v", "rows", ["1", "2", "3", "4"]),
     (
         "SELECT pg_catalog.\"var_pop\"(c1) AS v FROM (VALUES ('1.7976931348623157e+308'::double precision), ('1.7976931348623157e+308'::double precision)) AS t(c1)",
         "err",

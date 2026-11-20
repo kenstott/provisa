@@ -25,7 +25,7 @@ from __future__ import annotations
 import sqlglot.expressions as exp
 
 from provisa.transpiler.polyfill import trino
-from provisa.transpiler.polyfill.grid import Feature, Rule, Side
+from provisa.transpiler.polyfill.grid import Feature, Rule, Side, written_in
 from provisa.transpiler.polyfill.matching import Bindings, graft
 from provisa.transpiler.polyfill.notation import Refusal, Refused, Rewrite, replacement
 
@@ -173,7 +173,7 @@ def of_dimensions(node: exp.Expr, dialect: str) -> exp.Expr | None:
         if written is not None and _nested(args[0]):
             pattern, form = written
             holes: Bindings = dict(zip(("a", "s", "n"), args))
-            return graft(replacement(form, dialect, pattern), holes)
+            return graft(replacement(form, written_in(dialect), pattern), holes)
     return None
 
 
