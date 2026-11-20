@@ -11,6 +11,9 @@
 // REQ-2241: each list page's open panel is read and written through the one shared hook,
 // useDetailParam, under the parameter DETAIL_VIEWS names for it. A page that reads or writes that
 // parameter itself would be a second place deciding what is open, so it fails here.
+// REQ-2260: and a page whose panel opens an item's detail does so through useRememberedDetail, so
+// it reopens what was left open; a page added to DETAIL_VIEWS without it fails here. A page that
+// only marks a linked row (no detail opens or closes there) names itself to useDetailParam.
 
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -28,28 +31,46 @@ import {
 const SRC = join(__dirname, "..", "..", "..");
 
 // Where each page's panel is wired, and how it names itself to the hook.
-const PAGES: Record<DetailPage, { file: string; call: string }> = {
-  sources: { file: "pages/SourcesPage.tsx", call: 'useDetailParam("sources")' },
-  tables: { file: "pages/TablesPage.tsx", call: 'useDetailParam(viewsOnly ? "views" : "tables")' },
-  views: { file: "pages/TablesPage.tsx", call: 'useDetailParam(viewsOnly ? "views" : "tables")' },
-  relationships: { file: "pages/RelationshipsPage.tsx", call: 'useDetailParam("relationships")' },
-  ontology: { file: "components/admin/useGlossaryPanel.ts", call: 'useDetailParam("ontology")' },
-  library: { file: "pages/library/LibraryPage.tsx", call: 'useDetailParam("library")' },
-  metrics: { file: "pages/MetricsPage.tsx", call: 'useDetailParam("metrics")' },
-  products: { file: "pages/DataProductsPage.tsx", call: 'useDetailParam("products")' },
-  roles: { file: "pages/SecurityPage.tsx", call: 'useDetailParam("roles")' },
-  derived: { file: "pages/SecurityPage.tsx", call: 'useDetailParam("derived")' },
-  rls: { file: "pages/security/SecurityRlsPage.tsx", call: 'useDetailParam("rls")' },
-  commands: { file: "pages/CommandsPage.tsx", call: 'useDetailParam("commands")' },
-  domains: { file: "pages/AdminPage.tsx", call: 'useDetailParam("domains")' },
-  tags: { file: "components/admin/TagsTab.tsx", call: 'useDetailParam("tags")' },
+// `marks`: the page only marks a linked row.
+const PAGES: Record<DetailPage, { file: string; call: string; marks?: true }> = {
+  sources: { file: "pages/SourcesPage.tsx", call: 'useRememberedDetail(\n    "sources",' },
+  tables: {
+    file: "pages/TablesPage.tsx",
+    call: 'useRememberedDetail(\n    viewsOnly ? "views" : "tables",',
+  },
+  views: {
+    file: "pages/TablesPage.tsx",
+    call: 'useRememberedDetail(\n    viewsOnly ? "views" : "tables",',
+  },
+  relationships: {
+    file: "pages/RelationshipsPage.tsx",
+    call: 'useRememberedDetail(\n    "relationships",',
+  },
+  ontology: {
+    file: "components/admin/useGlossaryPanel.ts",
+    call: 'useRememberedDetail("ontology",',
+  },
+  library: { file: "pages/library/LibraryPage.tsx", call: 'useRememberedDetail(\n    "library",' },
+  metrics: { file: "pages/MetricsPage.tsx", call: 'useRememberedDetail("metrics",' },
+  products: {
+    file: "pages/DataProductsPage.tsx",
+    call: 'useRememberedDetail(\n    "products",',
+  },
+  roles: { file: "pages/SecurityPage.tsx", call: 'useRememberedDetail("roles",' },
+  derived: { file: "pages/SecurityPage.tsx", call: 'useRememberedDetail(\n    "derived",' },
+  rls: { file: "pages/security/SecurityRlsPage.tsx", call: 'useRememberedDetail("rls",' },
+  commands: { file: "pages/CommandsPage.tsx", call: 'useRememberedDetail(\n    "commands",' },
+  domains: { file: "pages/AdminPage.tsx", call: 'useDetailParam("domains").id', marks: true },
+  tags: { file: "components/admin/TagsTab.tsx", call: 'useDetailParam("tags").id', marks: true },
 };
 
 describe("every list page's detail panel is in the URL through useDetailParam (REQ-2241)", () => {
   it.each(Object.keys(DETAIL_VIEWS) as DetailPage[])("%s", (page) => {
-    const { file, call } = PAGES[page];
+    const { file, call, marks } = PAGES[page];
     const text = readFileSync(join(SRC, file), "utf8");
     expect(text).toContain(call);
+    // REQ-2260: a page with a detail remembers it; it never takes the bare hook.
+    if (!marks) expect(text).not.toContain("useDetailParam(");
     const { param } = DETAIL_VIEWS[page];
     const own = new RegExp(`\\.(get|has|set|delete)\\("${param}"`, "g");
     expect(text.match(own) ?? []).toEqual([]);

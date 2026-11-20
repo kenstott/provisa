@@ -49,7 +49,7 @@ import { AddRelationshipForm } from "../components/relationships/AddRelationship
 import { RelationshipRow } from "../components/relationships/RelationshipRow";
 import { RelationshipDetail } from "../components/relationships/RelationshipDetail";
 import { SplitPane } from "../components/list/SplitPane";
-import { useDetailParam } from "../components/list/useDetailParam";
+import { useRememberedDetail } from "../components/list/useDetailParam";
 import { ListTable, ListHead, ListEmpty, ListItems } from "../components/list/ListTable";
 import { useListSortGroup, pageItems, type ListColumn } from "../components/list/useListSortGroup";
 import {
@@ -89,7 +89,11 @@ export function RelationshipsPage() {
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState<RelForm>(EMPTY_FORM);
   // REQ-2241: `?relationship=<id>` (a graph's link, lib/entityHref) is the open relationship's panel.
-  const detail = useDetailParam("relationships");
+  // REQ-2260: and the one left open is open again on coming back.
+  const detail = useRememberedDetail(
+    "relationships",
+    relsLoading ? null : rels.map((r) => String(r.id)),
+  );
   const expanded = detail.id;
   const setExpanded = (id: string | null) => (id === null ? detail.close() : detail.open(id));
   const { open: openDetail, close: closeDetail } = detail;

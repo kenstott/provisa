@@ -119,7 +119,7 @@ import { useCapability } from "../hooks/useCapability";
 import { hidingDomains } from "../lib/capabilities";
 import { domainToSqlName, relationName } from "../naming";
 import { SplitPane } from "../components/list/SplitPane";
-import { useDetailParam } from "../components/list/useDetailParam";
+import { useRememberedDetail } from "../components/list/useDetailParam";
 import { useListSelection } from "../components/list/listSelection";
 import { ListBulkBar } from "../components/list/ListBulkBar";
 import { matchesQuery } from "../lib/searchItems";
@@ -151,7 +151,13 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
   // from elsewhere (its checkers, its source, a graph's column link) lands on the table itself, and
   // Back returns to the panel and section before. The section is the same in the read view and the
   // edit form, so opening the editor keeps the tab that was being read.
-  const detail = useDetailParam(viewsOnly ? "views" : "tables");
+  // REQ-2260: and the one left open is open again on coming back.
+  const detail = useRememberedDetail(
+    viewsOnly ? "views" : "tables",
+    tablesLoading
+      ? null
+      : tables.filter((t) => !viewsOnly || t.viewSql).map((t) => String(t.id)),
+  );
   const section: TableSection =
     detail.tab !== null && (TABLE_SECTIONS as string[]).includes(detail.tab)
       ? (detail.tab as TableSection)

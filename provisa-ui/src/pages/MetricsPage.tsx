@@ -39,7 +39,7 @@ import { OssieInterchangePanel } from "./metrics/OssieInterchangePanel";
 import { HelpBubble } from "../components/HelpBubble";
 import { MetricDetailPanel } from "./metrics/MetricDetailPanel";
 import { SplitPane } from "../components/list/SplitPane";
-import { useDetailParam } from "../components/list/useDetailParam";
+import { useRememberedDetail } from "../components/list/useDetailParam";
 import { useDependentsDialog } from "../hooks/useDependentsDialog";
 import { ListTable, ListHead, ListRow, ListEmpty, ListItems } from "../components/list/ListTable";
 import { useListSortGroup, type ListColumn } from "../components/list/useListSortGroup";
@@ -270,7 +270,8 @@ export function MetricsPage({ readOnly = false }: { readOnly?: boolean }) {
   const [form, setForm] = useState<MetricForm>({ ...EMPTY_FORM });
   const [builder, setBuilder] = useState<BuilderState>({ ...EMPTY_BUILDER });
   // REQ-2241: `?metric=<name>` is the open metric's panel.
-  const detail = useDetailParam("metrics");
+  // REQ-2260: and the one left open is open again on coming back.
+  const detail = useRememberedDetail("metrics", loading ? null : metrics.map((m) => m.name));
   const expanded = detail.id;
   const setExpanded = (name: string | null) => (name === null ? detail.close() : detail.open(name));
   const [msg, setMsg] = useState("");
