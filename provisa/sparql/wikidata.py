@@ -160,14 +160,25 @@ def _label(var: str, into: str, language: str) -> str:
 
 
 def _grouped(
-    outer: list[str], inner_select: str, anchor: tuple[str, str], rest: str, group_by: str
+    outer: list[str],
+    inner_select: str,
+    anchor: tuple[str, str],
+    label: str,
+    rest: str,
+    group_by: str,
 ) -> str:
     """A query whose rows are grouped in a subquery and selected by plain name outside it, so
     its columns are exactly ``outer``. Its rows come from ``anchor`` -- the variables it binds
     and its pattern (an identifier or a closed class) -- written as a sub-select of its own and
     joined first: the optimizer hint keeps that order, since the query service's own reordering
     doubles these queries' time and has driven them into gateway errors. A preview limits that
-    sub-select (provisa.sparql.source._probe_limit), which bounds the rows the group reads."""
+    sub-select (provisa.sparql.source._probe_limit), which bounds the rows the group reads.
+
+    ``label`` -- the anchor entity's own label -- is read right after the anchor, once per anchor
+    row, before the optional patterns of ``rest`` multiply the rows by their several values (a
+    population per census, a country per period): read after them it is read once per
+    combination, which drove the admin_regions starter and a class table past the endpoint's
+    limit (504 and 503), where read first the same query answers in seconds."""
     names = " ".join(f"?{n}" for n in outer)
     anchor_vars, anchor_pattern = anchor
     return (
@@ -177,7 +188,7 @@ def _grouped(
         f"    WHERE {{\n"
         '      hint:SubQuery hint:optimizer "None" .\n'
         f"      {{ SELECT {anchor_vars} WHERE {{ {anchor_pattern} }} }}\n"
-        f"{rest}\n    }}\n"
+        f"      {label}\n" + (f"{rest}\n" if rest else "") + "    }\n"
         f"    GROUP BY {group_by}\n"
         f"  }}\n"
         f"}}"
@@ -192,10 +203,10 @@ _COUNTRIES = StarterTable(
         f"(SAMPLE(?a3) AS ?iso_alpha3) (SAMPLE({_qid('cap')}) AS ?capital_id) "
         f"(SAMPLE(?capLabel) AS ?capital) (MAX(xsd:integer(?pop)) AS ?population)",
         ("?c ?a2", "?c wdt:P297 ?a2 ."),
+        _label("c", "label", "en"),
         "      OPTIONAL { ?c wdt:P298 ?a3 }\n"
         f"      OPTIONAL {{ ?c wdt:P36 ?cap . {_label('cap', 'capLabel', 'en')} }}\n"
-        "      OPTIONAL { ?c wdt:P1082 ?pop }\n"
-        f"      {_label('c', 'label', 'en')}",
+        "      OPTIONAL { ?c wdt:P1082 ?pop }",
         "?c",
     ),
 )
@@ -206,7 +217,8 @@ _CURRENCIES = StarterTable(
         ["id", "name", "iso_4217"],
         f"({_qid('c')} AS ?id) (SAMPLE(?label) AS ?name) (SAMPLE(?code) AS ?iso_4217)",
         ("?c ?code", "?c wdt:P498 ?code ."),
-        f"      {_label('c', 'label', 'en')}",
+        _label("c", "label", "en"),
+        "",
         "?c",
     ),
 )
@@ -218,9 +230,8 @@ _LANGUAGES = StarterTable(
         f"({_qid('l')} AS ?id) (SAMPLE(?label) AS ?name) (SAMPLE(?c1) AS ?iso_639_1) "
         "(SAMPLE(?c2) AS ?iso_639_2) (SAMPLE(?c3) AS ?iso_639_3)",
         ("?l ?c3", "?l wdt:P220 ?c3 ."),
-        "      OPTIONAL { ?l wdt:P218 ?c1 }\n"
-        "      OPTIONAL { ?l wdt:P219 ?c2 }\n"
-        f"      {_label('l', 'label', 'en')}",
+        _label("l", "label", "en"),
+        "      OPTIONAL { ?l wdt:P218 ?c1 }\n      OPTIONAL { ?l wdt:P219 ?c2 }",
         "?l",
     ),
 )
@@ -237,9 +248,9 @@ _ADMIN_REGIONS = StarterTable(
             "?r",
             "?kind wdt:P279 wd:Q10864048 . ?r wdt:P31 ?kind . FILTER NOT EXISTS { ?r wdt:P576 [] }",
         ),
+        _label("r", "label", "en"),
         "      OPTIONAL { ?r wdt:P300 ?code }\n"
-        f"      OPTIONAL {{ ?r wdt:P17 ?country . {_label('country', 'countryLabel', 'en')} }}\n"
-        f"      {_label('r', 'label', 'en')}",
+        f"      OPTIONAL {{ ?r wdt:P17 ?country . {_label('country', 'countryLabel', 'en')} }}",
         "?r",
     ),
 )
@@ -258,11 +269,11 @@ _ORGANIZATIONS = StarterTable(
             "?org p:P414 ?listing . ?listing ps:P414 ?ex . "
             "FILTER NOT EXISTS { ?listing pq:P582 [] }",
         ),
+        _label("org", "label", "en"),
         "      OPTIONAL { ?listing pq:P249 ?tick }\n"
         "      OPTIONAL { ?org wdt:P1278 ?leiCode }\n"
         "      OPTIONAL { ?org wdt:P946 ?isinCode }\n"
-        f"      {_label('ex', 'exLabel', 'en')}\n"
-        f"      {_label('org', 'label', 'en')}",
+        f"      {_label('ex', 'exLabel', 'en')}",
         "?org ?ex",
     ),
 )
@@ -625,9 +636,15 @@ def class_table_query(
             columns.append(ApiColumn(name=name, type=prop.type))
             select.append(f"(SAMPLE(?{value}) AS ?{name})")
             where.append(f"      OPTIONAL {{ ?item wdt:{pid} ?{value} }}")
-    where.append(f"      {_label('item', 'itemLabel', language)}")
     return ClassTable(
-        query=_grouped(outer, " ".join(select), anchor, "\n".join(where), "?item"),
+        query=_grouped(
+            outer,
+            " ".join(select),
+            anchor,
+            _label("item", "itemLabel", language),
+            "\n".join(where),
+            "?item",
+        ),
         columns=tuple(columns),
     )
 

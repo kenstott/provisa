@@ -130,6 +130,30 @@ def test_each_starter_query_is_bounded(name):
     assert re.search(r"\bGROUP BY\b", query)
 
 
+_ANCHOR_VAR = {
+    "countries": "c",
+    "currencies": "c",
+    "languages": "l",
+    "admin_regions": "r",
+    "organizations": "org",
+}
+
+
+def _label_read_first(query: str, var: str) -> bool:
+    """Whether the first optional pattern after the anchor sub-select reads ``var``'s label."""
+    after_anchor = query.split("hint:SubQuery", 1)[1].split("} }\n", 1)[1]
+    first_optional = after_anchor[after_anchor.index("OPTIONAL") :].split("\n", 1)[0]
+    return first_optional.startswith(f"OPTIONAL {{ ?{var} rdfs:label ")
+
+
+@pytest.mark.parametrize("name", sorted(_STARTERS))
+def test_each_starter_reads_its_rows_label_before_the_optional_values(name):
+    """The anchor's own label is read once per anchor row, before optional patterns multiply
+    the rows by their several values: read after them, admin_regions passed the endpoint's
+    60-second limit (504)."""
+    assert _label_read_first(_STARTERS[name].query, _ANCHOR_VAR[name]), _STARTERS[name].query
+
+
 def _types(name: str) -> dict[str, ApiColumnType]:
     return {c.name: c.type for c in _STARTERS[name].columns}
 
@@ -403,6 +427,9 @@ async def test_saving_a_class_table_defines_its_sparql_query_and_typed_columns()
     assert "wdt:P31 wd:Q515" in table.query
     assert "wdt:P17" in table.query and "wdt:P1082" in table.query
     assert "P279*" not in table.query
+    # The instance's label is read before its property values multiply the rows (a class
+    # table of country answered 503 with the label read last).
+    assert _label_read_first(table.query, "item"), table.query
 
 
 @respx.mock
