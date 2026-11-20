@@ -132,6 +132,7 @@ const GOVERNOR = [TABLES, CONTEXT, MODEL, PRODUCTS, SECURITY];
 const EXPECTED: Record<string, [string[], boolean, string]> = {
   viewer: [READER, true, "/context/ontology"],
   analyst: [[...READER, EXPLORE], true, "/schema"],
+  data_writer: [[...READER, EXPLORE], true, "/schema"],
   developer: [BUILDER, true, "/schema"],
   modeler: [BUILDER, true, "/schema"],
   data_product_owner: [READER, true, "/context/ontology"],
@@ -141,9 +142,9 @@ const EXPECTED: Record<string, [string[], boolean, string]> = {
     true,
     "/schema",
   ],
-  dq_reader: [READER, true, "/context/ontology"],
   dq_steward: [READER, true, "/context/ontology"],
   source_admin: [[SOURCES, TABLES, CONTEXT, MODEL, PRODUCTS], true, "/sources"],
+  member_admin: [READER, true, "/context/ontology"],
   org_operator: [READER, true, "/context/ontology"],
   org_admin: [EVERY_ENTRY, true, "/schema"],
   sandbox: [EVERY_ENTRY, true, "/schema"],
