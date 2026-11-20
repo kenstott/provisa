@@ -440,7 +440,9 @@ export async function expectRegisteredLive(
     data: { query: "{ tables { id sourceId tableName withdrawn } }" },
   });
   expect(res.ok(), await res.text()).toBeTruthy();
-  const tables = (await res.json()).data.tables as {
+  const body = await res.json();
+  expect(body.errors, JSON.stringify(body.errors)).toBeUndefined();
+  const tables = body.data.tables as {
     id: number;
     sourceId: string;
     tableName: string;
