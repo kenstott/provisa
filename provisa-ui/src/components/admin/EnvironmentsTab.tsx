@@ -705,7 +705,7 @@ export function EnvironmentsTab() {
                   <Table.Td>
                     <Select
                       size="xs"
-                      w={140}
+                      w={124}
                       allowDeselect={false}
                       disabled={!canManage(e)}
                       value={e.stage}
