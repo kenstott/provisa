@@ -91216,7 +91216,7 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     2026-11-20, SEVERAL PARENTS'' ROW RULES ARE ORED:) Maintainer 2026-11-20. A role that inherits from
     several parents each carrying a row rule on the same table reads the rows that match any of those rules,
     consistent with acting with the union of held roles; inheriting a parent never narrows access. Earlier
-    text that each parent''s rule is ANDed in is superseded.'
+    text that each parent''s rule is ANDed in is superseded. (Amended 2026-11-20, maintainer: a personal access token naming no role still acts as its first live scope per REQ-1263, not the union of its scopes; in claims mode the union counts only roles the claims name, and a role reached only through role_mapping or default_role is not added to it.)'
   scenario: 'Given an org role ''dq lead'' inheriting from Data quality steward and Data product owner
 
     Then it holds the union of both roles'' capabilities
@@ -98114,4 +98114,4 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     URL setup field for a per-instance host, a spec location that may point at the running instance (whose
     spec changes between versions), and the authentication type, including OAuth client credentials. The
     Marquez source (REQ-2264) uses the same mechanism. Until a brand exists, any of these catalogs can be
-    added as a plain OpenAPI source.'
+    added as a plain OpenAPI source. (Amended 2026-11-20, maintainer: DataHub is read through its OpenAPI v3 spec ({base_url}/openapi/v3/api-docs) by the same OpenAPI passthrough brand mechanism as OpenMetadata, not the GraphQL source; a list answer whose next-page cursor is nested (paging.after, scrollId) is paged by the generic OpenAPI source, which takes a dotted cursor path and the required array as the rows.)'
