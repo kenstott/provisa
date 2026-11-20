@@ -285,10 +285,17 @@ def normalize_table_refs(sql: str, ctx: CompilationContext) -> str:  # REQ-641
     by_schema_name: dict[tuple[str, str], tuple[str, str, str]] = {}
     # field name (lower) → its table's physical pair, for an unqualified ref no table is named by
     by_field: dict[str, tuple[str, str]] = {}
+    # (catalog_lower, schema_lower, name_lower) → canonical triple: two sources may hold tables of
+    # one schema.table, and a reference that names its catalog is the table under that catalog
+    # (naming.table_id_of), never the other's
+    by_catalog_name: dict[tuple[str, str, str], tuple[str, str, str]] = {}
 
     seen: set[tuple[str, str]] = set()
     for meta in ctx.tables.values():
         key = (meta.schema_name, meta.table_name)
+        by_catalog_name[
+            (meta.catalog_name.lower(), meta.schema_name.lower(), meta.table_name.lower())
+        ] = (meta.catalog_name, meta.schema_name, meta.table_name)
         if key in seen:
             continue
         seen.add(key)
@@ -353,7 +360,11 @@ def normalize_table_refs(sql: str, ctx: CompilationContext) -> str:  # REQ-641
 
         if db:
             # Already schema-qualified — just ensure quoting
-            canonical = by_schema_name.get((db.lower(), name.lower()))
+            canonical = (
+                by_catalog_name.get((catalog.lower(), db.lower(), name.lower()))
+                if catalog
+                else None
+            ) or by_schema_name.get((db.lower(), name.lower()))
             if canonical:
                 catalog_q, schema_q, table_q = canonical
             else:

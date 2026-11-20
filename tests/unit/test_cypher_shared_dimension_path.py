@@ -126,7 +126,9 @@ def _compiled(query: str, sides: list[str]) -> str:
 
 def _refused(query: str, sides: list[str]) -> list[tuple[int, int, str]]:
     """What governance refuses in the statement, the dimension expanded as it is for the check."""
-    sql = expand_view_refs(_compiled(query, sides), {TABLES[DIM]: _view_sql(sides)}, mark=True)
+    sql = expand_view_refs(
+        _compiled(query, sides), {f"public.{TABLES[DIM]}": _view_sql(sides)}, mark=True
+    )
     found = join_guard.unrelated_tables(
         sqlglot.parse_one(sql, read="postgres"),
         resolve_table_id=lambda t: IDS.get(t.name),
@@ -139,7 +141,7 @@ def _refused(query: str, sides: list[str]) -> list[tuple[int, int, str]]:
 
 
 def _rows(con, query: str, sides: list[str]) -> list[tuple]:
-    sql = expand_view_refs(_compiled(query, sides), {TABLES[DIM]: _view_sql(sides)})
+    sql = expand_view_refs(_compiled(query, sides), {f"public.{TABLES[DIM]}": _view_sql(sides)})
     cur = con.execute(transpile_to_duckdb(sql))
     names = [d[0] for d in cur.description]
     rows = [dict(zip(names, r)) for r in cur.fetchall()]
@@ -202,7 +204,7 @@ def test_a_side_with_no_relationship_to_the_dimension_is_still_refused():
     sides = ["Budget", "Complaints", "Permits"]
     sql = expand_view_refs(
         _compiled(_path("Budget", "Complaints"), sides),
-        {TABLES[DIM]: _view_sql(sides)},
+        {f"public.{TABLES[DIM]}": _view_sql(sides)},
         mark=True,
     )
     without = {r for r in _registered(sides) if IDS["complaints"] not in r[:2]}

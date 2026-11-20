@@ -383,8 +383,12 @@ async def previewing(state: Any, role_id: str, withdrawn: list[dict]) -> _Previe
         if source is not None:
             routes = routes_with_previewed(routes, table["id"], source.id)
     surface = surface_with_withdrawn(state, role_id, withdrawn)
+    from provisa.compiler.view_expand import view_key
+
     bodies = {
-        t["table_name"]: body for t in withdrawn if (body := _view_body(state, t)) is not None
+        view_key(t["schema_name"], t["table_name"]): body
+        for t in withdrawn
+        if (body := _view_body(state, t)) is not None
     }
     return _Previewing(state, withdrawn, role_id, surface, routes, bodies)
 

@@ -26,6 +26,7 @@ from provisa.core.schema_org import registered_tables as _registered_tables_t
 from provisa.core.schema_org import table_columns as _table_columns_t
 from provisa.api.startup_resilience import tolerate_startup_failure
 from provisa.core.models import DERIVED_SOURCE_ID
+from provisa.compiler.view_expand import view_key
 
 if TYPE_CHECKING:
     from provisa.core.database import Connection
@@ -147,6 +148,7 @@ async def _register_user_views_in_state(
                 await conn.execute_core(
                     select(
                         _registered_tables_t.c.id,
+                        _registered_tables_t.c.schema_name,
                         _registered_tables_t.c.table_name,
                         _registered_tables_t.c.view_sql,
                         _registered_tables_t.c.materialize,
@@ -204,6 +206,8 @@ async def _register_user_views_in_state(
             # is unqueryable: its raw source catalog (e.g. __derived__) reaches the engine and fails
             # with "Catalog __derived__ does not exist".
             _semantic_sql = _vr["view_sql"].rstrip().rstrip(";")
+            # Keyed by its schema and name: a reference is the view only under its own schema.
+            _key = view_key(_vr["schema_name"], _vr["table_name"])
             # REQ-1162, REQ-2109: reconstruct the bitemporal spec from the persisted declaration;
             # a materialized view declaring none may inherit its versions from the one versioned
             # table it groups (None = ordinary).
@@ -238,10 +242,10 @@ async def _register_user_views_in_state(
                     f"mv_{_vr['table_name']}",
                     catalog_qualified=state.federation_engine.engine.catalog_qualified,
                 )
-                state.view_sql_map[_vr["table_name"]] = view_read_sql(_mv_ref, _bt_spec)
+                state.view_sql_map[_key] = view_read_sql(_mv_ref, _bt_spec)
                 # REQ-1163: remember (target, spec) so a request-level as-of can overlay an as-of
                 # reconstruction over this view's append log at query time.
-                state.bitemporal_view_reads[_vr["table_name"]] = (_mv_ref, _bt_spec)
+                state.bitemporal_view_reads[_key] = (_mv_ref, _bt_spec)
                 if _bt_spec.inherited is not None:
                     # REQ-2064, REQ-2109: it declared none of the times its reads answer.
                     from provisa.mv.bitemporal_inherit import with_inherited_read_columns
@@ -264,10 +268,10 @@ async def _register_user_views_in_state(
                     catalog_qualified=state.federation_engine.engine.catalog_qualified,
                 )
                 _vr["materialize"] = True  # landed, declared or not
-                state.view_sql_map[_vr["table_name"]] = f"SELECT * FROM {_stored}"
-                _stored_reads.add(_vr["table_name"])
+                state.view_sql_map[_key] = f"SELECT * FROM {_stored}"
+                _stored_reads.add(_key)
             else:
-                state.view_sql_map[_vr["table_name"]] = _semantic_sql
+                state.view_sql_map[_key] = _semantic_sql
             if _vr.get("materialize"):
                 from provisa.mv.models import MVDefinition, MVStatus
                 from provisa.mv.readable_inputs import read_table_names
@@ -373,14 +377,15 @@ async def _register_user_views_in_state(
         for _vr in _view_rows:
             if not _vr["withdrawn"]:
                 continue
-            state.view_sql_map.pop(_vr["table_name"], None)
-            state.bitemporal_view_reads.pop(_vr["table_name"], None)
+            _key = view_key(_vr["schema_name"], _vr["table_name"])
+            state.view_sql_map.pop(_key, None)
+            state.bitemporal_view_reads.pop(_key, None)
             if not _vr.get("materialize") and state.mv_registry.get(f"view-{_vr['table_name']}"):
                 state.mv_registry.unregister(f"view-{_vr['table_name']}")
         # REQ-1918: a view's read and its build are parts of it. A view deleted leaves neither,
         # and one no longer materialized leaves no build -- a build left reading a view that is
         # gone would fail the org's event wiring on every later change.
-        _views = {_vr["table_name"] for _vr in _view_rows}
+        _views = {view_key(_vr["schema_name"], _vr["table_name"]) for _vr in _view_rows}
         _built = {_vr["table_name"] for _vr in _view_rows if _vr.get("materialize")}
         for _mv in state.mv_registry.all():
             if _mv.view_table is not None and _mv.view_table not in _built:
