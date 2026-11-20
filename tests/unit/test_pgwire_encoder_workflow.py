@@ -18,7 +18,6 @@ imports it, so an artifact without it is never built."""
 
 from __future__ import annotations
 
-import fnmatch
 import hashlib
 import importlib.util
 import re
@@ -396,20 +395,22 @@ def test_the_sbom_and_cve_gate_run_once_for_every_wheel():
 
 def test_the_release_attaches_every_platforms_wheel():
     """The server wheels reach users from the release (the Pages index links them there), not
-    PyPI: the release's download is a pattern that matches each platform's -dist artifact, and
-    the asset check requires a wheel."""
+    PyPI: each platform's wheel job attaches its wheel to the draft itself, and the publish step
+    refuses to undraft without each platform's wheel."""
     jobs = _jobs("build-dmg.yml")
     assert not [name for name in jobs if "pgwire" in name]
     assert "publish-provisa-pypi" not in jobs
+    wheel = _jobs("release-packages.yml")["build-provisa-wheel"]
+    attach = [
+        s for s in wheel["steps"] if s.get("uses") == "./.github/actions/attach-release-assets"
+    ]
+    assert [s["with"]["files"] for s in attach] == ["dist/provisa-*.whl"]
+    assert attach[0]["if"] == "inputs.publish"
     steps = _steps(_jobs("release-publish.yml")["publish-release"])
-    download = steps["Download all artifacts"]
-    assert download["with"]["merge-multiple"] is True
-    pattern = download["with"]["pattern"]
-    assert pattern == "*-dist"
-    for label in PLATFORMS:
-        assert fnmatch.fnmatch(f"provisa-wheel-{label}-dist", pattern), label
-    assert not fnmatch.fnmatch("provisa-ui-build", pattern)
-    assert "release-assets/*.whl" in steps["Release assets present"]["env"]["FILES"]
+    required = steps["Publish release (verify every asset, then undraft)"]["env"]["REQUIRED"]
+    for tag in ("manylinux_2_28_x86_64", "manylinux_2_28_aarch64", "macosx_*_arm64", "win_amd64"):
+        assert f"-cp312-cp312-{tag}.whl" in required, tag
+    assert len(PLATFORMS) == 4
 
 
 # ── installers and images ─────────────────────────────────────────────────────
