@@ -133,6 +133,7 @@
       "row_level_filter_required": "A tabela '{{table}}' é replicada linha a linha porque é grande, então não é lida inteira: adicione um filtro em suas colunas, ou junte-a pela chave a uma relação filtrada.",
       "schema_cache_not_ready": "Cache de build de esquema não está pronto",
       "sql_generation_failed": "Não foi possível gerar SQL válido após 3 tentativas: {{error}}",
+      "statement_failed": "A instrução falhou dentro do servidor ({{kind}}): {{error}}",
       "table_not_found": "Tabela '{{table}}' não encontrada",
       "unknown_action_field": "Campo de ação desconhecido: '{{field}}'",
       "unknown_command": "Comando desconhecido '{{name}}'",

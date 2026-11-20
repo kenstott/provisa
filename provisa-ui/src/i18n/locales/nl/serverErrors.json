@@ -133,6 +133,7 @@
       "row_level_filter_required": "Tabel '{{table}}' wordt rij voor rij gerepliceerd omdat hij groot is, dus wordt hij niet volledig gelezen: voeg een filter op zijn kolommen toe, of join hem op zijn sleutel met een gefilterde relatie.",
       "schema_cache_not_ready": "Schema-buildcache nog niet gereed",
       "sql_generation_failed": "Kon na 3 pogingen geen geldige SQL genereren: {{error}}",
+      "statement_failed": "De opdracht is in de server mislukt ({{kind}}): {{error}}",
       "table_not_found": "Tabel '{{table}}' niet gevonden",
       "unknown_action_field": "Onbekend actieveld: '{{field}}'",
       "unknown_command": "Onbekende opdracht '{{name}}'",

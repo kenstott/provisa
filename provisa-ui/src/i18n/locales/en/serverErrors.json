@@ -133,6 +133,7 @@
       "row_level_filter_required": "Table '{{table}}' is replicated row by row because it is large, so it is not read whole: add a filter on its columns, or join it on its key to a relation that is filtered.",
       "schema_cache_not_ready": "Schema build cache not ready",
       "sql_generation_failed": "Could not generate valid SQL after 3 attempts: {{error}}",
+      "statement_failed": "The statement failed inside the server ({{kind}}): {{error}}",
       "table_not_found": "Table '{{table}}' not found",
       "unknown_action_field": "Unknown action field: '{{field}}'",
       "unknown_command": "Unknown command '{{name}}'",

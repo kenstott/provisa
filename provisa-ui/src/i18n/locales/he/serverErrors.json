@@ -133,6 +133,7 @@
       "row_level_filter_required": "הטבלה '{{table}}' משוכפלת שורה אחר שורה מפני שהיא גדולה, ולכן אינה נקראת במלואה: הוסיפו מסנן על העמודות שלה, או צרפו אותה לפי המפתח שלה לקשר מסונן.",
       "schema_cache_not_ready": "מטמון בניית הסכמה אינו מוכן",
       "sql_generation_failed": "לא ניתן היה להפיק SQL תקין לאחר 3 ניסיונות: {{error}}",
+      "statement_failed": "ההוראה נכשלה בתוך השרת ({{kind}}): {{error}}",
       "table_not_found": "הטבלה '{{table}}' לא נמצאה",
       "unknown_action_field": "שדה פעולה לא מוכר: '{{field}}'",
       "unknown_command": "פקודה לא מוכרת '{{name}}'",

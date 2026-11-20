@@ -133,6 +133,7 @@
       "row_level_filter_required": "表 '{{table}}' 因数据量大而按行复制，因此不会被整表读取：请在其列上添加过滤条件，或按其键将其与已过滤的关系连接。",
       "schema_cache_not_ready": "架构构建缓存尚未就绪",
       "sql_generation_failed": "尝试 3 次后仍无法生成有效的 SQL：{{error}}",
+      "statement_failed": "语句在服务器内部失败（{{kind}}）：{{error}}",
       "table_not_found": "未找到表 '{{table}}'",
       "unknown_action_field": "未知操作字段：'{{field}}'",
       "unknown_command": "未知命令 '{{name}}'",

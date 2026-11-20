@@ -133,6 +133,7 @@
       "row_level_filter_required": "La tabla '{{table}}' se replica fila por fila porque es grande, así que no se lee entera: agregue un filtro sobre sus columnas, o únala por su clave a una relación filtrada.",
       "schema_cache_not_ready": "La caché de compilación de esquemas no está lista",
       "sql_generation_failed": "No se pudo generar SQL válido después de 3 intentos: {{error}}",
+      "statement_failed": "La sentencia falló dentro del servidor ({{kind}}): {{error}}",
       "table_not_found": "No se encontró la tabla '{{table}}'",
       "unknown_action_field": "Campo de acción desconocido: '{{field}}'",
       "unknown_command": "Comando desconocido: '{{name}}'",

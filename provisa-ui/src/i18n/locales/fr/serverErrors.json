@@ -133,6 +133,7 @@
       "row_level_filter_required": "La table '{{table}}' est répliquée ligne par ligne parce qu'elle est volumineuse, elle n'est donc pas lue entièrement : ajoutez un filtre sur ses colonnes, ou joignez-la par sa clé à une relation filtrée.",
       "schema_cache_not_ready": "Cache de construction du schéma non prêt",
       "sql_generation_failed": "Impossible de générer du SQL valide après 3 tentatives : {{error}}",
+      "statement_failed": "L'instruction a échoué dans le serveur ({{kind}}) : {{error}}",
       "table_not_found": "Table « {{table}} » introuvable",
       "unknown_action_field": "Champ d'action inconnu : « {{field}} »",
       "unknown_command": "Commande « {{name}} » inconnue",

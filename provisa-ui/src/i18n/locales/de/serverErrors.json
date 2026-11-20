@@ -133,6 +133,7 @@
       "row_level_filter_required": "Die Tabelle '{{table}}' wird zeilenweise repliziert, weil sie groß ist, und wird daher nicht vollständig gelesen: Fügen Sie einen Filter auf ihre Spalten hinzu oder verknüpfen Sie sie über ihren Schlüssel mit einer gefilterten Relation.",
       "schema_cache_not_ready": "Schema-Build-Cache noch nicht bereit",
       "sql_generation_failed": "Nach 3 Versuchen konnte kein gültiges SQL erzeugt werden: {{error}}",
+      "statement_failed": "Die Anweisung ist im Server fehlgeschlagen ({{kind}}): {{error}}",
       "table_not_found": "Tabelle '{{table}}' nicht gefunden",
       "unknown_action_field": "Unbekanntes Aktionsfeld: '{{field}}'",
       "unknown_command": "Unbekannter Befehl '{{name}}'",
