@@ -343,7 +343,7 @@ class TestMaskingInjectionSideEffects:
         assert expr == "'it''s redacted'"
 
     def test_mask_expression_for_float_constant(self):
-        """A float constant mask value must be emitted as a numeric literal."""
+        """A constant on a double column reads as NULL, keeping its type (REQ-2131)."""
         rule = MaskingRule(mask_type=MaskType.constant, value=3.14)
         expr = build_mask_expression(rule, '"score"', "double")
-        assert expr == "3.14"
+        assert expr == "NULL"
