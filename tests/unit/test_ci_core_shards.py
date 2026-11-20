@@ -144,9 +144,9 @@ def test_the_workflow_matrix_is_the_planners(run_lane):
     include = run_lane.matrix("all")["include"]
     for lane in ("core", "core_long"):
         total = run_lane.planned_shards(lane)
-        assert [m["shard"] for m in include if m["lane"] == lane] == [
-            f"{k}/{total}" for k in range(1, total + 1)
-        ]
+        # A lane of one shard is not sharded (run_lane.matrix): its shard is empty.
+        shards = [""] if total == 1 else [f"{k}/{total}" for k in range(1, total + 1)]
+        assert [m["shard"] for m in include if m["lane"] == lane] == shards
         assert {m["timeout"] for m in include if m["lane"] == lane} == {
             run_lane.planned_timeout(lane)
         }
