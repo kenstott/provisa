@@ -105,6 +105,8 @@
     "accessToken": "Token di accesso",
     "accessTokenHint": "Conservato nel vault dei segreti. È accettato anche un riferimento ${secret:NAME} o ${env:NAME}.",
     "brandNamespaceHint": "Prefisso dei nomi delle tabelle di questa origine. Lasciare vuoto per il valore predefinito.",
+    "brandBaseUrl": "URL di base",
+    "brandBaseUrlHint": "L'indirizzo della tua istanza, ad esempio https://catalog.example.com. La sua API viene chiamata qui e la sua descrizione OpenAPI viene letta da lì.",
     "shopifyStore": "Nome del negozio",
     "shopifyStoreHint": "La parte dell'indirizzo di amministrazione del negozio prima di .myshopify.com, ad esempio my-store.",
     "shopifyApiVersion": "Versione dell'API",

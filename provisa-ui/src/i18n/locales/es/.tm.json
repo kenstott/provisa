@@ -11106,5 +11106,7 @@
   "es/yourData.json::yourData.rest": "REST",
   "es/yourData.json::yourData.sql": "SQL",
   "es/yourData.json::yourData.title": "Your data",
-  "glossaryTab.json::glossaryTab.tablesWithoutSamples": "No sample values were read from: {{tables}}."
+  "glossaryTab.json::glossaryTab.tablesWithoutSamples": "No sample values were read from: {{tables}}.",
+  "es/sourceFormFieldsExtended.json::sourceFormFieldsExtended.brandBaseUrl": "Base URL",
+  "es/sourceFormFieldsExtended.json::sourceFormFieldsExtended.brandBaseUrlHint": "The address of your instance, such as https://catalog.example.com. Its API is called here, and its OpenAPI description is read from it."
 }

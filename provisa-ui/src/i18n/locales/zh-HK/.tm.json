@@ -11106,5 +11106,7 @@
   "zh-HK/yourData.json::yourData.pgwire": "Connection string for a SQL client (pgwire)",
   "zh-HK/yourData.json::yourData.rest": "REST",
   "zh-HK/yourData.json::yourData.sql": "SQL",
-  "zh-HK/yourData.json::yourData.title": "Your data"
+  "zh-HK/yourData.json::yourData.title": "Your data",
+  "zh-HK/sourceFormFieldsExtended.json::sourceFormFieldsExtended.brandBaseUrl": "Base URL",
+  "zh-HK/sourceFormFieldsExtended.json::sourceFormFieldsExtended.brandBaseUrlHint": "The address of your instance, such as https://catalog.example.com. Its API is called here, and its OpenAPI description is read from it."
 }

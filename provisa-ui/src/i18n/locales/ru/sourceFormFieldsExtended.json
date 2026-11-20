@@ -105,6 +105,8 @@
     "accessToken": "Токен доступа",
     "accessTokenHint": "Хранится в хранилище секретов. Допускается также ссылка вида ${secret:NAME} или ${env:NAME}.",
     "brandNamespaceHint": "Префикс имён таблиц этого источника. Оставьте пустым, чтобы использовать значение по умолчанию.",
+    "brandBaseUrl": "Базовый URL",
+    "brandBaseUrlHint": "Адрес вашего экземпляра, например https://catalog.example.com. Его API вызывается здесь, и отсюда читается его описание OpenAPI.",
     "shopifyStore": "Название магазина",
     "shopifyStoreHint": "Часть адреса админки вашего магазина перед .myshopify.com, например my-store.",
     "shopifyApiVersion": "Версия API",
