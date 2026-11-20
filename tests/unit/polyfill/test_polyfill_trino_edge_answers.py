@@ -368,3 +368,28 @@ def test_the_days_end_compares_after_every_time(name, op):
 def test_the_larger_of_the_days_end_is_refused_by_name():
     sql = "\"time_larger\"('24:00:00'::time without time zone, '12:30:45'::time without time zone)"
     assert _refused(sql).sqlstate == "0A000"
+
+
+@pytest.mark.parametrize(
+    ("sql", "state"),
+    [
+        ("\"array_append\"('{{1,2},{3,4}}'::integer[], 3::integer)", "22000"),
+        ("\"array_prepend\"(3::integer, '{{1,2},{3,4}}'::integer[])", "22000"),
+        ("\"array_position\"('{{1,2},{3,4}}'::integer[], 3::integer)", "0A000"),
+        ("\"width_bucket\"(3::integer, '{{1,2},{3,4}}'::integer[])", "2202E"),
+        ("\"array_cat\"('{{1,2},{3,4}}'::integer[], '{1,2,3}'::integer[])", "2202E"),
+    ],
+)
+def test_an_array_of_two_dimensions_raises_postgresqls_refusal(sql, state):
+    assert _refused(sql).sqlstate == state
+
+
+def test_arrays_of_other_dimensions_are_not_equal():
+    assert _trino("\"array_eq\"('{{1,2},{3,4}}'::integer[], '{1,2,3}'::integer[])").endswith(
+        "SELECT FALSE AS v"[6:]
+    )
+
+
+def test_a_row_of_its_width_is_appended_to_two_dimensions():
+    written = _trino("\"array_cat\"('{{1,2},{3,4}}'::integer[], '{5,6}'::integer[])")
+    assert written.startswith("SELECT CONCAT(") and "ARRAY[CAST(ARRAY['5', '6']" in written

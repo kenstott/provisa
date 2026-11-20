@@ -27,7 +27,7 @@ import sqlglot.expressions as exp
 from provisa.transpiler.polyfill import trino
 from provisa.transpiler.polyfill.grid import Feature, Rule, Side
 from provisa.transpiler.polyfill.matching import Bindings, graft
-from provisa.transpiler.polyfill.notation import Rewrite, replacement
+from provisa.transpiler.polyfill.notation import Refusal, Refused, Rewrite, replacement
 
 FAMILY = "arrays"
 
@@ -87,6 +87,64 @@ def _depth(value: exp.Expr) -> int:
     return depth
 
 
+#: PostgreSQL's refusal of a call of an array of more than one dimension: the call's name, the
+#: place of the array among its arguments (as PostgreSQL writes the call), the SQLSTATE and the
+#: message.
+_REFUSED_OF_DIMENSIONS = {
+    "array_append": (0, "22000", "argument must be empty or one-dimensional array"),
+    "array_prepend": (1, "22000", "argument must be empty or one-dimensional array"),
+    "array_position": (
+        0,
+        "0A000",
+        "searching for elements in multidimensional arrays is not supported",
+    ),
+    "array_positions": (
+        0,
+        "0A000",
+        "searching for elements in multidimensional arrays is not supported",
+    ),
+    "width_bucket": (1, "2202E", "thresholds must be one-dimensional array"),
+}
+
+
+def _elements(value: exp.Expr) -> list[exp.Expr] | None:
+    """The elements of an array a statement writes (a cast of an array constructor); None for any
+    other value."""
+    node = value.unnest()
+    while isinstance(node, exp.Cast):
+        node = node.this.unnest()
+    return list(node.expressions) if isinstance(node, exp.Array) else None
+
+
+def _trino_of_dimensions(name: str, args: list[exp.Expr]) -> exp.Expr | None:
+    """On Trino: PostgreSQL's refusal of a call it refuses of an array of two dimensions, and
+    array_eq, array_ne and array_cat of a two-dimensional and a one-dimensional array the statement
+    writes, as array.c answers them; None for any other call."""
+    refusal = _REFUSED_OF_DIMENSIONS.get(name)
+    # sqlglot's typed node may hold the array first whatever its place in the call (ArrayPrepend)
+    if refusal is not None and len(args) == 2 and any(_nested(a) for a in args):  # noqa: PLR2004
+        raise Refused(Refusal(refusal[1], refusal[2]), ruling=True)
+    if name not in ("array_eq", "array_ne", "array_cat") or len(args) != 2:  # noqa: PLR2004
+        return None
+    deep, flat = (args[0], args[1]) if _nested(args[0]) else (args[1], args[0])
+    if not _nested(deep) or _nested(flat):
+        return None
+    if name in ("array_eq", "array_ne"):  # arrays of other dimensions are not equal
+        return exp.Boolean(this=name == "array_ne")
+    rows, row = _elements(deep), _elements(flat)
+    if rows is None or row is None or not rows:
+        return None
+    width = _elements(rows[0])
+    if width is None or (row and len(row) != len(width)):
+        raise Refused(Refusal("2202E", "cannot concatenate incompatible arrays"), ruling=True)
+    if not row:
+        return deep.copy()
+    pair = [deep.copy(), exp.Array(expressions=[flat.copy()])]
+    if flat is args[0]:
+        pair.reverse()
+    return exp.Anonymous(this="concat", expressions=pair)
+
+
 def of_dimensions(node: exp.Expr, dialect: str) -> exp.Expr | None:
     """cardinality, unnest or array_to_string of an array of more than one dimension: of every
     element. Read before any row of the call's name; any other call is left to its rows."""
@@ -97,6 +155,11 @@ def of_dimensions(node: exp.Expr, dialect: str) -> exp.Expr | None:
     on_trino = dialect in trino.TRINO
     if on_trino and args and _nested(args[0]) and _depth(args[0]) != 2:  # noqa: PLR2004
         return None  # flatten reads one level: deeper keeps what it had
+    if on_trino:
+        for name in sorted(names):
+            answered = _trino_of_dimensions(name, args)
+            if answered is not None:
+                return answered
     for name in sorted(names):
         if on_trino and name == "unnest" and len(args) == 1 and _nested(args[0]):
             # sqlglot's Explode, which Trino's writer lowers to UNNEST in a select list
@@ -132,7 +195,8 @@ FEATURE = Feature(
                     **trino.on_trino(
                         Rewrite(
                             of_dimensions,
-                            mentions=r"\b(?:cardinality|unnest|array_to_string)\b",
+                            mentions=r"\b(?:cardinality|unnest|array_to_string|array_append|array_prepend|"
+                            r"array_positions?|width_bucket|array_eq|array_ne|array_cat)\b",
                             first=True,
                         )
                     ),
