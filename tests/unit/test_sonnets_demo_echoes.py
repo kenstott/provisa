@@ -10,24 +10,20 @@
 
 """The sonnets demo links its echoes with a statement, not host code (REQ-2016, REQ-2134).
 
-The link_echoes commands are INSERT...SELECTs over line joined to lines_like: the line-searches relationship
+link_echoes is an INSERT...SELECT over line joined to lines_like: the line-searches relationship
 feeds the search each line's words and sonnet (REQ-2099), lines_like leaves that sonnet's points
 out through its "@sonnet" filter (REQ-1983), and the points carry the words they were found for,
 which the join matches. A theme still searches lines_like for a phrase of its own."""
 
-# Requirements: REQ-2016, REQ-2099, REQ-2134, REQ-1986
+# Requirements: REQ-2016, REQ-2099, REQ-2134
 from __future__ import annotations
 
 import json
-import re
-from collections import Counter
 from pathlib import Path
 
 import pytest
 import yaml
 
-from provisa.core.parameter_binding import CALLS_SETTING
-from provisa.core.settings_catalog import DECLARED
 from provisa.qdrant.table import check_table
 
 pytestmark = pytest.mark.unit
@@ -44,40 +40,13 @@ def test_the_config_holds_no_host_code():
     assert not (_DEMO / "echoes.py").exists()
 
 
-_LINK = [f for name, f in _FUNCTIONS.items() if name.startswith("link_echoes_")]
-
-
 def test_link_echoes_is_a_statement_joining_each_line_to_its_search():
-    assert _LINK
-    for command in _LINK:
-        assert command["impl_kind"] == "statement"
-        sql = command["binding"]["sql"]
-        assert 'INSERT INTO "sonnets"."echo" (line_id, echo_line_id, score)' in sql
-        assert 'JOIN "sonnets"."lines_like" AS s ON s._nf_query = l.text' in sql
-        assert "s._nf_k = 3" in sql
-
-
-def _range(command) -> tuple[int, int]:
-    [bounds] = re.findall(r"l\.sonnet_number BETWEEN (\d+) AND (\d+)", command["binding"]["sql"])
-    return int(bounds[0]), int(bounds[1])
-
-
-def test_the_echoes_are_linked_by_sonnet_in_statements_under_the_call_cap():
-    """REQ-1986: one search a line is one call to lines_like, and a statement makes at most
-    parameters.max_calls_per_statement calls (1000 as shipped). The link_echoes statements split
-    the sonnets between them, each sonnet once, and each runs in setup.yaml."""
-    [cap] = [s.default for s in DECLARED if s.key == CALLS_SETTING]
-    lines = Counter(
-        int(row.split("\t", 1)[0]) for row in (_DEMO / "db" / "lines.tsv").read_text().splitlines()
-    )
-    ranges = sorted(_range(c) for c in _LINK)
-    covered = [n for lo, hi in ranges for n in range(lo, hi + 1)]
-    assert covered == sorted(lines)
-    for lo, hi in ranges:
-        assert sum(lines[n] for n in range(lo, hi + 1)) <= cap, (lo, hi)
-    steps = yaml.safe_load((_DEMO / "setup.yaml").read_text())["steps"]
-    ran = [step["command"] for step in steps if "command" in step]
-    assert sorted(c["name"] for c in _LINK) == sorted(n for n in ran if n.startswith("link_echoes"))
+    command = _FUNCTIONS["link_echoes"]
+    assert command["impl_kind"] == "statement"
+    sql = command["binding"]["sql"]
+    assert 'INSERT INTO "sonnets"."echo" (line_id, echo_line_id, score)' in sql
+    assert 'JOIN "sonnets"."lines_like" AS s ON s._nf_query = l.text' in sql
+    assert "s._nf_k = 3" in sql
 
 
 def test_the_relationship_feeds_each_lines_words_and_sonnet_and_joins_on_the_words():
@@ -106,3 +75,37 @@ def test_lines_like_leaves_the_given_sonnet_out_and_is_a_valid_search():
 def test_a_theme_still_searches_for_a_phrase_of_its_own():
     [theme] = [v for v in _CONFIG["views"] if v["id"] == "theme_time"]
     assert "s._nf_query = 'the ravages of time'" in theme["sql"]
+
+
+def test_link_echoes_is_fed_by_the_relationship_in_one_statement_run_once():
+    """REQ-2099 over REQ-1986: the statement's join on lines_like's query is the line-searches
+    relationship's, so the feed gives each search a line's words and sonnet together, and the
+    join is no join key binding the words alone under the cap on calls per statement. Every line
+    is fed whatever the statement's conditions, so one statement links them all, run once."""
+    from types import SimpleNamespace
+
+    from provisa.api.data.materialization import fed_join_parameters
+
+    relationship = _RELATIONSHIPS["line-searches"]
+    line, search = 1, 2
+    state = SimpleNamespace(
+        source_types={"sonnets": "postgresql", "vectors": "qdrant"},
+        tables=[
+            {"id": line, "source_id": "sonnets", "table_name": "line", "columns": []},
+            {
+                "id": search,
+                "source_id": "vectors",
+                "table_name": "lines_like",
+                "query_template": _SEARCH["query_template"],
+                "columns": [{**c, "column_name": c["name"]} for c in _SEARCH["columns"]],
+            },
+        ],
+        relationships=[
+            {**relationship, "source_table_id": line, "target_table_id": search},
+        ],
+    )
+    sql = _FUNCTIONS["link_echoes"]["binding"]["sql"]
+    assert fed_join_parameters(state, [line, search], sql) == {"_nf_query"}
+    steps = yaml.safe_load((_DEMO / "setup.yaml").read_text())["steps"]
+    assert [s["command"] for s in steps if "command" in s].count("link_echoes") == 1
+    assert not [name for name in _FUNCTIONS if name.startswith("link_echoes_")]

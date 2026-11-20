@@ -16,9 +16,7 @@
 # The first step that fails stops the run, naming the step.
 steps:
 - command: embed_lines
-- command: link_echoes_1_to_50
-- command: link_echoes_51_to_100
-- command: link_echoes_101_to_154
+- command: link_echoes
 - refresh: theme_time
 - refresh: theme_beauty
 - refresh: theme_mortality
