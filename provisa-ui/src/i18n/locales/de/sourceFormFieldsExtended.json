@@ -105,6 +105,8 @@
     "accessToken": "Zugriffstoken",
     "accessTokenHint": "Wird im Secrets-Tresor gespeichert. Ein Verweis der Form ${secret:NAME} oder ${env:NAME} wird ebenfalls akzeptiert.",
     "brandNamespaceHint": "Präfix der Tabellennamen dieser Quelle. Für den Standardwert leer lassen.",
+    "brandBaseUrl": "Basis-URL",
+    "brandBaseUrlHint": "Die Adresse Ihrer Instanz, zum Beispiel https://catalog.example.com. Ihre API wird hier aufgerufen, und ihre OpenAPI-Beschreibung wird von dort gelesen.",
     "shopifyStore": "Shopname",
     "shopifyStoreHint": "Der Teil der Admin-Adresse Ihres Shops vor .myshopify.com, zum Beispiel my-store.",
     "shopifyApiVersion": "API-Version",

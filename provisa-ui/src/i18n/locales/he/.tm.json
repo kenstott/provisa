@@ -11105,5 +11105,7 @@
   "he/yourData.json::yourData.pgwire": "Connection string for a SQL client (pgwire)",
   "he/yourData.json::yourData.rest": "REST",
   "he/yourData.json::yourData.sql": "SQL",
-  "he/yourData.json::yourData.title": "Your data"
+  "he/yourData.json::yourData.title": "Your data",
+  "he/sourceFormFieldsExtended.json::sourceFormFieldsExtended.brandBaseUrl": "Base URL",
+  "he/sourceFormFieldsExtended.json::sourceFormFieldsExtended.brandBaseUrlHint": "The address of your instance, such as https://catalog.example.com. Its API is called here, and its OpenAPI description is read from it."
 }
