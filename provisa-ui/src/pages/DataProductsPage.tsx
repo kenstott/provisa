@@ -46,7 +46,7 @@ import { EMPTY_FORM, type DataProductForm } from "./data-products/types";
 import { useDependentsDialog } from "../hooks/useDependentsDialog";
 import { ListTable, ListHead, ListRow, ListEmpty, ListItems } from "../components/list/ListTable";
 import { useListSortGroup, type ListColumn } from "../components/list/useListSortGroup";
-import { useDetailParam } from "../components/list/useDetailParam";
+import { useRememberedDetail } from "../components/list/useDetailParam";
 import { PageLoading } from "../components/PageLoading";
 import { SplitPane } from "../components/list/SplitPane";
 import { useListSelection } from "../components/list/listSelection";
@@ -59,7 +59,6 @@ import { heldRoles } from "../lib/roles";
 
 // Exported for the tour, which clears it so the page mounts collapsed and its click on the first
 // row deterministically EXPANDS rather than toggling whatever a prior visit left open.
-export const EXPANDED_STORAGE_KEY = "provisa.data_products.expanded";
 // REQ-2146: the list narrowed to the products with findings, remembered.
 const TO_REVIEW_STORAGE_KEY = "provisa.data_products.toReview";
 
@@ -168,23 +167,13 @@ export function DataProductsPage() {
   const [selectedTableIds, setSelectedTableIds] = useState<string[]>([]);
   const [selectedFunctionNames, setSelectedFunctionNames] = useState<string[]>([]);
   // REQ-1659, REQ-2241: `?product=<id>` is the open product's panel -- the deep link a catalog
-  // listing (Snowflake Horizon's documentation box, Analytics Hub) carries back to this page. A
-  // visit without one reopens the last-expanded row remembered in localStorage.
-  const detail = useDetailParam("products");
+  // listing (Snowflake Horizon's documentation box, Analytics Hub) carries back to this page.
+  // REQ-2260: a visit without one reopens the product left open.
+  const detail = useRememberedDetail(
+    "products",
+    products.data === null ? null : products.data.map((p) => p.id),
+  );
   const expanded = detail.id;
-  const [remembered] = useState(() => {
-    if (detail.id !== null) return null;
-    try {
-      return getStored(EXPANDED_STORAGE_KEY);
-    } catch {
-      return null;
-    }
-  });
-  const reopen = detail.open;
-  useEffect(() => {
-    if (remembered) reopen(remembered, { replace: true });
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- once, as the page opens.
-  }, []);
   // REQ-2115: Polly's read_screen reads the page's main state from here. A product is named only
   // once the list holds it, so a link to one that does not exist reads as no product.
   useScreenInputs("/data-products", {
@@ -199,12 +188,6 @@ export function DataProductsPage() {
     // REQ-2241: opening and closing a product are history entries; Back undoes them.
     if (id) detail.open(id);
     else detail.close();
-    try {
-      if (id) setStored(EXPANDED_STORAGE_KEY, id);
-      else removeStored(EXPANDED_STORAGE_KEY);
-    } catch {
-      // localStorage unavailable (private mode, quota) — expanded state just won't persist
-    }
   };
   // REQ-2127: the expanded product's panel core; read again after the product is saved.
   const [coreVersion, setCoreVersion] = useState(0);
