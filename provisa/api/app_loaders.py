@@ -606,7 +606,12 @@ async def _load_openapi_specs() -> None:
             dict(_r._mapping)
             for _r in (
                 await conn.execute_core(
-                    select(_sources_t.c.id, _sources_t.c.path, _sources_t.c.mapping).where(
+                    select(
+                        _sources_t.c.id,
+                        _sources_t.c.path,
+                        _sources_t.c.mapping,
+                        _sources_t.c.brand_setup,
+                    ).where(
                         _sources_t.c.type == "openapi",
                         _sources_t.c.path.is_not(None),
                         _sources_t.c.path != "",
@@ -673,6 +678,7 @@ async def _load_openapi_specs() -> None:
                 "base_url": _base_url,
                 "domain_id": "",
                 "cache_ttl": 300,
+                "setup": _row["brand_setup"],  # REQ-2265: what a brand's setup was given
             }
 
 
