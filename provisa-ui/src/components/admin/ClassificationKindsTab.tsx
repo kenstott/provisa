@@ -120,14 +120,13 @@ export function ClassificationKindsTab({ readOnly = false }: { readOnly?: boolea
                 </Table.Td>
                 <Table.Td>
                   {readOnly ? (
-                    <Badge
-                      size="xs"
-                      variant="light"
-                      color={k.enabled ? "green" : "gray"}
+                    <Text
+                      size="sm"
+                      c={k.enabled ? undefined : "dimmed"}
                       data-testid={`classification-kind-state-${k.id}`}
                     >
                       {t(k.enabled ? "contextViews.enabled" : "contextViews.disabled")}
-                    </Badge>
+                    </Text>
                   ) : (
                     <Switch
                       checked={k.enabled}
