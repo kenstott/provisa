@@ -168,7 +168,8 @@
       "table_is_withdrawn": "{{table}} está retirada: fuera de producción hasta que se restablezca",
       "view_awaits_rule_rebuild": "La vista {{view}} se está volviendo a crear por un cambio en las reglas de fila de sus entradas. Este rol podrá leerla cuando esa compilación se haya publicado.",
       "parameter_required": "La tabla '{{table}}' requiere el parámetro o los parámetros {{parameters}}: dé un valor a cada uno (una condición WHERE sobre su columna en SQL, un argumento en GraphQL).",
-      "parameter_wrong_type": "El parámetro {{parameter}} toma un valor de tipo {{type}}; '{{value}}' no lo es."
+      "parameter_wrong_type": "El parámetro {{parameter}} toma un valor de tipo {{type}}; '{{value}}' no lo es.",
+      "statement_failed": "La sentencia falló dentro del servidor ({{kind}}): {{error}}"
     },
     "discovery": {
       "adapter_missing_discover_schema": "El adaptador para '{{source_type}}' no implementa discover_schema",
@@ -243,7 +244,8 @@
       "host_code_refused": "El comando '{{name}}' es de tipo {{impl_kind}}, que ejecuta código en el host del servidor. El código del host está desactivado en esta implementación; use un resolutor de código en su lugar.",
       "no_plain_list": "Ninguna operación del origen '{{source_id}}' sin un parámetro obligatorio devuelve las filas de '{{operation}}', así que su tabla sigue activada",
       "plain_list_unregistered": "'{{operation}}' del origen '{{source_id}}' devuelve las filas de su lista {{lists}}; registre primero esa lista como tabla",
-      "table_has_dependents": "Otros objetos aún hacen referencia a la tabla '{{table}}' de la función '{{name}}'; elimine primero esas referencias"
+      "table_has_dependents": "Otros objetos aún hacen referencia a la tabla '{{table}}' de la función '{{name}}'; elimine primero esas referencias",
+      "statement_failed": "El comando '{{name}}' falló: {{error}}"
     },
     "graphql_remote": {
       "introspection_failed": "Error en la introspección: {{error}}",
@@ -810,7 +812,6 @@
       "status_by_action": "El estado de un término cambia mediante Aprobar, Marcar como obsoleto, Retirar o Restaurar.",
       "successor_required": "Este término todavía tiene columnas o tablas; al retirarlo pasan a un sucesor. Elija uno.",
       "successor_role": "El sucesor de un {{role}} debe ser un {{role}} o un concepto; '{{successor}}' es un {{successor_role}}.",
-      "no_retirement_history": "El historial del modelo no tiene ningún retiro de este término.",
       "finding": {
         "unlinked_tables": "Esta clase está anclada en tablas que las relaciones de misma entidad no unen todas: {{tables}}.",
         "class_and_attribute": "Esta clase también tiene columnas que no son sus claves: {{columns}}.",

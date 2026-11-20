@@ -168,7 +168,8 @@
       "table_is_withdrawn": "{{table}} הוסרה מהייצור: מחוץ לייצור עד שתוחזר",
       "view_awaits_rule_rebuild": "התצוגה {{view}} נבנית מחדש בעקבות שינוי בכללי השורות של הקלטים שלה. תפקיד זה יוכל לקרוא אותה לאחר שהבנייה תפורסם.",
       "parameter_required": "הטבלה '{{table}}' דורשת את הפרמטר או הפרמטרים {{parameters}}: תנו לכל אחד ערך (תנאי WHERE על העמודה שלו ב-SQL, ארגומנט ב-GraphQL).",
-      "parameter_wrong_type": "הפרמטר {{parameter}} מקבל ערך מסוג {{type}}; '{{value}}' אינו כזה."
+      "parameter_wrong_type": "הפרמטר {{parameter}} מקבל ערך מסוג {{type}}; '{{value}}' אינו כזה.",
+      "statement_failed": "ההוראה נכשלה בתוך השרת ({{kind}}): {{error}}"
     },
     "discovery": {
       "adapter_missing_discover_schema": "המתאם עבור '{{source_type}}' אינו מממש discover_schema",
@@ -243,7 +244,8 @@
       "host_code_refused": "הפקודה '{{name}}' היא מסוג {{impl_kind}}, שמריץ קוד על מארח השרת. קוד מארח כבוי בפריסה זו; השתמשו במקום זאת במפענח קוד.",
       "no_plain_list": "אף פעולה של המקור '{{source_id}}' ללא פרמטר חובה אינה מחזירה את השורות של '{{operation}}', ולכן הטבלה שלה נשארת מופעלת",
       "plain_list_unregistered": "'{{operation}}' של המקור '{{source_id}}' מחזירה את השורות של הרשימה שלה {{lists}}; יש לרשום תחילה את הרשימה הזו כטבלה",
-      "table_has_dependents": "אובייקטים אחרים עדיין מפנים לטבלה '{{table}}' של הפונקציה '{{name}}'; יש להסיר תחילה את ההפניות האלה"
+      "table_has_dependents": "אובייקטים אחרים עדיין מפנים לטבלה '{{table}}' של הפונקציה '{{name}}'; יש להסיר תחילה את ההפניות האלה",
+      "statement_failed": "הפקודה '{{name}}' נכשלה: {{error}}"
     },
     "graphql_remote": {
       "introspection_failed": "Introspection נכשל: {{error}}",
@@ -810,7 +812,6 @@
       "status_by_action": "הסטטוס של מונח משתנה דרך אישור, סימון כמיושן, הוצאה משימוש או שחזור.",
       "successor_required": "למונח זה עדיין יש עמודות או טבלאות; גריעתו מעבירה אותן ליורש. בחרו יורש.",
       "successor_role": "היורש של {{role}} חייב להיות {{role}} או מושג; '{{successor}}' הוא {{successor_role}}.",
-      "no_retirement_history": "בהיסטוריה של המודל אין גריעה של מונח זה.",
       "finding": {
         "unlinked_tables": "מחלקה זו מעוגנת בטבלאות שקשרי אותה-ישות אינם מחברים את כולן: {{tables}}.",
         "class_and_attribute": "למחלקה זו יש גם עמודות שאינן המפתחות שלה: {{columns}}.",

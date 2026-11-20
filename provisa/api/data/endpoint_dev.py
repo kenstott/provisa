@@ -311,13 +311,30 @@ def _with_warnings(body: dict) -> dict:
     return body
 
 
+#: Errors of the server's own code, never of the statement: a request reading the model while a
+#: build changes it, a broken invariant. Matched by exact type -- a driver's or engine's error
+#: subclassing one of them (pyarrow's NotImplementedError is a RuntimeError) stays the statement's.
+_SERVER_FAULTS = (
+    RuntimeError,
+    AssertionError,
+    AttributeError,
+    KeyError,
+    IndexError,
+    TypeError,
+    NameError,
+    UnboundLocalError,
+    RecursionError,
+)
+
+
 def _sql_error(exc: Exception) -> Exception:
     """The error /data/sql answers for ``exc``, raised by a statement it ran (the request
     boundary, mirroring pgwire's handle_query). A governance denial (RLS, masking, visibility, a
     relationship guard) raises PermissionError: 403. Any other error from an arbitrary user
     query -- a source or engine rejection, a parse error -- is a client error: 400 with the
-    detail, as pgwire answers it with a SQLSTATE. An error the app answers by its own handler
-    (its code and parameters) is itself."""
+    detail, as pgwire answers it with a SQLSTATE. A fault of the server's own code
+    (``_SERVER_FAULTS``) is a 500, ``data.statement_failed``, logged with its traceback. An error
+    the app answers by its own handler (its code and parameters) is itself."""
     if isinstance(exc, ParametersDoNotFit):
         # The values sent are not the values the statement's placeholders number: refused by
         # name, before the statement was governed or run.
@@ -346,6 +363,17 @@ def _sql_error(exc: Exception) -> Exception:
         from provisa.api.errors import timeout_error
 
         return timeout_error(exc)
+    if type(exc) in _SERVER_FAULTS:
+        # A fault of the server's code is not the client's: a 500 naming it, logged with its
+        # traceback, never a 400 carrying a bare Python message.
+        log.error("statement failed inside the server: %r", exc, exc_info=exc)
+        return ApiError(
+            500,
+            "data.statement_failed",
+            f"The statement failed inside the server ({type(exc).__name__}): {exc}",
+            kind=type(exc).__name__,
+            error=str(exc),
+        )
     return HTTPException(status_code=400, detail=str(exc))
 
 

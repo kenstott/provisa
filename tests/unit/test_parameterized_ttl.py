@@ -38,6 +38,7 @@ from provisa.api.data.materialization import (
 from provisa.api_source import engine_cache
 from provisa.api_source.models import ApiColumn, ApiColumnType
 from provisa.api_source.models import ParamType
+from provisa.federation.replica_address import ReplicaRoutes
 from tests.unit.test_api_fill_cache import (  # noqa: F401 -- store, _clean: its fixtures
     BASE,
     _api_source,
@@ -200,6 +201,7 @@ async def test_each_key_of_a_join_is_one_call_per_statement_and_the_next_stateme
     state, read = statement
     pets, toys = _endpoint(columns=_endpoint().columns[:2]), _toys()
     state.api_endpoints = {("api", "pets"): pets, ("api", "toys"): toys}
+    state.replica_routes = ReplicaRoutes()
     state.tables = [_registered(pets), _registered(toys, cache_ttl=None)]
     ctx = _pets_feeding_toys()
     registration = _registered(toys, cache_ttl=None)
@@ -223,6 +225,7 @@ async def test_a_raw_sql_read_never_takes_another_statements_fills(statement):
     state, read = statement
     pets, toys = _endpoint(columns=_endpoint().columns[:2]), _toys()
     state.api_endpoints = {("api", "pets"): pets, ("api", "toys"): toys}
+    state.replica_routes = ReplicaRoutes()
     state.tables = [_registered(pets), _registered(toys, cache_ttl=None)]
     ctx = _pets_feeding_toys()
 

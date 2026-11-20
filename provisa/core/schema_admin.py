@@ -556,6 +556,12 @@ environments = Table(
     Column("data_status", Text),
     Column("data_error", Text),
     Column("synthetic_dataset", Text),
+    # REQ-2261: the stage the environment declares -- production | preprod | test | development --
+    # a label for reporting and display that no authorization path reads. Any number of
+    # environments may share a stage. The server default is REQ-2261's own rule, not a fallback:
+    # "a new environment starts as development". The org's original environment is the one
+    # exception, and its writers (env_store.ensure_prod, the bootstrap below) state production.
+    Column("stage", Text, nullable=False, server_default="development"),
     ForeignKeyConstraint(
         ["org_id", "parent"],
         ["environments.org_id", "environments.name"],
@@ -577,6 +583,10 @@ environments = Table(
     CheckConstraint(
         "data_status IN ('generating', 'ready', 'failed')",
         name="environments_data_status_check",
+    ),
+    CheckConstraint(
+        "stage IN ('production', 'preprod', 'test', 'development')",
+        name="environments_stage_check",
     ),
 )
 
@@ -1124,7 +1134,8 @@ async def init_registry_schema(db: "Database", org_id: str) -> None:  # REQ-696,
         # is an org whose environments cannot be counted against its plan ceiling (REQ-1523).
         await conn.upsert(
             environments,
-            {"org_id": org_id, "name": "prod"},
+            # REQ-2261: the org's original environment starts as production.
+            {"org_id": org_id, "name": "prod", "stage": "production"},
             index_elements=["org_id", "name"],
             update_columns=[],
         )

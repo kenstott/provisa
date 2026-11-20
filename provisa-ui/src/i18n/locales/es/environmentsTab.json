@@ -25,6 +25,7 @@
     "deletedWithBranch": "Se eliminó {{env}} y su rama.",
     "colName": "Nombre",
     "colKind": "Conexiones",
+    "colStage": "Etapa",
     "colRepo": "Repositorio",
     "colCreatedBy": "Creado por",
     "colExpires": "Caduca",
@@ -150,6 +151,9 @@
     "pulledIn": "También se llevan, porque la selección los requiere:",
     "rebuild": "Reconstruir",
     "rebuilt": "El modelo de {{env}} se confirmó de nuevo en el repositorio.",
-    "rebuildFailed": "{{env}} sigue desviado, porque el commit no llegó."
+    "rebuildFailed": "{{env}} sigue desviado, porque el commit no llegó.",
+    "stageTitle": "Etapa",
+    "stageHelp": "Declara para qué sirve este entorno: producción, preproducción, pruebas o desarrollo. El entorno original de la organización empieza como producción y uno nuevo como desarrollo; cualquier número de entornos puede compartir una etapa.",
+    "stageHelp2": "La etapa identifica el entorno en el selector, en los informes y en las exportaciones de catálogo y de linaje. Nunca cambia lo que alguien puede hacer aquí: eso depende solo de los roles asignados en el entorno."
   }
 }

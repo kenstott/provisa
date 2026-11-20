@@ -505,7 +505,9 @@ def delete(node: exp.Expr, dialect: str) -> exp.Expr | None:
                 )
             )
             kept_pairs = pairs  # an object raises above
-            at = f"if($k < 0, length({elements}) + $k, toInt64($k)) + 1"
+            # Both branches Int64: a length is a UInt64, and a ClickHouse without Variant types (24.3)
+            # holds no common type of a UInt64 and an Int64.
+            at = f"if($k < 0, toInt64(length({elements})) + $k, toInt64($k)) + 1"
             kept = f"arrayFilter((_e, _j) -> _j != {at}, {elements}, arrayEnumerate({elements}))"
         else:
             raise Refused(trino.no_form(name, dialect))

@@ -168,7 +168,8 @@
       "table_is_withdrawn": "{{table}} is withdrawn: out of production until it is put back",
       "view_awaits_rule_rebuild": "The view {{view}} is being built again for a change to the row rules on its inputs. This role can read it once that build has published.",
       "parameter_required": "Table '{{table}}' requires the parameter(s) {{parameters}}: give each a value (a WHERE condition on its column in SQL, an argument in GraphQL).",
-      "parameter_wrong_type": "The parameter {{parameter}} takes a value of type {{type}}; '{{value}}' is not one."
+      "parameter_wrong_type": "The parameter {{parameter}} takes a value of type {{type}}; '{{value}}' is not one.",
+      "statement_failed": "The statement failed inside the server ({{kind}}): {{error}}"
     },
     "discovery": {
       "adapter_missing_discover_schema": "Adapter for '{{source_type}}' does not implement discover_schema",
@@ -243,7 +244,8 @@
       "host_code_refused": "Command '{{name}}' is of kind {{impl_kind}}, which runs code on the server's host. Host code is off on this deployment; use a code resolver instead.",
       "no_plain_list": "No operation of source '{{source_id}}' without a required parameter returns the rows of '{{operation}}', so its table stays on",
       "plain_list_unregistered": "'{{operation}}' of source '{{source_id}}' returns the rows of its list {{lists}}; register that list as a table first",
-      "table_has_dependents": "The table '{{table}}' of function '{{name}}' is still referred to by other objects; remove those references first"
+      "table_has_dependents": "The table '{{table}}' of function '{{name}}' is still referred to by other objects; remove those references first",
+      "statement_failed": "Command '{{name}}' failed: {{error}}"
     },
     "graphql_remote": {
       "introspection_failed": "Introspection failed: {{error}}",
@@ -810,7 +812,6 @@
       "status_by_action": "A term's status changes through Approve, Deprecate, Retire or Restore.",
       "successor_required": "This term still has columns or tables; retiring it moves them to a successor. Choose one.",
       "successor_role": "A {{role}}'s successor must be a {{role}} or a concept; '{{successor}}' is a {{successor_role}}.",
-      "no_retirement_history": "The model's history has no retirement of this term.",
       "finding": {
         "unlinked_tables": "This class is grounded in tables that same-entity relationships don't all join: {{tables}}.",
         "class_and_attribute": "This class also holds columns that aren't its keys: {{columns}}.",

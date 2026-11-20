@@ -47,7 +47,7 @@ naming:
 roles:
 # The finance team: every order, margins included.
 - id: finance
-  parents: [developer]
+  parents: [data_writer]
   description: "The finance team: every order, margins included."
   # A team pulls the whole dataset over Flight, not the default row limit's first rows.
   capabilities: [data_product_read, full_results, glossary_read, query_development]
@@ -55,7 +55,7 @@ roles:
   - provisioning
 # The data science team's feature store: margins masked, product orders only.
 - id: data_science
-  parents: [developer]
+  parents: [data_writer]
   description: "The data science team's feature store: product orders only, margins masked."
   capabilities: [data_product_read, full_results, glossary_read, query_development]
   domain_access:

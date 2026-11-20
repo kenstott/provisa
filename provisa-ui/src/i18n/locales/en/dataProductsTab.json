@@ -310,6 +310,9 @@
     },
     "detailPanel": "Data product detail",
     "tagFacetLabel": "Tags",
-    "tagFacetPlaceholder": "Filter by tag"
+    "tagFacetPlaceholder": "Filter by tag",
+    "noMatch": "No data products match the filters",
+    "domainFacetLabel": "Domains",
+    "domainFacetPlaceholder": "Filter by domain"
   }
 }

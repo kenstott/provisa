@@ -168,7 +168,8 @@
       "table_is_withdrawn": "{{table}} 已撤下：在恢复之前不在生产中",
       "view_awaits_rule_rebuild": "由于其输入的行规则发生变更，视图 {{view}} 正在重新构建。该构建发布后，此角色即可读取它。",
       "parameter_required": "表 '{{table}}' 需要参数 {{parameters}}：为每个参数提供一个值（在 SQL 中是对其列的 WHERE 条件，在 GraphQL 中是一个参数）。",
-      "parameter_wrong_type": "参数 {{parameter}} 接受 {{type}} 类型的值；'{{value}}' 不是该类型。"
+      "parameter_wrong_type": "参数 {{parameter}} 接受 {{type}} 类型的值；'{{value}}' 不是该类型。",
+      "statement_failed": "语句在服务器内部失败（{{kind}}）：{{error}}"
     },
     "discovery": {
       "adapter_missing_discover_schema": "'{{source_type}}' 的适配器未实现 discover_schema",
@@ -243,7 +244,8 @@
       "host_code_refused": "命令 '{{name}}' 的类型为 {{impl_kind}}，会在服务器主机上运行代码。此部署已关闭主机代码；请改用代码解析器。",
       "no_plain_list": "源 '{{source_id}}' 中没有不带必需参数的操作返回 '{{operation}}' 的行，因此其表保持开启",
       "plain_list_unregistered": "源 '{{source_id}}' 的 '{{operation}}' 返回其列表 {{lists}} 的行；请先将该列表注册为表",
-      "table_has_dependents": "函数 '{{name}}' 的表 '{{table}}' 仍被其他对象引用；请先移除这些引用"
+      "table_has_dependents": "函数 '{{name}}' 的表 '{{table}}' 仍被其他对象引用；请先移除这些引用",
+      "statement_failed": "命令 '{{name}}' 失败：{{error}}"
     },
     "graphql_remote": {
       "introspection_failed": "内省失败：{{error}}",
@@ -810,7 +812,6 @@
       "status_by_action": "术语的状态通过“批准”“弃用”“停用”或“恢复”来改变。",
       "successor_required": "该术语仍有列或表；停用它会将其移到继任者。请选择一个。",
       "successor_role": "{{role}} 的继任者必须是 {{role}} 或概念；“{{successor}}”是 {{successor_role}}。",
-      "no_retirement_history": "模型的历史中没有该术语的停用记录。",
       "finding": {
         "unlinked_tables": "此类关联到的表并非全部由同一实体关系连接：{{tables}}。",
         "class_and_attribute": "此类还拥有不是其键的列：{{columns}}。",

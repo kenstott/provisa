@@ -4,9 +4,11 @@
 #
 # One leg of the release. Called by build-dmg.yml (the release orchestrator) on a tag, and by a
 # manual dry run of it. `version` is the release's tag; nothing here reads the pushed ref.
-# `publish` is false on a dry run: every artifact is built and uploaded to the RUN exactly as on
-# a tag, and every step that leaves the run -- the draft release, its attachments, PyPI, an image
-# push, a signed attestation -- is skipped. A failed job of this leg is re-run alone with
+# `publish` is false on a dry run: every artifact is built and uploaded to the RUN, and every
+# step that leaves the run -- the draft release, its attachments, PyPI, an image push, a signed
+# attestation -- is skipped. On a release each job attaches the assets it built straight to the
+# draft (.github/actions/attach-release-assets) instead of uploading them to the run, unless
+# another job of the run reads them. A failed job of this leg is re-run alone with
 # "Re-run failed jobs" on the release's run; the legs it reads from (their artifacts are the
 # run's) are not built again.
 name: "Release: prebuilt inputs"
@@ -76,8 +78,20 @@ jobs:
   package-plugins:
     name: Package Trino plugins tarball for release
     runs-on: ubuntu-latest
+    permissions:
+      contents: write   # attaches what it builds to the draft release
     needs: [metadata, download-plugins]
     steps:
+      # The attach action and the tag's notes page (ensure-release's body), first: a checkout
+      # empties the workspace.
+      - name: Checkout
+        if: inputs.publish
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            .github/actions
+            docs/releases
+
       - name: Download plugin directories
         uses: actions/download-artifact@v4
         with:
@@ -88,19 +102,32 @@ jobs:
         run: |
           tar -czf "${{ needs.metadata.outputs.plugins_name }}" -C trino-plugins/ .
 
+      # A dry run keeps it in the run (its only home: nothing is attached); a release attaches it
+      # to the draft directly, never through an artifact.
       - name: Upload plugins tarball
+        if: ${{ !inputs.publish }}
         uses: actions/upload-artifact@v4
         with:
           name: plugins-tarball
           path: "${{ needs.metadata.outputs.plugins_name }}"
+          if-no-files-found: error
           retention-days: 1
           compression-level: 0
+
+      - name: Attach the plugins tarball to the draft release
+        if: inputs.publish
+        uses: ./.github/actions/attach-release-assets
+        with:
+          tag: ${{ inputs.version }}
+          files: "${{ needs.metadata.outputs.plugins_name }}"
 
   # ── Image pull jobs (one per layer) ─────────────────────────────────────────
 
   pull-images-core:
     name: Pull core Docker images (arm64)
     runs-on: ubuntu-latest
+    permissions:
+      contents: write   # attaches what it builds to the draft release
     # metadata is needed for the versioned trino_image_name the save step writes.
     needs: [metadata]
     steps:
@@ -223,13 +250,24 @@ jobs:
           retention-days: 1
           compression-level: 0
 
+      # A dry run keeps it in the run (its only home: nothing is attached); a release attaches it
+      # to the draft directly, never through an artifact.
       - name: Upload trino image tarball
+        if: ${{ !inputs.publish }}
         uses: actions/upload-artifact@v4
         with:
           name: docker-images-trino
           path: trino-image/
+          if-no-files-found: error
           retention-days: 1
           compression-level: 0
+
+      - name: Attach the trino image tarball to the draft release
+        if: inputs.publish
+        uses: ./.github/actions/attach-release-assets
+        with:
+          tag: ${{ inputs.version }}
+          files: "trino-image/${{ needs.metadata.outputs.trino_image_name }}"
 
       - name: Upload provisa wheels
         uses: actions/upload-artifact@v4
@@ -242,6 +280,8 @@ jobs:
   pull-images-core-amd64:
     name: Pull core Docker images (amd64) for OVA
     runs-on: ubuntu-latest
+    permissions:
+      contents: write   # attaches what it builds to the draft release
     # metadata is needed for the versioned trino_image_amd64_name the save step writes.
     needs: [metadata]
     steps:
@@ -332,13 +372,24 @@ jobs:
           retention-days: 1
           compression-level: 0
 
+      # A dry run keeps it in the run (its only home: nothing is attached); a release attaches it
+      # to the draft directly, never through an artifact.
       - name: Upload amd64 trino image tarball
+        if: ${{ !inputs.publish }}
         uses: actions/upload-artifact@v4
         with:
           name: docker-images-trino-amd64
           path: trino-image/
+          if-no-files-found: error
           retention-days: 1
           compression-level: 0
+
+      - name: Attach the amd64 trino image tarball to the draft release
+        if: inputs.publish
+        uses: ./.github/actions/attach-release-assets
+        with:
+          tag: ${{ inputs.version }}
+          files: "trino-image/${{ needs.metadata.outputs.trino_image_amd64_name }}"
 
   pull-images-obs:
     name: Pull obs Docker images (arm64)
@@ -449,8 +500,20 @@ jobs:
   package-obs-images:
     name: Package obs image tarballs for release
     runs-on: ubuntu-latest
+    permissions:
+      contents: write   # attaches what it builds to the draft release
     needs: [metadata, pull-images-obs]
     steps:
+      # The attach action and the tag's notes page (ensure-release's body), first: a checkout
+      # empties the workspace.
+      - name: Checkout
+        if: inputs.publish
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            .github/actions
+            docs/releases
+
       - name: Download obs image tarballs
         uses: actions/download-artifact@v4
         with:
@@ -461,19 +524,42 @@ jobs:
         run: |
           tar -czf "${{ needs.metadata.outputs.obs_images_name }}" -C obs-images/ .
 
+      # A dry run keeps it in the run (its only home: nothing is attached); a release attaches it
+      # to the draft directly, never through an artifact.
       - name: Upload obs images tarball
+        if: ${{ !inputs.publish }}
         uses: actions/upload-artifact@v4
         with:
           name: obs-images-tarball
           path: "${{ needs.metadata.outputs.obs_images_name }}"
+          if-no-files-found: error
           retention-days: 1
           compression-level: 0
+
+      - name: Attach the obs images tarball to the draft release
+        if: inputs.publish
+        uses: ./.github/actions/attach-release-assets
+        with:
+          tag: ${{ inputs.version }}
+          files: "${{ needs.metadata.outputs.obs_images_name }}"
 
   package-demo-images:
     name: Package demo image tarballs for release
     runs-on: ubuntu-latest
+    permissions:
+      contents: write   # attaches what it builds to the draft release
     needs: [metadata, pull-images-demo]
     steps:
+      # The attach action and the tag's notes page (ensure-release's body), first: a checkout
+      # empties the workspace.
+      - name: Checkout
+        if: inputs.publish
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            .github/actions
+            docs/releases
+
       - name: Download demo image tarballs
         uses: actions/download-artifact@v4
         with:
@@ -484,19 +570,42 @@ jobs:
         run: |
           tar -czf "${{ needs.metadata.outputs.demo_images_name }}" -C demo-images/ .
 
+      # A dry run keeps it in the run (its only home: nothing is attached); a release attaches it
+      # to the draft directly, never through an artifact.
       - name: Upload demo images tarball
+        if: ${{ !inputs.publish }}
         uses: actions/upload-artifact@v4
         with:
           name: demo-images-tarball
           path: "${{ needs.metadata.outputs.demo_images_name }}"
+          if-no-files-found: error
           retention-days: 1
           compression-level: 0
+
+      - name: Attach the demo images tarball to the draft release
+        if: inputs.publish
+        uses: ./.github/actions/attach-release-assets
+        with:
+          tag: ${{ inputs.version }}
+          files: "${{ needs.metadata.outputs.demo_images_name }}"
 
   package-core-images:
     name: Package core image tarballs for release
     runs-on: ubuntu-latest
+    permissions:
+      contents: write   # attaches what it builds to the draft release
     needs: [metadata, pull-images-core]
     steps:
+      # The attach action and the tag's notes page (ensure-release's body), first: a checkout
+      # empties the workspace.
+      - name: Checkout
+        if: inputs.publish
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            .github/actions
+            docs/releases
+
       - name: Download core image tarballs
         uses: actions/download-artifact@v4
         with:
@@ -507,19 +616,42 @@ jobs:
         run: |
           tar -czf "${{ needs.metadata.outputs.core_images_name }}" -C core-images/ .
 
+      # A dry run keeps it in the run (its only home: nothing is attached); a release attaches it
+      # to the draft directly, never through an artifact.
       - name: Upload core images tarball
+        if: ${{ !inputs.publish }}
         uses: actions/upload-artifact@v4
         with:
           name: core-images-tarball
           path: "${{ needs.metadata.outputs.core_images_name }}"
+          if-no-files-found: error
           retention-days: 1
           compression-level: 0
+
+      - name: Attach the core images tarball to the draft release
+        if: inputs.publish
+        uses: ./.github/actions/attach-release-assets
+        with:
+          tag: ${{ inputs.version }}
+          files: "${{ needs.metadata.outputs.core_images_name }}"
 
   package-core-images-amd64:
     name: Package amd64 core image tarballs for Windows release
     runs-on: ubuntu-latest
+    permissions:
+      contents: write   # attaches what it builds to the draft release
     needs: [metadata, pull-images-core-amd64]
     steps:
+      # The attach action and the tag's notes page (ensure-release's body), first: a checkout
+      # empties the workspace.
+      - name: Checkout
+        if: inputs.publish
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            .github/actions
+            docs/releases
+
       - name: Download amd64 core image tarballs
         uses: actions/download-artifact@v4
         with:
@@ -531,10 +663,21 @@ jobs:
           cd core-images-amd64
           zip -0 "../${{ needs.metadata.outputs.core_images_amd64_name }}" *.tar.gz
 
+      # A dry run keeps it in the run (its only home: nothing is attached); a release attaches it
+      # to the draft directly, never through an artifact.
       - name: Upload amd64 core images zip
+        if: ${{ !inputs.publish }}
         uses: actions/upload-artifact@v4
         with:
           name: core-images-amd64-tarball
           path: "${{ needs.metadata.outputs.core_images_amd64_name }}"
+          if-no-files-found: error
           retention-days: 1
           compression-level: 0
+
+      - name: Attach the amd64 core images zip to the draft release
+        if: inputs.publish
+        uses: ./.github/actions/attach-release-assets
+        with:
+          tag: ${{ inputs.version }}
+          files: "${{ needs.metadata.outputs.core_images_amd64_name }}"

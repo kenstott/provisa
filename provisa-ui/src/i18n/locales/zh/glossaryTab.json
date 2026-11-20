@@ -152,6 +152,7 @@
     "lastAppliedTo": "最后应用于",
     "lastAppliedColumns": "列：{{columns}}",
     "lastAppliedTables": "表：{{tables}}",
+    "noRetirementHistory": "该术语没有停用记录。",
     "status_draft": "草稿",
     "status_deprecated": "已弃用",
     "status_retired": "已停用",

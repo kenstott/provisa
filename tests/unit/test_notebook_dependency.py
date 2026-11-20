@@ -52,11 +52,13 @@ def test_the_release_builds_the_notebook_and_stamps_both_pins():
 
 
 def test_the_notebook_is_published_before_provisa_and_only_after_every_leg():
+    """provisa's wheels reach users through the release and its Pages index (the publish leg), so
+    the notebook package they pin is on PyPI before that leg starts."""
     jobs = yaml.safe_load((WORKFLOWS / "build-dmg.yml").read_text())["jobs"]
     legs = {"prebuilt", "packages", "macos", "windows", "linux"}
     assert legs <= set(jobs["publish-notebook-pypi"]["needs"])
-    assert "publish-notebook-pypi" in jobs["publish-provisa-pypi"]["needs"]
-    assert {"publish-notebook-pypi", "publish-provisa-pypi"} <= set(jobs["publish"]["needs"])
+    assert "publish-provisa-pypi" not in jobs
+    assert "publish-notebook-pypi" in jobs["publish"]["needs"]
 
 
 def test_every_installer_and_launcher_builds_the_notebook_from_this_repository():

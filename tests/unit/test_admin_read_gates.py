@@ -67,7 +67,7 @@ def _install_mv_state(monkeypatch, store_dsn: str = "postgresql://store-host/pro
         {"withdrawn_tables": []},
         raising=False,
     )
-    monkeypatch.setattr(appmod.state, "mv_registry", types.SimpleNamespace(_mvs={}), raising=False)
+    monkeypatch.setattr(appmod.state, "mv_registry", types.SimpleNamespace(all=list), raising=False)
     monkeypatch.setattr(
         appmod.state,
         "federation_engine",

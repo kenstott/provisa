@@ -152,6 +152,7 @@
     "lastAppliedTo": "Последнее применение",
     "lastAppliedColumns": "Столбцы: {{columns}}",
     "lastAppliedTables": "Таблицы: {{tables}}",
+    "noRetirementHistory": "У этого термина нет истории вывода из обращения.",
     "status_draft": "Черновик",
     "status_deprecated": "Устаревший",
     "status_retired": "Выведен из обращения",
