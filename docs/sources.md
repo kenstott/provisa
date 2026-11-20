@@ -983,6 +983,54 @@ As with any OpenAPI source, each `GET` operation is a table on offer and each ot
 
 `stripe` also appears in `SourceType` among the stubbed Supabase `wrappers` types. A Stripe source added through the form is an `openapi` source, not that stub.
 
+#### Governance catalogs: OpenMetadata and DataHub {: #governance-catalogs }
+
+OpenMetadata and DataHub are branded sources carried by `openapi`. Each appears in the Sources form under its own name, under Enterprise. You read the catalog live, so its tables, tags, owners, domains and glossary terms can be joined with any other data in Provisa. Nothing syncs in either direction. When the catalog and your Provisa model disagree, you find out with a query.
+
+Each customer runs these catalogs at their own address. The form asks for that address as the **Base URL** (an `http` or `https` address with no trailing slash) and for a token. Provisa reads the OpenAPI specification from your running instance when you add the source and again at every refresh, because it changes between releases. None ships with Provisa.
+
+| | OpenMetadata | DataHub |
+|---|---|---|
+| Base URL | The address you open OpenMetadata at, such as `https://openmetadata.example.com`, without `/api` | The address of the metadata service (GMS), such as `https://datahub.example.com/gms` |
+| API called at | `<base URL>/api` | `<base URL>`; its paths start with `/openapi/v3` |
+| Specification read from | `<base URL>/swagger.json` | `<base URL>/openapi/v3/api-docs` |
+| Token | A bot's JWT token, from **Settings > Bots** | A personal access token or a service account's token, from **Settings > Access Tokens** |
+| Token checked with | `GET /v1/users/loggedInUser` | `GET /openapi/v3/entity/corpuser?count=1` |
+
+The token is sent as a bearer token and checked once before the source is added. A rejected token fails registration with `openapi.credential_rejected`. A missing token or base URL fails before any call, naming the field.
+
+**What you register.** Adding the source registers no tables. Every list the specification offers is a table you can register:
+
+- OpenMetadata: `/v1/tables` (each table with its columns and their tags, owners, domains and certification), `/v1/glossaryTerms`, `/v1/domains`, `/v1/dataProducts`, `/v1/classifications`, `/v1/tags`, `/v1/users`, `/v1/teams`, `/v1/dataQuality/testCases` and the test case results.
+- DataHub: one list per entity, such as `/openapi/v3/entity/dataset`, `/openapi/v3/entity/glossaryterm`, `/openapi/v3/entity/domain`, `/openapi/v3/entity/dataproduct`, `/openapi/v3/entity/tag`, `/openapi/v3/entity/corpuser` and `/openapi/v3/entity/corpgroup`. Each row carries the aspects you ask for in the table's `aspects` argument, for example `schemaMetadata`, `globalTags`, `ownership`, `glossaryTerms` and `domains`.
+
+OpenMetadata returns only the fields you ask for in its `fields` parameter. Set it as a fixed argument of the table, for example `columns,tags,owners,domains,certification`.
+
+**Paging.** Both catalogs answer a list one page at a time with a cursor for the next page. OpenMetadata answers `{data, paging: {after}, errors, warnings}`, and DataHub answers `{scrollId, entities}`. The paging Provisa proposes when you register a table reads the rows from `data` or `entities` and follows `paging.after` or `scrollId` until a page comes back without one. A cursor may be a dotted path into the answer, so a plain OpenAPI source with the same shape pages the same way.
+
+**Finding disagreements.** The catalog's tables join with the `meta` tables that hold your Provisa model. With an OpenMetadata table registered as `catalog.list_tables`, this query lists the columns the catalog classifies as personal data that Provisa does not mask:
+
+```sql
+WITH personal AS (
+  SELECT t.name AS table_name, col ->> 'name' AS column_name
+  FROM catalog.list_tables t
+  CROSS JOIN LATERAL jsonb_array_elements(t.columns) AS col
+  CROSS JOIN LATERAL jsonb_array_elements(col -> 'tags') AS tag
+  WHERE tag ->> 'tagFQN' LIKE 'PII.%'
+)
+SELECT p.table_name, p.column_name
+FROM personal p
+JOIN meta.registered_tables r ON r.table_name = p.table_name
+JOIN meta.table_columns c ON c.table_id = r.id AND c.column_name = p.column_name
+WHERE NOT EXISTS (
+  SELECT 1 FROM jsonb_array_elements(c.masks) AS entry WHERE entry -> 'mask' <> 'null'::jsonb
+);
+```
+
+The same pattern finds owners that differ between the catalog and your domains, and tables certified in one and missing from the other.
+
+Until a brand exists for another catalog, you can add it as a plain OpenAPI source with its own base URL and specification URL.
+
 #### Exclusions on a specification-built source
 
 A published OpenAPI specification describes everything the remote API accepts, including what its vendor has deprecated and what a deployment must never send. An OpenAPI source can carry exclusions: things in the specification the source does not offer.
