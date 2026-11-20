@@ -174,6 +174,8 @@ async def test_two_references_read_the_view_at_two_times(monkeypatch, mode):
         f"JOIN {VIEW_REF}(as_of => '2026-02-01T00:00:00') b ON a.id = b.id",
         lambda table: "bitemporal" if table.name == VIEW else None,
     )
-    read = read_views_at(sql, SimpleNamespace(bitemporal_view_reads=reads), travel)
+    read = read_views_at(
+        sql, SimpleNamespace(bitemporal_view_reads=reads, source_catalogs={}), travel
+    )
     assert VIEW_REF not in read  # both references were read from the log at their own times
     assert set(con.execute(read).fetchall()) == {(1, 10, 15), (2, 20, 20)}

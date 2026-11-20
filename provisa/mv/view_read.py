@@ -44,6 +44,18 @@ if TYPE_CHECKING:
     from provisa.compiler.view_expand import ViewNames
 
 
+def lowered_view_catalog(state: Any) -> str:
+    """The catalog a statement lowered for the active org names its views under: the derived
+    source's catalog in that org (REQ-1266, REQ-1529) -- ``__derived__`` in the default org,
+    prefixed in any other, by the rule the compilation context lowers a table's catalog by
+    (``naming.lowered_catalog``). A view reached under it is the view; under any other catalog
+    the name is another table's."""
+    from provisa.compiler.naming import lowered_catalog  # noqa: PLC0415
+    from provisa.core.models import DERIVED_SOURCE_ID  # noqa: PLC0415
+
+    return lowered_catalog(state.source_catalogs, DERIVED_SOURCE_ID)
+
+
 def _input_tables(sql: str) -> list[Any]:
     """The tables ``sql`` reads, as references (a CTE it names is no input)."""
     import sqlglot  # noqa: PLC0415
@@ -70,19 +82,22 @@ def sees_everything(
     view: str,
     view_sql_map: dict[str, str],
     gov: "GovernanceContext",
+    view_catalog: str,
     _seen: frozenset = frozenset(),
 ) -> bool:
     """Whether the role may read ``view``'s stored rows: none of the tables the view reads —
     directly, or through another view — carries a rule narrower than "everything" for it. An
-    input that is neither a registered table nor a view cannot be judged, so it does not qualify."""
+    input that is neither a registered table nor a view cannot be judged, so it does not qualify.
+    A view's body is lowered: a view it reads is named under ``view_catalog``
+    (:func:`lowered_view_catalog`)."""
     from provisa.compiler.view_expand import view_of  # noqa: PLC0415
 
     if view in _seen:
         return False
     for table in _input_tables(view_sql_map[view]):
-        nested = view_of(table, view_sql_map)
+        nested = view_of(table, view_sql_map, view_catalog=view_catalog)
         if nested is not None:
-            if not sees_everything(nested, view_sql_map, gov, _seen | {view}):
+            if not sees_everything(nested, view_sql_map, gov, view_catalog, _seen | {view}):
                 return False
             continue
         # By its catalog-physical name: the view's body is lowered, and two sources may hold
@@ -279,7 +294,9 @@ def _answered_after_governance(
     # Only while its stored rows are fresh: a view whose build is not is read through its own
     # SQL, expanded into the statement and governed with it, so every table it reads is read as
     # a direct statement reads it (a search table under its arguments among them).
-    return _stored_rows(view, state) is not None and sees_everything(view, view_sql_map, gov)
+    return _stored_rows(view, state) is not None and sees_everything(
+        view, view_sql_map, gov, lowered_view_catalog(state)
+    )
 
 
 def view_names(
@@ -470,7 +487,11 @@ def unnarrowed_view_bodies(
     when it is materialized and its build is fresh, else its own SQL. For a governed statement
     these are the views :func:`semantic_statement` kept; for a read that acts for no role (an MV
     refresh builds a view whole) every view."""
-    from provisa.compiler.view_expand import unqualified_keys, view_table  # noqa: PLC0415
+    from provisa.compiler.view_expand import (  # noqa: PLC0415
+        reads_view,
+        unqualified_keys,
+        view_table,
+    )
     from provisa.mv.bitemporal import as_of_view_map  # noqa: PLC0415
 
     # A bitemporal view is read from its log: as of the request's time, else its current state
@@ -478,6 +499,7 @@ def unnarrowed_view_bodies(
     bitemporal = _bitemporal_reads(state)
     as_of_reads = as_of_view_map(view_sql_map, bitemporal, as_of) if as_of else view_sql_map
     unqualified = unqualified_keys(view_sql_map)
+    catalog = lowered_view_catalog(state)
     bodies: dict[str, str] = {}
     pending = [sql]
     while pending:
@@ -485,8 +507,9 @@ def unnarrowed_view_bodies(
         for view, view_sql in view_sql_map.items():
             if view in bodies or view_table(view) not in text:
                 continue
-            # A lowered statement: every catalog in it is a real one (no reader's names).
-            if not _mentions(text, view, unqualified, None):
+            # A lowered statement: every catalog in it is a real one (no reader's names), its
+            # views under the org's derived catalog.
+            if not reads_view(text, view, unqualified=view in unqualified, view_catalog=catalog):
                 continue
             if view in bitemporal:
                 bodies[view] = as_of_reads[view]
@@ -521,8 +544,9 @@ def read_views_at(sql: str, state: Any, travel: Any) -> str:
 
     tree = sqlglot.parse_one(sql, read="postgres")
     changed = False
+    catalog = lowered_view_catalog(state)
     for node in list(tree.find_all(exp.Table)):
-        view = view_of(node, reads)
+        view = view_of(node, reads, view_catalog=catalog)
         if view is None:
             continue
         alias = node.alias or view_table(view)

@@ -23,7 +23,7 @@ from provisa.compiler.naming import (
     bare_field_name,
     relationship_field_name,
     unprefixed_field_name,
-    source_to_catalog,
+    lowered_catalog,
 )
 from provisa.compiler.native_nested import NestedColumn, NestedColumns
 from provisa.compiler.native_subtype import SubtypeColumns
@@ -427,8 +427,7 @@ def _register_relationship_joins(
             si,
             src_id,
             rel["source_column"],
-            catalog=(si.source_catalogs or {}).get(src_info.source_id)
-            or source_to_catalog(src_info.source_id),
+            catalog=lowered_catalog(si.source_catalogs, src_info.source_id),
             schema=src_info.schema_name,
             table=src_info.table_name,
         )
@@ -436,8 +435,7 @@ def _register_relationship_joins(
             si,
             tgt_id,
             rel["target_column"],
-            catalog=(si.source_catalogs or {}).get(tgt_info.source_id)
-            or source_to_catalog(tgt_info.source_id),
+            catalog=lowered_catalog(si.source_catalogs, tgt_info.source_id),
             schema=tgt_info.schema_name,
             table=tgt_info.table_name,
         )
@@ -538,7 +536,7 @@ def _catalog_of(si: object, source_id: str, physical_name: str) -> str:  # objec
     own = (si.table_catalogs or {}).get((source_id, physical_name))
     if own is not None:
         return own
-    return (si.source_catalogs or {}).get(source_id) or source_to_catalog(source_id)
+    return lowered_catalog(si.source_catalogs, source_id)
 
 
 _QUERY_NAME = META_QUERY_NAME
