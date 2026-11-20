@@ -46,8 +46,19 @@ def _gms() -> str:
 
 @pytest.fixture(scope="module")
 def served() -> dict:
-    """The spec as the brand reads it: from the address its setup names."""
-    return load_spec(DATAHUB.source_spec_path(DATAHUB.setup({"base_url": _gms()})))
+    """The spec as the brand reads it: from the address its setup names. A spec without the
+    entity lists fails here, naming what was served and the groups the GMS publishes."""
+    spec = load_spec(DATAHUB.source_spec_path(DATAHUB.setup({"base_url": _gms()})))
+    missing = [p for p in PATHS if "get" not in spec.get("paths", {}).get(p, {})]
+    if missing:
+        groups = httpx.get(f"{_gms()}/openapi/v3/api-docs/swagger-config", timeout=60)
+        pytest.fail(
+            f"{DATAHUB.source_spec_path({'base_url': _gms()})} served "
+            f"{spec.get('info')} with {len(spec.get('paths', {}))} paths, "
+            f"first {sorted(spec.get('paths', {}))[:15]}, missing {missing}; "
+            f"swagger-config {groups.status_code}: {groups.text[:1500]}"
+        )
+    return spec
 
 
 def test_each_catalog_entity_is_offered_as_a_scroll_paged_list_of_rows(served):
