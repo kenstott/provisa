@@ -243,7 +243,8 @@
       "host_code_refused": "Opdracht '{{name}}' is van het type {{impl_kind}}, dat code uitvoert op de host van de server. Hostcode staat uit op deze implementatie; gebruik in plaats daarvan een code-resolver.",
       "no_plain_list": "Geen enkele bewerking van bron '{{source_id}}' zonder verplichte parameter geeft de rijen van '{{operation}}' terug, dus de tabel blijft ingeschakeld",
       "plain_list_unregistered": "'{{operation}}' van bron '{{source_id}}' geeft de rijen van de lijst {{lists}} terug; registreer die lijst eerst als tabel",
-      "table_has_dependents": "Naar de tabel '{{table}}' van functie '{{name}}' wordt nog verwezen door andere objecten; verwijder eerst die verwijzingen"
+      "table_has_dependents": "Naar de tabel '{{table}}' van functie '{{name}}' wordt nog verwezen door andere objecten; verwijder eerst die verwijzingen",
+      "statement_failed": "Opdracht '{{name}}' is mislukt: {{error}}"
     },
     "graphql_remote": {
       "introspection_failed": "Introspectie mislukt: {{error}}",

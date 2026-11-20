@@ -243,7 +243,8 @@
       "host_code_refused": "指令 '{{name}}' 的類型為 {{impl_kind}}，會在伺服器主機上執行代碼。此部署已關閉主機代碼；請改用代碼解析器。",
       "no_plain_list": "來源 '{{source_id}}' 中沒有不帶必需參數的操作傳回 '{{operation}}' 的列，因此其表保持開啟",
       "plain_list_unregistered": "來源 '{{source_id}}' 的 '{{operation}}' 傳回其清單 {{lists}} 的列；請先將該清單註冊為表",
-      "table_has_dependents": "函數 '{{name}}' 的表 '{{table}}' 仍被其他物件引用；請先移除這些引用"
+      "table_has_dependents": "函數 '{{name}}' 的表 '{{table}}' 仍被其他物件引用；請先移除這些引用",
+      "statement_failed": "命令 '{{name}}' 失敗：{{error}}"
     },
     "graphql_remote": {
       "introspection_failed": "內省失敗：{{error}}",

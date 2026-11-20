@@ -243,7 +243,8 @@
       "host_code_refused": "El comando '{{name}}' es de tipo {{impl_kind}}, que ejecuta código en el host del servidor. El código del host está desactivado en esta implementación; use un resolutor de código en su lugar.",
       "no_plain_list": "Ninguna operación del origen '{{source_id}}' sin un parámetro obligatorio devuelve las filas de '{{operation}}', así que su tabla sigue activada",
       "plain_list_unregistered": "'{{operation}}' del origen '{{source_id}}' devuelve las filas de su lista {{lists}}; registre primero esa lista como tabla",
-      "table_has_dependents": "Otros objetos aún hacen referencia a la tabla '{{table}}' de la función '{{name}}'; elimine primero esas referencias"
+      "table_has_dependents": "Otros objetos aún hacen referencia a la tabla '{{table}}' de la función '{{name}}'; elimine primero esas referencias",
+      "statement_failed": "El comando '{{name}}' falló: {{error}}"
     },
     "graphql_remote": {
       "introspection_failed": "Error en la introspección: {{error}}",

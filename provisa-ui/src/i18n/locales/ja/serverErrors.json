@@ -243,7 +243,8 @@
       "host_code_refused": "コマンド '{{name}}' は種類 {{impl_kind}} で、サーバーのホスト上でコードを実行します。このデプロイではホストコードはオフです。代わりにコードリゾルバーを使用してください。",
       "no_plain_list": "ソース '{{source_id}}' の必須パラメーターのない操作で '{{operation}}' の行を返すものがないため、そのテーブルはオンのままです",
       "plain_list_unregistered": "ソース '{{source_id}}' の '{{operation}}' はリスト {{lists}} の行を返します。先にそのリストをテーブルとして登録してください",
-      "table_has_dependents": "関数 '{{name}}' のテーブル '{{table}}' はまだ他のオブジェクトから参照されています。先にそれらの参照を削除してください"
+      "table_has_dependents": "関数 '{{name}}' のテーブル '{{table}}' はまだ他のオブジェクトから参照されています。先にそれらの参照を削除してください",
+      "statement_failed": "コマンド '{{name}}' が失敗しました: {{error}}"
     },
     "graphql_remote": {
       "introspection_failed": "イントロスペクションに失敗しました：{{error}}",

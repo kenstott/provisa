@@ -243,7 +243,8 @@
       "host_code_refused": "命令 '{{name}}' 的类型为 {{impl_kind}}，会在服务器主机上运行代码。此部署已关闭主机代码；请改用代码解析器。",
       "no_plain_list": "源 '{{source_id}}' 中没有不带必需参数的操作返回 '{{operation}}' 的行，因此其表保持开启",
       "plain_list_unregistered": "源 '{{source_id}}' 的 '{{operation}}' 返回其列表 {{lists}} 的行；请先将该列表注册为表",
-      "table_has_dependents": "函数 '{{name}}' 的表 '{{table}}' 仍被其他对象引用；请先移除这些引用"
+      "table_has_dependents": "函数 '{{name}}' 的表 '{{table}}' 仍被其他对象引用；请先移除这些引用",
+      "statement_failed": "命令 '{{name}}' 失败：{{error}}"
     },
     "graphql_remote": {
       "introspection_failed": "内省失败：{{error}}",
