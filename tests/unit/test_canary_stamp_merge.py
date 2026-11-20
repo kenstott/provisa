@@ -1,3 +1,13 @@
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 7f206041-a1fd-4f19-8f70-93b9240923f8
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+
 """A merge commit stamps only the files it added itself; an ordinary commit stamps the whole tree
 and publishes the site (scripts/canary_stamp.py, REQ-1989 batch landings)."""
 
