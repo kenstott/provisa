@@ -25,6 +25,7 @@ its setup from the action and never repeats the commands.
 | `demo-bundle` | a named demo's bundle in `dist/demos/` (its seed, logs and database dump), its data stores down again | `demo`; output `bundle` |
 | `release-metadata` | the channel, the PEP 440 version, every asset name (18 outputs) | `version` |
 | `ensure-release` | the draft GitHub release for a tag | `tag` |
+| `attach-release-assets` | a release asset attached to the draft, by the job that built it | `tag`, `files` |
 | `apple-signing` | a keychain holding the Developer ID certificate | `p12-base64`, `p12-password` |
 | `nixos-vm` | a booted NixOS guest with the checkout on its disk | none |
 | `conformance-instance` | a running Provisa instance over the job's PostgreSQL, its model loaded, the job user created and its token in `CONFORMANCE_AUTHORIZATION` | none (reads the job's env) |
