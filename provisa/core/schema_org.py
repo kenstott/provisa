@@ -2143,6 +2143,10 @@ query_audit_log = Table(
     Column("as_of", Text),
     Column("as_recorded", Text),
     Column("logged_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    # REQ-2261: the stage (production | preprod | test | development) the environment declared when
+    # the statement ran, so reports filter and group by it. NULL only for a deployment without a
+    # control plane, which keeps no environment registry to read a stage from.
+    Column("stage", Text),
 )
 
 # Service-level breaches (REQ-506). A row is opened when a measure goes past its limit and closed

@@ -69,8 +69,9 @@ export function entityHref(kind: EntityKind, id: string | number, table?: number
     case "metric":
       return detailHref("metrics", id);
     case "classification":
-      // The classification kinds' page; it has no panel per kind, so the link names the page.
-      return "/admin/classification-kinds";
+      // REQ-2259: the Context group's Classification page; it has no panel per kind, so the link
+      // names the page.
+      return "/context/classification";
   }
 }
 

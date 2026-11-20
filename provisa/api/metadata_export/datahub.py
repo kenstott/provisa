@@ -765,6 +765,9 @@ def to_proposals(snapshot: MetadataSnapshot) -> list[AspectProposal]:
                 }
             )
         custom["provisaUri"] = table.semantic_uri  # REQ-1385: also the clickable externalUrl
+        if snapshot.environment is not None:  # REQ-2261: tells production assets from others
+            custom["provisaEnvironment"] = snapshot.environment.name
+            custom["provisaStage"] = snapshot.environment.stage
         properties: dict[str, Any] = {
             # REQ-1385: the presented name is the business name; qualifiedName is the binding.
             "name": table.aliases[0] if table.aliases else table.name,

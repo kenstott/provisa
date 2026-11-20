@@ -23,6 +23,7 @@ import pytest
 from provisa.api.org_runtime import OrgRuntime
 from provisa.compiler.view_expand import expand_view_refs
 from provisa.core.request_context import reset_current_org, set_current_org
+from provisa.mv.view_read import lowered_view_catalog
 
 pytestmark = pytest.mark.unbound
 
@@ -51,6 +52,8 @@ def _build_views(state, org: str) -> None:
     """What an org's build records for its view ``summary`` (app_rebuild)."""
 
     def build():
+        # Its views are lowered under its own derived catalog (REQ-1266).
+        state.source_catalogs["__derived__"] = f"org_{org}____derived__"
         state.view_sql_map["sales.summary"] = f'SELECT * FROM "{org}_db"."public"."orders"'
         state.bitemporal_view_reads["sales.summary"] = (
             f'"mat"."org_{org}_mv_cache"."mv_summary"',
@@ -63,9 +66,13 @@ def _build_views(state, org: str) -> None:
 def test_a_view_is_expanded_from_its_own_orgs_definition(state):
     _build_views(state, "acme")
     _build_views(state, "globex")
-    sql = 'SELECT * FROM "views"."sales"."summary"'
-    acme = _in("acme", lambda: expand_view_refs(sql, state.view_sql_map))
-    globex = _in("globex", lambda: expand_view_refs(sql, state.view_sql_map))
+
+    def read(org: str) -> str:
+        sql = f'SELECT * FROM "org_{org}____derived__"."sales"."summary"'
+        return expand_view_refs(sql, state.view_sql_map, view_catalog=lowered_view_catalog(state))
+
+    acme = _in("acme", lambda: read("acme"))
+    globex = _in("globex", lambda: read("globex"))
     assert '"acme_db"' in acme and '"globex_db"' not in acme
     assert '"globex_db"' in globex and '"acme_db"' not in globex
 

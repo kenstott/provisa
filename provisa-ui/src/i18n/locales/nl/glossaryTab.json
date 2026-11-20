@@ -152,6 +152,7 @@
     "lastAppliedTo": "Laatst toegepast op",
     "lastAppliedColumns": "Kolommen: {{columns}}",
     "lastAppliedTables": "Tabellen: {{tables}}",
+    "noRetirementHistory": "Deze term heeft geen geschiedenis van buitengebruikstelling.",
     "status_draft": "Ontwerp",
     "status_deprecated": "Verouderd",
     "status_retired": "Buiten gebruik",

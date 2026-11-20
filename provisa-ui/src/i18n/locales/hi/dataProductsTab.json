@@ -310,6 +310,9 @@
     },
     "detailPanel": "डेटा प्रोडक्ट का विवरण",
     "tagFacetLabel": "टैग",
-    "tagFacetPlaceholder": "टैग से फ़िल्टर करें"
+    "tagFacetPlaceholder": "टैग से फ़िल्टर करें",
+    "noMatch": "फ़िल्टर से कोई डेटा प्रोडक्ट मेल नहीं खाता",
+    "domainFacetLabel": "डोमेन",
+    "domainFacetPlaceholder": "डोमेन से फ़िल्टर करें"
   }
 }

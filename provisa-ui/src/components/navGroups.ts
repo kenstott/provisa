@@ -132,8 +132,9 @@ export const NAV_GROUPS: NavGroup[] = [
   },
   {
     // REQ-2259: the context layer -- documents, ontology, glossary, metrics, tags, classification --
-    // in one group, in this order. Context Health, Glossary, Metrics, Tags and Classification are
-    // separate pages still to be built, so they are listed as coming soon and open no route.
+    // in one group, in this order. Context Health and Glossary are separate pages still to be
+    // built, so they are listed as coming soon and open no route. Metrics, Tags and
+    // Classification are read-only views; editing stays in Derived and Admin.
     id: "context",
     labelKey: "navBar.groupContext",
     items: [
@@ -152,23 +153,12 @@ export const NAV_GROUPS: NavGroup[] = [
       // REQ-1590: gated on the glossary's own read right, not org_settings -- every seeded role
       // reads the vocabulary the model is described in.
       { to: "/context/ontology", labelKey: "navBar.itemOntology", capability: "glossary_read" },
-      {
-        to: "/context/metrics",
-        labelKey: "navBar.itemMetrics",
-        capability: "glossary_read",
-        comingSoon: true,
-      },
-      {
-        to: "/context/tags",
-        labelKey: "navBar.itemTags",
-        capability: "glossary_read",
-        comingSoon: true,
-      },
+      { to: "/context/metrics", labelKey: "navBar.itemMetrics", capability: "glossary_read" },
+      { to: "/context/tags", labelKey: "navBar.itemTags", capability: "glossary_read" },
       {
         to: "/context/classification",
         labelKey: "navBar.itemClassificationKinds",
         capability: "glossary_read",
-        comingSoon: true,
       },
       // REQ-2185: the reference library; everyone browses what they may read.
       { to: "/context/documents", labelKey: "navBar.itemDocuments", capability: "glossary_read" },

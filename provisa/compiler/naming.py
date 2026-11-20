@@ -302,6 +302,14 @@ def source_to_catalog(source_id: str) -> str:  # REQ-471
     return source_id.replace("-", "_")
 
 
+def lowered_catalog(source_catalogs: Mapping[str, str] | None, source_id: str) -> str:  # REQ-1266
+    """The catalog a statement's reference to a table of ``source_id`` is lowered under: the org's
+    name for the source in ``source_catalogs`` (org- and environment-prefixed, REQ-1266/1529), else
+    the source's base catalog name -- the one rule the compilation context names a table's catalog
+    by (``compiler.context``), so a lowered statement is read back under the same name."""
+    return (source_catalogs or {}).get(source_id) or source_to_catalog(source_id)
+
+
 #: The kinds of object an engine keeps to reach a source live, each named ``<kind>_<catalog>``:
 #: a pg engine's foreign servers and staging schemas (postgres_fdw and the other FDWs, the
 #: connector-pgwire bridge, file_fdw) and a ClickHouse engine's databases.

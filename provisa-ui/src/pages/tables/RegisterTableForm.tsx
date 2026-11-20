@@ -31,6 +31,7 @@ import { isPipelineArgument, NATIVE_QUERY_MODES, previewedColumn } from "./query
 import { QDRANT, QDRANT_SCHEMA, searchQueryArgument } from "../sources/qdrant";
 import { QdrantVectorsNote } from "./QdrantVectorsNote";
 import { RegisterColumnsField } from "./RegisterColumnsField";
+import { RegisterDescriptionField } from "./RegisterDescriptionField";
 import { registrationOf } from "./registrationDefaults";
 import { useManyTables } from "./useManyTables";
 import { useCombineFiles } from "./useCombineFiles";
@@ -43,6 +44,10 @@ import { useTranslation } from "react-i18next";
 import { Button, NumberInput, SegmentedControl, Select, Text, TextInput } from "@mantine/core";
 import { domainToSqlName, toSnakeCase } from "../../naming";
 import { useAvailableSchemas, useAvailableTables } from "../../hooks/useAdminQueries";
+import {
+  useDescribeUnregistered,
+  type UnregisteredTable,
+} from "../../hooks/useDescribeUnregistered";
 import { RegionSelect } from "../../components/admin/RegionSelect";
 import { MultiSelect } from "../../components/MultiSelect";
 import { useRegionChoice, useRegionChoices } from "../../hooks/useRegionQueries";
@@ -431,6 +436,18 @@ export function RegisterTableForm({
       setPreviewing(false);
     }
   };
+
+  // The table the AI describe writes for, once the form names it: what it will register.
+  const { describeTable, describeColumn } = useDescribeUnregistered();
+  const unregistered: UnregisteredTable | undefined =
+    sourceId && schemaName && tableName
+      ? {
+          sourceId,
+          schemaName,
+          tableName,
+          columns: columns.filter((c) => c.selected && !isPipelineArgument(c)).map((c) => c.name),
+        }
+      : undefined;
 
   const updateCol = (
     i: number,
@@ -947,15 +964,12 @@ export function RegisterTableForm({
               />
             </FormField>
           ) : (
-            <FormField size="long">
-              <TextInput
-                label={t("registerTableForm.descriptionLabel")}
-                value={tableDescription}
-                onChange={(e) => setTableDescription(e.currentTarget.value)}
-                placeholder={t("registerTableForm.descriptionPlaceholder")}
-                data-testid="register-table-description"
-              />
-            </FormField>
+            <RegisterDescriptionField
+              value={tableDescription}
+              onChange={setTableDescription}
+              describe={unregistered && (() => describeTable(unregistered))}
+              setError={setError}
+            />
           )}
           {!isChecker && !isQueryApi && (
             <FormField
@@ -996,8 +1010,9 @@ export function RegisterTableForm({
           )}
           {!isChecker && columns.length > 0 && (
             <RegisterColumnsField
-              {...{ columns, updateCol, roles, irTypes, sourceType }}
+              {...{ columns, updateCol, roles, irTypes, sourceType, setError }}
               loadingColumns={false}
+              describeColumn={unregistered && ((column) => describeColumn(unregistered, column))}
             />
           )}
         </>

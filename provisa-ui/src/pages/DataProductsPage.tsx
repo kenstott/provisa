@@ -46,7 +46,7 @@ import { EMPTY_FORM, type DataProductForm } from "./data-products/types";
 import { useDependentsDialog } from "../hooks/useDependentsDialog";
 import { ListTable, ListHead, ListRow, ListEmpty, ListItems } from "../components/list/ListTable";
 import { useListSortGroup, type ListColumn } from "../components/list/useListSortGroup";
-import { useDetailParam } from "../components/list/useDetailParam";
+import { useRememberedDetail } from "../components/list/useDetailParam";
 import { PageLoading } from "../components/PageLoading";
 import { SplitPane } from "../components/list/SplitPane";
 import { useListSelection } from "../components/list/listSelection";
@@ -59,7 +59,6 @@ import { heldRoles } from "../lib/roles";
 
 // Exported for the tour, which clears it so the page mounts collapsed and its click on the first
 // row deterministically EXPANDS rather than toggling whatever a prior visit left open.
-export const EXPANDED_STORAGE_KEY = "provisa.data_products.expanded";
 // REQ-2146: the list narrowed to the products with findings, remembered.
 const TO_REVIEW_STORAGE_KEY = "provisa.data_products.toReview";
 
@@ -162,29 +161,29 @@ export function DataProductsPage() {
         .map((tag) => ({ id: tag, label: tag })),
     [productTags],
   );
+  // The list narrowed to the products of the domains chosen; offered the domains of the products
+  // the viewer reads, since a domain with none of them would only empty the list.
+  const [domainFilter, setDomainFilter] = useState<string[]>([]);
+  const productDomainOptions = useMemo(
+    () =>
+      [...new Set(dataProducts.map((p) => p.domainId))]
+        .sort()
+        .map((domain) => ({ id: domain, label: domain })),
+    [dataProducts],
+  );
   const [creating, setCreating] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<DataProductForm>({ ...EMPTY_FORM });
   const [selectedTableIds, setSelectedTableIds] = useState<string[]>([]);
   const [selectedFunctionNames, setSelectedFunctionNames] = useState<string[]>([]);
   // REQ-1659, REQ-2241: `?product=<id>` is the open product's panel -- the deep link a catalog
-  // listing (Snowflake Horizon's documentation box, Analytics Hub) carries back to this page. A
-  // visit without one reopens the last-expanded row remembered in localStorage.
-  const detail = useDetailParam("products");
+  // listing (Snowflake Horizon's documentation box, Analytics Hub) carries back to this page.
+  // REQ-2260: a visit without one reopens the product left open.
+  const detail = useRememberedDetail(
+    "products",
+    products.data === null ? null : products.data.map((p) => p.id),
+  );
   const expanded = detail.id;
-  const [remembered] = useState(() => {
-    if (detail.id !== null) return null;
-    try {
-      return getStored(EXPANDED_STORAGE_KEY);
-    } catch {
-      return null;
-    }
-  });
-  const reopen = detail.open;
-  useEffect(() => {
-    if (remembered) reopen(remembered, { replace: true });
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- once, as the page opens.
-  }, []);
   // REQ-2115: Polly's read_screen reads the page's main state from here. A product is named only
   // once the list holds it, so a link to one that does not exist reads as no product.
   useScreenInputs("/data-products", {
@@ -192,6 +191,7 @@ export function DataProductsPage() {
     search,
     toReviewOnly,
     tags: tagFilter,
+    domains: domainFilter,
     creating,
     editing: editingId,
   });
@@ -199,12 +199,6 @@ export function DataProductsPage() {
     // REQ-2241: opening and closing a product are history entries; Back undoes them.
     if (id) detail.open(id);
     else detail.close();
-    try {
-      if (id) setStored(EXPANDED_STORAGE_KEY, id);
-      else removeStored(EXPANDED_STORAGE_KEY);
-    } catch {
-      // localStorage unavailable (private mode, quota) — expanded state just won't persist
-    }
   };
   // REQ-2127: the expanded product's panel core; read again after the product is saved.
   const [coreVersion, setCoreVersion] = useState(0);
@@ -428,9 +422,18 @@ export function DataProductsPage() {
         (p) =>
           matchesQuery([p.id, p.name, p.domainId, p.ownerRole, p.purpose], search) &&
           (!toReviewOnly || productFindings.findings.has(p.id)) &&
-          tagFilter.every((tag) => productTags.get(p.id)?.has(tag) === true),
+          tagFilter.every((tag) => productTags.get(p.id)?.has(tag) === true) &&
+          (domainFilter.length === 0 || domainFilter.includes(p.domainId)),
       ),
-    [dataProducts, search, toReviewOnly, productFindings.findings, tagFilter, productTags],
+    [
+      dataProducts,
+      search,
+      toReviewOnly,
+      productFindings.findings,
+      tagFilter,
+      productTags,
+      domainFilter,
+    ],
   );
   const productColumns = useMemo<ListColumn<DataProduct>[]>(
     () => [
@@ -562,6 +565,15 @@ export function DataProductsPage() {
             placeholder={t("dataProductsTab.tagFacetPlaceholder")}
           />
         </div>
+        <div data-testid="data-products-domain-facet" style={{ minWidth: 180, maxWidth: 360 }}>
+          <MultiSelect
+            options={productDomainOptions}
+            value={domainFilter}
+            onChange={setDomainFilter}
+            ariaLabel={t("dataProductsTab.domainFacetLabel")}
+            placeholder={t("dataProductsTab.domainFacetPlaceholder")}
+          />
+        </div>
         <Checkbox
           size="xs"
           label={t("dataProductsTab.toReview")}
@@ -649,9 +661,13 @@ export function DataProductsPage() {
                     ]}
                   />
                   <Table.Tbody>
-                    {filteredProducts.length === 0 && (
+                    {/* Unreadable, the banner above says why the list is empty; it is not that
+                        none exist. With products read, an empty list is the filters'. */}
+                    {filteredProducts.length === 0 && !products.unreadable && (
                       <ListEmpty colSpan={6} testId="data-products-empty">
-                        {t("dataProductsTab.empty")}
+                        {dataProducts.length === 0
+                          ? t("dataProductsTab.empty")
+                          : t("dataProductsTab.noMatch")}
                       </ListEmpty>
                     )}
                     <ListItems

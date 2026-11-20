@@ -810,7 +810,6 @@
       "status_by_action": "Lo stato di un termine cambia tramite Approva, Depreca, Ritira o Ripristina.",
       "successor_required": "Questo termine ha ancora colonne o tabelle; ritirarlo le sposta su un successore. Sceglietene uno.",
       "successor_role": "Il successore di un {{role}} deve essere un {{role}} o un concetto; '{{successor}}' è un {{successor_role}}.",
-      "no_retirement_history": "La cronologia del modello non contiene alcun ritiro di questo termine.",
       "finding": {
         "unlinked_tables": "Questa classe è ancorata a tabelle che le relazioni di stessa entità non collegano tutte: {{tables}}.",
         "class_and_attribute": "Questa classe ha anche colonne che non sono le sue chiavi: {{columns}}.",

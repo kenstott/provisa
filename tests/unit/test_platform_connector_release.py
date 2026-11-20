@@ -238,8 +238,8 @@ def test_the_image_is_pushed_after_every_leg_and_before_what_names_it() -> None:
     legs = {name for name, body in orchestrator.items() if "uses" in body} - {"publish"}
     assert set(job["needs"]) == legs
     assert job["permissions"] == {"contents": "read", "packages": "write"}
-    # The provisa wheel and the installers carry the block: they are published only after it.
-    assert "publish-connector-image" in orchestrator["publish-provisa-pypi"]["needs"]
+    # The provisa wheel and the installers carry the block: the release that attaches them (and
+    # the wheel index that lists the wheels) is published only after it.
     assert "publish-connector-image" in orchestrator["publish"]["needs"]
     steps = job["steps"]
     downloads = {

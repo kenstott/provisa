@@ -93,8 +93,11 @@ test.describe("source to query through the UI: hiveserver2 (REQ-1731)", () => {
   });
 
   test.afterAll(async () => {
-    await retireTestSourcesTables();
-    provision("down", ["hiveserver2"]);
+    try {
+      await retireTestSourcesTables();
+    } finally {
+      provision("down", ["hiveserver2"]);
+    }
   });
 
   test("hiveserver2: add the source, register a table, query it on the SQL page", async ({

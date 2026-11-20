@@ -1626,7 +1626,9 @@ async def restore_term(request: Request, term_id: int) -> dict:
 @router.get("/terms/{term_id}/applied-history")
 async def applied_history(request: Request, term_id: int) -> dict:
     """A retired term's column and table refs as of the model-store commit before its
-    retirement (REQ-2144), read from the environment's repository; 404 when it holds none."""
+    retirement (REQ-2144), read from the environment's repository. A term whose history holds no
+    retirement is a normal case, answered with the same shape emptied: ``retired_in`` and ``as_of``
+    null, ``columns`` and ``tables`` empty."""
     from provisa.core.environments import PROD
     from provisa.core.request_context import current_env
     from provisa.core.term_history import applied_history as read_history
@@ -1642,11 +1644,7 @@ async def applied_history(request: Request, term_id: int) -> dict:
         raise ApiError(404, "glossary.term_not_found", f"term {term_id} not found")
     history = read_history(org_id, current_env.get() or PROD, term_id, term["name"])
     if history is None:
-        raise ApiError(
-            404,
-            "glossary.no_retirement_history",
-            f"the model's history holds no retirement of term {term_id}",
-        )
+        return {"retired_in": None, "as_of": None, "columns": [], "tables": []}
     return await _history_as_read(request, history)
 
 

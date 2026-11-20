@@ -46,8 +46,8 @@ describe("the context layer's kinds (REQ-2259)", () => {
     expect(entityHref("metric", "revenue")).toBe(detailHref("metrics", "revenue"));
   });
 
-  it("links a classification kind to the classification kinds' page", () => {
-    expect(entityHref("classification", "email")).toBe("/admin/classification-kinds");
+  it("links a classification kind to the Context group's Classification page", () => {
+    expect(entityHref("classification", "email")).toBe("/context/classification");
   });
 });
 
@@ -55,7 +55,7 @@ describe("a link is drawn only when the viewer holds the target page's right (RE
   it.each([
     ["term", "glossary_read"],
     ["metric", "table_registration"],
-    ["classification", "sensitive_data"],
+    ["classification", "glossary_read"],
     ["product", "data_product_read"],
     ["source", "source_registration"],
     ["relationship", "create_relationship"],

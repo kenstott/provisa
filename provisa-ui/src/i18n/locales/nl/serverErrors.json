@@ -810,7 +810,6 @@
       "status_by_action": "De status van een term verandert via Goedkeuren, Afschaffen, Buiten gebruik stellen of Herstellen.",
       "successor_required": "Deze term heeft nog kolommen of tabellen; buiten gebruik stellen verplaatst ze naar een opvolger. Kies er een.",
       "successor_role": "De opvolger van een {{role}} moet een {{role}} of een concept zijn; '{{successor}}' is een {{successor_role}}.",
-      "no_retirement_history": "De geschiedenis van het model bevat geen buitengebruikstelling van deze term.",
       "finding": {
         "unlinked_tables": "Deze klasse is verankerd in tabellen die same-entity-relaties niet allemaal verbinden: {{tables}}.",
         "class_and_attribute": "Deze klasse heeft ook kolommen die niet haar sleutels zijn: {{columns}}.",

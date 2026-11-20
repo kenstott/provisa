@@ -275,3 +275,39 @@ def test_each_core_job_starts_only_the_demo_sources_its_project_reads():
     runs = {job: body["with"]["run"] for job, body in workflow["jobs"].items()}
     assert re.findall(r"--project=([\w-]+)", runs["playwright"]) == ["core"]
     assert re.findall(r"--project=([\w-]+)", runs["provisioning"]) == ["core-provisioning"]
+
+
+# --- The provisioning runner's memory (run 44574663250: "The hosted runner lost communication") ---
+# playwright.config.ts starts one backend per PROVISA_E2E_WORKERS (four when unset). The
+# provisioning job runs one worker, so three idle backends held up to 1.4 GB each for the whole
+# lane (run 44446367464's sampler: 14.3 of 16 GB used under SAP HANA).
+
+
+def test_the_provisioning_job_starts_one_backend_for_its_one_worker():
+    jobs = yaml.safe_load((REPO / ".github/workflows/ui-e2e-core.yml").read_text())["jobs"]
+    env = dict(
+        line.split("=", 1) for line in jobs["provisioning"]["with"]["env"].splitlines() if line
+    )
+    assert env["PROVISA_E2E_WORKERS"] == "1"
+    assert "--workers=1" in jobs["provisioning"]["with"]["run"]
+
+
+_TEARDOWN = re.compile(r"test\.after(?:Each|All)\(async \(\) => \{(.*?)\n  \}\);", re.S)
+
+
+def test_a_failed_table_retirement_never_skips_a_container_teardown():
+    """Run 43775788692 kept cockroachdb's and sqlserver's containers from their failed tests to the
+    end of the lane: each hook retired the test's tables first, that threw, and the `down` after
+    it never ran. A hook that retires tables and brings containers down does the latter in a
+    `finally`."""
+    checked = 0
+    for name in sorted(_list("PROVISIONING_SPECS")):
+        text = (UI / "e2e" / name).read_text()
+        for hook in _TEARDOWN.finditer(text):
+            body = hook.group(1)
+            if "retireTestSourcesTables()" not in body or '"down"' not in body:
+                continue
+            checked += 1
+            retire, down = body.index("retireTestSourcesTables()"), body.index('"down"')
+            assert "try {" in body[:retire] and "} finally {" in body[retire:down], (name, body)
+    assert checked >= 6, checked

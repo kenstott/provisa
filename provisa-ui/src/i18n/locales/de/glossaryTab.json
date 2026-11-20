@@ -152,6 +152,7 @@
     "lastAppliedTo": "Zuletzt angewendet auf",
     "lastAppliedColumns": "Spalten: {{columns}}",
     "lastAppliedTables": "Tabellen: {{tables}}",
+    "noRetirementHistory": "Dieser Begriff hat keine Ausmusterungshistorie.",
     "status_draft": "Entwurf",
     "status_deprecated": "Veraltet",
     "status_retired": "Außer Dienst",

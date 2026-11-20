@@ -50,7 +50,7 @@ import {
 } from "../../components/list/ListTable";
 import { useListSortGroup, type ListColumn } from "../../components/list/useListSortGroup";
 import { PanelActions, SplitPane } from "../../components/list/SplitPane";
-import { useDetailParam } from "../../components/list/useDetailParam";
+import { useRememberedDetail } from "../../components/list/useDetailParam";
 import { PanelDelete } from "../../components/list/PanelDelete";
 import { PanelDuplicate } from "../../components/list/PanelDuplicate";
 import { relationName } from "../../naming";
@@ -110,7 +110,8 @@ export function SecurityRlsPage() {
   // REQ-1679: the tracked functions and webhooks a rule may target, with their domains.
   const [actions, setActions] = useState<{ name: string; domainId: string }[]>([]);
   // REQ-2241: `?rule=<id>` is the open rule's panel.
-  const detail = useDetailParam("rls");
+  // REQ-2260: and the one left open is open again on coming back.
+  const detail = useRememberedDetail("rls", loading ? null : rules.map((r) => String(r.id)));
   const expandedRule = detail.id === null ? null : Number(detail.id);
   const setExpandedRule = (id: number | null) =>
     id === null ? detail.close() : detail.open(String(id));
