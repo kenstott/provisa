@@ -89597,86 +89597,91 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
   feature: connector-catalog-streams-logs-and-public-data
   priority: SHOULD
   type: behavioral
-  description: 'A code-source function (Node, REQ-1984, or Python, REQ-1993) tagged @columns is a batch
-    column transform, the batched form of REQ-1924''s column transform. It takes a batch of rows, each row
-    holding the input columns named by its parameters, and returns one result per input row, in order, holding
-    the output columns declared by its return type. It is applied to a table''s or view''s columns like
-    any column transform, and its outputs are named steps in that projection''s lineage. It is stateless:
-    a batch''s result depends only on that batch''s rows, so batches are independent and run in parallel
+  description: 'A code-source function (Node, REQ-1984, or Python, REQ-1993) tagged @columns is a batch column
+    transform, the batched form of REQ-1924''s column transform. It takes a batch of rows, each row holding
+    the input columns named by its parameters, and returns one result per input row, in order, holding the
+    output columns declared by its return type. It is applied to a table''s or view''s columns like any
+    column transform, and its outputs are named steps in that projection''s lineage. It is stateless: a
+    batch''s result depends only on that batch''s rows, so batches are independent and run in parallel
     across the source''s workers, and adding workers raises throughput. It may call Provisa''s services,
     including the LLM service (REQ-2105), so one model call can cleanse, classify or enrich a whole batch,
     metered and capped as any code-source LLM call. In a materialized view, @columns outputs are recomputed
     when the view is refreshed, as the view''s freshness declares; they have no schedule of their own. A
-    function that returns a different number of results than rows it was given is refused naming the function.
-    (Amended 2026-10-21, LANDED:) A view that applies a column transform is landed, whether or not its steward
-    declares it materialized, as API and code tables are landed: it is built through the materialized views''
-    governed build (its inputs read, the function called in batches, the result stored), refreshed as the
-    view''s freshness declares, and read by the engine from its stored table. (Amended 2026-10-27, COLUMN
-    TRANSFORMS STREAM:) Maintainer 2026-10-27: a code source''s batch column transform streams. The statement''s
-    result is read as Arrow record batches; each batch''s input columns go to one of the source''s workers
-    as it arrives and its output columns are passed on as soon as that batch is answered, with a bounded
-    number of batches in flight. The result is never materialized whole: memory stays flat whatever the
-    row count and the first rows reach the caller before the last are read. Order is kept. A batch answered
-    with a different number of results than rows is refused naming the function, as before. (Amended 2026-10-27,
-    A BATCH STAYS 1000 ROWS:) Maintainer 2026-10-27: the unit sent to a worker stays a batch of 1000 rows,
-    since a command may have a startup cost each call pays: the streamed record batches are re-cut into
-    batches of 1000 as rows arrive, and each batch is sent as soon as it is full (the last one when the
-    result ends), never after the whole result is read. (Amended 2026-10-27, A TRANSFORM IN A CTE IS A STAGED,
-    SELECTIVE STEP:) Maintainer 2026-10-27: a column transform may be an item of any select list whose rows
-    are read whole: the statement''s own, or a common table expression''s. A CTE holding one is a staged
-    step: it runs on its own (its read governed and pushed down as any read), its rows are enriched by the
-    streamed 1000-row batches and landed in a session temporary table, and the statement''s reference to
-    the CTE reads that table, so the rest of the statement (filters, joins and grouping on the computed
-    columns) runs in the engine as ordinary SQL. The step enriches only the rows the statement can use,
-    wherever that can be done reliably: (1) every outer condition on the CTE that names no computed column
-    is pushed into the CTE''s read; (2) where the CTE is inner-joined (or EXISTS-joined) to another relation
-    on input columns, that side runs first and the CTE''s read is restricted to the keys it yields. Each
-    rewrite is applied only where it provably leaves the answer unchanged (never across an outer join, an
-    aggregate over the CTE, or a LIMIT on it); otherwise the CTE runs as written. A filter on a computed
-    column cannot reach the CTE''s read. A call anywhere else (a WHERE, a JOIN, a GROUP BY, inside another
-    expression) is still refused by name. (Amended 2026-10-27, EACH CTE IS CLASSIFIED BEFORE IT IS STAGED:)
-    Maintainer 2026-10-27: before a CTE holding a transform is staged, it is classified by what restricts
-    it: a filter, a join, both or neither; and each restricting condition by whether its values are known
-    in advance. A condition whose values are known before anything runs (literals, bound parameters, session
-    variables) is pushed into the CTE''s read at once. A condition whose values come from another relation
-    (a join key) is known only once that relation is read, so that side runs first and its keys restrict
-    the CTE''s read. A condition naming a computed column is known only after the transform and is not pushed.
-    The classification decides the plan; with nothing known in advance and no join to run first, the CTE
-    runs as written. (Amended 2026-10-27, ONLY WHERE A TRANSFORM IS CALLED:) Maintainer 2026-10-27: the
-    classification and the staging apply only to a statement that calls a column transform; any other statement,
-    CTEs and all, is compiled and run exactly as before, with no added pass. (Amended 2026-11-16, A STORED
-    VIEW IS READ UNDER THE READER''S ROLE:) Maintainer 2026-11-16 (''the readers role is applied''; relayed
-    by the audit session), after the security audit found a stored view answered from its build with no
-    check of the reader. A view read from its stored build applies the reader''s role: its row rules, masks
-    and visibility hold as on any governed read. The stored rows are served as they are only to a reader
-    who sees everything. (Amended 2026-11-16, A STORED TRANSFORM VIEW: THE READER''S ROW RULES FILTER IT,
-    AND AN OUTPUT DERIVED FROM A MASKED INPUT IS MASKED:) Maintainer 2026-11-16, settling how a reader''s
-    rules hold on a view whose columns a transform computes and whose result is stored. The view is built
-    once and stored; it is never recomputed per reader. A reader''s row rules filter its stored rows: the
-    build keeps, out of every reader''s sight, the input columns those rules read. A transform output computed
-    from a column the reader sees masked is masked for that reader, as that column is, since it was derived
-    from a value the reader may not see; an output from inputs the reader sees in clear is shown as stored.
-    A reader whose rules narrow nothing reads the stored rows as they are. No transform is called on a read.
-    (Amended 2026-11-16, WHERE THE STORED ROWS CANNOT CARRY A READER''S RULE, THE READ IS REFUSED BY NAME;
-    A RULE CHANGE REBUILDS:) Lead 2026-11-16, consequences of the amendment of this day. Where the stored
-    rows of a transform view cannot carry what a reader''s rule needs, that reader''s read is refused by
-    name, never answered unfiltered: a row rule on a table read inside a derived table or another view,
-    a row rule over a view that groups, aggregates, removes duplicates or combines queries, and a faked
-    mask on an input that feeds an output. A view that calls a code command (REQ-2249) is read under the
-    same rule. A change to a row rule or a mask that changes which input columns the stored rows must keep
-    rebuilds each view it touches, and until that build has published, the view is read as before the change
-    or refused by name, never with an engine error. (Amended 2026-11-16, UNTIL THE REBUILD AFTER A RULE
-    CHANGE HAS PUBLISHED, THE VIEW IS REFUSED BY NAME:) Lead 2026-11-16, correcting the amendment just above:
-    until the build that follows a change to a row rule or a mask has published, a reader whose rules changed
-    is refused by name; the view is never read under the rules it had before the change. (Amended 2026-11-16,
-    A CODE-COMMAND VIEW''S BRIDGE ROWS ARE FILTERED BY THE READER''S RULE ON EACH INPUT, THROUGH ITS RELATIONSHIP:)
-    Lead 2026-11-16, narrowing the amendment of this day that refused every reader with a row rule on a
-    table read inside another view, so that REQ-2249''s rule (row rules apply at each hop) holds. For a
-    view that calls a code command, the stored bridge rows are filtered by the reader''s row rule on each
-    input table through the input''s registered relationship to the view (an EXISTS over the input under
-    the reader''s rule). An output that is an input''s relationship key is derived from that key column
-    only, so a mask elsewhere on the input does not mask it. A row rule on an input that has no relationship
-    from the view is still refused by name.'
+    function that returns a different number of results than rows it was given is refused naming the
+    function. (Amended 2026-10-21, LANDED:) A view that applies a column transform is landed, whether or not
+    its steward declares it materialized, as API and code tables are landed: it is built through the
+    materialized views'' governed build (its inputs read, the function called in batches, the result
+    stored), refreshed as the view''s freshness declares, and read by the engine from its stored table.
+    (Amended 2026-10-27, COLUMN TRANSFORMS STREAM:) Maintainer 2026-10-27: a code source''s batch column
+    transform streams. The statement''s result is read as Arrow record batches; each batch''s input columns
+    go to one of the source''s workers as it arrives and its output columns are passed on as soon as that
+    batch is answered, with a bounded number of batches in flight. The result is never materialized whole:
+    memory stays flat whatever the row count and the first rows reach the caller before the last are read.
+    Order is kept. A batch answered with a different number of results than rows is refused naming the
+    function, as before. (Amended 2026-10-27, A BATCH STAYS 1000 ROWS:) Maintainer 2026-10-27: the unit sent
+    to a worker stays a batch of 1000 rows, since a command may have a startup cost each call pays: the
+    streamed record batches are re-cut into batches of 1000 as rows arrive, and each batch is sent as soon
+    as it is full (the last one when the result ends), never after the whole result is read. (Amended
+    2026-10-27, A TRANSFORM IN A CTE IS A STAGED, SELECTIVE STEP:) Maintainer 2026-10-27: a column transform
+    may be an item of any select list whose rows are read whole: the statement''s own, or a common table
+    expression''s. A CTE holding one is a staged step: it runs on its own (its read governed and pushed down
+    as any read), its rows are enriched by the streamed 1000-row batches and landed in a session temporary
+    table, and the statement''s reference to the CTE reads that table, so the rest of the statement
+    (filters, joins and grouping on the computed columns) runs in the engine as ordinary SQL. The step
+    enriches only the rows the statement can use, wherever that can be done reliably: (1) every outer
+    condition on the CTE that names no computed column is pushed into the CTE''s read; (2) where the CTE is
+    inner-joined (or EXISTS-joined) to another relation on input columns, that side runs first and the
+    CTE''s read is restricted to the keys it yields. Each rewrite is applied only where it provably leaves
+    the answer unchanged (never across an outer join, an aggregate over the CTE, or a LIMIT on it);
+    otherwise the CTE runs as written. A filter on a computed column cannot reach the CTE''s read. A call
+    anywhere else (a WHERE, a JOIN, a GROUP BY, inside another expression) is still refused by name.
+    (Amended 2026-10-27, EACH CTE IS CLASSIFIED BEFORE IT IS STAGED:) Maintainer 2026-10-27: before a CTE
+    holding a transform is staged, it is classified by what restricts it: a filter, a join, both or neither;
+    and each restricting condition by whether its values are known in advance. A condition whose values are
+    known before anything runs (literals, bound parameters, session variables) is pushed into the CTE''s
+    read at once. A condition whose values come from another relation (a join key) is known only once that
+    relation is read, so that side runs first and its keys restrict the CTE''s read. A condition naming a
+    computed column is known only after the transform and is not pushed. The classification decides the
+    plan; with nothing known in advance and no join to run first, the CTE runs as written. (Amended
+    2026-10-27, ONLY WHERE A TRANSFORM IS CALLED:) Maintainer 2026-10-27: the classification and the staging
+    apply only to a statement that calls a column transform; any other statement, CTEs and all, is compiled
+    and run exactly as before, with no added pass. (Amended 2026-11-16, A STORED VIEW IS READ UNDER THE
+    READER''S ROLE:) Maintainer 2026-11-16 (''the readers role is applied''; relayed by the audit session),
+    after the security audit found a stored view answered from its build with no check of the reader. A view
+    read from its stored build applies the reader''s role: its row rules, masks and visibility hold as on
+    any governed read. The stored rows are served as they are only to a reader who sees everything. (Amended
+    2026-11-16, A STORED TRANSFORM VIEW: THE READER''S ROW RULES FILTER IT, AND AN OUTPUT DERIVED FROM A
+    MASKED INPUT IS MASKED:) Maintainer 2026-11-16, settling how a reader''s rules hold on a view whose
+    columns a transform computes and whose result is stored. The view is built once and stored; it is never
+    recomputed per reader. A reader''s row rules filter its stored rows: the build keeps, out of every
+    reader''s sight, the input columns those rules read. A transform output computed from a column the
+    reader sees masked is masked for that reader, as that column is, since it was derived from a value the
+    reader may not see; an output from inputs the reader sees in clear is shown as stored. A reader whose
+    rules narrow nothing reads the stored rows as they are. No transform is called on a read. (Amended
+    2026-11-16, WHERE THE STORED ROWS CANNOT CARRY A READER''S RULE, THE READ IS REFUSED BY NAME; A RULE
+    CHANGE REBUILDS:) Lead 2026-11-16, consequences of the amendment of this day. Where the stored rows of a
+    transform view cannot carry what a reader''s rule needs, that reader''s read is refused by name, never
+    answered unfiltered: a row rule on a table read inside a derived table or another view, a row rule over
+    a view that groups, aggregates, removes duplicates or combines queries, and a faked mask on an input
+    that feeds an output. A view that calls a code command (REQ-2249) is read under the same rule. A change
+    to a row rule or a mask that changes which input columns the stored rows must keep rebuilds each view it
+    touches, and until that build has published, the view is read as before the change or refused by name,
+    never with an engine error. (Amended 2026-11-16, UNTIL THE REBUILD AFTER A RULE CHANGE HAS PUBLISHED,
+    THE VIEW IS REFUSED BY NAME:) Lead 2026-11-16, correcting the amendment just above: until the build that
+    follows a change to a row rule or a mask has published, a reader whose rules changed is refused by name;
+    the view is never read under the rules it had before the change. (Amended 2026-11-16, A CODE-COMMAND
+    VIEW''S BRIDGE ROWS ARE FILTERED BY THE READER''S RULE ON EACH INPUT, THROUGH ITS RELATIONSHIP:) Lead
+    2026-11-16, narrowing the amendment of this day that refused every reader with a row rule on a table
+    read inside another view, so that REQ-2249''s rule (row rules apply at each hop) holds. For a view that
+    calls a code command, the stored bridge rows are filtered by the reader''s row rule on each input table
+    through the input''s registered relationship to the view (an EXISTS over the input under the reader''s
+    rule). An output that is an input''s relationship key is derived from that key column only, so a mask
+    elsewhere on the input does not mask it. A row rule on an input that has no relationship from the view
+    is still refused by name. (Amended 2026-11-20, A MASKED VALUE KEEPS ITS COLUMN''S TYPE:) Maintainer
+    2026-11-20. A masked value never changes its column''s type: a column or output whose type is not text
+    (numeric, boolean, date and time, binary) and is masked by a constant mask reads as NULL, so
+    calculators, dashboards and typed clients are not broken; a text column keeps its constant mask (for
+    example ''***''). Earlier text giving a masked numeric output the text ''***'' is superseded.'
   use_case: >-
     A data team cleanses free-text supplier addresses with one @columns function that sends each batch
     of rows to the org's LLM and returns street, city and country; the cleansed columns sit in a
