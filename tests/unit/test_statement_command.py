@@ -334,3 +334,48 @@ async def test_a_failed_run_is_recorded_with_its_outcome(monkeypatch):
             _recorded_fn(), {"since": "x", "team": "y"}, SimpleNamespace(model_stamp=1), "ops"
         )
     assert recorded == [(409, {"route": "command", "row_count": None})]
+
+
+@pytest.mark.asyncio
+async def test_a_run_the_engine_fails_answers_naming_the_command_and_the_cause(monkeypatch):
+    """An engine error under a statement command (a value that does not convert) is answered by
+    name, the command and the engine's own message, and recorded with that outcome -- never the
+    catch-all's bare "Internal server error"."""
+    import duckdb
+
+    from provisa.api.data import action_exec
+    from provisa.api.errors import ApiError
+    from provisa.audit.context import audit_identity_scope
+
+    recorded: list = []
+    monkeypatch.setattr(
+        "provisa.audit.pipeline.enqueue_audit",
+        lambda pending, status, _state, **kw: recorded.append(status),
+    )
+    cause = duckdb.ConversionException("Conversion Error: Malformed JSON at byte 0 of input")
+    monkeypatch.setattr(action_exec, "dispatch_function", AsyncMock(side_effect=cause))
+    with audit_identity_scope("u", "graphql"), pytest.raises(ApiError) as answered:
+        await action_exec._run_recorded(
+            _recorded_fn(), {"since": "x", "team": "y"}, SimpleNamespace(model_stamp=1), "ops"
+        )
+    assert answered.value.status_code == 500
+    assert answered.value.code == "functions.statement_failed"
+    assert answered.value.params == {"name": "embed_tickets", "error": str(cause)}
+    assert answered.value.__cause__ is cause
+    assert recorded == [500]
+
+
+@pytest.mark.asyncio
+async def test_a_refusal_under_a_run_keeps_its_own_answer(monkeypatch):
+    from provisa.api.data import action_exec
+    from provisa.audit.context import audit_identity_scope
+    from provisa.core.parameter_binding import ParameterCallsOverCap
+
+    monkeypatch.setattr("provisa.audit.pipeline.enqueue_audit", lambda *a, **kw: None)
+    refusal = ParameterCallsOverCap("lines_like", 2155, 1000)
+    monkeypatch.setattr(action_exec, "dispatch_function", AsyncMock(side_effect=refusal))
+    with audit_identity_scope("u", "graphql"), pytest.raises(ParameterCallsOverCap) as raised:
+        await action_exec._run_recorded(
+            _recorded_fn(), {"since": "x", "team": "y"}, SimpleNamespace(model_stamp=1), "ops"
+        )
+    assert raised.value is refusal

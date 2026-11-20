@@ -52,7 +52,7 @@ def compile_registry_mvs_to_physical(mv_registry, ctx) -> None:
     physical catalogs. Without this compile the refresh fails with "schema <domain> does
     not exist". Join-pattern MVs (sql is None) are untouched — they build SQL at refresh.
     """
-    for mv in mv_registry._mvs.values():
+    for mv in mv_registry.all():
         if mv.sql:
             mv.sql = compile_view_sql_to_physical(mv.sql, ctx)
 
@@ -473,6 +473,6 @@ async def _finalize_rebuild_state(_rebuild_log: logging.Logger) -> None:
         # are loaded after the views are registered, so what each view reads is taken again here.
         from provisa.mv.readable_inputs import read_table_names
 
-        for _mv in state.mv_registry._mvs.values():
+        for _mv in state.mv_registry.all():
             if _mv.view_table and _mv.semantic_sql:
                 _mv.read_tables = read_table_names(_mv.semantic_sql, state.tracked_functions)
