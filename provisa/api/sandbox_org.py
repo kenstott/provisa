@@ -236,6 +236,9 @@ async def seat_platform_admins(pool) -> int:
             )
     finally:
         reset_current_org(token)
+    from provisa.api.effective_rows import record_people
+
+    await record_people(SANDBOX_ORG_ID, admins)
     log.info("sandbox org %s: seated %d platform admin(s)", SANDBOX_ORG_ID, len(admins))
     return len(admins)
 

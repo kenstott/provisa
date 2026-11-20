@@ -12,7 +12,7 @@
 // matches its type between its two node labels, SQL joins its two tables on its columns, SPARQL
 // selects subject and object over its predicate, GraphQL reads its source with its field nested,
 // REST reads its source with the field in ?fields=, gRPC calls its source's Query method with the
-// related table's field in its read_mask, and JSON:API reads its source with it included (REQ-1929:
+// relationship's own field in its read_mask, and JSON:API reads its source with it included (REQ-1929:
 // REST and gRPC read a relationship nested). Each by the names the acting role is served and with
 // a row limit; a surface that does not serve the relationship to the role has no query.
 
@@ -253,30 +253,46 @@ export function relationshipRest(rel: RelationshipQueryRef, reader: MetaReader):
   return `GET /data/rest/${path.root}?fields=${fields}&limit=${RELATIONSHIP_QUERY_LIMIT}`;
 }
 
-/** gRPC: the source's Query method, its read_mask naming the relationship's source columns and
- * the related table's relation field, which reads every column of it the role can read. A
- * {Type} message declares one relation field per related table, named for that table's root
- * field (provisa/grpc/proto_gen.py), and none where a column already takes the name; so only a
- * relationship that is the source's one way to its target has a field of its own. */
+/** A relationship's field of its source's gRPC {Type} message: its GraphQL relationship field in
+ * proto3 snake_case, ``__`` taken to ``_`` (``buildingPermit`` is ``building_permit``). Mirrors
+ * provisa/grpc/proto_gen.py proto_relation_field_name over provisa/compiler/naming.py
+ * _to_snake_case; tests/fixtures/proto_relation_field_names.json pins both to one set of examples. */
+export function protoRelationFieldName(graphqlField: string): string {
+  return graphqlField
+    .replace(/([A-Z]+)([A-Z][a-z])/g, "$1_$2")
+    .replace(/([a-z0-9])([A-Z])/g, "$1_$2")
+    .toLowerCase()
+    .replace(/__/g, "_");
+}
+
+/** gRPC: the source's Query method, its read_mask naming the relationship's source columns and,
+ * through the relationship's own field (REQ-1929: one per relationship, named by its GraphQL
+ * relationship field), the related table's join columns. A source column taking the field's name
+ * is a collision proto_gen refuses, so the relationship has no gRPC field and no query. */
 export function relationshipGrpc(
   rel: RelationshipQueryRef,
   reader: MetaReader,
 ): { method: string; body: Record<string, unknown> } | null {
   const path = graphqlPath(rel, reader);
   if (path === null) return null;
-  if (reader.schema.reaching(path.type, path.field.type)?.name !== path.field.name) return null;
-  const targetRoot = reader.roots.get(rootKey(rel.target.domainId, rel.target.tableName));
   const call = grpcExample(reader, rel.source);
-  if (!targetRoot || call === null) return null;
-  const protoName = (name: string) => name.replace(/__/g, "_");
-  const relation = protoName(targetRoot);
-  if (reader.schema.column(path.type, relation) !== null) return null;
+  if (call === null) return null;
+  const relation = protoRelationFieldName(path.field.name);
+  const taken = reader.schema
+    .scalars(path.type)
+    .some((c) => protoRelationFieldName(c) === relation);
+  if (taken) return null;
   const columns = keys(rel.sourceColumn);
+  const related = keys(rel.targetColumn);
   if (columns.some((c) => reader.schema.column(path.type, c) === null)) return null;
+  if (related.some((c) => reader.schema.column(path.field.type, c) === null)) return null;
+  const protoName = (name: string) => name.replace(/__/g, "_");
   return {
     method: call.state.grpcMethod as string,
     body: {
-      read_mask: { paths: [...columns.map(protoName), relation] },
+      read_mask: {
+        paths: [...columns.map(protoName), ...related.map((c) => `${relation}.${protoName(c)}`)],
+      },
       limit: RELATIONSHIP_QUERY_LIMIT,
     },
   };

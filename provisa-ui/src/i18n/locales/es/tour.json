@@ -79,10 +79,10 @@
       },
       "step2": {
         "title": "Registra un origen",
-        "description": "➕ Las conexiones nuevas empiezan con este botón: PostgreSQL, Snowflake, MongoDB, una API REST, un CSV y el resto de los 79 conectores."
+        "description": "➕ Las conexiones nuevas empiezan con este botón: PostgreSQL, Snowflake, MongoDB, una API REST, un CSV y el resto de los 80 conectores."
       },
       "step3": {
-        "title": "79 tipos de origen, 14 categorías",
+        "title": "80 tipos de fuente, 14 categorías",
         "description": "Un selector enumera cada tipo, agrupado por categoría: <strong>Suscripciones, RDBMS, Almacén de datos en la nube, Analítica, Data lake, NoSQL, Resolvers de código, Grafos, Archivos, API, Streaming, Empresa, Calidad de datos, Otros</strong>. Busque por nombre o alias, o acote con los chips de categoría. Cada tipo muestra su logotipo y un icono de alcance: ⚡ lectura en vivo en el origen, o un icono de copia donde Provisa lee una réplica actualizada.<p>Elija uno, rellene la conexión y guarde.</p>"
       },
       "stepBuildSource": {
@@ -2000,6 +2000,58 @@
       "customer360Recap": {
         "title": "Lo que ha visto",
         "description": "Cuatro sistemas SaaS sin id compartido, unidos a través de un maestro de clientes; la pregunta respondida en SQL, GraphQL y Cypher; y luego comprobada: unas reglas volvieron a derivar cada vínculo de la evidencia y encontraron la fusión errónea y la cuenta que ocultaba. Explore por su cuenta desde la página SQL."
+      },
+      "affirmationScenario": {
+        "title": "Una operación, cuatro sistemas",
+        "description": "Larkspur Asset Management negoció hoy diez órdenes. Cada operación vive en cuatro sistemas que nunca se ven entre sí: este sistema de gestión de órdenes con sus asignaciones a los fondos, las ejecuciones del sistema de ejecución, la confirmación del bróker y la instrucción de liquidación del custodio. ¿Qué operaciones no se afirmarán antes del corte, por qué y cuánto costaría una liquidación fallida?"
+      },
+      "affirmationBroker": {
+        "title": "El lado del bróker",
+        "description": "Las confirmaciones de los brókeres, tal como las entrega la plataforma de casación: cada una lleva la referencia de la asignación, el precio, la comisión y el importe neto del bróker, y la cuenta a la que el bróker entregará."
+      },
+      "affirmationCustody": {
+        "title": "El lado del custodio",
+        "description": "Las instrucciones de liquidación que Larkspur envió a su custodio: lo que cada fondo recibe o entrega, contra qué efectivo y en qué día. Una operación de la que el custodio nunca supo falla tan seguro como una errónea."
+      },
+      "affirmationMatcher": {
+        "title": "El motor de conciliación, en Python",
+        "description": "Un paquete de Python registrado como fuente. Su función trade_match toma los cuatro registros de una asignación y devuelve una fila por cada discrepancia que encuentra, con su nombre y lo que difiere, o una fila conciliada."
+      },
+      "affirmationMatchTable": {
+        "title": "Una función como tabla",
+        "description": "trade_match es una tabla como cualquier otra: sus columnas son lo que devuelve la función y sus parámetros son los campos de los cuatro sistemas. Un registro que aún no ha llegado se pasa como ausente, y la función lo nombra como una discrepancia propia."
+      },
+      "affirmationFeed": {
+        "title": "Lo que alimenta al motor",
+        "description": "Esta relación une los registros de cada asignación en los cuatro sistemas con trade_match y se los pasa como parámetros: una llamada por asignación. Consultar la unión ejecuta la conciliación."
+      },
+      "affirmationQueue": {
+        "title": "La cola de discrepancias",
+        "description": "Cada discrepancia, con los minutos que quedan hasta el corte de afirmación de su mercado y lo que una liquidación fallida acumularía allí por día. Las discrepancias europeas tienen menos de una hora; las de EE. UU. tienen hasta las 21:00 de Nueva York."
+      },
+      "affirmationAffirmed": {
+        "title": "Las afirmaciones, registradas",
+        "description": "Un comando afirmó cada asignación que coincidía en los cuatro sistemas y registró cada una a la hora de la mesa. Se ejecutó una vez, al construir la demo."
+      },
+      "affirmationPollyCutoff": {
+        "title": "Pregunta a Polly: ¿qué es lo más urgente?",
+        "description": "Polly lee la cola de discrepancias y nombra la que tiene menos tiempo hasta su corte. Su respuesta se generó al construir la demo y se muestra guardada."
+      },
+      "affirmationPollyPenalty": {
+        "title": "Pregunta a Polly: ¿qué cuesta más?",
+        "description": "Polly nombra la discrepancia cuya liquidación fallida costaría más por día. Su respuesta se generó al construir la demo y se muestra guardada."
+      },
+      "affirmationExplore": {
+        "title": "La misma pregunta, en Explore",
+        "description": "El agente del explorador responde en vivo a través del servidor MCP de Provisa, con el rol de la cabecera, y puedes ver cada consulta que ejecuta."
+      },
+      "affirmationExplain": {
+        "title": "La consulta que ejecutó",
+        "description": "La sentencia que envió el agente, junto a la que Provisa ejecutó para el rol. El agente leyó las mismas vistas y tablas gobernadas que acabas de leer."
+      },
+      "affirmationRecap": {
+        "title": "Lo que viste",
+        "description": "Cuatro sistemas leídos en vivo, conciliados por una función de Python registrada como tabla, cada discrepancia nombrada con su tiempo hasta el corte y su coste, y las operaciones conciliadas afirmadas por un comando. Haz después las preguntas de la mesa en Explore."
       }
     },
     "status": {
@@ -2136,6 +2188,10 @@
       "customer360": {
         "title": "Customer 360",
         "summary": "Salesforce, ServiceNow, Jira y Stripe unidos a través de un maestro de clientes para encontrar las renovaciones en riesgo; después, el maestro se comprueba con la evidencia de cada sistema, que encuentra la cuenta que omitió."
+      },
+      "affirmation": {
+        "title": "Afirmación de operaciones",
+        "summary": "Una gestora de activos concilia cada operación de hoy entre su sistema de órdenes, su sistema de ejecución, el bróker y el custodio. Cada discrepancia muestra el tiempo que queda hasta el corte y lo que costaría una liquidación fallida, y las operaciones conciliadas se afirman."
       }
     }
   }

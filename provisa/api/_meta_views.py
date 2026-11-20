@@ -1580,13 +1580,20 @@ _OPS_LOG_TABLE_ALIAS: dict[str, str] = {
     "sla_breach_log": "sla_breach_log_ops",
     # REQ-2216: ops.requests -- one row per request, over the creation-request queue.
     "requests": "requests_ops",
+    # REQ-2219: the entitlement store's source rows and its expiry rules, beside ops.requests.
+    "entitlements": "entitlements_ops",
+    "entitlement_expiries": "entitlement_expiries_ops",
 }
 
-# An ops log whose exposed name is not a physical table, by the base table it shows one row per
-# row of: its primary key is that table's, and that table's notify trigger (schema.sql) reports its
-# changes on the schema's own channel (subscriptions.pg_provider.schema_channel). REQ-2216:
-# ops.requests over creation_requests.
-_OPS_LOG_BASE_TABLE: dict[str, str] = {"requests": "creation_requests"}
+# An ops log kept in each org schema, by the base table it shows one row per row of: its primary
+# key is that table's, and that table's notify trigger (schema.sql) reports its changes on the
+# schema's own channel (subscriptions.pg_provider.schema_channel). REQ-2216: ops.requests over
+# creation_requests. REQ-2219: ops.entitlements and ops.entitlement_expiries over their tables.
+_OPS_LOG_BASE_TABLE: dict[str, str] = {
+    "requests": "creation_requests",
+    "entitlements": "entitlements",
+    "entitlement_expiries": "entitlement_expiries",
+}
 
 _OPS_LOG_TABLE_VIEWS: dict[str, str] = {
     "query_audit_log": """
@@ -1633,6 +1640,43 @@ _OPS_LOG_TABLE_VIEWS: dict[str, str] = {
         FROM creation_requests r
         LEFT JOIN user_directory rq ON rq.user_id = r.requested_by
         LEFT JOIN user_directory rd ON rd.user_id = r.resolved_by
+    """,
+    # REQ-2219: every source row of the entitlement store, as recorded now, with its valid period.
+    # Rows are append-only and carry no valid-to: a row's valid_to is the next row's valid_from for
+    # the same source, person, role, kind and capability, in the order entitlements.history reads
+    # them (valid_from, recorded_at, id); empty while no row follows it. A removed row ends its key.
+    "entitlements": """
+        CREATE OR REPLACE VIEW entitlements_ops AS
+        SELECT e.id, e.source, e.principal, pd.display_name AS principal_name, e.role_id, e.kind,
+               e.capability, e.identifiers, e.removed, e.reason, e.set_by,
+               sd.display_name AS set_by_name, e.valid_from,
+               LEAD(e.valid_from) OVER (
+                   PARTITION BY e.source, e.principal, e.role_id, e.kind, e.capability
+                   ORDER BY e.valid_from, e.recorded_at, e.id
+               ) AS valid_to,
+               e.recorded_at
+        FROM entitlements e
+        LEFT JOIN user_directory pd ON pd.user_id = e.principal
+        LEFT JOIN user_directory sd ON sd.user_id = e.set_by
+        WHERE e.recorded_at <= now()
+    """,
+    # REQ-2219: every version of every expiry rule on a person's grant, as recorded now: a rule
+    # created, changed or removed is a new row, so a subscriber sees each. valid_to as above, per
+    # person, role and rule key.
+    "entitlement_expiries": """
+        CREATE OR REPLACE VIEW entitlement_expiries_ops AS
+        SELECT x.id, x.rule_key, x.principal, pd.display_name AS principal_name, x.role_id,
+               x.list_kind, x.ends_at, x.ends, x.removed, x.reason, x.set_by,
+               sd.display_name AS set_by_name, x.valid_from,
+               LEAD(x.valid_from) OVER (
+                   PARTITION BY x.principal, x.role_id, x.rule_key
+                   ORDER BY x.valid_from, x.recorded_at, x.id
+               ) AS valid_to,
+               x.recorded_at
+        FROM entitlement_expiries x
+        LEFT JOIN user_directory pd ON pd.user_id = x.principal
+        LEFT JOIN user_directory sd ON sd.user_id = x.set_by
+        WHERE x.recorded_at <= now()
     """,
 }
 

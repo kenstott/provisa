@@ -2,7 +2,7 @@
   "tablesPage": {
     "loading": "Загрузка таблиц...",
     "titleViews": "Представления",
-    "titleTables": "Зарегистрированные таблицы",
+    "titleTables": "Таблицы",
     "filterPlaceholderViews": "Фильтр представлений…",
     "filterPlaceholderTables": "Фильтр по источнику, домену или таблице…",
     "addTable": "+ Таблица",

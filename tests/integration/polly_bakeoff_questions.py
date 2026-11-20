@@ -222,6 +222,25 @@ TESTDATA = (
     ),
 )
 
+# The affirmation demo's questions (REQ-2006), which its tour asks Polly: over the break queue, the
+# break least time from its cutoff (EU breaks tie) and the one a failed settlement costs most a day.
+AFFIRMATION = (
+    Question(
+        "Which trade break has the least time left before its market's affirmation cutoff?",
+        'SELECT trade_ref AS a FROM "postrade"."view_break_queue" WHERE minutes_to_cutoff = '
+        '(SELECT MIN(minutes_to_cutoff) FROM "postrade"."view_break_queue")',
+    ),
+    Question(
+        "Which trade break would accrue the largest penalty a day if it failed to settle?",
+        'SELECT trade_ref AS a FROM "postrade"."view_break_queue" WHERE penalty_per_day = '
+        '(SELECT MAX(penalty_per_day) FROM "postrade"."view_break_queue")',
+    ),
+    Question(
+        "How many of today's allocations were affirmed?",
+        'SELECT COUNT(*) AS a FROM "postrade"."affirmation_log"',
+    ),
+)
+
 # Each named demo's questions, by its name (its directory under demo/named).
 QUESTIONS: dict[str, tuple[Question, ...]] = {
     "weblogs": WEBLOGS,
@@ -231,4 +250,5 @@ QUESTIONS: dict[str, tuple[Question, ...]] = {
     "audit": AUDIT,
     "banksecrecy": BANKSECRECY,
     "testdata": TESTDATA,
+    "affirmation": AFFIRMATION,
 }

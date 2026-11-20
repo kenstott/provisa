@@ -70,3 +70,45 @@ def refuse_outside(state: Any, table_ids: Iterable[int]) -> None:
                 f"Table {row['table_name']!r} is in domain {row['domain_id']!r}, outside the "
                 "domains selected in the domain filter"
             )
+
+
+def narrowed(allowed: frozenset[str] | None) -> frozenset[str] | None:
+    """``allowed`` (a caller's domains, None for every domain) within the bound scope: the
+    selection's domains it reaches, or ``allowed`` itself when no selection is bound."""
+    scope = _SELECTED.get()
+    if scope is None:
+        return allowed
+    return scope if allowed is None else scope & allowed
+
+
+def admits_any(domains: Iterable[str]) -> bool:
+    """Whether an object READ across ``domains`` is inside the bound scope: one of them is
+    selected, or it is open to every domain (``"*"``, as a source naming none is)."""
+    scope = _SELECTED.get()
+    if scope is None:
+        return True
+    found = set(domains)
+    return "*" in found or bool(found & scope)
+
+
+def refuse_object(what: str, domains: Iterable[str]) -> None:
+    """Refuse reading or changing ``what``, an object of ``domains``, unless every one is
+    selected: changing an object of a domain outside the selection changes that domain. ``"*"``
+    (an object of the whole org) is outside any selection; no domains (unscoped) is inside it."""
+    scope = _SELECTED.get()
+    if scope is None:
+        return
+    outside = sorted(set(domains) - scope)
+    if outside:
+        raise PermissionError(
+            f"{what} is in domain {outside[0]!r}, outside the domains selected in the domain filter"
+        )
+
+
+def refuse_whole_org(what: str) -> None:
+    """Refuse an act on ``what``, which spans every domain (the whole model, an environment's
+    data), while a selection narrows the request."""
+    if _SELECTED.get() is not None:
+        raise PermissionError(
+            f"{what} spans every domain, beyond the domains selected in the domain filter"
+        )

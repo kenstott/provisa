@@ -228,6 +228,7 @@
     "qbRefreshTokenHint": "מאפשר ל-Provisa לקרוא את החברה. היכנסו עם QuickBooks כדי לקבל אחד, או הדביקו אחד מ-OAuth 2.0 Playground של Intuit עם היקף Accounting. ‏QuickBooks מחליפה אותו בכל שימוש, ו-Provisa שומרת את החדש ביותר. אחד חדש שמוזן כאן מחליף את השמור בעת השמירה.",
     "qbSignIn": "כניסה עם QuickBooks",
     "qbSignedIn": "מחובר לחברה {{realm}}. שמרו את המקור כדי לשמור זאת.",
-    "qbSignInFailed": "לא ניתן היה להשלים את הכניסה."
+    "qbSignInFailed": "לא ניתן היה להשלים את הכניסה.",
+    "wikidataEndpointHint": "שירות השאילתות של ויקינתונים. ללא אישורים; הטבלאות מתרעננות ממנו מדי יום."
   }
 }

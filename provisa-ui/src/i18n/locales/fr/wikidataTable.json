@@ -1,0 +1,28 @@
+{
+  "wikidataTable": {
+    "modeLabel": "Comment la table est choisie",
+    "modeStarter": "Table de départ",
+    "modeClass": "Table d'une classe",
+    "starter": "Table de départ",
+    "starterHint": "Une table de référence à joindre, lue depuis Wikidata.",
+    "starters": {
+      "countries": "Pays (codes ISO, capitale, population)",
+      "currencies": "Devises (ISO 4217)",
+      "languages": "Langues (ISO 639)",
+      "admin_regions": "Subdivisions administratives de premier niveau",
+      "organizations": "Organisations cotées (LEI, symbole boursier, ISIN)"
+    },
+    "class": "Classe",
+    "classHint": "Recherchez des classes par nom ; la table contient les instances de la classe.",
+    "nothingFound": "Aucun résultat",
+    "instances": "Instances : {{value}}",
+    "broader": "Classe parente",
+    "narrower": "Sous-classe",
+    "columns": "Colonnes",
+    "columnsHint": "Les propriétés les plus utilisées par les instances de cette classe.",
+    "filterRequired": "Plus de {{limit}} instances : choisissez un filtre.",
+    "filterProperty": "Filtrer par",
+    "filterValue": "Valeur",
+    "useClass": "Utiliser cette classe"
+  }
+}

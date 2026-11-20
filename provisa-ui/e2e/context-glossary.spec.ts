@@ -88,7 +88,12 @@ test("the Glossary shows approved terms with their definitions and related terms
     // The name opens the term in the Ontology editor.
     await page.getByTestId(`glossary-name-${pet}`).click();
     await expect(page).toHaveURL(new RegExp(`/context/ontology\\?term=${pet}$`));
+    await expect(page.getByTestId("glossary-read-fields")).toContainText("An animal kept at home.");
   } finally {
+    // A delete retires the term (REQ-2248). A page still reading these terms would read them
+    // retired and ask for their retirement history, which a term retired here has none of (404).
+    // The page leaves before the terms go.
+    await page.goto("about:blank");
     for (const id of [pet, animal, draft]) await request.delete(`/admin/glossary/terms/${id}`);
   }
 });

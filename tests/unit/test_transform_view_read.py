@@ -103,8 +103,8 @@ def _state(
     )
     state = SimpleNamespace(
         mv_registry=registry,
-        stored_view_reads={"clean_suppliers"},
-        view_sql_map={"clean_suppliers": READ},
+        stored_view_reads={"fx.clean_suppliers"},
+        view_sql_map={"fx.clean_suppliers": READ},
         column_transforms={"clean_address": CLEAN_ADDRESS},
         role_build_inputs={
             "withdrawn_tables": [],  # no table is out of service
@@ -145,7 +145,12 @@ RANK_SUPPLIERS = {
 
 def _gov() -> GovernanceContext:
     gov = GovernanceContext()
-    gov.table_map = {"fx.suppliers": 1, "suppliers": 1, "clean_suppliers": 2}
+    gov.table_map = {
+        "fx.suppliers": 1,
+        "suppliers": 1,
+        "fx.clean_suppliers": 2,
+        "clean_suppliers": 2,
+    }
     return gov
 
 
@@ -159,7 +164,7 @@ def _relations(sql: str) -> set[str]:
 @pytest.mark.parametrize("status", [MVStatus.FRESH, MVStatus.STALE])
 def test_a_transform_view_keeps_its_reference_through_governance(status):
     governed, validated = semantic_statement(
-        STATEMENT, {"clean_suppliers": READ}, _state(status), _gov()
+        STATEMENT, {"fx.clean_suppliers": READ}, _state(status), _gov()
     )
     # Governance judges the view as the registered table it is, its own rules on top.
     assert governed == STATEMENT
@@ -169,8 +174,8 @@ def test_a_transform_view_keeps_its_reference_through_governance(status):
 
 @pytest.mark.parametrize("status", [MVStatus.FRESH, MVStatus.STALE])
 def test_a_transform_view_is_answered_from_its_stored_table(status):
-    bodies = unnarrowed_view_bodies(STATEMENT, {"clean_suppliers": READ}, _state(status))
-    assert bodies == {"clean_suppliers": READ}
+    bodies = unnarrowed_view_bodies(STATEMENT, {"fx.clean_suppliers": READ}, _state(status))
+    assert bodies == {"fx.clean_suppliers": READ}
 
 
 # --- REQ-2131 (amended 2026-11-16): the stored rows read under the reader's rules ----------------
@@ -190,9 +195,9 @@ def _answered(statement: str, state: SimpleNamespace, gov: GovernanceContext) ->
     from provisa.compiler.view_expand import expand_view_refs
     from provisa.mv.view_read import read_stored_views
 
-    governed, _ = semantic_statement(statement, {"clean_suppliers": READ}, state, gov)
+    governed, _ = semantic_statement(statement, {"fx.clean_suppliers": READ}, state, gov)
     governed = asyncio.run(read_stored_views(governed, state, gov))
-    bodies = unnarrowed_view_bodies(governed, {"clean_suppliers": READ}, state)
+    bodies = unnarrowed_view_bodies(governed, {"fx.clean_suppliers": READ}, state)
     return expand_view_refs(governed, bodies)
 
 
@@ -262,7 +267,10 @@ def test_a_reader_whose_rules_narrow_nothing_reads_the_stored_rows_as_they_are(s
     stored rows as they are."""
     answered = _answered(STATEMENT, _state(status, {1: _east()}), _reader())
     # The statement only has the view put in at optimization, as for an administrator.
-    assert answered == f"SELECT id, city FROM ({READ}) clean_suppliers WHERE city = 'Springfield 3'"
+    assert (
+        answered
+        == f"SELECT id, city FROM ({READ}) \"clean_suppliers\" WHERE city = 'Springfield 3'"
+    )
 
 
 def test_rows_and_masks_hold_together():
@@ -471,7 +479,10 @@ def test_a_reader_the_change_does_not_touch_keeps_reading_and_nothing_is_probed(
     state = _state(MVStatus.FRESH, {1: _east()})
     _changed(state)
     answered = _answered(STATEMENT, state, _reader())
-    assert answered == f"SELECT id, city FROM ({READ}) clean_suppliers WHERE city = 'Springfield 3'"
+    assert (
+        answered
+        == f"SELECT id, city FROM ({READ}) \"clean_suppliers\" WHERE city = 'Springfield 3'"
+    )
     assert state.federation_engine.probes == []
 
 

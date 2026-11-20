@@ -1557,6 +1557,8 @@ def _fold_text(name: str, text: str, arguments: list[exp.Expr]) -> exp.Expr | No
         fields = literals.interval_fields(text)
         if fields is None:
             raise literals.Refused("22007", f'invalid input syntax for type interval: "{text}"')
+        if not literals.interval_in_range(fields):
+            raise literals.Refused("22008", "interval out of range")
         if name == "interval_send":
             return _said_bytes(literals.interval_bytes(*fields))
         return _said_text(literals.interval_text(*fields))

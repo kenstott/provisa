@@ -659,6 +659,24 @@ def _expand_wikipedia_if_needed(input: SourceInput) -> Optional[MutationResult]:
     return None
 
 
+def _preset_wikidata_if_needed(input: SourceInput) -> Optional[MutationResult]:  # REQ-1923
+    """The ONE place a Wikidata source takes its preset -- the query service endpoint, no
+    credential, scheduled replication unless chosen otherwise (provisa.sparql.wikidata) --
+    called from inside create_source and update_source, as the Wikipedia crawl is."""
+    from provisa.sparql import wikidata
+
+    try:
+        wikidata.apply_preset(input)
+    except wikidata.InvalidWikidataSource as exc:
+        return MutationResult(
+            success=False,
+            message=f"Wikidata source {input.id!r}: {exc}",
+            code=exc.code,
+            params=exc.params,
+        )
+    return None
+
+
 async def _upsert_source_with_domains(
     pool, model, input: SourceInput, *, create: bool = False
 ) -> None:

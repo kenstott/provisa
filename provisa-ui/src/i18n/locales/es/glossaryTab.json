@@ -73,6 +73,7 @@
     "generateMenu": "Generar con IA",
     "definitionsGenerated": "{{count}} definición generada.",
     "definitionsGenerated_other": "{{count}} definiciones generadas.",
+    "tablesWithoutSamples": "No se leyeron valores de muestra de: {{tables}}.",
     "relationshipsGenerated": "{{count}} relación añadida.",
     "relationshipsGenerated_other": "{{count}} relaciones añadidas.",
     "retire": "Retirar",

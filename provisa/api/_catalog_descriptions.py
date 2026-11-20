@@ -190,6 +190,11 @@ _OPS: dict[str, str] = {
     "the limit, and when it recovered",
     "requests": "One row per request: what was asked, by whom, the environment it is for, the "
     "roles it is addressed to and their members, its state, the decision, who decided and when",
+    "entitlements": "One row per entitlement list as it was set: from the identity provider, in "
+    "Provisa or by a role, for a person's role grant and one kind of object, with its valid period "
+    "and when Provisa recorded it",
+    "entitlement_expiries": "One row per version of an expiry rule on a person's role grant: when "
+    "it ends access and what it ends, with its valid period and when Provisa recorded it",
     "service_level": "The service level of the org's last hour, from the audit log — how many "
     "queries, their latency percentiles and the share that succeeded",
     "sensitive_column_coverage": "Sensitive coverage: every sensitive column, its tags, whether a "
@@ -1238,6 +1243,40 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "decided_by_name": "Display name of the person who decided it",
         "decided_at": "When it was decided",
         "created_at": "When it was raised",
+    },
+    "entitlements": {
+        "id": "The row's number",
+        "source": "Where the list came from: idp, provisa or role",
+        "principal": "The person the list is for; empty on a role's own rows",
+        "principal_name": "Display name of that person",
+        "role_id": "The role grant the list applies within",
+        "kind": "The kind of object the list names: tables, columns, relationships and the like",
+        "capability": "The capability the list is limited to; empty for every scoped capability",
+        "identifiers": "The semantic identifiers listed, * for every one",
+        "removed": "Whether this row ends the list, leaving none held after it",
+        "reason": "Why it was set",
+        "set_by": "User id of whoever set it",
+        "set_by_name": "Display name of whoever set it",
+        "valid_from": "When the list took effect",
+        "valid_to": "When the next row for the same list took effect; empty while it holds",
+        "recorded_at": "When Provisa recorded it",
+    },
+    "entitlement_expiries": {
+        "id": "The row's number",
+        "rule_key": "The rule this row is a version of",
+        "principal": "The person whose grant the rule is on",
+        "principal_name": "Display name of that person",
+        "role_id": "The role grant the rule is on",
+        "list_kind": "The kind of list the rule was set with",
+        "ends_at": "When the rule ends access",
+        "ends": "What it ends, as capability to identifiers; empty for the whole grant",
+        "removed": "Whether this row withdraws the rule",
+        "reason": "Why it was set",
+        "set_by": "User id of whoever set it",
+        "set_by_name": "Display name of whoever set it",
+        "valid_from": "When this version of the rule took effect",
+        "valid_to": "When the next version of the rule took effect; empty while it holds",
+        "recorded_at": "When Provisa recorded it",
     },
     "sensitive_column_coverage": {
         "id": "Synthesized column identity (table_id:column_name) of the sensitive column",

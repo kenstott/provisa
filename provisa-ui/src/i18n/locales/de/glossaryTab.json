@@ -73,6 +73,7 @@
     "generateMenu": "Mit KI generieren",
     "definitionsGenerated": "{{count}} Definition generiert.",
     "definitionsGenerated_other": "{{count}} Definitionen generiert.",
+    "tablesWithoutSamples": "Aus diesen Tabellen wurden keine Beispielwerte gelesen: {{tables}}.",
     "relationshipsGenerated": "{{count}} Beziehung hinzugefügt.",
     "relationshipsGenerated_other": "{{count}} Beziehungen hinzugefügt.",
     "retire": "Außer Dienst stellen",

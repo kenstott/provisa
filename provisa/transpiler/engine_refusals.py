@@ -60,9 +60,6 @@ _READ_AS_HELD: dict[str, frozenset[str]] = {
 
 #: What both engines refuse: its name, and the said types of the overloads refused (None for all).
 _ON_BOTH: dict[str, frozenset[str] | None] = {
-    # An oid is held as a bigint (provisa.transpiler.pg_held_types); this call of one, and int8's
-    # below, were replayed refused, and stay so.
-    "nameconcatoid": _OID,
     # numeric's exact digits, which an engine's double or 38-digit decimal does not reach; and
     # the scale of the value it picked, or a time's digits, which an engine's type evens out.
     "max": _NUMERIC | {"time"},
@@ -86,7 +83,8 @@ _ON_BOTH: dict[str, frozenset[str] | None] = {
     "exploding_generate_series": _NUMERIC,
     "generate_series": _NUMERIC,
     "rand": _NUMERIC,
-    # No form, and nothing the engine has answers as PostgreSQL does.
+    # No form, and nothing the engine has answers as PostgreSQL does. (ClickHouse's pg_size_pretty
+    # of a value the statement says is an integer is polyfill.server's row.)
     "pg_size_pretty": _ANY,
     "pg_sleep": _ANY,
     "setseed": _ANY,
@@ -101,12 +99,10 @@ _ON_BOTH: dict[str, frozenset[str] | None] = {
     # A set of rows, a bit string, or a function of the server.
     "regexp_matches": _ANY,
     "regexp_split_to_table": _ANY,
-    "regexp_instr": _ANY,
     "bit_count": _ANY,
     "get_bit": _ANY,
     "getbit": _ANY,
     "set_bit": _ANY,
-    "overlay": _ANY,
     "like_escape": _ANY,
     "format": _ANY,
     "normalize": _ANY,
@@ -118,8 +114,6 @@ _ON_BOTH: dict[str, frozenset[str] | None] = {
     "char": _ANY,
     "make_timestamp": _ANY,
     "timestamp_from_parts": _ANY,
-    "string_to_array": _ANY,
-    "regexp_split_to_array": _ANY,
     "in_range": _CLOCKS,
     "date_part": frozenset({"time"}),
     "extract": frozenset({"time"}),
@@ -135,13 +129,7 @@ _ON_BOTH: dict[str, frozenset[str] | None] = {
     "row_security_active": _ANY,
     "set_config": _ANY,
     "regclass": _ANY,
-    "varchar": _ANY,
-    "bit": _ANY,
-    "int2": _JSON,
-    "int4": _JSON,
-    "int8": _JSON | _OID,
     "float4": _JSON,
-    "float8": _JSON,
     # bytes, which the engine's own string function reads as text.
     "substr": _BYTES,
     "substring": _BYTES,
@@ -165,7 +153,7 @@ _MOST_ARGUMENTS = {
 }
 #: A ClickHouse pattern (the second argument) of nothing is its error; PostgreSQL's answer is the
 #: value. A replacement of nothing is a deletion ClickHouse writes as PostgreSQL does.
-_NOT_EMPTY = frozenset({"replace", "trim", "btrim", "ltrim", "rtrim"})
+_NOT_EMPTY = frozenset({"replace", "trim"})
 PLAIN_PARTS = frozenset({"year", "quarter", "month", "day", "hour", "minute", "dow", "doy"})
 #: The formats whose every element a dialect's own format writes as PostgreSQL's does.
 _PLAIN_FORMAT = re.compile(r"(?:%[YmdHiMSs]|[-/: T])+")
@@ -183,7 +171,23 @@ _NAMED = {
     "overlaps_timestamp": "overlaps",
 }
 _ON: dict[str, dict[str, frozenset[str] | None]] = {
-    _T: {"gcd": _ANY, "lcm": _ANY},
+    _T: {
+        "gcd": _ANY,
+        "lcm": _ANY,
+        # ClickHouse's forms of these are the polyfill grid's rows (polyfill.regex, polyfill.texts,
+        # polyfill.numbers). An oid is held as a bigint (provisa.transpiler.pg_held_types).
+        "regexp_instr": _ANY,
+        "regexp_split_to_array": _ANY,
+        "overlay": _ANY,
+        "string_to_array": _ANY,
+        "varchar": _ANY,
+        "nameconcatoid": _OID,
+        "int2": _JSON,
+        "int4": _JSON,
+        "int8": _JSON | _OID,
+        "float8": _JSON,
+        "bit": _ANY,  # ClickHouse's is polyfill.bits' row
+    },
     _C: {
         "gcd": _NUMERIC,
         "lcm": _NUMERIC,
@@ -194,7 +198,6 @@ _ON: dict[str, dict[str, frozenset[str] | None]] = {
         "to_timestamp": _NUMBERS,
         "unix_to_time": _NUMBERS,
         "length": _BYTES,
-        "translate": _ANY,
         "concat_ws": _NUMBERS,
         # A time of day where no grid row reads the call (polyfill.clocks holds a time as its
         # microseconds; a row answers a date and a time, and overlaps of times it reads).

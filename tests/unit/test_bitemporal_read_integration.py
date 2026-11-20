@@ -34,6 +34,7 @@ from provisa.mv.registry import MVRegistry
 
 VIEW = "orders_v"
 VIEW_REF = f'"cat"."public"."{VIEW}"'  # how a query references the registered view
+VIEW_KEY = f"public.{VIEW}"  # its key in the view map: schema and name
 BUSINESS = ["id", "region", "amount"]
 
 # Each row carries when it took effect (eff): the view's valid time, which a read travels on
@@ -114,8 +115,8 @@ async def _materialize(monkeypatch, mode: str):
     # app_rebuild wires the view's inline-expansion entry to the reconstruction over the append log.
     spec = mv.bitemporal
     mv_ref = _target_ref(mv)
-    view_sql_map = {VIEW: view_read_sql(mv_ref, spec)}
-    bitemporal_reads = {VIEW: (mv_ref, spec)}
+    view_sql_map = {VIEW_KEY: view_read_sql(mv_ref, spec)}
+    bitemporal_reads = {VIEW_KEY: (mv_ref, spec)}
     return con, view_sql_map, bitemporal_reads, spec
 
 

@@ -30,11 +30,11 @@
     "errorRequired": "Nome, origine e dominio sono obbligatori.",
     "submit": "Crea",
     "createdTitle": "{{name}} creato",
-    "createdMv": "{{kind}} “{{name}}” creato come vista materializzata nel dominio {{domain}}. Ora compare in Tabelle registrate ed è interrogabile.",
+    "createdMv": "Creata una vista materializzata — {{kind}} \"{{name}}\" nel dominio {{domain}}. Ora appare nella pagina Tabelle ed è interrogabile.",
     "createdHistory": "La cronologia è tracciata: i valori passati sono interrogabili tramite time travel.",
     "createdDims": "Registrati {{count}} collegamenti di dimensione perché il fatto possa essere unito alle sue entità.",
     "reviseTitle": "Modificarlo in seguito",
-    "reviseBody": "Questa finestra di dialogo crea soltanto. Per modificare chiave, attributi, cronologia o colonne di “{{name}}”, modificarlo in Tabelle registrate. Eseguire di nuovo questa finestra con lo stesso nome sovrascrive il modello esistente.",
+    "reviseBody": "Questa finestra di dialogo esegue solo la creazione. Per rivedere \"{{name}}\" — chiave, attributi, cronologia o colonne — modificarlo nella pagina Tabelle. Rieseguire questa finestra con lo stesso nome sovrascrive il modello esistente.",
     "createAnother": "Crea un altro",
     "done": "Fine"
   }

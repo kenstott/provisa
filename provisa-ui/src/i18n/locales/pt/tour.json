@@ -79,10 +79,10 @@
       },
       "step2": {
         "title": "Registre uma fonte",
-        "description": "➕ Novas conexões começam com este botão: PostgreSQL, Snowflake, MongoDB, uma API REST, um CSV e o restante dos 79 conectores."
+        "description": "➕ Novas conexões começam com este botão: PostgreSQL, Snowflake, MongoDB, uma API REST, um CSV e o restante dos 80 conectores."
       },
       "step3": {
-        "title": "79 tipos de fonte, 14 categorias",
+        "title": "80 tipos de fonte, 14 categorias",
         "description": "Um seletor lista cada tipo, agrupado por categoria: <strong>Assinaturas, RDBMS, Data warehouse na nuvem, Análise, Data lake, NoSQL, Resolvers de código, Grafos, Arquivos, API, Streaming, Empresarial, Qualidade de dados, Outros</strong>. Pesquise por nome ou apelido, ou restrinja com os chips de categoria. Cada tipo mostra seu logotipo e um ícone de alcance: ⚡ leitura ao vivo no local, ou um ícone de cópia onde o Provisa lê uma réplica atualizada.<p>Escolha um, preencha a conexão e salve.</p>"
       },
       "stepBuildSource": {
@@ -2000,6 +2000,58 @@
       "customer360Recap": {
         "title": "O que você viu",
         "description": "Quatro sistemas SaaS sem id compartilhado, unidos por um cadastro mestre de clientes; a pergunta respondida em SQL, GraphQL e Cypher; depois verificada: regras derivaram de novo cada vínculo a partir das evidências e encontraram a fusão errada e a conta que ela escondia. Explore por conta própria a partir da página SQL."
+      },
+      "affirmationScenario": {
+        "title": "Uma operação, quatro sistemas",
+        "description": "A Larkspur Asset Management negociou dez ordens hoje. Cada operação vive em quatro sistemas que nunca se veem: este sistema de gestão de ordens com suas alocações aos fundos, as execuções do sistema de execução, a confirmação da corretora e a instrução de liquidação do custodiante. Quais operações não serão afirmadas antes do horário-limite, por quê, e quanto custaria uma liquidação falhada?"
+      },
+      "affirmationBroker": {
+        "title": "O lado da corretora",
+        "description": "As confirmações das corretoras, como a plataforma de casamento as entrega: cada uma traz a referência da alocação, o preço, a corretagem e o valor líquido da corretora, e a conta para a qual a corretora entregará."
+      },
+      "affirmationCustody": {
+        "title": "O lado do custodiante",
+        "description": "As instruções de liquidação que a Larkspur enviou ao seu custodiante: o que cada fundo recebe ou entrega, contra qual valor, em qual dia. Uma operação da qual o custodiante nunca soube falha tão certamente quanto uma errada."
+      },
+      "affirmationMatcher": {
+        "title": "O motor de conciliação, em Python",
+        "description": "Um pacote Python registrado como fonte. Sua função trade_match recebe os quatro registros de uma alocação e devolve uma linha para cada divergência encontrada, com seu nome e o que difere, ou uma linha conciliada."
+      },
+      "affirmationMatchTable": {
+        "title": "Uma função como tabela",
+        "description": "trade_match é uma tabela como qualquer outra: suas colunas são o que a função devolve, e seus parâmetros são os campos dos quatro sistemas. Um registro que ainda não chegou é passado como ausente, e a função o nomeia como uma divergência própria."
+      },
+      "affirmationFeed": {
+        "title": "O que alimenta o motor",
+        "description": "Esta relação junta os registros de cada alocação nos quatro sistemas a trade_match e os passa como parâmetros: uma chamada por alocação. Consultar a junção executa a conciliação."
+      },
+      "affirmationQueue": {
+        "title": "A fila de divergências",
+        "description": "Cada divergência, com os minutos restantes até o horário-limite de afirmação do seu mercado e quanto uma liquidação falhada acumularia lá por dia. As divergências europeias têm menos de uma hora; as dos EUA têm até as 21h de Nova York."
+      },
+      "affirmationAffirmed": {
+        "title": "As afirmações, registradas",
+        "description": "Um comando afirmou cada alocação que coincidia nos quatro sistemas e registrou cada uma no horário da mesa. Ele rodou uma vez, quando a demo foi construída."
+      },
+      "affirmationPollyCutoff": {
+        "title": "Pergunte à Polly: o que é mais urgente?",
+        "description": "A Polly lê a fila de divergências e nomeia a que tem menos tempo até seu horário-limite. A resposta foi gerada quando a demo foi construída e é exibida como armazenada."
+      },
+      "affirmationPollyPenalty": {
+        "title": "Pergunte à Polly: o que custa mais?",
+        "description": "A Polly nomeia a divergência cuja liquidação falhada custaria mais por dia. A resposta foi gerada quando a demo foi construída e é exibida como armazenada."
+      },
+      "affirmationExplore": {
+        "title": "A mesma pergunta, no Explore",
+        "description": "O agente do explorador responde ao vivo pelo servidor MCP da Provisa, com o papel do cabeçalho, e você pode ver cada consulta que ele executa."
+      },
+      "affirmationExplain": {
+        "title": "A consulta que ele executou",
+        "description": "A instrução que o agente enviou, ao lado da que a Provisa executou para o papel. O agente leu as mesmas views e tabelas governadas que você acabou de ler."
+      },
+      "affirmationRecap": {
+        "title": "O que você viu",
+        "description": "Quatro sistemas lidos ao vivo, conciliados por uma função Python registrada como tabela, cada divergência nomeada com seu tempo até o horário-limite e seu custo, e as operações conciliadas afirmadas por um comando. Faça em seguida as perguntas da mesa no Explore."
       }
     },
     "status": {
@@ -2136,6 +2188,10 @@
       "customer360": {
         "title": "Customer 360",
         "summary": "Salesforce, ServiceNow, Jira e Stripe unidos por um cadastro mestre de clientes para achar as renovações em risco; depois o cadastro é verificado contra as evidências de cada sistema, que encontram a conta que ele deixou de fora."
+      },
+      "affirmation": {
+        "title": "Afirmação de operações",
+        "summary": "Uma gestora de ativos concilia cada operação de hoje entre o sistema de ordens, o sistema de execução, a corretora e o custodiante. Cada divergência mostra o tempo restante até o horário-limite e quanto custaria uma liquidação falhada, e as operações conciliadas são afirmadas."
       }
     }
   }

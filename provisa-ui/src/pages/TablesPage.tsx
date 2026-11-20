@@ -1018,6 +1018,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
             onPreview={(tb) => setPreviewTable((open) => (open?.id === tb.id ? null : tb))}
             source={sources.find((s) => s.id === t.sourceId)}
             relationships={relationships}
+            actingRole={actingRole}
             onInvalidateCache={!hidingOnly && hasCacheable(t) ? handlePurgeTableCache : undefined}
             invalidating={purging[t.id] === true}
             section={section}

@@ -435,6 +435,10 @@ _CREATE_ONLY = {
         "stop_requested stopped_by started_by started_at finished_at launch progress_at tenant_id"
     ),
     "domains": "id description",
+    "effective_entitlements": (
+        "id principal role_id capability bits model_version expansion removed valid_from "
+        "recorded_at"
+    ),
     "email_send_authority_audit": (
         "id email_address user_id granted_by org_id action reason created_at"
     ),
@@ -481,6 +485,7 @@ _CREATE_ONLY = {
         "id document_id document_title document_source domains status error summary started_by "
         "started_at finished_at tenant_id"
     ),
+    "glossary_term_sources": "id term_id catalog catalog_ref sourced_at tenant_id",
     "glossary_term_statements": "id term_id ordinal kind statement tenant_id",
     "glossary_term_vectors": "term_id embedding_model digest vector tenant_id",
     "glossary_terms": "id name definition deprecated tenant_id",
