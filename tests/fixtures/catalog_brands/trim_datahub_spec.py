@@ -34,12 +34,22 @@ ENTITIES = (
     "corpuser",
     "corpgroup",
 )
-PATHS = tuple(f"/openapi/v3/entity/{e}" for e in ENTITIES)
 OUT = Path(__file__).parent / "datahub_api_docs.json.gz"
 
 
+def entity_paths(spec: dict) -> dict[str, str]:
+    """Each entity's list path as the spec writes it: ``/v3/entity/<e>`` under the server
+    ``/openapi/`` (v0.14), or ``/openapi/v3/entity/<e>`` under ``/`` (later releases). Both are
+    called at ``<GMS>/openapi/v3/entity/<e>``."""
+    found = {e: p for e in ENTITIES for p in spec["paths"] if p.endswith(f"/v3/entity/{e}")}
+    missing = [e for e in ENTITIES if e not in found]
+    if missing:
+        raise KeyError(f"the spec lists no entity {missing}")
+    return found
+
+
 def trimmed(recorded: dict) -> dict:
-    return trim(recorded, PATHS)
+    return trim(recorded, tuple(entity_paths(recorded).values()))
 
 
 if __name__ == "__main__":

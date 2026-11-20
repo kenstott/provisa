@@ -33,7 +33,7 @@ import pytest
 from provisa.openapi.brands import BRANDS
 from provisa.openapi.loader import load_spec
 from provisa.openapi.mapper import parse_spec
-from tests.fixtures.catalog_brands.trim_datahub_spec import OUT, PATHS, trimmed
+from tests.fixtures.catalog_brands.trim_datahub_spec import ENTITIES, OUT, entity_paths, trimmed
 
 pytestmark = [pytest.mark.integration, pytest.mark.requires_datahub]
 
@@ -49,21 +49,29 @@ def served() -> dict:
     """The spec as the brand reads it: from the address its setup names. A spec without the
     entity lists fails here, naming what was served and the groups the GMS publishes."""
     spec = load_spec(DATAHUB.source_spec_path(DATAHUB.setup({"base_url": _gms()})))
-    missing = [p for p in PATHS if "get" not in spec.get("paths", {}).get(p, {})]
-    if missing:
+    found = [p for p in spec.get("paths", {}) if "/v3/entity/" in p]
+    if not found:
         groups = httpx.get(f"{_gms()}/openapi/v3/api-docs/swagger-config", timeout=60)
         pytest.fail(
             f"{DATAHUB.source_spec_path({'base_url': _gms()})} served "
             f"{spec.get('info')} with {len(spec.get('paths', {}))} paths, "
-            f"first {sorted(spec.get('paths', {}))[:15]}, missing {missing}; "
+            f"first {sorted(spec.get('paths', {}))[:15]}; "
             f"swagger-config {groups.status_code}: {groups.text[:1500]}"
         )
     return spec
 
 
+def test_each_entity_list_is_called_at_the_gms_openapi_v3_address(served):
+    setup = DATAHUB.setup({"base_url": _gms()})
+    base = DATAHUB.base_url(setup, served)
+    for entity, path in entity_paths(served).items():
+        assert base + path == f"{_gms()}/openapi/v3/entity/{entity}", (base, path)
+    assert sorted(entity_paths(served)) == sorted(ENTITIES)
+
+
 def test_each_catalog_entity_is_offered_as_a_scroll_paged_list_of_rows(served):
     offered = {t.path: t for t in parse_spec(served)[0]}
-    for path in PATHS:
+    for path in entity_paths(served).values():
         table = offered[path]
         assert (table.is_list, table.rows_field) == (True, "entities"), path
         assert table.pagination is not None, path
@@ -78,7 +86,8 @@ def test_each_catalog_entity_is_offered_as_a_scroll_paged_list_of_rows(served):
 
 
 def test_the_brands_credential_check_is_answered():
-    resp = httpx.get(_gms() + DATAHUB.verify_path, timeout=60)
+    setup = DATAHUB.setup({"base_url": _gms()})
+    resp = httpx.get(DATAHUB.verify_url(setup, ""), timeout=60)
     assert resp.status_code == 200, resp.text[:500]
     assert "entities" in resp.json()
 

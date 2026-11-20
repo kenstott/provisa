@@ -37,14 +37,17 @@ from provisa.core.auth_models import ApiAuthBearer
 from provisa.openapi.brands import BRANDS
 from provisa.openapi.loader import load_spec
 from provisa.openapi.mapper import parse_spec
-from tests.fixtures.catalog_brands.trim_datahub_spec import OUT, PATHS
+from tests.fixtures.catalog_brands.trim_datahub_spec import OUT, entity_paths
 
 pytestmark = pytest.mark.unit
 
 DH = BRANDS["datahub"]
-GMS = "https://datahub.acme.test/gms"
+GMS = "https://datahub.acme.test"
 SPEC = json.loads(gzip.open(OUT).read())
-DATASETS = "/openapi/v3/entity/dataset"
+PATHS = entity_paths(SPEC)
+DATASETS = PATHS["dataset"]
+# where the recorded spec says its calls go: its server, read against where it was read from
+API = DH.base_url(DH.setup({"base_url": GMS}), SPEC)
 ASPECTS = ["schemaMetadata", "globalTags", "ownership", "glossaryTerms", "domains"]
 
 
@@ -66,13 +69,27 @@ def offered():
 # --- the brand ---
 
 
-def test_the_api_and_its_spec_are_at_the_gms_address():
+def test_its_spec_is_the_gms_v3_group_and_its_calls_go_where_that_spec_says():
     setup = DH.setup({"base_url": f" {GMS} "})
-    assert (DH.base_url(setup), DH.source_spec_path(setup)) == (
-        GMS,
-        f"{GMS}/openapi/v3/api-docs/10-openapi-v3",
+    assert DH.source_spec_path(setup) == f"{GMS}/openapi/v3/api-docs/10-openapi-v3"
+    assert (DH.ships_spec, DH.address_from_spec, DH.headers(), DH.auth_type) == (
+        False,
+        True,
+        {},
+        "bearer",
     )
-    assert (DH.ships_spec, DH.headers(), DH.auth_type) == (False, {}, "bearer")
+    for entity, path in PATHS.items():
+        assert API + path == f"{GMS}/openapi/v3/entity/{entity}"
+    assert DH.verify_url(setup, API) == f"{GMS}/openapi/v3/entity/corpuser?count=1"
+
+
+@pytest.mark.parametrize(
+    ("server", "path"),
+    [("/openapi/", "/v3/entity/dataset"), ("/", "/openapi/v3/entity/dataset")],
+)
+def test_either_releases_layout_is_called_at_the_same_address(server, path):
+    spec = {"servers": [{"url": server}], "paths": {}}
+    assert DH.base_url({"base_url": GMS}, spec) + path == f"{GMS}/openapi/v3/entity/dataset"
 
 
 @pytest.mark.parametrize("given", ["datahub.acme.test", f"{GMS}/", ""])
@@ -101,6 +118,9 @@ def _body(**over) -> OpenAPIRegisterRequest:
 
 @respx.mock
 async def test_adding_it_checks_the_token_and_takes_the_instance_spec_and_address():
+    respx.get(f"{GMS}/openapi/v3/api-docs/10-openapi-v3").mock(
+        return_value=httpx.Response(200, json=SPEC)
+    )
     check = respx.get(f"{GMS}/openapi/v3/entity/corpuser", params={"count": "1"}).mock(
         return_value=httpx.Response(200, json={"entities": []})
     )
@@ -108,7 +128,7 @@ async def test_adding_it_checks_the_token_and_takes_the_instance_spec_and_addres
     assert check.calls.last.request.headers["authorization"] == "Bearer eyJpat"
     assert (body.spec_path, body.base_url, body.spec_content) == (
         f"{GMS}/openapi/v3/api-docs/10-openapi-v3",
-        GMS,
+        API,
         "",
     )
     assert (body.setup, body.auth_config) == (
@@ -119,6 +139,9 @@ async def test_adding_it_checks_the_token_and_takes_the_instance_spec_and_addres
 
 @respx.mock
 async def test_a_token_datahub_rejects_is_refused_by_name():
+    respx.get(f"{GMS}/openapi/v3/api-docs/10-openapi-v3").mock(
+        return_value=httpx.Response(200, json=SPEC)
+    )
     respx.get(f"{GMS}/openapi/v3/entity/corpuser").mock(return_value=httpx.Response(401))
     with pytest.raises(ApiError) as refused:
         await openapi_router._branded(_body())
@@ -141,14 +164,14 @@ def test_the_spec_is_read_from_the_running_gms():
     respx.get(f"{GMS}/openapi/v3/api-docs/10-openapi-v3").mock(
         return_value=httpx.Response(200, json=SPEC)
     )
-    assert load_spec(DH.source_spec_path({"base_url": GMS}))["paths"].keys() >= set(PATHS)
+    assert load_spec(DH.source_spec_path({"base_url": GMS}))["paths"].keys() >= set(PATHS.values())
 
 
 # --- what it offers ---
 
 
 def test_each_entity_is_offered_as_a_scroll_paged_list_of_rows(offered):
-    for path in PATHS:
+    for path in PATHS.values():
         table = offered[path]
         assert (table.is_list, table.rows_field) == (True, "entities"), path
         assert table.pagination is not None, path
@@ -206,14 +229,14 @@ async def test_the_catalogs_datasets_are_read_to_the_end_scroll_after_scroll(off
         response_root=match.rows_field,
         default_params={"aspects": ASPECTS},  # the table's fixed argument (REQ-2061)
     )
-    route = respx.get(f"{GMS}{DATASETS}").mock(
+    route = respx.get(f"{GMS}/openapi/v3/entity/dataset").mock(
         side_effect=[httpx.Response(200, json=PAGE_1), httpx.Response(200, json=PAGE_2)]
     )
     auth = ApiAuthBearer(**api_auth(DH.auth("eyJpat")))  # as the stored auth is read back
     pages = [
         p
         async for p in iter_api_pages(
-            endpoint, dict(endpoint.default_params), base_url=GMS, auth=auth, source_headers={}
+            endpoint, dict(endpoint.default_params), base_url=API, auth=auth, source_headers={}
         )
     ]
     rows = [r for p in pages for r in p["entities"]]
