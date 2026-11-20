@@ -12,6 +12,8 @@
 // is found by name, its count shown, its broader and narrower classes browsed, its columns picked
 // from the properties its instances use, and a filter asked for when it is too large.
 
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, renderInForm, screen, waitFor, within } from "../../../test-utils/render";
 import type { WikidataClass } from "../../../api/wikidata";
@@ -25,6 +27,7 @@ const api = vi.hoisted(() => ({
 vi.mock("../../../api/wikidata", () => api);
 
 const { WikidataTableChooser } = await import("../WikidataTableChooser");
+const { FormIdentifiers } = await import("../../../components/form/FormLayout");
 const { tableNameOf } = await import("../wikidataChoice");
 
 const COUNTRIES = {
@@ -95,6 +98,27 @@ async function searchAndPick(testId: string, text: string, option: string) {
 }
 
 describe("WikidataTableChooser", () => {
+  it("sets the starter/class switch level with the Identity row's inputs (shared after-label field)", () => {
+    renderInForm(
+      <FormIdentifiers>
+        <WikidataTableChooser language="en" onChoose={vi.fn()} />
+      </FormIdentifiers>,
+    );
+    const field = screen.getByTestId("wikidata-table-mode").closest(".form-field");
+    expect(field).toHaveClass("form-field--after-label");
+    expect(field?.parentElement).toHaveClass("form-identifiers");
+    // The shared rule that offsets an after-label field by its neighbours' label line applies in
+    // the Identity section, not only in a FieldGroup.
+    const css = readFileSync(join(__dirname, "../../../App.css"), "utf8").replace(
+      /\/\*[\s\S]*?\*\//g,
+      "",
+    );
+    expect(css).toMatch(
+      /\.form-identifiers\s*>\s*\.form-field--after-label\s*\{[^}]*margin-top:\s*var\(--form-label-offset\)/,
+    );
+    expect(css).toMatch(/\.form-identifiers\s*\{[^}]*--form-label-offset:/);
+  });
+
   it("fills the form from a starter table", async () => {
     const onChoose = vi.fn();
     renderInForm(<WikidataTableChooser language="en" onChoose={onChoose} />);
