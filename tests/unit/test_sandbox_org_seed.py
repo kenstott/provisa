@@ -196,7 +196,15 @@ async def tenant_dbs(monkeypatch, control_plane):
         return SimpleNamespace(model_db=sandbox, tenant_db=sandbox)
 
     monkeypatch.setattr("provisa.api.app.ensure_org_runtime", _ensure, raising=False)
-    return SimpleNamespace(root=root, sandbox=sandbox)
+    # REQ-2219: the seated grants recompute each operator's effective rows in the sandbox's prod
+    # model, from its runtime; the runtime above is a stand-in, so the recompute is recorded.
+    recorded: list[tuple[str, list[str]]] = []
+
+    async def _record_people(org_id, principals):
+        recorded.append((org_id, list(principals)))
+
+    monkeypatch.setattr("provisa.api.effective_rows.record_people", _record_people)
+    return SimpleNamespace(root=root, sandbox=sandbox, recorded=recorded)
 
 
 async def _assign(db, user_id, role_id):
@@ -257,6 +265,7 @@ class TestSeatingTheDeploymentsAdministrators:
         # settings a visitor's role deliberately withholds (REQ-1597).
         assert await _sandbox_roles(tenant_dbs.sandbox, "alice") == ["org_admin"]
         assert await _sandbox_roles(tenant_dbs.sandbox, "carol") == []
+        assert tenant_dbs.recorded == [(SANDBOX_ORG_ID, ["alice", "bob"])]
 
     async def test_seating_twice_seats_once(self, admin_db, tenant_dbs):
         await _ready(admin_db)
@@ -275,10 +284,12 @@ class TestSeatingTheDeploymentsAdministrators:
             )
         await _assign(tenant_dbs.root, "alice", "platform_admin")
         assert await sandbox_mod.seat_platform_admins(admin_db) == 0
+        assert tenant_dbs.recorded == []
 
     async def test_a_deployment_with_no_sandbox_org_seats_nobody(self, admin_db, tenant_dbs):
         await _assign(tenant_dbs.root, "alice", "platform_admin")
         assert await sandbox_mod.seat_platform_admins(admin_db) == 0
+        assert tenant_dbs.recorded == []
 
     async def test_a_conferral_reconciles_from_the_assignments_not_the_role_it_granted(
         self, admin_db, tenant_dbs
