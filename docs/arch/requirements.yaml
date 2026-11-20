@@ -76061,7 +76061,10 @@
     Every preview runs with a row limit placed where it bounds the work (an aggregating subquery is limited
     at the pattern that produces its rows). A Wikidata read is never cut short by a short deadline: complex
     SPARQL is given a generous deadline, stated as a setting with its UI, and the full read happens in the
-    replica load, never in the request that registers or previews.'
+    replica load, never in the request that registers or previews. (Amended 2026-11-20, BROWSE CLASSES:)
+    Maintainer 2026-11-20. When the class search box is empty, Table of a class shows a browse view of the
+    most-used top-level classes (for example organization, human, country, city) with their member counts,
+    so a user drills down through narrower classes without knowing a name.'
   use_case: A team wants its Stripe, HubSpot or GitHub data beside its databases. A preset over a generic
     API source reaches it with no container to run, no Docker prerequisite on a desktop install, and on
     every engine, where a Postgres instance per source would be a heavy way to run a periodic fetch.
