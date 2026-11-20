@@ -10,7 +10,7 @@ In a traditional data warehouse, a data engineering team operates a pipeline. Th
 
 Provisa handles the same work as declarations. You write down what you want; the engine decides when to move data, where to put it, and how much load to place on each source.
 
-The decisions live in the [org admin's layer](access-model.md#three-layers-of-administration). Capabilities enforce the boundary between that layer and the platform: the platform admin holds no data capability, and beyond deciding the orgs and their org admins it never touches an org's data or members. Within the org, the layers are defaults carried by the standard roles. A small org's admin may hold all of them. A larger org may define a dedicated data engineer role for source and table registration, or split load management further.
+The decisions live in the [org admin's layer](access-model.md#three-layers-of-administration). Capabilities enforce the boundary between that layer and the platform: the platform admin holds no data capability, and beyond deciding the orgs and their org admins it never touches an org's data or members. Within the org, the layers are defaults carried by the standard roles, and each standard role does one job. A small org's admin may hold all of them. A larger org assigns the jobs separately: Source admin to whoever registers sources and tables, Developer to whoever builds the model, Data writer to the pipelines that load data. Because what you may do in an environment comes from the roles assigned there, a data engineer can hold Developer and Source admin in a development environment and Analyst in production.
 
 ## The same jobs, as declarations
 
