@@ -146,6 +146,19 @@ def _label_read_first(query: str, var: str) -> bool:
     return first_optional.startswith(f"OPTIONAL {{ ?{var} rdfs:label ")
 
 
+def _labels_before_plain_values(query: str) -> bool:
+    """Whether every optional pattern reading a label comes before every plain-value one."""
+    optionals = [line.strip() for line in query.splitlines() if line.strip().startswith("OPTIONAL")]
+    reads_label = ["rdfs:label" in line for line in optionals]
+    return reads_label == sorted(reads_label, reverse=True)
+
+
+@pytest.mark.parametrize("name", sorted(_STARTERS))
+def test_each_starter_reads_its_labels_before_its_plain_values(name):
+    """An item value's label is read before the plain values multiply the rows."""
+    assert _labels_before_plain_values(_STARTERS[name].query), _STARTERS[name].query
+
+
 @pytest.mark.parametrize("name", sorted(_STARTERS))
 def test_each_starter_reads_its_rows_label_before_the_optional_values(name):
     """The anchor's own label is read once per anchor row, before optional patterns multiply
@@ -410,8 +423,8 @@ async def test_saving_a_class_table_defines_its_sparql_query_and_typed_columns()
     table = await wikidata.class_table(
         "Q515",
         [
-            _prop("P17", "country", ApiColumnType.string, True),
             _prop("P1082", "population", ApiColumnType.number, False),
+            _prop("P17", "country", ApiColumnType.string, True),
         ],
         row_filter=None,
         language="en",
@@ -419,9 +432,9 @@ async def test_saving_a_class_table_defines_its_sparql_query_and_typed_columns()
     assert [(c.name, c.type) for c in table.columns] == [
         ("id", ApiColumnType.string),
         ("name", ApiColumnType.string),
+        ("population", ApiColumnType.number),
         ("country_id", ApiColumnType.string),
         ("country", ApiColumnType.string),
-        ("population", ApiColumnType.number),
     ]
     assert extract_variables(table.query) == [c.name for c in table.columns]
     assert "wdt:P31 wd:Q515" in table.query
@@ -430,6 +443,8 @@ async def test_saving_a_class_table_defines_its_sparql_query_and_typed_columns()
     # The instance's label is read before its property values multiply the rows (a class
     # table of country answered 503 with the label read last).
     assert _label_read_first(table.query, "item"), table.query
+    # The item property's label is read before the plain values, whatever the column order.
+    assert _labels_before_plain_values(table.query), table.query
 
 
 @respx.mock

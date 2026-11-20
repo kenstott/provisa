@@ -178,7 +178,8 @@ def _grouped(
     row, before the optional patterns of ``rest`` multiply the rows by their several values (a
     population per census, a country per period): read after them it is read once per
     combination, which drove the admin_regions starter and a class table past the endpoint's
-    limit (504 and 503), where read first the same query answers in seconds."""
+    limit (504 and 503), where read first the same query answers in seconds. For the same
+    reason ``rest`` reads every other label (an item value's) before its plain values."""
     names = " ".join(f"?{n}" for n in outer)
     anchor_vars, anchor_pattern = anchor
     return (
@@ -204,8 +205,8 @@ _COUNTRIES = StarterTable(
         f"(SAMPLE(?capLabel) AS ?capital) (MAX(xsd:integer(?pop)) AS ?population)",
         ("?c ?a2", "?c wdt:P297 ?a2 ."),
         _label("c", "label", "en"),
-        "      OPTIONAL { ?c wdt:P298 ?a3 }\n"
         f"      OPTIONAL {{ ?c wdt:P36 ?cap . {_label('cap', 'capLabel', 'en')} }}\n"
+        "      OPTIONAL { ?c wdt:P298 ?a3 }\n"
         "      OPTIONAL { ?c wdt:P1082 ?pop }",
         "?c",
     ),
@@ -249,8 +250,8 @@ _ADMIN_REGIONS = StarterTable(
             "?kind wdt:P279 wd:Q10864048 . ?r wdt:P31 ?kind . FILTER NOT EXISTS { ?r wdt:P576 [] }",
         ),
         _label("r", "label", "en"),
-        "      OPTIONAL { ?r wdt:P300 ?code }\n"
-        f"      OPTIONAL {{ ?r wdt:P17 ?country . {_label('country', 'countryLabel', 'en')} }}",
+        f"      OPTIONAL {{ ?r wdt:P17 ?country . {_label('country', 'countryLabel', 'en')} }}\n"
+        "      OPTIONAL { ?r wdt:P300 ?code }",
         "?r",
     ),
 )
@@ -270,10 +271,10 @@ _ORGANIZATIONS = StarterTable(
             "FILTER NOT EXISTS { ?listing pq:P582 [] }",
         ),
         _label("org", "label", "en"),
+        f"      {_label('ex', 'exLabel', 'en')}\n"
         "      OPTIONAL { ?listing pq:P249 ?tick }\n"
         "      OPTIONAL { ?org wdt:P1278 ?leiCode }\n"
-        "      OPTIONAL { ?org wdt:P946 ?isinCode }\n"
-        f"      {_label('ex', 'exLabel', 'en')}",
+        "      OPTIONAL { ?org wdt:P946 ?isinCode }",
         "?org ?ex",
     ),
 )
@@ -612,14 +613,17 @@ def class_table_query(
     language: str,
 ) -> ClassTable:
     """The SPARQL table of the class's instances, one row each: its id and label, then one
-    column per property (an item property: its value's id and label)."""
+    column per property (an item property: its value's id and label). The item properties are
+    read before the others, so each value's label is read before the plain values multiply the
+    rows (an instance with several values of a property has a row per value until grouped)."""
     _check(_ITEM_ID, class_id, "item id")
     _language(language)
     outer = ["id", "name"]
     columns: list[ApiColumn] = [ApiColumn(name="id", type=_S), ApiColumn(name="name", type=_S)]
     select = [f"({_qid('item')} AS ?id)", "(SAMPLE(?itemLabel) AS ?name)"]
     anchor = ("?item", f"?item wdt:P31 wd:{class_id} .{_filter_triple(row_filter)}")
-    where: list[str] = []
+    labelled: list[str] = []
+    plain: list[str] = []
     for prop, name in zip(properties, column_names(properties)):
         pid = _check(_PROPERTY_ID, prop.id, "property id")
         value = f"v_{pid}"
@@ -628,21 +632,21 @@ def class_table_query(
             outer += [f"{name}_id", name]
             columns += [ApiColumn(name=f"{name}_id", type=_S), ApiColumn(name=name, type=_S)]
             select += [f"(SAMPLE({_qid(value)}) AS ?{name}_id)", f"(SAMPLE(?{label}) AS ?{name})"]
-            where.append(
+            labelled.append(
                 f"      OPTIONAL {{ ?item wdt:{pid} ?{value} . {_label(value, label, language)} }}"
             )
         else:
             outer.append(name)
             columns.append(ApiColumn(name=name, type=prop.type))
             select.append(f"(SAMPLE(?{value}) AS ?{name})")
-            where.append(f"      OPTIONAL {{ ?item wdt:{pid} ?{value} }}")
+            plain.append(f"      OPTIONAL {{ ?item wdt:{pid} ?{value} }}")
     return ClassTable(
         query=_grouped(
             outer,
             " ".join(select),
             anchor,
             _label("item", "itemLabel", language),
-            "\n".join(where),
+            "\n".join(labelled + plain),
             "?item",
         ),
         columns=tuple(columns),
