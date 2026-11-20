@@ -133,7 +133,7 @@ export function WikidataTableChooser({ language, onChoose }: Props) {
 
   return (
     <>
-      <FormField size="medium">
+      <FormField size="medium" afterLabel>
         <SegmentedControl
           aria-label={t("wikidataTable.modeLabel")}
           value={mode}
