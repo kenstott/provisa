@@ -255,3 +255,65 @@ def test_lowering_keeps_the_catalog_a_reference_names() -> None:
     assert '"pg"."views"."v1"' in normalize_table_refs(_PG_TABLE, ctx)
     own = normalize_table_refs('SELECT * FROM "__derived__"."views"."v1"', ctx)
     assert '"__derived__"."views"."v1"' in own
+
+
+#: A non-default org's derived catalog: its views are lowered under it (app_loaders.
+#: catalog_name_for_source, naming.org_prefixed_catalog), never under the bare ``__derived__``.
+_ORG_DERIVED = "org_sbx06d8e0d47972____derived__"
+
+
+def _org_state(**extra: object) -> SimpleNamespace:
+    return SimpleNamespace(
+        mv_registry=SimpleNamespace(get=lambda _id: None),
+        source_catalogs={"__derived__": _ORG_DERIVED},
+        **extra,
+    )
+
+
+@pytest.mark.parametrize("mark", [False, True])
+def test_a_lowered_reference_in_a_non_default_org_is_the_view(mark: bool) -> None:
+    """The sandbox case: a statement lowered for an org other than the default names its views
+    under that org's derived catalog, and is expanded there after governance."""
+    from provisa.mv.view_read import lowered_view_catalog
+
+    catalog = lowered_view_catalog(_org_state())
+    sql = f'SELECT e.a FROM "{_ORG_DERIVED}"."views"."v1" AS e'
+    assert "vault.keys" in expand_view_refs(sql, _VIEWS, mark=mark, view_catalog=catalog)
+    # The bare derived catalog is another org's under this one: not the view.
+    bare = 'SELECT * FROM "__derived__"."views"."v1"'
+    assert "vault" not in expand_view_refs(bare, _VIEWS, mark=mark, view_catalog=catalog)
+    assert "vault" not in expand_view_refs(_PG_TABLE, _VIEWS, mark=mark, view_catalog=catalog)
+
+
+def test_optimization_answers_a_bitemporal_view_lowered_in_a_non_default_org() -> None:
+    """unnarrowed_view_bodies finds a bitemporal view a non-default org's lowered statement reads,
+    and replaces it with the read over its append log (the sandbox reproduce demo's report)."""
+    from provisa.mv.view_read import lowered_view_catalog, unnarrowed_view_bodies
+
+    log_read = "SELECT * FROM mat_store.main.mv_v1"
+    state = _org_state(bitemporal_view_reads={"views.v1": ("mat_store.main.mv_v1", None)})
+    views = {"views.v1": log_read}
+    sql = f'SELECT e.desk FROM "{_ORG_DERIVED}"."views"."v1" AS e ORDER BY e.desk'
+    bodies = unnarrowed_view_bodies(sql, views, state)
+    assert bodies == {"views.v1": log_read}
+    out = expand_view_refs(sql, bodies, view_catalog=lowered_view_catalog(state))
+    assert out == f"SELECT e.desk FROM ({log_read}) AS e ORDER BY e.desk"
+    other = 'SELECT * FROM "pg"."views"."v1"'
+    assert unnarrowed_view_bodies(other, views, state) == {}
+
+
+_AT = "TIMESTAMP '2026-01-01 00:00:00.000000'"
+
+
+def test_read_views_at_reads_a_non_default_orgs_bitemporal_view_at_its_time() -> None:
+    from provisa.mv.bitemporal import declared_spec
+    from provisa.mv.time_travel import Travel
+    from provisa.mv.view_read import read_views_at
+
+    spec = declared_spec(
+        ["desk"], "valid_from", "recorded_at", ["desk", "valid_from", "recorded_at"]
+    )
+    state = _org_state(bitemporal_view_reads={"views.v1": ("mat_store.main.mv_v1", spec)})
+    sql = f'SELECT e.desk FROM "{_ORG_DERIVED}"."views"."v1" AS e'
+    out = read_views_at(sql, state, Travel(default=None, by_alias={"e": _AT}))
+    assert "mv_v1" in out
