@@ -59,6 +59,7 @@ def _state() -> SimpleNamespace:
     )
     return SimpleNamespace(
         mv_registry=registry,
+        source_catalogs={},  # the default org: its views lowered under __derived__
         bitemporal_view_reads={"bt_view": (LOG, SPEC)},
         role_build_inputs={
             "withdrawn_tables": [],

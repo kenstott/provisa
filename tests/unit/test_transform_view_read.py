@@ -103,6 +103,7 @@ def _state(
     )
     state = SimpleNamespace(
         mv_registry=registry,
+        source_catalogs={},  # the default org: its views lowered under __derived__
         stored_view_reads={"fx.clean_suppliers"},
         view_sql_map={"fx.clean_suppliers": READ},
         column_transforms={"clean_address": CLEAN_ADDRESS},
