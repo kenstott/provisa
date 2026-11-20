@@ -73,6 +73,7 @@
     "generateMenu": "Создать с помощью ИИ",
     "definitionsGenerated": "{{count}} определение сгенерировано.",
     "definitionsGenerated_other": "{{count}} определений сгенерировано.",
+    "tablesWithoutSamples": "Не удалось прочитать примеры значений из: {{tables}}.",
     "relationshipsGenerated": "{{count}} связь добавлена.",
     "relationshipsGenerated_other": "{{count}} связей добавлено.",
     "retire": "Вывести из обращения",

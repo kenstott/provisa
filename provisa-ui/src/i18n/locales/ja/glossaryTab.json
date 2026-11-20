@@ -73,6 +73,7 @@
     "generateMenu": "AI で生成",
     "definitionsGenerated": "{{count}} 件の定義を生成しました。",
     "definitionsGenerated_other": "{{count}} 件の定義を生成しました。",
+    "tablesWithoutSamples": "次のテーブルからサンプル値を読み取れませんでした: {{tables}}。",
     "relationshipsGenerated": "{{count}} 件のリレーションシップを追加しました。",
     "relationshipsGenerated_other": "{{count}} 件のリレーションシップを追加しました。",
     "retire": "廃止",

@@ -1,4 +1,5 @@
 {
+  "glossaryTab.json::glossaryTab.tablesWithoutSamples": "No sample values were read from: {{tables}}.",
   "he.json::app.apiUnreachable": "Could not reach the Provisa API.",
   "he.json::app.notAuthorized": "You do not have permission to view this page.",
   "he.json::common.cancel": "Cancel",

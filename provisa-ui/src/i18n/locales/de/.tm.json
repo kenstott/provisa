@@ -11049,5 +11049,6 @@
   "de/yourData.json::yourData.pgwire": "Connection string for a SQL client (pgwire)",
   "de/yourData.json::yourData.rest": "REST",
   "de/yourData.json::yourData.sql": "SQL",
-  "de/yourData.json::yourData.title": "Your data"
+  "de/yourData.json::yourData.title": "Your data",
+  "glossaryTab.json::glossaryTab.tablesWithoutSamples": "No sample values were read from: {{tables}}."
 }
