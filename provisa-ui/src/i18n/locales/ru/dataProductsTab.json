@@ -310,6 +310,9 @@
     },
     "detailPanel": "Сведения о продукте данных",
     "tagFacetLabel": "Теги",
-    "tagFacetPlaceholder": "Фильтр по тегу"
+    "tagFacetPlaceholder": "Фильтр по тегу",
+    "noMatch": "Нет продуктов данных, соответствующих фильтрам",
+    "domainFacetLabel": "Домены",
+    "domainFacetPlaceholder": "Фильтр по домену"
   }
 }

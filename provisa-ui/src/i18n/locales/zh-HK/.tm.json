@@ -11095,5 +11095,8 @@
   "zh-HK/yourData.json::yourData.pgwire": "Connection string for a SQL client (pgwire)",
   "zh-HK/yourData.json::yourData.rest": "REST",
   "zh-HK/yourData.json::yourData.sql": "SQL",
-  "zh-HK/yourData.json::yourData.title": "Your data"
+  "zh-HK/yourData.json::yourData.title": "Your data",
+  "zh-HK/dataProductsTab.json::dataProductsTab.noMatch": "No data products match the filters",
+  "zh-HK/dataProductsTab.json::dataProductsTab.domainFacetLabel": "Domains",
+  "zh-HK/dataProductsTab.json::dataProductsTab.domainFacetPlaceholder": "Filter by domain"
 }

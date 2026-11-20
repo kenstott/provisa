@@ -310,6 +310,9 @@
     },
     "detailPanel": "פרטי מוצר הנתונים",
     "tagFacetLabel": "תגיות",
-    "tagFacetPlaceholder": "סינון לפי תגית"
+    "tagFacetPlaceholder": "סינון לפי תגית",
+    "noMatch": "אין מוצרי נתונים התואמים למסננים",
+    "domainFacetLabel": "דומיינים",
+    "domainFacetPlaceholder": "סינון לפי דומיין"
   }
 }
