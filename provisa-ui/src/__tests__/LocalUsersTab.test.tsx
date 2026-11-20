@@ -23,7 +23,7 @@ const createSpy = vi.fn(async () => ({ id: "u2" }));
 const deleteSpy = vi.fn(async (): Promise<"org" | "account"> => "org");
 let mockUsers: LocalUser[] = [];
 let mockAssignments: UserAssignment[] = [];
-const addSpy = vi.fn(async (..._a: unknown[]) => undefined);
+const grantSpy = vi.fn(async (..._a: unknown[]) => ({ assignments: [] }));
 // Whether the caller holds the cross-org right: it deletes accounts; an org administrator
 // removes a person from their org.
 let holdsCrossOrg = false;
@@ -32,12 +32,17 @@ vi.mock("../hooks/useCapability", () => ({
   useCapability: (cap: string) => cap === "cross_org" && holdsCrossOrg,
 }));
 
+vi.mock("../components/entitlements/kinds", () => ({
+  useEntitlementKinds: () => null,
+  kindInfo: () => undefined,
+}));
+
 vi.mock("../api/admin", () => ({
   fetchLocalUsers: () => Promise.resolve(mockUsers),
   createLocalUser: (...a: unknown[]) => createSpy(...(a as [])),
   deleteLocalUser: (...a: unknown[]) => deleteSpy(...(a as [])),
   fetchUserAssignments: () => Promise.resolve(mockAssignments),
-  addUserAssignment: (...a: unknown[]) => addSpy(...a),
+  grantMemberAccess: (...a: unknown[]) => grantSpy(...a),
   removeUserAssignment: vi.fn(async () => undefined),
 }));
 
@@ -67,7 +72,7 @@ describe("LocalUsersTab", () => {
     showSpy.mockClear();
     mockUsers = [];
     mockAssignments = [];
-    addSpy.mockClear();
+    grantSpy.mockClear();
     holdsCrossOrg = false;
   });
 
@@ -117,9 +122,17 @@ describe("LocalUsersTab", () => {
     ].join("-");
     await userEvent.type(until, picked);
     fireEvent.blur(until);
-    fireEvent.click(screen.getByRole("button", { name: t("localUsers.add") }));
+    await userEvent.click(screen.getByRole("textbox", { name: t("localUsers.rolesLabel") }));
+    await userEvent.click(await screen.findByRole("option", { name: "analyst", hidden: true }));
+    fireEvent.click(screen.getByTestId("member-access-save"));
     await waitFor(() =>
-      expect(addSpy).toHaveBeenCalledWith("u1", "analyst", "*", untilEndOf(picked)),
+      expect(grantSpy).toHaveBeenCalledWith("u1", {
+        role_ids: ["analyst"],
+        domain_id: "*",
+        expires_at: untilEndOf(picked),
+        entitlements: [],
+        reason: "",
+      }),
     );
   });
 

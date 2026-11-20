@@ -2589,20 +2589,30 @@ export async function fetchUserAssignments(userId: string): Promise<UserAssignme
   return res.json();
 }
 
-export async function addUserAssignment(
+/** A member's access in this environment, given in one save (REQ-2155). */
+export interface MemberAccess {
+  role_ids: string[];
+  domain_id: string;
+  expires_at: string | null;
+  /** Entitlement lists of grants the save makes (REQ-2219). */
+  entitlements: { role_id: string; kind: string; identifiers: string[] }[];
+  /** Recorded with every list; required when there is one. */
+  reason: string;
+}
+
+/** Grant a member several roles and their entitlement lists at once: all of it, or none. */
+export async function grantMemberAccess(
   userId: string,
-  roleId: string,
-  domainId: string,
-  expiresAt: string | null = null,
-): Promise<UserAssignment> {
-  const res = await fetch(`${API_BASE}/admin/users/${userId}/assignments`, {
+  access: MemberAccess,
+): Promise<{ assignments: UserAssignment[] }> {
+  const res = await fetch(`${API_BASE}/admin/users/${userId}/access`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ role_id: roleId, domain_id: domainId, expires_at: expiresAt }),
+    body: JSON.stringify(access),
   });
   if (!res.ok) {
     const data = await res.json().catch(() => ({ detail: res.statusText }));
-    throw new Error(serverMessage(data, requestFailed("add assignment", res.status)));
+    throw new Error(serverMessage(data, requestFailed("grant access", res.status)));
   }
   return res.json();
 }

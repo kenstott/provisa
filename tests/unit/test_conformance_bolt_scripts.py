@@ -123,9 +123,7 @@ def test_the_drivers_user_holds_the_role_its_bolt_sessions_act_as(tmp_path, monk
         raw_claims={"username": "conformance"},
     )
     acts_as, may_name = asyncio.run(
-        held_module.sign_in_roles(
-            SimpleNamespace(auth_config=config["auth"]), identity, None, naming=True
-        )
+        held_module.sign_in_roles(SimpleNamespace(auth_config=config["auth"]), identity, None)
     )
     assert (acts_as, may_name) == ("bolt_examples", ["bolt_examples"])
 
