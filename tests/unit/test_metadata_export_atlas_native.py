@@ -19,6 +19,8 @@ NEVER in userDescription (the human field). Atlan keeps the mapped built-in type
 
 from __future__ import annotations
 
+from typing import Any
+
 from provisa.api.metadata_export.atlan import AtlanExport
 from provisa.api.metadata_export.atlas import (
     CLUSTER,
@@ -371,11 +373,16 @@ async def test_an_atlas_update_keeps_a_stewards_custom_attributes_beside_the_sta
     }
 
     class _Client:
+        async def post(self, url, json=None, headers=None):
+            # The basic-search index has not caught up; the stored binding rebinds the table.
+            return httpx.Response(200, json={"entities": []}, request=httpx.Request("POST", url))
+
         async def get(self, url, params=None, headers=None):
             assert url.endswith("/entity/guid/live-guid")
             return httpx.Response(200, json=live, request=httpx.Request("GET", url))
 
-    (sent,) = await exporter._canonicalize_identity(_Client(), {}, [table], PublishResult("atlas"))
+    client: Any = _Client()  # the two routes the merge reads, nothing else
+    (sent,) = await exporter._canonicalize_identity(client, {}, [table], PublishResult("atlas"))
     assert sent.payload()["customAttributes"] == {
         "costCentre": "42",
         "provisaEnvironment": "eu",
