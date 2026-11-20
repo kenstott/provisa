@@ -89696,7 +89696,12 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     2026-11-20. A masked value never changes its column''s type: a column or output whose type is not text
     (numeric, boolean, date and time, binary) and is masked by a constant mask reads as NULL, so
     calculators, dashboards and typed clients are not broken; a text column keeps its constant mask (for
-    example ''***''). Earlier text giving a masked numeric output the text ''***'' is superseded.'
+    example ''***''). Earlier text giving a masked numeric output the text ''***'' is superseded. (Amended
+    2026-11-20, CONSTANT MASKS ON NON-TEXT COLUMNS:) Maintainer 2026-11-20. Saving a constant mask with a
+    value other than NULL on a non-text column is refused by name, since it can only read as NULL. A column
+    that a reader sees under a mask is reported nullable to that reader in every catalog the surfaces expose
+    (for example pgwire''s attnotnull, GraphQL and Flight schemas), even when the column is declared NOT
+    NULL.'
   use_case: >-
     A data team cleanses free-text supplier addresses with one @columns function that sends each batch
     of rows to the org's LLM and returns street, city and country; the cleansed columns sit in a
@@ -98066,7 +98071,10 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     domain chosen per table as Register Table already does. PREREQUISITE: the lineage receiver stores each
     dataset''s latest schema, documentation and ownership facets, keyed by dataset namespace and name (today
     it keeps only job, run, dataset and column lineage). Stated limits: only datasets some job touched are
-    covered, and each reflects only its latest run.'
+    covered, and each reflects only its latest run. (Amended 2026-11-20, A MALFORMED FACET IS SKIPPED:)
+    Maintainer 2026-11-20. A received event with a malformed schema, documentation or ownership facet is
+    stored with its lineage; only the malformed facet is skipped, and it is reported (in the response and
+    the receiver''s log) by name.'
 - id: REQ-2264
   status: proposed
   target: 2026-Q4
