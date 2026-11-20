@@ -302,8 +302,8 @@ def server(tmp_path_factory, minted_port):
             "description": "Test role.",
             # A child holds only what it is given of what its parents hold (REQ-2155). /data/sql
             # needs query_development, a command needs command_execution, and of the standard
-            # roles developer is the one holding those with full_results.
-            "parents": ["developer"],
+            # roles data_writer is the one holding those with full_results.
+            "parents": ["data_writer"],
             "capabilities": ["usage", "query_development", "command_execution", "full_results"],
             "domain_access": ["*"],
         }

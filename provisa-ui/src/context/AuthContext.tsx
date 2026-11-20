@@ -47,8 +47,6 @@ export const DEFAULT_ADMIN_ROLE: Role = {
   capabilities: [
     "environment_management",
     "environment_data",
-    "user_management",
-    "assign_entitlements", // REQ-2219
     "org_glossary_rw",
     "data_product_rw",
     // REQ-2219: the five owner capabilities, with no list.
@@ -60,10 +58,12 @@ export const DEFAULT_ADMIN_ROLE: Role = {
   ] as Capability[],
   parents: [
     "developer",
+    "data_writer", // REQ-2155: write and full_results
     "data_product_owner",
     "data_steward",
     "dq_steward",
     "source_admin",
+    "member_admin", // REQ-2155: user_management and assign_entitlements
     "org_operator",
   ],
   // REQ-2155: its own capabilities and every ancestor's.
