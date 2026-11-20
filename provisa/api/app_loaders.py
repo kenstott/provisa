@@ -1893,6 +1893,7 @@ def schema_input_for(
     from provisa.federation.strategy import row_level_tables
     from provisa.jdbc_source.attach import reach_types
     from provisa.mv.time_travel import relation_kinds
+    from provisa.security.masking import columns_masked_for
 
     inputs = state.role_build_inputs
     return SchemaInput(
@@ -1926,6 +1927,7 @@ def schema_input_for(
         governed_gql_types=inputs["governed_gql_types"],
         gql_governed_object_cols=inputs["gql_governed_object_cols"],
         columns_outside_relation=inputs["columns_outside_relation"],
+        masked_columns=columns_masked_for(state.masking_rules, role["id"]),  # REQ-2131
         metrics=metrics,  # REQ-1319
     )
 

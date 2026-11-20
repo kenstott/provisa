@@ -178,6 +178,7 @@ async def proto_endpoint(role_id: str, request: Request, domains: str = ""):  # 
         reachable |= seed_ids
         filtered_tables = [t for t in tables if t["id"] in reachable]
         from provisa.mv.time_travel import relation_kinds
+        from provisa.security.masking import columns_masked_for
 
         si = SchemaInput(
             tables=filtered_tables,
@@ -189,6 +190,7 @@ async def proto_endpoint(role_id: str, request: Request, domains: str = ""):  # 
             role=role,
             domains=cache["domains"],
             source_types=state.source_types,
+            masked_columns=columns_masked_for(state.masking_rules, role["id"]),  # REQ-2131
             time_travel=relation_kinds(state, filtered_tables),  # REQ-1163
             domain_prefix=cache["domain_prefix"],
             physical_table_map=cache["physical_table_map"],

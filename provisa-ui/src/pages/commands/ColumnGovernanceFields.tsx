@@ -73,6 +73,7 @@ export function ColumnGovernanceFields({
           value={col.masks ?? []}
           onChange={(masks) => onChange({ masks })}
           roleOptions={roleOptions}
+          dataType={col.type || null}
           testId={`${testId}-masks`}
         />
       </FormField>

@@ -38,7 +38,7 @@ from provisa.api.admin.schema_helpers import (
     _rebuild_schemas,
 )
 from provisa.api.admin._table_ops import _build_columns_for_input, column_field_refusal
-from provisa.security.masking import MaskUnreachable
+from provisa.security.masking import MaskConstantNotText, MaskUnreachable
 from provisa.api.admin._live_mappers import table_model_from_input as _table_model_from_input
 from provisa.api.admin._retired_objects import retired_name_result
 from provisa.core.repositories.retirement import RetiredNameTaken
@@ -700,6 +700,20 @@ async def register_table(
                                 "table": model.table_name,
                                 "column": _mask.column,
                                 "entries": _mask.entries,
+                            },
+                        )
+                    )
+                except MaskConstantNotText as _const:
+                    # REQ-2131: a constant other than NULL on a non-text column reads as NULL; not saved.
+                    raise TableSaveRefused(
+                        MutationResult(
+                            success=False,
+                            message=str(_const),
+                            code="schema.mask_constant_not_text",
+                            params={
+                                "table": model.table_name,
+                                "column": _const.column,
+                                "type": _const.data_type,
                             },
                         )
                     )

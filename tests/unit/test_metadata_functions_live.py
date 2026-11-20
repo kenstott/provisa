@@ -205,7 +205,7 @@ def _facts(held: dict[int, set[str]] | None = None, role: str = "analyst", unser
 
 def _told(conn) -> None:
     """What the admin terminal tells a statement's views, in this transaction."""
-    sql, values = set_statement(statement_settings("analyst", True, "provisa", False))
+    sql, values = set_statement(statement_settings("analyst", True, "provisa", False, masked=()))
     for n, value in enumerate(values, 1):
         sql = sql.replace(f"${n}", f"'{value}'", 1)
     conn.exec_driver_sql(sql)

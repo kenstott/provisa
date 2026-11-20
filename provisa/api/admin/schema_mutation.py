@@ -127,7 +127,7 @@ from provisa.api.admin._landing_ttl import (  # REQ-1907, REQ-826
     row_materialize_save_refusal,
 )
 from provisa.api.admin._table_ops import _build_columns_for_input, column_field_refusal
-from provisa.security.masking import MaskUnreachable
+from provisa.security.masking import MaskConstantNotText, MaskUnreachable
 from provisa.api.admin._fake_guard import FakeRefusedSave as _FakeRefusedSave
 from provisa.api.admin import schema_mutation_ops as _ops
 
@@ -5070,6 +5070,20 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                                     "table": model.table_name,
                                     "column": _mask.column,
                                     "entries": _mask.entries,
+                                },
+                            )
+                        )
+                    except MaskConstantNotText as _const:
+                        # REQ-2131: a constant other than NULL on a non-text column reads as NULL; not saved.
+                        raise TableSaveRefused(
+                            MutationResult(
+                                success=False,
+                                message=str(_const),
+                                code="schema.mask_constant_not_text",
+                                params={
+                                    "table": model.table_name,
+                                    "column": _const.column,
+                                    "type": _const.data_type,
                                 },
                             )
                         )
