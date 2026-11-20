@@ -49,6 +49,9 @@ vi.mock("../api/environments", () => ({
   undoEnvironment: vi.fn(),
   redoEnvironment: vi.fn(),
   ENVIRONMENTS_CHANGED_EVENT: "provisa:environments-changed",
+  // REQ-2261: the stages and their colours are constants, not calls; the mock keeps them.
+  ENVIRONMENT_STAGES: ["production", "preprod", "test", "development"],
+  STAGE_COLOR: { production: "red", preprod: "orange", test: "blue", development: "gray" },
 }));
 
 import {
@@ -77,6 +80,7 @@ function syncOf(overrides: Partial<BranchSync> = {}): BranchSync {
 function env(name: string, overrides: Partial<Environment> = {}): Environment {
   return {
     name,
+    stage: name === "prod" ? "production" : "development",
     created_at: null,
     created_by: null,
     expires_at: null,
@@ -111,6 +115,19 @@ beforeEach(() => {
 });
 
 describe("EnvSwitcher", () => {
+  it("shows the stage beside each environment's name, and beside the one being read", async () => {
+    // REQ-2261: a label only -- what the caller may do is unchanged by it.
+    mockFetch.mockResolvedValue([env("prod"), env("eu", { stage: "production" }), env("dev")]);
+    render(<EnvSwitcher />);
+    const trigger = await screen.findByTestId("env-switcher-stage");
+    expect(trigger).toHaveAttribute("data-stage", "production");
+    expect(trigger).toHaveTextContent("Production");
+    fireEvent.click(screen.getByTestId("env-switcher-trigger"));
+    expect(await screen.findByTestId("env-stage-dev")).toHaveTextContent("Development");
+    expect(screen.getByTestId("env-stage-eu")).toHaveTextContent("Production");
+    expect(screen.getByTestId("env-stage-prod")).toHaveAttribute("data-stage", "production");
+  });
+
   it("names the environment being read, which is prod when none is selected", async () => {
     mockFetch.mockResolvedValue([env("prod"), env("dev")]);
     render(<EnvSwitcher />);

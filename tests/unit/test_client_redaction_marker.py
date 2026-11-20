@@ -287,7 +287,7 @@ def _audit_text() -> str:
         time_travel=None,
         tables=[],
     )
-    return record.row(None)["query_text_enc"].decode()
+    return record.row(None, None)["query_text_enc"].decode()
 
 
 @pytest.mark.parametrize("surface", sorted(SURFACES))
