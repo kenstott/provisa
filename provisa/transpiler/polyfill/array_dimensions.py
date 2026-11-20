@@ -15,7 +15,8 @@ element in storage order; ClickHouse holds '{{1,2},{3,4}}'::integer[] as an arra
 each element (1, 2, 3, 4) and array_to_string joins every element: each reads the flattened array.
 
 Only an array the statement writes with nested braces has more than one dimension on ClickHouse:
-any other call keeps its own form."""
+any other call keeps its own form. Trino holds it as an array of arrays too: the same calls read
+its flattened array there (of two dimensions; a deeper one keeps its own form)."""
 
 # Requirements: REQ-2236, REQ-2171
 
@@ -57,6 +58,35 @@ _FORMS: dict[tuple[str, int], tuple[str, str]] = {
 }
 
 
+#: Trino's forms: an array of arrays flattened (flatten reads one level of nesting, as a
+#: two-dimensional literal is). array_to_string's NULL text of a NULL element is none: the element
+#: is left out, as of two arguments.
+_TRINO_FORMS: dict[tuple[str, int], tuple[str, str]] = {
+    ("cardinality", 1): ("cardinality($a)", "cardinality(flatten($a))"),
+    ("array_to_string", 2): ("array_to_string($a, $s)", "array_join(flatten($a), $s)"),
+    ("array_to_string", 3): (
+        "array_to_string($a, $s, $n)",
+        "CASE WHEN $n IS NULL THEN array_join(flatten($a), $s) "
+        "ELSE array_join(flatten($a), $s, $n) END",
+    ),
+}
+
+
+_ONE_DIMENSION_NULL_TEXT = (
+    "CASE WHEN $n IS NULL THEN array_join($a, $s) ELSE array_join($a, $s, $n) END"
+)
+
+
+def _depth(value: exp.Expr) -> int:
+    """The dimensions of a cast to an array of arrays (2 or more), as its type says."""
+    node = value.unnest()
+    depth, to = 0, node.to if isinstance(node, exp.Cast) else None
+    while to is not None and to.is_type(exp.DataType.Type.ARRAY):
+        depth += 1
+        to = to.expressions[0] if to.expressions else None
+    return depth
+
+
 def of_dimensions(node: exp.Expr, dialect: str) -> exp.Expr | None:
     """cardinality, unnest or array_to_string of an array of more than one dimension: of every
     element. Read before any row of the call's name; any other call is left to its rows."""
@@ -64,8 +94,19 @@ def of_dimensions(node: exp.Expr, dialect: str) -> exp.Expr | None:
     if call is None:
         return None
     names, args = call
+    on_trino = dialect in trino.TRINO
+    if on_trino and args and _nested(args[0]) and _depth(args[0]) != 2:  # noqa: PLR2004
+        return None  # flatten reads one level: deeper keeps what it had
     for name in sorted(names):
-        written = _FORMS.get((name, len(args)))
+        if on_trino and name == "unnest" and len(args) == 1 and _nested(args[0]):
+            # sqlglot's Explode, which Trino's writer lowers to UNNEST in a select list
+            return exp.Explode(this=exp.Anonymous(this="flatten", expressions=[args[0]]))
+        if on_trino and name == "array_to_string" and len(args) == 3 and not _nested(args[0]):  # noqa: PLR2004
+            # array_to_string's NULL text of a NULL element is none: the element is left out,
+            # where Trino's array_join of a NULL text answers NULL.
+            holes = dict(zip(("a", "s", "n"), args))
+            return trino.written(_ONE_DIMENSION_NULL_TEXT, "array_to_string($a, $s, $n)", holes)
+        written = (_TRINO_FORMS if on_trino else _FORMS).get((name, len(args)))
         if written is not None and _nested(args[0]):
             pattern, form = written
             holes: Bindings = dict(zip(("a", "s", "n"), args))
@@ -87,7 +128,14 @@ FEATURE = Feature(
                         of_dimensions,
                         mentions=r"\b(?:cardinality|unnest|array_to_string)\b",
                         first=True,
-                    )
+                    ),
+                    **trino.on_trino(
+                        Rewrite(
+                            of_dimensions,
+                            mentions=r"\b(?:cardinality|unnest|array_to_string)\b",
+                            first=True,
+                        )
+                    ),
                 },
             ),
         )

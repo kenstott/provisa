@@ -694,6 +694,16 @@ _CHR = ch_checked(
 )
 
 _CHR_ONCE = ch_once(_CHR)
+#: chr on Trino: its own chr of a code point, PostgreSQL's errors of the ones it has no character of.
+_T_CHR = _t_checked(
+    [
+        ("$x < 0", "22023", "character number must be positive"),
+        ("$x = 0", "54000", "null character not permitted"),
+        ("$x > 1114111", "54000", "requested character too large for encoding"),
+        ("$x >= 55296 AND $x <= 57343", "54000", "requested character not valid for encoding"),
+    ],
+    "chr($x)",
+)
 
 
 def _chr(node: exp.Expr, dialect: str) -> exp.Expr | None:
@@ -704,14 +714,17 @@ def _chr(node: exp.Expr, dialect: str) -> exp.Expr | None:
     call = trino.called(node)
     if call is None or len(call[1]) != 1:
         return None
-    return graft(replacement(_CHR_ONCE, dialect, "chr($x)"), {"x": call[1][0]})
+    form = _T_CHR if dialect in trino.TRINO else _CHR_ONCE
+    return graft(replacement(form, dialect, "chr($x)"), {"x": call[1][0]})
 
 
 CHR = Feature(
     "chr",
     FAMILY,
     "The character of a code point, as its UTF-8 bytes.",
-    read=Side(rules=(Rule("chr($x)", ch_only(Rewrite(_chr))),)),
+    read=Side(
+        rules=(Rule("chr($x)", {**ch_only(Rewrite(_chr)), **trino.on_trino(Rewrite(_chr))}),)
+    ),
 )
 
 #: in_range of numbers (a window frame's bound, int8.c's and float.c's in_range): whether the

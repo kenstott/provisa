@@ -6,14 +6,14 @@ A polyfill is how Provisa gives a PostgreSQL client PostgreSQL's behaviour on a 
 
 ## [PostgreSQL](postgres.md)
 
-572 of the grid's 572 features are native on PostgreSQL and left out.
+575 of the grid's 575 features are native on PostgreSQL and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 </tbody></table>
 
 ## [DuckDB](duckdb.md)
 
-221 of the grid's 572 features are native on DuckDB and left out.
+224 of the grid's 575 features are native on DuckDB and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -1019,9 +1019,10 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Trino](trino.md)
 
-127 of the grid's 572 features are native on Trino and left out.
+126 of the grid's 575 features are native on Trino and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
+<tr><td><strong>an array of dimensions</strong><br>cardinality, unnest and array_to_string of an array of more than one dimension: of every element, in storage order.</td><td><pre><code>function provisa.transpiler.polyfill.array_dimensions.of_dimensions: cardinality, unnest or array_to_string of an array of more than one dimension: of every</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>an oid literal on trino</strong><br>A text cast to an oid.</td><td><pre><code>function provisa.transpiler.polyfill.clickhouse.oid_read: A text cast to an oid, read as oidin reads it: from -2147483648 to 4294967295, a negative</code></pre></td><td><ul><li>A text the statement writes is read as PostgreSQL reads it: past -2147483648 to 4294967295 it raises 22003, a text the input does not read 22P02, and a negative value is its 32 bits unsigned. A column&#x27;s cast keeps Trino&#x27;s own.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>an integer literal on trino</strong><br>A literal cast to smallint, integer or bigint.</td><td><pre><code>function provisa.transpiler.polyfill.clickhouse.integer_read: A literal cast to an integer, read as PostgreSQL reads it: a number rounded half away from</code></pre></td><td><ul><li>A number or a text the statement writes is read as PostgreSQL reads it: a number rounded half away from zero, a text by the integer input; past the type it raises 22003, a text the input does not read 22P02.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>a numeric literal on trino</strong><br>A text cast to a numeric of no precision.</td><td><pre><code>function provisa.transpiler.polyfill.trino_literals.numeric_read: A text cast to a numeric of no precision that exact_inputs left so (it is cast to a decimal</code></pre></td><td><ul><li>A value of up to 38 digits keeps them all; one of more raises 0A000 (numeric_in() of a value of more than 38 digits has no exact form on trino). NaN and infinity raise 0A000 (numeric_in() of NaN or infinity has no form on trino): Trino&#x27;s decimal holds neither. A text the input does not read raises 22P02.</li></ul></td><td></td><td></td></tr>
@@ -1033,7 +1034,10 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>numeric_mod on trino</strong><br>The remainder of two numerics.</td><td><pre><code>function provisa.transpiler.polyfill.trino_literals.numeric_mod_read: numeric_mod of a numeric the statement says is of a scale past 18, refused by name: the</code></pre></td><td><ul><li>Computed at scale 18: of a numeric the statement says is of a scale past it it raises 0A000 (numeric_mod() of a numeric of scale past 18 has no exact form on trino).</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>a time literal on trino</strong><br>A text cast to a time of day.</td><td><pre><code>function provisa.transpiler.polyfill.trino_literals.clock_read: A text cast to a time of day of a fraction of more than milliseconds, cast to TIME(6).</code></pre></td><td><ul><li>A fraction of more than milliseconds is read to the microsecond, where Trino&#x27;s TIME of no precision rounds it to the millisecond.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>comparisons of times on trino</strong><br>Two times of day compared, the larger or the smaller of two.</td><td><pre><code>function provisa.transpiler.polyfill.trino_clocks.compared: A comparison of two times the statement says, as TIME(6).</code></pre></td><td><ul><li>Of times the statement says (a cast, a literal), compared or added as Trino&#x27;s TIME(6) and TIMESTAMP(6), to the microsecond as PostgreSQL&#x27;s; any other keeps Trino&#x27;s own, of milliseconds. Trino&#x27;s TIME holds no 24:00:00.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>a date&#x27;s part on trino</strong><br>A part of a date, extract(part, date) or date_part(part, date).</td><td><pre><code>function provisa.transpiler.polyfill.trino_clocks.part_of_date: extract(part, date) of a part a date has, as Trino&#x27;s EXTRACT of the date; date_part(part,</code></pre></td><td><ul><li>Of times the statement says (a cast, a literal), compared or added as Trino&#x27;s TIME(6) and TIMESTAMP(6), to the microsecond as PostgreSQL&#x27;s; any other keeps Trino&#x27;s own, of milliseconds. Trino&#x27;s TIME holds no 24:00:00.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>a date plus a time on trino</strong><br>A date plus a time of day, a timestamp.</td><td><pre><code>function provisa.transpiler.polyfill.trino_clocks.summed: A date plus a time the statement says, as the TIMESTAMP(6) of their texts.</code></pre></td><td><ul><li>Of times the statement says (a cast, a literal), compared or added as Trino&#x27;s TIME(6) and TIMESTAMP(6), to the microsecond as PostgreSQL&#x27;s; any other keeps Trino&#x27;s own, of milliseconds. Trino&#x27;s TIME holds no 24:00:00.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>position(text, text) on trino</strong><br>The place of a substring in a string, called by its name.</td><td><pre><code>function provisa.transpiler.polyfill.trino_texts.position_called: position(string, substring) called by its name: Trino&#x27;s strpos of the two in that order.</code></pre></td><td><ul><li>Called by its name, position(string, substring) is Trino&#x27;s strpos of the two in that order, as PostgreSQL&#x27;s textpos reads them.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>replace(text, text, text) on trino</strong><br>A string with each occurrence of a text replaced.</td><td><pre><code>function provisa.transpiler.polyfill.trino_texts.replaced: replace(string, from, to): the string as it is where ``from`` is empty; strict.</code></pre></td><td><ul><li>An empty text to replace leaves the string as it is, as PostgreSQL&#x27;s replace does.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
 =&gt;
 CAST(CASE WHEN cardinality($a) &gt; 0 THEN length(regexp_extract(typeof($a), &#x27;^(array\()+&#x27;)) / 6 END AS INTEGER)</code></pre></td><td></td><td></td><td></td></tr>
@@ -1533,7 +1537,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>chr</strong><br>The character of a code point, as its UTF-8 bytes.</td><td><pre><code>chr($x)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.floats._chr: chr of a code point. sqlglot reads &quot;char&quot; (the one-byte type&#x27;s cast) as its chr too: a call</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>in_range</strong><br>Whether a value is within an offset of a base: a window frame&#x27;s bound.</td><td><pre><code>in_range($v, $b, $o, $s, $l)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
@@ -2143,9 +2147,10 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Presto](presto.md)
 
-127 of the grid's 572 features are native on Presto and left out.
+126 of the grid's 575 features are native on Presto and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
+<tr><td><strong>an array of dimensions</strong><br>cardinality, unnest and array_to_string of an array of more than one dimension: of every element, in storage order.</td><td><pre><code>function provisa.transpiler.polyfill.array_dimensions.of_dimensions: cardinality, unnest or array_to_string of an array of more than one dimension: of every</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>an oid literal on trino</strong><br>A text cast to an oid.</td><td><pre><code>function provisa.transpiler.polyfill.clickhouse.oid_read: A text cast to an oid, read as oidin reads it: from -2147483648 to 4294967295, a negative</code></pre></td><td><ul><li>A text the statement writes is read as PostgreSQL reads it: past -2147483648 to 4294967295 it raises 22003, a text the input does not read 22P02, and a negative value is its 32 bits unsigned. A column&#x27;s cast keeps Trino&#x27;s own.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>an integer literal on trino</strong><br>A literal cast to smallint, integer or bigint.</td><td><pre><code>function provisa.transpiler.polyfill.clickhouse.integer_read: A literal cast to an integer, read as PostgreSQL reads it: a number rounded half away from</code></pre></td><td><ul><li>A number or a text the statement writes is read as PostgreSQL reads it: a number rounded half away from zero, a text by the integer input; past the type it raises 22003, a text the input does not read 22P02.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>a numeric literal on trino</strong><br>A text cast to a numeric of no precision.</td><td><pre><code>function provisa.transpiler.polyfill.trino_literals.numeric_read: A text cast to a numeric of no precision that exact_inputs left so (it is cast to a decimal</code></pre></td><td><ul><li>A value of up to 38 digits keeps them all; one of more raises 0A000 (numeric_in() of a value of more than 38 digits has no exact form on trino). NaN and infinity raise 0A000 (numeric_in() of NaN or infinity has no form on trino): Trino&#x27;s decimal holds neither. A text the input does not read raises 22P02.</li></ul></td><td></td><td></td></tr>
@@ -2157,7 +2162,10 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>numeric_mod on trino</strong><br>The remainder of two numerics.</td><td><pre><code>function provisa.transpiler.polyfill.trino_literals.numeric_mod_read: numeric_mod of a numeric the statement says is of a scale past 18, refused by name: the</code></pre></td><td><ul><li>Computed at scale 18: of a numeric the statement says is of a scale past it it raises 0A000 (numeric_mod() of a numeric of scale past 18 has no exact form on trino).</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>a time literal on trino</strong><br>A text cast to a time of day.</td><td><pre><code>function provisa.transpiler.polyfill.trino_literals.clock_read: A text cast to a time of day of a fraction of more than milliseconds, cast to TIME(6).</code></pre></td><td><ul><li>A fraction of more than milliseconds is read to the microsecond, where Trino&#x27;s TIME of no precision rounds it to the millisecond.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>comparisons of times on trino</strong><br>Two times of day compared, the larger or the smaller of two.</td><td><pre><code>function provisa.transpiler.polyfill.trino_clocks.compared: A comparison of two times the statement says, as TIME(6).</code></pre></td><td><ul><li>Of times the statement says (a cast, a literal), compared or added as Trino&#x27;s TIME(6) and TIMESTAMP(6), to the microsecond as PostgreSQL&#x27;s; any other keeps Trino&#x27;s own, of milliseconds. Trino&#x27;s TIME holds no 24:00:00.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>a date&#x27;s part on trino</strong><br>A part of a date, extract(part, date) or date_part(part, date).</td><td><pre><code>function provisa.transpiler.polyfill.trino_clocks.part_of_date: extract(part, date) of a part a date has, as Trino&#x27;s EXTRACT of the date; date_part(part,</code></pre></td><td><ul><li>Of times the statement says (a cast, a literal), compared or added as Trino&#x27;s TIME(6) and TIMESTAMP(6), to the microsecond as PostgreSQL&#x27;s; any other keeps Trino&#x27;s own, of milliseconds. Trino&#x27;s TIME holds no 24:00:00.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>a date plus a time on trino</strong><br>A date plus a time of day, a timestamp.</td><td><pre><code>function provisa.transpiler.polyfill.trino_clocks.summed: A date plus a time the statement says, as the TIMESTAMP(6) of their texts.</code></pre></td><td><ul><li>Of times the statement says (a cast, a literal), compared or added as Trino&#x27;s TIME(6) and TIMESTAMP(6), to the microsecond as PostgreSQL&#x27;s; any other keeps Trino&#x27;s own, of milliseconds. Trino&#x27;s TIME holds no 24:00:00.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>position(text, text) on trino</strong><br>The place of a substring in a string, called by its name.</td><td><pre><code>function provisa.transpiler.polyfill.trino_texts.position_called: position(string, substring) called by its name: Trino&#x27;s strpos of the two in that order.</code></pre></td><td><ul><li>Called by its name, position(string, substring) is Trino&#x27;s strpos of the two in that order, as PostgreSQL&#x27;s textpos reads them.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>replace(text, text, text) on trino</strong><br>A string with each occurrence of a text replaced.</td><td><pre><code>function provisa.transpiler.polyfill.trino_texts.replaced: replace(string, from, to): the string as it is where ``from`` is empty; strict.</code></pre></td><td><ul><li>An empty text to replace leaves the string as it is, as PostgreSQL&#x27;s replace does.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
 =&gt;
 CAST(CASE WHEN cardinality($a) &gt; 0 THEN length(regexp_extract(typeof($a), &#x27;^(array\()+&#x27;)) / 6 END AS INTEGER)</code></pre></td><td></td><td></td><td></td></tr>
@@ -2657,7 +2665,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>chr</strong><br>The character of a code point, as its UTF-8 bytes.</td><td><pre><code>chr($x)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.floats._chr: chr of a code point. sqlglot reads &quot;char&quot; (the one-byte type&#x27;s cast) as its chr too: a call</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>in_range</strong><br>Whether a value is within an offset of a base: a window frame&#x27;s bound.</td><td><pre><code>in_range($v, $b, $o, $s, $l)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
@@ -3267,9 +3275,10 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Athena](athena.md)
 
-127 of the grid's 572 features are native on Athena and left out.
+126 of the grid's 575 features are native on Athena and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
+<tr><td><strong>an array of dimensions</strong><br>cardinality, unnest and array_to_string of an array of more than one dimension: of every element, in storage order.</td><td><pre><code>function provisa.transpiler.polyfill.array_dimensions.of_dimensions: cardinality, unnest or array_to_string of an array of more than one dimension: of every</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>an oid literal on trino</strong><br>A text cast to an oid.</td><td><pre><code>function provisa.transpiler.polyfill.clickhouse.oid_read: A text cast to an oid, read as oidin reads it: from -2147483648 to 4294967295, a negative</code></pre></td><td><ul><li>A text the statement writes is read as PostgreSQL reads it: past -2147483648 to 4294967295 it raises 22003, a text the input does not read 22P02, and a negative value is its 32 bits unsigned. A column&#x27;s cast keeps Trino&#x27;s own.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>an integer literal on trino</strong><br>A literal cast to smallint, integer or bigint.</td><td><pre><code>function provisa.transpiler.polyfill.clickhouse.integer_read: A literal cast to an integer, read as PostgreSQL reads it: a number rounded half away from</code></pre></td><td><ul><li>A number or a text the statement writes is read as PostgreSQL reads it: a number rounded half away from zero, a text by the integer input; past the type it raises 22003, a text the input does not read 22P02.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>a numeric literal on trino</strong><br>A text cast to a numeric of no precision.</td><td><pre><code>function provisa.transpiler.polyfill.trino_literals.numeric_read: A text cast to a numeric of no precision that exact_inputs left so (it is cast to a decimal</code></pre></td><td><ul><li>A value of up to 38 digits keeps them all; one of more raises 0A000 (numeric_in() of a value of more than 38 digits has no exact form on trino). NaN and infinity raise 0A000 (numeric_in() of NaN or infinity has no form on trino): Trino&#x27;s decimal holds neither. A text the input does not read raises 22P02.</li></ul></td><td></td><td></td></tr>
@@ -3281,7 +3290,10 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>numeric_mod on trino</strong><br>The remainder of two numerics.</td><td><pre><code>function provisa.transpiler.polyfill.trino_literals.numeric_mod_read: numeric_mod of a numeric the statement says is of a scale past 18, refused by name: the</code></pre></td><td><ul><li>Computed at scale 18: of a numeric the statement says is of a scale past it it raises 0A000 (numeric_mod() of a numeric of scale past 18 has no exact form on trino).</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>a time literal on trino</strong><br>A text cast to a time of day.</td><td><pre><code>function provisa.transpiler.polyfill.trino_literals.clock_read: A text cast to a time of day of a fraction of more than milliseconds, cast to TIME(6).</code></pre></td><td><ul><li>A fraction of more than milliseconds is read to the microsecond, where Trino&#x27;s TIME of no precision rounds it to the millisecond.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>comparisons of times on trino</strong><br>Two times of day compared, the larger or the smaller of two.</td><td><pre><code>function provisa.transpiler.polyfill.trino_clocks.compared: A comparison of two times the statement says, as TIME(6).</code></pre></td><td><ul><li>Of times the statement says (a cast, a literal), compared or added as Trino&#x27;s TIME(6) and TIMESTAMP(6), to the microsecond as PostgreSQL&#x27;s; any other keeps Trino&#x27;s own, of milliseconds. Trino&#x27;s TIME holds no 24:00:00.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>a date&#x27;s part on trino</strong><br>A part of a date, extract(part, date) or date_part(part, date).</td><td><pre><code>function provisa.transpiler.polyfill.trino_clocks.part_of_date: extract(part, date) of a part a date has, as Trino&#x27;s EXTRACT of the date; date_part(part,</code></pre></td><td><ul><li>Of times the statement says (a cast, a literal), compared or added as Trino&#x27;s TIME(6) and TIMESTAMP(6), to the microsecond as PostgreSQL&#x27;s; any other keeps Trino&#x27;s own, of milliseconds. Trino&#x27;s TIME holds no 24:00:00.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>a date plus a time on trino</strong><br>A date plus a time of day, a timestamp.</td><td><pre><code>function provisa.transpiler.polyfill.trino_clocks.summed: A date plus a time the statement says, as the TIMESTAMP(6) of their texts.</code></pre></td><td><ul><li>Of times the statement says (a cast, a literal), compared or added as Trino&#x27;s TIME(6) and TIMESTAMP(6), to the microsecond as PostgreSQL&#x27;s; any other keeps Trino&#x27;s own, of milliseconds. Trino&#x27;s TIME holds no 24:00:00.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>position(text, text) on trino</strong><br>The place of a substring in a string, called by its name.</td><td><pre><code>function provisa.transpiler.polyfill.trino_texts.position_called: position(string, substring) called by its name: Trino&#x27;s strpos of the two in that order.</code></pre></td><td><ul><li>Called by its name, position(string, substring) is Trino&#x27;s strpos of the two in that order, as PostgreSQL&#x27;s textpos reads them.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>replace(text, text, text) on trino</strong><br>A string with each occurrence of a text replaced.</td><td><pre><code>function provisa.transpiler.polyfill.trino_texts.replaced: replace(string, from, to): the string as it is where ``from`` is empty; strict.</code></pre></td><td><ul><li>An empty text to replace leaves the string as it is, as PostgreSQL&#x27;s replace does.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
 =&gt;
 CAST(CASE WHEN cardinality($a) &gt; 0 THEN length(regexp_extract(typeof($a), &#x27;^(array\()+&#x27;)) / 6 END AS INTEGER)</code></pre></td><td></td><td></td><td></td></tr>
@@ -3781,7 +3793,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>chr</strong><br>The character of a code point, as its UTF-8 bytes.</td><td><pre><code>chr($x)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.floats._chr: chr of a code point. sqlglot reads &quot;char&quot; (the one-byte type&#x27;s cast) as its chr too: a call</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>in_range</strong><br>Whether a value is within an offset of a base: a window frame&#x27;s bound.</td><td><pre><code>in_range($v, $b, $o, $s, $l)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
@@ -4391,7 +4403,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [ClickHouse](clickhouse.md)
 
-31 of the grid's 572 features are native on ClickHouse and left out.
+34 of the grid's 575 features are native on ClickHouse and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>an array of dimensions</strong><br>cardinality, unnest and array_to_string of an array of more than one dimension: of every element, in storage order.</td><td><pre><code>function provisa.transpiler.polyfill.array_dimensions.of_dimensions: cardinality, unnest or array_to_string of an array of more than one dimension: of every</code></pre></td><td></td><td></td><td></td></tr>
@@ -5613,7 +5625,7 @@ function provisa.transpiler.polyfill.bytea.encode_of_bytes: encode of a bytea he
 
 ## [Snowflake](snowflake.md)
 
-221 of the grid's 572 features are native on Snowflake and left out.
+224 of the grid's 575 features are native on Snowflake and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -6629,7 +6641,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Databricks](databricks.md)
 
-221 of the grid's 572 features are native on Databricks and left out.
+224 of the grid's 575 features are native on Databricks and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -7645,7 +7657,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [BigQuery](bigquery.md)
 
-221 of the grid's 572 features are native on BigQuery and left out.
+224 of the grid's 575 features are native on BigQuery and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -8661,7 +8673,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [T-SQL (SQL Server, Fabric, Synapse)](tsql.md)
 
-221 of the grid's 572 features are native on T-SQL (SQL Server, Fabric, Synapse) and left out.
+224 of the grid's 575 features are native on T-SQL (SQL Server, Fabric, Synapse) and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -9677,7 +9689,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Redshift](redshift.md)
 
-221 of the grid's 572 features are native on Redshift and left out.
+224 of the grid's 575 features are native on Redshift and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -10693,7 +10705,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [MySQL](mysql.md)
 
-221 of the grid's 572 features are native on MySQL and left out.
+224 of the grid's 575 features are native on MySQL and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -11709,7 +11721,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [SingleStore](singlestore.md)
 
-221 of the grid's 572 features are native on SingleStore and left out.
+224 of the grid's 575 features are native on SingleStore and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -12725,7 +12737,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [SQLite](sqlite.md)
 
-221 of the grid's 572 features are native on SQLite and left out.
+224 of the grid's 575 features are native on SQLite and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -13741,7 +13753,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Oracle](oracle.md)
 
-221 of the grid's 572 features are native on Oracle and left out.
+224 of the grid's 575 features are native on Oracle and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -14757,7 +14769,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Hive](hive.md)
 
-221 of the grid's 572 features are native on Hive and left out.
+224 of the grid's 575 features are native on Hive and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -15773,7 +15785,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Exasol](exasol.md)
 
-221 of the grid's 572 features are native on Exasol and left out.
+224 of the grid's 575 features are native on Exasol and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -16789,7 +16801,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Druid](druid.md)
 
-221 of the grid's 572 features are native on Druid and left out.
+224 of the grid's 575 features are native on Druid and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)

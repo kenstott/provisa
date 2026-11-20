@@ -26,7 +26,7 @@ import sqlglot.expressions as exp
 
 from provisa.transpiler.polyfill import trino
 from provisa.transpiler.polyfill.grid import Feature, Limitation, Rule, Side
-from provisa.transpiler.polyfill.notation import Rewrite
+from provisa.transpiler.polyfill.notation import Refusal, Refused, Rewrite
 
 FAMILY = "time of day on Trino"
 
@@ -106,6 +106,66 @@ def summed(node: exp.Expr, dialect: str) -> exp.Expr | None:
     return trino.written(_STAMP, f"{name}($d, $t)", {"d": day, "t": _uncast(clock)})
 
 
+#: extract of a date by each part PostgreSQL's date reads, as Trino's EXTRACT of the DATE itself:
+#: the form of a timestamp's part casts the date to a TIMESTAMP, which holds no day past 294247.
+_DATE_PARTS = {
+    "year": "year($d)",
+    "quarter": "quarter($d)",
+    "month": "month($d)",
+    "day": "day($d)",
+    "dow": "day_of_week($d) % 7",
+    "doy": "day_of_year($d)",
+}
+#: The last year PostgreSQL's timestamp holds, and Trino's (to 294247-01-10).
+_PG_STAMP_YEAR = 294276
+_TRINO_STAMP_DAY = (294247, 1, 10)
+
+
+def _literal_text(node: exp.Expr) -> str | None:
+    value = node.unnest()
+    while isinstance(value, exp.Cast):
+        value = value.this.unnest()
+    return value.this if isinstance(value, exp.Literal) and value.is_string else None
+
+
+def _day_of(text: str) -> tuple[int, int, int] | None:
+    parts = text.strip().split("-")
+    if len(parts) != 3 or not all(part.isdigit() for part in parts):  # noqa: PLR2004
+        return None
+    year, month, day = (int(part) for part in parts)
+    return year, month, day
+
+
+def part_of_date(node: exp.Expr, dialect: str) -> exp.Expr | None:
+    """extract(part, date) of a part a date has, as Trino's EXTRACT of the date; date_part(part,
+    date) of a date the statement writes past a timestamp's range, PostgreSQL's 22008 (date_part
+    reads the date as a timestamp), or refused by name past Trino's. Any other keeps its form."""
+    call = _call(node, frozenset({"extract", "date_part"}))
+    if call is None or trino.said(call[1][1]) != _DATE:
+        return None
+    name, (part, day) = call
+    if name == "date_part":
+        text = _literal_text(day)
+        read = None if text is None else _day_of(text)
+        if read is None:
+            return None
+        if read[0] > _PG_STAMP_YEAR:
+            raise Refused(Refusal("22008", "date out of range for timestamp"), ruling=True)
+        if read > _TRINO_STAMP_DAY:
+            raise Refused(
+                Refusal(
+                    "0A000", f"date_part() of a date past 294247-01-10 has no form on {dialect}"
+                ),
+                ruling=True,
+            )
+        return None
+    unit = _literal_text(part)
+    form = None if unit is None else _DATE_PARTS.get(unit.strip().lower())
+    if form is None:
+        return None
+    return trino.written(form, "extract($p, $d)", {"p": part, "d": day})
+
+
 _STATED = (
     "Of times the statement says (a cast, a literal), compared or added as Trino's TIME(6) and "
     "TIMESTAMP(6), to the microsecond as PostgreSQL's; any other keeps Trino's own, of "
@@ -128,6 +188,12 @@ FEATURES: tuple[Feature, ...] = tuple(
             "Two times of day compared, the larger or the smaller of two.",
             compared,
             r"\btime_(?:eq|ne|lt|le|gt|ge|cmp|larger|smaller)\b",
+        ),
+        (
+            "a date's part on trino",
+            "A part of a date, extract(part, date) or date_part(part, date).",
+            part_of_date,
+            r"\b(?:extract|date_part)\b",
         ),
         (
             "a date plus a time on trino",

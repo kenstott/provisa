@@ -55,6 +55,7 @@ from provisa.transpiler.polyfill import (
     textsearch,
     trino_clocks,
     trino_literals,
+    trino_texts,
     type_io,
     unheld,
     zones,
@@ -82,6 +83,7 @@ GRID = Grid(
     # a literal Trino's cast reads otherwise, read before any row reads it as a value
     + trino_literals.FEATURES
     + trino_clocks.FEATURES
+    + trino_texts.FEATURES
     + arrays.FEATURES
     + array_sets.FEATURES
     + zones.FEATURES
