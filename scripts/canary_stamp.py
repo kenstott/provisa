@@ -278,36 +278,47 @@ def deploy_site() -> None:
 
 
 def stamp_merge_added(parents: list[str]) -> None:
-    """Stamp only the files a merge commit introduced itself.
+    """Stamp only the files a merge commit introduced, and split canaries the merge made shared.
 
     Every file a merged side brought was stamped on that side: .githooks/post-commit runs this
     script after every commit on every branch, and the branch's stamps commit carries the result
     and publishes its site entries. Re-stamping the whole tree on the merge only rewrote 7,481
     site entries and redeployed the site. A file that exists in no parent was written by the
-    conflict resolution and was never stamped, so it is stamped here; a canary it copied from
-    another tracked file is reissued. The stamps commit that follows publishes it.
+    conflict resolution and was never stamped, so it is stamped here. Two sides can each copy
+    the same header into a different new file; each side alone was unique, the merged tree is
+    not, so every duplicate is reissued here: the first path in sorted order keeps the canary,
+    as in stamp_and_publish, and a merge-added file never takes one from a file a side brought.
+    The stamps commit that follows carries these writes and publishes them.
     """
     added = merge_added_files(parents)
     added_set = set(added)
-    claimed = {
-        canary_id
-        for path in find_source_files()
-        if path not in added_set
-        and (
-            canary_id := extract_canary(
-                path.read_text(encoding="utf-8"),
-                TS_CANARY_RE if path.suffix in TS_EXTENSIONS else PY_CANARY_RE,
-            )
+    claimed: set[str] = set()
+    reissued = 0
+    for path in find_source_files():
+        if path in added_set:
+            continue
+        content = path.read_text(encoding="utf-8")
+        canary_id = extract_canary(
+            content, TS_CANARY_RE if path.suffix in TS_EXTENSIONS else PY_CANARY_RE
         )
-    }
+        # A side's file without a canary is that side's uncommitted stamp; its own stamps
+        # commit carries it, so the merge leaves it alone.
+        if canary_id is None:
+            continue
+        if canary_id in claimed:
+            canary_id = reissue_canary(path)
+            reissued += 1
+        claimed.add(canary_id)
     for path in added:
         canary_id = stamp_file(path)
         if canary_id in claimed:
             canary_id = reissue_canary(path)
+            reissued += 1
         claimed.add(canary_id)
     print(
         f"Merge commit: skipped full stamp and site deploy (each merged side was stamped on its "
-        f"own commits); stamped {len(added)} file(s) the merge added"
+        f"own commits); stamped {len(added)} file(s) the merge added, reissued {reissued} "
+        f"duplicate canaries"
     )
 
 

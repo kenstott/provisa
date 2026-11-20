@@ -132,3 +132,25 @@ def test_merge_added_file_with_a_copied_canary_is_reissued(repo: Path, stamper) 
     assert copied and copied != base_canary
     assert _canary(repo / "base.py") == base_canary
     assert stamper.deploys == []
+
+
+def test_merge_reissues_a_canary_both_sides_copied(repo: Path, stamper) -> None:
+    stamper.main()
+    _commit(repo, "stamps")
+    base_canary = _canary(repo / "base.py")
+    assert base_canary
+    header = (repo / "base.py").read_text()
+    _git(repo, "checkout", "-q", "-b", "side")
+    (repo / "a_side.py").write_text(header)
+    _commit(repo, "side copies base header")
+    _git(repo, "checkout", "-q", "main")
+    (repo / "a_main.py").write_text(header)
+    _commit(repo, "main copies base header")
+    _git(repo, "merge", "-q", "--no-ff", "--no-edit", "side")
+    stamper.deploys.clear()
+    stamper.main()
+    canaries = [_canary(repo / n) for n in ("a_main.py", "a_side.py", "base.py")]
+    assert all(canaries)
+    assert len(set(canaries)) == 3
+    assert canaries[0] == base_canary
+    assert stamper.deploys == []
