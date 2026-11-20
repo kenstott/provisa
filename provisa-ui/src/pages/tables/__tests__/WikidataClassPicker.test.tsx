@@ -8,33 +8,31 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// REQ-1923: a Wikidata source's table is chosen: a starter table fills the form at once; a class
-// is found by name, its count shown, its broader and narrower classes browsed, its columns picked
-// from the properties its instances use, and a filter asked for when it is too large.
+// REQ-1923: the table of a class on a Wikidata source. A class is found by name (only classes
+// with instances are asked for) or browsed from the most-used top-level classes when the search
+// is empty; its count is shown, its broader and narrower classes lead on, its columns are picked
+// from the properties its instances use, a filter is asked for when it is too large, and "Use
+// this class" closes the picker under its columns.
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, renderInForm, screen, waitFor, within } from "../../../test-utils/render";
 import type { WikidataClass } from "../../../api/wikidata";
 
 const api = vi.hoisted(() => ({
-  fetchWikidataStarters: vi.fn(),
+  fetchWikidataBrowse: vi.fn(),
   searchWikidata: vi.fn(),
   fetchWikidataClass: vi.fn(),
   buildWikidataClassTable: vi.fn(),
 }));
 vi.mock("../../../api/wikidata", () => api);
 
-const { WikidataTableChooser } = await import("../WikidataTableChooser");
+const { WikidataClassPicker } = await import("../WikidataClassPicker");
 const { tableNameOf } = await import("../wikidataChoice");
 
-const COUNTRIES = {
-  name: "countries",
-  query: "SELECT ?id ?name WHERE { }",
-  columns: [
-    { name: "id", data_type: "text" },
-    { name: "population", data_type: "integer" },
-  ],
-};
+const BROWSE = [
+  { id: "Q5", label: "human", instance_count: 12000000 },
+  { id: "Q515", label: "city", instance_count: 10542 },
+];
 
 const CITY: WikidataClass = {
   id: "Q515",
@@ -62,7 +60,7 @@ const HUMAN: WikidataClass = {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  api.fetchWikidataStarters.mockResolvedValue([COUNTRIES]);
+  api.fetchWikidataBrowse.mockResolvedValue(BROWSE);
   api.buildWikidataClassTable.mockResolvedValue({
     query: "SELECT ?id ?name WHERE { ?item wdt:P31 wd:Q515 }",
     columns: [{ name: "id", data_type: "text" }],
@@ -94,32 +92,34 @@ async function searchAndPick(testId: string, text: string, option: string) {
   );
 }
 
-describe("WikidataTableChooser", () => {
-  it("fills the form from a starter table", async () => {
-    const onChoose = vi.fn();
-    renderInForm(<WikidataTableChooser language="en" onChoose={onChoose} />);
-    await waitFor(() => expect(api.fetchWikidataStarters).toHaveBeenCalled());
-    await pick("wikidata-starter", "Countries (ISO codes, capital, population)");
-    expect(onChoose).toHaveBeenCalledWith({
-      tableName: "countries",
-      query: COUNTRIES.query,
-      columns: COUNTRIES.columns,
-    });
+describe("WikidataClassPicker", () => {
+  it("browses the most-used top-level classes with their member counts when the search is empty", async () => {
+    api.fetchWikidataClass.mockResolvedValue(CITY);
+    const onChange = vi.fn();
+    renderInForm(<WikidataClassPicker language="en" onUse={vi.fn()} onChange={onChange} />);
+    const browse = await screen.findByTestId("wikidata-class-browse");
+    expect(api.fetchWikidataBrowse).toHaveBeenCalledWith("en");
+    expect(within(browse).getByText("12,000,000")).toBeInTheDocument();
+    fireEvent.click(within(browse).getByTestId("wikidata-browse-Q515"));
+    expect(await screen.findByTestId("wikidata-class-count")).toHaveTextContent(
+      "Instances: 10,542",
+    );
+    expect(api.fetchWikidataClass).toHaveBeenCalledWith("Q515", "en");
+    expect(onChange).toHaveBeenCalled();
+    expect(screen.queryByTestId("wikidata-class-browse")).toBeNull();
   });
 
-  it("builds the table of a class found by name, with its suggested columns", async () => {
+  it("searches only for classes and builds the table of the one found", async () => {
     api.searchWikidata.mockResolvedValue([{ id: "Q515", label: "city", description: null }]);
     api.fetchWikidataClass.mockResolvedValue(CITY);
-    const onChoose = vi.fn();
-    renderInForm(<WikidataTableChooser language="en" onChoose={onChoose} />);
-    fireEvent.click(screen.getByRole("radio", { name: "Table of a class" }));
+    const onUse = vi.fn();
+    renderInForm(<WikidataClassPicker language="en" onUse={onUse} onChange={vi.fn()} />);
     await searchAndPick("wikidata-class-search", "city", "city (Q515)");
-    expect(api.searchWikidata).toHaveBeenCalledWith("city", "en");
-    expect(await screen.findByTestId("wikidata-class-count")).toHaveTextContent("Instances: 10,542");
-    expect(api.fetchWikidataClass).toHaveBeenCalledWith("Q515", "en");
+    expect(api.searchWikidata).toHaveBeenCalledWith("city", "en", "class");
+    await screen.findByTestId("wikidata-class-count");
     expect(screen.queryByTestId("wikidata-filter-property")).toBeNull();
     fireEvent.click(screen.getByTestId("wikidata-class-use"));
-    await waitFor(() => expect(onChoose).toHaveBeenCalled());
+    await waitFor(() => expect(onUse).toHaveBeenCalled());
     expect(api.buildWikidataClassTable).toHaveBeenCalledWith({
       class_id: "Q515",
       properties: [
@@ -129,18 +129,32 @@ describe("WikidataTableChooser", () => {
       filter: null,
       language: "en",
     });
-    expect(onChoose.mock.calls[0][0].tableName).toBe("city");
+    expect(onUse.mock.calls[0][0].tableName).toBe("city");
   });
 
-  it("browses to a broader or narrower class", async () => {
+  it("closes with Use this class on its own row under the columns", async () => {
+    api.fetchWikidataClass.mockResolvedValue(CITY);
+    renderInForm(<WikidataClassPicker language="en" onUse={vi.fn()} onChange={vi.fn()} />);
+    fireEvent.click(await screen.findByTestId("wikidata-browse-Q515"));
+    const use = await screen.findByTestId("wikidata-class-use");
+    const columns = screen.getByTestId("wikidata-class-columns");
+    // After the columns in reading order, and in a full-width field of its own.
+    expect(columns.compareDocumentPosition(use) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(use.closest(".form-field")).toHaveClass("form-field--full");
+    expect(use.closest(".form-field")?.contains(columns)).toBe(false);
+  });
+
+  it("browses to a narrower class, which is a change of class", async () => {
     api.searchWikidata.mockResolvedValue([{ id: "Q515", label: "city", description: null }]);
     api.fetchWikidataClass.mockResolvedValue(CITY);
-    renderInForm(<WikidataTableChooser language="en" onChoose={vi.fn()} />);
-    fireEvent.click(screen.getByRole("radio", { name: "Table of a class" }));
+    const onChange = vi.fn();
+    renderInForm(<WikidataClassPicker language="en" onUse={vi.fn()} onChange={onChange} />);
     await searchAndPick("wikidata-class-search", "city", "city (Q515)");
     await screen.findByTestId("wikidata-class-count");
+    expect(onChange).toHaveBeenCalledTimes(1);
     await pick("wikidata-class-narrower", "million city (Q1637706)");
     await waitFor(() => expect(api.fetchWikidataClass).toHaveBeenLastCalledWith("Q1637706", "en"));
+    expect(onChange).toHaveBeenCalledTimes(2);
   });
 
   it("requires a filter when the class is over the limit", async () => {
@@ -148,18 +162,18 @@ describe("WikidataTableChooser", () => {
       .mockResolvedValueOnce([{ id: "Q5", label: "human", description: null }])
       .mockResolvedValue([{ id: "Q82955", label: "politician", description: null }]);
     api.fetchWikidataClass.mockResolvedValue(HUMAN);
-    const onChoose = vi.fn();
-    renderInForm(<WikidataTableChooser language="en" onChoose={onChoose} />);
-    fireEvent.click(screen.getByRole("radio", { name: "Table of a class" }));
+    const onUse = vi.fn();
+    renderInForm(<WikidataClassPicker language="en" onUse={onUse} onChange={vi.fn()} />);
     await searchAndPick("wikidata-class-search", "human", "human (Q5)");
     await screen.findByTestId("wikidata-filter-property");
     expect(screen.getByTestId("wikidata-class-use")).toBeDisabled();
     await pick("wikidata-filter-property", "occupation (P106)");
     expect(screen.getByTestId("wikidata-class-use")).toBeDisabled();
     await searchAndPick("wikidata-filter-value", "politician", "politician (Q82955)");
+    expect(api.searchWikidata).toHaveBeenLastCalledWith("politician", "en", "item");
     expect(screen.getByTestId("wikidata-class-use")).toBeEnabled();
     fireEvent.click(screen.getByTestId("wikidata-class-use"));
-    await waitFor(() => expect(onChoose).toHaveBeenCalled());
+    await waitFor(() => expect(onUse).toHaveBeenCalled());
     expect(api.buildWikidataClassTable.mock.calls[0][0].filter).toEqual({
       property: "P106",
       value: "Q82955",
@@ -167,12 +181,10 @@ describe("WikidataTableChooser", () => {
   });
 
   it("shows why a class table was refused", async () => {
-    api.searchWikidata.mockResolvedValue([{ id: "Q515", label: "city", description: null }]);
     api.fetchWikidataClass.mockResolvedValue(CITY);
     api.buildWikidataClassTable.mockRejectedValue(new Error("choose a filter"));
-    renderInForm(<WikidataTableChooser language="en" onChoose={vi.fn()} />);
-    fireEvent.click(screen.getByRole("radio", { name: "Table of a class" }));
-    await searchAndPick("wikidata-class-search", "city", "city (Q515)");
+    renderInForm(<WikidataClassPicker language="en" onUse={vi.fn()} onChange={vi.fn()} />);
+    fireEvent.click(await screen.findByTestId("wikidata-browse-Q515"));
     fireEvent.click(await screen.findByTestId("wikidata-class-use"));
     expect(await screen.findByTestId("wikidata-table-error")).toHaveTextContent("choose a filter");
   });

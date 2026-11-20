@@ -15,15 +15,16 @@
 import { beforeEach, describe, it, expect, vi } from "vitest";
 import { renderWithProviders, screen, waitFor, within } from "../../test-utils/render";
 import userEvent from "@testing-library/user-event";
-import { Route, Routes, useLocation } from "react-router-dom";
+import { Route, Routes } from "react-router-dom";
 import type { MutationResult, Source } from "../../types/admin";
-import type { Registration } from "../tables/registrationDefaults";
 
 const wikidataApi = vi.hoisted(() => ({
   fetchWikidataStarters: vi.fn(),
+  fetchWikidataBrowse: vi.fn(),
   searchWikidata: vi.fn(),
   fetchWikidataClass: vi.fn(),
   buildWikidataClassTable: vi.fn(),
+  fetchSparqlColumns: vi.fn(),
 }));
 vi.mock("../../api/wikidata", () => wikidataApi);
 
@@ -127,19 +128,25 @@ const COUNTRIES = {
   name: "countries",
   query: "SELECT ?id ?name WHERE { }",
   columns: [
-    { name: "id", data_type: "varchar" },
-    { name: "name", data_type: "varchar" },
+    { name: "id", data_type: "text" },
+    { name: "name", data_type: "text" },
   ],
 };
+const CURRENCIES = {
+  name: "currencies",
+  query: "SELECT ?id ?name ?iso_4217 WHERE { }",
+  columns: [
+    { name: "id", data_type: "text" },
+    { name: "name", data_type: "text" },
+    { name: "iso_4217", data_type: "text" },
+  ],
+};
+const MOUNTAINS =
+  "SELECT ?peak (SAMPLE(?h) AS ?height) WHERE { ?peak wdt:P2044 ?h } GROUP BY ?peak";
 
-// The Tables page, as a probe of what it was handed.
 function TablesProbe() {
-  const location = useLocation();
-  const handed = (location.state as { createTable?: Registration } | null)?.createTable ?? null;
-  return <div data-testid="tables-page" data-handed={JSON.stringify(handed)} />;
+  return <div data-testid="tables-page" />;
 }
-const handedTo = (page: HTMLElement): Registration | null =>
-  JSON.parse(page.getAttribute("data-handed") as string) as Registration | null;
 
 const panel = () => within(screen.getByTestId("sources-split-panel"));
 
@@ -154,7 +161,12 @@ beforeEach(() => {
     })),
   );
   forgetSourceKinds();
-  wikidataApi.fetchWikidataStarters.mockReset().mockResolvedValue([COUNTRIES]);
+  wikidataApi.fetchWikidataStarters.mockReset().mockResolvedValue([COUNTRIES, CURRENCIES]);
+  wikidataApi.fetchWikidataBrowse.mockReset().mockResolvedValue([]);
+  wikidataApi.fetchSparqlColumns.mockReset().mockResolvedValue([
+    { name: "peak", data_type: "text" },
+    { name: "height", data_type: "text" },
+  ]);
   vi.spyOn(globalThis, "fetch").mockImplementation(async (url) => {
     if (String(url).includes("/admin/source-kinds/")) {
       return new Response(
@@ -178,75 +190,110 @@ const WIKIDATA_MADE = source({
   federationHintsJson: JSON.stringify({ brand: "wikidata" }),
 } as Partial<Source>);
 
-async function pickStarter(label: RegExp): Promise<void> {
-  const input = await panel().findByTestId("wikidata-starter");
+async function pickStarters(...labels: RegExp[]): Promise<void> {
+  const field = await panel().findByTestId("wikidata-starters-field");
   await waitFor(() => expect(wikidataApi.fetchWikidataStarters).toHaveBeenCalled());
-  await userEvent.click(input);
-  await waitFor(() => expect(input.getAttribute("aria-controls")).toBeTruthy());
-  const listbox = document.getElementById(input.getAttribute("aria-controls") as string);
-  await userEvent.click(
-    within(listbox as HTMLElement).getByRole("option", { name: label, hidden: true }),
-  );
+  const input = within(field).getByRole("textbox", { hidden: true });
+  for (const label of labels) {
+    await userEvent.click(input);
+    await waitFor(() => expect(input.getAttribute("aria-controls")).toBeTruthy());
+    const listbox = document.getElementById(input.getAttribute("aria-controls") as string);
+    await userEvent.click(
+      within(listbox as HTMLElement).getByRole("option", { name: label, hidden: true }),
+    );
+  }
 }
 
-describe("a Wikidata source, created", () => {
-  it("goes on to create the starter table chosen when Continue is pressed", async () => {
-    renderWithProviders(
-      <Routes>
-        <Route path="/sources" element={<SourcesPage />} />
-        <Route path="/tables" element={<TablesProbe />} />
-      </Routes>,
-      { initialEntries: ["/sources"] },
-    );
-    await userEvent.click(await screen.findByTestId("sources-add-toggle"));
-    await userEvent.click((await screen.findAllByTestId("source-type-option-wikidata"))[0]);
-    await userEvent.type(await screen.findByTestId("sources-id-input"), "test");
-    refetch.mockImplementation(async () => {
-      SOURCES = [...SOURCES, WIKIDATA_MADE];
-      return { data: { sources: SOURCES } };
-    });
-    await userEvent.click(screen.getByTestId("sources-submit"));
-    await waitFor(() => expect(createSource).toHaveBeenCalled());
-    await screen.findByTestId("register-tables-skip");
+async function createWikidataSource(): Promise<void> {
+  renderWithProviders(
+    <Routes>
+      <Route path="/sources" element={<SourcesPage />} />
+      <Route path="/tables" element={<TablesProbe />} />
+    </Routes>,
+    { initialEntries: ["/sources"] },
+  );
+  await userEvent.click(await screen.findByTestId("sources-add-toggle"));
+  await userEvent.click((await screen.findAllByTestId("source-type-option-wikidata"))[0]);
+  await userEvent.type(await screen.findByTestId("sources-id-input"), "test");
+  refetch.mockImplementation(async () => {
+    SOURCES = [...SOURCES, WIKIDATA_MADE];
+    return { data: { sources: SOURCES } };
+  });
+  await userEvent.click(screen.getByTestId("sources-submit"));
+  await waitFor(() => expect(createSource).toHaveBeenCalled());
+  await screen.findByTestId("register-tables-skip");
+}
 
-    await pickStarter(/Countries/);
+const registered = () =>
+  registerTables.mock.calls[0][0] as {
+    tableName: string;
+    schemaName: string;
+    domainId: string;
+    queryTemplate: string;
+    columns: { name: string }[];
+  }[];
+
+describe("a Wikidata source, created", () => {
+  it("registers every starter chosen at once when Continue is pressed, with its query and columns", async () => {
+    await createWikidataSource();
+    await pickStarters(/Countries/, /Currencies/);
     await userEvent.selectOptions(panel().getByTestId("register-table-domain-select"), "sales");
     await userEvent.click(screen.getByTestId("register-table-submit"));
 
-    const handed = handedTo(await screen.findByTestId("tables-page"));
-    expect(handed).not.toBeNull();
-    expect(handed!.input).toMatchObject({
+    await waitFor(() => expect(registerTables).toHaveBeenCalledTimes(1));
+    const inputs = registered();
+    expect(inputs.map((i) => i.tableName)).toEqual(["countries", "currencies"]);
+    expect(inputs[0]).toMatchObject({
       sourceId: "test",
       domainId: "sales",
       schemaName: "sparql",
-      tableName: "countries",
       queryTemplate: COUNTRIES.query,
     });
+    expect(inputs[1].columns.map((c) => c.name)).toEqual(["id", "name", "iso_4217"]);
+    // The step goes on to what was registered, its rows landing in the replica load.
+    expect(await screen.findByTestId("your-data-back")).toBeInTheDocument();
+    expect(screen.queryByTestId("tables-page")).toBeNull();
+  });
+
+  it("registers a hand-written SPARQL table with the starters, its columns read from its SELECT", async () => {
+    await createWikidataSource();
+    await pickStarters(/Countries/);
+    await userEvent.selectOptions(panel().getByTestId("register-table-domain-select"), "sales");
+    await userEvent.click(
+      within(panel().getByTestId("wikidata-custom-mode")).getByText("SPARQL query"),
+    );
+    await userEvent.type(panel().getByTestId("register-table-sparql-table-name"), "mountains");
+    // fireEvent-free: the query has braces userEvent would read as key names.
+    const query = panel().getByTestId("register-table-sparql-query") as HTMLTextAreaElement;
+    await userEvent.click(query);
+    await userEvent.paste(MOUNTAINS);
+    await userEvent.click(screen.getByTestId("register-table-submit"));
+
+    await waitFor(() => expect(registerTables).toHaveBeenCalledTimes(1));
+    const inputs = registered();
+    expect(inputs.map((i) => i.tableName)).toEqual(["countries", "mountains"]);
+    expect(inputs[1].queryTemplate).toBe(MOUNTAINS);
+    expect(inputs[1].columns.map((c) => c.name)).toEqual(["peak", "height"]);
+    expect(wikidataApi.fetchSparqlColumns).toHaveBeenCalledWith(MOUNTAINS);
+  });
+
+  it("asks for a domain before Continue registers anything", async () => {
+    await createWikidataSource();
+    await pickStarters(/Countries/);
+    await userEvent.click(screen.getByTestId("register-table-submit"));
+    expect(await screen.findByTestId("form-problem")).toHaveTextContent(/domain/i);
+    expect(registerTables).not.toHaveBeenCalled();
   });
 
   it("says what is missing when Continue is pressed with no table chosen", async () => {
-    renderWithProviders(
-      <Routes>
-        <Route path="/sources" element={<SourcesPage />} />
-        <Route path="/tables" element={<TablesProbe />} />
-      </Routes>,
-      { initialEntries: ["/sources"] },
-    );
-    await userEvent.click(await screen.findByTestId("sources-add-toggle"));
-    await userEvent.click((await screen.findAllByTestId("source-type-option-wikidata"))[0]);
-    await userEvent.type(await screen.findByTestId("sources-id-input"), "test");
-    refetch.mockImplementation(async () => {
-      SOURCES = [...SOURCES, WIKIDATA_MADE];
-      return { data: { sources: SOURCES } };
-    });
-    await userEvent.click(screen.getByTestId("sources-submit"));
-    await screen.findByTestId("register-tables-skip");
-    await panel().findByTestId("wikidata-starter");
+    await createWikidataSource();
+    await panel().findByTestId("wikidata-starters-field");
+    await userEvent.selectOptions(panel().getByTestId("register-table-domain-select"), "sales");
 
     await userEvent.click(screen.getByTestId("register-table-submit"));
 
     expect(await screen.findByTestId("form-problem")).toBeVisible();
     expect(screen.getByTestId("register-tables-skip")).toBeInTheDocument();
-    expect(screen.queryByTestId("tables-page")).toBeNull();
+    expect(registerTables).not.toHaveBeenCalled();
   });
 });
