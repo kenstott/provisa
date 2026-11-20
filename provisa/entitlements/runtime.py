@@ -35,6 +35,7 @@ from typing import Any
 from provisa.entitlements.index import (
     WILDCARD,
     Finding,
+    ObjectIndex,
     OwnedObjects,
     build_index,
     check_lists,
@@ -156,6 +157,27 @@ def _members(role_id: str) -> tuple[str, ...]:
     return members_of(role_id)
 
 
+def _index(state: Any, version: tuple, role_id: str, context: Any) -> ObjectIndex:
+    """The objects of ``role_id``'s schema, whose compilation context is ``context``, in bit
+    order; built once per model version."""
+    names = state.names_table
+    products = tuple(state.data_product_refs)
+    return state.entitlement_masks.index(
+        (version, role_id), lambda: build_index(names, context, products)
+    )
+
+
+def role_index(state: Any, role_id: str) -> ObjectIndex | None:
+    """The objects of ``role_id``'s schema in bit order: what its masks' bits are positions in.
+    None for a role with no schema. Raises when there is no model yet."""
+    context = _role_context(state, role_id)
+    if context is None:
+        return None
+    if state.names_table is None:
+        raise RuntimeError("there is no model yet to index a role's schema against")
+    return _index(state, (state.schema_boot_id, state.schema_version), role_id, context)
+
+
 def _compute(
     state: Any,
     role_id: str,
@@ -168,8 +190,8 @@ def _compute(
     names = state.names_table
     products = tuple(state.data_product_refs)
 
-    def index_of(role: str, context: Any) -> Any:
-        return cache.index((version, role), lambda: build_index(names, context, products))
+    def index_of(role: str, context: Any) -> ObjectIndex:
+        return _index(state, version, role, context)
 
     context = _role_context(state, role_id)
     if context is None:

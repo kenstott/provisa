@@ -4261,6 +4261,15 @@ def _after_answer_steps(
 
             await write_checker_targets(conn, checked)
 
+            # REQ-2219: every holder's effective rows recomputed over the model built, batched
+            # for the org; a build that moved no bit appends nothing. A record, never what a
+            # request is enforced from (the in-memory mask is). An env build's model is the
+            # prod's, whose pass writes them.
+            if env == PROD:
+                from provisa.entitlements.effective_store import write_every_holder
+
+                await write_every_holder(cast("Connection", conn), state)
+
     async def names_table() -> None:
         # REQ-194: the prod build's names table. An env build (a sandbox environment's runtime,
         # REQ-2006) skips it: its model is the prod's, the prod's pass writes it, and the

@@ -318,6 +318,9 @@ async def delete_user(user_id: str, request: Request):  # REQ-1302, REQ-1305, RE
                 f"{refused}. Grant platform_admin to another user first.",
                 user=user_id,
             ) from refused
+        from provisa.api.effective_rows import record_removed_account
+
+        await record_removed_account(removed)
         return {"scope": "account", **removed}
 
     org_id = getattr(request.state, "active_org_id", None)
@@ -338,7 +341,12 @@ async def delete_user(user_id: str, request: Request):  # REQ-1302, REQ-1305, RE
             user=user_id,
             orgs=org_id,
         ) from exc
-    if not await remove_from_org(admin_db, model_db, user_id, org_id):
+    removed = await remove_from_org(admin_db, model_db, user_id, org_id)
+    from provisa.api.effective_rows import record_people
+
+    # REQ-2219: their role grants went with the removal, a membership row or not.
+    await record_people(org_id, [user_id])
+    if not removed:
         raise ApiError(404, "users.user_not_found", "User not found")
     await record_admin_action(
         model_db,
@@ -391,6 +399,15 @@ async def list_assignments(user_id: str, request: Request):
     return [dict(r._mapping) for r in rows]
 
 
+async def _record_effective(conn: Any, user_id: str) -> None:
+    """REQ-2219: a role granted or removed changes what the person holds; their effective rows
+    are recomputed."""
+    from provisa.api.app import state
+    from provisa.entitlements import effective_store
+
+    await effective_store.write_person(conn, state, user_id)
+
+
 @router.post("/{user_id}/assignments")
 async def add_assignment(user_id: str, body: AssignmentBody, request: Request):  # REQ-042
     _require_user_management(request)
@@ -402,6 +419,7 @@ async def add_assignment(user_id: str, body: AssignmentBody, request: Request): 
         # Idempotent assignment, then read the row back. REQ-2077: a grant given again keeps the
         # latest of its expiries, and no expiry is later than any date.
         await regrant(conn, user_id, body.role_id, body.domain_id, body.expires_at)
+        await _record_effective(conn, user_id)
         result = await conn.execute_core(
             select(t.c.id, t.c.role_id, t.c.domain_id, t.c.expires_at).where(
                 t.c.user_id == user_id,
@@ -434,6 +452,8 @@ async def remove_assignment(user_id: str, assignment_id: int, request: Request):
             _delete(t).where(t.c.id == assignment_id, t.c.user_id == user_id).returning(t.c.id)
         )
         row = result.fetchone()
+        if row is not None:
+            await _record_effective(conn, user_id)
     if row is None:
         raise ApiError(404, "users.assignment_not_found", "Assignment not found")
     return {"deleted": row[0]}

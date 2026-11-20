@@ -613,6 +613,22 @@ entitlement_expiries = Table(
     Column("recorded_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
 )
 
+# REQ-2219: one effective row per person, role and capability. See the matching block in schema.sql.
+effective_entitlements = Table(
+    "effective_entitlements",
+    metadata,
+    Column("id", BigInteger, primary_key=True, autoincrement=True),
+    Column("principal", Text, nullable=False),
+    Column("role_id", Text, nullable=False),
+    Column("capability", Text, nullable=False),
+    Column("bits", Text),  # hex; NULL for a capability with no mask
+    Column("model_version", Text, nullable=False),
+    Column("expansion", JSON(none_as_null=True)),  # NULL: unscoped
+    Column("removed", Boolean, nullable=False, server_default=false()),
+    Column("valid_from", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    Column("recorded_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+)
+
 # REQ-2219, ONE API, THREE WAYS TO USE IT: a list granted by typed email to a person not yet seen.
 # Append-only, keyed by (email, role_id, kind): the last row is the grant's state. ``outcome`` is
 # NULL while it waits; ``principal`` names whom a sign-in attached it to, or was refused for.
