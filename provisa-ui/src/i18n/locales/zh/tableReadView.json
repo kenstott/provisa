@@ -31,7 +31,7 @@
     "policiesTitle": "查看此表的 RLS 策略",
     "editButtonLabel": "编辑表 {{name}}",
     "deleteButtonLabel": "删除表 {{name}}",
-    "profileHeading": "剖析 — 采样 {{count}} 行",
+    "profileHeading": "概要：抽样 {{count}} 行",
     "colNulls": "空值",
     "colNullsTitle": "Null 值",
     "colBlanks": "空白",

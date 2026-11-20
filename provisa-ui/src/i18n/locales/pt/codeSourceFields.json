@@ -48,7 +48,7 @@
     "directoryHint": "Um diretório dentro dos que o operador permite. É lido onde está, por isso a consulta seguinte lê qualquer alteração.",
     "chooseFolder": "Escolher pasta",
     "folderKept": "Guardar comprime esta pasta e envia-a de novo.",
-    "folderAgain": "Este navegador não consegue guardar a pasta: escolha-a de novo para enviar uma cópia mais recente.",
+    "folderAgain": "Este navegador não consegue manter a pasta, então escolha-a novamente para enviar uma cópia mais recente.",
     "editor": "Editor",
     "openInVscode": "Abrir no VS Code",
     "secrets": "Segredos",

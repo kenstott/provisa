@@ -1,6 +1,6 @@
 {
   "proposalsTable": {
-    "intro": "Uma linha marcada é aceita ao aplicar. As linhas com pontuação de pelo menos o limite começam marcadas. Uma linha sem nenhuma caixa marcada fica indecisa.",
+    "intro": "Uma linha marcada é aceita quando você aplica. Linhas com pontuação igual ou acima do limite começam marcadas. Uma linha sem nenhuma caixa marcada fica indefinida.",
     "colScore": "Pontuação",
     "colConfidence": "Confiança",
     "colJev": "Jev",
@@ -27,7 +27,7 @@
       "invalid_shape": "Não é um relacionamento na forma pedida: falta um campo ou ele tem a forma errada",
       "unknown_column": "Cita uma tabela ou coluna que a solicitação não comparou",
       "not_comparable": "As duas colunas têm classes diferentes, então não são comparadas",
-      "below_threshold": "Pontuação abaixo dos {{threshold}}% com que uma sugestão é mantida.",
+      "below_threshold": "Pontuou abaixo dos {{threshold}}% a partir dos quais uma sugestão é mantida.",
       "same_column": "De uma coluna para ela mesma",
       "existing": "Já registrada",
       "rejected": "Rejeitada antes",

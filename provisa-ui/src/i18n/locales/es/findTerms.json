@@ -121,7 +121,7 @@
     "roleSynthesis": "Usado",
     "roleSupporting": "De apoyo",
     "conflicts": "Explicaciones que no coinciden",
-    "conflictsHint": "Estos pasajes no pueden ser ciertos a la vez. Se muestran uno al lado del otro, nunca mezclados.",
+    "conflictsHint": "Estos pasajes no pueden ser ciertos a la vez, así que se muestran uno al lado del otro.",
     "accept": "Aceptar",
     "merge": "Fusionar",
     "mergeInto": "Fusionar con",

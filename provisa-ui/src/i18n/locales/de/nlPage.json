@@ -1,7 +1,7 @@
 {
   "nlPage": {
     "guideTitle": "So formulieren Sie eine gute Frage",
-    "guideDesc": "Dieses Werkzeug erzeugt Abfragen direkt aus Ihrem Schema — es interpretiert weder Freitext noch Allgemeinwissen. Formulieren Sie Ihre Frage als Komposition der Tabellen, Felder und Beziehungen, die in Ihren Daten existieren.",
+    "guideDesc": "Dieses Werkzeug erzeugt Abfragen aus Ihrem Schema. Es schlussfolgert nicht über Freitext oder Allgemeinwissen. Formulieren Sie Ihre Frage daher anhand der Tabellen, Felder und Beziehungen in Ihren Daten.",
     "guideRuleNames": "Verwenden Sie die Namen Ihrer Entitäten, keine Synonyme ({{entity}}, nicht {{synonym}})",
     "guideRuleFilters": "Geben Sie Filter, Gruppierungen und Aggregationen so an, wie Sie es in einer Abfrage tun würden",
     "guideRuleSchema": "Ein Feld oder eine Beziehung, die nicht in Ihrem Schema existiert, kann nicht abgefragt werden",
@@ -24,8 +24,8 @@
     "strictModeTooltip": "Die gesamte Generierung basiert strikt auf dem GraphQL-Ausdruck: Zuerst wird GraphQL erzeugt und gegen das Schema validiert, dann zu SQL und schließlich zu Cypher kompiliert. Aus: SQL, GraphQL und Cypher werden jeweils unabhängig als die der Frage am nächsten kommende Abfrage erzeugt.",
     "strictLocked": "Diese Rolle darf nur genehmigte Beziehungen verwenden",
     "questionTooltip": "Fragen Sie in normaler Sprache mit Ihren eigenen Tabellen-, Spalten- und Beziehungsnamen. Enter sendet; Umschalt+Enter fügt eine Zeile hinzu.",
-    "generateTooltip": "Erzeugt aus dieser Frage eine Abfrage für jede Oberfläche — GraphQL, SQL und Cypher — auf Basis des Schemas, das Ihre aktuelle Rolle sehen darf.",
-    "mcpChatTooltip": "Übergibt diese Frage an den MCP-Assistenten, der den Katalog erkundet und die Abfrage für Sie ausführt, statt sie nur zu erzeugen.",
+    "generateTooltip": "Erzeugt aus dieser Frage GraphQL-, SQL- und Cypher-Abfragen anhand des Schemas, das Ihre aktuelle Rolle sehen kann.",
+    "mcpChatTooltip": "Sendet diese Frage an den MCP-Assistenten, der den Katalog erkundet und die Abfrage für Sie ausführt.",
     "questionHelpTitle": "Die Frage stellen",
     "strictHelpTitle": "Strikte Generierung",
     "generateHelpTitle": "Was „Generieren“ erzeugt",

@@ -46,7 +46,7 @@
     "nextPage": "次のページ",
     "lastPage": "最後のページ",
     "roleLabel": "実行ロール",
-    "validationRoleRequired": "SQL またはコマンドのトリガーはロールとして実行されます。ロールを選択してください。",
+    "validationRoleRequired": "SQL またはコマンドのトリガーはロールとして実行されるため、ロールを選択してください。",
     "runsAs": "{{role}} として実行",
     "deleteTitle": "トリガー「{{name}}」を削除しますか？",
     "deleteConsequence": "トリガーは削除され、今後実行されません。",

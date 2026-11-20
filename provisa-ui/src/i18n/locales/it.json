@@ -101,6 +101,6 @@
   },
   "pageError": {
     "title": "Impossibile mostrare questa pagina",
-    "body": "Si è verificato un errore durante il rendering. Il resto dell’app funziona: passa a un’altra pagina o ricarica questa."
+    "body": "Si è verificato un errore durante il rendering. Il resto dell'app funziona ancora: passa a un'altra pagina o ricarica questa."
   }
 }

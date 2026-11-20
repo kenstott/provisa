@@ -1,11 +1,11 @@
 {
   "sqlModelingModal": {
     "title": "SQL-Modellierung",
-    "description": "JOIN-Bedingungen als neue Beziehungskandidaten extrahieren — bestehende Beziehungen sind ausgeschlossen",
+    "description": "JOIN-Bedingungen als neue Beziehungskandidaten extrahieren. Bestehende Beziehungen sind ausgeschlossen.",
     "close": "Schließen",
     "tabSql": "SQL",
     "tabCanvas": "Canvas",
-    "nlPlaceholder": "Frage in natürlicher Sprache stellen — erzeugt SQL…",
+    "nlPlaceholder": "In natürlicher Sprache fragen, um SQL zu erzeugen…",
     "nlLoading": "Wird geladen",
     "generateSql": "SQL erzeugen",
     "generating": "Wird erzeugt…",

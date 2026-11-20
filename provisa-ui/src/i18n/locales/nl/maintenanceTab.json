@@ -1,19 +1,19 @@
 {
   "maintenanceTab": {
     "title": "Gepland onderhoud",
-    "intro": "Toont een banner aan elke aangemelde gebruiker, op elke pagina, totdat u die uitzet. Zet hem aan vóór gepland werk dat query's onderbreekt — het enginecluster vervangen, de topologie ervan wijzigen of het control plane upgraden — zodat de onderbreking als gepland overkomt en niet als storing.",
+    "intro": "Toont elke aangemelde gebruiker op elke pagina een banner tot die wordt uitgeschakeld. Schakel hem in vóór gepland werk dat queries onderbreekt, zoals het vervangen van het enginecluster, het wijzigen van de topologie of het upgraden van het control plane, zodat iedereen weet dat de onderbreking gepland is.",
     "live": "De banner is actief.",
     "liveSince": "De banner is actief sinds {{time}}.",
     "messageLabel": "Bericht",
     "messagePlaceholder": "Provisa ondergaat gepland onderhoud…",
     "messageHint": "Laat leeg voor de standaardtekst.",
     "endsAtLabel": "Verwacht terug om",
-    "endsAtHint": "Laat leeg om aan te geven dat er geen schatting wordt gegeven, in plaats van er een te suggereren.",
+    "endsAtHint": "Laat leeg als er geen schatting is.",
     "showBanner": "Banner tonen",
     "updateBanner": "Banner bijwerken",
     "clearBanner": "Banner verwijderen",
     "dangerTitle": "Gevarenzone",
-    "dangerIntro": "Stopt de backend en de UI-ontwikkelserver op deze machine. Werkt alleen bij een desktopstart met --demo/--native — overal elders geweigerd.",
+    "dangerIntro": "Stopt de backend en de UI-ontwikkelserver op deze machine. Werkt alleen bij een desktopstart met --demo/--native en wordt overal elders geweigerd.",
     "stopAll": "Alle services stoppen",
     "stopTitle": "Alle services stoppen?",
     "stopConsequence": "Hiermee worden de backend en de UI-ontwikkelserver op deze machine gestopt. Zolang ze gestopt zijn, werken deze pagina, elke query en de sessies van alle andere gebruikers niet meer, en eindigt uw sessie. Er komt niets terug totdat de services op deze machine opnieuw zijn gestart."

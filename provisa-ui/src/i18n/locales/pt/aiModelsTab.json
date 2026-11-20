@@ -1,12 +1,12 @@
 {
   "aiModelsTab": {
     "apiKeysHeading": "Chaves de API dos fornecedores de IA",
-    "apiKeysIntro": "A chave de API da sua organização para cada fornecedor, usada nas operações assistidas por IA atribuídas a esse fornecedor. Se nenhuma for definida para um fornecedor, usa-se a chave padrão da instalação. As chaves nunca são exibidas depois de salvas. Em vez da chave, você pode colar uma referência ao cofre: ${secret:NAME} é resolvido nos segredos da sua organização a cada uso.",
+    "apiKeysIntro": "A chave de API própria da sua organização para cada fornecedor, usada nas operações assistidas por IA atribuídas a esse fornecedor. Se não estiver definida para um fornecedor, é usada a chave padrão da implantação. As chaves nunca são exibidas depois de salvas. Em vez da chave, é possível colar uma referência de cofre como ${secret:NAME}; ela é resolvida com os segredos da sua organização a cada uso.",
     "apiKeysIntroOrgOnly": "A chave de API da sua organização para cada fornecedor, usada nas operações assistidas por IA atribuídas a esse fornecedor. Um fornecedor sem chave definida não é usado. As chaves nunca são exibidas depois de salvas. Em vez da chave, você pode colar uma referência ao cofre: ${secret:NAME} é resolvido nos segredos da sua organização a cada uso.",
     "apiKeyLabel": "Chave de API de {{vendor}}",
     "apiKeyPlaceholder": "Chave de API",
     "apiKeySet": "A chave está definida",
-    "apiKeyNotSet": "Nenhuma chave definida — usando o padrão da instalação",
+    "apiKeyNotSet": "Nenhuma chave definida. Usando o padrão da implantação.",
     "apiKeyNotSetOrgOnly": "Nenhuma chave definida",
     "apiKeyClear": "Limpar chave",
     "apiKeyWillClear": "A chave será limpa quando você salvar.",
@@ -45,7 +45,7 @@
     "addEndpoint": "Adicionar endpoint",
     "removeEndpoint": "Remover",
     "jevHeading": "Jev (TypeSafe AI)",
-    "jevIntro": "Opcional. Quando definida, o Provisa usa a API de decisões com confiança calibrada da Jev para pontuar as propostas de tipo de relacionamento da ontologia e os relacionamentos de chave estrangeira descobertos, em vez de depender apenas da confiança autodeclarada pelo modelo gerador. Se não estiver definida, esses recursos mantêm o comportamento atual baseado somente no modelo. Se não for definida aqui, a variável de ambiente TYPESAFEAI_API_KEY da instalação é usada quando presente.",
+    "jevIntro": "Opcional. Quando definida, o Provisa pontua as propostas de tipos de relacionamento da ontologia e os relacionamentos de chave estrangeira descobertos com a API de decisão de confiança calibrada da Jev, além da confiança autodeclarada do modelo gerador. Se não estiver definida aqui, é usada a variável de ambiente TYPESAFEAI_API_KEY da implantação, quando existir. Sem nenhuma das duas, esses recursos usam apenas a confiança do modelo.",
     "jevIntroOrgOnly": "Opcional. Quando definida, o Provisa usa a API de decisões com confiança calibrada da Jev para pontuar as propostas de tipo de relacionamento da ontologia e os relacionamentos de chave estrangeira descobertos, em vez de depender apenas da confiança autodeclarada pelo modelo gerador. Se não estiver definida, esses recursos mantêm o comportamento atual baseado somente no modelo.",
     "saveButtonLabel": "Salvar configurações de modelos de IA",
     "loading": "Carregando…",

@@ -46,7 +46,7 @@
     "nextPage": "Nächste Seite",
     "lastPage": "Letzte Seite",
     "roleLabel": "Läuft als Rolle",
-    "validationRoleRequired": "Ein SQL- oder Befehls-Trigger läuft als Rolle: Wählen Sie eine aus.",
+    "validationRoleRequired": "Ein SQL- oder Befehls-Trigger läuft unter einer Rolle. Wählen Sie daher eine aus.",
     "runsAs": "läuft als {{role}}",
     "deleteTitle": "Trigger „{{name}}“ löschen?",
     "deleteConsequence": "Der Trigger wird entfernt und läuft nicht mehr.",

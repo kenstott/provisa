@@ -35,7 +35,7 @@
     "sameAsSourceHelp": "קשרים מחופשים בשני הכיוונים בין כל שתי טבלאות מקור.",
     "noDomain": "(ללא דומיין)",
     "counting": "סופר את הבקשות...",
-    "count": "לכל היותר קריאה {{count}} למודל, המכסה {{pairs}}.",
+    "count": "לכל היותר קריאה אחת ({{count}}) למודל, המכסה {{pairs}}.",
     "count_other": "לכל היותר {{count}} קריאות למודל, המכסות {{pairs}}.",
     "tablePairs": "זוג טבלאות {{count}}",
     "tablePairs_other": "{{count}} זוגות טבלאות",

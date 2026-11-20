@@ -2,7 +2,7 @@
   "jsonApiPage": {
     "title": "סייר JSON:API",
     "specLink": "מפרט",
-    "description": "Sparse fieldsets, סינון, מיון ועימוד. הממשל חל באופן אחיד ללא תלות בפרוטוקול התקשורת.",
+    "description": "Sparse fieldsets, סינון, מיון ועימוד. אותו ממשל חל על כל פרוטוקול תקשורת.",
     "tableLabel": "טבלה",
     "loadingOption": "טוען…",
     "selectTablePlaceholder": "בחירת טבלה",

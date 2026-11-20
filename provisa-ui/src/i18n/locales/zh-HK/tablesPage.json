@@ -16,7 +16,7 @@
     "modelStarSchema": "星型模式",
     "modelDataVault": "Data Vault",
     "reportXlsx": "活頁簿",
-    "reportXlsxTitle": "將模型下載為試算表以供審閱 — 數據來源、數據表、欄位、關係、檢視、指標、具體化檢視、本體、數據產品、數據契約、數據質素和數據剖析，每項各佔一張工作表",
+    "reportXlsxTitle": "將模型下載為試算表以供審閱，數據來源、資料表、欄位、關係、檢視、指標、具體化檢視、本體、數據產品、數據合約、數據品質和數據剖析各佔一個工作表",
     "viewErd": "檢視 ERD",
     "colSource": "數據來源",
     "colDomain": "網域",
@@ -58,25 +58,25 @@
     "modelingRole": {
       "fact": "事實",
       "dimension": "維度",
-      "impliedFactTitle": "隱含事實 — 此表已開啟「啟用彙總」",
-      "impliedDimensionTitle": "隱含維度 — 此表已開啟「啟用分組」"
+      "impliedFactTitle": "隱含事實：此資料表已開啟「啟用彙總」",
+      "impliedDimensionTitle": "隱含維度：此資料表已開啟「啟用 Group By」"
     },
     "derived": "衍生",
     "endpointUnread": "無法讀取其來源的 API 文件",
     "checker": {
       "soda": "Soda",
       "great_expectations": "Great Expectations",
-      "title": "數據質素檢查器 — 此數據表的行是執行其合約所得的結果"
+      "title": "數據品質檢查程式：此資料表的行是執行其合約的結果"
     },
     "dataProduct": "產品",
-    "dataProductTitle": "數據產品 — 包含在 provisa metadata export 中",
+    "dataProductTitle": "數據產品：已包含在 Provisa 中繼資料匯出中",
     "purposeTitle": "註冊資料表代表甚麼",
-    "purposeBody": "註冊才會把一張資料表納入受治理的模型：它確定欄位、欄位對外呈現的名稱，以及哪些角色可以看到。只有已註冊的資料表可被查詢，而下游的一切——關聯、指標、檢視、術語——引用的都是已註冊的欄位。",
-    "purposeAdd": "「+ 檢視」註冊的是由 SQL 或指標定義的關係，而不是實體資料表——註冊之後它就不再只是一條儲存的查詢。定義同時決定它如何提供：即時，或按節奏、按日曆視窗物化；重新整理可以取代、upsert 或附加。開啟時光回溯後，檢視會保留自己的歷史，使用者可以按過去某個時點讀取它；它的輸入會作為血緣被記錄，因此重新整理會等待其相依項目。",
+    "purposeBody": "註冊資料表會將其納入受治理的模型，並確定其欄位、對外公開的名稱，以及哪些角色可以看到它們。只有已註冊的資料表才能被查詢，而關係、指標、檢視和本體詞彙參照的都是已註冊的欄位。",
+    "purposeAdd": "「+ 檢視」會註冊由 SQL 或指標定義的關聯。定義亦決定其提供方式：即時，或按週期或日曆時間窗具體化，重新整理方式為取代、upsert 或附加。開啟 Time Travel 後，檢視會保留本身的歷史，讓使用者可讀取它在過去某個時間點的狀態。其輸入會作為血緣被追蹤，因此重新整理會等候其相依項目。",
     "purposeAria": "關於已註冊的資料表",
     "erdHelpTitle": "實體關係圖",
-    "erdHelpBody": "繪製已註冊的資料表以及它們之間宣告的關係，讓你在撰寫查詢之前就看得到既有的連接。它只讀取模型，不會修改：可按網域篩選，並將圖匯出為 PNG 或 SVG。",
-    "purposeModel": "「+ 模型」宣告一個實體或事實——星型結構與 Data Vault 都由這兩者組成——並把它降解到同樣的原語上，註冊物化檢視、它的時光回溯，以及指向所引用實體鍵的關係。",
+    "erdHelpBody": "繪製已註冊的資料表及其之間宣告的關係，讓你在編寫查詢前了解有哪些聯結。唯讀：可按網域篩選，並將圖表匯出為 PNG 或 SVG。",
+    "purposeModel": "「+ 模型」會宣告實體或事實，即星型結構描述和 Data Vault 的建構元素。它會註冊具體化檢視、其 Time Travel，以及與其所參照實體之間的關係。",
     "empty": "尚未註冊任何表。",
     "resizeDetail": "調整詳情面板大小",
     "detailPanel": "資料表詳情",

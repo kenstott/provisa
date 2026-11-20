@@ -46,7 +46,7 @@
     "nextPage": "Pagina successiva",
     "lastPage": "Ultima pagina",
     "roleLabel": "Eseguito come ruolo",
-    "validationRoleRequired": "Un trigger SQL o di comando viene eseguito con un ruolo: sceglierne uno.",
+    "validationRoleRequired": "Un trigger SQL o di comando viene eseguito con un ruolo, quindi sceglierne uno.",
     "runsAs": "eseguito come {{role}}",
     "deleteTitle": "Eliminare il trigger \"{{name}}\"?",
     "deleteConsequence": "Il trigger viene rimosso e non viene più eseguito.",

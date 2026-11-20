@@ -1,6 +1,6 @@
 {
   "relationshipRow": {
-    "fkBadge": "来自 FK",
+    "fkBadge": "来自外键",
     "fkBadgeTitle": "根据源中的外键创建",
     "yes": "是",
     "no": "否",

@@ -47,7 +47,7 @@
     "byFile": "फ़ाइल",
     "byUrl": "URL",
     "file": "फ़ाइल",
-    "fileHelp": "एक PDF, Word (.docx), HTML, Markdown, eCFR XML (.xml) या सादा-पाठ फ़ाइल।",
+    "fileHelp": "PDF, Word (.docx), Excel (.xlsx), HTML, Markdown, eCFR XML (.xml) या सादा-टेक्स्ट फ़ाइल।",
     "url": "URL",
     "urlHelp": "एक http(s) पता। दस्तावेज़ अभी और हर रीफ़्रेश पर फिर से लाया जाता है।",
     "fieldTitle": "शीर्षक",

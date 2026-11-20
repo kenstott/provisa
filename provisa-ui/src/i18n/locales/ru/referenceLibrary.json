@@ -47,7 +47,7 @@
     "byFile": "Файл",
     "byUrl": "URL",
     "file": "Файл",
-    "fileHelp": "Файл PDF, Word (.docx), HTML, Markdown, XML eCFR (.xml) или обычный текст.",
+    "fileHelp": "Файл PDF, Word (.docx), Excel (.xlsx), HTML, Markdown, eCFR XML (.xml) или обычный текстовый файл.",
     "url": "URL",
     "urlHelp": "Адрес http(s). Документ загружается сейчас и повторно при каждом обновлении.",
     "fieldTitle": "Название",
