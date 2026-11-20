@@ -125,6 +125,13 @@ async def term_domains(conn: "Connection") -> dict[int, set[str]]:
     return {**declared, **derived}
 
 
+async def term_refs(conn: "Connection") -> tuple[tuple[str, tuple[str, ...]], ...]:  # REQ-2219
+    """(name, effective domain ids) of every term: what a term_owner list can name."""
+    domains = await term_domains(conn)
+    rows = (await conn.execute_core(select(glossary_terms.c.id, glossary_terms.c.name))).fetchall()
+    return tuple((r.name, tuple(sorted(domains.get(r.id, ())))) for r in rows)
+
+
 async def set_declared_domains(conn: "Connection", term_id: int, domain_ids: "set[str]") -> None:
     """Replace a term's declared domains outright — the abstract term's scope, and the stamp."""
     await conn.execute_core(

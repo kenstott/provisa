@@ -111,6 +111,7 @@ function renderView(table: RegisteredTable, startEditing = vi.fn()) {
     <TableReadView
       // What this file tests is on the columns section.
       relationships={[]}
+      actingRole={null}
       section="columns"
       onSectionChange={vi.fn()}
       t={table}

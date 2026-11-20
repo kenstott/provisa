@@ -1,0 +1,28 @@
+{
+  "wikidataTable": {
+    "modeLabel": "How the table is chosen",
+    "modeStarter": "Starter table",
+    "modeClass": "Table of a class",
+    "starter": "Starter table",
+    "starterHint": "A reference table to join to, read from Wikidata.",
+    "starters": {
+      "countries": "Countries (ISO codes, capital, population)",
+      "currencies": "Currencies (ISO 4217)",
+      "languages": "Languages (ISO 639)",
+      "admin_regions": "First-level administrative regions",
+      "organizations": "Listed organizations (LEI, ticker, ISIN)"
+    },
+    "class": "Class",
+    "classHint": "Search classes by name; the table holds the class's instances.",
+    "nothingFound": "Nothing found",
+    "instances": "Instances: {{value}}",
+    "broader": "Broader class",
+    "narrower": "Narrower class",
+    "columns": "Columns",
+    "columnsHint": "The properties this class's instances use most.",
+    "filterRequired": "Over {{limit}} instances: choose a filter.",
+    "filterProperty": "Filter by",
+    "filterValue": "Value",
+    "useClass": "Use this class"
+  }
+}

@@ -417,7 +417,7 @@ def _model_state(rules, role_capabilities):
     return types.SimpleNamespace(
         role_build_inputs={
             "model_write_rules": rules,
-            "physical_table_map": {"data_products": "data_products_meta"},
+            "physical_table_map": {("provisa-admin", "data_products"): "data_products_meta"},
         },
         meta_roles={"meta:a+b": ("a", "b")},
         roles={

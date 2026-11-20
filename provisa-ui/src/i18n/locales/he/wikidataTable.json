@@ -1,0 +1,28 @@
+{
+  "wikidataTable": {
+    "modeLabel": "כיצד נבחרת הטבלה",
+    "modeStarter": "טבלת פתיחה",
+    "modeClass": "טבלה של מחלקה",
+    "starter": "טבלת פתיחה",
+    "starterHint": "טבלת ייחוס לצירוף, הנקראת מוויקינתונים.",
+    "starters": {
+      "countries": "מדינות (קודי ISO, בירה, אוכלוסייה)",
+      "currencies": "מטבעות (ISO 4217)",
+      "languages": "שפות (ISO 639)",
+      "admin_regions": "יחידות מנהליות מדרג ראשון",
+      "organizations": "ארגונים נסחרים (LEI, סימול, ISIN)"
+    },
+    "class": "מחלקה",
+    "classHint": "חפשו מחלקות לפי שם; הטבלה מכילה את מופעי המחלקה.",
+    "nothingFound": "לא נמצא דבר",
+    "instances": "מופעים: {{value}}",
+    "broader": "מחלקת-על",
+    "narrower": "תת-מחלקה",
+    "columns": "עמודות",
+    "columnsHint": "המאפיינים שמופעי המחלקה משתמשים בהם הכי הרבה.",
+    "filterRequired": "יותר מ-{{limit}} מופעים: בחרו מסנן.",
+    "filterProperty": "סינון לפי",
+    "filterValue": "ערך",
+    "useClass": "שימוש במחלקה זו"
+  }
+}

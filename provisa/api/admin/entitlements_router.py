@@ -76,6 +76,7 @@ from provisa.entitlements.index import (
     TREE_DEPTH,
     WILDCARD,
     capability_scopes,
+    identifier_problem,
     names_tree,
 )
 from provisa.entitlements.lists import ExpiryRule, HeldEntitlements
@@ -273,6 +274,16 @@ def _check_list_expiry(
 ) -> None:
     if any(not identifier.strip() for identifier in identifiers):
         raise ApiError(422, "entitlements.blank_identifier", "An identifier cannot be blank")
+    for identifier in identifiers:
+        problem = identifier_problem(kind, identifier)
+        if problem is not None:
+            raise ApiError(
+                422,
+                "entitlements.invalid_identifier",
+                problem,
+                kind=kind,
+                identifier=identifier,
+            )
     if expires_at is None:
         return
     _refuse_past(expires_at)

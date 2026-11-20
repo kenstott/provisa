@@ -35,10 +35,12 @@ from typing import Any
 from provisa.entitlements.index import (
     WILDCARD,
     Finding,
+    OwnedObjects,
     build_index,
     check_lists,
     covers,
     matches,
+    owned_objects,
 )
 from provisa.entitlements.lists import (
     IDP,
@@ -52,6 +54,7 @@ from provisa.entitlements.lists import (
     rule_ends,
 )
 from provisa.entitlements.mask import EntitlementMask, MemberInput, compute_mask
+from provisa.security.inheritance import OWN_DOMAIN_ACCESS
 from provisa.security.rights import role_ids_from_claims
 
 log = logging.getLogger(__name__)
@@ -131,14 +134,20 @@ def _role_context(state: Any, role_id: str) -> Any:
 
 
 def role_defaults(role: Mapping[str, Any]) -> Mapping[str, list[str]]:
-    """The role's default lists. Defaults naming exactly the domains the role is offered to are
-    the role itself, so a plain role grant is unchanged; they narrow nothing."""
+    """The role's default lists. Defaults naming exactly the domains the role is offered to (its
+    ceiling: its own stored domain access, before the domain tree and its inherited domains are
+    folded in) are the role itself, so a plain role grant is unchanged; they narrow nothing."""
     defaults = dict(role.get("default_entitlements") or {})
     domains = defaults.get("domains")
-    offered = role.get("domain_access")
-    if domains is not None and offered is not None and set(domains) == set(offered):
+    if domains is not None and set(domains) == set(role[OWN_DOMAIN_ACCESS]):
         defaults.pop("domains")
     return defaults
+
+
+def owned_of(state: Any) -> OwnedObjects:
+    """The glossary terms and judgment bases the org holds, as lists naming them are checked
+    (REQ-2219, OWNER KINDS)."""
+    return owned_objects(state.glossary_term_refs, state.judgment_basis_ids)
 
 
 def _members(role_id: str) -> tuple[str, ...]:
@@ -168,13 +177,14 @@ def _compute(
     model_index = cache.index((version, "*"), lambda: build_index(names, None, products))
     members: list[MemberInput] = []
     findings: list[Finding] = []
+    owned = owned_of(state)
     for member in _members(role_id):
         member_context = _role_context(state, member)
         role = state.roles.get(member)
         if member_context is None or role is None:
             continue  # a qualifier with no schema of its own reaches nothing
         lists = effective_lists(member, request.idp, held, role_defaults(role))
-        findings.extend(check_lists(member, role, lists, model_index))
+        findings.extend(check_lists(member, role, lists, model_index, owned))
         expiries = tuple(r for r in held.expiries if r.role_id == member)
         members.append(MemberInput(member, lists, index_of(member, member_context), expiries))
     return compute_mask(role_id, index_of(role_id, context), members, version, now, tuple(findings))

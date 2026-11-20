@@ -210,7 +210,7 @@
       "description": "Rascunho da descrição",
       "notCreatedTitle": "Registrado, não criado",
       "ruleNotCreated": "Regra do business vault \"{{rule}}\": registrada na descrição da sua tabela; crie-a como exibição sobre estas tabelas.",
-      "draftNote": "Cada descrição é um primeiro rascunho para um steward revisar em Tabelas registradas.",
+      "draftNote": "Cada descrição é um primeiro rascunho para um steward revisar na página Tabelas.",
       "create": "Criar",
       "nameRequired": "Dê um nome a cada tabela.",
       "nameTaken": "Duas tabelas têm o mesmo nome. Dê a cada uma o seu."
@@ -219,8 +219,8 @@
       "created_one": "{{count}} tabela criada",
       "created_other": "{{count}} tabelas criadas",
       "stopped": "Interrompido em {{name}}",
-      "draftNote": "As descrições delas são primeiros rascunhos: revise-as em Tabelas registradas.",
-      "oneWay": "O assistente apenas cria. Altere estas tabelas em Tabelas registradas ou no formulário de entidade/fato; o assistente não as gera de novo.",
+      "draftNote": "As descrições delas são primeiros rascunhos: revise-as na página Tabelas.",
+      "oneWay": "O assistente apenas cria. Altere estas tabelas na página Tabelas ou no formulário de entidade/fato; o assistente não as gera de novo.",
       "relatesTo": "relacionado a {{tables}}",
       "status": {
         "created": "Criada",

@@ -674,6 +674,16 @@ ARRAY_POSITION = Feature(
                         "array_position", tuple(d for d in DIALECTS if d not in {*NATIVE, "duckdb"})
                     ),
                     "duckdb": "list_position($a[greatest($s, 1):], $v) + greatest($s, 1) - 1",
+                    # No cast of the whole: a cast to an integer holding a raise is read as a
+                    # refusal's (transpile.clickhouse_semantics). The raise is a condition of its
+                    # own: ClickHouse drops a conjunction a constant makes false, raise and all.
+                    "clickhouse": "if(throwIf($s IS NULL, 'postgresql-error 22004: initial "
+                    "position must not be null<end of postgresql-error>') = 0, if("
+                    "arrayFirstIndex(_x -> (_x IS NULL AND $v IS NULL) OR _x = $v, "
+                    "arraySlice($a, greatest(toInt64($s), 1))) = 0, NULL, toInt32("
+                    "arrayFirstIndex(_x -> (_x IS NULL AND $v IS NULL) OR _x = $v, "
+                    "arraySlice($a, greatest(toInt64($s), 1))) + greatest(toInt64($s), 1) - 1)), "
+                    "NULL)",
                 },
             ),
         )

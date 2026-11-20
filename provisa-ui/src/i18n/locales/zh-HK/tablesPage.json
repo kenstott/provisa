@@ -2,7 +2,7 @@
   "tablesPage": {
     "loading": "正在載入資料表...",
     "titleViews": "檢視",
-    "titleTables": "已註冊資料表",
+    "titleTables": "表格",
     "filterPlaceholderViews": "篩選檢視…",
     "filterPlaceholderTables": "按數據來源、網域或資料表篩選…",
     "addTable": "+ 資料表",

@@ -2,7 +2,7 @@
   "tablesPage": {
     "loading": "正在加载表…",
     "titleViews": "视图",
-    "titleTables": "已注册的表",
+    "titleTables": "表",
     "filterPlaceholderViews": "筛选视图…",
     "filterPlaceholderTables": "按数据源、域或表筛选…",
     "addTable": "+ 表",
