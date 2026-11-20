@@ -332,7 +332,7 @@ const save = () => fireEvent.click(screen.getByTestId("glossary-edit-save"));
 describe("GlossaryTab", () => {
   beforeEach(() => {
     mockFindings.mockResolvedValue([]);
-    mockHistory.mockResolvedValue(null);
+    mockHistory.mockResolvedValue({ retired_in: null, as_of: null, columns: [], tables: [] });
     mockList.mockReset();
     mockFetchTerm.mockReset();
     mockUpdate.mockReset();
@@ -448,12 +448,13 @@ describe("GlossaryTab", () => {
 
   it("says when the model's history holds no retirement of a retired term", async () => {
     mockFetchTerm.mockResolvedValue({ ...REVENUE_DETAIL, retired: true, status: "retired" });
-    mockHistory.mockResolvedValue(null);
+    mockHistory.mockResolvedValue({ retired_in: null, as_of: null, columns: [], tables: [] });
     render(<GlossaryTab />);
     fireEvent.click(await screen.findByTestId("glossary-item-1"));
     expect(await screen.findByTestId("glossary-applied-none")).toHaveTextContent(
-      t("serverErrors.glossary.no_retirement_history"),
+      t("glossaryTab.noRetirementHistory"),
     );
+    expect(screen.queryByTestId("glossary-applied-history")).not.toBeInTheDocument();
   });
 
   it("flags a dangling concept (no path to a term naming data) in red", async () => {

@@ -152,6 +152,7 @@
     "lastAppliedTo": "अंतिम बार लागू",
     "lastAppliedColumns": "कॉलम: {{columns}}",
     "lastAppliedTables": "तालिकाएँ: {{tables}}",
+    "noRetirementHistory": "इस शब्द का कोई सेवानिवृत्ति इतिहास नहीं है।",
     "status_draft": "ड्राफ़्ट",
     "status_deprecated": "अप्रचलित",
     "status_retired": "सेवा से हटाया गया",

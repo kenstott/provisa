@@ -810,7 +810,6 @@
       "status_by_action": "Le statut d'un terme change par Approuver, Déprécier, Retirer ou Restaurer.",
       "successor_required": "Ce terme a encore des colonnes ou des tables ; le retirer les transfère à un successeur. Choisissez-en un.",
       "successor_role": "Le successeur d'un {{role}} doit être un {{role}} ou un concept ; « {{successor}} » est un {{successor_role}}.",
-      "no_retirement_history": "L'historique du modèle ne contient aucun retrait de ce terme.",
       "finding": {
         "unlinked_tables": "Cette classe est ancrée dans des tables que les relations de même entité ne relient pas toutes : {{tables}}.",
         "class_and_attribute": "Cette classe porte aussi des colonnes qui ne sont pas ses clés : {{columns}}.",

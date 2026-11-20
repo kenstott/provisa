@@ -152,6 +152,7 @@
     "lastAppliedTo": "Last applied to",
     "lastAppliedColumns": "Columns: {{columns}}",
     "lastAppliedTables": "Tables: {{tables}}",
+    "noRetirementHistory": "This term has no retirement history.",
     "status_draft": "Draft",
     "status_deprecated": "Deprecated",
     "status_retired": "Retired",
