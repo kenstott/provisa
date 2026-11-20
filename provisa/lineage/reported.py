@@ -21,11 +21,11 @@ then the same schema and table (and database, when the name carries one). A data
 table name on another server is a different dataset.
 """
 
-# Requirements: REQ-2229
+# Requirements: REQ-2229, REQ-2263
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field as dataclass_field
 from datetime import datetime
 from typing import Any
 from urllib.parse import urlsplit
@@ -68,11 +68,21 @@ class ColumnInput:
     transform: str  # the facet's "type:subtype"; never its free-text description
 
 
+#: The dataset facets the receiver keeps, latest per dataset (REQ-2263), by the name stored.
+SCHEMA_FACET = "schema"
+DOCUMENTATION_FACET = "documentation"
+OWNERSHIP_FACET = "ownership"
+
+
 @dataclass(frozen=True)
 class ReportedDataset:
     namespace: str
     name: str
     column_lineage: dict[str, tuple[ColumnInput, ...]]  # output column -> what it came from
+    #: The schema, documentation and ownership facets the event carried, by the name stored
+    #: (SCHEMA_FACET, ...): each one's payload as :func:`_kept_facets` reads it. A facet the
+    #: event did not carry is absent.
+    facets: dict[str, dict] = dataclass_field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -146,6 +156,64 @@ def _column_lineage(facets: dict) -> dict[str, tuple[ColumnInput, ...]]:
     return out
 
 
+def _optional_text(parent: dict, key: str, where: str) -> str | None:
+    value = parent.get(key)
+    if value is not None and not isinstance(value, str):
+        raise InvalidRunEvent(f"{where}.{key} must be a string")
+    return value
+
+
+def _objects(parent: dict, key: str, where: str) -> list[dict]:
+    listed = parent.get(key)
+    if not isinstance(listed, list) or not all(isinstance(i, dict) for i in listed):
+        raise InvalidRunEvent(f"{where}.{key} must be a list of objects")
+    return listed
+
+
+def _facet(facets: dict, key: str) -> dict | None:
+    facet = facets.get(key)
+    if facet is None:
+        return None
+    if not isinstance(facet, dict):
+        raise InvalidRunEvent(f"{key} must be an object")
+    return facet
+
+
+def _kept_facets(facets: dict) -> dict[str, dict]:
+    """The SchemaDatasetFacet's fields (name, type, description), the DocumentationDatasetFacet's
+    description and the OwnershipDatasetFacet's owners (name, type) the dataset carries."""
+    kept: dict[str, dict] = {}
+    schema = _facet(facets, "schema")
+    if schema is not None:
+        kept[SCHEMA_FACET] = {
+            "fields": [
+                {
+                    "name": _text(f, "name", "schema.fields[]"),
+                    "type": _optional_text(f, "type", "schema.fields[]"),
+                    "description": _optional_text(f, "description", "schema.fields[]"),
+                }
+                for f in _objects(schema, "fields", "schema")
+            ]
+        }
+    documentation = _facet(facets, "documentation")
+    if documentation is not None:
+        kept[DOCUMENTATION_FACET] = {
+            "description": _text(documentation, "description", "documentation")
+        }
+    ownership = _facet(facets, "ownership")
+    if ownership is not None:
+        kept[OWNERSHIP_FACET] = {
+            "owners": [
+                {
+                    "name": _text(o, "name", "ownership.owners[]"),
+                    "type": _optional_text(o, "type", "ownership.owners[]"),
+                }
+                for o in _objects(ownership, "owners", "ownership")
+            ]
+        }
+    return kept
+
+
 def _datasets(body: dict, key: str) -> tuple[ReportedDataset, ...]:
     listed = body.get(key)
     if listed is None:
@@ -162,6 +230,7 @@ def _datasets(body: dict, key: str) -> tuple[ReportedDataset, ...]:
                 _text(dataset, "namespace", key),
                 _text(dataset, "name", key),
                 _column_lineage(facets),
+                _kept_facets(facets),
             )
         )
     return tuple(out)
@@ -215,6 +284,21 @@ def dataset_rows(event: RunEvent) -> list[dict]:
         for direction, datasets in ((_INPUT, event.inputs), (_OUTPUT, event.outputs))
         for d in datasets
     ]
+
+
+def facet_rows(event: RunEvent) -> list[dict]:
+    """One row per kept facet of each dataset the event names (REQ-2263). A dataset named as both
+    input and output with the facet on each side is one row, the output's."""
+    kept: dict[tuple[str, str, str], dict] = {}
+    for d in (*event.inputs, *event.outputs):
+        for facet, payload in d.facets.items():
+            kept[(d.namespace, d.name, facet)] = {
+                "dataset_namespace": d.namespace,
+                "dataset_name": d.name,
+                "facet": facet,
+                "payload": payload,
+            }
+    return list(kept.values())
 
 
 def reported_jobs(rows: list[dict]) -> list[ReportedJob]:

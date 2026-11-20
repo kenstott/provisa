@@ -647,3 +647,133 @@ class TestTheStore:
             _run("r2", "2026-11-09T11:00:00Z", [], []),
         )
         assert "sales.orders.amount" in (await _read_back(db)).nodes
+
+
+# -- REQ-2263: each dataset's latest schema, documentation and ownership facets -------------------
+
+SCHEMA = {"fields": [{"name": "id", "type": "INTEGER", "description": "order id"}]}
+DOCS = {"description": "One row per order."}
+OWNERS = {"owners": [{"name": "team:sales", "type": "MAINTAINER"}]}
+
+
+async def _facets(db, namespace: str | None = None) -> dict:
+    from provisa.core.repositories.openlineage_facets import read_dataset_facets
+
+    async with db.acquire() as conn:
+        found = await read_dataset_facets(conn, namespace)
+    return {(d.namespace, d.name): d.facets for d in found}
+
+
+class TestFacetParsing:
+    def test_the_kept_facets_are_read_from_the_dataset(self):
+        event = parse_run_event(
+            _event(
+                [],
+                [
+                    _dataset(
+                        "public.mart",
+                        schema={**SCHEMA, "_producer": "x"},
+                        documentation=DOCS,
+                        ownership=OWNERS,
+                        dataSource={"name": "pg"},
+                    )
+                ],
+            )
+        )
+        assert event.outputs[0].facets == {
+            "schema": SCHEMA,
+            "documentation": DOCS,
+            "ownership": OWNERS,
+        }
+
+    def test_a_field_with_only_a_name_keeps_the_rest_empty(self):
+        event = parse_run_event(_event([_dataset("t", schema={"fields": [{"name": "c"}]})], []))
+        assert event.inputs[0].facets["schema"] == {
+            "fields": [{"name": "c", "type": None, "description": None}]
+        }
+
+    @pytest.mark.parametrize(
+        "facets",
+        [
+            {"schema": "x"},
+            {"schema": {"fields": "x"}},
+            {"schema": {"fields": [{"type": "INT"}]}},
+            {"schema": {"fields": [{"name": "c", "type": 3}]}},
+            {"documentation": {}},
+            {"ownership": {"owners": [{"type": "OWNER"}]}},
+        ],
+    )
+    def test_a_malformed_kept_facet_is_refused(self, facets):
+        with pytest.raises(InvalidRunEvent):
+            parse_run_event(_event([], [_dataset("t", **facets)]))
+
+
+class TestTheFacetStore:
+    async def test_received_facets_are_stored_with_their_run_and_time(self, control_plane):
+        db = control_plane.org()
+        await _store_events(
+            db,
+            _run(
+                "r1",
+                "2026-11-09T10:00:00Z",
+                [_dataset("warehouse.public.orders", schema=SCHEMA)],
+                [_dataset("warehouse.public.mart", documentation=DOCS, ownership=OWNERS)],
+            ),
+        )
+        stored = await _facets(db)
+        orders = stored[(PG, "warehouse.public.orders")]
+        assert orders["schema"].payload == SCHEMA
+        assert orders["schema"].run_id == "r1"
+        assert orders["schema"].event_time.isoformat() == "2026-11-09T10:00:00+00:00"
+        mart = stored[(PG, "warehouse.public.mart")]
+        assert set(mart) == {"documentation", "ownership"}
+        assert mart["documentation"].payload == DOCS
+        assert mart["ownership"].payload == OWNERS
+
+    async def test_a_later_event_replaces_them(self, control_plane):
+        db = control_plane.org()
+        later = {"fields": [{"name": "id", "type": "BIGINT", "description": None}]}
+        await _store_events(
+            db,
+            _run("r1", "2026-11-09T10:00:00Z", [], [_dataset("t", schema=SCHEMA)]),
+            _run("r2", "2026-11-09T11:00:00Z", [], [_dataset("t", schema=later)]),
+        )
+        schema = (await _facets(db))[(PG, "t")]["schema"]
+        assert (schema.payload, schema.run_id) == (later, "r2")
+
+    async def test_an_event_without_a_facet_leaves_the_stored_one(self, control_plane):
+        db = control_plane.org()
+        await _store_events(
+            db,
+            _run(
+                "r1", "2026-11-09T10:00:00Z", [], [_dataset("t", schema=SCHEMA, ownership=OWNERS)]
+            ),
+            _run("r2", "2026-11-09T11:00:00Z", [], [_dataset("t", documentation=DOCS)]),
+        )
+        stored = (await _facets(db))[(PG, "t")]
+        assert stored["schema"].run_id == "r1"
+        assert stored["ownership"].payload == OWNERS
+        assert stored["documentation"].run_id == "r2"
+
+    async def test_an_older_event_arriving_late_leaves_the_newer_facet(self, control_plane):
+        db = control_plane.org()
+        stale = {"description": "stale"}
+        await _store_events(
+            db,
+            _run("r2", "2026-11-09T11:00:00Z", [], [_dataset("t", documentation=DOCS)]),
+            _run("r1", "2026-11-09T10:00:00Z", [], [_dataset("t", documentation=stale)]),
+        )
+        assert (await _facets(db))[(PG, "t")]["documentation"].payload == DOCS
+
+    async def test_facets_are_read_by_namespace(self, control_plane):
+        db = control_plane.org()
+        await _store_events(
+            db,
+            _run(
+                "r1",
+                "2026-11-09T10:00:00Z",
+                [_dataset("a", "s3://bucket", documentation=DOCS)],
+                [_dataset("t", documentation=DOCS)],
+            ),
+        )
+        assert list(await _facets(db, "s3://bucket")) == [("s3://bucket", "a")]
