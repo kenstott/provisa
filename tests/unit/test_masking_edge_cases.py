@@ -243,11 +243,11 @@ class TestMaskingDialectConsistency:
         assert expr.startswith("DATE_TRUNC(")
         assert "'DAY'" in expr
 
-    def test_constant_integer_mask_is_bare_literal(self):
-        """Constant integer mask must emit a bare numeric literal (no quotes)."""
+    def test_constant_integer_mask_reads_null(self):
+        """A constant on an integer column reads as NULL, keeping its type (REQ-2131)."""
         rule = MaskingRule(mask_type=MaskType.constant, value=42)
         expr = build_mask_expression(rule, '"amount"', "integer")
-        assert expr == "42"
+        assert expr == "NULL"
 
     def test_constant_string_mask_is_single_quoted_literal(self):
         """Constant string mask must use ANSI single-quoted literals."""
@@ -261,15 +261,15 @@ class TestMaskingDialectConsistency:
         expr = build_mask_expression(rule, '"email"', "varchar")
         assert expr == "NULL"
 
-    def test_constant_boolean_true_emits_true_keyword(self):
+    def test_constant_boolean_true_reads_null(self):
         rule = MaskingRule(mask_type=MaskType.constant, value=True)
         expr = build_mask_expression(rule, '"flag"', "boolean")
-        assert expr == "TRUE"
+        assert expr == "NULL"
 
-    def test_constant_boolean_false_emits_false_keyword(self):
+    def test_constant_boolean_false_reads_null(self):
         rule = MaskingRule(mask_type=MaskType.constant, value=False)
         expr = build_mask_expression(rule, '"flag"', "boolean")
-        assert expr == "FALSE"
+        assert expr == "NULL"
 
     def test_regex_mask_on_parameterized_varchar_uses_regexp_replace(self):
         """varchar(255) must be treated as varchar for REGEXP_REPLACE emission."""
@@ -286,31 +286,13 @@ class TestMaskingDialectConsistency:
             unit = precision.upper()
             assert f"'{unit}'" in expr, f"Precision '{unit}' not found in: {expr}"
 
-    def test_max_constant_resolves_per_integer_subtype(self):
-        """MAX sentinel resolves to the correct bound for each integer subtype."""
-        cases = [
-            ("tinyint", "127"),
-            ("smallint", "32767"),
-            ("integer", "2147483647"),
-            ("bigint", "9223372036854775807"),
-        ]
-        for data_type, expected in cases:
-            rule = MaskingRule(mask_type=MaskType.constant, value="MAX")
-            expr = build_mask_expression(rule, '"col"', data_type)
-            assert expr == expected, f"MAX for {data_type}: expected {expected}, got {expr}"
-
-    def test_min_constant_resolves_per_integer_subtype(self):
-        """MIN sentinel resolves to the correct lower bound for each integer subtype."""
-        cases = [
-            ("tinyint", "-128"),
-            ("smallint", "-32768"),
-            ("integer", "-2147483648"),
-            ("bigint", "-9223372036854775808"),
-        ]
-        for data_type, expected in cases:
-            rule = MaskingRule(mask_type=MaskType.constant, value="MIN")
-            expr = build_mask_expression(rule, '"col"', data_type)
-            assert expr == expected, f"MIN for {data_type}: expected {expected}, got {expr}"
+    def test_max_and_min_constants_read_null_on_every_integer_subtype(self):
+        """A constant on any integer subtype reads as NULL, MAX and MIN included (REQ-2131)."""
+        for data_type in ("tinyint", "smallint", "integer", "bigint"):
+            for value in ("MAX", "MIN"):
+                rule = MaskingRule(mask_type=MaskType.constant, value=value)
+                expr = build_mask_expression(rule, '"col"', data_type)
+                assert expr == "NULL", f"{value} for {data_type}: got {expr}"
 
 
 # ---------------------------------------------------------------------------
@@ -333,7 +315,7 @@ class TestMaskingInjectionSideEffects:
             masking_rules=rules,
         )
         assert_same_answer(
-            pg, result, 'SELECT "id", 0 AS "amount" FROM "public"."orders" ORDER BY "id" DESC'
+            pg, result, 'SELECT "id", NULL AS "amount" FROM "public"."orders" ORDER BY "id" DESC'
         )
 
     def test_limit_clause_preserved_after_masking(self, pg):

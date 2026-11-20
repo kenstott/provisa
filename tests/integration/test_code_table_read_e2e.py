@@ -705,9 +705,10 @@ def test_the_target_is_read_under_the_readers_row_rules(server, order_clips):
     The score is computed from the whole of each table the resolver is given (its call may read
     any column of them), so it derives from orders.tag, which the analyst sees masked: the score
     is masked for the analyst with that column's mask (REQ-2131, amended 2026-11-16: only an
-    output that is an input's relationship key escapes a mask elsewhere on the input)."""
+    output that is an input's relationship key escapes a mask elsewhere on the input). The score
+    is a Float, so the mask keeps its type and it reads as null (REQ-2131, amended 77da388aa6)."""
     orders = _graphql(server, _ANALYST, _FOLLOW)["orders"]
-    assert orders[0]["order_clips"] == [{"score": "***", "clips": {"id": 1, "region": "emea"}}]
+    assert orders[0]["order_clips"] == [{"score": None, "clips": {"id": 1, "region": "emea"}}]
     assert orders[1]["order_clips"] == []
 
 

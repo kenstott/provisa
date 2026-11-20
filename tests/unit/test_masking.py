@@ -111,10 +111,11 @@ class TestBuildMaskExpression:
             expr == "PROVISA_REGEX_REPLACE(\"t0\".\"email\", '^(.{2}).*(@.*)$', '$1***$2', '****')"
         )
 
-    def test_constant_zero(self):
+    def test_constant_zero_on_integer_reads_null(self):
+        # REQ-2131 (amended 77da388aa6): a masked value keeps its column's type.
         rule = MaskingRule(mask_type=MaskType.constant, value=0)
         expr = build_mask_expression(rule, '"t0"."amount"', "integer")
-        assert expr == "0"
+        assert expr == "NULL"
 
     def test_constant_null(self):
         rule = MaskingRule(mask_type=MaskType.constant, value=None)
@@ -141,30 +142,30 @@ class TestBuildMaskExpression:
         expr = build_mask_expression(rule, '"birthday"', "date")
         assert expr == "DATE_TRUNC('YEAR', \"birthday\")"
 
-    def test_constant_max_integer(self):
+    def test_constant_max_on_integer_reads_null(self):
         rule = MaskingRule(mask_type=MaskType.constant, value="MAX")
         expr = build_mask_expression(rule, '"amount"', "integer")
-        assert expr == "2147483647"
+        assert expr == "NULL"
 
-    def test_constant_min_bigint(self):
+    def test_constant_min_on_bigint_reads_null(self):
         rule = MaskingRule(mask_type=MaskType.constant, value="MIN")
         expr = build_mask_expression(rule, '"id"', "bigint")
-        assert expr == "-9223372036854775808"
+        assert expr == "NULL"
 
     def test_constant_max_non_integer_falls_through(self):
         rule = MaskingRule(mask_type=MaskType.constant, value="MAX")
         expr = build_mask_expression(rule, '"val"', "varchar")
         assert expr == "'MAX'"
 
-    def test_constant_boolean_true(self):
+    def test_constant_true_on_boolean_reads_null(self):
         rule = MaskingRule(mask_type=MaskType.constant, value=True)
         expr = build_mask_expression(rule, '"flag"', "boolean")
-        assert expr == "TRUE"
+        assert expr == "NULL"
 
-    def test_constant_boolean_false(self):
+    def test_constant_false_on_boolean_reads_null(self):
         rule = MaskingRule(mask_type=MaskType.constant, value=False)
         expr = build_mask_expression(rule, '"flag"', "boolean")
-        assert expr == "FALSE"
+        assert expr == "NULL"
 
 
 class TestApplyMaskToValue:
@@ -195,13 +196,13 @@ class TestApplyMaskToValue:
         rule = MaskingRule(mask_type=MaskType.constant, value=None)
         assert apply_mask_to_value(rule, "secret", "varchar") is None
 
-    def test_constant_int(self):
+    def test_constant_on_integer_reads_none(self):
         rule = MaskingRule(mask_type=MaskType.constant, value=0)
-        assert apply_mask_to_value(rule, 12345, "integer") == 0
+        assert apply_mask_to_value(rule, 12345, "integer") is None
 
-    def test_constant_max_resolved(self):
+    def test_constant_max_on_integer_reads_none(self):
         rule = MaskingRule(mask_type=MaskType.constant, value="MAX")
-        assert apply_mask_to_value(rule, 5, "integer") == 2147483647
+        assert apply_mask_to_value(rule, 5, "integer") is None
 
     def test_truncate_iso_string_to_month(self):
         import datetime as dt

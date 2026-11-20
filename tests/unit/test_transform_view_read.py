@@ -256,7 +256,7 @@ def test_a_masked_input_masks_the_outputs_derived_from_it_and_no_other(status):
 @pytest.mark.parametrize("status", [MVStatus.FRESH, MVStatus.STALE])
 def test_a_mask_on_a_plain_input_masks_its_own_output_only(status):
     items = _items(_answered(STATEMENT, _state(status), _reader(masked=("id",))))
-    assert items["id"] == "'***'"
+    assert items["id"] == "NULL"  # an integer output reads a constant mask as NULL (REQ-2131)
     assert {items[c] for c in ("street", "city", "country")} == {
         f'"clean_suppliers"."{c}"' for c in ("street", "city", "country")
     }
@@ -404,7 +404,7 @@ def test_a_code_command_view_read_by_a_restricted_role_gets_only_its_rows_masked
     )
     assert f"WHERE {HELD.replace('suppliers__', 's__')} = 'east'" in answered
     items = _items(answered)
-    assert items["score"] == "'***'"
+    assert items["score"] == "NULL"  # a double output keeps its type: NULL, never '***'
     assert items["id"] == '"clean_suppliers"."id"'
     assert "rank_suppliers" not in answered  # no command is called on a read
 
@@ -433,7 +433,7 @@ def test_a_mask_on_a_table_a_code_command_is_given_masks_its_outputs():
     called_only = "SELECT r.supplier_id AS id, r.score FROM rank_suppliers('fx.suppliers') AS r"
     state = _state(MVStatus.FRESH, definition=called_only)
     items = _items(_answered(RANKED_STATEMENT, state, _ranked_reader(masked=("region",))))
-    assert items == {"id": "'***'", "score": "'***'"}
+    assert items == {"id": "NULL", "score": "NULL"}
 
 
 # --- REQ-2131 (amended 2026-11-16): a rule change builds the view again --------------------------
@@ -571,9 +571,9 @@ def test_a_key_output_is_masked_only_by_a_mask_on_its_key_column():
     state = _state(MVStatus.FRESH, definition=CALLED_ONLY)
     state.relationships = [SUPPLIER_TO_VIEW]
     items = _items(_answered(RANKED_STATEMENT, state, _ranked_reader(masked=("region",))))
-    assert items == {"id": '"clean_suppliers"."id"', "score": "'***'"}
+    assert items == {"id": '"clean_suppliers"."id"', "score": "NULL"}
     items = _items(_answered(RANKED_STATEMENT, state, _ranked_reader(masked=("id",))))
-    assert items == {"id": "'***'", "score": "'***'"}
+    assert items == {"id": "NULL", "score": "NULL"}
 
 
 def test_a_junction_edge_through_the_view_is_no_relationship_to_filter_by():
