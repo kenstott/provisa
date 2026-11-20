@@ -56,5 +56,7 @@ async def test_a_large_class_requires_a_filter():
 
 
 async def test_search_finds_a_class_by_name():
-    found = await wikidata.search_entities("sovereign state", language="en")
+    found = await wikidata.search_entities("sovereign state", language="en", classes=True)
     assert any(hit["id"] == "Q3624078" for hit in found)
+    # A class search keeps only classes with instances: the class found has some.
+    assert (await wikidata.describe_class("Q3624078", language="en")).instance_count > 0
