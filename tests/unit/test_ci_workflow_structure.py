@@ -616,6 +616,7 @@ _RELEASE = REPO / ".github" / "workflows" / "build-dmg.yml"
 _LEAVES_THE_RUN = re.compile(
     r"gh release (upload|edit|create|view)|softprops/action-gh-release|pypi-publish|"
     r"attest-build-provenance|docker/login-action|\./\.github/actions/ensure-release|twine upload|"
+    r"\./\.github/actions/attach-release-assets|"
     r"docker push|oras push|skopeo copy|crane push|provisa connector push|--registry-password-env|"
     r"actions/deploy-pages"
 )
@@ -1077,7 +1078,7 @@ def test_the_reusable_workflows_are_checked_only_after_every_action_is():
     assert level_zero == {
         job for job, body in jobs.items() if str(body.get("name", "")).startswith("action / ")
     }
-    assert len(level_zero) == 14
+    assert len(level_zero) == 15
     assert jobs["level-1"]["needs"] == ["lane-results", "release-results"]
 
 

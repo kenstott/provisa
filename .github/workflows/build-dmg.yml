@@ -9,20 +9,23 @@
 #             └─ linux ───┼─ publish-pypi, publish-notebook-pypi ─┬─ publish
 #   packages ─────────────┘  publish-connector-image ──────────────┘
 #
-# The provisa server wheel is not uploaded to PyPI: it outgrew PyPI's 10 GB project limit
-# (alpha.510). The publish leg attaches every platform's wheel to the release and regenerates
-# the package index on GitHub Pages that lists them (`pip install provisa --extra-index-url
+# Every job that builds a release asset attaches it to the draft release itself, once
+# (.github/actions/attach-release-assets); the publish leg copies nothing -- it checks the draft
+# has every asset, undrafts it and regenerates the index. The provisa server wheel is not uploaded
+# to PyPI: it outgrew PyPI's 10 GB project limit (alpha.510). Each platform's wheel is a release
+# asset, listed by the package index on GitHub Pages (`pip install provisa --extra-index-url
 # https://kenstott.github.io/provisa/simple/`).
 #
 # A tag starts nothing. Run by hand (Actions -> Build Provisa Packages -> Run workflow) on
 # release/<version>, once the suites are green there, it is the release's DRY RUN, which "Release:
 # cut" requires: every artifact is built and uploaded to the run under the names the given
-# `version` produces, and nothing leaves the run -- no draft release, no attachment, no PyPI
-# upload, no image push, no signed attestation. A run publishes only when it is started ON the tag
+# `version` produces (an asset's upload fails when its file is missing), and nothing leaves the
+# run -- no draft release, no attachment, no PyPI upload, no image push, no signed attestation. A run publishes only when it is started ON the tag
 # whose version it names with `publish` checked, which is how "Release: cut" starts it.
 #
 # A failed job is re-run alone with "Re-run failed jobs": the legs that passed are not built
-# again, and the artifacts they uploaded to the run are still there for the leg that reads them.
+# again, their assets are already on the draft, and the artifacts they uploaded to the run are
+# still there for the leg that reads them.
 name: Build Provisa Packages
 
 on:
@@ -61,6 +64,9 @@ jobs:
   prebuilt:
     name: Prebuilt inputs
     needs: platform-connectors
+    # Each job attaches what it builds to the draft release itself (contents).
+    permissions:
+      contents: write
     uses: ./.github/workflows/release-prebuilt.yml
     with:
       version: ${{ inputs.version || github.ref_name }}
@@ -83,6 +89,9 @@ jobs:
   macos:
     name: macOS installers
     needs: prebuilt
+    # Each job attaches what it builds to the draft release itself (contents).
+    permissions:
+      contents: write
     uses: ./.github/workflows/release-macos.yml
     with:
       version: ${{ inputs.version || github.ref_name }}
@@ -98,6 +107,9 @@ jobs:
   windows:
     name: Windows installers
     needs: prebuilt
+    # Each job attaches what it builds to the draft release itself (contents).
+    permissions:
+      contents: write
     uses: ./.github/workflows/release-windows.yml
     with:
       version: ${{ inputs.version || github.ref_name }}
@@ -110,6 +122,9 @@ jobs:
   linux:
     name: Linux AppImage
     needs: prebuilt
+    # Each job attaches what it builds to the draft release itself (contents).
+    permissions:
+      contents: write
     uses: ./.github/workflows/release-linux.yml
     with:
       version: ${{ inputs.version || github.ref_name }}
@@ -207,21 +222,19 @@ jobs:
             --config provisa/core/platform_connectors.yaml --name spark \
             --registry-user "$GITHUB_ACTOR" --registry-password-env REGISTRY_PASSWORD
 
-  # After every PyPI publication: the release's attachments and undraft, the provisa wheel
-  # index on GitHub Pages, the image pushes. A
-  # failed or partial run publishes nothing. On a dry run the PyPI jobs are skipped, and a job is
-  # skipped with the jobs it needs unless it says otherwise: this one still runs (its dry run
-  # proves the asset set is whole), and never after a publication that failed or was cancelled.
+  # After every PyPI publication: the check that the draft has every asset and its undraft, the
+  # provisa wheel index on GitHub Pages, the image pushes. A failed or partial run publishes
+  # nothing. On a dry run the PyPI jobs are skipped, and a job is skipped with the jobs it needs
+  # unless it says otherwise: this one still runs (its images build without a push), and never
+  # after a publication that failed or was cancelled.
   publish:
     name: Attach and publish
     needs: [platform-connectors, prebuilt, packages, macos, windows, linux, publish-pypi, publish-notebook-pypi, publish-connector-image]
     if: ${{ !cancelled() && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') }}
-    # The union of what the leg's jobs ask for: attach to and undraft the release (contents),
-    # Sigstore attestations and the Pages deployment's token (id-token), the image pushes
-    # (packages), the wheel index's deployment (pages), and the artifact download that a manual
-    # dispatch of the leg makes from another run (actions).
+    # The union of what the leg's jobs ask for: undraft the release (contents), the Pages
+    # deployment's token (id-token), the image pushes (packages), the wheel index's deployment
+    # (pages).
     permissions:
-      actions: read
       contents: write
       id-token: write
       packages: write

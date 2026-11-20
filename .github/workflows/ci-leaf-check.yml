@@ -415,6 +415,35 @@ jobs:
           fi
           echo "no release $TAG"
 
+  # attach-release-assets has no switch of its own either: a leg skips it with `if: inputs.publish`.
+  # Gated the same way with the condition false, it must be skipped and no release may exist.
+  attach-release-assets-off:
+    name: action / attach-release-assets (publish off)
+    needs: scope
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      TAG: v0.0.0-leafcheck.${{ github.run_id }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Attach to the draft release
+        id: attach
+        if: ${{ fromJSON('false') }}
+        uses: ./.github/actions/attach-release-assets
+        with:
+          tag: ${{ env.TAG }}
+          files: README.md
+      - name: The step was skipped and there is no such release
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          CONCLUSION: ${{ steps.attach.conclusion }}
+        run: |
+          [ "$CONCLUSION" = "skipped" ]
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            echo "::error::a release $TAG exists"; exit 1
+          fi
+          echo "no release $TAG"
+
   # Level 0 as one job: it succeeds only when every composite action's check did, and level 1
   # needs it.
   level-0:
@@ -434,6 +463,7 @@ jobs:
       - pyodide-downloads
       - release-metadata
       - ensure-release-off
+      - attach-release-assets-off
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -652,6 +682,7 @@ jobs:
       - pyodide-downloads
       - release-metadata
       - ensure-release-off
+      - attach-release-assets-off
       - lane
       - lane-fails
       - lane-results
