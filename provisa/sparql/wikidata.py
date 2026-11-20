@@ -159,56 +159,118 @@ def _label(var: str, into: str, language: str) -> str:
     return f'OPTIONAL {{ ?{var} rdfs:label ?{into} FILTER(LANG(?{into}) = "{language}") }}'
 
 
+#: The prefixes every query the brand writes uses, declared in it: the Wikidata query service
+#: predeclares them, other Wikidata endpoints (the QLever mirror) do not.
+PREFIXES = (
+    "PREFIX wd: <http://www.wikidata.org/entity/>\n"
+    "PREFIX wdt: <http://www.wikidata.org/prop/direct/>\n"
+    "PREFIX p: <http://www.wikidata.org/prop/>\n"
+    "PREFIX ps: <http://www.wikidata.org/prop/statement/>\n"
+    "PREFIX pq: <http://www.wikidata.org/prop/qualifier/>\n"
+    "PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>\n"
+    "PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>\n"
+)
+
+
+@dataclass(frozen=True)
+class _Linked:
+    """An item a row links to, read as its id and its label. ``var`` is the variable the grouped
+    rows carry it in; ``link`` the pattern that reaches it from the row's anchor (``?c
+    wdt:P36``), or None when the anchor binds it, so it is bound in every row."""
+
+    var: str
+    id_into: str
+    label_into: str
+    link: str | None
+
+
 def _grouped(
     outer: list[str],
-    inner_select: str,
+    aggregates: str,
     anchor: tuple[str, str],
-    label: str,
-    rest: str,
+    values: str,
     group_by: str,
+    row: tuple[str, str],
+    linked: list[_Linked],
+    language: str,
 ) -> str:
     """A query whose rows are grouped in a subquery and selected by plain name outside it, so
     its columns are exactly ``outer``. Its rows come from ``anchor`` -- the variables it binds
-    and its pattern (an identifier or a closed class) -- written as a sub-select of its own and
-    joined first: the optimizer hint keeps that order, since the query service's own reordering
-    doubles these queries' time and has driven them into gateway errors. A preview limits that
-    sub-select (provisa.sparql.source._probe_limit), which bounds the rows the group reads.
+    and its pattern (an identifier or a closed class) -- written as a sub-select of its own
+    (a preview limits it: provisa.sparql.source._probe_limit, which bounds the rows the group
+    reads), and ``values`` adds the optional plain values, aggregated by ``aggregates``.
 
-    ``label`` -- the anchor entity's own label -- is read right after the anchor, once per anchor
-    row, before the optional patterns of ``rest`` multiply the rows by their several values (a
-    population per census, a country per period): read after them it is read once per
-    combination, which drove the admin_regions starter and a class table past the endpoint's
-    limit (504 and 503), where read first the same query answers in seconds. For the same
-    reason ``rest`` reads every other label (an item value's) before its plain values."""
-    names = " ".join(f"?{n}" for n in outer)
+    No label is read inside the group, where a row has one binding per combination of its
+    several values (a population per census, a country per period) and a label read there is
+    read once per combination: that drove the admin_regions starter and a class table past the
+    public endpoint's limit (504 and 503). Every label is read after the group, once per grouped
+    row and joined by id: ``row`` -- the anchor entity and the column of its label -- and each
+    of ``linked``. A linked item's label is joined on a variable bound in every row it is read
+    for: through the pattern that reaches it from the anchor when the row may have no such
+    item, since a label pattern joined on an unbound variable matches every label there is.
+    The labels are sampled by the grouped row's other columns, so a row stays one row."""
     anchor_vars, anchor_pattern = anchor
+    row_var, row_label = row
+    labels = {row_label: row_var} | {item.label_into: item.var for item in linked}
+    lines = [
+        f"  {_label(row_var, _label_var(row_label), language)}",
+        *(
+            f"  OPTIONAL {{ {item.link} ?{item.var} . ?{item.var} rdfs:label "
+            f"?{_label_var(item.label_into)} "
+            f'FILTER(LANG(?{_label_var(item.label_into)}) = "{language}") }}'
+            if item.link is not None
+            else f"  {_label(item.var, _label_var(item.label_into), language)}"
+            for item in linked
+        ),
+        f"  BIND({_qid(row_var)} AS ?id)",
+        *(f"  BIND({_qid(item.var)} AS ?{item.id_into})" for item in linked),
+    ]
+    projected = " ".join(
+        f"(SAMPLE(?{_label_var(n)}) AS ?{n})" if n in labels else f"?{n}" for n in outer
+    )
+    keys = " ".join(f"?{n}" for n in outer if n not in labels)
     return (
-        f"SELECT {names} WHERE {{\n"
+        f"{PREFIXES}"
+        f"SELECT {projected} WHERE {{\n"
         f"  {{\n"
-        f"    SELECT {inner_select}\n"
+        f"    SELECT {group_by} {aggregates}\n"
         f"    WHERE {{\n"
-        '      hint:SubQuery hint:optimizer "None" .\n'
         f"      {{ SELECT {anchor_vars} WHERE {{ {anchor_pattern} }} }}\n"
-        f"      {label}\n" + (f"{rest}\n" if rest else "") + "    }\n"
+        + (f"{values}\n" if values else "")
+        + "    }\n"
         f"    GROUP BY {group_by}\n"
-        f"  }}\n"
-        f"}}"
+        f"  }}\n" + "\n".join(lines) + f"\n}}\nGROUP BY {keys}"
     )
 
 
+def _label_var(column: str) -> str:
+    """The variable a label column's label is read into before it is sampled: an endpoint may
+    hold more than one label in a language (the QLever mirror does for some items), and a row
+    stays one row. Its capital L keeps it apart from every column name, which is lower case."""
+    return f"L_{column}"
+
+
+def _linked_sample(item: _Linked, value: str) -> str:
+    """The aggregate carrying a linked item's address out of the group: its id and label are
+    read from it after the group (``_grouped``)."""
+    return f"(SAMPLE(?{value}) AS ?{item.var})"
+
+
+_COUNTRY_CAPITAL = _Linked("capital_e", "capital_id", "capital", "?c wdt:P36")
 _COUNTRIES = StarterTable(
     name="countries",
     query=_grouped(
         ["id", "name", "iso_alpha2", "iso_alpha3", "capital_id", "capital", "population"],
-        f"({_qid('c')} AS ?id) (SAMPLE(?label) AS ?name) (SAMPLE(?a2) AS ?iso_alpha2) "
-        f"(SAMPLE(?a3) AS ?iso_alpha3) (SAMPLE({_qid('cap')}) AS ?capital_id) "
-        f"(SAMPLE(?capLabel) AS ?capital) (MAX(xsd:integer(?pop)) AS ?population)",
+        "(SAMPLE(?a2) AS ?iso_alpha2) (SAMPLE(?a3) AS ?iso_alpha3) "
+        f"{_linked_sample(_COUNTRY_CAPITAL, 'cap')} (MAX(xsd:integer(?pop)) AS ?population)",
         ("?c ?a2", "?c wdt:P297 ?a2 ."),
-        _label("c", "label", "en"),
-        f"      OPTIONAL {{ ?c wdt:P36 ?cap . {_label('cap', 'capLabel', 'en')} }}\n"
+        "      OPTIONAL { ?c wdt:P36 ?cap }\n"
         "      OPTIONAL { ?c wdt:P298 ?a3 }\n"
         "      OPTIONAL { ?c wdt:P1082 ?pop }",
         "?c",
+        ("c", "name"),
+        [_COUNTRY_CAPITAL],
+        "en",
     ),
 )
 
@@ -216,11 +278,13 @@ _CURRENCIES = StarterTable(
     name="currencies",
     query=_grouped(
         ["id", "name", "iso_4217"],
-        f"({_qid('c')} AS ?id) (SAMPLE(?label) AS ?name) (SAMPLE(?code) AS ?iso_4217)",
+        "(SAMPLE(?code) AS ?iso_4217)",
         ("?c ?code", "?c wdt:P498 ?code ."),
-        _label("c", "label", "en"),
         "",
         "?c",
+        ("c", "name"),
+        [],
+        "en",
     ),
 )
 
@@ -228,54 +292,57 @@ _LANGUAGES = StarterTable(
     name="languages",
     query=_grouped(
         ["id", "name", "iso_639_1", "iso_639_2", "iso_639_3"],
-        f"({_qid('l')} AS ?id) (SAMPLE(?label) AS ?name) (SAMPLE(?c1) AS ?iso_639_1) "
-        "(SAMPLE(?c2) AS ?iso_639_2) (SAMPLE(?c3) AS ?iso_639_3)",
+        "(SAMPLE(?c1) AS ?iso_639_1) (SAMPLE(?c2) AS ?iso_639_2) (SAMPLE(?c3) AS ?iso_639_3)",
         ("?l ?c3", "?l wdt:P220 ?c3 ."),
-        _label("l", "label", "en"),
         "      OPTIONAL { ?l wdt:P218 ?c1 }\n      OPTIONAL { ?l wdt:P219 ?c2 }",
         "?l",
+        ("l", "name"),
+        [],
+        "en",
     ),
 )
 
 # First-level administrative subdivisions: instances of a direct subclass of "first-level
 # administrative country subdivision" (Q10864048), one hop, not dissolved.
+_REGION_COUNTRY = _Linked("country_e", "country_id", "country", "?r wdt:P17")
 _ADMIN_REGIONS = StarterTable(
     name="admin_regions",
     query=_grouped(
         ["id", "name", "iso_3166_2", "country_id", "country"],
-        f"({_qid('r')} AS ?id) (SAMPLE(?label) AS ?name) (SAMPLE(?code) AS ?iso_3166_2) "
-        f"(SAMPLE({_qid('country')}) AS ?country_id) (SAMPLE(?countryLabel) AS ?country)",
+        f"(SAMPLE(?code) AS ?iso_3166_2) {_linked_sample(_REGION_COUNTRY, 'country')}",
         (
             "?r",
             "?kind wdt:P279 wd:Q10864048 . ?r wdt:P31 ?kind . FILTER NOT EXISTS { ?r wdt:P576 [] }",
         ),
-        _label("r", "label", "en"),
-        f"      OPTIONAL {{ ?r wdt:P17 ?country . {_label('country', 'countryLabel', 'en')} }}\n"
-        "      OPTIONAL { ?r wdt:P300 ?code }",
+        "      OPTIONAL { ?r wdt:P17 ?country }\n      OPTIONAL { ?r wdt:P300 ?code }",
         "?r",
+        ("r", "name"),
+        [_REGION_COUNTRY],
+        "en",
     ),
 )
 
 # Organizations listed on a stock exchange, one row per current listing (no end time): the
-# exchange, the ticker the listing carries, and the organization's LEI and ISIN.
+# exchange, the ticker the listing carries, and the organization's LEI and ISIN. The exchange is
+# bound by the anchor, so its label is joined on it directly.
+_LISTING_EXCHANGE = _Linked("ex", "exchange_id", "exchange", None)
 _ORGANIZATIONS = StarterTable(
     name="organizations",
     query=_grouped(
         ["id", "name", "exchange_id", "exchange", "ticker", "lei", "isin"],
-        f"({_qid('org')} AS ?id) (SAMPLE(?label) AS ?name) ({_qid('ex')} AS ?exchange_id) "
-        "(SAMPLE(?exLabel) AS ?exchange) (SAMPLE(?tick) AS ?ticker) (SAMPLE(?leiCode) AS ?lei) "
-        "(SAMPLE(?isinCode) AS ?isin)",
+        "(SAMPLE(?tick) AS ?ticker) (SAMPLE(?leiCode) AS ?lei) (SAMPLE(?isinCode) AS ?isin)",
         (
             "?org ?listing ?ex",
             "?org p:P414 ?listing . ?listing ps:P414 ?ex . "
             "FILTER NOT EXISTS { ?listing pq:P582 [] }",
         ),
-        _label("org", "label", "en"),
-        f"      {_label('ex', 'exLabel', 'en')}\n"
         "      OPTIONAL { ?listing pq:P249 ?tick }\n"
         "      OPTIONAL { ?org wdt:P1278 ?leiCode }\n"
         "      OPTIONAL { ?org wdt:P946 ?isinCode }",
         "?org ?ex",
+        ("org", "name"),
+        [_LISTING_EXCHANGE],
+        "en",
     ),
 )
 
@@ -613,41 +680,41 @@ def class_table_query(
     language: str,
 ) -> ClassTable:
     """The SPARQL table of the class's instances, one row each: its id and label, then one
-    column per property (an item property: its value's id and label). The item properties are
-    read before the others, so each value's label is read before the plain values multiply the
-    rows (an instance with several values of a property has a row per value until grouped)."""
+    column per property (an item property: its value's id and label). Every label is read after
+    the instances are grouped, once per row and joined by id (``_grouped``): an instance with
+    several values of a property has a row per combination of them until grouped."""
     _check(_ITEM_ID, class_id, "item id")
     _language(language)
     outer = ["id", "name"]
     columns: list[ApiColumn] = [ApiColumn(name="id", type=_S), ApiColumn(name="name", type=_S)]
-    select = [f"({_qid('item')} AS ?id)", "(SAMPLE(?itemLabel) AS ?name)"]
+    aggregates: list[str] = []
     anchor = ("?item", f"?item wdt:P31 wd:{class_id} .{_filter_triple(row_filter)}")
-    labelled: list[str] = []
-    plain: list[str] = []
+    values: list[str] = []
+    linked: list[_Linked] = []
     for prop, name in zip(properties, column_names(properties)):
         pid = _check(_PROPERTY_ID, prop.id, "property id")
         value = f"v_{pid}"
+        values.append(f"      OPTIONAL {{ ?item wdt:{pid} ?{value} }}")
         if prop.item:
-            label = f"l_{pid}"
+            item = _Linked(f"e_{pid}", f"{name}_id", name, f"?item wdt:{pid}")
+            linked.append(item)
             outer += [f"{name}_id", name]
             columns += [ApiColumn(name=f"{name}_id", type=_S), ApiColumn(name=name, type=_S)]
-            select += [f"(SAMPLE({_qid(value)}) AS ?{name}_id)", f"(SAMPLE(?{label}) AS ?{name})"]
-            labelled.append(
-                f"      OPTIONAL {{ ?item wdt:{pid} ?{value} . {_label(value, label, language)} }}"
-            )
+            aggregates.append(_linked_sample(item, value))
         else:
             outer.append(name)
             columns.append(ApiColumn(name=name, type=prop.type))
-            select.append(f"(SAMPLE(?{value}) AS ?{name})")
-            plain.append(f"      OPTIONAL {{ ?item wdt:{pid} ?{value} }}")
+            aggregates.append(f"(SAMPLE(?{value}) AS ?{name})")
     return ClassTable(
         query=_grouped(
             outer,
-            " ".join(select),
+            " ".join(aggregates),
             anchor,
-            _label("item", "itemLabel", language),
-            "\n".join(labelled + plain),
+            "\n".join(values),
             "?item",
+            ("item", "name"),
+            linked,
+            language,
         ),
         columns=tuple(columns),
     )

@@ -130,41 +130,58 @@ def test_each_starter_query_is_bounded(name):
     assert re.search(r"\bGROUP BY\b", query)
 
 
-_ANCHOR_VAR = {
-    "countries": "c",
-    "currencies": "c",
-    "languages": "l",
-    "admin_regions": "r",
-    "organizations": "org",
-}
+def _grouped_vars(query: str) -> set[str]:
+    """The variables the grouped rows are keyed by: those of the GROUP BY."""
+    group_by = re.search(r"GROUP BY ((?:\?\w+ ?)+)", query)
+    assert group_by is not None, query
+    return set(re.findall(r"\?(\w+)", group_by.group(1)))
 
 
-def _label_read_first(query: str, var: str) -> bool:
-    """Whether the first optional pattern after the anchor sub-select reads ``var``'s label."""
-    after_anchor = query.split("hint:SubQuery", 1)[1].split("} }\n", 1)[1]
-    first_optional = after_anchor[after_anchor.index("OPTIONAL") :].split("\n", 1)[0]
-    return first_optional.startswith(f"OPTIONAL {{ ?{var} rdfs:label ")
+def _labels_read_after_the_group(query: str) -> bool:
+    """Whether no label is read inside the group, where a row has one binding per combination
+    of its values, and some label is read after it."""
+    inside, after = query.split("GROUP BY", 1)
+    return "rdfs:label" not in inside and "rdfs:label" in after
 
 
-def _labels_before_plain_values(query: str) -> bool:
-    """Whether every optional pattern reading a label comes before every plain-value one."""
-    optionals = [line.strip() for line in query.splitlines() if line.strip().startswith("OPTIONAL")]
-    reads_label = ["rdfs:label" in line for line in optionals]
-    return reads_label == sorted(reads_label, reverse=True)
+def _label_joins_are_bound(query: str) -> list[str]:
+    """The label patterns joined on a variable that may be unbound: none is allowed, since a
+    label pattern on an unbound variable matches every label there is. A label's subject is
+    bound when the rows are grouped by it, or when the same optional pattern first reaches it
+    from a grouped variable."""
+    keys = _grouped_vars(query)
+    unbound = []
+    for line in query.split("GROUP BY", 1)[1].splitlines():
+        found = re.search(r"\?(\w+) rdfs:label", line)
+        if found is None:
+            continue
+        subject = found.group(1)
+        reached = re.search(rf"\?(\w+) wdt:P[0-9]+ \?{subject} \.", line)
+        if subject not in keys and (reached is None or reached.group(1) not in keys):
+            unbound.append(line.strip())
+    return unbound
 
 
 @pytest.mark.parametrize("name", sorted(_STARTERS))
-def test_each_starter_reads_its_labels_before_its_plain_values(name):
-    """An item value's label is read before the plain values multiply the rows."""
-    assert _labels_before_plain_values(_STARTERS[name].query), _STARTERS[name].query
+def test_each_starter_reads_its_labels_once_per_row_after_the_group(name):
+    """Labels are read after the rows are grouped, once per row and joined by id: read inside
+    the group they are read once per combination of the row's values, which drove admin_regions
+    and a class table past the public endpoint's limit (504, 503)."""
+    query = _STARTERS[name].query
+    assert _labels_read_after_the_group(query), query
+    assert _label_joins_are_bound(query) == [], query
 
 
 @pytest.mark.parametrize("name", sorted(_STARTERS))
-def test_each_starter_reads_its_rows_label_before_the_optional_values(name):
-    """The anchor's own label is read once per anchor row, before optional patterns multiply
-    the rows by their several values: read after them, admin_regions passed the endpoint's
-    60-second limit (504)."""
-    assert _label_read_first(_STARTERS[name].query, _ANCHOR_VAR[name]), _STARTERS[name].query
+def test_each_starter_runs_on_any_wikidata_endpoint(name):
+    """A starter declares its prefixes and carries no optimizer hint of the query service's
+    own, so the QLever mirror answers it as the query service does."""
+    query = _STARTERS[name].query
+    assert query.startswith(wikidata.PREFIXES)
+    assert "hint:" not in query
+    declared = set(re.findall(r"PREFIX (\w+):", query))
+    used = set(re.findall(r"(?<![\w<\"])([a-z]+):[A-Za-z]", query.split("SELECT", 1)[1]))
+    assert used <= declared, used - declared
 
 
 def _types(name: str) -> dict[str, ApiColumnType]:
@@ -440,11 +457,25 @@ async def test_saving_a_class_table_defines_its_sparql_query_and_typed_columns()
     assert "wdt:P31 wd:Q515" in table.query
     assert "wdt:P17" in table.query and "wdt:P1082" in table.query
     assert "P279*" not in table.query
-    # The instance's label is read before its property values multiply the rows (a class
-    # table of country answered 503 with the label read last).
-    assert _label_read_first(table.query, "item"), table.query
-    # The item property's label is read before the plain values, whatever the column order.
-    assert _labels_before_plain_values(table.query), table.query
+    # Every label -- the instance's and the item property's -- is read after the instances are
+    # grouped, joined on a bound id (a class table of country answered 503 reading them per
+    # combination of its values).
+    assert _labels_read_after_the_group(table.query), table.query
+    assert _label_joins_are_bound(table.query) == [], table.query
+    assert "hint:" not in table.query and table.query.startswith(wikidata.PREFIXES)
+
+
+def test_a_label_joined_on_an_unbound_id_is_detected():
+    """The bound-join check fails a label read on a linked id that some row lacks, which on
+    both endpoints joins every label there is (WIKIDATA-REG4's cartesian read)."""
+    query = (
+        "SELECT ?id ?capital WHERE {\n  { SELECT ?c (SAMPLE(?cap) AS ?capital_e) WHERE {\n"
+        "  OPTIONAL { ?c wdt:P36 ?cap } }\n    GROUP BY ?c\n  }\n"
+        '  OPTIONAL { ?capital_e rdfs:label ?capital FILTER(LANG(?capital) = "en") }\n}'
+    )
+    assert _label_joins_are_bound(query) == [
+        'OPTIONAL { ?capital_e rdfs:label ?capital FILTER(LANG(?capital) = "en") }'
+    ]
 
 
 @respx.mock
