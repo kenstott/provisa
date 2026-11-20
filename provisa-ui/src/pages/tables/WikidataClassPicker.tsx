@@ -15,7 +15,7 @@
 // it is too large to read whole, and "Use this class" closes the picker under its columns.
 
 import { useEffect, useState } from "react";
-import { Button, MultiSelect, Select, Table, Text, UnstyledButton } from "@mantine/core";
+import { Button, Group, Loader, MultiSelect, Select, Table, Text, UnstyledButton } from "@mantine/core";
 import { useTranslation } from "react-i18next";
 import { FieldGroup, FormField } from "../../components/form/FormLayout";
 import {
@@ -43,18 +43,26 @@ function useEntitySearch(
 ) {
   const [text, setText] = useState("");
   const [found, setFound] = useState<WikidataEntity[]>([]);
+  const [searching, setSearching] = useState(false);
   useEffect(() => {
     const q = text.trim();
     // A choice puts its option's label in the box: that is not a search, and the options stay.
     if (!q || q === chosen || found.some((e) => entityLabel(e) === q)) return;
+    let current = true;
     const timer = setTimeout(() => {
+      setSearching(true);
       searchWikidata(q, language, kind)
-        .then(setFound)
-        .catch((e: Error) => onError(e.message));
+        .then((hits) => current && setFound(hits))
+        .catch((e: Error) => current && onError(e.message))
+        .finally(() => current && setSearching(false));
     }, SEARCH_DELAY_MS);
-    return () => clearTimeout(timer);
+    return () => {
+      current = false;
+      clearTimeout(timer);
+      setSearching(false);
+    };
   }, [text, language, kind, onError, found, chosen]);
-  return { text, setText, found };
+  return { text, setText, found, searching };
 }
 
 /** With the class search empty: the most-used top-level classes, each opened by a click. */
@@ -135,6 +143,7 @@ export function WikidataClassPicker({ language, onUse, onChange }: Props) {
   const [filterProperty, setFilterProperty] = useState<string | null>(null);
   const [filterValue, setFilterValue] = useState<string | null>(null);
   const [building, setBuilding] = useState(false);
+  const [loadingClass, setLoadingClass] = useState(false);
 
   const openClass = (id: string | null, label: string) => {
     if (!id) return;
@@ -145,12 +154,14 @@ export function WikidataClassPicker({ language, onUse, onChange }: Props) {
     setFilterValue(null);
     setClassLabel(label);
     onChange();
+    setLoadingClass(true);
     fetchWikidataClass(id, language)
       .then((found) => {
         setKlass(found);
         setPicked(found.properties.slice(0, PICKED_AT_FIRST).map((p) => p.id));
       })
-      .catch((e: Error) => setError(e.message));
+      .catch((e: Error) => setError(e.message))
+      .finally(() => setLoadingClass(false));
   };
 
   const neighbour = (list: "broader" | "narrower", id: string | null) => {
@@ -206,11 +217,26 @@ export function WikidataClassPicker({ language, onUse, onChange }: Props) {
             ...classSearch.found.map((e) => ({ value: e.id, label: entityLabel(e) })),
           ]}
           filter={({ options }) => options}
-          nothingFoundMessage={t("wikidataTable.nothingFound")}
+          rightSection={
+            classSearch.searching ? (
+              <Loader size="xs" data-testid="wikidata-class-searching" />
+            ) : undefined
+          }
+          nothingFoundMessage={
+            classSearch.searching ? t("wikidataTable.searching") : t("wikidataTable.nothingFound")
+          }
           data-testid="wikidata-class-search"
         />
       </FormField>
-      {!klass && !classSearch.text.trim() && (
+      {loadingClass && (
+        <FormField size="long">
+          <Group gap="xs" data-testid="wikidata-class-loading">
+            <Loader size="xs" />
+            <Text size="sm">{t("wikidataTable.loadingClass")}</Text>
+          </Group>
+        </FormField>
+      )}
+      {!klass && !loadingClass && !classSearch.text.trim() && (
         <BrowseClasses language={language} onOpen={openClass} onError={setError} />
       )}
       {klass && (

@@ -11136,5 +11136,7 @@
   "zh-HK/yourData.json::yourData.pgwire": "Connection string for a SQL client (pgwire)",
   "zh-HK/yourData.json::yourData.rest": "REST",
   "zh-HK/yourData.json::yourData.sql": "SQL",
-  "zh-HK/yourData.json::yourData.title": "Your data"
+  "zh-HK/yourData.json::yourData.title": "Your data",
+  "zh-HK/wikidataTable.json::wikidataTable.searching": "Searching…",
+  "zh-HK/wikidataTable.json::wikidataTable.loadingClass": "Building the class's query…"
 }

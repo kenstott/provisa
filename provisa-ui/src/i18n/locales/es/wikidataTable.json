@@ -29,6 +29,8 @@
       "languages": "Una fila por idioma con código ISO 639-3.",
       "admin_regions": "Estados, provincias y otras subdivisiones de primer nivel, con su país.",
       "organizations": "Una fila por cotización bursátil vigente."
-    }
+    },
+    "searching": "Buscando…",
+    "loadingClass": "Creando la consulta de la clase…"
   }
 }

@@ -11136,5 +11136,7 @@
   "es/yourData.json::yourData.rest": "REST",
   "es/yourData.json::yourData.sql": "SQL",
   "es/yourData.json::yourData.title": "Your data",
-  "glossaryTab.json::glossaryTab.tablesWithoutSamples": "No sample values were read from: {{tables}}."
+  "glossaryTab.json::glossaryTab.tablesWithoutSamples": "No sample values were read from: {{tables}}.",
+  "es/wikidataTable.json::wikidataTable.searching": "Searching…",
+  "es/wikidataTable.json::wikidataTable.loadingClass": "Building the class's query…"
 }

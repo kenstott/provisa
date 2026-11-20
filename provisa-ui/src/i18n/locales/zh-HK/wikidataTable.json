@@ -29,6 +29,8 @@
       "languages": "每種具有 ISO 639-3 代碼的語言一行。",
       "admin_regions": "州、省及其他一級行政區劃，連同其所屬國家。",
       "organizations": "每個現時證券交易所上市一行。"
-    }
+    },
+    "searching": "正在搜尋…",
+    "loadingClass": "正在建立該類別的查詢…"
   }
 }

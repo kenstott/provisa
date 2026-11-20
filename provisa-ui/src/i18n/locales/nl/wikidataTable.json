@@ -29,6 +29,8 @@
       "languages": "Eén rij per taal met een ISO 639-3-code.",
       "admin_regions": "Staten, provincies en andere onderverdelingen op het eerste niveau, met hun land.",
       "organizations": "Eén rij per actuele beursnotering."
-    }
+    },
+    "searching": "Zoeken…",
+    "loadingClass": "De query van de klasse wordt opgebouwd…"
   }
 }

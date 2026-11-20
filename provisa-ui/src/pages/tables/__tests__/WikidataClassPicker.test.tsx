@@ -194,6 +194,41 @@ describe("WikidataClassPicker", () => {
     expect(await screen.findByTestId("wikidata-table-error")).toHaveTextContent("choose a filter");
   });
 
+  it("shows a loader in the class select while the search is in flight, and the error if it fails", async () => {
+    let finish: (v: unknown) => void = () => {};
+    api.searchWikidata.mockReturnValueOnce(new Promise((r) => (finish = r)));
+    renderInForm(<WikidataClassPicker language="en" onUse={vi.fn()} onChange={vi.fn()} />);
+    fireEvent.change(screen.getByTestId("wikidata-class-search"), { target: { value: "city" } });
+    expect(await screen.findByTestId("wikidata-class-searching")).toBeInTheDocument();
+    finish([{ id: "Q515", label: "city", description: null }]);
+    await waitFor(() => expect(screen.queryByTestId("wikidata-class-searching")).toBeNull());
+    api.searchWikidata.mockRejectedValueOnce(new Error("search failed"));
+    fireEvent.change(screen.getByTestId("wikidata-class-search"), { target: { value: "town" } });
+    expect(await screen.findByTestId("wikidata-table-error")).toHaveTextContent("search failed");
+    expect(screen.queryByTestId("wikidata-class-searching")).toBeNull();
+  });
+
+  it("shows the class's query being built after a pick, until the answer arrives", async () => {
+    let finish: (v: unknown) => void = () => {};
+    api.fetchWikidataClass.mockReturnValueOnce(new Promise((r) => (finish = r)));
+    renderInForm(<WikidataClassPicker language="en" onUse={vi.fn()} onChange={vi.fn()} />);
+    fireEvent.click(await screen.findByTestId("wikidata-browse-Q515"));
+    expect(await screen.findByTestId("wikidata-class-loading")).toHaveTextContent(
+      "Building the class's query…",
+    );
+    finish(CITY);
+    await screen.findByTestId("wikidata-class-count");
+    expect(screen.queryByTestId("wikidata-class-loading")).toBeNull();
+  });
+
+  it("shows the error and stops loading when the class cannot be fetched", async () => {
+    api.fetchWikidataClass.mockRejectedValueOnce(new Error("class failed"));
+    renderInForm(<WikidataClassPicker language="en" onUse={vi.fn()} onChange={vi.fn()} />);
+    fireEvent.click(await screen.findByTestId("wikidata-browse-Q515"));
+    expect(await screen.findByTestId("wikidata-table-error")).toHaveTextContent("class failed");
+    expect(screen.queryByTestId("wikidata-class-loading")).toBeNull();
+  });
+
   it("names a table after its class", () => {
     expect(tableNameOf("Human settlement!")).toBe("human_settlement");
     expect(tableNameOf("名前")).toBe("");

@@ -29,6 +29,8 @@
       "languages": "Eine Zeile pro Sprache mit ISO-639-3-Code.",
       "admin_regions": "Bundesländer, Provinzen und andere Untergliederungen der ersten Ebene, mit ihrem Land.",
       "organizations": "Eine Zeile pro aktueller Börsennotierung."
-    }
+    },
+    "searching": "Suche läuft…",
+    "loadingClass": "Die Abfrage der Klasse wird erstellt…"
   }
 }

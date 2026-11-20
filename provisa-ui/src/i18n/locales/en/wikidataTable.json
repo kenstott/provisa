@@ -29,6 +29,8 @@
       "languages": "One row per language with an ISO 639-3 code.",
       "admin_regions": "States, provinces and other first-level subdivisions, with their country.",
       "organizations": "One row per current stock exchange listing."
-    }
+    },
+    "searching": "Searching…",
+    "loadingClass": "Building the class's query…"
   }
 }

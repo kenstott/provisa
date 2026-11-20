@@ -29,6 +29,8 @@
       "languages": "ISO 639-3 コードを持つ言語ごとに 1 行。",
       "admin_regions": "州、県などの第一級行政区画と、その国。",
       "organizations": "現在の証券取引所上場ごとに 1 行。"
-    }
+    },
+    "searching": "検索しています…",
+    "loadingClass": "クラスのクエリを作成しています…"
   }
 }

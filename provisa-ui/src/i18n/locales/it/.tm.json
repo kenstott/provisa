@@ -11136,5 +11136,7 @@
   "it/yourData.json::yourData.pgwire": "Connection string for a SQL client (pgwire)",
   "it/yourData.json::yourData.rest": "REST",
   "it/yourData.json::yourData.sql": "SQL",
-  "it/yourData.json::yourData.title": "Your data"
+  "it/yourData.json::yourData.title": "Your data",
+  "it/wikidataTable.json::wikidataTable.searching": "Searching…",
+  "it/wikidataTable.json::wikidataTable.loadingClass": "Building the class's query…"
 }

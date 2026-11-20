@@ -29,6 +29,8 @@
       "languages": "Una riga per lingua con codice ISO 639-3.",
       "admin_regions": "Stati, province e altre suddivisioni di primo livello, con il loro paese.",
       "organizations": "Una riga per quotazione in borsa attuale."
-    }
+    },
+    "searching": "Ricerca in corso…",
+    "loadingClass": "Creazione della query della classe…"
   }
 }
