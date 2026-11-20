@@ -39,20 +39,21 @@ function useEntitySearch(
   language: string,
   kind: "class" | "item",
   onError: (message: string) => void,
+  chosen: string | null,
 ) {
   const [text, setText] = useState("");
   const [found, setFound] = useState<WikidataEntity[]>([]);
   useEffect(() => {
     const q = text.trim();
     // A choice puts its option's label in the box: that is not a search, and the options stay.
-    if (!q || found.some((e) => entityLabel(e) === q)) return;
+    if (!q || q === chosen || found.some((e) => entityLabel(e) === q)) return;
     const timer = setTimeout(() => {
       searchWikidata(q, language, kind)
         .then(setFound)
         .catch((e: Error) => onError(e.message));
     }, SEARCH_DELAY_MS);
     return () => clearTimeout(timer);
-  }, [text, language, kind, onError, found]);
+  }, [text, language, kind, onError, found, chosen]);
   return { text, setText, found };
 }
 
@@ -125,10 +126,11 @@ interface Props {
 export function WikidataClassPicker({ language, onUse, onChange }: Props) {
   const { t } = useTranslation();
   const [error, setError] = useState<string | null>(null);
-  const classSearch = useEntitySearch(language, "class", setError);
-  const valueSearch = useEntitySearch(language, "item", setError);
   const [klass, setKlass] = useState<WikidataClass | null>(null);
   const [classLabel, setClassLabel] = useState("");
+  const openLabel = klass ? entityLabel({ id: klass.id, label: classLabel }) : null;
+  const classSearch = useEntitySearch(language, "class", setError, openLabel);
+  const valueSearch = useEntitySearch(language, "item", setError, null);
   const [picked, setPicked] = useState<string[]>([]);
   const [filterProperty, setFilterProperty] = useState<string | null>(null);
   const [filterValue, setFilterValue] = useState<string | null>(null);
@@ -196,7 +198,13 @@ export function WikidataClassPicker({ language, onUse, onChange }: Props) {
             const hit = classSearch.found.find((e) => e.id === id);
             openClass(id, hit?.label ?? id ?? "");
           }}
-          data={classSearch.found.map((e) => ({ value: e.id, label: entityLabel(e) }))}
+          // The class open is an option even when it was reached by browsing, not found by name.
+          data={[
+            ...(klass && !classSearch.found.some((e) => e.id === klass.id)
+              ? [{ value: klass.id, label: openLabel as string }]
+              : []),
+            ...classSearch.found.map((e) => ({ value: e.id, label: entityLabel(e) })),
+          ]}
           filter={({ options }) => options}
           nothingFoundMessage={t("wikidataTable.nothingFound")}
           data-testid="wikidata-class-search"

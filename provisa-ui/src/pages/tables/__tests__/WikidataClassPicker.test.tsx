@@ -107,6 +107,11 @@ describe("WikidataClassPicker", () => {
     expect(api.fetchWikidataClass).toHaveBeenCalledWith("Q515", "en");
     expect(onChange).toHaveBeenCalled();
     expect(screen.queryByTestId("wikidata-class-browse")).toBeNull();
+    // The class browsed to is the class field's value, and is not searched for by name.
+    await waitFor(() =>
+      expect(screen.getByTestId("wikidata-class-search")).toHaveValue("city (Q515)"),
+    );
+    expect(api.searchWikidata).not.toHaveBeenCalled();
   });
 
   it("searches only for classes and builds the table of the one found", async () => {
