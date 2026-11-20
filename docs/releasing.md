@@ -74,14 +74,15 @@ What each release artifact carries, as the release workflows build it:
 
 | Artifact | Signature |
 | -------- | --------- |
-| `provisa` and `provisa-client` on PyPI | Sigstore-signed PEP 740 attestation per file (`attestations: true`), verifiable on pypi.org |
+| `provisa-client` and `provisa-notebook` on PyPI | Sigstore-signed PEP 740 attestation per file (`attestations: true`), verifiable on pypi.org |
+| `provisa` wheels, attached to the GitHub release | Not signed; the index at `https://kenstott.github.io/provisa/simple/` carries each wheel's sha256, which pip checks |
 | `provisa-pg-ext`, `provisa-duckdb-ext` on PyPI | Sigstore-signed PEP 740 attestation per file |
 | JDBC driver `.jar` | Sigstore build-provenance attestation (`actions/attest-build-provenance`) |
 | macOS `.dmg` installers | Developer ID code signature and Apple notarization |
 | Windows `.exe` installers | Not signed |
 | Linux `.AppImage` | Not signed |
 
-The signed install on any OS is `pip install provisa`, the Sigstore-attested PyPI package. A reviewer who needs a signed artifact on Linux or Windows installs with pip. The Windows build signs with Authenticode when a code-signing certificate is configured (`WINDOWS_CERT_PFX_BASE64`, `WINDOWS_CERT_PFX_PASSWORD`, `WINDOWS_CERT_TIMESTAMP_URL`, read by `packaging/windows/build-sfx.ps1`); none is configured, so it ships unsigned.
+The `provisa` server wheel left PyPI at v0.1.0-alpha.510, when the project reached PyPI's 10 GB size limit. The release attaches one wheel per platform, and the "Release: attach and publish" workflow rebuilds a PEP 503 index of every published release's wheels on GitHub Pages; install with `pip install provisa --extra-index-url https://kenstott.github.io/provisa/simple/`. No signed install of the server exists on Linux or Windows now. The Windows build signs with Authenticode when a code-signing certificate is configured (`WINDOWS_CERT_PFX_BASE64`, `WINDOWS_CERT_PFX_PASSWORD`, `WINDOWS_CERT_TIMESTAMP_URL`, read by `packaging/windows/build-sfx.ps1`); none is configured, so it ships unsigned.
 
 Dependencies and CVE gates:
 
