@@ -485,6 +485,7 @@ _CREATE_ONLY = {
         "id document_id document_title document_source domains status error summary started_by "
         "started_at finished_at tenant_id"
     ),
+    "glossary_term_sources": "id term_id catalog catalog_ref sourced_at tenant_id",
     "glossary_term_statements": "id term_id ordinal kind statement tenant_id",
     "glossary_term_vectors": "term_id embedding_model digest vector tenant_id",
     "glossary_terms": "id name definition deprecated tenant_id",

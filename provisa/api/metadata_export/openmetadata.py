@@ -76,6 +76,7 @@ from provisa.core.http_failure import describe_http_failure
 from provisa.api.metadata_export.provider import (
     AssetError,
     AssetRefStub,
+    CatalogTerm,
     MetadataExport,
     PublishResult,
 )
@@ -1843,3 +1844,35 @@ class OpenMetadataExport(MetadataExport):  # REQ-1069
                 self._url("/api/v1/system/version"), headers=self._headers()
             )
         response.raise_for_status()
+
+    #: Terms read per page of the glossary listing (REQ-2247).
+    glossary_page_size = 100
+
+    async def list_glossary(self) -> list[CatalogTerm]:  # REQ-2247
+        """Every glossary term of every glossary on the server, following the ``paging.after``
+        cursor to the last page. A term's broader term is its parent term."""
+        terms: list[CatalogTerm] = []
+        params: dict[str, str | int] = {"limit": self.glossary_page_size, "fields": "parent"}
+        async with httpx.AsyncClient(
+            timeout=self._config.timeout_seconds, event_hooks=sandbox_egress.endpoint_event_hooks()
+        ) as client:
+            while True:
+                response = await client.get(
+                    self._url("/api/v1/glossaryTerms"), params=params, headers=self._headers()
+                )
+                response.raise_for_status()
+                page = response.json()
+                for row in page["data"]:
+                    parent = row.get("parent")
+                    terms.append(
+                        CatalogTerm(
+                            name=row["name"],
+                            definition=(row.get("description") or "").strip() or None,
+                            broader=(parent["name"],) if parent else (),
+                            ref=row["id"],
+                        )
+                    )
+                after = (page.get("paging") or {}).get("after")
+                if not after:
+                    return terms
+                params = {"limit": self.glossary_page_size, "fields": "parent", "after": after}

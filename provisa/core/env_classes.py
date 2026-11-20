@@ -75,6 +75,7 @@ CARRIED: frozenset[str] = frozenset(
         "glossary_term_edges",
         "glossary_term_experts",
         "glossary_term_statements",  # REQ-2237: what an imported ontology stated about a term
+        "glossary_term_sources",  # REQ-2247: the catalogs a term was sourced from
         "glossary_term_domains",
         "materialized_views",
         "calendars",
