@@ -1465,11 +1465,16 @@ class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
             r.strip() for r in (request.headers.get("x-provisa-role") or "").split(",") if r.strip()
         ]
         acting_set: list[str] = []
+        held_data_roles = list(dict.fromkeys(_data_plane_roles))
+        if not requested_roles and token_roles is None and len(held_data_roles) > 1:
+            # REQ-2155: a request naming no role, holding several data roles, acts as their union;
+            # naming one narrows. A personal access token keeps its first live scope (REQ-1263).
+            acting_set = held_data_roles
         # REQ-2057: the derived roles the request names, with the parent of each sub-role (a grant
         # to the parent reaches it). They qualify what the named roles are granted.
         qualifiers: list[str] = []
         held_derived = identity.derived_roles or {}
-        if requested_roles:
+        if requested_roles or len(acting_set) > 1:
             assigned_role_ids = {a.role_id for a in assignments}
             for requested_role in requested_roles:
                 if _is_control_plane_role(requested_role, _all_roles):

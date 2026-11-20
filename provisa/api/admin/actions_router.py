@@ -780,10 +780,15 @@ async def update_function(
     return {"success": True, "name": name}
 
 
-async def _refuse_unreachable_mask(conn, columns: list[dict] | None) -> None:  # REQ-2059
-    """A contract column's mask list holding an entry no reader can reach is not saved (422)."""
+async def _refuse_unreachable_mask(conn, columns: list[dict] | None) -> None:  # REQ-2059, REQ-2131
+    """A contract column's mask list holding an entry no reader can reach, or a constant other
+    than NULL on a non-text column, is not saved (422)."""
     from provisa.core.repositories.mask_lists import refuse_unreachable_masks
-    from provisa.security.masking import MaskUnreachable
+    from provisa.security.masking import (
+        MaskConstantNotText,
+        MaskUnreachable,
+        refuse_non_text_constant,
+    )
 
     lists = {c["name"]: c.get("masks") or [] for c in columns or []}
     try:
@@ -795,6 +800,17 @@ async def _refuse_unreachable_mask(conn, columns: list[dict] | None) -> None:  #
             str(refused),
             entries=refused.entries,
             column=refused.column,
+        ) from None
+    try:
+        for c in columns or []:
+            refuse_non_text_constant(c["name"], lists[c["name"]], c["type"])
+    except MaskConstantNotText as refused:
+        raise ApiError(
+            422,
+            "actions.mask_constant_not_text",
+            str(refused),
+            column=refused.column,
+            type=refused.data_type,
         ) from None
 
 

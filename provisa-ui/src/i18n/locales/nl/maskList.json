@@ -13,6 +13,8 @@
     "replace": "Vervanging",
     "value": "Constante waarde",
     "valuePlaceholder": "Waarde (leeg voor NULL)",
+    "readsNull": "Wordt gelezen als NULL: deze kolom is geen tekst, dus een constant masker kan alleen NULL zijn.",
+    "notTextConstant": "Deze kolom is geen tekst: een constant masker wordt gelezen als NULL, dus alleen NULL (leeg) kan worden opgeslagen.",
     "precision": "Precisie",
     "year": "Jaar",
     "month": "Maand",

@@ -72,7 +72,7 @@ from provisa.transpiler.metadata_oids import (
     schema_oid_sql,
     table_oid_sql,
 )
-from provisa.transpiler.metadata_settings import asked_sql, setting
+from provisa.transpiler.metadata_settings import asked_sql, masked_column_key, setting
 from provisa.transpiler.metadata_views import (
     CATALOG_VIEW_NAMES,
     PG_CLASS_OID,
@@ -312,7 +312,10 @@ def _catalog_columns() -> str:
                    {registered_column_sql_name("c")} AS sql_name,
                    CAST(ROW_NUMBER() OVER (PARTITION BY c.table_id ORDER BY c.id) AS INTEGER)
                        AS attnum,
-                   {listed} AS listed_type, c.not_null
+                   {listed} AS listed_type,
+                   -- REQ-2131: a column the asking role reads under a mask is nullable to it.
+                   c.not_null AND NOT ({masked_column_key("c.table_id", "c.column_name")}
+                                       = ANY(CAST({setting("masked")} AS TEXT[]))) AS not_null
             FROM asked t
             JOIN {COLUMNS_OF_TABLES} c ON c.table_id = t.table_id
         ),
