@@ -1,10 +1,6 @@
 {
   "wikidataTable": {
-    "modeLabel": "Come viene scelta la tabella",
-    "modeStarter": "Tabella iniziale",
     "modeClass": "Tabella di una classe",
-    "starter": "Tabella iniziale",
-    "starterHint": "Una tabella di riferimento da unire, letta da Wikidata.",
     "starters": {
       "countries": "Paesi (codici ISO, capitale, popolazione)",
       "currencies": "Valute (ISO 4217)",
@@ -13,7 +9,7 @@
       "organizations": "Organizzazioni quotate (LEI, ticker, ISIN)"
     },
     "class": "Classe",
-    "classHint": "Cerca le classi per nome; la tabella contiene le istanze della classe.",
+    "classHint": "Cerca le classi per nome o parti da una delle classi più usate qui sotto; la tabella contiene le istanze della classe.",
     "nothingFound": "Nessun risultato",
     "instances": "Istanze: {{value}}",
     "broader": "Classe superiore",
@@ -23,6 +19,16 @@
     "filterRequired": "Oltre {{limit}} istanze: scegli un filtro.",
     "filterProperty": "Filtra per",
     "filterValue": "Valore",
-    "useClass": "Usa questa classe"
+    "useClass": "Usa questa classe",
+    "browseTitle": "Classi più usate",
+    "browseLoading": "Conteggio delle classi più usate…",
+    "members": "Membri",
+    "starterDescriptions": {
+      "countries": "Una riga per paese.",
+      "currencies": "Una riga per valuta con codice ISO 4217.",
+      "languages": "Una riga per lingua con codice ISO 639-3.",
+      "admin_regions": "Stati, province e altre suddivisioni di primo livello, con il loro paese.",
+      "organizations": "Una riga per quotazione in borsa attuale."
+    }
   }
 }

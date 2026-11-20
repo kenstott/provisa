@@ -613,6 +613,7 @@
     },
     "sparql": {
       "columns_not_inferred": "Não foi possível inferir colunas: a sondagem não retornou linhas e nenhuma variável SELECT foi encontrada.",
+      "no_select_variables": "A consulta não nomeia variáveis SELECT (SELECT * ou não é uma consulta SELECT): suas colunas não podem ser lidas dela",
       "probe_failed": "Falha na sondagem do endpoint SPARQL: {{error}}",
       "source_not_found": "Fonte SPARQL '{{source_id}}' não encontrada"
     },

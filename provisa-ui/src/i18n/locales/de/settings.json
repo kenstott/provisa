@@ -41,6 +41,12 @@
         "help": "Der höchste Komplexitätswert, den eine Anweisung haben darf, für jede Rolle. Eine Rolle kann eine eigene, niedrigere Grenze setzen. Leer lassen für keine Grenze."
       }
     },
+    "sparql": {
+      "query_timeout": {
+        "label": "SPARQL-Abfrage-Timeout",
+        "help": "Wie lange eine SPARQL-Abfrage laufen darf, bevor sie aufgegeben wird: eine Vorschau, eine Wikidata-Klassensuche und jedes Laden des Replikats einer SPARQL-Tabelle. Ein öffentlicher Endpunkt kann eine Abfrage durch sein eigenes Limit früher beenden (bei Wikidata 60 Sekunden)."
+      }
+    },
     "sampling": {
       "default_sample_size": {
         "label": "Standard-Stichprobengröße",

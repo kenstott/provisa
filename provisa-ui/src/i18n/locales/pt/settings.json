@@ -41,6 +41,12 @@
         "help": "A maior pontuação de complexidade que uma instrução pode ter, para todos os papéis. Um papel pode definir um limite próprio, mais baixo. Deixe sem valor para não limitar."
       }
     },
+    "sparql": {
+      "query_timeout": {
+        "label": "Tempo limite de consultas SPARQL",
+        "help": "Quanto tempo uma consulta SPARQL pode ser executada antes de ser abandonada: uma prévia, uma busca de classes do Wikidata e cada carga da réplica de uma tabela SPARQL. Um endpoint público pode interromper uma consulta antes pelo próprio limite (o do Wikidata é de 60 segundos)."
+      }
+    },
     "sampling": {
       "default_sample_size": {
         "label": "Tamanho de amostra padrão",

@@ -613,6 +613,7 @@
     },
     "sparql": {
       "columns_not_inferred": "Kon geen kolommen afleiden: probe retourneerde geen rijen en er zijn geen SELECT-variabelen gevonden.",
+      "no_select_variables": "De query noemt geen SELECT-variabelen (SELECT * of geen SELECT-query): de kolommen zijn er niet uit te lezen",
       "probe_failed": "SPARQL-endpointprobe mislukt: {{error}}",
       "source_not_found": "SPARQL-bron '{{source_id}}' niet gevonden"
     },

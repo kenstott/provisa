@@ -1,10 +1,6 @@
 {
   "wikidataTable": {
-    "modeLabel": "如何选择表",
-    "modeStarter": "入门表",
     "modeClass": "类的表",
-    "starter": "入门表",
-    "starterHint": "可供连接的参考表，从 Wikidata 读取。",
     "starters": {
       "countries": "国家（ISO 代码、首都、人口）",
       "currencies": "货币（ISO 4217）",
@@ -13,7 +9,7 @@
       "organizations": "上市组织（LEI、股票代码、ISIN）"
     },
     "class": "类",
-    "classHint": "按名称搜索类；表包含该类的实例。",
+    "classHint": "按名称搜索类，或从下方最常用的类开始；表包含该类的实例。",
     "nothingFound": "未找到",
     "instances": "实例数：{{value}}",
     "broader": "上位类",
@@ -23,6 +19,16 @@
     "filterRequired": "超过 {{limit}} 个实例：请选择筛选条件。",
     "filterProperty": "筛选依据",
     "filterValue": "值",
-    "useClass": "使用此类"
+    "useClass": "使用此类",
+    "browseTitle": "最常用的类",
+    "browseLoading": "正在统计最常用的类…",
+    "members": "成员",
+    "starterDescriptions": {
+      "countries": "每个国家一行。",
+      "currencies": "每种具有 ISO 4217 代码的货币一行。",
+      "languages": "每种具有 ISO 639-3 代码的语言一行。",
+      "admin_regions": "州、省及其他一级行政区划，及其所属国家。",
+      "organizations": "每个当前证券交易所上市一行。"
+    }
   }
 }

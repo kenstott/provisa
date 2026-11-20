@@ -73,7 +73,7 @@
     "generateMenu": "Genereren met AI",
     "definitionsGenerated": "{{count}} definitie gegenereerd.",
     "definitionsGenerated_other": "{{count}} definities gegenereerd.",
-    "tablesWithoutSamples": "Geen voorbeeldwaarden gelezen uit: {{tables}}.",
+    "tablesWithoutSamples": "Er zijn geen voorbeeldwaarden gelezen uit: {{tables}}.",
     "relationshipsGenerated": "{{count}} relatie toegevoegd.",
     "relationshipsGenerated_other": "{{count}} relaties toegevoegd.",
     "retire": "Buiten gebruik stellen",
