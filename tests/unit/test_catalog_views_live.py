@@ -153,7 +153,7 @@ def plane(embedded_postgres, control_plane_template):
 
 def _told(conn, role="reader_role", can_write=True, **session) -> None:
     sql, values = set_statement(
-        statement_settings(role, can_write, "provisa", False, session=session)
+        statement_settings(role, can_write, "provisa", False, masked=(), session=session)
     )
     for n, value in reversed(list(enumerate(values, 1))):
         sql = sql.replace(f"${n}", "'" + value.replace("'", "''") + "'")
@@ -670,7 +670,8 @@ async def test_the_admin_terminal_tells_a_statement_and_no_later_one(control_pla
     state = SimpleNamespace(model_db=control_plane.org(), federation_engine=None)
     read = "SELECT current_setting('provisa.catalog.role', true) AS role"
     told = await _run_plan_terminal(
-        _admin_plan(read, statement_settings("reader_role", False, "provisa", False)), state
+        _admin_plan(read, statement_settings("reader_role", False, "provisa", False, masked=())),
+        state,
     )
     assert told.rows == [("reader_role",)]
     after = await _run_plan_terminal(_admin_plan(read, None), state)

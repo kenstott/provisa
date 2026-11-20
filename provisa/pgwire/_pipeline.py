@@ -841,10 +841,13 @@ def _catalog_settings(
     """REQ-2190: what a statement reading a catalog view of the meta domain is told of the
     request; None for any other, which pays no round trip for settings."""
     from provisa.pgwire.catalog_data import served_database_name
+    from provisa.security.masking import columns_masked_for
     from provisa.transpiler.metadata_settings import statement_settings
 
     if source_id != "provisa-admin":
         return None
+    # REQ-2131: the columns the role reads under a mask, which its catalog lists nullable.
+    masked = columns_masked_for(state.masking_rules, gov_ctx.role_id)
     request = current_catalog_request.get()
     if request is not None:
         return statement_settings(
@@ -852,6 +855,7 @@ def _catalog_settings(
             gov_ctx.can_write,
             request.database,
             bool(state.schema_build_cache.get("domain_prefix", False)),
+            masked=masked,
             session=request.session,
             scope=gov_ctx.meta_scope,
         )
@@ -862,6 +866,7 @@ def _catalog_settings(
         gov_ctx.can_write,
         served_database_name(state),
         bool(state.schema_build_cache.get("domain_prefix", False)),
+        masked=masked,
         scope=gov_ctx.meta_scope,
     )
 

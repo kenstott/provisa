@@ -551,9 +551,9 @@ def test_a_table_under_two_names_is_scoped_once():
 
 
 def test_the_scope_is_told_once_and_a_statement_not_told_it_reads_nothing_of_the_model():
-    settings = statement_settings("analyst", False, "provisa", False, scope="{1,2}")
+    settings = statement_settings("analyst", False, "provisa", False, masked=(), scope="{1,2}")
     assert settings["scope"] == "{1,2}"
-    assert "scope" not in statement_settings("analyst", False, "provisa", False)
+    assert "scope" not in statement_settings("analyst", False, "provisa", False, masked=())
     assert isinstance(scope_ids().expressions[0], exp.Explode)
     assert mentions(scope_ids(), "provisa.catalog.scope")
 

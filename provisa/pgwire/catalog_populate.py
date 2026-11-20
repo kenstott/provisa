@@ -188,9 +188,16 @@ class CatalogIndex:  # REQ-532
 
 
 def _build_catalog_index(
-    ctx, col_types: dict, metrics: list | None = None, *, database: str
+    ctx,
+    col_types: dict,
+    metrics: list | None = None,
+    *,
+    database: str,
+    masked: frozenset[tuple[int, str]],
 ) -> CatalogIndex:  # REQ-128, REQ-363
-    """Build the CatalogIndex once. All populate functions read from it — nothing recomputes."""
+    """Build the CatalogIndex once. All populate functions read from it — nothing recomputes.
+    A column the role reads under a mask (``masked``: table id, column) is listed nullable,
+    whatever it declares (REQ-2131)."""
     from provisa.compiler.naming import domain_to_sql_name, apply_sql_name
     from provisa.compiler.sql_rewrite import semantic_table_name
 
@@ -242,7 +249,8 @@ def _build_catalog_index(
             # REQ-2171: a subtyped column is listed as its subtype's PostgreSQL type; REQ-1961: a
             # text column recording a character native type as that type.
             listed_type = col.subtype or registered_spelling(col.data_type, col.native_type)
-            idx.all_cols.append((toid, exposed, listed_type, col.is_nullable, i))
+            nullable = col.is_nullable or (tm.table_id, phys) in masked  # REQ-2131
+            idx.all_cols.append((toid, exposed, listed_type, nullable, i))
             idx.col_attnum[(toid, exposed)] = i
             idx.attnum_to_col[(toid, i)] = exposed
 
@@ -962,6 +970,8 @@ def role_catalog_index(state, role_id: str) -> tuple[object, CatalogIndex, list]
     """The role's compilation context, its catalog index and the metrics it is served: what a SQL
     surface lists as the role's catalog (pgwire's catalog, Flight SQL's catalog commands,
     REQ-2175)."""
+    from provisa.security.masking import columns_masked_for
+
     ctx = state.contexts.get(role_id)
     col_types: dict = state.schema_build_cache.get("column_types", {})
     # REQ-1319: governed metrics from the loaded config, filtered to the connected role's
@@ -972,7 +982,13 @@ def role_catalog_index(state, role_id: str) -> tuple[object, CatalogIndex, list]
     metrics = [m for m in all_metrics if role_id in m.visible_to]
     return (
         ctx,
-        _build_catalog_index(ctx, col_types, metrics, database=served_database_name(state)),
+        _build_catalog_index(
+            ctx,
+            col_types,
+            metrics,
+            database=served_database_name(state),
+            masked=columns_masked_for(state.masking_rules, role_id),  # REQ-2131
+        ),
         metrics,
     )
 
@@ -1073,6 +1089,7 @@ def _catalog_inputs(role_id: str, state) -> tuple[Any, ...]:
         roles,
         frozenset(roles) if isinstance(roles, dict) else None,
         getattr(state, "tracked_functions", None),
+        state.masking_rules,  # REQ-2131: a masked column is listed nullable
         _current_row_counts(role_id),
         served_database_name(state),
         enabled_surface_keys(),

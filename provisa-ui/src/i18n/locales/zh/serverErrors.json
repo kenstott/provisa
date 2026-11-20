@@ -11,6 +11,7 @@
       "unknown_action_type": "未知的 actionType '{{action_type}}'",
       "unknown_role": "未知角色 '{{role}}'",
       "mask_unreachable": "您定义了不可到达的脱敏规则：{{entries}}",
+      "mask_constant_not_text": "非文本列上的常量脱敏规则读取为 NULL；只能保存 NULL：{{column}} ({{type}})",
       "webhook_not_found": "未找到 Webhook '{{name}}'",
       "written_table_not_registered": "'{{table}}' 不是数据源 '{{source_id}}' 的已注册表",
       "function_exists": "函数 '{{name}}' 已存在",
@@ -21,17 +22,17 @@
       "embedding_library_missing": "嵌入模型 {{model}} 使用 {{provider}} 提供方，需要 {{extra}} 扩展（模块 {{module}} 未安装）：pip install 'provisa[{{extra}}]'。"
     },
     "ai": {
-      "endpoint_address_from_server": "AI 端点 {{vendor}} 从服务器环境中获取地址，而此服务器上的组织不使用服务器环境。请在 管理 > AI 模型 中为其设置您自己的地址。",
+      "key_required": "{{vendor}} 没有密钥。请在 管理 > AI 模型 中设置。",
+      "vendor_uses_server_credentials": "{{vendor}} 通过服务器自身的凭据访问，而此服务器上的组织不使用这些凭据。请在 管理 > AI 模型 中选择接受密钥的供应商或 AI 端点。",
       "endpoint_key_from_server": "AI 端点 {{vendor}} 从服务器环境中获取密钥，而此服务器上的组织不使用服务器环境。请在 管理 > AI 模型 中为其设置您自己的密钥。",
       "endpoint_key_unset": "AI 端点 {{vendor}} 没有密钥：{{field}} 未设置。",
-      "key_required": "{{vendor}} 没有密钥。请在 管理 > AI 模型 中设置。",
+      "endpoint_address_from_server": "AI 端点 {{vendor}} 从服务器环境中获取地址，而此服务器上的组织不使用服务器环境。请在 管理 > AI 模型 中为其设置您自己的地址。",
       "local_server_from_environment": "{{vendor}} 通过服务器自身的地址访问，而此服务器上的组织不使用该地址。请在 管理 > AI 模型 中以您自己的地址声明一个 AI 端点。",
       "server_environment_sets": "此处无法调用 {{vendor}}：服务器环境设置了 {{variable}}，其客户端会为每个组织发送它。",
-      "vector_model_address_from_server": "嵌入模型 {{vendor}} 从服务器环境中获取地址，而此服务器上的组织不使用服务器环境。请在 管理 > AI 模型 中为其设置您自己的地址。",
       "vector_model_key_from_server": "嵌入模型 {{vendor}} 从服务器环境中获取密钥，而此服务器上的组织不使用服务器环境。请在 管理 > AI 模型 中为其设置您自己的密钥。",
       "vector_model_key_unset": "嵌入模型 {{vendor}} 没有密钥：{{field}} 未设置。",
-      "vector_model_local_server": "嵌入模型 {{vendor}} 通过服务器自身的地址访问，而此服务器上的组织不使用该地址。请在 管理 > AI 模型 中为其设置您自己的地址。",
-      "vendor_uses_server_credentials": "{{vendor}} 通过服务器自身的凭据访问，而此服务器上的组织不使用这些凭据。请在 管理 > AI 模型 中选择接受密钥的供应商或 AI 端点。"
+      "vector_model_address_from_server": "嵌入模型 {{vendor}} 从服务器环境中获取地址，而此服务器上的组织不使用服务器环境。请在 管理 > AI 模型 中为其设置您自己的地址。",
+      "vector_model_local_server": "嵌入模型 {{vendor}} 通过服务器自身的地址访问，而此服务器上的组织不使用该地址。请在 管理 > AI 模型 中为其设置您自己的地址。"
     },
     "api": {
       "answer_cut": "{{table}} 的响应在 max_pages={{max_pages}} 处被截断（{{rows}} 行）：API 还有更多数据。请提高端点的 max_pages 或页面大小以读取全部数据。",
@@ -173,14 +174,13 @@
     },
     "discovery": {
       "adapter_missing_discover_schema": "'{{source_type}}' 的适配器未实现 discover_schema",
-      "answer_unreadable": "模型的回答中没有可读取的列表。",
       "cassandra_discovery_unsupported": "Cassandra 架构发现需要活跃的 CQL 会话，当前不可用。请为此数据源手动定义列。",
       "database_not_connected": "数据库未连接",
-      "decided_both_ways": "一条提议只能被接受或不再推荐，不能两者兼有。",
       "domain_id_required": "域范围需要 domain_id",
       "elasticsearch_index_hint_required": "Elasticsearch 发现需要 'index' 提示。",
       "elasticsearch_mapping_failed": "读取索引 '{{index}}' 的 Elasticsearch 映射失败：{{error}}",
       "endpoint_already_registered": "终结点已注册：{{error}}",
+      "decided_both_ways": "一条提议只能被接受或不再推荐，不能两者兼有。",
       "model_has_no_room": "模型 {{model}} 无法容纳一个请求：{{reason}}",
       "model_incomplete": "所选模型需同时指明其供应商和模型。",
       "no_adapter_for_source_type": "数据源类型 '{{source_type}}' 没有已注册的适配器",
@@ -201,7 +201,8 @@
       "target_tables_not_read": "所选目标表（{{count}} 个）都不会被读取：发现会略过系统域的表和已停用的表。",
       "target_tables_outside_domains": "所选目标表不在域筛选器中选定的域内：{{names}}。",
       "unknown_source_type": "未知数据源类型：{{type}}",
-      "vendor_unknown": "{{vendor}} 在此处不列出模型；请输入模型名称。"
+      "vendor_unknown": "{{vendor}} 在此处不列出模型；请输入模型名称。",
+      "answer_unreadable": "模型的回答中没有可读取的列表。"
     },
     "llm": {
       "request_failed": "对模型的请求失败：{{reason}}",
@@ -485,6 +486,7 @@
       "webhook_approved": "已批准 Webhook '{{webhook}}'",
       "webhook_name_required": "Webhook 触发器需要 webhook_name",
       "mask_unreachable": "您定义了不可到达的脱敏规则：{{entries}}",
+      "mask_constant_not_text": "非文本列上的常量脱敏规则读取为 NULL；只能保存 NULL：{{column}} ({{type}})",
       "webhook_not_found": "未找到 Webhook '{{webhook}}'",
       "change_streams_unavailable": "源 '{{source}}' 是独立的 MongoDB 服务器，不提供 change streams：native 变更信号需要副本集或分片集群。请将其作为副本集运行，或使用 poll 变更信号。",
       "openapi_no_rows_field": "表 {{table}}：响应中没有可用于读取行的属性 {{rows_field}}。",

@@ -467,6 +467,7 @@ function EditableColumns({
                         value={col.masks}
                         onChange={(next) => updateCol(i, "masks", next)}
                         roleOptions={roles.map((r) => ({ id: r.id, label: r.id }))}
+                        dataType={col.dataType || null}
                         testId={`register-mask-list-${col.name}`}
                       />
                     </Table.Td>

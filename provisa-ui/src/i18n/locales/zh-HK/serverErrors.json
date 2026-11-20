@@ -11,6 +11,7 @@
       "unknown_action_type": "未知的 actionType「{{action_type}}」",
       "unknown_role": "未知角色「{{role}}」",
       "mask_unreachable": "您定義了不可到達的遮罩：{{entries}}",
+      "mask_constant_not_text": "非文字欄上的常數遮罩讀取為 NULL；只能儲存 NULL：{{column}} ({{type}})",
       "webhook_not_found": "找不到 Webhook「{{name}}」",
       "written_table_not_registered": "'{{table}}' 不是資料來源 '{{source_id}}' 的已註冊表",
       "function_exists": "函數「{{name}}」已存在",
@@ -21,17 +22,17 @@
       "embedding_library_missing": "嵌入模型 {{model}} 使用 {{provider}} 提供者，需要 {{extra}} 擴充套件（模組 {{module}} 未安裝）：pip install 'provisa[{{extra}}]'。"
     },
     "ai": {
-      "endpoint_address_from_server": "AI 端點 {{vendor}} 從伺服器環境取得位址，而此伺服器上的組織不會使用伺服器環境。請在 管理 > AI 模型 中為其設定您自己的位址。",
+      "key_required": "{{vendor}} 沒有金鑰。請在 管理 > AI 模型 中設定。",
+      "vendor_uses_server_credentials": "{{vendor}} 透過伺服器本身的憑證存取，而此伺服器上的組織不會使用這些憑證。請在 管理 > AI 模型 中選擇接受金鑰的供應商或 AI 端點。",
       "endpoint_key_from_server": "AI 端點 {{vendor}} 從伺服器環境取得金鑰，而此伺服器上的組織不會使用伺服器環境。請在 管理 > AI 模型 中為其設定您自己的金鑰。",
       "endpoint_key_unset": "AI 端點 {{vendor}} 沒有金鑰：{{field}} 未設定。",
-      "key_required": "{{vendor}} 沒有金鑰。請在 管理 > AI 模型 中設定。",
+      "endpoint_address_from_server": "AI 端點 {{vendor}} 從伺服器環境取得位址，而此伺服器上的組織不會使用伺服器環境。請在 管理 > AI 模型 中為其設定您自己的位址。",
       "local_server_from_environment": "{{vendor}} 透過伺服器本身的位址存取，而此伺服器上的組織不會使用該位址。請在 管理 > AI 模型 中以您自己的位址宣告一個 AI 端點。",
       "server_environment_sets": "此處無法呼叫 {{vendor}}：伺服器環境設定了 {{variable}}，其用戶端會為每個組織傳送它。",
-      "vector_model_address_from_server": "嵌入模型 {{vendor}} 從伺服器環境取得位址，而此伺服器上的組織不會使用伺服器環境。請在 管理 > AI 模型 中為其設定您自己的位址。",
       "vector_model_key_from_server": "嵌入模型 {{vendor}} 從伺服器環境取得金鑰，而此伺服器上的組織不會使用伺服器環境。請在 管理 > AI 模型 中為其設定您自己的金鑰。",
       "vector_model_key_unset": "嵌入模型 {{vendor}} 沒有金鑰：{{field}} 未設定。",
-      "vector_model_local_server": "嵌入模型 {{vendor}} 透過伺服器本身的位址存取，而此伺服器上的組織不會使用該位址。請在 管理 > AI 模型 中為其設定您自己的位址。",
-      "vendor_uses_server_credentials": "{{vendor}} 透過伺服器本身的憑證存取，而此伺服器上的組織不會使用這些憑證。請在 管理 > AI 模型 中選擇接受金鑰的供應商或 AI 端點。"
+      "vector_model_address_from_server": "嵌入模型 {{vendor}} 從伺服器環境取得位址，而此伺服器上的組織不會使用伺服器環境。請在 管理 > AI 模型 中為其設定您自己的位址。",
+      "vector_model_local_server": "嵌入模型 {{vendor}} 透過伺服器本身的位址存取，而此伺服器上的組織不會使用該位址。請在 管理 > AI 模型 中為其設定您自己的位址。"
     },
     "api": {
       "answer_cut": "{{table}} 的回應在 max_pages={{max_pages}} 處被截斷（{{rows}} 列）：API 還有更多資料。請提高端點的 max_pages 或頁面大小以讀取全部資料。",
@@ -173,14 +174,13 @@
     },
     "discovery": {
       "adapter_missing_discover_schema": "「{{source_type}}」的配接器未實作 discover_schema",
-      "answer_unreadable": "模型的回答中沒有可讀取的清單。",
       "cassandra_discovery_unsupported": "Cassandra 結構描述探索需要即時 CQL 工作階段，但目前不可用。請為此數據來源手動定義欄位。",
       "database_not_connected": "數據庫未連線",
-      "decided_both_ways": "一項提議只能被接受或不再推薦，不能兩者兼有。",
       "domain_id_required": "領域範圍需要 domain_id",
       "elasticsearch_index_hint_required": "Elasticsearch 探索需要「index」提示。",
       "elasticsearch_mapping_failed": "無法讀取索引「{{index}}」的 Elasticsearch 對應：{{error}}",
       "endpoint_already_registered": "端點已註冊：{{error}}",
+      "decided_both_ways": "一項提議只能被接受或不再推薦，不能兩者兼有。",
       "model_has_no_room": "模型 {{model}} 無法容納一個請求：{{reason}}",
       "model_incomplete": "所選模型需同時指明其供應商和模型。",
       "no_adapter_for_source_type": "數據來源類型「{{source_type}}」沒有已註冊的配接器",
@@ -201,7 +201,8 @@
       "target_tables_not_read": "所選目標表（{{count}} 個）都不會被讀取：探索會略過系統域的表和已停用的表。",
       "target_tables_outside_domains": "所選目標表不在域篩選器中選定的域內：{{names}}。",
       "unknown_source_type": "未知的數據來源類型：{{type}}",
-      "vendor_unknown": "{{vendor}} 在此處不列出模型；請輸入模型名稱。"
+      "vendor_unknown": "{{vendor}} 在此處不列出模型；請輸入模型名稱。",
+      "answer_unreadable": "模型的回答中沒有可讀取的清單。"
     },
     "llm": {
       "request_failed": "對模型的請求失敗：{{reason}}",
@@ -485,6 +486,7 @@
       "webhook_approved": "已批准 Webhook「{{webhook}}」",
       "webhook_name_required": "Webhook 觸發程序必須提供 webhook_name",
       "mask_unreachable": "您定義了不可到達的遮罩：{{entries}}",
+      "mask_constant_not_text": "非文字欄上的常數遮罩讀取為 NULL；只能儲存 NULL：{{column}} ({{type}})",
       "webhook_not_found": "找不到 Webhook「{{webhook}}」",
       "change_streams_unavailable": "來源 '{{source}}' 是獨立的 MongoDB 伺服器，不提供 change streams：native 變更訊號需要副本集或分片叢集。請將其作為副本集執行，或使用 poll 變更訊號。",
       "openapi_no_rows_field": "資料表 {{table}}：回應中沒有可用於讀取資料列的屬性 {{rows_field}}。",
