@@ -193,8 +193,9 @@ BRANDS: dict[str, Brand] = {
     ),
     # REQ-2265 (amended 2026-11-20): read through its OpenAPI v3 spec, which the running GMS
     # generates from its entity registry, so it differs between releases and between instances
-    # with custom aspects. Its paths carry their /openapi/v3 prefix, so the source is called at
-    # the GMS address itself. Each entity is a scroll-paged list (scrollId) whose rows carry
+    # with custom aspects. The GMS publishes it as the springdoc group 10-openapi-v3; the bare
+    # /openapi/v3/api-docs holds its other groups, without the entity lists. Its paths carry
+    # their /openapi/v3 prefix, so the source is called at the GMS address itself. Each entity is a scroll-paged list (scrollId) whose rows carry
     # the aspects a read asks for. The credential is a personal access token or a service
     # account's token, sent as a bearer token; reading one user succeeds only with it.
     "datahub": Brand(
@@ -203,7 +204,7 @@ BRANDS: dict[str, Brand] = {
         spec_url="",  # read from the instance (instance_spec_url), never baked
         url="{base_url}",
         setup_fields=(SetupField("base_url", BASE_URL_PATTERN),),
-        instance_spec_url="{base_url}/openapi/v3/api-docs",
+        instance_spec_url="{base_url}/openapi/v3/api-docs/10-openapi-v3",
         verify_path="/openapi/v3/entity/corpuser?count=1",
     ),
 }

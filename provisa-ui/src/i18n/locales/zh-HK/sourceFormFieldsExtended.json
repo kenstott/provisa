@@ -109,7 +109,7 @@
     "brandBaseUrlHint": "您的實例地址，例如 https://catalog.example.com。在此呼叫其 API，並從此處讀取其 OpenAPI 描述。",
     "openmetadataBaseUrlHint": "您開啟 OpenMetadata 的地址，例如 https://openmetadata.example.com，不含 /api。在 /api 下呼叫其 API，並從 /swagger.json 讀取其 OpenAPI 描述。",
     "openmetadataTokenHint": "OpenMetadata 機械人的 JWT 權杖，位於 Settings > Bots。儲存於密鑰保管庫。亦接受 ${secret:NAME} 或 ${env:NAME} 參照。",
-    "datahubBaseUrlHint": "您的 DataHub 元數據服務（GMS）地址，例如 https://datahub.example.com/gms。從 /openapi/v3/api-docs 讀取其 OpenAPI 描述。",
+    "datahubBaseUrlHint": "您的 DataHub 元數據服務（GMS）地址，例如 https://datahub.example.com/gms。從 /openapi/v3/api-docs/10-openapi-v3 讀取其 OpenAPI 描述。",
     "datahubTokenHint": "DataHub 個人存取權杖或服務帳戶權杖，位於 Settings > Access Tokens。儲存於密鑰保管庫。亦接受 ${secret:NAME} 或 ${env:NAME} 參照。",
     "shopifyStore": "商店名稱",
     "shopifyStoreHint": "商店管理後台地址中 .myshopify.com 之前的部分，例如 my-store。",

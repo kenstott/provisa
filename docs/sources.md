@@ -993,7 +993,7 @@ Each customer runs these catalogs at their own address. The form asks for that a
 |---|---|---|
 | Base URL | The address you open OpenMetadata at, such as `https://openmetadata.example.com`, without `/api` | The address of the metadata service (GMS), such as `https://datahub.example.com/gms` |
 | API called at | `<base URL>/api` | `<base URL>`; its paths start with `/openapi/v3` |
-| Specification read from | `<base URL>/swagger.json` | `<base URL>/openapi/v3/api-docs` |
+| Specification read from | `<base URL>/swagger.json` | `<base URL>/openapi/v3/api-docs/10-openapi-v3` |
 | Token | A bot's JWT token, from **Settings > Bots** | A personal access token or a service account's token, from **Settings > Access Tokens** |
 | Token checked with | `GET /v1/users/loggedInUser` | `GET /openapi/v3/entity/corpuser?count=1` |
 

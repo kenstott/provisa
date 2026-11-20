@@ -15,7 +15,7 @@ from the test stack's GMS (docker-compose.test.yml, datahub-gms) by
 tests/integration/test_catalog_brands_live.py, which fails with the trimmed recording when the
 shipped one differs from it:
 
-    curl -s http://<gms>/openapi/v3/api-docs -o api-docs.json
+    curl -s http://<gms>/openapi/v3/api-docs/10-openapi-v3 -o api-docs.json
     .venv/bin/python -m tests.fixtures.catalog_brands.trim_datahub_spec api-docs.json
 """
 

@@ -109,7 +109,7 @@
     "brandBaseUrlHint": "Адрес вашего экземпляра, например https://catalog.example.com. Его API вызывается здесь, и отсюда читается его описание OpenAPI.",
     "openmetadataBaseUrlHint": "Адрес, по которому вы открываете OpenMetadata, например https://openmetadata.example.com, без /api. Его API вызывается по пути /api, а описание OpenAPI читается из /swagger.json.",
     "openmetadataTokenHint": "JWT-токен бота OpenMetadata из раздела Settings > Bots. Хранится в хранилище секретов. Допускается также ссылка вида ${secret:NAME} или ${env:NAME}.",
-    "datahubBaseUrlHint": "Адрес службы метаданных DataHub (GMS), например https://datahub.example.com/gms. Описание OpenAPI читается из /openapi/v3/api-docs.",
+    "datahubBaseUrlHint": "Адрес службы метаданных DataHub (GMS), например https://datahub.example.com/gms. Описание OpenAPI читается из /openapi/v3/api-docs/10-openapi-v3.",
     "datahubTokenHint": "Персональный токен доступа или токен сервисной учётной записи DataHub из раздела Settings > Access Tokens. Хранится в хранилище секретов. Допускается также ссылка вида ${secret:NAME} или ${env:NAME}.",
     "shopifyStore": "Название магазина",
     "shopifyStoreHint": "Часть адреса админки вашего магазина перед .myshopify.com, например my-store.",

@@ -70,7 +70,7 @@ def test_the_api_and_its_spec_are_at_the_gms_address():
     setup = DH.setup({"base_url": f" {GMS} "})
     assert (DH.base_url(setup), DH.source_spec_path(setup)) == (
         GMS,
-        f"{GMS}/openapi/v3/api-docs",
+        f"{GMS}/openapi/v3/api-docs/10-openapi-v3",
     )
     assert (DH.ships_spec, DH.headers(), DH.auth_type) == (False, {}, "bearer")
 
@@ -107,7 +107,7 @@ async def test_adding_it_checks_the_token_and_takes_the_instance_spec_and_addres
     body = await openapi_router._branded(_body())
     assert check.calls.last.request.headers["authorization"] == "Bearer eyJpat"
     assert (body.spec_path, body.base_url, body.spec_content) == (
-        f"{GMS}/openapi/v3/api-docs",
+        f"{GMS}/openapi/v3/api-docs/10-openapi-v3",
         GMS,
         "",
     )
@@ -138,7 +138,9 @@ async def test_no_token_or_no_base_url_is_refused_by_field_before_any_call():
 
 @respx.mock
 def test_the_spec_is_read_from_the_running_gms():
-    respx.get(f"{GMS}/openapi/v3/api-docs").mock(return_value=httpx.Response(200, json=SPEC))
+    respx.get(f"{GMS}/openapi/v3/api-docs/10-openapi-v3").mock(
+        return_value=httpx.Response(200, json=SPEC)
+    )
     assert load_spec(DH.source_spec_path({"base_url": GMS}))["paths"].keys() >= set(PATHS)
 
 

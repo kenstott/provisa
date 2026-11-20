@@ -8288,7 +8288,7 @@
   "he/sourceFormFieldsExtended.json::sourceFormFieldsExtended.credentialsJsonPathPlaceholder": "/path/to/service-account.json",
   "he/sourceFormFieldsExtended.json::sourceFormFieldsExtended.dataSubjects": "Data Subjects",
   "he/sourceFormFieldsExtended.json::sourceFormFieldsExtended.database": "Database",
-  "he/sourceFormFieldsExtended.json::sourceFormFieldsExtended.datahubBaseUrlHint": "The address of your DataHub metadata service (GMS), such as https://datahub.example.com/gms. Its OpenAPI description is read from /openapi/v3/api-docs.",
+  "he/sourceFormFieldsExtended.json::sourceFormFieldsExtended.datahubBaseUrlHint": "The address of your DataHub metadata service (GMS), such as https://datahub.example.com/gms. Its OpenAPI description is read from /openapi/v3/api-docs/10-openapi-v3.",
   "he/sourceFormFieldsExtended.json::sourceFormFieldsExtended.datahubTokenHint": "A DataHub personal access token or service account token, from Settings > Access Tokens. Stored in the secrets vault. A ${secret:NAME} or ${env:NAME} reference is also accepted.",
   "he/sourceFormFieldsExtended.json::sourceFormFieldsExtended.defaultGraphUri": "Default Graph URI",
   "he/sourceFormFieldsExtended.json::sourceFormFieldsExtended.disableSslValidation": "Disable SSL Validation",

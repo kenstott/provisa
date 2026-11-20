@@ -109,7 +109,7 @@
     "brandBaseUrlHint": "Die Adresse Ihrer Instanz, zum Beispiel https://catalog.example.com. Ihre API wird hier aufgerufen, und ihre OpenAPI-Beschreibung wird von dort gelesen.",
     "openmetadataBaseUrlHint": "Die Adresse, unter der Sie OpenMetadata öffnen, zum Beispiel https://openmetadata.example.com, ohne /api. Die API wird unter /api aufgerufen, und die OpenAPI-Beschreibung wird von /swagger.json gelesen.",
     "openmetadataTokenHint": "Das JWT-Token eines OpenMetadata-Bots, unter Settings > Bots. Wird im Secrets-Tresor gespeichert. Ein Verweis der Form ${secret:NAME} oder ${env:NAME} wird ebenfalls akzeptiert.",
-    "datahubBaseUrlHint": "Die Adresse Ihres DataHub-Metadatendienstes (GMS), zum Beispiel https://datahub.example.com/gms. Die OpenAPI-Beschreibung wird von /openapi/v3/api-docs gelesen.",
+    "datahubBaseUrlHint": "Die Adresse Ihres DataHub-Metadatendienstes (GMS), zum Beispiel https://datahub.example.com/gms. Die OpenAPI-Beschreibung wird von /openapi/v3/api-docs/10-openapi-v3 gelesen.",
     "datahubTokenHint": "Ein persönliches Zugriffstoken oder Dienstkonto-Token von DataHub, unter Settings > Access Tokens. Wird im Secrets-Tresor gespeichert. Ein Verweis der Form ${secret:NAME} oder ${env:NAME} wird ebenfalls akzeptiert.",
     "shopifyStore": "Shopname",
     "shopifyStoreHint": "Der Teil der Admin-Adresse Ihres Shops vor .myshopify.com, zum Beispiel my-store.",

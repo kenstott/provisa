@@ -109,7 +109,7 @@
     "brandBaseUrlHint": "インスタンスのアドレスです（例: https://catalog.example.com）。API はここで呼び出され、OpenAPI 定義もここから読み込まれます。",
     "openmetadataBaseUrlHint": "OpenMetadata を開くアドレスです（例: https://openmetadata.example.com、/api は付けません）。API は /api 以下で呼び出され、OpenAPI 定義は /swagger.json から読み込まれます。",
     "openmetadataTokenHint": "OpenMetadata のボットの JWT トークンです（Settings > Bots）。シークレットボールトに保存されます。${secret:NAME} または ${env:NAME} の参照も指定できます。",
-    "datahubBaseUrlHint": "DataHub のメタデータサービス（GMS）のアドレスです（例: https://datahub.example.com/gms）。OpenAPI 定義は /openapi/v3/api-docs から読み込まれます。",
+    "datahubBaseUrlHint": "DataHub のメタデータサービス（GMS）のアドレスです（例: https://datahub.example.com/gms）。OpenAPI 定義は /openapi/v3/api-docs/10-openapi-v3 から読み込まれます。",
     "datahubTokenHint": "DataHub の個人アクセストークンまたはサービスアカウントのトークンです（Settings > Access Tokens）。シークレットボールトに保存されます。${secret:NAME} または ${env:NAME} の参照も指定できます。",
     "shopifyStore": "ストア名",
     "shopifyStoreHint": "ストアの管理画面アドレスのうち .myshopify.com より前の部分です（例: my-store）。",
