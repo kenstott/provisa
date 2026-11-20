@@ -315,16 +315,6 @@ _STAMP = int(time.time())
 _ORDER_ID = 900000 + (_STAMP % 99999)
 
 
-def _petstore_base(inst: Instance) -> str:
-    """The pet store's address, as it announced it when it started. The source's stored path
-    cannot say it: a source's text fields are stored as written (``${env:PETSTORE_BASE_URL...}``)
-    and resolved only where they are used."""
-    log = (inst.log_dir / "petstore.log").read_text()
-    found = re.search(r"Uvicorn running on (http://\S+)", log)
-    assert found, log[-2000:]
-    return f"{found.group(1)}/api/v3"
-
-
 def _register(inst: Instance, name: str, operation: str) -> None:
     resp = httpx.post(
         f"{inst.url}/admin/actions/functions",
@@ -413,7 +403,7 @@ def test_a_registered_operation_takes_a_json_object_and_reaches_the_remote_uncha
     answer = called.json()
     assert "errors" not in answer, answer
     assert answer["data"][fields[0]] == [order]
-    petstore = _petstore_base(instance)
+    petstore = instance.petstore
     assert httpx.get(f"{petstore}/store/order/{_ORDER_ID}", timeout=_TIMEOUT).json() == order
 
     # SQL: each argument is a JSON literal; the path parameter fills the path.
