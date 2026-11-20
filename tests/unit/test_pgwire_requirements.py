@@ -12,6 +12,7 @@ import os
 from unittest.mock import MagicMock, patch
 
 from provisa.core.egress import CountingWriter
+from provisa.compiler.sql_types import CompilationContext
 
 import jwt
 import pytest
@@ -985,7 +986,6 @@ class TestReq586CopyFromAdmitted:
 
     @staticmethod
     def _state(capabilities: list[str], write_ops: list[str]):
-        from types import SimpleNamespace
 
         from provisa.compiler.rls import RLSContext
 
@@ -1001,16 +1001,7 @@ class TestReq586CopyFromAdmitted:
             },
             rls_contexts={"dev": RLSContext.empty()},
             masking_rules={},
-            contexts={
-                "dev": SimpleNamespace(
-                    tables={},
-                    joins={},
-                    physical_to_sql={},
-                    refusal=None,
-                    kept={},
-                    columns_outside_relation=set(),
-                )
-            },
+            contexts={"dev": CompilationContext()},
             tables=[
                 {
                     "id": 1,
