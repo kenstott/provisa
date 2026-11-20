@@ -76082,7 +76082,12 @@
     SHOWN AND EDITED ON THE TABLE:) Maintainer 2026-11-20. A table defined by a SPARQL query shows that
     query in its detail (Identity), read-only to a viewer and editable with the table-edit right. Changing
     it re-derives the columns from the SELECT variables, warns before dropping a column that a relationship,
-    grant or mask uses, and the next replica load reads with the new query.'
+    grant or mask uses, and the next replica load reads with the new query. (Amended 2026-11-20, ENDPOINT
+    CHOICE:) Maintainer 2026-11-20. A Wikidata source''s endpoint is chosen, not typed: the Wikidata Query
+    Service (the default), a QLever mirror of Wikidata (faster for large downloads, without the public
+    service''s 60-second limit), or a custom Wikibase, which reveals the URL field. Help text says what each
+    choice changes. Class search and the starters use wikidata.org for the first two and the custom
+    Wikibase''s own search for the third.'
   use_case: A team wants its Stripe, HubSpot or GitHub data beside its databases. A preset over a generic
     API source reaches it with no container to run, no Docker prerequisite on a desktop install, and on
     every engine, where a Postgres instance per source would be a heavy way to run a periodic fetch.
