@@ -24,16 +24,11 @@ import {
 import { MultiSelect } from "../../components/MultiSelect";
 import { cdcTransportApplicable } from "../../liveCapability";
 import { SchemaRegistryAuthFields } from "./SchemaRegistryAuthFields";
-import {
-  API_AUTH_TYPES,
-  BRAND_CARRIER,
-  BRAND_AUTH,
-  BRAND_SETUP,
-  FILE_TRANSPORTS,
-} from "./constants";
+import { API_AUTH_TYPES, BRAND_CARRIER, FILE_TRANSPORTS } from "./constants";
 import { namingConventionLabel, useNamingConventions } from "../../hooks/useNamingConventions";
 import { AuthUserPass } from "./AuthUserPass";
 import { OpenApiFormSection } from "./OpenApiFormSection";
+import { BrandFields } from "./BrandFields";
 import { DbtFormSection } from "./DbtFormSection";
 import { KaggleFormSection } from "./KaggleFormSection";
 import { PushFeedFormSection } from "./PushFeedFormSection";
@@ -265,35 +260,13 @@ export function SourceFormFieldsExtended({
           onSourcesRegistered={onKaggleSourcesRegistered ?? (() => {})}
         />
       )}
-      {/* REQ-1923: a brand reached at a per-customer address asks where (BRAND_SETUP). */}
-      {(BRAND_SETUP[form.type] ?? []).map((field) => (
-        <FormField key={field.name} hint={t(field.hintKey)} size="medium">
-          <TextInput
-            required={field.required}
-            label={t(field.labelKey)}
-            value={brandSetup[field.name] ?? ""}
-            onChange={(e) => setBrandSetup({ ...brandSetup, [field.name]: e.target.value })}
-            placeholder={field.placeholder}
-            data-testid={`brand-setup-${field.name}-input`}
-          />
-        </FormField>
-      ))}
-      {/* REQ-1923: a brand asks for the credential it states (BRAND_AUTH), never one by default. */}
-      {BRAND_AUTH[form.type] === "token" && (
-        <FormField
-          section="authentication"
-          hint={t("sourceFormFieldsExtended.accessTokenHint")}
-          size="long"
-        >
-          <PasswordInput
-            required
-            label={t("sourceFormFieldsExtended.accessToken")}
-            value={authFields.token ?? ""}
-            onChange={(e) => setAuthFields({ ...authFields, token: e.target.value })}
-            data-testid="brand-token-input"
-          />
-        </FormField>
-      )}
+      <BrandFields
+        brand={form.type}
+        brandSetup={brandSetup}
+        setBrandSetup={setBrandSetup}
+        authFields={authFields}
+        setAuthFields={setAuthFields}
+      />
       {/* A table name prefix is the remote GraphQL source's; an OpenAPI table is named for its
           operation. */}
       {BRAND_CARRIER[form.type] === "graphql" && (
@@ -677,20 +650,17 @@ export function SourceFormFieldsExtended({
         <Microsoft365Fields sourceId={form.id} fields={authFields} setFields={setAuthFields} />
       )}
       {connector && (
-        <ConnectorSetupFields
-          connector={connector}
-          fields={authFields}
-          setFields={setAuthFields}
-        />
+        <ConnectorSetupFields connector={connector} fields={authFields} setFields={setAuthFields} />
       )}
-      {!connector && CODE_SOURCE_TYPES.has(form.type) && ( // REQ-1984, REQ-1993
-        <CodeSourceFields
-          type={form.type}
-          fields={authFields}
-          setFields={setAuthFields}
-          sourceId={editingSourceId ?? undefined}
-        />
-      )}
+      {!connector &&
+        CODE_SOURCE_TYPES.has(form.type) && ( // REQ-1984, REQ-1993
+          <CodeSourceFields
+            type={form.type}
+            fields={authFields}
+            setFields={setAuthFields}
+            sourceId={editingSourceId ?? undefined}
+          />
+        )}
       {heldBy && (
         <ConnectorSourceValues connector={heldBy} fields={authFields} setFields={setAuthFields} />
       )}

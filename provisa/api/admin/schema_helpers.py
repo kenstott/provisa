@@ -131,7 +131,7 @@ async def _ensure_openapi_spec(source_id: str) -> bool:
         return False
     async with pool.acquire() as conn:
         result = await conn.execute_core(
-            select(sources.c.type, sources.c.path, sources.c.mapping).where(
+            select(sources.c.type, sources.c.path, sources.c.mapping, sources.c.brand_setup).where(
                 sources.c.id == source_id
             )
         )
@@ -163,6 +163,7 @@ async def _ensure_openapi_spec(source_id: str) -> bool:
         "base_url": base_url,
         "domain_id": "",
         "cache_ttl": 300,
+        "setup": row["brand_setup"],  # REQ-2265: what a brand's setup was given
     }
     return True
 

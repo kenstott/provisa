@@ -105,6 +105,8 @@
     "accessToken": "एक्सेस टोकन",
     "accessTokenHint": "सीक्रेट वॉल्ट में संग्रहीत होता है। ${secret:NAME} या ${env:NAME} संदर्भ भी स्वीकार्य है।",
     "brandNamespaceHint": "इस स्रोत की टेबल के नामों का उपसर्ग। डिफ़ॉल्ट के लिए खाली छोड़ें।",
+    "brandBaseUrl": "आधार URL",
+    "brandBaseUrlHint": "आपके इंस्टेंस का पता, जैसे https://catalog.example.com. इसका API यहीं कॉल होता है, और इसका OpenAPI विवरण यहीं से पढ़ा जाता है।",
     "shopifyStore": "स्टोर का नाम",
     "shopifyStoreHint": "आपके स्टोर के एडमिन पते का .myshopify.com से पहले का हिस्सा, जैसे my-store।",
     "shopifyApiVersion": "API संस्करण",

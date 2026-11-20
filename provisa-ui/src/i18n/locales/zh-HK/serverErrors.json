@@ -14,7 +14,8 @@
       "webhook_not_found": "找不到 Webhook「{{name}}」",
       "written_table_not_registered": "'{{table}}' 不是資料來源 '{{source_id}}' 的已註冊表",
       "function_exists": "函數「{{name}}」已存在",
-      "webhook_exists": "Webhook「{{name}}」已存在"
+      "webhook_exists": "Webhook「{{name}}」已存在",
+      "mask_constant_not_text": "非文字欄上的常數遮罩讀取為 NULL；只能儲存 NULL：{{column}} ({{type}})"
     },
     "ai_models": {
       "vector_model_fields_required": "每個 vector_models 項目都需要 id、provider 及 dimensions",
@@ -566,7 +567,8 @@
       "withdrawn_table_not_previewable": "無法預覽表 {{table}}：它已撤下且不保留副本，而引擎只能透過副本讀取其來源。",
       "table_not_withdrawn": "表 {{table}} 未撤下：只有已撤下的表才能恢復。要將生產中的表移到另一個區域，請設定其區域。",
       "source_not_withdrawn": "來源 {{source}} 未撤下：只有已撤下的來源才能恢復。要更改其區域，請設定其區域。",
-      "put_back_needs_region": "恢復 {{object}} 需指定一個區域：請給出一個區域，無區域則不給出。"
+      "put_back_needs_region": "恢復 {{object}} 需指定一個區域：請給出一個區域，無區域則不給出。",
+      "mask_constant_not_text": "非文字欄上的常數遮罩讀取為 NULL；只能儲存 NULL：{{column}} ({{type}})"
     },
     "secrets": {
       "env_reference_object_locked": "此物件屬於營運方：它讀取伺服器自身的環境，無法在此更改。請改為新增您自己的物件。",

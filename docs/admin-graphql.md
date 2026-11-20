@@ -324,13 +324,18 @@ SHA-256 hash of the current schema state (domains, table IDs, relationship IDs).
 
 ### AI helpers
 
-#### `generateTableDescription(tableId: String!) → String!`
+#### `generateTableDescription(tableId: String, sourceId: String, schemaName: String, tableName: String, columns: [String!]) → String!`
 
-Use the configured LLM to generate a one-to-two sentence description for a registered table. Save the table first; calling this on an unsaved table returns an instructional message.
+Use the configured LLM to generate a one-to-two sentence description of a table. Name the table one of two ways:
 
-#### `generateColumnDescription(tableId: String!, columnName: String!) → String!`
+- `tableId` alone, for a registered table.
+- `sourceId`, `schemaName`, `tableName` and `columns` together, for a table not yet registered. The Register table form and the table editor send these while a table is being created.
 
-Use the configured LLM to generate a one-sentence description for a single column.
+Any other combination of arguments is refused with a message naming the arguments given or missing. The caller needs `table_registration` and must be able to read the source: a source open to named domains is read by a caller who reaches one of them. A `tableId` that matches no registered table returns an instructional message.
+
+#### `generateColumnDescription(columnName: String!, tableId: String, sourceId: String, schemaName: String, tableName: String, columns: [String!]) → String!`
+
+Use the configured LLM to generate a one-sentence description of a single column. The table is named as for `generateTableDescription`, and the same rights apply. The prompt lists the table's other columns from `columns`, or from the registered table's columns when `tableId` is given.
 
 ---
 
