@@ -41,6 +41,12 @@
         "help": "單一陳述式可有的最高複雜度分數，適用於所有角色。角色可自行設定較低的上限。留空則不設限。"
       }
     },
+    "sparql": {
+      "query_timeout": {
+        "label": "SPARQL 查詢逾時",
+        "help": "單一 SPARQL 查詢在放棄前可執行的時間：預覽、Wikidata 類別查找，以及 SPARQL 表格複本的每次載入。公開端點可能按其自身限制更早停止查詢（Wikidata 為 60 秒）。"
+      }
+    },
     "sampling": {
       "default_sample_size": {
         "label": "預設取樣大小",

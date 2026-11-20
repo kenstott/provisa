@@ -11,11 +11,11 @@
       "unknown_action_type": "actionType desconhecido '{{action_type}}'",
       "unknown_role": "Função desconhecida '{{role}}'",
       "mask_unreachable": "Você definiu uma máscara que não é alcançável: {{entries}}",
-      "mask_constant_not_text": "Uma máscara constante em uma coluna que não é de texto é lida como NULL; só é possível salvar NULL: {{column}} ({{type}})",
       "webhook_not_found": "Webhook '{{name}}' não encontrado",
       "written_table_not_registered": "'{{table}}' não é uma tabela registrada da fonte '{{source_id}}'",
       "function_exists": "A função '{{name}}' já existe",
-      "webhook_exists": "O webhook '{{name}}' já existe"
+      "webhook_exists": "O webhook '{{name}}' já existe",
+      "mask_constant_not_text": "Uma máscara constante em uma coluna que não é de texto é lida como NULL; só é possível salvar NULL: {{column}} ({{type}})"
     },
     "ai_models": {
       "vector_model_fields_required": "cada entrada de vector_models requer id, provider e dimensions",
@@ -486,7 +486,6 @@
       "webhook_approved": "Webhook '{{webhook}}' aprovado",
       "webhook_name_required": "webhook_name é obrigatório para um gatilho de webhook",
       "mask_unreachable": "Você definiu uma máscara que não é alcançável: {{entries}}",
-      "mask_constant_not_text": "Uma máscara constante em uma coluna que não é de texto é lida como NULL; só é possível salvar NULL: {{column}} ({{type}})",
       "webhook_not_found": "Webhook '{{webhook}}' não encontrado",
       "change_streams_unavailable": "A origem '{{source}}' é um servidor MongoDB autônomo, que não oferece change streams: o sinal de alteração native exige um replica set ou um cluster fragmentado. Execute-o como replica set ou use o sinal de alteração poll.",
       "openapi_no_rows_field": "Tabela {{table}}: a resposta não tem nenhuma propriedade {{rows_field}} de onde ler linhas.",
@@ -568,7 +567,8 @@
       "withdrawn_table_not_previewable": "Não é possível pré-visualizar a tabela {{table}}: está retirada e não mantém réplica, e o motor só lê a sua fonte através de uma.",
       "table_not_withdrawn": "A tabela {{table}} não está retirada: só se repõe uma tabela retirada. Para mover para outra região uma tabela em produção, defina a sua região.",
       "source_not_withdrawn": "A fonte {{source}} não está retirada: só se repõe uma fonte retirada. Para mudar a sua região, defina a sua região.",
-      "put_back_needs_region": "Repor {{object}} indica uma região: indique uma, ou nenhuma para nenhuma região."
+      "put_back_needs_region": "Repor {{object}} indica uma região: indique uma, ou nenhuma para nenhuma região.",
+      "mask_constant_not_text": "Uma máscara constante em uma coluna que não é de texto é lida como NULL; só é possível salvar NULL: {{column}} ({{type}})"
     },
     "secrets": {
       "env_reference_object_locked": "Este objeto é do operador: ele lê o ambiente próprio do servidor e não pode ser alterado aqui. Adicione um seu em vez disso.",
@@ -617,6 +617,7 @@
     },
     "sparql": {
       "columns_not_inferred": "Não foi possível inferir colunas: a sondagem não retornou linhas e nenhuma variável SELECT foi encontrada.",
+      "no_select_variables": "A consulta não nomeia variáveis SELECT (SELECT * ou não é uma consulta SELECT): suas colunas não podem ser lidas dela",
       "probe_failed": "Falha na sondagem do endpoint SPARQL: {{error}}",
       "source_not_found": "Fonte SPARQL '{{source_id}}' não encontrada"
     },

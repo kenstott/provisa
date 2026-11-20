@@ -11,11 +11,11 @@
       "unknown_action_type": "不明な actionType「{{action_type}}」です",
       "unknown_role": "不明なロール「{{role}}」です",
       "mask_unreachable": "到達できないマスクが定義されています: {{entries}}",
-      "mask_constant_not_text": "テキスト以外の列の定数マスクは NULL として読み取られます。保存できるのは NULL のみです: {{column}} ({{type}})",
       "webhook_not_found": "Webhook「{{name}}」が見つかりません",
       "written_table_not_registered": "'{{table}}' はソース '{{source_id}}' の登録済みテーブルではありません",
       "function_exists": "関数「{{name}}」はすでに存在します",
-      "webhook_exists": "Webhook「{{name}}」はすでに存在します"
+      "webhook_exists": "Webhook「{{name}}」はすでに存在します",
+      "mask_constant_not_text": "テキスト以外の列の定数マスクは NULL として読み取られます。保存できるのは NULL のみです: {{column}} ({{type}})"
     },
     "ai_models": {
       "vector_model_fields_required": "各 vector_models エントリには id、provider、dimensions が必要です",
@@ -486,7 +486,6 @@
       "webhook_approved": "Webhook「{{webhook}}」を承認しました",
       "webhook_name_required": "Webhook トリガーには webhook_name が必要です",
       "mask_unreachable": "到達できないマスクが定義されています: {{entries}}",
-      "mask_constant_not_text": "テキスト以外の列の定数マスクは NULL として読み取られます。保存できるのは NULL のみです: {{column}} ({{type}})",
       "webhook_not_found": "Webhook「{{webhook}}」が見つかりません",
       "change_streams_unavailable": "ソース '{{source}}' はスタンドアロンの MongoDB サーバーで、change streams を提供しません。native 変更シグナルにはレプリカセットまたはシャードクラスターが必要です。レプリカセットとして実行するか、poll 変更シグナルを使用してください。",
       "openapi_no_rows_field": "テーブル {{table}}: 応答には、行を読み取るためのプロパティ {{rows_field}} がありません。",
@@ -568,7 +567,8 @@
       "withdrawn_table_not_previewable": "テーブル {{table}} はプレビューできません: 取り下げられていてレプリカを保持しておらず、エンジンはレプリカ経由でしかそのソースを読めません。",
       "table_not_withdrawn": "テーブル {{table}} は取り下げられていません: 元に戻せるのは取り下げられたテーブルだけです。本番環境のテーブルを別のリージョンへ移すには、そのリージョンを設定してください。",
       "source_not_withdrawn": "ソース {{source}} は取り下げられていません: 元に戻せるのは取り下げられたソースだけです。リージョンを変えるには、そのリージョンを設定してください。",
-      "put_back_needs_region": "{{object}} を元に戻すにはリージョンを指定します: 1 つ指定するか、リージョンなしなら指定なしにしてください。"
+      "put_back_needs_region": "{{object}} を元に戻すにはリージョンを指定します: 1 つ指定するか、リージョンなしなら指定なしにしてください。",
+      "mask_constant_not_text": "テキスト以外の列の定数マスクは NULL として読み取られます。保存できるのは NULL のみです: {{column}} ({{type}})"
     },
     "secrets": {
       "env_reference_object_locked": "このオブジェクトは運用者のものです。サーバー自身の環境を読み取るため、ここでは変更できません。代わりに独自のものを追加してください。",
@@ -617,6 +617,7 @@
     },
     "sparql": {
       "columns_not_inferred": "列を推測できませんでした：プローブが行を返さず、SELECT 変数も見つかりませんでした。",
+      "no_select_variables": "クエリに SELECT 変数がありません (SELECT * または SELECT クエリではありません): クエリからカラムを読み取れません",
       "probe_failed": "SPARQL エンドポイントのプローブに失敗しました：{{error}}",
       "source_not_found": "SPARQL ソース「{{source_id}}」が見つかりません"
     },

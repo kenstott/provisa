@@ -11,7 +11,7 @@
 import { useCallback, useState } from "react";
 import { Select, TextInput } from "@mantine/core";
 import { useTranslation } from "react-i18next";
-import type { RegisteredTable, Source } from "../../types/admin";
+import type { RegisteredTable, Relationship, Source } from "../../types/admin";
 import { FormField, FormIdentifiers, FormLayout } from "../../components/form/FormLayout";
 import { namingConventionLabel, useNamingConventions } from "../../hooks/useNamingConventions";
 import { DescriptionField } from "./DescriptionField";
@@ -21,6 +21,7 @@ import { TableRegionField } from "./TablePlacementFields";
 import { FilesGlobFieldset } from "./FilesGlobFieldset";
 import { ImportSetField } from "./ImportSetField";
 import { isFilesSourceType } from "./tableSectionFields";
+import { SparqlQueryField } from "./SparqlQueryField";
 
 /** The Identity section of a table's form: the same when it is created and when it is edited. */
 export function TableIdentitySection({
@@ -29,6 +30,7 @@ export function TableIdentitySection({
   isView,
   source,
   describe,
+  relationships,
 }: {
   editingTable: RegisteredTable;
   setEditingTable: React.Dispatch<React.SetStateAction<RegisteredTable | null>>;
@@ -37,6 +39,8 @@ export function TableIdentitySection({
   source?: Source;
   /** Writes a description from the saved table; absent while the table is being created. */
   describe?: () => Promise<string>;
+  /** The org's relationships: a query edit warns before dropping a column one joins on. */
+  relationships: Relationship[];
 }) {
   const { t } = useTranslation();
   const conventions = useNamingConventions();
@@ -167,6 +171,14 @@ export function TableIdentitySection({
         />
       )}
 
+      {/* REQ-1923: a SPARQL-defined table's query, edited here; its columns follow its SELECT. */}
+      {sourceType === "sparql" && editingTable.queryTemplate && (
+        <SparqlQueryField
+          editingTable={editingTable}
+          setEditingTable={setEditingTable}
+          relationships={relationships}
+        />
+      )}
       {/* Its source's document could not be read: no endpoint, and why. */}
       {editingTable.apiEndpointError && (
         <FormField size="long">

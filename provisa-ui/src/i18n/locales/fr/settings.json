@@ -41,6 +41,12 @@
         "help": "Le score de complexité le plus élevé qu'une instruction peut avoir, pour tous les rôles. Un rôle peut fixer sa propre limite, plus basse. Laissez vide pour ne pas limiter."
       }
     },
+    "sparql": {
+      "query_timeout": {
+        "label": "Délai d'expiration des requêtes SPARQL",
+        "help": "Durée maximale d'une requête SPARQL avant son abandon : une prévisualisation, une recherche de classe Wikidata et chaque chargement de la réplique d'une table SPARQL. Un point de terminaison public peut arrêter une requête plus tôt selon sa propre limite (60 secondes pour Wikidata)."
+      }
+    },
     "sampling": {
       "default_sample_size": {
         "label": "Taille d'échantillon par défaut",

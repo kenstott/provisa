@@ -41,6 +41,12 @@
         "help": "De hoogste complexiteitsscore die één statement mag hebben, voor elke rol. Een rol kan een eigen, lagere limiet instellen. Laat leeg voor geen limiet."
       }
     },
+    "sparql": {
+      "query_timeout": {
+        "label": "Time-out voor SPARQL-query's",
+        "help": "Hoe lang één SPARQL-query mag lopen voordat ze wordt opgegeven: een voorbeeld, een Wikidata-klassezoekopdracht en elke keer dat de replica van een SPARQL-tabel wordt geladen. Een openbaar endpoint kan een query eerder stoppen door zijn eigen limiet (bij Wikidata 60 seconden)."
+      }
+    },
     "sampling": {
       "default_sample_size": {
         "label": "Standaard steekproefgrootte",

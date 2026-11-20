@@ -11,11 +11,11 @@
       "unknown_action_type": "actionType '{{action_type}}' sconosciuto",
       "unknown_role": "Ruolo '{{role}}' sconosciuto",
       "mask_unreachable": "Avete definito una maschera non raggiungibile: {{entries}}",
-      "mask_constant_not_text": "Una maschera costante su una colonna non di testo viene letta come NULL; si può salvare solo NULL: {{column}} ({{type}})",
       "webhook_not_found": "Webhook '{{name}}' non trovato",
       "written_table_not_registered": "'{{table}}' non è una tabella registrata della sorgente '{{source_id}}'",
       "function_exists": "La funzione '{{name}}' esiste già",
-      "webhook_exists": "Il webhook '{{name}}' esiste già"
+      "webhook_exists": "Il webhook '{{name}}' esiste già",
+      "mask_constant_not_text": "Una maschera costante su una colonna non di testo viene letta come NULL; si può salvare solo NULL: {{column}} ({{type}})"
     },
     "ai_models": {
       "vector_model_fields_required": "ogni voce di vector_models richiede id, provider e dimensions",
@@ -486,7 +486,6 @@
       "webhook_approved": "Webhook '{{webhook}}' approvato",
       "webhook_name_required": "webhook_name è obbligatorio per un trigger webhook",
       "mask_unreachable": "Avete definito una maschera non raggiungibile: {{entries}}",
-      "mask_constant_not_text": "Una maschera costante su una colonna non di testo viene letta come NULL; si può salvare solo NULL: {{column}} ({{type}})",
       "webhook_not_found": "Webhook '{{webhook}}' non trovato",
       "change_streams_unavailable": "L'origine '{{source}}' è un server MongoDB standalone, che non fornisce change stream: il segnale di modifica native richiede un replica set o un cluster shardato. Eseguilo come replica set oppure usa il segnale di modifica poll.",
       "openapi_no_rows_field": "Tabella {{table}}: la risposta non ha alcuna proprietà {{rows_field}} da cui leggere le righe.",
@@ -568,7 +567,8 @@
       "withdrawn_table_not_previewable": "Impossibile visualizzare l'anteprima della tabella {{table}}: è ritirata e non conserva alcuna replica, e il motore legge la sua origine solo tramite una replica.",
       "table_not_withdrawn": "La tabella {{table}} non è ritirata: si ripristina solo una tabella ritirata. Per spostare in un'altra regione una tabella in produzione, impostane la regione.",
       "source_not_withdrawn": "L'origine {{source}} non è ritirata: si ripristina solo un'origine ritirata. Per cambiarne la regione, impostane la regione.",
-      "put_back_needs_region": "Ripristinare {{object}} indica una regione: indicane una, o nessuna per nessuna regione."
+      "put_back_needs_region": "Ripristinare {{object}} indica una regione: indicane una, o nessuna per nessuna regione.",
+      "mask_constant_not_text": "Una maschera costante su una colonna non di testo viene letta come NULL; si può salvare solo NULL: {{column}} ({{type}})"
     },
     "secrets": {
       "env_reference_object_locked": "Questo oggetto è dell'operatore: legge l'ambiente proprio del server e non può essere modificato qui. Aggiungine invece uno tuo.",
@@ -617,6 +617,7 @@
     },
     "sparql": {
       "columns_not_inferred": "Impossibile dedurre le colonne: il sondaggio non ha restituito righe e non sono state trovate variabili SELECT.",
+      "no_select_variables": "La query non nomina variabili SELECT (SELECT * o non è una query SELECT): le sue colonne non si possono leggere da essa",
       "probe_failed": "Sondaggio dell'endpoint SPARQL non riuscito: {{error}}",
       "source_not_found": "Origine SPARQL '{{source_id}}' non trovata"
     },

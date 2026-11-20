@@ -11,11 +11,11 @@
       "unknown_action_type": "Unbekannter actionType '{{action_type}}'",
       "unknown_role": "Unbekannte Rolle '{{role}}'",
       "mask_unreachable": "Sie haben eine Maske definiert, die nicht erreichbar ist: {{entries}}",
-      "mask_constant_not_text": "Eine konstante Maske auf einer Nicht-Text-Spalte wird als NULL gelesen; nur NULL kann gespeichert werden: {{column}} ({{type}})",
       "webhook_not_found": "Webhook '{{name}}' nicht gefunden",
       "written_table_not_registered": "'{{table}}' ist keine registrierte Tabelle der Quelle '{{source_id}}'",
       "function_exists": "Die Funktion '{{name}}' existiert bereits",
-      "webhook_exists": "Der Webhook '{{name}}' existiert bereits"
+      "webhook_exists": "Der Webhook '{{name}}' existiert bereits",
+      "mask_constant_not_text": "Eine konstante Maske auf einer Nicht-Text-Spalte wird als NULL gelesen; nur NULL kann gespeichert werden: {{column}} ({{type}})"
     },
     "ai_models": {
       "vector_model_fields_required": "jeder vector_models-Eintrag erfordert id, provider und dimensions",
@@ -486,7 +486,6 @@
       "webhook_approved": "Webhook '{{webhook}}' genehmigt",
       "webhook_name_required": "webhook_name ist für einen Webhook-Trigger erforderlich",
       "mask_unreachable": "Sie haben eine Maske definiert, die nicht erreichbar ist: {{entries}}",
-      "mask_constant_not_text": "Eine konstante Maske auf einer Nicht-Text-Spalte wird als NULL gelesen; nur NULL kann gespeichert werden: {{column}} ({{type}})",
       "webhook_not_found": "Webhook '{{webhook}}' nicht gefunden",
       "change_streams_unavailable": "Quelle '{{source}}' ist ein eigenständiger MongoDB-Server, der keine Change Streams bereitstellt: Das native Änderungssignal erfordert ein Replica Set oder einen Sharded Cluster. Betreiben Sie ihn als Replica Set oder verwenden Sie das Änderungssignal poll.",
       "openapi_no_rows_field": "Tabelle {{table}}: Die Antwort hat keine Eigenschaft {{rows_field}}, aus der Zeilen gelesen werden könnten.",
@@ -568,7 +567,8 @@
       "withdrawn_table_not_previewable": "Für Tabelle {{table}} ist keine Vorschau möglich: Sie ist zurückgezogen und hält kein Replikat, und die Engine liest ihre Quelle nur über ein solches.",
       "table_not_withdrawn": "Tabelle {{table}} ist nicht zurückgezogen: nur eine zurückgezogene Tabelle wird wieder in Betrieb genommen. Um eine Tabelle in Produktion in eine andere Region zu verschieben, setzen Sie ihre Region.",
       "source_not_withdrawn": "Quelle {{source}} ist nicht zurückgezogen: nur eine zurückgezogene Quelle wird wieder in Betrieb genommen. Um ihre Region zu ändern, setzen Sie ihre Region.",
-      "put_back_needs_region": "Wer {{object}} wieder in Betrieb nimmt, nennt eine Region: geben Sie eine an, oder keine für keine Region."
+      "put_back_needs_region": "Wer {{object}} wieder in Betrieb nimmt, nennt eine Region: geben Sie eine an, oder keine für keine Region.",
+      "mask_constant_not_text": "Eine konstante Maske auf einer Nicht-Text-Spalte wird als NULL gelesen; nur NULL kann gespeichert werden: {{column}} ({{type}})"
     },
     "secrets": {
       "env_reference_object_locked": "Dieses Objekt gehört dem Betreiber: Es liest die eigene Umgebung des Servers und kann hier nicht geändert werden. Legen Sie stattdessen ein eigenes an.",
@@ -617,6 +617,7 @@
     },
     "sparql": {
       "columns_not_inferred": "Spalten konnten nicht abgeleitet werden: Der Probe-Aufruf lieferte keine Zeilen und keine SELECT-Variablen.",
+      "no_select_variables": "Die Abfrage nennt keine SELECT-Variablen (SELECT * oder keine SELECT-Abfrage): Ihre Spalten lassen sich nicht daraus lesen",
       "probe_failed": "Prüfung des SPARQL-Endpunkts fehlgeschlagen: {{error}}",
       "source_not_found": "SPARQL-Quelle '{{source_id}}' nicht gefunden"
     },

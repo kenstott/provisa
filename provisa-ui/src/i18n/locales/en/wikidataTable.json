@@ -1,10 +1,6 @@
 {
   "wikidataTable": {
-    "modeLabel": "How the table is chosen",
-    "modeStarter": "Starter table",
     "modeClass": "Table of a class",
-    "starter": "Starter table",
-    "starterHint": "A reference table to join to, read from Wikidata.",
     "starters": {
       "countries": "Countries (ISO codes, capital, population)",
       "currencies": "Currencies (ISO 4217)",
@@ -13,7 +9,7 @@
       "organizations": "Listed organizations (LEI, ticker, ISIN)"
     },
     "class": "Class",
-    "classHint": "Search classes by name; the table holds the class's instances.",
+    "classHint": "Search classes by name, or start from a most-used class below; the table holds the class's instances.",
     "nothingFound": "Nothing found",
     "instances": "Instances: {{value}}",
     "broader": "Broader class",
@@ -23,6 +19,16 @@
     "filterRequired": "Over {{limit}} instances: choose a filter.",
     "filterProperty": "Filter by",
     "filterValue": "Value",
-    "useClass": "Use this class"
+    "useClass": "Use this class",
+    "browseTitle": "Most-used classes",
+    "browseLoading": "Counting the most-used classes…",
+    "members": "Members",
+    "starterDescriptions": {
+      "countries": "One row per country.",
+      "currencies": "One row per currency with an ISO 4217 code.",
+      "languages": "One row per language with an ISO 639-3 code.",
+      "admin_regions": "States, provinces and other first-level subdivisions, with their country.",
+      "organizations": "One row per current stock exchange listing."
+    }
   }
 }

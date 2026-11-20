@@ -287,6 +287,14 @@
     "holdOnFailingChecksCodeHelp": "A verificação que esta opção aplica. Copie-a para a verificação prévia acima para alterá-la.",
     "discoverHint": "Ao salvar, as colunas da origem ao vivo são lidas e as que faltam nesta tabela são adicionadas; as colunas dela ficam como estão. Nenhum papel vê uma coluna adicionada até que ela seja concedida.",
     "mvRebuildEveryLabel": "Recompilação completa a cada (segundos)",
-    "mvRebuildEveryHelp": "Com que frequência a exibição inteira é recalculada. Obrigatório para uma exibição mantida pela função @change de uma fonte de código."
+    "mvRebuildEveryHelp": "Com que frequência a exibição inteira é recalculada. Obrigatório para uma exibição mantida pela função @change de uma fonte de código.",
+    "sparqlQueryLabel": "Consulta SPARQL",
+    "sparqlQueryHelp": "A consulta cujas linhas esta tabela contém. Suas colunas são as variáveis SELECT: uma alteração adiciona e remove colunas para corresponder, mantendo as configurações das colunas que permanecem. A próxima carga da réplica lê com a consulta salva.",
+    "sparqlQueryDrops": "Esta consulta remove colunas em uso: {{columns}}. Salvá-la as remove junto com o que as usa.",
+    "sparqlQueryDropUse": "{{column}} ({{uses}})",
+    "sparqlQueryUse_mask": "um mascaramento",
+    "sparqlQueryUse_grant": "uma permissão de escrita",
+    "sparqlQueryUse_relationship": "um relacionamento",
+    "sparqlQueryDropAgree": "Remover estas colunas"
   }
 }

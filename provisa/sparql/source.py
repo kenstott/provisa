@@ -143,42 +143,130 @@ def build_endpoint(
     )
 
 
-_VAR_RE = re.compile(r"\?\s*(\w+)")
+# REQ-1923: a query is read as text, its parts told apart by masking what may hold any
+# character -- comments, IRIs and string literals -- with spaces of the same length, so the
+# offsets found in the mask are the query's own.
+_MASKED = re.compile(
+    r'#[^\n]*|<[^<>"{}|^`\\\s]*>|"""(?:.|\n)*?"""|\'\'\'(?:.|\n)*?\'\'\'|"(?:[^"\\\n]|\\.)*"'
+    r"|'(?:[^'\\\n]|\\.)*'"
+)
+_SELECT = re.compile(r"\bSELECT\b\s*(?:DISTINCT\b|REDUCED\b)?", re.IGNORECASE)
+_PROJECTED_AS = re.compile(r"\bAS\s*[?$](\w+)\s*$", re.IGNORECASE)
+_AGGREGATE = re.compile(
+    r"\bGROUP\s+BY\b|\b(?:COUNT|SUM|MIN|MAX|AVG|SAMPLE|GROUP_CONCAT)\s*\(", re.IGNORECASE
+)
+_OUTER_LIMIT = re.compile(r"\bLIMIT\s+(\d+)\s*(?:OFFSET\s+\d+\s*)?;?\s*$", re.IGNORECASE)
+_LIMIT = re.compile(r"\bLIMIT\b", re.IGNORECASE)
 
 
-def extract_variables(sparql_query: str) -> list[str]:
-    """Extract SELECT variable names from a SPARQL SELECT query.
+def _mask(query: str) -> str:
+    return _MASKED.sub(lambda m: re.sub(r"\S", " ", m.group(0)), query)
 
-    Parses the SELECT clause for ?var patterns. Handles SELECT * by
-    returning an empty list (caller must infer from probe results).
-    """
-    # Find the SELECT ... WHERE section
-    select_match = re.search(
-        r"\bSELECT\b\s*(DISTINCT\s+|REDUCED\s+)?(.+?)\s*\bWHERE\b",
-        sparql_query,
-        re.IGNORECASE | re.DOTALL,
-    )
-    if not select_match:
+
+def _closing_brace(masked: str, opening: int) -> int:
+    """The offset of the brace that closes the one at ``opening``."""
+    depth = 0
+    for at in range(opening, len(masked)):
+        if masked[at] == "{":
+            depth += 1
+        elif masked[at] == "}":
+            depth -= 1
+            if depth == 0:
+                return at
+    raise ValueError("the query's braces do not balance")
+
+
+def extract_variables(sparql_query: str) -> list[str]:  # REQ-297, REQ-1923
+    """The names of the columns a SELECT query answers, read from its projection: each plain
+    variable, and the variable each ``(expression AS ?name)`` binds -- never a variable an
+    expression only reads. Empty for ``SELECT *`` (its columns are known only from an answer)
+    and for a query that is not a SELECT."""
+    masked = _mask(sparql_query)
+    found = _SELECT.search(masked)
+    if found is None:
         return []
-    select_clause = select_match.group(2).strip()
-    if select_clause == "*":
-        return []
-    return _VAR_RE.findall(select_clause)
+    names: list[str] = []
+    at, depth, expression_from = found.end(), 0, 0
+    while at < len(masked):
+        char = masked[at]
+        if char == "(":
+            if depth == 0:
+                expression_from = at + 1
+            depth += 1
+        elif char == ")":
+            depth -= 1
+            if depth == 0:
+                bound = _PROJECTED_AS.search(masked[expression_from:at])
+                if bound is not None:
+                    names.append(bound.group(1))
+        elif depth == 0:
+            if char == "{" or re.match(r"WHERE\b", masked[at:], re.IGNORECASE):
+                break
+            if char == "*":
+                return []
+            if char in "?$":
+                name = re.match(r"\w+", masked[at + 1 :])
+                if name is not None:
+                    names.append(name.group(0))
+                    at += len(name.group(0))
+        at += 1
+    return names
 
 
-def _probe_limit(sparql_query: str, limit: int = 5) -> str:
-    """Append LIMIT to a SPARQL query for the registration probe."""
-    if re.search(r"\bLIMIT\b", sparql_query, re.IGNORECASE):
-        return sparql_query
-    return sparql_query.rstrip().rstrip(";") + f"\nLIMIT {limit}"
+def _bounded_rows_pattern(query: str, masked: str, limit: int) -> str:
+    """``query`` with its rows bounded where they are produced: in a query that aggregates, the
+    first sub-select that neither aggregates, nests another, nor limits itself -- the pattern
+    the aggregate's rows come from -- is limited, since a limit after the aggregate bounds only
+    what is answered, not what is read. Unchanged when the query does not aggregate or has no
+    such sub-select (its outer limit is then the one bound)."""
+    if _AGGREGATE.search(masked) is None:
+        return query
+    for opening in (m.start() for m in re.finditer(r"\{\s*SELECT\b", masked, re.IGNORECASE)):
+        closing = _closing_brace(masked, opening)
+        body = masked[opening + 1 : closing]
+        first = _SELECT.search(body)
+        nested = first is not None and _SELECT.search(body, first.end()) is not None
+        if nested or _AGGREGATE.search(body) or _LIMIT.search(body):
+            continue
+        return f"{query[:closing].rstrip()} LIMIT {limit} {query[closing:]}"
+    return query
+
+
+def _probe_limit(sparql_query: str, limit: int = 5) -> str:  # REQ-1923
+    """The query a preview runs: at most ``limit`` rows, with the limit placed where it bounds
+    the work (``_bounded_rows_pattern``) and on the answer itself -- an outer LIMIT of the
+    query's own is lowered to ``limit``, never raised."""
+    query = sparql_query.strip().rstrip(";").rstrip()
+    query = _bounded_rows_pattern(query, _mask(query), limit)
+    masked = _mask(query)
+    outer = _OUTER_LIMIT.search(masked)
+    if outer is not None and _closing_brace_count(masked[: outer.start()]) == 0:
+        if int(outer.group(1)) <= limit:
+            return query
+        return f"{query[: outer.start(1)]}{limit}{query[outer.end(1) :]}"
+    return f"{query}\nLIMIT {limit}"
+
+
+def _closing_brace_count(masked: str) -> int:
+    """How many braces are still open at the end of ``masked``: 0 at the top level."""
+    return masked.count("{") - masked.count("}")
+
+
+def query_timeout() -> float:  # REQ-1923
+    """How long one SPARQL query may take before it is given up: the operator's setting."""
+    from provisa.core import settings_registry
+
+    return float(settings_registry.value("sparql.query_timeout"))
 
 
 async def probe_endpoint(
     cfg: SparqlSourceConfig,
     sparql_query: str,
-    timeout: float = 10.0,
-) -> dict:  # REQ-297, REQ-298
-    """Execute a SPARQL probe (LIMIT 5) to validate the endpoint and infer columns.
+    timeout: float | None = None,
+) -> dict:  # REQ-297, REQ-298, REQ-1923
+    """Execute a SPARQL probe (LIMIT 5, placed where it bounds the work: ``_probe_limit``) to
+    validate the endpoint and infer columns, under ``timeout`` seconds -- the operator's SPARQL
+    query timeout when none is given.
 
     Returns the SPARQL 1.1 JSON results document as answered: its terms keep their datatypes,
     which type the columns (``infer_columns``).
@@ -202,7 +290,7 @@ async def probe_endpoint(
             resolve_secrets(cfg.endpoint_url),  # stored as written; resolved at the call
             data=data,
             headers=headers,
-            timeout=timeout,
+            timeout=query_timeout() if timeout is None else timeout,
         )
         resp.raise_for_status()
 

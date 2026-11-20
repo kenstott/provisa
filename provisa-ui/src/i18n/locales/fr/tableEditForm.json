@@ -287,6 +287,14 @@
     "holdOnFailingChecksCodeHelp": "Le contrôle qu'applique cette option. Copiez-le dans le contrôle préalable ci-dessus pour le modifier.",
     "discoverHint": "L'enregistrement lit les colonnes de la source en direct et ajoute celles qui manquent à cette table ; ses colonnes restent telles quelles. Aucun rôle ne voit une colonne ajoutée tant qu'elle n'est pas accordée.",
     "mvRebuildEveryLabel": "Reconstruction complète toutes les (secondes)",
-    "mvRebuildEveryHelp": "Fréquence à laquelle la vue entière est recalculée. Obligatoire pour une vue maintenue par la fonction @change d'une source de code."
+    "mvRebuildEveryHelp": "Fréquence à laquelle la vue entière est recalculée. Obligatoire pour une vue maintenue par la fonction @change d'une source de code.",
+    "sparqlQueryLabel": "Requête SPARQL",
+    "sparqlQueryHelp": "La requête dont cette table contient les lignes. Ses colonnes sont ses variables SELECT : une modification ajoute et retire des colonnes en conséquence, en conservant les paramètres des colonnes gardées. Le prochain chargement de la réplique lit avec la requête enregistrée.",
+    "sparqlQueryDrops": "Cette requête retire des colonnes utilisées : {{columns}}. L'enregistrer les supprime avec ce qui les utilise.",
+    "sparqlQueryDropUse": "{{column}} ({{uses}})",
+    "sparqlQueryUse_mask": "un masquage",
+    "sparqlQueryUse_grant": "un droit d'écriture",
+    "sparqlQueryUse_relationship": "une relation",
+    "sparqlQueryDropAgree": "Retirer ces colonnes"
   }
 }

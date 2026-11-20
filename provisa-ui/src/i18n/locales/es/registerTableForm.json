@@ -127,6 +127,10 @@
     "continue": "Continuar",
     "checkReasonLabel": "Por qué existe esta comprobación",
     "checkReasonHint": "La promesa de calidad en términos de negocio; encabeza la comprobación en cada producto.",
-    "checkReasonPlaceholder": "Los pedidos están completos y son únicos para que los ingresos diarios cuadren con finanzas"
+    "checkReasonPlaceholder": "Los pedidos están completos y son únicos para que los ingresos diarios cuadren con finanzas",
+    "errorSparqlQuery": "Introduzca la consulta SPARQL que produce las filas de la tabla.",
+    "errorQueryPreviewFirst": "Obtenga primero una vista previa de la consulta para conocer las columnas y sus tipos.",
+    "previewFailed": "La vista previa falló: {{error}}",
+    "previewNoRows": "La vista previa no devolvió filas."
   }
 }

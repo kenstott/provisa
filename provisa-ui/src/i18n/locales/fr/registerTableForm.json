@@ -127,6 +127,10 @@
     "continue": "Continuer",
     "checkReasonLabel": "Pourquoi ce contrôle existe",
     "checkReasonHint": "L'engagement de qualité en termes métier ; il coiffe le contrôle dans chaque produit.",
-    "checkReasonPlaceholder": "Les commandes sont complètes et uniques afin que le chiffre d'affaires quotidien se rapproche de la finance"
+    "checkReasonPlaceholder": "Les commandes sont complètes et uniques afin que le chiffre d'affaires quotidien se rapproche de la finance",
+    "errorSparqlQuery": "Saisissez la requête SPARQL qui produit les lignes de la table.",
+    "errorQueryPreviewFirst": "Prévisualisez d'abord la requête pour connaître les colonnes et leurs types.",
+    "previewFailed": "La prévisualisation a échoué : {{error}}",
+    "previewNoRows": "La prévisualisation n'a renvoyé aucune ligne."
   }
 }

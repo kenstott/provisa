@@ -41,6 +41,12 @@
         "help": "La puntuación de complejidad más alta que puede tener una sentencia, para todos los roles. Un rol puede fijar un límite propio más bajo. Déjelo sin definir para no limitar."
       }
     },
+    "sparql": {
+      "query_timeout": {
+        "label": "Tiempo de espera de consultas SPARQL",
+        "help": "Cuánto puede durar una consulta SPARQL antes de abandonarla: una vista previa, una búsqueda de clases de Wikidata y cada carga de la réplica de una tabla SPARQL. Un endpoint público puede detener una consulta antes por su propio límite (el de Wikidata es de 60 segundos)."
+      }
+    },
     "sampling": {
       "default_sample_size": {
         "label": "Tamaño de muestra predeterminado",

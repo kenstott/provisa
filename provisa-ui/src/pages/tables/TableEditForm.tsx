@@ -206,6 +206,7 @@ export function TableEditForm({
             isView={isView}
             source={editSource}
             describe={describe}
+            relationships={relationships}
           />
         ))}
       {section === "associations" && (

@@ -1,10 +1,6 @@
 {
   "wikidataTable": {
-    "modeLabel": "Como a tabela é escolhida",
-    "modeStarter": "Tabela inicial",
     "modeClass": "Tabela de uma classe",
-    "starter": "Tabela inicial",
-    "starterHint": "Uma tabela de referência para junção, lida do Wikidata.",
     "starters": {
       "countries": "Países (códigos ISO, capital, população)",
       "currencies": "Moedas (ISO 4217)",
@@ -13,7 +9,7 @@
       "organizations": "Organizações listadas (LEI, ticker, ISIN)"
     },
     "class": "Classe",
-    "classHint": "Pesquise classes pelo nome; a tabela contém as instâncias da classe.",
+    "classHint": "Busque classes pelo nome ou comece por uma das classes mais usadas abaixo; a tabela contém as instâncias da classe.",
     "nothingFound": "Nada encontrado",
     "instances": "Instâncias: {{value}}",
     "broader": "Classe superior",
@@ -23,6 +19,16 @@
     "filterRequired": "Mais de {{limit}} instâncias: escolha um filtro.",
     "filterProperty": "Filtrar por",
     "filterValue": "Valor",
-    "useClass": "Usar esta classe"
+    "useClass": "Usar esta classe",
+    "browseTitle": "Classes mais usadas",
+    "browseLoading": "Contando as classes mais usadas…",
+    "members": "Membros",
+    "starterDescriptions": {
+      "countries": "Uma linha por país.",
+      "currencies": "Uma linha por moeda com código ISO 4217.",
+      "languages": "Uma linha por idioma com código ISO 639-3.",
+      "admin_regions": "Estados, províncias e outras subdivisões de primeiro nível, com seu país.",
+      "organizations": "Uma linha por listagem atual em bolsa de valores."
+    }
   }
 }

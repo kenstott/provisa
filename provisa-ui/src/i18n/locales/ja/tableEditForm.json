@@ -287,6 +287,14 @@
     "holdOnFailingChecksCodeHelp": "このオプションが適用するチェックです。変更するには上のプリフライトチェックにコピーしてください。",
     "discoverHint": "保存すると、ライブソースの列を読み取り、このテーブルにない列を追加します。既存の列はそのままです。追加された列は、付与されるまでどのロールにも表示されません。",
     "mvRebuildEveryLabel": "全体の再ビルド間隔 (秒)",
-    "mvRebuildEveryHelp": "ビュー全体を再計算する頻度です。コードソースの @change 関数で維持されるビューでは必須です。"
+    "mvRebuildEveryHelp": "ビュー全体を再計算する頻度です。コードソースの @change 関数で維持されるビューでは必須です。",
+    "sparqlQueryLabel": "SPARQL クエリ",
+    "sparqlQueryHelp": "このテーブルが行を保持するクエリです。カラムはその SELECT 変数です: 変更するとそれに合わせてカラムが追加・削除され、残るカラムの設定は保たれます。次回のレプリカのロードは保存されたクエリで読み取ります。",
+    "sparqlQueryDrops": "このクエリは使用中のカラムを削除します: {{columns}}。保存すると、それらを使用しているものと一緒に削除されます。",
+    "sparqlQueryDropUse": "{{column}} ({{uses}})",
+    "sparqlQueryUse_mask": "マスキング",
+    "sparqlQueryUse_grant": "書き込み権限",
+    "sparqlQueryUse_relationship": "リレーションシップ",
+    "sparqlQueryDropAgree": "これらのカラムを削除"
   }
 }

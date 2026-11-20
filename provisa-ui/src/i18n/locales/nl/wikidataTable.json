@@ -1,10 +1,6 @@
 {
   "wikidataTable": {
-    "modeLabel": "Hoe de tabel wordt gekozen",
-    "modeStarter": "Starttabel",
     "modeClass": "Tabel van een klasse",
-    "starter": "Starttabel",
-    "starterHint": "Een referentietabel om mee te koppelen, gelezen uit Wikidata.",
     "starters": {
       "countries": "Landen (ISO-codes, hoofdstad, bevolking)",
       "currencies": "Valuta (ISO 4217)",
@@ -13,7 +9,7 @@
       "organizations": "Beursgenoteerde organisaties (LEI, ticker, ISIN)"
     },
     "class": "Klasse",
-    "classHint": "Zoek klassen op naam; de tabel bevat de instanties van de klasse.",
+    "classHint": "Zoek klassen op naam of begin hieronder bij een van de meestgebruikte klassen; de tabel bevat de instanties van de klasse.",
     "nothingFound": "Niets gevonden",
     "instances": "Instanties: {{value}}",
     "broader": "Bovenliggende klasse",
@@ -23,6 +19,16 @@
     "filterRequired": "Meer dan {{limit}} instanties: kies een filter.",
     "filterProperty": "Filteren op",
     "filterValue": "Waarde",
-    "useClass": "Deze klasse gebruiken"
+    "useClass": "Deze klasse gebruiken",
+    "browseTitle": "Meestgebruikte klassen",
+    "browseLoading": "De meestgebruikte klassen worden geteld…",
+    "members": "Leden",
+    "starterDescriptions": {
+      "countries": "Eén rij per land.",
+      "currencies": "Eén rij per munteenheid met een ISO 4217-code.",
+      "languages": "Eén rij per taal met een ISO 639-3-code.",
+      "admin_regions": "Staten, provincies en andere onderverdelingen op het eerste niveau, met hun land.",
+      "organizations": "Eén rij per actuele beursnotering."
+    }
   }
 }
