@@ -992,7 +992,7 @@ Each customer runs these catalogs at their own address. The form asks for that a
 | | OpenMetadata | DataHub |
 |---|---|---|
 | Base URL | The address you open OpenMetadata at, such as `https://openmetadata.example.com`, without `/api` | The address of the metadata service (GMS), such as `https://datahub.example.com/gms` |
-| API called at | `<base URL>/api` | `<base URL>`; its paths start with `/openapi/v3` |
+| API called at | `<base URL>/api` | The server its specification names, on the GMS host. Each entity list is at `<base URL>/openapi/v3/entity/<entity>` |
 | Specification read from | `<base URL>/swagger.json` | `<base URL>/openapi/v3/api-docs/10-openapi-v3` |
 | Token | A bot's JWT token, from **Settings > Bots** | A personal access token or a service account's token, from **Settings > Access Tokens** |
 | Token checked with | `GET /v1/users/loggedInUser` | `GET /openapi/v3/entity/corpuser?count=1` |
@@ -1002,7 +1002,7 @@ The token is sent as a bearer token and checked once before the source is added.
 **What you register.** Adding the source registers no tables. Every list the specification offers is a table you can register:
 
 - OpenMetadata: `/v1/tables` (each table with its columns and their tags, owners, domains and certification), `/v1/glossaryTerms`, `/v1/domains`, `/v1/dataProducts`, `/v1/classifications`, `/v1/tags`, `/v1/users`, `/v1/teams`, `/v1/dataQuality/testCases` and the test case results.
-- DataHub: one list per entity, such as `/openapi/v3/entity/dataset`, `/openapi/v3/entity/glossaryterm`, `/openapi/v3/entity/domain`, `/openapi/v3/entity/dataproduct`, `/openapi/v3/entity/tag`, `/openapi/v3/entity/corpuser` and `/openapi/v3/entity/corpgroup`. Each row carries the aspects you ask for in the table's `aspects` argument, for example `schemaMetadata`, `globalTags`, `ownership`, `glossaryTerms` and `domains`.
+- DataHub: one list per entity, among them `dataset`, `glossaryterm`, `domain`, `dataproduct`, `tag`, `corpuser` and `corpgroup`. Each row carries the aspects you ask for in the table's `aspects` argument, for example `schemaMetadata`, `globalTags`, `ownership`, `glossaryTerms` and `domains`.
 
 OpenMetadata returns only the fields you ask for in its `fields` parameter. Set it as a fixed argument of the table, for example `columns,tags,owners,domains,certification`.
 
