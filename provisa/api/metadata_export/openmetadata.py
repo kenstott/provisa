@@ -72,11 +72,11 @@ from typing import TYPE_CHECKING, Any
 
 import httpx
 
+from provisa.api.catalog_import.reader import CatalogReader, CatalogTerm
 from provisa.core.http_failure import describe_http_failure
 from provisa.api.metadata_export.provider import (
     AssetError,
     AssetRefStub,
-    CatalogTerm,
     MetadataExport,
     PublishResult,
 )
@@ -1044,7 +1044,7 @@ def to_term_plans(snapshot: MetadataSnapshot) -> tuple[list[TermPlan], list[Asse
 
 
 @register_provider
-class OpenMetadataExport(MetadataExport):  # REQ-1069
+class OpenMetadataExport(MetadataExport, CatalogReader):  # REQ-1069
     """Publish a snapshot to an OpenMetadata server's ingestion API."""
 
     binds_products = False  # REQ-1634 STATUS: see MetadataExport.binds_products
