@@ -394,22 +394,22 @@ def test_the_sbom_and_cve_gate_run_once_for_every_wheel():
     assert "pip-audit" not in _runs(jobs["build-provisa-wheel"])
 
 
-def test_provisas_pypi_upload_takes_every_platforms_wheel():
-    """The download is a pattern (one artifact per platform): it has to match each of them, and
-    the -dist names are also what the release attaches."""
+def test_the_release_attaches_every_platforms_wheel():
+    """The server wheels reach users from the release (the Pages index links them there), not
+    PyPI: the release's download is a pattern that matches each platform's -dist artifact, and
+    the asset check requires a wheel."""
     jobs = _jobs("build-dmg.yml")
     assert not [name for name in jobs if "pgwire" in name]
-    download = _steps(jobs["publish-provisa-pypi"])["Download dist"]
-    assert download["uses"] == "actions/download-artifact@v4"
+    assert "publish-provisa-pypi" not in jobs
+    steps = _steps(_jobs("release-publish.yml")["publish-release"])
+    download = steps["Download all artifacts"]
     assert download["with"]["merge-multiple"] is True
     pattern = download["with"]["pattern"]
+    assert pattern == "*-dist"
     for label in PLATFORMS:
-        artifact = f"provisa-wheel-{label}-dist"
-        assert fnmatch.fnmatch(artifact, pattern), artifact
-        assert fnmatch.fnmatch(artifact, "*-dist"), artifact
+        assert fnmatch.fnmatch(f"provisa-wheel-{label}-dist", pattern), label
     assert not fnmatch.fnmatch("provisa-ui-build", pattern)
-    attached = _jobs("release-publish.yml")["publish-release"]["steps"]
-    assert any((s.get("with") or {}).get("pattern") == "*-dist" for s in attached)
+    assert "release-assets/*.whl" in steps["Release assets present"]["env"]["FILES"]
 
 
 # ── installers and images ─────────────────────────────────────────────────────

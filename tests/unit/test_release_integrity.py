@@ -51,16 +51,15 @@ _LEGS = {
 }
 # PyPI's own jobs are the orchestrator's: PyPI trusted publishing does not accept a token issued
 # to a reusable workflow (pypa/gh-action-pypi-publish#166), which every leg is.
-_PYPI = ("publish-pypi", "publish-notebook-pypi", "publish-provisa-pypi")
+# The provisa server wheel is not uploaded to PyPI (it outgrew the 10 GB project limit, alpha.510):
+# the publish leg attaches it to the release and lists it in the GitHub Pages index.
+_PYPI = ("publish-pypi", "publish-notebook-pypi")
 #: REQ-2225: the orchestrator's other publication, the Spark connector's image that
 #: platform-connectors built and kept in the run.
 _IMAGE_PUSH = "publish-connector-image"
 #: Build jobs whose names do not start with build-/package-: the platform connector block.
 _BUILDS_ALSO = frozenset({"platform-connectors"})
-#: REQ-2071: provisa pins provisa-notebook at its own version, so provisa waits for it on PyPI.
-#: REQ-2225: the provisa wheel carries the platform connector block, so it waits for the image the
-#: block names.
-_PYPI_AFTER = {"publish-provisa-pypi": {"publish-notebook-pypi", _IMAGE_PUSH}}
+_PYPI_AFTER: dict[str, set[str]] = {}
 
 #: What leaves the run: a PyPI upload, a release attachment or undraft, an image push -- by
 #: docker, oras, skopeo or crane, or by `provisa connector` (`push`, or a `build`/`rebuild`, which
@@ -68,7 +67,7 @@ _PYPI_AFTER = {"publish-provisa-pypi": {"publish-notebook-pypi", _IMAGE_PUSH}}
 _PUBLISHES = re.compile(
     r"pypi-publish|softprops/action-gh-release|gh release edit|twine upload"
     r"|docker push|oras push|oras cp|skopeo copy|crane push|crane copy"
-    r"|provisa connector push|--registry-password-env|docker/login-action"
+    r"|provisa connector push|--registry-password-env|docker/login-action|actions/deploy-pages"
 )
 _CONNECTOR_BUILD = re.compile(r"provisa connector (build|rebuild)\b")
 
@@ -270,9 +269,9 @@ def test_no_publication_is_reachable_without_every_build():
     assert where == {
         "publish-pypi": "orchestrator",
         "publish-notebook-pypi": "orchestrator",
-        "publish-provisa-pypi": "orchestrator",
         _IMAGE_PUSH: "orchestrator",
         "publish-release": "publish",
+        "publish-wheel-index": "publish",
         "publish-engine-image": "publish",
         "publish-zaychik-image": "publish",
     }
@@ -362,3 +361,75 @@ def test_pypi_is_published_from_the_orchestrator_never_a_reusable_workflow():
 
 if __name__ == "__main__":
     pytest.main([__file__, "-q"])
+
+
+# ── The provisa server off PyPI: release assets through a GitHub Pages index ─────────────────
+
+
+def test_the_provisa_server_wheel_is_never_uploaded_to_pypi():
+    """alpha.510's upload failed with PyPI's 10 GB project limit, and the release waited on it.
+    No job downloads the server's wheels for a PyPI upload, and the publish leg needs no such job."""
+    orchestrator = _load("build-dmg.yml")["jobs"]
+    assert "publish-provisa-pypi" not in orchestrator
+    assert "publish-provisa-pypi" not in orchestrator["publish"]["needs"]
+    for job, body in orchestrator.items():
+        steps = body.get("steps") or []
+        if not any("pypi-publish" in str(s.get("uses", "")) for s in steps):
+            continue
+        for step in steps:
+            given = step.get("with") or {}
+            assert not str(given.get("pattern", "")).startswith("provisa-wheel-"), job
+
+
+def test_the_publish_leg_can_be_dispatched_against_another_runs_artifacts():
+    """A release whose publish leg was skipped is published by dispatching the leg with the run
+    that built it. Called from the orchestrator, the leg reads its own run exactly as before."""
+    on = _load("release-publish.yml")[True]
+    assert set(on["workflow_call"]["inputs"]) == {"version", "publish"}
+    dispatch = on["workflow_dispatch"]["inputs"]
+    assert set(dispatch) == {"version", "publish", "artifacts_run_id"}
+    for name, kind in (
+        ("version", "string"),
+        ("publish", "boolean"),
+        ("artifacts_run_id", "string"),
+    ):
+        assert dispatch[name]["type"] == kind, name
+        assert dispatch[name]["required"] is True, name
+        assert "default" not in dispatch[name], name
+    job = _publish_job()
+    assert job["permissions"]["actions"] == "read"
+    downloads = [s for s in job["steps"] if s.get("uses") == "actions/download-artifact@v4"]
+    assert len(downloads) >= 10
+    for step in downloads:
+        given = step["with"]
+        assert given["run-id"] == "${{ inputs.artifacts_run_id }}", step["name"]
+        # No token without a run id: download-artifact then reads the current run.
+        assert given["github-token"] == (
+            "${{ inputs.artifacts_run_id && secrets.GITHUB_TOKEN || '' }}"
+        ), step["name"]
+    # The orchestrator grants what the leg's jobs ask for: a nested job cannot exceed its caller.
+    granted = _load("build-dmg.yml")["jobs"]["publish"]["permissions"]
+    leg = _load("release-publish.yml")["jobs"]
+    for body in leg.values():
+        for scope, level in (body.get("permissions") or {}).items():
+            assert granted.get(scope) in (level, "write"), (scope, level)
+
+
+def test_the_wheel_index_is_regenerated_on_pages_after_the_release_is_published():
+    """After the undraft, every published release's provisa wheels are listed in a PEP 503 index
+    on GitHub Pages, generated by the tested script; never on a dry run."""
+    job = _load("release-publish.yml")["jobs"]["publish-wheel-index"]
+    assert job["if"] == "inputs.publish"
+    assert job["needs"] == ["publish-release"]
+    assert job["permissions"] == {"contents": "read", "pages": "write", "id-token": "write"}
+    assert job["environment"]["name"] == "github-pages"
+    runs = "\n".join(s.get("run", "") for s in job["steps"])
+    assert "--paginate --slurp > releases.json" in runs
+    assert "scripts/release_wheel_index.py releases.json site" in runs
+    uses = [s.get("uses") for s in job["steps"] if s.get("uses")]
+    assert uses == [
+        "actions/checkout@v4",
+        "actions/upload-pages-artifact@v3",
+        "actions/deploy-pages@v4",
+    ]
+    assert (_ROOT / "scripts" / "release_wheel_index.py").is_file()

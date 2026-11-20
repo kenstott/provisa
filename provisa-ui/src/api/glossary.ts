@@ -589,22 +589,17 @@ export async function deprecateGlossaryTerm(
 }
 
 /** What a retired term applied to (REQ-2144): its columns (table path and column) and tables at
- * the model commit before its retirement. None when the model's history holds no retirement of it
- * (404 glossary.no_retirement_history). */
+ * the model commit before its retirement. When the model's history holds no retirement of it, the
+ * same shape comes back emptied: ``retired_in`` and ``as_of`` null, no columns, no tables. */
 export interface AppliedHistory {
-  retired_in: string;
+  retired_in: string | null;
   as_of: string | null;
   columns: { table: string; column: string }[];
   tables: string[];
 }
 
-export async function fetchAppliedHistory(termId: number): Promise<AppliedHistory | null> {
+export async function fetchAppliedHistory(termId: number): Promise<AppliedHistory> {
   const res = await fetch(`${API_BASE}/admin/glossary/terms/${termId}/applied-history`);
-  if (res.status === 404) {
-    const data = await res.json();
-    if (data.code === "glossary.no_retirement_history") return null;
-    throw new Error(serverMessage(data, requestFailed("fetchAppliedHistory", res.status)));
-  }
   if (!res.ok) throw await mutationError(res, "fetchAppliedHistory");
   return res.json();
 }

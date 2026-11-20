@@ -29,8 +29,8 @@ export function RetiredTermRecord({
   navigateToTerm: (termId: number) => void;
 }) {
   const { t } = useTranslation();
-  // Kept with the term it was read for; null once read is "no retirement in the history".
-  const [read, setRead] = useState<{ termId: number; history: AppliedHistory | null } | null>(null);
+  // Kept with the term it was read for.
+  const [read, setRead] = useState<{ termId: number; history: AppliedHistory } | null>(null);
   const [problem, setProblem] = useState("");
   useEffect(() => {
     let live = true;
@@ -68,9 +68,9 @@ export function RetiredTermRecord({
         <Text size="xs" c="dimmed">
           {t("common.loading")}
         </Text>
-      ) : shown.history === null ? (
+      ) : shown.history.retired_in === null ? (
         <Text size="xs" c="dimmed" data-testid="glossary-applied-none">
-          {t("serverErrors.glossary.no_retirement_history")}
+          {t("glossaryTab.noRetirementHistory")}
         </Text>
       ) : (
         <Stack gap={2} data-testid="glossary-applied-history">

@@ -1,9 +1,17 @@
 # Release: attach and publish
 #
-# The release's publications after PyPI: the installers attached to the draft release and the release undrafted, the engine and Flight proxy images pushed. Both wheels go to PyPI from the orchestrator (build-dmg.yml) first.
+# The release's publications after PyPI: the installers and the provisa server wheels attached to
+# the draft release and the release undrafted, the provisa wheel index regenerated on GitHub Pages,
+# the engine and Flight proxy images pushed. The client and notebook wheels go to PyPI from the
+# orchestrator (build-dmg.yml) first. The server wheel is not on PyPI (it outgrew the 10 GB project
+# limit): users install it through the Pages index, https://kenstott.github.io/provisa/simple/.
 #
 # One leg of the release. Called by build-dmg.yml (the release orchestrator) on a tag, and by a
 # manual dry run of it. `version` is the release's tag; nothing here reads the pushed ref.
+#
+# Also dispatched by hand to publish from a release run whose own publish leg did not run (alpha.510:
+# its server PyPI upload failed, and this leg, which needed it, was skipped). The dispatch names that
+# run in `artifacts_run_id`, and every artifact is downloaded from it instead of from this run.
 # `publish` is false on a dry run: every artifact is built and uploaded to the RUN exactly as on
 # a tag, and every step that leaves the run -- the draft release, its attachments, PyPI, an image
 # push, a signed attestation -- is skipped. A failed job of this leg is re-run alone with
@@ -21,6 +29,22 @@ on:
       publish:
         description: Leave the run (draft release, attachments, image pushes). False on a dry run.
         type: boolean
+        required: true
+  workflow_dispatch:
+    inputs:
+      version:
+        description: The release tag (v0.1.0-alpha.510).
+        type: string
+        required: true
+      publish:
+        description: Leave the run (draft release, attachments, wheel index, image pushes).
+        type: boolean
+        required: true
+      artifacts_run_id:
+        description: >-
+          The id of the "Build Provisa Packages" run that built this version; every artifact is
+          downloaded from it.
+        type: string
         required: true
 
 env:
@@ -58,9 +82,9 @@ jobs:
 
   # ── Release ──────────────────────────────────────────────────────────────────
   # Nothing that cannot be taken back happens until every artifact exists: this leg starts only
-  # after every other leg has succeeded and both PyPI publications are done (the orchestrator's
+  # after every other leg has succeeded and the PyPI publications are done (the orchestrator's
   # `publish` job needs them all), so a failed installer blocks PyPI as well as the release, and
-  # the release is undrafted only after both wheels are on PyPI. The PyPI jobs are the
+  # the release is undrafted only after the client and notebook wheels are on PyPI. The PyPI jobs are the
   # orchestrator's own (build-dmg.yml): PyPI trusted publishing does not accept a token issued to
   # a reusable workflow. What remains is the moment between them and the undraft, which a re-run
   # of publish-release closes.
@@ -72,6 +96,8 @@ jobs:
     # leg after a PyPI publication that failed or was cancelled.
     if: ${{ !cancelled() && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') }}
     permissions:
+      # actions: read is for a dispatch's download from another run (artifacts_run_id).
+      actions: read
       contents: write
     steps:
       # gh release create resolves the repo via local git; without a checkout the "Ensure release
@@ -84,6 +110,10 @@ jobs:
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
+          # On a dispatch, from the run that built the release; called from the orchestrator,
+          # artifacts_run_id is unset, no token is passed, and the action reads its own run.
+          run-id: ${{ inputs.artifacts_run_id }}
+          github-token: ${{ inputs.artifacts_run_id && secrets.GITHUB_TOKEN || '' }}
           pattern: "*-dist"
           path: release-assets/
           merge-multiple: true
@@ -91,54 +121,90 @@ jobs:
       - name: Download JDBC JAR
         uses: actions/download-artifact@v4
         with:
+          # On a dispatch, from the run that built the release; called from the orchestrator,
+          # artifacts_run_id is unset, no token is passed, and the action reads its own run.
+          run-id: ${{ inputs.artifacts_run_id }}
+          github-token: ${{ inputs.artifacts_run_id && secrets.GITHUB_TOKEN || '' }}
           name: jdbc-jar
           path: release-assets/
 
       - name: Download Python client wheel
         uses: actions/download-artifact@v4
         with:
+          # On a dispatch, from the run that built the release; called from the orchestrator,
+          # artifacts_run_id is unset, no token is passed, and the action reads its own run.
+          run-id: ${{ inputs.artifacts_run_id }}
+          github-token: ${{ inputs.artifacts_run_id && secrets.GITHUB_TOKEN || '' }}
           name: python-client-dist
           path: release-assets/
 
       - name: Download obs images tarball
         uses: actions/download-artifact@v4
         with:
+          # On a dispatch, from the run that built the release; called from the orchestrator,
+          # artifacts_run_id is unset, no token is passed, and the action reads its own run.
+          run-id: ${{ inputs.artifacts_run_id }}
+          github-token: ${{ inputs.artifacts_run_id && secrets.GITHUB_TOKEN || '' }}
           name: obs-images-tarball
           path: release-assets/
 
       - name: Download demo images tarball
         uses: actions/download-artifact@v4
         with:
+          # On a dispatch, from the run that built the release; called from the orchestrator,
+          # artifacts_run_id is unset, no token is passed, and the action reads its own run.
+          run-id: ${{ inputs.artifacts_run_id }}
+          github-token: ${{ inputs.artifacts_run_id && secrets.GITHUB_TOKEN || '' }}
           name: demo-images-tarball
           path: release-assets/
 
       - name: Download core images tarball
         uses: actions/download-artifact@v4
         with:
+          # On a dispatch, from the run that built the release; called from the orchestrator,
+          # artifacts_run_id is unset, no token is passed, and the action reads its own run.
+          run-id: ${{ inputs.artifacts_run_id }}
+          github-token: ${{ inputs.artifacts_run_id && secrets.GITHUB_TOKEN || '' }}
           name: core-images-tarball
           path: release-assets/
 
       - name: Download amd64 core images zip
         uses: actions/download-artifact@v4
         with:
+          # On a dispatch, from the run that built the release; called from the orchestrator,
+          # artifacts_run_id is unset, no token is passed, and the action reads its own run.
+          run-id: ${{ inputs.artifacts_run_id }}
+          github-token: ${{ inputs.artifacts_run_id && secrets.GITHUB_TOKEN || '' }}
           name: core-images-amd64-tarball
           path: release-assets/
 
       - name: Download trino image tarball (arm64)
         uses: actions/download-artifact@v4
         with:
+          # On a dispatch, from the run that built the release; called from the orchestrator,
+          # artifacts_run_id is unset, no token is passed, and the action reads its own run.
+          run-id: ${{ inputs.artifacts_run_id }}
+          github-token: ${{ inputs.artifacts_run_id && secrets.GITHUB_TOKEN || '' }}
           name: docker-images-trino
           path: release-assets/
 
       - name: Download trino image tarball (amd64)
         uses: actions/download-artifact@v4
         with:
+          # On a dispatch, from the run that built the release; called from the orchestrator,
+          # artifacts_run_id is unset, no token is passed, and the action reads its own run.
+          run-id: ${{ inputs.artifacts_run_id }}
+          github-token: ${{ inputs.artifacts_run_id && secrets.GITHUB_TOKEN || '' }}
           name: docker-images-trino-amd64
           path: release-assets/
 
       - name: Download Trino plugins tarball
         uses: actions/download-artifact@v4
         with:
+          # On a dispatch, from the run that built the release; called from the orchestrator,
+          # artifacts_run_id is unset, no token is passed, and the action reads its own run.
+          run-id: ${{ inputs.artifacts_run_id }}
+          github-token: ${{ inputs.artifacts_run_id && secrets.GITHUB_TOKEN || '' }}
           name: plugins-tarball
           path: release-assets/
 
@@ -314,6 +380,44 @@ jobs:
             *) gh release edit "$TAG" --draft=false --prerelease=false --latest ;;
           esac
           echo "Published $TAG with all ${#required[@]} required installers."
+
+  # ── provisa wheel index (GitHub Pages) ──────────────────────────────────────────
+  # A PEP 503 simple index at /simple/provisa/ listing every provisa server wheel attached to a
+  # published release, linked at its release download URL with its sha256. Regenerated from all
+  # releases each time, after the release is undrafted (a draft's assets are not served).
+  publish-wheel-index:
+    name: Publish provisa wheel index
+    # Publishes and does nothing else: not run on a dry run.
+    if: inputs.publish
+    runs-on: ubuntu-latest
+    needs: [publish-release]
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}simple/provisa/
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: List the releases
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh api "repos/${{ github.repository }}/releases?per_page=100" --paginate --slurp > releases.json
+
+      - name: Generate the index
+        run: python3 scripts/release_wheel_index.py releases.json site
+
+      - name: Upload the index
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+      - name: Deploy the index
+        id: deploy
+        uses: actions/deploy-pages@v4
 
   # ── SaaS federation-engine image ─────────────────────────────────────────────
 

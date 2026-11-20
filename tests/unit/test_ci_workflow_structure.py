@@ -616,18 +616,20 @@ _RELEASE = REPO / ".github" / "workflows" / "build-dmg.yml"
 _LEAVES_THE_RUN = re.compile(
     r"gh release (upload|edit|create|view)|softprops/action-gh-release|pypi-publish|"
     r"attest-build-provenance|docker/login-action|\./\.github/actions/ensure-release|twine upload|"
-    r"docker push|oras push|skopeo copy|crane push|provisa connector push|--registry-password-env"
+    r"docker push|oras push|skopeo copy|crane push|provisa connector push|--registry-password-env|"
+    r"actions/deploy-pages"
 )
 
 
 #: The orchestrator's own jobs, not legs: PyPI trusted publishing does not accept a token issued
 #: to a reusable workflow (pypa/gh-action-pypi-publish#166).
-_RELEASE_PYPI = ("publish-pypi", "publish-notebook-pypi", "publish-provisa-pypi")
-#: REQ-2071: provisa pins provisa-notebook at its own version, so provisa waits for it on PyPI.
-#: REQ-2225: the provisa wheel carries the platform connector block, so it waits for the image the
-#: block names, which the orchestrator pushes itself, after every build leg.
+#: The provisa server wheel is not among them: it outgrew PyPI's 10 GB project limit (alpha.510)
+#: and is installed from the release through the GitHub Pages index the publish leg writes.
+_RELEASE_PYPI = ("publish-pypi", "publish-notebook-pypi")
+#: REQ-2225: the provisa wheel carries the platform connector block, so the release that attaches
+#: it waits for the image the block names, which the orchestrator pushes itself, after every leg.
 _RELEASE_IMAGE_PUSH = "publish-connector-image"
-_RELEASE_PYPI_AFTER = {"publish-provisa-pypi": {"publish-notebook-pypi", _RELEASE_IMAGE_PUSH}}
+_RELEASE_PYPI_AFTER: dict[str, set[str]] = {}
 #: Every orchestrator job that is not a leg.
 _RELEASE_OWN = (*_RELEASE_PYPI, _RELEASE_IMAGE_PUSH)
 _RELEASE_PUBLISH = (
