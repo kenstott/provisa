@@ -1,3 +1,13 @@
+# Copyright (c) 2026 Kenneth Stott
+# Canary: aac96f5c-afbd-4d26-934d-6d06a6846152
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+
 """Canary site entries are stable across commits: a commit rewrites only new or changed entries and
 deploys only when the site differs from the last deploy (scripts/canary_stamp.py)."""
 
