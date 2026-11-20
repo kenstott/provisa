@@ -287,6 +287,8 @@
     "holdOnFailingChecksCodeHelp": "La comprobación que aplica esta opción. Cópiela en la comprobación previa de arriba para cambiarla.",
     "discoverHint": "Al guardar se leen las columnas que tiene el origen en vivo y se añaden las que le faltan a esta tabla; sus columnas se quedan como están. Ningún rol ve una columna añadida hasta que se le conceda.",
     "mvRebuildEveryLabel": "Recompilación completa cada (segundos)",
-    "mvRebuildEveryHelp": "Con qué frecuencia se recalcula la vista completa. Obligatorio para una vista mantenida por la función @change de un origen de código."
+    "mvRebuildEveryHelp": "Con qué frecuencia se recalcula la vista completa. Obligatorio para una vista mantenida por la función @change de un origen de código.",
+    "domainHelp": "Mover la tabla a otro dominio requiere el derecho a cambiar tablas en ambos dominios.",
+    "domainPlaceholder": "Elija un dominio"
   }
 }

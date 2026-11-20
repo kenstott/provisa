@@ -11108,5 +11108,8 @@
   "es/yourData.json::yourData.title": "Your data",
   "glossaryTab.json::glossaryTab.tablesWithoutSamples": "No sample values were read from: {{tables}}.",
   "es/sourceFormFieldsExtended.json::sourceFormFieldsExtended.brandBaseUrl": "Base URL",
-  "es/sourceFormFieldsExtended.json::sourceFormFieldsExtended.brandBaseUrlHint": "The address of your instance, such as https://catalog.example.com. Its API is called here, and its OpenAPI description is read from it."
+  "es/sourceFormFieldsExtended.json::sourceFormFieldsExtended.brandBaseUrlHint": "The address of your instance, such as https://catalog.example.com. Its API is called here, and its OpenAPI description is read from it.",
+  "es/serverErrors.json::serverErrors.schema.table_domain_required": "Table '{{table}}' names no domain: every table is registered in a domain",
+  "es/tableEditForm.json::tableEditForm.domainHelp": "Moving the table to another domain needs the right to change tables in both domains.",
+  "es/tableEditForm.json::tableEditForm.domainPlaceholder": "Choose a domain"
 }

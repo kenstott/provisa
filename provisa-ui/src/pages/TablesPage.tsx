@@ -123,6 +123,7 @@ import { useRememberedDetail } from "../components/list/useDetailParam";
 import { useListSelection } from "../components/list/listSelection";
 import { ListBulkBar } from "../components/list/ListBulkBar";
 import { matchesQuery } from "../lib/searchItems";
+import { assignableDomainIds } from "../lib/internalDomains";
 
 const columnTypes = (cols: { name: string; dataType: string }[]): Record<string, string> =>
   Object.fromEntries(cols.map((c) => [c.name, c.dataType]));
@@ -294,6 +295,11 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
   const deleteTables = useDeleteTables();
   const groupBy = sortGroup.groupBy;
   const { domainAccess } = useAuth();
+  // REQ-1531: the domains a table may be moved to -- those the member may change, as the
+  // register form offers them.
+  const movableDomains = assignableDomainIds(domainHints).filter(
+    (d) => domainAccess.includes("*") || domainAccess.includes(d),
+  );
   // REQ-1620: the rows are read as the roles the user acts as -- one role, or under "Role: All"
   // the set, which the server serves as its meta-role -- as every other page reads them.
   const actingRole = actingRoles;
@@ -857,6 +863,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
     <ReplicaBuildsContext.Provider value={replicaBuilds}>
       <TableEditForm
         hidingOnly={hidingOnly}
+        domainChoices={movableDomains}
         editingTable={editing}
         setEditingTable={setEditingTable}
         savedTable={saved}

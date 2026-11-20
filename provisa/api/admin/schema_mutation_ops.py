@@ -32,8 +32,8 @@ from provisa.core.schema_org import (
 )
 from provisa.api.admin.types import MutationResult, TableInput
 from provisa.api.admin.schema_helpers import (
-    _dataset_ownership_conflict,
     _domain_table_conflict,
+    table_domain_refusal,
     _get_pool,
     _rebuild_schemas,
 )
@@ -274,6 +274,10 @@ async def register_table(
     from provisa.api.admin._table_ops import land_transform_view
 
     land_transform_view(input)  # REQ-2131
+    # REQ-1531/REQ-433: a registration names its domain, on every path; refused before anything else.
+    _no_domain = table_domain_refusal(input.domain_id, input.table_name)
+    if _no_domain is not None:
+        return _no_domain
     from provisa.api.admin._dbt_table_registration import read_through_warehouse
 
     _dbt_refused = await read_through_warehouse(input)  # REQ-2228
@@ -586,11 +590,6 @@ async def register_table(
                 )
                 if _conflict:
                     raise TableSaveRefused(MutationResult(success=False, message=_conflict))
-                _owner_conflict = await _dataset_ownership_conflict(
-                    _conn, model.source_id, model.table_name, model.domain_id
-                )
-                if _owner_conflict:
-                    raise TableSaveRefused(MutationResult(success=False, message=_owner_conflict))
                 if input.source_id == DERIVED_SOURCE_ID:
                     from provisa.api.app import state
 
@@ -661,6 +660,8 @@ async def register_table(
                         model = model.model_copy(update={"write_grants": _carried_grants})
                     from provisa.api.admin._declared_keys import registration_keys
 
+                    # REQ-433: a removed source table registered again is that table restored.
+                    await table_repo.restore_registered(_conn, model)
                     # REQ-2170: the keys its source declares are recorded with the input's.
                     table_id = await table_repo.upsert(
                         _conn, model, declared=await registration_keys(model)

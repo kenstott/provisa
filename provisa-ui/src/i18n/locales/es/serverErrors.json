@@ -566,7 +566,8 @@
       "withdrawn_table_not_previewable": "No se puede previsualizar la tabla {{table}}: está retirada y no conserva réplica, y el motor solo lee su origen a través de una.",
       "table_not_withdrawn": "La tabla {{table}} no está retirada: solo se restablece una tabla retirada. Para mover a otra región una tabla en producción, establezca su región.",
       "source_not_withdrawn": "El origen {{source}} no está retirado: solo se restablece un origen retirado. Para cambiar su región, establezca su región.",
-      "put_back_needs_region": "Restablecer {{object}} nombra una región: indique una, o ninguna para ninguna región."
+      "put_back_needs_region": "Restablecer {{object}} nombra una región: indique una, o ninguna para ninguna región.",
+      "table_domain_required": "La tabla '{{table}}' no indica ningún dominio: toda tabla se registra en un dominio"
     },
     "secrets": {
       "env_reference_object_locked": "Este objeto es del operador: lee el entorno propio del servidor y no puede cambiarse aquí. Añada uno propio en su lugar.",

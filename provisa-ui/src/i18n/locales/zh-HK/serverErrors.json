@@ -566,7 +566,8 @@
       "withdrawn_table_not_previewable": "無法預覽表 {{table}}：它已撤下且不保留副本，而引擎只能透過副本讀取其來源。",
       "table_not_withdrawn": "表 {{table}} 未撤下：只有已撤下的表才能恢復。要將生產中的表移到另一個區域，請設定其區域。",
       "source_not_withdrawn": "來源 {{source}} 未撤下：只有已撤下的來源才能恢復。要更改其區域，請設定其區域。",
-      "put_back_needs_region": "恢復 {{object}} 需指定一個區域：請給出一個區域，無區域則不給出。"
+      "put_back_needs_region": "恢復 {{object}} 需指定一個區域：請給出一個區域，無區域則不給出。",
+      "table_domain_required": "表 '{{table}}' 未指定域：每個表都註冊在一個域中"
     },
     "secrets": {
       "env_reference_object_locked": "此物件屬於營運方：它讀取伺服器自身的環境，無法在此更改。請改為新增您自己的物件。",

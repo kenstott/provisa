@@ -287,6 +287,8 @@
     "holdOnFailingChecksCodeHelp": "Die Prüfung, die diese Option anwendet. Kopieren Sie sie in die obige Vorabprüfung, um sie zu ändern.",
     "discoverHint": "Beim Speichern werden die Spalten der Live-Quelle gelesen und die fehlenden zu dieser Tabelle hinzugefügt; ihre vorhandenen Spalten bleiben unverändert. Eine hinzugefügte Spalte ist für keine Rolle sichtbar, bis sie freigegeben wird.",
     "mvRebuildEveryLabel": "Vollständiger Neuaufbau alle (Sekunden)",
-    "mvRebuildEveryHelp": "Wie oft die gesamte Sicht neu berechnet wird. Erforderlich für eine Sicht, die von der @change-Funktion einer Codequelle gepflegt wird."
+    "mvRebuildEveryHelp": "Wie oft die gesamte Sicht neu berechnet wird. Erforderlich für eine Sicht, die von der @change-Funktion einer Codequelle gepflegt wird.",
+    "domainHelp": "Um die Tabelle in eine andere Domäne zu verschieben, ist das Recht nötig, Tabellen in beiden Domänen zu ändern.",
+    "domainPlaceholder": "Domäne wählen"
   }
 }

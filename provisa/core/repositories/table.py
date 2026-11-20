@@ -519,7 +519,7 @@ async def _require_landed_if_member(  # REQ-1634
 async def _upsert(
     conn: "Connection", table: Table, declared: "DeclaredKeys | None", withdrawn: bool | None
 ) -> int | None:
-    domain_id = domain_policy.resolve_domain_id(table.domain_id)
+    domain_id = domain_policy.table_domain_id(table.domain_id, table.table_name)  # REQ-1531
     await _require_not_retired(conn, table)
     await _require_free_sql_address(conn, table, domain_id)
     await _require_label_not_a_domain(conn, table)
@@ -1212,6 +1212,25 @@ async def restore(conn: "Connection", table_id: int) -> bool:  # REQ-2248
             .values(**retirement.cleared())
         )
     return True
+
+
+async def restore_registered(conn: "Connection", table: Table) -> bool:  # REQ-433, REQ-2248
+    """Registering a source table that was removed restores it: the same table (its id, columns
+    and links), its retirement cleared, so the registration that follows saves it into the
+    domain it names. REQ-433 (amended 2026-11-20): removing a table frees it at once, a table
+    registered with no domain included. A different table at a retired table's name is still
+    refused (:func:`_require_not_retired`). False when no retired table is that source table."""
+    held = (
+        await conn.execute_core(
+            select(registered_tables.c.id).where(
+                registered_tables.c.source_id == table.source_id,
+                registered_tables.c.schema_name == table.schema_name,
+                registered_tables.c.table_name == table.table_name,
+                registered_tables.c.retired.is_(True),
+            )
+        )
+    ).fetchone()
+    return held is not None and await restore(conn, int(held.id))
 
 
 async def restore_column(conn: "Connection", table_id: int, column_name: str) -> bool:  # REQ-2248

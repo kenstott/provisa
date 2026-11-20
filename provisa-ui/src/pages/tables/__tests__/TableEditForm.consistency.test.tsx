@@ -138,6 +138,7 @@ function formEl(table: RegisteredTable) {
       section="load"
       onSectionChange={vi.fn()}
       savedProfilerId={null}
+      domainChoices={[]}
       editingTable={table}
       savedTable={table}
       setEditingTable={vi.fn()}

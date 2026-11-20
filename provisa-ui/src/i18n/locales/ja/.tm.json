@@ -11107,5 +11107,8 @@
   "ja/yourData.json::yourData.sql": "SQL",
   "ja/yourData.json::yourData.title": "Your data",
   "ja/sourceFormFieldsExtended.json::sourceFormFieldsExtended.brandBaseUrl": "Base URL",
-  "ja/sourceFormFieldsExtended.json::sourceFormFieldsExtended.brandBaseUrlHint": "The address of your instance, such as https://catalog.example.com. Its API is called here, and its OpenAPI description is read from it."
+  "ja/sourceFormFieldsExtended.json::sourceFormFieldsExtended.brandBaseUrlHint": "The address of your instance, such as https://catalog.example.com. Its API is called here, and its OpenAPI description is read from it.",
+  "ja/serverErrors.json::serverErrors.schema.table_domain_required": "Table '{{table}}' names no domain: every table is registered in a domain",
+  "ja/tableEditForm.json::tableEditForm.domainHelp": "Moving the table to another domain needs the right to change tables in both domains.",
+  "ja/tableEditForm.json::tableEditForm.domainPlaceholder": "Choose a domain"
 }
