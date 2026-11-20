@@ -117,9 +117,12 @@ test.describe("source to query through the UI, community-extension sources (REQ-
   });
 
   test.afterAll(async () => {
-    await retireTestSourcesTables();
-    provisionSources("down");
-    fs.rmSync(WIDGETS_DUCKDB_PATH, { force: true });
+    try {
+      await retireTestSourcesTables();
+    } finally {
+      provisionSources("down");
+      fs.rmSync(WIDGETS_DUCKDB_PATH, { force: true });
+    }
   });
 
   test("firebird: add the source, register a table, query it on the SQL page", async ({
