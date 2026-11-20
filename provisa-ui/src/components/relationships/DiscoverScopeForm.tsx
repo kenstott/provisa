@@ -11,7 +11,8 @@
 // REQ-413: what a discovery run looks at, set before anything runs. The kinds (Semantics greyed
 // out when no vendor has a key), the model for this run, the source domains and tables, and the
 // target, the same as the source unless that is unticked. Tables default to every table of the
-// chosen domains, domains to those ticked in the Domains picker; system domains are never offered.
+// chosen domains, domains to those ticked in the Domains picker; only those are offered (REQ-2253)
+// and system domains never are.
 // At most how many requests the run makes is shown before Run, counted again as the scope changes:
 // the count reads no table, so it is an upper bound, and it says how many tables are never read.
 //
@@ -23,31 +24,37 @@
 //
 // Key value overlap (REQ-413, amended 2026-11-16) shows once Semantics is ticked: it measures the
 // semantic pairs the model rated between its cutoff and the threshold, so it is offered only with
-// Semantics. Ticked, it shows its cutoff and its sample size (the most distinct values read of each
-// column). All three start as the person last set them, kept by the server when a run starts;
-// "Reset to defaults" restores the defaults.
+// Semantics. Ticked, it shows its cutoff, its sample size (the most non-null values read of each
+// column), the share of a source's values in a key column at which a pair is a key relationship,
+// and the most a pair scores when neither column is a key.
+//
+// Every threshold and sample size a run uses is set here before it starts (REQ-413, amended
+// 2026-11-18): Tick from always, the sample values shown per column with Semantics, and Key value
+// overlap's. Each starts as the person last set it, kept by the server when a run starts; "Reset to
+// defaults" restores the defaults. The count says at most how many calls the run makes and how many
+// table pairs they cover.
 
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Alert, Button, Checkbox, Group, NumberInput, Text } from "@mantine/core";
 import {
   countDiscoveryRun,
-  fetchDiscoveryKeyValues,
   fetchDiscoveryModels,
+  fetchDiscoverySettings,
   fetchVendorModels,
   type DiscoveryCount,
   type DiscoveryModels,
   type DiscoveryRunKind,
+  type DiscoveryRunSettings,
   type DiscoveryScope,
   type KeyValueSettings,
-  type TypeGroup,
 } from "../../api/admin";
 import { isInternalDomain } from "../../lib/internalDomains";
+import { useViewDomains } from "../../lib/viewDomains";
 import { MultiSelect, type MultiSelectOption } from "../MultiSelect";
 import { FormChecks, FormField, FormFooter, FormLayout } from "../form/FormLayout";
 import { DiscoverModelField } from "./DiscoverModelField";
 import { registeredSince, restoreSets, type LastRun, type RestoreNote } from "./restoreScope";
-import { typeGroupLabel } from "./discoveryResult";
 
 /** A registered table, as the scope offers it. */
 export interface ScopeTable {
@@ -61,16 +68,6 @@ export interface ScopeTable {
 /** How long the scope stays unchanged before its requests are counted. */
 export const COUNT_DEBOUNCE_MS = 400;
 
-const GROUP_ORDER: TypeGroup[] = [
-  "whole_number",
-  "decimal",
-  "text",
-  "uuid",
-  "date",
-  "timestamp",
-  "timestamptz",
-];
-
 const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 type Counted =
@@ -79,22 +76,111 @@ type Counted =
   | { state: "counted"; count: DiscoveryCount }
   | { state: "failed"; error: string };
 
-/** Key value overlap as the form starts it: the run "New run" left, the defaults after "Reset to
- *  defaults", else as the person last set it. A run that did not choose it keeps the person's
- *  last cutoff and sample size, unchosen. */
-function startingKeyValues(
-  read: KeyValueSettings & { defaults: KeyValueSettings },
+/** The run's settings as the form starts them: the defaults after "Reset to defaults", else as
+ *  the person last set them. Key value overlap is the run "New run" left: a run that did not
+ *  choose it keeps the person's last settings, unchosen. */
+function startingSettings(
+  read: DiscoveryRunSettings & { defaults: DiscoveryRunSettings },
   initial: LastRun | null,
   fromDefaults: boolean,
-): KeyValueSettings {
+): DiscoveryRunSettings {
   if (fromDefaults) return read.defaults;
-  if (initial === null)
-    return { chosen: read.chosen, cutoff: read.cutoff, sample_size: read.sample_size };
-  const { kinds, measure_cutoff: cutoff, sample_size: size } = initial.scope;
-  if (kinds.includes("key_values") && cutoff != null && size != null) {
-    return { chosen: true, cutoff, sample_size: size };
+  const own = {
+    threshold: read.threshold,
+    samples_per_column: read.samples_per_column,
+    key_values: read.key_values,
+  };
+  if (initial === null) return own;
+  const { kinds, measure_cutoff, sample_size, contained_at, shared_ceiling } = initial.scope;
+  if (
+    kinds.includes("key_values") &&
+    measure_cutoff != null &&
+    sample_size != null &&
+    contained_at != null &&
+    shared_ceiling != null
+  ) {
+    return {
+      ...own,
+      key_values: {
+        chosen: true,
+        cutoff: measure_cutoff,
+        sample_size,
+        contained_at,
+        shared_ceiling,
+      },
+    };
   }
-  return { chosen: false, cutoff: read.cutoff, sample_size: read.sample_size };
+  return { ...own, key_values: { ...read.key_values, chosen: false } };
+}
+
+/** A setting from 0 to 1, entered as a whole percentage. */
+function PercentField({
+  label,
+  hint,
+  testId,
+  value,
+  onChange,
+}: {
+  label: string;
+  hint: string;
+  testId: string;
+  value: number;
+  onChange: (value: number) => void;
+}) {
+  return (
+    <FormField size="short" hint={hint}>
+      <NumberInput
+        label={label}
+        data-testid={testId}
+        value={Math.round(value * 100)}
+        onChange={(v) => {
+          if (typeof v === "number") onChange(v / 100);
+        }}
+        min={0}
+        max={100}
+        step={5}
+        suffix="%"
+        clampBehavior="strict"
+        allowDecimal={false}
+      />
+    </FormField>
+  );
+}
+
+/** A count of values, at least one. */
+function CountField({
+  label,
+  hint,
+  testId,
+  value,
+  step,
+  onChange,
+}: {
+  label: string;
+  hint: string;
+  testId: string;
+  value: number;
+  step: number;
+  onChange: (value: number) => void;
+}) {
+  return (
+    <FormField size="short" hint={hint}>
+      <NumberInput
+        label={label}
+        data-testid={testId}
+        value={value}
+        onChange={(v) => {
+          if (typeof v === "number") onChange(v);
+        }}
+        min={1}
+        step={step}
+        thousandSeparator=","
+        clampBehavior="strict"
+        allowDecimal={false}
+        allowNegative={false}
+      />
+    </FormField>
+  );
 }
 
 export function DiscoverScopeForm({
@@ -116,8 +202,9 @@ export function DiscoverScopeForm({
   /** Set the form up from the defaults. */
   onReset: () => void;
   onCancel: () => void;
-  /** Start the run; a refusal is thrown with the server's words. */
-  onRun: (scope: DiscoveryScope) => Promise<void>;
+  /** Start the run within ``domains``, the navbar filter's selection (null: no narrowing); a
+   *  refusal is thrown with the server's words. */
+  onRun: (scope: DiscoveryScope, domains: ReadonlySet<string> | null) => Promise<void>;
 }) {
   const { t } = useTranslation();
   const [models, setModels] = useState<DiscoveryModels | null>(null);
@@ -130,16 +217,22 @@ export function DiscoverScopeForm({
   );
   const [vendor, setVendor] = useState("");
   const [model, setModel] = useState("");
-  // Key value overlap; null until the person's own is read.
-  const [keyValues, setKeyValues] = useState<KeyValueSettings | null>(null);
-  const [keyValuesError, setKeyValuesError] = useState("");
+  // The run's settings; null until the person's own are read.
+  const [settings, setSettings] = useState<DiscoveryRunSettings | null>(null);
+  const [settingsError, setSettingsError] = useState("");
+  const keyValues = settings?.key_values ?? null;
+  const setKeyValues = (change: Partial<KeyValueSettings>) =>
+    setSettings((s) => (s === null ? s : { ...s, key_values: { ...s.key_values, ...change } }));
 
+  // REQ-2253: only the domains selected in the navbar's domain filter are offered, and the run is
+  // asked within them: no table outside them is counted, read or proposed.
+  const view = useViewDomains();
   const domains = useMemo(
     () =>
       [...new Set(tables.map((tb) => tb.domainId))]
-        .filter((d) => !isInternalDomain(d))
+        .filter((d) => !isInternalDomain(d) && (view === null || view.has(d)))
         .sort((a, b) => a.localeCompare(b)),
-    [tables],
+    [tables, view],
   );
   // Read once, as the form mounts: what the run before asked for, as the form can hold it now.
   const [restored] = useState(() =>
@@ -159,9 +252,9 @@ export function DiscoverScopeForm({
 
   useEffect(() => {
     let live = true;
-    fetchDiscoveryKeyValues()
-      .then((read) => live && setKeyValues(startingKeyValues(read, initial, fromDefaults)))
-      .catch((e) => live && setKeyValuesError(errorText(e)));
+    fetchDiscoverySettings()
+      .then((read) => live && setSettings(startingSettings(read, initial, fromDefaults)))
+      .catch((e) => live && setSettingsError(errorText(e)));
     return () => {
       live = false;
     };
@@ -251,9 +344,9 @@ export function DiscoverScopeForm({
 
   // Empty means every domain offered; tables, every table of the chosen domains.
   const effective = (chosen: string[]) => (chosen.length > 0 ? chosen : domains);
-  // Semantics waits for Key value overlap to be read, which it is offered with.
+  // A run waits for the person's settings to be read: it sends every one of them.
   const scope: DiscoveryScope | null =
-    kinds.length === 0 || modelIncomplete || (asksSemantics && keyValues === null)
+    kinds.length === 0 || modelIncomplete || settings === null
       ? null
       : {
           kinds,
@@ -264,8 +357,12 @@ export function DiscoverScopeForm({
           target_tables: !sameAsSource && targetTables.length > 0 ? targetTables.map(Number) : null,
           vendor: asksSemantics && !isAssigned ? vendor : null,
           model: asksSemantics && !isAssigned ? model.trim() : null,
-          measure_cutoff: measures ? keyValues.cutoff : null,
-          sample_size: measures ? keyValues.sample_size : null,
+          threshold: settings.threshold,
+          samples_per_column: settings.samples_per_column,
+          measure_cutoff: measures ? settings.key_values.cutoff : null,
+          sample_size: measures ? settings.key_values.sample_size : null,
+          contained_at: measures ? settings.key_values.contained_at : null,
+          shared_ceiling: measures ? settings.key_values.shared_ceiling : null,
         };
   const scopeKey = scope === null ? null : JSON.stringify(scope);
 
@@ -278,7 +375,7 @@ export function DiscoverScopeForm({
     let live = true;
     setCounted({ state: "counting" });
     const timer = setTimeout(() => {
-      countDiscoveryRun(JSON.parse(scopeKey) as DiscoveryScope)
+      countDiscoveryRun(JSON.parse(scopeKey) as DiscoveryScope, view)
         .then((count) => live && setCounted({ state: "counted", count }))
         .catch((e) => live && setCounted({ state: "failed", error: errorText(e) }));
     }, COUNT_DEBOUNCE_MS);
@@ -286,7 +383,7 @@ export function DiscoverScopeForm({
       live = false;
       clearTimeout(timer);
     };
-  }, [scopeKey, models]);
+  }, [scopeKey, models, view]);
 
   const domainOptions: MultiSelectOption[] = domains.map((d) => ({
     id: d,
@@ -348,7 +445,7 @@ export function DiscoverScopeForm({
     setStarting(true);
     setStartError("");
     try {
-      await onRun(scope);
+      await onRun(scope, view);
     } catch (e) {
       setStartError(errorText(e));
     } finally {
@@ -356,15 +453,13 @@ export function DiscoverScopeForm({
     }
   };
 
-  const countLine = (count: DiscoveryCount) => {
-    const groups = GROUP_ORDER.flatMap((g) => {
-      const n = count.by_group[g];
-      return n ? [t("discoverDialog.groupCount", { group: typeGroupLabel(g, t), count: n })] : [];
-    });
-    return count.requests > 0
-      ? t("discoverDialog.count", { count: count.requests, groups: groups.join(", ") })
+  const countLine = (count: DiscoveryCount) =>
+    count.requests > 0
+      ? `${t("discoverDialog.count", {
+          count: count.requests,
+          pairs: t("discoverDialog.tablePairs", { count: count.table_pairs }),
+        })} ${t("discoverDialog.countAgain")}`
       : t("discoverDialog.countNone");
-  };
 
   return (
     <>
@@ -419,9 +514,9 @@ export function DiscoverScopeForm({
           {modelsError}
         </Alert>
       )}
-      {keyValuesError && (
-        <Alert color="red" mb="md" data-testid="discover-key-values-error">
-          {keyValuesError}
+      {settingsError && (
+        <Alert color="red" mb="md" data-testid="discover-settings-error">
+          {settingsError}
         </Alert>
       )}
       <FormLayout>
@@ -447,52 +542,63 @@ export function DiscoverScopeForm({
             <Checkbox
               label={t("discoverDialog.keyValues")}
               checked={keyValues.chosen}
-              onChange={(e) => {
-                const chosen = e.currentTarget.checked;
-                setKeyValues((kv) => (kv === null ? kv : { ...kv, chosen }));
-              }}
+              onChange={(e) => setKeyValues({ chosen: e.currentTarget.checked })}
               data-testid="discover-kind-key-values"
             />
           )}
         </FormChecks>
+        {settings !== null && (
+          <PercentField
+            label={t("discoverDialog.threshold")}
+            hint={t("discoverDialog.thresholdHint")}
+            testId="discover-threshold"
+            value={settings.threshold}
+            onChange={(threshold) => setSettings((s) => (s === null ? s : { ...s, threshold }))}
+          />
+        )}
+        {asksSemantics && settings !== null && (
+          <CountField
+            label={t("discoverDialog.samplesPerColumn")}
+            hint={t("discoverDialog.samplesPerColumnHint")}
+            testId="discover-samples-per-column"
+            value={settings.samples_per_column}
+            step={1}
+            onChange={(samples_per_column) =>
+              setSettings((s) => (s === null ? s : { ...s, samples_per_column }))
+            }
+          />
+        )}
         {measures && (
           <>
-            <FormField size="short" hint={t("discoverDialog.cutoffHint")}>
-              <NumberInput
-                label={t("discoverDialog.cutoff")}
-                data-testid="discover-measure-cutoff"
-                value={Math.round(keyValues.cutoff * 100)}
-                onChange={(v) => {
-                  if (typeof v === "number") {
-                    setKeyValues((kv) => (kv === null ? kv : { ...kv, cutoff: v / 100 }));
-                  }
-                }}
-                min={0}
-                max={100}
-                step={5}
-                suffix="%"
-                clampBehavior="strict"
-                allowDecimal={false}
-              />
-            </FormField>
-            <FormField size="short" hint={t("discoverDialog.sampleSizeHint")}>
-              <NumberInput
-                label={t("discoverDialog.sampleSize")}
-                data-testid="discover-sample-size"
-                value={keyValues.sample_size}
-                onChange={(v) => {
-                  if (typeof v === "number") {
-                    setKeyValues((kv) => (kv === null ? kv : { ...kv, sample_size: v }));
-                  }
-                }}
-                min={1}
-                step={1000}
-                thousandSeparator=","
-                clampBehavior="strict"
-                allowDecimal={false}
-                allowNegative={false}
-              />
-            </FormField>
+            <PercentField
+              label={t("discoverDialog.cutoff")}
+              hint={t("discoverDialog.cutoffHint")}
+              testId="discover-measure-cutoff"
+              value={keyValues.cutoff}
+              onChange={(cutoff) => setKeyValues({ cutoff })}
+            />
+            <CountField
+              label={t("discoverDialog.sampleSize")}
+              hint={t("discoverDialog.sampleSizeHint")}
+              testId="discover-sample-size"
+              value={keyValues.sample_size}
+              step={1000}
+              onChange={(sample_size) => setKeyValues({ sample_size })}
+            />
+            <PercentField
+              label={t("discoverDialog.containedAt")}
+              hint={t("discoverDialog.containedAtHint")}
+              testId="discover-contained-at"
+              value={keyValues.contained_at}
+              onChange={(contained_at) => setKeyValues({ contained_at })}
+            />
+            <PercentField
+              label={t("discoverDialog.sharedCeiling")}
+              hint={t("discoverDialog.sharedCeilingHint")}
+              testId="discover-shared-ceiling"
+              value={keyValues.shared_ceiling}
+              onChange={(shared_ceiling) => setKeyValues({ shared_ceiling })}
+            />
           </>
         )}
         {models !== null && semanticsAvailable && (

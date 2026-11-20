@@ -16,7 +16,7 @@
     "checkPassed": "{{capability}}: superato",
     "checkFailed": "{{capability}}: non superato ({{reason}})",
     "jdbcDriverJar": "JAR del driver JDBC",
-    "jdbcDriverJarHint": "Il file JAR del driver, caricato dal tuo computer. Solo installazioni self-hosted.",
+    "jdbcDriverJarHint": "Il file jar del driver, caricato dal proprio computer. Solo installazioni self-hosted.",
     "jdbcDriverClass": "Classe del driver",
     "driver": "Driver",
     "jarDriver": "Il tuo driver JDBC (JAR)",

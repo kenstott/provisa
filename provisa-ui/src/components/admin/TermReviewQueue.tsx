@@ -54,6 +54,7 @@ import {
 import { generateGlossaryRelationships, type GlossaryTermSummary } from "../../api/glossary";
 import { Tip } from "../Tip";
 import { useScanProgress } from "./useScanProgress";
+import { useViewDomains } from "../../lib/viewDomains";
 import { FormChecks, FormField, FormFooter, FormLayout } from "../form/FormLayout";
 import { CollapsibleItem, Collapsibles } from "../collapsible/Collapsible";
 import { documentMark } from "../../lib/documentMark";
@@ -529,6 +530,7 @@ export function TermReviewQueue({
   onGlossaryChanged: () => void;
 }) {
   const { t } = useTranslation();
+  const viewDomains = useViewDomains();
   const progress = useScanProgress();
   const [scan, setScan] = useState<Scan | null>(null);
   const [drafts, setDrafts] = useState<Draft[]>([]);
@@ -608,7 +610,7 @@ export function TermReviewQueue({
     setProblem("");
     setBusy(true);
     try {
-      const { added } = await generateGlossaryRelationships();
+      const { added } = await generateGlossaryRelationships(viewDomains);
       await changed(t("findTerms.relationshipsDone", { count: added }));
     } catch (e) {
       setProblem(e instanceof Error ? e.message : String(e));

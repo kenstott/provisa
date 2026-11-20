@@ -29,7 +29,7 @@ _REPO = Path(__file__).resolve().parents[2]
 _CHECK = _REPO / "scripts" / "ensure-venv-in-step.sh"
 _SCRIPTS = ["start-ui-install.sh", "start-ui.sh"]
 _CALL = '"$SCRIPT_DIR/scripts/ensure-venv-in-step.sh" "$SCRIPT_DIR" || exit 1\n'
-_FIX = re.compile(r"^    (cd .* uv sync --locked --inexact)$", re.MULTILINE)
+_FIX = re.compile(r"^    (cd .* uv sync --locked --inexact --extra vector)$", re.MULTILINE)
 _PROCEEDED = "PROCEEDED PAST THE CHECK"
 
 _ROOT_TOML = """
@@ -45,6 +45,7 @@ dependencies = [{deps}]
 
 [project.optional-dependencies]
 opt = ["optdep"]
+vector = ["vecdep"]
 
 [tool.uv]
 cache-keys = [{{ file = "pyproject.toml" }}, {{ file = "key.txt" }}]
@@ -52,6 +53,7 @@ cache-keys = [{{ file = "pyproject.toml" }}, {{ file = "key.txt" }}]
 [tool.uv.sources]
 dep = {{ path = "dep" }}
 optdep = {{ path = "optdep" }}
+vecdep = {{ path = "vecdep" }}
 """
 
 
@@ -83,16 +85,17 @@ def _write_root(project: Path, deps: str = '"dep"') -> None:
 
 @pytest.fixture
 def project(tmp_path: Path) -> Path:
-    """A project whose .venv is in step with its uv.lock."""
+    """A project whose .venv is in step with its uv.lock, the vector extra included (REQ-419)."""
     root = tmp_path / "checkout"
     (root / "src" / "probe").mkdir(parents=True)
     (root / "src" / "probe" / "__init__.py").write_text("")
     (root / "key.txt").write_text("one")
     _write_package(root / "dep", "dep", "1.0.0")
     _write_package(root / "optdep", "optdep", "1.0.0")
+    _write_package(root / "vecdep", "vecdep", "1.0.0")
     _write_root(root)
     _uv(root, "lock")
-    _uv(root, "sync", "--locked")
+    _uv(root, "sync", "--locked", "--extra", "vector")
     return root
 
 
@@ -152,6 +155,22 @@ def test_the_printed_command_brings_the_venv_in_step(project: Path) -> None:
     assert _check(project).returncode == 0
 
 
+def test_a_venv_without_the_vector_extra_is_refused_and_the_command_installs_it(
+    project: Path,
+) -> None:
+    """REQ-419: the default config's embedding model needs the vector extra, so a checkout synced
+    without it is out of step, and the command the check prints syncs it."""
+    _uv(project, "sync", "--locked")
+    before = _venv_state(project)
+
+    command = _assert_refused_unchanged_with_command(project, before, _check(project))
+    assert "+ vecdep" in _check(project).stderr
+    subprocess.run(["bash", "-c", command], env=_env(), check=True, capture_output=True)
+
+    assert _check(project).returncode == 0
+    assert list((project / ".venv").rglob("vecdep/__init__.py"))
+
+
 def test_an_in_step_venv_proceeds_unchanged(project: Path) -> None:
     before = _venv_state(project)
 
@@ -163,7 +182,7 @@ def test_an_in_step_venv_proceeds_unchanged(project: Path) -> None:
 
 
 def test_installed_extras_and_packages_outside_the_lock_are_not_reported(project: Path) -> None:
-    _uv(project, "sync", "--locked", "--extra", "opt")
+    _uv(project, "sync", "--locked", "--extra", "vector", "--extra", "opt")
     _write_package(project.parent / "demo_req", "demo_req", "1.0.0")
     _uv(
         project,

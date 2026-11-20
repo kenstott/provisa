@@ -1811,7 +1811,9 @@ def unmark_views(sql: str) -> str:  # REQ-039
     """``sql`` -- a statement whose views were expanded marked (``view_read.semantic_statement``)
     -- without the marks: the text every use other than governance reads, so the mark is never
     logged, audited or keyed on."""
-    return _unmark_views(sqlglot.parse_one(sql, read="postgres")).sql(dialect="postgres")
+    from provisa.compiler.view_expand import parse_marked
+
+    return _unmark_views(parse_marked(sql)).sql(dialect="postgres")
 
 
 def _unmark_views(tree: exp.Expr) -> exp.Expr:  # pyright: ignore[reportPrivateImportUsage]
@@ -2795,8 +2797,11 @@ def apply_governance(
 
     trace_stage("govern.in", sql)
     # REQ-913: the statement as the client (or a compiler stage) wrote it, read once here.
-    tree = sqlglot.parse_one(sql, read="postgres")
-    governed = govern(tree, gov_ctx, session_vars, params).sql(dialect="postgres")
+    from provisa.compiler.view_expand import marks_withheld, parse_marked
+
+    with marks_withheld():  # REQ-039: an error governing a marked statement names no mark
+        tree = parse_marked(sql)
+        governed = govern(tree, gov_ctx, session_vars, params).sql(dialect="postgres")
     trace_stage("govern.out", governed)
     return governed
 

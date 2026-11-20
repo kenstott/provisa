@@ -23,10 +23,15 @@ import { NEVER_EXPIRES, cacheTtlHint } from "../../components/form/cacheTtl";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { ProfilerRowRulesField } from "./ProfilerRowRulesField";
 import { QueryTableFields } from "./QueryTableFields";
+import { WikidataTableChooser } from "./WikidataTableChooser";
+import type { WikidataChoice } from "./wikidataChoice";
+import { sourceBrand } from "../sources/sourceHelpers";
+import { WIKIDATA } from "../sources/wikidata";
 import { isPipelineArgument, NATIVE_QUERY_MODES, previewedColumn } from "./queryTables";
 import { QDRANT, QDRANT_SCHEMA, searchQueryArgument } from "../sources/qdrant";
 import { QdrantVectorsNote } from "./QdrantVectorsNote";
 import { RegisterColumnsField } from "./RegisterColumnsField";
+import { RegisterDescriptionField } from "./RegisterDescriptionField";
 import { registrationOf } from "./registrationDefaults";
 import { useManyTables } from "./useManyTables";
 import { useCombineFiles } from "./useCombineFiles";
@@ -39,6 +44,10 @@ import { useTranslation } from "react-i18next";
 import { Button, NumberInput, SegmentedControl, Select, Text, TextInput } from "@mantine/core";
 import { domainToSqlName, toSnakeCase } from "../../naming";
 import { useAvailableSchemas, useAvailableTables } from "../../hooks/useAdminQueries";
+import {
+  useDescribeUnregistered,
+  type UnregisteredTable,
+} from "../../hooks/useDescribeUnregistered";
 import { RegionSelect } from "../../components/admin/RegionSelect";
 import { MultiSelect } from "../../components/MultiSelect";
 import { useRegionChoice, useRegionChoices } from "../../hooks/useRegionQueries";
@@ -139,7 +148,7 @@ export function RegisterTableForm({
   pickReady = false,
   onRegisteredMany,
 }: RegisterTableFormProps) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [sourceId, setSourceId] = useState(initialSourceId);
   const [chosenDomain, setDomainId] = useState("");
   const [schemaName, setSchemaName] = useState("");
@@ -208,6 +217,17 @@ export function RegisterTableForm({
   // rules and editable here; saved after the table, as the table's own rules.
   const [profilerRowRules, setProfilerRowRules] = useState<ProfilerRowRule[]>([]);
   const isSparql = sourceType === "sparql";
+  // REQ-1923: a Wikidata source's table is chosen: a starter table, or the table of a class.
+  const isWikidata = isSparql && sourceBrand(chosenSource?.federationHintsJson) === WIKIDATA;
+  const chooseWikidataTable = (choice: WikidataChoice) => {
+    const roleIds = roles.map((r) => r.id);
+    setTableName(choice.tableName);
+    setCypher(choice.query);
+    setPreviewRows([]);
+    setColumns(
+      choice.columns.map((c) => previewedColumn({ name: c.name, dataType: c.data_type }, roleIds)),
+    );
+  };
   // REQ-1670/REQ-1683: a query-API source has no tables to list — its table IS a query projection.
   // REQ-1980/REQ-1982: a document source's table is a collection or container, or a native query.
   // REQ-1983: a Qdrant table is a collection, or a search. REQ-2017: an Elasticsearch table is an
@@ -416,6 +436,18 @@ export function RegisterTableForm({
       setPreviewing(false);
     }
   };
+
+  // The table the AI describe writes for, once the form names it: what it will register.
+  const { describeTable, describeColumn } = useDescribeUnregistered();
+  const unregistered: UnregisteredTable | undefined =
+    sourceId && schemaName && tableName
+      ? {
+          sourceId,
+          schemaName,
+          tableName,
+          columns: columns.filter((c) => c.selected && !isPipelineArgument(c)).map((c) => c.name),
+        }
+      : undefined;
 
   const updateCol = (
     i: number,
@@ -722,6 +754,12 @@ export function RegisterTableForm({
             />
           </FormField>
         )}
+        {isWikidata && (
+          <WikidataTableChooser
+            language={i18n.language.split("-")[0]}
+            onChoose={chooseWikidataTable}
+          />
+        )}
         {isQueryApi && (
           <FormField size="medium">
             <TextInput
@@ -926,15 +964,12 @@ export function RegisterTableForm({
               />
             </FormField>
           ) : (
-            <FormField size="long">
-              <TextInput
-                label={t("registerTableForm.descriptionLabel")}
-                value={tableDescription}
-                onChange={(e) => setTableDescription(e.currentTarget.value)}
-                placeholder={t("registerTableForm.descriptionPlaceholder")}
-                data-testid="register-table-description"
-              />
-            </FormField>
+            <RegisterDescriptionField
+              value={tableDescription}
+              onChange={setTableDescription}
+              describe={unregistered && (() => describeTable(unregistered))}
+              setError={setError}
+            />
           )}
           {!isChecker && !isQueryApi && (
             <FormField
@@ -975,8 +1010,9 @@ export function RegisterTableForm({
           )}
           {!isChecker && columns.length > 0 && (
             <RegisterColumnsField
-              {...{ columns, updateCol, roles, irTypes, sourceType }}
+              {...{ columns, updateCol, roles, irTypes, sourceType, setError }}
               loadingColumns={false}
+              describeColumn={unregistered && ((column) => describeColumn(unregistered, column))}
             />
           )}
         </>

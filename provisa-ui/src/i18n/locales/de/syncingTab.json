@@ -1,5 +1,6 @@
 {
   "syncingTab": {
+    "title": "Kontext-Synchronisierung",
     "loading": "Wird geladen…",
     "intro": "Jedes externe System, das mit Provisa abgeglichen wird: Datenkataloge, Ontologien und eigene Systeme. Jedes gibt an, in welche Richtung es synchronisiert. Abgeglichen werden Beschreibungen, Verantwortliche, Tags und Begriffe, keine Daten.",
     "heading_data_catalog": "Datenkatalog",

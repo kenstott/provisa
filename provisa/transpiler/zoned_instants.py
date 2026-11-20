@@ -441,6 +441,11 @@ def _refuse_json_of_said_instant(tree: exp.Expr) -> None:
             raise PostgresError("0A000", f"{name} of a timestamptz is not available on Trino")
 
 
+#: The meta key marking a form written here: the engine's SQL already, which a grid row may hold
+#: as it stands (polyfill.json_built.held).
+WRITTEN = f"{_MARKED}zoned_written"
+
+
 def written(sql: str, tree: exp.Expr | None, dialect: str) -> exp.Expr | None:
     """``tree`` (the parse of ``sql``, or None for it not yet parsed) with each read of an instant
     in the session's zone, on ``dialect``; ``tree`` as it was where nothing is to be written."""
@@ -455,6 +460,7 @@ def written(sql: str, tree: exp.Expr | None, dialect: str) -> exp.Expr | None:
     for node in reversed(list(nodes)):  # the deepest first: a form holds its value's form
         form = _form(node, engine, dialect)
         if form is not None:
+            form.meta[WRITTEN] = True
             node.replace(form)
             wrote = True
     for node in list(parsed.find_all(exp.Anonymous)):

@@ -29,7 +29,7 @@
     "no": "नहीं",
     "typeSomethingElse": "कुछ और लिखें",
     "confirm": "पुष्टि करें",
-    "confirmed": "पुष्टि की गई — आगे बढ़ें।",
+    "confirmed": "पुष्टि हुई। आगे बढ़ें।",
     "cancelled": "रद्द किया गया।",
     "chooseFile": "भेजने के लिए फ़ाइल",
     "graphCaption": "नोड: {{nodes}} · संबंध: {{relationships}}",

@@ -31,7 +31,7 @@
     "policiesTitle": "הצגת מדיניויות RLS עבור טבלה זו",
     "editButtonLabel": "עריכת טבלה {{name}}",
     "deleteButtonLabel": "מחיקת טבלה {{name}}",
-    "profileHeading": "פרופיל — {{count}} שורות שנדגמו",
+    "profileHeading": "פרופיל: {{count}} שורות במדגם",
     "colNulls": "ערכי NULL",
     "colNullsTitle": "ערכי NULL",
     "colBlanks": "ריקים",

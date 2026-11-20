@@ -39,6 +39,7 @@ from provisa.core.schema_org import (
 
 if TYPE_CHECKING:
     from provisa.core.database import Database
+    from provisa.llm.client import Completion, ProvisaLLMClient
 
 from provisa.api_source.openapi_endpoint import normalize_op_id
 from provisa.core.models import DERIVED_SOURCE_ID
@@ -130,7 +131,7 @@ async def _ensure_openapi_spec(source_id: str) -> bool:
         return False
     async with pool.acquire() as conn:
         result = await conn.execute_core(
-            select(sources.c.type, sources.c.path, sources.c.mapping).where(
+            select(sources.c.type, sources.c.path, sources.c.mapping, sources.c.brand_setup).where(
                 sources.c.id == source_id
             )
         )
@@ -162,6 +163,7 @@ async def _ensure_openapi_spec(source_id: str) -> bool:
         "base_url": base_url,
         "domain_id": "",
         "cache_ttl": 300,
+        "setup": row["brand_setup"],  # REQ-2265: what a brand's setup was given
     }
     return True
 
@@ -600,17 +602,38 @@ async def _fetch_table_with_columns(
     )
 
 
-async def _call_llm(prompt: str, operation: str, max_tokens: int = 256) -> str:
+async def _catalog_client(operation: str) -> ProvisaLLMClient:
     # REQ-1395, REQ-1398: the acting org's own per-vendor keys, when set.
     from provisa.api.app import state
     from provisa.core.org_secrets import read_org_api_keys
     from provisa.llm.client import ProvisaLLMClient
 
     api_keys = await read_org_api_keys(state.model_db) if state.model_db else None
-    client = ProvisaLLMClient(operation, api_keys=api_keys)
+    return ProvisaLLMClient(operation, api_keys=api_keys)
+
+
+async def _call_llm(prompt: str, operation: str, max_tokens: int = 256) -> str:
+    client = await _catalog_client(operation)
     return await client.complete(
         prompt, system="You are a data catalog assistant.", max_tokens=max_tokens
     )
+
+
+async def _call_llm_detailed(prompt: str, operation: str, max_tokens: int = 256) -> Completion:
+    """:func:`_call_llm` with the answer's ``cut_off`` (:class:`provisa.llm.client.Completion`):
+    a caller reading a structured answer learns it stopped at ``max_tokens``. An answer that
+    stopped at its limit before any text is that answer, with no text."""
+    from provisa.llm.client import LLMEmptyResponseError
+
+    client = await _catalog_client(operation)
+    try:
+        return await client.complete_detailed(
+            prompt, system="You are a data catalog assistant.", max_tokens=max_tokens
+        )
+    except LLMEmptyResponseError as exc:
+        if not exc.answer.cut_off:
+            raise
+        return exc.answer
 
 
 from provisa.api.admin._table_ops import (  # noqa: E402

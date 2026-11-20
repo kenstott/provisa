@@ -25,8 +25,26 @@ def test_the_grant_is_the_developer_role_minus_every_data_right():
     # REQ-1528 starts from a role somebody already decided on rather than a hand-picked list.
     # REQ-1539 then subtracts the data rights: creating an environment is a model-authoring act, and
     # what a person may do to DATA is what their roles say, in this environment as in every other.
-    assert auth.ENVIRONMENT_OWNER_CAPABILITIES == _DEVELOPER - {"write", "full_results", "usage"}
+    assert auth.ENVIRONMENT_OWNER_CAPABILITIES == _DEVELOPER - {
+        "write",
+        "full_results",
+        "usage",
+        "dq_read",
+    }
     assert auth.ENVIRONMENT_OWNER_CAPABILITIES < _DEVELOPER
+
+
+def test_reading_quality_results_does_not_arrive_with_an_environment():
+    # REQ-2155: reading data-quality results is reading data. developer holds dq_read (through
+    # analyst), so the grant must subtract it like the other data rights while keeping the
+    # model-authoring rights.
+    assert "dq_read" in _DEVELOPER
+    assert "dq_read" not in auth.ENVIRONMENT_OWNER_CAPABILITIES
+    assert {
+        Capability.QUERY_DEVELOPMENT.value,
+        Capability.CREATE_RELATIONSHIP.value,
+        Capability.CREATE_VIEW.value,
+    } <= auth.ENVIRONMENT_OWNER_CAPABILITIES
 
 
 def test_the_grant_never_exceeds_what_an_org_admin_holds():
@@ -111,7 +129,7 @@ def test_creating_an_environment_confers_no_right_over_data():
     # REQ-1539: the escalation REQ-1492 worried about was write authority arriving with an
     # environment. It cannot arrive at all now — the grant carries no data right to begin with, and
     # REQ-1491 still leaves the new environment bound to nothing.
-    assert not (auth.ENVIRONMENT_OWNER_CAPABILITIES & {"write", "full_results", "usage"})
+    assert not (auth.ENVIRONMENT_OWNER_CAPABILITIES & {"write", "full_results", "usage", "dq_read"})
     assert ec.binding_columns("sources") >= {"host", "port", "database", "username"}
 
 

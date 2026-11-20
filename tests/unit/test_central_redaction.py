@@ -345,7 +345,7 @@ def test_audit_text_is_redacted_before_it_is_hashed_and_encrypted():
         time_travel=None,
         tables=[],
     )
-    row = record.row(None)
+    row = record.row(None, None)
     text = "SELECT '[REDACTED:auto:pw]'"
     assert row["query_text_enc"] == text.encode()
     assert row["query_hash"] == hashlib.sha256(text.encode()).hexdigest()

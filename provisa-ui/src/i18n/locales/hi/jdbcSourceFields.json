@@ -16,7 +16,7 @@
     "checkPassed": "{{capability}}: सफल",
     "checkFailed": "{{capability}}: विफल ({{reason}})",
     "jdbcDriverJar": "JDBC ड्राइवर JAR",
-    "jdbcDriverJarHint": "ड्राइवर की JAR फ़ाइल, आपकी मशीन से अपलोड की गई। केवल स्व-होस्टेड इंस्टॉलेशन।",
+    "jdbcDriverJarHint": "ड्राइवर की jar फ़ाइल, आपकी मशीन से अपलोड की गई। केवल स्व-होस्ट किए गए इंस्टॉल।",
     "jdbcDriverClass": "ड्राइवर क्लास",
     "driver": "ड्राइवर",
     "jarDriver": "आपका अपना JDBC ड्राइवर (JAR)",

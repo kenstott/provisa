@@ -25,7 +25,7 @@
     "partial": "{{failed}} van {{count}} verzoek is mislukt, dus het resultaat is onvolledig.",
     "partial_other": "{{failed}} van {{count}} verzoeken zijn mislukt, dus het resultaat is onvolledig.",
     "semanticsNoneProposed": "Semantiek: geen. Het model stelde geen relaties voor.",
-    "semanticsBelowThreshold": "Semantiek: geen. Elk voorstel scoorde onder de {{threshold}}% waarop een suggestie wordt bewaard.",
+    "semanticsBelowThreshold": "Semantiek: geen. Elk voorstel scoorde onder de {{threshold}}% waarboven een suggestie wordt behouden.",
     "semanticsFiltered": "Semantiek: geen. Elk voorstel is weggelaten, om de redenen hieronder.",
     "split": "{{count}} verzoek is gehalveerd en opnieuw gesteld.",
     "split_other": "{{count}} verzoeken zijn gehalveerd en opnieuw gesteld.",
@@ -35,23 +35,17 @@
     "jevBelow_other": "Jev gaf {{count}} voorstellen een score onder {{threshold}}%. Elke score staat naast die van het model, die beslist.",
     "scoringFailed": "Jev kon de voorstellen van {{count}} verzoek niet beoordelen; ze hielden de betrouwbaarheid van het model.",
     "scoringFailed_other": "Jev kon de voorstellen van {{count}} verzoeken niet beoordelen; ze hielden de betrouwbaarheid van het model.",
-    "failedRequest": "Voor kolommen van het type {{group}}: {{message}}",
+    "failedRequest": "Voor {{group}} kolommen: {{message}}",
     "leftOut": "Niet voorgesteld: {{list}}.",
     "leftOutItem": "{{label}} ({{count}})",
     "removed": {
-      "below_threshold": "met een score onder {{threshold}}%",
+      "below_threshold": "scoorde lager dan {{threshold}}%",
       "invalid": "noemt geen twee vergeleken kolommen",
       "not_comparable": "tussen kolommen van verschillende klassen",
       "same_column": "van een kolom naar zichzelf",
-      "primary_key_to_primary_key": "primaire sleutel naar primaire sleutel",
-      "both_repeating": "herhaalde waarden aan beide kanten",
       "existing": "al geregistreerd",
-      "pending": "wacht al",
       "rejected": "eerder afgewezen",
-      "matches_foreign_key": "komt overeen met een refererende sleutel uit deze run",
-      "out_of_scope": "buiten de gekozen tabellen",
-      "weaker": "herhaalt een kolompaar waarvoor een sterker voorstel is behouden",
-      "many_to_many": "zonder dat een van beide kolommen een sleutel is"
+      "out_of_scope": "buiten de gekozen tabellen"
     }
   }
 }

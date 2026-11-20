@@ -101,6 +101,6 @@
   },
   "pageError": {
     "title": "No se pudo mostrar esta página",
-    "body": "Falló al renderizarse. El resto de la aplicación sigue funcionando: vaya a otra página o vuelva a cargar esta."
+    "body": "Se produjo un error al renderizar. El resto de la aplicación sigue funcionando, así que vaya a otra página o recargue esta."
   }
 }

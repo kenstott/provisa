@@ -70,6 +70,13 @@ export type Capability =
   // comes with being named in a product's Owner field, held to that product by a row rule.
   | "data_product_read"
   | "data_product_rw"
+  // REQ-2219: owning is a capability of its own, each scoped by the kind it owns: a data product, a
+  // relationship, a domain (its steward), a glossary term (domain.term) and a judgment basis.
+  | "data_product_owner"
+  | "relationship_owner"
+  | "domain_steward"
+  | "term_owner"
+  | "judgment_basis_owner"
   // REQ-2155: data quality's own rights -- reading check definitions and results, and managing
   // checks, expectations and promises -- so managing checks needs no table registration.
   // REQ-2229: send OpenLineage run events to the receiver.

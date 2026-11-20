@@ -856,6 +856,7 @@ A role with no capabilities can do nothing, reads included, and runs no command.
 | `sensitive_data` | Mark columns as sensitive and change how they are hidden, in every environment. |
 | `view_governance` | See the catalog's governance columns: who can read a column, its masks and view SQL. |
 | `user_management` | Manage the organization's users and their roles. |
+| `assign_entitlements` | Set a member's entitlement lists, within what `user_management` confers. |
 | `glossary_rw` | Edit the glossary within the role's domains. |
 | `org_glossary_rw` | Edit any glossary term in the organization. |
 | `data_product_rw` | Create, edit and delete data products. |
@@ -1419,7 +1420,7 @@ A role names the roles it inherits from in `parents`, in order. What it holds is
 
 Row rules narrow too. A role's rows are its own rule AND the rules of its parents combined with OR. A parent with no rule stands for every row, and a role with no rule of its own reads under its parents' rules. So a role reads no row its parents could not, and it stays one plain predicate for each right, role and table.
 
-Provisa ships standard roles (`viewer`, `analyst`, `developer`, `modeler`, `data_steward`, `security_admin`, `data_product_owner`, `dq_reader`, `dq_steward`, `source_admin`, `org_operator`, `org_admin`, `sandbox`, `platform_admin`). They are Provisa's and cannot be edited or declared in a config file; extend one with a role of your own that names it in `parents`.
+Provisa ships standard roles (`viewer`, `analyst`, `data_writer`, `developer`, `modeler`, `data_product_owner`, `data_steward`, `security_admin`, `dq_steward`, `source_admin`, `member_admin`, `org_operator`, `org_admin`, `platform_admin`, and `sandbox` for Try it Out visitors). [Access Model](access-model.md#capabilities) lists what each one adds. They are Provisa's and cannot be edited or declared in a config file; extend one with a role of your own that names it in `parents`.
 
 ```yaml
 roles:
@@ -1860,8 +1861,10 @@ For Google Cloud sources, set `GOOGLE_APPLICATION_CREDENTIALS` to the path of yo
 | `PROVISA_MTLS_BIND_PRINCIPAL` | `false` | Require the certificate's common name to equal the authenticating username |
 | `PROVISA_BOLT_ALLOWED_ORIGINS` | — | Comma-separated sites permitted to open a Bolt WebSocket from a browser; unset refuses every browser origin |
 | `PROVISA_EXTRAS` | `firebase,vector` | Pyproject extras baked into the app image; `scripts/provisa` derives it from `dq_checker` in `~/.provisa/config.yaml` |
+| `HF_ENDPOINT` | `https://huggingface.co` | Hugging Face hub a local embedding model is downloaded from; sets `embedding.hub_endpoint` when no value is stored. See [Runtime Settings](admin.md#runtime-settings) |
 | `PROVISA_DQ_CHECKER` | `none` | Installer-only: `none`/`soda`/`gx`, read by `first-launch.sh` in non-interactive mode and written to `config.yaml` as `dq_checker` |
-| `ANTHROPIC_API_KEY` | — | Anthropic key for an organization that stored none. Read only on an install of one organization; the other vendors' variables are in [Where an AI key comes from](secrets.md#where-an-ai-key-comes-from) |
+| `ANTHROPIC_API_KEY` | — | Anthropic key used when the organization stored none, on an install of one organization only. Other vendors' variables: [Where an AI key comes from](secrets.md#where-an-ai-key-comes-from) |
+| `ANTHROPIC_CUSTOM_HEADERS`, `OPENAI_CUSTOM_HEADERS` | — | Leave unset with `multitenancy: true`. The vendor's SDK sends these headers on every call, so while either is set, every call through that SDK is refused with `ai.server_environment_sets` |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | — | Overrides `observability.endpoint` |
 | `OTEL_SERVICE_NAME` | `provisa` | Overrides `observability.service_name` |
 | `OTEL_LOG_LEVEL` | `WARNING` | Overrides `observability.log_level` |

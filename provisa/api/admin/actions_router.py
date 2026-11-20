@@ -249,6 +249,10 @@ async def _as_source_operation(body: FunctionInput) -> "Operation | None":
     body.binding = {}
     body.materialize = False
     body.arguments = [{"name": a, "type": "json"} for a in operation.arguments]
+    # Its answer follows from the operation too: the form's empty output columns would declare
+    # it VOID (REQ-2001), which no source operation is.
+    body.outputColumns = None
+    body.returnSchema = None
     body.sourceType = None
     if operation.table is not None:
         # REQ-1986: an operation that reads rows and requires a parameter is a function returning
@@ -863,7 +867,7 @@ async def create_webhook(
     """Create a tracked webhook."""
     require_capability_request(request, "table_registration")
     # REQ-2006: a held org's webhook reaches public destinations only; refused by name.
-    sandbox_egress.require_url_allowed(body.url)
+    sandbox_egress.require_endpoint_url_allowed(body.url)
     body.domainId = _saved_domain(request, body.name, body.domainId)
     from provisa.api.app import state
 
@@ -949,7 +953,7 @@ async def update_webhook(request: Request, name: str, body: WebhookInput):  # RE
     """Update a tracked webhook by name."""
     require_capability_request(request, "table_registration")
     # REQ-2006: a held org's webhook reaches public destinations only; refused by name.
-    sandbox_egress.require_url_allowed(body.url)
+    sandbox_egress.require_endpoint_url_allowed(body.url)
     body.domainId = _saved_domain(request, name, body.domainId)
     from provisa.api.app import state
 

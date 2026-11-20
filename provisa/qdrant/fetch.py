@@ -69,10 +69,21 @@ class QdrantConnection:  # REQ-1983
 
         from provisa.security import sandbox_egress
 
-        # REQ-2006: a held org's instance is checked at each connection.
-        sandbox_egress.require_url_allowed(self.url)
-
-        return QdrantClient(url=self.url, api_key=self.api_key, prefer_grpc=self.prefer_grpc)
+        # REQ-2006: a held org's instance is checked at each connection, and connected to at the
+        # address the check resolved -- over REST and gRPC alike -- its name kept for Host and TLS.
+        url, name = sandbox_egress.pinned_url(self.url)
+        if url == self.url:
+            return QdrantClient(url=url, api_key=self.api_key, prefer_grpc=self.prefer_grpc)
+        return QdrantClient(
+            url=url,
+            api_key=self.api_key,
+            prefer_grpc=self.prefer_grpc,
+            grpc_options={
+                "grpc.ssl_target_name_override": name,
+                "grpc.default_authority": name,
+            },
+            event_hooks=sandbox_egress.named_request_hooks(name, url),
+        )
 
 
 def document(point: Any) -> dict:

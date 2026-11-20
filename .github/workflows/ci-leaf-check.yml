@@ -243,6 +243,7 @@ jobs:
             case "$jar" in trino/plugins/trino-*/trino-*.jar) ;; *) echo "unexpected: $jar"; exit 1 ;; esac
             rm "$jar"
           done
+          rm trino/plugins/provisa-functions/provisa-functions-1.jar
       - name: Restore
         id: restore
         uses: ./.github/actions/trino-plugins
@@ -255,6 +256,7 @@ jobs:
         run: |
           [ "$HIT" = "true" ]
           for jar in $JARS; do [ -s "$jar" ]; done
+          [ -s trino/plugins/provisa-functions/provisa-functions-1.jar ]
       # A key of this run's own, which nobody saved: a lane's restore fails on it.
       - name: Restore a key nobody saved
         id: miss
@@ -267,6 +269,33 @@ jobs:
         env:
           OUTCOME: ${{ steps.miss.outcome }}
         run: '[ "$OUTCOME" = "failure" ]'
+
+  # The real key, primed (a hit builds nothing; a miss builds the image from zaychik/ once and
+  # saves it), then a lane's restore of it on a runner whose image was removed: zaychik:latest is
+  # back without a build.
+  zaychik-image:
+    name: action / zaychik-image (prime, then a restore that loads the image)
+    needs: scope
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prime
+        uses: ./.github/actions/zaychik-image
+        with:
+          phase: prime
+      # A prime that hit loaded nothing; one that missed built the image here.
+      - name: Remove the local image
+        run: |
+          if docker image inspect zaychik:latest > /dev/null 2>&1; then
+            docker image rm zaychik:latest
+          fi
+      - name: Restore
+        uses: ./.github/actions/zaychik-image
+        with:
+          phase: restore
+      - name: The image is loaded
+        run: docker image inspect zaychik:latest --format '{{.Id}}'
 
   # The real key, not one of this run's own: what the action keeps is the pinned files themselves,
   # each checked against its recorded sha256, so a save from here is the entry any job would save.
@@ -386,6 +415,35 @@ jobs:
           fi
           echo "no release $TAG"
 
+  # attach-release-assets has no switch of its own either: a leg skips it with `if: inputs.publish`.
+  # Gated the same way with the condition false, it must be skipped and no release may exist.
+  attach-release-assets-off:
+    name: action / attach-release-assets (publish off)
+    needs: scope
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      TAG: v0.0.0-leafcheck.${{ github.run_id }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Attach to the draft release
+        id: attach
+        if: ${{ fromJSON('false') }}
+        uses: ./.github/actions/attach-release-assets
+        with:
+          tag: ${{ env.TAG }}
+          files: README.md
+      - name: The step was skipped and there is no such release
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          CONCLUSION: ${{ steps.attach.conclusion }}
+        run: |
+          [ "$CONCLUSION" = "skipped" ]
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            echo "::error::a release $TAG exists"; exit 1
+          fi
+          echo "no release $TAG"
+
   # Level 0 as one job: it succeeds only when every composite action's check did, and level 1
   # needs it.
   level-0:
@@ -401,9 +459,11 @@ jobs:
       - free-runner-disk
       - demo-bundle
       - trino-plugins
+      - zaychik-image
       - pyodide-downloads
       - release-metadata
       - ensure-release-off
+      - attach-release-assets-off
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -618,9 +678,11 @@ jobs:
       - free-runner-disk
       - demo-bundle
       - trino-plugins
+      - zaychik-image
       - pyodide-downloads
       - release-metadata
       - ensure-release-off
+      - attach-release-assets-off
       - lane
       - lane-fails
       - lane-results

@@ -45,6 +45,7 @@ from typing import TYPE_CHECKING, Any
 import sqlglot
 from sqlglot import exp
 
+from provisa.compiler.view_expand import view_of, view_table
 from provisa.core.read_refusal import ReadRefused
 
 if TYPE_CHECKING:
@@ -221,9 +222,13 @@ class _Lineage:
         transforms: Mapping[str, dict],
         commands: Mapping[str, dict],
     ) -> None:
+        from provisa.mv.view_read import view_names  # noqa: PLC0415
+
         self.table_map = table_map
         self.columns_of = columns_of
         self.views = views
+        # A semantic definition names a view by its domain as well as by its schema.
+        self.view_names = view_names(views, table_map)
         self.transforms = {name.lower(): command for name, command in transforms.items()}
         self.commands = {name.lower(): command for name, command in commands.items()}
 
@@ -262,8 +267,8 @@ class _Lineage:
                     scope.derived[alias] = self._command(relation, command)
                 elif not relation.db and relation.name in ctes:
                     scope.derived[alias] = ctes[relation.name]
-                elif relation.name in self.views:
-                    scope.derived[alias] = self.of_query(_parse(self.views[relation.name]), {})
+                elif (view := view_of(relation, self.views, self.view_names)) is not None:
+                    scope.derived[alias] = self.of_query(_parse(self.views[view]), {})
                 elif (table_id := table_id_of(relation, self.table_map)) is not None:
                     scope.tables[alias] = table_id
             elif isinstance(relation, exp.Subquery):
@@ -278,8 +283,8 @@ class _Lineage:
 
         inputs: set[tuple[int, str]] = set()
         for table in command_table_arguments(call, command):
-            if table.name in self.views:
-                for lineage in self.of_query(_parse(self.views[table.name]), {}).values():
+            if (view := view_of(table, self.views, self.view_names)) is not None:
+                for lineage in self.of_query(_parse(self.views[view]), {}).values():
                     inputs |= lineage
             elif (table_id := table_id_of(table, self.table_map)) is not None:
                 inputs |= {(table_id, column) for column in self.columns_of(table_id)}
@@ -375,7 +380,10 @@ def tables_read(
     from provisa.compiler.naming import table_id_of  # noqa: PLC0415
     from provisa.compiler.sql_validator import command_table_arguments  # noqa: PLC0415
 
+    from provisa.mv.view_read import view_names  # noqa: PLC0415
+
     lowered = {name.lower(): command for name, command in commands.items()}
+    names = view_names(views, table_map)
     found: set[int] = set()
     pending, seen = [definition], set()
     while pending:
@@ -384,9 +392,10 @@ def tables_read(
             table = tables.pop()
             if (command := _command_of(table, lowered)) is not None:
                 tables += command_table_arguments(table, command)
-            elif table.name in views and table.name not in seen:
-                seen.add(table.name)
-                pending.append(views[table.name])
+            elif (view := view_of(table, views, names)) is not None:
+                if view not in seen:
+                    seen.add(view)
+                    pending.append(views[view])
             elif (table_id := table_id_of(table, table_map)) is not None:
                 found.add(table_id)
     return found
@@ -658,7 +667,7 @@ async def views_to_rebuild(state: Any) -> list["MVDefinition"]:
     rules_of = roles_rules(state)
     found: list["MVDefinition"] = []
     for view in sorted(stored_reads):
-        mv = state.mv_registry.get(f"view-{view}")
+        mv = state.mv_registry.get(f"view-{view_table(view)}")
         if mv is None or mv.semantic_sql is None:
             raise RuntimeError(f"stored view {view!r} has no definition registered")
         if not mv.enabled or not builds_here(mv.region):

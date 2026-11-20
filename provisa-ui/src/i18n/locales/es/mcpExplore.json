@@ -1,11 +1,11 @@
 {
   "mcpExplore": {
     "title": "MCP",
-    "intro": "Converse con un asistente de IA que explora el catálogo y ejecuta SQL a través de las herramientas gobernadas de MCP — las mismas herramientas que usan los agentes externos.",
+    "intro": "Converse con un asistente de IA que explora el catálogo y ejecuta SQL por usted mediante las herramientas MCP gobernadas que usan los agentes externos.",
     "roleNote": "Actuando con el rol: {{role}}",
     "noRole": "(sin rol)",
     "thinking": "El asistente está trabajando…",
-    "emptyState": "Pregunte sobre sus datos — p. ej. \"¿qué tablas tienen el correo electrónico del cliente?\", \"los 10 pedidos principales por importe\" o \"¿cómo es la tabla de pedidos?\"",
+    "emptyState": "Pregunte sobre sus datos, p. ej., «¿qué tablas tienen el correo del cliente?», «los 10 pedidos de mayor importe» o «¿cómo es la tabla orders?»",
     "inputPlaceholder": "Pregunte sobre su catálogo o sus datos…",
     "clear": "Borrar entrada",
     "clearTooltip": "Descarta el borrador de la pregunta sin enviarlo. La conversación anterior se conserva.",

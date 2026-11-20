@@ -424,7 +424,15 @@ export function DataProductDetailPanel({
           <RequestsTab key={bids} productId={p.id} datasets={datasets} onLoaded={setRequests} />
         );
       case "access":
-        return <AccessSection core={core} reader={reader} />;
+        return (
+          <AccessSection
+            core={core}
+            reader={reader}
+            relationships={relationships}
+            tables={tables}
+            actingRole={actingRole}
+          />
+        );
     }
   };
 

@@ -894,14 +894,25 @@ def _named_volumes(services: list[str]) -> list[str]:
     )
     model = json.loads(config.stdout)
     declared = model.get("volumes") or {}
-    return sorted(
-        {
-            (declared.get(mount["source"]) or {}).get("name", mount["source"])
-            for service in services
-            for mount in (model["services"].get(service) or {}).get("volumes") or []
+
+    def _sources(service_model: dict) -> set[str]:
+        return {
+            mount["source"]
+            for mount in service_model.get("volumes") or []
             if mount.get("type") == "volume" and mount.get("source")
         }
-    )
+
+    own = {src for service in services for src in _sources(model["services"].get(service) or {})}
+    # A volume another service also mounts is shared state, not this service's own: the session's
+    # Trino mounts hive_warehouse beside hive-metastore and hive-server2, so removing it after a
+    # hive test fails with "volume is in use" while Trino keeps running.
+    shared = {
+        src
+        for name, service_model in model["services"].items()
+        if name not in services
+        for src in _sources(service_model)
+    }
+    return sorted((declared.get(src) or {}).get("name", src) for src in own - shared)
 
 
 @pytest.fixture

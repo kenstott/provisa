@@ -414,11 +414,14 @@ async def _fire(target: offer_hooks.HookTarget | None, body: dict) -> None:
         raise ApiError(502, "data_product.offer.hook_failed", str(failed)) from failed
 
 
-async def _reload_held(conn: Any, state: Any) -> None:
-    """What the runtime holds of the entitlement store, after a grant or removal wrote to it."""
-    from provisa.entitlements import store
+async def _reload_held(conn: Any, state: Any, principal: str) -> None:
+    """What the runtime holds of the entitlement store, after a grant or removal for
+    ``principal`` wrote to it, and their effective rows recomputed from it (REQ-2219): accepting
+    a bid grants a role and its entries, cancelling one removes them."""
+    from provisa.entitlements import effective_store, store
 
     state.held_entitlements = await store.load_held(conn)
+    await effective_store.write_person(conn, state, principal)
 
 
 @router.post("/{product_id}/offers/{offer_id}/bids")
@@ -499,7 +502,7 @@ async def _cancel(product_id: str, bid_id: int, reason: str, request: Request, s
                 await _fire(target, payload)
         except OfferRefused as refused:
             raise _refused(refused) from refused
-        await _reload_held(conn, state)
+        await _reload_held(conn, state, requester)
     return _bid_view(cancel)
 
 
@@ -565,7 +568,7 @@ async def _decide(conn: Any, state: Any, decision: offer_hooks.Decision, may: An
             if held["offer_id"] is not None:
                 await offers.set_review(conn, held["offer_id"], why)
         raise _refused(refused) from refused
-    await _reload_held(conn, state)
+    await _reload_held(conn, state, row["requester"])
     return _bid_view(row)
 
 

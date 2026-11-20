@@ -1,8 +1,8 @@
 {
   "proposalsTable": {
-    "intro": "Una fila marcada se acepta al aplicar. Las filas cuya puntuación alcanza al menos el umbral empiezan marcadas. Una fila sin ninguna casilla marcada queda sin decidir.",
+    "intro": "Una fila marcada se acepta al aplicar. Las filas que puntúan al menos el umbral empiezan marcadas. Una fila sin ninguna casilla marcada queda sin decidir.",
     "colScore": "Puntuación",
-    "colModel": "Modelo",
+    "colConfidence": "Confianza",
     "colJev": "Jev",
     "colKind": "Tipo",
     "colMeasure": "Medido",
@@ -27,17 +27,11 @@
       "invalid_shape": "No es una relación como la solicitada: falta un campo o tiene una forma incorrecta",
       "unknown_column": "Nombra una tabla o columna que la solicitud no comparó",
       "not_comparable": "Las dos columnas tienen clases distintas, así que no se comparan",
-      "below_threshold": "Puntuado por debajo del {{threshold}} % con el que se conserva una sugerencia.",
+      "below_threshold": "Puntuó por debajo del {{threshold}} % a partir del cual se conserva una sugerencia.",
       "same_column": "De una columna a sí misma",
-      "primary_key_to_primary_key": "Clave primaria a clave primaria",
-      "both_repeating": "Los valores se repiten en ambos lados, así que ninguno es el lado uno",
       "existing": "Ya registrada",
-      "pending": "Ya pendiente entre las sugerencias",
       "rejected": "Rechazada antes",
-      "matches_foreign_key": "Coincide con una clave foránea encontrada en esta ejecución",
-      "out_of_scope": "Fuera de las tablas de origen y destino elegidas",
-      "weaker": "Se conservó una propuesta más fuerte de las mismas dos columnas",
-      "many_to_many": "Ninguna de las dos columnas es una clave"
+      "out_of_scope": "Fuera de las tablas de origen y destino elegidas"
     },
     "threshold": "Marcar desde",
     "thresholdHint": "Su propio umbral, guardado para sus próximas ejecuciones.",
@@ -63,7 +57,10 @@
     },
     "dimensionMade": "Al aceptarla se crea la dimensión compartida {{name}}, a la que se unen ambas columnas.",
     "dimensionJoined": "Al aceptarla, ambas columnas se unen a la dimensión compartida {{name}}.",
+    "through": "A través de {{table}}.",
     "twoDimensions": "Sus columnas ya se unen a dos dimensiones compartidas distintas, así que no se puede aceptar.",
-    "admittedOnKeyValues": "Admitido porque los valores clave coinciden en los datos; la medida se muestra junto a la confianza del modelo."
+    "admittedOnKeyValues": "Admitido porque los valores clave coinciden en los datos; la medida se muestra junto a la confianza del modelo.",
+    "hiddenByFilter_one": "El filtro oculta {{count}} fila.",
+    "hiddenByFilter_other": "El filtro oculta {{count}} filas."
   }
 }

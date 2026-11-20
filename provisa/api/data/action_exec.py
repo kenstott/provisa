@@ -88,6 +88,35 @@ def _record_call(name: str, args: dict, state, role_id: str) -> None:
     )
 
 
+def _statement_failed(fn: dict, exc: Exception) -> ApiError | None:
+    """The error a statement command answers when its statement fails in the engine or a source:
+    a 500 naming the command and the cause (``functions.statement_failed``), never the catch-all's
+    bare "Internal server error". None for a failure answered by its own handler: a refusal or an
+    error with its own code (a governance or parameter refusal, a read refused, a replica still
+    building), the request's deadline, a resource error."""
+    from provisa.core.read_refusal import ReadRefused
+    from provisa.federation.replica_state import ReplicaBuilding
+
+    answered = (
+        PermissionError,
+        ReadRefused,
+        ReplicaBuilding,
+        TimeoutError,
+        MemoryError,
+        ConnectionError,
+    )
+    if isinstance(exc, answered) or isinstance(getattr(exc, "code", None), str):
+        return None
+    name = fn["name"]
+    return ApiError(
+        500,
+        "functions.statement_failed",
+        f"Command {name!r} failed: {exc}",
+        name=name,
+        error=str(exc),
+    )
+
+
 async def _run_recorded(fn: dict, args: dict, state, role_id: str) -> list[dict]:  # REQ-2001
     """A statement command's run and its provenance record: enough to prove what produced the
     rows -- the statement as registered, its hash and contract version, the bound argument
@@ -114,6 +143,12 @@ async def _run_recorded(fn: dict, args: dict, state, role_id: str) -> list[dict]
     except ApiError as exc:
         status = exc.status_code
         raise
+    except Exception as exc:  # allow-ble: request boundary -- a statement command's failure is answered by name, as a query's is (endpoint._executed)
+        failed = _statement_failed(fn, exc)
+        if failed is None:
+            raise
+        status = failed.status_code
+        raise failed from exc
     finally:
         facts = RUN_FACTS.get()
         RUN_FACTS.reset(token)
@@ -541,7 +576,7 @@ async def _invoke_webhook(
     timeout = wh["timeout_ms"] / 1000
     # REQ-2006: a held org's webhook reaches public destinations only, each hop checked.
     async with httpx.AsyncClient(
-        timeout=timeout, event_hooks=sandbox_egress.http_event_hooks()
+        timeout=timeout, event_hooks=sandbox_egress.endpoint_event_hooks()
     ) as client:
         # The URL is kept as written; an environment or secret reference in it is resolved here.
         url = resolve_secrets(wh["url"])

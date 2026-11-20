@@ -17,14 +17,14 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import userEvent from "@testing-library/user-event";
-import { render, screen, waitFor } from "../../test-utils/render";
+import { render, screen, waitFor, within } from "../../test-utils/render";
 
 // REQ-2127: the list and the panel core are read from the meta domain; the reads are held by
 // their own tests (productCore.test.ts).
 vi.mock("../data-products/useProductCore", () => ({
   useMetaProducts: () => ({
-    data: products,
-    unreadable: false,
+    data: metaRead.unreadable ? null : products,
+    unreadable: metaRead.unreadable,
     error: null,
     loading: false,
     reload: vi.fn(),
@@ -80,6 +80,9 @@ vi.mock("../data-products/DataProductDetailPanel", () => ({
     <div data-testid="detail-panel">{p.id}</div>
   ),
 }));
+
+// Whether the acting role reads the meta domain's product list.
+const metaRead = vi.hoisted(() => ({ unreadable: false }));
 
 // REQ-2146: Pet Health has a finding; Workforce Ops has none.
 const FINDINGS = new Map([
@@ -179,6 +182,15 @@ const listed = () =>
 /** The facet's input, named as the list's tag filter. */
 const facet = () => screen.getByRole("textbox", { name: "Tags" });
 
+/** The options of the dropdown ``input`` controls; each facet keeps its own list. */
+const optionsOf = (input: HTMLElement) => {
+  const list = document.getElementById(input.getAttribute("aria-controls") ?? "");
+  expect(list).not.toBeNull();
+  return within(list as HTMLElement)
+    .getAllByRole("option", { hidden: true })
+    .map((o) => o.textContent);
+};
+
 /** Picks ``tag`` in the list's tag facet. */
 async function pick(tag: string) {
   await userEvent.click(facet());
@@ -186,14 +198,17 @@ async function pick(tag: string) {
 }
 
 describe("the Data Products list's tag facet", () => {
-  beforeEach(() => localStorage.clear());
+  beforeEach(() => {
+    localStorage.clear();
+    metaRead.unreadable = false;
+  });
 
   it("offers every tag a product carries, parameterized ones included, and no other", async () => {
     render(<DataProductsPage />, { initialEntries: ["/data-products"] });
     await waitFor(() => expect(listed()).toHaveLength(3));
     await userEvent.click(facet());
     await screen.findByRole("option", { name: "risk:high", hidden: true });
-    expect(screen.getAllByRole("option", { hidden: true }).map((o) => o.textContent)).toEqual([
+    expect(optionsOf(facet())).toEqual([
       "residency:eu",
       "risk:high",
     ]);
@@ -206,5 +221,75 @@ describe("the Data Products list's tag facet", () => {
     expect(listed()).toEqual(["eu_customers", "pet_health"]);
     await pick("residency:eu");
     expect(listed()).toEqual(["eu_customers"]);
+  });
+});
+
+/** The domain facet's input. */
+const domainFacet = () => screen.getByRole("textbox", { name: "Domains" });
+
+/** Picks ``domain`` in the list's domain facet. */
+async function pickDomain(domain: string) {
+  await userEvent.click(domainFacet());
+  await userEvent.click(await screen.findByRole("option", { name: domain, hidden: true }));
+}
+
+describe("the Data Products list's domain facet", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    metaRead.unreadable = false;
+  });
+
+  it("offers the domain of every product listed, and no other", async () => {
+    render(<DataProductsPage />, { initialEntries: ["/data-products"] });
+    await waitFor(() => expect(listed()).toHaveLength(3));
+    await userEvent.click(domainFacet());
+    await screen.findByRole("option", { name: "care", hidden: true });
+    expect(optionsOf(domainFacet())).toEqual([
+      "care",
+      "ops",
+      "sales",
+    ]);
+  });
+
+  it("narrows the list to the products of the domains chosen", async () => {
+    render(<DataProductsPage />, { initialEntries: ["/data-products"] });
+    await waitFor(() => expect(listed()).toHaveLength(3));
+    await pickDomain("care");
+    expect(listed()).toEqual(["pet_health"]);
+    await pickDomain("ops");
+    expect(listed()).toEqual(["pet_health", "workforce_ops"]);
+  });
+
+  it("composes with the tag facet", async () => {
+    render(<DataProductsPage />, { initialEntries: ["/data-products"] });
+    await waitFor(() => expect(listed()).toHaveLength(3));
+    await pick("risk:high");
+    expect(listed()).toEqual(["eu_customers", "pet_health"]);
+    await pickDomain("sales");
+    expect(listed()).toEqual(["eu_customers"]);
+  });
+
+  it("composes with the text filter", async () => {
+    render(<DataProductsPage />, { initialEntries: ["/data-products?search=pet"] });
+    await waitFor(() => expect(listed()).toEqual(["pet_health"]));
+    await pickDomain("ops");
+    expect(listed()).toEqual([]);
+    expect(screen.getByTestId("data-products-empty")).toHaveTextContent(
+      "No data products match the filters",
+    );
+  });
+});
+
+describe("the Data Products list's empty text", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    metaRead.unreadable = false;
+  });
+
+  it("says nothing of products existing when the role cannot read them", async () => {
+    metaRead.unreadable = true;
+    render(<DataProductsPage />, { initialEntries: ["/data-products"] });
+    await screen.findByTestId("data-products-unreadable");
+    expect(screen.queryByTestId("data-products-empty")).toBeNull();
   });
 });

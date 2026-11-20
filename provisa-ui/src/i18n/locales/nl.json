@@ -101,6 +101,6 @@
   },
   "pageError": {
     "title": "Deze pagina kon niet worden weergegeven",
-    "body": "Er ging iets mis bij het renderen. De rest van de app werkt nog: ga naar een andere pagina of laad deze opnieuw."
+    "body": "Er ging iets mis bij het renderen. De rest van de app werkt nog, dus ga naar een andere pagina of laad deze opnieuw."
   }
 }

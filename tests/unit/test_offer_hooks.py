@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from datetime import UTC, datetime
 from types import SimpleNamespace
 
 import httpx
@@ -238,3 +239,40 @@ def test_a_dataset_with_no_profiler_has_no_profile():
             )
 
     assert asyncio.run(offer_profiles.latest(Conn(), None, 1, frozenset({"viewer"}))) is None
+
+
+def test_an_expiry_cancel_names_the_grant_or_entry_with_an_id_the_same_on_every_send():
+    """REQ-2219, AN EXPIRY IS A CANCEL THROUGH THE HOOK: "cancel this grant, expired" names what
+    reached its date, not a bid, and a repeat of it is the same request."""
+    at = datetime(2026, 12, 31, tzinfo=UTC)
+    grant = offer_hooks.Expiring("ada", "viewer", at, domain="sales")
+    entry = offer_hooks.Expiring(
+        "ada", "viewer", at, rule="r1", ends={"*": ("finance.b", "finance.a")}, reason="contract"
+    )
+    cancel = offer_hooks.expiry_cancel(grant)
+    assert cancel == {
+        "id": cancel["id"],
+        "kind": "cancel",
+        "reason": "expired",
+        "grant": {"principal": "ada", "role": "viewer", "domain": "sales"},
+        "ends_at": at.isoformat(),
+    }
+    assert offer_hooks.expiry_cancel(grant)["id"] == cancel["id"]
+    event = offer_hooks.expiry_event("expired", entry)
+    assert event["entry"] == {
+        "principal": "ada",
+        "role": "viewer",
+        "rule": "r1",
+        "ends": {"*": ["finance.a", "finance.b"]},
+    }
+    assert event["reason"] == "contract"
+    ids = {
+        cancel["id"],
+        event["id"],
+        offer_hooks.expiry_cancel(entry)["id"],
+        offer_hooks.expiry_event("expiring_soon", entry)["id"],
+        offer_hooks.expiry_cancel(
+            offer_hooks.Expiring("ada", "viewer", at.replace(day=30), domain="sales")
+        )["id"],
+    }
+    assert len(ids) == 5

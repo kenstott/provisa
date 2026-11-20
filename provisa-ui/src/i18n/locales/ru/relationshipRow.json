@@ -48,6 +48,25 @@
     "changeResolver": "Изменить резолвер кода",
     "retireResolver": "Вывести резолвер кода из обращения",
     "retireResolverTitle": "Вывести резолвер кода {{resolver}} из обращения?",
-    "retireResolverConsequence": "Его представление совпадений и три связи выводятся из обращения вместе. Их имена остаются занятыми."
+    "retireResolverConsequence": "Его представление совпадений и три связи выводятся из обращения вместе. Их имена остаются занятыми.",
+    "queryLinks": {
+      "heading": "Запросить",
+      "cypher": "Прочитать {{name}} в Cypher",
+      "sql": "Прочитать {{name}} в SQL",
+      "sparql": "Прочитать {{name}} в SPARQL",
+      "graphql": "Прочитать {{name}} в GraphQL",
+      "rest": "Прочитать {{name}} в REST",
+      "grpc": "Прочитать {{name}} в gRPC",
+      "jsonapi": "Прочитать {{name}} в JSON:API",
+      "surfaces": {
+        "cypher": "Cypher",
+        "sql": "SQL",
+        "sparql": "SPARQL",
+        "graphql": "GraphQL",
+        "rest": "REST",
+        "grpc": "gRPC",
+        "jsonapi": "JSON:API"
+      }
+    }
   }
 }

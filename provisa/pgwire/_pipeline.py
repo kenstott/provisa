@@ -773,16 +773,21 @@ def _kept_span_attrs(
     return dict(attrs) if attrs is not None else None
 
 
-def _kept_refs_view(memo: dict[str, Any], governed_sql: str, view_map: dict) -> bool:
-    """Whether the governed statement names a ``__derived__`` view of this view map."""
+def _kept_refs_view(memo: dict[str, Any], governed_sql: str, view_map: dict, gov: Any) -> bool:
+    """Whether the governed statement names a ``__derived__`` view of this view map, under any
+    name the reader's governance ``gov`` reads the view by."""
     kept = memo.get("refs_view")
     if kept is not None and kept[0] is view_map:
         return kept[1]
     import sqlglot
     import sqlglot.expressions as exp
 
+    from provisa.compiler.view_expand import view_of
+    from provisa.mv.view_read import view_names
+
+    names = view_names(view_map, gov.table_map)
     refs = any(
-        t.name in view_map
+        view_of(t, view_map, names) is not None
         for t in sqlglot.parse_one(governed_sql, read="postgres").find_all(exp.Table)
     )
     memo["refs_view"] = (view_map, refs)
@@ -1063,7 +1068,7 @@ def _reject_physical_source_refs(parsed: Any, state: Any) -> None:
             )
 
 
-def _reject_view_writes(parsed: Any, state: Any) -> None:
+def _reject_view_writes(parsed: Any, state: Any, gov: Any) -> None:
     """REQ-1157: a ``view_sql`` / MV-backed relation is DERIVED, not a base table, and is query-only.
 
     Reject any INSERT / UPSERT (INSERT ... ON CONFLICT) / UPDATE / DELETE / MERGE whose TARGET is such
@@ -1077,14 +1082,16 @@ def _reject_view_writes(parsed: Any, state: Any) -> None:
     view_map = getattr(state, "view_sql_map", None)
     if not view_map:
         return
+    from provisa.compiler.view_expand import view_of
     from provisa.compiler.write_admission import target_table, the_write
+    from provisa.mv.view_read import view_names
 
     # REQ-039: a write wherever it stands in the statement, a data-modifying CTE included.
     write = the_write(parsed)
     if write is None:
         return
     tbl = target_table(write)
-    if tbl is not None and tbl.name in view_map:
+    if tbl is not None and view_of(tbl, view_map, view_names(view_map, gov.table_map)) is not None:
         op = type(write).__name__.upper()
         raise PermissionError(
             f"{op} into {tbl.name!r} is not allowed: it is a view/MV-backed relation and is query-only"
@@ -1791,7 +1798,7 @@ async def _entitlement_statement(sql: str, tree: Any, gov_ctx: Any, state: Any) 
         return tree
     from provisa.mv.view_read import statement_as_read
 
-    expanded = statement_as_read(sql, view_map, state)
+    expanded = statement_as_read(sql, view_map, state, gov_ctx)
     return await _off_loop(lambda: sqlglot.parse_one(expanded, read="postgres"))
 
 
@@ -1824,7 +1831,8 @@ async def govern_statement(
     """Stage one of the one pipeline: parse, validate and apply governance. Value-independent.
 
     ``product_statement`` (REQ-603): the statement is one the product wrote for its own work --
-    the profiler's read of a table, which pairs the table with itself -- not a role's query. The
+    the profiler's read of a table, which pairs the table with itself, or discovery's key value
+    overlap join count of a candidate pair, which has no relationship yet -- not a role's query. The
     relationship guard is about what a role's query may relate, so it is not held on it; every
     other check is. Stated by the product's own call site, as a GraphQL-built statement states
     ``sdl_joins``; no surface that carries a caller's SQL passes it."""
@@ -1954,7 +1962,8 @@ async def govern_statement(
             _metric_semantic_sql = normalized_sql
 
     _reject_physical_source_refs(_parsed_input, state)
-    _reject_view_writes(_parsed_input, state)  # REQ-1157: view/MV-backed relations are query-only
+    # REQ-1157: view/MV-backed relations are query-only
+    _reject_view_writes(_parsed_input, state, _governance())
     # REQ-1529: and a branch writes only through a binding whose supplier admits it.
     await _reject_unbound_writes(_parsed_input, state)
 
@@ -2044,7 +2053,9 @@ async def govern_statement(
             try:
                 # REQ-1882: off-loaded, same rationale as prepare_front_end's parse.
                 # Read as validate_sql reads it: ``explode`` is no unnest (client_table_function).
-                parsed_tree = await _off_loop(lambda: sqlglot.parse_one(_validated_sql, read=READ))
+                from provisa.compiler.view_expand import parse_marked
+
+                parsed_tree = await _off_loop(lambda: parse_marked(_validated_sql, read=READ))
                 _statement_ctes = (
                     {c.alias for c in parsed_tree.find_all(exp.CTE)} if _table_functions else set()
                 )
@@ -2074,9 +2085,13 @@ async def govern_statement(
             except Exception as exc:
                 # SECURITY: never skip the domain-access check on a parse/lookup error — fail closed.
                 await write_denial(sql, role_id, _parsed_input, gov_ctx, state)
+                from provisa.compiler.view_expand import without_marks
+
+                # REQ-039: the statement checked is marked; the mark never leaves the server.
                 raise PermissionError(
-                    f"Domain-access check could not be evaluated for role {role_id!r}: {exc}"
-                ) from exc
+                    f"Domain-access check could not be evaluated for role {role_id!r}: "
+                    f"{without_marks(str(exc))}"
+                ) from None
 
         if violations:
             from provisa.compiler.sql_validator import GovernanceRefused
@@ -2089,6 +2104,11 @@ async def govern_statement(
     from provisa.audit.pipeline import resolve_table_ids
 
     _table_ids = tuple(resolve_table_ids(_parsed_input, gov_ctx))  # REQ-1897
+    # REQ-2253: an AI-assisted call reads only the domains selected in the domain filter. Asked
+    # per call, outside the governed-statement cache: the selection is not part of its key.
+    from provisa.security.selected_domains import refuse_outside
+
+    refuse_outside(state, _table_ids)
 
     # REQ-272: apply_governance enforces full Stage-2 governance on this SQL path — RLS,
     # masking, visibility, and the role row-cap ceiling (gov_ctx carries the role, so
@@ -3174,7 +3194,7 @@ async def route_governed(
     # goes to the engine, where its rows are put in (see _govern_and_route_compiled).
     _view_map = getattr(state, "view_sql_map", None)
     if _view_map and decision.route != Route.ENGINE:
-        if _kept_refs_view(governed.memo, governed_semantic, _view_map):
+        if _kept_refs_view(governed.memo, governed_semantic, _view_map, gov_ctx):
             from provisa.transpiler.router import RouteDecision
 
             decision = RouteDecision(
@@ -3373,7 +3393,11 @@ async def route_governed(
         # ref is source-less so it survives the rewrites unchanged and still matches its key.
         if _view_map:
             from provisa.compiler.view_expand import expand_view_refs
-            from provisa.mv.view_read import read_views_at, unnarrowed_view_bodies
+            from provisa.mv.view_read import (
+                lowered_view_catalog,
+                read_views_at,
+                unnarrowed_view_bodies,
+            )
 
             # REQ-1163: a bitemporal view reference that says its own time is read at it; the
             # rest at the request's.
@@ -3381,6 +3405,8 @@ async def route_governed(
             _qualified = expand_view_refs(
                 _qualified,
                 unnarrowed_view_bodies(_qualified, _view_map, state, as_of=_travel.default),
+                # Lowered: its views are named under the org's derived catalog (REQ-1266).
+                view_catalog=lowered_view_catalog(state),
             )
             # View bodies are stored in semantic form; after expansion, lower any
             # newly-introduced semantic refs to catalog-physical (same pass the outer SQL
@@ -5885,7 +5911,6 @@ async def _govern_compiled(
 
             trace_stage("metric.expand", sql)
 
-    _reject_view_writes(_compiled_tree, state)  # REQ-1157: views are query-only
     await _reject_unbound_writes(_compiled_tree, state)  # REQ-1491
 
     from provisa.security.rights import require_role
@@ -5898,6 +5923,8 @@ async def _govern_compiled(
     ctx = surface.context
 
     gov_ctx = role_governance(state, surface, role_id)
+    # REQ-1157: views are query-only, under any name the reader's governance reads one by.
+    _reject_view_writes(_compiled_tree, state, gov_ctx)
     # REQ-1163: a GraphQL field's as_of/as_recorded are compiled onto its relation's reference
     # (the SQL call form); lifted here, as on the raw-SQL stage, each reference is read at its
     # own time.
@@ -5933,7 +5960,9 @@ async def _govern_compiled(
 
         from provisa.compiler.stage2 import unmark_views
 
-        _views = views_read(sql, _view_map)
+        from provisa.mv.view_read import view_names
+
+        _views = views_read(sql, _view_map, view_names(_view_map, gov_ctx.table_map))
         # REQ-039: governance reads each view body as marked; every other use reads it unmarked.
         _marked_sql, _validated_sql = semantic_statement(sql, _view_map, state, gov_ctx)
         sql = unmark_views(_marked_sql)
@@ -6086,6 +6115,10 @@ async def _route_compiled(
 
     _compiled_tree = compiled_tree
     _table_ids = table_ids
+    # REQ-2253: as on the raw-SQL path -- per call, since the governed half is kept and reused.
+    from provisa.security.selected_domains import refuse_outside
+
+    refuse_outside(state, _table_ids)
     _audit = audit
     _cache_hint = cache_hint
     # A write on a compiled surface (a GraphQL mutation, a Cypher write over HTTP or Bolt) ends
@@ -6202,7 +6235,11 @@ async def _route_compiled(
     _view_map = getattr(state, "view_sql_map", None)
     if _view_map:
         from provisa.compiler.view_expand import expand_view_refs
-        from provisa.mv.view_read import read_views_at, unnarrowed_view_bodies
+        from provisa.mv.view_read import (
+            lowered_view_catalog,
+            read_views_at,
+            unnarrowed_view_bodies,
+        )
 
         # Optimization, as on the raw-SQL stage: a view governance kept as its reference is
         # answered here (REQ-1163: a bitemporal view is read at its reference's time, else the
@@ -6211,6 +6248,8 @@ async def _route_compiled(
         _exec_sql = expand_view_refs(
             _exec_sql,
             unnarrowed_view_bodies(_exec_sql, _view_map, state, as_of=travel.default),
+            # Lowered: its views are named under the org's derived catalog (REQ-1266).
+            view_catalog=lowered_view_catalog(state),
         )
     # REQ-2109: a table updated in place is read from its version log at its reference's time.
     from provisa.mv.bitemporal_capture import read_logs
@@ -6297,7 +6336,7 @@ async def _route_compiled(
     # here; no source's driver knows it, and its rows are put in at optimization. It goes to the
     # engine, as on _govern_and_route (the raw-SQL/pgwire path).
     if _view_map and decision.route != Route.ENGINE:
-        if _kept_refs_view(memo, governed_sql, _view_map):
+        if _kept_refs_view(memo, governed_sql, _view_map, gov_ctx):
             from provisa.transpiler.router import RouteDecision
 
             decision = RouteDecision(

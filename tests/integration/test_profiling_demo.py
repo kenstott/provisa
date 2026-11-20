@@ -220,3 +220,59 @@ def test_each_tour_statement_answers_rows_as_role_all(server, step):
     )
     assert resp.status_code == 200, f"{every}: HTTP {resp.status_code}: {resp.text}"
     assert resp.json()["data"]["sql"], f"{step['key']} as {every}: no rows"
+
+
+def _step_sql(key: str) -> str:
+    return next(s["sql"] for s in _TOUR if s["key"] == key)
+
+
+def test_each_profile_run_says_how_it_went(server):
+    runs = query(server, _step_sql("profilingRuns"))
+    assert runs, "no profile run"
+    assert all(r["status"] for r in runs), runs
+
+
+def test_the_first_example_query_answers_one_row_per_customers_column(server):
+    """The demo's first query, the one a visitor's explorer opens on: one row per column of the
+    customers table the runs measured (db/init.sql: 10 columns)."""
+    text = (_DEMO / "queries" / "1-customer-columns.graphql").read_text()
+    resp = _post(server, "/data/graphql", {"query": text})
+    assert resp.status_code == 200, resp.text
+    [rows] = resp.json()["data"].values()
+    assert len(rows) == 10, rows
+
+
+def test_the_second_run_finds_only_the_column_setup_changed_drifting(server):
+    """REQ-2052: between setup's two runs setup_drift.py writes every US postal code as ZIP+4. A
+    measure relating postal_code to another column moves with it; one describing columns without
+    postal_code is of data setup left alone. A table's measures describe no column."""
+    import json
+
+    assert query(server, _step_sql("profilingDrift")), "the latest run flags nothing drifting"
+    drifting = query(
+        server,
+        'SELECT d.scope, d.column_name, d.involved_columns FROM "harbor"."customer_drift" AS d '
+        'WHERE d.drifting AND d.run_time = (SELECT MAX(p.run_time) FROM "harbor"."customer_drift" AS p)',
+    )
+    described = [json.loads(r["involved_columns"]) for r in drifting]
+    assert all("postal_code" in cols for cols in described if cols), drifting
+    columns = {r["column_name"] for r in drifting if r["scope"] in ("column", "category")}
+    assert columns == {"postal_code"}, drifting
+
+
+def test_the_synthetic_environment_answers_with_generated_customers_only(server):
+    """The tour's switch to synthetic: the same statement answers rows generated from the
+    profile, none of them a real customer's."""
+    sql = _step_sql("profilingSynthetic")
+    real = query(server, _step_sql("profilingOriginal"))
+    resp = httpx.post(
+        f"{server.base_url}/data/sql",
+        json={"sql": sql},
+        headers={"X-Provisa-Role": _ROLE, "x-provisa-env": "synthetic"},
+        timeout=900,
+    )
+    assert resp.status_code == 200, resp.text
+    generated = resp.json()["data"]["sql"]
+    assert real and generated
+    assert set(generated[0]) == set(real[0])
+    assert not {tuple(r.values()) for r in generated} & {tuple(r.values()) for r in real}

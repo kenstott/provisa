@@ -48,6 +48,25 @@
     "changeResolver": "שינוי מפענח קוד",
     "retireResolver": "הוצאת מפענח קוד משימוש",
     "retireResolverTitle": "להוציא משימוש את מפענח הקוד {{resolver}}?",
-    "retireResolverConsequence": "תצוגת ההתאמות שלו ושלושת הקשרים שלו מוצאים משימוש יחד. השמות שלהם נשארים תפוסים."
+    "retireResolverConsequence": "תצוגת ההתאמות שלו ושלושת הקשרים שלו מוצאים משימוש יחד. השמות שלהם נשארים תפוסים.",
+    "queryLinks": {
+      "heading": "שאילתה",
+      "cypher": "קריאת {{name}} ב-Cypher",
+      "sql": "קריאת {{name}} ב-SQL",
+      "sparql": "קריאת {{name}} ב-SPARQL",
+      "graphql": "קריאת {{name}} ב-GraphQL",
+      "rest": "קריאת {{name}} ב-REST",
+      "grpc": "קריאת {{name}} ב-gRPC",
+      "jsonapi": "קריאת {{name}} ב-JSON:API",
+      "surfaces": {
+        "cypher": "Cypher",
+        "sql": "SQL",
+        "sparql": "SPARQL",
+        "graphql": "GraphQL",
+        "rest": "REST",
+        "grpc": "gRPC",
+        "jsonapi": "JSON:API"
+      }
+    }
   }
 }

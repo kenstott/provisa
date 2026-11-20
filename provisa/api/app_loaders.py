@@ -88,6 +88,25 @@ _META_TABLE_ALIAS: dict[str, str] = {
 }
 
 
+def physical_table_map(
+    *control_plane_aliases: dict[str, str],
+    kafka_physical: dict[tuple[str, str], str] | None,
+) -> dict[tuple[str, str], str]:
+    """The relation each registered table is read as, keyed by (source_id, table name): each
+    control-plane alias for the control plane's own source only, and each Kafka virtual table
+    for its own source. A table of the same name on another source is read as registered: a
+    user table ``requests`` is never answered from ``requests_ops`` (REQ-884)."""
+    from provisa.core.models import ADMIN_SOURCE_ID
+
+    out = {
+        (ADMIN_SOURCE_ID, table): view
+        for aliases in control_plane_aliases
+        for table, view in aliases.items()
+    }
+    out.update(kafka_physical or {})
+    return out
+
+
 def configure_encryption_and_secrets(raw_config: dict) -> None:
     """Install the process-wide EncryptionService and select the secrets service, from config.
 
@@ -262,7 +281,7 @@ def _process_kafka_sources(
                 state.kafka_windows[source_id] = window
 
             state.kafka_table_physical = getattr(state, "kafka_table_physical", {})
-            state.kafka_table_physical[gql_table_name] = physical_table
+            state.kafka_table_physical[(source_id, gql_table_name)] = physical_table
 
 
 def fixed_catalog_for_engine(state: "AppState") -> str | None:
@@ -587,7 +606,12 @@ async def _load_openapi_specs() -> None:
             dict(_r._mapping)
             for _r in (
                 await conn.execute_core(
-                    select(_sources_t.c.id, _sources_t.c.path, _sources_t.c.mapping).where(
+                    select(
+                        _sources_t.c.id,
+                        _sources_t.c.path,
+                        _sources_t.c.mapping,
+                        _sources_t.c.brand_setup,
+                    ).where(
                         _sources_t.c.type == "openapi",
                         _sources_t.c.path.is_not(None),
                         _sources_t.c.path != "",
@@ -654,6 +678,7 @@ async def _load_openapi_specs() -> None:
                 "base_url": _base_url,
                 "domain_id": "",
                 "cache_ttl": 300,
+                "setup": _row["brand_setup"],  # REQ-2265: what a brand's setup was given
             }
 
 
@@ -2061,7 +2086,7 @@ def role_build_inputs(
     naming_rules: list[dict],
     domains: list[dict],
     domain_prefix: bool,
-    kafka_physical: dict,
+    kafka_physical: dict[tuple[str, str], str],
     tracked_functions: list[dict],
     tracked_webhooks: list[dict],
     gql_object_cols: dict,
@@ -2091,12 +2116,12 @@ def role_build_inputs(
         "naming_rules": naming_rules,
         "domains": domains,
         "domain_prefix": domain_prefix,
-        "physical_table_map": {
-            **_META_TABLE_ALIAS,
-            **ONTOLOGY_TABLE_ALIAS,
-            **_OPS_LOG_TABLE_ALIAS,
-            **(kafka_physical or {}),
-        },
+        "physical_table_map": physical_table_map(
+            _META_TABLE_ALIAS,
+            ONTOLOGY_TABLE_ALIAS,
+            _OPS_LOG_TABLE_ALIAS,
+            kafka_physical=kafka_physical,
+        ),
         "functions": tracked_functions,
         "webhooks": tracked_webhooks,
         "gql_object_columns": gql_object_cols,
@@ -2180,7 +2205,7 @@ def _build_and_register_schemas(  # REQ-016, REQ-021, REQ-038, REQ-041, REQ-221,
     naming_rules: list[dict],
     domains: list[dict],
     domain_prefix: bool,
-    kafka_physical: dict,
+    kafka_physical: dict[tuple[str, str], str],
     tracked_functions: list[dict],
     tracked_webhooks: list[dict],
     gql_object_cols: dict,

@@ -58,7 +58,11 @@ import { useRegionChoices } from "../hooks/useRegionQueries";
 import { ListTable, ListHead, ListRow, ListItems } from "../components/list/ListTable";
 import { useListSortGroup, type ListColumn } from "../components/list/useListSortGroup";
 import { PanelActions, SplitPane } from "../components/list/SplitPane";
-import { derivedId, readDerivedId, useDetailParam } from "../components/list/useDetailParam";
+import {
+  derivedId,
+  readDerivedId,
+  useRememberedDetail,
+} from "../components/list/useDetailParam";
 import { PanelDelete } from "../components/list/PanelDelete";
 import { PanelDuplicate } from "../components/list/PanelDuplicate";
 import { serverMessage } from "../i18n/serverMessage";
@@ -120,7 +124,8 @@ export function SecurityRolesPage() {
   const [showRoleForm, setShowRoleForm] = useState(false);
   const [roleForm, setRoleForm] = useState(EMPTY_ROLE);
   // REQ-2241: `?role=<id>&section=<tab>` is the open role's panel and its tab.
-  const detail = useDetailParam("roles");
+  // REQ-2260: and the one left open (a role or a derived role) is open again on coming back.
+  const detail = useRememberedDetail("roles", loading ? null : roles.map((r) => r.id));
   const expandedRole = detail.id;
   const setExpandedRole = (id: string | null) => (id === null ? detail.close() : detail.open(id));
   const [editingRoleInRow, setEditingRoleInRow] = useState<string | null>(null);
@@ -134,7 +139,15 @@ export function SecurityRolesPage() {
     description: string;
   } | null>(null);
   // REQ-2241: `?derived=<attribute>:<value>` is the open derived role's panel (derivedId).
-  const derivedDetail = useDetailParam("derived");
+  const derivedDetail = useRememberedDetail(
+    "derived",
+    derived === null
+      ? null
+      : derived.roles.flatMap((d) => [
+          derivedId(d.attribute, null),
+          ...d.values.map((v) => derivedId(d.attribute, v)),
+        ]),
+  );
   const derivedPick: DerivedPick | null =
     derivedDetail.id === null ? null : readDerivedId(derivedDetail.id);
   const setDerivedPick = (pick: DerivedPick | null) =>

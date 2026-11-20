@@ -641,17 +641,23 @@ Return the acting org's AI-model assignments, vector-model registry, and NL rate
 ```json
 {
   "ai_models": {
-    "nl": "claude-3-5-sonnet-20241022",
-    "embedding": "text-embedding-3-small"
+    "relationship_inference": {"vendor": "anthropic", "model": "claude-sonnet-4-5"},
+    "sql_generation": "...",
+    "...": "..."
   },
+  "model_limits": {"anthropic": {"claude-sonnet-4-5": {...}}},
   "vector_models": [...],
+  "ai_endpoints": [...],
   "nl": {"rate_limit": 20},
-  "api_keys_set": {"anthropic": true, "openai": false},
-  "deployment_keys": true
+  "api_keys_set": {"anthropic": true, "openai": false, "jev": false},
+  "deployment_keys": true,
+  "restart_required_note": "AI model settings apply to this org and take effect on the next query."
 }
 ```
 
-API keys are never sent back. `api_keys_set` says only whether each vendor has a key configured. `deployment_keys` is `true` on an install of one organization, where a vendor with no key set falls back to the deployment's environment variable. On a server of many organizations it is `false`. See [Where an AI key comes from](secrets.md#where-an-ai-key-comes-from). Changes apply from the next request, with no restart.
+`ai_models` has one entry per role: `table_description`, `column_description`, `relationship_inference`, `sql_generation`, `table_selection`, `mcp_chat` and `glossary_term_finding`. Each entry is a model name, or an object with `vendor`, `model` and an optional `fallback`. The model id in the example is illustrative.
+
+API keys are never sent back. `api_keys_set` says only whether the org stored a key for each vendor and for Jev. A key the deployment's environment supplies is not counted. `deployment_keys` is `true` on an install of one organization, where a vendor with no key set falls back to the deployment's environment variable. On a server of many organizations it is `false`. See [Where an AI key comes from](secrets.md#where-an-ai-key-comes-from). Changes apply from the next request, with no restart.
 
 #### `PUT /admin/ai-models`
 
@@ -663,7 +669,16 @@ Return the model names a vendor currently serves, for the model picker.
 
 The list is read live from the vendor's own list-models API, with the same key the org's calls to that vendor use ([Where an AI key comes from](secrets.md#where-an-ai-key-comes-from)). A model released after this build shipped can be selected the same day the vendor starts serving it.
 
-Returns `400` when the vendor publishes no list-models API; enter the model name directly in that case. Returns `409` with code `ai.key_required` when there is no key to use.
+`{vendor}` may also be the id of one of your enabled AI endpoints. Its models are then read from the endpoint's own address, with the endpoint's key.
+
+| Status | Code | When |
+|---|---|---|
+| `400` | `ai_models.vendor_has_no_model_api` | The vendor publishes no list-models API and no enabled endpoint has that id. Enter the model name directly |
+| `409` | `ai.key_required` | There is no key to use for the vendor |
+| `409` | `ai.endpoint_key_unset` | The endpoint's key resolves to nothing |
+| `409` | `ai.endpoint_key_from_server`, `ai.endpoint_address_from_server` | On a server of many organizations, the endpoint's key or address comes from the server's environment |
+| `502` | `ai_models.vendor_list_failed` | The vendor rejected the listing with an HTTP error |
+| `502` | `ai_models.vendor_unreachable` | The vendor could not be reached |
 
 ---
 
@@ -772,7 +787,14 @@ Run relationship discovery while you wait. The run is stored like one started fr
 
 `scope` is one of `"table"`, `"domain"` or `"cross-domain"`. A `"table"` scope compares the tables of that table's domain and needs `table_id` (integer). A `"domain"` scope needs `domain_id`. A `"cross-domain"` scope compares the tables of every domain. To compare chosen domains or tables, start a run with `POST /admin/discover/runs`.
 
-A field not named here is refused with `422`.
+The caller needs the `create_relationship` capability.
+
+| Status | Code | When |
+|---|---|---|
+| `400` | `discovery.table_id_required` | `scope` is `"table"` and `table_id` is missing |
+| `400` | `discovery.domain_id_required` | `scope` is `"domain"` and `domain_id` is missing |
+| `404` | `discovery.table_not_found` | `table_id` names no registered table |
+| `422` | — | The body has a field not named here, or `kinds` is empty |
 
 `kinds` names at least one of `"foreign_keys"` and `"semantics"`. The `semantics` kind asks the model your organization assigns to relationship inference. When that model's vendor has no key to use, the request is refused with `409` and code `discovery.semantics_unavailable`.
 

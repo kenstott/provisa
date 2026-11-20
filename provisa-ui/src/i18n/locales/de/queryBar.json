@@ -1,6 +1,6 @@
 {
   "queryBar": {
-    "autoImputeOn": "Automatische Beziehungsableitung AN — zum Deaktivieren klicken",
+    "autoImputeOn": "Automatisches Ableiten von Beziehungen ist aktiv. Zum Deaktivieren klicken.",
     "autoImputeOff": "Beziehungen zwischen sichtbaren Knoten automatisch ableiten",
     "run": "Abfrage ausführen (⌘↵)",
     "clear": "Abfrage löschen"

@@ -156,6 +156,7 @@ from provisa.api.admin.schema_common import (  # noqa: E402
     restart_source_server,
     _remove_view_mv,
     _expand_wikipedia_if_needed,
+    _preset_wikidata_if_needed,
     google_workspace_refusal,
     excel_hints_refusal,
     logs_refusal,
@@ -1497,6 +1498,7 @@ async def _record_request_decision(
     involved, reach, user_id = await _request_decision_scope(info, req)
     await rule.record(
         await _get_pool(),
+        org_id=_resolve_admin_context(info),
         action=action,
         request=req,
         actor=user_id,
@@ -3196,6 +3198,10 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 _wikipedia_refusal = _expand_wikipedia_if_needed(input)
                 if _wikipedia_refusal is not None:
                     return _wikipedia_refusal
+                # REQ-1923: a Wikidata source is the SPARQL source at the query service.
+                _wikidata_refusal = _preset_wikidata_if_needed(input)
+                if _wikidata_refusal is not None:
+                    return _wikidata_refusal
                 # REQ-1923: a Google Workspace source's settings are checked before it exists.
                 _workspace_refusal = google_workspace_refusal(
                     input
@@ -3613,6 +3619,10 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             _wikipedia_refusal = _expand_wikipedia_if_needed(input)
             if _wikipedia_refusal is not None:
                 return _wikipedia_refusal
+            # REQ-1923: an edited Wikidata source keeps its preset.
+            _wikidata_refusal = _preset_wikidata_if_needed(input)
+            if _wikidata_refusal is not None:
+                return _wikidata_refusal
             _workspace_refusal = google_workspace_refusal(
                 input
             ) or await google_workspace_organisation_refusal(input)  # REQ-1923

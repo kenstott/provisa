@@ -1,7 +1,7 @@
 {
   "uniquesPanel": {
     "title": "Únicos",
-    "infoTooltip": "Restricciones UNIQUE declaradas para esta tabla — de una columna o compuestas. Las claves foráneas pueden apuntar a cualquier clave única, y los clientes las ven como restricciones UNIQUE. Se inicializan desde el origen al registrar; edítelas o añada las suyas.",
+    "infoTooltip": "Restricciones UNIQUE declaradas para esta tabla, de una columna o compuestas. Las claves foráneas pueden apuntar a cualquier clave única, y los clientes las ven como restricciones UNIQUE. Se toman del origen al registrar; edítelas o añada las suyas.",
     "addConstraint": "Restricción",
     "nameLabel": "Nombre",
     "namePlaceholder": "nombre de la restricción (p. ej. users_tenant_email_key)",

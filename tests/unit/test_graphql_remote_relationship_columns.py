@@ -228,3 +228,12 @@ async def test_a_relationship_to_a_function_needs_no_target_column(monkeypatch):
             cardinality=Cardinality.many_to_one,
         ),
     )
+
+
+def test_a_nested_object_offered_as_a_relationship_is_not_also_a_column():
+    """REQ-1929: Assignment.breed is offered as the relationship breed_name -> animal_breeds.name,
+    so it is not registered as a column too: a relationship never hides a column."""
+    tables, _functions, rels = map_schema(_schema(), "", "src1")
+    assert any(r["cardinality"] == "many-to-one" for r in rels)
+    assignments = next(t for t in tables if t["name"] == "assignmentsByEmployee")
+    assert [c["name"] for c in assignments["columns"]] == ["breedName"]

@@ -266,14 +266,24 @@ def test_fk_candidate_has_maximum_confidence():
 def _left_out(tables, raw: dict) -> list[str]:
     """Why a discovery run leaves out ``raw``, an element of the model's answer to its request
     over ``tables``: empty when it is kept."""
-    from provisa.discovery.runner import Tally, read_items
+    import json
+
+    from provisa.discovery.runner import NOT_NAMED, Tally, read_answers
     from provisa.discovery.windows import plan
     from provisa.llm.limits import DEFAULT_LIMITS
+    from tests.unit.discovery_answers import from_ids
 
-    _, (request,) = plan(tables, None, *DEFAULT_LIMITS)
-    tally = Tally(total=1)
-    read_items(request, [raw], tally)
-    return [r.left_out for r in tally.left_out]
+    (call,) = plan(tables, None, *DEFAULT_LIMITS).calls
+    names = {t.table_id: t.table_name for t in tables}
+    placed = json.loads(from_ids(call.prompt(0.7), json.dumps([raw]), names))
+    tally = Tally(total=1, threshold=0.7)
+    read_answers(call, placed, tally)
+    # The column pairs the answer did not name score zero (REQ-413): not why ``raw`` is left out.
+    return [
+        r.left_out
+        for r in tally.left_out
+        if r.proposal is None or r.proposal.reasoning != NOT_NAMED
+    ]
 
 
 def test_validate_candidate_requires_cardinality():

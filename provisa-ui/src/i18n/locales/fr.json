@@ -101,6 +101,6 @@
   },
   "pageError": {
     "title": "Cette page n’a pas pu être affichée",
-    "body": "Une erreur s’est produite lors du rendu. Le reste de l’application fonctionne : allez sur une autre page ou rechargez celle-ci."
+    "body": "Une erreur s'est produite pendant le rendu. Le reste de l'application fonctionne toujours : allez sur une autre page ou rechargez celle-ci."
   }
 }

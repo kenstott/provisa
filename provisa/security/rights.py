@@ -134,6 +134,14 @@ class Capability(str, Enum):  # REQ-042, REQ-060
     # rw of a role named in a product's Owner field, held to that product by a generated row rule.
     DATA_PRODUCT_READ = "data_product_read"
     DATA_PRODUCT_RW = "data_product_rw"
+    # REQ-2219, OWNER KINDS: owning is a capability of its own, each scoped by the kind it owns
+    # (provisa.entitlements.index.capability_scopes): a data product, a relationship, a domain (its
+    # steward), a glossary term (named domain.term) and a judgment basis (named by its id).
+    DATA_PRODUCT_OWNER = "data_product_owner"
+    RELATIONSHIP_OWNER = "relationship_owner"
+    DOMAIN_STEWARD = "domain_steward"
+    TERM_OWNER = "term_owner"
+    JUDGMENT_BASIS_OWNER = "judgment_basis_owner"
     # REQ-2155: data quality's own rights, so managing checks no longer needs TABLE_REGISTRATION.
     # DQ_READ reads check definitions and results; DQ_RW manages checks, expectations and
     # promises (REQ-2157).

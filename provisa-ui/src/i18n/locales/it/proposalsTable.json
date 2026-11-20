@@ -1,8 +1,8 @@
 {
   "proposalsTable": {
-    "intro": "Una riga spuntata viene accettata quando applichi. Le righe con un punteggio almeno pari alla soglia partono spuntate. Una riga senza caselle spuntate resta da decidere.",
+    "intro": "Una riga selezionata viene accettata quando si applica. Le righe con punteggio almeno pari alla soglia partono selezionate. Una riga senza caselle selezionate resta indecisa.",
     "colScore": "Punteggio",
-    "colModel": "Modello",
+    "colConfidence": "Attendibilità",
     "colJev": "Jev",
     "colKind": "Tipo",
     "colMeasure": "Misurato",
@@ -27,17 +27,11 @@
       "invalid_shape": "Non è una relazione nella forma richiesta: un campo manca o ha una forma errata",
       "unknown_column": "Nomina una tabella o una colonna che la richiesta non ha confrontato",
       "not_comparable": "Le due colonne hanno classi diverse, quindi non vengono confrontate",
-      "below_threshold": "Punteggio sotto il {{threshold}}% a cui un suggerimento viene mantenuto.",
+      "below_threshold": "Punteggio inferiore alla soglia del {{threshold}}% oltre la quale un suggerimento viene mantenuto.",
       "same_column": "Da una colonna a se stessa",
-      "primary_key_to_primary_key": "Da chiave primaria a chiave primaria",
-      "both_repeating": "I valori si ripetono su entrambi i lati, quindi nessuno è il lato uno",
       "existing": "Già registrata",
-      "pending": "Già in attesa tra i suggerimenti",
       "rejected": "Rifiutata in precedenza",
-      "matches_foreign_key": "Corrisponde a una chiave esterna trovata in questa esecuzione",
-      "out_of_scope": "Fuori dalle tabelle di origine e di destinazione scelte",
-      "weaker": "È stata mantenuta una proposta più forte delle stesse due colonne",
-      "many_to_many": "Nessuna delle due colonne è una chiave"
+      "out_of_scope": "Fuori dalle tabelle di origine e di destinazione scelte"
     },
     "threshold": "Spunta da",
     "thresholdHint": "La tua soglia, conservata per le prossime esecuzioni.",
@@ -63,7 +57,10 @@
     },
     "dimensionMade": "Accettandola si crea la dimensione condivisa {{name}}, a cui si uniscono entrambe le colonne.",
     "dimensionJoined": "Accettandola, entrambe le colonne si uniscono alla dimensione condivisa {{name}}.",
+    "through": "Tramite {{table}}.",
     "twoDimensions": "Le sue colonne si uniscono già a due dimensioni condivise diverse, quindi non può essere accettata.",
-    "admittedOnKeyValues": "Ammessa perché i valori chiave corrispondono nei dati; la misura è mostrata accanto alla confidenza del modello."
+    "admittedOnKeyValues": "Ammessa perché i valori chiave corrispondono nei dati; la misura è mostrata accanto alla confidenza del modello.",
+    "hiddenByFilter_one": "{{count}} riga è nascosta dal filtro.",
+    "hiddenByFilter_other": "{{count}} righe sono nascoste dal filtro."
   }
 }

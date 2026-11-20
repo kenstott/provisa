@@ -1,10 +1,10 @@
 {
   "mailTab": {
     "loading": "載入中…",
-    "intro": "此部署用來發送平台訊息（邀請及其他通知）的郵件伺服器。此版本已知的每種傳輸方式都會列出；需要額外套件的會註明套件名稱。",
+    "intro": "此部署傳送邀請及其他平台通知所用的郵件伺服器。列出建置版本支援的所有傳輸方式；需要額外套件的會註明其名稱。",
     "providerLabel": "傳輸方式",
-    "providerRequires": "{{label}} — 安裝 {{library}}",
-    "secretOnFile": "已儲存憑證 — 輸入即可取代",
+    "providerRequires": "{{label}}（安裝 {{library}}）",
+    "secretOnFile": "已存有認證。輸入新值以取代。",
     "secretNotSet": "未設定",
     "fromAddressLabel": "寄件地址",
     "fromAddressHelp": "收件人看到的地址。大多數傳輸方式要求其為已驗證的寄件者。",
@@ -12,7 +12,7 @@
     "baseUrlHelp": "訊息中連結所指向的地址，例如邀請連結。",
     "timeoutLabel": "逾時（秒）",
     "save": "儲存郵件設定",
-    "saved": "郵件設定已儲存 — 透過 {{provider}} 發送。",
+    "saved": "郵件設定已儲存。透過 {{provider}} 傳送。",
     "testTitle": "發送測試訊息",
     "testIntro": "透過已設定的傳輸方式發送，使用與邀請相同的憑證，並在下方記錄此次嘗試。",
     "testRecipient": "發送至",

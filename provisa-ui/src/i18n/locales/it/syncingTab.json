@@ -1,5 +1,6 @@
 {
   "syncingTab": {
+    "title": "Sincronizzazione del contesto",
     "loading": "Caricamento…",
     "intro": "Ogni sistema esterno tenuto allineato con Provisa: cataloghi di dati, ontologie e sistemi propri. Ognuno indica in quale direzione si sincronizza. Vengono allineati descrizioni, proprietari, tag e termini, non i dati.",
     "heading_data_catalog": "Catalogo di dati",

@@ -1,6 +1,6 @@
 {
   "relationshipRow": {
-    "fkBadge": "来自 FK",
+    "fkBadge": "来自外键",
     "fkBadgeTitle": "根据源中的外键创建",
     "yes": "是",
     "no": "否",
@@ -48,6 +48,25 @@
     "changeResolver": "更改代码解析器",
     "retireResolver": "停用代码解析器",
     "retireResolverTitle": "停用代码解析器 {{resolver}}？",
-    "retireResolverConsequence": "其匹配视图和三个关系会一起停用。它们的名称仍被占用。"
+    "retireResolverConsequence": "其匹配视图和三个关系会一起停用。它们的名称仍被占用。",
+    "queryLinks": {
+      "heading": "查询",
+      "cypher": "用 Cypher 读取 {{name}}",
+      "sql": "用 SQL 读取 {{name}}",
+      "sparql": "用 SPARQL 读取 {{name}}",
+      "graphql": "用 GraphQL 读取 {{name}}",
+      "rest": "用 REST 读取 {{name}}",
+      "grpc": "用 gRPC 读取 {{name}}",
+      "jsonapi": "用 JSON:API 读取 {{name}}",
+      "surfaces": {
+        "cypher": "Cypher",
+        "sql": "SQL",
+        "sparql": "SPARQL",
+        "graphql": "GraphQL",
+        "rest": "REST",
+        "grpc": "gRPC",
+        "jsonapi": "JSON:API"
+      }
+    }
   }
 }

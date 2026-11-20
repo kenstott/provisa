@@ -2,7 +2,7 @@
   "orgFilesTab": {
     "panelTitle": "Criptografia da pasta de arquivos",
     "loading": "Carregando…",
-    "intro": "Os arquivos que o Provisa guarda para sua organização em cada servidor — caches, conversões, réplicas e resultados grandes — ficam na pasta da própria organização. Ative a criptografia para guardá-los criptografados com uma chave que sua organização detém.",
+    "intro": "Em cada servidor, o Provisa mantém os caches, conversões, réplicas e resultados grandes da sua organização na pasta própria da sua organização. Ative a criptografia para mantê-los criptografados sob uma chave que sua organização detém.",
     "encrypt": "Criptografar a pasta de arquivos da organização",
     "referenceLabel": "Referência da chave",
     "referenceHelp": "O nome da chave no cofre de segredos da sua organização, escrito ${secret:NAME}. O Provisa guarda apenas esta referência, nunca a chave.",

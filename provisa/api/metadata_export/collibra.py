@@ -155,6 +155,11 @@ STEWARD_ATTRIBUTE = "Provisa Steward"
 # Provisa mentions its own assets. So the checks ride a Provisa-authored attribute instead, the
 # same choice governance and lineage make above, and the target maps them onto its rulebook.
 DATA_QUALITY_ATTRIBUTE = "Provisa Data Quality"
+# REQ-2261: the environment a table was published from and the stage it declares, so a catalog
+# can tell production assets from others. Custom attribute types like ``Provisa URI``; written
+# only when the snapshot names an environment.
+ENVIRONMENT_ATTRIBUTE = "Provisa Environment"
+STAGE_ATTRIBUTE = "Provisa Stage"
 
 # REQ-1387: Collibra's own glossary vocabulary. Business Term and the Glossary domain type are
 # out-of-the-box, as are the term-to-term relation types below — named as Collibra names them,
@@ -297,6 +302,9 @@ def to_rows(snapshot: MetadataSnapshot, community: str, domain: str) -> list[dic
         data_quality = _data_quality_value(snapshot, table.ref.fqn())  # REQ-1443
         if data_quality is not None:
             attributes[DATA_QUALITY_ATTRIBUTE] = [{"value": data_quality}]
+        if snapshot.environment is not None:  # REQ-2261
+            attributes[ENVIRONMENT_ATTRIBUTE] = [{"value": snapshot.environment.name}]
+            attributes[STAGE_ATTRIBUTE] = [{"value": snapshot.environment.stage}]
         edges = relationships_by_source.get(table.ref.fqn(), [])
         if edges:
             attributes[RELATIONSHIP_ATTRIBUTE] = [
@@ -707,7 +715,7 @@ class CollibraExport(MetadataExport):  # REQ-1069
         result = PublishResult(provider_name=self.provider_name)
         rows = to_rows(snapshot, self.community, self.domain)
         async with httpx.AsyncClient(
-            timeout=self._config.timeout_seconds, event_hooks=sandbox_egress.http_event_hooks()
+            timeout=self._config.timeout_seconds, event_hooks=sandbox_egress.endpoint_event_hooks()
         ) as client:
             # REQ-1387: terms ride the same import job, contained in Provisa's own glossary
             # domain — created first, since the import rejects rows naming an absent domain.
@@ -910,7 +918,7 @@ class CollibraExport(MetadataExport):  # REQ-1069
 
     async def health(self) -> None:
         async with httpx.AsyncClient(
-            timeout=self._config.timeout_seconds, event_hooks=sandbox_egress.http_event_hooks()
+            timeout=self._config.timeout_seconds, event_hooks=sandbox_egress.endpoint_event_hooks()
         ) as client:
             response = await client.get(self._url(self.health_path), headers=self._headers())
         response.raise_for_status()

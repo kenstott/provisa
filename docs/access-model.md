@@ -78,24 +78,42 @@ If the exceptions would be most of the child's columns, make `executive_litigati
 
 A capability opens a feature, such as querying, registering sources or managing data quality checks. It never widens what you can read or write. Whatever a feature shows or changes stays inside your grants, and that includes names, counts, error text, lineage, profiling results and exports.
 
-Roles carry capabilities. Provisa ships a set of standard roles, and you build your own roles on top of them.
+Roles carry capabilities. Provisa ships a set of standard roles, and you build your own roles on top of them. Each standard role does one job, so you can give a person exactly the rights you want by assigning the roles for the jobs they do.
 
 | Standard role | Built on | Adds |
 | --- | --- | --- |
-| Viewer | | Reading the catalog, the glossary and data products |
-| Analyst | Viewer | Querying and query development |
-| Developer | Analyst | Views, environments and write |
-| Modeler | Developer | Bypassing the relationship guard |
-| Data product owner | Viewer | Editing the data products it owns |
-| Data quality reader | Viewer | Reading check definitions and results |
+| Viewer | | Reading the glossary and data products, and switching between the environments you are assigned in |
+| Analyst | Viewer | Querying, query development, running commands and reading data quality results |
+| Data writer | Analyst | Writing data and reading full results |
+| Developer | Analyst | Authoring the model: views and relationships across the whole catalog, and managing the environments you create |
+| Modeler | Developer | Joining across relations that no approved relationship covers yet |
+| Data product owner | Viewer | Nothing of its own: name it in a data product's Owner field and it edits that product |
+| Security admin | Viewer | Row rules, column grants, masks and sensitive columns |
+| Data steward | Security admin, Analyst | Glossary editing, relationships and full results |
 | Data quality steward | Viewer | Managing checks, expectations and promises |
 | Source admin | Viewer | Registering sources and tables |
-| Security admin | Viewer | Access configuration, column grants and masking |
-| Data steward | Security admin, Analyst | Glossary editing, relationships, data product editing and full results |
-| Org operator | | Org settings, observability, and approving views and relationships |
-| Org admin | All of the above | User and environment management |
+| Member admin | Viewer | Adding and removing members, and assigning their roles and entitlements |
+| Org operator | Viewer | Org settings, observability, and approving views and relationships |
+| Org admin | Developer, Data writer, Data product owner, Data steward, Data quality steward, Source admin, Member admin, Org operator | Managing any environment and its data choices, overriding any glossary term, and editing every data product |
+| Platform admin | | Running the platform. It holds no right to any organization's data |
 
-Provisa maintains the standard roles, and you cannot edit them. You extend them with child roles of your own. Standard roles are the palette: when Provisa adds a capability to one, a role built on it holds that capability only once it is given it.
+Developer writes no data. An application, a pipeline or a person who must write data is assigned Data writer. Someone who builds the model and also loads data holds both roles.
+
+Provisa maintains the standard roles, and you cannot edit them. They mean the same thing in every environment. You extend them with child roles of your own. Standard roles are the palette: when Provisa adds a capability to one, a role built on it holds that capability only once it is given it.
+
+### Holding several roles
+
+You may hold several roles in an environment, and by default you act with all of them at once. Your rights are the union of what each role holds. Choosing a single role is an optional narrowing. Pick Analyst, for example, to see the data the way an analyst sees it.
+
+An API client chooses the same way. It names the roles it acts as in the `X-Provisa-Role` header, separated by commas, and each one must be assigned to it.
+
+When a member is added to an environment, the admin assigns their roles and entitlements in one step, choosing several roles at once. To let developers add sources in a lower environment, assign Developer and Source admin there. Do not assign Org admin for that purpose.
+
+### Roles per environment
+
+What you may do in an environment comes only from the roles assigned to you there. No environment adds, removes or overrides a right, and an environment's stage (production, preprod, test or development) changes nothing about what anyone may do.
+
+Production is shaped by who holds which role in it. Suppose a member builds the model in their own environments but must not write data or change the model in production. Assign them Developer in their environments and Analyst in production. A pipeline that writes in production is assigned Data writer in production only.
 
 ### Inheritance
 

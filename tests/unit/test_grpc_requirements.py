@@ -261,6 +261,7 @@ class TestREQ538ProtoTypeMappings:
         }
         relationships = [
             {
+                "id": "orders-customers",
                 "source_table_id": 1,
                 "target_table_id": 2,
                 "source_column": "id",

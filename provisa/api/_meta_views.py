@@ -1580,13 +1580,20 @@ _OPS_LOG_TABLE_ALIAS: dict[str, str] = {
     "sla_breach_log": "sla_breach_log_ops",
     # REQ-2216: ops.requests -- one row per request, over the creation-request queue.
     "requests": "requests_ops",
+    # REQ-2219: the entitlement store's source rows and its expiry rules, beside ops.requests.
+    "entitlements": "entitlements_ops",
+    "entitlement_expiries": "entitlement_expiries_ops",
 }
 
-# An ops log whose exposed name is not a physical table, by the base table it shows one row per
-# row of: its primary key is that table's, and that table's notify trigger (schema.sql) reports its
-# changes on the schema's own channel (subscriptions.pg_provider.schema_channel). REQ-2216:
-# ops.requests over creation_requests.
-_OPS_LOG_BASE_TABLE: dict[str, str] = {"requests": "creation_requests"}
+# An ops log kept in each org schema, by the base table it shows one row per row of: its primary
+# key is that table's, and that table's notify trigger (schema.sql) reports its changes on the
+# schema's own channel (subscriptions.pg_provider.schema_channel). REQ-2216: ops.requests over
+# creation_requests. REQ-2219: ops.entitlements and ops.entitlement_expiries over their tables.
+_OPS_LOG_BASE_TABLE: dict[str, str] = {
+    "requests": "creation_requests",
+    "entitlements": "entitlements",
+    "entitlement_expiries": "entitlement_expiries",
+}
 
 _OPS_LOG_TABLE_VIEWS: dict[str, str] = {
     "query_audit_log": """
@@ -1596,7 +1603,10 @@ _OPS_LOG_TABLE_VIEWS: dict[str, str] = {
                q.route, q.row_count, q.route_reason, q.sources, q.data_age, q.region,
                q.model_stamp, q.model_commit, q.enforced,
                -- The statement's time travel: last, so an existing view is replaced in place.
-               q.as_of, q.as_recorded
+               q.as_of, q.as_recorded,
+               -- REQ-2261: the environment's stage when the statement ran; appended last for the
+               -- same reason.
+               q.stage
         FROM query_audit_log q
         LEFT JOIN user_directory ud ON ud.user_id = q.user_id
     """,
@@ -1633,6 +1643,43 @@ _OPS_LOG_TABLE_VIEWS: dict[str, str] = {
         FROM creation_requests r
         LEFT JOIN user_directory rq ON rq.user_id = r.requested_by
         LEFT JOIN user_directory rd ON rd.user_id = r.resolved_by
+    """,
+    # REQ-2219: every source row of the entitlement store, as recorded now, with its valid period.
+    # Rows are append-only and carry no valid-to: a row's valid_to is the next row's valid_from for
+    # the same source, person, role, kind and capability, in the order entitlements.history reads
+    # them (valid_from, recorded_at, id); empty while no row follows it. A removed row ends its key.
+    "entitlements": """
+        CREATE OR REPLACE VIEW entitlements_ops AS
+        SELECT e.id, e.source, e.principal, pd.display_name AS principal_name, e.role_id, e.kind,
+               e.capability, e.identifiers, e.removed, e.reason, e.set_by,
+               sd.display_name AS set_by_name, e.valid_from,
+               LEAD(e.valid_from) OVER (
+                   PARTITION BY e.source, e.principal, e.role_id, e.kind, e.capability
+                   ORDER BY e.valid_from, e.recorded_at, e.id
+               ) AS valid_to,
+               e.recorded_at
+        FROM entitlements e
+        LEFT JOIN user_directory pd ON pd.user_id = e.principal
+        LEFT JOIN user_directory sd ON sd.user_id = e.set_by
+        WHERE e.recorded_at <= now()
+    """,
+    # REQ-2219: every version of every expiry rule on a person's grant, as recorded now: a rule
+    # created, changed or removed is a new row, so a subscriber sees each. valid_to as above, per
+    # person, role and rule key.
+    "entitlement_expiries": """
+        CREATE OR REPLACE VIEW entitlement_expiries_ops AS
+        SELECT x.id, x.rule_key, x.principal, pd.display_name AS principal_name, x.role_id,
+               x.list_kind, x.ends_at, x.ends, x.removed, x.reason, x.set_by,
+               sd.display_name AS set_by_name, x.valid_from,
+               LEAD(x.valid_from) OVER (
+                   PARTITION BY x.principal, x.role_id, x.rule_key
+                   ORDER BY x.valid_from, x.recorded_at, x.id
+               ) AS valid_to,
+               x.recorded_at
+        FROM entitlement_expiries x
+        LEFT JOIN user_directory pd ON pd.user_id = x.principal
+        LEFT JOIN user_directory sd ON sd.user_id = x.set_by
+        WHERE x.recorded_at <= now()
     """,
 }
 
@@ -1768,12 +1815,18 @@ _OPS_REPORT_VIEWS: dict[str, str] = {
     "policy_denials": """
         CREATE OR REPLACE VIEW policy_denials AS
         SELECT q.id, q.user_id, ud.display_name AS user_name, q.role_id, q.query_hash, q.table_ids,
-               q.source, q.status_code, q.duration_ms, q.logged_at
+               q.source, q.status_code, q.duration_ms, q.logged_at,
+               -- REQ-2261: filter and group denials by the environment's stage. Last, so an
+               -- existing view is replaced in place.
+               q.stage
         FROM query_audit_log q
         LEFT JOIN user_directory ud ON ud.user_id = q.user_id
         WHERE q.status_code IN (401, 403)
     """,
-    # Daily traffic per protocol surface (the audit log's ``source`` column).
+    # Daily traffic per protocol surface (the audit log's ``source`` column), per stage (REQ-2261).
+    # The id names the stage too, so a day split across a stage change keeps one row per stage;
+    # a row from a deployment without a control plane records no stage (NULL), and the id must
+    # still be a non-NULL key, hence the COALESCE in the id alone -- the column stays NULL.
     # REQ-1910: one row per statement Provisa executed — the audit row, which is the one home of
     # a statement's user, role, transport (``source``), route, rows, outcome and duration. A statement over
     # several tables names its first registered table (lowest id) and counts them; the full set is
@@ -1785,7 +1838,8 @@ _OPS_REPORT_VIEWS: dict[str, str] = {
         SELECT q.id AS id, q.trace_id, q.logged_at, q.duration_ms, q.status_code,
                q.user_id, q.role_id, q.source, q.route, q.row_count, q.query_hash,
                q.region,
-               t.table_id, rt.table_name, rt.domain_id, t.table_count
+               t.table_id, rt.table_name, rt.domain_id, t.table_count,
+               q.stage  -- REQ-2261; last, so an existing view is replaced in place
         FROM query_audit_log q
         LEFT JOIN (SELECT u.id AS audit_id, MIN(u.table_id) AS table_id,
                           COUNT(*) AS table_count
@@ -1795,25 +1849,29 @@ _OPS_REPORT_VIEWS: dict[str, str] = {
     """,
     "surface_mix": """
         CREATE OR REPLACE VIEW surface_mix AS
-        SELECT source || ':' || SUBSTR(CAST(logged_at AS TEXT), 1, 10) AS id,
+        SELECT source || ':' || SUBSTR(CAST(logged_at AS TEXT), 1, 10)
+                   || ':' || COALESCE(stage, '') AS id,
                source, SUBSTR(CAST(logged_at AS TEXT), 1, 10) AS day,
                COUNT(*) AS query_count,
-               COUNT(DISTINCT user_id) AS distinct_users
+               COUNT(DISTINCT user_id) AS distinct_users,
+               stage
         FROM query_audit_log
-        GROUP BY source, SUBSTR(CAST(logged_at AS TEXT), 1, 10)
+        GROUP BY source, SUBSTR(CAST(logged_at AS TEXT), 1, 10), stage
     """,
     # Daily latency/error profile per protocol surface. Portable aggregates only
     # (percentile_cont is PG-only); p95 arrives with the REQ-1386 rollup tables.
     "query_health": """
         CREATE OR REPLACE VIEW query_health AS
-        SELECT source || ':' || SUBSTR(CAST(logged_at AS TEXT), 1, 10) AS id,
+        SELECT source || ':' || SUBSTR(CAST(logged_at AS TEXT), 1, 10)
+                   || ':' || COALESCE(stage, '') AS id,
                source, SUBSTR(CAST(logged_at AS TEXT), 1, 10) AS day,
                COUNT(*) AS query_count,
                SUM(CASE WHEN status_code >= 400 THEN 1 ELSE 0 END) AS error_count,
                AVG(duration_ms) AS avg_duration_ms,
-               MAX(duration_ms) AS max_duration_ms
+               MAX(duration_ms) AS max_duration_ms,
+               stage
         FROM query_audit_log
-        GROUP BY source, SUBSTR(CAST(logged_at AS TEXT), 1, 10)
+        GROUP BY source, SUBSTR(CAST(logged_at AS TEXT), 1, 10), stage
     """,
     # Governance-completeness gaps: tables/columns missing a description,
     # domains missing a steward (REQ-609 PENDING state).

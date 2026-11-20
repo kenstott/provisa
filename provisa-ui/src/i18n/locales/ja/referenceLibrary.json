@@ -1,6 +1,6 @@
 {
   "referenceLibrary": {
-    "title": "ライブラリ",
+    "title": "ドキュメント",
     "why": "目的:データに意味を与えるドキュメント",
     "filterPlaceholder": "ドキュメントを絞り込む",
     "colIndex": "インデックスの状態",
@@ -47,7 +47,7 @@
     "byFile": "ファイル",
     "byUrl": "URL",
     "file": "ファイル",
-    "fileHelp": "PDF、Word（.docx）、HTML、Markdown、eCFR XML（.xml）、またはプレーンテキストのファイル。",
+    "fileHelp": "PDF、Word(.docx)、Excel(.xlsx)、HTML、Markdown、eCFR XML(.xml)、またはプレーンテキストのファイル。",
     "url": "URL",
     "urlHelp": "http(s) アドレス。ドキュメントは今取得され、更新のたびに再取得されます。",
     "fieldTitle": "タイトル",

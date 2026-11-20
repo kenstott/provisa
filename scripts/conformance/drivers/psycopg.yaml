@@ -2030,26 +2030,11 @@ expected:
   tests.types.test_composite::test_type_dumper_registered[s]: failed-on-setup-with
   tests.types.test_composite::test_type_dumper_registered[t]: failed-on-setup-with
   tests.types.test_datetime.TestDate::test_infinity_date_example: psycopg-errors-internalerror-invalid-isoformat-s
-  tests.types.test_datetime.TestDate::test_load_date_overflow[German-max]: psycopg-errors-internalerror-year-is-out-of-rang
-  tests.types.test_datetime.TestDate::test_load_date_overflow[German-min]: psycopg-errors-internalerror-year-is-out-of-rang
-  tests.types.test_datetime.TestDate::test_load_date_overflow[ISO-max]: psycopg-errors-internalerror-year-is-out-of-rang
-  tests.types.test_datetime.TestDate::test_load_date_overflow[ISO-min]: psycopg-errors-internalerror-year-is-out-of-rang
-  tests.types.test_datetime.TestDate::test_load_date_overflow[Postgres-max]: psycopg-errors-internalerror-year-is-out-of-rang
-  tests.types.test_datetime.TestDate::test_load_date_overflow[Postgres-min]: psycopg-errors-internalerror-year-is-out-of-rang
-  tests.types.test_datetime.TestDate::test_load_date_overflow[SQL-max]: psycopg-errors-internalerror-year-is-out-of-rang
-  tests.types.test_datetime.TestDate::test_load_date_overflow[SQL-min]: psycopg-errors-internalerror-year-is-out-of-rang
-  tests.types.test_datetime.TestDate::test_load_date_overflow_binary[max]: psycopg-errors-internalerror-year-is-out-of-rang
-  tests.types.test_datetime.TestDate::test_load_date_overflow_binary[min]: psycopg-errors-internalerror-year-is-out-of-rang
   tests.types.test_datetime.TestDate::test_load_overflow_message[1000-01-01 BC-date too small-German]: failed-did-not-raise-dataerror
   tests.types.test_datetime.TestDate::test_load_overflow_message[1000-01-01 BC-date too small-ISO]: failed-did-not-raise-dataerror
   tests.types.test_datetime.TestDate::test_load_overflow_message[1000-01-01 BC-date too small-Postgres]: failed-did-not-raise-dataerror
   tests.types.test_datetime.TestDate::test_load_overflow_message[1000-01-01 BC-date too small-SQL]: failed-did-not-raise-dataerror
-  tests.types.test_datetime.TestDate::test_load_overflow_message[10000-01-01-date too large-German]: psycopg-errors-internalerror-year-is-out-of-rang
-  tests.types.test_datetime.TestDate::test_load_overflow_message[10000-01-01-date too large-ISO]: psycopg-errors-internalerror-year-is-out-of-rang
-  tests.types.test_datetime.TestDate::test_load_overflow_message[10000-01-01-date too large-Postgres]: psycopg-errors-internalerror-year-is-out-of-rang
-  tests.types.test_datetime.TestDate::test_load_overflow_message[10000-01-01-date too large-SQL]: psycopg-errors-internalerror-year-is-out-of-rang
   tests.types.test_datetime.TestDate::test_load_overflow_message_binary[1000-01-01 BC-date too small]: failed-did-not-raise-dataerror
-  tests.types.test_datetime.TestDate::test_load_overflow_message_binary[10000-01-01-date too large]: psycopg-errors-internalerror-year-is-out-of-rang
   tests.types.test_datetime.TestDateTimeTz::test_dump_datetime_tz_or_not_tz[b-2000,1,2,3,4,5,6-timestamp]: assertionerror-timestamp
   tests.types.test_datetime.TestDateTimeTz::test_dump_datetime_tz_or_not_tz[b-2000,1,2,3,4,5,6~0-timestamptz]: assertionerror-timestamptz
   tests.types.test_datetime.TestDateTimeTz::test_dump_datetime_tz_or_not_tz[b-2000,1,2,3,4,5,6~2-timestamptz]: assertionerror-timestamptz

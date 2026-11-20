@@ -458,14 +458,19 @@ if [ -n "$DEMO_NAME" ]; then
       docker compose -f "$_NAMED_DIR/docker-compose.yml" up seeder
     fi
   fi
-  # REQ-2016: the optional dependency groups the demo's demo.yaml names (extras:), installed for
-  # this demo alone; any other start installs nothing more.
+  # REQ-2016: the optional dependency groups the demo's demo.yaml names (extras:), synced for
+  # this demo alone from uv.lock; any other start installs nothing more. Through the lock, torch
+  # comes from PyTorch's CPU-only index on Linux ([tool.uv.sources]), never PyPI's CUDA build.
+  # --inexact keeps what is already installed; --no-install-project leaves provisa's own build to
+  # rust/ensure-local-build.sh.
   if [ -f "$_NAMED_DIR/demo.yaml" ]; then
-    _DEMO_REQS="$("$SCRIPT_DIR/.venv/bin/python" "$SCRIPT_DIR/scripts/demo_extras.py" "$_NAMED_DIR")" || exit 1
-    if [ -n "$_DEMO_REQS" ]; then
-      echo "Named demo '$DEMO_NAME': installing what it needs: $(echo $_DEMO_REQS)"
-      # shellcheck disable=SC2086
-      "$SCRIPT_DIR/.venv/bin/python" -m pip install --quiet $_DEMO_REQS || exit 1
+    _DEMO_EXTRAS="$("$SCRIPT_DIR/.venv/bin/python" "$SCRIPT_DIR/scripts/demo_extras.py" --groups "$_NAMED_DIR")" || exit 1
+    if [ -n "$_DEMO_EXTRAS" ]; then
+      _DEMO_EXTRA_ARGS=()
+      for _extra in $_DEMO_EXTRAS; do _DEMO_EXTRA_ARGS+=(--extra "$_extra"); done
+      echo "Named demo '$DEMO_NAME': syncing the extras it needs: $(echo $_DEMO_EXTRAS)"
+      (cd "$SCRIPT_DIR" && UV_PROJECT_ENVIRONMENT=.venv uv sync --locked --inexact --no-install-project \
+        "${_DEMO_EXTRA_ARGS[@]}") || exit 1
     fi
   fi
   if [ "$_NAMED_WHOLE" = true ]; then

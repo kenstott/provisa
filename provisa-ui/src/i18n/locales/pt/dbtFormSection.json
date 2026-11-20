@@ -1,10 +1,10 @@
 {
   "dbtFormSection": {
-    "specLegend": "Origem do manifesto",
-    "specLocation": "URL ou localização do artefato",
-    "specUpload": "Carregar",
+    "specLegend": "De onde vem o manifesto",
+    "specLocation": "URL ou local do artefato",
+    "specUpload": "Enviar",
     "specCloud": "dbt Cloud",
-    "locationLabel": "URL do manifesto ou localização do artefato",
+    "locationLabel": "URL do manifesto ou local do artefato",
     "locationPlaceholder": "https://example.com/manifest.json ou s3://bucket/target/manifest.json",
     "uploadLabel": "Arquivo manifest.json",
     "cloudHostLabel": "URL do dbt Cloud",
@@ -13,15 +13,15 @@
     "tokenLabel": "Token de API",
     "tokenHint": "Mantido com esta fonte e usado para ler o manifesto e executar jobs.",
     "commandLineLabel": "Comando que executa o dbt",
-    "commandLineHint": "Os comandos são executados assim onde o dbt está instalado, por exemplo dbt --project-dir /srv/project.",
+    "commandLineHint": "Executado onde o dbt está instalado, por exemplo dbt --project-dir /srv/project.",
     "previewButton": "Pré-visualizar manifesto",
     "summary": "{{project}} ({{adapter}}): {{models}} modelos e {{commands}} comandos disponíveis.",
     "warehouseFound": "{{database}} é lido pela fonte {{source}}.",
-    "warehouseMissing": "Nenhuma fonte registrada lê o banco {{adapter}} {{database}}. Crie uma:",
+    "warehouseMissing": "Nenhuma fonte registrada lê o banco de dados {{adapter}} {{database}}. Crie uma:",
     "warehouseId": "ID da nova fonte",
     "warehouseHost": "Conta ou host",
     "warehouseUser": "Nome de usuário",
     "warehouseCredential": "Credencial",
-    "adapterUnknown": "O adaptador {{adapter}} não tem um tipo de fonte correspondente. Registre primeiro seu warehouse e depois adicione esta fonte."
+    "adapterUnknown": "O adaptador {{adapter}} não tem um tipo de fonte correspondente. Registre primeiro o data warehouse dele e depois adicione esta fonte."
   }
 }

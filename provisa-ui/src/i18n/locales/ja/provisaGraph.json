@@ -11,7 +11,7 @@
       "table": "テーブル",
       "view": "ビュー",
       "relation": "外部テーブル",
-      "junction": "結合",
+      "junction": "中間テーブル",
       "column": "列",
       "term": "用語",
       "concept": "概念",

@@ -1,6 +1,6 @@
 {
   "relationshipRow": {
-    "fkBadge": "De FK",
+    "fkBadge": "Desde FK",
     "fkBadgeTitle": "Creada a partir de una clave externa de la fuente",
     "yes": "Sí",
     "no": "No",
@@ -48,6 +48,25 @@
     "changeResolver": "Cambiar resolver de código",
     "retireResolver": "Retirar resolver de código",
     "retireResolverTitle": "¿Retirar el resolver de código {{resolver}}?",
-    "retireResolverConsequence": "Su vista de coincidencias y sus tres relaciones se retiran juntas. Sus nombres siguen ocupados."
+    "retireResolverConsequence": "Su vista de coincidencias y sus tres relaciones se retiran juntas. Sus nombres siguen ocupados.",
+    "queryLinks": {
+      "heading": "Consultar",
+      "cypher": "Leer {{name}} en Cypher",
+      "sql": "Leer {{name}} en SQL",
+      "sparql": "Leer {{name}} en SPARQL",
+      "graphql": "Leer {{name}} en GraphQL",
+      "rest": "Leer {{name}} en REST",
+      "grpc": "Leer {{name}} en gRPC",
+      "jsonapi": "Leer {{name}} en JSON:API",
+      "surfaces": {
+        "cypher": "Cypher",
+        "sql": "SQL",
+        "sparql": "SPARQL",
+        "graphql": "GraphQL",
+        "rest": "REST",
+        "grpc": "gRPC",
+        "jsonapi": "JSON:API"
+      }
+    }
   }
 }

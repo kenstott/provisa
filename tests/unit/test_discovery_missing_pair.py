@@ -16,28 +16,29 @@ The tables are as a files source registers the drop (types as DuckDB reads the f
 descriptions, every class unknown, the first sample values of each column), with the values the
 generator writes (demo/named/files/generate.py): six neighborhoods, each repeated in every table.
 
-Every stage before the model keeps the pair: both columns are text, their classes meet, and the
-one text request holds both. Every stage after it treats the pair as it treats the budget pair:
-proposed in the band, it is measured many-to-many at 0.6 and listed, left out below the
-threshold, as the budget pair is. The pair is dropped at the model: the measure tests only what
-the model proposes, and an answer that omits the pair leaves it in no row of the run.
+Under the window packing the pair was dropped at the model: an answer that omitted it left it in
+no row of the run. Code lists the table pair complaints x building_permits in exactly one call
+(REQ-413, amended 2026-11-18), and every same-name column pair in one type group is measured
+whatever the model answers (amended 2026-11-20): an answer that omits the pair, or no answer at
+all, still measures it and lists it with its measure, as the budget pair is listed.
 """
 
 # Requirements: REQ-413
 
 from __future__ import annotations
 
-import json
 from collections import Counter
 from typing import Any
 
 from provisa.discovery.columns import UNKNOWN, ColumnFacts, TableFacts, comparable, type_groups
-from provisa.discovery.context import SHARED_CEILING
+from provisa.discovery.context import CONTAINED_AT, SHARED_CEILING, Scoring
 from provisa.discovery.direction import Known, Proposal, Sampled, settle
-from provisa.discovery.measure import Measurer, Values
+from provisa.discovery.measure import Column, Measurer, Unmeasured
 from provisa.discovery.proposals import ACCEPTABLE, BELOW_THRESHOLD, Recorded
 from provisa.discovery.runner import KeyValues, Tally, execute
 from provisa.discovery.windows import plan
+from tests.unit.discovery_answers import answer, column_pair
+from tests.unit.discovery_engine_reader import EngineReader
 from provisa.llm.client import Completion
 from provisa.llm.limits import DEFAULT_LIMITS
 
@@ -146,15 +147,9 @@ BUDGET_PAIR = frozenset({(BUDGET, "neighborhood"), (PERMITS, "neighborhood")})
 
 
 def _item(src: tuple[int, str], tgt: tuple[int, str], confidence: float) -> dict[str, Any]:
-    return {
-        "source_table_id": src[0],
-        "source_column": src[1],
-        "target_table_id": tgt[0],
-        "target_column": tgt[1],
-        "cardinality": "many-to-one",
-        "confidence": confidence,
-        "reasoning": "same name",
-    }
+    return column_pair(
+        (BY_ID[src[0]].table_name, src[1]), (BY_ID[tgt[0]].table_name, tgt[1]), confidence
+    )
 
 
 #: The answer the maintainer's run showed (2026-11-18): the two pairs it listed.
@@ -164,30 +159,27 @@ OBSERVED = [
 ]
 
 
-class _Reader:
-    """Columns' values for the measure, as the governed read gives them: distinct values most
-    repeated first, and whether any repeats. Records each column read."""
+def _held(table: TableFacts, column: str) -> list[str]:
+    """A column's rows as the generator writes them: a neighborhood's as counted, any other
+    column a key of its table, each value once."""
+    if column == "neighborhood":
+        return list(Counter(_NEIGHBORHOODS[table.table_id]).elements())
+    return [f"{table.table_name}-{i}" for i in range(100)]
+
+
+class _Reader(EngineReader):
+    """The measure's queries run in an engine holding each table's rows. Records each column
+    the measure reads."""
 
     def __init__(self) -> None:
+        super().__init__(
+            {(t.table_name, c.name): _held(t, c.name) for t in TABLES for c in t.columns}
+        )
         self.read: list[tuple[int, str]] = []
 
-    def _counts(self, table: TableFacts, column: str) -> Counter:
-        if column == "neighborhood":
-            return Counter(_NEIGHBORHOODS[table.table_id])
-        # A key of its table: each value once.
-        return Counter({f"{table.table_name}-{i}": 1 for i in range(100)})
-
-    async def values(self, table: TableFacts, column: str, bound: int) -> Values:
+    def column(self, table: TableFacts, column: str) -> Column | Unmeasured:
         self.read.append((table.table_id, column))
-        counts = self._counts(table, column).most_common()
-        return Values(
-            read=tuple(v for v, _ in counts[:bound]),
-            more=len(counts) > bound,
-            distinct=not counts or counts[0][1] == 1,
-        )
-
-    async def found(self, table: TableFacts, column: str, among: Values) -> frozenset[Any]:
-        return frozenset(among.read) & frozenset(self._counts(table, column))
+        return super().column(table, column)
 
 
 class _Watcher:
@@ -206,26 +198,35 @@ async def _no_sample(table: TableFacts, column: str) -> Sampled:
     raise AssertionError(f"no direction is left to a sample here: {table.table_name}.{column}")
 
 
-async def _run(answer: list[dict[str, Any]]) -> tuple[list[Recorded], _Reader, list[str]]:
-    """A run over the four tables with Key value overlap chosen, the model answering ``answer``
-    to its text request and nothing to any other: every row the run keeps (as
-    :func:`provisa.discovery.run.perform` records them), the measure's reads, and the prompts."""
-    k, requests = plan(TABLES, None, *DEFAULT_LIMITS)
+async def _run(
+    given: list[dict[str, Any]], respond: Any = None
+) -> tuple[list[Recorded], _Reader, list[str]]:
+    """A run over the four tables with Key value overlap chosen, the model answering each listed
+    table pair with the column pairs of ``given`` naming its tables, or "none": every row the run
+    keeps (as :func:`provisa.discovery.run.perform` records them), the measure's reads, and the
+    prompts."""
+    the_plan = plan(TABLES, None, *DEFAULT_LIMITS)
     reader = _Reader()
-    measurer = Measurer(reader, BY_ID, decided=set(), bound=SAMPLE_SIZE)
+    measurer = Measurer(
+        reader,
+        BY_ID,
+        decided=set(),
+        bound=SAMPLE_SIZE,
+        scoring=Scoring(CONTAINED_AT, SHARED_CEILING),
+    )
     prompts: list[str] = []
 
     def ask(prompt: str, max_tokens: int) -> Completion:
         prompts.append(prompt)
-        text = answer if "type group 'text'" in prompt else []
-        return Completion(json.dumps(text), "acme", "m", None, False)
+        text = answer(prompt, given) if respond is None else respond(prompt)
+        return Completion(text, "acme", "m", None, False)
 
     tally, found = await execute(
-        requests,
-        k,
+        the_plan,
         DEFAULT_LIMITS[1],
         ask,
         _Watcher(),
+        threshold=0.7,
         key_values=KeyValues(measurer.all, CUTOFF),
         to_thread=_direct,
     )
@@ -244,39 +245,77 @@ def _row(rows: list[Recorded], pair: frozenset) -> Recorded | None:
     return held[0] if held else None
 
 
-def test_every_stage_before_the_model_keeps_the_pair_in_one_text_request():
+def test_the_table_pair_is_listed_in_exactly_one_call():
     complaints = BY_ID[COMPLAINTS].column("neighborhood")
     permits = BY_ID[PERMITS].column("neighborhood")
     assert complaints is not None and permits is not None
     assert comparable(complaints, permits, "text")
-    _, requests = plan(TABLES, None, *DEFAULT_LIMITS)
+    the_plan = plan(TABLES, None, *DEFAULT_LIMITS)
     holding = [
-        r
-        for r in requests
-        if THE_PAIR
-        <= {
-            (t.table_id, c.name)
-            for t, c in [*r.source.columns(), *(r.target.columns() if r.target else [])]
-        }
+        (call, p)
+        for call in the_plan.calls
+        for p in call.pairs
+        if {p.source.table_id, p.target.table_id} == {COMPLAINTS, PERMITS}
     ]
-    assert [r.group for r in holding] == ["text"]
-    assert holding[0].target is None  # one window, compared with itself
-    assert BUDGET_PAIR <= {(t.table_id, c.name) for t, c in holding[0].source.columns()}
+    assert len(holding) == 1
+    call, pair = holding[0]
+    assert THE_PAIR in {
+        frozenset({(pair.source.table_id, a.name), (pair.target.table_id, b.name)})
+        for a, b in pair.column_pairs()
+    }
+    prompt = call.prompt(0.7)
+    assert '"source":"building_permits","target":"complaints"' in prompt
 
 
-async def test_an_answer_omitting_the_pair_leaves_it_in_no_row_and_unmeasured():
-    """Today's behaviour, and the red test for a fix: nothing but the model's answer brings a
-    pair to the measure, so a pair the model leaves out is never measured or listed, whatever
-    its name and values share with a pair that is."""
+def _measured_as_the_budget_pair(rows: list[Recorded], reader: _Reader) -> None:
+    ours, budget = _row(rows, THE_PAIR), _row(rows, BUDGET_PAIR)
+    assert ours is not None and ours.proposal is not None
+    assert (COMPLAINTS, "neighborhood") in reader.read
+    assert ours.proposal.confidence == 0.0  # the model gave it no confidence
+    assert (ours.left_out, ours.proposal.cardinality, ours.proposal.score) == (
+        BELOW_THRESHOLD,
+        "many-to-many",
+        SHARED_CEILING,
+    )
+    assert budget is not None and budget.proposal is not None
+    assert (budget.left_out, budget.proposal.cardinality, budget.proposal.score) == (
+        BELOW_THRESHOLD,
+        "many-to-many",
+        SHARED_CEILING,
+    )
+
+
+async def test_an_answer_omitting_the_same_name_pair_still_measures_it():
+    """The red test of J1462, flipped by REQ-413 amended 2026-11-20: the model answers the table
+    pair without naming the same-name column pair, which is measured all the same and listed
+    with its measure, not left in no row and not scored zero unmeasured."""
     rows, reader, prompts = await _run(OBSERVED)
     assert any('"name":"complaints"' in p and '"name":"building_permits"' in p for p in prompts)
-    assert _row(rows, THE_PAIR) is None
-    assert (COMPLAINTS, "neighborhood") not in reader.read
-    budget = _row(rows, BUDGET_PAIR)
-    assert budget is not None and budget.proposal is not None
-    assert budget.left_out == BELOW_THRESHOLD
-    assert budget.proposal.cardinality == "many-to-many"
-    assert budget.proposal.score == SHARED_CEILING
+    _measured_as_the_budget_pair(rows, reader)
+
+
+async def test_no_answer_at_all_still_measures_every_same_name_pair():
+    """The model returns an empty list to every call: no table pair is answered, and every
+    same-name pair in one type group is measured and recorded with its reason all the same."""
+    rows, reader, _ = await _run([], respond=lambda prompt: "[]")
+    _measured_as_the_budget_pair(rows, reader)
+    inspections = _row(rows, frozenset({(INSPECTIONS, "permit_id"), (PERMITS, "permit_id")}))
+    assert inspections is not None and inspections.proposal is not None
+    assert (INSPECTIONS, "permit_id") in reader.read
+    pairs = [r.proposal.pair for r in rows if r.proposal is not None]
+    assert len(pairs) == len(set(pairs))  # each same-name pair once
+    assert all(len({c for _, c in pair}) == 1 for pair in pairs)  # only same-name pairs
+
+
+async def test_a_failed_call_still_measures_its_same_name_pairs():
+    """Every call fails: the table pairs are named unanswered and their same-name pairs are
+    measured all the same."""
+
+    def refuse(prompt: str) -> str:
+        raise RuntimeError("the provider is down")
+
+    rows, reader, _ = await _run([], respond=refuse)
+    _measured_as_the_budget_pair(rows, reader)
 
 
 async def test_the_pair_proposed_is_listed_as_the_budget_pair_is():

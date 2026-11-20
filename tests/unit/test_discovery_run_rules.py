@@ -9,15 +9,15 @@
 # permission from the copyright holder.
 
 """REQ-413: the rules of a discovery run, each its own test -- type groups, class intersection,
-the contexts sent, windows sized from the model's limits, split and retry, the request count, the
-direction rules in order, the removals, and Stop."""
+the contexts sent, table pairs batched into calls sized from the model's limits, re-asking and
+splitting, the request count, the direction rules in order, the removals, and Stop."""
 
 # Requirements: REQ-413, REQ-464
 
 from __future__ import annotations
 
 import json
-from collections import Counter
+from dataclasses import replace
 
 import pytest
 
@@ -39,23 +39,20 @@ from provisa.discovery.columns import (
 from provisa.discovery.direction import (
     Known,
     Proposal,
+    Removed,
     Sampled,
     decide,
     from_answer,
     inferred_role,
     settle,
 )
-from provisa.discovery.runner import Tally, execute
-from provisa.discovery.windows import (
-    TOKENS_PER_SUGGESTION,
-    at_most,
-    bound,
-    pack,
-    plan,
-    window_chars,
-)
+from provisa.discovery.context import CONTAINED_AT, SAMPLE_VALUES, SHARED_CEILING, Scoring
+from provisa.discovery.measure import Measure, Side
+from provisa.discovery.runner import KeyValues, Tally, execute
+from provisa.discovery.windows import TOKENS_PER_PAIR, bound, per_call, plan
 from provisa.llm.client import Completion
 from provisa.llm.limits import CHARS_PER_TOKEN, DEFAULT_LIMITS, limits_for
+from tests.unit.discovery_answers import from_ids, listed_pairs
 
 
 def col(
@@ -208,10 +205,9 @@ def test_boolean_float_json_binary_vector_geometry_and_arrays_are_never_compared
 
 def test_a_column_not_compared_still_appears_by_name_in_its_tables_context():
     t = tbl(1, "orders", col("id", pk=True), col("is_paid", "boolean"))
-    windows = pack([t], WHOLE, 10_000)
-    sent = windows[0].blocks()[0]
-    assert sent["table"]["columns"] == ["id", "is_paid"]
-    assert [c["name"] for c in sent["compared_columns"]] == ["id"]
+    sent = context.table_context(t, "orders")
+    assert sent["columns"] == ["id", "is_paid"]
+    assert [c["name"] for c in sent["comparable_columns"]] == ["id"]
 
 
 # --- classes ---------------------------------------------------------------------------------------
@@ -241,11 +237,10 @@ def test_columns_are_compared_only_where_their_classes_intersect():
     assert not comparable(city, unknown, TEXT)
 
 
-def test_a_window_pair_with_no_intersecting_classes_is_not_asked():
+def test_a_table_pair_with_no_intersecting_classes_is_not_asked():
     source = tbl(1, "stores", col("city", "text", classes=("world_city",)))
     target = tbl(2, "currencies", col("code", "text", classes=("iso4217_currency",)))
-    _, requests = plan([source], [target], *DEFAULT_LIMITS)
-    assert requests == []
+    assert plan([source], [target], *DEFAULT_LIMITS).calls == []
 
 
 # --- contexts -------------------------------------------------------------------------------------
@@ -262,13 +257,16 @@ def test_the_table_context_is_name_description_tags_role_and_all_column_names():
         tags=("finance",),
         role="fact",
     )
-    assert context.table_context(t) == {
-        "id": 7,
+    assert context.table_context(t, "orders") == {
         "name": "orders",
         "description": "One row per order",
         "tags": ["finance"],
         "role": "fact",
         "columns": ["id", "customer_id", "notes"],
+        "comparable_columns": [
+            context.column_context(t.columns[0]),
+            context.column_context(t.columns[1]),
+        ],
     }
 
 
@@ -298,17 +296,17 @@ def test_a_sensitive_class_is_sent_in_place_of_sample_values():
 
 
 def test_the_prompt_says_a_shared_pii_tag_alone_is_weak_evidence():
-    text = context.instructions(WHOLE, 10, either_direction=False)
+    text = context.instructions(10, threshold=0.7, either_direction=False)
     assert "A shared pii tag alone is weak evidence" in text
 
 
-# --- windows ---------------------------------------------------------------------------------------
+# --- table pairs and calls -------------------------------------------------------------------------
 
 
-def test_suggestions_per_request_are_the_output_limit_at_150_tokens_each():
-    assert TOKENS_PER_SUGGESTION == 150
-    assert at_most(4_096) == 27
-    assert at_most(128_000) == 853
+def test_table_pairs_per_call_are_the_output_limit_at_150_tokens_each():
+    assert TOKENS_PER_PAIR == 150
+    assert per_call(4_096) == 27
+    assert per_call(128_000) == 853
 
 
 def test_an_unknown_model_sizes_from_the_default_pair():
@@ -316,15 +314,14 @@ def test_an_unknown_model_sizes_from_the_default_pair():
     assert (limits.input_tokens, limits.output_tokens) == DEFAULT_LIMITS == (32_000, 4_096)
 
 
-def test_a_window_is_half_the_input_limit_in_characters_less_the_instructions():
-    k = at_most(4_096)
-    fixed = len(context.instructions(WHOLE, k, either_direction=False))
-    headers = len("\n## SOURCE window\n") + len("\n## TARGET window\n")
+def test_a_calls_room_is_the_input_limit_in_characters_less_the_instructions():
+    k = per_call(4_096)
+    # The instructions are weighed at the widest threshold they can state.
+    fixed = len(context.instructions(k, threshold=0.9999, either_direction=False))
+    assert fixed == context.instructions_chars(k, either_direction=False)
     assert CHARS_PER_TOKEN == 3
-    assert (
-        window_chars(32_000, WHOLE, k, either_direction=False)
-        == (32_000 * 3 - fixed - headers) // 2
-    )
+    t = tbl(1, "t", col("id"))
+    assert plan([t], [t], 32_000, 4_096).room == 32_000 * 3 - fixed - context.HEADERS
 
 
 def _wide(table_id: int, name: str, n: int) -> TableFacts:
@@ -335,38 +332,38 @@ def _wide(table_id: int, name: str, n: int) -> TableFacts:
     )
 
 
-def test_windows_are_packed_by_character_weight_within_the_room():
+def test_pairs_are_batched_in_order_within_the_room_each_listed_once():
     tables = [_wide(i, f"t{i}", 6) for i in range(1, 6)]
-    room = 2_000
-    windows = pack(tables, WHOLE, room)
-    assert len(windows) > 1
-    assert all(w.weight <= room for w in windows)
-    packed = [(t.table_id, c.name) for w in windows for t, c in w.columns()]
-    assert packed == [(t.table_id, c.name) for t in tables for c in t.columns]
+    planned = plan(tables, None, 1_500, 4_096)
+    assert len(planned.calls) > 1
+    assert all(len(c.prompt(0.9999)) <= 1_500 * CHARS_PER_TOKEN for c in planned.calls)
+    listed = [p.key for c in planned.calls for p in c.pairs]
+    assert len(listed) == len(set(listed)) == planned.table_pairs == 15  # 5 tables, 5 + 10 pairs
 
 
 def test_a_larger_input_limit_makes_fewer_requests():
     tables = [_wide(i, f"t{i}", 8) for i in range(1, 9)]
-    _, small = plan(tables, None, 3_000, 4_096)
-    _, large = plan(tables, None, 300_000, 4_096)
+    small = plan(tables, None, 3_000, 4_096).calls
+    large = plan(tables, None, 300_000, 4_096).calls
     assert len(large) < len(small)
-    assert len(large) == 1
+    assert len(large) == 2  # 36 pairs, 27 to a call
 
 
 def test_every_request_fits_the_input_limit():
     tables = [_wide(i, f"t{i}", 8) for i in range(1, 9)]
-    k, requests = plan(tables, [*tables[:3]], 4_000, 4_096)
-    assert requests
-    assert all(len(r.prompt(k)) <= 4_000 * CHARS_PER_TOKEN for r in requests)
+    calls = plan(tables, [*tables[:3]], 4_000, 4_096).calls
+    assert calls
+    assert all(len(c.prompt(0.9999)) <= 4_000 * CHARS_PER_TOKEN for c in calls)
 
 
-def test_the_request_count_is_given_by_group():
+def test_the_request_count_counts_calls_and_table_pairs():
     t1 = tbl(1, "orders", col("id", pk=True), col("customer_ref", "uuid"), col("day", "date"))
     t2 = tbl(2, "customers", col("id", pk=True), col("ref", "uuid"))
-    _, requests = plan([t1, t2], None, *DEFAULT_LIMITS)
-    assert Counter(r.group for r in requests) == {WHOLE: 1, UUID: 1}
+    planned = plan([t1, t2], None, *DEFAULT_LIMITS)
+    # customers x orders shares whole numbers and uuids; neither table pairs with itself.
+    assert [p.key for c in planned.calls for p in c.pairs] == [(2, 1)]
     # The count before Run: the date column is in no group.
-    assert bound([t1, t2], None, *DEFAULT_LIMITS)[1] == {WHOLE: 1, UUID: 1}
+    assert bound([t1, t2], None, *DEFAULT_LIMITS, SAMPLE_VALUES) == (27, 1, 1)
 
 
 async def test_tables_sharing_only_dates_ask_the_model_nothing_and_measure_nothing():
@@ -386,31 +383,37 @@ async def test_tables_sharing_only_dates_ask_the_model_nothing_and_measure_nothi
         col("shipped_at", "timestamp"),
         col("logged_at", "timestamp with time zone"),
     )
-    k, requests = plan([orders, shipments], None, *DEFAULT_LIMITS)
-    assert requests == []
-    assert bound([orders, shipments], None, *DEFAULT_LIMITS)[1] == {}
-    assert bound([orders], [shipments], *DEFAULT_LIMITS)[1] == {}
+    planned = plan([orders, shipments], None, *DEFAULT_LIMITS)
+    assert planned.calls == []
+    assert bound([orders, shipments], None, *DEFAULT_LIMITS, SAMPLE_VALUES)[1:] == (0, 0)
+    assert bound([orders], [shipments], *DEFAULT_LIMITS, SAMPLE_VALUES)[1:] == (0, 0)
     asked: list[str] = []
     measured: list = []
 
     def ask(prompt: str, max_tokens: int) -> Completion:
         asked.append(prompt)
-        return _answer([])
+        return _answer(prompt, [])
 
     async def measure(found: list) -> list:
         measured.append(found)
         return found
 
     tally, proposals = await execute(
-        requests, k, 4_096, ask, _Watcher(), measure=measure, to_thread=_direct
+        planned,
+        4_096,
+        ask,
+        _Watcher(),
+        threshold=0.7,
+        key_values=KeyValues(measure=measure, cutoff=0.0),
+        to_thread=_direct,
     )
     assert asked == []
-    assert all(not found for found in measured)
+    assert measured == []
     assert proposals == []
     assert tally.total == 0
 
 
-# --- split and retry, request count, stop ----------------------------------------------------------
+# --- re-asking and splitting, request count, stop --------------------------------------------------
 
 
 class _Watcher:
@@ -429,11 +432,14 @@ async def _direct(fn, *args):
     return fn(*args)
 
 
-def _answer(items: list[dict], *, cut_off: bool = False, closed: bool = True) -> Completion:
-    text = json.dumps(items)
-    if not closed:
-        text = text[:-1] + ', {"source_table_id": 1, "sou'
-    return Completion(text, "acme", "m", None, cut_off)
+#: The names of the tables these tests make, by id.
+_NAMES = {1: "orders", 2: "customers", 3: "shipments", **{i: f"t{i}" for i in range(4, 10)}}
+
+
+def _answer(prompt: str, items: list[dict], *, cut_off: bool = False) -> Completion:
+    """The model answering each listed pair with the column pairs of ``items`` (tables by id),
+    every other "none"."""
+    return Completion(from_ids(prompt, json.dumps(items), _NAMES), "acme", "m", None, cut_off)
 
 
 def _item(src: tuple[int, str], tgt: tuple[int, str], confidence: float = 0.9) -> dict:
@@ -454,107 +460,116 @@ def _pair_tables() -> tuple[TableFacts, TableFacts]:
     return orders, customers
 
 
+def _two_pairs():
+    """One call of two table pairs: orders x customers, shipments x customers."""
+    orders, customers = _pair_tables()
+    shipments = tbl(3, "shipments", col("id", pk=True), col("customer_id"))
+    planned = plan([orders, shipments], [customers], *DEFAULT_LIMITS)
+    assert [len(c.pairs) for c in planned.calls] == [2]
+    return planned
+
+
 async def test_the_request_count_equals_the_requests_the_run_then_makes():
-    tables = [_wide(i, f"t{i}", 8) for i in range(1, 7)]
-    k, requests = plan(tables, None, 3_000, 4_096)
+    tables = [_wide(i, f"t{i}", 8) for i in range(4, 10)]
+    planned = plan(tables, None, 3_000, 4_096)
     asked: list[str] = []
 
     def ask(prompt: str, max_tokens: int) -> Completion:
         asked.append(prompt)
-        return _answer([])
+        return _answer(prompt, [])
 
     tally, _ = await execute(
-        requests, k, 4_096, ask, _Watcher(), key_values=None, to_thread=_direct
+        planned, 4_096, ask, _Watcher(), threshold=0.7, key_values=None, to_thread=_direct
     )
-    assert len(asked) == len(requests)
-    assert tally.done == tally.total == len(requests)
+    assert len(asked) == len(planned.calls)
+    assert tally.done == tally.total == len(planned.calls)
 
 
-async def test_a_cut_off_answer_splits_the_request_and_keeps_its_complete_suggestions():
-    orders, customers = _pair_tables()
-    k, requests = plan([orders], [customers], *DEFAULT_LIMITS)
-    assert len(requests) == 1
-    answers = [
-        _answer([_item((1, "customer_id"), (2, "id"))], cut_off=True, closed=False),
-        _answer([]),
-        _answer([_item((1, "store_id"), (2, "region_id"))]),
-    ]
+async def test_a_cut_off_answer_keeps_its_complete_pairs_and_asks_the_rest_again():
+    planned = _two_pairs()
     asked: list[str] = []
 
     def ask(prompt: str, max_tokens: int) -> Completion:
         asked.append(prompt)
-        return answers.pop(0)
+        if len(asked) == 1:
+            pairs = listed_pairs(prompt)
+            first = {
+                "pair": 1,
+                "column_pairs": [
+                    {
+                        **_item((1, "customer_id"), (2, "id")),
+                        "source_table": pairs[0]["source"],
+                        "target_table": pairs[0]["target"],
+                    }
+                ],
+            }
+            text = "[" + json.dumps(first) + ', {"pair": 2, "column_pa'
+            return Completion(text, "acme", "m", None, True)
+        return _answer(prompt, [_item((3, "customer_id"), (2, "id"))])
 
     tally, proposals = await execute(
-        requests, k, 4_096, ask, _Watcher(), key_values=None, to_thread=_direct
+        planned, 4_096, ask, _Watcher(), threshold=0.7, key_values=None, to_thread=_direct
     )
-    assert len(asked) == 3
-    assert tally.split == 1
-    assert tally.total == 3 and tally.done == 3
+    assert len(asked) == 2
+    assert [(p["source"], p["target"]) for p in listed_pairs(asked[1])] == [
+        ("shipments", "customers")
+    ]
+    assert tally.cut_short == 1 and tally.asked_again == 1 and tally.unanswered == []
     assert {p.edge for p in proposals} == {
         (1, "customer_id", 2, "id"),
-        (1, "store_id", 2, "region_id"),
+        (3, "customer_id", 2, "id"),
     }
 
 
-async def test_a_full_answer_splits_the_request():
+async def test_a_call_lists_no_more_pairs_than_the_output_limit_answers():
     orders, customers = _pair_tables()
-    _, requests = plan([orders], [customers], *DEFAULT_LIMITS)
-    k = 1
-    asked: list[str] = []
-
-    def ask(prompt: str, max_tokens: int) -> Completion:
-        asked.append(prompt)
-        return _answer([_item((1, "customer_id"), (2, "id"))] if len(asked) == 1 else [])
-
-    tally, proposals = await execute(
-        requests, k, 150, ask, _Watcher(), key_values=None, to_thread=_direct
-    )
-    assert tally.split >= 1
-    assert len(asked) > 1
-    assert (1, "customer_id", 2, "id") in {p.edge for p in proposals}
+    shipments = tbl(3, "shipments", col("id", pk=True), col("customer_id"))
+    planned = plan([orders, shipments], [customers], DEFAULT_LIMITS[0], 150)
+    assert planned.k == 1
+    assert [len(c.pairs) for c in planned.calls] == [1, 1]
 
 
 async def test_a_request_the_vendor_refuses_as_too_long_is_split_and_asked_again():
-    orders, customers = _pair_tables()
-    k, requests = plan([orders], [customers], *DEFAULT_LIMITS)
+    planned = _two_pairs()
     asked: list[str] = []
 
     def ask(prompt: str, max_tokens: int) -> Completion:
         asked.append(prompt)
         if len(asked) == 1:
             raise RuntimeError("Error code: 400 - prompt is too long: 250000 tokens > 200000")
-        return _answer([])
+        return _answer(prompt, [])
 
     tally, _ = await execute(
-        requests, k, 4_096, ask, _Watcher(), key_values=None, to_thread=_direct
+        planned, 4_096, ask, _Watcher(), threshold=0.7, key_values=None, to_thread=_direct
     )
     assert tally.split == 1
     assert tally.failed == []
     assert len(asked) == 3
 
 
-async def test_a_cut_off_answer_that_cannot_split_keeps_what_it_finished():
-    single = tbl(1, "a", col("x_id"))
-    other = tbl(2, "b", col("id", pk=True))
-    k, requests = plan([single], [other], *DEFAULT_LIMITS)
+async def test_a_cut_off_answer_that_finished_no_pair_asks_it_again():
+    single = tbl(1, "orders", col("x_id"))
+    other = tbl(2, "customers", col("id", pk=True))
+    planned = plan([single], [other], *DEFAULT_LIMITS)
+    asked: list[str] = []
+
+    def ask(prompt: str, max_tokens: int) -> Completion:
+        asked.append(prompt)
+        if len(asked) == 1:
+            return Completion('[{"pair": 1, "column_pairs": [{"sour', "acme", "m", None, True)
+        return _answer(prompt, [_item((1, "x_id"), (2, "id"))])
+
     tally, proposals = await execute(
-        requests,
-        k,
-        4_096,
-        lambda p, m: _answer([_item((1, "x_id"), (2, "id"))], cut_off=True, closed=False),
-        _Watcher(),
-        key_values=None,
-        to_thread=_direct,
+        planned, 4_096, ask, _Watcher(), threshold=0.7, key_values=None, to_thread=_direct
     )
-    assert tally.split == 0 and tally.cut_short == 1
+    assert tally.split == 0 and tally.cut_short == 1 and tally.asked_again == 1
     assert [p.edge for p in proposals] == [(1, "x_id", 2, "id")]
 
 
 async def test_one_failed_request_is_reported_and_the_rest_continue():
-    tables = [_wide(i, f"t{i}", 8) for i in range(1, 7)]
-    k, requests = plan(tables, None, 3_000, 4_096)
-    assert len(requests) > 2
+    tables = [_wide(i, f"t{i}", 8) for i in range(4, 10)]
+    planned = plan(tables, None, 3_000, 4_096)
+    assert len(planned.calls) > 2
     calls = 0
 
     def ask(prompt: str, max_tokens: int) -> Completion:
@@ -562,15 +577,18 @@ async def test_one_failed_request_is_reported_and_the_rest_continue():
         calls += 1
         if calls == 1:
             raise RuntimeError("vendor unavailable")
-        return _answer([])
+        return _answer(prompt, [])
 
     tally, _ = await execute(
-        requests, k, 4_096, ask, _Watcher(), key_values=None, to_thread=_direct
+        planned, 4_096, ask, _Watcher(), threshold=0.7, key_values=None, to_thread=_direct
     )
-    assert calls == len(requests)
+    first = planned.calls[0]
+    # The failed call's pairs are asked again, in one more call.
+    assert calls == len(planned.calls) + 1
+    assert tally.asked_again == len(first.pairs) and tally.unanswered == []
     assert tally.failed == [
         {
-            "group": requests[0].group,
+            "table_pairs": [first.named(p) for p in first.pairs],
             "code": "llm.request_failed",
             "params": {"reason": "vendor unavailable"},
             "message": "The request to the model failed: vendor unavailable",
@@ -580,20 +598,21 @@ async def test_one_failed_request_is_reported_and_the_rest_continue():
 
 async def test_an_unreadable_answer_is_a_failed_request_with_its_own_message():
     orders, customers = _pair_tables()
-    k, requests = plan([orders], [customers], *DEFAULT_LIMITS)
+    planned = plan([orders], [customers], *DEFAULT_LIMITS)
 
     tally, _ = await execute(
-        requests,
-        k,
+        planned,
         4_096,
         lambda p, m: Completion("no list here", "v", "m", None, False),
         _Watcher(),
+        threshold=0.7,
         key_values=None,
         to_thread=_direct,
     )
-    assert tally.unreadable == len(requests)
+    assert tally.unreadable == 2  # asked, then asked again
+    assert tally.unanswered == ["orders × customers"]
     assert tally.failed[0] == {
-        "group": requests[0].group,
+        "table_pairs": ["orders × customers"],
         "code": "discovery.answer_unreadable",
         "params": {},
         "message": "The model's answer held no readable list.",
@@ -638,23 +657,30 @@ async def test_a_run_that_has_ended_leaves_the_request_in_flight(monkeypatch):
 
 
 async def test_stop_ends_the_run_after_the_request_in_flight_and_keeps_what_was_found():
-    tables = [_wide(i, f"t{i}", 8) for i in range(1, 7)]
-    k, requests = plan(tables, None, 3_000, 4_096)
-    first = requests[0].source.columns()
-    a, b = first[0], first[1]
+    tables = [_wide(i, f"t{i}", 8) for i in range(4, 10)]
+    planned = plan(tables, None, 3_000, 4_096)
+    pair = planned.calls[0].pairs[0]
+    a, b = pair.column_pairs()[0]
+    edge = (pair.source.table_id, a.name, pair.target.table_id, b.name)
     asked = 0
 
     def ask(prompt: str, max_tokens: int) -> Completion:
         nonlocal asked
         asked += 1
-        return _answer([_item((a[0].table_id, a[1].name), (b[0].table_id, b[1].name))])
+        return _answer(prompt, [_item(edge[:2], edge[2:])])
 
     tally, proposals = await execute(
-        requests, k, 4_096, ask, _Watcher(stop_after=1), key_values=None, to_thread=_direct
+        planned,
+        4_096,
+        ask,
+        _Watcher(stop_after=1),
+        threshold=0.7,
+        key_values=None,
+        to_thread=_direct,
     )
     assert asked == 1
     assert tally.stopped
-    assert [p.edge for p in proposals] == [(a[0].table_id, a[1].name, b[0].table_id, b[1].name)]
+    assert [p.edge for p in proposals] == [edge]
 
 
 # --- direction --------------------------------------------------------------------------------------
@@ -823,20 +849,44 @@ async def test_two_different_columns_of_one_table_are_kept():
     assert [p.edge for p in out.kept] == [(1, "manager_id", 1, "id")]
 
 
-async def test_primary_key_to_primary_key_is_removed():
+async def test_primary_key_to_primary_key_is_listed_with_a_note():
+    # REQ-413 (amended 2026-11-18): a rule that judged a pair only sets its note.
     a = tbl(1, "a", col("id", pk=True))
     b = tbl(2, "b", col("id", pk=True))
     out = await _settle([_sem((1, "id"), (2, "id"))], a, b)
-    assert out.kept == [] and out.removed.primary_key_to_primary_key == 1
+    assert [(p.edge, p.rank, p.cardinality) for p in out.kept] == [
+        ((1, "id", 2, "id"), 0.9, "many-to-one")
+    ]
+    assert out.kept[0].reasoning == "model; both columns are primary keys"
+    assert out.left_out == []
 
 
-async def test_both_sides_repeating_in_the_sample_is_removed():
+async def test_both_sides_repeating_in_the_sample_is_listed_once_as_many_to_many():
     a = tbl(1, "a", col("k"))
     b = tbl(2, "b", col("k"))
     props = [_sem((1, "k"), (2, "k"), 0.9), _sem((2, "k"), (1, "k"), 0.9)]
     samples = _Samples({(1, "k"): True, (2, "k"): True})
     out = await _settle(props, a, b, samples=samples)
-    assert out.kept == [] and out.removed.both_repeating == 1
+    assert [(p.edge, p.rank, p.cardinality) for p in out.kept] == [
+        ((1, "k", 2, "k"), 0.9, "many-to-many")
+    ]
+    assert out.kept[0].reasoning.endswith(
+        "values repeat on both sides in a sample, so neither column is the one side"
+    )
+    assert out.left_out == [] and out.decided_by == {"fixed_order": 1}
+
+
+async def test_a_measured_many_to_many_pair_is_listed_with_its_score_and_a_note():
+    a, b = _pair_tables()
+    repeating = Side(10, False, False, None)
+    measure = Measure(repeating, repeating, 5, 5, 100, Scoring(CONTAINED_AT, SHARED_CEILING))
+    many = replace(_sem((1, "customer_id"), (2, "id")), measure=measure, score=0.2)
+    out = await _settle([many], a, b)
+    assert [(p.edge, p.rank, p.cardinality) for p in out.kept] == [
+        ((1, "customer_id", 2, "id"), 0.2, "many-to-many")
+    ]
+    assert out.kept[0].reasoning == "model; neither column's values are distinct"
+    assert out.left_out == []
 
 
 @pytest.mark.parametrize("edge", [(1, "customer_id", 2, "id"), (2, "id", 1, "customer_id")])
@@ -846,26 +896,44 @@ async def test_a_relationship_that_exists_in_either_direction_is_removed(edge):
     assert out.kept == [] and out.removed.existing == 1
 
 
-async def test_a_pending_suggestion_is_removed():
+async def test_a_pair_still_waiting_from_an_earlier_run_is_listed_in_this_run():
     a, b = _pair_tables()
     known = Known(pending={(1, "customer_id", 2, "id")})
     out = await _settle([_sem((1, "customer_id"), (2, "id"))], a, b, known=known)
-    assert out.kept == [] and out.removed.pending == 1
+    assert [p.edge for p in out.kept] == [(1, "customer_id", 2, "id")]
+    assert out.kept[0].reasoning == "model; suggested by an earlier run and not yet decided"
+    assert out.left_out == []
 
 
-async def test_a_rejected_suggestion_is_removed():
+@pytest.mark.parametrize("edge", [(1, "customer_id", 2, "id"), (2, "id", 1, "customer_id")])
+async def test_a_pair_marked_not_again_in_either_direction_is_left_out(edge):
     a, b = _pair_tables()
-    known = Known(rejected={(1, "customer_id", 2, "id")})
+    known = Known(rejected={edge})
     out = await _settle([_sem((1, "customer_id"), (2, "id"))], a, b, known=known)
     assert out.kept == [] and out.removed.rejected == 1
 
 
-async def test_a_semantic_suggestion_matching_a_foreign_key_of_the_run_is_removed_and_the_key_kept():
+async def test_a_semantic_duplicate_of_a_foreign_key_is_shown_once_as_the_foreign_key():
     a, b = _pair_tables()
     fk = _fk((1, "customer_id"), (2, "id"))
-    out = await _settle([fk, _sem((2, "id"), (1, "customer_id"), cardinality="one-to-many")], a, b)
+    sem = from_answer(
+        "semantics", (2, "id"), (1, "customer_id"), "one-to-many", 0.8, "orders name a customer"
+    )
+    out = await _settle([fk, sem], a, b)
     assert [(p.kind, p.edge) for p in out.kept] == [("foreign_keys", (1, "customer_id", 2, "id"))]
-    assert out.removed.matches_foreign_key == 1
+    assert out.kept[0].reasoning == (
+        "Foreign key constraint; also proposed by the model at 80%: orders name a customer"
+    )
+    assert out.left_out == []
+
+
+async def test_two_directions_of_one_pair_are_one_row_and_neither_is_left_out():
+    a = tbl(1, "a", col("k"))
+    b = tbl(2, "b", col("k"))
+    props = [_sem((1, "k"), (2, "k"), 0.8), _sem((2, "k"), (1, "k"), 0.9)]
+    out = await _settle(props, a, b)
+    assert [p.edge for p in out.kept] == [(2, "k", 1, "k")]
+    assert out.left_out == [] and out.removed == Removed()
 
 
 async def test_only_relationships_starting_in_the_source_set_and_ending_in_the_target_set_are_kept():
@@ -885,11 +953,8 @@ async def test_only_relationships_starting_in_the_source_set_and_ending_in_the_t
 
 
 def test_the_instructions_say_what_a_confidence_states_and_where_a_suggestion_is_kept():
-    from provisa.discovery.runner import MIN_CONFIDENCE
-
-    text = context.instructions(TEXT, 5, either_direction=True)
-    assert context.RUBRIC in text
-    assert MIN_CONFIDENCE == context.KEPT_AT == 0.7
+    text = context.instructions(5, threshold=0.7, either_direction=True)
+    assert context.rubric("0.7") in text
     assert "A relationship is suggested at 0.7 or more" in text
     for band in ("0.9 to 1.0", "0.7 to 0.89", "0.4 to 0.69", "below 0.4"):
         assert band in text
@@ -899,7 +964,7 @@ def test_the_instructions_say_what_a_confidence_states_and_where_a_suggestion_is
 
 
 async def test_every_element_of_an_answer_is_kept_with_why_it_is_left_out():
-    from provisa.discovery.runner import judged, read_items
+    from provisa.discovery.runner import NOT_NAMED, judged, read_answers
 
     orders = tbl(
         1,
@@ -910,23 +975,47 @@ async def test_every_element_of_an_answer_is_kept_with_why_it_is_left_out():
         col("card", classes=("payment_card",)),
     )
     customers = tbl(2, "customers", col("id", pk=True), col("region_id"))
-    k, (request,) = plan([orders], [customers], *DEFAULT_LIMITS)
-    tally = Tally(total=1)
-    items = [
-        _item((1, "customer_id"), (2, "id"), 0.95),
-        _item((1, "store_id"), (2, "region_id"), 0.4),
-        _item((1, "card"), (2, "id"), 0.9),
-        _item((1, "customer_id"), (9, "id"), 0.9),
-        {"source_table_id": 1, "source_column": "customer_id"},
-        {**_item((1, "customer_id"), (2, "id")), "cardinality": "many-to-many"},
+    (call,) = plan([orders], [customers], *DEFAULT_LIMITS).calls
+    tally = Tally(total=1, threshold=0.7)
+
+    def named(src: tuple[str, str], tgt: tuple[str, str], confidence: float = 0.9) -> dict:
+        return {
+            "source_table": src[0],
+            "source_column": src[1],
+            "target_table": tgt[0],
+            "target_column": tgt[1],
+            "cardinality": "many-to-one",
+            "confidence": confidence,
+            "reasoning": "names match",
+        }
+
+    column_pairs = [
+        named(("orders", "customer_id"), ("customers", "id"), 0.95),
+        named(("orders", "store_id"), ("customers", "region_id"), 0.4),
+        named(("orders", "card"), ("customers", "id"), 0.9),
+        named(("orders", "customer_id"), ("nowhere", "id"), 0.9),
+        {"source_table": "orders", "source_column": "customer_id"},
+        {**named(("orders", "customer_id"), ("customers", "id")), "cardinality": "many-to-many"},
         "orders.customer_id -> customers.id",
     ]
-    found = await judged(*read_items(request, items, tally), None, None, tally)
-    assert [p.edge for p in found] == [(1, "customer_id", 2, "id")]
+    answered, found, apart, zeros = read_answers(
+        call, [{"pair": 1, "column_pairs": column_pairs}], tally
+    )
+    assert answered == {1}
+    kept = await judged(found, apart, None, None, tally, zeros)
+    assert [p.edge for p in kept] == [(1, "customer_id", 2, "id")]
     assert tally.proposed == 7
-    assert (tally.below_threshold, tally.not_comparable, tally.invalid) == (1, 1, 4)
+    # Every compared column pair the answer did not name scores zero, below the threshold.
+    unnamed = {
+        (1, "id", 2, "id"),
+        (1, "id", 2, "region_id"),
+        (1, "customer_id", 2, "region_id"),
+        (1, "store_id", 2, "id"),
+    }
+    assert tally.zero_scored == len(unnamed)
+    assert (tally.below_threshold, tally.not_comparable, tally.invalid) == (1 + 4, 1, 4)
     left = [(r.left_out, None if r.proposal is None else r.proposal.edge) for r in tally.left_out]
-    assert left == [
+    assert left[:6] == [
         ("unknown_column", None),
         ("invalid_shape", None),
         ("invalid_shape", None),
@@ -934,12 +1023,16 @@ async def test_every_element_of_an_answer_is_kept_with_why_it_is_left_out():
         ("not_comparable", (1, "card", 2, "id")),
         ("below_threshold", (1, "store_id", 2, "region_id")),
     ]
+    assert {e for reason, e in left[6:]} == unnamed
+    assert all(reason == "below_threshold" for reason, _ in left[6:])
+    assert all(
+        r.proposal is not None and (r.proposal.confidence, r.proposal.reasoning) == (0.0, NOT_NAMED)
+        for r in tally.left_out[6:]
+    )
     below = tally.left_out[5].proposal
     assert below is not None and below.confidence == 0.4 and below.reasoning == "names match"
     # An element that made no proposal is kept as the model wrote it.
-    assert (
-        tally.left_out[0].answer is not None and '"target_table_id": 9' in tally.left_out[0].answer
-    )
+    assert tally.left_out[0].answer is not None and '"nowhere"' in tally.left_out[0].answer
     assert tally.left_out[3].answer == '"orders.customer_id -> customers.id"'
 
 
@@ -951,7 +1044,7 @@ def test_a_second_scorers_confidence_is_kept_beside_the_models_and_removes_nothi
         _sem((1, "store_id"), (2, "region_id"), 0.9),
         _sem((1, "note"), (2, "name"), 0.8),
     ]
-    tally = Tally(total=1)
+    tally = Tally(total=1, threshold=0.7)
     kept = rescored(found, [0.75, 0.31, None], tally)
     assert [(p.edge, p.confidence, p.scored) for p in kept] == [
         ((1, "customer_id", 2, "id"), 0.95, 0.75),
@@ -966,12 +1059,12 @@ def test_a_second_scorer_that_could_not_be_asked_keeps_the_models_confidence_and
     from provisa.discovery.runner import rescored
 
     found = [_sem((1, "customer_id"), (2, "id"), 0.95)]
-    tally = Tally(total=1)
+    tally = Tally(total=1, threshold=0.7)
     assert rescored(found, None, tally) == found
     assert tally.scoring_failed == 1 and tally.scored == 0 and tally.left_out == []
 
 
-async def test_every_removed_proposal_is_given_back_with_its_reason():
+async def test_only_existing_not_again_same_column_and_out_of_scope_leave_a_pair_out():
     orders = tbl(1, "orders", col("id", pk=True), col("customer_id"), col("ref"), col("code"))
     customers = tbl(2, "customers", col("id", pk=True), col("ref"), col("code"))
     props = [
@@ -983,26 +1076,18 @@ async def test_every_removed_proposal_is_given_back_with_its_reason():
         _sem((1, "ref"), (2, "ref"), 0.75),
         _sem((1, "code"), (2, "code"), 0.9),
     ]
-    out = await _settle(props, orders, customers, known=Known(rejected={(1, "code", 2, "code")}))
-    assert [p.edge for p in out.kept] == [(1, "customer_id", 2, "id"), (1, "ref", 2, "ref")]
+    known = Known(rejected={(1, "code", 2, "code")}, existing={(2, "ref", 1, "ref")})
+    out = await _settle(props, orders, customers, known=known)
+    assert [(p.kind, p.edge) for p in out.kept] == [
+        ("semantics", (1, "id", 2, "id")),
+        ("foreign_keys", (1, "customer_id", 2, "id")),
+    ]
     assert [(o.reason, o.proposal.edge, o.proposal.confidence) for o in out.left_out] == [
         ("same_column", (1, "customer_id", 1, "customer_id"), 0.9),
-        ("primary_key_to_primary_key", (1, "id", 2, "id"), 0.9),
-        ("matches_foreign_key", (1, "customer_id", 2, "id"), 0.8),
-        ("weaker", (1, "ref", 2, "ref"), 0.75),
+        ("existing", (1, "ref", 2, "ref"), 0.9),
         ("rejected", (1, "code", 2, "code"), 0.9),
     ]
-    assert out.removed.weaker == 1 and out.removed.rejected == 1
-
-
-async def test_a_pair_whose_both_sides_repeat_leaves_out_each_of_its_proposals():
-    a = tbl(1, "a", col("code"))
-    b = tbl(2, "b", col("code"))
-    props = [_sem((1, "code"), (2, "code"), 0.9), _sem((2, "code"), (1, "code"), 0.9)]
-    samples = _Samples({(1, "code"): True, (2, "code"): True})
-    out = await _settle(props, a, b, samples=samples)
-    assert out.kept == [] and out.removed.both_repeating == 1
-    assert [o.reason for o in out.left_out] == ["both_repeating", "both_repeating"]
+    assert out.removed == Removed(same_column=1, existing=1, rejected=1)
 
 
 # --- the second scorer is asked with what the run knows ---------------------------------------------

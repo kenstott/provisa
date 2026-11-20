@@ -12,7 +12,7 @@
 
 Generates SQL expressions that replace column values per (column, role):
   - regex: REGEXP_REPLACE for string columns
-  - constant: literal value (NULL, 0, custom)
+  - constant: a literal on a text column; NULL on any other (REQ-2131)
   - truncate: DATE_TRUNC for date/timestamp columns
 
 Type validation ensures invalid combinations are rejected at config load time.
@@ -50,13 +50,27 @@ UNIVERSAL_REGEX_REPLACE = "provisa_regex_replace"
 FULL_MASK_TEXT = "****"
 # REQ-2059: what a save of a list holding an entry no reader reaches is refused with.
 UNREACHABLE_MASK = "You have defined a mask that is not reachable: "
-_TEXT_TYPES = {"varchar", "char", "text"}
+_TEXT_TYPES = {
+    "varchar",
+    "char",
+    "text",
+    "character varying",
+    "character",
+    "bpchar",
+    "nvarchar",
+    "string",
+}
+
+
+def is_text_type(data_type: str) -> bool:
+    """Whether a column of ``data_type`` holds text: the only type a mask may read as a string."""
+    return _base_type(data_type) in _TEXT_TYPES
 
 
 def full_mask(data_type: str) -> str | None:
     """The complete mask of a column of ``data_type``: what a regex mask reads a value it does not
     match as, and what a reader no entry of the column's list matches reads (REQ-2059)."""
-    return FULL_MASK_TEXT if _base_type(data_type) in _TEXT_TYPES else None
+    return FULL_MASK_TEXT if is_text_type(data_type) else None
 
 
 # the engine base types that support regex masking
@@ -64,15 +78,6 @@ _STRING_TYPES = {"varchar", "char", "text", "varbinary"}
 
 # the engine base types that support truncate masking
 _TEMPORAL_TYPES = {"date", "time", "timestamp", "time with time zone", "timestamp with time zone"}
-
-# the engine integer type bounds for MAX/MIN constant resolution
-_INTEGER_BOUNDS: dict[str, tuple[int, int]] = {
-    "tinyint": (-128, 127),
-    "smallint": (-32768, 32767),
-    "integer": (-2147483648, 2147483647),
-    "int": (-2147483648, 2147483647),
-    "bigint": (-9223372036854775808, 9223372036854775807),
-}
 
 
 def _base_type(column_type: str) -> str:
@@ -153,39 +158,14 @@ def validate_masking_rule(  # REQ-038, REQ-040, REQ-042
             )
 
 
-def _number(text: str) -> exp.Expr:  # pyright: ignore[reportPrivateImportUsage]
-    """A numeric literal, a negative one as the parser reads it (a negated literal)."""
-    if text.startswith("-"):
-        return exp.Neg(this=exp.Literal.number(text[1:]))
-    return exp.Literal.number(text)
-
-
 def _resolve_constant(value: int | float | str | None, data_type: str) -> exp.Expr:  # pyright: ignore[reportPrivateImportUsage]
-    """Resolve a constant mask value to a literal.
+    """Resolve a constant mask value to a literal of the column's type.
 
-    Handles special values: NULL, MAX, MIN (resolved from column type bounds).
+    REQ-2131 (amended 77da388aa6): a masked value keeps its column's type. A text column reads its
+    constant as text; any other column (numeric, boolean, date and time, binary) reads it as NULL.
     """
-    if value is None:
+    if value is None or not is_text_type(data_type):
         return exp.Null()
-
-    if isinstance(value, str):
-        upper = value.upper()
-        base = _base_type(data_type)
-
-        if upper == "MAX" and base in _INTEGER_BOUNDS:
-            return _number(str(_INTEGER_BOUNDS[base][1]))
-        if upper == "MIN" and base in _INTEGER_BOUNDS:
-            return _number(str(_INTEGER_BOUNDS[base][0]))
-
-        # String literal (governed semantic SQL; transpiled to the engine afterwards).
-        return exp.Literal.string(value)
-
-    if isinstance(value, bool):
-        return exp.Boolean(this=value)
-
-    if isinstance(value, (int, float)):
-        return _number(str(value))
-
     return exp.Literal.string(str(value))
 
 
@@ -243,18 +223,11 @@ def build_mask_expression(  # REQ-040, REQ-263
     return mask_expression(rule, column, data_type).sql(dialect="postgres")
 
 
-def _resolve_constant_value(value: int | float | str | None, data_type: str):
-    """Python equivalent of _resolve_constant: return the actual masked value, not a SQL literal."""
-    if value is None:
+def _resolve_constant_value(value: int | float | str | None, data_type: str) -> str | None:
+    """Python equivalent of _resolve_constant: the masked value itself, not a SQL literal."""
+    if value is None or not is_text_type(data_type):
         return None
-    if isinstance(value, str):
-        upper = value.upper()
-        base = _base_type(data_type)
-        if upper == "MAX" and base in _INTEGER_BOUNDS:
-            return _INTEGER_BOUNDS[base][1]
-        if upper == "MIN" and base in _INTEGER_BOUNDS:
-            return _INTEGER_BOUNDS[base][0]
-    return value
+    return str(value)
 
 
 def _truncate_temporal(value, precision: str):

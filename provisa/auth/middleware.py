@@ -71,6 +71,7 @@ def _deny(
     *,
     cause: str | None = None,
     code: str | None = None,
+    params: dict[str, str] | None = None,
 ) -> JSONResponse:
     """Every auth denial records WHY, at WARNING, with the request identity.
 
@@ -87,8 +88,20 @@ def _deny(
         detail,
         f" ({cause})" if cause else "",
     )
-    content = {"detail": detail} if code is None else {"detail": detail, "code": code}
+    content: dict[str, object] = {"detail": detail}
+    if code is not None:
+        content["code"] = code
+    if params is not None:
+        content["params"] = params
     return JSONResponse(status_code=status, content=content)
+
+
+#: The platform-plane endpoints, which serve a principal that belongs to no org and holds no role
+#: yet: /auth/redeem-invite CREATES the first membership, /auth/claim-bootstrap the first grant,
+#: /auth/me reports none, /setup and /admin/orgs run onboarding, /billing pays for an org that is
+#: not a membership yet (REQ-1476). REQ-2006: /sandboxes opens the caller's own demo sandbox, an
+#: org they do not belong to yet. They touch no tenant data.
+_PLATFORM_PLANE_PATHS = ("/auth/", "/setup", "/admin/orgs", "/billing", "/sandboxes/")
 
 
 def _basic_username(scheme: str, token: str) -> str | None:
@@ -250,21 +263,22 @@ def _forget_recorded_idp_roles(org_id: str) -> None:
         del _recorded_idp_roles[key]
 
 
-async def _record_idp_roles(db_pool, identity: AuthIdentity) -> None:  # REQ-2219
+async def _record_idp_roles(db_pool, identity: AuthIdentity) -> bool:  # REQ-2219
     """Mirror the role claims this sign-in's token carries, as the identity provider's attributes
     are recorded, so the roles a person holds are listed with the identity provider as their
     origin. Read as enforcement reads them (:func:`resolve_assignments`); written only when they
-    differ from what this process last wrote."""
+    differ from what this process last wrote. Returns whether they did."""
     from provisa.core.request_context import current_env, current_org
     from provisa.entitlements import roles
 
     claimed = resolve_assignments(identity)
     key = (current_org.get(), current_env.get(), identity.user_id)
     if _recorded_idp_roles.get(key) == claimed:
-        return
+        return False
     async with db_pool.acquire() as conn:
         await roles.mirror_idp_roles(conn, identity.user_id, claimed)
     _recorded_idp_roles[key] = claimed
+    return True
 
 
 _recorded_idp_lists: dict[tuple[str | None, str | None, str], dict] = {}
@@ -276,11 +290,23 @@ def _forget_recorded_idp_lists(org_id: str) -> None:
         del _recorded_idp_lists[key]
 
 
-async def _record_idp_entitlements(db_pool, identity: AuthIdentity) -> None:  # REQ-2219
+def forget_person_idp(user_id: str) -> None:  # REQ-2219
+    """Forget what this process last recorded of ``user_id``'s identity provider, in every org and
+    environment, once their account is removed: its store copies are gone with it, and a later
+    sign-in under that id records afresh."""
+    for cache in (_recorded_idp, _recorded_idp_roles, _recorded_idp_lists):
+        for key in [k for k in cache if k[2] == user_id]:
+            del cache[key]
+
+
+async def _record_idp_entitlements(  # REQ-2219
+    db_pool, identity: AuthIdentity, roles_changed: bool = False
+) -> None:
     """Keep the lists this sign-in's token carries in the store, so a write for this person is
     refused where the identity provider speaks. Written only when it differs from what this
     process last wrote. A token whose lists cannot be read records nothing: the request is
-    refused where the lists are bound."""
+    refused where the lists are bound. When the lists, the role claims (``roles_changed``) or an
+    attached grant changed what the person holds, their effective rows are recomputed."""
     from provisa.api.app import state
     from provisa.core.request_context import current_env, current_org
     from provisa.entitlements import store
@@ -291,12 +317,20 @@ async def _record_idp_entitlements(db_pool, identity: AuthIdentity) -> None:  # 
     except EntitlementClaimError:
         return
     key = (current_org.get(), current_env.get(), identity.user_id)
+    changed = roles_changed
     if _recorded_idp_lists.get(key) != lists:
         async with db_pool.acquire() as conn:
             await store.mirror_idp(conn, identity.user_id, lists)
         state.idp_entitlements = {**state.idp_entitlements, identity.user_id: lists}
         _recorded_idp_lists[key] = lists
-    await _attach_pending_entitlements(db_pool, identity, lists)
+        changed = True
+    if await _attach_pending_entitlements(db_pool, identity, lists):
+        changed = True
+    if changed:
+        from provisa.entitlements import effective_store
+
+        async with db_pool.acquire() as conn:
+            await effective_store.write_person(conn, state, identity.user_id)
 
 
 # REQ-2219: (org, environment, user, email) whose waiting grants this process has attached.
@@ -309,14 +343,14 @@ def _forget_attached_pending(org_id: str) -> None:
         _attached_pending.discard(key)
 
 
-async def _attach_pending_entitlements(db_pool, identity: AuthIdentity, lists) -> None:  # REQ-2219
+async def _attach_pending_entitlements(db_pool, identity: AuthIdentity, lists) -> bool:  # REQ-2219
     """Attach the grants waiting on this sign-in token's email to its principal, through the write
     API's own write, after the token's lists are mirrored: where the token sends a list for the
     grant's role and kind, the grant is refused as the write API refuses it. Each outcome goes to
     the org's administrative trail, as set by whoever granted it.
 
     REQ-1261: only an address the identity's provider verified is matched. A grant waiting on an
-    address stays waiting for a sign-in that proves it."""
+    address stays waiting for a sign-in that proves it. Returns whether a grant attached."""
     from provisa.api.app import state
     from provisa.core.org_membership import record_admin_action
     from provisa.core.request_context import current_env, current_org, require_current_org
@@ -324,7 +358,7 @@ async def _attach_pending_entitlements(db_pool, identity: AuthIdentity, lists) -
 
     email = verified_email(identity)
     if not email:
-        return
+        return False
     key = (
         current_org.get(),
         current_env.get(),
@@ -332,11 +366,12 @@ async def _attach_pending_entitlements(db_pool, identity: AuthIdentity, lists) -
         pending.normalize_email(email),
     )
     if key in _attached_pending:
-        return
+        return False
     async with db_pool.acquire() as conn:
         async with conn.transaction():
             outcomes = await pending.attach(conn, identity.user_id, email, lists)
-        if any(outcome == pending.ATTACHED for _grant, outcome in outcomes):
+        attached = any(outcome == pending.ATTACHED for _grant, outcome in outcomes)
+        if attached:
             state.held_entitlements = await store.load_held(conn)
     # The pool resolves to the bound org's model store, so the entries are that org's.
     org_id = require_current_org()
@@ -356,6 +391,7 @@ async def _attach_pending_entitlements(db_pool, identity: AuthIdentity, lists) -
             },
         )
     _attached_pending.add(key)
+    return attached
 
 
 def _platform_roles() -> dict[str, dict]:  # REQ-1327, REQ-1337
@@ -552,12 +588,15 @@ class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
                 {
                     "user_id": identity.user_id,
                     "email": identity.email,
+                    # REQ-2219: whether this sign-in's provider verified the address; a write by
+                    # email names this person only by a verified one.
+                    "email_verified": identity.email_verified,
                     "display_name": identity.display_name,
                     "provider": provider_name,
                     "last_seen": func.now(),
                 },
                 index_elements=["user_id"],
-                update_columns=["email", "display_name", "provider", "last_seen"],
+                update_columns=["email", "email_verified", "display_name", "provider", "last_seen"],
             )
         # REQ-1439: the same identity, copied into the tenant plane, so the ops report views can
         # LEFT JOIN a name onto the user_id they log. The platform profile above is the record of
@@ -569,19 +608,21 @@ class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
                 {
                     "user_id": identity.user_id,
                     "email": identity.email,
+                    "email_verified": identity.email_verified,
                     "display_name": identity.display_name,
                     "updated_at": func.now(),
                 },
                 index_elements=["user_id"],
-                update_columns=["email", "display_name", "updated_at"],
+                update_columns=["email", "email_verified", "display_name", "updated_at"],
             )
         await _record_idp_attributes(self._db_pool, identity)
+        roles_changed = False
         if self._assignments_source == "claims" and identity.credential != "pat":
             # REQ-1263: a personal access token carries no sign-in. Its owner's roles are READ
             # from this mirror (held_assignments.mirrored_claims); a request under the token
             # never rewrites it.
-            await _record_idp_roles(self._db_pool, identity)
-        await _record_idp_entitlements(self._db_pool, identity)
+            roles_changed = await _record_idp_roles(self._db_pool, identity)
+        await _record_idp_entitlements(self._db_pool, identity, roles_changed)
 
     async def _read_assignments(self, identity: AuthIdentity) -> list[RoleAssignment]:
         """Read the user's role assignments from the tenant control plane scoped to the currently
@@ -1124,11 +1165,7 @@ class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
             # this the gate below 401'd /billing/trial/start and /billing/reservation and signup
             # could not finish on a commerce deploy. Safe because /billing is control plane — every
             # org-scoped handler authorizes itself with require_org_billing_access_or_creator.
-            platform_plane = request.url.path.startswith(
-                # REQ-2006: /sandboxes opens the caller's own demo sandbox, an org they do not
-                # belong to yet.
-                ("/auth/", "/setup", "/admin/orgs", "/billing", "/sandboxes/")
-            )
+            platform_plane = request.url.path.startswith(_PLATFORM_PLANE_PATHS)
             requested_org = _requested_org_from_host(request)
             credential_org = identity.active_org_id
             if credential_org is not None:
@@ -1394,6 +1431,28 @@ class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
                 return _deny(
                     request, 403, f"platform_admin confers no rights in org {active_org_id!r}"
                 )
+        if (
+            token_roles is None
+            and self._assignments_source == "provisa"
+            and not assignments
+            and not request.url.path.startswith(_PLATFORM_PLANE_PATHS)
+        ):
+            # REQ-120 (amended 2026-11-01), REQ-802: where Provisa holds the assignments, a sign-in
+            # holding no role in the org acts as none -- never as the deployment's default role,
+            # which nobody granted it -- and is refused by name, as every wire sign-in refuses it
+            # (provisa.auth.held_assignments.sign_in_roles). The platform-plane endpoints still
+            # serve it: they exist for a principal that holds nothing yet.
+            from provisa.auth.held_assignments import NoRoleHeld
+
+            refused = NoRoleHeld(identity.user_id)
+            return _deny(
+                request,
+                403,
+                str(refused),
+                cause="no role held",
+                code=refused.code,
+                params=refused.params,
+            )
 
         # REQ-273: a client may request a specific role via X-Provisa-Role, but the server
         # honors it only when the authenticated user is actually assigned that role — a bare
