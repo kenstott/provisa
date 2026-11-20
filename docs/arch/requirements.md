@@ -27193,3 +27193,15 @@ Maintainer 2026-11-20. Every environment declares its stage: production, preprod
 **Code:** —
 
 **Tests:** —
+
+## 3. Source Registration & Data Modeling
+
+### REQ-2262 · Registration & Governance {#REQ-2262}
+
+**Status:** 💡 proposed · **Priority:** MUST · **Type:** ui
+
+Maintainer 2026-11-20. Registering a source and then its tables ends with a step to relate them: beside Close, a Create relationships action appears when at least one table was just registered and the user holds create_relationship. It opens the existing relationship discovery scoped to the tables just registered, proposing candidates from the source's declared foreign keys, from matching key names and types among the new tables, and from joins between the new tables and tables already in the model, across sources. Every candidate, declared foreign keys included, waits for review: each shows its cardinality and why it was proposed, and is accepted, edited or skipped; accepted ones follow the normal relationship approval rules. Done returns to the source with the count of relationships created.
+
+**Code:** —
+
+**Tests:** —

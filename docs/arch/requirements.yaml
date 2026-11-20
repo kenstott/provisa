@@ -97968,3 +97968,19 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     grouped by stage; the audit log and the lineage and catalog exports carry the environment''s stage, so a
     catalog can tell production assets from others; the environment switcher shows the stage beside each
     environment''s name.'
+- id: REQ-2262
+  status: proposed
+  target: 2026-Q4
+  group: 3. Source Registration & Data Modeling
+  category: Registration & Governance
+  feature: semantic-model-relationships
+  priority: MUST
+  type: ui
+  description: 'Maintainer 2026-11-20. Registering a source and then its tables ends with a step to relate them: beside
+    Close, a Create relationships action appears when at least one table was just registered and the user
+    holds create_relationship. It opens the existing relationship discovery scoped to the tables just
+    registered, proposing candidates from the source''s declared foreign keys, from matching key names and
+    types among the new tables, and from joins between the new tables and tables already in the model,
+    across sources. Every candidate, declared foreign keys included, waits for review: each shows its
+    cardinality and why it was proposed, and is accepted, edited or skipped; accepted ones follow the normal
+    relationship approval rules. Done returns to the source with the count of relationships created.'
