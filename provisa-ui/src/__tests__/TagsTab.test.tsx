@@ -576,24 +576,24 @@ describe("TagsTab", () => {
     );
   });
 
-  it("shows policy badges in the row only when a policy is not optional", () => {
+  it("shows a policy badge in the row only when the policy is required", () => {
     render(<TagsTab />);
-    // Default scope "source": finance (required/hidden) shows both badges.
+    // Default scope "source": finance is reason required, expiry hidden.
     const financeRow = screen.getByTestId("tags-row-finance");
     expect(
       within(financeRow).getByText(
         t("tagsTab.reasonPolicyBadge", { policy: t("tagsTab.policy_required") }),
       ),
     ).toBeTruthy();
-    expect(
-      within(financeRow).getByText(
-        t("tagsTab.expiresPolicyBadge", { policy: t("tagsTab.policy_hidden") }),
-      ),
-    ).toBeTruthy();
-    // pii is optional/optional: no badges in its row.
+    expect(within(financeRow).queryByText(/Expiry:/)).toBeNull();
     fireEvent.click(
       within(screen.getByTestId("tags-scope-bar")).getByLabelText(t("tagsTab.scope_table")),
     );
+    // data_quality is hidden/hidden: no policy badges.
+    const dqRow = screen.getByTestId("tags-row-data_quality");
+    expect(within(dqRow).queryByText(/Reason:/)).toBeNull();
+    expect(within(dqRow).queryByText(/Expiry:/)).toBeNull();
+    // pii is optional/optional: no policy badges.
     const piiRow = screen.getByTestId("tags-row-pii");
     expect(within(piiRow).queryByText(/Reason:/)).toBeNull();
     expect(within(piiRow).queryByText(/Expiry:/)).toBeNull();
