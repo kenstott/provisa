@@ -27171,3 +27171,13 @@ Maintainer 2026-11-19. The context layer (documents, ontology, glossary, metrics
 **Code:** —
 
 **Tests:** —
+
+### REQ-2260 · UI {#REQ-2260}
+
+**Status:** 💡 proposed · **Priority:** MUST · **Type:** ui
+
+Maintainer 2026-11-20. Every list page that opens an item's detail (Sources, Tables, Relationships, Context pages, Derived, Products, Security and the rest) remembers which item's detail was open. Returning to the page by any route (its navigation link, the back button, another page's link without a target) reopens that detail, scrolled to its item, and the address shows it as when it was opened. Closing the detail clears what is remembered for that page. A link that names an item opens that item instead. An item that no longer exists or the viewer can no longer read is not reopened and its memory is cleared. What is remembered is per viewer in that browser, kept across reloads and sign-ins on it, and never shared with other viewers or devices.
+
+**Code:** —
+
+**Tests:** —
