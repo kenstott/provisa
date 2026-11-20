@@ -29,6 +29,8 @@
       "languages": "Une ligne par langue ayant un code ISO 639-3.",
       "admin_regions": "États, provinces et autres subdivisions de premier niveau, avec leur pays.",
       "organizations": "Une ligne par cotation boursière en cours."
-    }
+    },
+    "searching": "Recherche en cours…",
+    "loadingClass": "Construction de la requête de la classe…"
   }
 }
