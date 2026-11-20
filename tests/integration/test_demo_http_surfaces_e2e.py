@@ -224,7 +224,8 @@ def test_the_schema_version_is_the_boot_id_and_the_rebuild_counter(instance):
     first = httpx.get(f"{instance.url}/data/schema-version", timeout=_TIMEOUT)
     assert first.status_code == 200, first.text
     version = first.json()["version"]
-    assert re.fullmatch(r"[0-9a-f-]{36}-\d+", version), version
+    # The boot id is a UUID written as its 32 hex digits (uuid4().hex).
+    assert re.fullmatch(r"[0-9a-f]{32}-\d+", version), version
     # No rebuild between the two reads: the same version.
     second = httpx.get(f"{instance.url}/data/schema-version", timeout=_TIMEOUT)
     assert second.json()["version"] == version
@@ -315,11 +316,13 @@ _ORDER_ID = 900000 + (_STAMP % 99999)
 
 
 def _petstore_base(inst: Instance) -> str:
-    """The pet store's address, as its source's spec path names it."""
-    sources = _admin_gql(inst, "{ sources { id path } }")["sources"]
-    path = next(s["path"] for s in sources if s["id"] == "petstore-api")
-    assert path.endswith("/openapi.json"), path
-    return path.removesuffix("/openapi.json")
+    """The pet store's address, as it announced it when it started. The source's stored path
+    cannot say it: a source's text fields are stored as written (``${env:PETSTORE_BASE_URL...}``)
+    and resolved only where they are used."""
+    log = (inst.log_dir / "petstore.log").read_text()
+    found = re.search(r"Uvicorn running on (http://\S+)", log)
+    assert found, log[-2000:]
+    return f"{found.group(1)}/api/v3"
 
 
 def _register(inst: Instance, name: str, operation: str) -> None:
