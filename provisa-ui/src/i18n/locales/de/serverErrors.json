@@ -810,7 +810,6 @@
       "status_by_action": "Der Status eines Begriffs ändert sich über Freigeben, Als veraltet markieren, Außer Dienst stellen oder Wiederherstellen.",
       "successor_required": "Dieser Begriff hat noch Spalten oder Tabellen; beim Ausmustern gehen sie an einen Nachfolger über. Wählen Sie einen aus.",
       "successor_role": "Der Nachfolger einer {{role}} muss eine {{role}} oder ein Konzept sein; '{{successor}}' ist eine {{successor_role}}.",
-      "no_retirement_history": "Die Historie des Modells enthält keine Ausmusterung dieses Begriffs.",
       "finding": {
         "unlinked_tables": "Diese Klasse ist in Tabellen verankert, die Same-Entity-Beziehungen nicht alle verbinden: {{tables}}.",
         "class_and_attribute": "Diese Klasse hat außerdem Spalten, die nicht ihre Schlüssel sind: {{columns}}.",

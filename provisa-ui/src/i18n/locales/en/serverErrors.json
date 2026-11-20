@@ -810,7 +810,6 @@
       "status_by_action": "A term's status changes through Approve, Deprecate, Retire or Restore.",
       "successor_required": "This term still has columns or tables; retiring it moves them to a successor. Choose one.",
       "successor_role": "A {{role}}'s successor must be a {{role}} or a concept; '{{successor}}' is a {{successor_role}}.",
-      "no_retirement_history": "The model's history has no retirement of this term.",
       "finding": {
         "unlinked_tables": "This class is grounded in tables that same-entity relationships don't all join: {{tables}}.",
         "class_and_attribute": "This class also holds columns that aren't its keys: {{columns}}.",

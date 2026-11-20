@@ -152,6 +152,7 @@
     "lastAppliedTo": "הוחל לאחרונה על",
     "lastAppliedColumns": "עמודות: {{columns}}",
     "lastAppliedTables": "טבלאות: {{tables}}",
+    "noRetirementHistory": "למונח זה אין היסטוריית גריעה.",
     "status_draft": "טיוטה",
     "status_deprecated": "מיושן",
     "status_retired": "הוצא משימוש",

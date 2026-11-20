@@ -152,6 +152,7 @@
     "lastAppliedTo": "最後套用於",
     "lastAppliedColumns": "欄位：{{columns}}",
     "lastAppliedTables": "資料表：{{tables}}",
+    "noRetirementHistory": "該詞彙沒有停用記錄。",
     "status_draft": "草稿",
     "status_deprecated": "已棄用",
     "status_retired": "已停用",
