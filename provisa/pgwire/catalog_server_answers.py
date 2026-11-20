@@ -43,6 +43,25 @@ PG_ONLY_TYPES = tuple(
 #: Their names, as a cast to one is written.
 PG_ONLY_TYPE_NAMES = frozenset(name for names in HELD_AS.values() for name in names)
 
+#: The libpq options foreign.c's postgresql_fdw_validator takes of a foreign server.
+_FDW_SERVER_OPTIONS = ", ".join(
+    f"'{name}'"
+    for name in (
+        "authtype",
+        "service",
+        "connect_timeout",
+        "dbname",
+        "host",
+        "hostaddr",
+        "port",
+        "tty",
+        "options",
+        "requiressl",
+        "sslmode",
+        "gsslib",
+        "gssdelegation",
+    )
+)
 _NO_FILE = "No such file or directory"
 _FILE_REFUSALS = (
     # convert_and_check_filename, for a role without pg_read_server_files.
@@ -1069,7 +1088,26 @@ def _catalog_objects(a: _Answers) -> None:
         "BOOLEAN",
         raising("XX000", "'cache lookup failed for operator class ' || c"),
     )
-    a.strict("postgresql_fdw_validator", "options, catalog", "BOOLEAN", "true")
+    # foreign.c's postgresql_fdw_validator: each option's name (its text before '=') is one libpq
+    # takes of a foreign server (pg_foreign_server, 1417) or of a user mapping (pg_user_mapping,
+    # 1418, user and password); of any other catalog none is. The first that is not raises 42601.
+    a.strict(
+        "postgresql_fdw_validator",
+        "options, catalog",
+        "BOOLEAN",
+        "CASE WHEN len(list_filter(options, lambda _o: NOT ("
+        f"(catalog = 1417 AND split_part(_o, '=', 1) IN ({_FDW_SERVER_OPTIONS})) OR "
+        "(catalog = 1418 AND split_part(_o, '=', 1) IN ('user', 'password'))))) = 0 THEN TRUE "
+        "ELSE "
+        + raising(
+            "42601",
+            "'invalid option \"' || split_part(list_filter(options, lambda _o: NOT ("
+            f"(catalog = 1417 AND split_part(_o, '=', 1) IN ({_FDW_SERVER_OPTIONS})) OR "
+            "(catalog = 1418 AND split_part(_o, '=', 1) IN ('user', 'password'))))[1], '=', 1) "
+            "|| '\"'",
+        )
+        + " END",
+    )
     a.strict(
         "aclinsert",
         "acl, item",
