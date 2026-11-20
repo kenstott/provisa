@@ -27181,3 +27181,15 @@ Maintainer 2026-11-20. Every list page that opens an item's detail (Sources, Tab
 **Code:** —
 
 **Tests:** —
+
+## 13. Multi-Tenancy & Organizations
+
+### REQ-2261 · Environments {#REQ-2261}
+
+**Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
+
+Maintainer 2026-11-20. Every environment declares its stage: production, preprod, test or development. Preprod is meant to mirror production (the same model, its sources usually bound to production mirrors) and is where production incidents are debugged. The org's original environment starts as production and a new environment starts as development; any number of environments may share a stage, so an org may run several production environments, for example one per region. Changing an environment's stage is an environment-management action recorded in the audit log. The stage is a label for reporting and display only and never changes what anyone may do: what a person may do in an environment comes only from the roles assigned there ([REQ-1539](#REQ-1539)). Reports (usage, query health, policy denials, cost) can be filtered and grouped by stage; the audit log and the lineage and catalog exports carry the environment's stage, so a catalog can tell production assets from others; the environment switcher shows the stage beside each environment's name.
+
+**Code:** —
+
+**Tests:** —
