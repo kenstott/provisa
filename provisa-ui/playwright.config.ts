@@ -14,6 +14,7 @@ import * as fs from "fs";
 import * as path from "path";
 import { fileURLToPath } from "url";
 import { LIVE_MODEL_YAML } from "./e2e/liveModel";
+import { E2E_PUBLIC_URL } from "./e2e/publicUrl";
 
 // Load root .env so live-backend tests receive AWS credentials
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -456,9 +457,6 @@ function wipeStaleMaterializeStore(dataDir: string): void {
 // (provisa/licensing/home.py), still reading the real trial clock; and the encryption master key
 // is read from the keyring BEFORE PROVISA_ENCRYPTION_KEY (REQ-684, REQ-1802), so the OS keychain
 // is swapped for the test key store, a file under PROVISA_DATA_DIR (tests/_memory_keyring.py).
-// REQ-2135: each backend's public address (server.public_url), where its SPARQL vocabulary's and its
-// subjects' IRIs start. Unset, the SPARQL tab's vocabulary is refused.
-const E2E_PUBLIC_URL = "https://e2e.provisa.example";
 
 function homeEnvFor(dataDir: string): Record<string, string> {
   return {
