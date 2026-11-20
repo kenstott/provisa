@@ -96,18 +96,49 @@ def find_source_files() -> list[Path]:
     listed = subprocess.run(
         ["git", "ls-files", "-z"], cwd=PROJECT_ROOT, check=True, capture_output=True
     ).stdout.decode("utf-8")
-    results = []
-    for rel in listed.split("\0"):
-        if not rel:
-            continue
-        p = PROJECT_ROOT / rel
-        # A symlink is its target's path a second time: stamping through it reissued the
-        # target's canary on every commit, so only the target is stamped.
-        if set(Path(rel).parts) & EXCLUDE_DIRS or p.is_symlink() or not p.is_file():
-            continue
-        if p.suffix == ".py" or p.suffix in TS_EXTENSIONS:
-            results.append(p)
-    return sorted(results)
+    return sorted(PROJECT_ROOT / rel for rel in listed.split("\0") if rel and is_stampable(rel))
+
+
+def is_stampable(rel: str) -> bool:
+    p = PROJECT_ROOT / rel
+    # A symlink is its target's path a second time: stamping through it reissued the
+    # target's canary on every commit, so only the target is stamped.
+    if set(Path(rel).parts) & EXCLUDE_DIRS or p.is_symlink() or not p.is_file():
+        return False
+    return p.suffix == ".py" or p.suffix in TS_EXTENSIONS
+
+
+def head_parents() -> list[str]:
+    """HEAD's parent commits: two or more for a merge commit, one for an ordinary commit."""
+    line = subprocess.run(
+        ["git", "rev-list", "--parents", "-n", "1", "HEAD"],
+        cwd=PROJECT_ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.split()
+    return line[1:]
+
+
+def merge_added_files(parents: list[str]) -> list[Path]:
+    """Stampable files HEAD has that no parent has: files a conflict resolution created."""
+    per_parent = [
+        {
+            rel
+            for rel in subprocess.run(
+                ["git", "diff", "--name-only", "--diff-filter=A", "-z", parent, "HEAD"],
+                cwd=PROJECT_ROOT,
+                check=True,
+                capture_output=True,
+            )
+            .stdout.decode("utf-8")
+            .split("\0")
+            if rel
+        }
+        for parent in parents
+    ]
+    added = set.intersection(*per_parent)
+    return sorted(PROJECT_ROOT / rel for rel in added if is_stampable(rel))
 
 
 def extract_canary(content: str, canary_re: re.Pattern) -> str | None:
@@ -246,7 +277,45 @@ def deploy_site() -> None:
     )
 
 
+def stamp_merge_added(parents: list[str]) -> None:
+    """Stamp only the files a merge commit introduced itself.
+
+    Every file a merged side brought was stamped on that side: .githooks/post-commit runs this
+    script after every commit on every branch, and the branch's stamps commit carries the result
+    and publishes its site entries. Re-stamping the whole tree on the merge only rewrote 7,481
+    site entries and redeployed the site. A file that exists in no parent was written by the
+    conflict resolution and was never stamped, so it is stamped here; a canary it copied from
+    another tracked file is reissued. The stamps commit that follows publishes it.
+    """
+    added = merge_added_files(parents)
+    added_set = set(added)
+    claimed = {
+        canary_id
+        for path in find_source_files()
+        if path not in added_set
+        and (
+            canary_id := extract_canary(
+                path.read_text(encoding="utf-8"),
+                TS_CANARY_RE if path.suffix in TS_EXTENSIONS else PY_CANARY_RE,
+            )
+        )
+    }
+    for path in added:
+        canary_id = stamp_file(path)
+        if canary_id in claimed:
+            canary_id = reissue_canary(path)
+        claimed.add(canary_id)
+    print(
+        f"Merge commit: skipped full stamp and site deploy (each merged side was stamped on its "
+        f"own commits); stamped {len(added)} file(s) the merge added"
+    )
+
+
 def main() -> None:
+    parents = head_parents()
+    if len(parents) > 1:
+        stamp_merge_added(parents)
+        return
     SITE_DIR.mkdir(exist_ok=True)
     with open(SITE_LOCK, "w") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
