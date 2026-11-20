@@ -2000,6 +2000,58 @@
       "customer360Recap": {
         "title": "Ce que vous avez vu",
         "description": "Quatre systèmes SaaS sans identifiant commun, reliés par un référentiel client ; la question traitée en SQL, GraphQL et Cypher ; puis contrôlée : des règles ont redérivé chaque lien à partir des preuves et trouvé la fusion erronée et le compte qu'elle cachait. Explorez par vous-même depuis la page SQL."
+      },
+      "affirmationScenario": {
+        "title": "Une transaction, quatre systèmes",
+        "description": "Larkspur Asset Management a traité dix ordres aujourd'hui. Chaque transaction vit dans quatre systèmes qui ne se voient jamais : ce système de gestion des ordres et ses allocations aux fonds, les exécutions du système d'exécution, la confirmation du courtier et l'instruction de règlement du dépositaire. Quelles transactions ne seront pas affirmées avant l'heure limite, pourquoi, et que coûterait un défaut de règlement ?"
+      },
+      "affirmationBroker": {
+        "title": "Le côté du courtier",
+        "description": "Les confirmations des courtiers, telles que la plateforme d'appariement les livre : chacune porte la référence de l'allocation, le prix, la commission et le montant net du courtier, et le compte auquel le courtier livrera."
+      },
+      "affirmationCustody": {
+        "title": "Le côté du dépositaire",
+        "description": "Les instructions de règlement que Larkspur a envoyées à son dépositaire : ce que chaque fonds reçoit ou livre, contre quels espèces, à quelle date. Une transaction dont le dépositaire n'a jamais été informé échoue aussi sûrement qu'une transaction erronée."
+      },
+      "affirmationMatcher": {
+        "title": "Le moteur de rapprochement, en Python",
+        "description": "Un paquet Python enregistré comme source. Sa fonction trade_match prend les quatre enregistrements d'une allocation et renvoie une ligne par écart trouvé, nommant l'écart et ce qui diffère, ou une ligne rapprochée."
+      },
+      "affirmationMatchTable": {
+        "title": "Une fonction comme table",
+        "description": "trade_match est une table comme une autre : ses colonnes sont ce que renvoie la fonction, et ses paramètres sont les champs des quatre systèmes. Un élément pas encore arrivé est transmis comme absent, et la fonction le nomme comme un écart à part entière."
+      },
+      "affirmationFeed": {
+        "title": "Ce qui alimente le moteur",
+        "description": "Cette relation joint les enregistrements de chaque allocation dans les quatre systèmes à trade_match et les lui transmet comme paramètres : un appel par allocation. Interroger la jointure exécute le rapprochement."
+      },
+      "affirmationQueue": {
+        "title": "La file des écarts",
+        "description": "Chaque écart, avec les minutes restant avant l'heure limite d'affirmation de son marché et ce qu'un défaut de règlement y coûterait par jour. Les écarts européens ont moins d'une heure ; ceux des États-Unis ont jusqu'à 21 h, heure de New York."
+      },
+      "affirmationAffirmed": {
+        "title": "Les affirmations, journalisées",
+        "description": "Une commande a affirmé chaque allocation concordante dans les quatre systèmes et journalisé chacune à l'heure du desk. Elle s'est exécutée une fois, à la construction de la démo."
+      },
+      "affirmationPollyCutoff": {
+        "title": "Demandez à Polly : qu'est-ce qui presse le plus ?",
+        "description": "Polly lit la file des écarts et nomme celui qui a le moins de temps avant son heure limite. Sa réponse a été produite à la construction de la démo et est affichée telle qu'enregistrée."
+      },
+      "affirmationPollyPenalty": {
+        "title": "Demandez à Polly : qu'est-ce qui coûte le plus ?",
+        "description": "Polly nomme l'écart dont le défaut de règlement coûterait le plus par jour. Sa réponse a été produite à la construction de la démo et est affichée telle qu'enregistrée."
+      },
+      "affirmationExplore": {
+        "title": "La même question, dans Explore",
+        "description": "L'agent de l'explorateur répond en direct via le serveur MCP de Provisa, avec le rôle de l'en-tête, et vous voyez chaque requête qu'il exécute."
+      },
+      "affirmationExplain": {
+        "title": "La requête qu'il a exécutée",
+        "description": "L'instruction envoyée par l'agent, à côté de celle que Provisa a exécutée pour le rôle. L'agent a lu les mêmes vues et tables gouvernées que vous."
+      },
+      "affirmationRecap": {
+        "title": "Ce que vous avez vu",
+        "description": "Quatre systèmes lus en direct, rapprochés par une fonction Python enregistrée comme table, chaque écart nommé avec son temps avant l'heure limite et son coût, et les transactions rapprochées affirmées par une commande. Posez ensuite les questions du desk dans Explore."
       }
     },
     "status": {
@@ -2136,6 +2188,10 @@
       "customer360": {
         "title": "Customer 360",
         "summary": "Salesforce, ServiceNow, Jira et Stripe reliés par un référentiel client pour trouver les renouvellements à risque ; puis le référentiel est contrôlé contre les preuves de chaque système, qui révèlent le compte manqué."
+      },
+      "affirmation": {
+        "title": "Affirmation des transactions",
+        "summary": "Un gérant d'actifs rapproche chaque transaction du jour entre son système d'ordres, son système d'exécution, le courtier et le dépositaire. Chaque écart indique le temps restant avant l'heure limite et ce que coûterait un défaut de règlement, et les transactions rapprochées sont affirmées."
       }
     }
   }

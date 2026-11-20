@@ -2000,6 +2000,58 @@
       "customer360Recap": {
         "title": "Wat u zag",
         "description": "Vier SaaS-systemen zonder gedeelde id, verbonden via een klantmaster; de vraag beantwoord in SQL, GraphQL en Cypher; daarna gecontroleerd: regels leidden elke koppeling opnieuw af uit bewijs en vonden de foute samenvoeging en het account dat die verborg. Kijk zelf rond vanaf de SQL-pagina."
+      },
+      "affirmationScenario": {
+        "title": "Eén transactie, vier systemen",
+        "description": "Larkspur Asset Management handelde vandaag tien orders. Elke transactie leeft in vier systemen die elkaar nooit zien: dit ordermanagementsysteem met de allocaties aan de fondsen, de fills van het executiesysteem, de bevestiging van de broker en de afwikkelinstructie van de bewaarder. Welke transacties worden niet vóór de cutoff geaffirmeerd, waarom, en wat zou een mislukte afwikkeling kosten?"
+      },
+      "affirmationBroker": {
+        "title": "De kant van de broker",
+        "description": "De bevestigingen van de brokers, zoals het matchingplatform ze aflevert: elk draagt de referentie van de allocatie, de prijs, commissie en het nettobedrag van de broker, en de rekening waaraan de broker zal leveren."
+      },
+      "affirmationCustody": {
+        "title": "De kant van de bewaarder",
+        "description": "De afwikkelinstructies die Larkspur naar zijn bewaarder stuurde: wat elk fonds ontvangt of levert, tegen welk bedrag, op welke dag. Een transactie waarvan de bewaarder nooit hoorde, mislukt net zo zeker als een verkeerde."
+      },
+      "affirmationMatcher": {
+        "title": "De matching-engine, in Python",
+        "description": "Een Python-pakket, geregistreerd als bron. De functie trade_match neemt de vier records van een allocatie en geeft voor elke gevonden break een rij terug met de naam van de break en wat afwijkt, of één afgestemde rij."
+      },
+      "affirmationMatchTable": {
+        "title": "Een functie als tabel",
+        "description": "trade_match is een tabel als elke andere: de kolommen zijn wat de functie teruggeeft, en de parameters zijn de velden van de vier systemen. Een onderdeel dat nog niet binnen is, wordt als afwezig doorgegeven, en de functie noemt dat een eigen break."
+      },
+      "affirmationFeed": {
+        "title": "Wat de matcher voedt",
+        "description": "Deze relatie koppelt de records van elke allocatie uit de vier systemen aan trade_match en geeft ze door als parameters: één aanroep per allocatie. Een query over de join voert de matching uit."
+      },
+      "affirmationQueue": {
+        "title": "De break-wachtrij",
+        "description": "Elke break, met de minuten tot de affirmatie-cutoff van zijn markt en wat een mislukte afwikkeling daar per dag zou kosten. De Europese breaks hebben minder dan een uur; de Amerikaanse hebben tot 21.00 uur New Yorkse tijd."
+      },
+      "affirmationAffirmed": {
+        "title": "De affirmaties, gelogd",
+        "description": "Een opdracht affirmeerde elke allocatie die in alle vier systemen overeenkwam en logde elk op de tijd van de desk. Hij draaide één keer, toen de demo werd gebouwd."
+      },
+      "affirmationPollyCutoff": {
+        "title": "Vraag Polly: wat is het dringendst?",
+        "description": "Polly leest de break-wachtrij en noemt de break met de minste tijd tot zijn cutoff. Het antwoord is gemaakt toen de demo werd gebouwd en wordt opgeslagen getoond."
+      },
+      "affirmationPollyPenalty": {
+        "title": "Vraag Polly: wat kost het meest?",
+        "description": "Polly noemt de break waarvan een mislukte afwikkeling per dag het meest zou kosten. Het antwoord is gemaakt toen de demo werd gebouwd en wordt opgeslagen getoond."
+      },
+      "affirmationExplore": {
+        "title": "Dezelfde vraag, in Explore",
+        "description": "De agent van de explorer antwoordt live via de MCP-server van Provisa, als de rol uit de kopregel, en je ziet elke query die hij uitvoert."
+      },
+      "affirmationExplain": {
+        "title": "De query die hij uitvoerde",
+        "description": "De opdracht die de agent stuurde, naast die welke Provisa voor de rol uitvoerde. De agent las dezelfde beheerde views en tabellen als jij zojuist."
+      },
+      "affirmationRecap": {
+        "title": "Wat je hebt gezien",
+        "description": "Vier systemen live gelezen, afgestemd door een Python-functie die als tabel is geregistreerd, elke break benoemd met zijn tijd tot de cutoff en zijn kosten, en de afgestemde transacties geaffirmeerd door een opdracht. Stel daarna de eigen vragen van de desk in Explore."
       }
     },
     "status": {
@@ -2136,6 +2188,10 @@
       "customer360": {
         "title": "Customer 360",
         "summary": "Salesforce, ServiceNow, Jira en Stripe verbonden via een klantmaster om verlengingen met risico te vinden; daarna wordt de master gecontroleerd tegen het bewijs van elk systeem, dat het gemiste account vindt."
+      },
+      "affirmation": {
+        "title": "Transactiebevestiging",
+        "summary": "Een vermogensbeheerder stemt elke transactie van vandaag af tussen zijn ordersysteem, zijn executiesysteem, de broker en de bewaarder. Elke break toont de resterende tijd tot de cutoff en wat een mislukte afwikkeling zou kosten, en de afgestemde transacties worden geaffirmeerd."
       }
     }
   }

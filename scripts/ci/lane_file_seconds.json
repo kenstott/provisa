@@ -6,6 +6,7 @@
   "tests/integration/test_admin_api.py": 0.0,
   "tests/integration/test_admin_catalog_scope_e2e.py": 44.1,
   "tests/integration/test_admin_resolve_owners.py": 5.9,
+  "tests/integration/test_affirmation_demo.py": 75.0,
   "tests/integration/test_agentdata_demo.py": 0.0,
   "tests/integration/test_aggregate_mv_rewrite_e2e.py": 25.7,
   "tests/integration/test_agriculture_demo.py": 0.0,
