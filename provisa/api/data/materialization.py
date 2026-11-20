@@ -154,9 +154,16 @@ def api_answered_from_replica(state, table: dict) -> bool:
     endpoint: it never expires and its replica has landed here (``_kept_for_good``) -- a demo's
     declared rows, such as a Stripe source's. Refused (``ReplicaNotLanded``, naming it) when it
     never expires, its source's rows are declared and it has not landed: its rows are the declared
-    ones, and the live service is never asked for them."""
-    if not _is_api_table(state, table) or not _never_expires(state, table):
+    ones, and the live service is never asked for them.
+
+    REQ-030, REQ-826: any other API table the operator's setting puts on its replica (the
+    published routes floor it: Always, load_protected, or promoted and serving) is answered from
+    it too, when it has a whole copy (no parameter): the read backstop waits on its build and
+    routing reads the replica (a Wikidata class table, replicate Always)."""
+    if not _is_api_table(state, table):
         return False
+    if not _never_expires(state, table):
+        return table["id"] in state.replica_routes.floored and not is_parameterized(table)
     if _kept_for_good(state, table):
         return True
     from provisa.federation.declared_replica_rows import declares_rows
