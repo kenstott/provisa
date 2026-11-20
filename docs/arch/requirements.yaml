@@ -3133,7 +3133,7 @@
     snake_case exceptions (Hasura''s 2023 naming feature flag) is added only if an import needs it. Both
     presets are always offered; importing from Hasura picks the one its metadata names (a source''s
     customization.naming_convention, or the deployment default). Each preset is proved against a schema that
-    Hasura itself generates for the same tables, compared name by name.'
+    Hasura itself generates for the same tables, compared name by name. (Amended 2026-11-20 by the maintainer. Inflection uses lemminflect plus a recorded supplement word list kept as dictionary data in provisa/core/inflection.py (person and people, doc and docs, dataset and datasets, and the other common words lemminflect lacks); a word in neither stays as written.)'
   use_case: Consistent multi-language naming with a single authority ensures client-facing names are predictable
     and independent of physical schema.
   code:
@@ -3897,7 +3897,7 @@
     tables cannot be read is left unmeasured and says why; it does not fail the run. (Amended 2026-11-18,
     EVERY COLUMN OF THE PROPOSED RELATIONSHIPS LIST HAS A FILTER:) Maintainer 2026-11-18 (''every column
     needs a filter'', on the proposed relationships dialog). Every column of the standard list in the discovery
-    dialog has a column filter, as the standard list gives its filterable columns.'
+    dialog has a column filter, as the standard list gives its filterable columns. (Amended 2026-11-20 by the maintainer. Every same-name column pair in the same type group is measured deterministically whether or not the model lists it; the model may add pairs but can never drop one.)'
   use_case: Auto-generated FK relationships reduce manual relationship registration overhead while preserving
     steward control.
   code:
@@ -46867,7 +46867,7 @@
   type: structural
   description: Config exports carry JSON Pointer refs for internal cross-references plus composed physical
     resourcePath URIs for data elements, enabling external validators and interchange converters (Ossie/DDN)
-    to resolve semantic and physical locations without second passes.
+    to resolve semantic and physical locations without second passes. (Amended 2026-11-20 by the maintainer. A data element's composed resourcePath appears beside its name in the export, not instead of it.)
   use_case: JSON Pointers make exported references self-resolving for downstream validators and format
     converters; resourcePaths provide precise physical source locations (e.g. postgresql://host:5432/db/schema/table#column)
     for interchange systems.
@@ -91216,7 +91216,7 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     2026-11-20, SEVERAL PARENTS'' ROW RULES ARE ORED:) Maintainer 2026-11-20. A role that inherits from
     several parents each carrying a row rule on the same table reads the rows that match any of those rules,
     consistent with acting with the union of held roles; inheriting a parent never narrows access. Earlier
-    text that each parent''s rule is ANDed in is superseded. (Amended 2026-11-20, maintainer: a personal access token naming no role still acts as its first live scope per REQ-1263, not the union of its scopes; in claims mode the union counts only roles the claims name, and a role reached only through role_mapping or default_role is not added to it.)'
+    text that each parent''s rule is ANDed in is superseded. (Amended 2026-11-20, maintainer: a personal access token naming no role still acts as its first live scope per REQ-1263, not the union of its scopes; in claims mode the union counts only roles the claims name, and a role reached only through role_mapping or default_role is not added to it.) (Amended 2026-11-20 by the maintainer. The member access form gives every role selected in one save the same domain and end date; different domains for different roles take another save.)'
   scenario: 'Given an org role ''dq lead'' inheriting from Data quality steward and Data product owner
 
     Then it holds the union of both roles'' capabilities
@@ -98114,4 +98114,18 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     URL setup field for a per-instance host, a spec location that may point at the running instance (whose
     spec changes between versions), and the authentication type, including OAuth client credentials. The
     Marquez source (REQ-2264) uses the same mechanism. Until a brand exists, any of these catalogs can be
-    added as a plain OpenAPI source. (Amended 2026-11-20, maintainer: DataHub is read through its OpenAPI v3 spec ({base_url}/openapi/v3/api-docs) by the same OpenAPI passthrough brand mechanism as OpenMetadata, not the GraphQL source; a list answer whose next-page cursor is nested (paging.after, scrollId) is paged by the generic OpenAPI source, which takes a dotted cursor path and the required array as the rows.)'
+    added as a plain OpenAPI source. (Amended 2026-11-20, maintainer: DataHub is read through its OpenAPI v3 spec ({base_url}/openapi/v3/api-docs) by the same OpenAPI passthrough brand mechanism as OpenMetadata, not the GraphQL source; a list answer whose next-page cursor is nested (paging.after, scrollId) is paged by the generic OpenAPI source, which takes a dotted cursor path and the required array as the rows.) (Amended 2026-11-20 by the maintainer. When a brand instance''s spec needs authentication to fetch, the spec request carries the same credential as the source''s data calls.)'
+
+- id: REQ-2266
+  status: proposed
+  target: 2026-Q4
+  group: 1. Access Governance & Security
+  category: Security
+  feature: roles-and-capabilities-domain-access
+  priority: SHOULD
+  type: behavioral
+  description: 'Maintainer 2026-11-20. Access review. Provisa produces an access review, on demand and on a schedule,
+    listing each member with their roles, entitlements and last use, grouped by the domain whose owner reviews them.
+    The owner confirms or revokes each row; a revocation takes effect at once, and every confirmation and revocation
+    is recorded with who made it, when and why. The scheduled review is exported to the operator''s chosen
+    destination.'
