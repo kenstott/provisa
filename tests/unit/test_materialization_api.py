@@ -41,6 +41,7 @@ from provisa.api.data.materialization import (
 )
 from provisa.api_source.engine_cache import CacheLocation
 from provisa.api_source.models import ApiColumn, ApiColumnType, ParamType
+from provisa.federation.replica_address import ReplicaRoutes
 
 # asyncio_mode = "auto" (pyproject.toml) picks up async defs automatically;
 # no module-level pytest.mark.asyncio needed (and it would warn on sync tests).
@@ -91,7 +92,9 @@ class TestStatementEndpoints:
     named within its source, so two sources' ``pets`` are two endpoints."""
 
     def _state(self, endpoints, tables):
-        return SimpleNamespace(api_endpoints=endpoints, tables=tables)
+        return SimpleNamespace(
+            api_endpoints=endpoints, tables=tables, replica_routes=ReplicaRoutes()
+        )
 
     def test_found(self):
         ep = SimpleNamespace(source_id="src", table_name="pets")
@@ -1277,6 +1280,7 @@ class TestMaterializeApiToEngineCache:
         state = SimpleNamespace(
             hot_manager=hot_mgr,
             api_endpoints={},
+            replica_routes=ReplicaRoutes(),
             graphql_remote_sources={},
             tables=[{"id": PETS, "source_id": "src", "table_name": "pets", "columns": []}],
         )
@@ -1294,6 +1298,7 @@ class TestMaterializeApiToEngineCache:
         state = SimpleNamespace(
             hot_manager=None,
             api_endpoints={("src", "pets"): ep},
+            replica_routes=ReplicaRoutes(),
             # The registered table the statement reads: its endpoint is keyed by source and name.
             tables=[{"id": PETS, "source_id": "src", "table_name": "pets", "columns": []}],
             graphql_remote_sources={},
@@ -1331,6 +1336,7 @@ class TestMaterializeApiToEngineCache:
         state = SimpleNamespace(
             hot_manager=None,
             api_endpoints={("src", "pets"): ep},
+            replica_routes=ReplicaRoutes(),
             tables=[{"id": PETS, "source_id": "src", "table_name": "pets", "columns": []}],
             graphql_remote_sources={},
         )
@@ -1371,6 +1377,7 @@ class TestMaterializeApiToEngineCache:
         state = SimpleNamespace(
             hot_manager=None,
             api_endpoints={},
+            replica_routes=ReplicaRoutes(),
             graphql_remote_sources={"gh": reg},
             tables=[
                 {"id": PETS, "source_id": "ghsrc", "table_name": "pets", "columns": [name]},
@@ -1394,6 +1401,7 @@ class TestMaterializeApiToEngineCache:
         state = SimpleNamespace(
             hot_manager=None,
             api_endpoints={},
+            replica_routes=ReplicaRoutes(),
             graphql_remote_sources={},
         )
         # 'pets' is not a known API endpoint nor a graphql_remote table → falls through
@@ -1424,6 +1432,7 @@ class TestMaterializeApiToEngineCache:
             tables=[_pets_row("ghsrc")],
             hot_manager=None,
             api_endpoints={},
+            replica_routes=ReplicaRoutes(),
             graphql_remote_sources={"gh": reg},
             org_id="default",
             federation_engine=SimpleNamespace(
@@ -1462,6 +1471,7 @@ class TestMaterializeApiToEngineCache:
             tables=[_pets_row("ghsrc")],
             hot_manager=None,
             api_endpoints={},
+            replica_routes=ReplicaRoutes(),
             graphql_remote_sources={"gh": reg},
             org_id="default",
             federation_engine=SimpleNamespace(
@@ -1502,6 +1512,7 @@ class TestMaterializeApiToEngineCache:
             tables=[_pets_row("ghsrc")],
             hot_manager=None,
             api_endpoints={},
+            replica_routes=ReplicaRoutes(),
             graphql_remote_sources={"gh": reg},
             org_id="default",
             federation_engine=SimpleNamespace(
@@ -1532,6 +1543,7 @@ class TestMaterializeApiToEngineCache:
         state = SimpleNamespace(
             hot_manager=None,
             api_endpoints={("src", "pets"): ep},
+            replica_routes=ReplicaRoutes(),
             # The registered table the statement reads: its endpoint is keyed by source and name.
             tables=[{"id": PETS, "source_id": "src", "table_name": "pets", "columns": []}],
             graphql_remote_sources={},
@@ -1566,6 +1578,7 @@ class TestMaterializeApiToEngineCache:
             tables=[_pets_row("grpc_src")],
             hot_manager=None,
             api_endpoints={},
+            replica_routes=ReplicaRoutes(),
             graphql_remote_sources={},
         )
         m = "provisa.api.data.materialization"
