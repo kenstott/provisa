@@ -560,3 +560,38 @@ async def test_openmetadata_publish_reports_relationships_it_could_not_declare(
     assert "were not published" in result.errors[0].message
     assert result.published["table"] == 3
     assert not any("extension" in body for body in sent)
+
+
+async def test_an_openmetadata_table_carries_the_environment_and_its_stage(snapshot, monkeypatch):
+    """REQ-2261: each table's extension names the environment and its stage, under custom
+    properties declared on the table type before the first table carries them."""
+    import dataclasses
+
+    from provisa.api.metadata_export.model import EnvironmentStage
+    from provisa.api.metadata_export.openmetadata import ENVIRONMENT_PROPERTY, STAGE_PROPERTY
+
+    staged = dataclasses.replace(snapshot, environment=EnvironmentStage("eu", "preprod"))
+    declared: list[str] = []
+    tables: list[dict] = []
+
+    async def _put(self, url, json=None, headers=None, params=None):
+        if "/metadata/types/" in url:
+            declared.append(json["name"])
+        elif url.endswith("/tables"):
+            tables.append(json)
+        return httpx.Response(
+            200, json=_entity_response(url, json), request=httpx.Request("PUT", url)
+        )
+
+    monkeypatch.setattr(httpx.AsyncClient, "put", _put)
+    monkeypatch.setattr(httpx.AsyncClient, "get", _type_get)
+    result = await OpenMetadataExport(_export_config("openmetadata")).publish(staged)
+    assert result.ok, result.errors
+    assert {ENVIRONMENT_PROPERTY, STAGE_PROPERTY} <= set(declared)
+    assert len(tables) == 3
+    for body in tables:
+        assert body["extension"][ENVIRONMENT_PROPERTY] == "eu"
+        assert body["extension"][STAGE_PROPERTY] == "preprod"
+    # Without an environment registry no stage is claimed.
+    bare = [e for e in to_entities(snapshot) if e.kind == "table"]
+    assert not any(STAGE_PROPERTY in e.body.get("extension", {}) for e in bare)

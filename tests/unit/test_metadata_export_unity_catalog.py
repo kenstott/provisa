@@ -365,3 +365,24 @@ async def test_a_tag_a_column_no_longer_carries_is_unset_from_its_view(warehouse
     assert f"ALTER TABLE {view} ALTER COLUMN `ssn` UNSET TAGS ('provisa_governance:mask')" in sql
     assert f"ALTER VIEW {view} UNSET TAGS ('provisa_governance:rls')" in sql
     assert not any("someone_elses_tag" in s and "UNSET" in s for s in sql)
+
+
+async def test_each_view_carries_the_environment_and_its_stage(warehouse):  # REQ-2261
+    from provisa.api.metadata_export.model import EnvironmentStage
+
+    snapshot = _snapshot()
+    snapshot.environment = EnvironmentStage(name="eu", stage="test")
+    result = await _export().publish(snapshot)
+    assert result.ok, result.errors
+    staged = [s for s in warehouse.statements if "'provisa_stage'" in s]
+    assert sorted(staged) == [
+        f"ALTER VIEW `main`.`customer_360`.`{name}` SET TAGS "
+        "('provisa_environment' = 'eu', 'provisa_stage' = 'test')"
+        for name in ("customers", "orders")
+    ]
+
+
+async def test_without_an_environment_no_view_claims_a_stage(warehouse):  # REQ-2261
+    result = await _export().publish(_snapshot())
+    assert result.ok, result.errors
+    assert not any("provisa_stage" in s for s in warehouse.statements)

@@ -16,13 +16,15 @@ telemetry off no exporter is named and the sample rate is 0, so no span is recor
 spans are exported to the collector on device 3. It writes the config the server reads (the perf
 config with its observability block set for the run) and prints ``export`` lines.
 
-``report``: from the repetitions the operator's driver collected (``three_device_run.sh``), the
+``report``: from the units the operator's driver collected (``three_device_run.sh``), the
 published point per transport with telemetry off (median of the repetitions, minimum and maximum
-beside it, captioned), and, internal only, the same with telemetry on and the difference.
+beside it, captioned), and, internal only, the same with telemetry on and the difference. Each
+report states the commit of every run.
 
     python three_device.py serve-env --engine pg --telemetry off --backends-host 10.90.0.4 \\
         --workers 32 --config-out ~/.provisa-bench/config.yaml
-    python three_device.py report --root results/three-device --out results/three-device
+    python three_device.py report --root results/three-device --out results/three-device \\
+        --ledger results/three-device-ledger.json
 """
 
 from __future__ import annotations
@@ -39,7 +41,9 @@ from typing import Any
 import yaml
 
 import bench_sanity
+import bench_units
 import governance_variants
+from bench_units import published_step
 
 ENGINES = ("pg", "duckdb", "trino")
 TELEMETRY = ("off", "on")
@@ -175,18 +179,6 @@ def collector_url(backends_host: str) -> str:
 # --- the report over repetitions -------------------------------------------------------------
 
 
-def published_step(report: Mapping[str, Any]) -> dict[str, Any] | None:
-    """The step with the highest throughput that had no errors and was not client-limited."""
-    if "error" in report:
-        return None
-    clean = [
-        s
-        for s in report["steps"]
-        if "error" not in s and s["errors"] == 0 and not s["client_limited"]
-    ]
-    return max(clean, key=lambda s: s["req_per_s"]) if clean else None
-
-
 _FIGURES = ("req_per_s", "p50_ms", "p99_ms", "server_cpu_ms_per_request", "client_cpu_cores")
 
 
@@ -249,7 +241,7 @@ def summarize(steps: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
 
 
 def _runs(root: Path) -> dict[str, list[Path]]:
-    """Run directories by telemetry setting: ``<root>/<rep>-<telemetry>/``."""
+    """Unit directories by telemetry setting: ``<root>/<rep>-<transport>-<telemetry>/``."""
     out: dict[str, list[Path]] = {t: [] for t in TELEMETRY}
     for d in sorted(p for p in root.iterdir() if p.is_dir()):
         if d.name.endswith(UNCACHED_RUN) or d.name.startswith(PROFILE_RUN):
@@ -285,11 +277,11 @@ def _devices(run: Path) -> dict[str, Any]:
     return json.loads((run / "optimistic" / "devices.json").read_text())
 
 
-def one_build(runs: Sequence[Path]) -> tuple[dict[str, Any], str | None]:
-    """The devices of the first of ``runs`` and the commit they all served: a report over runs
-    from two VMs, or two commits, is refused."""
+def one_fleet(runs: Sequence[Path]) -> tuple[dict[str, Any], dict[str, str | None]]:
+    """The devices of the first of ``runs`` and the commit each run served: a report over runs from
+    two VMs is refused. Two commits are stated, not refused (bench_units.commit_block)."""
     first = _devices(runs[0])
-    commit = first["server"]["facts"].get("commit")
+    commits = {runs[0].name: first["server"]["facts"].get("commit")}
     for run in runs[1:]:
         devices = _devices(run)
         for name in ("server", "client", "backends"):
@@ -299,14 +291,23 @@ def one_build(runs: Sequence[Path]) -> tuple[dict[str, Any], str | None]:
                     devices.get(name) or {},
                     labels=(f"{runs[0].name} {name}", f"{run.name} {name}"),
                 )
-        stated = devices["server"]["facts"].get("commit")
-        if stated != commit:
-            raise ValueError(f"{run.name} served {stated}, {runs[0].name} served {commit}")
-    return first, commit
+        commits[run.name] = devices["server"]["facts"].get("commit")
+    return first, commits
 
 
-def build(root: Path) -> tuple[dict[str, Any], dict[str, Any]]:
-    """(published, internal): the published file holds the telemetry-off points only."""
+def version_of(commits: Mapping[str, str | None]) -> str | list[str] | None:
+    """The version a report opens with: the one commit, or every commit of a run across several."""
+    distinct = sorted({c for c in commits.values() if c})
+    if len(distinct) > 1:
+        return distinct
+    return distinct[0] if distinct else None
+
+
+def build(
+    root: Path, ledger: Mapping[str, Any] | None = None
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """(published, internal): the published file holds the telemetry-off points only. Both state
+    the commit of every run and, given the run's ledger, its stops and discarded units."""
     runs = _runs(root)
     if not runs["off"]:
         raise ValueError("no telemetry-off run: nothing to publish")
@@ -325,9 +326,11 @@ def build(root: Path) -> tuple[dict[str, Any], dict[str, Any]]:
     uncached = _uncached_runs(root)
     if uncached:
         by["off"][PGWIRE_UNCACHED] = summarize([_transport_steps(d)["pgwire"] for d in uncached])
-    devices, commit = one_build([*(d for dirs in runs.values() for d in dirs), *uncached])
+    devices, commits = one_fleet([*(d for dirs in runs.values() for d in dirs), *uncached])
+    stated = {**bench_units.commit_block(commits), **bench_units.stops_block(ledger)}
     published = {
-        "version": commit,
+        "version": version_of(commits),
+        **stated,
         "caption": CAPTION,
         "table_caption": TABLE_CAPTION,
         "transport_captions": {t: PUBLISHED[t] for t in by["off"] if t in PUBLISHED},
@@ -344,7 +347,8 @@ def build(root: Path) -> tuple[dict[str, Any], dict[str, Any]]:
     }
     internal = {
         "label": LABEL_INTERNAL,
-        "version": commit,
+        "version": version_of(commits),
+        **stated,
         "devices": devices,
         "telemetry_off": by["off"],
         "telemetry_on": by.get("on", {}),
@@ -422,13 +426,11 @@ def variant_contract(
 
 
 def variant_rows(root: Path) -> list[dict[str, Any]]:
-    """The pass's table (governance_variants.table) from its run directories,
-    ``<root>/<rep>-<variant>-<cache>-<telemetry>/optimistic/<transport>.json``."""
+    """The pass's table (governance_variants.table) from its unit directories,
+    ``<root>/<rep>-<variant>-<cache>-<transport>-<telemetry>/optimistic/<transport>.json``."""
     results: dict[str, list[Mapping[str, Any]]] = {}
     for d in sorted(p for p in root.iterdir() if p.is_dir()):
-        rep_, rest = d.name.split("-", 1)
-        variant_cache, _telemetry = rest.rsplit("-", 1)
-        variant, cache = variant_cache.rsplit("-", 1)
+        variant, cache = d.name.split("-")[1:3]
         reports = []
         for path in sorted((d / "optimistic").glob("*.json")):
             report = json.loads(path.read_text())
@@ -436,6 +438,18 @@ def variant_rows(root: Path) -> list[dict[str, Any]]:
                 reports.append(report)
         results.setdefault(f"{variant}/{cache}", []).extend(reports)
     return governance_variants.table(results)
+
+
+def variant_commits(root: Path) -> dict[str, str | None]:
+    """The commit each unit of a pass served."""
+    return {
+        d.name: _devices(d)["server"]["facts"].get("commit")
+        for d in sorted(p for p in root.iterdir() if p.is_dir())
+    }
+
+
+def _ledger(path: str | None) -> dict[str, Any] | None:
+    return bench_units.load_ledger(Path(path)) if path else None
 
 
 def main() -> int:
@@ -466,34 +480,24 @@ def main() -> int:
     vrep = sub.add_parser("variant-report", help="a governance pass's table, internal only")
     vrep.add_argument("--root", required=True)
     vrep.add_argument("--out", required=True)
+    vrep.add_argument("--ledger", help="the run's ledger: its stops and discarded units")
     rep = sub.add_parser("report", help="the published point and the telemetry impact")
     rep.add_argument("--root", required=True)
     rep.add_argument("--out", required=True)
+    rep.add_argument("--ledger", help="the run's ledger: its stops and discarded units")
     args = parser.parse_args()
     if args.command == "contract":
         out = Path(args.out).expanduser()
         text = Path(args.setup).read_text()
         steps = [int(c) for c in args.steps.split(",")] if args.steps else None
-        if args.only:
-            out.write_text(
-                narrowed_contract(
-                    run_contract(text, telemetry=args.telemetry),
-                    only=args.only,
-                    uncached=args.uncached,
-                    steps=steps,
-                    window_s=args.window_s,
-                    warmup_s=args.warmup_s,
-                )
-            )
-            return 0
         pass_args = (args.variant, args.cache, args.steps, args.window_s, args.warmup_s)
-        if all(a is None for a in pass_args):
-            out.write_text(run_contract(text, telemetry=args.telemetry))
-            return 0
-        if any(a is None for a in pass_args):
+        if args.variant is None and args.cache is None:
+            contract = run_contract(text, telemetry=args.telemetry)
+            load = {"steps": steps, "window_s": args.window_s, "warmup_s": args.warmup_s}
+        elif any(a is None for a in pass_args):
             parser.error("--variant, --cache, --steps, --window-s and --warmup-s go together")
-        out.write_text(
-            variant_contract(
+        else:
+            contract = variant_contract(
                 text,
                 telemetry=args.telemetry,
                 variant=args.variant,
@@ -502,14 +506,27 @@ def main() -> int:
                 window_s=args.window_s,
                 warmup_s=args.warmup_s,
             )
-        )
+            load = {"steps": None, "window_s": None, "warmup_s": None}
+        if args.only:
+            contract = narrowed_contract(contract, only=args.only, uncached=args.uncached, **load)
+        out.write_text(contract)
         return 0
     if args.command == "variant-report":
         rows = variant_rows(Path(args.root))
         out = Path(args.out)
         out.mkdir(parents=True, exist_ok=True)
+        commits = variant_commits(Path(args.root))
         (out / "variants.json").write_text(
-            json.dumps({"label": LABEL_INTERNAL, "rows": rows}, indent=2)
+            json.dumps(
+                {
+                    "label": LABEL_INTERNAL,
+                    "version": version_of(commits),
+                    **bench_units.commit_block(commits),
+                    **bench_units.stops_block(_ledger(args.ledger)),
+                    "rows": rows,
+                },
+                indent=2,
+            )
         )
         for r in rows:
             paging = {
@@ -547,7 +564,7 @@ def main() -> int:
         for k, v in env.items():
             print(f"export {k}={shlex.quote(v)}")
         return 0
-    published, internal = build(Path(args.root))
+    published, internal = build(Path(args.root), _ledger(args.ledger))
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     (out / "published.json").write_text(json.dumps(published, indent=2))

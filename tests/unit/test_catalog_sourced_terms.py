@@ -26,7 +26,7 @@ from datetime import datetime, timezone
 import pytest
 from sqlalchemy import insert
 
-from provisa.api.metadata_export.provider import CatalogTerm
+from provisa.api.catalog_import.reader import CatalogTerm
 from provisa.core.repositories import glossary as glossary_repo
 from provisa.core.schema_org import domains
 from provisa.ontology_import import align, catalog_terms

@@ -527,6 +527,7 @@ _CREATE_ONLY = {
     "naming_rules": "id pattern replacement",
     "node_freshness_state": "node content_hash probe_token updated_at",
     "node_ids": "id composite_id label properties",
+    "openlineage_dataset_facets": "dataset_namespace dataset_name facet payload run_id event_time",
     "openlineage_run_datasets": (
         "id job_namespace job_name run_id event_time direction dataset_namespace dataset_name "
         "column_lineage"

@@ -421,7 +421,7 @@ def _declare(monkeypatch, tmp_path, source_type: str, extension: str) -> None:
         f"    extension: {extension}\n"
         "    install_from_community: false\n"
         f"    probe_symbol: {extension}_snapshots\n"
-        '    attach_template: "ATTACH \'{path}\' AS \\"{alias}\\""\n'
+        '    attach_template: "ATTACH {path} AS {alias:ident}"\n'
     )
     monkeypatch.setenv("PROVISA_CUSTOM_CONNECTORS", str(cfg))
 

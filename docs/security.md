@@ -108,15 +108,17 @@ The layers stack. A role with domain access, row filters and masked columns has 
 
 A role holds capabilities, and a capability opens a feature: querying, registering sources, editing the glossary, managing data quality checks. What the feature then reads or changes is limited by the role's grants. No capability reaches past them, and no role is a superuser. Bypassing relationship governance is a capability too, held by the standard Modeler role, and high-security mode ignores it.
 
-Provisa ships standard roles, from Viewer up to Org admin, and you build your own roles as children of them. [Access Model](access-model.md#capabilities) lists each standard role and what it adds.
+Provisa ships standard roles, from Viewer up to Org admin, and you build your own roles as children of them. Each standard role does one job. Developer authors the model and writes no data; Data writer writes data; Member admin manages members and their roles. [Access Model](access-model.md#capabilities) lists each standard role and what it adds.
+
+You may hold several roles, and by default you act with their union. What you may do in an environment comes only from the roles assigned to you there, so production is restricted by assigning narrower roles in it. [Environments](environments.md#authorization) shows how.
 
 ### Role Inheritance
 
-A role names its parents on the Security page under "Inherits from", and it may have several. It holds the union of its own capabilities and every ancestor's. Grants and residency are unions over the ancestors as well, so a column, metric, function or webhook granted to an ancestor is granted to the child.
+A role names its parents on the Security page under "Inherits from", and it may have several. It holds what it is given intersected with the union of what its parents hold, for capabilities, domains and regions alike, so a child can only narrow its parents. Saving a right no parent holds is refused by name. Grants are not narrowed: a column, metric, function or webhook granted to an ancestor is granted to the child.
 
-Domain reach does not pass down. Each role states its own reach, either ALL domains or a list, and its inherited capabilities apply within that reach. You can give a role reach only to domains you reach yourself.
+You can give a role reach only to domains you reach yourself.
 
-A role's own row rule for a table stands. When it has none, the rules of its ancestors for that table are combined with OR. A parent with no rule contributes nothing, so adding a parent never lifts a row rule. A role with no rule anywhere in its ancestry reads every row.
+Row rules narrow too. A role's rows are its own rule AND its parents' rules combined with OR. A parent with no rule stands for every row, so a role with no rule anywhere in its ancestry reads every row.
 
 Rate limits, row limits and session variables are properties. A role's own value is used; failing that, the first ancestor that sets one supplies it. The search is depth-first, in the order the parents are declared.
 

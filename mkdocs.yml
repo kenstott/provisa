@@ -119,6 +119,7 @@ nav:
       - Coming from a data warehouse: from-a-warehouse.md
       - Configuration: configuration.md
       - Deployment: deployment.md
+      - How to Scale: how-to-scale.md
       - Architecture Review: architecture-review.md
       - Sizing and Tuning: sizing.md
       - Demos for Sales Engineers: sales-engineer-demos.md
