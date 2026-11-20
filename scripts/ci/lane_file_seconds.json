@@ -129,6 +129,7 @@
   "tests/integration/test_demo_bundle_sandbox_e2e.py": 418.2,
   "tests/integration/test_demo_bundle_setup_env.py": 30.5,
   "tests/integration/test_demo_first_query_e2e.py": 1513.4,
+  "tests/integration/test_demo_http_surfaces_e2e.py": 240.0,
   "tests/integration/test_demo_open_during_prepare_e2e.py": 155.7,
   "tests/integration/test_demo_open_steady_e2e.py": 75.6,
   "tests/integration/test_demo_sandbox_concurrent_open_e2e.py": 67.9,
