@@ -162,6 +162,16 @@ export function DataProductsPage() {
         .map((tag) => ({ id: tag, label: tag })),
     [productTags],
   );
+  // The list narrowed to the products of the domains chosen; offered the domains of the products
+  // the viewer reads, since a domain with none of them would only empty the list.
+  const [domainFilter, setDomainFilter] = useState<string[]>([]);
+  const productDomainOptions = useMemo(
+    () =>
+      [...new Set(dataProducts.map((p) => p.domainId))]
+        .sort()
+        .map((domain) => ({ id: domain, label: domain })),
+    [dataProducts],
+  );
   const [creating, setCreating] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<DataProductForm>({ ...EMPTY_FORM });
@@ -192,6 +202,7 @@ export function DataProductsPage() {
     search,
     toReviewOnly,
     tags: tagFilter,
+    domains: domainFilter,
     creating,
     editing: editingId,
   });
@@ -428,9 +439,18 @@ export function DataProductsPage() {
         (p) =>
           matchesQuery([p.id, p.name, p.domainId, p.ownerRole, p.purpose], search) &&
           (!toReviewOnly || productFindings.findings.has(p.id)) &&
-          tagFilter.every((tag) => productTags.get(p.id)?.has(tag) === true),
+          tagFilter.every((tag) => productTags.get(p.id)?.has(tag) === true) &&
+          (domainFilter.length === 0 || domainFilter.includes(p.domainId)),
       ),
-    [dataProducts, search, toReviewOnly, productFindings.findings, tagFilter, productTags],
+    [
+      dataProducts,
+      search,
+      toReviewOnly,
+      productFindings.findings,
+      tagFilter,
+      productTags,
+      domainFilter,
+    ],
   );
   const productColumns = useMemo<ListColumn<DataProduct>[]>(
     () => [
@@ -562,6 +582,15 @@ export function DataProductsPage() {
             placeholder={t("dataProductsTab.tagFacetPlaceholder")}
           />
         </div>
+        <div data-testid="data-products-domain-facet" style={{ minWidth: 180, maxWidth: 360 }}>
+          <MultiSelect
+            options={productDomainOptions}
+            value={domainFilter}
+            onChange={setDomainFilter}
+            ariaLabel={t("dataProductsTab.domainFacetLabel")}
+            placeholder={t("dataProductsTab.domainFacetPlaceholder")}
+          />
+        </div>
         <Checkbox
           size="xs"
           label={t("dataProductsTab.toReview")}
@@ -649,9 +678,13 @@ export function DataProductsPage() {
                     ]}
                   />
                   <Table.Tbody>
-                    {filteredProducts.length === 0 && (
+                    {/* Unreadable, the banner above says why the list is empty; it is not that
+                        none exist. With products read, an empty list is the filters'. */}
+                    {filteredProducts.length === 0 && !products.unreadable && (
                       <ListEmpty colSpan={6} testId="data-products-empty">
-                        {t("dataProductsTab.empty")}
+                        {dataProducts.length === 0
+                          ? t("dataProductsTab.empty")
+                          : t("dataProductsTab.noMatch")}
                       </ListEmpty>
                     )}
                     <ListItems

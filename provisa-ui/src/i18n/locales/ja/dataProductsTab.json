@@ -310,6 +310,9 @@
     },
     "detailPanel": "データプロダクトの詳細",
     "tagFacetLabel": "タグ",
-    "tagFacetPlaceholder": "タグで絞り込む"
+    "tagFacetPlaceholder": "タグで絞り込む",
+    "noMatch": "フィルターに一致するデータプロダクトはありません",
+    "domainFacetLabel": "ドメイン",
+    "domainFacetPlaceholder": "ドメインで絞り込む"
   }
 }

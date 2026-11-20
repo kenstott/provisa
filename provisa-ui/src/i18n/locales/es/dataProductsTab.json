@@ -310,6 +310,9 @@
     },
     "detailPanel": "Detalle del producto de datos",
     "tagFacetLabel": "Etiquetas",
-    "tagFacetPlaceholder": "Filtrar por etiqueta"
+    "tagFacetPlaceholder": "Filtrar por etiqueta",
+    "noMatch": "Ningún producto de datos coincide con los filtros",
+    "domainFacetLabel": "Dominios",
+    "domainFacetPlaceholder": "Filtrar por dominio"
   }
 }

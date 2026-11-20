@@ -11095,5 +11095,8 @@
   "es/yourData.json::yourData.rest": "REST",
   "es/yourData.json::yourData.sql": "SQL",
   "es/yourData.json::yourData.title": "Your data",
-  "glossaryTab.json::glossaryTab.tablesWithoutSamples": "No sample values were read from: {{tables}}."
+  "glossaryTab.json::glossaryTab.tablesWithoutSamples": "No sample values were read from: {{tables}}.",
+  "es/dataProductsTab.json::dataProductsTab.noMatch": "No data products match the filters",
+  "es/dataProductsTab.json::dataProductsTab.domainFacetLabel": "Domains",
+  "es/dataProductsTab.json::dataProductsTab.domainFacetPlaceholder": "Filter by domain"
 }
