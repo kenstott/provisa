@@ -8,7 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRememberedChoice } from "../../hooks/useRememberedChoice";
 import { useDetailParam } from "../list/useDetailParam";
 import { useTranslation } from "react-i18next";
@@ -26,6 +26,7 @@ import {
   Stack,
   Switch,
   Table,
+  Text,
   TextInput,
   Title,
 } from "@mantine/core";
@@ -69,6 +70,9 @@ import { MultiSelect } from "../MultiSelect";
 import { useDomains } from "../../hooks/useAdminQueries";
 import { useDomainFilter } from "../../context/DomainFilterContext";
 import { assignableDomainIds } from "../../lib/internalDomains";
+import { fetchContextTags, type ContextTagUse } from "../../api/contextViews";
+import { ContextPlaces } from "../ContextPlaces";
+import { EntityLink } from "../EntityLink";
 
 const PAGE_SIZE = 50;
 
@@ -101,8 +105,19 @@ const PARAM_POLICIES: TagParamPolicy[] = ["none", "required"];
 // REQ-1374: one org-level tag registry, viewed one scope at a time. The
 // SegmentedControl filters the single list; a multi-scope tag appears under
 // each scope its appliesTo names.
-export function TagsTab() {
+// REQ-2259: ``readOnly`` is the Context group's Tags page: no control that writes, and in place
+// of the actions each tag's tables and columns and what depends on it. Editing stays in Admin.
+export function TagsTab({ readOnly = false }: { readOnly?: boolean }) {
   const { t } = useTranslation();
+  const [uses, setUses] = useState<Map<string, ContextTagUse> | null>(null);
+  const [usesError, setUsesError] = useState<string | null>(null);
+  useEffect(() => {
+    if (!readOnly) return;
+    fetchContextTags().then(
+      (r) => setUses(new Map(r.tags.map((u) => [u.id, u]))),
+      (e: Error) => setUsesError(e.message),
+    );
+  }, [readOnly]);
   const { tags } = useTags();
   const { tagAssignments } = useTagAssignments();
   const { createTag, updateTag } = useSaveTag();
@@ -354,7 +369,7 @@ export function TagsTab() {
           placeholder={t("tagsTab.filterPlaceholder")}
         />
         <Group gap="xs">
-          {!showForm && (
+          {!readOnly && !showForm && (
             <Button
               leftSection={<Plus size={14} />}
               onClick={openCreate}
@@ -529,14 +544,21 @@ export function TagsTab() {
         </FormLayout>
       )}
 
-      <ListBulkBar
-        selection={selection}
-        nameOf={(id) => id}
-        onDelete={deleteTags}
-        testId="tags-bulk"
-      />
+      {usesError && (
+        <Alert color="red" data-testid="tags-uses-error">
+          {usesError}
+        </Alert>
+      )}
+      {!readOnly && (
+        <ListBulkBar
+          selection={selection}
+          nameOf={(id) => id}
+          onDelete={deleteTags}
+          testId="tags-bulk"
+        />
+      )}
       <SortGroupTable
-        selection={selection}
+        selection={readOnly ? undefined : selection}
         testPrefix="tags"
         minWidth={640}
         rows={filtered}
@@ -564,9 +586,11 @@ export function TagsTab() {
           { col: "description" },
           { col: "appliesTo" },
           { col: "assignments" },
-          t("tagsTab.colActions"),
+          ...(readOnly
+            ? [t("contextViews.colWhereApplied"), t("contextViews.colDependents")]
+            : [t("tagsTab.colActions")]),
         ]}
-        colSpan={5}
+        colSpan={readOnly ? 6 : 5}
         rowKey={(tag) => tag.id}
         empty={t("tagsTab.empty")}
         page={{ index: safePage - 1, size: PAGE_SIZE }}
@@ -574,7 +598,13 @@ export function TagsTab() {
         render={(tag) => [
           <ListRow key={tag.id} testId={`tags-row-${tag.id}`} selected={tag.id === linkedTag}>
             <Table.Td>
-              {tag.id}
+              {readOnly ? (
+                <EntityLink kind="tag" id={tag.id} testId={`tags-link-${tag.id}`}>
+                  {tag.id}
+                </EntityLink>
+              ) : (
+                tag.id
+              )}
               {(tag.required ||
                 tag.reasonPolicy !== "optional" ||
                 tag.expiresPolicy !== "optional" ||
@@ -642,51 +672,58 @@ export function TagsTab() {
                 (assignmentCounts[tag.id] ?? 0)
               )}
             </Table.Td>
-            <Table.Td>
-              <Group gap="xs">
-                {/* REQ-1467: the value list is editable even on a system tag — the tag itself
+            {readOnly ? (
+              <ContextColumns tag={tag} uses={uses} />
+            ) : (
+              <Table.Td>
+                <Group gap="xs">
+                  {/* REQ-1467: the value list is editable even on a system tag — the tag itself
                         is code-defined, but which values it admits is the maintainer's call. */}
-                {tag.paramPolicy === "required" && (
-                  <ActionIcon
-                    variant="subtle"
-                    aria-label={t("tagsTab.editValues", { id: tag.id })}
-                    data-testid={`tags-values-${tag.id}`}
-                    onClick={() => toggleValues(tag.id)}
-                  >
-                    <List size={14} />
-                  </ActionIcon>
-                )}
-                {tag.isSystem ? (
-                  <Tip text={t(tag.derived ? "tagsTab.derivedTagHelp" : "tagsTab.systemTag")} named>
-                    <Lock
-                      size={13}
-                      aria-label={t(tag.derived ? "tagsTab.derivedTagHelp" : "tagsTab.systemTag")}
-                    />
-                  </Tip>
-                ) : (
-                  <>
+                  {tag.paramPolicy === "required" && (
                     <ActionIcon
                       variant="subtle"
-                      aria-label={t("tagsTab.editTag", { id: tag.id })}
-                      onClick={() => openEdit(tag)}
+                      aria-label={t("tagsTab.editValues", { id: tag.id })}
+                      data-testid={`tags-values-${tag.id}`}
+                      onClick={() => toggleValues(tag.id)}
                     >
-                      <Pencil size={14} />
+                      <List size={14} />
                     </ActionIcon>
-                    <ActionIcon
-                      variant="subtle"
-                      color="red"
-                      aria-label={t("tagsTab.deleteTag", { id: tag.id })}
-                      data-testid={`tags-delete-${tag.id}`}
-                      onClick={() => handleDelete(tag)}
+                  )}
+                  {tag.isSystem ? (
+                    <Tip
+                      text={t(tag.derived ? "tagsTab.derivedTagHelp" : "tagsTab.systemTag")}
+                      named
                     >
-                      <Trash2 size={14} />
-                    </ActionIcon>
-                  </>
-                )}
-              </Group>
-            </Table.Td>
+                      <Lock
+                        size={13}
+                        aria-label={t(tag.derived ? "tagsTab.derivedTagHelp" : "tagsTab.systemTag")}
+                      />
+                    </Tip>
+                  ) : (
+                    <>
+                      <ActionIcon
+                        variant="subtle"
+                        aria-label={t("tagsTab.editTag", { id: tag.id })}
+                        onClick={() => openEdit(tag)}
+                      >
+                        <Pencil size={14} />
+                      </ActionIcon>
+                      <ActionIcon
+                        variant="subtle"
+                        color="red"
+                        aria-label={t("tagsTab.deleteTag", { id: tag.id })}
+                        data-testid={`tags-delete-${tag.id}`}
+                        onClick={() => handleDelete(tag)}
+                      >
+                        <Trash2 size={14} />
+                      </ActionIcon>
+                    </>
+                  )}
+                </Group>
+              </Table.Td>
+            )}
           </ListRow>,
-          valuesTagId === tag.id && (
+          !readOnly && valuesTagId === tag.id && (
             <Table.Tr
               className="list-expand"
               key={`${tag.id}-values`}
@@ -765,5 +802,58 @@ export function TagsTab() {
         </Group>
       )}
     </Stack>
+  );
+}
+
+/** REQ-2259: a tag's tables and columns and what depends on it, on the Context Tags page. A derived
+ * tag is computed off each table's registration and never assigned, so it is applied nowhere by
+ * name. */
+function ContextColumns({ tag, uses }: { tag: Tag; uses: Map<string, ContextTagUse> | null }) {
+  const { t } = useTranslation();
+  if (uses === null) {
+    return (
+      <>
+        <Table.Td />
+        <Table.Td />
+      </>
+    );
+  }
+  const use = uses.get(tag.id);
+  if (use === undefined) throw new Error(`tag ${tag.id} is missing from the context read`);
+  const none = use.rowFilters === 0 && use.classificationKinds.length === 0;
+  return (
+    <>
+      <Table.Td>
+        <ContextPlaces
+          places={use.usages}
+          hidden={use.hiddenUsages}
+          testId={`tags-where-${tag.id}`}
+        />
+      </Table.Td>
+      <Table.Td data-testid={`tags-dependents-${tag.id}`}>
+        {none ? (
+          <Text size="xs" c="dimmed">
+            {t("contextViews.noDependents")}
+          </Text>
+        ) : (
+          <Stack gap={2}>
+            {use.rowFilters > 0 && (
+              <Text size="xs">{t("contextViews.rowFilters", { count: use.rowFilters })}</Text>
+            )}
+            {use.classificationKinds.map((k) => (
+              <Text size="xs" key={k}>
+                <EntityLink
+                  kind="classification"
+                  id={k}
+                  testId={`tags-classification-${tag.id}-${k}`}
+                >
+                  {t("contextViews.classifiedAs", { kind: t(`classificationKinds.kind.${k}`) })}
+                </EntityLink>
+              </Text>
+            ))}
+          </Stack>
+        )}
+      </Table.Td>
+    </>
   );
 }
