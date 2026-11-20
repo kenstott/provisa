@@ -34758,9 +34758,12 @@
   priority: MUST
   type: constraint
   target: 2026-Q4
-  description: 'Hard caps on anonymous public traffic: unauthenticated published endpoints are internet-facing
-    with no login gate, so they inherit the tightest rate limits and query-cost caps (REQ-1044/1045).
-    High-volume public publishing requires a premium public-tier SKU.'
+  description: 'Hard caps on anonymous public traffic: unauthenticated published endpoints are internet-facing with no
+    login gate, so they inherit the tightest rate limits and query-cost caps (REQ-1044/1045). High-volume
+    public publishing requires a premium public-tier SKU. (Amended 2026-11-20, GATED BY A PREMIUM
+    ENTITLEMENT:) Maintainer 2026-11-20. High-volume anonymous publishing is gated by an entitlement
+    feature, PUBLIC_HIGH_VOLUME, at the premium tier, enforced like the other entitlement features; the
+    price-list name lives in the private commercial requirement.'
   use_case: Protects shared infrastructure from resource exhaustion by anonymous users. Free-tier public
     endpoints are rate-limited; high-volume use is gated to premium. Prevents adversarial abuse or accidental
     DoS by published datasets.
@@ -52962,7 +52965,8 @@
   - REQ-1524
   notes: 'Roadmap audit 2026-10-13: superseded by REQ-1524. Continuous write-through directory-of-files projection replaces manual export/apply; cli_envs.py absent.'
 - id: REQ-1503
-  status: accepted
+  status: complete
+  since: 2026-10
   target: 2026-Q4
   group: 13. Multi-Tenancy & Organizations
   category: Environments
@@ -53112,7 +53116,8 @@
   since: 2026-08
 - id: REQ-1506
   value: 'Promote a single corrected metric to production without pulling along every other pending change.'
-  status: accepted
+  status: complete
+  since: 2026-10
   target: 2026-Q4
   group: 13. Multi-Tenancy & Organizations
   category: Environments
@@ -77264,16 +77269,20 @@
   feature: semantic-model-naming
   priority: SHOULD
   type: behavioral
-  description: 'Query-language dataset name resolution via centralized identity service (extends REQ-466).
-    Any dataset name in SQL, Cypher, or GraphQL queries must resolve to a physical dataset through the identity
-    service, accounting for each language''s canonical form (SQL=snake_case schema.table, Cypher=PascalCase
-    label, GraphQL=camelCase field). The active naming convention (registered_tables → domains → sources
-    → global default) may override canonical defaults. `provisa.core.dataset_identity.resolve(ref, lang)`
-    accepts query-language names and denormalizes them before lookup; `to_query_name(identity, lang)` produces
-    the correct form for a given language. All inline normalization (e.g., `_normalize_op_id` in config_loader.py:104)
-    must be replaced by this service. Documented in docs/arch/dataset-handling-standards.md under "Query-language
-    representations". (Amended 2026-11-06, CONSOLIDATED:) This requirement now also carries REQ-466: their
-    text stands as part of this one, and each is marked superseded by it.'
+  description: 'Query-language dataset name resolution via centralized identity service (extends REQ-466). Any dataset
+    name in SQL, Cypher, or GraphQL queries must resolve to a physical dataset through the identity service,
+    accounting for each language''s canonical form (SQL=snake_case schema.table, Cypher=PascalCase label,
+    GraphQL=camelCase field). The active naming convention (registered_tables → domains → sources → global
+    default) may override canonical defaults. `provisa.core.dataset_identity.resolve(ref, lang)` accepts
+    query-language names and denormalizes them before lookup; `to_query_name(identity, lang)` produces the
+    correct form for a given language. All inline normalization (e.g., `_normalize_op_id` in
+    config_loader.py:104) must be replaced by this service. Documented in
+    docs/arch/dataset-handling-standards.md under "Query-language representations". (Amended 2026-11-06,
+    CONSOLIDATED:) This requirement now also carries REQ-466: their text stands as part of this one, and
+    each is marked superseded by it. (Amended 2026-11-20, THE NAMES TABLE IS THE IDENTITY AUTHORITY:)
+    Maintainer 2026-11-20. Dataset identity is the names table (REQ-194, provisa/compiler/names_table.py);
+    there is no separate dataset_identity service. This closes once SQL, Cypher and GraphQL names all
+    resolve through the names table (REQ-2214); any text naming a dataset_identity module is superseded.'
   notes: 'Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
     written on 2026-06-07 under the heading ''Data & Storage''; it was dropped when requirements.md became
     generated from requirements.yaml. Text verbatim. Audited 2026-10-03 against the code: No dataset_identity
@@ -77871,15 +77880,18 @@
   superseded_by: REQ-540
 - id: REQ-493
   value: 'Connect Apache Accumulo tables as governed relational sources and query them alongside your other data.'
-  status: accepted
+  status: rejected
+  rejection_reason: 'Maintainer 2026-11-20: the Trino Accumulo connector this routes through is gone upstream; Accumulo has no supported path.'
   group: 4. Source Connectors
   category: Source Connectors
   feature: connector-catalog-nosql-search-and-graph
   priority: SHOULD
   type: behavioral
-  description: 'Apache Accumulo source adapter (`provisa/accumulo/`): exposes Accumulo tables as relational
-    via Trino''s Accumulo connector. Column family/qualifier mapping DSL required (per REQ-251). Read-only;
-    no mutations (NoSQL, non-relational). `tests/unit/test_accumulo_source.py`'
+  description: 'Apache Accumulo source adapter (`provisa/accumulo/`): exposes Accumulo tables as relational via
+    Trino''s Accumulo connector. Column family/qualifier mapping DSL required (per REQ-251). Read-only; no
+    mutations (NoSQL, non-relational). `tests/unit/test_accumulo_source.py` (Amended 2026-11-20, RETIRED:)
+    Maintainer 2026-11-20. Retired: the Trino Accumulo connector this routes through is gone upstream, and
+    Accumulo has no supported path.'
   notes: 'Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was
     written on 2026-06-20 under the heading ''Source Connectors''; it was dropped when requirements.md
     became generated from requirements.yaml. Text verbatim. Audited 2026-10-03 against the code: provisa/accumulo/
@@ -83834,7 +83846,7 @@
   related_reqs: [REQ-1945, REQ-2010]
   notes: 'Maintainer through the lead, 2026-10-13: the Data Quality deep dive hung on --demo weblogs; a step whose target never appears fails visibly, never hangs; each tour declares its prerequisites, checked when the menu opens against what the current org has; refined to: when a tour''s prerequisites are unmet, remove that option from the menu, no disabled entry and no explanation; nobody restores prerequisites, so the check is evaluated when the menu opens and nothing watches for them. Found while fixing the alpha.481 core UI lane: the e2e tour-profiler-step failures were not changed titles but a step that opened the editor and clicked the read view''s Quality tab as it went away (the editor then opened on Identity and the profiler panel never came), and the stuck notice sat under the earlier step''s card; the tour-deep-dives failures were the menu''s test id on Mantine''s box-less Modal root; the uncaught browser error was FormField handing withAsterisk to a Switch.'
 - id: REQ-2014
-  status: accepted
+  status: complete
   since: 2026-10
   group: 11. Platform, Infrastructure & Delivery
   category: Control Plane
@@ -83876,6 +83888,9 @@
     measuring the core UI lane: on a SQLite control plane each statement''s audit commit made the next statement
     re-snapshot and rebuild provisa_admin (~330 ms a query on a laptop), which put the Neo4j export spec past its 300 s
     budget under CI load.'
+  tests:
+  - tests/unit/test_control_plane_postgresql_only.py
+  - tests/unit/test_desktop_profile.py
 - id: REQ-2015
   status: complete
   since: 2026-10
@@ -91140,7 +91155,11 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     by default acts with their union; choosing a single role is an optional narrowing (for example to see
     what an analyst sees). Adding a member to an environment takes a list of roles and entitlements in one
     step, chosen with the standard multi-select. An org that wants developers to add sources in a lower
-    environment assigns developer and source_admin there, never org_admin for that purpose.'
+    environment assigns developer and source_admin there, never org_admin for that purpose. (Amended
+    2026-11-20, SEVERAL PARENTS'' ROW RULES ARE ORED:) Maintainer 2026-11-20. A role that inherits from
+    several parents each carrying a row rule on the same table reads the rows that match any of those rules,
+    consistent with acting with the union of held roles; inheriting a parent never narrows access. Earlier
+    text that each parent''s rule is ANDed in is superseded.'
   scenario: 'Given an org role ''dq lead'' inheriting from Data quality steward and Data product owner
 
     Then it holds the union of both roles'' capabilities
@@ -93914,7 +93933,8 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
 - id: REQ-2187
   value: The ERD is a view of the Tables page, and a link or a table's panel can focus it on chosen domains
     and tables.
-  status: accepted
+  status: complete
+  since: 2026-10
   target: 2026-Q4
   group: 10. UI & Admin Surfaces
   category: Admin UI
@@ -93967,6 +93987,10 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
   - REQ-1387
   stakeholders:
   - data-engineer
+  tests:
+  - provisa-ui/src/__tests__/erd-view.test.tsx
+  - provisa-ui/src/__tests__/erd-focus.test.ts
+  - provisa-ui/src/__tests__/relationships-open-in-erd.test.tsx
 - id: REQ-2188
   value: A row rule narrows read, update or delete, one rule for each per role and model, and also governs
     writes to semantic objects.
