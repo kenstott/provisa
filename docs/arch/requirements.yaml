@@ -48081,35 +48081,36 @@
   priority: MUST
   type: constraint
   description: 'Catalog upsert preserves human enrichment: an attribute-ownership contract for every exporter.
-    Publishing is an UPSERT on the vendor''s stable key (Atlas/Atlan: typeName + qualifiedName via /entity/bulk,
-    which merges at attribute level; DataHub: per-aspect URN upsert; OpenMetadata: fqn PUT), never a delete-and-recreate,
-    and entities absent from a later snapshot are never pruned by publish. Every attribute is classified
-    as either PROVISA-OWNED (identity, physical binding, technical facts, governance projections, provisa_*
-    classifications — written on every publish and drift-corrected by the REQ-1072 reconcile) or HUMAN-OWNED
-    (Atlas userDescription, human-added classifications, [SUPERSEDED by REQ-1389, 2026-10-23 -- Provisa
-    writes and withdraws its own automated term assignments; only human assignments are human-owned (TERM
-    ASSIGNMENT below). Kept here for history; do not implement against it.] glossary term assignments, [END
-    SUPERSEDED BLOCK] labels, hand-drawn lineage — NEVER written by the exporter, so steward enrichment
-    in the catalog survives every publish and reconcile). Consequence: the Atlas governance document moves
-    OFF userDescription — the exact field the Atlas UI edits for human descriptions, clobbered today on
-    every publish — onto a Provisa-owned typed attribute (REQ-1388 native typedefs). The reconcile''s drift
-    correction applies to Provisa-owned attributes only. OWNERSHIP RULE (settled): authorship decides. If
-    Provisa authored a value (typed provisa* attributes, the fields it writes, provisa_-prefixed classifications)
-    Provisa overwrites it on every publish; if the value originated in the catalog (userDescription, human-added
-    classifications, [SUPERSEDED by REQ-1389, 2026-10-23 -- Provisa writes and withdraws its own automated
-    term assignments; only human assignments are human-owned (TERM ASSIGNMENT below). Kept here for history;
-    do not implement against it.] terms, [END SUPERSEDED BLOCK] labels, drawn lineage) the catalog wins
-    and Provisa never writes it. This is a single-writer MERGE, not a sync: nothing flows back into Provisa
-    (publication is outbound-only), each data element has exactly ONE owning system, and the read step exists
-    only because replace-style catalog APIs force carrying the catalog-owned fields through unchanged. The
-    merge is NOT optional: the classification read-merge and attribute drift-correction ride the single
-    publish path, so all three triggers get them: Publish now, the event drain, and the scheduled reconcile
-    (reconcile_cron, default hourly). URN-CANONICAL UPSERT: the Provisa URN (REQ-1385, published as the
-    provisaUri attribute) is the canonical identity, not the physical qualifiedName. Before publishing,
-    the exporter indexes live entities by URN; an entity Provisa published before whose physical address
-    changed (re-platform, physical rename) takes the live guid and is UPDATED in place — same catalog entity,
-    new binding, enrichment and lineage intact — never duplicated-and-orphaned. UPDATES MERGE: Atlas bulk
-    createOrUpdate replaces the full attribute map (empirically verified: an update wiped a steward-written
+    Publishing is an UPSERT on the vendor''s stable key (Atlas/Atlan: typeName + qualifiedName via
+    /entity/bulk, which merges at attribute level; DataHub: per-aspect URN upsert; OpenMetadata: fqn PUT),
+    never a delete-and-recreate, and entities absent from a later snapshot are never pruned by publish.
+    Every attribute is classified as either PROVISA-OWNED (identity, physical binding, technical facts,
+    governance projections, provisa_* classifications — written on every publish and drift-corrected by the
+    REQ-1072 reconcile) or HUMAN-OWNED (Atlas userDescription, human-added classifications, [SUPERSEDED by
+    REQ-1389, 2026-10-23 -- Provisa writes and withdraws its own automated term assignments; only human
+    assignments are human-owned (TERM ASSIGNMENT below). Kept here for history; do not implement against
+    it.] glossary term assignments, [END SUPERSEDED BLOCK] labels, hand-drawn lineage — NEVER written by the
+    exporter, so steward enrichment in the catalog survives every publish and reconcile). Consequence: the
+    Atlas governance document moves OFF userDescription — the exact field the Atlas UI edits for human
+    descriptions, clobbered today on every publish — onto a Provisa-owned typed attribute (REQ-1388 native
+    typedefs). The reconcile''s drift correction applies to Provisa-owned attributes only. OWNERSHIP RULE
+    (settled): authorship decides. If Provisa authored a value (typed provisa* attributes, the fields it
+    writes, provisa_-prefixed classifications) Provisa overwrites it on every publish; if the value
+    originated in the catalog (userDescription, human-added classifications, [SUPERSEDED by REQ-1389,
+    2026-10-23 -- Provisa writes and withdraws its own automated term assignments; only human assignments
+    are human-owned (TERM ASSIGNMENT below). Kept here for history; do not implement against it.] terms,
+    [END SUPERSEDED BLOCK] labels, drawn lineage) the catalog wins and Provisa never writes it. This is a
+    single-writer MERGE, not a sync: nothing flows back into Provisa (publication is outbound-only), each
+    data element has exactly ONE owning system, and the read step exists only because replace-style catalog
+    APIs force carrying the catalog-owned fields through unchanged. The merge is NOT optional: the
+    classification read-merge and attribute drift-correction ride the single publish path, so all three
+    triggers get them: Publish now, the event drain, and the scheduled reconcile (reconcile_cron, default
+    hourly). URN-CANONICAL UPSERT: the Provisa URN (REQ-1385, published as the provisaUri attribute) is the
+    canonical identity, not the physical qualifiedName. Before publishing, the exporter indexes live
+    entities by URN; an entity Provisa published before whose physical address changed (re-platform,
+    physical rename) takes the live guid and is UPDATED in place — same catalog entity, new binding,
+    enrichment and lineage intact — never duplicated-and-orphaned. UPDATES MERGE: Atlas bulk createOrUpdate
+    replaces the full attribute map (empirically verified: an update wiped a steward-written
     userDescription), so every update starts from the LIVE attributes and overlays only the fields Provisa
     authors; fields Provisa never populates survive verbatim. VENDOR-ID TRACKING (settled: "track their
     guids and use them to sync"): every successful publish CAPTURES the vendor''s own id per published asset
@@ -48118,29 +48119,33 @@
     is missing or the name changed), DataHub dataset URN — into the catalog_bindings table, one row per
     (provider, semantic_uri) with the vendor-side name-key as physical_key. The next publish USES the stored
     id to rebind on a physical re-address instead of trusting the vendor''s name-keyed upsert: Atlas prefers
-    the STORED guid over the laggy basic-search index (the index only covers URIs with no binding); OpenMetadata
-    cannot rename by PATCH (name/databaseSchema are not PATCH-updatable and TableRepository never opts into
-    renameAllowed), so the rebind is SUCCESSION: the predecessor is read by its stored UUID, its steward
-    enrichment carried onto the successor''s first publish, and its description marked superseded with a
-    pointer to the new FQN and the Provisa URN; Collibra PATCH-renames the live asset by stored UUID BEFORE
-    the name-keyed import so the job matches the SAME asset; DataHub URNs are immutable identity, so the
-    successor publishes as a new URN and the OLD bound URN gets the deprecation aspect naming the successor
-    and the Provisa URN. The binding lifecycle (load before publish, persist capture and prune departed-asset
-    bindings after) rides the single publish path, so all triggers get it: Publish now, the event drain,
-    the scheduled reconcile and the CLI publish. (Amended 2026-10-23, TERM ASSIGNMENT:) Term-to-data assignment
-    is Provisa-owned when Provisa makes it. A Class term (REQ-2141) is assigned to the published tables
-    it grounds and a Property term to its published columns; a Concept is assigned to nothing. Each is written
-    as the catalog''s own automated or system assignment, attributed to Provisa -- OpenMetadata labelType
-    Automated, DataHub term associations attributed to Provisa''s actor, Atlas and Atlan semantic assignments
-    whose source is Provisa, Collibra relations created by Provisa''s own user -- and that attribution is
-    the ownership test. Provisa writes and removes only its own assignments, which track the snapshot: one
-    the snapshot no longer carries, including every assignment of a term that left it, is withdrawn. A human
-    assignment stays human-owned: Provisa never removes or overwrites it, and adds none beside it for the
-    same term on the same asset. An assignment is never withdrawn because a request failed, and a live assignment
-    list that cannot be read is not written over. (Amended 2026-11-11, A CLASS TERM IS ASSIGNED TO ITS KEY
-    COLUMNS TOO:) Lead 2026-11-11, for REQ-2238: a Class term is assigned to its tables and to its key columns
-    (whose references sit on the Class, REQ-2141), so a catalog links a primary or foreign key column to
-    its term.'
+    the STORED guid over the laggy basic-search index (the index only covers URIs with no binding);
+    OpenMetadata cannot rename by PATCH (name/databaseSchema are not PATCH-updatable and TableRepository
+    never opts into renameAllowed), so the rebind is SUCCESSION: the predecessor is read by its stored UUID,
+    its steward enrichment carried onto the successor''s first publish, and its description marked
+    superseded with a pointer to the new FQN and the Provisa URN; Collibra PATCH-renames the live asset by
+    stored UUID BEFORE the name-keyed import so the job matches the SAME asset; DataHub URNs are immutable
+    identity, so the successor publishes as a new URN and the OLD bound URN gets the deprecation aspect
+    naming the successor and the Provisa URN. The binding lifecycle (load before publish, persist capture
+    and prune departed-asset bindings after) rides the single publish path, so all triggers get it: Publish
+    now, the event drain, the scheduled reconcile and the CLI publish. (Amended 2026-10-23, TERM
+    ASSIGNMENT:) Term-to-data assignment is Provisa-owned when Provisa makes it. A Class term (REQ-2141) is
+    assigned to the published tables it grounds and a Property term to its published columns; a Concept is
+    assigned to nothing. Each is written as the catalog''s own automated or system assignment, attributed to
+    Provisa -- OpenMetadata labelType Automated, DataHub term associations attributed to Provisa''s actor,
+    Atlas and Atlan semantic assignments whose source is Provisa, Collibra relations created by Provisa''s
+    own user -- and that attribution is the ownership test. Provisa writes and removes only its own
+    assignments, which track the snapshot: one the snapshot no longer carries, including every assignment of
+    a term that left it, is withdrawn. A human assignment stays human-owned: Provisa never removes or
+    overwrites it, and adds none beside it for the same term on the same asset. An assignment is never
+    withdrawn because a request failed, and a live assignment list that cannot be read is not written over.
+    (Amended 2026-11-11, A CLASS TERM IS ASSIGNED TO ITS KEY COLUMNS TOO:) Lead 2026-11-11, for REQ-2238: a
+    Class term is assigned to its tables and to its key columns (whose references sit on the Class,
+    REQ-2141), so a catalog links a primary or foreign key column to its term. (Amended 2026-11-20, PURVIEW
+    REPLACED BY THE ONELAKE CATALOG:) Maintainer 2026-11-20. Microsoft Purview Data Governance was announced
+    retiring (no new accounts; support ends 2027-11-12; to be confirmed from Microsoft''s own notice before
+    the work starts). A Microsoft Fabric OneLake catalog export target is added and the Purview export
+    adapter is removed; text here naming Purview as an export target is superseded.'
   use_case: Stewards enrich published assets inside the catalog (descriptions, terms, extra classifications);
     a publish or scheduled reconcile that overwrote that work would make the catalog write-once and untrustworthy.
     The ownership split lets Provisa keep its facts current while human curation accumulates safely.
@@ -98076,3 +98081,29 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     queryable tables, for run history, what loaded today, and joining pipeline status to business tables.
     OpenLineage is a specification with no store of its own, so a lineage store such as Marquez is the only
     lineage source type there can be.'
+- id: REQ-2265
+  status: proposed
+  target: 2026-Q4
+  group: 3. Source Registration & Data Modeling
+  category: Registration & Governance
+  feature: semantic-model-relationships
+  priority: SHOULD
+  type: behavioral
+  description: 'Maintainer 2026-11-20. Governance catalogs are live branded sources, so their metadata is queryable and
+    joinable with any other Provisa data. Nothing syncs in either direction and a catalog may disagree with
+    Provisa''s model: the disagreement is itself something to query, for example columns the catalog
+    classifies as personal data that Provisa does not mask, owners that do not match, or tables certified in
+    one and missing from the other; catalog facts (certification, stewards, quality scores) beside query
+    results and data products; catalog owners joined to audit and usage data. This is separate from imports,
+    which stay an optional path, and from the metadata export adapters, which push to catalogs. Each catalog
+    is a brand on an existing source type, no new connector: DataHub on the GraphQL source; OpenMetadata,
+    Collibra, Alation and Atlan on the OpenAPI source; the Microsoft Fabric OneLake catalog on the Fabric
+    REST API with Entra client credentials; Dataplex over Google''s published interface. DataHub and
+    OpenMetadata come first, then Collibra, Alation and Atlan. Microsoft Purview Data Governance is not a
+    brand: it was announced retiring (no new accounts; support ends 2027-11-12), with the OneLake catalog as
+    its successor; the announcement is to be confirmed from Microsoft''s own notice before the work starts.
+    The OpenAPI brand mechanism passes through settings the plain OpenAPI source already supports: a base
+    URL setup field for a per-instance host, a spec location that may point at the running instance (whose
+    spec changes between versions), and the authentication type, including OAuth client credentials. The
+    Marquez source (REQ-2264) uses the same mechanism. Until a brand exists, any of these catalogs can be
+    added as a plain OpenAPI source.'
