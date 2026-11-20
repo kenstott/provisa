@@ -393,3 +393,11 @@ def test_arrays_of_other_dimensions_are_not_equal():
 def test_a_row_of_its_width_is_appended_to_two_dimensions():
     written = _trino("\"array_cat\"('{{1,2},{3,4}}'::integer[], '{5,6}'::integer[])")
     assert written.startswith("SELECT CONCAT(") and "ARRAY[CAST(ARRAY['5', '6']" in written
+
+
+def test_a_two_dimensional_array_cat_another_call_reads_is_refused_by_name():
+    """cardinality would read the array of arrays it writes as one of one dimension."""
+    sql = (
+        "\"cardinality\"(pg_catalog.\"array_cat\"('{{1,2},{3,4}}'::integer[], '{5,6}'::integer[]))"
+    )
+    assert _refused(sql).sqlstate == "0A000"

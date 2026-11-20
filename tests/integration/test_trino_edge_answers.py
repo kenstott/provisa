@@ -550,6 +550,43 @@ EDGES: list[tuple[str, str, Any]] = [
     ),
 ]
 
+#: The engine errors the measure found at edges (run 44670380355), each now answered or raised as
+#: PostgreSQL does: a year BC (Trino's cast reads none), NaN of an integer, an integer type's least
+#: value, a zero divisor, 24:00:00, and an array of two dimensions.
+_BC_DATE = "'4713-01-01 BC'::date"
+_BC_STAMP = "'4713-01-01 00:00:00 BC'::timestamp without time zone"
+_BC_ZONED = "'4713-01-01 00:00:00+00 BC'::timestamp with time zone"
+_DAY = "'2024-06-15'::date"
+_STAMP = "'2024-06-15 12:30:45'::timestamp without time zone"
+_ZONED = "'2024-06-15 12:30:45+00'::timestamp with time zone"
+_TIMES = "'24:00:00'::time without time zone, '12:30:45'::time without time zone"
+_SQUARE = "'{{1,2},{3,4}}'::integer[]"
+ENGINE_ERRORS: list[tuple[str, str, Any]] = [
+    (f'SELECT pg_catalog."date_lt"({_BC_DATE}, {_DAY}) AS v', "value", "t"),
+    (f'SELECT pg_catalog."date_eq"({_BC_DATE}, {_DAY}) AS v', "value", "f"),
+    (f'SELECT pg_catalog."date_cmp"({_BC_DATE}, {_DAY}) AS v', "value", "-1"),
+    (f'SELECT pg_catalog."date_mi"({_BC_DATE}, {_DAY}) AS v', "value", "-2460439"),
+    (f'SELECT pg_catalog."timestamp_eq"({_BC_STAMP}, {_STAMP}) AS v', "value", "f"),
+    (f'SELECT pg_catalog."timestamp_ne"({_BC_STAMP}, {_STAMP}) AS v', "value", "t"),
+    (f'SELECT pg_catalog."timestamptz_lt"({_BC_ZONED}, {_ZONED}) AS v', "value", "t"),
+    (f'SELECT pg_catalog."timestamptz_cmp"({_BC_ZONED}, {_ZONED}) AS v', "value", "-1"),
+    ("SELECT pg_catalog.\"int4\"('NaN'::double precision) AS v", "err", "22003"),
+    ("SELECT pg_catalog.\"int2\"('NaN'::real) AS v", "err", "22003"),
+    ('SELECT pg_catalog."int8"(2.5::double precision) AS v', "value", "2"),
+    ("SELECT pg_catalog.\"abs\"('-2147483648'::integer) AS v", "err", "22003"),
+    ('SELECT pg_catalog."mod"(3::integer, 0::integer) AS v', "err", "22012"),
+    (f'SELECT pg_catalog."time_eq"({_TIMES}) AS v', "value", "f"),
+    (f'SELECT pg_catalog."time_ne"({_TIMES}) AS v', "value", "t"),
+    (f"SELECT pg_catalog.\"array_eq\"({_SQUARE}, '{{1,2,3}}'::integer[]) AS v", "value", "f"),
+    (f'SELECT pg_catalog."array_append"({_SQUARE}, 3::integer) AS v', "err", "22000"),
+    (f'SELECT pg_catalog."width_bucket"(3::integer, {_SQUARE}) AS v', "err", "2202E"),
+    (
+        f'SELECT pg_catalog."cardinality"(pg_catalog."array_cat"({_SQUARE}, \'{{5,6}}\'::integer[])) AS v',
+        "value",
+        "6",
+    ),
+]
+
 
 def _text(value: Any) -> str | None:
     """A Trino value in PostgreSQL's text form."""
@@ -587,7 +624,11 @@ def _refused_by_name(error: Exception) -> bool:
     return isinstance(error, RowRefused) and error.sqlstate == "0A000"
 
 
-@pytest.mark.parametrize(("sql", "kind", "want"), EDGES, ids=[e[0][18:70] for e in EDGES])
+@pytest.mark.parametrize(
+    ("sql", "kind", "want"),
+    EDGES + ENGINE_ERRORS,
+    ids=[e[0][18:70] for e in EDGES + ENGINE_ERRORS],
+)
 def test_trino_answers_an_edge_as_postgresql_does(trino_conn, sql, kind, want):
     try:
         written = transpile(sql, "trino")

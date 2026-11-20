@@ -116,7 +116,18 @@ def _elements(value: exp.Expr) -> list[exp.Expr] | None:
     return list(node.expressions) if isinstance(node, exp.Array) else None
 
 
-def _trino_of_dimensions(name: str, args: list[exp.Expr]) -> exp.Expr | None:
+def _answered(node: exp.Expr) -> bool:
+    """Whether ``node`` is a column of its select list, the answer itself: no call reads it, which
+    would take the array of arrays it writes for an array of one dimension."""
+    parent = node.parent
+    while isinstance(parent, (exp.Alias, exp.Paren)):
+        parent = parent.parent
+    return isinstance(parent, exp.Select) and node.arg_key != "where"
+
+
+def _trino_of_dimensions(
+    name: str, args: list[exp.Expr], node: exp.Expr | None = None
+) -> exp.Expr | None:
     """On Trino: PostgreSQL's refusal of a call it refuses of an array of two dimensions, and
     array_eq, array_ne and array_cat of a two-dimensional and a one-dimensional array the statement
     writes, as array.c answers them; None for any other call."""
@@ -131,6 +142,15 @@ def _trino_of_dimensions(name: str, args: list[exp.Expr]) -> exp.Expr | None:
         return None
     if name in ("array_eq", "array_ne"):  # arrays of other dimensions are not equal
         return exp.Boolean(this=name == "array_ne")
+    if node is not None and not _answered(node):
+        raise Refused(
+            Refusal(
+                "0A000",
+                "array_cat() of an array of two dimensions read by another call has "
+                "no form on trino",
+            ),
+            ruling=True,
+        )
     rows, row = _elements(deep), _elements(flat)
     if rows is None or row is None or not rows:
         return None
@@ -157,7 +177,7 @@ def of_dimensions(node: exp.Expr, dialect: str) -> exp.Expr | None:
         return None  # flatten reads one level: deeper keeps what it had
     if on_trino:
         for name in sorted(names):
-            answered = _trino_of_dimensions(name, args)
+            answered = _trino_of_dimensions(name, args, node)
             if answered is not None:
                 return answered
     for name in sorted(names):
