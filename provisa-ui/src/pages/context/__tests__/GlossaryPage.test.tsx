@@ -184,6 +184,20 @@ describe("GlossaryPage", () => {
     );
   });
 
+  it("orders entries changed at the same time by name", async () => {
+    const same = "2026-11-12T10:00:00Z";
+    const tied: GlossaryEntries = {
+      terms: DATA.terms.map((t) => (t.id === 4 || t.id === 6 ? { ...t, changed_at: same } : t)),
+      edges: DATA.edges,
+    };
+    fetchMock.mockImplementation(async () => new Response(JSON.stringify(tied), { status: 200 }));
+    await page();
+    fireEvent.click(screen.getByRole("radio", { name: "Recently changed", hidden: true }));
+    await waitFor(() =>
+      expect(entryNames()).toEqual(["account", "client", "zone", "savings account", "patron"]),
+    );
+  });
+
   it("links the term's name to the Ontology editor only for a viewer with its right", async () => {
     await page();
     expect(screen.getByTestId("glossary-name-4")).toHaveAttribute(

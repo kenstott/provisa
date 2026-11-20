@@ -1512,7 +1512,8 @@ async def stewardship(request: Request) -> dict:
 @router.get("/entries")
 async def glossary_entries(request: Request) -> dict:
     """The Glossary page (REQ-2259): the approved terms the caller reads, with their names,
-    definitions and domains, and the a-kind-of, see-also and also-called edges between them. No
+    definitions, domains and when each last changed (an ISO time, the recent-change sort), and the
+    a-kind-of, see-also and also-called edges between them. No
     grounding, provenance, tags or status: the page shows none of them."""
     _require_glossary_read(request)
     require_active_org_id(request)

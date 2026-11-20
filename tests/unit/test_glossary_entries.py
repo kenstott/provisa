@@ -16,7 +16,7 @@ deprecated or retired term, and no edge reaching one."""
 from __future__ import annotations
 
 import inspect
-from datetime import date
+from datetime import date, datetime
 
 import pytest
 from sqlalchemy import insert
@@ -67,12 +67,16 @@ async def test_only_approved_terms_and_the_edges_between_them(control_plane, mon
             "patron",
             "savings fund",
         ]
-        assert page["terms"][1] == {
+        fund = dict(page["terms"][1])
+        changed_at = datetime.fromisoformat(fund.pop("changed_at"))  # REQ-2259: an ISO time
+        assert fund == {
             "id": account,
             "name": "fund",
             "definition": "A pool of money.",
             "domains": ["sales"],
         }
+        assert changed_at.tzinfo is not None
+        assert all(datetime.fromisoformat(t["changed_at"]) for t in page["terms"])
         assert sorted(
             (e["from_term_id"], e["to_term_id"], e["rel_type"]) for e in page["edges"]
         ) == sorted(

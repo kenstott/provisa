@@ -839,6 +839,9 @@ glossary_terms = Table(
     Column("status_at", DateTime(timezone=True)),
     # REQ-2237: the IRI of the imported concept the term is (schema.sql).
     Column("iri", Text),
+    # REQ-2259: when the term last changed; the server default dates rows older than the
+    # column (schema.sql), and every repository write sets it.
+    Column("changed_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
     Column("tenant_id", Uuid),
     UniqueConstraint("name"),
 )

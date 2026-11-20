@@ -34,7 +34,7 @@ import json
 import logging
 import re
 from dataclasses import dataclass
-from datetime import date
+from datetime import UTC, date, datetime
 
 from sqlalchemy import and_, delete as _delete, func, insert, or_, select, update
 
@@ -73,6 +73,19 @@ log = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from provisa.core.database import Connection
+
+
+def _now() -> datetime:
+    """REQ-2259: the time a write to a term records as when it last changed (``changed_at``)."""
+    return datetime.now(UTC)
+
+
+async def _touch(conn: "Connection", *term_ids: int) -> None:
+    """REQ-2259: a write that changes a term without updating its row -- its declared domains, an
+    edge at either end -- records the time on each term it changed."""
+    await conn.execute_core(
+        update(glossary_terms).where(glossary_terms.c.id.in_(term_ids)).values(changed_at=_now())
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -137,6 +150,7 @@ async def set_declared_domains(conn: "Connection", term_id: int, domain_ids: "se
             index_elements=["term_id", "domain_id"],
             update_columns=["domain_id"],
         )
+    await _touch(conn, term_id)
 
 
 # ---------------------------------------------------------------------------
@@ -519,15 +533,17 @@ async def _find_or_create_term(conn: "Connection", name: str) -> int:
     if row is not None:
         if row.deprecated:
             await conn.execute_core(
-                update(glossary_terms).where(glossary_terms.c.id == row.id).values(deprecated=False)
+                update(glossary_terms)
+                .where(glossary_terms.c.id == row.id)
+                .values(deprecated=False, changed_at=_now())
             )
         return row.id
     term_id = await conn.upsert_returning(
         glossary_terms,
-        {"name": name, "deprecated": False},
+        {"name": name, "deprecated": False, "changed_at": _now()},
         index_elements=["name"],
         returning="id",
-        update_columns=["deprecated"],
+        update_columns=["deprecated", "changed_at"],
     )
     return term_id
 
@@ -556,7 +572,9 @@ async def _settle_terms(
             continue
         if _is_curated(graph, node) or _dangling_grows(graph, term_id):
             await conn.execute_core(
-                update(glossary_terms).where(glossary_terms.c.id == term_id).values(deprecated=True)
+                update(glossary_terms)
+                .where(glossary_terms.c.id == term_id)
+                .values(deprecated=True, changed_at=_now())
             )
             await set_declared_domains(conn, term_id, domains_before.get(term_id, set()))
             node["deprecated"] = True
@@ -1066,10 +1084,11 @@ async def create_abstract_term(
             "name": name,
             "definition": definition,
             "deprecated": False,
+            "changed_at": _now(),
         },
         index_elements=["name"],
         returning="id",
-        update_columns=["definition"],
+        update_columns=["definition", "changed_at"],
     )
     await set_declared_domains(conn, term_id, domains)
     return term_id
@@ -1107,10 +1126,11 @@ async def upsert_declared_term(
             "definition": definition,
             "calculation_method": calculation_method,  # REQ-2243
             "deprecated": False,
+            "changed_at": _now(),
         },
         index_elements=["name"],
         returning="id",
-        update_columns=["definition", "calculation_method"],
+        update_columns=["definition", "calculation_method", "changed_at"],
     )
     await set_declared_domains(conn, term_id, domains)
     return term_id
@@ -1130,7 +1150,9 @@ async def rename_term(conn: "Connection", term_id: int, new_name: str) -> bool:
     if taken is not None:
         raise ValueError(f"term {new_name!r} already exists")
     result = await conn.execute_core(
-        update(glossary_terms).where(glossary_terms.c.id == term_id).values(name=new_name)
+        update(glossary_terms)
+        .where(glossary_terms.c.id == term_id)
+        .values(name=new_name, changed_at=_now())
     )
     return (result.rowcount or 0) > 0
 
@@ -1158,7 +1180,9 @@ async def _refuse_clearing_tagged(conn: "Connection", term_id: int, definition: 
 async def set_definition(conn: "Connection", term_id: int, definition: str | None) -> bool:
     await _refuse_clearing_tagged(conn, term_id, definition)  # REQ-2145
     result = await conn.execute_core(
-        update(glossary_terms).where(glossary_terms.c.id == term_id).values(definition=definition)
+        update(glossary_terms)
+        .where(glossary_terms.c.id == term_id)
+        .values(definition=definition, changed_at=_now())
     )
     return (result.rowcount or 0) > 0
 
@@ -1168,7 +1192,7 @@ async def set_calculation_method(conn: "Connection", term_id: int, method: str |
     result = await conn.execute_core(
         update(glossary_terms)
         .where(glossary_terms.c.id == term_id)
-        .values(calculation_method=method)
+        .values(calculation_method=method, changed_at=_now())
     )
     return (result.rowcount or 0) > 0
 
@@ -1255,7 +1279,7 @@ async def approve_term(conn: "Connection", term_id: int, *, by: "str | None") ->
     await conn.execute_core(
         update(glossary_terms)
         .where(glossary_terms.c.id == term_id)
-        .values(approved=True, status_by=by, status_at=func.now())
+        .values(approved=True, status_by=by, status_at=func.now(), changed_at=_now())
     )
     model_change.name(  # REQ-1524
         "approve", model_change.uri(model_uri.term_uri, await term_name(conn, term_id))
@@ -1335,6 +1359,7 @@ async def deprecate_term(
             retire_on=retire_on,
             status_by=by,
             status_at=func.now(),
+            changed_at=_now(),
         )
     )
     model_change.name(  # REQ-1524
@@ -1441,6 +1466,7 @@ async def _mark_retired(
             status_reason=reason,
             status_by=by,
             status_at=func.now(),
+            changed_at=_now(),
         )
     )
     await conn.execute_core(as_delete(stmt) if deleted else stmt)
@@ -1467,10 +1493,24 @@ async def restore_term(conn: "Connection", term_id: int, *, by: "str | None") ->
             status_reason=None,
             status_by=by,
             status_at=func.now(),
+            changed_at=_now(),
         )
     )
     # Back in service, it is replaced by nothing: the succession its retirement wrote goes, so
     # it does not reach data through its successor -- it comes back an empty Concept, a draft.
+    successors = [
+        r.from_term_id
+        for r in (
+            await conn.execute_core(
+                select(glossary_term_edges.c.from_term_id).where(
+                    (glossary_term_edges.c.to_term_id == term_id)
+                    & (glossary_term_edges.c.rel_type == "REPLACES")
+                )
+            )
+        ).fetchall()
+    ]
+    if successors:  # REQ-2259: each lost an edge
+        await _touch(conn, *successors)
     await conn.execute_core(
         _delete(glossary_term_edges).where(
             (glossary_term_edges.c.to_term_id == term_id)
@@ -1509,7 +1549,13 @@ async def retire_due(conn: "Connection", today: "date") -> list[int]:
         await conn.execute_core(
             update(glossary_terms)
             .where(glossary_terms.c.id == r.id)
-            .values(retired=True, approved=False, deprecation_asserted=False, status_at=func.now())
+            .values(
+                retired=True,
+                approved=False,
+                deprecation_asserted=False,
+                status_at=func.now(),
+                changed_at=_now(),
+            )
         )
         retired.append(r.id)
     return retired
@@ -1662,6 +1708,7 @@ async def add_edge(conn: "Connection", from_term_id: int, to_term_id: int, rel_t
         index_elements=["from_term_id", "to_term_id", "rel_type"],
         update_columns=["rel_type"],
     )
+    await _touch(conn, from_term_id, to_term_id)
 
 
 async def retype_edge(
@@ -1693,7 +1740,10 @@ async def remove_edge(
             & (glossary_term_edges.c.rel_type == rel_type)
         )
     )
-    return (result.rowcount or 0) > 0
+    removed = (result.rowcount or 0) > 0
+    if removed:
+        await _touch(conn, from_term_id, to_term_id)
+    return removed
 
 
 async def add_expert(
@@ -2637,9 +2687,10 @@ GLOSSARY_PAGE_EDGES = ("KIND_OF", "RELATED_TO", "SYNONYM_OF")
 
 async def glossary_entries(conn: "Connection", domains: "frozenset[str] | None") -> dict:
     """The Glossary page's terms (REQ-2259): the approved terms readable in ``domains`` (REQ-1592's
-    ``readable_term``), each with its name, definition and domains, and the edges of
-    :data:`GLOSSARY_PAGE_EDGES` between two of them. A draft, deprecated or retired term is left
-    out, and so is any edge reaching one, so nothing on the page names a term it does not show."""
+    ``readable_term``), each with its name, definition, domains and when it last changed, and the
+    edges of :data:`GLOSSARY_PAGE_EDGES` between two of them. A draft, deprecated or retired term
+    is left out, and so is any edge reaching one, so nothing on the page names a term it does not
+    show."""
     rows = (
         await conn.execute_core(
             select(
@@ -2650,6 +2701,7 @@ async def glossary_entries(conn: "Connection", domains: "frozenset[str] | None")
                 glossary_terms.c.deprecated,
                 glossary_terms.c.deprecation_asserted,
                 glossary_terms.c.retired,
+                glossary_terms.c.changed_at,
             ).order_by(glossary_terms.c.name)
         )
     ).fetchall()
@@ -2660,6 +2712,7 @@ async def glossary_entries(conn: "Connection", domains: "frozenset[str] | None")
             "name": r.name,
             "definition": r.definition,
             "domains": sorted(scope.get(r.id, set())),
+            "changed_at": r.changed_at.isoformat(),  # REQ-2259: the recent-change sort
         }
         for r in rows
         if term_status(r._mapping) == "approved" and readable_term(domains, scope.get(r.id, set()))

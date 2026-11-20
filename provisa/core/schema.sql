@@ -1045,6 +1045,11 @@ CREATE TABLE IF NOT EXISTS glossary_terms (
     -- provisa/ontology_import): the term's own IRI when imported as a new term, or the IRI of the
     -- imported concept a steward aligned with it as the same entity. Curator work, like a definition.
     iri             TEXT,
+    -- REQ-2259: when the term last changed. Every repository write to its name, definition,
+    -- calculation method, domains, status or an edge at either end sets it; the Glossary's
+    -- recent-change sort orders by it. The DEFAULT dates the rows of a control plane created
+    -- before the column (the ADD COLUMN below needs one for NOT NULL); a term's insert sets it.
+    changed_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
     tenant_id       UUID,
     UNIQUE (name)
 );
@@ -1058,6 +1063,7 @@ ALTER TABLE glossary_terms ADD COLUMN IF NOT EXISTS retire_on DATE;
 ALTER TABLE glossary_terms ADD COLUMN IF NOT EXISTS status_by TEXT;
 ALTER TABLE glossary_terms ADD COLUMN IF NOT EXISTS status_at TIMESTAMPTZ;
 ALTER TABLE glossary_terms ADD COLUMN IF NOT EXISTS iri TEXT;
+ALTER TABLE glossary_terms ADD COLUMN IF NOT EXISTS changed_at TIMESTAMPTZ NOT NULL DEFAULT now();  -- REQ-2259
 
 -- REQ-2145: a tag on a glossary term, on a table that predates it. The term's deletion takes its
 -- tags: a term holding a column cannot be deleted (glossary.delete_term), so none of them is a

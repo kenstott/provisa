@@ -143,15 +143,23 @@ export function filterEntries(
   return out;
 }
 
-/** When an entry last changed: its most recently changed sense. */
-export function changedAt(entry: GlossaryEntry): string {
-  return entry.senses.reduce((latest, s) => (s.changedAt > latest ? s.changedAt : latest), "");
+/** When an entry last changed (ms since the epoch): its most recently changed sense. The server
+ * sends every term's time (glossary_entries); a sense without one is an error, not sorted by name. */
+export function changedAt(entry: GlossaryEntry): number {
+  return Math.max(
+    ...entry.senses.map((s) => {
+      const at = Date.parse(s.changedAt);
+      if (Number.isNaN(at)) throw new Error(`term ${s.id} has no changed_at: ${s.changedAt}`);
+      return at;
+    }),
+  );
 }
 
+/** A to Z, or newest change first with the name ordering only entries changed at the same time. */
 export function sortEntries(entries: GlossaryEntry[], sort: GlossarySort): GlossaryEntry[] {
   if (sort === "name") return [...entries].sort((a, b) => a.name.localeCompare(b.name));
   return [...entries].sort(
-    (a, b) => Date.parse(changedAt(b)) - Date.parse(changedAt(a)) || a.name.localeCompare(b.name),
+    (a, b) => changedAt(b) - changedAt(a) || a.name.localeCompare(b.name),
   );
 }
 
