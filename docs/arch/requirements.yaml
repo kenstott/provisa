@@ -991,7 +991,6 @@
   tests:
   - tests/unit/test_rate_limiting.py
   - tests/integration/test_rate_limiting_integration.py
-  - provisa-ui/e2e/security-rate-limiting.spec.ts
   since: 2026-01
   scenario: 'Given a role with configured rate limits
 
@@ -1032,7 +1031,6 @@
   tests:
   - tests/unit/test_rate_limiting.py
   - tests/integration/test_rate_limiting_integration.py
-  - provisa-ui/e2e/security-rate-limiting.spec.ts
   since: 2026-01
   scenario: 'Given a role with a configured nl.rate_limit
 
@@ -1234,7 +1232,6 @@
   - tests/integration/test_audit_auth_integration.py
   - tests/unit/test_abac_hook_extended.py
   - tests/unit/test_approval_hook.py
-  - provisa-ui/e2e/security-rate-limiting.spec.ts
   since: 2026-01
   scenario: 'Given a Provisa instance configured with gRPC approval hook
 
@@ -1411,7 +1408,7 @@
   - tests/e2e/test_security.py
   - tests/unit/test_tenancy_requirements.py
   - tests/integration/test_security_integration_extra.py
-  - provisa-ui/e2e/security-rate-limiting.spec.ts
+  - tests/integration/test_demo_http_surfaces_e2e.py
   since: 2026-01
   scenario: 'Given a request to /billing/signup, /billing/webhook, /health, /docs, or /openapi.json
 
@@ -2008,7 +2005,7 @@
   - tests/integration/test_schema_gen.py
   - tests/unit/test_core_registration.py
   - tests/unit/test_source_registration_validation.py
-  - provisa-ui/e2e/registration-admin.spec.ts
+  - tests/steps/steps_registration_governance.py
   since: 2026-01
   scenario: 'Given a privileged steward with registration rights
 
@@ -2054,7 +2051,7 @@
   - tests/integration/test_schema_gen.py
   - tests/integration/test_introspect.py
   - tests/unit/test_core_registration.py
-  - provisa-ui/e2e/registration-admin.spec.ts
+  - tests/integration/test_config_reload_schema_rename.py
   since: 2026-01
   scenario: 'Given a source that has been registered but no tables have been explicitly registered
 
@@ -3308,7 +3305,6 @@
   - tests/unit/test_visibility.py
   - tests/unit/test_enforcement_metadata.py
   - tests/integration/test_registration_governance_integration.py
-  - provisa-ui/e2e/registration-admin.spec.ts
   since: 2026-01
   scenario: 'Given a SQLAlchemy client using the Provisa dialect with a specific role
 
@@ -3905,7 +3901,6 @@
   tests:
   - tests/unit/test_discovery_requirements.py
   - tests/integration/test_registration_governance_integration.py
-  - provisa-ui/e2e/registration-admin.spec.ts
   since: 2026-01
   scenario: 'Given a database source with FK constraints
 
@@ -3941,7 +3936,7 @@
   - tests/e2e/test_installer.py
   - tests/unit/test_core_registration.py
   - tests/integration/test_registration_governance_integration.py
-  - provisa-ui/e2e/registration-admin.spec.ts
+  - tests/integration/test_demo_http_surfaces_e2e.py
   since: 2026-01
   scenario: 'Given the demo installation schema
 
@@ -4151,7 +4146,6 @@
   - provisa-ui/src/pages/TablesPage.tsx
   tests:
   - tests/unit/test_dataset_uniqueness.py
-  - provisa-ui/e2e/registration-admin.spec.ts
   since: 2026-01
   scenario: 'Given tables registered in domains A and B
 
@@ -4682,7 +4676,6 @@
   - tests/integration/test_introspect.py
   - tests/unit/test_available_tables.py
   - tests/unit/test_core_registration.py
-  - provisa-ui/e2e/security-rate-limiting.spec.ts
   since: 2026-01
   scenario: 'Given a UI requesting schema and table lists for any source type
 
@@ -5068,7 +5061,7 @@
   - tests/unit/test_cypher_graph_fns.py
   - tests/unit/test_neo4j_normalizers.py
   - tests/unit/test_neo4j_preview.py
-  - provisa-ui/e2e/registration-admin.spec.ts
+  - tests/steps/steps_query_api_sources_neo4j_sparql.py
   since: 2026-01
   scenario: 'Given a steward submitting a Cypher query for Neo4j table registration
 
@@ -5463,7 +5456,6 @@
   - tests/unit/test_graphql_remote_mapper.py
   - tests/unit/test_remote_adapter_contract.py
   - tests/unit/test_schema_service.py
-  - provisa-ui/e2e/registration-admin.spec.ts
   since: 2026-01
   scenario: 'Given a remote GraphQL schema that has changed upstream
 
@@ -5940,7 +5932,7 @@
   tests:
   - tests/unit/test_openapi_loader.py
   - tests/integration/test_openapi_source.py
-  - provisa-ui/e2e/registration-admin.spec.ts
+  - tests/steps/steps_openapi_auto_registration_connector.py
   since: 2026-01
   scenario: 'Given an OpenAPI spec that has been updated upstream
 
@@ -6325,7 +6317,7 @@
   - tests/unit/test_grpc_remote_loader.py
   - tests/unit/test_remote_adapter_contract.py
   - tests/unit/test_schema_service.py
-  - provisa-ui/e2e/registration-admin.spec.ts
+  - tests/steps/steps_grpc_remote_schema_connector_req_322_329.py
   since: 2026-01
   scenario: 'Given a gRPC source whose proto has changed
 
@@ -6369,7 +6361,7 @@
   - tests/unit/test_ingest_ddl.py
   - tests/unit/test_ingest_router.py
   - tests/integration/test_ingest_push_integration.py
-  - provisa-ui/e2e/infrastructure.spec.ts
+  - tests/integration/test_demo_http_surfaces_e2e.py
   since: 2026-01
   scenario: 'Given an external service configured to POST JSON events to Provisa
 
@@ -6538,7 +6530,7 @@
   - tests/unit/test_ingest_ddl.py
   - tests/unit/test_ingest_router.py
   - tests/integration/test_ingest_push_integration.py
-  - provisa-ui/e2e/infrastructure.spec.ts
+  - tests/integration/test_demo_http_surfaces_e2e.py
   since: 2026-01
   scenario: 'Given a POST to the ingest endpoint with a JSON array of events
 
@@ -6585,7 +6577,6 @@
   - tests/unit/test_ingest_ddl.py
   - tests/unit/test_ingest_router.py
   - tests/integration/test_ingest_push_integration.py
-  - provisa-ui/e2e/infrastructure.spec.ts
   since: 2026-01
   scenario: 'Given an ingest table with SSE subscription active
 
@@ -7693,7 +7684,7 @@
   - tests/unit/test_graphql_remote_mapper.py
   - tests/unit/test_remote_adapter_contract.py
   - tests/unit/test_schema_service.py
-  - provisa-ui/e2e/registration-admin.spec.ts
+  - tests/integration/test_demo_http_surfaces_e2e.py
   since: 2026-01
   scenario: 'Given a remote schema source with both manually declared and auto-detected relationships
 
@@ -8937,7 +8928,6 @@
   - tests/integration/test_compiler_integration.py
   - tests/unit/test_actions.py
   - tests/unit/test_function_gen.py
-  - provisa-ui/e2e/registration-admin.spec.ts
   since: 2026-01
   scenario: 'Given a webhook mutation configured with governance: requires_approval
 
@@ -9115,7 +9105,6 @@
   - tests/integration/test_schema_gen.py
   - tests/unit/test_schema_service.py
   - tests/unit/test_sql_gen.py
-  - provisa-ui/e2e/registration-admin.spec.ts
   since: 2026-01
   scenario: 'Given a naming convention change is applied via admin mutation
 
@@ -9409,7 +9398,6 @@
   - tests/unit/test_cypher_tck_quantifiers.py
   - tests/unit/test_cypher_tck_temporal.py
   - tests/unit/test_sql_to_cypher.py
-  - provisa-ui/e2e/cypher-api.spec.ts
   since: 2026-01
   scenario: 'Given a graph user submitting a Cypher SELECT query to POST /query/cypher
 
@@ -9837,7 +9825,6 @@
   - tests/unit/test_nl_loop.py
   - tests/unit/test_nl_runner.py
   - tests/integration/test_nl_endpoint.py
-  - provisa-ui/e2e/cypher-api.spec.ts
   since: 2026-01
   scenario: 'Given a non-technical user submitting a natural language question to POST /query/nl
 
@@ -10601,7 +10588,7 @@
   - tests/integration/test_schema_gen.py
   - tests/unit/test_compiler_requirements.py
   - tests/unit/test_schema_service.py
-  - provisa-ui/e2e/cypher-api.spec.ts
+  - tests/integration/test_demo_http_surfaces_e2e.py
   since: 2026-01
   scenario: 'Given the schema is rebuilt after a naming convention change
 
@@ -11606,7 +11593,7 @@
   - tests/unit/test_cypher_translator.py
   - tests/unit/test_sql_to_cypher.py
   - tests/integration/test_cypher_endpoint.py
-  - provisa-ui/e2e/cypher-write-affected-rows.spec.ts
+  - tests/integration/test_demo_http_surfaces_e2e.py
   scenario: 'Given a successful Cypher CREATE statement executed via the write endpoint
 
     When the response is returned to the client
@@ -11680,7 +11667,6 @@
   - tests/integration/test_direct_exec.py
   - tests/integration/test_execution_routing.py
   - tests/unit/test_routing.py
-  - provisa-ui/e2e/execution-routing.spec.ts
   since: 2026-01
   scenario: 'Given a query targeting a single registered RDBMS source
 
@@ -11726,7 +11712,6 @@
   - tests/unit/test_routing.py
   - tests/e2e/test_routing.py
   - tests/integration/test_execution_routing.py
-  - provisa-ui/e2e/execution-routing.spec.ts
   since: 2026-01
   scenario: 'Given a query joining tables from multiple registered sources
 
@@ -11791,7 +11776,6 @@
   - tests/integration/test_execution_routing.py
   - tests/unit/test_redirect_s3.py
   - tests/unit/test_routing.py
-  - provisa-ui/e2e/execution-routing.spec.ts
   - tests/unit/test_redirect_request_floor.py
   since: 2026-01
   scenario: 'Given a query whose result set exceeds the configured size threshold
@@ -11922,7 +11906,6 @@
   - tests/integration/test_direct_exec.py
   - tests/integration/test_execution_routing.py
   - tests/unit/test_routing.py
-  - provisa-ui/e2e/execution-routing.spec.ts
   since: 2026-01
   integration_test: required
   integration_test_reason: DB mutation routing isolation and transaction atomicity require real RDBMS
@@ -13008,7 +12991,7 @@
   - tests/unit/test_misc_requirements.py
   - tests/unit/test_cache_headers_requirements.py
   - tests/integration/test_execution_routing.py
-  - provisa-ui/e2e/security-rate-limiting.spec.ts
+  - tests/integration/test_demo_http_surfaces_e2e.py
   since: 2026-01
   scenario: 'Given any data response from Provisa
 
@@ -13398,7 +13381,6 @@
   tests:
   - tests/unit/test_formats.py
   - tests/integration/test_output_formats.py
-  - provisa-ui/e2e/execution-routing.spec.ts
   since: 2026-01
   scenario: 'Given a query submitted via the Arrow Flight endpoint
 
@@ -13445,7 +13427,6 @@
   - tests/e2e/test_large_result.py
   - tests/integration/test_blob_upload.py
   - tests/unit/test_redirect.py
-  - provisa-ui/e2e/execution-routing.spec.ts
   - tests/unit/test_redirect_request_floor.py
   since: 2026-01
   scenario: 'Given a client sets X-Provisa-Redirect-Format and optionally X-Provisa-Redirect-Threshold
@@ -13675,7 +13656,6 @@
   - tests/integration/test_arrow_flight_integration.py
   - tests/unit/test_flight_server_helpers.py
   - tests/unit/test_zaychik_flight_unit.py
-  - provisa-ui/e2e/execution-routing.spec.ts
   since: 2026-01
   scenario: 'Given a client connects to the Arrow Flight server on port 8815
 
@@ -19055,7 +19035,7 @@
   - tests/e2e/test_health_checks.py
   - tests/integration/test_infra.py
   - tests/unit/test_infra_requirements.py
-  - provisa-ui/e2e/infrastructure.spec.ts
+  - tests/integration/test_demo_http_surfaces_e2e.py
   since: 2026-01
   scenario: 'Given an auth provider is configured
 
@@ -20676,7 +20656,7 @@
   - tests/unit/test_upsert_distinct_on.py
   - tests/unit/test_column_presets.py
   - tests/integration/test_mutation_parity_integration.py
-  - provisa-ui/e2e/infrastructure.spec.ts
+  - tests/integration/test_demo_http_surfaces_e2e.py
   since: 2026-01
   scenario: 'Given a client connected to GET /data/subscribe/<table>
 
@@ -20804,7 +20784,7 @@
   - tests/integration/test_rest_endpoints.py
   - tests/unit/test_column_presets.py
   - tests/unit/test_upsert_distinct_on.py
-  - provisa-ui/e2e/infrastructure.spec.ts
+  - tests/integration/test_demo_http_surfaces_e2e.py
   since: 2026-01
   scenario: 'Given a REST client calling GET /data/rest/<table>?limit=10&where.id.eq=1
 
@@ -22007,7 +21987,7 @@
   code:
   - provisa/api/rest/cypher_router.py
   tests:
-  - provisa-ui/e2e/neo4j-docker-export.spec.ts
+  - tests/integration/test_demo_http_surfaces_e2e.py
   - tests/unit/test_neo4j_export.py
   since: 2026-06
   e2e: true
@@ -22036,7 +22016,7 @@
   code:
   - provisa/api/rest/cypher_router.py
   tests:
-  - provisa-ui/e2e/neo4j-docker-export.spec.ts
+  - tests/integration/test_demo_http_surfaces_e2e.py
   - tests/unit/test_neo4j_export.py
   since: 2026-06
   scenario: 'Given a node with tableLabel "User" and properties {name: "Alice", age: 30}
@@ -22063,7 +22043,7 @@
   code:
   - provisa/api/rest/cypher_router.py
   tests:
-  - provisa-ui/e2e/neo4j-docker-export.spec.ts
+  - tests/integration/test_demo_http_surfaces_e2e.py
   - tests/unit/test_neo4j_export.py
   since: 2026-06
   scenario: 'Given a node with properties {active: true, count: 42, name: "Test", nested: {key: "value"}}
@@ -22089,7 +22069,7 @@
   code:
   - provisa/api/rest/cypher_router.py
   tests:
-  - provisa-ui/e2e/neo4j-docker-export.spec.ts
+  - tests/integration/test_demo_http_surfaces_e2e.py
   - tests/unit/test_neo4j_export.py
   since: 2026-06
   scenario: 'Given an edge with start: 101, end: 202, type: "CONNECTS_TO"
@@ -22115,7 +22095,7 @@
   code:
   - provisa/api/rest/cypher_router.py
   tests:
-  - provisa-ui/e2e/neo4j-docker-export.spec.ts
+  - tests/integration/test_demo_http_surfaces_e2e.py
   - tests/unit/test_neo4j_export.py
   since: 2026-06
   scenario: 'Given credentials username: "neo4j", password: "secret"
@@ -22141,7 +22121,7 @@
   code:
   - provisa/api/rest/cypher_router.py
   tests:
-  - provisa-ui/e2e/neo4j-docker-export.spec.ts
+  - tests/integration/test_demo_http_surfaces_e2e.py
   - tests/unit/test_neo4j_export.py
   since: 2026-06
   scenario: 'Given Neo4j is unreachable
@@ -22165,7 +22145,7 @@
   code:
   - provisa/api/rest/cypher_router.py
   tests:
-  - provisa-ui/e2e/neo4j-docker-export.spec.ts
+  - tests/integration/test_demo_http_surfaces_e2e.py
   - tests/unit/test_neo4j_export.py
   since: 2026-06
   scenario: 'Given an export with 10 nodes, where 1 node fails due to a Neo4j constraint violation
@@ -22191,7 +22171,7 @@
   code:
   - provisa/api/rest/cypher_router.py
   tests:
-  - provisa-ui/e2e/neo4j-docker-export.spec.ts
+  - tests/integration/test_demo_http_surfaces_e2e.py
   - tests/unit/test_neo4j_export.py
   since: 2026-06
   scenario: 'Given a graph with 500 nodes and 300 edges
@@ -23012,7 +22992,7 @@
   - tests/unit/test_cypher_assembler.py
   - tests/unit/test_cypher_graph_rewriter.py
   - tests/integration/test_cypher_integration_extra.py
-  - provisa-ui/e2e/cypher-api.spec.ts
+  - tests/integration/test_demo_http_surfaces_e2e.py
   since: 2026-06
   scenario: 'Given a Cypher query RETURN n, r, p where n is a node, r is an edge, p is a path
 
@@ -23061,7 +23041,7 @@
   - provisa/gql/translator.py
   tests:
   - tests/unit/test_cypher_translator_paths.py
-  - provisa-ui/e2e/cypher-variable-length-path.spec.ts
+  - tests/integration/test_demo_http_surfaces_e2e.py
   - tests/integration/test_cypher_integration_extra.py
   since: 2026-06
   scenario: 'Given a Cypher query with [*1..5] pattern between two node types
@@ -23141,7 +23121,7 @@
   - provisa/gql/graph_rewriter.py
   tests:
   - tests/unit/test_cypher_translator_exprs.py
-  - provisa-ui/e2e/cypher-variable-length-path.spec.ts
+  - tests/integration/test_demo_http_surfaces_e2e.py
   - tests/integration/test_cypher_integration_extra.py
   since: 2026-06
   scenario: 'Given a Cypher query MATCH p = (...) RETURN p
@@ -23965,7 +23945,7 @@
   code:
   - provisa/gql/translator.py
   tests:
-  - provisa-ui/e2e/cypher-breed-filter.spec.ts
+  - tests/integration/test_demo_http_surfaces_e2e.py
   - tests/unit/test_cypher_frontend.py
   - tests/integration/test_cypher_integration_extra.py
   since: 2026-06
@@ -24006,7 +23986,7 @@
   code:
   - provisa/gql/translator.py
   tests:
-  - provisa-ui/e2e/cypher-union-all-email.spec.ts
+  - tests/integration/test_demo_http_surfaces_e2e.py
   - tests/unit/test_cypher_frontend.py
   - tests/integration/test_cypher_integration_extra.py
   since: 2026-06
@@ -24079,9 +24059,7 @@
   - provisa/api/rest/cypher_router.py
   - provisa/api/data/endpoint.py
   tests:
-  - provisa-ui/e2e/cypher-breed-filter.spec.ts
-  - provisa-ui/e2e/cypher-variable-length-path.spec.ts
-  - provisa-ui/e2e/cypher-union-all-email.spec.ts
+  - tests/integration/test_demo_http_surfaces_e2e.py
   - tests/unit/test_cypher_frontend.py
   - tests/integration/test_cypher_integration_extra.py
   since: 2026-06
@@ -24561,7 +24539,7 @@
   code:
   - provisa/api/data/endpoint.py
   tests:
-  - provisa-ui/e2e/neo4j-docker-export.spec.ts
+  - tests/integration/test_demo_http_surfaces_e2e.py
   - tests/unit/test_neo4j_cypher_endpoint.py
   since: 2026-06
   scenario: 'Given a graph with multiple node labels and relationship types
@@ -24595,7 +24573,7 @@
   code:
   - provisa/api/rest/cypher_router.py
   tests:
-  - provisa-ui/e2e/neo4j-docker-export.spec.ts
+  - tests/integration/test_demo_http_surfaces_e2e.py
   - tests/unit/test_neo4j_cypher_endpoint.py
   since: 2026-06
   scenario: 'Given a parameterless Cypher query like "MATCH (n:Domain:Table) RETURN n"
@@ -24630,7 +24608,7 @@
   code:
   - provisa/api/rest/cypher_router.py
   tests:
-  - provisa-ui/e2e/neo4j-docker-export.spec.ts
+  - tests/integration/test_demo_http_surfaces_e2e.py
   - tests/unit/test_neo4j_cypher_endpoint.py
   since: 2026-06
   scenario: 'Given a Cypher query returning nested nodes and edges
@@ -24667,7 +24645,7 @@
   code:
   - provisa/api/rest/cypher_router.py
   tests:
-  - provisa-ui/e2e/neo4j-docker-export.spec.ts
+  - tests/integration/test_demo_http_surfaces_e2e.py
   - tests/unit/test_neo4j_cypher_endpoint.py
   since: 2026-06
   scenario: 'Given nodes already exported to Neo4j
@@ -24701,7 +24679,7 @@
   - provisa/api/rest/cypher_router.py
   - provisa/api/data/endpoint.py
   tests:
-  - provisa-ui/e2e/neo4j-docker-export.spec.ts
+  - tests/integration/test_demo_http_surfaces_e2e.py
   - tests/unit/test_neo4j_cypher_endpoint.py
   since: 2026-06
   scenario: 'Given an export client with X-Role: DEV header
@@ -24736,7 +24714,7 @@
   code:
   - provisa/api/rest/cypher_router.py
   tests:
-  - provisa-ui/e2e/neo4j-docker-export.spec.ts
+  - tests/integration/test_demo_http_surfaces_e2e.py
   - tests/unit/test_neo4j_cypher_endpoint.py
   since: 2026-06
   scenario: 'Given a completed export with N nodes and E edges to Neo4j
@@ -33545,7 +33523,6 @@
   code:
   - provisa/ui_server.py
   tests:
-  - provisa-ui/e2e/infrastructure.spec.ts
   - tests/e2e/test_health_checks.py
   - tests/unit/test_ui_server_routing.py
   scenario: 'Given a browser navigates directly to the SPA deep link /graph/node/42
@@ -38292,7 +38269,6 @@
   - tests/unit/test_hasura_api_limits.py
   - tests/integration/test_complexity_guard_every_surface.py
   - provisa-ui/src/pages/__tests__/SecurityPage.roleLimits.test.tsx
-  - provisa-ui/e2e/security-query-limits.spec.ts
   since: 2026-07
   scenario: 'Given a role with max_query_complexity=4
 
@@ -66109,10 +66085,9 @@
     one spec file''s own setup/teardown).'
   code:
   - provisa-ui/e2e/demo-source-containers.ts
-  - provisa-ui/e2e/neo4j-container.ts
   tests:
   - provisa-ui/e2e/source-to-query.spec.ts
-  - provisa-ui/e2e/neo4j-docker-export.spec.ts
+  - tests/integration/test_demo_http_surfaces_e2e.py
   use_case: Running multiple isolated core-lane e2e suites concurrently on one host (this session's own
     fanned-out multi-agent verification workflow) must not have them collide on shared Docker fixture
     identity, only on genuinely shared host resources (memory/CPU), which is a separate, expected constraint
@@ -75446,7 +75421,6 @@
   - provisa/core/repositories/integrity.py
   tests:
   - tests/unit/test_model_store_guard.py
-  - tests/integration/test_model_store_guard_pg.py
   notes: 'Roadmap audit 2026-10-13: delivered; verified against the code'
 - id: REQ-1919
   status: in-progress
@@ -76185,7 +76159,7 @@
   - tests/unit/test_source_operation_commands.py
   - tests/unit/test_replica_build_after_write.py
   - provisa-ui/src/__tests__/CommandFormFields.test.tsx
-  - provisa-ui/e2e/source-operation-commands.spec.ts
+  - tests/integration/test_demo_http_surfaces_e2e.py
   docs:
   - commands.md
   - remote-schemas.md
@@ -85996,7 +85970,8 @@
   tests:
   - tests/unit/test_profile_carry.py
   - tests/unit/test_demo_template_profiles.py
-  - tests/integration/test_profiling_sandbox_e2e.py
+  - tests/integration/test_profiling_demo.py
+  - tests/integration/test_sandbox_visitor_walk.py
   notes: 'Maintainer 2026-10-14, via the lead: data profiling is its own feature demo, separate from data quality.
     Lead 2026-10-21: the demo shows all three tiers (basic metrics, drift, synthesis); the build''s profile runs
     travel in the bundle, since a template rebuilt on every Provisa version would otherwise measure no drift.'

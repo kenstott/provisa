@@ -302,7 +302,7 @@ Per-role rate limits configurable in `provisa.yaml`: max requests per second, ma
 
 **Code:** `provisa/api/`
 
-**Tests:** `tests/unit/test_rate_limiting.py`, `tests/integration/test_rate_limiting_integration.py`, `provisa-ui/e2e/security-rate-limiting.spec.ts`
+**Tests:** `tests/unit/test_rate_limiting.py`, `tests/integration/test_rate_limiting_integration.py`
 
 **Docs:** [security.md](../security.md)
 
@@ -316,7 +316,7 @@ The NL query service (`POST /query/nl`) has an independent rate limit configurab
 
 **Code:** `provisa/nl/`
 
-**Tests:** `tests/unit/test_rate_limiting.py`, `tests/integration/test_rate_limiting_integration.py`, `provisa-ui/e2e/security-rate-limiting.spec.ts`
+**Tests:** `tests/unit/test_rate_limiting.py`, `tests/integration/test_rate_limiting_integration.py`
 
 **Docs:** [api-reference.md](../api-reference.md), [architecture.md](../architecture.md), [security.md](../security.md)
 
@@ -386,7 +386,7 @@ The gRPC approval hook maintains a single persistent channel per Provisa instanc
 
 **Code:** `provisa/auth/approval_hook.py`
 
-**Tests:** `tests/integration/test_audit_auth_integration.py`, `tests/unit/test_abac_hook_extended.py`, `tests/unit/test_approval_hook.py`, `provisa-ui/e2e/security-rate-limiting.spec.ts`
+**Tests:** `tests/integration/test_audit_auth_integration.py`, `tests/unit/test_abac_hook_extended.py`, `tests/unit/test_approval_hook.py`
 
 **Docs:** [remote-schemas.md](../remote-schemas.md), [security.md](../security.md)
 
@@ -440,7 +440,7 @@ SET LOCAL scopes app.tenant_id to the current database transaction. When the tra
 
 **Code:** `provisa/auth/middleware.py`
 
-**Tests:** `tests/e2e/test_security.py`, `tests/unit/test_tenancy_requirements.py`, `tests/integration/test_security_integration_extra.py`, `provisa-ui/e2e/security-rate-limiting.spec.ts`
+**Tests:** `tests/e2e/test_security.py`, `tests/unit/test_tenancy_requirements.py`, `tests/integration/test_security_integration_extra.py`, `tests/integration/test_demo_http_surfaces_e2e.py`
 
 ### REQ-596 · Audit Logging {#REQ-596}
 
@@ -610,7 +610,7 @@ Source registration is privileged; validates connection, calls Trino dynamic cat
 
 **Code:** `provisa/core/`
 
-**Tests:** `tests/integration/test_introspect.py`, `tests/integration/test_schema_gen.py`, `tests/unit/test_core_registration.py`, `tests/unit/test_source_registration_validation.py`, `provisa-ui/e2e/registration-admin.spec.ts`
+**Tests:** `tests/integration/test_introspect.py`, `tests/integration/test_schema_gen.py`, `tests/unit/test_core_registration.py`, `tests/unit/test_source_registration_validation.py`, `tests/steps/steps_registration_governance.py`
 
 **Docs:** [admin-graphql.md](../admin-graphql.md), [admin.md](../admin.md), [api-reference.md](../api-reference.md)
 
@@ -624,7 +624,7 @@ Source registration does not expose data: no table is queryable until explicitly
 
 **Code:** `provisa/core/`
 
-**Tests:** `tests/integration/test_schema_gen.py`, `tests/integration/test_introspect.py`, `tests/unit/test_core_registration.py`, `provisa-ui/e2e/registration-admin.spec.ts`
+**Tests:** `tests/integration/test_schema_gen.py`, `tests/integration/test_introspect.py`, `tests/unit/test_core_registration.py`, `tests/integration/test_config_reload_schema_rename.py`
 
 **Docs:** [admin-graphql.md](../admin-graphql.md)
 
@@ -1006,7 +1006,7 @@ The SQLAlchemy dialect introspects table and column metadata via `POST /data/gra
 
 **Code:** `provisa/compiler/`, `provisa/security/`
 
-**Tests:** `tests/unit/test_visibility.py`, `tests/unit/test_enforcement_metadata.py`, `tests/integration/test_registration_governance_integration.py`, `provisa-ui/e2e/registration-admin.spec.ts`
+**Tests:** `tests/unit/test_visibility.py`, `tests/unit/test_enforcement_metadata.py`, `tests/integration/test_registration_governance_integration.py`
 
 **Docs:** [python-client.md](../python-client.md), [security.md](../security.md)
 
@@ -1110,7 +1110,7 @@ Auto-generate GQL relationships from FK constraints in database schema introspec
 
 **Code:** `provisa/compiler/introspect.py`
 
-**Tests:** `tests/unit/test_discovery_requirements.py`, `tests/integration/test_registration_governance_integration.py`, `provisa-ui/e2e/registration-admin.spec.ts`
+**Tests:** `tests/unit/test_discovery_requirements.py`, `tests/integration/test_registration_governance_integration.py`
 
 ### REQ-414 · Registration & Governance {#REQ-414}
 
@@ -1122,7 +1122,7 @@ Demo/install example schema must include at least one FK relationship to exercis
 
 **Code:** `demo/files/create_demo_files.py`
 
-**Tests:** `tests/e2e/test_installer.py`, `tests/unit/test_core_registration.py`, `tests/integration/test_registration_governance_integration.py`, `provisa-ui/e2e/registration-admin.spec.ts`
+**Tests:** `tests/e2e/test_installer.py`, `tests/unit/test_core_registration.py`, `tests/integration/test_registration_governance_integration.py`, `tests/integration/test_demo_http_surfaces_e2e.py`
 
 **Docs:** [cli.md](../cli.md)
 
@@ -1184,7 +1184,7 @@ A datasource may be associated with multiple domains. Any domain owner may regis
 
 **Code:** `provisa/api/admin/schema_helpers.py`, `provisa/api/admin/schema_mutation.py`, `provisa/api/admin/schema_mutation_ops.py`, `provisa/core/schema_org.py`, `provisa-ui/src/pages/tables/RegisterTableForm.tsx`, `provisa-ui/src/pages/TablesPage.tsx`
 
-**Tests:** `tests/unit/test_dataset_uniqueness.py`, `provisa-ui/e2e/registration-admin.spec.ts`
+**Tests:** `tests/unit/test_dataset_uniqueness.py`
 
 ### REQ-434 · Registration & Governance {#REQ-434}
 
@@ -1350,7 +1350,7 @@ The UI calls one availableSchemas endpoint and one availableTables endpoint. Bac
 
 **Code:** `provisa/api/admin/schema.py`, `provisa/api/admin/introspect.py`
 
-**Tests:** `tests/integration/test_introspect.py`, `tests/unit/test_available_tables.py`, `tests/unit/test_core_registration.py`, `provisa-ui/e2e/security-rate-limiting.spec.ts`
+**Tests:** `tests/integration/test_introspect.py`, `tests/unit/test_available_tables.py`, `tests/unit/test_core_registration.py`
 
 ### REQ-639 · Registration & Governance {#REQ-639}
 
@@ -1486,7 +1486,7 @@ Neo4j table registration includes a query preview step. On submission, Provisa e
 
 **Code:** `provisa/neo4j/`, `provisa/sparql/`, `provisa/api_source/`
 
-**Tests:** `tests/integration/test_direct_exec.py`, `tests/integration/test_neo4j_exec.py`, `tests/unit/test_cypher_graph_fns.py`, `tests/unit/test_neo4j_normalizers.py`, `tests/unit/test_neo4j_preview.py`, `provisa-ui/e2e/registration-admin.spec.ts`
+**Tests:** `tests/integration/test_direct_exec.py`, `tests/integration/test_neo4j_exec.py`, `tests/unit/test_cypher_graph_fns.py`, `tests/unit/test_neo4j_normalizers.py`, `tests/unit/test_neo4j_preview.py`, `tests/steps/steps_query_api_sources_neo4j_sparql.py`
 
 **Docs:** [sources.md](../sources.md)
 
@@ -1596,7 +1596,7 @@ Remote schema introspection is re-run on demand via an "Refresh Schema" admin mu
 
 **Code:** `provisa/graphql_remote/`
 
-**Tests:** `tests/integration/test_graphql_execution.py`, `tests/integration/test_graphql_remote_integration.py`, `tests/integration/test_graphql_remote_source.py`, `tests/unit/test_graphql_remote_introspect.py`, `tests/unit/test_graphql_remote_mapper.py`, `tests/unit/test_remote_adapter_contract.py`, `tests/unit/test_schema_service.py`, `provisa-ui/e2e/registration-admin.spec.ts`
+**Tests:** `tests/integration/test_graphql_execution.py`, `tests/integration/test_graphql_remote_integration.py`, `tests/integration/test_graphql_remote_source.py`, `tests/unit/test_graphql_remote_introspect.py`, `tests/unit/test_graphql_remote_mapper.py`, `tests/unit/test_remote_adapter_contract.py`, `tests/unit/test_schema_service.py`
 
 **Docs:** [remote-schemas.md](../remote-schemas.md)
 
@@ -1732,7 +1732,7 @@ Spec refresh is triggered on demand via an admin mutation. On refresh, existing 
 
 **Code:** `provisa/openapi/`
 
-**Tests:** `tests/unit/test_openapi_loader.py`, `tests/integration/test_openapi_source.py`, `provisa-ui/e2e/registration-admin.spec.ts`
+**Tests:** `tests/unit/test_openapi_loader.py`, `tests/integration/test_openapi_source.py`, `tests/steps/steps_openapi_auto_registration_connector.py`
 
 **Docs:** [remote-schemas.md](../remote-schemas.md)
 
@@ -1844,7 +1844,7 @@ Proto schema refresh is triggered on demand via an admin mutation. On refresh, P
 
 **Code:** `provisa/grpc_remote/`
 
-**Tests:** `tests/integration/test_grpc_execution.py`, `tests/unit/test_grpc_remote_loader.py`, `tests/unit/test_remote_adapter_contract.py`, `tests/unit/test_schema_service.py`, `provisa-ui/e2e/registration-admin.spec.ts`
+**Tests:** `tests/integration/test_grpc_execution.py`, `tests/unit/test_grpc_remote_loader.py`, `tests/unit/test_remote_adapter_contract.py`, `tests/unit/test_schema_service.py`, `tests/steps/steps_grpc_remote_schema_connector_req_322_329.py`
 
 **Docs:** [remote-schemas.md](../remote-schemas.md)
 
@@ -1858,7 +1858,7 @@ A new `ingest` source type allows external services (OTEL Collector, Fluentd, cu
 
 **Code:** `provisa/ingest/`
 
-**Tests:** `tests/unit/test_ingest_ddl.py`, `tests/unit/test_ingest_router.py`, `tests/integration/test_ingest_push_integration.py`, `provisa-ui/e2e/infrastructure.spec.ts`
+**Tests:** `tests/unit/test_ingest_ddl.py`, `tests/unit/test_ingest_router.py`, `tests/integration/test_ingest_push_integration.py`, `tests/integration/test_demo_http_surfaces_e2e.py`
 
 **Docs:** [sources.md](../sources.md)
 
@@ -1910,7 +1910,7 @@ The ingest endpoint accepts a single JSON object or a JSON array of objects per 
 
 **Code:** `provisa/ingest/`
 
-**Tests:** `tests/unit/test_ingest_ddl.py`, `tests/unit/test_ingest_router.py`, `tests/integration/test_ingest_push_integration.py`, `provisa-ui/e2e/infrastructure.spec.ts`
+**Tests:** `tests/unit/test_ingest_ddl.py`, `tests/unit/test_ingest_router.py`, `tests/integration/test_ingest_push_integration.py`, `tests/integration/test_demo_http_surfaces_e2e.py`
 
 **Docs:** [sources.md](../sources.md)
 
@@ -1924,7 +1924,7 @@ Ingest tables are subscribable via the standard SSE endpoint (`GET /data/subscri
 
 **Code:** `provisa/ingest/`
 
-**Tests:** `tests/unit/test_ingest_ddl.py`, `tests/unit/test_ingest_router.py`, `tests/integration/test_ingest_push_integration.py`, `provisa-ui/e2e/infrastructure.spec.ts`
+**Tests:** `tests/unit/test_ingest_ddl.py`, `tests/unit/test_ingest_router.py`, `tests/integration/test_ingest_push_integration.py`
 
 ### REQ-337 · Ingest Sources — Governed HTTP Push Receiver (REQ-331–337) {#REQ-337}
 
@@ -2314,7 +2314,7 @@ Remote schema source registrations (GraphQL, gRPC, OpenAPI) accept a `relationsh
 
 **Code:** `provisa/graphql_remote/mapper.py`, `provisa/api/admin/graphql_remote_router.py`, `provisa/api/admin/grpc_remote_router.py`, `provisa/api/admin/openapi_router.py`
 
-**Tests:** `tests/integration/test_graphql_execution.py`, `tests/integration/test_graphql_remote_source.py`, `tests/unit/test_graphql_remote_mapper.py`, `tests/unit/test_remote_adapter_contract.py`, `tests/unit/test_schema_service.py`, `provisa-ui/e2e/registration-admin.spec.ts`
+**Tests:** `tests/integration/test_graphql_execution.py`, `tests/integration/test_graphql_remote_source.py`, `tests/unit/test_graphql_remote_mapper.py`, `tests/unit/test_remote_adapter_contract.py`, `tests/unit/test_schema_service.py`, `tests/integration/test_demo_http_surfaces_e2e.py`
 
 ### REQ-599 · GraphQL Remote Schema Connector (REQ-307–313) {#REQ-599}
 
@@ -2720,7 +2720,7 @@ Webhook-backed mutations: an external HTTP endpoint called as a GraphQL mutation
 
 **Code:** `provisa/compiler/`, `provisa/executor/`, `provisa/webhooks/`
 
-**Tests:** `tests/e2e/test_mutations.py`, `tests/integration/test_compiler_integration.py`, `tests/unit/test_actions.py`, `tests/unit/test_function_gen.py`, `provisa-ui/e2e/registration-admin.spec.ts`
+**Tests:** `tests/e2e/test_mutations.py`, `tests/integration/test_compiler_integration.py`, `tests/unit/test_actions.py`, `tests/unit/test_function_gen.py`
 
 **Docs:** [api-reference.md](../api-reference.md), [sources.md](../sources.md)
 
@@ -2776,7 +2776,7 @@ Naming convention changes (global, source, or table level) reflected immediately
 
 **Code:** `provisa/compiler/sql_gen.py`
 
-**Tests:** `tests/e2e/test_naming_reload.py`, `tests/integration/test_schema_gen.py`, `tests/unit/test_schema_service.py`, `tests/unit/test_sql_gen.py`, `provisa-ui/e2e/registration-admin.spec.ts`
+**Tests:** `tests/e2e/test_naming_reload.py`, `tests/integration/test_schema_gen.py`, `tests/unit/test_schema_service.py`, `tests/unit/test_sql_gen.py`
 
 **Docs:** [admin-graphql.md](../admin-graphql.md), [admin.md](../admin.md), [api-reference.md](../api-reference.md)
 
@@ -2864,7 +2864,7 @@ Provisa exposes a `POST /query/cypher` endpoint that accepts a Cypher SELECT que
 
 **Code:** `provisa/cypher/`
 
-**Tests:** `tests/integration/test_cypher_router_api.py`, `tests/integration/test_cypher_endpoint.py`, `tests/unit/test_cypher_graph_fns.py`, `tests/unit/test_cypher_parser.py`, `tests/unit/test_cypher_translator.py`, `tests/unit/test_cypher_tck_comparison.py`, `tests/unit/test_cypher_tck_equality.py`, `tests/unit/test_cypher_tck_lists.py`, `tests/unit/test_cypher_tck_maps.py`, `tests/unit/test_cypher_tck_precedence.py`, `tests/unit/test_cypher_tck_quantifiers.py`, `tests/unit/test_cypher_tck_temporal.py`, `tests/unit/test_sql_to_cypher.py`, `provisa-ui/e2e/cypher-api.spec.ts`
+**Tests:** `tests/integration/test_cypher_router_api.py`, `tests/integration/test_cypher_endpoint.py`, `tests/unit/test_cypher_graph_fns.py`, `tests/unit/test_cypher_parser.py`, `tests/unit/test_cypher_translator.py`, `tests/unit/test_cypher_tck_comparison.py`, `tests/unit/test_cypher_tck_equality.py`, `tests/unit/test_cypher_tck_lists.py`, `tests/unit/test_cypher_tck_maps.py`, `tests/unit/test_cypher_tck_precedence.py`, `tests/unit/test_cypher_tck_quantifiers.py`, `tests/unit/test_cypher_tck_temporal.py`, `tests/unit/test_sql_to_cypher.py`
 
 **Docs:** [api-reference.md](../api-reference.md), [cypher.md](../cypher.md), [remote-schemas.md](../remote-schemas.md)
 
@@ -2980,7 +2980,7 @@ Provisa exposes a `POST /query/nl` endpoint accepting a natural language questio
 
 **Code:** `provisa/nl/`
 
-**Tests:** `tests/unit/test_nl_loop.py`, `tests/unit/test_nl_runner.py`, `tests/integration/test_nl_endpoint.py`, `provisa-ui/e2e/cypher-api.spec.ts`
+**Tests:** `tests/unit/test_nl_loop.py`, `tests/unit/test_nl_runner.py`, `tests/integration/test_nl_endpoint.py`
 
 **Docs:** [api-reference.md](../api-reference.md)
 
@@ -3220,7 +3220,7 @@ GraphQL queries with multiple root fields are compiled into separate SQL queries
 
 **Code:** `provisa/api/data/sdl.py`
 
-**Tests:** `tests/integration/test_schema_gen.py`, `tests/unit/test_compiler_requirements.py`, `tests/unit/test_schema_service.py`, `provisa-ui/e2e/cypher-api.spec.ts`
+**Tests:** `tests/integration/test_schema_gen.py`, `tests/unit/test_compiler_requirements.py`, `tests/unit/test_schema_service.py`, `tests/integration/test_demo_http_surfaces_e2e.py`
 
 **Docs:** [api-reference.md](../api-reference.md)
 
@@ -3566,7 +3566,7 @@ Cypher write endpoints return the number of rows affected (rows inserted for CRE
 
 **Code:** `provisa/api/rest/cypher_router.py`
 
-**Tests:** `tests/e2e/test_mutations.py`, `tests/unit/test_cypher_translator.py`, `tests/unit/test_sql_to_cypher.py`, `tests/integration/test_cypher_endpoint.py`, `provisa-ui/e2e/cypher-write-affected-rows.spec.ts`
+**Tests:** `tests/e2e/test_mutations.py`, `tests/unit/test_cypher_translator.py`, `tests/unit/test_sql_to_cypher.py`, `tests/integration/test_cypher_endpoint.py`, `tests/integration/test_demo_http_surfaces_e2e.py`
 
 **Docs:** [cypher.md](../cypher.md)
 
@@ -3596,7 +3596,7 @@ Single-source queries route to direct RDBMS connection; SQLGlot transpiles to ta
 
 **Code:** `provisa/executor/`, `provisa/transpiler/`
 
-**Tests:** `tests/e2e/test_routing.py`, `tests/integration/test_direct_exec.py`, `tests/integration/test_execution_routing.py`, `tests/unit/test_routing.py`, `provisa-ui/e2e/execution-routing.spec.ts`
+**Tests:** `tests/e2e/test_routing.py`, `tests/integration/test_direct_exec.py`, `tests/integration/test_execution_routing.py`, `tests/unit/test_routing.py`
 
 **Docs:** [architecture.md](../architecture.md), [pgwire.md](../pgwire.md), [sources.md](../sources.md)
 
@@ -3610,7 +3610,7 @@ Cross-source queries route to Trino; SQLGlot transpiles to Trino SQL. Target: 30
 
 **Code:** `provisa/executor/`, `provisa/transpiler/`
 
-**Tests:** `tests/unit/test_routing.py`, `tests/e2e/test_routing.py`, `tests/integration/test_execution_routing.py`, `provisa-ui/e2e/execution-routing.spec.ts`
+**Tests:** `tests/unit/test_routing.py`, `tests/e2e/test_routing.py`, `tests/integration/test_execution_routing.py`
 
 **Docs:** [architecture.md](../architecture.md), [deployment.md](../deployment.md), [pgwire.md](../pgwire.md), [sources.md](../sources.md)
 
@@ -3624,7 +3624,7 @@ Large results above threshold redirect to blob storage with presigned URL and TT
 
 **Code:** `provisa/executor/`, `provisa/transpiler/`, `provisa/executor/redirect.py`, `provisa/api/data/endpoint.py`
 
-**Tests:** `tests/e2e/test_large_result.py`, `tests/e2e/test_routing.py`, `tests/integration/test_direct_exec.py`, `tests/integration/test_execution_routing.py`, `tests/unit/test_redirect_s3.py`, `tests/unit/test_routing.py`, `provisa-ui/e2e/execution-routing.spec.ts`, `tests/unit/test_redirect_request_floor.py`
+**Tests:** `tests/e2e/test_large_result.py`, `tests/e2e/test_routing.py`, `tests/integration/test_direct_exec.py`, `tests/integration/test_execution_routing.py`, `tests/unit/test_redirect_s3.py`, `tests/unit/test_routing.py`, `tests/unit/test_redirect_request_floor.py`
 
 **Docs:** [api-reference.md](../api-reference.md), [architecture.md](../architecture.md), [deployment.md](../deployment.md)
 
@@ -3652,7 +3652,7 @@ Steward routing override configurable per table/view for edge cases where defaul
 
 **Code:** `provisa/executor/`, `provisa/transpiler/`
 
-**Tests:** `tests/e2e/test_routing.py`, `tests/integration/test_direct_exec.py`, `tests/integration/test_execution_routing.py`, `tests/unit/test_routing.py`, `provisa-ui/e2e/execution-routing.spec.ts`
+**Tests:** `tests/e2e/test_routing.py`, `tests/integration/test_direct_exec.py`, `tests/integration/test_execution_routing.py`, `tests/unit/test_routing.py`
 
 **Docs:** [architecture.md](../architecture.md)
 
@@ -3972,7 +3972,7 @@ All data responses include cache status headers: `X-Provisa-Cache: HIT|MISS` on 
 
 **Code:** `provisa/cache/middleware.py`
 
-**Tests:** `tests/unit/test_cache_headers_requirements.py`, `tests/unit/test_http_cache_opt_in.py`, `tests/unit/test_misc_requirements.py`, `tests/unit/test_cache_headers_requirements.py`, `tests/integration/test_execution_routing.py`, `provisa-ui/e2e/security-rate-limiting.spec.ts`
+**Tests:** `tests/unit/test_cache_headers_requirements.py`, `tests/unit/test_http_cache_opt_in.py`, `tests/unit/test_misc_requirements.py`, `tests/unit/test_cache_headers_requirements.py`, `tests/integration/test_execution_routing.py`, `tests/integration/test_demo_http_surfaces_e2e.py`
 
 **Docs:** [api-reference.md](../api-reference.md)
 
@@ -4086,7 +4086,7 @@ Arrow buffer via gRPC Arrow Flight endpoint; Trino produces Arrow natively.
 
 **Code:** `provisa/executor/`
 
-**Tests:** `tests/unit/test_formats.py`, `tests/integration/test_output_formats.py`, `provisa-ui/e2e/execution-routing.spec.ts`
+**Tests:** `tests/unit/test_formats.py`, `tests/integration/test_output_formats.py`
 
 **Docs:** [remote-schemas.md](../remote-schemas.md)
 
@@ -4100,7 +4100,7 @@ Client-controlled redirect via `X-Provisa-Redirect-Format` and `X-Provisa-Redire
 
 **Code:** `provisa/executor/`, `provisa/executor/redirect.py`
 
-**Tests:** `tests/e2e/test_large_result.py`, `tests/integration/test_blob_upload.py`, `tests/unit/test_redirect.py`, `provisa-ui/e2e/execution-routing.spec.ts`, `tests/unit/test_redirect_request_floor.py`
+**Tests:** `tests/e2e/test_large_result.py`, `tests/integration/test_blob_upload.py`, `tests/unit/test_redirect.py`, `tests/unit/test_redirect_request_floor.py`
 
 **Docs:** [api-reference.md](../api-reference.md), [architecture.md](../architecture.md), [deployment.md](../deployment.md)
 
@@ -4180,7 +4180,7 @@ Arrow Flight server (port 8815) streams record batches via gRPC. Full security p
 
 **Code:** `provisa/api/flight/`
 
-**Tests:** `tests/integration/test_arrow_flight_integration.py`, `tests/unit/test_flight_server_helpers.py`, `tests/unit/test_zaychik_flight_unit.py`, `provisa-ui/e2e/execution-routing.spec.ts`
+**Tests:** `tests/integration/test_arrow_flight_integration.py`, `tests/unit/test_flight_server_helpers.py`, `tests/unit/test_zaychik_flight_unit.py`
 
 **Docs:** [api-reference.md](../api-reference.md), [architecture.md](../architecture.md), [deployment.md](../deployment.md), [python-client.md](../python-client.md)
 
@@ -5982,7 +5982,7 @@ The `GET /health` (or `HEAD /health`) and `GET /setup/status` endpoints are alwa
 
 **Code:** `provisa/api/app.py`
 
-**Tests:** `tests/e2e/test_health_checks.py`, `tests/integration/test_infra.py`, `tests/unit/test_infra_requirements.py`, `provisa-ui/e2e/infrastructure.spec.ts`
+**Tests:** `tests/e2e/test_health_checks.py`, `tests/integration/test_infra.py`, `tests/unit/test_infra_requirements.py`, `tests/integration/test_demo_http_surfaces_e2e.py`
 
 **Docs:** [admin.md](../admin.md), [api-reference.md](../api-reference.md)
 
@@ -6522,7 +6522,7 @@ Subscriptions via Server-Sent Events (SSE) -- `GET /data/subscribe/<table>` endp
 
 **Code:** `provisa/compiler/`, `provisa/scheduler/`
 
-**Tests:** `tests/unit/test_upsert_distinct_on.py`, `tests/unit/test_column_presets.py`, `tests/integration/test_mutation_parity_integration.py`, `provisa-ui/e2e/infrastructure.spec.ts`
+**Tests:** `tests/unit/test_upsert_distinct_on.py`, `tests/unit/test_column_presets.py`, `tests/integration/test_mutation_parity_integration.py`, `tests/integration/test_demo_http_surfaces_e2e.py`
 
 **Docs:** [api-reference.md](../api-reference.md)
 
@@ -6564,7 +6564,7 @@ REST endpoint auto-generation -- for each root query field, generate `GET /data/
 
 **Code:** `provisa/compiler/`, `provisa/scheduler/`
 
-**Tests:** `tests/e2e/test_query_pipeline.py`, `tests/integration/test_rest_endpoints.py`, `tests/unit/test_column_presets.py`, `tests/unit/test_upsert_distinct_on.py`, `provisa-ui/e2e/infrastructure.spec.ts`
+**Tests:** `tests/e2e/test_query_pipeline.py`, `tests/integration/test_rest_endpoints.py`, `tests/unit/test_column_presets.py`, `tests/unit/test_upsert_distinct_on.py`, `tests/integration/test_demo_http_surfaces_e2e.py`
 
 ### REQ-621 · Hasura Migration Converters {#REQ-621}
 
@@ -6958,7 +6958,7 @@ Neo4j export endpoint accepts graph nodes and edges via POST /data/neo4j-export,
 
 **Code:** `provisa/api/rest/cypher_router.py`
 
-**Tests:** `provisa-ui/e2e/neo4j-docker-export.spec.ts`, `tests/unit/test_neo4j_export.py`
+**Tests:** `tests/integration/test_demo_http_surfaces_e2e.py`, `tests/unit/test_neo4j_export.py`
 
 ### REQ-714 · Neo4j Export {#REQ-714}
 
@@ -6970,7 +6970,7 @@ Nodes are MERGE'd into Neo4j using _provisa_id as the deduplication key, with la
 
 **Code:** `provisa/api/rest/cypher_router.py`
 
-**Tests:** `provisa-ui/e2e/neo4j-docker-export.spec.ts`, `tests/unit/test_neo4j_export.py`
+**Tests:** `tests/integration/test_demo_http_surfaces_e2e.py`, `tests/unit/test_neo4j_export.py`
 
 ### REQ-715 · Neo4j Export {#REQ-715}
 
@@ -6982,7 +6982,7 @@ Node properties are written to Neo4j using SET n += {...} with Cypher literal en
 
 **Code:** `provisa/api/rest/cypher_router.py`
 
-**Tests:** `provisa-ui/e2e/neo4j-docker-export.spec.ts`, `tests/unit/test_neo4j_export.py`
+**Tests:** `tests/integration/test_demo_http_surfaces_e2e.py`, `tests/unit/test_neo4j_export.py`
 
 ### REQ-716 · Neo4j Export {#REQ-716}
 
@@ -6994,7 +6994,7 @@ Edges are MERGE'd by matching source and target nodes on _provisa_id, with relat
 
 **Code:** `provisa/api/rest/cypher_router.py`
 
-**Tests:** `provisa-ui/e2e/neo4j-docker-export.spec.ts`, `tests/unit/test_neo4j_export.py`
+**Tests:** `tests/integration/test_demo_http_surfaces_e2e.py`, `tests/unit/test_neo4j_export.py`
 
 ### REQ-717 · Neo4j Export {#REQ-717}
 
@@ -7006,7 +7006,7 @@ Neo4j export endpoint uses HTTP Basic authentication via Authorization header (b
 
 **Code:** `provisa/api/rest/cypher_router.py`
 
-**Tests:** `provisa-ui/e2e/neo4j-docker-export.spec.ts`, `tests/unit/test_neo4j_export.py`
+**Tests:** `tests/integration/test_demo_http_surfaces_e2e.py`, `tests/unit/test_neo4j_export.py`
 
 ### REQ-718 · Neo4j Export {#REQ-718}
 
@@ -7018,7 +7018,7 @@ Connection errors to Neo4j return HTTP 502; timeouts return 504; authentication 
 
 **Code:** `provisa/api/rest/cypher_router.py`
 
-**Tests:** `provisa-ui/e2e/neo4j-docker-export.spec.ts`, `tests/unit/test_neo4j_export.py`
+**Tests:** `tests/integration/test_demo_http_surfaces_e2e.py`, `tests/unit/test_neo4j_export.py`
 
 ### REQ-719 · Neo4j Export {#REQ-719}
 
@@ -7030,7 +7030,7 @@ Neo4j export endpoint returns {imported: N, errors: [...]} structure, allowing p
 
 **Code:** `provisa/api/rest/cypher_router.py`
 
-**Tests:** `provisa-ui/e2e/neo4j-docker-export.spec.ts`, `tests/unit/test_neo4j_export.py`
+**Tests:** `tests/integration/test_demo_http_surfaces_e2e.py`, `tests/unit/test_neo4j_export.py`
 
 ### REQ-720 · Neo4j Export {#REQ-720}
 
@@ -7042,7 +7042,7 @@ E2E export flow batches nodes and edges separately to avoid transaction timeouts
 
 **Code:** `provisa/api/rest/cypher_router.py`
 
-**Tests:** `provisa-ui/e2e/neo4j-docker-export.spec.ts`, `tests/unit/test_neo4j_export.py`
+**Tests:** `tests/integration/test_demo_http_surfaces_e2e.py`, `tests/unit/test_neo4j_export.py`
 
 ## 4. Source Connectors
 
@@ -7372,7 +7372,7 @@ Cypher graph variables (nodes, edges, paths) returned in the RETURN clause are s
 
 **Code:** `provisa/gql/assembler.py`, `provisa/gql/graph_rewriter.py`
 
-**Tests:** `tests/unit/test_cypher_assembler.py`, `tests/unit/test_cypher_graph_rewriter.py`, `tests/integration/test_cypher_integration_extra.py`, `provisa-ui/e2e/cypher-api.spec.ts`
+**Tests:** `tests/unit/test_cypher_assembler.py`, `tests/unit/test_cypher_graph_rewriter.py`, `tests/integration/test_cypher_integration_extra.py`, `tests/integration/test_demo_http_surfaces_e2e.py`
 
 **Docs:** [cypher.md](../cypher.md)
 
@@ -7386,7 +7386,7 @@ Cypher graph variables (nodes, edges, paths) returned in the RETURN clause are s
 
 **Code:** `provisa/gql/translator.py`
 
-**Tests:** `tests/unit/test_cypher_translator_paths.py`, `provisa-ui/e2e/cypher-variable-length-path.spec.ts`, `tests/integration/test_cypher_integration_extra.py`
+**Tests:** `tests/unit/test_cypher_translator_paths.py`, `tests/integration/test_demo_http_surfaces_e2e.py`, `tests/integration/test_cypher_integration_extra.py`
 
 ### REQ-752 · Cypher Query Frontend (Phase AU) {#REQ-752}
 
@@ -7410,7 +7410,7 @@ Path object RETURN (e.g., `RETURN p`) emits a JSON_OBJECT with `nodes` (array of
 
 **Code:** `provisa/gql/translator.py`, `provisa/gql/graph_rewriter.py`
 
-**Tests:** `tests/unit/test_cypher_translator_exprs.py`, `provisa-ui/e2e/cypher-variable-length-path.spec.ts`, `tests/integration/test_cypher_integration_extra.py`
+**Tests:** `tests/unit/test_cypher_translator_exprs.py`, `tests/integration/test_demo_http_surfaces_e2e.py`, `tests/integration/test_cypher_integration_extra.py`
 
 ### REQ-754 · Cypher Query Frontend (Phase AU) {#REQ-754}
 
@@ -7686,7 +7686,7 @@ OPTIONAL MATCH chains (e.g., `OPTIONAL MATCH (a)-[r1]->(b) OPTIONAL MATCH (b)-[r
 
 **Code:** `provisa/gql/translator.py`
 
-**Tests:** `provisa-ui/e2e/cypher-breed-filter.spec.ts`, `tests/unit/test_cypher_frontend.py`, `tests/integration/test_cypher_integration_extra.py`
+**Tests:** `tests/integration/test_demo_http_surfaces_e2e.py`, `tests/unit/test_cypher_frontend.py`, `tests/integration/test_cypher_integration_extra.py`
 
 ### REQ-777 · Cypher Query Frontend (Phase AU) {#REQ-777}
 
@@ -7698,7 +7698,7 @@ UNION ALL queries (e.g., `MATCH (n) RETURN ... UNION ALL MATCH (m) RETURN ...`) 
 
 **Code:** `provisa/gql/translator.py`
 
-**Tests:** `provisa-ui/e2e/cypher-union-all-email.spec.ts`, `tests/unit/test_cypher_frontend.py`, `tests/integration/test_cypher_integration_extra.py`
+**Tests:** `tests/integration/test_demo_http_surfaces_e2e.py`, `tests/unit/test_cypher_frontend.py`, `tests/integration/test_cypher_integration_extra.py`
 
 ### REQ-778 · Cypher Query Frontend (Phase AU) {#REQ-778}
 
@@ -7710,7 +7710,7 @@ UNION ALL queries (e.g., `MATCH (n) RETURN ... UNION ALL MATCH (m) RETURN ...`) 
 
 **Code:** `provisa/api/rest/cypher_router.py`, `provisa/api/data/endpoint.py`
 
-**Tests:** `provisa-ui/e2e/cypher-breed-filter.spec.ts`, `provisa-ui/e2e/cypher-variable-length-path.spec.ts`, `provisa-ui/e2e/cypher-union-all-email.spec.ts`, `tests/unit/test_cypher_frontend.py`, `tests/integration/test_cypher_integration_extra.py`
+**Tests:** `tests/integration/test_demo_http_surfaces_e2e.py`, `tests/unit/test_cypher_frontend.py`, `tests/integration/test_cypher_integration_extra.py`
 
 ## 10. UI & Admin Surfaces
 
@@ -7874,7 +7874,7 @@ GET /data/graph-schema endpoint returns the current graph schema including all n
 
 **Code:** `provisa/api/data/endpoint.py`
 
-**Tests:** `provisa-ui/e2e/neo4j-docker-export.spec.ts`, `tests/unit/test_neo4j_cypher_endpoint.py`
+**Tests:** `tests/integration/test_demo_http_surfaces_e2e.py`, `tests/unit/test_neo4j_cypher_endpoint.py`
 
 ### REQ-793 · Neo4j Export {#REQ-793}
 
@@ -7886,7 +7886,7 @@ POST /data/cypher endpoint accepts parameterless Cypher queries and returns row 
 
 **Code:** `provisa/api/rest/cypher_router.py`
 
-**Tests:** `provisa-ui/e2e/neo4j-docker-export.spec.ts`, `tests/unit/test_neo4j_cypher_endpoint.py`
+**Tests:** `tests/integration/test_demo_http_surfaces_e2e.py`, `tests/unit/test_neo4j_cypher_endpoint.py`
 
 ### REQ-794 · Neo4j Export {#REQ-794}
 
@@ -7898,7 +7898,7 @@ Query result values are introspected for node and edge structures. Nodes are ide
 
 **Code:** `provisa/api/rest/cypher_router.py`
 
-**Tests:** `provisa-ui/e2e/neo4j-docker-export.spec.ts`, `tests/unit/test_neo4j_cypher_endpoint.py`
+**Tests:** `tests/integration/test_demo_http_surfaces_e2e.py`, `tests/unit/test_neo4j_cypher_endpoint.py`
 
 ### REQ-795 · Neo4j Export {#REQ-795}
 
@@ -7910,7 +7910,7 @@ POST /data/neo4j-export endpoint accepts edge-only requests (empty nodes array) 
 
 **Code:** `provisa/api/rest/cypher_router.py`
 
-**Tests:** `provisa-ui/e2e/neo4j-docker-export.spec.ts`, `tests/unit/test_neo4j_cypher_endpoint.py`
+**Tests:** `tests/integration/test_demo_http_surfaces_e2e.py`, `tests/unit/test_neo4j_cypher_endpoint.py`
 
 ### REQ-796 · Neo4j Export {#REQ-796}
 
@@ -7922,7 +7922,7 @@ X-Role header (e.g., "DEV") grants access to /data/cypher and /data/graph-schema
 
 **Code:** `provisa/api/rest/cypher_router.py`, `provisa/api/data/endpoint.py`
 
-**Tests:** `provisa-ui/e2e/neo4j-docker-export.spec.ts`, `tests/unit/test_neo4j_cypher_endpoint.py`
+**Tests:** `tests/integration/test_demo_http_surfaces_e2e.py`, `tests/unit/test_neo4j_cypher_endpoint.py`
 
 ### REQ-797 · Neo4j Export {#REQ-797}
 
@@ -7934,7 +7934,7 @@ E2E neo4j export validates exported graph integrity: node and relationship count
 
 **Code:** `provisa/api/rest/cypher_router.py`
 
-**Tests:** `provisa-ui/e2e/neo4j-docker-export.spec.ts`, `tests/unit/test_neo4j_cypher_endpoint.py`
+**Tests:** `tests/integration/test_demo_http_surfaces_e2e.py`, `tests/unit/test_neo4j_cypher_endpoint.py`
 
 ## 5. Query Languages, Compilation & Operations
 
@@ -10652,7 +10652,7 @@ The SPA static server routing is deterministic and driven by the browser Sec-Fet
 
 **Code:** `provisa/ui_server.py`
 
-**Tests:** `provisa-ui/e2e/infrastructure.spec.ts`, `tests/e2e/test_health_checks.py`, `tests/unit/test_ui_server_routing.py`
+**Tests:** `tests/e2e/test_health_checks.py`, `tests/unit/test_ui_server_routing.py`
 
 ### REQ-1007 · Multi-Tier Deployment {#REQ-1007}
 
@@ -12412,7 +12412,7 @@ Per-role query limits complement per-role request-rate limits ([REQ-369](#REQ-36
 
 **Code:** `provisa/compiler/complexity.py`, `provisa/compiler/limits.py`, `provisa/pgwire/_pipeline.py`, `provisa/api/data/endpoint.py`, `provisa/core/settings_catalog.py`, `provisa/core/models.py`
 
-**Tests:** `tests/unit/test_query_limits.py`, `tests/unit/test_hasura_api_limits.py`, `tests/integration/test_complexity_guard_every_surface.py`, `provisa-ui/src/pages/__tests__/SecurityPage.roleLimits.test.tsx`, `provisa-ui/e2e/security-query-limits.spec.ts`
+**Tests:** `tests/unit/test_query_limits.py`, `tests/unit/test_hasura_api_limits.py`, `tests/integration/test_complexity_guard_every_surface.py`, `provisa-ui/src/pages/__tests__/SecurityPage.roleLimits.test.tsx`
 
 **Docs:** [security.md](../security.md)
 
@@ -19496,9 +19496,9 @@ provisa-ui/e2e/demo-source-containers.ts hardcoded its Docker Compose project pr
 
 **Use case:** Running multiple isolated core-lane e2e suites concurrently on one host (this session's own fanned-out multi-agent verification workflow) must not have them collide on shared Docker fixture identity, only on genuinely shared host resources (memory/CPU), which is a separate, expected constraint to budget around rather than eliminate.
 
-**Code:** `provisa-ui/e2e/demo-source-containers.ts`, `provisa-ui/e2e/neo4j-container.ts`
+**Code:** `provisa-ui/e2e/demo-source-containers.ts`
 
-**Tests:** `provisa-ui/e2e/source-to-query.spec.ts`, `provisa-ui/e2e/neo4j-docker-export.spec.ts`
+**Tests:** `provisa-ui/e2e/source-to-query.spec.ts`, `tests/integration/test_demo_http_surfaces_e2e.py`
 
 ## 4. Source Connectors
 
@@ -21354,7 +21354,7 @@ One rule governs the deletion of every kind of object. An object has parts and d
 
 **Code:** `provisa/core/repositories/integrity.py`
 
-**Tests:** `tests/unit/test_model_store_guard.py`, `tests/integration/test_model_store_guard_pg.py`
+**Tests:** `tests/unit/test_model_store_guard.py`
 
 ## 11. Platform, Infrastructure & Delivery
 
@@ -21442,7 +21442,7 @@ A source's write operations are registered as commands one at a time, the way it
 
 **Code:** `provisa/executor/source_operation.py`, `provisa/executor/function_dispatch.py`, `provisa/api/admin/actions_router.py`, `provisa/api/data/action_exec.py`, `provisa/api/data/table_written.py`, `provisa/pgwire/_pipeline.py`
 
-**Tests:** `tests/unit/test_source_operation_commands.py`, `tests/unit/test_replica_build_after_write.py`, `provisa-ui/src/__tests__/CommandFormFields.test.tsx`, `provisa-ui/e2e/source-operation-commands.spec.ts`
+**Tests:** `tests/unit/test_source_operation_commands.py`, `tests/unit/test_replica_build_after_write.py`, `provisa-ui/src/__tests__/CommandFormFields.test.tsx`, `tests/integration/test_demo_http_surfaces_e2e.py`
 
 **Docs:** [commands.md](../commands.md), [remote-schemas.md](../remote-schemas.md), [security.md](../security.md)
 
@@ -24536,7 +24536,7 @@ A feature demo, data profiling: The built-in Data Profiler ([REQ-1934](#REQ-1934
 
 **Code:** —
 
-**Tests:** `tests/unit/test_profile_carry.py`, `tests/unit/test_demo_template_profiles.py`, `tests/integration/test_profiling_sandbox_e2e.py`
+**Tests:** `tests/unit/test_profile_carry.py`, `tests/unit/test_demo_template_profiles.py`, `tests/integration/test_profiling_demo.py`, `tests/integration/test_sandbox_visitor_walk.py`
 
 ### REQ-2053 · UI {#REQ-2053}
 
