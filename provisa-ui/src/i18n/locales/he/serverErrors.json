@@ -170,7 +170,7 @@
       "view_awaits_rule_rebuild": "התצוגה {{view}} נבנית מחדש בעקבות שינוי בכללי השורות של הקלטים שלה. תפקיד זה יוכל לקרוא אותה לאחר שהבנייה תפורסם.",
       "parameter_required": "הטבלה '{{table}}' דורשת את הפרמטר או הפרמטרים {{parameters}}: תנו לכל אחד ערך (תנאי WHERE על העמודה שלו ב-SQL, ארגומנט ב-GraphQL).",
       "parameter_wrong_type": "הפרמטר {{parameter}} מקבל ערך מסוג {{type}}; '{{value}}' אינו כזה.",
-      "statement_failed": "ההוראה נכשלה בתוך השרת ({{kind}}): {{error}}"
+      "statement_failed": "ההצהרה נכשלה בתוך השרת ({{kind}}): {{error}}"
     },
     "discovery": {
       "adapter_missing_discover_schema": "המתאם עבור '{{source_type}}' אינו מממש discover_schema",
@@ -834,8 +834,8 @@
       "term_ids_required": "ציינו את המונחים לאישור.",
       "impact_action": "אין תצוגה מקדימה לפעולה זו.",
       "impact_table_required": "קישור מציין טבלה או אחת מעמודותיה.",
-      "name_taken": "מונח בשם '{{name}}' כבר קיים בתחום {{domain}}. בחרו שם אחר, או שייכו את המונח לתחום אחר.",
-      "name_taken_unscoped": "מונח בשם '{{name}}' כבר קיים ללא תחום, ולכן הוא חל על כל התחומים. בחרו שם אחר."
+      "name_taken": "מונח בשם '{{name}}' כבר קיים בתחום {{domain}}. בחר שם אחר, או הצב את המונח בתחום אחר.",
+      "name_taken_unscoped": "מונח בשם '{{name}}' כבר קיים ללא תחום, ולכן הוא חל על כל תחום. בחר שם אחר."
     },
     "table": {
       "requires_parameters": "לא ניתן לספור או ליצור פרופיל לטבלה {{table}}: היא דורשת את {{parameters}}. תנו ערך לכל אחד מהם כדי לקרוא את השורות שלה."
@@ -942,6 +942,19 @@
       "filter_required": "למחלקה זו יש {{count}} מופעים, יותר מ-{{limit}}: בחרו מסנן",
       "filter_too_wide": "המסנן משאיר יותר מ-{{limit}} מופעים",
       "unreachable": "לא ניתן להגיע לוויקינתונים: {{reason}}"
+    },
+    "access_review": {
+      "not_found": "אין סקירת גישה כזו",
+      "row_not_found": "אין שורת סקירה כזו",
+      "already_decided": "השורה הזו כבר הוכרעה",
+      "reason_required": "ציין סיבה",
+      "decision_invalid": "החלטה היא confirmed או revoked",
+      "cron_invalid": "אינו ביטוי cron בן חמישה שדות: {{cron}}",
+      "not_owner": "רק הבעלים של התחום {{domain}} מחליט על שורה זו",
+      "own_access": "אינך יכול לסקור את הגישה של עצמך. בקש מבעלים אחר.",
+      "read_only": "תפקיד זה מוקצה דרך ספק הזהויות; ל-Provisa אין הקצאה לאשר או לשלול",
+      "webhook_invalid": "כתובת ה-Webhook אינה שמישה: {{url}}",
+      "webhook_secret_required": "Webhook זקוק לסוד שבו נחתמות סקירות מתוזמנות"
     }
   }
 }
