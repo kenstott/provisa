@@ -16,7 +16,8 @@ regions and stores, the tables just registered, stores declaring a foreign key t
 review is a run scoped to the shop tables against every table, either way round, asking declared
 foreign keys and key names and types, no model: it proposes the declared key, stores.customer_id
 to customers (a new table to an existing one, across sources) and orders.store_id to stores (an
-existing table to a new one), and nothing between the two existing tables. Every candidate waits
+existing table to a new one), the junction regions -> stores -> customers (REQ-1586) the two
+legs make, and nothing between the two existing tables. Every candidate waits
 for review; accepting one through the run's Apply creates its relationship.
 """
 
@@ -209,7 +210,12 @@ def test_the_review_after_registration_proposes_every_candidate_for_review(serve
         (ids["stores"], "region_id", ids["regions"], "id"),
         (ids["stores"], "customer_id", ids["customers"], "id"),
         (ids["orders"], "store_id", ids["stores"], "id"),
+        # REQ-1586: stores refers to regions and to customers, so it is a junction; the two legs
+        # above make regions -> stores -> customers, proposed beside them.
+        (ids["regions"], "id", ids["customers"], "id"),
     }
+    junction = shown[(ids["regions"], "id", ids["customers"], "id")]
+    assert junction["via"]["table_id"] == ids["stores"]
     fk = shown[(ids["stores"], "region_id", ids["regions"], "id")]
     assert fk["kind"] == "foreign_keys"
     named = shown[(ids["orders"], "store_id", ids["stores"], "id")]
