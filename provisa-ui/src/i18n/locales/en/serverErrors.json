@@ -569,7 +569,8 @@
       "source_not_withdrawn": "Source {{source}} is not withdrawn: only a withdrawn source is put back. To change its region, set its region.",
       "put_back_needs_region": "Putting back {{object}} names a region: give one, or none for no region.",
       "mask_constant_not_text": "A constant mask on a non-text column reads as NULL; only NULL can be saved: {{column}} ({{type}})",
-      "table_domain_required": "Table '{{table}}' names no domain: every table is registered in a domain"
+      "table_domain_required": "Table '{{table}}' names no domain: every table is registered in a domain",
+      "table_name_reserved": "Table name '{{table}}' is reserved: a domain's commands are served under 'commands'. Register the table under another name or alias."
     },
     "secrets": {
       "env_reference_object_locked": "This object is the operator's: it reads the server's own environment and cannot be changed here. Add one of your own instead.",

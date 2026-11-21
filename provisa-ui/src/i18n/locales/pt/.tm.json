@@ -7547,6 +7547,7 @@
   "pt/serverErrors.json::serverErrors.schema.table_deleted": "Table {{table}} deleted",
   "pt/serverErrors.json::serverErrors.schema.table_derived_from_function": "Table '{{name}}' is derived from a function: it is removed by turning off the function's table, and its columns and parameters are edited on the function",
   "pt/serverErrors.json::serverErrors.schema.table_domain_required": "Table '{{table}}' names no domain: every table is registered in a domain",
+  "pt/serverErrors.json::serverErrors.schema.table_name_reserved": "Table name '{{table}}' is reserved: a domain's commands are served under 'commands'. Register the table under another name or alias.",
   "pt/serverErrors.json::serverErrors.schema.table_draft_set": "Table {{table}} set as draft",
   "pt/serverErrors.json::serverErrors.schema.table_id_not_found": "Table {{id}} not found",
   "pt/serverErrors.json::serverErrors.schema.table_load_protection_set": "load protection set for table {{table}}",
