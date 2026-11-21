@@ -61,7 +61,7 @@ const RELS = {
   loading: false,
   refetch: vi.fn(),
 };
-const TABLES = { tables: [table(1, "orders"), table(2, "returns")], loading: false };
+const TABLES = { tables: [table(1, "orders"), table(2, "returns")], loading: false, refetch: vi.fn() };
 const DOMAINS = { domains: [{ id: "sales", description: "" }] };
 const AUTH = { capabilities: [] };
 const FILTER = { domainsEnabled: false, domains: [], checkedDomains: new Set<string>() };
