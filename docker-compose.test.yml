@@ -325,9 +325,10 @@ services:
 
   # The image creates the remote-login user gaussdb with GS_PASSWORD, which it requires to be
   # complex: its entrypoint wants a character of #?!@$%^&*- (an underscore is none); it runs
-  # privileged.
+  # privileged. Pinned: latest (7.0.0-RC3.B025) exits at start, gaussdb: libopenblas.so.0 not found
+  # (run 44939442678).
   opengauss:
-    image: opengauss/opengauss:latest
+    image: opengauss/opengauss:7.0.0-RC2.B015
     privileged: true
     environment:
       GS_PASSWORD: Provisa_2026!

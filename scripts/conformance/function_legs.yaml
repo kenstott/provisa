@@ -152,7 +152,7 @@ legs:
     extras: dev monetdb
   - engine: opengauss
     lane: free
-    image: opengauss/opengauss:latest
+    image: opengauss/opengauss:7.0.0-RC2.B015
     service: opengauss
     engine-url: opengauss://gaussdb:Provisa_2026!@127.0.0.1:15433/postgres
     ready-sql: SELECT 1
