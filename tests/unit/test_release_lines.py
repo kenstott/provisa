@@ -52,6 +52,7 @@ _FULL_SUITES = {
     "conformance-functions.yml",
     "conformance-graphql.yml",
     "conformance-pgwire.yml",
+    "conformance-sparql.yml",
 }
 
 
@@ -223,15 +224,19 @@ def test_an_alpha_that_did_not_package_is_not_tagged(tmp_path, monkeypatch, caps
     assert not out.exists()
 
 
-_INSTALLERS = {
-    "DMG_NAME": "core.dmg",
-    "DMG_OBS_NAME": "obs.dmg",
-    "DMG_DEMO_NAME": "demo.dmg",
-    "LINUX_NAME": "provisa.AppImage",
-    "WINDOWS_NAME": "provisa.exe",
-    "WINDOWS_CONTAINER_NAME": "container.exe",
-    "JDBC_NAME": "jdbc.jar",
-}
+#: What the draft must carry, as the step's REQUIRED lists it; a line may be a glob.
+_REQUIRED = (
+    "core.dmg",
+    "obs.dmg",
+    "demo.dmg",
+    "provisa.AppImage",
+    "provisa.exe",
+    "container.exe",
+    "jdbc.jar",
+    "provisa-1.0-cp312-cp312-macosx_*_arm64.whl",
+)
+#: A draft that carries every one of them.
+_INSTALLERS = [*_REQUIRED[:-1], "provisa-1.0-cp312-cp312-macosx_11_0_arm64.whl"]
 
 
 def _publish(tmp_path: Path, channel: str, attached: list[str]) -> tuple[int, str]:
@@ -255,7 +260,7 @@ def _publish(tmp_path: Path, channel: str, attached: list[str]) -> tuple[int, st
         ["bash", "-c", step["run"]],
         env={
             **os.environ,
-            **_INSTALLERS,
+            "REQUIRED": "\n".join(_REQUIRED) + "\n",
             "PATH": f"{tmp_path}:{os.environ['PATH']}",
             "TAG": "v0.1.0-alpha.9",
             "CHANNEL": channel,
@@ -268,26 +273,26 @@ def _publish(tmp_path: Path, channel: str, attached: list[str]) -> tuple[int, st
 
 def test_an_alpha_with_every_installer_is_published_as_latest(tmp_path):
     # GitHub cannot mark a release flagged prerelease as latest, so an alpha has no such flag.
-    code, edits = _publish(tmp_path, "alpha", list(_INSTALLERS.values()))
+    code, edits = _publish(tmp_path, "alpha", list(_INSTALLERS))
     assert code == 0
     assert edits == "release edit v0.1.0-alpha.9 --draft=false --prerelease=false --latest"
 
 
 def test_an_alpha_missing_an_installer_stays_a_draft_and_is_not_latest(tmp_path):
-    code, edits = _publish(tmp_path, "alpha", list(_INSTALLERS.values())[1:])
+    code, edits = _publish(tmp_path, "alpha", list(_INSTALLERS)[1:])
     assert code == 1
     assert edits == ""
 
 
 @pytest.mark.parametrize("channel", ["beta", "rc"])
 def test_a_beta_or_rc_stays_a_prerelease_and_is_never_latest(tmp_path, channel):
-    code, edits = _publish(tmp_path, channel, list(_INSTALLERS.values()))
+    code, edits = _publish(tmp_path, channel, list(_INSTALLERS))
     assert code == 0
     assert edits == "release edit v0.1.0-alpha.9 --draft=false --prerelease --latest=false"
 
 
 def test_a_production_release_is_latest(tmp_path):
-    code, edits = _publish(tmp_path, "stable", list(_INSTALLERS.values()))
+    code, edits = _publish(tmp_path, "stable", list(_INSTALLERS))
     assert code == 0
     assert edits == "release edit v0.1.0-alpha.9 --draft=false --prerelease=false --latest"
 

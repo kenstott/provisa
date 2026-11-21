@@ -14,7 +14,8 @@
       "webhook_not_found": "未找到 Webhook '{{name}}'",
       "written_table_not_registered": "'{{table}}' 不是数据源 '{{source_id}}' 的已注册表",
       "function_exists": "函数 '{{name}}' 已存在",
-      "webhook_exists": "Webhook '{{name}}' 已存在"
+      "webhook_exists": "Webhook '{{name}}' 已存在",
+      "mask_constant_not_text": "非文本列上的常量脱敏规则读取为 NULL；只能保存 NULL：{{column}} ({{type}})"
     },
     "ai_models": {
       "vector_model_fields_required": "每个 vector_models 条目都需要 id、provider 和 dimensions",
@@ -65,7 +66,7 @@
     },
     "billing": {
       "checkout_not_complete": "此结账尚未完成，因此还没有可关联的订阅。",
-      "invalid_signature": "webhook 签名无效",
+      "invalid_signature": "Webhook 签名无效",
       "no_trial": "此组织没有试用",
       "org_no_customer": "此组织还没有计费账户。",
       "org_not_found": "未找到组织",
@@ -147,7 +148,7 @@
       "viewer_column_unknown": "“{{column}}”不是表“{{table}}”的列",
       "viewer_filter_unknown": "“{{operator}}”不是列“{{column}}”的筛选器",
       "viewer_value_invalid": "对“{{column}}”的筛选不能使用值“{{value}}”",
-      "replica_building": "{{replica}} 的副本仍在构建中。构建会继续；完成后请再次打开预览。",
+      "replica_building": "{{replica}} 的副本仍在构建中。构建将继续；完成后请重新打开预览。",
       "address_invalid": "无法解析该地址：{{reason}}",
       "address_not_found": "没有可解析的内容：{{reason}}",
       "mixed_resolve_and_other_fields": "resolve 不能在同一操作中与其他根字段组合使用",
@@ -168,7 +169,8 @@
       "table_is_withdrawn": "{{table}} 已撤下：在恢复之前不在生产中",
       "view_awaits_rule_rebuild": "由于其输入的行规则发生变更，视图 {{view}} 正在重新构建。该构建发布后，此角色即可读取它。",
       "parameter_required": "表 '{{table}}' 需要参数 {{parameters}}：为每个参数提供一个值（在 SQL 中是对其列的 WHERE 条件，在 GraphQL 中是一个参数）。",
-      "parameter_wrong_type": "参数 {{parameter}} 接受 {{type}} 类型的值；'{{value}}' 不是该类型。"
+      "parameter_wrong_type": "参数 {{parameter}} 接受 {{type}} 类型的值；'{{value}}' 不是该类型。",
+      "statement_failed": "语句在服务器内部失败（{{kind}}）：{{error}}"
     },
     "discovery": {
       "adapter_missing_discover_schema": "'{{source_type}}' 的适配器未实现 discover_schema",
@@ -198,7 +200,9 @@
       "target_domains_empty": "所选目标域中没有发现会读取的表。",
       "target_tables_not_read": "所选目标表（{{count}} 个）都不会被读取：发现会略过系统域的表和已停用的表。",
       "unknown_source_type": "未知数据源类型：{{type}}",
-      "vendor_unknown": "{{vendor}} 在此处不列出模型；请输入模型名称。"
+      "vendor_unknown": "{{vendor}} 在此处不列出模型；请输入模型名称。",
+      "source_tables_outside_domains": "所选源表不在域筛选器中选定的域内：{{names}}。",
+      "target_tables_outside_domains": "所选目标表不在域筛选器中选定的域内：{{names}}。"
     },
     "llm": {
       "request_failed": "对模型的请求失败：{{reason}}",
@@ -241,7 +245,8 @@
       "host_code_refused": "命令 '{{name}}' 的类型为 {{impl_kind}}，会在服务器主机上运行代码。此部署已关闭主机代码；请改用代码解析器。",
       "no_plain_list": "源 '{{source_id}}' 中没有不带必需参数的操作返回 '{{operation}}' 的行，因此其表保持开启",
       "plain_list_unregistered": "源 '{{source_id}}' 的 '{{operation}}' 返回其列表 {{lists}} 的行；请先将该列表注册为表",
-      "table_has_dependents": "函数 '{{name}}' 的表 '{{table}}' 仍被其他对象引用；请先移除这些引用"
+      "table_has_dependents": "函数 '{{name}}' 的表 '{{table}}' 仍被其他对象引用；请先移除这些引用",
+      "statement_failed": "命令 '{{name}}' 失败：{{error}}"
     },
     "graphql_remote": {
       "introspection_failed": "内省失败：{{error}}",
@@ -288,22 +293,22 @@
       "auth_required_create": "创建组织需要身份验证",
       "auth_required_leave": "退出组织需要身份验证",
       "auto_join_breadth_unacknowledged": "请仔细审阅此自动加入规则，否则可能会允许组织外部人员加入：除 {{domains}} 外，它还接受诸如 {{admits}} 的地址。这样，您不控制的域中的任何人都可能自动加入您的组织。请确认您接受该风险后再保存。",
-      "auto_join_public_domain": "auto_join 需要一条限定在您所控制域名上的邮箱规则——当前这条匹配的是 {{domain}}。",
+      "auto_join_public_domain": "auto_join 需要限定于您所控制的域的邮箱规则。此规则匹配 {{domain}}。",
       "auto_join_requires_role": "auto_join 需要 auto_join_role",
-      "auto_join_rule_taken": "另一个组织已对所有匹配此规则的人员启用自动加入。两个组织不能声明相同的地址——请向其索取邀请，或将您的规则收窄到仅您的组织使用的域。",
+      "auto_join_rule_taken": "另一个组织已自动接纳所有匹配此规则的人。两个组织不能认领相同的地址。请向对方索取邀请，或将您的规则限定为仅您组织使用的域。",
       "auto_join_rule_unbounded": "此自动加入规则没有边界：它会准入您不控制的域中的地址。请将其锚定到您拥有的域，例如 \"@acme\\\\.com$\"。",
       "cannot_delete_root": "无法删除根组织",
-      "delete_confirm_required": "删除 '{{org}}' 将永久销毁其全部数据——任何人（包括平台管理员）都无法恢复。请在 'confirm' 参数中重复输入组织 ID 以继续。",
+      "delete_confirm_required": "删除“{{org}}”会永久销毁其所有数据，任何人（包括平台管理员）都无法恢复。请在“confirm”参数中再次输入组织 ID 以继续。",
       "invalid_email_rule": "无效的电子邮件规则：{{error}}",
       "invalid_org_id": "无效的组织 ID '{{org}}'：2-40 个字符，仅限小写字母和数字，且以字母开头。该 ID 将成为数据库架构名称和子域名，之后无法更改。",
       "limit_reached": "已达到组织数量上限：单个账户最多可创建 {{limit}} 个组织。请删除一个不再需要的组织后再创建。",
       "membership_not_found": "未找到成员资格",
-      "no_tenant_runtime": "组织 '{{org}}' 没有租户运行时——可能仍在预配中。",
+      "no_tenant_runtime": "组织“{{org}}”没有租户运行时。它可能仍在预配中。",
       "not_found": "未找到组织",
       "not_org_admin": "{{user}} 在 {{org}} 中不具有 org_admin 角色",
       "org_id_reserved": "组织 ID '{{org}}' 已被保留。保留的 ID：{{reserved}}。",
       "platform_admin_required": "需要 platform_admin 权限",
-      "retry_not_failed": "组织 '{{org}}' 的状态为 '{{state}}'，不是 'failed'——无需重试。",
+      "retry_not_failed": "组织“{{org}}”的状态是“{{state}}”，而不是“failed”，因此没有需要重试的内容。",
       "self_role_change": "用户不能更改自己的角色。请联系另一位管理员。",
       "view_not_permitted": "无权查看此组织",
       "org_id_sandbox_prefix": "以 {{prefix}} 开头的组织 ID 保留给演示沙盒。",
@@ -363,13 +368,13 @@
       "cache_purged": "已清除 {{count}} 条缓存条目",
       "cache_purged_table": "已清除表 {{table}} 的 {{count}} 条缓存条目",
       "calendar_deleted": "日历 '{{calendar}}' 已删除",
-      "calendar_in_use": "日历 '{{calendar}}' 正被物化视图使用——删除前请先清除它们的快照计划",
+      "calendar_in_use": "日历“{{calendar}}”正被物化视图使用。删除前请先清除它们的快照计划。",
       "calendar_not_found": "未找到日历 '{{calendar}}'",
       "calendar_saved": "日历 '{{calendar}}' {{version}} 已保存",
       "column_natively_nested": "无法注册：列 {{column}} 在其数据源中的原生类型为 {{native_type}}，因此其类型为 json，而不是 {{type}}。",
       "column_types_unresolved": "无法注册：无法从数据源解析以下列的数据类型：{{columns}}。请对表进行内省（发现架构），或在注册前为每列设置数据类型。",
       "config_not_found": "未找到配置文件",
-      "creation_request_queued": "已排入创建请求 #{{id}}——等待持有 '{{capability}}' 能力的用户执行或拒绝。",
+      "creation_request_queued": "已作为创建请求 #{{id}} 排队，等待具有“{{capability}}”的用户执行或拒绝。",
       "db_pool_unavailable": "数据库连接池不可用",
       "discovery_failed": "架构发现失败：{{error}}",
       "domain_created": "域 '{{domain}}' 已创建",
@@ -381,7 +386,7 @@
       "invalid_calendar": "无效的日历：{{error}}",
       "invalid_cardinality": "无效的基数：'{{cardinality}}'",
       "invalid_off_peak_window": "无效的非高峰时段：{{error}}",
-      "load_protection_gate_required": "{{who}}：负载保护至少需要一个刷新门控——设置非高峰时段、cache_ttl 节奏或探测型 change_signal（probe/ttl_probe）",
+      "load_protection_gate_required": "{{who}}：负载保护至少需要一个刷新闸门。请设置非高峰时段、cache_ttl 周期或探测型 change_signal（probe/ttl_probe）",
       "metric_deleted": "指标 '{{metric}}' 已删除",
       "metric_not_found": "未找到指标 '{{metric}}'",
       "metric_saved": "指标 '{{metric}}' 已保存",
@@ -562,7 +567,9 @@
       "withdrawn_table_not_previewable": "无法预览表 {{table}}：它已撤下且不保留副本，而引擎只能通过副本读取其源。",
       "table_not_withdrawn": "表 {{table}} 未撤下：只有已撤下的表才能恢复。要将生产中的表移到另一个区域，请设置其区域。",
       "source_not_withdrawn": "源 {{source}} 未撤下：只有已撤下的源才能恢复。要更改其区域，请设置其区域。",
-      "put_back_needs_region": "恢复 {{object}} 需指定一个区域：请给出一个区域，无区域则不给出。"
+      "put_back_needs_region": "恢复 {{object}} 需指定一个区域：请给出一个区域，无区域则不给出。",
+      "mask_constant_not_text": "非文本列上的常量脱敏规则读取为 NULL；只能保存 NULL：{{column}} ({{type}})",
+      "table_domain_required": "表 '{{table}}' 未指定域：每个表都注册在一个域中"
     },
     "secrets": {
       "env_reference_object_locked": "此对象属于运营方：它读取服务器自身的环境，无法在此更改。请改为添加您自己的对象。",
@@ -612,7 +619,8 @@
     "sparql": {
       "columns_not_inferred": "无法推断列：探测未返回任何行，也未找到 SELECT 变量。",
       "probe_failed": "SPARQL 终结点探测失败：{{error}}",
-      "source_not_found": "未找到 SPARQL 数据源 '{{source_id}}'"
+      "source_not_found": "未找到 SPARQL 数据源 '{{source_id}}'",
+      "no_select_variables": "查询未指定 SELECT 变量（SELECT * 或不是 SELECT 查询）：无法从中读取其列"
     },
     "subscribe": {
       "avro_topic_without_registry": "主题“{{topic}}”包含 Avro 消息，但其数据源未指定用于读取的模式注册表：请设置数据源的模式注册表 URL",
@@ -623,7 +631,7 @@
       "schema_not_avro": "注册表 {{registry}} 中的模式 {{schema_id}} 是 {{kind}}，不是 Avro",
       "schema_registry_error": "模式注册表 {{registry}} 返回 HTTP {{http_status}}：{{error}}",
       "schema_registry_refused_credentials": "模式注册表 {{registry}} 拒绝了数据源的凭据（HTTP {{http_status}}，认证“{{method}}”）",
-      "schema_registry_unreachable": "无法连接模式注册表：{{error}}",
+      "schema_registry_unreachable": "无法访问架构注册表：{{error}}",
       "sse_limit_reached": "已达到并发 SSE 订阅上限",
       "table_not_found": "未找到表 '{{table}}'",
       "unknown_role": "未知角色 '{{role}}'",
@@ -808,7 +816,6 @@
       "status_by_action": "术语的状态通过“批准”“弃用”“停用”或“恢复”来改变。",
       "successor_required": "该术语仍有列或表；停用它会将其移到继任者。请选择一个。",
       "successor_role": "{{role}} 的继任者必须是 {{role}} 或概念；“{{successor}}”是 {{successor_role}}。",
-      "no_retirement_history": "模型的历史中没有该术语的停用记录。",
       "finding": {
         "unlinked_tables": "此类关联到的表并非全部由同一实体关系连接：{{tables}}。",
         "class_and_attribute": "此类还拥有不是其键的列：{{columns}}。",
@@ -826,7 +833,9 @@
       "not_bulk_approvable": "只有已定义且已锚定的草稿术语才能一起批准；以下不符合：{{terms}}。",
       "term_ids_required": "请指定要批准的术语。",
       "impact_action": "该操作没有预览。",
-      "impact_table_required": "绑定指定一张表或其中的一列。"
+      "impact_table_required": "绑定指定一张表或其中的一列。",
+      "name_taken": "域 {{domain}} 中已存在名为 '{{name}}' 的术语。请选择其他名称，或将该术语放入其他域。",
+      "name_taken_unscoped": "已存在名为 '{{name}}' 且不属于任何域的术语，它适用于所有域。请选择其他名称。"
     },
     "table": {
       "requires_parameters": "无法对表 {{table}} 计数或生成概要：它需要 {{parameters}}。请为每个参数提供值以读取其行。"
@@ -893,7 +902,8 @@
       "blank_identifier": "条目不能为空。",
       "expiry_in_past": "结束日期必须是将来的日期。",
       "expiry_removes_nothing": "在此 {{kind}} 列表上设置结束日期不会移除任何内容。",
-      "pending_not_found": "没有等待 {{email}} 的角色 {{role_id}} 和 {{kind}} 授予。"
+      "pending_not_found": "没有等待 {{email}} 的角色 {{role_id}} 和 {{kind}} 授予。",
+      "invalid_identifier": "{{identifier}} 不是有效的 {{kind}} 条目。"
     },
     "mv": {
       "change_key_missing": "{{function}} 返回了缺少键列 {{column}} 的行",
@@ -921,7 +931,8 @@
       "filter_operator_refused": "{{operator}} 不是可用于转换权限过滤器的运算符。"
     },
     "relationship": {
-      "name_taken": "名称“{{name}}”已被关系“{{held_by}}”使用。请为此关系另行命名。"
+      "name_taken": "名称“{{name}}”已被关系“{{held_by}}”占用。请为此关系另取名称。",
+      "join_through_none": "关系 '{{first}}' 和 '{{second}}' 没有共同的中间表，或者它们的另一端已经通过该表连接。"
     },
     "syncing": {
       "not_found": "不存在条目 {{entry}}。",
@@ -937,6 +948,15 @@
       "unknown_direction": "{{direction}} 不是一个方向：请使用导出或导入。",
       "unknown_kind": "{{kind}} 不是一种差异类型。",
       "unknown_choice": "{{choice}} 不是固定选择。"
+    },
+    "wikidata": {
+      "no_credential": "Wikidata 查询服务不需要凭据",
+      "bad_id": "{{value}} 不是 Wikidata {{kind}}",
+      "bad_language": "{{language}} 不是语言代码",
+      "bad_column_type": "Wikidata 属性不提供的列类型：{{types}}",
+      "filter_required": "此类有 {{count}} 个实例，超过 {{limit}}：请选择筛选条件",
+      "filter_too_wide": "筛选后仍有超过 {{limit}} 个实例",
+      "unreachable": "无法访问 Wikidata：{{reason}}"
     }
   }
 }

@@ -28,7 +28,7 @@ from sqlalchemy import select
 from provisa.api.admin._landing_ttl import SourceTtl, TableTtl
 from provisa.api.admin.types import ColumnInput, MutationResult, SourceInput, TableInput
 from provisa.core.database import Database
-from provisa.core.schema_org import registered_tables, sources
+from provisa.core.schema_org import domains, registered_tables, sources
 from tests.unit.gate_identity import serve_every_column
 
 pytestmark = pytest.mark.unit
@@ -80,10 +80,12 @@ async def _db(
                 federation_hints=federation_hints or {},
             )
         )
+        # REQ-1531: every table sits in a domain (one a second store of the same org has already).
+        await conn.upsert(domains, {"id": "sales"}, index_elements=["id"], update_columns=[])
         await conn.execute_core(
             registered_tables.insert().values(
                 source_id="s",
-                domain_id="",
+                domain_id="sales",
                 schema_name="public",
                 table_name="orders",
                 change_signal=table_signal,
@@ -334,7 +336,7 @@ async def test_create_source_refuses_a_ttl_signal_its_registered_tables_cannot_c
 def _table_input(**kw) -> TableInput:
     base = dict(
         source_id="s",
-        domain_id="",
+        domain_id="sales",
         schema_name="public",
         table_name="orders",
         columns=[ColumnInput(name="id", visible_to=["analyst"])],
@@ -374,10 +376,6 @@ def _table_patches(db: Database):
         ),
         patch(
             "provisa.api.admin.schema_mutation._domain_table_conflict",
-            new=AsyncMock(return_value=None),
-        ),
-        patch(
-            "provisa.api.admin.schema_mutation._dataset_ownership_conflict",
             new=AsyncMock(return_value=None),
         ),
         patch("provisa.api.admin.schema_mutation._rebuild_schemas", new=AsyncMock()),

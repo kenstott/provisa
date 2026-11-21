@@ -64,10 +64,8 @@ async def check_model_build(conn: "Connection", config: "ProvisaConfig") -> None
     columns, commands, the names table (REQ-194) and data-quality contracts. Raises what the
     build raises; publishes nothing."""
     from provisa.api.admin.db_queries import fetch_relationships, fetch_tables
-    from provisa.api._ontology_views import ONTOLOGY_TABLE_ALIAS
     from provisa.api.app import _load_build_domains, state
     from provisa.api.app_loaders import (
-        _META_TABLE_ALIAS,
         _check_fakes,
         catalog_name_for_source,
         checker_contract_targets,
@@ -169,9 +167,7 @@ async def check_model_build(conn: "Connection", config: "ProvisaConfig") -> None
         )
 
     physical = getattr(state, "kafka_table_physical", {})
-    column_types = introspect_tables(
-        None, tables, sources, {**_META_TABLE_ALIAS, **ONTOLOGY_TABLE_ALIAS, **(physical or {})}
-    )
+    column_types = introspect_tables(None, tables, sources)
     remote_sources = getattr(state, "graphql_remote_sources", {})
     _inject_gql_required_args(tables, remote_sources)
     object_columns = _build_gql_object_columns(remote_sources)

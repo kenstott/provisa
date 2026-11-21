@@ -27,6 +27,7 @@ from sqlalchemy import select, update
 
 from provisa.core.models import Metric
 from provisa.core.repositories import retirement
+from provisa.core.repositories.glossary import resolve_term
 from provisa.core.repositories.integrity import Dependent, ObjectRef, guard
 from provisa.core.schema_org import glossary_terms, metrics
 
@@ -86,17 +87,15 @@ async def upsert(  # REQ-1317, REQ-1320, REQ-1919
 
 
 async def _term_id(conn: "Connection", metric: Metric) -> int:  # REQ-2243
-    """The id of the glossary term ``metric`` names; a name no term holds is refused."""
-    row = (
-        await conn.execute_core(
-            select(glossary_terms.c.id).where(glossary_terms.c.name == metric.term)
-        )
-    ).fetchone()
-    if row is None:
+    """The id of the glossary term ``metric`` names; a name no term holds is refused. A metric
+    has no domain, so several terms of that name are refused by name (REQ-1591), never guessed."""
+    assert metric.term is not None
+    term_id = await resolve_term(conn, metric.term, domains=None)
+    if term_id is None:
         raise ValueError(
             f"metric {metric.name!r} names the glossary term {metric.term!r}, which does not exist"
         )
-    return row.id
+    return term_id
 
 
 def _with_term():

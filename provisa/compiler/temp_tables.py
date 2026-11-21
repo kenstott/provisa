@@ -61,8 +61,10 @@ class TempSession:
     tables: dict[str, TempTable] = field(default_factory=dict)
     # Whether its store schema exists: created with its first table, dropped when it ends.
     stored: bool = False
-    # Advanced each time a table of it is created or dropped: what a statement kept for the
-    # session was governed against.
+    # Advanced each time a table of it is created, dropped or reshaped, and each time a
+    # statement writes its rows (INSERT, UPDATE, DELETE, COPY): what a statement or an answer
+    # kept for the session was governed and read against. A principal's graph session advances
+    # it once per statement that changed it (provisa.api.graph_session).
     generation: int = 0
     # What a layer keeps beside its tables for the session, by the layer's name (REQ-2176: the
     # session's ephemeral graph). It ends with the session.

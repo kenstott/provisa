@@ -118,6 +118,7 @@
     "standingChoices": "Scelte fisse",
     "standingChoicesHelp": "Cosa fa un'esecuzione con ogni tipo di differenza, per direzione. Trattieni, o nessuna scelta fissa, lascia la differenza qui per uno steward.",
     "standingKind": "Tipo di differenza",
-    "compare": "Confronta con il catalogo"
+    "compare": "Confronta con il catalogo",
+    "title": "Sincronizzazione del contesto"
   }
 }

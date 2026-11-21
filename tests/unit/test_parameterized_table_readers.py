@@ -617,3 +617,40 @@ def test_graph_counts_leave_out_only_a_label_whose_parameter_is_required():
     )
     labels, _rels = cypher_router._countable_labels(label_map, set(), lambda domain: True)
     assert labels == ["orders", "find_pets_by_status"]
+
+
+async def test_a_declared_profile_of_a_table_that_requires_a_parameter_is_stored(
+    state, source, monkeypatch
+):
+    """REQ-1942: a declared profile reads nothing, so a table that requires a parameter is declared
+    as any other, its parameter a column of it -- the whole-read refusal is a reader's, never a
+    declaration's. No source is reached, and the declared facts are written."""
+    from provisa.profiler import declared, run
+    from provisa.synthetic import env_model
+
+    written: list[tuple[str, int, dict]] = []
+
+    async def _parameter_columns(_conn: Any) -> dict:
+        return {PARAMETERIZED: {"_nf_orderId": "integer"}}
+
+    async def _covered(_conn: Any, _target: Any) -> frozenset[str]:
+        return frozenset()
+
+    async def _write(_conn: Any, table_name: str, table_id: int, rows: dict) -> None:
+        written.append((table_name, table_id, rows))
+
+    monkeypatch.setattr(env_model, "parameter_columns", _parameter_columns)
+    monkeypatch.setattr(declared, "covered_columns", _covered)
+    monkeypatch.setattr(run, "write_results", _write)
+    monkeypatch.setattr(state, "model_db", _ns(acquire=lambda: _Conn()))
+    facts = {"nullShare": 0, "distinctCount": 5, "range": {"min": 1, "max": 5}}
+    run_id = await declared.declare(
+        state,
+        PARAMETERIZED,
+        "get_order_by_id",
+        {"rowCount": 5, "columns": {"id": facts, "total": facts, "_nf_orderId": facts}},
+    )
+    assert run_id.startswith(declared.DECLARED)
+    ((table_name, table_id, _rows),) = written
+    assert (table_name, table_id) == ("get_order_by_id", PARAMETERIZED)
+    assert not source.calls, source.calls

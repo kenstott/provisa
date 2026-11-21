@@ -11,18 +11,16 @@
 // REQ-2252: a relationship's query on every surface that reads it, as an Explore hand-off: Cypher
 // matches its type between its two node labels, SQL joins its two tables on its columns, SPARQL
 // selects subject and object over its predicate, GraphQL reads its source with its field nested,
-// JSON:API reads its source with it included. Each by the names the acting role is served and with
+// REST reads its source with the field in ?fields=, gRPC calls its source's Query method with the
+// relationship's own field in its read_mask, and JSON:API reads its source with it included (REQ-1929:
+// REST and gRPC read a relationship nested). Each by the names the acting role is served and with
 // a row limit; a surface that does not serve the relationship to the role has no query.
-//
-// REST and gRPC have none: a REST read (/data/rest/<field>) and a gRPC Query<Type> call select the
-// table's own columns only and never follow a relationship (provisa/api/rest/generator.py,
-// provisa/grpc/query_ir.py resolve_read_mask); they reach a related row only inside a group-by's
-// nodes, which reads groups, not the relationship.
 
 import type { MetaReader } from "../../api/metaGraph";
 import { rootKey } from "../../api/metaGraph";
 import { quoteIdent, tableSqlRef } from "../../naming";
 import { allPrefixes, compactIri, withUsedPrefixes, type SparqlVocabulary } from "../graph/sparql";
+import { grpcExample } from "../../pages/data-products/tableExamples";
 
 /** The rows a relationship's query reads at most. */
 export const RELATIONSHIP_QUERY_LIMIT = 25;
@@ -69,7 +67,17 @@ export interface RelationshipQueryRef {
 /** The role's graph schema as /data/graph-schema serves it: the parts a query is named by. */
 export interface GraphSchemaDoc {
   node_labels: { label: string; table_id: number; pk_columns: string[] }[];
-  relationship_types: { type: string; source: string; target: string }[];
+  relationship_types: {
+    type: string;
+    source: string;
+    target: string;
+    /** The associative table a junction-backed edge traverses; null on an FK/PK-backed edge. */
+    junction_table_name: string | null;
+    /** What it joins (provisa/gql/label_map.py RelationshipMapping.join): its two ends sorted,
+     * each JSON-encoded as [node key, column, source expression, source constant, junction
+     * columns], then the junction table and its type. */
+    join: string;
+  }[];
 }
 
 /** What the acting role is served, each read on its own; null while unread or refused. */
@@ -79,7 +87,15 @@ export interface RelationshipSurfaces {
   vocabulary: SparqlVocabulary | null;
 }
 
-export const RELATIONSHIP_SURFACES = ["cypher", "sql", "sparql", "graphql", "jsonapi"] as const;
+export const RELATIONSHIP_SURFACES = [
+  "cypher",
+  "sql",
+  "sparql",
+  "graphql",
+  "rest",
+  "grpc",
+  "jsonapi",
+] as const;
 export type RelationshipSurface = (typeof RELATIONSHIP_SURFACES)[number];
 
 const keys = (stored: string): string[] =>
@@ -122,20 +138,55 @@ export function relationshipSql(rel: RelationshipQueryRef): string | null {
 const labelOf = (graph: GraphSchemaDoc, tableId: number): string | null =>
   graph.node_labels.find((n) => Number(n.table_id) === tableId)?.label ?? null;
 
+/** The columns each end of an FK/PK-backed edge joins on, as its graph-schema join names them. */
+function joinedColumns(join: string): [string[], string[]] | null {
+  const [ends] = JSON.parse(join) as [string[], unknown, unknown];
+  if (ends.length !== 2) return null;
+  const [a, b] = ends.map((end) => JSON.parse(end) as [string, string | null, ...unknown[]]);
+  if (a[1] === null || b[1] === null) return null;
+  return [keys(a[1]), keys(b[1])];
+}
+
+const sameKeys = (a: string[], b: string[]) =>
+  a.length === b.length && a.every((k, i) => k === b[i]);
+
+/** Whether a served edge is this relationship: a junction-backed one by its junction table and
+ * nominated type, an FK/PK-backed one by the columns it joins. The schema build names an
+ * unaliased FK/PK edge by its GraphQL field, not by the type the admin list stores, so the
+ * columns, not the stored type, tell which served edge it is. */
+function isEdgeOf(
+  rel: RelationshipQueryRef,
+  edge: GraphSchemaDoc["relationship_types"][number],
+): boolean {
+  if (rel.via !== null) {
+    return edge.junction_table_name === rel.via.table.tableName && edge.type === rel.cypherType;
+  }
+  if (edge.junction_table_name !== null) return false;
+  const joined = joinedColumns(edge.join);
+  if (joined === null) return false;
+  const [source, target] = [keys(rel.sourceColumn), keys(rel.targetColumn)];
+  return (
+    (sameKeys(joined[0], source) && sameKeys(joined[1], target)) ||
+    (sameKeys(joined[0], target) && sameKeys(joined[1], source))
+  );
+}
+
 /** The two node labels and the type the role is served the relationship as; null when its graph
- * schema has no such edge (excluded from Cypher, or an end it cannot read). */
+ * schema has no such edge (excluded from Cypher, or an end it cannot read). Of two served edges
+ * with one join (one edge declared twice), the one under the stored type. */
 function servedEdge(
   rel: RelationshipQueryRef,
   graph: GraphSchemaDoc,
 ): { source: string; target: string; type: string } | null {
-  if (rel.disableCypher || !rel.cypherType) return null;
+  if (rel.disableCypher) return null;
   const source = labelOf(graph, rel.source.id);
   const target = labelOf(graph, rel.target.id);
   if (source === null || target === null) return null;
-  const served = graph.relationship_types.some(
-    (r) => r.type === rel.cypherType && r.source === source && r.target === target,
+  const served = graph.relationship_types.filter(
+    (r) => r.source === source && r.target === target && isEdgeOf(rel, r),
   );
-  return served ? { source, target, type: rel.cypherType } : null;
+  const edge = served.find((r) => r.type === rel.cypherType) ?? served[0];
+  return edge ? { source, target, type: edge.type } : null;
 }
 
 /** Cypher: the relationship's type between its two node labels. */
@@ -192,6 +243,61 @@ export function relationshipGraphql(rel: RelationshipQueryRef, reader: MetaReade
   return `{ ${path.root}(limit: ${RELATIONSHIP_QUERY_LIMIT}) { ${[...own, `${path.field.name} { ${related.join(" ")} }`].join(" ")} } }`;
 }
 
+/** REST: the source's columns with the relationship's field in ?fields=, which reads the related
+ * row's columns (provisa/api/rest/generator.py: a segment naming a relationship whole). */
+export function relationshipRest(rel: RelationshipQueryRef, reader: MetaReader): string | null {
+  const path = graphqlPath(rel, reader);
+  if (path === null) return null;
+  if (reader.schema.scalars(path.field.type).length === 0) return null;
+  const fields = [...reader.schema.scalars(path.type), path.field.name].join(",");
+  return `GET /data/rest/${rel.source.domainId}/${rel.source.tableName}?fields=${fields}&limit=${RELATIONSHIP_QUERY_LIMIT}`;
+}
+
+/** A relationship's field of its source's gRPC {Type} message: its GraphQL relationship field in
+ * proto3 snake_case, ``__`` taken to ``_`` (``buildingPermit`` is ``building_permit``). Mirrors
+ * provisa/grpc/proto_gen.py proto_relation_field_name over provisa/compiler/naming.py
+ * _to_snake_case; tests/fixtures/proto_relation_field_names.json pins both to one set of examples. */
+export function protoRelationFieldName(graphqlField: string): string {
+  return graphqlField
+    .replace(/([A-Z]+)([A-Z][a-z])/g, "$1_$2")
+    .replace(/([a-z0-9])([A-Z])/g, "$1_$2")
+    .toLowerCase()
+    .replace(/__/g, "_");
+}
+
+/** gRPC: the source's Query method, its read_mask naming the relationship's source columns and,
+ * through the relationship's own field (REQ-1929: one per relationship, named by its GraphQL
+ * relationship field), the related table's join columns. A source column taking the field's name
+ * is a collision proto_gen refuses, so the relationship has no gRPC field and no query. */
+export function relationshipGrpc(
+  rel: RelationshipQueryRef,
+  reader: MetaReader,
+): { method: string; body: Record<string, unknown> } | null {
+  const path = graphqlPath(rel, reader);
+  if (path === null) return null;
+  const call = grpcExample(reader, rel.source);
+  if (call === null) return null;
+  const relation = protoRelationFieldName(path.field.name);
+  const taken = reader.schema
+    .scalars(path.type)
+    .some((c) => protoRelationFieldName(c) === relation);
+  if (taken) return null;
+  const columns = keys(rel.sourceColumn);
+  const related = keys(rel.targetColumn);
+  if (columns.some((c) => reader.schema.column(path.type, c) === null)) return null;
+  if (related.some((c) => reader.schema.column(path.field.type, c) === null)) return null;
+  const protoName = (name: string) => name.replace(/__/g, "_");
+  return {
+    method: call.state.grpcMethod as string,
+    body: {
+      read_mask: {
+        paths: [...columns.map(protoName), ...related.map((c) => `${relation}.${protoName(c)}`)],
+      },
+      limit: RELATIONSHIP_QUERY_LIMIT,
+    },
+  };
+}
+
 /** JSON:API: the source's resources with the relationship included. JSON:API serves a relationship
  * GraphQL serves, by its SQL-plane name, to a target whose resources have an id (a key, or an id
  * column). */
@@ -221,6 +327,13 @@ function readsTables(rel: RelationshipQueryRef, reader: MetaReader): boolean {
   return tables.every((tb) => reader.roots.has(rootKey(tb.domainId, tb.tableName)));
 }
 
+const grpcLink = (
+  call: { method: string; body: Record<string, unknown> } | null,
+): QueryLink | null =>
+  call === null
+    ? null
+    : { to: "/grpc", state: { grpcMethod: call.method, grpcBody: call.body, autoRun: true } };
+
 /** Each surface's query of ``rel`` as an Explore hand-off, run at once, in the order shown; a
  * surface the role is not served the relationship on is left out. */
 export function relationshipQueryLinks(
@@ -238,6 +351,8 @@ export function relationshipQueryLinks(
         ? run("/sparql", "query", relationshipSparql(rel, graph, vocabulary))
         : null,
     graphql: reader ? run("/query", "query", relationshipGraphql(rel, reader)) : null,
+    rest: reader ? run("/openapi", "openApiUrl", relationshipRest(rel, reader)) : null,
+    grpc: reader ? grpcLink(relationshipGrpc(rel, reader)) : null,
     jsonapi: reader ? run("/jsonapi", "jsonapiUrl", relationshipJsonApi(rel, reader, graph)) : null,
   };
   return RELATIONSHIP_SURFACES.flatMap((surface) => {

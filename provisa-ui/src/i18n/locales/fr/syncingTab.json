@@ -118,6 +118,7 @@
     "standingChoices": "Choix permanents",
     "standingChoicesHelp": "Ce qu'une exécution fait de chaque type de différence, par sens. Mettre en attente, ou aucun choix permanent, laisse la différence ici pour un intendant.",
     "standingKind": "Type de différence",
-    "compare": "Comparer avec le catalogue"
+    "compare": "Comparer avec le catalogue",
+    "title": "Synchronisation du contexte"
   }
 }

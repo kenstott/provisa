@@ -25,7 +25,7 @@
     "leaveOrg": "Verlassen",
     "leaveHelp": "Beim Verlassen verlieren Sie den Zugriff auf diese Organisation. Wenn Sie ihr einziger Organisationsadministrator sind, befördern Sie zuerst jemand anderen.",
     "patHeading": "Persönliche Zugriffstoken",
-    "patHelp": "Ein persönliches Zugriffstoken meldet Sie aus Werkzeugen an, die keinen Browser öffnen können — psql, ein Neo4j-Client, ein Arrow-Flight- oder gRPC-Client, ein MCP-Client oder ein Skript. Es handelt als Sie, in dieser Organisation.",
+    "patHelp": "Ein persönliches Zugriffstoken meldet Sie bei Werkzeugen an, die keinen Browser öffnen können, etwa psql, einem Neo4j-Client, einem Arrow-Flight- oder gRPC-Client, einem MCP-Client oder einem Skript. Es handelt in Ihrem Namen, in dieser Organisation.",
     "patName": "Name",
     "patExpiresInDays": "Läuft ab in (Tagen)",
     "patIssue": "Token erstellen",

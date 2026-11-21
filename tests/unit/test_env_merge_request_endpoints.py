@@ -28,6 +28,7 @@ import pytest
 from provisa.api.admin import environments_router as er
 from provisa.api.errors import ApiError
 from provisa.core import env_approvals
+from provisa.core.env_store import NEW_ENV_STAGE, ORIGINAL_STAGE
 
 pytestmark = pytest.mark.asyncio
 
@@ -110,8 +111,10 @@ def wired(monkeypatch):
     async def _known(org_id, name):
         calls["known"].append((org_id, name))
         # REQ-1543: every environment row carries where it is in its own history; the squash of
-        # REQ-1545 reads the source's position to name the sha it merged from.
-        return {"name": name, "deployed_sha": SOURCE_SHA, "redo_sha": None}
+        # REQ-1545 reads the source's position to name the sha it merged from. REQ-2261: and the
+        # stage it declares -- prod starts as production, every later environment as development.
+        stage = ORIGINAL_STAGE if name == "prod" else NEW_ENV_STAGE
+        return {"name": name, "deployed_sha": SOURCE_SHA, "redo_sha": None, "stage": stage}
 
     async def _audit(org_id, actor, action, name, detail):
         calls["audit"].append((org_id, actor, action, name, detail))
@@ -582,7 +585,13 @@ class TestRetiringTheSourceOfAMerge:
         )
         (_org, _actor, action, name, detail) = wired["audit"][-1]
         assert (action, name) == ("environment.retired", "dev")
-        assert detail == {"retired": "dev", "branch_deleted": True, "remote_branch_deleted": None}
+        # REQ-2261: the entry carries the stage the ended environment declared, read before it went.
+        assert detail == {
+            "retired": "dev",
+            "branch_deleted": True,
+            "remote_branch_deleted": None,
+            "stage": NEW_ENV_STAGE,
+        }
 
     async def test_refusing_to_retire_prod_arrives_as_a_conflict(self, merged, monkeypatch):
         async def retire_environment(pool, admin_db, org_id, name, *, drop_branch):

@@ -10,8 +10,9 @@
 
 // REQ-2109 (settled): every setting of a table or view is offered where it is created. The
 // create form is the editor's own sections on the table as it will be registered: the same seven
-// tabs, each with the editor's fields; what needs a saved table (writing a description from it,
-// running a check) waits until it exists, and its write grants are kept to be saved with it.
+// tabs, each with the editor's fields; what needs a saved table (running a check) waits until it
+// exists, a description is written from the source table it will register, and its write grants
+// are kept to be saved with it.
 
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent, waitFor } from "../../../test-utils/render";
@@ -61,6 +62,7 @@ function renderForm(
       section={section}
       onSectionChange={vi.fn()}
       savedProfilerId={null}
+      domainChoices={[]}
       editingTable={table}
       savedTable={saved}
       setEditingTable={setEditingTable}
@@ -125,9 +127,9 @@ describe("TableEditForm creating a table (REQ-2109)", () => {
     }
   });
 
-  it("does not offer to write a description from a table that does not exist yet", () => {
+  it("offers to write a description from the source table it will register", () => {
     renderForm(draft, null, "identity");
-    expect(screen.queryByTestId("description-field-generate")).toBeNull();
+    expect(screen.getByTestId("description-field-generate")).toBeInTheDocument();
   });
 
   it("keeps its write grants to save with the table", async () => {

@@ -118,6 +118,7 @@
     "standingChoices": "Vaste keuzes",
     "standingChoicesHelp": "Wat een run met elk soort verschil doet, per richting. Aanhouden, of geen vaste keuze, laat het verschil hier staan voor een steward.",
     "standingKind": "Soort verschil",
-    "compare": "Vergelijken met de catalogus"
+    "compare": "Vergelijken met de catalogus",
+    "title": "Contextsynchronisatie"
   }
 }

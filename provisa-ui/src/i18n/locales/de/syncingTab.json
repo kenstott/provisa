@@ -118,6 +118,7 @@
     "standingChoices": "Feste Wahl",
     "standingChoicesHelp": "Was ein Lauf mit jeder Art von Unterschied tut, je Richtung. Zurückhalten oder keine feste Wahl lässt den Unterschied hier für einen Steward.",
     "standingKind": "Art des Unterschieds",
-    "compare": "Mit dem Katalog vergleichen"
+    "compare": "Mit dem Katalog vergleichen",
+    "title": "Kontext-Synchronisierung"
   }
 }

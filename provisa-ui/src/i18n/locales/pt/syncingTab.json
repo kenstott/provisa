@@ -118,6 +118,7 @@
     "standingChoices": "Escolhas fixas",
     "standingChoicesHelp": "O que uma execução faz com cada tipo de diferença, por direção. Reter, ou não ter escolha fixa, deixa a diferença aqui para um responsável.",
     "standingKind": "Tipo de diferença",
-    "compare": "Comparar com o catálogo"
+    "compare": "Comparar com o catálogo",
+    "title": "Sincronização do contexto"
   }
 }

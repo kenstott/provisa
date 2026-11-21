@@ -37,6 +37,7 @@ from provisa.discovery import gather
 from provisa.discovery.analyzer import RelationshipCandidate
 from provisa.discovery.collector import collect_fk_for_tables
 from provisa.discovery.columns import TableFacts
+from provisa.discovery.context import Scoring
 from provisa.discovery.direction import (
     Edge,
     Kind,
@@ -48,10 +49,10 @@ from provisa.discovery.direction import (
     reduced_tables,
     settle,
 )
-from provisa.discovery.measure import Measurer
+from provisa.discovery.measure import Measurer, governed_reader
 from provisa.discovery.proposals import BELOW_THRESHOLD, Recorded
 from provisa.discovery.runner import Control, KeyValues, Rescore, Tally, execute
-from provisa.discovery.windows import Request, bound, plan
+from provisa.discovery.windows import Plan, bound, plan
 
 if TYPE_CHECKING:
     from provisa.core.database import Connection
@@ -86,12 +87,28 @@ async def while_saying_still_going(
 
 @dataclass(frozen=True)
 class KeyValueOverlap:
-    """Key value overlap's settings for a run (REQ-413, amended 2026-11-16): the semantic pairs
-    whose model confidence is at ``cutoff`` or more and under the run's threshold are measured, each
-    column read for at most ``sample_size`` distinct values."""
+    """Key value overlap's settings for a run (REQ-413, amended 2026-11-16 and 2026-11-18, each set
+    in the discover dialog): the semantic pairs whose model confidence is at ``cutoff`` or more and
+    under the run's threshold are measured, each column read for at most ``sample_size`` non-null
+    values; a pair whose source has ``contained_at`` of its values in a key target is a key
+    relationship, and one where neither side is a key scores at most ``shared_ceiling``."""
 
     cutoff: float
     sample_size: int
+    contained_at: float
+    shared_ceiling: float
+
+    @property
+    def scoring(self) -> Scoring:
+        return Scoring(self.contained_at, self.shared_ceiling)
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "cutoff": self.cutoff,
+            "sample_size": self.sample_size,
+            "contained_at": self.contained_at,
+            "shared_ceiling": self.shared_ceiling,
+        }
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -116,6 +133,12 @@ class RunSpec:
     #: with it (REQ-413, amended 2026-11-18): the model is told it, a proposal at it or above is
     #: kept unmeasured, and the key value overlap band runs from the cutoff up to it.
     threshold: float
+    #: The distinct sample values read and shown to the model of each compared column (REQ-413,
+    #: amended 2026-11-18: set in the discover dialog).
+    samples_per_column: int
+    #: The domains selected in the domain filter, as the person who started the run may reach them
+    #: (REQ-2253): no table outside them is read or proposed, named or not. None: no narrowing.
+    within: frozenset[str] | None
 
 
 @dataclass
@@ -172,8 +195,8 @@ class Prepared:
     source: list[TableFacts]
     #: None: the target set is the source set.
     target: list[TableFacts] | None
-    k: int
-    requests: list[Request]
+    #: The semantic calls; None when semantics is not asked.
+    plan: Plan | None
 
     @property
     def tables(self) -> dict[int, TableFacts]:
@@ -212,10 +235,14 @@ def _left_out(named: tuple[int, ...] | None, kept: list[TableFacts]) -> int:
 
 async def table_sets(conn: "Connection", spec: RunSpec) -> tuple[list[int], list[int] | None]:
     """The ids of the source set and of the target set (None: the same as the source)."""
-    source = await gather.scope_table_ids(conn, spec.source_domains, spec.source_tables)
+    source = await gather.scope_table_ids(
+        conn, spec.source_domains, spec.source_tables, spec.within
+    )
     if spec.same_as_source:
         return source, None
-    target = await gather.scope_table_ids(conn, spec.target_domains, spec.target_tables)
+    target = await gather.scope_table_ids(
+        conn, spec.target_domains, spec.target_tables, spec.within
+    )
     return source, target
 
 
@@ -232,14 +259,16 @@ async def prepare(
         source_ids, target_ids = await table_sets(conn, spec)
         ids = set(source_ids) | set(target_ids or [])
         facts = {
-            t.table_id: t for t in await gather.table_facts(state, conn, sorted(ids), on_table)
+            t.table_id: t
+            for t in await gather.table_facts(
+                state, conn, sorted(ids), spec.samples_per_column, on_table
+            )
         }
     source = [facts[i] for i in source_ids]
     target = None if target_ids is None else [facts[i] for i in target_ids]
     if model is None:
-        return Prepared(source, target, 0, [])
-    k, requests = plan(source, target, model.input_tokens, model.output_tokens)
-    return Prepared(source, target, k, requests)
+        return Prepared(source, target, None)
+    return Prepared(source, target, plan(source, target, model.input_tokens, model.output_tokens))
 
 
 #: What the count's ``requests`` are (REQ-413): the most a run of the scope makes, never fewer
@@ -248,8 +277,8 @@ UPPER_BOUND = "upper_bound"
 
 
 async def count(state: Any, spec: RunSpec, model: ChosenModel | None) -> dict[str, Any]:
-    """The request count before Run (REQ-413), by group, for the chosen model: an upper bound,
-    from the model store alone. No table is read, classified or sampled and no source is asked;
+    """The request count before Run (REQ-413), for the chosen model: an upper bound on the calls
+    of the run's first pass, from the model store alone, with the table pairs they list. No table is read, classified or sampled and no source is asked;
     with no model (foreign keys alone) there is no request to count."""
     async with state.model_db.acquire() as _conn:
         conn = cast("Connection", _conn)
@@ -258,14 +287,18 @@ async def count(state: Any, spec: RunSpec, model: ChosenModel | None) -> dict[st
         facts = {t.table_id: t for t in await gather.registered_facts(state, conn, sorted(ids))}
     source = [facts[i] for i in source_ids]
     target = None if target_ids is None else [facts[i] for i in target_ids]
-    k, by_group = (
-        (0, {}) if model is None else bound(source, target, model.input_tokens, model.output_tokens)
+    k, calls, pairs = (
+        (0, 0, 0)
+        if model is None
+        else bound(source, target, model.input_tokens, model.output_tokens, spec.samples_per_column)
     )
     return {
-        "requests": sum(by_group.values()),
+        "requests": calls,
         "requests_are": UPPER_BOUND,
-        "by_group": by_group,
-        "suggestions_per_request": k,
+        # REQ-413 (amended 2026-11-18): calls list table pairs, not type groups.
+        "by_group": {},
+        "table_pairs": pairs,
+        "table_pairs_per_request": k,
         "model": None if model is None else model.describe(),
         **sizes(source, target),
     }
@@ -350,7 +383,10 @@ def _semantics_report(tally: Tally, outcome: Outcome) -> dict[str, Any]:
         empty = "unreadable"
     elif tally.proposed == 0:
         empty = "none_proposed"
-    elif tally.below_threshold and tally.below_threshold + tally.invalid == tally.proposed:
+    elif (
+        tally.below_threshold
+        and tally.below_threshold + tally.invalid == tally.proposed + tally.zero_scored
+    ):
         empty = BELOW_THRESHOLD
     else:
         empty = "filtered"
@@ -382,10 +418,11 @@ def _key_values(
     if spec.key_values is None:
         return None
     measurer = Measurer(
-        gather.values_reader(state, spec.role),
+        governed_reader(state, spec.role),
         tables,
         decided=known.existing | known.rejected,
         bound=spec.key_values.sample_size,
+        scoring=spec.key_values.scoring,
     )
     return KeyValues(measurer.all, spec.key_values.cutoff)
 
@@ -483,17 +520,21 @@ async def perform(
             out["semantics"] = _semantics_report(tally, outcome)
         if spec.key_values is not None:
             # REQ-413 (amended 2026-11-16): the run's summary states Key value overlap's settings.
-            out["key_values"] = {
-                "cutoff": spec.key_values.cutoff,
-                "sample_size": spec.key_values.sample_size,
-            }
+            out["key_values"] = spec.key_values.as_dict()
         if model is not None:
             out["model"] = model.describe()
         return out
 
     outcome = await settled([], [])
     latest = report(
-        Tally(total=len(prepared.requests), threshold=spec.threshold) if model else None, outcome
+        Tally(
+            total=len(prepared.plan.calls),
+            threshold=spec.threshold,
+            table_pairs=prepared.plan.table_pairs,
+        )
+        if prepared.plan is not None
+        else None,
+        outcome,
     )
     await progress(latest)
     if model is None:
@@ -517,9 +558,9 @@ async def perform(
             asyncio.to_thread(call, *args), lambda: progress(latest)
         )
 
+    assert prepared.plan is not None
     tally, proposals = await execute(
-        prepared.requests,
-        prepared.k,
+        prepared.plan,
         model.output_tokens,
         ask,
         _Control(),

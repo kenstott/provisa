@@ -627,6 +627,7 @@ class RegisteredTableType:  # REQ-013, REQ-014, REQ-016, REQ-135
         row = {
             "id": self.id,
             "source_id": self.source_id,
+            "schema_name": self.schema_name,
             "table_name": self.table_name,
             "view_sql": self.view_sql,
         }
@@ -1574,6 +1575,26 @@ class RelationshipInput:  # REQ-019, REQ-020, REQ-158, REQ-413
     # each lost tag confirmed, or carried to the term the column moves to.
     confirm_tag_loss: list[str] = strawberry.field(default_factory=list)
     carry_tags: bool = False
+
+
+@strawberry.type
+class JoinThroughType:  # REQ-1586
+    """What joining two relationships through the table they share makes: one junction-backed
+    relationship from ``source_table`` to ``target_table`` through ``via_table``, many-to-many,
+    named ``name`` (told apart as generated names are, REQ-415). ``shape``: ``junction`` (the two
+    refer from the middle table) or ``shared_dimension`` (the two refer to it). ``attributes``:
+    the middle table's columns that are no key of the join."""
+
+    shape: str
+    name: str
+    source_table: str
+    source_column: str
+    target_table: str
+    target_column: str
+    via_table: str
+    via_source_column: str
+    via_target_column: str
+    attributes: list[str]
 
 
 @strawberry.input

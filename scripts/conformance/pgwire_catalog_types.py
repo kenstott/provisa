@@ -185,11 +185,24 @@ class Server:
             finally:
                 self.conn = psycopg.connect(self.dsn, autocommit=True)
 
-    def run(self, sql: str, result_format: int = 0) -> dict[str, Any]:
-        """One statement over the extended protocol: its fields, first row, or its error."""
+    def run(
+        self,
+        sql: str,
+        result_format: int = 0,
+        params: list[tuple[int, bytes | None, int]] | None = None,
+    ) -> dict[str, Any]:
+        """One statement over the extended protocol: its fields, first row, or its error.
+        ``params`` are its bind parameters, each (type OID, value, format code)."""
+        params = params or []
         try:
             self._ensure()
-            res = self.conn.pgconn.exec_params(sql.encode(), [], result_format=result_format)
+            res = self.conn.pgconn.exec_params(
+                sql.encode(),
+                [value for _, value, _ in params],
+                param_types=[oid for oid, _, _ in params],
+                param_formats=[fmt for _, _, fmt in params],
+                result_format=result_format,
+            )
         except psycopg.Error as exc:
             return {"ok": False, "error": f"connection: {exc}".strip()}
         if res.status not in (pq.ExecStatus.TUPLES_OK, pq.ExecStatus.COMMAND_OK):
@@ -448,13 +461,15 @@ def provisa_config(pg_port: int, pg_dsn: str) -> dict[str, Any]:
 
 
 _ACCESS_FIELDS = {"domains", "roles", "assignments"}
+#: Fields a job may add beside them: the SPARQL job's glossary terms, the predicates of its datasets.
+_ACCESS_OPTIONAL = {"glossary_terms"}
 
 
 def _access(path: Path) -> dict:
     import yaml
 
     access = yaml.safe_load(path.read_text())
-    if set(access) != _ACCESS_FIELDS:
+    if set(access) - _ACCESS_OPTIONAL != _ACCESS_FIELDS:
         raise SystemExit(
             f"{path}: has {sorted(access)}, where a job's access is {sorted(_ACCESS_FIELDS)}"
         )
@@ -488,7 +503,8 @@ def write_config(
     registered beside ``types_fixture``, the relationships between them (``extra_relationships``,
     a YAML list of model relationship entries, e.g. scripts/conformance/bolt/fixtures.py), and the
     domains and roles its users act by (``extra_access``, a YAML mapping of ``domains``, ``roles``
-    and ``assignments``, e.g. scripts/conformance/bolt/fixtures.py). The assignments are not the
+    and ``assignments``, e.g. scripts/conformance/bolt/fixtures.py, and optionally ``glossary_terms``,
+    e.g. scripts/conformance/sparql_w3c_fixtures.py). The assignments are not the
     model's: each user is given its own once created (job_assignments)."""
     import yaml
 
@@ -501,6 +517,8 @@ def write_config(
         access = _access(extra_access)
         config["domains"].extend(access["domains"])
         config["roles"].extend(access["roles"])
+        if access.get("glossary_terms"):
+            config["glossary_terms"] = access["glossary_terms"]
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(yaml.safe_dump(config, sort_keys=False))
     print(f"wrote {path}")

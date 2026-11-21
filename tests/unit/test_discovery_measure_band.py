@@ -27,18 +27,22 @@ from typing import Any
 
 from provisa.discovery import gather, measure, proposals
 from provisa.discovery.columns import UNKNOWN, ColumnFacts, TableFacts, type_groups
-from provisa.discovery.context import KEY_SCORE
+from provisa.discovery.context import CONTAINED_AT, KEY_SCORE, SHARED_CEILING, Scoring
 from provisa.discovery.direction import Proposal, from_answer
-from provisa.discovery.measure import Measurer, Values
+from provisa.discovery.measure import Measurer
 from provisa.discovery.proposals import BELOW_THRESHOLD, NOT_COMPARABLE
 from provisa.discovery.runner import KeyValues, Tally, execute, judged
 from provisa.discovery.windows import plan
+from tests.unit.discovery_answers import from_ids
+from tests.unit.discovery_engine_reader import EngineReader
 from provisa.llm.client import Completion
 from provisa.llm.limits import DEFAULT_LIMITS
 
 CUTOFF = 0.2
 #: The run's threshold: the tick threshold of the person who started it.
 THRESHOLD = 0.7
+#: The measured score's settings at their defaults.
+DEFAULT_SCORING = Scoring(CONTAINED_AT, SHARED_CEILING)
 
 
 def _semantic(src: tuple[int, str], tgt: tuple[int, str], confidence: float) -> Proposal:
@@ -215,6 +219,10 @@ async def _direct(fn, *args):
     return fn(*args)
 
 
+#: The tables of the runs below, by id.
+_NAMES = {1: "orders", 2: "customers"}
+
+
 def _item(src: str, confidence: float) -> dict:
     return {
         "source_table_id": 1,
@@ -228,19 +236,20 @@ def _item(src: str, confidence: float) -> dict:
 
 
 async def test_a_run_asks_the_model_then_jev_then_measures_only_the_band():
-    orders = _tbl(1, "orders", _col("id", pk=True), _col("customer_id"), _col("store_id"))
+    # orders' key is named apart from customers.id: a same-name pair is measured whatever the
+    # model answers (REQ-413, amended 2026-11-20), and the band is what is under test.
+    orders = _tbl(1, "orders", _col("order_id", pk=True), _col("customer_id"), _col("store_id"))
     customers = _tbl(2, "customers", _col("id", pk=True))
-    k, requests = plan([orders], [customers], *DEFAULT_LIMITS)
+    planned = plan([orders], [customers], *DEFAULT_LIMITS)
     events: list[tuple[str, list]] = []
 
     def ask(prompt: str, max_tokens: int) -> Completion:
         events.append(("model", []))
         answer = [_item("customer_id", 0.9), _item("store_id", 0.4)]
-        return Completion(json.dumps(answer), "acme", "m", None, False)
+        return Completion(from_ids(prompt, json.dumps(answer), _NAMES), "acme", "m", None, False)
 
     tally, found = await execute(
-        requests,
-        k,
+        planned,
         4_096,
         ask,
         _Watcher(),
@@ -303,20 +312,21 @@ async def test_the_runs_threshold_is_the_one_its_summary_reports():
 
 
 async def test_a_run_tells_the_model_its_threshold_and_judges_against_it():
-    orders = _tbl(1, "orders", _col("id", pk=True), _col("customer_id"), _col("store_id"))
+    # orders' key is named apart from customers.id: a same-name pair is measured whatever the
+    # model answers (REQ-413, amended 2026-11-20), and the band is what is under test.
+    orders = _tbl(1, "orders", _col("order_id", pk=True), _col("customer_id"), _col("store_id"))
     customers = _tbl(2, "customers", _col("id", pk=True))
-    k, requests = plan([orders], [customers], *DEFAULT_LIMITS)
+    planned = plan([orders], [customers], *DEFAULT_LIMITS)
     events: list[tuple[str, list]] = []
     prompts: list[str] = []
 
     def ask(prompt: str, max_tokens: int) -> Completion:
         prompts.append(prompt)
         answer = [_item("customer_id", 0.6), _item("store_id", 0.85)]
-        return Completion(json.dumps(answer), "acme", "m", None, False)
+        return Completion(from_ids(prompt, json.dumps(answer), _NAMES), "acme", "m", None, False)
 
     tally, found = await execute(
-        requests,
-        k,
+        planned,
         4_096,
         ask,
         _Watcher(),
@@ -335,28 +345,18 @@ async def test_a_run_tells_the_model_its_threshold_and_judges_against_it():
 # --- the sample size reaches the measurer ----------------------------------------------------------
 
 
-class _Reader:
-    def __init__(self, data: dict[str, list[Any]]):
-        self.data = data
-        self.bounds: list[int] = []
-
-    async def values(self, table: TableFacts, column: str, bound: int) -> Values:
-        self.bounds.append(bound)
-        held = self.data[column]
-        return Values(read=tuple(held[:bound]), more=len(held) > bound, distinct=True)
-
-    async def found(self, table: TableFacts, column: str, among: Values) -> frozenset[Any]:
-        return frozenset(among.keys & set(self.data[column]))
-
-
-async def test_the_sample_size_is_the_most_distinct_values_read_of_each_column():
+async def test_the_sample_size_is_the_most_non_null_values_read_of_each_column():
     tables = {1: _tbl(1, "a", _col("x")), 2: _tbl(2, "b", _col("y"))}
-    reader = _Reader({"x": list(range(100)), "y": list(range(200))})
-    measurer = Measurer(reader, tables, decided=frozenset(), bound=40)
+    reader = EngineReader(
+        {("a", "x"): list(range(100)), ("b", "y"): list(range(200))}, sql_type="BIGINT"
+    )
+    measurer = Measurer(reader, tables, decided=frozenset(), bound=40, scoring=DEFAULT_SCORING)
     got = await measurer.measured(_semantic((1, "x"), (2, "y"), 0.5))
-    assert reader.bounds == [40, 40]
+    [(_, sql)] = reader.queries
+    assert sql.count("IS NOT NULL LIMIT 40)") == 2
     assert got.measure is not None and got.measure.bound == 40
     assert got.measure.source.values == 40 and got.measure.source.more is True
+    assert got.measure.target.values == 40 and got.measure.target.more is True
 
 
 async def test_the_values_reader_reads_at_most_the_sample_size(monkeypatch):

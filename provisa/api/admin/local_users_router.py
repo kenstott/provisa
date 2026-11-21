@@ -22,6 +22,7 @@ from fastapi import APIRouter, Request
 from pydantic import BaseModel
 from sqlalchemy import delete as _delete, func, insert, select, update
 
+from provisa.api.admin._guards import require_active_org_id
 from provisa.api.admin._platform_guard import require_held_roles_removable, require_roles_removable
 from provisa.api.admin.capabilities import require_capability_request
 from provisa.api.errors import ApiError
@@ -50,6 +51,27 @@ class AssignmentBody(BaseModel):
     domain_id: str
     # REQ-2077: a time-limited grant is held until this instant; None is held until removed.
     expires_at: datetime | None = None
+
+
+class EntitlementListBody(BaseModel):
+    """One entitlement list of a grant given in :class:`AccessBody`: what ``role_id`` reaches of
+    ``kind`` (REQ-2219)."""
+
+    role_id: str
+    kind: str
+    identifiers: list[str]
+
+
+class AccessBody(BaseModel):
+    """A member's access in this environment, given in one save (REQ-2155): several roles, each
+    over ``domain_id`` until ``expires_at``, and entitlement lists of those grants, with the
+    reason every list write records."""
+
+    role_ids: list[str]
+    domain_id: str
+    expires_at: datetime | None = None
+    entitlements: list[EntitlementListBody] = []
+    reason: str = ""
 
 
 class UpdateUserBody(BaseModel):
@@ -318,6 +340,9 @@ async def delete_user(user_id: str, request: Request):  # REQ-1302, REQ-1305, RE
                 f"{refused}. Grant platform_admin to another user first.",
                 user=user_id,
             ) from refused
+        from provisa.api.effective_rows import record_removed_account
+
+        await record_removed_account(removed)
         return {"scope": "account", **removed}
 
     org_id = getattr(request.state, "active_org_id", None)
@@ -338,7 +363,12 @@ async def delete_user(user_id: str, request: Request):  # REQ-1302, REQ-1305, RE
             user=user_id,
             orgs=org_id,
         ) from exc
-    if not await remove_from_org(admin_db, model_db, user_id, org_id):
+    removed = await remove_from_org(admin_db, model_db, user_id, org_id)
+    from provisa.api.effective_rows import record_people
+
+    # REQ-2219: their role grants went with the removal, a membership row or not.
+    await record_people(org_id, [user_id])
+    if not removed:
         raise ApiError(404, "users.user_not_found", "User not found")
     await record_admin_action(
         model_db,
@@ -391,6 +421,15 @@ async def list_assignments(user_id: str, request: Request):
     return [dict(r._mapping) for r in rows]
 
 
+async def _record_effective(conn: Any, user_id: str) -> None:
+    """REQ-2219: a role granted or removed changes what the person holds; their effective rows
+    are recomputed."""
+    from provisa.api.app import state
+    from provisa.entitlements import effective_store
+
+    await effective_store.write_person(conn, state, user_id)
+
+
 @router.post("/{user_id}/assignments")
 async def add_assignment(user_id: str, body: AssignmentBody, request: Request):  # REQ-042
     _require_user_management(request)
@@ -402,6 +441,7 @@ async def add_assignment(user_id: str, body: AssignmentBody, request: Request): 
         # Idempotent assignment, then read the row back. REQ-2077: a grant given again keeps the
         # latest of its expiries, and no expiry is later than any date.
         await regrant(conn, user_id, body.role_id, body.domain_id, body.expires_at)
+        await _record_effective(conn, user_id)
         result = await conn.execute_core(
             select(t.c.id, t.c.role_id, t.c.domain_id, t.c.expires_at).where(
                 t.c.user_id == user_id,
@@ -415,6 +455,84 @@ async def add_assignment(user_id: str, body: AssignmentBody, request: Request): 
         if row
         else {"user_id": user_id, "role_id": body.role_id, "domain_id": body.domain_id}
     )
+
+
+@router.post("/{user_id}/access")
+async def grant_access(user_id: str, body: AccessBody, request: Request):  # REQ-2155, REQ-2219
+    """Grant a member several roles and their entitlement lists in one save, in one transaction:
+    every role is granted (as :func:`add_assignment` grants one) and every list set (as
+    ``PUT /admin/entitlements/lists`` sets one), or none is. Granting roles needs
+    ``user_management``; setting lists needs ``assign_entitlements`` over each list's role and a
+    reason. A list belongs to a grant the save makes."""
+    from provisa.api.admin import entitlements_router as ent
+    from provisa.api.app import state
+    from provisa.core.org_membership import record_admin_action
+    from provisa.entitlements import store
+
+    _require_user_management(request)
+    _reject_self_role_change(request, user_id)  # REQ-1308
+    role_ids = list(dict.fromkeys(r.strip() for r in body.role_ids if r.strip()))
+    if not role_ids:
+        raise ApiError(422, "users.roles_required", "Choose at least one role")
+    _refuse_platform_role(request, role_ids)
+    for entry in body.entitlements:
+        if entry.role_id not in role_ids:
+            raise ApiError(
+                422,
+                "users.entitlement_role_not_granted",
+                f"An entitlement list of {entry.role_id!r} needs that role granted in the same save",
+                role_id=entry.role_id,
+            )
+        ent._require_grant_write(request, state, entry.role_id, body.reason)
+        ent._require_list_write(state, user_id, entry.role_id, entry.kind)
+        ent._check_list_expiry(state, entry.role_id, entry.kind, entry.identifiers, None)
+    actor = ent._caller(request) or ent._ANONYMOUS
+    pool = _pool(request)
+    t = user_role_assignments
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            for role_id in role_ids:
+                # REQ-2077: a grant given again keeps the latest of its expiries.
+                await regrant(conn, user_id, role_id, body.domain_id, body.expires_at)
+            for entry in body.entitlements:
+                await store.write_list(
+                    conn,
+                    user_id,
+                    entry.role_id,
+                    entry.kind,
+                    entry.identifiers,
+                    expires_at=None,
+                    set_by=actor,
+                    reason=body.reason,
+                )
+        if body.entitlements:
+            # This worker now; the write advances the org's config stamp, which reloads the others.
+            await ent._reload_held(conn, state, user_id)
+        else:
+            await _record_effective(conn, user_id)
+        result = await conn.execute_core(
+            select(t.c.id, t.c.role_id, t.c.domain_id, t.c.expires_at)
+            .where(
+                t.c.user_id == user_id,
+                t.c.role_id.in_(role_ids),
+                t.c.domain_id == body.domain_id,
+            )
+            .order_by(t.c.role_id)
+        )
+        rows = [dict(r._mapping) for r in result.fetchall()]
+    if body.entitlements:
+        await record_admin_action(
+            pool,
+            org_id=require_active_org_id(request),
+            action="entitlements.set",
+            actor_id=actor,
+            subject_id=user_id,
+            detail={
+                "lists": [entry.model_dump() for entry in body.entitlements],
+                "reason": body.reason,
+            },
+        )
+    return {"assignments": rows}
 
 
 @router.delete("/{user_id}/assignments/{assignment_id}")
@@ -434,6 +552,8 @@ async def remove_assignment(user_id: str, assignment_id: int, request: Request):
             _delete(t).where(t.c.id == assignment_id, t.c.user_id == user_id).returning(t.c.id)
         )
         row = result.fetchone()
+        if row is not None:
+            await _record_effective(conn, user_id)
     if row is None:
         raise ApiError(404, "users.assignment_not_found", "Assignment not found")
     return {"deleted": row[0]}

@@ -62,7 +62,7 @@
       "kindLabel": "Soort",
       "kindPlaceholder": "Selecteer een soort",
       "entriesLabel": "Items",
-      "entriesHelp": "Waar deze persoon bij mag van wat de rol toestaat. Een gekozen domein of tabel zonder keuze eronder omvat alles daarin. Een lege lijst reikt tot niets van dit soort.",
+      "entriesHelp": "Wat deze persoon mag bereiken van wat de rol toestaat. Een domein of tabel die is gekozen zonder iets eronder geselecteerd, omvat alles daarin. Een lege lijst bereikt niets van dit soort.",
       "endsOnLabel": "Eindigt op",
       "endsOnHint": "Laat leeg om de lijst te houden tot die wordt beëindigd.",
       "reasonLabel": "Reden",

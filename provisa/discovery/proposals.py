@@ -12,23 +12,25 @@
 
 A run discards nothing: its rows hold every foreign key it found and every element of every
 answer, with the confidence and reasoning given. A proposal that is not among the run's
-suggestions carries why (:data:`REASONS`). The run's result lists them all in one table; a
-reviewer accepts those he ticks and marks those he does not want recommended again
-(:func:`apply`), and what he leaves alone stays undecided: nothing is recorded against it.
-One that names no two compared columns, or that repeats what is already there
-(:data:`ACCEPTABLE`), is listed with its reason and cannot be decided.
+suggestions carries why (:data:`REASONS`). The run's result lists them in one table, leaving out
+only a pair already registered and one marked not to be recommended again (:data:`NOT_LISTED`,
+amended 2026-11-18); a reviewer accepts those he ticks and marks those he does not want
+recommended again (:func:`apply`), and what he leaves alone stays undecided: nothing is recorded
+against it. One that names no two compared columns (:data:`ACCEPTABLE`) is listed with its reason
+and cannot be decided.
 """
 
-# Requirements: REQ-413
+# Requirements: REQ-413, REQ-1586
 
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import delete, insert, select, update
 
+from provisa.core.join_through import VIA_CARDINALITY, Hop, Through, existing, qualify
 from provisa.core.schema_org import discovery_run_proposals as rows_t
 from provisa.core.schema_org import relationship_candidates as candidates_t
 from provisa.discovery import candidates as candidates_repo
@@ -57,31 +59,19 @@ REASONS: tuple[str, ...] = (
     NOT_COMPARABLE,
     BELOW_THRESHOLD,
     "same_column",
-    "primary_key_to_primary_key",
-    "both_repeating",
     "existing",
-    "pending",
     "rejected",
-    "matches_foreign_key",
     "out_of_scope",
-    "weaker",
-    "many_to_many",
 )
+
+#: The reasons a proposal is not listed for (REQ-413, amended 2026-11-18): its pair is already
+#: registered, or marked not to be recommended again.
+NOT_LISTED: frozenset[str] = frozenset({"existing", "rejected"})
 
 #: The reasons a proposal left out for can still be decided by a reviewer. Not these: one that
 #: names no two compared columns; two columns that are not compared; a column to itself; one
-#: already registered; one already decided (rejected: a decided pair keeps its decision); one
-#: repeating a foreign key or a stronger proposal listed beside it.
-ACCEPTABLE: frozenset[str] = frozenset(
-    {
-        BELOW_THRESHOLD,
-        "primary_key_to_primary_key",
-        "both_repeating",
-        "pending",
-        "out_of_scope",
-        "many_to_many",
-    }
-)
+#: already registered; one already decided (rejected: a decided pair keeps its decision).
+ACCEPTABLE: frozenset[str] = frozenset({BELOW_THRESHOLD, "out_of_scope"})
 
 #: The reason a proposal marked not to be recommended again is rejected with.
 NOT_AGAIN = "Not to be recommended again"
@@ -91,15 +81,23 @@ NOT_AGAIN = "Not to be recommended again"
 class Recorded:
     """One proposal as a run read it. ``left_out`` None: it is among the run's suggestions.
     ``proposal`` None: the element named no two compared columns, and ``answer`` is the element
-    as the model wrote it. A second scorer's confidence is the proposal's ``scored``."""
+    as the model wrote it. A second scorer's confidence is the proposal's ``scored``. ``through``
+    set: the suggestion joins two ends through a junction (:func:`junctions`)."""
 
     kind: Kind
     left_out: str | None
     proposal: Proposal | None = None
     answer: str | None = None
+    #: A junction suggestion (REQ-1586): the relationship two of the run's suggestions make
+    #: through the table both refer from, as confident as the less confident leg. ``proposal``
+    #: is then None.
+    through: Through | None = None
+    confidence: float | None = None
 
 
 def _values(run_id: int, r: Recorded) -> dict[str, Any]:
+    if r.through is not None:
+        return _junction_values(run_id, r)
     p = r.proposal
     return {
         "run_id": run_id,
@@ -117,17 +115,102 @@ def _values(run_id: int, r: Recorded) -> dict[str, Any]:
         "suggested_name": None if p is None else (p.suggested_name or None),
         "left_out": r.left_out,
         "answer": r.answer,
+        "via_table_id": None,
+        "via_source_column": None,
+        "via_target_column": None,
     }
+
+
+def _junction_values(run_id: int, r: Recorded) -> dict[str, Any]:
+    t = r.through
+    assert t is not None
+    return {
+        "run_id": run_id,
+        "kind": r.kind,
+        "source_table_id": t.source_table_id,
+        "source_column": t.source_column,
+        "target_table_id": t.target_table_id,
+        "target_column": t.target_column,
+        "confidence": r.confidence,
+        "scored": None,
+        "score": None,
+        "cardinality": VIA_CARDINALITY,
+        "measure": None,
+        "reasoning": None,
+        "suggested_name": None,
+        "left_out": r.left_out,
+        "answer": None,
+        "via_table_id": t.via_table_id,
+        "via_source_column": t.via_source_column,
+        "via_target_column": t.via_target_column,
+    }
+
+
+def _hop(p: Proposal) -> Hop:
+    return Hop(
+        rel_id="",
+        source_table_id=p.start[0],
+        source_column=p.start[1],
+        target_table_id=p.end[0],
+        target_column=p.end[1],
+        cardinality=p.cardinality,
+    )
+
+
+#: The proposals a junction's legs are: the run's suggestions, and those left out only because
+#: they are suggested by an earlier run or registered already. The junction is found either way.
+_LEGS: frozenset[str | None] = frozenset({None, "pending", "existing"})
+
+
+def junctions(read: list[Recorded]) -> list[Recorded]:
+    """Each relationship two of the run's suggestions make through a junction both refer from
+    (REQ-1586): J.a -> A and J.b -> B make A -> J -> B, proposed as one suggestion beside its two
+    legs. A shared dimension is proposed as a many-to-many pair instead (REQ-413)."""
+    legs = [r for r in read if r.left_out in _LEGS and r.proposal is not None]
+    out: list[Recorded] = []
+    for i, first in enumerate(legs):
+        for second in legs[i + 1 :]:
+            assert first.proposal is not None and second.proposal is not None
+            through = qualify(_hop(first.proposal), _hop(second.proposal))
+            if through is not None and through.shape == "junction":
+                confidence = min(first.proposal.rank, second.proposal.rank)
+                out.append(Recorded(first.kind, None, through=through, confidence=confidence))
+    return out
+
+
+async def _junction_left_out(conn: "Connection", through: Through) -> str | None:
+    """Why a junction suggestion is left out: its two ends are joined through the junction already,
+    or its pair was accepted or marked not to be recommended again."""
+    if await existing(conn, through) is not None:
+        return "existing"
+    rc = candidates_t
+    held = (
+        await conn.execute_core(
+            select(rc.c.status).where(
+                rc.c.source_table_id == through.source_table_id,
+                rc.c.source_column == through.source_column,
+                rc.c.target_table_id == through.target_table_id,
+                rc.c.target_column == through.target_column,
+            )
+        )
+    ).scalar_one_or_none()
+    return "rejected" if held == "rejected" else "existing" if held == "accepted" else None
 
 
 async def record(conn: "Connection", run_id: int, read: list[Recorded]) -> None:
     """The run's rows made equal to ``read``: every proposal it has read so far. A row a reviewer
-    decided is kept as it is."""
+    decided is kept as it is. A junction both of whose legs are among its suggestions is proposed
+    as one suggestion besides (:func:`junctions`)."""
+    joined = [
+        replace(j, left_out=await _junction_left_out(conn, j.through))
+        for j in junctions(read)
+        if j.through is not None
+    ]
     async with conn.transaction():
         await conn.execute_core(
             delete(rows_t).where(rows_t.c.run_id == run_id, rows_t.c.decision.is_(None))
         )
-        await conn.execute_core_many(insert(rows_t), [_values(run_id, r) for r in read])
+        await conn.execute_core_many(insert(rows_t), [_values(run_id, r) for r in (*read, *joined)])
 
 
 def decidable(left_out: str | None) -> bool:
@@ -190,19 +273,32 @@ def _view(row: Any, never_read: set[int], shared: Shared | None) -> dict[str, An
         "dimension": None
         if shared is None or shared.name is None
         else {"name": shared.name, "reused": shared.reused},
+        # REQ-1586: a junction suggestion, the junction its two ends are joined through.
+        "via": None
+        if row.via_table_id is None
+        else {
+            "table_id": int(row.via_table_id),
+            "source_column": row.via_source_column,
+            "target_column": row.via_target_column,
+        },
     }
 
 
 async def listed(conn: "Connection", state: Any, run_id: int) -> list[dict[str, Any]]:
-    """Every proposal of the run no reviewer has decided, the highest score first (the measure's,
-    else the model's), those with none last. A second scorer's score is shown beside it and does
-    not order (REQ-1789)."""
+    """Every proposal of the run no reviewer has decided, but those already registered or marked
+    not to be recommended again (:data:`NOT_LISTED`), the highest score first (the measure's, else
+    the model's), those with none last. A second scorer's score is shown beside it and does not
+    order (REQ-1789)."""
     from provisa.discovery.gather import tables_never_read
 
     found = (
         await conn.execute_core(
             select(rows_t)
-            .where(rows_t.c.run_id == run_id, rows_t.c.decision.is_(None))
+            .where(
+                rows_t.c.run_id == run_id,
+                rows_t.c.decision.is_(None),
+                rows_t.c.left_out.is_(None) | rows_t.c.left_out.notin_(sorted(NOT_LISTED)),
+            )
             .order_by(rows_t.c.id)
         )
     ).fetchall()
@@ -315,19 +411,40 @@ async def shared_pair(conn: "Connection", run_id: int, proposal_id: int) -> bool
     return cardinality == MANY_TO_MANY
 
 
-async def accepted_as_dimension(
-    conn: "Connection", run_id: int, proposal_id: int, dimension: str
-) -> None:
-    """Record a many-to-many proposal accepted as the shared dimension ``dimension``, which
-    accepting made or joined (:mod:`provisa.discovery.dimension`): its pair is accepted, so a
-    later run never reopens it, and the run's row is decided."""
+async def junction_of(conn: "Connection", run_id: int, proposal_id: int) -> Through | None:
+    """The relationship a junction suggestion of the run joins through its junction (REQ-1586);
+    None for any other proposal."""
+    row = (
+        await conn.execute_core(
+            select(rows_t).where(rows_t.c.id == proposal_id, rows_t.c.run_id == run_id)
+        )
+    ).fetchone()
+    if row is None or row.via_table_id is None:
+        return None
+    return Through(
+        shape="junction",
+        via_table_id=int(row.via_table_id),
+        source_table_id=int(row.source_table_id),
+        source_column=str(row.source_column),
+        target_table_id=int(row.target_table_id),
+        target_column=str(row.target_column),
+        via_source_column=str(row.via_source_column),
+        via_target_column=str(row.via_target_column),
+    )
+
+
+async def accepted_as(conn: "Connection", run_id: int, proposal_id: int, made: str) -> None:
+    """Record a proposal accepted as what accepting it made, ``made``: the shared dimension a
+    many-to-many pair made or joined (:mod:`provisa.discovery.dimension`), or the relationship a
+    junction suggestion made (REQ-1586). Its pair is accepted, so a later run never reopens it,
+    and the run's row is decided."""
     async with conn.transaction():
         candidate_id = await _candidate_of(conn, run_id, proposal_id)
         await candidates_repo.mark_accepted(conn, candidate_id)
         await conn.execute_core(
             update(rows_t)
             .where(rows_t.c.id == proposal_id)
-            .values(decision="accepted", accepted_as=dimension)
+            .values(decision="accepted", accepted_as=made)
         )
 
 

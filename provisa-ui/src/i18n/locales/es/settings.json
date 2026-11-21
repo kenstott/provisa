@@ -194,7 +194,7 @@
       },
       "hot_threshold": {
         "label": "Umbral de tabla activa",
-        "help": "Cuántas sentencias gobernadas debe recibir una tabla dentro de la ventana de tabla activa antes de replicarse, para que las lecturas posteriores vengan de su réplica."
+        "help": "Cuántas sentencias gobernadas debe recibir una tabla dentro de la ventana de tablas activas antes de replicarse, para que las lecturas posteriores procedan de su réplica."
       },
       "hot_interval": {
         "label": "Ventana de tabla activa",
@@ -247,8 +247,8 @@
         }
       },
       "role_grant_notice_days": {
-        "label": "Aviso antes de que termine una asignación de rol o sus entradas",
-        "help": "Cuántos días antes de que termine una asignación de rol, o una de sus entradas de derechos, o de que la asignación se elimine por falta de uso, se envía un correo a su titular y a los administradores de la organización."
+        "label": "Aviso antes de que termine una concesión de rol o sus entradas",
+        "help": "Cuántos días antes de que termine una concesión de rol, o una de sus entradas de derechos, o de que se retire la concesión por falta de uso, se envía un correo a su titular y a los administradores de la organización."
       }
     },
     "server": {
@@ -598,7 +598,7 @@
       },
       "principal": {
         "label": "Principal local de MCP",
-        "help": "El principal (id de usuario) en cuyo nombre actúan las llamadas MCP locales (stdio), junto al rol local; los derechos de esa persona acotan el rol. Mientras no esté definido, esas llamadas se rechazan. Protegido porque quien pueda iniciar el cliente local actúa con el acceso de esa persona."
+        "help": "El principal (id de usuario) en cuyo nombre actúan las llamadas MCP locales (stdio), junto al rol local; los derechos de esa persona restringen el rol. Hasta que se defina, esas llamadas se rechazan. Está protegido porque actúa con el acceso de esa persona para cualquiera que pueda iniciar el cliente local."
       },
       "tools": {
         "label": "Herramientas MCP listadas",
@@ -683,7 +683,7 @@
     "logs": {
       "allowed_roots": {
         "label": "Directorios desde los que se pueden leer archivos de registro",
-        "help": "Los directorios en los que pueden estar los archivos de un origen Logs, una vez seguidos sus enlaces; por defecto /var/log. Añada uno, como ~/Library/Logs, para leer en tablas los archivos propios del servidor que haya bajo él. Una organización sandbox y, en un servidor de muchas organizaciones, toda organización salvo la propia del despliegue no lee ningún archivo del servidor fuera de su propia carpeta salvo los que nombran los orígenes de su demo, diga lo que diga esto."
+        "help": "Los directorios en los que pueden estar los archivos de un origen Logs, una vez seguidos sus enlaces; por defecto /var/log. Añada uno, como ~/Library/Logs, para leer en tablas los archivos propios del servidor que hay debajo. Una organización sandbox, y en un servidor de muchas organizaciones todas menos la propia del despliegue, no lee ningún archivo propio del servidor fuera de su propia carpeta salvo los que nombran los orígenes de su demo, diga lo que diga esto."
       },
       "preview_lines": {
         "label": "Líneas leídas para hallar las columnas de un registro",
@@ -711,7 +711,7 @@
       },
       "download_roots": {
         "label": "Directorios desde los que se pueden descargar archivos de origen",
-        "help": "Los directorios desde los que se puede descargar el archivo de un origen CSV o Parquet por su ruta en este servidor, una vez seguidos sus enlaces; ninguno de forma predeterminada. Añada uno para que un steward pueda copiar un archivo que esté dentro a la carpeta de la organización. Una organización sandbox y, en un servidor de muchas organizaciones, toda organización salvo la propia del despliegue no copia ningún archivo del servidor fuera de su propia carpeta salvo los que nombran los orígenes de su demo, diga lo que diga esto."
+        "help": "Los directorios desde los que se puede descargar el archivo de un origen CSV o Parquet por su ruta en este servidor, una vez seguidos sus enlaces; ninguno por defecto. Añada uno para permitir que un steward copie un archivo que haya debajo en la carpeta de la organización. Una organización sandbox, y en un servidor de muchas organizaciones todas menos la propia del despliegue, no copia ningún archivo propio del servidor fuera de su propia carpeta salvo los que nombran los orígenes de su demo, diga lo que diga esto."
       }
     },
     "polly": {
@@ -814,7 +814,7 @@
     "graph": {
       "depth_limit": {
         "label": "Ruta de grafo más profunda",
-        "help": "El máximo de saltos que recorre una ruta de longitud variable de Cypher o una ruta de propiedades de SPARQL cuando la consulta no fija su propio límite. Un resultado cortado a esta profundidad lo indica."
+        "help": "El máximo de saltos que recorre una ruta de longitud variable de Cypher o una ruta de propiedades de SPARQL cuando la consulta no fija su propio límite. Una ruta de Cypher no repite ninguna relación y, si fuera más lejos, falla con un error explícito; un resultado de SPARQL cortado a esta profundidad indica que se cortó. Muy grande por defecto (1000)."
       },
       "union_limit": {
         "label": "Máximo de predicados que cubre un predicado variable",
@@ -837,6 +837,10 @@
       "health_poll_interval": {
         "label": "Intervalo de sondeo del estado del conector",
         "help": "Con qué frecuencia cada proceso de Provisa pregunta al host de un conector por su estado y muestra el resultado en la fuente. Un host reiniciado se detecta en el siguiente sondeo, que vuelve a ejecutar su función on-start."
+      },
+      "worker_idle_timeout": {
+        "label": "Tiempo de inactividad del worker de código",
+        "help": "Cuánto tiempo puede pasar sin uso el worker de una fuente de código, o el worker de preflight de una organización, antes de que Provisa termine su proceso. La siguiente llamada inicia uno nuevo."
       }
     },
     "config": {
@@ -885,6 +889,12 @@
       "max_sinks_per_principal": {
         "label": "Sinks de Kafka en ejecución por persona",
         "help": "Cuántos sinks de Kafka puede tener una persona en ejecución a la vez. Una solicitud para iniciar otro se rechaza hasta que se detenga uno de los suyos."
+      }
+    },
+    "sparql": {
+      "query_timeout": {
+        "label": "Tiempo de espera de consultas SPARQL",
+        "help": "Cuánto puede durar una consulta SPARQL antes de abandonarla: una vista previa, una búsqueda de clases de Wikidata y cada carga de la réplica de una tabla SPARQL. Un endpoint público puede detener una consulta antes por su propio límite (el de Wikidata es de 60 segundos)."
       }
     }
   }

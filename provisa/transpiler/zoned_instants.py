@@ -26,7 +26,7 @@ to_json of an instant on Trino is written here, where the statement says the val
 to timestamptz, as the compiler states a registered column's type, or the clock): PostgreSQL's
 text of it as a JSON string. Trino refuses a cast of an instant to JSON while it types the
 statement, which no branch can avoid, so an instant the statement does not say is one is refused by
-name there (execute_trino), and one it says is inside an array or a row is refused by name here,
+name there (trino_flight), and one it says is inside an array or a row is refused by name here,
 as is one json_agg or json_build_object reads: Trino's forms of them cast it to JSON too.
 ClickHouse has no form of to_json."""
 
@@ -441,6 +441,11 @@ def _refuse_json_of_said_instant(tree: exp.Expr) -> None:
             raise PostgresError("0A000", f"{name} of a timestamptz is not available on Trino")
 
 
+#: The meta key marking a form written here: the engine's SQL already, which a grid row may hold
+#: as it stands (polyfill.json_built.held).
+WRITTEN = f"{_MARKED}zoned_written"
+
+
 def written(sql: str, tree: exp.Expr | None, dialect: str) -> exp.Expr | None:
     """``tree`` (the parse of ``sql``, or None for it not yet parsed) with each read of an instant
     in the session's zone, on ``dialect``; ``tree`` as it was where nothing is to be written."""
@@ -455,6 +460,7 @@ def written(sql: str, tree: exp.Expr | None, dialect: str) -> exp.Expr | None:
     for node in reversed(list(nodes)):  # the deepest first: a form holds its value's form
         form = _form(node, engine, dialect)
         if form is not None:
+            form.meta[WRITTEN] = True
             node.replace(form)
             wrote = True
     for node in list(parsed.find_all(exp.Anonymous)):

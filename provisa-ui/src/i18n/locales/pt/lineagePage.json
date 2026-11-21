@@ -1,9 +1,9 @@
 {
   "lineagePage": {
     "title": "Linhagem de dados",
-    "intro": "Rastreie de onde vêm os dados. Cole uma consulta abaixo e o Provisa relaciona cada coluna do resultado, através das suas transformações e chamadas de comandos, com as colunas de origem — assim você responde «o que alimenta esta coluna?» antes de publicar uma visão ou um comando. Ou escolha <b>Linhagem completa</b> para ver a proveniência de todas as visões e conjuntos de dados registrados de uma só vez.",
+    "intro": "Cole uma consulta abaixo e o Provisa rastreia cada coluna do resultado através de suas transformações e chamadas de comando até as colunas de origem, para que você veja o que alimenta uma coluna antes de publicar uma exibição ou um comando. Ou escolha <b>Linhagem completa</b> para ver a procedência em todas as exibições e conjuntos de dados registrados.",
     "queryLabel": "Consulta a analisar",
-    "queryHelp": "Qualquer SELECT que leia suas tabelas, visões ou comandos registrados. Esta consulta é apenas analisada, nunca executada — nada é executado e nenhum dado é lido.",
+    "queryHelp": "Qualquer SELECT que leia suas tabelas, exibições ou comandos registrados. Ele é analisado e nunca executado, então nenhum dado é lido.",
     "copy": "Copiar consulta",
     "copied": "Copiado",
     "roleLabel": "Linhagem para o papel",
@@ -12,9 +12,9 @@
     "complete": "Linhagem completa",
     "error": "Erro de linhagem",
     "cyclesTitle": "Ciclos detectados",
-    "cycleFeedback": "(válido — atravessa um limite materializado)",
-    "cycleError": "(sem limite de materialização — provavelmente um erro de projeto)",
+    "cycleFeedback": "(válido: cruza um limite materializado)",
+    "cycleError": "(sem limite de materialização: provavelmente um erro de projeto)",
     "emptyTitle": "Nada a mostrar",
-    "emptyBody": "Nenhuma linhagem encontrada. A linhagem completa abrange suas visões registradas, e nenhuma foi definida ainda. Registre uma visão (Derivados → Exibições) ou analise uma consulta acima para ver sua linhagem."
+    "emptyBody": "Nenhuma linhagem encontrada. A linhagem completa abrange suas exibições registradas, e nenhuma está definida ainda. Registre uma exibição (Derivados → Exibições) ou analise uma consulta acima para ver sua linhagem."
   }
 }

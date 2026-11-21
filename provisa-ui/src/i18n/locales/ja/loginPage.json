@@ -6,7 +6,7 @@
     "signInTitle": "サインイン",
     "firstLoginHeading": "このデプロイメントをセットアップ",
     "firstLoginTitle": "これは最初のログインです",
-    "firstLoginBody": "このデプロイメントを管理する人はまだいません。最初にサインインした人が、組織・ユーザー・データソースを完全に管理できるプラットフォーム管理者になります。以下からサインイン方法を選択して権限を取得してください。",
+    "firstLoginBody": "このデプロイにはまだ管理者がいません。最初にサインインした人がプラットフォーム管理者となり、組織、ユーザー、データソースを完全に管理できます。管理者になるには、下でサインイン方法を選んでください。",
     "signInWithGoogle": "Googleでサインイン",
     "signInWithGithub": "GitHubでサインイン",
     "signInWithMicrosoft": "Microsoftでサインイン",
@@ -36,9 +36,9 @@
     "signInWithSso": "シングルサインオンでサインイン",
     "samlSignInFailed": "シングルサインオンが完了しませんでした。もう一度試すか、管理者にお問い合わせください。",
     "sandboxBuildingTitle": "サンドボックスを構築しています…",
-    "sandboxBuildingBody": "あなた専用のサンプルデータの非公開コピーを準備しています。数分かかることがあります。",
+    "sandboxBuildingBody": "サンプルデータのプライベートなコピーを準備しています。数分かかる場合があります。",
     "sandboxTryTitle": "Provisa を無料で試す",
-    "sandboxTryBody": "サンプルデータでプラットフォーム全体をお試しください。クレジットカードは不要です。サンドボックスは一時的なもので、ログアウトすると消えます。",
+    "sandboxTryBody": "サンプルデータでプラットフォーム全体を試せます。クレジットカードは不要です。サンドボックスは一時的なもので、ログアウトすると消えます。",
     "sandboxHeading": "Provisa を試す"
   }
 }

@@ -9,21 +9,21 @@
 // permission from the copyright holder.
 
 // REQ-2252: a relationship's links, one per surface that reads it, each opening that surface's
-// Explore editor with the relationship's query, run at once. Drawn as a data product's Access
-// section draws a table's links: the same icon buttons and tips. The relationship's detail panel
-// and the Access section both show it.
+// Explore editor with the relationship's query, run at once, and each named by its surface. In the
+// relationship's detail panel, where they stand under their own heading, each shows its surface's
+// name beside its glyph; in a data product's Access section they are drawn as a table's links are
+// there, an icon button whose tip names the surface.
 
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
-import { ActionIcon, Group, Text } from "@mantine/core";
-import { Braces, FileJson, Share2, Table as TableIcon, Waypoints } from "lucide-react";
+import { ActionIcon, Button, Group, Text } from "@mantine/core";
 import { Tip } from "../Tip";
+import { GLYPH } from "./queryGlyphs";
 import {
   relationshipQueryLinks,
   type QueryLink,
   type RelationshipQueryRef,
-  type RelationshipSurface,
   type RelationshipSurfaces,
 } from "./relationshipQueries";
 
@@ -54,13 +54,35 @@ export function QueryLinkIcon({
   );
 }
 
-const GLYPH: Record<RelationshipSurface, ReactNode> = {
-  cypher: <Share2 size={14} />,
-  sql: <TableIcon size={14} />,
-  sparql: <Waypoints size={14} />,
-  graphql: <Braces size={14} />,
-  jsonapi: <FileJson size={14} />,
-};
+/** One query link named by its surface: its glyph and the surface's name, with its tip. */
+function QueryLinkButton({
+  label,
+  text,
+  testId,
+  onClick,
+  glyph,
+}: {
+  label: string;
+  text: string;
+  testId: string;
+  onClick: () => void;
+  glyph: ReactNode;
+}) {
+  return (
+    <Tip text={label} named>
+      <Button
+        variant="subtle"
+        size="compact-xs"
+        leftSection={glyph}
+        aria-label={label}
+        data-testid={testId}
+        onClick={onClick}
+      >
+        {text}
+      </Button>
+    </Tip>
+  );
+}
 
 export function RelationshipQueryLinks({
   rel,
@@ -82,10 +104,11 @@ export function RelationshipQueryLinks({
   const links = relationshipQueryLinks(rel, surfaces);
   if (links.length === 0) return null;
   const open = (link: QueryLink) => navigate(link.to, { state: link.state });
+  const named = heading !== undefined;
   return (
     <Group
       gap={4}
-      wrap="nowrap"
+      wrap={named ? "wrap" : "nowrap"}
       mb={heading !== undefined ? "md" : 0}
       data-testid={`${testIdPrefix}-query-links`}
     >
@@ -94,16 +117,24 @@ export function RelationshipQueryLinks({
           {heading}
         </Text>
       )}
-      {links.map(({ surface, link }) => (
-        <QueryLinkIcon
-          key={surface}
-          label={t(`relationshipRow.queryLinks.${surface}`, { name })}
-          testId={`${testIdPrefix}-query-${surface}`}
-          onClick={() => open(link)}
-        >
-          {GLYPH[surface]}
-        </QueryLinkIcon>
-      ))}
+      {links.map(({ surface, link }) => {
+        const label = t(`relationshipRow.queryLinks.${surface}`, { name });
+        const testId = `${testIdPrefix}-query-${surface}`;
+        return named ? (
+          <QueryLinkButton
+            key={surface}
+            label={label}
+            text={t(`relationshipRow.queryLinks.surfaces.${surface}`)}
+            testId={testId}
+            onClick={() => open(link)}
+            glyph={GLYPH[surface]}
+          />
+        ) : (
+          <QueryLinkIcon key={surface} label={label} testId={testId} onClick={() => open(link)}>
+            {GLYPH[surface]}
+          </QueryLinkIcon>
+        );
+      })}
     </Group>
   );
 }

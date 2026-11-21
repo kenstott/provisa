@@ -576,8 +576,8 @@ async def test_the_source_list_reports_the_stored_auth_and_never_the_credential(
         app.state,
         "openapi_specs",
         {
-            "pay": {"spec_path": "brand:stripe", "spec": {}, "base_url": BASE},
-            "practice": {"spec_path": "x.json", "spec": {}, "base_url": BASE},
+            "pay": {"spec_path": "brand:stripe", "spec": {}, "base_url": BASE, "setup": {}},
+            "practice": {"spec_path": "x.json", "spec": {}, "base_url": BASE, "setup": {}},
         },
         raising=False,
     )

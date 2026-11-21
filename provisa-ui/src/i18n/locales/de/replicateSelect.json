@@ -8,7 +8,7 @@
     "never": "Live, wenn möglich",
     "always": "Immer",
     "hot": "Hot-{{threshold}}",
-    "neverWithLoadProtection": "„Live, wenn möglich“ lässt sich nicht mit Lastschutz kombinieren: Eine lastgeschützte Tabelle wird nie live gelesen.",
+    "neverWithLoadProtection": "„Live, wenn möglich“ lässt sich nicht mit Lastschutz kombinieren, weil eine lastgeschützte Tabelle nie live gelesen wird.",
     "scheduled": "Immer, Quelle nur nach Zeitplan gelesen",
     "helpScheduled": "Immer, Quelle nur nach Zeitplan gelesen: Lesezugriffe kommen immer aus dem Replikat, und eine Abfrage löst nie ein Lesen der Quelle aus; der Scheduler aktualisiert das Replikat im Nebenzeiten-Fenster, nach der Cache-TTL oder der Änderungsprüfung, und mindestens eines der drei ist erforderlich."
   }

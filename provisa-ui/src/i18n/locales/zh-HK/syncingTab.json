@@ -118,6 +118,7 @@
     "standingChoices": "固定選擇",
     "standingChoicesHelp": "每次執行按方向對每種差異的處理方式。保留待定或無固定選擇時，差異會留在此處由資料管理員處理。",
     "standingKind": "差異類型",
-    "compare": "與目錄比較"
+    "compare": "與目錄比較",
+    "title": "上下文同步"
   }
 }

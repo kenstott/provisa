@@ -6,6 +6,7 @@
 // found in the LICENSE file in the root directory of this source tree.
 
 import { test, expect } from "./coverage";
+import { openListRowDetail } from "./source-to-query-helpers";
 
 // REQ-962/1166/1169: an operator can create a snapshot-boundary calendar and bind it (with a grain)
 // to a materialized view from the Tables admin surface — the periodic-snapshot config round-trip.
@@ -31,8 +32,8 @@ test("create a calendar and configure an MV snapshot schedule", async ({ page })
 
   const openEdit = async () => {
     const row = page.locator("tr").filter({ hasText: "dim_pet" }).first();
-    await row.waitFor({ timeout: 15000 });
-    await row.click();
+    // REQ-2260: a reload reopens the detail left open; its row is clicked only while closed.
+    await openListRowDetail(row);
     const editBtn = page.getByTestId("table-read-view-edit").first();
     await editBtn.waitFor({ timeout: 15000 });
     await editBtn.click();

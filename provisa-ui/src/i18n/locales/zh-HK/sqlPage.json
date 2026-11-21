@@ -9,6 +9,6 @@
     "detachToSemantic": "分離為語意 SQL",
     "expansionTitle": "指標展開",
     "expansionLoading": "正在擷取展開結果...",
-    "expansionNoMetric": "此陳述式並未引用任何指標 — 沒有可展開的內容。"
+    "expansionNoMetric": "此陳述式沒有參照任何指標，因此沒有可展開的內容。"
   }
 }

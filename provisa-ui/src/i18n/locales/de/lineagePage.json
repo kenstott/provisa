@@ -1,9 +1,9 @@
 {
   "lineagePage": {
     "title": "Datenherkunft",
-    "intro": "Verfolgen Sie, woher Daten stammen. Fügen Sie unten eine Abfrage ein, und Provisa führt jede Ergebnisspalte über ihre Transformationen und Befehlsaufrufe auf die ursprünglichen Quellspalten zurück – so beantworten Sie „Was speist diese Spalte?“, bevor Sie eine Sicht oder einen Befehl veröffentlichen. Oder wählen Sie <b>Vollständige Herkunft</b>, um die Herkunft über alle registrierten Sichten und Datensätze hinweg zu sehen.",
+    "intro": "Fügen Sie unten eine Abfrage ein, und Provisa führt jede Ergebnisspalte über ihre Transformationen und Befehlsaufrufe auf die ursprünglichen Quellspalten zurück. So sehen Sie, was eine Spalte speist, bevor Sie eine Sicht oder einen Befehl veröffentlichen. Oder wählen Sie <b>Vollständige Lineage</b>, um die Herkunft über alle registrierten Sichten und Datasets zu sehen.",
     "queryLabel": "Zu analysierende Abfrage",
-    "queryHelp": "Jedes SELECT, das Ihre registrierten Tabellen, Sichten oder Befehle liest. Diese Abfrage wird nur analysiert, nie ausgeführt – nichts wird ausgeführt und keine Daten werden gelesen.",
+    "queryHelp": "Jedes SELECT, das Ihre registrierten Tabellen, Sichten oder Befehle liest. Es wird analysiert und nie ausgeführt, daher werden keine Daten gelesen.",
     "copy": "Abfrage kopieren",
     "copied": "Kopiert",
     "roleLabel": "Herkunft für Rolle",
@@ -12,9 +12,9 @@
     "complete": "Vollständige Herkunft",
     "error": "Herkunftsfehler",
     "cyclesTitle": "Zyklen erkannt",
-    "cycleFeedback": "(zulässig – überschreitet eine materialisierte Grenze)",
-    "cycleError": "(keine Materialisierungsgrenze – wahrscheinlich ein Entwurfsfehler)",
+    "cycleFeedback": "(zulässig: überschreitet eine Materialisierungsgrenze)",
+    "cycleError": "(keine Materialisierungsgrenze: wahrscheinlich ein Entwurfsfehler)",
     "emptyTitle": "Nichts anzuzeigen",
-    "emptyBody": "Es wurde keine Herkunft gefunden. Die vollständige Herkunft umfasst Ihre registrierten Sichten, und es ist noch keine definiert. Registrieren Sie eine Sicht (Abgeleitet → Sichten) oder analysieren Sie oben eine Abfrage, um deren Herkunft zu sehen."
+    "emptyBody": "Keine Lineage gefunden. Die vollständige Lineage umfasst Ihre registrierten Sichten, und bisher ist keine definiert. Registrieren Sie eine Sicht (Abgeleitet → Sichten) oder analysieren Sie oben eine Abfrage, um ihre Lineage zu sehen."
   }
 }

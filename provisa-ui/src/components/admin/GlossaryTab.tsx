@@ -79,7 +79,6 @@ import {
   generateGlossaryRelationships,
   fetchGlossaryFindings,
   listAttributablePeople,
-  listGlossaryTerms,
   restoreGlossaryTerm,
   type AttributablePerson,
   type GlossaryFinding,
@@ -109,10 +108,12 @@ import {
   readStoredBool,
   readStoredString,
   useGlossaryPanel,
+  useReadableTermIds,
   writeStored,
   writeStoredBool,
 } from "./useGlossaryPanel";
 import { assignableDomainIds } from "../../lib/internalDomains";
+import { termLabel, termOptions } from "./termLabel";
 
 export function GlossaryTab() {
   const { t } = useTranslation();
@@ -125,8 +126,9 @@ export function GlossaryTab() {
   // The page reopens as it was left: its view, search and filters are per-viewer preferences kept in
   // the browser. A deep link (?term=, ?search=) decides that visit instead, and is not saved over
   // them; only the reader's own changes are.
+  const [readableTermIds, readTerms] = useReadableTermIds(); // REQ-2260
   const { ontology, setOntology, selectedId, setSelectedId, editing, setEditing } =
-    useGlossaryPanel(canEdit);
+    useGlossaryPanel(canEdit, readableTermIds);
   // REQ-1592: the org's glossary owner. It is what admits a term to the enterprise scope ("*"),
   // so the option is offered only to a holder — the server refuses it to anyone else.
   const isOrgGlossaryOwner = useCapability("org_glossary_rw");
@@ -197,7 +199,7 @@ export function GlossaryTab() {
   const [findTermsOpen, setFindTermsOpen] = useState(false);
   // REQ-2115: the open term by name, once the glossary has answered for it, and whether the Find
   // terms dialog is open.
-  useScreenInputs("/admin/ontology", {
+  useScreenInputs("/context/ontology", {
     termName: detail?.id === selectedId ? (detail?.name ?? null) : null,
     findTerms: findTermsOpen,
   });
@@ -230,11 +232,11 @@ export function GlossaryTab() {
     setListLoading(true);
     try {
       // Every status is fetched: the Status filter narrows the list in the browser.
-      setTerms(await listGlossaryTerms(query, true, viewDomains && [...viewDomains]));
+      setTerms(await readTerms(query, viewDomains && [...viewDomains]));
     } finally {
       setListLoading(false);
     }
-  }, [query, viewDomains]);
+  }, [query, viewDomains, readTerms]);
 
   useEffect(() => {
     // Deferred so the loading flag is never set synchronously inside the effect body
@@ -427,11 +429,21 @@ export function GlossaryTab() {
     setBulkGeneratingDefinitions(true);
     setActionError("");
     try {
-      const { generated } = await generateAllGlossaryDefinitions();
+      const { generated, tables_without_samples } =
+        await generateAllGlossaryDefinitions(viewDomains);
       notifications.show({
         color: "green",
         message: t("glossaryTab.definitionsGenerated", { count: generated }),
       });
+      // REQ-1387: name the tables the drafts read no samples from; it stays until dismissed.
+      if (tables_without_samples.length > 0)
+        notifications.show({
+          color: "yellow",
+          autoClose: false,
+          message: t("glossaryTab.tablesWithoutSamples", {
+            tables: tables_without_samples.join(", "),
+          }),
+        });
       if (selectedId !== null) await loadDetail(selectedId);
       await refreshList();
     } catch (e) {
@@ -445,7 +457,7 @@ export function GlossaryTab() {
     setBulkGeneratingRelationships(true);
     setActionError("");
     try {
-      const { added, review: toResolve } = await generateGlossaryRelationships();
+      const { added, review: toResolve } = await generateGlossaryRelationships(viewDomains);
       notifications.show({
         color: "green",
         message: t("glossaryTab.relationshipsGenerated", { count: added }),
@@ -500,9 +512,7 @@ export function GlossaryTab() {
       options.find((o) => o.value === relType)?.label ?? relType,
     [],
   );
-  const otherTermOptions = terms
-    .filter((term) => term.id !== detail?.id)
-    .map((term) => ({ value: String(term.id), label: term.name }));
+  const otherTermOptions = termOptions(terms.filter((term) => term.id !== detail?.id));
   const displayedTerms = terms.filter(
     (term) =>
       (statusFilter.length === 0 || statusFilter.includes(term.status)) &&
@@ -708,7 +718,7 @@ export function GlossaryTab() {
                     <NavLink
                       key={term.id}
                       active={term.id === selectedId}
-                      label={term.name}
+                      label={termLabel(term, terms)}
                       onClick={termDeleting ? undefined : () => setSelectedId(term.id)}
                       disabled={termDeleting}
                       data-deleting={termDeleting || undefined}
@@ -771,6 +781,7 @@ export function GlossaryTab() {
                         name={detail.name}
                         onDuplicate={() => openDuplicateTerm(detail)}
                         testId="glossary-duplicate-btn"
+                        labelled
                       />
                       {/* REQ-1387, REQ-2144: each status change is a person's act. A defined draft is
                         approved, its impact seen first; an approved term deprecated, with a

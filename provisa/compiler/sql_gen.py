@@ -57,6 +57,7 @@ from provisa.compiler.sql_rewrite import (
 from provisa.compiler.sql_where import (
     RelationshipConditions,
     join_exprs,
+    junction_hop,
     where_names_relationship,
     native_arg_conditions,
     native_args,
@@ -162,6 +163,9 @@ def _compile_root_field(  # REQ-009, REQ-011, REQ-032, REQ-033, REQ-034, REQ-035
             sources.add_table(join_meta.target)
 
             src_expr, tgt_expr = join_exprs(join_meta, root_alias, join_alias, ctx, table.table_id)
+            # REQ-1586: a junction-backed relationship reaches its rows through its junction.
+            hop = junction_hop(join_meta, root_alias, join_alias, use_catalog, sources)
+            joined = hop.joined if hop is not None else f"{tgt_expr} = {src_expr}"
             _below = _below_takes_lateral_args(sel, ctx, join_meta.target.type_name)
             _use_agg = (
                 not flat
@@ -192,6 +196,7 @@ def _compile_root_field(  # REQ-009, REQ-011, REQ-032, REQ-033, REQ-034, REQ-035
                             ctx, join_meta.target.type_name, use_catalog, sources
                         ),
                         ctx.aggregate_columns,
+                        hop,
                     )
                 )
                 if sel.selection_set:
@@ -213,7 +218,7 @@ def _compile_root_field(  # REQ-009, REQ-011, REQ-032, REQ-033, REQ-034, REQ-035
                         variables,
                         cardinality=join_meta.cardinality,
                         flat=flat,
-                        joined=f"{tgt_expr} = {src_expr}",
+                        joined=joined,
                     )
                     has_lateral_ops_joins |= _child_lateral
             elif _use_agg and sel.selection_set:
@@ -221,6 +226,9 @@ def _compile_root_field(  # REQ-009, REQ-011, REQ-032, REQ-033, REQ-034, REQ-035
                 _target_ref = travel_ref(_table_ref(join_meta.target, use_catalog), sel, variables)
                 _from_clause = f"{_target_ref} {_q(join_alias)}"
                 _where_expr = f"{tgt_expr} = {src_expr}"
+                if hop is not None:
+                    _from_clause = hop.from_clause(_from_clause)
+                    _where_expr = hop.to_source
                 _rel_key = sel.alias.value if sel.alias else sel_name
                 _pv = (
                     join_meta.child_src_val
@@ -259,11 +267,14 @@ def _compile_root_field(  # REQ-009, REQ-011, REQ-032, REQ-033, REQ-034, REQ-035
                     )
                 )
             else:
-                _join_on = f"{src_expr} = {tgt_expr}"
-                join_clauses.append(
-                    f"LEFT JOIN {travel_ref(_table_ref(join_meta.target, use_catalog), sel, variables)}"
+                _target_from = (
+                    f"{travel_ref(_table_ref(join_meta.target, use_catalog), sel, variables)}"
                     f" {_q(join_alias)}"
-                    f" ON {_join_on}"
+                )
+                join_clauses.append(
+                    f"LEFT JOIN {_target_from} ON {src_expr} = {tgt_expr}"
+                    if hop is None
+                    else hop.left_joins(_target_from)
                 )
                 if sel.selection_set:
                     alias_counter, _child_lateral = _collect_nested_columns(
@@ -284,7 +295,7 @@ def _compile_root_field(  # REQ-009, REQ-011, REQ-032, REQ-033, REQ-034, REQ-035
                         variables,
                         cardinality=join_meta.cardinality,
                         flat=flat,
-                        joined=f"{tgt_expr} = {src_expr}",
+                        joined=joined,
                     )
                     has_lateral_ops_joins |= _child_lateral
         else:

@@ -85,6 +85,7 @@ from typing import TYPE_CHECKING, Any
 
 import httpx
 
+from provisa.api.catalog_import.reader import CatalogReader, CatalogTerm
 from provisa.core.http_failure import describe_http_failure
 from provisa.api.metadata_export.provider import (
     AssetError,
@@ -860,6 +861,9 @@ def to_proposals(snapshot: MetadataSnapshot) -> list[AspectProposal]:
                 }
             )
         custom["provisaUri"] = table.semantic_uri  # REQ-1385: also the clickable externalUrl
+        if snapshot.environment is not None:  # REQ-2261: tells production assets from others
+            custom["provisaEnvironment"] = snapshot.environment.name
+            custom["provisaStage"] = snapshot.environment.stage
         properties: dict[str, Any] = {
             # REQ-1385: the presented name is the business name; qualifiedName is the binding.
             "name": table.aliases[0] if table.aliases else table.name,
@@ -965,7 +969,7 @@ def to_proposals(snapshot: MetadataSnapshot) -> list[AspectProposal]:
 
 
 @register_provider
-class DataHubExport(MetadataExport):  # REQ-1069
+class DataHubExport(MetadataExport, CatalogReader):  # REQ-1069
     """Publish a snapshot to DataHub as aspect proposals."""
 
     provider_name = "datahub"
@@ -1508,3 +1512,82 @@ class DataHubExport(MetadataExport):  # REQ-1069
         ) as client:
             response = await client.get(self._url(self.health_path), headers=self._headers())
         response.raise_for_status()
+
+    #: GMS's GraphQL endpoint and the terms read per scroll page (REQ-2247).
+    graphql_path = "/api/graphql"
+    glossary_page_size = 100
+
+    async def list_glossary(self) -> list[CatalogTerm]:  # REQ-2247
+        """Every glossary term, read by scrolling the search index to its last page. A term's
+        broader terms are its IsA (Inherits) terms, the relation the export writes KIND_OF as."""
+        terms: list[CatalogTerm] = []
+        scroll_id: str | None = None
+        async with httpx.AsyncClient(
+            timeout=self._config.timeout_seconds, event_hooks=sandbox_egress.endpoint_event_hooks()
+        ) as client:
+            while True:
+                scroll: dict[str, Any] = {
+                    "types": ["GLOSSARY_TERM"],
+                    "query": "*",
+                    "count": self.glossary_page_size,
+                }
+                if scroll_id is not None:
+                    scroll["scrollId"] = scroll_id
+                response = await client.post(
+                    self._url(self.graphql_path),
+                    json={"query": _GLOSSARY_QUERY, "variables": {"input": scroll}},
+                    headers=self._headers(),
+                )
+                response.raise_for_status()
+                body = response.json()
+                if body.get("errors"):
+                    raise RuntimeError(
+                        f"DataHub glossary listing failed: {body['errors'][0].get('message')}"
+                    )
+                page = body["data"]["scrollAcrossEntities"]
+                terms.extend(_catalog_term(r["entity"]) for r in page["searchResults"])
+                scroll_id = page.get("nextScrollId")
+                if not scroll_id:
+                    return terms
+
+
+#: The most IsA terms read for one glossary term; a term with more is refused, never truncated.
+_MAX_BROADER = 1000
+
+# REQ-2247: one scroll page of glossary terms with each one's IsA (Inherits) terms.
+_GLOSSARY_QUERY = (
+    "query provisaGlossary($input: ScrollAcrossEntitiesInput!) {"
+    " scrollAcrossEntities(input: $input) { nextScrollId searchResults { entity { urn"
+    " ... on GlossaryTerm { properties { name definition }"
+    f' isA: relationships(input: {{types: ["IsA"], direction: OUTGOING, start: 0,'
+    f" count: {_MAX_BROADER}}}) {{ total relationships {{ entity {{ urn"
+    " ... on GlossaryTerm { properties { name } } } } } } } } } }"
+)
+
+
+def _catalog_term(entity: dict[str, Any]) -> CatalogTerm:  # REQ-2247
+    """A glossary term as the listing returns it; one without its info aspect is refused."""
+    urn = entity["urn"]
+    props = entity.get("properties")
+    if props is None:
+        raise RuntimeError(f"DataHub glossary term {urn} has no glossaryTermInfo")
+    isa = entity["isA"]
+    if isa["total"] > len(isa["relationships"]):
+        raise RuntimeError(
+            f"DataHub glossary term {urn} has {isa['total']} IsA terms; at most {_MAX_BROADER} are read"
+        )
+    broader = []
+    for rel in isa["relationships"]:
+        parent = rel["entity"].get("properties")
+        if parent is None:
+            raise RuntimeError(
+                f"DataHub glossary term {urn} inherits from {rel['entity']['urn']}, "
+                "which has no glossaryTermInfo"
+            )
+        broader.append(parent["name"])
+    return CatalogTerm(
+        name=props["name"],
+        definition=(props.get("definition") or "").strip() or None,
+        broader=tuple(broader),
+        ref=urn,
+    )

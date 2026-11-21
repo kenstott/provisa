@@ -411,7 +411,7 @@ async def _entry_differences(org_id: str, entry: CatalogConnection) -> tuple[Any
     import httpx
 
     from provisa.api.admin import syncing_review
-    from provisa.api.metadata_export.provider import CatalogReadNotSupported
+    from provisa.api.catalog_import.reader import CatalogReader, CatalogReadNotSupported
     from provisa.api.metadata_export.publishing import entry_snapshot
     from provisa.api.metadata_export.sync_values import provisa_values
     from provisa.core.http_failure import describe_http_failure
@@ -430,7 +430,10 @@ async def _entry_differences(org_id: str, entry: CatalogConnection) -> tuple[Any
         )
     snapshot = await entry_snapshot(org_id, list(entry.domains), entry.role)
     try:
-        theirs = await metadata_export(entry.export_target()).read(snapshot)
+        adapter = metadata_export(entry.export_target())
+        if not isinstance(adapter, CatalogReader):
+            raise CatalogReadNotSupported(entry.provider)
+        theirs = await adapter.read(snapshot)
     except CatalogReadNotSupported as exc:
         raise ApiError(
             400, "syncing.read_not_supported", str(exc), provider=entry.provider

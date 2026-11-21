@@ -51,11 +51,24 @@
     "retireResolverConsequence": "Seine Treffer-Sicht und seine drei Beziehungen werden gemeinsam stillgelegt. Ihre Namen bleiben vergeben.",
     "queryLinks": {
       "heading": "Abfragen",
+      "tableMissing": "Abfrage-Links sind nicht verfügbar: Die Tabelle {{ids}}, die diese Beziehung nennt, gehört nicht zu den registrierten Tabellen.",
+      "tablesUnread": "Abfrage-Links sind nicht verfügbar: Die registrierten Tabellen konnten nicht gelesen werden ({{error}}).",
       "cypher": "{{name}} in Cypher lesen",
       "sql": "{{name}} in SQL lesen",
       "sparql": "{{name}} in SPARQL lesen",
       "graphql": "{{name}} in GraphQL lesen",
-      "jsonapi": "{{name}} in JSON:API lesen"
+      "rest": "{{name}} in REST lesen",
+      "grpc": "{{name}} in gRPC lesen",
+      "jsonapi": "{{name}} in JSON:API lesen",
+      "surfaces": {
+        "cypher": "Cypher",
+        "sql": "SQL",
+        "sparql": "SPARQL",
+        "graphql": "GraphQL",
+        "rest": "REST",
+        "grpc": "gRPC",
+        "jsonapi": "JSON:API"
+      }
     }
   }
 }

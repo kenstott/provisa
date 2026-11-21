@@ -57,7 +57,7 @@ import { DERIVED_SOURCE_ID } from "../types/admin";
 describe("ReportsTab", () => {
   it("links a report's term cells to the term", () => {
     render(<ReportsTab />);
-    expect(screen.getByTestId("viewer")).toHaveAttribute("data-href", "/admin/ontology?term=7");
+    expect(screen.getByTestId("viewer")).toHaveAttribute("data-href", "/context/ontology?term=7");
   });
 
   it("shows drift with the Ontology quality report", () => {

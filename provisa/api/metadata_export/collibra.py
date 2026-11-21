@@ -155,6 +155,11 @@ STEWARD_ATTRIBUTE = "Provisa Steward"
 # Provisa mentions its own assets. So the checks ride a Provisa-authored attribute instead, the
 # same choice governance and lineage make above, and the target maps them onto its rulebook.
 DATA_QUALITY_ATTRIBUTE = "Provisa Data Quality"
+# REQ-2261: the environment a table was published from and the stage it declares, so a catalog
+# can tell production assets from others. Custom attribute types like ``Provisa URI``; written
+# only when the snapshot names an environment.
+ENVIRONMENT_ATTRIBUTE = "Provisa Environment"
+STAGE_ATTRIBUTE = "Provisa Stage"
 
 # REQ-1387: Collibra's own glossary vocabulary. Business Term and the Glossary domain type are
 # out-of-the-box, as are the term-to-term relation types below — named as Collibra names them,
@@ -297,6 +302,9 @@ def to_rows(snapshot: MetadataSnapshot, community: str, domain: str) -> list[dic
         data_quality = _data_quality_value(snapshot, table.ref.fqn())  # REQ-1443
         if data_quality is not None:
             attributes[DATA_QUALITY_ATTRIBUTE] = [{"value": data_quality}]
+        if snapshot.environment is not None:  # REQ-2261
+            attributes[ENVIRONMENT_ATTRIBUTE] = [{"value": snapshot.environment.name}]
+            attributes[STAGE_ATTRIBUTE] = [{"value": snapshot.environment.stage}]
         edges = relationships_by_source.get(table.ref.fqn(), [])
         if edges:
             attributes[RELATIONSHIP_ATTRIBUTE] = [

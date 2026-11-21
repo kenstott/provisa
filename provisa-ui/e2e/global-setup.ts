@@ -10,7 +10,6 @@ import * as path from "path";
 import { fileURLToPath } from "url";
 
 import { LIVE_MODEL_YAML } from "./liveModel";
-import { startNeo4jContainer } from "./neo4j-container";
 import { startDemoSources } from "./demo-source-containers";
 import { resolveNeededSources } from "./resolve-needed-sources";
 import { warmViteModuleGraph } from "./warm-vite";
@@ -201,17 +200,12 @@ export default async function globalSetup() {
   // webServer (playwright.config.ts). There is no core backend to bootstrap, so this global setup
   // has nothing to do — and attempting the PUT /admin/config would fail with ECONNREFUSED.
   if (process.env.PROVISA_E2E_ONLY_REGIONS === "1") return;
-  // Start exactly the shared-stack containers (and, separately, the neo4j export container)
-  // this invocation's own spec-file/-g arguments actually need — see resolve-needed-sources.ts.
-  // PROVISA_E2E_SKIP_SHARED_SOURCES=1 forces both to empty regardless, for a case the resolver
+  // Start exactly the shared-stack containers this invocation's own spec-file/-g arguments
+  // actually need — see resolve-needed-sources.ts.
+  // PROVISA_E2E_SKIP_SHARED_SOURCES=1 forces it to empty regardless, for a case the resolver
   // can't see through (e.g. a custom testMatch pattern with no positional file arg).
   const forceSkip = process.env.PROVISA_E2E_SKIP_SHARED_SOURCES === "1";
-  const needed = forceSkip ? { sources: [], neo4jExport: false } : resolveNeededSources();
-  // Start the Neo4j export target now, before any browser exists — see neo4j-container.ts for why
-  // it cannot start mid-run. `docker run -d` returns immediately; the spec still waits for the
-  // engine to accept queries, and by then the container has had the whole bootstrap to boot.
-  // The trino lane does not carry neo4j-docker-export.spec.ts, so it starts nothing.
-  if (process.env.PROVISA_E2E_LANE !== "trino" && needed.neo4jExport) startNeo4jContainer();
+  const needed = forceSkip ? { sources: [] } : resolveNeededSources();
   // REQ-1671: the live sources source-to-query.spec.ts configures through the UI (core lane).
   if (process.env.PROVISA_E2E_LANE !== "trino" && needed.sources.length > 0) {
     startDemoSources(needed.sources);

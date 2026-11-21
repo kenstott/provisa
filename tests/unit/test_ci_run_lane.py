@@ -363,6 +363,111 @@ def test_no_lane_builds_provisa_functions_itself():
     assert "trino/plugins/provisa-functions/provisa-functions-1.jar" in stack
 
 
+def _zaychik_image_action() -> list[dict]:
+    import yaml
+
+    action = REPO / ".github" / "actions" / "zaychik-image" / "action.yml"
+    return yaml.safe_load(action.read_text())["runs"]["steps"]
+
+
+_ZAYCHIK_RESTORE = {"uses": "./.github/actions/zaychik-image", "with": {"phase": "restore"}}
+
+
+def test_the_zaychik_image_action_builds_once_and_every_lane_loads_it():
+    """Run 44379779451 (release 510, kafka lane): compose found no zaychik:latest and built it
+    inside the lane, and Maven's lookup of the `dependency:` prefix on Maven Central failed after
+    752 s. The priming phase builds the image once per change to zaychik/ and saves it; a lane's
+    restore must hit and loads it, so no lane runs Maven."""
+    by_name = {step["name"]: step for step in _zaychik_image_action()}
+    assert list(by_name) == [
+        "zaychik image phase",
+        "zaychik image key",
+        "Restore the zaychik image",
+        "Build the zaychik image",
+        "Cache the zaychik image",
+        "Load the zaychik image",
+    ]
+    # Computed once, before the build, from the whole build context.
+    key = by_name["zaychik image key"]
+    assert key["id"] == "zaychik-key"
+    assert key["env"]["KEY"] == "zaychik-image-${{ hashFiles('zaychik/**') }}"
+    assert key["run"] == 'echo "key=$KEY" >> "$GITHUB_OUTPUT"'
+    restored = by_name["Restore the zaychik image"]
+    assert restored["id"] == "zaychik-image"
+    assert restored["uses"] == "actions/cache/restore@v4"
+    assert restored["with"] == {
+        "path": "~/zaychik-image",
+        "key": "${{ steps.zaychik-key.outputs.key }}",
+        "fail-on-cache-miss": "${{ inputs.phase == 'restore' }}",
+    }
+    miss = "inputs.phase == 'prime' && steps.zaychik-image.outputs.cache-hit != 'true'"
+    built = by_name["Build the zaychik image"]
+    assert built["if"] == miss
+    # The build compose runs for the zaychik service: context ./zaychik, tag zaychik:latest.
+    assert "docker build -t zaychik:latest ./zaychik" in built["run"]
+    assert "docker save -o ~/zaychik-image/zaychik.tar zaychik:latest" in built["run"]
+    saved = by_name["Cache the zaychik image"]
+    assert saved["if"] == miss and saved["uses"] == "actions/cache/save@v4"
+    assert saved["with"] == {"path": "~/zaychik-image", "key": restored["with"]["key"]}
+    loaded = by_name["Load the zaychik image"]
+    assert loaded["if"] == "inputs.phase == 'restore'"
+    assert loaded["run"] == "docker load -i ~/zaychik-image/zaychik.tar"
+
+
+def test_the_compose_zaychik_service_is_the_image_the_action_builds():
+    import yaml
+
+    core = yaml.safe_load((REPO / "docker-compose.core.yml").read_text())
+    service = core["services"]["zaychik"]
+    assert (service["build"], service["image"]) == ("./zaychik", "zaychik:latest")
+
+
+def test_the_lanes_workflow_primes_the_zaychik_image_in_the_priming_job():
+    prime = _lanes_workflow()["jobs"]["trino-plugins"]
+    (step,) = [s for s in prime["steps"] if s.get("uses") == "./.github/actions/zaychik-image"]
+    assert step["with"] == {"phase": "prime"}
+
+
+@pytest.mark.parametrize(
+    "job", ["suite", "cluster", "warehouse", "salesforce", "athena", "servicenow"]
+)
+def test_every_collecting_job_loads_the_zaychik_image_before_its_lane(job):
+    steps = _suite_steps() if job == "suite" else _job_steps(job)
+    names = [step.get("name") for step in steps]
+    at = names.index("Restore the zaychik image")
+    assert {k: steps[at][k] for k in _ZAYCHIK_RESTORE} == _ZAYCHIK_RESTORE
+    assert at < names.index("Run lane")
+    if job == "suite":
+        assert _suite_job()["with"]["zaychik-image"] is True
+        assert steps[at]["if"] == "inputs.zaychik-image"
+        # After the lane's own image cache, whose zaychik:latest may be from an older zaychik/.
+        assert names.index("Load images") < at
+    else:
+        assert "trino-plugins" in _lanes_workflow()["jobs"][job]["needs"]
+
+
+def test_no_lane_builds_the_zaychik_image_itself():
+    workflow = (REPO / ".github" / "workflows" / "integration-suite-lanes.yml").read_text()
+    assert "build zaychik" not in workflow
+    assert "docker build" not in workflow
+
+
+def test_the_zaychik_build_names_its_maven_plugin_by_coordinates_on_a_pinned_maven():
+    """A plugin prefix is resolved from Maven Central's group metadata, and a failed read of it is
+    reported only as "No plugin found for prefix" (run 44379779451). The image's Maven release is
+    pinned, as the provisa-functions build's is."""
+    import re
+
+    dockerfile = (REPO / "zaychik" / "Dockerfile").read_text()
+    assert re.search(r"^FROM maven:\d+\.\d+\.\d+-eclipse-temurin-\d+ AS build$", dockerfile, re.M)
+    assert re.search(
+        r"^ARG DEPENDENCY_PLUGIN=org\.apache\.maven\.plugins:maven-dependency-plugin:\d+\.\d+\.\d+$",
+        dockerfile,
+        re.M,
+    )
+    assert not re.search(r"\bmvn\b[^\n]*\sdependency:", dockerfile)
+
+
 def test_the_plugin_cache_self_test_keys_cannot_stand_in_for_the_real_key():
     """Run 40005357162: the warehouse job's restore missed the real key and took the self-test's
     entry, whose key extended it; its stand-in jars went into Trino. The self-test's part goes
@@ -430,7 +535,7 @@ def test_the_live_salesforce_test_is_in_no_lane_but_its_own():
     assert marker == (
         "requires_warehouse and not requires_salesforce and not requires_athena and not requires_servicenow "
         "and not requires_microsoft_365 and not requires_google_workspace and not requires_quickbooks "
-        "and not requires_shopify and not requires_fabric and not requires_polly_bakeoff"
+        "and not requires_shopify and not requires_polly_bakeoff"
     )
     assert run_lane.LANES["salesforce"].marker == "requires_salesforce"
     # Every other lane excludes the live tests through the base exclusion or its own marker.
@@ -947,8 +1052,6 @@ _NO_CI_LANE = {
     "requires_google_workspace",
     "requires_quickbooks",
     "requires_shopify",
-    # Maintainer 2026-11-11: out of CI until the CI service principal has Admin on the Fabric workspace.
-    "requires_fabric",
 }
 
 

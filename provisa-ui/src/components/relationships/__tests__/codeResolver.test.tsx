@@ -252,6 +252,7 @@ describe("a relationship that is part of a code resolver", () => {
         saving={null}
         problem=""
         tables={[]}
+        refetchTables={() => Promise.resolve()}
         functions={[]}
         tableDomainById={{}}
         domainsEnabled={false}

@@ -133,13 +133,7 @@ on:
         required: false
       FABRIC_CAPACITY_NAME:
         required: false
-      FABRIC_DATABASE:
-        required: false
       FABRIC_RESOURCE_GROUP:
-        required: false
-      FABRIC_SQL_SERVER:
-        required: false
-      FABRIC_WORKSPACE_ID:
         required: false
       # The standing Synapse workspace CI pins (tests/integration/synapse_provision.py).
       SYNAPSE_SQL_SERVER:
@@ -293,15 +287,21 @@ jobs:
   # Maven Central is asked for the pinned Trino plugin jars once per pin, here: each job that
   # mounts them needs this one and restores its cache (.github/actions/trino-plugins), so
   # parallel jobs never fetch at once (release 510: HTTP 429 mid-collection, run 44081179966).
+  # The zaychik image the core services start is built here too, once per change to zaychik/, and
+  # every lane loads it (.github/actions/zaychik-image): a lane that built it asked Maven Central
+  # for its Maven plugins and the kafka lane's lookup failed (run 44379779451).
   trino-plugins:
     name: Trino plugins
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.ref || github.sha }}
       - uses: ./.github/actions/trino-plugins
+        with:
+          phase: prime
+      - uses: ./.github/actions/zaychik-image
         with:
           phase: prime
 
@@ -327,6 +327,7 @@ jobs:
       # with Maven against the server it starts; the driver is built for Java 21.
       java: ${{ matrix.lane == 'core' }}
       trino-plugins: true
+      zaychik-image: true
       # tests/integration/test_master_key_survives_recreate_compose.py builds the app image.
       pyodide-downloads: true
       image-cache: true
@@ -382,6 +383,11 @@ jobs:
         with:
           phase: restore
 
+      - name: Restore the zaychik image
+        uses: ./.github/actions/zaychik-image
+        with:
+          phase: restore
+
       # The image the test builds takes Pyodide from this directory (tests/pyodide_downloads.py).
       - name: Pyodide downloads
         uses: ./.github/actions/pyodide-downloads
@@ -392,13 +398,9 @@ jobs:
           sudo install minikube /usr/local/bin/minikube
           curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
 
-      - name: Build the zaychik image the chart deploys
-        # core.yml interpolates the store credentials even to build: the test instance's.
-        run: |
-          set -a
-          eval "$(bash scripts/ci/test-store-env.sh)"
-          set +a
-          docker compose -f docker-compose.core.yml build zaychik && docker tag zaychik:latest provisa-zaychik:latest
+      # The chart deploys provisa-zaychik:latest: the zaychik image restored above, under that name.
+      - name: Tag the zaychik image the chart deploys
+        run: docker tag zaychik:latest provisa-zaychik:latest
 
       # tests/e2e/test_helm_minikube.py builds provisa:latest, starts a minikube profile of its own
       # under a kubeconfig of its own, installs the chart with auth.provider=local, and deletes the
@@ -453,9 +455,6 @@ jobs:
       PROVISA_E2E_DATAZONE_AWS_SECRET_ACCESS_KEY: ${{ secrets.PROVISA_E2E_DATAZONE_AWS_SECRET_ACCESS_KEY }}
       PROVISA_E2E_DATAZONE_DOMAIN_ID: ${{ secrets.PROVISA_E2E_DATAZONE_DOMAIN_ID }}
       PROVISA_E2E_DATAZONE_PROJECT_ID: ${{ secrets.PROVISA_E2E_DATAZONE_PROJECT_ID }}
-      FABRIC_SQL_SERVER: ${{ secrets.FABRIC_SQL_SERVER }}
-      FABRIC_DATABASE: ${{ secrets.FABRIC_DATABASE }}
-      FABRIC_WORKSPACE_ID: ${{ secrets.FABRIC_WORKSPACE_ID }}
       FABRIC_CAPACITY_NAME: ${{ secrets.FABRIC_CAPACITY_NAME }}
       FABRIC_RESOURCE_GROUP: ${{ secrets.FABRIC_RESOURCE_GROUP }}
       REDSHIFT_AWS_ACCESS_KEY_ID: ${{ secrets.REDSHIFT_AWS_ACCESS_KEY_ID }}
@@ -528,6 +527,11 @@ jobs:
         with:
           phase: restore
 
+      - name: Restore the zaychik image
+        uses: ./.github/actions/zaychik-image
+        with:
+          phase: restore
+
       # Every credential the lane needs, checked before anything runs: a missing one fails the lane
       # by name rather than surfacing as a skipped test.
       - name: Credentials present
@@ -541,7 +545,6 @@ jobs:
                    SNOWFLAKE_DATABASE DATABRICKS_SERVER_HOSTNAME DATABRICKS_HTTP_PATH \
                    DATABRICKS_TOKEN GOOGLE_CLOUD_PROJECT GOOGLE_APPLICATION_CREDENTIALS_JSON \
                    BIGQUERY_LOCATION BIGQUERY_TEST_GCS_BUCKET GSHEETS_TEST_SHEET_ID \
-                   FABRIC_SQL_SERVER FABRIC_DATABASE FABRIC_WORKSPACE_ID \
                    FABRIC_CAPACITY_NAME FABRIC_RESOURCE_GROUP \
                    REDSHIFT_AWS_ACCESS_KEY_ID REDSHIFT_AWS_SECRET_ACCESS_KEY \
                    AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_ENDPOINT_OVERRIDE \
@@ -598,31 +601,36 @@ jobs:
       - name: Stack slots on this runner
         run: bash scripts/ci/lanes/suite-prepare.sh warehouse
 
-      # Maintainer 2026-11-10 ("Paid cloud resources"): the Fabric capacity is this run's own,
-      # created and tagged with the run, the lane's workspace assigned to it
-      # (tests/integration/fabric_capacity.py create_run_capacity). Maintainer 2026-11-11 ("skip
-      # fabric tests for now"): no lane selects a requires_fabric test (scripts/ci/run_lane.py), so
-      # this step never runs: assignToCapacity returns 403 until the CI service principal holds the
-      # Admin role on the Fabric workspace (run 42930869189). To lift: grant that role, drop
-      # "and not requires_fabric" from the warehouse lane, and restore the condition (git show 6838117e17).
-      - name: This run's Fabric capacity
+      # Maintainer 2026-11-10 ("Paid cloud resources") and 2026-11-21 (per-run workspace): the
+      # Fabric capacity, a workspace on it and a warehouse in that are this run's own, created and
+      # tagged with the run (tests/integration/fabric_capacity.py create_run_fabric). The
+      # warehouse's SQL endpoint and database and the workspace id go to $GITHUB_ENV as
+      # FABRIC_SQL_SERVER / FABRIC_DATABASE / FABRIC_WORKSPACE_ID for the steps after it. Only a
+      # run that selects a Fabric test makes them: the whole lane (no inputs.tests), or a targeted
+      # run naming one of the test files that reach Fabric. A targeted run naming none of them
+      # creates nothing.
+      - name: This run's Fabric capacity, workspace and warehouse
         id: fabric-capacity
-        if: false
-        run: uv run python scripts/fabric_e2e.py up
+        if: >-
+          inputs.tests == ''
+          || contains(inputs.tests, 'tests/integration/test_fabric_federation_engine_e2e.py')
+          || contains(inputs.tests, 'tests/integration/test_tds_inplace_duckdb_e2e.py')
+          || contains(inputs.tests, 'tests/integration/test_cross_vendor_parity_e2e.py')
+        run: uv run python scripts/fabric_e2e.py up "$GITHUB_ENV"
 
       - name: Run lane
         run: uv run python scripts/ci/run_lane.py warehouse --junitxml results/warehouse/junit.xml
 
-      # REQ-254 and maintainer 2026-11-10: this run's Fabric capacity is deleted whatever
-      # happened -- also when the lane died or the job was cut short -- the workspace unassigned
-      # first, and the capacity read back gone; one still there fails the step, and says so.
-      # It runs whenever the step that creates the capacity ran (whatever its outcome), and not
-      # when that step was skipped: then there is no capacity.
-      - name: Delete this run's Fabric capacity
+      # REQ-254 and maintainer 2026-11-10: this run's Fabric is deleted whatever happened -- also
+      # when the lane died or the job was cut short -- the workspace (its warehouse with it) first,
+      # then the capacity, each read back gone; one still there fails the step, and says so.
+      # It runs whenever the step that creates them ran (whatever its outcome), and not when that
+      # step was skipped: then there is nothing.
+      - name: Delete this run's Fabric workspace and capacity
         if: always() && contains(fromJSON('["success", "failure", "cancelled"]'), steps.fabric-capacity.outcome)
         run: |
           uv run python scripts/fabric_e2e.py down \
-            || { echo "::error::this run's Fabric capacity could not be confirmed deleted: check it, it may be billing"; exit 1; }
+            || { echo "::error::this run's Fabric workspace or capacity could not be confirmed deleted: check it, it may be billing"; exit 1; }
 
       # The Databricks SQL warehouse and the Snowflake warehouse, likewise: each test stops what it
       # started (tests/integration/databricks_warehouse.py, snowflake_warehouse.py), which does not
@@ -660,7 +668,7 @@ jobs:
   # targeted run (inputs.tests names pytest tests) leaves them out.
   # It holds the live-cloud-warehouses group with the warehouse job: both wake and stop the same
   # shared compute, so one waits for the other and neither cancels the other. Its after-script
-  # (ui-core-after.sh) deletes this run's Fabric capacity, leaves the Databricks warehouse stopped and
+  # (ui-core-after.sh) deletes this run's Fabric workspace and capacity, leaves the Databricks warehouse stopped and
   # the Snowflake warehouse suspended, whatever happened.
   warehouse-ui:
     name: warehouse UI (live cloud warehouses, Playwright)
@@ -681,10 +689,16 @@ jobs:
       python-extras: dev cassandra saphana gx soda
       ui: chromium
       ui-timeout: 12
+      # One worker, a backend and a browser, on the 4-vCPU runner, as each ui-e2e-core.yml shard
+      # runs: two held a core runner at a load of about 10 (run 43995449668's sampler), several
+      # times slower than the specs' bounds allow. Not sharded: its seven specs took 18.3 min at two
+      # workers (run 44112453390), inside the 50-minute global timeout at one; and two shards would
+      # each hold the live-cloud-warehouses group, and each one's after-script would stop the
+      # warehouses the other was still using.
       env: |
         CI=true
         PROVISA_E2E_LANE=core
-        PROVISA_E2E_WORKERS=2
+        PROVISA_E2E_WORKERS=1
       working-directory: provisa-ui
       # Playwright stops itself after 50 minutes, inside the job's bound, so it still writes its
       # reports.
@@ -709,11 +723,8 @@ jobs:
       GOOGLE_CLOUD_PROJECT: ${{ secrets.GOOGLE_CLOUD_PROJECT }}
       GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
       GSHEETS_TEST_SHEET_ID: ${{ secrets.GSHEETS_TEST_SHEET_ID }}
-      FABRIC_SQL_SERVER: ${{ secrets.FABRIC_SQL_SERVER }}
-      FABRIC_DATABASE: ${{ secrets.FABRIC_DATABASE }}
       FABRIC_RESOURCE_GROUP: ${{ secrets.FABRIC_RESOURCE_GROUP }}
       FABRIC_CAPACITY_NAME: ${{ secrets.FABRIC_CAPACITY_NAME }}
-      FABRIC_WORKSPACE_ID: ${{ secrets.FABRIC_WORKSPACE_ID }}
       AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
       AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
       AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
@@ -752,6 +763,11 @@ jobs:
       - name: Restore Trino plugins
         id: trino-plugins
         uses: ./.github/actions/trino-plugins
+        with:
+          phase: restore
+
+      - name: Restore the zaychik image
+        uses: ./.github/actions/zaychik-image
         with:
           phase: restore
 
@@ -841,6 +857,11 @@ jobs:
         with:
           phase: restore
 
+      - name: Restore the zaychik image
+        uses: ./.github/actions/zaychik-image
+        with:
+          phase: restore
+
       # A missing credential fails the lane by name rather than surfacing as a skipped test.
       - name: Credentials present
         run: |
@@ -899,6 +920,11 @@ jobs:
       - name: Restore Trino plugins
         id: trino-plugins
         uses: ./.github/actions/trino-plugins
+        with:
+          phase: restore
+
+      - name: Restore the zaychik image
+        uses: ./.github/actions/zaychik-image
         with:
           phase: restore
 

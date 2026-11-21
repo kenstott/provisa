@@ -118,6 +118,7 @@
     "standingChoices": "Standing choices",
     "standingChoicesHelp": "What a run does with each kind of difference, per direction. Hold, or no standing choice, leaves the difference here for a steward.",
     "standingKind": "Kind of difference",
-    "compare": "Compare with the catalog"
+    "compare": "Compare with the catalog",
+    "title": "Context Sync"
   }
 }

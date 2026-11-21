@@ -1,19 +1,19 @@
 {
   "maintenanceTab": {
     "title": "Maintenance planifiée",
-    "intro": "Affiche une bannière à tous les utilisateurs connectés, sur chaque page, jusqu'à ce que vous la désactiviez. Activez-la avant des travaux planifiés qui interrompent les requêtes — remplacement du cluster du moteur, changement de sa topologie ou mise à niveau du plan de contrôle — afin que l'interruption apparaisse comme prévue et non comme une panne.",
+    "intro": "Affiche une bannière à chaque utilisateur connecté, sur chaque page, jusqu'à ce que vous la désactiviez. Activez-la avant des travaux planifiés qui interrompent les requêtes, comme le remplacement du cluster du moteur, le changement de sa topologie ou la mise à niveau du plan de contrôle, afin que chacun sache que l'interruption est prévue.",
     "live": "La bannière est active.",
     "liveSince": "La bannière est active depuis {{time}}.",
     "messageLabel": "Message",
     "messagePlaceholder": "Provisa est en maintenance planifiée…",
     "messageHint": "Laissez vide pour le texte standard.",
     "endsAtLabel": "Retour prévu",
-    "endsAtHint": "Laissez vide pour indiquer qu'aucune estimation n'est donnée, plutôt que d'en laisser supposer une.",
+    "endsAtHint": "Laissez vide si vous n'avez pas d'estimation.",
     "showBanner": "Afficher la bannière",
     "updateBanner": "Mettre à jour la bannière",
     "clearBanner": "Retirer la bannière",
     "dangerTitle": "Zone de danger",
-    "dangerIntro": "Arrête le backend et le serveur de développement de l'interface sur cette machine. Ne fonctionne qu'avec un lancement de bureau --demo/--native — refusé partout ailleurs.",
+    "dangerIntro": "Arrête le backend et le serveur de développement de l'interface sur cette machine. Fonctionne uniquement pour un lancement de bureau --demo/--native et est refusé partout ailleurs.",
     "stopAll": "Arrêter tous les services",
     "stopTitle": "Arrêter tous les services ?",
     "stopConsequence": "Cette action arrête le backend et le serveur de développement de l'interface sur cette machine. Tant qu'ils sont arrêtés, cette page, toutes les requêtes et les sessions de tous les autres utilisateurs cessent de fonctionner, et votre session prend fin. Rien ne revient tant que les services ne sont pas redémarrés sur cette machine."

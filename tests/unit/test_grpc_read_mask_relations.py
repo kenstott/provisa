@@ -13,7 +13,7 @@
 the relationship's message filled, as the GraphQL it is derived from nests it (REQ-1929).
 
 A path's first segment is a relation field the ``{Type}`` message declares (its name is the
-related table's proto field name, proto_gen); the rest is a path into the related table, resolved
+relationship's GraphQL field, proto_gen); the rest is a path into the related table, resolved
 by the same rules. The request lowers to a GraphQL selection nesting the relationship, so it is
 governed as that GraphQL is, and the servicer writes the relation field: one message for a
 many-to-one, one per related row for a one-to-many."""
@@ -39,8 +39,8 @@ from tests.grpc_model import serving_state
 
 def _model(customer_visible_to=("admin",), domain_access=("*",)):
     """``(schema, ctx)``: orders (many-to-one ``customer``) and customers (one-to-many
-    ``orders``). In the proto, the relation fields are named for the related table: Orders has
-    ``customers``, Customers has ``orders``."""
+    ``orders``). In the proto, each relation field is named by its relationship: Orders has
+    ``customer``, Customers has ``orders``."""
     from provisa.compiler import naming as _naming
     from provisa.compiler.context import build_context
     from provisa.compiler.introspect import ColumnMetadata
@@ -126,36 +126,36 @@ def _compiled(model, type_name, paths):
 
 
 class TestRelationPathLowering:
-    def test_many_to_one_path_nests_the_relationship_under_its_proto_name(self):
-        text = _text(_model(), "Orders", ["id", "customers.name"])
-        assert "customers: customer { name }" in text
-        assert text.index("id") < text.index("customers:")
+    def test_many_to_one_path_nests_the_relationship_under_its_own_name(self):
+        text = _text(_model(), "Orders", ["id", "customer.name"])
+        assert "customer { name }" in text
+        assert text.index("id") < text.index("customer {")
 
     def test_one_to_many_path_nests_the_relationship(self):
         text = _text(_model(), "Customers", ["id", "orders.note"])
         assert "orders { note }" in text
 
     def test_relation_named_alone_selects_every_readable_column_of_it(self):
-        text = _text(_model(), "Orders", ["customers"])
-        assert "customers: customer { id name prefs }" in text
+        text = _text(_model(), "Orders", ["customer"])
+        assert "customer { id name prefs }" in text
 
     def test_paths_into_one_relation_merge_in_its_column_order(self):
-        text = _text(_model(), "Orders", ["customers.name", "customers.id"])
-        assert "customers: customer { id name }" in text
+        text = _text(_model(), "Orders", ["customer.name", "customer.id"])
+        assert "customer { id name }" in text
 
     def test_lowered_text_compiles_to_a_statement_reading_the_related_table(self):
-        compiled = _compiled(_model(), "Orders", ["id", "customers.name"])
+        compiled = _compiled(_model(), "Orders", ["id", "customer.name"])
         assert "customers" in compiled.sql
         assert [c.field_name for c in compiled.columns if c.nested_in is None][:1] == ["id"]
 
     def test_json_sub_path_inside_a_relation_restricts_its_value(self):
-        mask = _mask(_model(), "Orders", ["customers.prefs.theme"])
+        mask = _mask(_model(), "Orders", ["customer.prefs.theme"])
         (relation,) = mask.relations
-        assert relation.field == "customers"
+        assert relation.field == "customer"
         assert relation.mask.columns == ("prefs",)
 
     def test_relation_only_mask_selects_no_root_column(self):
-        mask = _mask(_model(), "Orders", ["customers.name"])
+        mask = _mask(_model(), "Orders", ["customer.name"])
         assert mask.columns == ()
 
 
@@ -163,10 +163,10 @@ class TestRelationPathRefusals:
     @pytest.mark.parametrize(
         "path",
         [
-            "customers.no_such_column",
-            "customer.name",  # the GraphQL field name; the proto field is ``customers``
-            "customers.name.x",  # name is not JSON-valued
-            "customers.",
+            "customer.no_such_column",
+            "customers.name",  # the related table's name; the relation field is ``customer``
+            "customer.name.x",  # name is not JSON-valued
+            "customer.",
         ],
     )
     def test_path_not_readable_through_the_relation_is_refused_by_name(self, path):
@@ -182,16 +182,16 @@ class TestRelationPathRefusals:
 
         model = _model(domain_access=("sales",))
         with pytest.raises(ReadMaskError) as failure:
-            _mask(model, "Orders", ["customers.name"])
-        assert failure.value.path == "customers.name"
+            _mask(model, "Orders", ["customer.name"])
+        assert failure.value.path == "customer.name"
 
     def test_column_of_the_related_table_the_role_cannot_read_is_refused_by_name(self):
         from provisa.grpc.query_ir import ReadMaskError
 
         model = _model(customer_visible_to=())
         with pytest.raises(ReadMaskError) as failure:
-            _mask(model, "Orders", ["customers.name"])
-        assert failure.value.path == "customers.name"
+            _mask(model, "Orders", ["customer.name"])
+        assert failure.value.path == "customer.name"
 
 
 # --- The servicer fills the relation field ---------------------------------------------------------
@@ -201,7 +201,7 @@ _PROTO = (
     " message Customers { optional int64 id = 1; optional string name = 2;"
     " optional string prefs = 3; repeated Orders orders = 4; }"
     " message Orders { optional int64 customer_id = 1; optional int64 id = 2;"
-    " optional string note = 3; Customers customers = 4; }"
+    " optional string note = 3; Customers customer = 4; }"
     " message OrdersBatch { repeated Orders rows = 1; }"
     " message CustomersBatch { repeated Customers rows = 1; }"
 )
@@ -265,16 +265,16 @@ class TestServicerFillsRelations:
     @pytest.mark.asyncio
     async def test_many_to_one_fills_the_singular_relation_message(self):
         model = _model()
-        paths = ["id", "customers.name"]
+        paths = ["id", "customer.name"]
         result = _result(model, "Orders", paths, [(7, json.dumps({"name": "Ann"})), (8, None)])
         servicer, pb2 = _servicer(model)
         govern, sent = await _run(servicer, _request(paths), _context(), result)
 
         assert "customers" in govern.await_args.args[0]
         first, second = [pb2.Orders.FromString(m) for m in sent]
-        assert first.id == 7 and first.customers.name == "Ann"
+        assert first.id == 7 and first.customer.name == "Ann"
         assert not first.HasField("note")
-        assert second.id == 8 and not second.HasField("customers")
+        assert second.id == 8 and not second.HasField("customer")
 
     @pytest.mark.asyncio
     async def test_one_to_many_fills_one_message_per_related_row(self):
@@ -298,19 +298,19 @@ class TestServicerFillsRelations:
     @pytest.mark.asyncio
     async def test_json_sub_path_inside_a_relation_restricts_the_value(self):
         model = _model()
-        paths = ["customers.prefs.theme"]
+        paths = ["customer.prefs.theme"]
         prefs = {"theme": "dark", "lang": "en"}
         result = _result(model, "Orders", paths, [(json.dumps({"prefs": prefs}),)])
         servicer, pb2 = _servicer(model)
         _govern, sent = await _run(servicer, _request(paths), _context(), result)
 
         (message,) = [pb2.Orders.FromString(m) for m in sent]
-        assert json.loads(message.customers.prefs) == {"theme": "dark"}
+        assert json.loads(message.customer.prefs) == {"theme": "dark"}
 
     @pytest.mark.asyncio
     async def test_batch_rpc_carries_the_nested_rows(self):
         model = _model()
-        paths = ["id", "customers.name"]
+        paths = ["id", "customer.name"]
         result = _result(
             model,
             "Orders",
@@ -325,8 +325,8 @@ class TestServicerFillsRelations:
         batches = [pb2.OrdersBatch.FromString(m) for m in sent]
         assert [len(b.rows) for b in batches] == [2, 1]
         rows = [r for b in batches for r in b.rows]
-        assert [(r.id, r.customers.name) for r in rows] == [(1, "A"), (2, "B"), (3, "")]
-        assert not rows[2].HasField("customers")
+        assert [(r.id, r.customer.name) for r in rows] == [(1, "A"), (2, "B"), (3, "")]
+        assert not rows[2].HasField("customer")
 
     @pytest.mark.asyncio
     async def test_unreadable_relation_path_aborts_before_governing(self):
@@ -334,12 +334,12 @@ class TestServicerFillsRelations:
         servicer, _pb2 = _servicer(model)
         context = _context()
         result = QueryResult(rows=[], column_names=["id"])
-        govern, _sent = await _run(servicer, _request(["customers.nope"]), context, result)
+        govern, _sent = await _run(servicer, _request(["customer.nope"]), context, result)
 
         govern.assert_not_awaited()
         code, details = context.abort.await_args.args
         assert code == grpc.StatusCode.INVALID_ARGUMENT
-        assert "customers.nope" in details
+        assert "customer.nope" in details
 
 
 # --- The HTTP gRPC proxy answers the same nested rows ----------------------------------------------
@@ -362,7 +362,7 @@ async def test_proxy_row_read_nests_the_masked_relations():
     from provisa.api.data import endpoint_grpc_proxy as proxy
 
     model = _model()
-    paths = ["id", "customers.prefs.theme"]
+    paths = ["id", "customer.prefs.theme"]
     prefs = {"theme": "dark", "lang": "en"}
     result = _result(model, "Orders", paths, [(7, json.dumps({"prefs": prefs})), (8, None)])
     plan = SimpleNamespace(warnings=[])
@@ -379,6 +379,6 @@ async def test_proxy_row_read_nests_the_masked_relations():
 
     assert "customers" in govern.await_args.args[0]
     assert json.loads(response.body) == [
-        {"id": 7, "customers": {"prefs": {"theme": "dark"}}},
-        {"id": 8, "customers": None},
+        {"id": 7, "customer": {"prefs": {"theme": "dark"}}},
+        {"id": 8, "customer": None},
     ]

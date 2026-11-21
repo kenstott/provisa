@@ -26,6 +26,7 @@ import {
 } from "../../../api/ontologyImport";
 import type { GlossaryTermSummary } from "../../../api/glossary";
 import { FormField, FormFooter, FormIdentifiers, FormLayout } from "../../form/FormLayout";
+import { termLabel } from "../termLabel";
 
 function failure(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
@@ -134,7 +135,7 @@ export function AddAlignmentDialog({
   const types = ALIGNMENT_TYPES.filter((rt) => withWhat === "term" || rt !== "SAME_AS");
   const targets =
     withWhat === "term"
-      ? terms.map((term) => ({ value: String(term.id), label: term.name }))
+      ? terms.map((term) => ({ value: String(term.id), label: termLabel(term, terms) }))
       : items
           .filter((other) => other.id !== item.id)
           .map((other) => ({ value: String(other.id), label: other.name }));

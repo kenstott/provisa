@@ -2,7 +2,7 @@
   "orgFilesTab": {
     "panelTitle": "Verschlüsselung des Dateiordners",
     "loading": "Wird geladen…",
-    "intro": "Dateien, die Provisa auf jedem Server für Ihre Organisation aufbewahrt – Caches, Konvertierungen, Replikate und große Ergebnisse –, liegen im eigenen Ordner Ihrer Organisation. Aktivieren Sie die Verschlüsselung, um sie unter einem Schlüssel zu verschlüsseln, den Ihre Organisation verwahrt.",
+    "intro": "Auf jedem Server bewahrt Provisa die Caches, Konvertierungen, Replikate und großen Ergebnisse Ihrer Organisation in deren eigenem Ordner auf. Aktivieren Sie die Verschlüsselung, um sie unter einem Schlüssel Ihrer Organisation verschlüsselt zu halten.",
     "encrypt": "Dateiordner der Organisation verschlüsseln",
     "referenceLabel": "Schlüsselreferenz",
     "referenceHelp": "Der Name des Schlüssels im Secrets-Tresor Ihrer Organisation, geschrieben als ${secret:NAME}. Provisa speichert nur diese Referenz, niemals den Schlüssel.",

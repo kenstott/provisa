@@ -39,11 +39,13 @@ from provisa.core.schema_org import (
 
 if TYPE_CHECKING:
     from provisa.core.database import Database
+    from provisa.llm.client import Completion, ProvisaLLMClient
 
 from provisa.api_source.openapi_endpoint import normalize_op_id
 from provisa.core.models import DERIVED_SOURCE_ID
 from provisa.api.admin.types import (
     ImplicitMeasureType,
+    MutationResult,
     RegisteredTableType,
     RoleTtlType,
     UniqueConstraintType,
@@ -130,7 +132,7 @@ async def _ensure_openapi_spec(source_id: str) -> bool:
         return False
     async with pool.acquire() as conn:
         result = await conn.execute_core(
-            select(sources.c.type, sources.c.path, sources.c.mapping).where(
+            select(sources.c.type, sources.c.path, sources.c.mapping, sources.c.brand_setup).where(
                 sources.c.id == source_id
             )
         )
@@ -162,6 +164,7 @@ async def _ensure_openapi_spec(source_id: str) -> bool:
         "base_url": base_url,
         "domain_id": "",
         "cache_ttl": 300,
+        "setup": row["brand_setup"],  # REQ-2265: what a brand's setup was given
     }
     return True
 
@@ -600,17 +603,38 @@ async def _fetch_table_with_columns(
     )
 
 
-async def _call_llm(prompt: str, operation: str, max_tokens: int = 256) -> str:
+async def _catalog_client(operation: str) -> ProvisaLLMClient:
     # REQ-1395, REQ-1398: the acting org's own per-vendor keys, when set.
     from provisa.api.app import state
     from provisa.core.org_secrets import read_org_api_keys
     from provisa.llm.client import ProvisaLLMClient
 
     api_keys = await read_org_api_keys(state.model_db) if state.model_db else None
-    client = ProvisaLLMClient(operation, api_keys=api_keys)
+    return ProvisaLLMClient(operation, api_keys=api_keys)
+
+
+async def _call_llm(prompt: str, operation: str, max_tokens: int = 256) -> str:
+    client = await _catalog_client(operation)
     return await client.complete(
         prompt, system="You are a data catalog assistant.", max_tokens=max_tokens
     )
+
+
+async def _call_llm_detailed(prompt: str, operation: str, max_tokens: int = 256) -> Completion:
+    """:func:`_call_llm` with the answer's ``cut_off`` (:class:`provisa.llm.client.Completion`):
+    a caller reading a structured answer learns it stopped at ``max_tokens``. An answer that
+    stopped at its limit before any text is that answer, with no text."""
+    from provisa.llm.client import LLMEmptyResponseError
+
+    client = await _catalog_client(operation)
+    try:
+        return await client.complete_detailed(
+            prompt, system="You are a data catalog assistant.", max_tokens=max_tokens
+        )
+    except LLMEmptyResponseError as exc:
+        if not exc.answer.cut_off:
+            raise
+        return exc.answer
 
 
 from provisa.api.admin._table_ops import (  # noqa: E402
@@ -655,40 +679,17 @@ async def _domain_table_conflict(  # REQ-432
     return None
 
 
-def _normalize_dataset_name(name: str) -> str:
-    """Snake-case + lowercase normalization for dataset ownership comparison (REQ-433)."""
-    from provisa.compiler.naming import apply_sql_name
-
-    return apply_sql_name(name, "snake").lower()
-
-
-async def _dataset_ownership_conflict(  # REQ-433
-    conn, source_id: str, table_name: str, domain_id: str
-) -> str | None:
-    """Return an error if this dataset is already claimed by a DIFFERENT domain (REQ-433).
-
-    First-come ownership: a physical dataset — identified by (source_id, normalized
-    table name) — may be registered by only one domain. Re-registration by the owning
-    domain is allowed. Virtual Provisa views (``__derived__``) are exempt: they are not
-    datasource claims and many domains legitimately share that source id.
-    """
-    if source_id == DERIVED_SOURCE_ID:
-        return None
+def table_domain_refusal(domain_id: str | None, table_name: str) -> "MutationResult | None":
+    """REQ-1531/REQ-433: a table registration names its domain, refused by name when it does not
+    (the table repository refuses it again at the write: every path)."""
     from provisa.core import domain_policy
 
-    target_domain = domain_policy.resolve_domain_id(domain_id)
-    norm = _normalize_dataset_name(table_name)
-    _res = await conn.execute_core(
-        select(registered_tables.c.domain_id, registered_tables.c.table_name).where(
-            registered_tables.c.source_id == source_id
+    try:
+        domain_policy.table_domain_id(domain_id, table_name)
+    except domain_policy.TableDomainRequired as refused:
+        return MutationResult(
+            success=False, message=str(refused), code=refused.code, params={"table": table_name}
         )
-    )
-    for r in _res.fetchall():
-        if _normalize_dataset_name(r.table_name) == norm and r.domain_id != target_domain:
-            return (
-                f"Table {table_name!r} on source {source_id!r} is already claimed by "
-                f"domain {r.domain_id!r} (first-come ownership)."
-            )
     return None
 
 

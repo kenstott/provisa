@@ -194,7 +194,7 @@
       },
       "hot_threshold": {
         "label": "Drempel voor drukke tabellen",
-        "help": "Hoeveel gecontroleerde statements een tabel binnen het venster voor drukke tabellen moet ontvangen voordat ze wordt gerepliceerd, zodat latere leesacties uit haar replica komen."
+        "help": "Hoeveel beheerde statements een tabel binnen het venster voor drukke tabellen moet ontvangen voordat hij wordt gerepliceerd, zodat latere leesacties uit de replica komen."
       },
       "hot_interval": {
         "label": "Venster voor drukke tabellen",
@@ -247,8 +247,8 @@
         }
       },
       "role_grant_notice_days": {
-        "label": "Melding voordat een roltoewijzing of haar items eindigen",
-        "help": "Hoeveel dagen voordat een roltoewijzing, of een van haar rechtenitems, eindigt of de toewijzing wegens ongebruik wordt verwijderd, de houder en de beheerders van de organisatie worden gemaild."
+        "label": "Melding voordat een roltoekenning of de vermeldingen ervan aflopen",
+        "help": "Hoeveel dagen voordat een roltoekenning, of één rechtvermelding ervan, afloopt, of de toekenning wegens niet-gebruik wordt verwijderd, de houder en de beheerders van de organisatie een e-mail krijgen."
       }
     },
     "server": {
@@ -597,8 +597,8 @@
         "help": "De rol waaronder lokale (stdio) MCP-aanroepen worden uitgevoerd; zolang deze niet is ingesteld worden die aanroepen geweigerd. Met bevestiging omdat dit de toegang van die rol verleent aan iedereen die de lokale client kan starten."
       },
       "principal": {
-        "label": "Lokale principal voor MCP",
-        "help": "De principal (gebruikers-id) namens wie lokale (stdio) MCP-aanroepen handelen, naast de lokale rol; de rechten van die persoon beperken de rol. Zolang die niet is ingesteld, worden die aanroepen geweigerd. Beveiligd, omdat iedereen die de lokale client kan starten met de toegang van die persoon handelt."
+        "label": "Lokale MCP-principal",
+        "help": "De principal (gebruikers-ID) namens wie lokale (stdio) MCP-aanroepen handelen, naast de lokale rol; de rechten van die persoon beperken de rol. Zolang die niet is ingesteld, worden die aanroepen geweigerd. Beschermd, omdat hij met de toegang van die persoon handelt voor iedereen die de lokale client kan starten."
       },
       "tools": {
         "label": "Getoonde MCP-tools",
@@ -683,7 +683,7 @@
     "logs": {
       "allowed_roots": {
         "label": "Mappen waaruit logbestanden gelezen mogen worden",
-        "help": "De mappen waarin de bestanden van een Logs-bron mogen staan, nadat hun koppelingen gevolgd zijn; standaard /var/log. Voeg er een toe, zoals ~/Library/Logs, om de eigen bestanden van de server daaronder in tabellen te lezen. Een sandbox-organisatie en, op een server met veel organisaties, elke organisatie behalve die van de deployment zelf leest buiten haar eigen map geen bestand van de server, behalve de bestanden die de bronnen van haar demo noemen, wat hier ook staat."
+        "help": "De mappen waarin de bestanden van een Logs-bron mogen staan, nadat hun links zijn gevolgd; standaard /var/log. Voeg er een toe, zoals ~/Library/Logs, om de eigen bestanden van de server daaronder in tabellen te lezen. Een sandboxorganisatie, en op een server met veel organisaties elke organisatie behalve die van de deployment zelf, leest geen eigen bestand van de server buiten de eigen map, behalve die welke de bronnen van haar demo noemen, wat hier ook staat."
       },
       "preview_lines": {
         "label": "Regels gelezen om de kolommen van een log te vinden",
@@ -711,7 +711,7 @@
       },
       "download_roots": {
         "label": "Mappen waaruit bronbestanden gedownload mogen worden",
-        "help": "De mappen waaruit het bestand van een CSV- of Parquet-bron via het pad op deze server gedownload mag worden, nadat de links ervan zijn gevolgd; standaard geen. Voeg er een toe zodat een steward een bestand daarin naar de map van de organisatie kan kopiëren. Een sandbox-organisatie en, op een server met veel organisaties, elke organisatie behalve die van de deployment zelf kopieert buiten haar eigen map geen bestand van de server, behalve de bestanden die de bronnen van haar demo noemen, wat hier ook staat."
+        "help": "De mappen waaruit het bestand van een CSV- of Parquet-bron via het pad op deze server mag worden gedownload, nadat de links zijn gevolgd; standaard geen. Voeg er een toe zodat een steward een bestand daaronder naar de map van de organisatie kan kopiëren. Een sandboxorganisatie, en op een server met veel organisaties elke organisatie behalve die van de deployment zelf, kopieert geen eigen bestand van de server buiten de eigen map, behalve die welke de bronnen van haar demo noemen, wat hier ook staat."
       }
     },
     "polly": {
@@ -814,7 +814,7 @@
     "graph": {
       "depth_limit": {
         "label": "Diepste grafpad",
-        "help": "Het maximale aantal hops dat een Cypher-pad met variabele lengte of een SPARQL-eigenschapspad doorloopt als de query zelf geen grens stelt. Een resultaat dat op deze diepte is afgekapt, meldt dat."
+        "help": "Het maximale aantal stappen dat een Cypher-pad met variabele lengte of een SPARQL-property path doorloopt als de query zelf geen grens stelt. Een Cypher-pad gebruikt geen relatie twee keer en faalt met een expliciete fout als het verder zou gaan; een SPARQL-resultaat dat op deze diepte is afgekapt, meldt dat. Standaard zeer groot (1000)."
       },
       "union_limit": {
         "label": "Maximaal aantal predicaten van een variabel predicaat",
@@ -837,6 +837,10 @@
       "health_poll_interval": {
         "label": "Pollinterval voor connectorstatus",
         "help": "Hoe vaak elk Provisa-proces de host van een connector naar zijn status vraagt en het resultaat bij de bron toont. Een herstarte host wordt bij de volgende poll opgemerkt, waarna zijn on-start-functie opnieuw wordt uitgevoerd."
+      },
+      "worker_idle_timeout": {
+        "label": "Inactiviteitstime-out voor codeworkers",
+        "help": "Hoe lang de worker van een codebron, of de preflight-worker van een organisatie, ongebruikt mag blijven voordat Provisa het proces beëindigt. De volgende aanroep start een nieuwe."
       }
     },
     "config": {
@@ -885,6 +889,12 @@
       "max_sinks_per_principal": {
         "label": "Actieve Kafka-sinks per persoon",
         "help": "Hoeveel Kafka-sinks één persoon tegelijk actief mag hebben. Een verzoek om er nog een te starten wordt geweigerd tot een van de eigen sinks stopt."
+      }
+    },
+    "sparql": {
+      "query_timeout": {
+        "label": "Time-out voor SPARQL-query's",
+        "help": "Hoe lang één SPARQL-query mag lopen voordat ze wordt opgegeven: een voorbeeld, een Wikidata-klassezoekopdracht en elke keer dat de replica van een SPARQL-tabel wordt geladen. Een openbaar endpoint kan een query eerder stoppen door zijn eigen limiet (bij Wikidata 60 seconden)."
       }
     }
   }

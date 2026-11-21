@@ -942,6 +942,36 @@ query GenerateTableDescription($tableId: String!) {
   generateTableDescription(tableId: $tableId)
 }
 
+query GenerateUnregisteredTableDescription(
+  $sourceId: String!
+  $schemaName: String!
+  $tableName: String!
+  $columns: [String!]!
+) {
+  generateTableDescription(
+    sourceId: $sourceId
+    schemaName: $schemaName
+    tableName: $tableName
+    columns: $columns
+  )
+}
+
+query GenerateUnregisteredColumnDescription(
+  $sourceId: String!
+  $schemaName: String!
+  $tableName: String!
+  $columns: [String!]!
+  $columnName: String!
+) {
+  generateColumnDescription(
+    sourceId: $sourceId
+    schemaName: $schemaName
+    tableName: $tableName
+    columns: $columns
+    columnName: $columnName
+  )
+}
+
 query SuggestTableAlias($tableName: String!, $domainId: String!, $sourceId: String!) {
   suggestTableAlias(tableName: $tableName, domainId: $domainId, sourceId: $sourceId)
 }
@@ -1450,6 +1480,28 @@ mutation DeleteMetric($name: String!) {
 
 mutation CreateRelationship($input: RelationshipInput!) {
   createRelationship(input: $input) {
+    ...MutationResult
+  }
+}
+
+# REQ-1586: two relationships sharing a middle table, joined through it.
+query JoinThroughQuery($firstId: String!, $secondId: String!) {
+  joinThrough(firstId: $firstId, secondId: $secondId) {
+    shape
+    name
+    sourceTable
+    sourceColumn
+    targetTable
+    targetColumn
+    viaTable
+    viaSourceColumn
+    viaTargetColumn
+    attributes
+  }
+}
+
+mutation JoinThrough($firstId: String!, $secondId: String!, $id: String!) {
+  joinThrough(firstId: $firstId, secondId: $secondId, id: $id) {
     ...MutationResult
   }
 }

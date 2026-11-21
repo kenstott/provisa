@@ -127,6 +127,10 @@
     "continue": "Continue",
     "checkReasonLabel": "Why this check exists",
     "checkReasonHint": "The quality claim in business terms; it headlines the check on each product.",
-    "checkReasonPlaceholder": "Orders are complete and unique so daily revenue reconciles with finance"
+    "checkReasonPlaceholder": "Orders are complete and unique so daily revenue reconciles with finance",
+    "errorSparqlQuery": "Enter the SPARQL query that produces the table's rows.",
+    "errorQueryPreviewFirst": "Preview the query first so the columns and their types are known.",
+    "previewFailed": "The preview failed: {{error}}",
+    "previewNoRows": "The preview answered no rows."
   }
 }

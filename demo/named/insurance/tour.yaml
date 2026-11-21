@@ -37,7 +37,7 @@ steps:
   capability: create_relationship
   relationship: RISK_OF
 - key: insuranceTerms
-  route: /admin/ontology
+  route: /context/ontology
   capability: glossary_read
   term: accumulation
 - key: insuranceAnswer

@@ -488,9 +488,11 @@ def _set_in_object(
     value: dict[str, Any], path: list[str | None], level: int, new: Any, how: str
 ) -> dict[str, Any]:
     """setPathObject."""
-    key = path[level] if level < len(path) else None
-    if key is None:
+    if level >= len(path):
         return value
+    key = path[level]
+    if key is None:
+        raise _error("22004", f"path element at position {level + 1} is null")
     last = level == len(path) - 1
     if key not in value:
         return {**value, key: new} if how in _CREATING and last else value

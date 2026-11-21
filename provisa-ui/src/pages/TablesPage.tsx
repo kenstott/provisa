@@ -119,10 +119,11 @@ import { useCapability } from "../hooks/useCapability";
 import { hidingDomains } from "../lib/capabilities";
 import { domainToSqlName, relationName } from "../naming";
 import { SplitPane } from "../components/list/SplitPane";
-import { useDetailParam } from "../components/list/useDetailParam";
+import { useRememberedDetail } from "../components/list/useDetailParam";
 import { useListSelection } from "../components/list/listSelection";
 import { ListBulkBar } from "../components/list/ListBulkBar";
 import { matchesQuery } from "../lib/searchItems";
+import { assignableDomainIds } from "../lib/internalDomains";
 
 const columnTypes = (cols: { name: string; dataType: string }[]): Record<string, string> =>
   Object.fromEntries(cols.map((c) => [c.name, c.dataType]));
@@ -151,7 +152,13 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
   // from elsewhere (its checkers, its source, a graph's column link) lands on the table itself, and
   // Back returns to the panel and section before. The section is the same in the read view and the
   // edit form, so opening the editor keeps the tab that was being read.
-  const detail = useDetailParam(viewsOnly ? "views" : "tables");
+  // REQ-2260: and the one left open is open again on coming back.
+  const detail = useRememberedDetail(
+    viewsOnly ? "views" : "tables",
+    tablesLoading
+      ? null
+      : tables.filter((t) => !viewsOnly || t.viewSql).map((t) => String(t.id)),
+  );
   const section: TableSection =
     detail.tab !== null && (TABLE_SECTIONS as string[]).includes(detail.tab)
       ? (detail.tab as TableSection)
@@ -288,6 +295,11 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
   const deleteTables = useDeleteTables();
   const groupBy = sortGroup.groupBy;
   const { domainAccess } = useAuth();
+  // REQ-1531: the domains a table may be moved to -- those the member may change, as the
+  // register form offers them.
+  const movableDomains = assignableDomainIds(domainHints).filter(
+    (d) => domainAccess.includes("*") || domainAccess.includes(d),
+  );
   // REQ-1620: the rows are read as the roles the user acts as -- one role, or under "Role: All"
   // the set, which the server serves as its meta-role -- as every other page reads them.
   const actingRole = actingRoles;
@@ -851,6 +863,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
     <ReplicaBuildsContext.Provider value={replicaBuilds}>
       <TableEditForm
         hidingOnly={hidingOnly}
+        domainChoices={movableDomains}
         editingTable={editing}
         setEditingTable={setEditingTable}
         savedTable={saved}
@@ -1018,6 +1031,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
             onPreview={(tb) => setPreviewTable((open) => (open?.id === tb.id ? null : tb))}
             source={sources.find((s) => s.id === t.sourceId)}
             relationships={relationships}
+            actingRole={actingRole}
             onInvalidateCache={!hidingOnly && hasCacheable(t) ? handlePurgeTableCache : undefined}
             invalidating={purging[t.id] === true}
             section={section}

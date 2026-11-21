@@ -23,7 +23,8 @@ the digits with from_base and writes them with to_base, both of a bigint, which 
 trunc of either keeps the first three bytes, which a macaddr8 read from six bytes shares.
 
 ClickHouse has no inet type either (a cast to one is held as its text there, as a cidr's is):
-broadcast, family, host and network of an inet or a cidr are refused by name on it, as on Trino. Its
+the functions of literal addresses are computed as the statement is read there (inet_literal), and
+of any other value refused by name. Its
 trunc of a MAC address is ClickHouse's form of the same bytes: ClickHouse sent its own trunc, of a
 number, a String (run 43410717058)."""
 
@@ -31,9 +32,11 @@ number, a String (run 43410717058)."""
 
 from __future__ import annotations
 
+import dataclasses
+
 import sqlglot.expressions as exp
 
-from provisa.transpiler.polyfill import trino
+from provisa.transpiler.polyfill import inet_literal, trino
 from provisa.transpiler.polyfill.grid import Feature, Limitation, Rule, Side
 from provisa.transpiler.polyfill.matching import graft
 from provisa.transpiler.polyfill.notation import Rewrite, replacement
@@ -62,8 +65,29 @@ _INET_PAIRS = {
     "network_supeq": "A network holding or equal to another.",
 }
 
+
+def _on_clickhouse(feature: Feature) -> Feature:
+    """``feature`` with ClickHouse's form of literal addresses (inet_literal) beside its own."""
+    rule = feature.read.rules[0]
+    return dataclasses.replace(
+        feature,
+        read=dataclasses.replace(
+            feature.read,
+            rules=(
+                dataclasses.replace(
+                    rule, forms={**rule.forms, "clickhouse": inet_literal.rewrite_of(feature.name)}
+                ),
+            ),
+            limitations={**feature.read.limitations, "clickhouse": (inet_literal.LITERALS,)},
+        ),
+    )
+
+
 INET_PAIRS: tuple[Feature, ...] = tuple(
-    trino.by_name(name, FAMILY, summary, _TWO_ADDRESSES) for name, summary in _INET_PAIRS.items()
+    (lambda f: f if f.name == "network_cmp" else _on_clickhouse(f))(  # memcmp's own difference
+        trino.by_name(name, FAMILY, summary, _TWO_ADDRESSES)
+    )
+    for name, summary in _INET_PAIRS.items()
 )
 
 #: The functions of an address Trino has no form of: the call was sent as written, of a type
@@ -76,8 +100,9 @@ _OF_AN_ADDRESS = {
 }
 _ADDRESSES = ("inet", "cidr")
 
-#: The dialects with no inet type and no form of a function of one.
-_NO_INET = (*trino.TRINO, "clickhouse")
+#: The dialects with no inet type and no form of a function of one (ClickHouse's of literals is
+#: inet_literal's).
+_NO_INET = trino.TRINO
 
 
 def _of_an_address(name: str, summary: str) -> Feature:
@@ -101,8 +126,31 @@ def _of_an_address(name: str, summary: str) -> Feature:
     )
 
 
-OF_AN_ADDRESS: tuple[Feature, ...] = tuple(
-    _of_an_address(name, summary) for name, summary in _OF_AN_ADDRESS.items()
+def _clickhouse_only(name: str, summary: str) -> Feature:
+    return Feature(
+        name,
+        FAMILY,
+        summary,
+        read=Side(
+            rules=(Rule(None, {"clickhouse": inet_literal.rewrite_of(name)}),),
+            limitations={"clickhouse": (inet_literal.LITERALS,)},
+        ),
+    )
+
+
+OF_AN_ADDRESS: tuple[Feature, ...] = (
+    *(_on_clickhouse(_of_an_address(name, summary)) for name, summary in _OF_AN_ADDRESS.items()),
+    *(
+        _clickhouse_only(name, summary)
+        for name, summary in (
+            ("abbrev", "An address's abbreviated text."),
+            ("hostmask", "The host mask of an address's network."),
+            ("masklen", "An address's mask length."),
+            ("netmask", "The net mask of an address's network."),
+            ("set_masklen", "An address with another mask length."),
+            ("cidr", "An inet as a cidr, its host bits cleared."),
+        )
+    ),
 )
 
 # --- macaddr ---------------------------------------------------------------------------------------
@@ -223,6 +271,9 @@ TRUNC = Feature(
     ),
 )
 
+#: The family's place in the grid (polyfill.GRID), which tries the rules of one function in
+#: the order of their families.
+ORDER = 110
 FEATURES: tuple[Feature, ...] = (
     *INET_PAIRS,
     *OF_AN_ADDRESS,

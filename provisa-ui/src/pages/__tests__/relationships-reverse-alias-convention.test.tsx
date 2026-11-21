@@ -42,7 +42,7 @@ const FORWARD = {
 };
 
 const RELS = { relationships: [FORWARD], loading: false, refetch: vi.fn() };
-const TABLES = { tables: [], loading: false };
+const TABLES = { tables: [], loading: false, refetch: () => Promise.resolve() };
 const DOMAINS = { domains: [] };
 const UPSERT = { upsertRelationship: vi.fn() };
 const DELETE = { deleteRelationship: vi.fn() };

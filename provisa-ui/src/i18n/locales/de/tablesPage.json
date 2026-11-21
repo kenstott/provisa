@@ -2,7 +2,7 @@
   "tablesPage": {
     "loading": "Tabellen werden geladen...",
     "titleViews": "Sichten",
-    "titleTables": "Registrierte Tabellen",
+    "titleTables": "Tabellen",
     "filterPlaceholderViews": "Sichten filtern…",
     "filterPlaceholderTables": "Nach Quelle, Domäne oder Tabelle filtern…",
     "addTable": "+ Tabelle",
@@ -16,7 +16,7 @@
     "modelStarSchema": "Sternschema",
     "modelDataVault": "Data Vault",
     "reportXlsx": "Arbeitsmappe",
-    "reportXlsxTitle": "Das Modell zur Prüfung als Tabellenkalkulation herunterladen – Quellen, Tabellen, Spalten, Beziehungen, Sichten, Metriken, materialisierte Sichten, Ontologie, Datenprodukte, Data Contracts, Datenqualität und Datenprofile, je ein Blatt",
+    "reportXlsxTitle": "Das Modell als Tabellenkalkulation zur Prüfung herunterladen, mit je einem Blatt für Quellen, Tabellen, Spalten, Beziehungen, Sichten, Metriken, materialisierte Sichten, Ontologie, Datenprodukte, Datenverträge, Datenqualität und Datenprofilierung",
     "viewErd": "ERD anzeigen",
     "colSource": "Quelle",
     "colDomain": "Domäne",
@@ -58,25 +58,25 @@
     "modelingRole": {
       "fact": "Fakt",
       "dimension": "Dimension",
-      "impliedFactTitle": "Impliziter Fakt — „Aggregate aktivieren“ ist für diese Tabelle aktiviert",
-      "impliedDimensionTitle": "Implizite Dimension — „Group By aktivieren“ ist für diese Tabelle aktiviert"
+      "impliedFactTitle": "Impliziter Fakt: „Aggregate aktivieren“ ist für diese Tabelle eingeschaltet",
+      "impliedDimensionTitle": "Implizite Dimension: „Group By aktivieren“ ist für diese Tabelle eingeschaltet"
     },
     "derived": "abgeleitet",
     "endpointUnread": "Das API-Dokument der Quelle konnte nicht gelesen werden",
     "checker": {
       "soda": "Soda",
       "great_expectations": "Great Expectations",
-      "title": "Datenqualitätsprüfer – die Zeilen dieser Tabelle sind die Ergebnisse der Ausführung ihres Vertrags"
+      "title": "Datenqualitäts-Checker: Die Zeilen dieser Tabelle sind die Ergebnisse der Ausführung ihres Vertrags"
     },
     "dataProduct": "Produkt",
-    "dataProductTitle": "Datenprodukt — enthalten in provisa metadata export",
+    "dataProductTitle": "Datenprodukt: im Provisa-Metadatenexport enthalten",
     "purposeTitle": "Was die Registrierung einer Tabelle bewirkt",
-    "purposeBody": "Die Registrierung nimmt eine Tabelle in das kontrollierte Modell auf: Sie legt die Spalten fest, die Namen, unter denen sie sichtbar sind, und welche Rollen sie sehen dürfen. Nur registrierte Tabellen sind abfragbar, und alles Nachgelagerte — Beziehungen, Metriken, Views, Ontologiebegriffe — benennt registrierte Spalten.",
-    "purposeAdd": "„+ Ansicht“ registriert eine Relation, die durch SQL oder durch Metriken statt durch eine physische Tabelle definiert ist — und mit der Registrierung hört sie auf, eine gespeicherte Abfrage zu sein. Die Definition legt auch fest, wie sie ausgeliefert wird: live oder materialisiert nach Takt oder Kalenderfenster, mit einer Aktualisierung, die ersetzt, upsertet oder anfügt. Mit eingeschaltetem Time Travel führt die Ansicht ihre eigene Historie, sodass Konsumenten sie zu einem vergangenen Zeitpunkt lesen können; ihre Eingaben werden als Lineage geführt, sodass eine Aktualisierung auf ihre Abhängigkeiten wartet.",
+    "purposeBody": "Das Registrieren einer Tabelle nimmt sie in das gesteuerte Modell auf und legt ihre Spalten fest, die Namen, unter denen sie bereitgestellt werden, und welche Rollen sie sehen können. Nur registrierte Tabellen können abgefragt werden, und Beziehungen, Metriken, Sichten und Ontologiebegriffe benennen alle registrierte Spalten.",
+    "purposeAdd": "+ Sicht registriert eine durch SQL oder Metriken definierte Relation. Die Definition bestimmt auch, wie sie bedient wird: live oder materialisiert nach einer Kadenz oder einem Kalenderfenster, mit einer Aktualisierung, die ersetzt, per Upsert einfügt oder anhängt. Aktivieren Sie Time Travel, und die Sicht führt ihre eigene Historie, sodass Konsumenten sie zu einem vergangenen Zeitpunkt lesen können. Ihre Eingaben werden als Lineage verfolgt, daher wartet eine Aktualisierung auf das, wovon sie abhängt.",
     "purposeAria": "Über registrierte Tabellen",
     "erdHelpTitle": "Entity-Relationship-Diagramm",
-    "erdHelpBody": "Zeichnet die registrierten Tabellen und die zwischen ihnen deklarierten Beziehungen, sodass bereits vorhandene Joins sichtbar sind, bevor Sie eine Abfrage schreiben. Es liest das Modell, statt es zu bearbeiten: nach Domäne filtern und das Diagramm als PNG oder SVG exportieren.",
-    "purposeModel": "„+ Modell“ deklariert eine Entität oder einen Fakt — die beiden Bausteine, aus denen sowohl ein Sternschema als auch ein Data Vault besteht — und senkt sie auf dieselben Primitive ab: registriert werden die materialisierte Sicht, ihr Time Travel und die Beziehungen zu den Entitäten, auf deren Schlüssel sie sich stützt.",
+    "erdHelpBody": "Zeichnet die registrierten Tabellen und die zwischen ihnen deklarierten Beziehungen, sodass Sie sehen, welche Joins existieren, bevor Sie eine Abfrage schreiben. Die Ansicht ist schreibgeschützt: Filtern Sie nach Domäne und exportieren Sie das Diagramm als PNG oder SVG.",
+    "purposeModel": "+ Modell deklariert eine Entität oder einen Fakt, die Bausteine eines Sternschemas und eines Data Vault. Es registriert die materialisierte Sicht, ihr Time Travel und die Beziehungen zu den Entitäten, auf die sie verweist.",
     "empty": "Noch keine Tabellen registriert.",
     "resizeDetail": "Größe des Detailbereichs ändern",
     "detailPanel": "Tabellendetails",

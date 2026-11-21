@@ -53,6 +53,10 @@
     "noAssignments": "Geen toewijzingen",
     "removeAssignment": "Toewijzing {{role}}:{{domain}} verwijderen",
     "roleLabel": "Rol",
+    "rolesLabel": "Rollen",
+    "rolesPlaceholder": "Kies een of meer rollen",
+    "addList": "Lijst toevoegen",
+    "removeList": "Deze lijst verwijderen",
     "domainLabel": "Domein",
     "untilLabel": "Tot",
     "untilPlaceholder": "Geen einddatum",
@@ -61,7 +65,6 @@
     "noExpiry": "Geen einddatum",
     "neverUsed": "Nooit",
     "allDomains": "* (alle domeinen)",
-    "add": "Toevoegen",
     "createHeading": "Gebruiker aanmaken",
     "username": "Gebruikersnaam",
     "usernameRequired": "Gebruikersnaam *",
@@ -101,6 +104,6 @@
   },
   "pageError": {
     "title": "Deze pagina kon niet worden weergegeven",
-    "body": "Er ging iets mis bij het renderen. De rest van de app werkt nog: ga naar een andere pagina of laad deze opnieuw."
+    "body": "Er ging iets mis bij het renderen. De rest van de app werkt nog, dus ga naar een andere pagina of laad deze opnieuw."
   }
 }

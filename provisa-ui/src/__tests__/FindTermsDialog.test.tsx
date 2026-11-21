@@ -276,9 +276,11 @@ describe("FindTermsDialog", () => {
     });
     fireEvent.click(screen.getByTestId("find-terms-start"));
     await waitFor(() =>
-      expect(api.startScan).toHaveBeenCalledWith({ url: "https://x.example.com/records.html" }, [
-        "sales",
-      ]),
+      expect(api.startScan).toHaveBeenCalledWith(
+        { url: "https://x.example.com/records.html" },
+        ["sales"],
+        null,
+      ),
     );
     await waitFor(() => expect(api.fetchScan).toHaveBeenCalledWith(8));
   });
@@ -287,7 +289,9 @@ describe("FindTermsDialog", () => {
     api.startScan.mockResolvedValue({ scan: { ...SCAN, id: 9 }, document: DOC });
     open();
     fireEvent.click(await screen.findByTestId("find-terms-rescan-7"));
-    await waitFor(() => expect(api.startScan).toHaveBeenCalledWith({ document_id: 4 }, ["sales"]));
+    await waitFor(() =>
+      expect(api.startScan).toHaveBeenCalledWith({ document_id: 4 }, ["sales"], null),
+    );
   });
 
   // REQ-2115: a scan runs and spends the model's budget, so Polly starts one only on the user's yes.
@@ -491,7 +495,9 @@ describe("FindTermsDialog", () => {
     await choose("find-terms-term-column", "term (varchar)");
     await choose("find-terms-definition-column", "meaning (text)");
     fireEvent.click(screen.getByTestId("find-terms-start"));
-    await waitFor(() => expect(api.startScan).toHaveBeenCalledWith({ table: terms }, ["sales"]));
+    await waitFor(() =>
+      expect(api.startScan).toHaveBeenCalledWith({ table: terms }, ["sales"], null),
+    );
     await waitFor(() => expect(api.fetchScan).toHaveBeenCalledWith(11));
   });
 
@@ -521,7 +527,7 @@ describe("FindTermsDialog", () => {
     await choose("find-terms-text-column", "body (text)");
     fireEvent.click(screen.getByTestId("find-terms-start"));
     await waitFor(() =>
-      expect(api.startScan).toHaveBeenCalledWith({ table: TABLE_SOURCE }, ["sales"]),
+      expect(api.startScan).toHaveBeenCalledWith({ table: TABLE_SOURCE }, ["sales"], null),
     );
   });
 
@@ -535,7 +541,7 @@ describe("FindTermsDialog", () => {
     expect(row).not.toHaveTextContent("Removed from the library");
     fireEvent.click(screen.getByTestId("find-terms-rescan-9"));
     await waitFor(() =>
-      expect(api.startScan).toHaveBeenCalledWith({ table: TABLE_SOURCE }, ["sales"]),
+      expect(api.startScan).toHaveBeenCalledWith({ table: TABLE_SOURCE }, ["sales"], null),
     );
   });
 

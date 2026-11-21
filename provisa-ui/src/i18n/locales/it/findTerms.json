@@ -121,7 +121,7 @@
     "roleSynthesis": "Usato",
     "roleSupporting": "Di supporto",
     "conflicts": "Spiegazioni in disaccordo",
-    "conflictsHint": "Questi passaggi non possono essere veri entrambi. Sono mostrati affiancati, mai fusi.",
+    "conflictsHint": "Questi passaggi non possono essere veri entrambi, quindi sono mostrati affiancati.",
     "accept": "Accetta",
     "merge": "Unisci",
     "mergeInto": "Unisci a",

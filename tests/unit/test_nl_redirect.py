@@ -48,7 +48,7 @@ def nl(monkeypatch):
     ran: list = []
     jobs = _Jobs()
 
-    async def _run_job(job_id, nl_query, role, app_state, llm, strict, delivery):
+    async def _run_job(job_id, nl_query, role, app_state, llm, strict, delivery, scope):
         ran.append(delivery)
 
     async def _llm(state):

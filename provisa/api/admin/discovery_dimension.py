@@ -12,11 +12,12 @@
 
 What :func:`provisa.discovery.dimension.plan` says accepting makes is made by the mutations a
 steward's own forms call: the dimension's view by registerTable, each side's relationship to it
-by createRelationship. Nothing is half made: a relationship refused removes what this accept
+by createRelationship, and the two sides' relationship to each other through it by
+:func:`provisa.api.admin.join_through.create` (REQ-1586). Nothing is half made: a relationship refused removes what this accept
 made before it, and the proposal stays undecided.
 """
 
-# Requirements: REQ-413
+# Requirements: REQ-413, REQ-1586
 
 from __future__ import annotations
 
@@ -25,6 +26,7 @@ from typing import TYPE_CHECKING, Any, cast
 
 from sqlalchemy import select
 
+from provisa.api.admin import join_through
 from provisa.core import relationship_naming
 from provisa.core.schema_org import registered_tables
 from provisa.discovery import dimension
@@ -205,7 +207,14 @@ async def accept(
                 f"The relationship {named.rel_id}",
             )
             made.append(named.rel_id)
-        await proposals_repo.accepted_as_dimension(conn, run_id, proposal_id, planned.name)
+        # REQ-1586: the two sides joined to each other through the dimension, made as every
+        # junction-backed relationship between two ends is.
+        joined = dimension.through(planned, dimension_id)
+        if await join_through.existing(conn, joined) is None:
+            result, joined_id = await join_through.create(info, conn, joined, None)
+            _made(result, f"The relationship {joined_id}")
+            made.append(joined_id)
+        await proposals_repo.accepted_as(conn, run_id, proposal_id, planned.name)
     except Exception:
         await _undo(conn, made, view_id)
         raise
