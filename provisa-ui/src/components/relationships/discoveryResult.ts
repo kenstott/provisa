@@ -110,6 +110,7 @@ function leftOut(report: DiscoveryReport, t: TFunction): string | null {
 function scopeLines(report: DiscoveryReport, t: TFunction): string[] {
   const kinds = [
     ...(report.foreign_keys ? [t("discoverDialog.foreignKeys")] : []),
+    ...(report.key_names ? [t("discoverDialog.keyNames")] : []),
     ...(report.semantics ? [t("discoverDialog.semantics")] : []),
     ...(report.key_values ? [t("discoverDialog.keyValues")] : []),
   ];
@@ -160,6 +161,14 @@ export function discoveryResultLines(report: DiscoveryReport, t: TFunction): str
       t("discoverResult.foreignKeys", {
         found: report.foreign_keys.found,
         count: report.foreign_keys.suggested,
+      }),
+    );
+  }
+  if (report.key_names) {
+    lines.push(
+      t("discoverResult.keyNames", {
+        found: report.key_names.found,
+        count: report.key_names.suggested,
       }),
     );
   }

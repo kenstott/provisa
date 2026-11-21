@@ -149,6 +149,7 @@
   "tests/integration/test_discovery_shared_dimension_e2e.py": 120.0,
   "tests/integration/test_join_through_e2e.py": 120.0,
   "tests/integration/test_discovery_run_e2e.py": 60.0,
+  "tests/integration/test_relationship_review_e2e.py": 60.0,
   "tests/integration/test_domain_delete_guarded.py": 69.6,
   "tests/integration/test_domain_policy_integration.py": 2.5,
   "tests/integration/test_domain_tree_every_transport.py": 28.6,
