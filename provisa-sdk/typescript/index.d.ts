@@ -82,7 +82,7 @@ export type ReadFn =
   | ((inputs: never, context: ReadContext) => Result<object>);
 /** A loader call's answer: the hash of each key to its rows (REQ-2100 LOADER CALL). */
 export type KeyedRows<R> = Record<string, R[]>;
-type LoaderResult<R> = Result<R> | KeyedRows<R> | Promise<KeyedRows<R>>;
+type LoaderResult<R> = Collection<R> | KeyedRows<R> | Promise<Collection<R> | KeyedRows<R>>;
 /** A @loader's function: a @table's that takes its read context, alone or after its inputs, and
  * that alone may return its rows or a mapping of names to its rows. */
 export type LoaderReadFn =
