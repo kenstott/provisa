@@ -108,10 +108,38 @@ describe("the toolbar rules fail what they are meant to fail", () => {
     ).toEqual([]);
   });
 
+  it("reads a page's (?) help as help, last", () => {
+    const bar = (inner: string) => `const x = <Group data-toolbar>${inner}</Group>;`;
+    expect(rules(bar(`<PageHelp title="t" /><Button>Add</Button>`))).toEqual(["toolbar-order"]);
+    expect(rules(bar(`<PageHelp title="t" /><ExpandButton onClick={f} testId="e" />`))).toEqual([
+      "toolbar-order",
+    ]);
+    expect(rules(bar(`<Button>Add</Button><PageHelp title="t" />`))).toEqual([]);
+  });
+
   it("reads a group marked data-toolbar as a toolbar", () => {
     expect(
       rules(`const x = <Group data-toolbar><OntologyToggle open /><Button>Term</Button></Group>;`),
     ).toEqual(["toolbar-order"]);
+  });
+
+  it("a filter inside a toolbar, but not one in the page header beside it", () => {
+    expect(
+      rules(
+        `const x = <Group data-toolbar><FilterInput value={q} onChange={f} /><Button>Add</Button></Group>;`,
+      ),
+    ).toEqual(["filter-in-toolbar"]);
+    expect(
+      rules(
+        `const x = <div className="page-actions"><Group><FilterInput value={q} onChange={f} /></Group></div>;`,
+      ),
+    ).toEqual(["filter-in-toolbar"]);
+    expect(
+      rules(
+        `const x = <div className="page-header"><PageTitle>T</PageTitle><FilterInput value={q} onChange={f} />` +
+          `<div className="page-actions"><Button>+ Table</Button></div></div>;`,
+      ),
+    ).toEqual([]);
   });
 
   it("reads a page's head actions as a toolbar too", () => {
@@ -120,6 +148,15 @@ describe("the toolbar rules fail what they are meant to fail", () => {
         `const x = <div className="page-actions"><HelpBubble title="t" /><Button>Add</Button></div>;`,
       ),
     ).toEqual(["toolbar-order"]);
+  });
+});
+
+describe("every list page's filter", () => {
+  it("sits in its page header, where it grows, not inside a toolbar", () => {
+    const wrong = of("filter-in-toolbar").map(
+      ({ file, hits }) => `${file}: ${hits.map((v) => `line ${v.line}`).join("; ")}`,
+    );
+    expect(wrong).toEqual([]);
   });
 });
 

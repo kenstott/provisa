@@ -308,6 +308,7 @@ export function ModelReview({
         first={false}
         nextLabel={t("modelingWizard.review.create")}
         nextTestId="wizard-create"
+        creates
         onNext={() => void create()}
         onBack={onBack}
         onCancel={onCancel}

@@ -534,6 +534,19 @@ async def bound_to_request_org():
         yield
 
 
+async def resolved_credential(value: str) -> str:
+    """A credential as entered: itself, or what its ``${env:...}``/``${secret:...}`` reference
+    names (a vault reference resolves in the requesting org's vault)."""
+    if "${" not in value:
+        return value
+    from provisa.core.secrets import resolve_secrets
+
+    if "${secret:" in value or "${user:" in value:
+        async with bound_to_request_org():
+            return resolve_secrets(value)
+    return resolve_secrets(value)
+
+
 class StoredSecretsProvider(SecretsProvider):
     """Resolve ``${secret:NAME}`` out of the ORG vault bound to this context."""
 

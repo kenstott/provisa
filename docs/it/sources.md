@@ -26,7 +26,7 @@ Nemmeno le origini **Materialize** hanno un connettore federato. Provisa recuper
 
 ## Tutte le origini {: #all-sources }
 
-Provisa registra **76** tipi di origine, quelli che il modulo Sources offre. Le tabelle qui sotto le coprono tutte e 76; l'indice è il conteggio.
+Provisa registra **80** tipi di origine, quelli che il modulo Sources offre. Le tabelle qui sotto le coprono tutte e 80; l'indice è il conteggio.
 
 | # | Gruppo | Tipi di origine |
 | --- | --- | --- |
@@ -35,19 +35,19 @@ Provisa registra **76** tipi di origine, quelli che il modulo Sources offre. Le 
 | 26–30 | [Analytics / OLAP](#analytics-olap) | `clickhouse`, `druid`, `exasol`, `elasticsearch`, `pinot` |
 | 31–34 | [Data Lake / formati tabella aperti](#data-lake-open-table-formats) | `iceberg`, `delta_lake`, `hive`, `hive_s3` |
 | 35–39 | [NoSQL](#nosql) | `mongodb`, `cosmosdb`, `qdrant`, `cassandra`, `redis` |
-| 40–41 | [Sorgenti di codice](code-sources.md) | `node`, `python` |
-| 42–44 | [Streaming](#streaming) | `kafka`, `websocket`, `rss` |
-| 45 | [Ricevitore push](#push-receiver) | `ingest` |
-| 46–47 | [Grafo e semantico](#graph-semantic) | `neo4j`, `sparql` |
-| 48–52 | [Basate su file](#file-based) | `sqlite`, `csv`, `parquet`, `files`, `logs` |
-| 53–54 | [Osservabilità e altro](#observability-other) | `google_sheets`, `prometheus` |
-| 55–63 | [Connettori SaaS enterprise](#enterprise-saas-connectors) | `sharepoint`, `salesforce`, `servicenow`, `jira`, `cloudops`, `splunk`, `google_workspace`, `microsoft_365`, `quickbooks` |
-| 64–70 | [Origini API](#api-sources) | `openapi`, `graphql_remote`, `grpc_remote`, GitHub, GitLab, Shopify, Stripe |
-| 71 | [GovData](#govdata) | `govdata` |
-| 72–73 | [Controlli di qualità dei dati](#data-quality-checkers) | `soda`, `great_expectations` |
-| 74 | [Data profiler](#data-profiler) | `data_profiler` |
-| 75 | [Dataset Kaggle](#kaggle-datasets) | Kaggle (messo in stage tramite il modulo Sources; si registra come origine `files` — vedere [Dataset Kaggle](#kaggle-datasets)) |
-| 76 | [Wikipedia](#wikipedia) | Wikipedia (si registra come origine `files` che scansiona le pagine indicate — vedere [Wikipedia](#wikipedia)) |
+| 40–43 | [Sorgenti di codice](code-sources.md) | `node`, `python`, `go`, `rust` |
+| 44–46 | [Streaming](#streaming) | `kafka`, `websocket`, `rss` |
+| 47 | [Ricevitore push](#push-receiver) | `ingest` |
+| 48–50 | [Grafo e semantico](#graph-semantic) | `neo4j`, `sparql`, Wikidata |
+| 51–55 | [Basate su file](#file-based) | `sqlite`, `csv`, `parquet`, `files`, `logs` |
+| 56–57 | [Osservabilità e altro](#observability-other) | `google_sheets`, `prometheus` |
+| 58–66 | [Connettori SaaS enterprise](#enterprise-saas-connectors) | `sharepoint`, `salesforce`, `servicenow`, `jira`, `cloudops`, `splunk`, `google_workspace`, `microsoft_365`, `quickbooks` |
+| 67–74 | [Origini API](#api-sources) | `openapi`, [`dbt`](#dbt), `graphql_remote`, `grpc_remote`, GitHub, GitLab, Shopify, Stripe |
+| 75 | [GovData](#govdata) | `govdata` |
+| 76–77 | [Controlli di qualità dei dati](#data-quality-checkers) | `soda`, `great_expectations` |
+| 78 | [Data profiler](#data-profiler) | `data_profiler` |
+| 79 | [Dataset Kaggle](#kaggle-datasets) | Kaggle (messo in stage tramite il modulo Sources; si registra come origine `files` — vedere [Dataset Kaggle](#kaggle-datasets)) |
+| 80 | [Wikipedia](#wikipedia) | Wikipedia (si registra come origine `files` che scansiona le pagine indicate — vedere [Wikipedia](#wikipedia)) |
 
 Riferimento per ogni tipo di origine supportato da Provisa. "Driver diretto" significa che le query a singola origine vengono eseguite nativamente contro l'origine (sub-100ms). "Nome connettore" è il connettore federato usato quando l'origine partecipa a JOIN multi-source.
 
@@ -909,6 +909,30 @@ Vengono applicate alla specifica quando viene caricata, quindi l'elenco di regis
 Un'esclusione che nomina un'operazione o un argomento che la specifica non ha fa fallire il caricamento della specifica di quell'origine e nomina ogni voce obsoleta, così un elenco che non corrisponde più a una specifica più recente non passa inosservato.
 
 Un'origine con marchio fornisce proprie esclusioni come parte della sua curatela, e quelle dell'operatore vi si aggiungono. L'origine Stripe esclude l'integrazione di pagamento obsoleta di Stripe basata su token e source: la creazione di un addebito (charge), le API Tokens e Sources, l'aggiunta di una carta o di un conto bancario a un cliente a partire da un token, e gli argomenti `source`, `card`, `bank_account` e `default_card` delle scritture di clienti e di pagamenti di fatture. I pagamenti si effettuano tramite Payment Intents, Payment Methods e Setup Intents, che l'origine offre. La lettura e l'eliminazione dei metodi di pagamento che un account ha già restano disponibili.
+
+### dbt
+
+Un'origine dbt lascia il vostro progetto dbt dov'è e dbt continua a costruirlo. Provisa legge il `manifest.json` del progetto per le definizioni e non copia mai né righe né il progetto.
+
+| Il manifesto proviene da | Impostato sull'origine |
+| --- | --- |
+| Un URL o una posizione di artefatto | `location` |
+| Un caricamento | `content` |
+| L'API di dbt Cloud | `host`, `account_id`, `job_id` e un token API, conservato come la credenziale di qualsiasi origine |
+
+Ogni modello è offerto come tabella, e l'aggiunta dell'origine non registra nulla. Quando uno steward registra un modello, questo viene letto tramite l'origine di data warehouse che corrisponde all'adattatore del manifesto e al database del modello. Il manifesto non contiene credenziali e il file dei profili di dbt non viene letto, quindi se nessuna origine registrata corrisponde, il modulo di configurazione propone di crearne una. La derivazione di un modello proviene dal suo SQL compilato.
+
+**Comandi.** Ogni modello, test, snapshot e seed è offerto come comando di mutazione, così come `build`, `source freshness` e ogni macro del progetto e dei suoi pacchetti installati tramite `run-operation`. Un comando viene eseguito solo quando lo esegue una chiamata, un trigger o una pianificazione. Viene eseguito dove dbt è già in esecuzione:
+
+| Destinazione | Come viene eseguito | Impostato sull'origine |
+| --- | --- | --- |
+| dbt Cloud | Esegue il job tramite l'API dei job, con il comando come unico passo | `spec: cloud` |
+| Uno script | Esegue `dbt` su una riga di comando raggiungibile da Provisa | `command_line` |
+| Un connettore gestito dall'operatore | Chiama un `@command` di un'[origine di codice](code-sources.md), con l'invocazione di dbt come argomento fisso che il chiamante non può modificare | `connector_source`, `connector_command`, `connector_invocation_argument` (predefinito `invocation`) |
+
+**Aggiornamento dei dati.** Il `run_results.json` di dbt indica quando ogni modello è stato costruito l'ultima volta. Fornitelo come `run_results`, puntate `run_results_location` al luogo in cui è pubblicato, oppure lasciate che un'origine dbt Cloud lo legga dall'ultima esecuzione riuscita del job. L'aggiornamento dell'origine lo rilegge, e un caricamento può portare i risultati di esecuzione senza un nuovo manifesto. Per usarlo, impostate la tabella del modello sul segnale di modifica `probe` o `ttl_probe` con `probe_type: hash`. La tabella diventa obsoleta non appena dbt ricostruisce il modello. Un modello la cui ultima esecuzione è fallita o è stata saltata ha un aggiornamento dei dati sconosciuto e non è mai considerato aggiornato.
+
+**Un nuovo manifesto** aggiorna i comandi offerti, la derivazione e le descrizioni dei modelli registrati. Una descrizione modificata da uno steward resta come lo steward l'ha lasciata, campo per campo.
 
 ### GovData
 

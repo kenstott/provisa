@@ -12,7 +12,7 @@ import * as secrets from "../../../api/secrets";
 import { FederationEngineTab } from "../FederationEngineTab";
 import { EncryptionTab } from "../EncryptionTab";
 import { AuthTab } from "../AuthTab";
-import { HotTablesSettingsPanel } from "../CacheStorageTab";
+import { MaterializedSettingsPanel } from "../CacheStorageTab";
 import { SecretsServicePanel } from "../SecretsTab";
 
 vi.mock("../../../api/admin", async (orig) => ({
@@ -27,6 +27,9 @@ vi.mock("../../../api/secrets", async (orig) => ({
   fetchSecretsService: vi.fn(),
 }));
 
+// REQ-1922: no regions, so the page is the one engine, as before.
+vi.mock("../useRegionEngines", () => ({ useRegionEngines: () => ({ status: "none" }) }));
+
 const forbidden = () => Object.assign(new Error("Settings fetch failed (403)"), { status: 403 });
 const failed = () => Object.assign(new Error("boom"), { status: 500 });
 
@@ -34,7 +37,7 @@ const CASES: [string, () => unknown, () => React.ReactElement][] = [
   ["federation engine", () => api.fetchFederationEngine, () => <FederationEngineTab />],
   ["encryption", () => api.fetchEncryption, () => <EncryptionTab />],
   ["auth", () => api.fetchAuthConfig, () => <AuthTab />],
-  ["cache storage", () => api.fetchCacheStorage, () => <HotTablesSettingsPanel />],
+  ["cache storage", () => api.fetchCacheStorage, () => <MaterializedSettingsPanel />],
   ["secrets service", () => secrets.fetchSecretsService, () => <SecretsServicePanel />],
 ];
 

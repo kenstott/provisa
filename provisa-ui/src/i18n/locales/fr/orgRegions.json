@@ -1,0 +1,57 @@
+{
+  "orgRegions": {
+    "loading": "Chargement des régions...",
+    "noPlatformRegions": "La plateforme ne déclare aucune région.",
+    "regionsHeading": "Régions",
+    "storesHeading": "Stockages",
+    "addRegion": "Ajouter une région",
+    "addStore": "Ajouter un stockage",
+    "editRegion": "Modifier la région {{id}}",
+    "editStore": "Modifier le stockage {{id}}",
+    "detailPanel": "Détails de la région ou du stockage",
+    "colRegion": "Région",
+    "colStore": "Stockage",
+    "colUrl": "URL",
+    "colKind": "Type de moteur",
+    "usedBy": "Utilisé par les régions",
+    "unused": "Aucune région ne l'utilise",
+    "noKind": "Aucun",
+    "noRegions": "Aucune région n'est encore accordée.",
+    "noStores": "Aucun stockage pour l'instant.",
+    "notSaved": "Non enregistré",
+    "heldStores_one": "{{count}} stockage n'est pas encore enregistré. Il est enregistré avec la première région.",
+    "heldStores_other": "{{count}} stockages ne sont pas encore enregistrés. Ils sont enregistrés avec la première région.",
+    "edit": "Modifier",
+    "remove": "Supprimer",
+    "storeTaken": "Un stockage nommé {{id}} existe déjà.",
+    "regionHelp": "L'une des régions de la plateforme. Les données de l'organisation y sont conservées dans les stockages ci-dessous.",
+    "storeIdHelp": "Le nom par lequel les régions désignent ce stockage.",
+    "urlHelp": "L'URL de connexion du stockage, ou une référence comme ${env:NAME}. Elle est conservée exactement telle que saisie. Un mot de passe qu'elle contient n'est plus jamais affiché ; laissez l'URL inchangée pour le conserver.",
+    "kindHelp": "Le moteur que ce stockage exécute. Obligatoire pour un stockage qu'une région utilise comme moteur.",
+    "role": {
+      "engine": "Moteur",
+      "replicas": "Répliques",
+      "views": "Vues matérialisées",
+      "cache": "Cache",
+      "state": "État",
+      "record": "Journal des requêtes"
+    },
+    "roleHelp": {
+      "engine": "Le stockage dont le moteur exécute les requêtes de cette région. Il lui faut un type de moteur.",
+      "replicas": "Où les copies des tables sont conservées dans cette région. Le même stockage que les vues matérialisées.",
+      "views": "Où les vues matérialisées sont conservées dans cette région. Le même stockage que les répliques.",
+      "cache": "Où les résultats de requêtes sont mis en cache dans cette région.",
+      "state": "Où cette région conserve son état de fonctionnement.",
+      "record": "Où cette région conserve son journal des requêtes."
+    },
+    "delete": {
+      "regionTitle": "Supprimer la région {{id}} ?",
+      "regionConsequence": "La région {{id}} n'est plus accordée à l'organisation ; ses nœuds là-bas cessent de la servir à leur redémarrage. Ses stockages sont conservés. Une source ou une table qui nomme la région empêche sa suppression.",
+      "storeTitle": "Supprimer le stockage {{id}} ?",
+      "storeConsequence": "Le stockage {{id}} est supprimé. Une région qui l'utilise empêche sa suppression."
+    },
+    "grantedIntro": "Les régions que la plateforme a accordées à cette organisation, et le stockage où elle conserve chaque type de données dans chacune. Elles sont définies sur la page Plateforme. Dans ces régions, l'organisation décide où résident ses tables et ses sources et quelles régions ses rôles peuvent lire.",
+    "colPurposes": "Finalités",
+    "description": "Description"
+  }
+}

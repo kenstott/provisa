@@ -1,0 +1,13 @@
+{
+  "kafkaFields": {
+    "securityProtocol": "Beveiligingsprotocol",
+    "securityProtocolHint": "Confluent Cloud en MSK gebruiken SASL_SSL. Een cluster zonder beveiliging gebruikt PLAINTEXT.",
+    "saslMechanism": "SASL-mechanisme",
+    "username": "Gebruikersnaam",
+    "usernameHint": "De API-sleutel op Confluent Cloud.",
+    "password": "Wachtwoord",
+    "passwordHint": "Het API-geheim op Confluent Cloud. Een geheimverwijzing, zoals ${secret:NAME}, wordt omgezet wanneer het cluster wordt geopend.",
+    "caCertificate": "CA-certificaat (PEM)",
+    "caCertificateHint": "Laat leeg voor een broker waarvan het certificaat van een openbare CA komt, zoals op Confluent Cloud en MSK. Plak het certificaat van een privé-CA om alleen die CA te vertrouwen."
+  }
+}

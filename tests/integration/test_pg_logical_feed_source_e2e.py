@@ -34,7 +34,6 @@ import yaml
 
 from provisa.subscriptions import pg_logical
 from tests.embedded_pg import DATABASE, PASSWORD, ROLE, start_local_postgres
-from tests.helpers import registered_id, release_field
 
 pytestmark = [pytest.mark.integration]
 
@@ -154,14 +153,13 @@ def _wait(condition, what: str, srv) -> None:
 
 def test_a_native_table_follows_its_databases_logical_replication(server, source_pg):
     _mutate(server, f"createSource(input: {_source_input(source_pg, 'native')})")
-    registered = _mutate(
+    _mutate(
         server,
         'registerTable(input: {sourceId: "shop_pg", domainId: "shop", schemaName: "public", '
         'tableName: "orders", columns: ['
         '{name: "id", visibleTo: ["org_admin"], dataType: "integer", isPrimaryKey: true}, '
         '{name: "name", visibleTo: ["org_admin"], dataType: "varchar"}]})',
     )
-    _mutate(server, release_field(registered_id(registered["message"])))
     # Served from its replica: reads never reach the source live.
     _mutate(server, 'updateSourceReplicate(sourceId: "shop_pg", replicate: 0)')
 

@@ -77,6 +77,7 @@ async def test_insert_update_and_delete_each_advance_the_stamp(engine):
     roles = _roles(db)
     seen = [await _model(db)]
     with engine.begin() as conn:
+        # Reads nothing on purpose: no capability, no domain (J354).
         conn.execute(sa.insert(roles).values(id="risk_reviewer", capabilities=[]))
     seen.append(await _model(db))
     with engine.begin() as conn:
@@ -96,6 +97,7 @@ async def test_the_stamp_is_written_in_the_transaction_of_the_change(engine):
     before = await _model(db)
     conn = engine.connect()
     try:
+        # Reads nothing on purpose: no capability, no domain (J354).
         conn.execute(sa.insert(roles).values(id="risk_reviewer", capabilities=[]))
         inside = conn.execute(
             sa.text(f"SELECT stamp FROM \"{db.search_path}\".config_stamp WHERE kind = 'model'")
@@ -134,6 +136,7 @@ async def test_a_second_boot_of_the_same_schema_does_not_advance_the_stamp(engin
     await init_schema(db, _SCHEMA_SQL, org_id="acme")
     assert await config_stamp.read(db) == before
     with engine.begin() as conn:
+        # Reads nothing on purpose: no capability, no domain (J354).
         conn.execute(sa.insert(_roles(db)).values(id="risk_reviewer", capabilities=[]))
     assert await _model(db) == before[config_stamp.MODEL] + 1  # one trigger per event, not two
 
@@ -145,6 +148,7 @@ async def test_each_org_schema_has_its_own_stamp(engine):
     # The writer's connection carries NO org search_path: the trigger finds the stamp of the
     # schema the written table lives in.
     with engine.begin() as conn:
+        # Reads nothing on purpose: no capability, no domain (J354).
         conn.execute(sa.insert(_roles(acme)).values(id="risk_reviewer", capabilities=[]))
     assert await _model(globex) == before
     # ...and a writer whose connection is scoped to ANOTHER org still advances the right one.

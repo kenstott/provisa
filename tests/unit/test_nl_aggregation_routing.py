@@ -515,7 +515,7 @@ class TestExecutorRouting:
             patch.object(
                 executor,
                 "_compile_and_execute_graphql",
-                new=AsyncMock(return_value=[(SimpleNamespace(), result, None)]),
+                new=AsyncMock(return_value=[(SimpleNamespace(), result)]),
             ) as fake_exec,
         ):
             preview = await executor._execute_grpc("QueryPets", "admin", app_state, None)
@@ -701,19 +701,57 @@ class TestExecutorRouting:
             ]
         }
 
-    async def test_execute_jsonapi_plain_falls_back_to_domain_table(self):
+    async def test_execute_jsonapi_plain_row_read_runs_through_the_jsonapi_route(self):
+        """The JSON:API preview's row read (REQ-1929): no aggregation params, so the request is
+        run through the JSON:API route itself, as the role, and its document is the preview."""
+        from provisa.nl import executor
+
+        app_state = RoleState(contexts={"admin": _ctx()})
+        document = {"data": [{"type": "pets", "id": "1", "attributes": {"name": "rex"}}]}
+        with patch.object(
+            executor, "_endpoint_read", new=AsyncMock(return_value=document)
+        ) as fake_read:
+            preview = await executor._execute_jsonapi(
+                "/data/jsonapi/pet_store/pets?page[size]=20", "admin", app_state, None
+            )
+        fake_read.assert_awaited_once_with(
+            "/data/jsonapi/pet_store/pets?page[size]=20",
+            "application/vnd.api+json",
+            "admin",
+            app_state,
+            None,
+        )
+        assert preview == document
+
+    async def test_execute_openapi_plain_row_read_runs_through_the_rest_route(self):
+        from provisa.nl import executor
+
+        app_state = RoleState(contexts={"admin": _ctx()})
+        body = {"data": [{"id": 1, "name": "rex"}]}
+        with patch.object(
+            executor, "_endpoint_read", new=AsyncMock(return_value=body)
+        ) as fake_read:
+            preview = await executor._execute_openapi(
+                "GET /data/rest/pet_store/pets?limit=20", "admin", app_state, None
+            )
+        fake_read.assert_awaited_once_with(
+            "/data/rest/pet_store/pets?limit=20", "application/json", "admin", app_state, None
+        )
+        assert preview == body
+
+    async def test_execute_jsonapi_plain_read_without_params_runs_through_the_route(self):
         from provisa.nl import executor
 
         app_state = RoleState(contexts={"admin": _ctx()})
         with patch.object(
-            executor,
-            "_execute_domain_table",
-            new=AsyncMock(return_value={"columns": [], "rows": []}),
-        ) as fake_exec:
+            executor, "_endpoint_read", new=AsyncMock(return_value={"data": []})
+        ) as fake_read:
             await executor._execute_jsonapi(
-                "/data/jsonapi/pet_store/pets?page[size]=20", "admin", app_state, None
+                "/data/jsonapi/pet_store/pets", "admin", app_state, None
             )
-        fake_exec.assert_awaited_once_with("pet_store", "pets", "admin", app_state, None)
+        fake_read.assert_awaited_once_with(
+            "/data/jsonapi/pet_store/pets", "application/vnd.api+json", "admin", app_state, None
+        )
 
     async def test_execute_openapi_aggregate_routes_through_graphql(self):
         from provisa.nl import executor
@@ -772,19 +810,19 @@ class TestExecutorRouting:
         # _execute_domain_table_aggregate for openapi: {"data": group_rows}
         assert result == {"data": [{"groupKey": {"species": "dog"}, "aggregate": {"count": 3}}]}
 
-    async def test_execute_openapi_plain_falls_back_to_domain_table(self):
+    async def test_execute_openapi_plain_read_without_params_runs_through_the_route(self):
         from provisa.nl import executor
 
         app_state = RoleState(contexts={"admin": _ctx()})
         with patch.object(
-            executor,
-            "_execute_domain_table",
-            new=AsyncMock(return_value={"columns": [], "rows": []}),
-        ) as fake_exec:
+            executor, "_endpoint_read", new=AsyncMock(return_value={"data": []})
+        ) as fake_read:
             await executor._execute_openapi(
                 "GET /data/rest/pet_store/pets", "admin", app_state, None
             )
-        fake_exec.assert_awaited_once_with("pet_store", "pets", "admin", app_state, None)
+        fake_read.assert_awaited_once_with(
+            "/data/rest/pet_store/pets", "application/json", "admin", app_state, None
+        )
 
 
 class TestAggregationPlanFromGraphql:

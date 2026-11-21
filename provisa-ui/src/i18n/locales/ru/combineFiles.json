@@ -1,0 +1,32 @@
+{
+  "combineFiles": {
+    "globLabel": "Или файлы, соответствующие",
+    "globPlaceholder": "complaints_2026_*.csv",
+    "globHint": "Glob по файлам источника: одна таблица или по таблице на файл.",
+    "modeLabel": "Как регистрируются файлы",
+    "perFile": "Одна таблица на файл",
+    "combine": "Объединить в одну таблицу",
+    "checking": "Проверка файлов…",
+    "noMatch": "Ни один файл не соответствует этому glob.",
+    "unmatched": "Не найден файл для {{tables}}.",
+    "matched_one": "Файлов, соответствующих {{glob}}: {{count}}",
+    "matched_other": "Файлов, соответствующих {{glob}}: {{count}}",
+    "sharedColumns": "Общие столбцы: {{columns}}",
+    "noSharedColumns": "У них нет общих столбцов.",
+    "differHeading": "Столбцы этих файлов различаются, поэтому они не могут быть одной таблицей. Исключите их или введите glob, который их не охватывает:",
+    "differ": "{{file}} {{how}}",
+    "lacks": "нет {{columns}}",
+    "adds": "добавляет {{columns}}",
+    "differUnreadable": "Не удалось прочитать {{file}}: {{error}}",
+    "extra": "Glob {{glob}} также охватывает {{files}}, которые вы не выбрали.",
+    "includeExtra": "Включить и их",
+    "extraUnconfirmed": "Включите файлы, которые glob также охватывает, или введите glob, охватывающий только нужные файлы.",
+    "nameLabel": "Имя новой таблицы",
+    "namePlaceholder": "complaints",
+    "nameRequired": "Задайте имя новой таблицы.",
+    "notRegistrable": "Эти файлы нельзя зарегистрировать как одну таблицу.",
+    "sourceFileColumnLabel": "Столбец исходного файла",
+    "sourceFileColumnPlaceholder": "source_file",
+    "sourceFileColumnHint": "Необязательно: столбец с файлом, из которого получена каждая строка."
+  }
+}

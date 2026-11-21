@@ -35,8 +35,24 @@ from provisa.api import demo_replicas
 pytestmark = pytest.mark.unit
 
 
-def _source(source_id: str, type_: str, host: str = "broker", port: int = 9092):
-    return SimpleNamespace(id=source_id, type=SimpleNamespace(value=type_), host=host, port=port)
+def _source(
+    source_id: str,
+    type_: str,
+    host: str = "broker",
+    port: int = 9092,
+    username: str | None = None,
+    password: str | None = None,
+    federation_hints: dict | None = None,
+):
+    return SimpleNamespace(
+        id=source_id,
+        type=SimpleNamespace(value=type_),
+        host=host,
+        port=port,
+        username=username,
+        password=password,
+        federation_hints=federation_hints,
+    )
 
 
 def _table(source_id: str, table: str, topic: str | None):
@@ -48,9 +64,9 @@ def _table(source_id: str, table: str, topic: str | None):
     return SimpleNamespace(source_id=source_id, schema_name="default", table_name=table, live=live)
 
 
-def _config():
+def _config(feeds=None):
     return SimpleNamespace(
-        sources=[_source("feeds", "kafka"), _source("warehouse", "postgresql")],
+        sources=[feeds or _source("feeds", "kafka"), _source("warehouse", "postgresql")],
         tables=[
             _table("feeds", "orders", "orders_ns"),
             _table("feeds", "prices", "prices_ns"),
@@ -74,17 +90,19 @@ class _Broker:
         self.ends = ends or {}
         self.calls: list[tuple] = []
 
-    async def recorded(self, bootstrap, group, topic):
-        self.calls.append(("recorded", bootstrap, group, topic))
+    async def recorded(self, bootstrap, group, topic, *, security):
+        self.calls.append(("recorded", bootstrap, group, security))
         return dict(self.committed.get((group, topic), {}))
 
-    async def record(self, bootstrap, group, offsets):
-        self.calls.append(("record", bootstrap, group))
+    async def record(self, bootstrap, group, offsets, *, security):
+        self.calls.append(("record", bootstrap, group, security))
         for tp, offset in offsets.items():
             self.committed.setdefault((group, tp.topic), {})[tp.partition] = offset
 
-    async def end_offsets(self, bootstrap, topic):
+    async def end_offsets(self, bootstrap, topic, *, security):
         from aiokafka import TopicPartition  # type: ignore[import-untyped]
+
+        self.calls.append(("end_offsets", bootstrap, topic, security))
 
         return {TopicPartition(topic, p): o for p, o in self.ends.get(topic, {}).items()}
 
@@ -125,6 +143,38 @@ async def test_a_template_waits_until_its_listeners_land_their_topics_to_where_t
     ]
     broker.committed[("provisa-sbxtplprovisioning-feeds", "orders_ns")] = {0: 412}
     assert await demo_replicas.live_landing_waits("sbxtplprovisioning", _config(), ends) == []
+
+
+async def test_a_secured_sources_offsets_are_read_and_recorded_over_its_tls_and_sasl(
+    monkeypatch,
+):
+    """REQ-147: the template's listener reaches a secured cluster with the source's settings, and
+    so does every offset an open reads or records on that cluster for the sandbox."""
+    from provisa.kafka.security import KafkaSecurity
+
+    feeds = _source(
+        "feeds",
+        "kafka",
+        username="svc",
+        password="s3cret",
+        federation_hints={
+            "kafka_security_protocol": "SASL_SSL",
+            "kafka_sasl_mechanism": "SCRAM-SHA-512",
+        },
+    )
+    broker = _Broker(
+        {("provisa-sbxtplprovisioning-feeds", "orders_ns"): {0: 412}},
+        ends={"orders_ns": {0: 412}, "prices_ns": {}},
+    )
+    _patch(monkeypatch, broker)
+    config = _config(feeds)
+    ends = await demo_replicas.live_topic_ends(config)
+    await demo_replicas.live_landing_waits("sbxtplprovisioning", config, ends)
+    await demo_replicas.continue_live_landing("sbxtplprovisioning", "sbx1234", config)
+    secured = KafkaSecurity.of_source(feeds)
+    assert secured.sasl and secured.tls
+    assert {call[0] for call in broker.calls} == {"end_offsets", "recorded", "record"}
+    assert all(call[3] == secured for call in broker.calls)
 
 
 async def test_a_topic_with_no_message_has_nothing_to_wait_for(monkeypatch):

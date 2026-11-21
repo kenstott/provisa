@@ -28,9 +28,9 @@ from provisa.federation.duckdb_pg_functions import size_pretty
 from provisa.pgwire.function_types import call_result_type
 from provisa.transpiler.pg_functions import capture_groups
 from tests.unit.pgwire.test_type_conversions import conn, pgwire  # noqa: F401
-from tests.unit.test_crypto_hashes import crypto_extension  # noqa: F401
+from tests.unit.test_crypto_hashes import crypto_extension, crypto_staged  # noqa: F401
 
-pytestmark = pytest.mark.usefixtures("crypto_extension")
+pytestmark = pytest.mark.usefixtures("crypto_staged")
 
 INT2, INT4, INT8, FLOAT4, FLOAT8, NUMERIC = 21, 23, 20, 700, 701, 1700
 TEXT, BYTEA, OID, BPCHAR, CHAR = 25, 17, 26, 1042, 18
@@ -162,6 +162,39 @@ def test_random_stays_between_its_bounds(conn: Any):
     res = _exec(conn, "SELECT random(1.25, 1.75) AS v")
     assert res.ftype(0) == NUMERIC
     assert 1.25 <= float(str(_rows(res)[0])) <= 1.75
+
+
+#: random(min numeric, max numeric) is a numeric of the larger of its bounds' scales (numeric_random's
+#: rscale), uniform over that scale's steps between them: run 42527458223's -2.25 and 5.125 drew a
+#: double ('-0.4754636315882823') where PostgreSQL draws '-0.803'.
+_NUMERIC_DRAWS = [
+    ('SELECT pg_catalog."random"((-2.25)::numeric, 5.125::numeric) AS v', -2.25, 5.125, 3),
+    ('SELECT pg_catalog."random"(2.5::numeric, 1000::numeric) AS v', 2.5, 1000, 1),
+    ("SELECT random(1.5::numeric(10,4), 2::numeric) AS v", 1.5, 2, 4),
+    ("SELECT random(1::numeric, 3::numeric) AS v", 1, 3, 0),
+    ("SELECT random(0.001, 0.002) AS v", 0.001, 0.002, 3),
+]
+
+
+@pytest.mark.parametrize(("sql", "low", "high", "scale"), _NUMERIC_DRAWS)
+def test_a_numeric_random_is_of_its_bounds_larger_scale(
+    conn: Any, sql: str, low: float, high: float, scale: int
+):
+    import re
+
+    form = rf"-?\d+\.\d{{{scale}}}" if scale else r"-?\d+"
+    for _ in range(20):
+        res = _exec(conn, sql)
+        (drawn,) = _rows(res)
+        assert res.ftype(0) == NUMERIC
+        assert re.fullmatch(form, str(drawn)), drawn
+        assert low <= float(str(drawn)) <= high
+
+
+def test_a_numeric_random_reaches_both_bounds(conn: Any):
+    """Uniform over the steps of its scale, each bound one of them, as numeric_random draws."""
+    drawn = {_rows(_exec(conn, "SELECT random(0.1, 0.2) AS v"))[0] for _ in range(200)}
+    assert drawn == {"0.1", "0.2"}
 
 
 def test_inverted_random_bounds_are_refused_as_postgresql_refuses_them(conn: Any):

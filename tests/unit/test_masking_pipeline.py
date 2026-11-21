@@ -39,6 +39,12 @@ import duckdb
 import pytest
 
 from tests.helpers import governed_for_role
+from tests.governed_pg import assert_same_answer, governed_database
+
+
+@pytest.fixture(scope="module")
+def pg(embedded_postgres):
+    return governed_database(embedded_postgres, "test_masking_pipeline")
 
 
 # --- Fixtures ---
@@ -109,7 +115,7 @@ _CUSTOMERS = (
 class TestAdminSeesRawData:
     """Admin role with no masking rules sees raw values (REQ-087)."""
 
-    def test_admin_email_unmasked(self):
+    def test_admin_email_unmasked(self, pg):
         compiled = CompiledQuery(
             sql='SELECT "email", "name" FROM "public"."customers"',
             params=[],
@@ -139,7 +145,7 @@ class TestAdminSeesRawData:
         }
         result = governed_for_role(compiled.sql, ctx, "admin", masking_rules=rules)
         # Admin SQL unchanged — raw columns
-        assert result == compiled.sql
+        assert_same_answer(pg, result, compiled.sql)
         assert _regex_masks(result) == 0
 
 
@@ -246,9 +252,9 @@ class TestMaskedViewerConstantMasking:
 
 
 class TestNumericConstantMasking:
-    """Numeric column masked with constant value (REQ-089)."""
+    """Numeric column masked with a constant reads as NULL, keeping its type (REQ-089, REQ-2131)."""
 
-    def test_amount_masked_to_zero(self):
+    def test_amount_masked_to_null(self):
         compiled = CompiledQuery(
             sql='SELECT "t0"."amount" FROM "public"."orders" "t0"',
             params=[],
@@ -271,7 +277,7 @@ class TestNumericConstantMasking:
             }
         }
         result = governed_for_role(compiled.sql, ctx, "masked_viewer", masking_rules=rules)
-        assert '0 AS "amount"' in result
+        assert 'NULL AS "amount"' in result
 
 
 class TestDateTruncateMasking:
@@ -309,7 +315,7 @@ class TestDateTruncateMasking:
 class TestJoinedTableMasking:
     """Masking applies correctly across JOINed tables."""
 
-    def test_joined_customer_email_masked(self):
+    def test_joined_customer_email_masked(self, pg):
         ctx = _ctx_with_customers_and_orders()
         compiled = CompiledQuery(
             sql='SELECT "t0"."id", "t1"."email" FROM "public"."orders" "t0" LEFT JOIN "public"."customers" "t1" ON "t0"."customer_id" = "t1"."id"',

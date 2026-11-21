@@ -328,6 +328,7 @@ def test_candidates_are_read_from_rows_as_the_registry_view_builds_them():
             "dq_contract": None,
             "query_template": None,
             "landing_filter": None,
+            "read_wait": None,
             "alias": None,
             "change_signal": None,
             "region": None,  # REQ-1921: it names no region

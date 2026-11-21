@@ -167,7 +167,21 @@ def _make_app_state_with_orders():
 
     stub_materialization_noop(state)
     state.schema_build_cache = {"column_types": {1: []}, "tables": []}
-    state.tables = []
+    # Governance serves a role the columns of the registry a server loads (visible_to).
+    state.tables = [
+        {
+            "id": 1,
+            "source_id": "test-pg",
+            "domain_id": "default",
+            "schema_name": "public",
+            "table_name": "orders",
+            "columns": [
+                {"column_name": "id", "visible_to": ["admin"]},
+                {"column_name": "region", "visible_to": ["admin"]},
+                {"column_name": "amount", "visible_to": ["admin"]},
+            ],
+        }
+    ]
     state.approval_hook = None
     state.server_limits = {}
     state.response_cache_store = NoopCacheStore()

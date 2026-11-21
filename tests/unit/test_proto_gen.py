@@ -169,7 +169,9 @@ class TestGenerateProto:
     def test_per_command_rpcs_generated(self):
         # REQ-1156: beyond the generic CallCommand, each visible command gets a typed request
         # message + its own RPC so a gRPC client discovers commands by name via reflection.
-        si = _make_si()
+        si = _make_si(
+            role={"id": "admin", "domain_access": ["*"], "capabilities": ["command_execution"]},
+        )
         si.functions = [
             {
                 "name": "active_users",
@@ -385,8 +387,9 @@ class TestRelationships:
         proto = generate_proto(si)
         # Many-to-one: singular, not repeated (the Query message legitimately
         # has repeated root fields; assert the relationship field is singular)
-        assert "Customers customers = 3;" in proto
-        assert "repeated Customers customers = 3" not in proto
+        # REQ-1929: the field is the relationship's GraphQL name (a many-to-one is singular).
+        assert "Customers customer = 3;" in proto
+        assert "repeated Customers customer = 3" not in proto
 
     def test_one_to_many_repeated_field(self):
         tables, column_types = self._two_table_si()

@@ -50,6 +50,7 @@ def _rtbl(sid, tname, cols):
         "schema_name": "default",
         "table_name": tname,
         "landing_filter": None,
+        "read_wait": None,
         "columns": cols,
         # the per-table overrides every registry row carries (None = inherit the source's)
         "replicate": None,
@@ -127,7 +128,13 @@ def _state(cfg, registered, monkeypatch):
             for src in cfg.sources
         ]
 
-    monkeypatch.setattr("provisa.core.repositories.source.list_all", _source_rows)
+    monkeypatch.setattr("provisa.core.repositories.source.list_in_production", _source_rows)
+
+    async def _export_graph(_conn):
+        # REQ-2238: the term graph the reconcile grounds columns against; this model holds no terms.
+        return {"terms": [], "refs": [], "table_refs": [], "edges": []}
+
+    monkeypatch.setattr("provisa.core.repositories.glossary.export_graph", _export_graph)
     return SimpleNamespace(
         config=cfg, model_db=(_one_db := _fake_tenant_db()), tenant_db=_one_db, org_id="acme"
     )

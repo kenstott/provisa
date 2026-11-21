@@ -32,12 +32,17 @@ import psycopg2.extensions
 import psycopg2.pool
 
 from provisa.core import request_deadline
+from provisa.core.schema_create import create_schema_on_cursor
+from provisa.core.ir_types import interval_value
 from provisa.core.pg_range import RANGE_TYPES
+from provisa.core.session_time_zone import carrying_zone, told_as
 from provisa.federation.land_guard import LandGuard
+from provisa.federation.pg_quoting import pg_ident, pg_lit
 from provisa.executor.result import QueryResult, ResultStream, StreamingQueryResult
 from provisa.federation.engine import build_pg_engine
 from provisa.federation.runtime_support import _STREAM_BATCH_ROWS
 from provisa.transpiler.metadata_server_forms import RAISE_FUNCTION_SQL, SERVER_FORM_RAISE
+from provisa.transpiler.pg_type_literals import interval_fields
 
 _log = logging.getLogger(__name__)
 
@@ -189,6 +194,23 @@ _JSON_AS_TEXT = psycopg2.extensions.new_type((114, 3802), "PG_JSON_TEXT", lambda
 _JSON_ARRAY = psycopg2.extensions.new_array_type((199, 3807), "PG_JSON_ARRAY", _JSON_AS_TEXT)
 
 
+def _interval(text: str | bytes | None, _cur: Any) -> Any:  # noqa: ANN401 -- timedelta | relativedelta
+    """An interval as the IR interval it is (ir_types.interval_value), REQ-2167: psycopg2 reads
+    one as a timedelta, a month thirty days, so ``3 mons`` answered ``90 days``. Text in the
+    ``postgres`` IntervalStyle, which the engine's connections write; any other is refused."""
+    if text is None:
+        return None
+    written = text.decode() if isinstance(text, bytes) else text
+    fields = interval_fields(written)
+    if fields is None:
+        raise psycopg2.DataError(f"can't read interval {written!r}")
+    return interval_value(*fields)
+
+
+_INTERVAL = psycopg2.extensions.new_type((1186,), "PG_INTERVAL", _interval)
+_INTERVAL_ARRAY = psycopg2.extensions.new_array_type((1187,), "PG_INTERVAL_ARRAY", _INTERVAL)
+
+
 def _bounded(caster: Any) -> Any:
     """``caster``, an array type's reader, leaving an array whose lower bounds are not 1 as the text
     PostgreSQL writes of it ("[1:1][2:3]={...}"), which it refuses ("array does not start with
@@ -208,6 +230,15 @@ _BOUNDED_ARRAYS = tuple(
 )
 
 
+def _tell_zone(con: Any, sql: str) -> None:
+    """Put ``con``'s open transaction on the session's zone (REQ-2171). ``set_config(..., true)`` is
+    SET LOCAL: it ends with the transaction, so a pooled connection goes back on its own zone."""
+    zone = told_as(sql, lambda z: z.posix, "PostgreSQL")
+    if zone is not None:
+        with con.cursor() as cur:
+            cur.execute("SELECT set_config('TimeZone', %s, true)", (zone,))
+
+
 def _read_as_postgresql_writes(cur: Any) -> None:
     """``cur`` reading a value as PostgreSQL's own text of it, where psycopg2 would not."""
     for bounded in _BOUNDED_ARRAYS:
@@ -216,6 +247,10 @@ def _read_as_postgresql_writes(cur: Any) -> None:
     psycopg2.extensions.register_type(_XML_ARRAY, cur)
     psycopg2.extensions.register_type(_JSON_AS_TEXT, cur)
     psycopg2.extensions.register_type(_JSON_ARRAY, cur)
+    psycopg2.extensions.register_type(_INTERVAL, cur)
+    # After the bounded arrays, so it takes 1187 from theirs: an interval[] with its own bounds
+    # is not read as one on this engine; its elements are each read as an interval.
+    psycopg2.extensions.register_type(_INTERVAL_ARRAY, cur)
 
 
 class _AdbcConnectionPool:
@@ -231,12 +266,17 @@ class _AdbcConnectionPool:
     ``transaction_status`` before reuse (see ``run_sync``'s pool below); ADBC exposes no equivalent
     state check. A dead pooled connection therefore surfaces as a real ``execute()`` failure to the
     caller, who must call ``discard()`` (closes it, lets the pool create a fresh one on the next
-    ``getconn()``) rather than this pool silently retrying or swallowing the error."""
+    ``getconn()``) rather than this pool silently retrying or swallowing the error.
+
+    Each connection is autocommit: ADBC's DB-API defaults to opening a transaction on a statement
+    and keeping it until commit, so a read given back to the pool sat idle in that transaction,
+    holding its lock on every table it read -- a session's ``DROP SCHEMA`` in this database then
+    waited on the pooled connection (DELETE /data/cypher/session on the pg engine)."""
 
     def __init__(self, dsn: str, *, minconn: int, maxconn: int) -> None:
         from adbc_driver_postgresql import dbapi as adbc_pg
 
-        self._connect = lambda: adbc_pg.connect(dsn)
+        self._connect = lambda: adbc_pg.connect(dsn, autocommit=True)
         self._maxconn = maxconn
         self._pool: list[Any] = [self._connect() for _ in range(minconn)]
         self._created = minconn
@@ -327,7 +367,7 @@ def _install_raise_function(con: Any) -> None:
     try:
         cur.execute(RAISE_FUNCTION_SQL)
     except psycopg2.Error as exc:
-        cur.execute(f"SELECT to_regprocedure('{SERVER_FORM_RAISE}(text, text)')")
+        cur.execute("SELECT to_regprocedure(%s)", (f"{SERVER_FORM_RAISE}(text, text)",))
         if cur.fetchone()[0] is None:
             _log.warning(
                 "the pg engine cannot answer a catalog form's error, %s does not exist: %s",
@@ -416,7 +456,7 @@ class PgFederationRuntime:  # REQ-825, REQ-840, REQ-904
                 self._motherduck_settled,
             )
         elif "attach_ddl" in details:  # postgres_fdw / sqlite_fdw — import a foreign schema
-            remote = f'"{details["local_schema"]}"."{source.table_name}"'
+            remote = pg_ident(details["local_schema"], source.table_name)
             # A connector that can import ONE table (postgres_fdw) is attached per table: the
             # foreign tables outlive this process, and a replica build imports one on its own
             # (replica_target.pg_statement_copy), so importing the whole schema again fails on the first table already
@@ -466,11 +506,11 @@ class PgFederationRuntime:  # REQ-825, REQ-840, REQ-904
                 for ddl in details["server_ddl"]:
                     cur.execute(ddl)
                 self._raw_attached.add(source.id)
-            cols = ", ".join(f'"{n}" {t}' for n, t in source.columns)
-            ft = f'"{details["server"]}__{source.table_name}"'
+            cols = ", ".join(f"{pg_ident(n)} {t}" for n, t in source.columns)
+            ft = pg_ident(f"{details['server']}__{source.table_name}")
             cur.execute(
                 f"CREATE FOREIGN TABLE IF NOT EXISTS {ft} ({cols}) "
-                f'SERVER "{details["server"]}" {details["table_options"]}'
+                f"SERVER {pg_ident(details['server'])} {details['table_options']}"
             )
             remote = ft
             if first_attach:
@@ -509,16 +549,16 @@ class PgFederationRuntime:  # REQ-825, REQ-840, REQ-904
         )
 
         refuse_live_in_write_surface(folded_schema, source.table_name)
-        cur.execute(f'CREATE SCHEMA IF NOT EXISTS "{folded_schema}"')
+        create_schema_on_cursor(cur, folded_schema)
         found = pg_relation_kind(cur, folded_schema, source.table_name)
         if found is not None and found[1] != "v":
             raise ReplicaTargetError(
-                f'"{folded_schema}"."{source.table_name}"',
+                pg_ident(folded_schema, source.table_name),
                 pg_kind_name(found[1]),
                 "create the live view at",
             )
         cur.execute(
-            f'CREATE OR REPLACE VIEW "{folded_schema}"."{source.table_name}" '
+            f"CREATE OR REPLACE VIEW {pg_ident(folded_schema, source.table_name)} "
             f"AS SELECT * FROM {remote}"
         )
 
@@ -526,7 +566,7 @@ class PgFederationRuntime:  # REQ-825, REQ-840, REQ-904
         """The live view's quoted ``"schema"."table"``, as the engine route's SQL names it."""
         from provisa.compiler.naming import live_view_schema
 
-        return f'"{live_view_schema(source.catalog, source.schema_name)}"."{source.table_name}"'
+        return pg_ident(live_view_schema(source.catalog, source.schema_name), source.table_name)
 
     @staticmethod
     def _scan_relation(scan: str, source: Any) -> str:
@@ -537,7 +577,7 @@ class PgFederationRuntime:  # REQ-825, REQ-840, REQ-904
                 f"source {source.id!r} table {source.table_name!r}: a pg_duckdb scan needs the "
                 "table's registered columns"
             )
-        cols = ", ".join(f"r['{n}']::{t} AS \"{n}\"" for n, t in source.columns)
+        cols = ", ".join(f"r[{pg_lit(n)}]::{t} AS {pg_ident(n)}" for n, t in source.columns)
         return f"(SELECT {cols} FROM {scan} r) AS _scan"
 
     def _point_databricks_view(self, source: Any, scan_args: str) -> None:
@@ -556,14 +596,16 @@ class PgFederationRuntime:  # REQ-825, REQ-840, REQ-904
             options = s3_secret_options(credential)
             server = f"_dbx_{source.id}_{i}"
             cur.execute(
-                f"CREATE SERVER IF NOT EXISTS \"{server}\" TYPE 's3' FOREIGN DATA WRAPPER duckdb"
+                f"CREATE SERVER IF NOT EXISTS {pg_ident(server)} TYPE 's3' FOREIGN DATA WRAPPER duckdb"
             )
             self._set_server_options(
                 cur,
                 server,
                 {k.lower(): v for k, v in options.items() if k in ("SCOPE", "REGION")},
             )
-            cur.execute(f'CREATE USER MAPPING IF NOT EXISTS FOR CURRENT_USER SERVER "{server}"')
+            cur.execute(
+                f"CREATE USER MAPPING IF NOT EXISTS FOR CURRENT_USER SERVER {pg_ident(server)}"
+            )
             self._set_user_mapping(
                 cur,
                 server,
@@ -573,9 +615,12 @@ class PgFederationRuntime:  # REQ-825, REQ-840, REQ-904
                     if k in ("KEY_ID", "SECRET", "SESSION_TOKEN")
                 },
             )
-        metadata = table.metadata_location.replace("'", "''")
         self._create_live_view(
-            cur, source, self._scan_relation(f"iceberg_scan('{metadata}'{scan_args})", source)
+            cur,
+            source,
+            self._scan_relation(
+                f"iceberg_scan({pg_lit(table.metadata_location)}{scan_args})", source
+            ),
         )
 
     def refresh_live_relations(self, sql: str) -> None:
@@ -604,7 +649,7 @@ class PgFederationRuntime:  # REQ-825, REQ-840, REQ-904
         cur = self._con.cursor()
         found = pg_relation_kind(cur, folded_schema, source.table_name)
         if found is not None and found[1] == "v":
-            cur.execute(f'DROP VIEW "{folded_schema}"."{source.table_name}"')
+            cur.execute(f"DROP VIEW {pg_ident(folded_schema, source.table_name)}")
 
     # -- replicas ---------------------------------------------------------------
 
@@ -624,7 +669,7 @@ class PgFederationRuntime:  # REQ-825, REQ-840, REQ-904
             JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = ANY(i.indkey)
             WHERE i.indrelid = %s::regclass AND i.indisprimary
             """,
-            (f'"{schema}"."{table}"',),
+            (pg_ident(schema, table),),
         )
         return [r[0] for r in cur.fetchall()]
 
@@ -634,10 +679,12 @@ class PgFederationRuntime:  # REQ-825, REQ-840, REQ-904
         from provisa.core.ir_types import to_physical
 
         pk = set(pk_columns)
-        col_defs = [f'"{name}" {to_physical(sql_type, "postgresql")}' for name, sql_type in columns]
+        col_defs = [
+            f"{pg_ident(name)} {to_physical(sql_type, 'postgresql')}" for name, sql_type in columns
+        ]
         if pk:
-            col_defs.append(f"PRIMARY KEY ({', '.join(f'"{c}"' for c in pk)})")
-        return f'CREATE TABLE "{schema}"."{table}" ({", ".join(col_defs)})'
+            col_defs.append(f"PRIMARY KEY ({', '.join(pg_ident(c) for c in pk)})")
+        return f"CREATE TABLE {pg_ident(schema, table)} ({', '.join(col_defs)})"
 
     async def reconcile_replica(
         self,
@@ -678,7 +725,7 @@ class PgFederationRuntime:  # REQ-825, REQ-840, REQ-904
         want_cols = [name for name, _ in columns]
         want_pk = list(pk_columns or ())
         cur = self._con.cursor()
-        cur.execute(f'CREATE SCHEMA IF NOT EXISTS "{schema}"')
+        create_schema_on_cursor(cur, schema)
         if not require_pg_replica_table(cur, schema, table, action="reconcile the replica at"):
             cur.execute(self._create_table_ddl(schema, table, columns, want_pk))
             return "created"
@@ -688,7 +735,7 @@ class PgFederationRuntime:  # REQ-825, REQ-840, REQ-904
             # A replica is built with no key and keyed once it has landed (REQ-2015): one with
             # the columns and no key yet is a landed replica, never one to empty.
             return "kept"
-        cur.execute(f'DROP TABLE "{schema}"."{table}"')
+        cur.execute(f"DROP TABLE {pg_ident(schema, table)}")
         cur.execute(self._create_table_ddl(schema, table, columns, want_pk))
         return "recreated"
 
@@ -709,7 +756,7 @@ class PgFederationRuntime:  # REQ-825, REQ-840, REQ-904
         engine's own (not the control plane's database) is given none at boot."""
         from provisa.federation.replica_guard import require_pg_replica_table
 
-        cur.execute(f'CREATE SCHEMA IF NOT EXISTS "{schema}"')
+        create_schema_on_cursor(cur, schema)
         if not require_pg_replica_table(cur, schema, table, action="write the replica"):
             cur.execute(self._create_table_ddl(schema, table, columns, pk_columns))
 
@@ -768,7 +815,7 @@ class PgFederationRuntime:  # REQ-825, REQ-840, REQ-904
             try:
                 self._ensure_table(cur, schema, table, columns, pk)
                 if landing_shape == REPLACE:
-                    cur.execute(f'DELETE FROM "{schema}"."{table}"')
+                    cur.execute(f"DELETE FROM {pg_ident(schema, table)}")
                     self._insert_rows(cur, schema, table, names, rows)
                 elif landing_shape == APPEND:
                     if pk:
@@ -794,11 +841,11 @@ class PgFederationRuntime:  # REQ-825, REQ-840, REQ-904
     ) -> None:
         if not rows:
             return
-        cols_sql = ", ".join(f'"{n}"' for n in names)
+        cols_sql = ", ".join(pg_ident(n) for n in names)
         placeholders = ", ".join(["%s"] * len(names))
         values = [tuple(r.get(n) for n in names) for r in rows]
         cur.executemany(
-            f'INSERT INTO "{schema}"."{table}" ({cols_sql}) VALUES ({placeholders})', values
+            f"INSERT INTO {pg_ident(schema, table)} ({cols_sql}) VALUES ({placeholders})", values
         )
 
     def _upsert_rows(
@@ -812,15 +859,15 @@ class PgFederationRuntime:  # REQ-825, REQ-840, REQ-904
     ) -> None:
         if not rows:
             return
-        cols_sql = ", ".join(f'"{n}"' for n in names)
+        cols_sql = ", ".join(pg_ident(n) for n in names)
         placeholders = ", ".join(["%s"] * len(names))
-        conflict_cols = ", ".join(f'"{c}"' for c in pk)
+        conflict_cols = ", ".join(pg_ident(c) for c in pk)
         update_cols = [n for n in names if n not in pk]
-        set_sql = ", ".join(f'"{n}" = EXCLUDED."{n}"' for n in update_cols)
+        set_sql = ", ".join(f"{pg_ident(n)} = EXCLUDED.{pg_ident(n)}" for n in update_cols)
         do_update = f"DO UPDATE SET {set_sql}" if update_cols else "DO NOTHING"
         values = [tuple(r.get(n) for n in names) for r in rows]
         cur.executemany(
-            f'INSERT INTO "{schema}"."{table}" ({cols_sql}) VALUES ({placeholders}) '
+            f"INSERT INTO {pg_ident(schema, table)} ({cols_sql}) VALUES ({placeholders}) "
             f"ON CONFLICT ({conflict_cols}) {do_update}",
             values,
         )
@@ -857,14 +904,14 @@ class PgFederationRuntime:  # REQ-825, REQ-840, REQ-904
         try:
             for ddl in details["server_ddl_for_copy"]:
                 cur.execute(ddl)
-            cur.execute("SELECT to_regclass(%s)", (f'"{local}"."{table_name}"',))
+            cur.execute("SELECT to_regclass(%s)", (pg_ident(local, table_name),))
             row = cur.fetchone()
             assert row is not None  # a scalar function: always exactly one row
             if row[0] is None:
                 cur.execute(
-                    f'IMPORT FOREIGN SCHEMA "{details["remote_schema"]}" '
-                    f'LIMIT TO ("{table_name}") FROM SERVER "{details["server"]}" '
-                    f'INTO "{local}"'
+                    f"IMPORT FOREIGN SCHEMA {pg_ident(details['remote_schema'])} "
+                    f"LIMIT TO ({pg_ident(table_name)}) FROM SERVER {pg_ident(details['server'])} "
+                    f"INTO {pg_ident(local)}"
                 )
         finally:
             if not in_transaction:
@@ -918,22 +965,24 @@ class PgFederationRuntime:  # REQ-825, REQ-840, REQ-904
         names = [name for name, _ in columns]
         self._ensure_table(cur, schema, table, columns, pk_columns)
         counts: dict[str, Any] = {"upsert": 0, "delete": 0, "unchanged": []}
-        key_where = " AND ".join(f'"{c}" = %s' for c in pk_columns)
+        key_where = " AND ".join(f"{pg_ident(c)} = %s" for c in pk_columns)
 
         def _held(row: dict) -> Any:
             cur.execute(
-                f'SELECT * FROM "{schema}"."{table}" WHERE {key_where}',
+                f"SELECT * FROM {pg_ident(schema, table)} WHERE {key_where}",
                 tuple(row.get(c) for c in pk_columns),
             )
             return cur.fetchone()
 
         for match in delete_where or ():
-            where = " AND ".join(f'"{c}" = %s' for c in match)
-            cur.execute(f'DELETE FROM "{schema}"."{table}" WHERE {where}', tuple(match.values()))
+            where = " AND ".join(f"{pg_ident(c)} = %s" for c in match)
+            cur.execute(
+                f"DELETE FROM {pg_ident(schema, table)} WHERE {where}", tuple(match.values())
+            )
         for position, ev in enumerate(events):
             if ev.operation.lower() == "delete":
                 cur.execute(
-                    f'DELETE FROM "{schema}"."{table}" WHERE {key_where}',
+                    f"DELETE FROM {pg_ident(schema, table)} WHERE {key_where}",
                     tuple(ev.row.get(c) for c in pk_columns),
                 )
                 counts["delete"] += 1
@@ -1062,17 +1111,19 @@ class PgFederationRuntime:  # REQ-825, REQ-840, REQ-904
         try:
             cur.execute("CREATE EXTENSION IF NOT EXISTS postgres_fdw")
             cur.execute(
-                f'CREATE SERVER IF NOT EXISTS "{server}" FOREIGN DATA WRAPPER postgres_fdw '
+                f"CREATE SERVER IF NOT EXISTS {pg_ident(server)} FOREIGN DATA WRAPPER postgres_fdw "
                 "OPTIONS (updatable 'false')"
             )
             self._set_server_options(cur, server, options)
-            cur.execute(f'CREATE USER MAPPING IF NOT EXISTS FOR CURRENT_USER SERVER "{server}"')
-            self._set_user_mapping(cur, server, user)
-            cur.execute(f'CREATE SCHEMA IF NOT EXISTS "{local}"')
-            cur.execute(f'DROP FOREIGN TABLE IF EXISTS "{local}"."{table}"')
             cur.execute(
-                f'IMPORT FOREIGN SCHEMA "{schema}" LIMIT TO ("{table}") '
-                f'FROM SERVER "{server}" INTO "{local}"'
+                f"CREATE USER MAPPING IF NOT EXISTS FOR CURRENT_USER SERVER {pg_ident(server)}"
+            )
+            self._set_user_mapping(cur, server, user)
+            cur.execute(f"CREATE SCHEMA IF NOT EXISTS {pg_ident(local)}")
+            cur.execute(f"DROP FOREIGN TABLE IF EXISTS {pg_ident(local, table)}")
+            cur.execute(
+                f"IMPORT FOREIGN SCHEMA {pg_ident(schema)} LIMIT TO ({pg_ident(table)}) "
+                f"FROM SERVER {pg_ident(server)} INTO {pg_ident(local)}"
             )
         finally:
             cur.execute("SELECT pg_advisory_unlock(%s)", (self._REGION_ATTACH_LOCK_KEY,))
@@ -1086,7 +1137,7 @@ class PgFederationRuntime:  # REQ-825, REQ-840, REQ-904
         row = cur.fetchone()
         assert row is not None  # created just above, under the lock
         have = {opt.split("=", 1)[0] for opt in row[0]}  # updatable is always among them
-        PgFederationRuntime._alter_options(cur, f'ALTER SERVER "{server}"', have, options)
+        PgFederationRuntime._alter_options(cur, f"ALTER SERVER {pg_ident(server)}", have, options)
 
     @staticmethod
     def _set_user_mapping(cur: Any, server: str, options: dict[str, str]) -> None:
@@ -1099,11 +1150,12 @@ class PgFederationRuntime:  # REQ-825, REQ-840, REQ-904
         assert row is not None  # created just above, under the lock
         have = {opt.split("=", 1)[0] for opt in row[0] or ()}
         PgFederationRuntime._alter_options(
-            cur, f'ALTER USER MAPPING FOR CURRENT_USER SERVER "{server}"', have, options
+            cur, f"ALTER USER MAPPING FOR CURRENT_USER SERVER {pg_ident(server)}", have, options
         )
         if "password" in have and "password" not in options:
             cur.execute(
-                f'ALTER USER MAPPING FOR CURRENT_USER SERVER "{server}" OPTIONS (DROP password)'
+                f"ALTER USER MAPPING FOR CURRENT_USER SERVER {pg_ident(server)} "
+                "OPTIONS (DROP password)"
             )
 
     @staticmethod
@@ -1190,6 +1242,7 @@ class PgFederationRuntime:  # REQ-825, REQ-840, REQ-904
             con = self._read_pool.getconn()
         discard = True
         try:
+            _tell_zone(con, sql)
             cur = con.cursor()
             query = cur.mogrify(*_psycopg2_exec_args(sql, params)).decode()
             with open(path, "wb") as out, request_deadline.cancel_on_deadline(con.cancel):
@@ -1230,6 +1283,7 @@ class PgFederationRuntime:  # REQ-825, REQ-840, REQ-904
             shield.settle()
             read_con = self._read_pool.getconn()
         try:
+            _tell_zone(read_con, sql)
             cur = read_con.cursor(name="provisa_stream")  # named ⇒ server-side portal
             cur.itersize = _STREAM_BATCH_ROWS
             _read_as_postgresql_writes(cur)
@@ -1403,6 +1457,7 @@ class PgFederationRuntime:  # REQ-825, REQ-840, REQ-904
                 shield.settle()
                 con = self._read_pool.getconn()
             try:
+                _tell_zone(con, sql)
                 cur = con.cursor()
                 _read_as_postgresql_writes(cur)
                 with request_deadline.cancel_on_deadline(con.cancel):
@@ -1427,7 +1482,7 @@ class PgFederationRuntime:  # REQ-825, REQ-840, REQ-904
                 rows=rows, column_names=cols, column_types=types, column_type_oids=oids
             )
 
-        return await loop.run_in_executor(None, _run)
+        return await loop.run_in_executor(None, carrying_zone(_run))
 
     def close(self) -> None:
         self._con.close()

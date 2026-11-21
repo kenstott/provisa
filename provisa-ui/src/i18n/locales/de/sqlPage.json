@@ -9,6 +9,6 @@
     "detachToSemantic": "In semantisches SQL abkoppeln",
     "expansionTitle": "Metrik-Expansion",
     "expansionLoading": "Expansion wird abgerufen...",
-    "expansionNoMetric": "Diese Anweisung verweist auf keine Metrik — es gibt nichts zu expandieren."
+    "expansionNoMetric": "Diese Anweisung referenziert keine Metrik, daher gibt es nichts zu expandieren."
   }
 }

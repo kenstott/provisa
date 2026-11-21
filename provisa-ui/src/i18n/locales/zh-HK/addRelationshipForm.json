@@ -37,6 +37,16 @@
     "viaLabelSourceColumn": "關係類型值",
     "viaLabelSourceTable": "資料表名稱",
     "viaLabelSourceFixed": "Cypher 別名",
-    "cardinalityOneToOne": "一對一"
+    "cardinalityOneToOne": "一對一",
+    "targetTypeResolver": "代碼解析器",
+    "resolverLabel": "解析器",
+    "resolverHelp": "代碼來源的一個查詢，接收來源表和目標表，並為每個配對傳回一行。",
+    "resolverNone": "沒有接收兩張表的代碼來源查詢",
+    "sourceMatchLabel": "包含來源鍵的配對欄",
+    "targetMatchLabel": "包含目標鍵的配對欄",
+    "incrementalLabel": "增量維護配對",
+    "incrementalHelp": "每次重新整理時，向解析器的 @change 函數查詢自上次執行以來有變更的配對，並按鍵套用。關閉時，每次重新整理都會重新計算所有配對。",
+    "rebuildEveryLabel": "完整重建間隔（秒）",
+    "rebuildEveryHelp": "重新計算所有配對的頻率，用以修正變更遺漏的內容。增量維護配對時必須填寫。"
   }
 }

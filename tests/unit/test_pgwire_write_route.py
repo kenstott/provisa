@@ -355,6 +355,7 @@ async def test_the_direct_terminal_opens_the_pool_for_a_write(monkeypatch):
             two_step=None,  # as _Plan: written whole (REQ-2001)
             staged=None,  # as _Plan: no CTE holding a column transform (REQ-2131)
             code_write=None,  # as _Plan: no code table written (REQ-2100)
+            keyed_write=None,  # as _Plan: not written in two steps by key (REQ-039)
             generated_key=None,  # as _Plan: no generated value reported (REQ-2167)
             materialize=None,
             auto_deliver=None,
@@ -582,7 +583,8 @@ def test_the_pgwire_route_refuses_every_form_beyond_a_plain_write(source_type):
     from provisa.executor.writable import WRITE_FORMS, write_refused_forms
     from provisa.executor.write_capability import table_write_refused_forms
 
-    assert write_refused_forms(source_type, None) == WRITE_FORMS == set(_FORMS)
+    # REQ-039: and a write led by WITH, which it takes in two steps.
+    assert write_refused_forms(source_type, None) == WRITE_FORMS == {*_FORMS, "with_write"}
     assert (
         table_write_refused_forms({"table_name": "Account"}, source_type, None, source_path=None)
         == WRITE_FORMS

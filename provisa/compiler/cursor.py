@@ -24,6 +24,8 @@ import json
 from decimal import Decimal
 from typing import Any, Protocol
 
+from provisa.compiler.sql_rewrite import _q
+
 # Requirements: REQ-218
 
 
@@ -103,9 +105,6 @@ def cursor_where_clause(  # REQ-218
         raise ValueError(
             f"Cursor has {len(cursor_values)} values but sort key has {len(sort_columns)} columns"
         )
-
-    def _q(name: str) -> str:
-        return f'"{name}"'
 
     def _col_ref(col: str) -> str:
         if alias is None:

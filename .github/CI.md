@@ -15,20 +15,25 @@ its setup from the action and never repeats the commands.
 | Action | What the job has afterwards | Inputs |
 | --- | --- | --- |
 | `setup-python` | uv, and the locked environment in `.venv` | `extras`, `client`, `cache`, `sync` (false: uv only) |
-| `setup-ui` | Node, `provisa-ui/node_modules`, optionally Chromium | `node-version`, `install`, `playwright` (`none`, `chromium`, `chromium-with-deps`) |
+| `setup-ui` | Node at `.nvmrc`, `provisa-ui/node_modules`, optionally Chromium | `install`, `graph-render`, `playwright` (`none`, `chromium`) |
 | `trino-plugins` | the pinned Trino plugin jars, restored or saved under one key | `phase` (`restore`, `save`), `cache-hit`, `key-prefix` |
+| `zaychik-image` | the `zaychik:latest` image the core services start, loaded; built and saved once per change to `zaychik/` | `phase` (`prime`, `restore`) |
+| `pyodide-downloads` | every file `provisa_notebook.build` downloads (Pyodide and its packages), from the cache or one download, in the directory `PROVISA_NOTEBOOK_DOWNLOADS` names | `python`; outputs `dir`, `cache-hit` |
 | `mssql-odbc` | ODBC Driver 18, registered | none |
 | `docs-site-deps` | MkDocs and its plugins | none |
+| `free-runner-disk` | the runner image's unused toolchains (.NET, Android, GHC, CodeQL) removed from `/`, and `df -h /` printed | none |
 | `demo-bundle` | a named demo's bundle in `dist/demos/` (its seed, logs and database dump), its data stores down again | `demo`; output `bundle` |
 | `release-metadata` | the channel, the PEP 440 version, every asset name (18 outputs) | `version` |
 | `ensure-release` | the draft GitHub release for a tag | `tag` |
+| `attach-release-assets` | a release asset attached to the draft, by the job that built it | `tag`, `files` |
 | `apple-signing` | a keychain holding the Developer ID certificate | `p12-base64`, `p12-password` |
 | `nixos-vm` | a booted NixOS guest with the checkout on its disk | none |
 | `conformance-instance` | a running Provisa instance over the job's PostgreSQL, its model loaded, the job user created and its token in `CONFORMANCE_AUTHORIZATION` | none (reads the job's env) |
 
 **The lane workflow** (`.github/workflows/lane.yml`) — one job with a fixed order of steps. Any
 job that runs the container suite or Playwright is a call to it. The order: checkout, the setups
-the caller asked for (`odbc`, `python-extras`, `ui`, `java`, `trino-plugins`, `image-cache`,
+the caller asked for (`odbc`, `python-extras`, `ui`, `java`, `trino-plugins`, `pyodide-downloads`,
+`image-cache`,
 `splunk-cim-cache`), the caller's `env`, the sampler, `prepare`, `run`, `after`, `on-failure`
 when the lane failed, the cache saves, the uploads. A lane's own logic lives in
 `scripts/ci/lanes/`, not in the call.
@@ -40,12 +45,14 @@ and passes each leg the same `version` and `publish`.
 
 | Trigger | Workflows |
 | --- | --- |
-| push to `main` | Unit Tests, UI Unit Tests, Lint, Requirements CI, CVE Audit, Integration suite, Deploy Site, NixOS, amd64-only engines, windows-container-smoke |
-| pull request | Unit Tests, UI Unit Tests, Lint, Requirements CI, CVE Audit, amd64-only engines, windows-container-smoke |
-| tag `v*` | Build Provisa Packages (the release), Release Exports, both extension builds, the three UI e2e lanes |
-| push to `release/**` | the three UI e2e lanes |
-| nightly | the warehouse lane, CVE Audit, NixOS |
+| push to `main` | Unit Tests, UI Unit Tests, Lint, Requirements CI, CVE Audit, Docker Image, devcontainer-smoke (when the container changed), Deploy Site (when `docs/**`, `site/**` or the like changed), Demo bundles (when a named demo changed) |
+| pull request | Unit Tests, UI Unit Tests, Lint, Requirements CI, CVE Audit, devcontainer-smoke |
+| tag `v*` | nothing: a tag tracks the stage, and Release: cut starts the release workflows on it |
+| push to `release/**` | Everything that gates a release: Unit Tests, UI Unit Tests, Lint, Requirements CI, CVE Audit, Docker Image, devcontainer-smoke, Integration suite, UI E2E Core, UI E2E Trino, UI E2E Swap, every Conformance suite |
+| nightly | Integration suite, CVE Audit |
+| 17:00 America/New_York (schedule, from `main`) | Release: alpha nightly, which starts the alpha's suites and dry-run build on the new `release/<version>` (a workflow token's push starts nothing) |
 | push to `ci/**` touching `.github/` or `scripts/ci/` | CI leaf check |
+| push to `ci/**` touching the dev container | devcontainer-smoke |
 
 The warehouse lane, the Salesforce lane and the core UI lane read live credentials. The core UI
 lane also resumes a paid Fabric capacity. They run on the triggers above and on a dispatch.
@@ -75,6 +82,8 @@ lane's first step checks its secrets and fails naming the empty ones.
 marker and `tests/conftest.py` starts it; CI has nothing per source. Check which lane's marker
 expression in `scripts/ci/run_lane.py` now selects the test, and whether that lane's memory
 still holds the new container.
+
+**Finish a release.** After a release is published, the lead runs `python scripts/release_merge.py --version <tag>` from any clone. It merges the release back to `main`, deletes the branch, prints each ref's move, refuses on a conflict and never forces.
 
 **Add a release artifact.** Name it in `release-metadata`, build it in the leg for its platform,
 and add it to the one file list in `release-publish.yml` ("Release assets present"). Not yet

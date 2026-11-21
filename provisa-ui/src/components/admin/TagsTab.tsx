@@ -8,21 +8,25 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRememberedChoice } from "../../hooks/useRememberedChoice";
-import { useSearchParams } from "react-router-dom";
+import { useDetailParam } from "../list/useDetailParam";
 import { useTranslation } from "react-i18next";
 import {
   ActionIcon,
+  Alert,
   Badge,
   Button,
   Checkbox,
   Group,
+  List as MantineList,
   Pagination,
   SegmentedControl,
   Select,
   Stack,
+  Switch,
   Table,
+  Text,
   TextInput,
   Title,
 } from "@mantine/core";
@@ -33,23 +37,63 @@ import {
   useTagAssignments,
   useSaveTag,
   useDeleteTag,
+  useDeleteTags,
   useUpsertTagParamValue,
   useDeleteTagParamValue,
+  useTagCitations,
+  citationKey,
+  pickedCitation,
+  type CitationPlace,
 } from "../../hooks/useTagQueries";
-import type { Tag, TagFieldPolicy, TagObjectType, TagParamPolicy } from "../../types/admin";
+import type {
+  LibraryCitation,
+  MutationResult,
+  Tag,
+  TagFieldPolicy,
+  TagObjectType,
+  TagOutsideAssignment,
+  TagParamPolicy,
+} from "../../types/admin";
 import { baseTagId } from "../../types/admin";
 import { FilterInput } from "./FilterInput";
 import { HelpBubble } from "../HelpBubble";
 import { ListRow } from "../list/ListTable";
 import { SortGroupTable } from "../list/SortGroupTable";
-import { FormField, FormFooter, FormIdentifiers, FormLayout } from "../form/FormLayout";
+import { useListSelection } from "../list/listSelection";
+import { ListBulkBar } from "../list/ListBulkBar";
+import { FormChecks, FormField, FormFooter, FormIdentifiers, FormLayout } from "../form/FormLayout";
 import { Tip } from "../Tip";
+import { TagCitations } from "../TagCitations";
 import { useDependentsDialog } from "../../hooks/useDependentsDialog";
 import { matchesQuery } from "../../lib/searchItems";
+import { MultiSelect } from "../MultiSelect";
+import { useDomains } from "../../hooks/useAdminQueries";
+import { useDomainFilter } from "../../context/DomainFilterContext";
+import { assignableDomainIds } from "../../lib/internalDomains";
+import { fetchContextTags, type ContextTagUse } from "../../api/contextViews";
+import { ContextPlaces } from "../ContextPlaces";
+import { EntityLink } from "../EntityLink";
 
 const PAGE_SIZE = 50;
 
-const SCOPES: TagObjectType[] = ["source", "table", "column", "relationship", "command"];
+// REQ-1634, REQ-2145, REQ-2208: a data product, a glossary term, a row rule, a role, a metric, and a
+// reference library document and its sections are tagged as the other objects are.
+const SCOPES: TagObjectType[] = [
+  "source",
+  "table",
+  "column",
+  "relationship",
+  "command",
+  "product",
+  "term",
+  "rls_rule",
+  "role",
+  "metric",
+  "document",
+  "section",
+];
+
+const done: MutationResult = { success: true, message: "" };
 
 const POLICIES: TagFieldPolicy[] = ["hidden", "optional", "required"];
 
@@ -61,8 +105,19 @@ const PARAM_POLICIES: TagParamPolicy[] = ["none", "required"];
 // REQ-1374: one org-level tag registry, viewed one scope at a time. The
 // SegmentedControl filters the single list; a multi-scope tag appears under
 // each scope its appliesTo names.
-export function TagsTab() {
+// REQ-2259: ``readOnly`` is the Context group's Tags page: no control that writes, and in place
+// of the actions each tag's tables and columns and what depends on it. Editing stays in Admin.
+export function TagsTab({ readOnly = false }: { readOnly?: boolean }) {
   const { t } = useTranslation();
+  const [uses, setUses] = useState<Map<string, ContextTagUse> | null>(null);
+  const [usesError, setUsesError] = useState<string | null>(null);
+  useEffect(() => {
+    if (!readOnly) return;
+    fetchContextTags().then(
+      (r) => setUses(new Map(r.tags.map((u) => [u.id, u]))),
+      (e: Error) => setUsesError(e.message),
+    );
+  }, [readOnly]);
   const { tags } = useTags();
   const { tagAssignments } = useTagAssignments();
   const { createTag, updateTag } = useSaveTag();
@@ -70,6 +125,9 @@ export function TagsTab() {
   const refusal = useDependentsDialog();
   const { upsertTagParamValue } = useUpsertTagParamValue();
   const { deleteTagParamValue } = useDeleteTagParamValue();
+  const { citeDefinition } = useTagCitations();
+  const { domains } = useDomains();
+  const { domainsEnabled } = useDomainFilter();
 
   const [rememberedScope, setRememberedScope] = useRememberedChoice<TagObjectType>(
     "filter.tags.scope",
@@ -83,10 +141,9 @@ export function TagsTab() {
   const [page, setPage] = useState(1);
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-  // `?tag=<id>` (a graph's tag link, lib/entityHref): the list shows that tag, under a scope it
-  // applies to, its row marked.
-  const [searchParams] = useSearchParams();
-  const linkedTag = searchParams.get("tag");
+  // `?tag=<id>` (a graph's or a refused delete's link, detailHref): the list shows that tag,
+  // under a scope it applies to, its row marked.
+  const linkedTag = useDetailParam("tags").id;
   const [seededTag, setSeededTag] = useState<string | null>(null);
   const linked = tags.find((g) => g.id === linkedTag);
   if (linked && linkedTag !== seededTag) {
@@ -100,6 +157,14 @@ export function TagsTab() {
   const [formReasonPolicy, setFormReasonPolicy] = useState<TagFieldPolicy>("optional");
   const [formExpiresPolicy, setFormExpiresPolicy] = useState<TagFieldPolicy>("optional");
   const [formParamPolicy, setFormParamPolicy] = useState<TagParamPolicy>("none");
+  const [formRequiresCitation, setFormRequiresCitation] = useState(false);
+  const [formRequired, setFormRequired] = useState(false);
+  // REQ-2208: the domains whose objects the tag is offered on, as a source's; none = every domain.
+  const [formDomains, setFormDomains] = useState<string[]>([]);
+  // The assignments the last save left outside the tag's domains: they stay, and are listed.
+  const [outside, setOutside] = useState<TagOutsideAssignment[]>([]);
+  // The sections that say why the tag exists, edited here and saved with the tag.
+  const [formCited, setFormCited] = useState<LibraryCitation[]>([]);
   // REQ-1467: which tag's value list is open, and the draft new value/description beneath it.
   const [valuesTagId, setValuesTagId] = useState<string | null>(null);
   const [newValue, setNewValue] = useState("");
@@ -131,6 +196,9 @@ export function TagsTab() {
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const safePage = Math.min(page, totalPages);
   const [grouped, setGrouped] = useState(false);
+  // REQ-2240: tags selected and deleted together; a system tag is refused by its own delete.
+  const selection = useListSelection(filtered.map((tag) => tag.id));
+  const deleteTags = useDeleteTags();
 
   const resetForm = () => {
     setEditingId(null);
@@ -140,6 +208,11 @@ export function TagsTab() {
     setFormReasonPolicy("optional");
     setFormExpiresPolicy("optional");
     setFormParamPolicy("none");
+    setFormRequiresCitation(false);
+    setFormRequired(false);
+    setFormDomains([]);
+    setOutside([]);
+    setFormCited([]);
   };
 
   const closeForm = () => {
@@ -161,7 +234,40 @@ export function TagsTab() {
     setFormReasonPolicy(tag.reasonPolicy);
     setFormExpiresPolicy(tag.expiresPolicy);
     setFormParamPolicy(tag.paramPolicy);
+    setFormRequiresCitation(tag.requiresCitation);
+    setFormRequired(tag.required);
+    setFormDomains([...tag.allowedDomains]);
+    setOutside([]);
+    setFormCited(tag.citations);
     setShowForm(true);
+  };
+
+  const citeInForm = async (place: CitationPlace, documentTitle: string) => {
+    const key = citationKey(place);
+    setFormCited((held) =>
+      held.some((c) => citationKey(c) === key)
+        ? held
+        : [...held, pickedCitation(place, documentTitle)],
+    );
+    return done;
+  };
+  const uncite = async (c: LibraryCitation) => {
+    setFormCited((held) => held.filter((h) => citationKey(h) !== citationKey(c)));
+    return done;
+  };
+  // Confirm is the one act that records a citation's text anew: the saved tag cites it again at
+  // once, and the form shows it current, as the next read will.
+  const confirmInForm = async (c: LibraryCitation) => {
+    if (editingId === null) return done;
+    const result = await citeDefinition(editingId, c);
+    if (result.success) {
+      setFormCited((held) =>
+        held.map((h) =>
+          citationKey(h) === citationKey(c) ? { ...h, state: "current", needsReview: false } : h,
+        ),
+      );
+    }
+    return result;
   };
 
   const handleSubmit = async () => {
@@ -175,14 +281,40 @@ export function TagsTab() {
       formReasonPolicy,
       formExpiresPolicy,
       formParamPolicy,
+      formRequiresCitation,
+      formRequired,
+      formCited.map(({ documentId, sectionHeading, sectionPage }) => ({
+        documentId,
+        sectionHeading,
+        sectionPage,
+      })),
+      formDomains,
     );
     if (result.success) {
       notifications.show({ color: "green", message: t("tagsTab.saved", { id: formId.trim() }) });
+      // REQ-2208: a save that narrowed the tag's domains keeps the form open on the saved tag,
+      // listing the assignments now outside them; they stay.
+      const left = (result.params as { outside?: TagOutsideAssignment[] } | null)?.outside ?? [];
+      if (left.length > 0) {
+        setEditingId(formId.trim());
+        setOutside(left);
+        return;
+      }
       setShowForm(false);
       resetForm();
     } else {
       notifications.show({ color: "red", message: result.message });
     }
+  };
+
+  // An outside assignment as its object is known: a table's or column's address, else its id.
+  const outsideName = (o: TagOutsideAssignment) => {
+    const held = tagAssignments.find(
+      (a) => a.objectKey === o.objectKey && baseTagId(a.tagId) === baseTagId(o.tagId),
+    );
+    if (held?.tableRef)
+      return held.columnName ? `${held.tableRef}.${held.columnName}` : held.tableRef;
+    return o.objectKey.slice(o.objectKey.indexOf(":") + 1);
   };
 
   const toggleValues = (tagId: string) => {
@@ -237,7 +369,7 @@ export function TagsTab() {
           placeholder={t("tagsTab.filterPlaceholder")}
         />
         <Group gap="xs">
-          {!showForm && (
+          {!readOnly && !showForm && (
             <Button
               leftSection={<Plus size={14} />}
               onClick={openCreate}
@@ -265,6 +397,10 @@ export function TagsTab() {
         }}
         data={SCOPES.map((s) => ({ label: scopeLabel(s), value: s }))}
         data-testid="tags-scope-bar"
+        // REQ-2208: twelve object kinds do not fit one row, in German not even at 1900px; the bar
+        // wraps onto further rows instead of clipping its labels, each row filled edge to edge.
+        fullWidth
+        styles={{ root: { flexWrap: "wrap" }, control: { flex: "1 0 auto" } }}
       />
 
       {showForm && (
@@ -301,6 +437,23 @@ export function TagsTab() {
               </Group>
             </Checkbox.Group>
           </FormField>
+          {domainsEnabled && (
+            <FormField
+              size="long"
+              hint={t("sourceFormFieldsExtended.allowedDomainsHint")}
+              data-testid="tags-allowed-domains"
+            >
+              <MultiSelect
+                label={t("sourceFormFieldsExtended.allowedDomains")}
+                options={assignableDomainIds(domains.map((d) => d.id)).map((id) => ({
+                  id,
+                  label: id,
+                }))}
+                value={formDomains}
+                onChange={setFormDomains}
+              />
+            </FormField>
+          )}
           <FormField size="medium">
             <Select
               label={t("tagsTab.reasonPolicyLabel")}
@@ -331,6 +484,55 @@ export function TagsTab() {
               data-testid="tags-param-policy"
             />
           </FormField>
+          <FormChecks>
+            <FormField help={t("tagCitations.requiresCitationDesc")} size="medium">
+              <Switch
+                label={t("tagCitations.requiresCitationLabel")}
+                checked={formRequiresCitation}
+                onChange={(e) => setFormRequiresCitation(e.currentTarget.checked)}
+                data-testid="tags-requires-citation"
+              />
+            </FormField>
+            <FormField help={t("tagsTab.requiredDesc")} size="medium">
+              <Switch
+                label={t("tagsTab.requiredLabel")}
+                checked={formRequired}
+                onChange={(e) => setFormRequired(e.currentTarget.checked)}
+                data-testid="tags-required"
+              />
+            </FormField>
+          </FormChecks>
+          <FormField size="full">
+            <TagCitations
+              testId="tags-defined-by"
+              label={t("tagCitations.definitionLabel")}
+              description={t("tagCitations.definitionDesc")}
+              citations={formCited}
+              onAdd={citeInForm}
+              onRemove={uncite}
+              onConfirm={confirmInForm}
+            />
+          </FormField>
+          {outside.length > 0 && (
+            <FormField size="full" data-testid="tags-outside-assignments">
+              <Alert color="yellow" variant="light" title={t("tagsTab.outsideTitle")}>
+                <Stack gap="xs">
+                  <span>{t("tagsTab.outsideBody")}</span>
+                  <MantineList size="sm">
+                    {outside.map((o) => (
+                      <MantineList.Item key={o.objectKey}>
+                        {t("tagsTab.outsideItem", {
+                          kind: scopeLabel(o.objectType),
+                          name: outsideName(o),
+                          domains: o.domains.join(", "),
+                        })}
+                      </MantineList.Item>
+                    ))}
+                  </MantineList>
+                </Stack>
+              </Alert>
+            </FormField>
+          )}
           <FormFooter
             onSave={handleSubmit}
             onCancel={closeForm}
@@ -342,7 +544,21 @@ export function TagsTab() {
         </FormLayout>
       )}
 
+      {usesError && (
+        <Alert color="red" data-testid="tags-uses-error">
+          {usesError}
+        </Alert>
+      )}
+      {!readOnly && (
+        <ListBulkBar
+          selection={selection}
+          nameOf={(id) => id}
+          onDelete={deleteTags}
+          testId="tags-bulk"
+        />
+      )}
       <SortGroupTable
+        selection={readOnly ? undefined : selection}
         testPrefix="tags"
         minWidth={640}
         rows={filtered}
@@ -370,9 +586,11 @@ export function TagsTab() {
           { col: "description" },
           { col: "appliesTo" },
           { col: "assignments" },
-          t("tagsTab.colActions"),
+          ...(readOnly
+            ? [t("contextViews.colWhereApplied"), t("contextViews.colDependents")]
+            : [t("tagsTab.colActions")]),
         ]}
-        colSpan={5}
+        colSpan={readOnly ? 6 : 5}
         rowKey={(tag) => tag.id}
         empty={t("tagsTab.empty")}
         page={{ index: safePage - 1, size: PAGE_SIZE }}
@@ -380,17 +598,49 @@ export function TagsTab() {
         render={(tag) => [
           <ListRow key={tag.id} testId={`tags-row-${tag.id}`} selected={tag.id === linkedTag}>
             <Table.Td>
-              {tag.id}
-              {(tag.reasonPolicy !== "optional" || tag.expiresPolicy !== "optional") && (
+              {readOnly ? (
+                <EntityLink kind="tag" id={tag.id} testId={`tags-link-${tag.id}`}>
+                  {tag.id}
+                </EntityLink>
+              ) : (
+                tag.id
+              )}
+              {(tag.required ||
+                tag.reasonPolicy === "required" ||
+                tag.expiresPolicy === "required" ||
+                tag.requiresCitation ||
+                tag.needsReview) && (
                 <Group gap={4} mt={2}>
-                  {tag.reasonPolicy !== "optional" && (
+                  {tag.required && (
+                    <Badge size="xs" variant="light" color="gray" data-testid="tags-required-badge">
+                      {t("tagsTab.requiredLabel")}
+                    </Badge>
+                  )}
+                  {tag.requiresCitation && (
+                    <Badge size="xs" variant="light" color="gray">
+                      {t("tagCitations.requiresCitationBadge")}
+                    </Badge>
+                  )}
+                  {tag.needsReview && (
+                    <Tip text={t("tagCitations.definitionReviewHelp")}>
+                      <Badge
+                        size="xs"
+                        variant="light"
+                        color="orange"
+                        data-testid={`tags-needs-review-${tag.id}`}
+                      >
+                        {t("tagCitations.needsReview")}
+                      </Badge>
+                    </Tip>
+                  )}
+                  {tag.reasonPolicy === "required" && (
                     <Badge size="xs" variant="light" color="gray">
                       {t("tagsTab.reasonPolicyBadge", {
                         policy: policyLabel(tag.reasonPolicy),
                       })}
                     </Badge>
                   )}
-                  {tag.expiresPolicy !== "optional" && (
+                  {tag.expiresPolicy === "required" && (
                     <Badge size="xs" variant="light" color="gray">
                       {t("tagsTab.expiresPolicyBadge", {
                         policy: policyLabel(tag.expiresPolicy),
@@ -422,51 +672,58 @@ export function TagsTab() {
                 (assignmentCounts[tag.id] ?? 0)
               )}
             </Table.Td>
-            <Table.Td>
-              <Group gap="xs">
-                {/* REQ-1467: the value list is editable even on a system tag — the tag itself
+            {readOnly ? (
+              <ContextColumns tag={tag} uses={uses} />
+            ) : (
+              <Table.Td>
+                <Group gap="xs">
+                  {/* REQ-1467: the value list is editable even on a system tag — the tag itself
                         is code-defined, but which values it admits is the maintainer's call. */}
-                {tag.paramPolicy === "required" && (
-                  <ActionIcon
-                    variant="subtle"
-                    aria-label={t("tagsTab.editValues", { id: tag.id })}
-                    data-testid={`tags-values-${tag.id}`}
-                    onClick={() => toggleValues(tag.id)}
-                  >
-                    <List size={14} />
-                  </ActionIcon>
-                )}
-                {tag.isSystem ? (
-                  <Tip text={t(tag.derived ? "tagsTab.derivedTagHelp" : "tagsTab.systemTag")} named>
-                    <Lock
-                      size={13}
-                      aria-label={t(tag.derived ? "tagsTab.derivedTagHelp" : "tagsTab.systemTag")}
-                    />
-                  </Tip>
-                ) : (
-                  <>
+                  {tag.paramPolicy === "required" && (
                     <ActionIcon
                       variant="subtle"
-                      aria-label={t("tagsTab.editTag", { id: tag.id })}
-                      onClick={() => openEdit(tag)}
+                      aria-label={t("tagsTab.editValues", { id: tag.id })}
+                      data-testid={`tags-values-${tag.id}`}
+                      onClick={() => toggleValues(tag.id)}
                     >
-                      <Pencil size={14} />
+                      <List size={14} />
                     </ActionIcon>
-                    <ActionIcon
-                      variant="subtle"
-                      color="red"
-                      aria-label={t("tagsTab.deleteTag", { id: tag.id })}
-                      data-testid={`tags-delete-${tag.id}`}
-                      onClick={() => handleDelete(tag)}
+                  )}
+                  {tag.isSystem ? (
+                    <Tip
+                      text={t(tag.derived ? "tagsTab.derivedTagHelp" : "tagsTab.systemTag")}
+                      named
                     >
-                      <Trash2 size={14} />
-                    </ActionIcon>
-                  </>
-                )}
-              </Group>
-            </Table.Td>
+                      <Lock
+                        size={13}
+                        aria-label={t(tag.derived ? "tagsTab.derivedTagHelp" : "tagsTab.systemTag")}
+                      />
+                    </Tip>
+                  ) : (
+                    <>
+                      <ActionIcon
+                        variant="subtle"
+                        aria-label={t("tagsTab.editTag", { id: tag.id })}
+                        onClick={() => openEdit(tag)}
+                      >
+                        <Pencil size={14} />
+                      </ActionIcon>
+                      <ActionIcon
+                        variant="subtle"
+                        color="red"
+                        aria-label={t("tagsTab.deleteTag", { id: tag.id })}
+                        data-testid={`tags-delete-${tag.id}`}
+                        onClick={() => handleDelete(tag)}
+                      >
+                        <Trash2 size={14} />
+                      </ActionIcon>
+                    </>
+                  )}
+                </Group>
+              </Table.Td>
+            )}
           </ListRow>,
-          valuesTagId === tag.id && (
+          !readOnly && valuesTagId === tag.id && (
             <Table.Tr
               className="list-expand"
               key={`${tag.id}-values`}
@@ -545,5 +802,58 @@ export function TagsTab() {
         </Group>
       )}
     </Stack>
+  );
+}
+
+/** REQ-2259: a tag's tables and columns and what depends on it, on the Context Tags page. A derived
+ * tag is computed off each table's registration and never assigned, so it is applied nowhere by
+ * name. */
+function ContextColumns({ tag, uses }: { tag: Tag; uses: Map<string, ContextTagUse> | null }) {
+  const { t } = useTranslation();
+  if (uses === null) {
+    return (
+      <>
+        <Table.Td />
+        <Table.Td />
+      </>
+    );
+  }
+  const use = uses.get(tag.id);
+  if (use === undefined) throw new Error(`tag ${tag.id} is missing from the context read`);
+  const none = use.rowFilters === 0 && use.classificationKinds.length === 0;
+  return (
+    <>
+      <Table.Td>
+        <ContextPlaces
+          places={use.usages}
+          hidden={use.hiddenUsages}
+          testId={`tags-where-${tag.id}`}
+        />
+      </Table.Td>
+      <Table.Td data-testid={`tags-dependents-${tag.id}`}>
+        {none ? (
+          <Text size="xs" c="dimmed">
+            {t("contextViews.noDependents")}
+          </Text>
+        ) : (
+          <Stack gap={2}>
+            {use.rowFilters > 0 && (
+              <Text size="xs">{t("contextViews.rowFilters", { count: use.rowFilters })}</Text>
+            )}
+            {use.classificationKinds.map((k) => (
+              <Text size="xs" key={k}>
+                <EntityLink
+                  kind="classification"
+                  id={k}
+                  testId={`tags-classification-${tag.id}-${k}`}
+                >
+                  {t("contextViews.classifiedAs", { kind: t(`classificationKinds.kind.${k}`) })}
+                </EntityLink>
+              </Text>
+            ))}
+          </Stack>
+        )}
+      </Table.Td>
+    </>
   );
 }

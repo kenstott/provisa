@@ -15,6 +15,7 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { render, screen, waitFor, fireEvent } from "../../../test-utils/render";
 import type { GraphData } from "../graphModel";
+import { matchesSearch, searchItems, type SearchGroups } from "../../../lib/searchItems";
 
 type Calls = Record<string, ReturnType<typeof vi.fn>>;
 type Callbacks = { onSelect: (h: { kind: string; id: string }) => void };
@@ -48,12 +49,9 @@ vi.mock("../neighbourhood", async (importOriginal) => ({
   NODE_BUDGET: 3,
 }));
 vi.mock("../../../context/AuthContext", () => ({ useAuth: () => ({ actingRoles: "analyst" }) }));
-vi.mock("../useProductGraph", () => ({
-  metaReader: async () => ({ schema: null, roots: new Map() }),
-}));
 const asked = vi.hoisted(() => ({ scopes: [] as Record<string, unknown>[] }));
-vi.mock("../glossaryGraphData", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../glossaryGraphData")>()),
+vi.mock("../ontologyData", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../ontologyData")>()),
   ontologyQuery: (_m: unknown, s: { layers: Set<string> }) =>
     JSON.stringify({ ...s, layers: [...s.layers] }),
   ontologyCountQuery: (_m: unknown, s: { layers: Set<string> }) =>
@@ -81,13 +79,14 @@ const TERMS = [
 ];
 vi.mock("../../../api/metaGraph", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../../api/metaGraph")>()),
+  metaReader: async () => ({ schema: null, roots: new Map() }),
   dataGraphql: async (query: string) => {
-    const s = JSON.parse(query) as { domains: string[]; search: string[]; count?: boolean };
+    const s = JSON.parse(query) as { domains: string[]; search: SearchGroups; count?: boolean };
     if (!s.count) asked.scopes.push(s);
     const terms = TERMS.filter(
       (t) =>
         (s.domains.length === 0 || s.domains.includes(t.domains[0].domainId)) &&
-        (s.search.length === 0 || s.search.some((i) => t.name.includes(i))),
+        matchesSearch([t.name], s.search),
     );
     return {
       _terms: s.count ? terms.map((t) => ({ id: t.id, domains: t.domains })) : terms,
@@ -95,7 +94,7 @@ vi.mock("../../../api/metaGraph", async (importOriginal) => ({
   },
 }));
 
-import { GlossaryOntologyView } from "../GlossaryOntologyView";
+import { OntologyView } from "../OntologyGraph";
 
 const drawn = () => made.scenes.at(-1)?.setData.mock.calls.at(-1)?.[0] as GraphData | undefined;
 
@@ -108,7 +107,7 @@ beforeEach(() => {
 
 describe("the Ontology View past its budget", () => {
   it("draws each domain with its count, and narrows to the one picked", async () => {
-    render(<GlossaryOntologyView search="" />);
+    render(<OntologyView search="" />);
     await waitFor(() =>
       expect(drawn()?.nodes.map((n) => n.label)).toEqual(["finance (2)", "sales (5)"]),
     );
@@ -125,16 +124,16 @@ describe("the Ontology View past its budget", () => {
   });
 
   it("says how many a search matches when they are past it, and draws none", async () => {
-    render(<GlossaryOntologyView search="order invoice refund customer" />);
+    render(<OntologyView search="order or invoice or refund or customer" />);
     expect(await screen.findByTestId("ontology-over-budget")).toHaveTextContent(
       "5 match; narrow the search or pick a domain",
     );
   });
 
   it("draws a search within it, and opens it as a query", async () => {
-    render(<GlossaryOntologyView search="ledger" />);
+    render(<OntologyView search="ledger" />);
     await waitFor(() => expect(drawn()?.nodes.map((n) => n.id)).toContain("term:6"));
-    expect(asked.scopes.at(-1)?.search).toEqual(["ledger"]);
+    expect(asked.scopes.at(-1)?.search).toEqual(searchItems("ledger"));
     fireEvent.click(screen.getByTestId("ontology-open-as-query"));
     expect(await screen.findByTestId("ontology-open-as-graphql")).not.toHaveAttribute(
       "data-disabled",
@@ -143,10 +142,10 @@ describe("the Ontology View past its budget", () => {
 });
 
 describe("a focus's neighbourhood", () => {
-  it("is two hops, in the Ontology View and the product graph alike", async () => {
+  it("is two hops, in the whole ontology and its snippets alike", async () => {
     const { reach } = await import("../graphModel");
     const { NEIGHBOURHOOD } = await import("../neighbourhood");
-    const { GLOSSARY_SCOPE, PRODUCT_SCOPE } = await import("../graphModel");
+    const { ONTOLOGY_SCOPE } = await import("../graphModel");
     // term:1 - term:2 - term:3 - term:4, each a KIND_OF of the next.
     const nodes = [1, 2, 3, 4].map((i) => ({
       id: `term:${i}`,
@@ -166,15 +165,17 @@ describe("a focus's neighbourhood", () => {
       "term:2",
       "term:3",
     ]);
-    // One rule: both graphs draw the same neighbourhood.
-    expect(PRODUCT_SCOPE.neighbourhood).toBe(NEIGHBOURHOOD);
-    expect(GLOSSARY_SCOPE.neighbourhood).toBe(NEIGHBOURHOOD);
+    // One rule: the one ontology draws it, whatever its preset.
+    expect(ONTOLOGY_SCOPE.neighbourhood).toBe(NEIGHBOURHOOD);
   });
 });
 
 describe("a product's neighbourhood", () => {
-  it("is counted from its member tables: members, their columns, the terms bound to those", async () => {
-    const { visibleGraph, NO_FILTERS, PRODUCT_SCOPE } = await import("../graphModel");
+  // REQ-2174 (amended 2026-11-12, A HOP IS A STEP BETWEEN TERMS): counted from the product alone;
+  // its tables, their columns and the terms bound to those come with it, and each hop is a step
+  // across the term links from those terms.
+  it("brings its tables, their columns and the terms bound to those, then steps between terms", async () => {
+    const { visibleGraph, NO_FILTERS, ONTOLOGY_SCOPE } = await import("../graphModel");
     type K = "member" | "has_column" | "term_binding" | "term_edge" | "in_domain";
     const node = (id: string, type: string) => ({ id, type, label: id });
     const edge = (a: string, b: string, kind: K) => ({ id: `${a}-${b}`, a, b, kind });
@@ -186,6 +187,7 @@ describe("a product's neighbourhood", () => {
         node("c:1:a", "column"),
         node("term:a", "term"),
         node("term:b", "term"),
+        node("term:c", "term"),
       ],
       edges: [
         edge("p:x", "d:sales", "in_domain"),
@@ -193,19 +195,21 @@ describe("a product's neighbourhood", () => {
         edge("t:1", "c:1:a", "has_column"),
         edge("c:1:a", "term:a", "term_binding"),
         edge("term:a", "term:b", "term_edge"),
+        edge("term:b", "term:c", "term_edge"),
       ],
     } as never;
-    const layers = new Set(PRODUCT_SCOPE.layerOrder);
-    const drawn = (focus: string[]) =>
+    const layers = new Set(ONTOLOGY_SCOPE.layerOrder);
+    const drawn = (focus: string[], depth: number) =>
       visibleGraph(data, layers as never, { ...NO_FILTERS, focus }, new Set(), {
-        ...PRODUCT_SCOPE,
-        foldColumns: false,
+        ...ONTOLOGY_SCOPE,
+        neighbourhood: { ...ONTOLOGY_SCOPE.neighbourhood, depth },
       })
         .nodes.map((n) => n.id)
         .sort();
-    const ids = drawn(["p:x"]);
-    // Two hops from the members reaches the bound term; its neighbour is a third.
-    expect(ids).toEqual(expect.arrayContaining(["p:x", "t:1", "c:1:a", "term:a"]));
-    expect(ids).not.toContain("term:b");
+    // One hop: the product's own, and the term a step from its bound term.
+    const one = drawn(["p:x"], 1);
+    expect(one).toEqual(expect.arrayContaining(["p:x", "t:1", "c:1:a", "term:a", "term:b"]));
+    expect(one).not.toContain("term:c");
+    expect(drawn(["p:x"], 2)).toContain("term:c");
   });
 });

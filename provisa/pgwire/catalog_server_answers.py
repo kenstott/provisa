@@ -204,7 +204,11 @@ class _Answers:
     def statements(self) -> tuple[str, ...]:
         scalar = tuple(f"CREATE MACRO {n}{', '.join(o)}" for n, o in self.scalar.items())
         table = tuple(f"CREATE MACRO {n}{', '.join(o)}" for n, o in self.table.items())
-        return scalar + table
+        # The table macros first: DuckDB 2.0 cannot bind a table macro's call of a built-in table
+        # function (pg_timezone_names' engine zones, system.main.pg_timezone_names()) once a scalar
+        # macro of that name exists ("No function matches ... pg_timezone_names(STRING_LITERAL)"),
+        # and binds it, and both overloads after, when the table macro comes first.
+        return table + scalar
 
 
 def _server_objects(a: _Answers) -> None:  # noqa: PLR0915 -- one line per function
@@ -960,8 +964,15 @@ def _catalog_objects(a: _Answers) -> None:
         "INTEGER",
         f"CASE WHEN coalesce({is_table}, false) THEN 28 ELSE 0 END",
     )
+    # A system column (attnum of zero or less) is never updatable; past attnum 32760 the bitmapset
+    # member (attnum + 7) wraps an int16 negative, and bms_make_singleton raises XX000.
     a.strict(
-        "pg_column_is_updatable", "rel, att, cascaded", "BOOLEAN", f"coalesce({is_table}, false)"
+        "pg_column_is_updatable",
+        "rel, att, cascaded",
+        "BOOLEAN",
+        "CASE WHEN att <= 0 THEN false WHEN att > 32760 THEN "
+        + raising("XX000", "'negative bitmapset member not allowed'")
+        + f" ELSE coalesce({is_table}, false) END",
     )
     a.strict(
         "pg_filenode_relation",

@@ -37,7 +37,7 @@
     "warningMessage": "Was zu tun ist",
     "warningLocation": "Ort",
     "configHeading": "Erzeugte Konfiguration",
-    "configHelp": "Bearbeiten Sie sie vor dem Übernehmen, falls die Umwandlung falsch geraten hat — Verbindungsdaten, Domänennamen, Rollennamen. Übernommen wird genau das, was hier steht.",
+    "configHelp": "Bearbeiten Sie Verbindungsdetails, Domänen- oder Rollennamen, falls die Konvertierung falsch geraten hat. Angewendet wird genau das, was hier angezeigt wird.",
     "apply": "Auf diese Organisation anwenden",
     "applied": "Übernommen: {{sources}} Datenquellen, {{tables}} Tabellen, {{roles}} Rollen.",
     "domainNew": "neue Domäne",

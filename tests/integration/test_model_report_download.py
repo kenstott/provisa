@@ -38,8 +38,9 @@ from provisa.api._ontology_views import ONTOLOGY_TABLE_VIEWS
 from provisa.api.admin import report_router
 from provisa.api.startup_seed import _seed_view
 from provisa.api.metadata_export import workbook as wb
-from provisa.core import domain_policy
+from provisa.core import domain_policy, pgvector
 from provisa.core.config_loader import apply_config, parse_config_dict
+from provisa.security.inheritance import with_own_domains
 
 pytestmark = [pytest.mark.integration]
 
@@ -69,6 +70,9 @@ _ROLES = {
 @pytest_asyncio.fixture(scope="module", loop_scope="session")
 async def _init_schema(tenant_db):
     async with tenant_db.acquire() as conn:
+        # REQ-2185: schema.sql declares the library's pgvector columns; a node creates the
+        # extension before it lays an org's schema out (core.db), as it is here.
+        await pgvector.require(conn)
         await conn.execute(SCHEMA_SQL)
 
 
@@ -111,13 +115,27 @@ def _config() -> dict:
     return {
         "sources": [src],
         "domains": [{"id": "sales"}, {"id": "petstore"}],
+        # REQ-1634: each product lists its members.
+        "data_products": [
+            {
+                "id": "prod-sales",
+                "domain_id": "sales",
+                "name": "Sales",
+                "tables": ["orders", "order_totals"],
+            },
+            {
+                "id": "prod-petstore",
+                "domain_id": "petstore",
+                "name": "Pets",
+                "tables": ["pets", "pet_rollup"],
+            },
+        ],
         "tables": [
             {
                 "source_id": "pg1",
                 "domain_id": "sales",
                 "schema": "public",
                 "table": "orders",
-                "product_id": "prod-sales",
                 "columns": [
                     {"name": "id", "data_type": "integer", "visible_to": _READERS},
                     {"name": "amount", "data_type": "numeric", "visible_to": _READERS},
@@ -128,7 +146,6 @@ def _config() -> dict:
                 "domain_id": "petstore",
                 "schema": "public",
                 "table": "pets",
-                "product_id": "prod-petstore",
                 "columns": [{"name": "order_id", "data_type": "integer", "visible_to": _READERS}],
             },
             {
@@ -143,7 +160,6 @@ def _config() -> dict:
                 "domain_id": "sales",
                 "schema": "public",
                 "table": "order_totals",
-                "product_id": "prod-sales",
                 "view_sql": "SELECT id FROM orders",
                 "columns": [{"name": "id", "data_type": "integer", "visible_to": _READERS}],
             },
@@ -152,7 +168,6 @@ def _config() -> dict:
                 "domain_id": "petstore",
                 "schema": "public",
                 "table": "pet_rollup",
-                "product_id": "prod-petstore",
                 "view_sql": "SELECT order_id FROM pets",
                 "materialize": True,
                 "mv_refresh_interval": 900,
@@ -237,9 +252,13 @@ async def served(
     acme = OrgRuntime(org_id=ORG_ID)
     acme.tenant_db = tenant_db
     acme.model_db = tenant_db
-    acme.roles = {rid: {"id": rid, **spec} for rid, spec in _ROLES.items()}
+    # A served runtime keeps each role's own domain access beside the flattened one (REQ-2153,
+    # app._rebuild_schemas_impl); these domains have no parents, so the tree changes nothing else.
+    acme.roles = {
+        r["id"]: r for r in with_own_domains({"id": rid, **spec} for rid, spec in _ROLES.items())
+    }
     # No schema build runs here: no draft table is compiled aside (catalog_scope reads the list).
-    acme.role_build_inputs = {"draft_tables": []}
+    acme.role_build_inputs = {"withdrawn_tables": []}
     registry = OrgRegistry()
     for key in app_module.state.org_registry.all_org_ids():
         rt = app_module.state.org_registry.get(key)

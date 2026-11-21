@@ -44,6 +44,7 @@ import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -83,6 +84,8 @@ class FlightNestedAndEncryptedTest {
     private HttpServer http;
     private final List<JsonObject> tickets = new ArrayList<>();
     private String encrypted;
+    /** Held (shared) by each producer call that is streaming; taken whole before the stub closes. */
+    private final ReentrantReadWriteLock streaming = new ReentrantReadWriteLock();
 
     @BeforeEach
     void start() throws Exception {
@@ -98,11 +101,16 @@ class FlightNestedAndEncryptedTest {
             public void getStream(CallContext context, Ticket ticket, ServerStreamListener listener) {
                 tickets.add(JsonParser.parseString(new String(ticket.getBytes(), StandardCharsets.UTF_8))
                     .getAsJsonObject());
+                // Flight runs this on its own executor, which the server's close does not wait
+                // for: the client can read the last batch and hang up before this closes its root.
+                streaming.readLock().lock();
                 try (VectorSchemaRoot root = VectorSchemaRoot.create(SCHEMA, allocator)) {
                     listener.start(root);
                     fill(root);
                     listener.putNext();
                     listener.completed();
+                } finally {
+                    streaming.readLock().unlock();
                 }
             }
         }).build();
@@ -126,7 +134,13 @@ class FlightNestedAndEncryptedTest {
         flight.shutdown();
         flight.awaitTermination(30, java.util.concurrent.TimeUnit.SECONDS);
         flight.close();
-        allocator.close();
+        // The stub's allocator closes once no producer call still holds a root from it.
+        streaming.writeLock().lock();
+        try {
+            allocator.close();
+        } finally {
+            streaming.writeLock().unlock();
+        }
     }
 
     private void fill(VectorSchemaRoot root) {

@@ -1,7 +1,7 @@
 {
   "uniquesPanel": {
     "title": "Unieke sleutels",
-    "infoTooltip": "Gedeclareerde UNIQUE-constraints voor deze tabel — enkelkoloms of samengesteld. Refererende sleutels mogen naar elke unieke sleutel verwijzen, en clients zien deze als UNIQUE-constraints. Bij registratie overgenomen uit de bron; bewerk ze of voeg eigen constraints toe.",
+    "infoTooltip": "Gedeclareerde UNIQUE-constraints voor deze tabel, met één kolom of samengesteld. Refererende sleutels kunnen naar elke unieke sleutel verwijzen, en clients zien deze als UNIQUE-constraints. Bij registratie uit de bron overgenomen; bewerk ze of voeg eigen toe.",
     "addConstraint": "Constraint",
     "nameLabel": "Naam",
     "namePlaceholder": "constraintnaam (bijv. users_tenant_email_key)",

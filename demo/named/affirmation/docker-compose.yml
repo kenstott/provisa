@@ -1,0 +1,46 @@
+# Copyright (c) 2026 Kenneth Stott
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+#
+# The named demo "affirmation" (start-ui-install.sh --demo affirmation; REQ-2006). This file is its
+# one start point: `docker compose up -d` brings up one Postgres holding the five systems of
+# Larkspur Asset Management's post-trade flow, each its own database (db/00-databases.sql), their
+# rows written by generate.py (db/10-oms.sql to db/50-desk.sql). setup.yaml then matches every
+# allocation and logs the affirmation of each that matched (the affirm_matched command).
+#
+#   postgres  the five databases, with the role Provisa reads them as (and writes the
+#             affirmation log as).
+#
+# Port: 30632 the database; it can be moved by its variable.
+x-demo-labels: &demo-labels
+  com.provisa.demo: affirmation
+name: provisa-demo-affirmation
+services:
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    labels:
+      <<: *demo-labels
+      com.provisa.demo.role: rdb
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
+    ports:
+      - "127.0.0.1:${AFFIRMATION_PG_PORT:-30632}:5432"
+    volumes:
+      - affirmation_pg:/var/lib/postgresql/data
+      - ./db:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d affirmation_desk"]
+      interval: 2s
+      timeout: 5s
+      retries: 60
+
+volumes:
+  affirmation_pg:

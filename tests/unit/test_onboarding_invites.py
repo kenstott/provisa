@@ -95,8 +95,13 @@ def plane(monkeypatch):
     return state
 
 
-def _request(email: str | None, *, authenticated: bool = True):
-    identity = types.SimpleNamespace(user_id="carol", email=email) if authenticated else None
+def _request(email: str | None, *, authenticated: bool = True, email_verified: bool = True):
+    # An address carol's identity provider verified (REQ-1261), unless the test says not.
+    identity = (
+        types.SimpleNamespace(user_id="carol", email=email, email_verified=email_verified)
+        if authenticated
+        else None
+    )
     return types.SimpleNamespace(state=types.SimpleNamespace(identity=identity))
 
 
@@ -115,6 +120,19 @@ async def test_a_pending_invitation_is_reported_with_what_the_ui_needs_to_accept
             "expires_at": "2026-09-01T00:00:00+00:00",
         }
     ]
+
+
+@pytest.mark.asyncio
+async def test_an_unverified_address_is_shown_no_invitation_and_nothing_is_read(plane):
+    """REQ-1261: the answer carries the invitation's token. A caller whose address nothing
+    verified -- typed into a local account, or unverified by their identity provider -- is shown
+    none of it, and the invitations are not read for them."""
+    from provisa.api.auth_router import my_invites
+
+    body = await my_invites(_request("carol@example.com", email_verified=False))
+
+    assert body == {"invites": []}
+    assert plane.statements == []
 
 
 @pytest.mark.asyncio

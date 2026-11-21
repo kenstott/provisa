@@ -19,8 +19,11 @@ import { act, render, screen, fireEvent, waitFor, within } from "../test-utils/r
 import { GlossaryTab } from "../components/admin/GlossaryTab";
 import type { GlossaryTermDetail, GlossaryTermSummary } from "../api/glossary";
 
-// jsdom draws no canvas: the term graph is tested on its own (TermDag.test.tsx).
-vi.mock("../components/admin/TermDag", () => ({ TermDag: () => null }));
+// jsdom draws no canvas: the term page's ontology snippet is tested on its own (TermDag.test.tsx).
+vi.mock("../components/graph3d/OntologyGraph", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../components/graph3d/OntologyGraph")>()),
+  OntologySnippet: () => null,
+}));
 // The term list and detail are fixtures; the roster is fetched for real, from the stub below.
 vi.mock("../api/glossary", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../api/glossary")>()),
@@ -28,7 +31,7 @@ vi.mock("../api/glossary", async (importOriginal) => ({
   fetchGlossaryTerm: vi.fn(),
   fetchGlossaryFindings: vi.fn(async () => []),
   listTermTables: vi.fn(async () => []),
-  fetchAppliedHistory: vi.fn(async () => null),
+  fetchAppliedHistory: vi.fn(async () => ({ retired_in: null, as_of: null, columns: [], tables: [] })),
   fetchStewardshipSummary: vi.fn(async () => ({
     agent_visible: [],
     waiting_on_one_approval: [],
@@ -49,6 +52,7 @@ const TERM: GlossaryTermSummary = {
   id: 32,
   name: "Exposure",
   definition: "What a group stands to lose.",
+  calculation_method: null,
   is_abstract: false,
   deprecated: false,
   ref_count: 1,
@@ -74,6 +78,7 @@ const DETAIL: GlossaryTermDetail = {
   experts: [],
   tags: [],
   pending_on: [],
+  iri: null,
 };
 
 const json = (status: number, body: unknown) =>
@@ -107,7 +112,7 @@ describe("the term page of a curator without user_management", () => {
   });
 
   it("opens the term with no error banner", async () => {
-    render(<GlossaryTab />, { initialEntries: ["/admin/ontology?term=32"] });
+    render(<GlossaryTab />, { initialEntries: ["/context/ontology?term=32"] });
     await screen.findByText("What a group stands to lose.");
     await waitFor(() => expect(asked.length).toBeGreaterThan(0));
     await act(async () => {
@@ -119,7 +124,7 @@ describe("the term page of a curator without user_management", () => {
   });
 
   it("fills the expert picker from the glossary's roster, not the team page's", async () => {
-    render(<GlossaryTab />, { initialEntries: ["/admin/ontology?term=32"] });
+    render(<GlossaryTab />, { initialEntries: ["/context/ontology?term=32"] });
     fireEvent.click(await screen.findByTestId("glossary-edit-btn"));
     await screen.findByTestId("glossary-edit-form");
     act(() => answerRoster());

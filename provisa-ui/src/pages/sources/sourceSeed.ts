@@ -29,6 +29,7 @@ import { LOGS, logsFieldsFromMapping } from "./logs";
 import { COSMOSDB, cosmosFieldsFromHints } from "./cosmosdb";
 import { JDBC_SOURCE, jdbcSourceHints } from "./jdbcSource";
 import { excelHintsFromMapping, withExcelHints } from "./excelHints";
+import { KAFKA, kafkaFieldsFromSource } from "./kafka";
 import { QDRANT, qdrantFieldsFromHints } from "./qdrant";
 import { CODE_SOURCE_TYPES, codeFieldsFromMapping } from "./codeSource";
 import { WIKIPEDIA, wikipediaFieldsFromHints } from "./wikipedia";
@@ -47,6 +48,34 @@ export const EMPTY_CDC: CdcState = {
   schemaRegistryCa: "",
   consumerGroupId: "",
 };
+
+/** The create form's state before a type is picked: every field at its default, no source's. */
+export function emptySourceForm(): SourceFormState {
+  return {
+    id: "",
+    type: "postgresql",
+    host: "",
+    port: 5432,
+    database: "",
+    username: "",
+    password: "",
+    gqlNamingConvention: "",
+    cacheTtl: "",
+    cacheEnabled: true,
+    replicate: null,
+    region: null,
+    loadProtected: false,
+    offPeakWindow: "",
+    offPeakTz: "UTC",
+    changeSignal: "ttl",
+    sentinelPath: "",
+    freshnessGate: false,
+    maxLiveConcurrency: "",
+    path: "",
+    allowedDomains: "",
+    description: "",
+  };
+}
 
 export interface SharepointSeed {
   authType: string;
@@ -197,6 +226,9 @@ export function seedSource(s: Source, govdataCatalog: GovdataSubjectCatalog | nu
   }
   if (s.type === COSMOSDB) {
     authFields = cosmosFieldsFromHints(hintsJson); // REQ-1982
+  }
+  if (s.type === KAFKA) {
+    authFields = kafkaFieldsFromSource(s); // REQ-147
   }
   if (s.type === JDBC_SOURCE && hintsJson) {
     authFields = jdbcSourceHints(JSON.parse(hintsJson)); // REQ-2191: its settings are its hints
@@ -349,6 +381,8 @@ export type RemoteSeed =
       baseUrl: string;
       cacheTtl: string;
       auth: RemoteAuth;
+      // REQ-2265: what an OpenAPI brand's setup was given (its base URL).
+      setup: Record<string, string>;
     }
   | {
       kind: "grpc";
@@ -359,12 +393,14 @@ export type RemoteSeed =
       importPaths: string;
       cacheTtl: string;
       auth: RemoteAuth;
-    };
+    }
+  | ({ kind: "dbt" } & import("./dbt").DbtSeed); // REQ-2228
 
 const REMOTE_LISTS: Record<string, string> = {
   graphql_remote: "/admin/sources/graphql-remote",
   openapi: "/admin/openapi/list",
   grpc_remote: "/admin/grpc-remote/list",
+  dbt: "/admin/dbt/list", // REQ-2228
 };
 
 /** Whether a source of this type keeps settings in a registration of its own. */
@@ -385,6 +421,18 @@ export async function fetchRemoteSeed(s: Source): Promise<RemoteSeed> {
   if (!reg) {
     throw new Error(i18n.t("sourcesPage.registrationMissing", { list: url, source: s.id }));
   }
+  if (s.type === "dbt") {
+    const cloud = (reg.cloud as Record<string, string> | undefined) ?? {};
+    return {
+      kind: "dbt",
+      spec: reg.spec as "location" | "upload" | "cloud",
+      location: String(reg.location ?? ""),
+      commandLine: String(reg.command_line ?? ""),
+      host: cloud.host ?? "",
+      accountId: cloud.account_id ?? "",
+      jobId: cloud.job_id ?? "",
+    };
+  }
   const ttl = String(reg.cache_ttl);
   if (s.type === "graphql_remote") {
     return {
@@ -404,6 +452,7 @@ export async function fetchRemoteSeed(s: Source): Promise<RemoteSeed> {
       baseUrl: String(reg.base_url),
       cacheTtl: ttl,
       auth: reg.auth_config as RemoteAuth,
+      setup: reg.setup as Record<string, string>,
     };
   }
   return {

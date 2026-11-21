@@ -983,16 +983,17 @@ def test_group_nodes(svc):
 
 def test_group_node_relations(svc):
     nodes = [
-        {"id": 1, "customers": {"id": 5, "name": "c"}},
-        {"id": 2, "customers": {}},
-        {"id": 3, "customers": [{"id": 1}]},
+        # the many-to-one field is named as its GraphQL relationship field (REQ-1929)
+        {"id": 1, "customer": {"id": 5, "name": "c"}},
+        {"id": 2, "customer": {}},
+        {"id": 3, "customer": [{"id": 1}]},
     ]
     nodes = json.loads(json.dumps(nodes))
     group = svc.wire.OrdersGroupByRow
     sent = group.FromString(_nodes_field(group, svc.wire.Orders, nodes))
     expected = node_reference(svc.wire, "Orders", nodes)
     assert_same(svc.wire.Orders, expected, [n.SerializeToString() for n in sent.nodes])
-    assert sent.nodes[1].HasField("customers"), "an empty relation is still set"
+    assert sent.nodes[1].HasField("customer"), "an empty relation is still set"
 
 
 def test_group_node_errors_raise(svc):

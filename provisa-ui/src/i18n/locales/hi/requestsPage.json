@@ -34,6 +34,11 @@
     "reasonGovernanceViolation": "गवर्नेंस उल्लंघन",
     "reasonOutOfScope": "दायरे से बाहर",
     "reasonEndpointUnreachable": "एंडपॉइंट पहुँच से बाहर",
-    "reasonSchemaMismatch": "स्कीमा बेमेल"
+    "reasonSchemaMismatch": "स्कीमा बेमेल",
+    "delivery": "सूचना का माध्यम",
+    "deliveryHelp": "जिन रोल को अनुरोध भेजा गया है, उनके सदस्यों को इसकी सूचना कैसे दी जाती है। ईमेल: Provisa उनमें से प्रत्येक को सूचना भेजता है। केवल इवेंट: Provisa कोई सूचना नहीं भेजता; आपका वर्कफ़्लो टूल ops.requests को सब्सक्राइब करता है। दोनों: ईमेल और इवेंट।",
+    "deliveryEmail": "ईमेल",
+    "deliveryEvents": "केवल इवेंट",
+    "deliveryBoth": "दोनों"
   }
 }

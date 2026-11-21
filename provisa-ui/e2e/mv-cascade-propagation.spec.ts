@@ -13,13 +13,16 @@ import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { test, expect, BACKEND_URL } from "./coverage";
-import { releaseDraftTables } from "./source-to-query-helpers";
+import { expectRegisteredLive } from "./source-to-query-helpers";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const PYTHON = path.join(ROOT, ".venv", "bin", "python");
 // The pet-store-sqlite source's file (config/provisa-install.yaml: ${PROVISA_DEMO_DIR:-./demo/files},
 // resolved from the repo root the backend runs in).
-const PET_STORE_DB = path.join(process.env.PROVISA_DEMO_DIR ?? path.join(ROOT, "demo/files"), "pet_store.sqlite");
+const PET_STORE_DB = path.join(
+  process.env.PROVISA_DEMO_DIR ?? path.join(ROOT, "demo/files"),
+  "pet_store.sqlite",
+);
 
 // The source changes underneath Provisa, as a source does: written in the source's own file, not
 // through Provisa. Through Provisa the UPDATE is refused — no role holds a write grant on pets
@@ -106,7 +109,9 @@ async function runAs(page: import("@playwright/test").Page, role: string) {
 async function createView(page: import("@playwright/test").Page, sql: string, alias: string) {
   await runAs(page, "org_admin");
   await typeSql(page, sql);
-  const runResp = page.waitForResponse((r) => r.url().includes("/data/sql") && r.request().method() === "POST");
+  const runResp = page.waitForResponse(
+    (r) => r.url().includes("/data/sql") && r.request().method() === "POST",
+  );
   await page.getByTestId("sql-run").click();
   await runResp;
   // 60s: concurrent Trino catalog init (sharepoint/splunk/neo4j-export) can block the
@@ -119,7 +124,10 @@ async function createView(page: import("@playwright/test").Page, sql: string, al
   await expect(page.getByTestId("view-alias-input")).toBeVisible({ timeout: 30000 });
   await page.getByTestId("view-alias-input").fill(alias);
   await page.getByTestId("view-domain-select").click();
-  await page.getByRole("option", { name: /pet-store/i }).first().click();
+  await page
+    .getByRole("option", { name: /pet-store/i })
+    .first()
+    .click();
   await page.getByTestId("save-view-button").click();
   // REQ-2109: the view's settings follow on the Views page, in the editor's sections; Save there
   // registers it. The save blocks server-side on a full schema rebuild and MV activation (see the
@@ -127,7 +135,7 @@ async function createView(page: import("@playwright/test").Page, sql: string, al
   await page.getByTestId("table-edit-save").click();
   await expect(page.getByTestId("tables-split-title")).toHaveText(alias, { timeout: 120000 });
   // REQ-1921: saved through the admin, the view starts as draft; released, it is read and built.
-  expect(await releaseDraftTables(page, { tableName: alias })).toBe(1);
+  expect(await expectRegisteredLive(page, { tableName: alias })).toBe(1);
 }
 
 async function materialize(page: import("@playwright/test").Page, tableName: string) {
@@ -207,7 +215,9 @@ test.describe.serial("dag-cascade", () => {
     setPetPrice(380.0);
   });
 
-  test("source state change propagates through a two-level materialized-view DAG", async ({ page }) => {
+  test("source state change propagates through a two-level materialized-view DAG", async ({
+    page,
+  }) => {
     // The steps below carry their own budgets — two createView flows (60 s + 30 s + 30 s each) and
     // two materialize flows (60 s + 30 s + 30 s + 60 s each) — which already sum past 150 s before a
     // single MV refresh runs. The run that timed out was inside those allowances, not stuck.

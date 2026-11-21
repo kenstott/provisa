@@ -157,7 +157,7 @@ describe("SecurityPage — RLS rules on actions (REQ-1679)", () => {
     expect(dialog.textContent).toContain('Role "analyst" is no longer limited by this rule.');
     expect(deleteRlsRuleSpy).not.toHaveBeenCalled();
 
-    fireEvent.click(within(dialog).getByRole("button", { name: "Confirm" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Delete" }));
     await waitFor(() =>
       expect(deleteRlsRuleSpy).toHaveBeenCalledWith("analyst", null, null, "customer_lookup", null, 9),
     );

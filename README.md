@@ -6,7 +6,7 @@ Governed from the first query.
 
 ---
 
-Provisa is a data kernel, a compiler and runtime for building your data control plane. Declare a small set of semantic primitives and the whole governed API follows.
+Provisa is a compiler and runtime for building your data control plane. Declare a small set of semantic primitives and the whole governed API follows.
 
 It is built the way an operating system is built. Source drivers, engine drivers and secrets drivers plug in and swap without reinstalling, command bindings answer other tools' calls, and clients connect over standard protocols.
 
@@ -124,7 +124,7 @@ These are the connection protocols. SQL, GraphQL and Cypher ride over them, and 
 
 ### Data Sources
 
-- **76 connectors, over 200 data sources.** The generic connectors (code resolvers, GraphQL, OpenAPI and JDBC) reach well past the named ones, as do the hosted PostgreSQL services and the File Crawler's file formats. PostgreSQL, MySQL, MongoDB, Cassandra, Elasticsearch, Neo4j, SPARQL triplestores, Kafka, Google Sheets, Kaggle, Salesforce, ServiceNow, Stripe and the rest sit behind a single API. Graph and RDF sources stand on equal terms with relational ones.
+- **80 connectors, over 200 data sources.** The generic connectors (code resolvers, GraphQL, OpenAPI and JDBC) reach well past the named ones, as do the hosted PostgreSQL services and the File Crawler's file formats. PostgreSQL, MySQL, MongoDB, Cassandra, Elasticsearch, Neo4j, SPARQL triplestores, Kafka, Google Sheets, Kaggle, Salesforce, ServiceNow, Stripe and the rest sit behind a single API. Graph and RDF sources stand on equal terms with relational ones.
 - **Smart routing.** A single-source query routes direct to the driver (under 100 ms). A multi-source query routes through the engine, on your own cluster or on the embedded workers.
 - **API sources.** Register REST, GraphQL, gRPC, WebSocket or RSS endpoints as queryable tables, with SPARQL helpers included. Cross-source joins between API sources and relational sources need no extra setup.
 - **Remote schema introspection.** Point at any GraphQL, OpenAPI or gRPC endpoint, and its documented operations surface as queryable tables, graph nodes and edges with full governance applied on top.
@@ -417,6 +417,7 @@ See [docs/python-client.md](docs/python-client.md) for full reference.
 | Admin API | [docs/admin.md](docs/admin.md) |
 | Deployment (Docker Compose, Kubernetes, macOS) | [docs/deployment.md](docs/deployment.md) |
 | Hasura v2 / DDN import | [docs/import.md](docs/import.md) |
+| How a change becomes a release | [docs/release-process.md](docs/release-process.md) |
 | Release workflow (alpha/beta/stable tags) | [docs/releasing.md](docs/releasing.md) |
 
 ## Sizing
@@ -439,6 +440,22 @@ Worker count can be changed at any time by editing `~/.provisa/config.yaml` (`fe
 **Shared Redis.** Set `REDIS_URL` on each instance to point at an external Redis. Cache entries from one instance are then available to all of them, which improves hit rates across the cluster.
 
 **Bring your own engine cluster.** Point Provisa at an existing external engine cluster instead of the embedded workers. We recommend this for large-scale or cloud deployments, and [docs/deployment.md](docs/deployment.md) covers the configuration.
+
+## Contributing
+
+[![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/kenstott/provisa?quickstart=1)
+
+Open the repository in the dev container and you can run the tests without any other setup. In VS Code, install the Dev Containers extension and run **Dev Containers: Reopen in Container**. In GitHub, choose **Code → Codespaces → Create codespace**. The container brings the pinned Python, Rust, Go and Node toolchains and Docker for the tests that start their own containers. It is one container: the unit tests run PostgreSQL (with pgvector) embedded, from the pgserver wheel. That wheel has no Linux aarch64 build ([docs/cli.md](docs/cli.md)), so in a local container on Apple silicon the tests that need PostgreSQL cannot start it; Codespaces runs on x86_64 and has it. The first build syncs the Python dependencies, compiles the Rust encoders and installs the UI's packages.
+
+When it finishes, this command runs the unit suite:
+
+```bash
+pytest tests/unit -n auto
+```
+
+For the UI unit tests, run `npm run test:unit` in `provisa-ui`.
+
+To work on Provisa, clone `main`. To run it, install a release. A feature or fix starts from `main` and lands on `main`, and [docs/release-process.md](docs/release-process.md) explains how releases are cut from it. See [CONTRIBUTING.md](https://github.com/kenstott/provisa/blob/main/CONTRIBUTING.md) for the short version.
 
 ## License
 

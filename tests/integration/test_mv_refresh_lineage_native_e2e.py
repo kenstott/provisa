@@ -23,7 +23,6 @@ import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
-from tests.helpers import registered_id, release_mutation
 
 pytestmark = [pytest.mark.e2e, pytest.mark.asyncio(loop_scope="session")]
 
@@ -89,11 +88,7 @@ async def test_a_views_refresh_is_read_back_through_the_lineage_view(client):
         }}) {{ success message }} }}""",
     )
     assert reg["data"]["registerTable"]["success"], reg
-    # Released, the view is built: its refresh records its lineage.
-    released = await _admin(
-        client, release_mutation(registered_id(reg["data"]["registerTable"]["message"]))
-    )
-    assert released["data"]["setTableDraft"]["success"], released
+    # REQ-1921: registered, the view is live and built: its refresh records its lineage.
     mv = state.mv_registry.get("view-lin_view")
     assert mv is not None
     # The native lane exports in batches: what was recorded is landed now.

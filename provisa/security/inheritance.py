@@ -38,8 +38,9 @@ materialized ones.
 from __future__ import annotations
 
 from collections.abc import Callable, Collection, Iterable, Mapping
+from typing import Any
 
-from provisa.core.column_scope import SCOPE_PUBLIC
+from provisa.core.column_scope import SCOPE_OWN_DOMAIN, SCOPE_PUBLIC
 from provisa.security.rights import (
     ALL_DOMAINS,
     DEFAULT_TIER_META_TABLES,
@@ -50,6 +51,8 @@ from provisa.security.rights import (
     VIEWER_ROLE,
     Capability,
     normalized_reach,
+    reaches_domain,
+    reads_data,
 )
 
 GRANT_LISTS = ("visible_to",)
@@ -230,7 +233,8 @@ def flatten_role_dicts(roles: list[dict]) -> list[dict]:
     access), and data_residency's regions, narrowed as they are; and each property (rate_limit,
     max_rows) set by the nearest role in the chain that declares it, the role itself first, so a
     child may raise or lower its parent's (REQ-2057). Session values (REQ-1682) merge by name, the
-    nearest role's value for each. A role with no capabilities holds no domain: it reads nothing.
+    nearest role's value for each. A role with no capabilities holds no domain: it reads nothing. A role
+    holding only command_execution keeps its domains for its commands and reads nothing (REQ-870).
     A domain tree is folded in first (domain_tree.flatten_role_domains), as a parent listing a
     business unit holds the domains under it. Input dicts are not modified."""
     by_id = {r["id"]: r for r in roles}
@@ -359,13 +363,50 @@ def expand_column_grants(tables: Iterable[dict], chains: dict[str, list[str]]) -
         expand_grants(t.get("columns") or [], chains)
 
 
+#: A role's own ``domain_access``, as stored: before the domain tree folds the domains under each
+#: listed one into it (REQ-1363). What an own-domain column is served by (REQ-2153).
+OWN_DOMAIN_ACCESS = "own_domain_access"
+
+
+def with_own_domains(roles: Iterable[dict]) -> list[dict]:
+    """Each role with its stored ``domain_access`` kept as :data:`OWN_DOMAIN_ACCESS`, which the
+    domain tree's flattening and inheritance carry through untouched. Applied to the stored rows,
+    before the tree. Input dicts are not modified."""
+    return [{**r, OWN_DOMAIN_ACCESS: list(r["domain_access"])} for r in roles]
+
+
+def narrow_own_domain_grants(tables: Iterable[dict], roles: Iterable[dict]) -> None:
+    """Take out of each own-domain column's grant every entry naming a role whose own domain access
+    (:func:`with_own_domains`) does not name the table's domain, ``*`` naming every domain
+    (REQ-2153). A role reaching the domain only through an ancestor is served the column no
+    longer, though its grant names it. Run after the grants are folded down the role chains
+    (:func:`expand_column_grants`), so a descendant granted through an ancestor is narrowed by its
+    own list. An entry naming a role ``roles`` does not hold reaches no reader and goes too. On the
+    build's own copies."""
+    own: dict[str, list[str]] | None = None
+    for t in tables:
+        domain_id = t["domain_id"]
+        for column in t.get("columns") or []:
+            if column.get("scope") != SCOPE_OWN_DOMAIN:
+                continue
+            if own is None:  # read only when an own-domain column is met
+                own = {r["id"]: r[OWN_DOMAIN_ACCESS] for r in roles}
+            column["visible_to"] = [
+                e
+                for e in column.get("visible_to") or []
+                if all(
+                    role in own and reaches_domain(own[role], domain_id) for role in grant_parts(e)
+                )
+            ]
+
+
 def expand_meta_grants(tables: Iterable[dict], roles: Iterable[dict]) -> None:
     """Meta's columns are granted to Viewer, and what reads them is a capability, not an ancestor
     (REQ-1132, REQ-2154): a role holding catalog_read is given each such grant, and on the tables
     every role reads with no meta grant (rights.DEFAULT_TIER_META_TABLES) every role that holds a
     capability is given each core column, served as a public column is, outside its reach. A column
     whose grant to Viewer was taken away stays as it was. On the build's own copies."""
-    held = [r for r in roles if r.get("capabilities")]
+    held = [r for r in roles if reads_data(r.get("capabilities"))]  # REQ-870
     catalog = [r["id"] for r in held if Capability.CATALOG_READ.value in r["capabilities"]]
     every = [r["id"] for r in held]
     for t in tables:
@@ -412,15 +453,13 @@ def _resolved(
     return found
 
 
-def _ored(exprs: Iterable[str | None]) -> str | None:
+def _ored(exprs: Iterable[Any]) -> Any:
     """The OR of the predicates given, each once; None stands for no predicate and contributes
-    nothing (REQ-2155). One predicate is returned as it is."""
-    distinct = list(dict.fromkeys(e for e in exprs if e))
-    if not distinct:
-        return None
-    if len(distinct) == 1:
-        return distinct[0]
-    return " OR ".join(f"({e})" for e in distinct)
+    nothing (REQ-2155). One predicate is returned as it is. A predicate given as text is a rule
+    entering (a stored grant's), read once here; each is an expression (REQ-913)."""
+    from provisa.compiler.rls import any_of, as_rule
+
+    return any_of(as_rule(e) for e in exprs if e is not None)
 
 
 def expand_write_grants(tables: Iterable[dict], parents: dict[str, list[str]]) -> None:  # REQ-2074
@@ -466,8 +505,10 @@ def holds_grant(role_id: str, granted: Iterable[str], chains: dict[str, list[str
     )
 
 
-def _anded(left: str, right: str) -> str:
-    return f"({left}) AND ({right})"
+def _anded(left: Any, right: Any) -> Any:
+    from provisa.compiler.rls import all_of
+
+    return all_of([left, right])
 
 
 def materialize_rls(
@@ -486,6 +527,11 @@ def materialize_rls(
     without parents, and every rule its role's parents do not narrow, pass through unchanged, so a
     role's own domain rule still covers a table registered after this build the way it did before.
     """
+    from provisa.compiler.rls import read_rule_row
+
+    # REQ-913: each stored rule is read once, here, where it enters; every rule from here on is
+    # an expression.
+    rls_rules = [read_rule_row(r) for r in rls_rules]
     table_rules: dict[tuple[str, int], dict] = {}
     domain_rules: dict[tuple[str, str], dict] = {}
     action_rules: dict[tuple[str, str], dict] = {}
@@ -502,9 +548,9 @@ def materialize_rls(
     def rows_of(
         rid: str,
         own: Callable[[str], dict | None],
-        memo: dict[str, tuple[str | None, list[tuple[str, dict]]]],
+        memo: dict[str, tuple[Any, list[tuple[str, dict]]]],
         path: tuple[str, ...] = (),
-    ) -> tuple[str | None, list[tuple[str, dict]]]:
+    ) -> tuple[Any, list[tuple[str, dict]]]:
         """``rid``'s predicate, None for every row, and the (role, rule) it was made from."""
         if rid in memo:
             return memo[rid]
@@ -550,7 +596,7 @@ def materialize_rls(
         # domain rule for the action's domain, and what its parents resolve.
         aname = a["name"]
         a_domain = a.get("domain_id") or ""
-        memo: dict[str, tuple[str | None, list[tuple[str, dict]]]] = {}
+        memo: dict[str, tuple[Any, list[tuple[str, dict]]]] = {}
 
         def own_action(rid: str, aname: str = aname, a_domain: str = a_domain) -> dict | None:
             return action_rules.get((rid, aname)) or domain_rules.get((rid, a_domain))

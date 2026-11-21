@@ -9,7 +9,7 @@
 // permission from the copyright holder.
 
 // REQ-1476: where the org is sold, creating one is a sign-up. The create call reserves the id and
-// builds nothing, so the checkout overlay is the rest of the create — and a reservation left behind
+// builds nothing, so the embedded checkout is the rest of the create — and a reservation left behind
 // by an abandoned checkout is offered back rather than colliding with a second create. The same
 // page on a self-hosted deployment must be unchanged: create, poll, done, with no billing call.
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -30,9 +30,8 @@ vi.mock("../api/billing", async (importOriginal) => ({
   fetchMyReservation: vi.fn(),
   fetchCatalog: vi.fn(),
   startPlanCheckout: vi.fn(),
-  openCheckout: vi.fn(),
+  mountCheckout: vi.fn(),
   reconcileCheckout: vi.fn(),
-  startEgressSubscription: vi.fn(),
 }));
 vi.mock("../lib/session", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../lib/session")>()),
@@ -57,13 +56,12 @@ vi.mock("../context/AuthContext", async (importOriginal) => ({
 
 import { createOrg, fetchOrgStatus } from "../api/admin";
 import { BillingError } from "../api/billing";
-import type { PlanOffer } from "../api/billing";
+import type { CheckoutSession, PlanOffer } from "../api/billing";
 import {
   fetchCatalog,
   fetchMyReservation,
-  openCheckout,
+  mountCheckout,
   reconcileCheckout,
-  startEgressSubscription,
   startPlanCheckout,
 } from "../api/billing";
 
@@ -72,12 +70,23 @@ const mockFetchOrgStatus = vi.mocked(fetchOrgStatus);
 const mockFetchMyReservation = vi.mocked(fetchMyReservation);
 const mockFetchCatalog = vi.mocked(fetchCatalog);
 const mockStartPlanCheckout = vi.mocked(startPlanCheckout);
-const mockOpenCheckout = vi.mocked(openCheckout);
+const mockMount = vi.mocked(mountCheckout);
 const mockReconcile = vi.mocked(reconcileCheckout);
-const mockStartEgress = vi.mocked(startEgressSubscription);
+
+const SESSION: CheckoutSession = {
+  client_secret: "cs_test_secret",
+  session_id: "cs_test_1",
+  publishable_key: "pk_test_1",
+  trial: true,
+};
+
+/** The page load Stripe makes after payment: the return URL with the session id it added. */
+function returnFromCheckout(query: string) {
+  window.history.replaceState(null, "", `/onboard?${query}`);
+}
 
 // REQ-1514: the shape the store's price objects arrive in — a monthly minimum covering some hours,
-// an hourly rate past them, and the transfer terms off the plan's second variant.
+// an hourly rate past them, and the transfer terms off the plan's second price.
 const CATALOG: PlanOffer[] = [
   {
     plan: "starter",
@@ -118,8 +127,9 @@ beforeEach(() => {
   mockAuth.billing = false;
   mockFetchMyReservation.mockResolvedValue(null);
   mockFetchCatalog.mockResolvedValue({ plans: CATALOG, trial_available: true });
-  mockStartPlanCheckout.mockResolvedValue("https://store.lemonsqueezy.com/checkout/x");
-  mockStartEgress.mockResolvedValue("https://store.lemonsqueezy.com/checkout/egress");
+  mockStartPlanCheckout.mockResolvedValue(SESSION);
+  mockMount.mockResolvedValue({ mount: vi.fn(), destroy: vi.fn() });
+  window.history.replaceState(null, "", "/onboard");
 });
 
 async function fillAndSubmit() {
@@ -189,28 +199,32 @@ describe("org onboarding where the org is sold", () => {
 
     await fillAndSubmit();
 
-    await waitFor(() => expect(mockOpenCheckout).toHaveBeenCalled());
-    // The overlay opens on top of this page, so it is minted with the scheme the page is in —
-    // the test app renders dark, and a checkout minted light would be a white card over it.
-    expect(mockStartPlanCheckout).toHaveBeenCalledWith("carolco", "starter", expect.any(String), {
-      scheme: "dark",
-      locale: expect.any(String),
-    });
+    await waitFor(() =>
+      expect(mockMount).toHaveBeenCalledWith(SESSION, screen.getByTestId("checkout-container")),
+    );
+    // The checkout is embedded in this page, so it is minted with the scheme the page is in —
+    // the test app renders dark, and a checkout minted light would be a white card over it. It
+    // returns here naming the org, which nothing else on the reloaded page would.
+    expect(mockStartPlanCheckout).toHaveBeenCalledWith(
+      "carolco",
+      "starter",
+      `${window.location.origin}/onboard?checkout_org=carolco`,
+      { scheme: "dark", locale: expect.any(String) },
+    );
     expect(screen.getByTestId("onboard-org-checkout")).toBeTruthy();
   });
 
-  // lemon.js reports the buyer dismissing the overlay and nothing else afterwards, so a page that
-  // only listens for the payment sits on the "opening checkout" spinner for the rest of the session.
-  it("returns to the form offering the reservation when the overlay is dismissed", async () => {
+  // Closing the modal without paying abandons the checkout, not the org: Stripe's iframe is torn
+  // down and the page goes back to the form, offering the reservation the create left behind.
+  it("returns to the form offering the reservation when the checkout is closed", async () => {
     mockAuth.billing = true;
     mockCreateOrg.mockResolvedValue({
       id: "carolco",
       name: "Carolco",
       provisioning_state: "awaiting_checkout",
     });
-    mockOpenCheckout.mockImplementation(async (_url, _onSuccess, onClose) => {
-      onClose!();
-    });
+    const destroy = vi.fn();
+    mockMount.mockResolvedValue({ mount: vi.fn(), destroy });
     mockFetchMyReservation.mockResolvedValueOnce(null).mockResolvedValue({
       org_id: "carolco",
       name: "Carolco",
@@ -219,135 +233,95 @@ describe("org onboarding where the org is sold", () => {
     render(<OnboardOrgPage />);
 
     await fillAndSubmit();
+    await waitFor(() => expect(mockMount).toHaveBeenCalled());
+    await waitFor(() => expect(screen.queryByTestId("checkout-loading")).toBeNull());
+    await userEvent.setup().keyboard("{Escape}");
 
     const resume = await screen.findByTestId("onboard-resume-checkout");
     expect(resume).toBeTruthy();
+    expect(destroy).toHaveBeenCalledTimes(1);
     expect(screen.queryByTestId("onboard-org-checkout")).toBeNull();
   });
 
-  it("reconciles a completed checkout whose webhook has not landed", async () => {
+  // REQ-1476: Stripe returns to the page with the session id. Reconcile reads that session, binds
+  // it when the webhook has not, and the page polls the org until it is built.
+  it("reconciles the returned checkout whose webhook has not landed", async () => {
     mockAuth.billing = true;
-    mockCreateOrg.mockResolvedValue({
+    returnFromCheckout("checkout_org=carolco&session_id=cs_test_1");
+    mockReconcile.mockResolvedValue({ reconciled: true, state: "provisioning" });
+    mockFetchOrgStatus.mockResolvedValue({
       id: "carolco",
       name: "Carolco",
-      provisioning_state: "awaiting_checkout",
+      provisioning_state: "ready",
     });
-    // The overlay's success callback is what the customer's payment triggers.
-    mockOpenCheckout.mockImplementation(async (_url, onSuccess) => {
-      onSuccess();
-    });
-    mockFetchOrgStatus
-      .mockResolvedValueOnce({
-        id: "carolco",
-        name: "Carolco",
-        provisioning_state: "awaiting_checkout",
-      })
-      .mockResolvedValue({ id: "carolco", name: "Carolco", provisioning_state: "ready" });
-    mockReconcile.mockResolvedValue({ reconciled: true, state: "provisioning" });
     render(<OnboardOrgPage />);
 
-    await fillAndSubmit();
-
-    // The first reconcile is a poll tick behind the status read that found the reservation.
-    await waitFor(() => expect(mockReconcile).toHaveBeenCalledWith("carolco"), { timeout: 5000 });
+    expect(screen.getByTestId("onboard-org-provisioning")).toBeTruthy();
+    await waitFor(() => expect(mockReconcile).toHaveBeenCalledWith("carolco", "cs_test_1"));
     await waitFor(() => expect(mockAuth.selectOrg).toHaveBeenCalledWith("carolco"), {
       timeout: 5000,
     });
+    // Handled once: a reload does not carry the session id into a second reconcile.
+    expect(window.location.search).toBe("");
+    expect(mockReconcile).toHaveBeenCalledTimes(1);
   });
 
-  it("keeps waiting when the purchase has not reached the store yet", async () => {
-    // The store publishes the subscription seconds after the overlay closes, so the first reconcile
-    // finds nothing. That is the race, not the answer: the webhook lands on a later tick.
+  // The session is named, so a checkout that has not completed is the answer, not a race to wait
+  // out: it is reported and the form is back, holding the reservation to resume.
+  it("reports a returned checkout that has not completed", async () => {
     mockAuth.billing = true;
-    mockCreateOrg.mockResolvedValue({
-      id: "carolco",
-      name: "Carolco",
-      provisioning_state: "awaiting_checkout",
-    });
-    mockOpenCheckout.mockImplementation(async (_url, onSuccess) => {
-      onSuccess();
-    });
-    mockFetchOrgStatus
-      .mockResolvedValueOnce({
-        id: "carolco",
-        name: "Carolco",
-        provisioning_state: "awaiting_checkout",
-      })
-      .mockResolvedValueOnce({
-        id: "carolco",
-        name: "Carolco",
-        provisioning_state: "awaiting_checkout",
-      })
-      .mockResolvedValue({ id: "carolco", name: "Carolco", provisioning_state: "ready" });
-    mockReconcile.mockRejectedValueOnce(
-      new BillingError(404, "billing.no_subscription_found", "not yet"),
+    returnFromCheckout("checkout_org=carolco&session_id=cs_test_1");
+    mockReconcile.mockRejectedValue(
+      new BillingError(
+        409,
+        "billing.checkout_not_complete",
+        "This checkout has not completed, so there is no subscription to attach yet.",
+      ),
     );
+    mockFetchMyReservation.mockResolvedValue({
+      org_id: "carolco",
+      name: "Carolco",
+      expires_at: "2026-09-01T00:00:00Z",
+    });
+    render(<OnboardOrgPage />);
+
+    expect(await screen.findByText(/This checkout has not completed/)).toBeTruthy();
+    expect(await screen.findByTestId("onboard-resume-checkout")).toBeTruthy();
+    expect(mockAuth.selectOrg).not.toHaveBeenCalled();
+  });
+
+  it("enters the org at once when the webhook already built it", async () => {
+    mockAuth.billing = true;
+    returnFromCheckout("checkout_org=carolco&session_id=cs_test_1");
     mockReconcile.mockResolvedValue({ reconciled: false, state: "ready" });
     render(<OnboardOrgPage />);
 
-    await fillAndSubmit();
-
-    await waitFor(() => expect(mockAuth.selectOrg).toHaveBeenCalledWith("carolco"), {
-      timeout: 10000,
-    });
-    expect(screen.queryByTestId("onboard-org-submit")).toBeNull();
+    await waitFor(() => expect(mockAuth.selectOrg).toHaveBeenCalledWith("carolco"));
+    expect(mockFetchOrgStatus).not.toHaveBeenCalled();
   });
 
-  it("does not reconcile when the webhook already built the org", async () => {
+  // REQ-1482: data transfer is the second price on the one subscription, so the return from the
+  // plan's checkout finishes the sign-up: no second checkout is opened.
+  it("opens no second checkout after the org is built", async () => {
     mockAuth.billing = true;
-    mockCreateOrg.mockResolvedValue({
-      id: "carolco",
-      name: "Carolco",
-      provisioning_state: "awaiting_checkout",
-    });
-    mockOpenCheckout.mockImplementation(async (_url, onSuccess) => {
-      onSuccess();
-    });
-    mockFetchOrgStatus.mockResolvedValue({
-      id: "carolco",
-      name: "Carolco",
-      provisioning_state: "ready",
-    });
+    returnFromCheckout("checkout_org=carolco&session_id=cs_test_1");
+    mockReconcile.mockResolvedValue({ reconciled: false, state: "ready" });
     render(<OnboardOrgPage />);
-
-    await fillAndSubmit();
 
     await waitFor(() => expect(mockAuth.selectOrg).toHaveBeenCalledWith("carolco"));
-    expect(mockReconcile).not.toHaveBeenCalled();
+    expect(mockStartPlanCheckout).not.toHaveBeenCalled();
+    expect(mockMount).not.toHaveBeenCalled();
+    expect(screen.queryByTestId("checkout-container")).toBeNull();
   });
 
-  // REQ-1482: transfer is a second subscription, so signup is a second checkout — ordered once the
-  // org exists, which is when there is a billing row to bind it to.
-  it("orders the transfer subscription after the org is built", async () => {
+  // The return address always names the org; one that does not cannot be reconciled, and says so.
+  it("reports a return from checkout that names no organization", async () => {
     mockAuth.billing = true;
-    mockCreateOrg.mockResolvedValue({
-      id: "carolco",
-      name: "Carolco",
-      provisioning_state: "awaiting_checkout",
-    });
-    mockOpenCheckout.mockImplementation(async (_url, onSuccess) => {
-      onSuccess();
-    });
-    mockFetchOrgStatus.mockResolvedValue({
-      id: "carolco",
-      name: "Carolco",
-      provisioning_state: "ready",
-    });
+    returnFromCheckout("session_id=cs_test_1");
     render(<OnboardOrgPage />);
 
-    await fillAndSubmit();
-
-    await waitFor(() =>
-      expect(mockStartEgress).toHaveBeenCalledWith("carolco", expect.any(String), {
-        scheme: "dark",
-        locale: expect.any(String),
-      }),
-    );
-    expect(mockOpenCheckout.mock.calls.at(-1)![0]).toBe(
-      "https://store.lemonsqueezy.com/checkout/egress",
-    );
-    // The org is built and selected before the second checkout is offered.
-    expect(mockAuth.selectOrg).toHaveBeenCalledWith("carolco");
+    expect(await screen.findByText(/did not name its organization/)).toBeTruthy();
+    expect(mockReconcile).not.toHaveBeenCalled();
   });
 
   // The create runs before any checkout exists, so the copy on screen while it runs cannot assert a
@@ -419,7 +393,7 @@ describe("org onboarding where the org is sold", () => {
     expect(screen.queryByTestId("onboard-org-isolated-engine")).toBeNull();
   });
 
-  // REQ-1514: only Starter's variant grants a trial, so a Pro card must not promise one.
+  // REQ-1514: only Starter's checkout grants a trial, so a Pro card must not promise one.
   it("states the trial on the plan that carries it and not on the one that does not", async () => {
     mockAuth.billing = true;
     render(<OnboardOrgPage />);
@@ -427,7 +401,7 @@ describe("org onboarding where the org is sold", () => {
     const starter = await screen.findByTestId("onboard-org-plan-starter");
     expect(starter.textContent).toContain("14-day free trial");
     expect(screen.getByTestId("onboard-org-plan-pro_m").textContent).toContain("No trial");
-    // The terms the checkout overlay hides.
+    // The terms stated before the checkout opens.
     expect(starter.textContent).toContain("$1.30 per engine hour");
     expect(starter.textContent).toContain("$25.00/month minimum, covering 19 engine hours");
     expect(starter.textContent).toContain("25 GB");

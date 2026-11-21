@@ -19,6 +19,8 @@ map (``provisa/federation/engine.py``) is the authority; a test holds the two eq
 
 from __future__ import annotations
 
+from provisa.core.engine_memory import motherduck_extension_limit
+
 ENGINE_KINDS: frozenset[str] = frozenset(
     {
         "bigquery",
@@ -60,3 +62,12 @@ ENGINE_KINDS: frozenset[str] = frozenset(
 #: may not serve an org that keeps data in another region. The engine layer's backends are the
 #: authority (``EngineBackend.reads_other_regions``); a test holds the two equal.
 REGION_READERS: frozenset[str] = frozenset({"duckdb", "motherduck", "pg", "trino", "trino-byo"})
+
+
+def unavailable_engine_kind(kind: str) -> str | None:
+    """REQ-1999 (Amended 2026-11-06, UNAVAILABLE ON DUCKDB 2.0): why engine ``kind`` cannot be
+    configured on this install, by name, or None where it can."""
+    if kind != "motherduck":
+        return None
+    limit = motherduck_extension_limit()
+    return None if limit is None else f"The MotherDuck engine is not available: {limit}"

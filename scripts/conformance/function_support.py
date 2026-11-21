@@ -21,19 +21,35 @@ Each overload gets one outcome per engine:
   pass          every call PostgreSQL answered, Provisa answered the same, or the same under a
                 written rule, which the overload's ``rules`` name (function_report.RULES), and
                 something was compared: an answer, a type and form, or a side effect
+  within_bound  a pass on its samples whose edge calls (below) answer nothing otherwise than
+                PostgreSQL, and raise where an edge differs, as its polyfill grid row on the engine
+                states (REQ-2236, amended 2026-11-15): served, as a pass is
   not_checked   every call PostgreSQL answered, Provisa answered with the same result type, and
                 nothing was compared: a call that ran proves nothing, so this is no pass, and it
                 counts as failed. ``unchecked`` says why
   by_design     skipped by design under a decision of REQ-2167 (``GROUPS``): a side-effect
                 function on an engine but ``SIDE_EFFECT_ENGINE``, one whose side effect no client
-                can see (``NOT_TESTABLE``), or a refusal by name a decision makes
-                (``DECIDED_REFUSALS``)
+                can see (``NOT_TESTABLE``), a refusal by name a decision makes
+                (``DECIDED_REFUSALS``), or a function a decision skips whatever it answers
+                (``decided_function``: PostgreSQL's own server state, the types no SQL value can
+                have, and the others amended 2026-11-03 and 2026-11-04 name), or a function the
+                validator refuses for reading or acting on its server (``not_served``), which
+                it does on every engine
   wrong_answer  a call compares unequal: its result type, its rows, their values, their form,
-                or the side effect it had
+                or the side effect it had; or an edge call answers otherwise than PostgreSQL
+                (``wrong_at_edge``)
   error         PostgreSQL answered a call and the engine failed with no named refusal (its
-                message is kept)
+                message is kept); or an edge call got no answer at all, or raised where the grid
+                row states no bound (``error_at_edge``)
   refused       PostgreSQL answered a call and Provisa refused it by name
-  not_callable  PostgreSQL itself answers no call of it
+  not_callable  PostgreSQL itself answers no call of it: every call was refused, or none answered
+                anything but NULL from NULL arguments and every call with a real value was refused
+                for the call itself. ``refused_for`` says which (REQ-2167, amended 2026-11-04, A
+                call PostgreSQL cannot make is skipped by design): ``function_probe.THE_CALL``
+                when every refusal was of the call, read from its SQLSTATE
+                (``function_probe.refused_for``); ``function_probe.ITS_ARGUMENTS`` when a refusal
+                was of the values or types the check gave it, a gap in its samples, which is
+                ``not_checked`` instead
   not_reached   the leg ended, or its server went away, before this overload
 
 A wrong answer outranks an error, which outranks a refusal, which outranks a pass or a not checked:
@@ -74,7 +90,10 @@ What a pass compared, exactly:
     answer (REQ-2167, WHAT GUARANTEED MEANS). ``value_form`` gives that form: a named function's,
     then its type's, then a record's number of fields, and otherwise the shape of PostgreSQL's
     string. Each row Provisa answers must fit. PostgreSQL's NULL or void, or a set Provisa leaves
-    empty, is no form to check.
+    empty, is no form to check. A volatile overload is never left not tested for being volatile
+    (amended 2026-11-04 (4)): any call of it, a NULL call too, whose result type and, in a single
+    row, NULLs are PostgreSQL's has its type and form checked; one acting is tested by its side
+    effect.
   * ``side_effect_checked``: a function returning void or acting (``side_effect``) is tested by
     its side effect (REQ-2167, amended 2026-11-02, Side-effect functions): ``EFFECTS`` performs the
     call on each server and then observes what it did through the same client (a setting read
@@ -84,8 +103,18 @@ What a pass compared, exactly:
 The rest are not checked, and each says why (``unchecked``, which an overload whose type and form
 were compared keeps: its value is still not compared). One given real values for its form that
 still has none checked says too whether PostgreSQL refused them or answered NULL or no row. A NULL call where PostgreSQL answers NULL
-holds Provisa to NULL too, which can make a wrong answer and never a pass. Three literals, not a
-domain: a function that differs only on values no sample reaches passes here.
+holds Provisa to NULL too, which can make a wrong answer and never a pass.
+
+Three literals are not a domain, so an overload that passes them is called again with edge values
+(``edge_calls``, from the one table function_edges.EDGES): NULL in each argument, an empty value,
+the type's least and greatest, zero and negatives, multi-byte and combining text, and a value
+PostgreSQL itself raises on, at most function_edges.EDGE_CALLS_MAX calls per overload. Where
+PostgreSQL raises, the engine must raise an error of the same SQLSTATE class. An edge answered
+otherwise is a wrong answer; one raised where PostgreSQL answers (or of another class) leaves the
+overload within its bound if its grid row on the engine states a limitation, and an error if not;
+one with no answer at all (the connection lost, or the deadline) is an error. A row whose
+limitation says what its form raises is bounded, and an edge call must raise that SQLSTATE
+(``bound_raised``; polyfill_check.py fails a row whose stated raise no edge call made).
 
 Literals alone do not say a function works on a column: a form that folds a literal at transpile
 time passes while a column of the same type is refused. So an overload given values gets one more
@@ -130,20 +159,24 @@ import sys
 import time
 from collections import Counter
 from collections.abc import Callable, Iterable, Iterator
+import dataclasses
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, LiteralString
 
 import psycopg
 import yaml
 from psycopg import pq
+from psycopg import sql as psql
 
+import function_edges
 import function_report
 import pgwire_catalog_types as catalog
 import pgwire_function_probe as function_probe
 from function_report import (
     ARRAY_ORDER,
     CLOCK_FIELD,
+    COMPARISON_SIGN,
     ENUM_LABEL,
     FLOAT_CLOSE,
     JSON_KEY_ORDER,
@@ -153,7 +186,8 @@ from function_report import (
     ROW_ORDER,
     ZONE_PACKAGING,
 )
-from pgwire_function_probe import Function
+from by_design import SERVER_FUNCTION_GROUP
+from pgwire_function_probe import Function, not_served
 
 #: The session settings both servers compare under.
 SETTINGS = (
@@ -168,6 +202,10 @@ CALL_TIMEOUT_S = 30.0
 
 #: How long a leg may run before what remains is not reached: the job's own limit would lose it all.
 LEG_BUDGET_S = 6300.0
+
+#: How many overloads apart the leg says where it is: a leg the runner gives up on mid-step leaves
+#: its log alone, which then names the overload it last reached.
+PROGRESS_EVERY = 50
 
 #: Calls of an overload given values: one aggregate or window statement reads all of them as rows.
 VALUE_ROWS = 3
@@ -209,6 +247,12 @@ OWN_ANSWERS: dict[str, str] = {
         "by design (REQ-588): names the served database",
     ),
     "version": "by design (REQ-579): the server's version",
+    # REQ-2167, amended 2026-11-04, Server state the client tools read is answered as
+    # Provisa's own: compared by type and form.
+    **dict.fromkeys(
+        ("pg_stat_get_numscans", "pg_tablespace_location", "pg_relation_is_publishable"),
+        "by design (REQ-2167): answers with Provisa's own server state",
+    ),
     **dict.fromkeys(
         (
             "inet_client_addr",
@@ -286,6 +330,78 @@ MODEL_FUNCTIONS = frozenset(
     }
 )
 
+#: The comparison functions: btree support function 1 (BTORDER_PROC) and GIN's compare and
+#: compare_partial. PostgreSQL documents only the sign of their result, "less than zero, zero, or
+#: greater than zero" (https://www.postgresql.org/docs/current/btree-support-funcs.html,
+#: https://www.postgresql.org/docs/current/gin-extensibility.html); the magnitude several return
+#: is a memcmp difference that varies with the reference platform (runs 44424562465 and
+#: 44451548477 disagreed). Their answers compare by sign (function_report.COMPARISON_SIGN).
+COMPARISON_FUNCTIONS = frozenset(
+    {
+        "bitcmp",
+        "bpcharcmp",
+        "btarraycmp",
+        "btboolcmp",
+        "btbpchar_pattern_cmp",
+        "btcharcmp",
+        "btfloat48cmp",
+        "btfloat4cmp",
+        "btfloat84cmp",
+        "btfloat8cmp",
+        "btint24cmp",
+        "btint28cmp",
+        "btint2cmp",
+        "btint42cmp",
+        "btint48cmp",
+        "btint4cmp",
+        "btint82cmp",
+        "btint84cmp",
+        "btint8cmp",
+        "btnamecmp",
+        "btnametextcmp",
+        "btoidcmp",
+        "btoidvectorcmp",
+        "btrecordcmp",
+        "btrecordimagecmp",
+        "bttext_pattern_cmp",
+        "bttextcmp",
+        "bttextnamecmp",
+        "bttidcmp",
+        "byteacmp",
+        "cash_cmp",
+        "date_cmp",
+        "date_cmp_timestamp",
+        "date_cmp_timestamptz",
+        "enum_cmp",
+        "gin_cmp_prefix",
+        "gin_cmp_tslexeme",
+        "gin_compare_jsonb",
+        "interval_cmp",
+        "jsonb_cmp",
+        "macaddr8_cmp",
+        "macaddr_cmp",
+        "multirange_cmp",
+        "network_cmp",
+        "numeric_cmp",
+        "pg_lsn_cmp",
+        "range_cmp",
+        "time_cmp",
+        "timestamp_cmp",
+        "timestamp_cmp_date",
+        "timestamp_cmp_timestamptz",
+        "timestamptz_cmp",
+        "timestamptz_cmp_date",
+        "timestamptz_cmp_timestamp",
+        "timetz_cmp",
+        "tsquery_cmp",
+        "tsvector_cmp",
+        "uuid_cmp",
+        "varbitcmp",
+        "xid8cmp",
+    }
+)
+_SIGNED_INTEGER = re.compile(r"-?\d+")
+
 _FLOAT_OIDS = frozenset({700, 701})
 _FLOAT_ARRAY_OIDS = frozenset({1021, 1022})
 _NUMERIC_OID = 1700
@@ -300,6 +416,7 @@ _DATE = r"\d{4,}-\d{2}-\d{2}"
 _TIME = r"\d{2}:\d{2}:\d{2}(\.\d{1,6})?"
 _ZONE_OFFSET = r"[+-]\d{2}(:\d{2}){0,2}"
 _INTEGER = r"-?\d+"
+_NUMERIC_OID = 1700
 _FLOAT = r"-?\d+(\.\d+)?(e[+-]?\d+)?|NaN|-?Infinity"
 _SNAPSHOT = r"\d+:\d+:(\d+(,\d+)*)?"
 _XID = r"\d+"
@@ -354,14 +471,14 @@ _TIMEOFDAY = r"[A-Z][a-z]{2} [A-Z][a-z]{2} \d{2} \d{2}:\d{2}:\d{2}\.\d{6} \d{4} 
 #: One field of a record's text: record_out quotes anything but a plain word, doubling the quotes.
 _FIELD = r'(?:"(?:[^"]|"")*"|[^,"()]*)'
 
-_INTEGERS = ("3", "(-7)", "42")
-_DECIMALS = ("0.5", "(-2.25)", "100")
-_STRINGS = ("'abc'", "'Hello World'", "'12'")
+_INTEGERS: tuple[LiteralString, LiteralString, LiteralString] = ("3", "(-7)", "42")
+_DECIMALS: tuple[LiteralString, LiteralString, LiteralString] = ("0.5", "(-2.25)", "100")
+_STRINGS: tuple[LiteralString, LiteralString, LiteralString] = ("'abc'", "'Hello World'", "'12'")
 
 #: Three literals of each type format_type names, cast to it where they are used. Enough to tell
 #: a sign, a case and a digit string apart; the first of the floats is a valid fraction, which an
 #: ordered-set aggregate's direct argument needs.
-SAMPLES: dict[str, tuple[str, str, str]] = {
+_SAMPLE_ROWS: dict[LiteralString, tuple[LiteralString, LiteralString, LiteralString]] = {
     "smallint": _INTEGERS,
     "integer": _INTEGERS,
     "bigint": ("3", "(-7)", "5000000000"),
@@ -443,6 +560,8 @@ SAMPLES: dict[str, tuple[str, str, str]] = {
     "int8multirange": ("'{[1,5),[7,9)}'", "'{}'", "'{(,3]}'"),
     "nummultirange": ("'{[1.5,2.5)}'", "'{}'", "'{(,3]}'"),
 }
+
+SAMPLES: dict[str, tuple[str, str, str]] = dict(_SAMPLE_ROWS.items())
 
 _RANGES = '\'{"[1,5)","[7,9)"}\'', "'{}'", "'{\"(,3]\"}'"
 
@@ -545,6 +664,7 @@ REPLICATION_SLOT = "conformance_slot"
 MULTIXACT_TABLE = "multixact_fixture"
 #: A sequence that has answered once: the probe's own is made again after the fixture.
 FIXTURE_SEQUENCE = "fixture_sequence"
+FIXTURE_DOMAIN = "fixture_domain"
 _RELATION_OID = "(SELECT oid FROM pg_catalog.pg_class WHERE relname = '{}')"
 
 #: Values of the ``NO_LITERAL`` types the server itself derived, read from its catalog: an
@@ -599,6 +719,7 @@ INPUT_TYPES = {
     "int2vectorin": "int2vector",
     "int4in": "integer",
     "int8in": "bigint",
+    "interval_in": "interval",
     "json_in": "json",
     "jsonpath_in": "jsonpath",
     "line_in": "line",
@@ -696,6 +817,26 @@ _FLOAT8_STATE = ("'{3,6,2}'", "'{1,0.5,0}'", "'{4,10,5}'")
 _REGR_STATE = ("'{3,6,2,9,2,2}'", "'{1,0.5,0,2,0,0}'", "'{4,10,5,8,5,5}'")
 _INT_AVG_STATE = ("'{3,6}'", "'{1,-7}'", "'{4,100}'")
 _FORMS = ("'NFC'", "'NFD'", "'NFKC'")
+_FRACTIONS = ("'{0.25,0.5}'", "'{0.5}'", "'{0,0.75,1}'")
+#: A type's modifier as the parser hands it to the type's typmodin, by function: interval's names
+#: its fields and precision (INTERVAL(3)), as PostgreSQL refuses a bare number for it.
+_TYPMODS: dict[str, dict[int, tuple[str, ...]]] = {
+    **{
+        f"{name}typmodin": {0: ("'{10}'",) * VALUE_ROWS}
+        for name in (
+            "bit",
+            "bpchar",
+            "timestamp",
+            "timestamptz",
+            "time",
+            "timetz",
+            "varbit",
+            "varchar",
+        )
+    },
+    "numerictypmodin": {0: ("'{12,2}'",) * VALUE_ROWS},
+    "intervaltypmodin": {0: ("'{32767,3}'",) * VALUE_ROWS},
+}
 _NAMESPACE_ROW = Raw(("NULL::pg_catalog.pg_namespace",) * 3)
 _NAMESPACE_JSON = ('\'{"nspname": "x", "oid": 5}\'', "'{}'", "'{\"nspname\": null}'")
 _NAMESPACE_JSONS = ('\'[{"nspname": "x", "oid": 5}]\'', "'[]'", "'[{}, {\"oid\": 1}]'")
@@ -1156,6 +1297,10 @@ FIXTURE: dict[str, str] = {}
 FIXTURE_QUERIES = {
     "xid": f"SELECT xmin FROM {COLUMN_RELATION} WHERE id = 1",
     "multixact": f"SELECT xmax FROM {catalog.FIXTURE_SCHEMA}.{MULTIXACT_TABLE}",
+    "domain": (
+        f"SELECT oid FROM pg_catalog.pg_type WHERE typname = '{FIXTURE_DOMAIN}' "
+        f"AND typnamespace = '{catalog.FIXTURE_SCHEMA}'::regnamespace"
+    ),
 }
 _FIXTURE_TOKEN = re.compile(r"\{fixture:(\w+)\}")
 
@@ -1339,6 +1484,14 @@ _FORM_VALUES: dict[str, dict[int, tuple[str, ...]]] = {
     "pg_relation_filenode(regclass)": {0: _RELATIONS},
     "pg_relation_filepath(regclass)": {0: _RELATIONS},
     "pg_stat_get_activity(integer)": {0: _BACKEND_PID},
+    "pg_stat_get_numscans(oid)": {
+        0: Raw(
+            f"'pg_catalog.{i}'::regclass::oid"
+            for i in ("pg_class_oid_index", "pg_type_oid_index", "pg_namespace_nspname_index")
+        )
+    },
+    "pg_tablespace_location(oid)": {0: ("1663", "1664", "1663")},
+    "pg_relation_is_publishable(regclass)": {0: _RELATIONS},
 }
 
 #: As ``_FORM_VALUES``, by prefix: a database's statistics of the session's own database, a
@@ -1390,6 +1543,17 @@ ARG_VALUES: dict[str, dict[int, tuple[str, ...]]] = {
     "ntile": {0: ("2", "2", "2")},
     "percentile_cont": {0: ("0.25", "0.5", "0.75")},
     "percentile_disc": {0: ("0.25", "0.5", "0.75")},
+    # The array forms take an array of fractions (REQ-2167, amended 2026-11-04 (5)).
+    "percentile_cont(double precision[])": {0: _FRACTIONS},
+    "percentile_disc(double precision[])": {0: _FRACTIONS},
+    **_TYPMODS,
+    # domain_in reads its text as the fixture's domain (``FIXTURE_DOMAIN``), with no typmod: a
+    # NULL among them, as its answer is compared by whether it IS NULL (``domain_in_calls``).
+    "domain_in": {
+        0: Raw(("'5'::cstring", "NULL::cstring", "'1'::cstring")),
+        1: ("'{fixture:domain}'",) * VALUE_ROWS,
+        2: Raw(("(-1)::integer",) * VALUE_ROWS),
+    },
     "width_bucket(numeric)": {1: ("0", "(-10)", "0"), 2: ("10", "10", "100"), 3: ("5", "4", "10")},
     "width_bucket(double precision)": {
         1: ("0", "(-10)", "0"),
@@ -1434,15 +1598,19 @@ class Call:
     is its server's own: no); ``zone``: the session's TimeZone for this call, if not ``SETTINGS``'
     UTC; ``before``: what the session must have done first, run just before it
     (function_probe.BEFORE); ``setup`` and ``teardown``: statements around it on the same session,
-    as an open cursor needs its transaction."""
+    as an open cursor needs its transaction; ``refusal``: PostgreSQL's answer is its refusal,
+    which Provisa must answer with the same SQLSTATE and message; ``edge``: an edge call
+    (``edge_calls``), naming its argument's type and edge, compared by ``_measure_edges``."""
 
     sql: str
     answers: bool = False
     values: bool = True
+    refusal: bool = False
     zone: str | None = None
     before: str | None = None
     setup: tuple[str, ...] = ()
     teardown: tuple[str, ...] = ()
+    edge: str = ""
 
     @property
     def form(self) -> bool:
@@ -1496,7 +1664,7 @@ def unchecked(fn: Function, family: str) -> str | None:
     """Why ``fn`` is given no values; None if it is."""
     if function_probe.UNCALLABLE in fn.argtypes:
         return function_probe.NO_CALL
-    if fn.signature in function_probe.STATEMENTS:
+    if fn.signature in function_probe.STATEMENTS and _key(fn) not in VALUE_STATEMENTS:
         return "its one statement takes no value"
     if fn.volatility == "v":
         return "volatile"
@@ -1530,9 +1698,10 @@ def _columns(count: int) -> list[str]:
     return [f"c{i + 1}" for i in range(count)]
 
 
-def _aggregate(fn: Function) -> str:
-    """An aggregate over the rows of a VALUES list, which reads no table and so reaches the engine."""
-    rows = _rows(fn)
+def _aggregate(fn: Function, rows: list[list[str]] | None = None) -> str:
+    """An aggregate over the rows of a VALUES list, which reads no table and so reaches the engine:
+    ``rows``, or the sample rows."""
+    rows = _rows(fn) if rows is None else rows
     named = f'pg_catalog."{fn.name}"'
     if fn.aggkind == "h":
         relation = "(VALUES (1), (2), (3)) AS t(c1)"
@@ -1555,9 +1724,9 @@ def _aggregate(fn: Function) -> str:
     return f"SELECT {named}({', '.join(columns)}{order}) AS v FROM {relation}"
 
 
-def _window(fn: Function) -> str:
+def _window(fn: Function, rows: list[list[str]] | None = None) -> str:
     named = f'pg_catalog."{fn.name}"'
-    rows = _rows(fn)
+    rows = _rows(fn) if rows is None else rows
     numbered = [[str(i + 1), *row] for i, row in enumerate(rows)]
     columns = _columns(len(fn.argtypes) + 1)
     relation = f"({_values(numbered)}) AS t({', '.join(columns)})"
@@ -1565,13 +1734,27 @@ def _window(fn: Function) -> str:
 
 
 #: Value calls written whole, by ``_key``: a function returning a record of no declared type is
-#: called where a column definition list gives it one.
+#: called where a column definition list gives it one, a set of them in FROM (REQ-2167, amended
+#: 2026-11-04 (5)).
 VALUE_STATEMENTS: dict[str, tuple[str, ...]] = {
-    f"{name}({typ})": tuple(
-        f'SELECT t.a, t.b FROM pg_catalog."{name}"({doc}::{typ}) AS t(a integer, b text)'
-        for doc in ('\'{"a": 1, "b": "x"}\'', "'{\"b\": null}'", '\'{"a": -7, "c": true}\'')
-    )
-    for name, typ in (("json_to_record", "json"), ("jsonb_to_record", "jsonb"))
+    **{
+        f"{name}({typ})": tuple(
+            f'SELECT t.a, t.b FROM pg_catalog."{name}"({doc}::{typ}) AS t(a integer, b text)'
+            for doc in ('\'{"a": 1, "b": "x"}\'', "'{\"b\": null}'", '\'{"a": -7, "c": true}\'')
+        )
+        for name, typ in (("json_to_record", "json"), ("jsonb_to_record", "jsonb"))
+    },
+    **{
+        f"{name}({typ})": tuple(
+            f'SELECT * FROM pg_catalog."{name}"({doc}::{typ}) AS t(a integer, b text)'
+            for doc in (
+                '\'[{"a": 1, "b": "x"}, {"a": 2}]\'',
+                "'[]'",
+                '\'[{"b": null}, {"a": -7, "c": true}]\'',
+            )
+        )
+        for name, typ in (("json_to_recordset", "json"), ("jsonb_to_recordset", "jsonb"))
+    },
 }
 
 
@@ -1581,6 +1764,8 @@ def value_calls(fn: Function, family: str) -> list[Call]:
         return []
     if _key(fn) in VALUE_STATEMENTS:
         return [Call(sql, answers=True) for sql in VALUE_STATEMENTS[_key(fn)]]
+    if fn.name == "domain_in":
+        return domain_in_calls(fn)
     if fn.kind == "a":
         return [Call(_aggregate(fn), answers=True)]
     if fn.kind == "w":
@@ -1593,6 +1778,66 @@ def value_calls(fn: Function, family: str) -> list[Call]:
             row = [*row[:-1], f"VARIADIC {row[-1]}"]
         calls.append(Call(function_probe.statement(fn, row), answers=True))
     return calls
+
+
+def edge_calls(fn: Function, family: str) -> list[Call]:
+    """``fn`` called with edge values (function_edges): an overload ``value_calls`` gives its
+    samples, each call its first sample row with one argument an edge value of its type, at most
+    ``function_edges.EDGE_CALLS_MAX``. An argument given literals of its own (``ARG_VALUES``: a
+    unit, a pattern, a format) keeps them; an aggregate or a window function reads the edge row
+    twice. None for an overload written whole (``VALUE_STATEMENTS``, domain_in), one of no
+    argument, and a hypothetical-set aggregate, whose one argument is direct and ordered both."""
+    if (
+        unchecked(fn, family) is not None
+        or _key(fn) in VALUE_STATEMENTS
+        or fn.name == "domain_in"
+        or not fn.argtypes
+        or fn.aggkind == "h"
+    ):
+        return []
+    given = _given(fn)
+    with_null = len(fn.argtypes) > 1 or fn.kind in ("a", "w")
+    per_position = [
+        (i, function_edges.edges_of(function_probe.CONCRETE.get(t, t), with_null=with_null))
+        for i, t in enumerate(fn.argtypes)
+        if i not in given
+    ]
+    first = _rows(fn)[0]
+    out = []
+    for position, edge in function_edges.chosen(per_position):
+        argtype = fn.argtypes[position]
+        row = list(first)
+        row[position] = _cast(edge.literal, argtype)
+        named = f"{function_probe.CONCRETE.get(argtype, argtype)} {edge.kind}"
+        if fn.kind == "a":
+            sql = _aggregate(fn, [row, row])
+        elif fn.kind == "w":
+            sql = _window(fn, [row, row])
+        else:
+            if fn.variadic:
+                row = [*row[:-1], f"VARIADIC {row[-1]}"]
+            sql = function_probe.statement(fn, row)
+        sql = function_edges.bounded(sql)
+        if all(c.sql != sql for c in out):
+            out.append(Call(sql, answers=True, edge=named))
+    return out
+
+
+#: A value breaking the fixture domain's CHECK (VALUE > 0).
+DOMAIN_BREAKING = "'-1'::cstring"
+
+
+def domain_in_calls(fn: Function) -> list[Call]:
+    """domain_in's calls: its answer, of the pseudo-type any, which no client can display, is
+    compared by whether it IS NULL, and a value breaking the fixture domain's CHECK by the refusal
+    it gets (REQ-2167, amended 2026-11-04, A call PostgreSQL cannot make is skipped by design)."""
+    named = f'pg_catalog."{fn.name}"'
+    rows = _rows(fn)
+    breaking = [DOMAIN_BREAKING, *rows[0][1:]]
+    return [
+        *(Call(f"SELECT {named}({', '.join(row)}) IS NULL AS v", answers=True) for row in rows),
+        Call(f"SELECT {named}({', '.join(breaking)}) IS NULL AS v", answers=True, refusal=True),
+    ]
 
 
 def sample_column(sample_type: str) -> str:
@@ -1732,7 +1977,11 @@ class Session(catalog.Server):
                     left = deadline - time.monotonic()
                     if left <= 0 or not select.select([conn.socket], [], [], left)[0]:
                         self.conn.close()
-                        return {"ok": False, "error": f"no answer in {timeout:.0f}s"}
+                        return {
+                            "ok": False,
+                            "error": f"no answer in {timeout:.0f}s",
+                            "timed_out": True,
+                        }
                     continue
                 res = conn.get_result()
                 if res is None:
@@ -1749,9 +1998,11 @@ class Session(catalog.Server):
 
 def _result(res: Any) -> dict[str, Any]:
     if res.status not in (pq.ExecStatus.TUPLES_OK, pq.ExecStatus.COMMAND_OK):
+        state = res.error_field(pq.DiagnosticField.SQLSTATE)
         return {
             "ok": False,
             "error": (res.error_message or b"").decode(errors="replace").strip()[:400],
+            "sqlstate": state.decode() if state else "",
         }
     fields = [res.ftype(i) for i in range(res.nfields)]
     rows = [
@@ -1797,13 +2048,24 @@ def _numeric_rules(want: str, got: str) -> Rules:
         return None
 
 
+def _union(found: Iterable[Rules]) -> Rules:
+    """The rules every part needed, or None when any part differs."""
+    parts = list(found)
+    rules: frozenset[str] = frozenset()
+    for part in parts:
+        if part is None:
+            return None
+        rules |= part
+    return rules
+
+
 def _array_rules(want: str, got: str, element: Callable[[str, str], Rules]) -> Rules:
     """An array of numbers, element by element."""
     a, b = want.strip("{}").split(","), got.strip("{}").split(",")
     if len(a) != len(b):
         return None
     found = [_SAME if x == y else element(x, y) for x, y in zip(a, b, strict=True)]
-    return None if None in found else frozenset().union(*found)
+    return _union(found)
 
 
 def _unmatched(want: Iterable, got: Iterable, same: Callable) -> tuple[list, list]:
@@ -1838,14 +2100,12 @@ def _parsed_rules(a: Any, b: Any) -> Rules:
         if a.keys() != b.keys():
             return None
         found = [_parsed_rules(a[key], b[key]) for key in a]
-        if None in found:
-            return None
-        return frozenset().union(*found, {JSON_KEY_ORDER} if list(a) != list(b) else ())
+        return _union([*found, frozenset({JSON_KEY_ORDER}) if list(a) != list(b) else frozenset()])
     if isinstance(a, list):
         if len(a) != len(b):
             return None
         found = list(map(_parsed_rules, a, b))
-        return None if None in found else frozenset().union(*found)
+        return _union(found)
     return _SAME if a == b else None
 
 
@@ -1964,7 +2224,24 @@ def _value_rules(
         return json_rules(want, got, sql)
     if oid == _RECORD_OID:
         return _record_rules(want, got, sql, function)
+    if function in COMPARISON_FUNCTIONS:
+        return _sign_rules(want, got)
     return None
+
+
+def _sign(text: str) -> int | None:
+    if _SIGNED_INTEGER.fullmatch(text) is None:
+        return None
+    number = int(text)
+    return (number > 0) - (number < 0)
+
+
+def _sign_rules(want: str, got: str) -> Rules:
+    """A comparison function's answer by its sign, the only part PostgreSQL documents."""
+    sign = _sign(want)
+    if sign is None or sign != _sign(got):
+        return None
+    return frozenset({COMPARISON_SIGN})
 
 
 def _model_answer(function: str, want: str | None, got: str | None) -> bool:
@@ -2019,6 +2296,18 @@ def _pair_rows(
 ZONE_LISTS = frozenset({"pg_timezone_names"})
 #: The names a distribution's tzdata adds to the release's: Debian's.
 DISTRIBUTION_ZONES = frozenset({"localtime", "posixrules"})
+#: The zones tzdata 2024b made backward links, each to the zone it names: a distribution dropping
+#: the backward links drops them (Debian's, run 42935119044), and the pinned release compiles each
+#: apart from its zone (their rules before 1970), so its bytes do not show it a link.
+BACKWARD_LINKS = {
+    "CST6CDT": "America/Chicago",
+    "EST5EDT": "America/New_York",
+    "MST7MDT": "America/Denver",
+    "PST8PDT": "America/Los_Angeles",
+    "EST": "America/Panama",
+    "MST": "America/Phoenix",
+    "HST": "Pacific/Honolulu",
+}
 
 
 def _zone_name(row: tuple) -> str | None:
@@ -2051,6 +2340,7 @@ def shared_zones(
         for row in got
         if (name := _zone_name(row)) not in shared
         and (name is None or _pinned_zone(name) not in zones)
+        and BACKWARD_LINKS.get(name or "") not in shared
     )
     if only_provisa:
         return f"zones Provisa lists and PostgreSQL does not: {only_provisa}"
@@ -2102,7 +2392,7 @@ def compare(
 
     def row_rules(x: tuple, y: tuple) -> Rules:
         found = [value(wv, gv, oid) for wv, gv, oid in zip(x, y, fields, strict=True)]
-        return None if None in found else frozenset().union(*found)
+        return _union(found)
 
     def order(row: tuple) -> list[tuple[bool, str]]:
         return [(value_ is None, value_ or "") for value_ in row]
@@ -2130,6 +2420,17 @@ def _shape(sample: str) -> str:
     return "".join(r"\w+" if i % 2 else re.escape(part) for i, part in enumerate(parts))
 
 
+def _numeric_form(sample: str) -> str:
+    """A numeric's form: its scale, the digits PostgreSQL writes after the point, of either sign.
+    random(min, max)'s answer is of the larger scale of its bounds; its sign is the draw's, which
+    the shape of PostgreSQL's own draw held it to (run 42527458223: '1.023' was not the form of
+    '-0.803'). NaN and the infinities are words of their own."""
+    if sample in ("NaN", "Infinity", "-Infinity"):
+        return re.escape(sample)
+    scale = len(sample.partition(".")[2])
+    return _INTEGER + (rf"\.\d{{{scale}}}" if scale else "")
+
+
 def value_form(name: str, oid: int, sample: str) -> str:
     """The regular expression an answer of function ``name``, of type ``oid``, must match, from
     ``sample``, PostgreSQL's answer."""
@@ -2139,6 +2440,8 @@ def value_form(name: str, oid: int, sample: str) -> str:
         return FUNCTION_FORMS[name]
     if oid in TYPE_FORMS:
         return TYPE_FORMS[oid]
+    if oid == _NUMERIC_OID:
+        return _numeric_form(sample)
     if oid == _RECORD_OID:
         fields = len(re.findall(rf"{_FIELD}(?:,|\)$)", sample[1:]))
         return rf"\({_FIELD}(?:,{_FIELD}){{{fields - 1}}}\)"
@@ -2225,6 +2528,17 @@ def _all_null(want: dict[str, Any]) -> bool:
     return bool(want["rows"]) and all(v is None for row in want["rows"] for v in row)
 
 
+def _null_difference(want: dict[str, Any], got: dict[str, Any]) -> str | None:
+    """How the NULLs of Provisa's one row differ from those of PostgreSQL's; None if they do not.
+    A set's rows are its server's own, so a set differs in none."""
+    if len(want["rows"]) != 1 or len(got["rows"]) != 1:
+        return None
+    for wv, gv in zip(want["rows"][0], got["rows"][0], strict=False):
+        if (wv is None) != (gv is None):
+            return f"{gv!r}, PostgreSQL {wv!r}"
+    return None
+
+
 # --- side effects (REQ-2167, amended 2026-11-02, Side-effect functions) -------------------------
 
 #: The engine side-effect functions are expected to work on: on every other they are skipped by
@@ -2246,6 +2560,12 @@ SERVER_ADMINISTRATION_GROUP = "Server administration functions"
 SERVER_VERSION_GROUP = "The server's version"
 REFERENCES_GROUP = "REFERENCES is never granted"
 TABLE_XML_GROUP = "A table's XML holds the model's arrays and database"
+SERVER_STATE_GROUP = "PostgreSQL's own server state"
+SESSION_CURSORS_GROUP = "The session's own cursors"
+SERVER_EXTENSIONS_GROUP = "The server's installed extensions"
+SINGLE_BYTE_DATABASE_GROUP = "One-argument to_ascii needs a single-byte database"
+NO_SQL_VALUE_GROUP = "Types no SQL value can have"
+INTERNAL_TYPE_GROUP = "Types that exist only inside PostgreSQL"
 GROUPS = {
     # REQ-2167, amended 2026-11-02, Side-effect functions.
     SIDE_EFFECT_GROUP: (
@@ -2255,7 +2575,9 @@ GROUPS = {
     NOT_TESTABLE: "Its side effect cannot be observed through a client.",
     # REQ-2167, amended 2026-11-02, Sequence functions are not supported.
     SEQUENCE_GROUP: "nextval, currval and setval are refused by name: Provisa does not model a "
-    "source's sequences.",
+    "source's sequences. pg_sequence_last_value is skipped: Provisa does not drive a source's "
+    "sequences (amended 2026-11-04, Server state, internal types and the check's own call shapes "
+    "(2)).",
     # REQ-2167, amended 2026-11-02, Six-argument regexp_replace is not supported.
     REGEXP_GROUP: "The PostgreSQL 16 form with a start position and an occurrence number is "
     "refused by name.",
@@ -2285,9 +2607,12 @@ GROUPS = {
     # 2026-10-27, PGWIRE'S CATALOG FUNCTIONS: no function reads the server's files.
     SERVER_FILES_GROUP: "pg_read_file and pg_read_binary_file read no file, and pg_ls_dir and "
     "pg_stat_file answer as a server without it: no function reads the server's files.",
-    # REQ-2167, amended 2026-11-03, Server administration functions.
+    # REQ-2167, amended 2026-11-03, Server administration functions; amended 2026-11-03, Backend
+    # session statistics are the engine's.
     SERVER_ADMINISTRATION_GROUP: "PostgreSQL refuses these for the test server's own state or "
-    "configuration; each names PostgreSQL's refusal as its reason.",
+    "configuration; each names PostgreSQL's refusal as its reason. pg_stat_get_backend_* and "
+    "pg_stat_get_backend_idset report on the engine's own sessions, not the model: Provisa refuses "
+    "them by name, as serving them would show one tenant other sessions' activity.",
     # REQ-579: the server reports its own version, and a collation's version is the server's.
     SERVER_VERSION_GROUP: "A collation's version is the server's own, as the server's version "
     "is (REQ-579).",
@@ -2299,12 +2624,46 @@ GROUPS = {
     TABLE_XML_GROUP: "table_to_xml and its kin write a source's array column as the JSON array it "
     "is registered as (REQ-1965), and name the served database in a type's name (REQ-588): the "
     "document differs from PostgreSQL's in these alone.",
+    # REQ-2167, amended 2026-11-04, Server state, internal types and the check's own call shapes
+    # (1).
+    SERVER_STATE_GROUP: "These read PostgreSQL's own server state (WAL, replication and "
+    "recovery, log files, the hba and ident files, shared memory and memory contexts, locks, I/O "
+    "and SLRU statistics, wait events, server directory listings, prepared transactions, the "
+    "pg_stat_get_xact_* transaction counters): there is no single server to test, since the "
+    "answer is whichever engine's runs.",
+    # REQ-2167, amended 2026-11-04, Server state, internal types and the check's own call shapes
+    # (2).
+    SESSION_CURSORS_GROUP: "pg_cursor lists the session's own cursors.",
+    SERVER_EXTENSIONS_GROUP: "pg_extension_update_paths reads the server's installed extensions.",
+    SINGLE_BYTE_DATABASE_GROUP: "to_ascii(text) converts only from a LATIN1, LATIN2, LATIN9 or "
+    "WIN1250 database; the forms naming the encoding are compared.",
+    # REQ-2167, amended 2026-11-04, Server state, internal types and the check's own call shapes
+    # (3).
+    NO_SQL_VALUE_GROUP: "The input and output functions of types no SQL value can have: "
+    "PostgreSQL errors on every call (the any* and anycompatible* pseudo-types, shell_out, "
+    "pg_ddl_command, pg_node_tree_in, the extended statistics inputs, the BRIN bloom and "
+    "multi-minmax summaries, gtsvector).",
+    # REQ-2167, amended 2026-11-13, AN INTERNAL TYPE IS BY DESIGN (INTERNAL_TYPES).
+    INTERNAL_TYPE_GROUP: "The functions of a type that exists only inside PostgreSQL (the reg* "
+    "types, record, aclitem, xid and xid8), a type's input by oid and an aggregate's transition "
+    "state are refused by name: no engine holds such a value. A function that merely takes or "
+    "returns one, such as row_to_json(record) or a record comparison, is a gap and stays refused.",
+    # REQ-001: the validator's V007 (pgwire_function_probe.not_served).
+    SERVER_FUNCTION_GROUP: "A call of a function that reads or acts on its server, outside the "
+    "tables a statement is governed by, is refused on every engine, PostgreSQL included: one "
+    "that runs SQL it is given as text, or reads a file, a large object, a "
+    "setting or another session, in a statement that reaches an engine or a source as written. "
+    "A statement naming no table may still call one that reads the engine's own state.",
 }
 
 #: The requirement each group's decision is of, where it is not REQ-2167.
-GROUP_REQUIREMENTS = {SERVER_VERSION_GROUP: "REQ-579", TABLE_XML_GROUP: "REQ-1965, REQ-588"}
+GROUP_REQUIREMENTS = {
+    SERVER_VERSION_GROUP: "REQ-579",
+    TABLE_XML_GROUP: "REQ-1965, REQ-588",
+    SERVER_FUNCTION_GROUP: "REQ-001",
+}
 
-#: The functions a decision skips by design whatever they answer, by name.
+#: The functions a decision skips by design whatever they answer, by name or ``_key``.
 DECIDED_FUNCTIONS = {
     **dict.fromkeys(
         (
@@ -2320,6 +2679,9 @@ DECIDED_FUNCTIONS = {
         STORAGE_GROUP,
     ),
     **dict.fromkeys(("pg_read_file", "pg_read_binary_file"), SERVER_FILES_GROUP),
+    # With missing_ok, pg_stat_file answers NULL as a server without the file does; the fixture
+    # server has it. Without, its refusal is the decision (_DECIDED_ERRORS).
+    "pg_stat_file(text, boolean)": SERVER_FILES_GROUP,
     **dict.fromkeys(
         (
             "pg_wal_replay_pause",
@@ -2342,7 +2704,208 @@ DECIDED_FUNCTIONS = {
         ("pg_collation_actual_version", "pg_database_collation_actual_version"),
         SERVER_VERSION_GROUP,
     ),
+    **dict.fromkeys(
+        (
+            # WAL
+            "pg_available_wal_summaries",
+            "pg_wal_summary_contents",
+            "pg_get_wal_resource_managers",
+            "pg_stat_get_wal",
+            "pg_stat_get_archiver",
+            # replication and recovery
+            "pg_last_wal_receive_lsn",
+            "pg_last_wal_replay_lsn",
+            "pg_last_xact_replay_timestamp",
+            "pg_stat_get_wal_receiver",
+            "pg_stat_get_wal_senders",
+            "pg_stat_get_recovery_prefetch",
+            "pg_show_replication_origin_status",
+            # log files, the hba and ident files
+            "pg_current_logfile",
+            "pg_hba_file_rules",
+            "pg_ident_file_mappings",
+            # shared memory and memory contexts
+            "pg_get_shmem_allocations",
+            "pg_get_backend_memory_contexts",
+            # locks, I/O and SLRU statistics, wait events
+            "pg_lock_status",
+            "pg_stat_get_io",
+            "pg_stat_get_slru",
+            "pg_get_wait_events",
+            # server directory listings
+            "pg_ls_waldir",
+            "pg_ls_archive_statusdir",
+            "pg_ls_tmpdir",
+            "pg_ls_logicalmapdir",
+            "pg_ls_logicalsnapdir",
+            # prepared transactions
+            "pg_prepared_xact",
+            # REQ-2167, amended 2026-11-04, A call PostgreSQL cannot make is skipped by design:
+            # the server's build and extensions, its transaction ids, its activity, checksum and
+            # progress statistics
+            "pg_config",
+            "pg_available_extensions",
+            "pg_available_extension_versions",
+            "pg_current_xact_id_if_assigned",
+            "txid_current_if_assigned",
+            "pg_stat_get_activity",
+            "pg_stat_get_db_checksum_failures",
+            "pg_stat_get_db_checksum_last_failure",
+            "pg_stat_get_snapshot_timestamp",
+            "pg_stat_get_progress_info",
+        ),
+        SERVER_STATE_GROUP,
+    ),
+    "pg_cursor": SESSION_CURSORS_GROUP,
+    "pg_sequence_last_value": SEQUENCE_GROUP,
+    "pg_extension_update_paths": SERVER_EXTENSIONS_GROUP,
+    "to_ascii(text)": SINGLE_BYTE_DATABASE_GROUP,
+    **dict.fromkeys(
+        (
+            *(
+                f"{pseudo}_{io}"
+                for pseudo, ios in (
+                    ("any", ("in", "out")),
+                    ("anyarray", ("in",)),
+                    ("anycompatible", ("in", "out")),
+                    ("anycompatiblearray", ("in",)),
+                    ("anycompatiblemultirange", ("in",)),
+                    ("anycompatiblenonarray", ("in", "out")),
+                    ("anycompatiblerange", ("in",)),
+                    ("anyelement", ("in", "out")),
+                    ("anyenum", ("in",)),
+                    ("anymultirange", ("in",)),
+                    ("anynonarray", ("in", "out")),
+                    ("anyrange", ("in",)),
+                )
+                for io in ios
+            ),
+            "shell_out",
+            "pg_ddl_command_in",
+            "pg_ddl_command_out",
+            "pg_ddl_command_send",
+            "pg_node_tree_in",
+            "pg_ndistinct_in",
+            "pg_dependencies_in",
+            "pg_mcv_list_in",
+            # the index summaries
+            "brin_bloom_summary_in",
+            "brin_bloom_summary_out",
+            "brin_bloom_summary_send",
+            "brin_minmax_multi_summary_in",
+            "brin_minmax_multi_summary_out",
+            "brin_minmax_multi_summary_send",
+            "gtsvectorin",
+            "gtsvectorout",
+        ),
+        NO_SQL_VALUE_GROUP,
+    ),
 }
+#: As ``DECIDED_FUNCTIONS``, by prefix: the engine's backend statistics (amended 2026-11-03,
+#: Backend session statistics are the engine's) and its transaction counters (amended 2026-11-04
+#: (1)).
+_DECIDED_PREFIXES = {
+    "pg_stat_get_backend_": SERVER_ADMINISTRATION_GROUP,
+    "pg_stat_get_xact_": SERVER_STATE_GROUP,
+}
+
+
+def decided_function(fn: Function) -> str | None:
+    """The group of the decision that skips ``fn`` whatever it answers, by ``_key``, name or
+    prefix; None if no decision does."""
+    group = DECIDED_FUNCTIONS.get(_key(fn)) or DECIDED_FUNCTIONS.get(fn.name)
+    if group is not None:
+        return group
+    return next((g for p, g in _DECIDED_PREFIXES.items() if fn.name.startswith(p)), None)
+
+
+@dataclass(frozen=True)
+class InternalType:
+    """A type that exists only inside PostgreSQL: the stems its own functions are named by, and
+    whether its comparison operators are its own (a record's compare the values it holds)."""
+
+    stems: tuple[str, ...]
+    operators: bool = True
+
+
+#: REQ-2167, amended 2026-11-13, AN INTERNAL TYPE IS BY DESIGN: the types that exist only inside
+#: PostgreSQL. Their own functions are by design; a function that merely takes or returns one is
+#: not (``internal_types_own``).
+INTERNAL_TYPES = {
+    **{
+        oid_alias: InternalType((oid_alias,))
+        for oid_alias in (
+            "regclass",
+            "regcollation",
+            "regconfig",
+            "regdictionary",
+            "regnamespace",
+            "regoper",
+            "regoperator",
+            "regproc",
+            "regprocedure",
+            "regrole",
+            "regtype",
+        )
+    },
+    "record": InternalType(("record",), operators=False),
+    "aclitem": InternalType(("aclitem", "acl")),
+    "xid": InternalType(("xid",)),
+    "xid8": InternalType(("xid8",)),
+}
+
+#: How a type's own functions are named after its stem: its input, output, receive and send
+#: functions, its hash and B-tree support functions, and its operators and functions on it.
+_OWN_IO = ("{s}in", "{s}out", "{s}recv", "{s}send", "{s}_in", "{s}_out", "{s}_recv", "{s}_send")
+_OWN_SUPPORT = ("hash_{s}", "hash_{s}_extended", "bt{s}cmp", "bt{s}imagecmp", "{s}cmp")
+_OWN_OPERATORS = (
+    *(f"{{s}}{op}" for op in ("eq", "ne", "lt", "le", "gt", "ge")),
+    "{s}_larger",
+    "{s}_smaller",
+    *(f"{{s}}{fn}" for fn in ("contains", "explode", "insert", "remove")),
+)
+
+#: A type's input by oid: the type to read is an argument and the result a pseudo-type, so the
+#: call is PostgreSQL's own. A type with a typmod reads it by the same arguments and is not one.
+_INPUT_BY_OID = ("cstring", "oid", "integer")
+_READ_BY_OID = frozenset({"anyarray", '"any"', "anyrange", "anymultirange", "record"})
+
+#: The internal types' own functions not named after a stem, by ``_key``: a transaction id's age
+#: and its cast from xid8, and the aggregates' transition states.
+_OWN_BY_KEY = frozenset(
+    {
+        "age(xid)",
+        "xid(xid8)",
+        "int8_avg(bigint[])",
+        "int8inc_float8_float8(bigint, double precision, double precision)",
+    }
+)
+
+
+def _element(typ: str) -> str:
+    return typ.removesuffix("[]")
+
+
+def internal_types_own(fn: Function) -> bool:
+    """Whether ``fn`` is one of an internal type's own functions (``INTERNAL_TYPES``): decided by
+    the types it takes and returns and by what kind of function it is, never by a refusal's text.
+    An aggregate, or a function that merely takes or returns one (row_to_json(record), a record
+    comparison, ts_headline(regconfig, ...), pg_xact_status(xid8)), is not."""
+    if fn.kind != "f":
+        return False
+    if _key(fn) in _OWN_BY_KEY:
+        return True
+    if fn.argtypes == _INPUT_BY_OID and fn.rettype in _READ_BY_OID:
+        return True
+    for typ in {_element(t) for t in (*fn.argtypes, fn.rettype)}:
+        internal = INTERNAL_TYPES.get(typ)
+        if internal is None:
+            continue
+        forms = _OWN_IO + _OWN_SUPPORT + (_OWN_OPERATORS if internal.operators else ())
+        if any(fn.name == form.format(s=stem) for stem in internal.stems for form in forms):
+            return True
+    return False
+
 
 #: The refusals a decision makes, by name or ``_key``: Provisa refusing one by name is that
 #: decision, skipped by design.
@@ -2441,6 +3004,8 @@ _NODE_TREES = frozenset({"pg_node_tree_out", "pg_node_tree_send"})
 
 def decided_error(name: str, error: str) -> str | None:
     """The group of the decision ``name``'s ``error`` is, None if it is no decision's."""
+    if not_served(name, error):
+        return SERVER_FUNCTION_GROUP
     for function, wording, group in _DECIDED_ERRORS:
         if function.search(name) and wording.search(error):
             return group
@@ -2798,18 +3363,30 @@ def measure_overload(
     enums: frozenset[int] = frozenset(),
     *,
     engine: str,
+    bounds: function_edges.Bounds = function_edges.grid_bounds,
 ) -> dict[str, Any]:
     """``fn`` on ``engine``, as one outcome. A side-effect function is tested by its side effect on
     ``SIDE_EFFECT_ENGINE`` and skipped by design elsewhere, and is not testable where no client can
-    see its effect; a refusal a decision makes is skipped by design under it."""
+    see its effect; a refusal a decision makes is skipped by design under it, as is a refusal of an
+    internal type's own function (``internal_types_own``) and the validator's refusal of a function
+    that reads or acts on its server (``not_served``), on every engine. An overload raising at an edge is held
+    to its grid row (``bounds``) by ``_held_to_its_bound``."""
     entry = _measure_calls(fn, family, pg, provisa, classify, enums)
-    if fn.name in DECIDED_FUNCTIONS:
-        return _decided_function(entry, DECIDED_FUNCTIONS[fn.name])
-    if entry["outcome"] == "not_callable":
+    group = decided_function(fn)
+    if group is not None:
+        return _decided_function(entry, group)
+    if "edges" in entry:
+        statement = function_probe.statement(fn, _rows(fn)[0])
+        _held_to_its_bound(entry, bounds(statement, engine), engine)
+    if entry["outcome"] == "not_callable" or "refused_for" in entry:
         return entry
+    if entry.get("group") == SERVER_FUNCTION_GROUP:
+        return entry  # refused on every engine alike, a side-effect function among them
     decided = DECIDED_REFUSALS.get(_key(fn)) or DECIDED_REFUSALS.get(fn.name)
     if decided is not None and entry["outcome"] == "refused":
         return _by_design(entry, decided)
+    if entry["outcome"] == "refused" and internal_types_own(fn):
+        return _by_design(entry, INTERNAL_TYPE_GROUP)
     if not side_effect(fn):
         return entry
     if engine != SIDE_EFFECT_ENGINE:
@@ -2830,6 +3407,167 @@ def measure_overload(
     if entry["outcome"] in ("pass", "not_checked"):
         return _by_design(entry, NOT_TESTABLE)
     return entry
+
+
+def _held_to_its_bound(entry: dict[str, Any], limitations: tuple[str, ...], engine: str) -> None:
+    """An overload whose edge calls ran, held to what its grid row on ``engine`` states. One that
+    raised at an edge is within its bound only where the row states a limitation there; with none
+    it is an error, which the grid does not state. A row whose limitation says what its form raises
+    is bounded: its overload must raise that SQLSTATE on an edge call (``bound_raised``)."""
+    if limitations:
+        entry["bound_stated"] = list(limitations)
+    if entry["outcome"] == WITHIN_BOUND and not limitations:
+        entry["outcome"] = "error"
+        entry["error_at_edge"] = True
+        entry["detail"] = {
+            **entry["detail"],
+            "unstated": f"it raises at an edge value; its grid row on {engine} states no bound",
+        }
+    stated = function_edges.stated_raises(limitations)
+    if stated and entry["outcome"] in ("pass", WITHIN_BOUND):
+        entry["bound_sqlstates"] = stated
+        entry["bound_raised"] = any(
+            raised.get("sqlstate") in stated for raised in entry.get("edge_raised", ())
+        )
+
+
+def _nothing(want: dict[str, Any]) -> bool:
+    """Whether PostgreSQL answered nothing but NULL, or no row."""
+    return all(v is None for row in want["rows"] for v in row)
+
+
+def _refused_for(fn: Function, refused: list[dict[str, str]]) -> str | None:
+    """What PostgreSQL's refusals of ``fn`` are of: the call itself only when every one is
+    (REQ-2167, amended 2026-11-04, A call PostgreSQL cannot make is skipped by design), its
+    arguments when any one is; None if they are neither, as one for the server's state is."""
+    kinds = [function_probe.refused_for(fn, r["sqlstate"], r["error"]) for r in refused]
+    if all(k == function_probe.THE_CALL for k in kinds):
+        return function_probe.THE_CALL
+    if function_probe.ITS_ARGUMENTS in kinds:
+        return function_probe.ITS_ARGUMENTS
+    return None
+
+
+def _primary(answer: dict[str, Any]) -> str:
+    return answer["error"].split("\n", 1)[0]
+
+
+def _said(call_: Call, got: dict[str, Any]) -> dict[str, str]:
+    """A call Provisa failed: its statement, its error and, where it has one, its SQLSTATE, which
+    the polyfill check holds a refusal's grid row to (scripts/conformance/polyfill_check.py)."""
+    said = {"statement": call_.sql, "error": got["error"]}
+    if got.get("sqlstate"):
+        said["sqlstate"] = got["sqlstate"]
+    return said
+
+
+def _refusal_answer(
+    call_: Call, want: dict[str, Any], got: dict[str, Any]
+) -> tuple[str, dict[str, str]] | None:
+    """A call whose answer is PostgreSQL's refusal (``Call.refusal``), compared: None if Provisa
+    refuses it with the same SQLSTATE and message, else the kind of what it did (wrong, error or
+    named) with what it said: another SQLSTATE or message is a wrong answer."""
+    expected = f"{want.get('sqlstate', '')} {_primary(want)}"
+    if got["ok"]:
+        difference = f"answered {got['rows']!r}, PostgreSQL refused: {expected}"
+        return "wrong", {"statement": call_.sql, "difference": difference}
+    if got.get("sqlstate", "") == want.get("sqlstate", "") and _primary(got) == _primary(want):
+        return None
+    said = _said(call_, got)
+    if function_probe.refused_by_name(got["error"]):
+        return "named", said
+    if got.get("sqlstate"):
+        difference = f"refused: {got['sqlstate']} {_primary(got)}, PostgreSQL {expected}"
+        return "wrong", {"statement": call_.sql, "difference": difference}
+    return "error", said
+
+
+@dataclass
+class EdgeResults:
+    """An overload's edge calls on both servers (``_measure_edges``). ``agreed``: answered as
+    PostgreSQL did, or raised where it raised with an error of the same SQLSTATE class; ``wrong``:
+    answered otherwise than PostgreSQL, or answered where it raised; ``raised``: raised where
+    PostgreSQL answered, or with an error of another class; ``errors``: no answer at all (the
+    connection lost, or no answer in time), which is no raise."""
+
+    calls: int = 0
+    uncompared: int = 0  # PostgreSQL answered more rows than an edge call compares
+    agreed: int = 0
+    postgres_raised: int = 0
+    wrong: list[dict[str, str]] = dataclasses.field(default_factory=list)
+    raised: list[dict[str, str]] = dataclasses.field(default_factory=list)
+    errors: list[dict[str, str]] = dataclasses.field(default_factory=list)
+
+    def summary(self) -> dict[str, int]:
+        return {
+            "calls": self.calls,
+            "uncompared": self.uncompared,
+            "agreed": self.agreed,
+            "postgres_raised": self.postgres_raised,
+            "wrong": len(self.wrong),
+            "raised": len(self.raised),
+            "errors": len(self.errors),
+        }
+
+
+def _expected_error(want: dict[str, Any]) -> str:
+    return f"{want.get('sqlstate') or '(no SQLSTATE)'} {_primary(want)}"
+
+
+def _measure_edges(
+    fn: Function,
+    family: str,
+    pg: Session,
+    provisa: Session,
+    enums: frozenset[int] = frozenset(),
+) -> EdgeResults:
+    """Every edge call of ``fn`` (``edge_calls``) on both servers. A difference a decision makes
+    (``decided_difference``, ``decided_answer``) agrees, as it does of a sample."""
+    found = EdgeResults()
+    for call_ in edge_calls(fn, family):
+        want = _answer(pg, call_)
+        if want["ok"] and (not want["fields"] or len(want["rows"]) > function_edges.EDGE_ROWS_MAX):
+            found.uncompared += want["ok"] and bool(want["fields"])
+            continue
+        found.calls += 1
+        got = _answer(provisa, call_)
+        said = {"statement": call_.sql, "edge": call_.edge}
+        if got.get("lost") or got.get("timed_out"):
+            found.errors.append({**said, "error": got["error"]})
+            continue
+        if not want["ok"]:
+            found.postgres_raised += 1
+            if got["ok"]:
+                difference = f"answered {got['rows']!r}, PostgreSQL raised {_expected_error(want)}"
+                found.wrong.append({**said, "difference": difference})
+            elif function_edges.sqlstate_class(
+                got.get("sqlstate", "")
+            ) == function_edges.sqlstate_class(want.get("sqlstate", "")):
+                found.agreed += 1
+            else:
+                found.raised.append(
+                    {
+                        **said,
+                        "error": got["error"],
+                        "sqlstate": got.get("sqlstate", ""),
+                        "postgres": _expected_error(want),
+                    }
+                )
+            continue
+        if not got["ok"]:
+            found.raised.append(
+                {**said, "error": got["error"], "sqlstate": got.get("sqlstate", "")}
+            )
+            continue
+        compared = compare(want, got, values=True, sql=call_.sql, function=fn.name, enums=enums)
+        if compared.difference is None or (
+            decided_difference(fn.name, call_.sql, compared.difference)
+            or decided_answer(fn.name, call_.sql, want, got)
+        ):
+            found.agreed += 1
+        else:
+            found.wrong.append({**said, "difference": compared.difference})
+    return found
 
 
 #: Why an overload given real values for its form still had none checked.
@@ -2862,22 +3600,47 @@ def _measure_calls(
     errors: list[dict[str, str]] = []
     named: list[dict[str, str]] = []
     decided: list[str] = []  # the groups of the calls a decision answers
-    refused: list[str] = []
+    refused: list[dict[str, str]] = []
+    made = 0  # the calls PostgreSQL answered with a real value or anything but NULL
     routes: set[str] = set()
     rules: set[str] = set()
     lost = False
+    volatile_typed = fn.volatility == "v" and not side_effect(fn)
     for call_ in planned:
         want = _answer(pg, call_)
+        if call_.refusal and want["ok"]:
+            # A sample that should break the fixture's rule and does not: a gap in the check.
+            refused.append({"sqlstate": "", "error": f"PostgreSQL answered {call_.sql}"})
+            continue
+        if call_.refusal:
+            accepted += 1
+            made += 1
+            answered += call_.answers
+            got = _answer(provisa, call_)
+            lost = lost or got.get("lost", False)
+            found = _refusal_answer(call_, want, got)
+            if found is not None and not got["ok"] and not_served(fn.name, got["error"]):
+                decided.append(SERVER_FUNCTION_GROUP)
+            elif found is not None:
+                kind, said = found
+                {"wrong": wrong, "error": errors, "named": named}[kind].append(said)
+            continue
         if not want["ok"] or not want["fields"]:
-            refused.append(want.get("error") or "no result column")
+            refused.append(
+                {
+                    "sqlstate": want.get("sqlstate", ""),
+                    "error": want.get("error") or "no result column",
+                }
+            )
             continue
         accepted += 1
+        made += call_.answers or call_.form or not _nothing(want)
         answered += call_.answers
         formed_accepted += call_.sql in form_sqls
         routes.add("catalog" if classify(call_.sql) == "INTERCEPT" else "engine")
         got = _answer(provisa, call_)
         if not got["ok"]:
-            said = {"statement": call_.sql, "error": got["error"]}
+            said = _said(call_, got)
             group = decided_error(fn.name, got["error"])
             if group is not None:
                 decided.append(group)
@@ -2893,9 +3656,16 @@ def _measure_calls(
         if differs is None and not call_.values and _all_null(want):
             # PostgreSQL's NULL holds Provisa to NULL: a wrong answer if not, never a pass.
             differs = compare(want, got, values=True, sql=call_.sql).difference
+        formed = False
         if differs is None and call_.form:
             formed, differs = form_check(fn.name, want, got)
-            checked += formed
+        # A volatile overload is never left not tested for being volatile: an answer whose type
+        # and NULL-ness are PostgreSQL's is its type and form checked (REQ-2167, amended
+        # 2026-11-04 (4)). One acting is tested by its side effect instead.
+        typed = differs is None and not call_.values and volatile_typed
+        if typed and not formed:
+            differs = _null_difference(want, got)
+        checked += formed or typed
         if differs is not None:
             group = decided_difference(fn.name, call_.sql, differs) or decided_answer(
                 fn.name, call_.sql, want, got
@@ -2916,11 +3686,24 @@ def _measure_calls(
         entry["unchecked"] = why
     if lost:
         entry["connection_lost"] = True
-    if accepted == 0:
+    why = _refused_for(fn, refused) if not made and refused else None
+    if why == function_probe.THE_CALL or (accepted == 0 and why is None):
         entry["outcome"] = "not_callable"
         entry["detail"] = (
-            f"PostgreSQL refuses the call: {refused[0]}" if refused else function_probe.NO_CALL
+            f"PostgreSQL refuses the call: {refused[0]['error']}"
+            if refused
+            else function_probe.NO_CALL
         )
+        if why is not None:
+            entry["refused_for"] = why
+            entry["refusal_sqlstates"] = sorted({r["sqlstate"] for r in refused})
+    elif accepted == 0:
+        # Refused for the values the check gave it: a gap in its samples, not tested.
+        entry["outcome"] = "not_checked"
+        entry["rules"] = []
+        entry["refused_for"] = why
+        entry["refusal_sqlstates"] = sorted({r["sqlstate"] for r in refused})
+        entry["unchecked"] = f"PostgreSQL refused every call for {why}: {refused[0]['error']}"
     elif wrong:
         entry["outcome"] = "wrong_answer"
         entry["detail"] = wrong[0]
@@ -2938,6 +3721,7 @@ def _measure_calls(
     elif answered or checked:
         entry["outcome"] = "pass"
         entry["rules"] = sorted(rules)
+        _judge_edges(entry, _measure_edges(fn, family, pg, provisa, enums))
     else:
         entry["outcome"] = "not_checked"
         entry["rules"] = sorted(rules)
@@ -2947,19 +3731,65 @@ def _measure_calls(
     return entry
 
 
+def _judge_edges(entry: dict[str, Any], edges: EdgeResults) -> None:
+    """A passing overload held to its edge calls: one answering otherwise than PostgreSQL is a wrong
+    answer, one that does not answer at all an error, and one raising where PostgreSQL does not is
+    within its bound, which ``measure_overload`` holds to its grid row."""
+    if not edges.calls:
+        return
+    entry["edges"] = edges.summary()
+    if edges.wrong:
+        entry["outcome"] = "wrong_answer"
+        entry["detail"] = edges.wrong[0]
+        entry["wrong_calls"] = len(edges.wrong)
+        entry["wrong_at_edge"] = True
+    elif edges.errors:
+        entry["outcome"] = "error"
+        entry["detail"] = edges.errors[0]
+        entry["error_calls"] = len(edges.errors)
+        entry["error_at_edge"] = True
+    elif edges.raised:
+        entry["outcome"] = WITHIN_BOUND
+        entry["detail"] = edges.raised[0]
+    if edges.raised:
+        entry["edge_raised"] = edges.raised
+
+
 def seed_columns(pg_dsn: str, out: Path) -> None:
     """``COLUMN_TABLE`` in the job's PostgreSQL, and ``out``, its model table entry (the instance's
     ``extra-tables``). It comes before the instance starts, as any job's own fixture does."""
-    types = list(SAMPLES)
-    columns = [(sample_column(t), t) for t in types]
-    declared = ", ".join(["id integer", *(f"{name} {typ}" for name, typ in columns)])
+    types = list(_SAMPLE_ROWS)
+    columns: list[tuple[str, LiteralString]] = [(sample_column(t), t) for t in types]
+    relation = psql.Identifier(catalog.FIXTURE_SCHEMA, COLUMN_TABLE)
+    declared = psql.SQL(", ").join(
+        [
+            psql.SQL("id integer"),
+            *(
+                psql.SQL("{} {}").format(psql.Identifier(name), psql.SQL(typ))
+                for name, typ in columns
+            ),
+        ]
+    )
     with psycopg.connect(pg_dsn, autocommit=True) as conn:
-        conn.execute(f"CREATE SCHEMA IF NOT EXISTS {catalog.FIXTURE_SCHEMA}")
-        conn.execute(f"DROP TABLE IF EXISTS {COLUMN_RELATION}")
-        conn.execute(f"CREATE TABLE {COLUMN_RELATION} ({declared})")
+        conn.execute(
+            psql.SQL("CREATE SCHEMA IF NOT EXISTS {}").format(
+                psql.Identifier(catalog.FIXTURE_SCHEMA)
+            )
+        )
+        conn.execute(psql.SQL("DROP TABLE IF EXISTS {}").format(relation))
+        conn.execute(psql.SQL("CREATE TABLE {} ({})").format(relation, declared))
         for row in range(VALUE_ROWS):
-            values = [str(row + 1), *(_cast(SAMPLES[t][row], t) for t in types)]
-            conn.execute(f"INSERT INTO {COLUMN_RELATION} VALUES ({', '.join(values)})")
+            # Each sample is cast to its own type: no sample type is one CONCRETE rewrites.
+            values = [
+                psql.Literal(row + 1),
+                *(
+                    psql.SQL("{}::{}").format(psql.SQL(_SAMPLE_ROWS[t][row]), psql.SQL(t))
+                    for t in types
+                ),
+            ]
+            conn.execute(
+                psql.SQL("INSERT INTO {} VALUES ({})").format(relation, psql.SQL(", ").join(values))
+            )
     registered = catalog.registered_columns(
         [("id", "integer"), *columns],
         lambda column: catalog._sized_numeric(pg_dsn, column, COLUMN_TABLE),
@@ -2994,7 +3824,8 @@ _SCHEMA = catalog.FIXTURE_SCHEMA
 #: What the values PostgreSQL takes no literal of, and the objects a call reads, are made of: a
 #: table with a column default and statistics objects ANALYZE fills, a hash-partitioned table, a
 #: foreign-data wrapper with a server, a large object, a replication slot, a sequence that has
-#: answered, database statistics that were reset, so they have a time, and a row to share-lock.
+#: answered, database statistics that were reset, so they have a time, a row to share-lock, and a
+#: domain for domain_in.
 FIXTURE_SQL = (
     f"DROP TABLE IF EXISTS {_SCHEMA}.{STATISTICS_TABLE}, {_SCHEMA}.{PARTITIONED_TABLE}, "
     f"{_SCHEMA}.{MULTIXACT_TABLE}",
@@ -3029,6 +3860,8 @@ FIXTURE_SQL = (
     "SELECT pg_catalog.pg_stat_reset()",
     f"CREATE TABLE {_SCHEMA}.{MULTIXACT_TABLE} (id integer)",
     f"INSERT INTO {_SCHEMA}.{MULTIXACT_TABLE} VALUES (1)",
+    f"DROP DOMAIN IF EXISTS {_SCHEMA}.{FIXTURE_DOMAIN}",
+    f"CREATE DOMAIN {_SCHEMA}.{FIXTURE_DOMAIN} AS integer CHECK (VALUE > 0)",
 )
 
 
@@ -3118,8 +3951,11 @@ def measure(
                     "detail": server_gone,
                 }
             )
-        if i % 200 == 0:
-            print(f"{i}/{len(fns)} after {time.monotonic() - started:.0f}s", flush=True)
+        if i % PROGRESS_EVERY == 0:
+            print(
+                f"{i}/{len(fns)} after {time.monotonic() - started:.0f}s at {fn.signature}",
+                flush=True,
+            )
     report = {
         "engine": engine,
         "postgres_version": pg.rows("SHOW server_version")[0][0],
@@ -3136,8 +3972,12 @@ def measure(
 
 # --- counts and the merged data file ----------------------------------------------------------
 
+#: Served within a stated bound: its samples right, and every edge call that differs raises.
+WITHIN_BOUND = "within_bound"
+
 OUTCOMES = (
     "pass",
+    WITHIN_BOUND,
     "not_checked",
     "by_design",
     "wrong_answer",
@@ -3162,6 +4002,9 @@ def counts(overloads: list[dict[str, Any]]) -> dict[str, int]:
     out["pass_answers_checked"] = sum(
         1 for o in overloads if o["outcome"] == "pass" and o.get("answers_checked")
     )
+    out["wrong_at_edge"] = sum(1 for o in overloads if o.get("wrong_at_edge"))
+    out["error_at_edge"] = sum(1 for o in overloads if o.get("error_at_edge"))
+    out["bound_not_raised"] = sum(1 for o in overloads if o.get("bound_raised") is False)
     out["pass_side_effect_checked"] = sum(
         1 for o in overloads if o["outcome"] == "pass" and o.get("side_effect_checked")
     )
@@ -3194,20 +4037,23 @@ def not_checked_reasons(overloads: Iterable[dict[str, Any]]) -> dict[str, int]:
 
 def _row(label: str, c: dict[str, int]) -> str:
     return (
-        f"| {label} | {c['total']} | {c['passed']} | {c['skipped_by_design']} | {c['failed']} "
+        f"| {label} | {c['total']} | {c['passed']} | {c['within_bound']} "
+        f"| {c['skipped_by_design']} | {c['failed']} "
         f"| {c['not_tested']} | {c['pass_answers_checked']} "
         f"| {c['pass_type_and_form_checked']} | {c['pass_side_effect_checked']} "
         f"| {c['not_checked']} | {c['by_design']} | {c['refused']} "
-        f"| {c['wrong_answer']} | {c['error']} | {c['not_callable']} | {c['not_reached']} |"
+        f"| {c['wrong_answer']} | {c['wrong_at_edge']} | {c['error']} | {c['error_at_edge']} "
+        f"| {c['not_callable']} | {c['not_reached']} |"
     )
 
 
 _HEADER = (
-    "| | overloads | passed | skipped by design | failed | not tested "
+    "| | overloads | served | of which within bound | skipped by design | failed | not tested "
     "| pass, answers compared | pass, type and form compared "
     "| pass, side effect compared | not checked | skipped by design | refused by name "
-    "| wrong answer | engine error | not callable | not reached |",
-    "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
+    "| wrong answer | of which at an edge | engine error | of which at an edge | not callable "
+    "| not reached |",
+    "|---|" + "---:|" * 18,
 )
 
 
@@ -3266,12 +4112,25 @@ def _outcome(entry: dict[str, Any] | None) -> dict[str, Any]:
         "outcome": entry["outcome"],
         "result": function_report.result_of(entry["outcome"], entry.get("rules", ())),
     }
-    for key in ("detail", "served_by", "column"):
+    for key in (
+        "detail",
+        "served_by",
+        "column",
+        "refused_for",
+        "refusal_sqlstates",
+        "edges",
+        "wrong_at_edge",
+        "error_at_edge",
+        "edge_raised",
+        "bound_stated",
+        "bound_sqlstates",
+        "bound_raised",
+    ):
         if entry.get(key) is not None:
             kept[key] = entry[key]
     if entry.get("rules"):
         kept["rules"] = entry["rules"]
-    if entry["outcome"] == "pass":
+    if entry["outcome"] in ("pass", WITHIN_BOUND):
         kept["check"] = (
             "answers"
             if entry.get("answers_checked")
@@ -3518,8 +4377,14 @@ def merge(engines: list[str], indir: Path, out: Path, out_md: Path) -> int:
     return 1 if doc["engines_incomplete"] else 0
 
 
+def _doc() -> str:
+    if __doc__ is None:
+        raise RuntimeError("function_support has no module docstring")
+    return __doc__
+
+
 def main(argv: list[str]) -> int:
-    parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    parser = argparse.ArgumentParser(description=_doc().split("\n\n")[0])
     sub = parser.add_subparsers(dest="command", required=True)
     m = sub.add_parser("measure")
     m.add_argument("--engine", required=True)

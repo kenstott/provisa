@@ -1,0 +1,635 @@
+{
+  "presets": [
+    "snake",
+    "hasura_graphql",
+    "apollo_graphql"
+  ],
+  "valid_conventions": [
+    "apollo_graphql",
+    "graphql",
+    "graphql-default",
+    "hasura-default",
+    "hasura_graphql",
+    "snake"
+  ],
+  "preset_of": {
+    "apollo_graphql": "apollo_graphql",
+    "graphql": "apollo_graphql",
+    "graphql-default": "apollo_graphql",
+    "hasura-default": "hasura_graphql",
+    "hasura_graphql": "hasura_graphql",
+    "snake": "snake"
+  },
+  "unknown_conventions": [
+    "snake_case",
+    "camelCase",
+    "PascalCase",
+    "camel",
+    "",
+    "SNAKE"
+  ],
+  "names": [
+    {
+      "input": "Order_ID",
+      "snake": "order_id",
+      "camel": "orderID",
+      "pascal": "OrderID",
+      "convention": {
+        "apollo_graphql": "orderID",
+        "graphql": "orderID",
+        "graphql-default": "orderID",
+        "hasura-default": "order_id",
+        "hasura_graphql": "order_id",
+        "snake": "order_id"
+      }
+    },
+    {
+      "input": "orderID",
+      "snake": "order_id",
+      "camel": "orderID",
+      "pascal": "OrderID",
+      "convention": {
+        "apollo_graphql": "orderID",
+        "graphql": "orderID",
+        "graphql-default": "orderID",
+        "hasura-default": "order_id",
+        "hasura_graphql": "order_id",
+        "snake": "order_id"
+      }
+    },
+    {
+      "input": "userID",
+      "snake": "user_id",
+      "camel": "userID",
+      "pascal": "UserID",
+      "convention": {
+        "apollo_graphql": "userID",
+        "graphql": "userID",
+        "graphql-default": "userID",
+        "hasura-default": "user_id",
+        "hasura_graphql": "user_id",
+        "snake": "user_id"
+      }
+    },
+    {
+      "input": "col_1x",
+      "snake": "col_1x",
+      "camel": "col_1x",
+      "pascal": "Col_1x",
+      "convention": {
+        "apollo_graphql": "col_1x",
+        "graphql": "col_1x",
+        "graphql-default": "col_1x",
+        "hasura-default": "col_1x",
+        "hasura_graphql": "col_1x",
+        "snake": "col_1x"
+      }
+    },
+    {
+      "input": "HTTPServer",
+      "snake": "http_server",
+      "camel": "hTTPServer",
+      "pascal": "HTTPServer",
+      "convention": {
+        "apollo_graphql": "hTTPServer",
+        "graphql": "hTTPServer",
+        "graphql-default": "hTTPServer",
+        "hasura-default": "http_server",
+        "hasura_graphql": "http_server",
+        "snake": "http_server"
+      }
+    },
+    {
+      "input": "a__b",
+      "snake": "a__b",
+      "camel": "aB",
+      "pascal": "AB",
+      "convention": {
+        "apollo_graphql": "aB",
+        "graphql": "aB",
+        "graphql-default": "aB",
+        "hasura-default": "a__b",
+        "hasura_graphql": "a__b",
+        "snake": "a__b"
+      }
+    },
+    {
+      "input": "already_snake",
+      "snake": "already_snake",
+      "camel": "alreadySnake",
+      "pascal": "AlreadySnake",
+      "convention": {
+        "apollo_graphql": "alreadySnake",
+        "graphql": "alreadySnake",
+        "graphql-default": "alreadySnake",
+        "hasura-default": "already_snake",
+        "hasura_graphql": "already_snake",
+        "snake": "already_snake"
+      }
+    },
+    {
+      "input": "CamelCase",
+      "snake": "camel_case",
+      "camel": "camelCase",
+      "pascal": "CamelCase",
+      "convention": {
+        "apollo_graphql": "camelCase",
+        "graphql": "camelCase",
+        "graphql-default": "camelCase",
+        "hasura-default": "camel_case",
+        "hasura_graphql": "camel_case",
+        "snake": "camel_case"
+      }
+    },
+    {
+      "input": "x",
+      "snake": "x",
+      "camel": "x",
+      "pascal": "X",
+      "convention": {
+        "apollo_graphql": "x",
+        "graphql": "x",
+        "graphql-default": "x",
+        "hasura-default": "x",
+        "hasura_graphql": "x",
+        "snake": "x"
+      }
+    },
+    {
+      "input": "digits_2nd",
+      "snake": "digits_2nd",
+      "camel": "digits_2nd",
+      "pascal": "Digits_2nd",
+      "convention": {
+        "apollo_graphql": "digits_2nd",
+        "graphql": "digits_2nd",
+        "graphql-default": "digits_2nd",
+        "hasura-default": "digits_2nd",
+        "hasura_graphql": "digits_2nd",
+        "snake": "digits_2nd"
+      }
+    },
+    {
+      "input": "",
+      "snake": "",
+      "camel": "",
+      "pascal": "",
+      "convention": {
+        "apollo_graphql": "",
+        "graphql": "",
+        "graphql-default": "",
+        "hasura-default": "",
+        "hasura_graphql": "",
+        "snake": ""
+      }
+    },
+    {
+      "input": "_",
+      "snake": "_",
+      "camel": "",
+      "pascal": "",
+      "convention": {
+        "apollo_graphql": "",
+        "graphql": "",
+        "graphql-default": "",
+        "hasura-default": "_",
+        "hasura_graphql": "_",
+        "snake": "_"
+      }
+    },
+    {
+      "input": "-",
+      "snake": "-",
+      "camel": "",
+      "pascal": "",
+      "convention": {
+        "apollo_graphql": "",
+        "graphql": "",
+        "graphql-default": "",
+        "hasura-default": "-",
+        "hasura_graphql": "-",
+        "snake": "-"
+      }
+    },
+    {
+      "input": "_leading",
+      "snake": "_leading",
+      "camel": "leading",
+      "pascal": "Leading",
+      "convention": {
+        "apollo_graphql": "leading",
+        "graphql": "leading",
+        "graphql-default": "leading",
+        "hasura-default": "_leading",
+        "hasura_graphql": "_leading",
+        "snake": "_leading"
+      }
+    },
+    {
+      "input": "trailing_",
+      "snake": "trailing_",
+      "camel": "trailing",
+      "pascal": "Trailing",
+      "convention": {
+        "apollo_graphql": "trailing",
+        "graphql": "trailing",
+        "graphql-default": "trailing",
+        "hasura-default": "trailing_",
+        "hasura_graphql": "trailing_",
+        "snake": "trailing_"
+      }
+    },
+    {
+      "input": "__x__",
+      "snake": "__x__",
+      "camel": "x",
+      "pascal": "X",
+      "convention": {
+        "apollo_graphql": "x",
+        "graphql": "x",
+        "graphql-default": "x",
+        "hasura-default": "__x__",
+        "hasura_graphql": "__x__",
+        "snake": "__x__"
+      }
+    },
+    {
+      "input": "kebab-case-name",
+      "snake": "kebab-case-name",
+      "camel": "kebabCaseName",
+      "pascal": "KebabCaseName",
+      "convention": {
+        "apollo_graphql": "kebabCaseName",
+        "graphql": "kebabCaseName",
+        "graphql-default": "kebabCaseName",
+        "hasura-default": "kebab-case-name",
+        "hasura_graphql": "kebab-case-name",
+        "snake": "kebab-case-name"
+      }
+    },
+    {
+      "input": "order-id_Total",
+      "snake": "order-id_total",
+      "camel": "orderIdTotal",
+      "pascal": "OrderIdTotal",
+      "convention": {
+        "apollo_graphql": "orderIdTotal",
+        "graphql": "orderIdTotal",
+        "graphql-default": "orderIdTotal",
+        "hasura-default": "order-id_total",
+        "hasura_graphql": "order-id_total",
+        "snake": "order-id_total"
+      }
+    },
+    {
+      "input": "foo_123",
+      "snake": "foo_123",
+      "camel": "foo_123",
+      "pascal": "Foo_123",
+      "convention": {
+        "apollo_graphql": "foo_123",
+        "graphql": "foo_123",
+        "graphql-default": "foo_123",
+        "hasura-default": "foo_123",
+        "hasura_graphql": "foo_123",
+        "snake": "foo_123"
+      }
+    },
+    {
+      "input": "foo123",
+      "snake": "foo123",
+      "camel": "foo123",
+      "pascal": "Foo123",
+      "convention": {
+        "apollo_graphql": "foo123",
+        "graphql": "foo123",
+        "graphql-default": "foo123",
+        "hasura-default": "foo123",
+        "hasura_graphql": "foo123",
+        "snake": "foo123"
+      }
+    },
+    {
+      "input": "snake_42_x",
+      "snake": "snake_42_x",
+      "camel": "snake_42X",
+      "pascal": "Snake_42X",
+      "convention": {
+        "apollo_graphql": "snake_42X",
+        "graphql": "snake_42X",
+        "graphql-default": "snake_42X",
+        "hasura-default": "snake_42_x",
+        "hasura_graphql": "snake_42_x",
+        "snake": "snake_42_x"
+      }
+    },
+    {
+      "input": "x_1_2",
+      "snake": "x_1_2",
+      "camel": "x_1_2",
+      "pascal": "X_1_2",
+      "convention": {
+        "apollo_graphql": "x_1_2",
+        "graphql": "x_1_2",
+        "graphql-default": "x_1_2",
+        "hasura-default": "x_1_2",
+        "hasura_graphql": "x_1_2",
+        "snake": "x_1_2"
+      }
+    },
+    {
+      "input": "v2_api",
+      "snake": "v2_api",
+      "camel": "v2Api",
+      "pascal": "V2Api",
+      "convention": {
+        "apollo_graphql": "v2Api",
+        "graphql": "v2Api",
+        "graphql-default": "v2Api",
+        "hasura-default": "v2_api",
+        "hasura_graphql": "v2_api",
+        "snake": "v2_api"
+      }
+    },
+    {
+      "input": "a1B2c3",
+      "snake": "a1_b2c3",
+      "camel": "a1B2c3",
+      "pascal": "A1B2c3",
+      "convention": {
+        "apollo_graphql": "a1B2c3",
+        "graphql": "a1B2c3",
+        "graphql-default": "a1B2c3",
+        "hasura-default": "a1_b2c3",
+        "hasura_graphql": "a1_b2c3",
+        "snake": "a1_b2c3"
+      }
+    },
+    {
+      "input": "ID",
+      "snake": "id",
+      "camel": "iD",
+      "pascal": "ID",
+      "convention": {
+        "apollo_graphql": "iD",
+        "graphql": "iD",
+        "graphql-default": "iD",
+        "hasura-default": "id",
+        "hasura_graphql": "id",
+        "snake": "id"
+      }
+    },
+    {
+      "input": "Id",
+      "snake": "id",
+      "camel": "id",
+      "pascal": "Id",
+      "convention": {
+        "apollo_graphql": "id",
+        "graphql": "id",
+        "graphql-default": "id",
+        "hasura-default": "id",
+        "hasura_graphql": "id",
+        "snake": "id"
+      }
+    },
+    {
+      "input": "A",
+      "snake": "a",
+      "camel": "a",
+      "pascal": "A",
+      "convention": {
+        "apollo_graphql": "a",
+        "graphql": "a",
+        "graphql-default": "a",
+        "hasura-default": "a",
+        "hasura_graphql": "a",
+        "snake": "a"
+      }
+    },
+    {
+      "input": "ABC",
+      "snake": "abc",
+      "camel": "aBC",
+      "pascal": "ABC",
+      "convention": {
+        "apollo_graphql": "aBC",
+        "graphql": "aBC",
+        "graphql-default": "aBC",
+        "hasura-default": "abc",
+        "hasura_graphql": "abc",
+        "snake": "abc"
+      }
+    },
+    {
+      "input": "XMLHttpRequest",
+      "snake": "xml_http_request",
+      "camel": "xMLHttpRequest",
+      "pascal": "XMLHttpRequest",
+      "convention": {
+        "apollo_graphql": "xMLHttpRequest",
+        "graphql": "xMLHttpRequest",
+        "graphql-default": "xMLHttpRequest",
+        "hasura-default": "xml_http_request",
+        "hasura_graphql": "xml_http_request",
+        "snake": "xml_http_request"
+      }
+    },
+    {
+      "input": "getHTTPResponseCode",
+      "snake": "get_http_response_code",
+      "camel": "getHTTPResponseCode",
+      "pascal": "GetHTTPResponseCode",
+      "convention": {
+        "apollo_graphql": "getHTTPResponseCode",
+        "graphql": "getHTTPResponseCode",
+        "graphql-default": "getHTTPResponseCode",
+        "hasura-default": "get_http_response_code",
+        "hasura_graphql": "get_http_response_code",
+        "snake": "get_http_response_code"
+      }
+    },
+    {
+      "input": "HTTP2Server",
+      "snake": "http2_server",
+      "camel": "hTTP2Server",
+      "pascal": "HTTP2Server",
+      "convention": {
+        "apollo_graphql": "hTTP2Server",
+        "graphql": "hTTP2Server",
+        "graphql-default": "hTTP2Server",
+        "hasura-default": "http2_server",
+        "hasura_graphql": "http2_server",
+        "snake": "http2_server"
+      }
+    },
+    {
+      "input": "iPhone",
+      "snake": "i_phone",
+      "camel": "iPhone",
+      "pascal": "IPhone",
+      "convention": {
+        "apollo_graphql": "iPhone",
+        "graphql": "iPhone",
+        "graphql-default": "iPhone",
+        "hasura-default": "i_phone",
+        "hasura_graphql": "i_phone",
+        "snake": "i_phone"
+      }
+    },
+    {
+      "input": "created_by",
+      "snake": "created_by",
+      "camel": "createdBy",
+      "pascal": "CreatedBy",
+      "convention": {
+        "apollo_graphql": "createdBy",
+        "graphql": "createdBy",
+        "graphql-default": "createdBy",
+        "hasura-default": "created_by",
+        "hasura_graphql": "created_by",
+        "snake": "created_by"
+      }
+    },
+    {
+      "input": "CREATED_BY",
+      "snake": "created_by",
+      "camel": "cREATEDBY",
+      "pascal": "CREATEDBY",
+      "convention": {
+        "apollo_graphql": "cREATEDBY",
+        "graphql": "cREATEDBY",
+        "graphql-default": "cREATEDBY",
+        "hasura-default": "created_by",
+        "hasura_graphql": "created_by",
+        "snake": "created_by"
+      }
+    },
+    {
+      "input": "createdBy",
+      "snake": "created_by",
+      "camel": "createdBy",
+      "pascal": "CreatedBy",
+      "convention": {
+        "apollo_graphql": "createdBy",
+        "graphql": "createdBy",
+        "graphql-default": "createdBy",
+        "hasura-default": "created_by",
+        "hasura_graphql": "created_by",
+        "snake": "created_by"
+      }
+    },
+    {
+      "input": "CreatedBy",
+      "snake": "created_by",
+      "camel": "createdBy",
+      "pascal": "CreatedBy",
+      "convention": {
+        "apollo_graphql": "createdBy",
+        "graphql": "createdBy",
+        "graphql-default": "createdBy",
+        "hasura-default": "created_by",
+        "hasura_graphql": "created_by",
+        "snake": "created_by"
+      }
+    },
+    {
+      "input": "mixed_Case_Words",
+      "snake": "mixed_case_words",
+      "camel": "mixedCaseWords",
+      "pascal": "MixedCaseWords",
+      "convention": {
+        "apollo_graphql": "mixedCaseWords",
+        "graphql": "mixedCaseWords",
+        "graphql-default": "mixedCaseWords",
+        "hasura-default": "mixed_case_words",
+        "hasura_graphql": "mixed_case_words",
+        "snake": "mixed_case_words"
+      }
+    },
+    {
+      "input": "UPPER_snake",
+      "snake": "upper_snake",
+      "camel": "uPPERSnake",
+      "pascal": "UPPERSnake",
+      "convention": {
+        "apollo_graphql": "uPPERSnake",
+        "graphql": "uPPERSnake",
+        "graphql-default": "uPPERSnake",
+        "hasura-default": "upper_snake",
+        "hasura_graphql": "upper_snake",
+        "snake": "upper_snake"
+      }
+    },
+    {
+      "input": "name with space",
+      "snake": "name with space",
+      "camel": "name with space",
+      "pascal": "Name with space",
+      "convention": {
+        "apollo_graphql": "name with space",
+        "graphql": "name with space",
+        "graphql-default": "name with space",
+        "hasura-default": "name with space",
+        "hasura_graphql": "name with space",
+        "snake": "name with space"
+      }
+    },
+    {
+      "input": "café_au_lait",
+      "snake": "café_au_lait",
+      "camel": "caféAuLait",
+      "pascal": "CaféAuLait",
+      "convention": {
+        "apollo_graphql": "caféAuLait",
+        "graphql": "caféAuLait",
+        "graphql-default": "caféAuLait",
+        "hasura-default": "café_au_lait",
+        "hasura_graphql": "café_au_lait",
+        "snake": "café_au_lait"
+      }
+    },
+    {
+      "input": "ÄpfelSaft",
+      "snake": "äpfel_saft",
+      "camel": "äpfelSaft",
+      "pascal": "ÄpfelSaft",
+      "convention": {
+        "apollo_graphql": "äpfelSaft",
+        "graphql": "äpfelSaft",
+        "graphql-default": "äpfelSaft",
+        "hasura-default": "äpfel_saft",
+        "hasura_graphql": "äpfel_saft",
+        "snake": "äpfel_saft"
+      }
+    },
+    {
+      "input": "user_ÉTAT",
+      "snake": "user_état",
+      "camel": "userÉTAT",
+      "pascal": "UserÉTAT",
+      "convention": {
+        "apollo_graphql": "userÉTAT",
+        "graphql": "userÉTAT",
+        "graphql-default": "userÉTAT",
+        "hasura-default": "user_état",
+        "hasura_graphql": "user_état",
+        "snake": "user_état"
+      }
+    },
+    {
+      "input": "日本_語",
+      "snake": "日本_語",
+      "camel": "日本語",
+      "pascal": "日本語",
+      "convention": {
+        "apollo_graphql": "日本語",
+        "graphql": "日本語",
+        "graphql-default": "日本語",
+        "hasura-default": "日本_語",
+        "hasura_graphql": "日本_語",
+        "snake": "日本_語"
+      }
+    }
+  ]
+}

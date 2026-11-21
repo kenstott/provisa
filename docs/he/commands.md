@@ -316,7 +316,7 @@ PROVISA_COMMANDS_ALLOW_HOST_CODE=true
 
 ## CLI: provisa metadata export
 
-`provisa metadata export` הוא משימה בשכבת ה-shell ורץ מחוץ לנתיב ה-RPC הממושל. הוא מפעיל את פרסום המטא-דאטה לפי דרישה של השרת הפועל בשליחה אל `/admin/metadata-export/publish`, נקודת הקצה שהכפתור **Publish now** בלשונית Admin קורא לה.
+`provisa metadata export` הוא משימה בשכבת ה-shell ורץ מחוץ לנתיב ה-RPC הממושל. הוא מפעיל את פרסום המטא-דאטה לפי דרישה של השרת הפועל בשליחה אל `/admin/syncing/publish`, נקודת הקצה שהכפתור **Publish now** בלשונית Admin קורא לה.
 
 השתמשו בה כדי להניע ייצואים מתוזמנים מ-cron או מ-CI כשלוח הזמנים המוגדר ב-`reconcile_cron`
 אינו גרעיני מספיק:

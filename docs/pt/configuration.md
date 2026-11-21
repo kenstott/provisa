@@ -1754,7 +1754,7 @@ Para fontes do Google Cloud, defina `GOOGLE_APPLICATION_CREDENTIALS` com o camin
 | `FLIGHT_PORT` | `8815` | Porta do servidor Arrow Flight do Provisa |
 | `GRPC_PORT` | `50051` | Porta do servidor gRPC Protobuf do Provisa |
 | `PROVISA_REDIRECT_ENABLED` | `false` | Habilita redirecionamento por limite do lado do servidor |
-| `PROVISA_REDIRECT_THRESHOLD` | `1000` | Limite padrão de contagem de linhas |
+| `PROVISA_REDIRECT_THRESHOLD` | `100000` | Limite padrão de contagem de linhas |
 | `PROVISA_REDIRECT_FORMAT` | `parquet` | Formato de redirecionamento padrão |
 | `PROVISA_REDIRECT_BUCKET` | `provisa-results` | Bucket S3 para resultados redirecionados |
 | `PROVISA_REDIRECT_ENDPOINT` | — | URL de endpoint compatível com S3 |

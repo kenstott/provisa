@@ -56,9 +56,15 @@ class GroupByMixin:  # REQ-653
         named after the Cypher variable — else the two column sets disagree at the engine."""
         var_table = getattr(self, "_var_table", {})
         unwound = getattr(self, "_unwind_aliases", set())
+        # A value a WITH carries (``min(length(p)) AS len``) is in the var table with no mapping:
+        # the SELECT list reads it as its column, so it is grouped by that column, never a star.
         if (
             isinstance(expr, Variable)
             and expr.name in var_table
+            and (
+                var_table[expr.name][1] is not None
+                or expr.name in getattr(self, "_union_columns", {})
+            )
             and not (var_table[expr.name][1] is None and var_table[expr.name][0] in unwound)
         ):
             return exp.Column(

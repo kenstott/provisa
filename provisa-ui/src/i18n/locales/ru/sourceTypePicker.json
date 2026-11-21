@@ -11,6 +11,7 @@
     "reachLiveOn": "Напрямую только в {{engines}}",
     "reachNone": "Недоступно из этого движка",
     "categories": {
+      "Connectors": "Коннекторы вашей организации",
       "Subscriptions": "Подписки",
       "RDBMS": "RDBMS",
       "Cloud DW": "Облачное хранилище данных",

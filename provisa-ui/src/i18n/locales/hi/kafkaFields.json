@@ -1,0 +1,13 @@
+{
+  "kafkaFields": {
+    "securityProtocol": "सुरक्षा प्रोटोकॉल",
+    "securityProtocolHint": "Confluent Cloud और MSK में SASL_SSL का उपयोग होता है। बिना सुरक्षा वाले क्लस्टर में PLAINTEXT का उपयोग होता है।",
+    "saslMechanism": "SASL मैकेनिज़्म",
+    "username": "उपयोगकर्ता नाम",
+    "usernameHint": "Confluent Cloud पर API कुंजी।",
+    "password": "पासवर्ड",
+    "passwordHint": "Confluent Cloud पर API सीक्रेट। ${secret:NAME} जैसा सीक्रेट संदर्भ क्लस्टर खोलते समय हल किया जाता है।",
+    "caCertificate": "CA प्रमाणपत्र (PEM)",
+    "caCertificateHint": "जिस ब्रोकर का प्रमाणपत्र सार्वजनिक CA से आता है, उसके लिए खाली छोड़ें, जैसे Confluent Cloud और MSK पर। केवल किसी निजी CA पर भरोसा करने के लिए उसका प्रमाणपत्र पेस्ट करें।"
+  }
+}

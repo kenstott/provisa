@@ -2,6 +2,7 @@
   "writeGrants": {
     "notShown": "Wer in diese Tabelle schreiben darf, sehen Administratoren mit Einblick in die Governance.",
     "empty": "Keine Rolle darf in diese Tabelle schreiben.",
+    "sourceAcceptsNone": "Die Quelle akzeptiert keine Schreibvorgänge (siehe Tab „API“); daher kann keiner Rolle eine Schreibberechtigung erteilt werden.",
     "role": "Rolle",
     "operation": "Vorgang",
     "op_insert": "Einfügen",

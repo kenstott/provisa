@@ -8,7 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// REQ-2179: Find terms in a document. The steward picks a library document or gives a new file or
+// REQ-2179: Find terms. The steward picks a library document or gives a new file or
 // URL, with the domains they work in, and starts a scan; its review queue shows each candidate's
 // proposal, definition (explicit or synthesized), synonyms, passages and conflicting explanations
 // side by side, and the steward accepts, merges, rejects or accepts several at once. REQ-2202: or
@@ -17,6 +17,7 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { fireEvent, render, screen, waitFor, within } from "../test-utils/render";
+import { runUiActions } from "../mcp/uiActions";
 
 const api = vi.hoisted(() => ({
   fetchScannableDocuments: vi.fn(),
@@ -54,14 +55,14 @@ const POLICY_SECTIONS = {
   schemaName: "public",
   tableName: "policy_sections",
   alias: null,
-  draft: false,
+  withdrawn: false,
   columns: [col("section_id", "varchar"), col("body", "text")],
 };
 // One value per hook across renders: a fresh array each render reruns the form's effects.
 const TABLES = {
   tables: [
     POLICY_SECTIONS,
-    { ...POLICY_SECTIONS, id: 22, tableName: "draft_policy_sections", draft: true },
+    { ...POLICY_SECTIONS, id: 22, tableName: "withdrawn_policy_sections", withdrawn: true },
     { ...POLICY_SECTIONS, id: 23, domainId: "finance", tableName: "ledger" },
     {
       ...POLICY_SECTIONS,
@@ -275,9 +276,11 @@ describe("FindTermsDialog", () => {
     });
     fireEvent.click(screen.getByTestId("find-terms-start"));
     await waitFor(() =>
-      expect(api.startScan).toHaveBeenCalledWith({ url: "https://x.example.com/records.html" }, [
-        "sales",
-      ]),
+      expect(api.startScan).toHaveBeenCalledWith(
+        { url: "https://x.example.com/records.html" },
+        ["sales"],
+        null,
+      ),
     );
     await waitFor(() => expect(api.fetchScan).toHaveBeenCalledWith(8));
   });
@@ -286,7 +289,36 @@ describe("FindTermsDialog", () => {
     api.startScan.mockResolvedValue({ scan: { ...SCAN, id: 9 }, document: DOC });
     open();
     fireEvent.click(await screen.findByTestId("find-terms-rescan-7"));
-    await waitFor(() => expect(api.startScan).toHaveBeenCalledWith({ document_id: 4 }, ["sales"]));
+    await waitFor(() =>
+      expect(api.startScan).toHaveBeenCalledWith({ document_id: 4 }, ["sales"], null),
+    );
+  });
+
+  // REQ-2115: a scan runs and spends the model's budget, so Polly starts one only on the user's yes.
+  it("asks the user before Polly starts or repeats a scan, and starts none on a no", async () => {
+    open();
+    await screen.findByTestId("find-terms-scan-7");
+    const confirm = vi.fn().mockResolvedValue(false);
+    const steps = { confirm, paceMs: 0, waitMs: 300 };
+    const out = await runUiActions(
+      [
+        { do: "press", target: { role: "radio", name: "A URL" } },
+        { do: "fill", target: { testId: "find-terms-url" }, value: "https://x.example.com/a" },
+        { do: "press", target: { testId: "find-terms-start" } },
+      ],
+      steps,
+    );
+    expect(out.success).toBe(false);
+    expect(out.steps.at(-1)).toBe(
+      'The user declined: the element with test id "find-terms-start" was not pressed.',
+    );
+    const again = await runUiActions(
+      [{ do: "press", target: { testId: "find-terms-rescan-7" } }],
+      steps,
+    );
+    expect(again.success).toBe(false);
+    expect(confirm).toHaveBeenCalledTimes(2);
+    expect(api.startScan).not.toHaveBeenCalled();
   });
 
   it("shows each draft's proposal, definition, passages and conflicts side by side", async () => {
@@ -295,6 +327,9 @@ describe("FindTermsDialog", () => {
     const draft = await screen.findByTestId("find-terms-draft-11");
     expect(screen.getByTestId("find-terms-summary")).toHaveTextContent(
       "12 passages read, 9 mentions, 2 candidate terms.",
+    );
+    expect(screen.getByTestId("find-terms-left-out")).toHaveTextContent(
+      "Left out: 1 not ontology concepts",
     );
     expect(within(draft).getByText("New term")).toBeInTheDocument();
     expect(within(draft).getByTestId("find-terms-synthesized")).toHaveTextContent("Synthesized");
@@ -382,7 +417,7 @@ describe("FindTermsDialog", () => {
     expect(screen.queryByTestId("find-terms-progress-7")).toBeNull();
   });
 
-  it("cancels a running scan and shows that it stopped", async () => {
+  it("stops a running scan and shows that it stopped", async () => {
     api.fetchScans.mockResolvedValue([RUNNING]);
     api.fetchScan.mockResolvedValue({ scan: RUNNING, drafts: [] });
     api.cancelScan.mockResolvedValue({
@@ -390,7 +425,13 @@ describe("FindTermsDialog", () => {
     });
     open();
     fireEvent.click(await screen.findByTestId("find-terms-open-7"));
-    fireEvent.click(await screen.findByTestId("find-terms-cancel"));
+    // The button that halts the scan says Stop; "Cancel" is for leaving a form with nothing changed.
+    const stop = await screen.findByTestId("find-terms-cancel");
+    expect(stop).toHaveTextContent("Stop");
+    expect(stop).toHaveAccessibleName("Stop");
+    fireEvent.mouseEnter(stop);
+    expect(await screen.findByRole("tooltip")).toHaveTextContent("Stop the scan");
+    fireEvent.click(stop);
     await waitFor(() => expect(api.cancelScan).toHaveBeenCalledWith(7));
     expect(await screen.findByTestId("find-terms-failed")).toHaveTextContent(
       "The scan stopped: cancelled by ada",
@@ -454,7 +495,9 @@ describe("FindTermsDialog", () => {
     await choose("find-terms-term-column", "term (varchar)");
     await choose("find-terms-definition-column", "meaning (text)");
     fireEvent.click(screen.getByTestId("find-terms-start"));
-    await waitFor(() => expect(api.startScan).toHaveBeenCalledWith({ table: terms }, ["sales"]));
+    await waitFor(() =>
+      expect(api.startScan).toHaveBeenCalledWith({ table: terms }, ["sales"], null),
+    );
     await waitFor(() => expect(api.fetchScan).toHaveBeenCalledWith(11));
   });
 
@@ -474,9 +517,9 @@ describe("FindTermsDialog", () => {
     ).toBeInTheDocument();
     await choose("find-terms-table-domain", "sales");
     fireEvent.click(screen.getByTestId("find-terms-table"));
-    // A draft is in no role's schema, and a table of another domain is not offered.
+    // A withdrawn table is in no role's schema, and a table of another domain is not offered.
     expect(
-      screen.queryByRole("option", { name: "draft_policy_sections", hidden: true }),
+      screen.queryByRole("option", { name: "withdrawn_policy_sections", hidden: true }),
     ).toBeNull();
     expect(screen.queryByRole("option", { name: "ledger", hidden: true })).toBeNull();
     await choose("find-terms-table", "policy_sections");
@@ -484,7 +527,7 @@ describe("FindTermsDialog", () => {
     await choose("find-terms-text-column", "body (text)");
     fireEvent.click(screen.getByTestId("find-terms-start"));
     await waitFor(() =>
-      expect(api.startScan).toHaveBeenCalledWith({ table: TABLE_SOURCE }, ["sales"]),
+      expect(api.startScan).toHaveBeenCalledWith({ table: TABLE_SOURCE }, ["sales"], null),
     );
   });
 
@@ -498,7 +541,7 @@ describe("FindTermsDialog", () => {
     expect(row).not.toHaveTextContent("Removed from the library");
     fireEvent.click(screen.getByTestId("find-terms-rescan-9"));
     await waitFor(() =>
-      expect(api.startScan).toHaveBeenCalledWith({ table: TABLE_SOURCE }, ["sales"]),
+      expect(api.startScan).toHaveBeenCalledWith({ table: TABLE_SOURCE }, ["sales"], null),
     );
   });
 
@@ -508,6 +551,8 @@ describe("FindTermsDialog", () => {
     open();
     fireEvent.click(await screen.findByTestId("find-terms-open-9"));
     const draft = await screen.findByTestId("find-terms-draft-13");
+    // A model read the text, so what it left out is shown.
+    expect(screen.getByTestId("find-terms-left-out")).toBeInTheDocument();
     fireEvent.click(within(draft).getByTestId("find-terms-passages-toggle-13"));
     const passages = within(draft).getAllByTestId("find-terms-passage");
     expect(passages[0]).toHaveTextContent("sales.policy_sections, row POL-1");
@@ -538,6 +583,9 @@ describe("FindTermsDialog", () => {
     expect(within(row).getByTestId("find-terms-table-scan-9")).toHaveTextContent("Table");
     fireEvent.click(screen.getByTestId("find-terms-open-9"));
     const draft = await screen.findByTestId("find-terms-draft-13");
+    // No model read the rows, so nothing was left out as a model's answer would be.
+    expect(screen.getByTestId("find-terms-summary")).toBeInTheDocument();
+    expect(screen.queryByTestId("find-terms-left-out")).toBeNull();
     expect(within(draft).queryByText("Business concept")).toBeNull();
     expect(within(draft).getByTestId("find-terms-explicit")).toHaveTextContent(
       "Defined in the table",
@@ -546,5 +594,37 @@ describe("FindTermsDialog", () => {
     expect(within(draft).getByTestId("find-terms-passage")).toHaveTextContent(
       "sales.data_dictionary, row Churn rate",
     );
+  });
+
+  it("names itself and its scans for a document or a table alike", async () => {
+    api.fetchScans.mockResolvedValue([]);
+    open();
+    expect(await screen.findByTestId("find-terms-no-scans")).toHaveTextContent(
+      "Nothing has been scanned yet.",
+    );
+    expect(
+      screen.getByText("Find terms", { selector: ".mantine-Modal-title" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/Find terms in a document/)).toBeNull();
+    expect(screen.getByTestId("find-terms-intro")).toHaveTextContent("a document or table");
+  });
+
+  it("names a table scan's source, and its reading, without a document", async () => {
+    api.fetchScans.mockResolvedValue([{ ...TABLE_SCAN, status: "running", step: null }]);
+    open();
+    const scans = await screen.findByTestId("find-terms-scans");
+    expect(within(scans).getByRole("columnheader", { name: "Source" })).toBeInTheDocument();
+    expect(screen.getByTestId("find-terms-progress-9")).toHaveTextContent(
+      "Reading the passages...",
+    );
+  });
+
+  it("offers eCFR's XML as a file it reads", async () => {
+    open();
+    await screen.findByTestId("find-terms-scan-7");
+    fireEvent.click(screen.getByRole("radio", { name: "A new file" }));
+    const picker = document.querySelector<HTMLInputElement>('input[type="file"]');
+    expect(picker?.accept.split(",")).toContain(".xml");
+    expect(screen.getByRole("img", { name: /eCFR XML/ })).toBeInTheDocument();
   });
 });

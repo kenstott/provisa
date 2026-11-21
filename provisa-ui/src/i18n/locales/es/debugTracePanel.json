@@ -27,6 +27,8 @@
     "permit": "Permitir",
     "revoke": "Revocar",
     "noHintRoles": "Ningún rol tiene permitida la indicación.",
-    "loadFailed": "No se pudo cargar la configuración del trazado de depuración"
+    "loadFailed": "No se pudo cargar la configuración del trazado de depuración",
+    "introPlatform": "El rastreo registra de forma predeterminada un span por solicitud. El rastreo de depuración añade un span por etapa de la canalización y por llamada a la fuente, con el texto SQL. Añade carga, así que actívelo para una organización completa durante un tiempo determinado; se desactiva solo cuando se agota el tiempo. El rastreo de un rol o una fuente concretos corresponde al administrador de esa organización.",
+    "introOrg": "El rastreo registra de forma predeterminada un span por solicitud. El rastreo de depuración añade un span por etapa de la canalización y por llamada a la fuente, con el texto SQL. Añade carga, así que actívelo para un rol o una fuente durante un tiempo determinado; se desactiva solo cuando se agota el tiempo."
   }
 }

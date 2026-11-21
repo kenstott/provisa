@@ -27,6 +27,7 @@ from provisa.api.errors import ApiError
 from provisa.compiler.rls import RLSContext
 from provisa.security.inheritance import materialize_rls, parent_map
 from tests.role_state import RoleState
+from tests.rules import rules_of
 
 
 class _Engine:
@@ -235,7 +236,7 @@ class TestGovern:
         from provisa.compiler.rls import build_rls_context
 
         junior = build_rls_context(out, "junior")
-        assert junior.action_rules == {"customer_lookup": "region = 'west'"}
+        assert junior.action_rules == rules_of({"customer_lookup": "region = 'west'"})
         st = _state({"junior": junior})
         rows, _ = await govern_action_rows(ROWS, FN, "junior", st)
         assert [r["id"] for r in rows] == [2]

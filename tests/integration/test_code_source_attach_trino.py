@@ -33,8 +33,8 @@ import httpx
 import pytest
 import yaml
 
-from tests.helpers import registered_id, release_field
 from tests.integration.test_code_sources_e2e import (
+    build_provisa_wheel,
     _admin,
     _archive,
     _column,
@@ -124,7 +124,18 @@ def _config(path) -> None:
 
 
 @pytest.fixture(scope="module")
-def server(tmp_path_factory):
+def runtime_cache(tmp_path_factory):
+    return tmp_path_factory.mktemp("codehost_trino_runtime_deps")
+
+
+@pytest.fixture(scope="module")
+def provisa_wheel(runtime_cache):
+    """The wheel the source's image build reads its encoders from (REQ-2194)."""
+    return build_provisa_wheel(runtime_cache, _ARCH)
+
+
+@pytest.fixture(scope="module")
+def server(tmp_path_factory, runtime_cache):
     import asyncio
 
     from tests.integration.isolated_server import IsolatedServer, drop_org_schema
@@ -136,7 +147,7 @@ def server(tmp_path_factory):
         _ORG,
         engine="trino",
         config=str(path),
-        env={"PROVISA_RUNTIME_DEPS_CACHE": str(work / "runtime-deps")},
+        env={"PROVISA_RUNTIME_DEPS_CACHE": str(runtime_cache)},
     )
     srv.start(timeout=300)
     try:
@@ -183,18 +194,18 @@ def code_source(server):
     ]
     # A landing TTL of 0: in dev mode each read lands its rows for itself alone (REQ-1907 asks a
     # landed table for one), and once built, a read across sources attaches the host (REQ-2100).
-    registered = _admin(
+    _admin(
         server,
         f'registerTable(input: {{sourceId: "{_SOURCE}", domainId: "fx", schemaName: "default", '
         f'tableName: "regions", cacheTtl: 0, columns: [{", ".join(columns)}]}})',
     )
-    _admin(server, release_field(registered_id(registered["message"])))
     # An approved relationship: governance admits a join only along one (V002).
     _admin(
         server,
         'createRelationship(input: {id: "orders-regions", sourceTableId: "orders", '
         'targetTableId: "regions", sourceColumn: "region", targetColumn: "region", '
-        'cardinality: "many-to-one"})',
+        # REQ-194: the field would take the name of orders' own column ``region``, a clash refused.
+        'cardinality: "many-to-one", graphqlAlias: "regionDetail"})',
     )
 
 
@@ -222,7 +233,7 @@ def _trino_network() -> str:
 
 
 @pytest.fixture(scope="module")
-def built(server, code_source):
+def built(server, code_source, provisa_wheel):
     """The source's image built, run on Trino's network and connected: its address."""
     started = _api(server, "POST", "/builds", json={"arch": _ARCH, "download": True})
     assert started.status_code == 200, started.text

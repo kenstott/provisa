@@ -41,6 +41,7 @@ from typing import Any
 
 from sqlalchemy import select
 
+from provisa.core.parameters import RequiresParameters, required_of, whole_read_refusal
 from provisa.profiler import classifications, classify, constraints, dependence, measures, plausible
 from provisa.profiler.dependence import ParentSpec
 from provisa.profiler.source import ProfilerSettings
@@ -164,8 +165,36 @@ def parents_of(state: Any, table_id: int) -> list[ParentSpec]:
     return parent_relationships(state, ctx, tm, exposed_by_phys, _published_name)
 
 
+def not_read_whole(state: Any, table_id: int, table_name: str) -> RequiresParameters | None:
+    """Why ``table_id`` is never read whole, asked of its metadata before any read (REQ-1986): the
+    refusal naming the parameters it requires, or None for a table read as any other. A reader
+    asked for this one table raises it; a reader that sweeps many tables reports the table as not
+    read, with its reason. With no compiled schema there is no metadata to ask and nothing is
+    read either: the read itself says so (:func:`resolve_target`)."""
+    ctx = state.contexts.get(PROFILE_ROLE)
+    if ctx is None:
+        return None
+    return whole_read_refusal(table_name, required_of(ctx.parameters.get(table_id, ())))
+
+
 def resolve_target(state: Any, table_id: int, table_name: str, tags: dict[str, set[str]]) -> Target:
-    """The member table as the org admin's compiled context publishes it."""
+    """The member table as the org admin's compiled context publishes it: what a count, a profile
+    or a sample of the whole table reads. A table that requires parameters has no such read, and
+    is refused from its metadata (:class:`provisa.core.parameters.RequiresParameters`)."""
+    target = published_target(state, table_id, table_name, tags)
+    refusal = not_read_whole(state, table_id, table_name)
+    if refusal is not None:
+        raise refusal
+    return target
+
+
+def published_target(
+    state: Any, table_id: int, table_name: str, tags: dict[str, set[str]]
+) -> Target:
+    """The member table as the org admin's compiled context publishes it, whether or not it can
+    be read whole: what a declared profile describes (REQ-1942), which reads nothing, so a table
+    that requires parameters is described as any other. A reader of its rows asks
+    :func:`resolve_target`."""
     ctx = state.contexts.get(PROFILE_ROLE)
     if ctx is None:
         raise ProfileError(f"no compiled schema for role {PROFILE_ROLE!r}; cannot profile")
@@ -340,6 +369,9 @@ def result_rows(
                 "zero_share": m.zero_share,
                 "length_min": col.length_min,
                 "length_max": col.length_max,
+                # Set by the classification read (classified_columns); empty where none tests it.
+                "classification": None,
+                "classification_values": None,
             }
         )
         for measure, sketch in (("value", col.quantiles), ("length", col.length_quantiles)):
@@ -584,37 +616,139 @@ async def _sampled_further(
         sample = Sample("block", min(1.0, sample.fraction * 4))
 
 
+@dataclass(frozen=True)
+class ColumnClasses:
+    """One column's classification from the classification sample (REQ-2147): the kinds its
+    sampled non-null values matched, or that it had too few values to classify."""
+
+    column: str  # as the org admin reads it
+    physical: str
+    judgement: classify.Judgement
+
+    @property
+    def matches(self) -> tuple[classify.Match, ...]:
+        return self.judgement.matches
+
+    @property
+    def too_few(self) -> bool:
+        return self.judgement.too_few
+
+
+async def _classification_read(
+    target: Target,
+    sample: Sample,
+    where: str,
+    kinds: tuple[classify.Kind, ...],
+    per_column: int,
+) -> tuple[list[ColumnClasses], dict | None]:
+    """The classification statement over ``sample`` -- one read of the table gathering up to
+    ``per_column`` non-null values of each column a kind can test -- and each column judged in
+    memory; the values are never stored. With the read as it is recorded: ``{statement, percent,
+    rows}``, rows the sample held. None and no column when no column can be classified."""
+    families = frozenset(f for k in kinds for f in k.families)
+    columns = [c for c in target.columns if c.family in families]
+    if not columns:
+        return [], None
+    names, rows = await _run_further(
+        classification_sql(target.pgwire_name, columns, sample, per_column),
+        sample,
+        where,
+        target.table_name,
+    )
+    values, sample_rows = parse_classification_result(names, rows, columns)
+    judged = [
+        ColumnClasses(c.name, c.physical, classify.judge(c.family, values[c.name], kinds))
+        for c in columns
+    ]
+    percent = 100.0 if sample.fraction is None else sample.percent
+    return judged, {"statement": "classification", "percent": percent, "rows": sample_rows}
+
+
 async def read_classifications(
     target: Target,
     read: ProfileRead,
     kinds: tuple[classify.Kind, ...],
-    limit: int,
-) -> tuple[list[classifications.Suggestion], list[dict]]:
-    """The classification suggestions of the run (REQ-2147): up to ``limit`` rows drawn at random
-    from the run's sample, in one further statement over it, each column's values tested in
-    memory against the enabled ``kinds`` and never stored. With its read, as the dependence
-    statements' are recorded: ``[{statement, percent, rows}]``, rows the sample held; none when no
-    column is classified."""
-    families = frozenset(f for k in kinds for f in k.families)
-    columns = [c for c in target.columns if c.family in families]
-    if not columns:
-        return [], []
-    sample = read.sample
-    names, rows = await _run_further(
-        classification_sql(target.pgwire_name, columns, sample, limit),
-        sample,
-        read.where,
-        target.table_name,
-    )
-    values, sample_rows = parse_classification_result(names, rows, columns)
-    percent = 100.0 if sample.fraction is None else sample.percent
-    attempts = [{"statement": "classification", "percent": percent, "rows": sample_rows}]
-    suggestions = [
-        classifications.Suggestion(c.name, c.physical, match)
-        for c in columns
-        for match in classify.classify(c.family, values[c.name], kinds)
+    per_column: int,
+) -> tuple[list[ColumnClasses], list[dict]]:
+    """The run's classification of its columns (REQ-2147): up to ``per_column`` non-null values of
+    each column, drawn at random from the run's sample -- the read's ceiling on rows -- in one
+    further statement over it, tested in memory against the enabled ``kinds`` and never stored.
+    With its read, as the dependence statements' are recorded: ``[{statement, percent, rows}]``;
+    none when no column is classified."""
+    judged, attempt = await _classification_read(target, read.sample, read.where, kinds, per_column)
+    return judged, [] if attempt is None else [attempt]
+
+
+def suggestions_of(judged: list[ColumnClasses]) -> list[classifications.Suggestion]:
+    """A suggestion per column and kind its sampled values matched."""
+    return [
+        classifications.Suggestion(j.column, j.physical, match)
+        for j in judged
+        for match in j.matches
     ]
-    return suggestions, attempts
+
+
+def classification_outcome(j: ColumnClasses) -> str:
+    """matched | no_kind | too_few_values: what the classification sample said of the column."""
+    if j.too_few:
+        return "too_few_values"
+    return "matched" if j.matches else "no_kind"
+
+
+def classified_columns(results: dict[str, list[dict]], judged: list[ColumnClasses]) -> None:
+    """Each tested column's ``columns`` row says what its classification sample said of it, and
+    how many non-null values that sample held; a column no kind tests keeps both empty."""
+    by_column = {j.column: j for j in judged}
+    for row in results["columns"]:
+        j = by_column.get(row["column_name"])
+        row["classification"] = None if j is None else classification_outcome(j)
+        row["classification_values"] = None if j is None else j.judgement.values
+
+
+async def classify_table(
+    state: Any,
+    *,
+    table_id: int,
+    table_name: str,
+    values_per_column: int,
+    sample_above_cells: int | None,
+    rng: Any = None,
+) -> list[ColumnClasses]:
+    """Classify a table that need not have been profiled, from the classification sample, and
+    record nothing (REQ-2147): no run, no result row, no suggestion, no decision. The table is
+    read through the engine as the org admin, as a profile run reads it; its rows are counted and
+    sampled as a run with ``sample_above_cells`` samples them, and up to ``values_per_column``
+    non-null values of each column are gathered in one read of that sample (a run's
+    ``classification_sample``). Each column a kind can test comes back with the kinds it matched,
+    or as having too few values to classify. The kinds are the org's enabled ones."""
+    refusal = not_read_whole(state, table_id, table_name)
+    if refusal is not None:
+        raise refusal
+    async with state.model_db.acquire() as conn:
+        tags = await column_tags(conn, table_id)
+    kinds = await classifications.enabled_kinds(state.model_db)
+    target = resolve_target(state, table_id, table_name, tags)
+    _, count_rows = await _governed(count_sql(target.pgwire_name, None))
+    row_count = int(count_rows[0][0])
+    fraction = sample_fraction(row_count, len(target.columns), sample_above_cells)
+    if fraction is None:
+        sample, where = Sample("whole"), "whole table"
+    else:
+        families = frozenset(f for k in kinds for f in k.families)
+        columns = [c for c in target.columns if c.family in families]
+        if not columns:
+            return []
+        plan = await _route(
+            classification_sql(
+                target.pgwire_name, columns, Sample("random", fraction), values_per_column
+            )
+        )
+        sample, reach = await _sample_for(
+            state, target, plan.route, row_count, fraction, rng or random.Random()
+        )
+        where = reach.where
+    judged, _ = await _classification_read(target, sample, where, kinds, values_per_column)
+    return judged
 
 
 def classified_plausible_types(
@@ -722,6 +856,30 @@ async def read_dependence(
     )
 
 
+async def _sample_for(
+    state: Any, target: Target, route: Any, row_count: int, fraction: float, rng: Any
+) -> tuple[Sample, Any]:
+    """The sample of ``fraction`` of ``target``'s rows by the first method the reach of ``route``
+    offers (``provisa.profiler.sampling``), with that reach: a key-range sample's ranges are drawn
+    from the key's extremes, read here."""
+    from provisa.profiler.sampling import choose_method, sample_reach
+
+    reach = sample_reach(state, route, target.meta)
+    method = choose_method(reach, target.key is not None)
+    if method != "key_range":
+        return Sample(method, fraction), reach
+    assert target.key is not None  # choose_method picks key_range only for a keyed table
+    _, bounds = await _governed(key_bounds_sql(target.pgwire_name, target.key))
+    lo, hi = bounds[0]
+    if lo is None or hi is None:
+        raise ProfileError(
+            f"table {target.table_name!r} counted {row_count} rows but its key "
+            f"{target.key!r} has no extremes"
+        )
+    ranges = key_ranges(int(lo), int(hi), fraction, rng)
+    return Sample("key_range", fraction, target.key, ranges), reach
+
+
 async def read_profile(
     state: Any,
     target: Target,
@@ -732,7 +890,6 @@ async def read_profile(
 ) -> ProfileRead:
     """Read ``target``'s profile: whole when ``fraction`` is None, else sampled by the first
     method its reach offers (``provisa.profiler.sampling``)."""
-    from provisa.profiler.sampling import choose_method, sample_reach
 
     def sql(sample: Sample) -> str:
         return profile_sql(
@@ -755,8 +912,8 @@ async def read_profile(
         return ProfileRead(parse(await _governed(sql(whole))), "whole", [], whole, "whole table")
     random_sample = Sample("random", fraction)
     random_plan = await _route(sql(random_sample))
-    reach = sample_reach(state, random_plan.route, target.meta)
-    method = choose_method(reach, target.key is not None)
+    sample, reach = await _sample_for(state, target, random_plan.route, row_count, fraction, rng)
+    method = sample.method
     if method == "random":
         agg = parse(await _execute(random_plan))
         return ProfileRead(
@@ -767,17 +924,6 @@ async def read_profile(
             reach.where,
         )
     if method == "key_range":
-        assert target.key is not None  # choose_method picks key_range only for a keyed table
-        _, bounds = await _governed(key_bounds_sql(target.pgwire_name, target.key))
-        lo, hi = bounds[0]
-        if lo is None or hi is None:
-            raise ProfileError(
-                f"table {target.table_name!r} counted {row_count} rows but its key "
-                f"{target.key!r} has no extremes"
-            )
-        sample = Sample(
-            "key_range", fraction, target.key, key_ranges(int(lo), int(hi), fraction, rng)
-        )
         agg = await _run_sample(sql(sample), sample, random_plan.route, reach, target)
         return ProfileRead(
             agg,
@@ -811,7 +957,12 @@ async def profile_table(
     state: Any, *, table_id: int, table_name: str, settings: ProfilerSettings
 ) -> RunOutcome:
     """Run the profile of one member table and append it to its history. A failure is recorded as
-    a failed run and re-raised as :class:`ProfileError`."""
+    a failed run and re-raised as :class:`ProfileError`. A table that requires parameters is
+    refused from its metadata before a run exists (REQ-1986,
+    :class:`provisa.core.parameters.RequiresParameters`): nothing is read and no run is recorded."""
+    refusal = not_read_whole(state, table_id, table_name)
+    if refusal is not None:
+        raise refusal
     run_id = str(uuid.uuid4())
     run_time = datetime.now(UTC)
     started = time.monotonic()
@@ -847,9 +998,11 @@ async def profile_table(
         results = result_rows(target, read.agg, run_id, run_time, settings.low_cardinality_max)
         wanted = row_count if fraction is None else fraction * row_count
         dep = await read_dependence(target, read, settings, wanted)
-        suggestions, classification_attempts = await read_classifications(
+        judged, classification_attempts = await read_classifications(
             target, read, kinds, settings.classification_sample
         )
+        suggestions = suggestions_of(judged)
+        classified_columns(results, judged)
         classified_plausible_types(results, suggestions, table_name)
         proposals = [
             p

@@ -16,6 +16,7 @@
 import { beforeEach, describe, it, expect, vi } from "vitest";
 import { fireEvent, render, screen, waitFor, within } from "../../test-utils/render";
 import userEvent from "@testing-library/user-event";
+import { useLocation } from "react-router-dom";
 import type { TrackedFunction, TrackedWebhook } from "../../api/actions";
 
 const fn = (name: string): TrackedFunction =>
@@ -97,10 +98,10 @@ beforeEach(() => {
 });
 
 describe("the Commands lists' search", () => {
-  it("lists the commands matching any word of the search, in both lists", async () => {
+  it("lists the commands matching every word of the search, or either side of or, in both lists", async () => {
     render(<CommandsPage />);
     await screen.findByTestId("commands-fn-row-refund_order");
-    fireEvent.change(screen.getByTestId("filter-input"), { target: { value: "refund notify" } });
+    fireEvent.change(screen.getByTestId("filter-input"), { target: { value: "refund or notify" } });
     expect(screen.getByTestId("commands-fn-row-refund_order")).toBeInTheDocument();
     expect(screen.getByTestId("commands-wh-row-notify_ops")).toBeInTheDocument();
     expect(screen.queryByTestId("commands-fn-row-close_period")).toBeNull();
@@ -216,5 +217,48 @@ describe("+ Command asks only what a command needs in order to exist", () => {
     await userEvent.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(saveWebhook).toHaveBeenCalled());
     expect(saveWebhook.mock.calls[0][1]).toBe("page_ops");
+  });
+});
+
+// REQ-2241: a function and a webhook may share a name; the link names a webhook by its kind.
+describe("a command's panel is in the URL, a webhook's by its kind", () => {
+  function Where() {
+    const location = useLocation();
+    return <output data-testid="where">{location.pathname + location.search}</output>;
+  }
+  const where = () => screen.getByTestId("where").textContent;
+
+  beforeEach(() => {
+    ACTIONS = { functions: [fn("notify_ops")], webhooks: [wh("notify_ops")] };
+  });
+
+  it("opens the webhook, not the function of its name, and writes its kind", async () => {
+    render(
+      <>
+        <Where />
+        <CommandsPage />
+      </>,
+      { initialEntries: ["/commands"] },
+    );
+    await userEvent.click(await screen.findByTestId("commands-wh-row-notify_ops"));
+    expect(where()).toBe("/commands?command=webhook%3Anotify_ops");
+    expect(screen.getByTestId("commands-wh-row-notify_ops")).toHaveClass("row-selected");
+    expect(screen.getByTestId("commands-fn-row-notify_ops")).not.toHaveClass("row-selected");
+    await userEvent.click(screen.getByTestId("commands-fn-row-notify_ops"));
+    expect(where()).toBe("/commands?command=notify_ops");
+    expect(screen.getByTestId("commands-fn-row-notify_ops")).toHaveClass("row-selected");
+    expect(screen.getByTestId("commands-wh-row-notify_ops")).not.toHaveClass("row-selected");
+  });
+
+  it("loads a webhook's link on the webhook and a bare name on the function", async () => {
+    const view = render(<CommandsPage />, {
+      initialEntries: ["/commands?command=webhook:notify_ops"],
+    });
+    expect(await screen.findByTestId("commands-wh-row-notify_ops")).toHaveClass("row-selected");
+    expect(screen.getByTestId("commands-fn-row-notify_ops")).not.toHaveClass("row-selected");
+    view.unmount();
+    render(<CommandsPage />, { initialEntries: ["/commands?command=notify_ops"] });
+    expect(await screen.findByTestId("commands-fn-row-notify_ops")).toHaveClass("row-selected");
+    expect(screen.getByTestId("commands-wh-row-notify_ops")).not.toHaveClass("row-selected");
   });
 });

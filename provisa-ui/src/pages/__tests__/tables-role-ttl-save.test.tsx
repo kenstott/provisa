@@ -70,6 +70,7 @@ function table(
     tableName,
     alias: null,
     description: null,
+    registeredAt: "2026-11-01T00:00:00+00:00",
     cacheTtl: 60,
     roleTtl,
     pagingKind: null,
@@ -77,7 +78,8 @@ function table(
     pagingCeilingRows: null,
     replicate: null,
     region: null,
-    draft: false,
+    withdrawn: false,
+    sourceWithdrawn: false,
     rowMaterialize: false,
     loadProtected: null,
     offPeakWindow: null,
@@ -114,12 +116,14 @@ function table(
     mvPersist: "replace",
     mvPrimaryKey: [],
     mvIncremental: false,
+    mvRebuildEvery: null,
+    incrementalOption: { available: true, code: null, reason: null },
     mvCalendar: null,
     mvGrain: null,
     mvAllowedLateness: 0,
     mvExpectedEvents: null,
     mvBusinessDayGrain: false,
-    productId: null, // REQ-1634
+    productIds: [], // REQ-1634
     enableAggregates: false,
     enableGroupBy: false,
     canDeployToDb: false,
@@ -203,7 +207,7 @@ import { TablesPage } from "../TablesPage";
 async function openEditor(name = "orders") {
   render(<TablesPage />);
   const row = (await screen.findByText(name)).closest("tr") as HTMLElement;
-  await userEvent.click(row.querySelector("td") as HTMLElement);
+  await userEvent.click(row.querySelector("td:not(.list-select)") as HTMLElement);
   await userEvent.click(await screen.findByTestId("table-read-view-edit"));
   // The load settings are on the "Load and timeliness" section, shown in full.
   const tab = await screen.findByTestId("table-section-load");

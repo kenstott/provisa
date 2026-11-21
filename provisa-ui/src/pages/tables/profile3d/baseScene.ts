@@ -759,7 +759,8 @@ export abstract class BaseScene<H> {
     const w = parent.clientWidth;
     const h = parent.clientHeight;
     for (const l of this.labels) {
-      const p = l.at().project(this.camera);
+      // A copy: project() overwrites the vector, and ``at`` may hand back one it holds.
+      const p = l.at().clone().project(this.camera);
       if (p.z > 1) {
         l.el.style.visibility = "hidden";
         l.placed = null;

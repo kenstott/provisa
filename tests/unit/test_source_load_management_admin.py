@@ -88,7 +88,8 @@ def test_every_panel_field_round_trips_through_the_row():
         off_peak_tz="America/New_York",
         max_live_concurrency=4,
     )
-    row = {**_source_values(src), "allowed_domains": [], "binding": "own"}
+    # REQ-1921: withdrawn is a stored column of its own, set by withdrawSource alone.
+    row = {**_source_values(src), "allowed_domains": [], "binding": "own", "withdrawn": False}
     back = source_from_row(row)
     # The panel's fields are not connection details: they reach a caller with or without
     # source_registration (connection=False nulls only what locates or authenticates).

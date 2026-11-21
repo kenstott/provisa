@@ -48,6 +48,7 @@ from provisa.security.rights import (
 )
 from provisa.sparql_query.vocabulary import Grounding, build_vocabulary
 from provisa.transpiler.metadata_oids import table_oid
+from tests.rules import mentions
 
 READER = "reader"
 ORDERS, PAYROLL, SECRETS, DRAFTS, CATALOG, QUERIES, PRODUCTS = 1, 2, 3, 4, 5, 6, 7
@@ -56,6 +57,7 @@ ROLE = {
     "description": "Reads sales.",
     "capabilities": ["usage"],
     "domain_access": ["sales"],
+    "acting_chain": [READER],  # REQ-2188: as the build records it
 }
 
 
@@ -132,8 +134,10 @@ def _input(role: dict = ROLE) -> SchemaInput:
 
 def _state(role: dict = ROLE) -> SimpleNamespace:
     si = _input(role)
-    surface = SimpleNamespace(schema=generate_schema(si), table_path_map=build_table_path_map(si))
     ctx = build_context(si)
+    surface = SimpleNamespace(
+        schema=generate_schema(si), context=ctx, table_path_map=build_table_path_map(si)
+    )
     return SimpleNamespace(
         surfaces={role["id"]: surface},
         contexts={role["id"]: ctx},
@@ -283,7 +287,7 @@ class TestListIsMetadataOnly:
 
     def test_the_meta_scope_predicates_name_the_listed_table(self):
         _, gov = self._gov()
-        assert str(PAYROLL) in gov.rls_rules[CATALOG]
+        assert mentions(gov.rls_rules[CATALOG], PAYROLL)
         assert gov.meta_scope == "{" + f"{ORDERS},{PAYROLL},{DRAFTS}" + "}"
 
 

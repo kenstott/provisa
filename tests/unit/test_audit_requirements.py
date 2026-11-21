@@ -191,7 +191,14 @@ class TestREQ596AuditLogSchema:
         from provisa.audit.query_log import AUDIT_SCHEMA_SQL
 
         assert "no_update_audit" in AUDIT_SCHEMA_SQL
-        assert "ON UPDATE TO query_audit_log DO INSTEAD NOTHING" in AUDIT_SCHEMA_SQL
+        # REQ-1312: every UPDATE but an erasure's does nothing; CREATE OR REPLACE so a database
+        # made under the unconditional rule gets this one. tests/integration/
+        # test_audit_erasure_rule.py shows it on PostgreSQL.
+        rule = AUDIT_SCHEMA_SQL.split("CREATE OR REPLACE RULE no_update_audit")[1].split(";")[0]
+        assert rule.lstrip().startswith("AS ON UPDATE TO query_audit_log")
+        assert "OLD.user_id NOT LIKE 'deleted-user-%'" in rule
+        assert "(to_jsonb(NEW) - 'user_id') = (to_jsonb(OLD) - 'user_id')" in rule
+        assert rule.rstrip().endswith("DO INSTEAD NOTHING")
 
     def test_schema_sql_has_tenant_time_index(self):
         # REQ-596: index supporting tenant-scoped time-range queries
@@ -402,10 +409,12 @@ class TestREQ613QueryGovernanceAuditLog:
         assert "ON DELETE TO query_audit_log DO INSTEAD NOTHING" in AUDIT_SCHEMA_SQL
 
     def test_append_only_update_rule_present(self):
-        # REQ-613: SOC2 append-only — PG rule prevents UPDATE
+        # REQ-613: SOC2 append-only — PG rule prevents UPDATE (all but an erasure's, REQ-1312)
         from provisa.audit.query_log import AUDIT_SCHEMA_SQL
 
-        assert "ON UPDATE TO query_audit_log DO INSTEAD NOTHING" in AUDIT_SCHEMA_SQL
+        rule = AUDIT_SCHEMA_SQL.split("CREATE OR REPLACE RULE no_update_audit")[1].split(";")[0]
+        assert "ON UPDATE TO query_audit_log" in rule
+        assert rule.rstrip().endswith("DO INSTEAD NOTHING")
 
     def test_tenant_logged_at_index_present(self):
         # REQ-613: indexed by (tenant_id, logged_at) for compliance reporting

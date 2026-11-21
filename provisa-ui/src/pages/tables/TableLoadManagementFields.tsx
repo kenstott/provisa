@@ -25,6 +25,7 @@ import type { CacheTtlEdit } from "./tableEditTypes";
 import { OffPeakWindowFields } from "../../components/admin/OffPeakWindowFields";
 import { useSourceKind } from "../sources/sourceKind";
 import { RowMaterializeField } from "./RowMaterializeField";
+import { ReadWaitField } from "./ReadWaitField";
 
 export function TableLoadManagementFields({
   editingTable,
@@ -124,6 +125,12 @@ export function TableLoadManagementFields({
                 </Text>
               </FormField>
             )}
+          {!liveOnly && (
+            <ReadWaitField
+              value={editingTable.readWait ?? null}
+              onChange={(readWait) => setEditingTable({ ...editingTable, readWait })}
+            />
+          )}
           {!liveOnly && editSource?.rowFetchByKeys === true && (
             <RowMaterializeField
               checked={editingTable.rowMaterialize}

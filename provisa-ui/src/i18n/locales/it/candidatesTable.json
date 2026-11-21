@@ -1,6 +1,6 @@
 {
   "candidatesTable": {
-    "heading": "Relazioni suggerite dall'AI",
+    "heading": "Relazioni suggerite",
     "colName": "Nome",
     "colSource": "Origine",
     "colTarget": "Destinazione",
@@ -10,6 +10,25 @@
     "accept": "Accetta",
     "reject": "Rifiuta",
     "acceptAria": "Accetta la relazione suggerita {{name}}",
-    "rejectAria": "Rifiuta la relazione suggerita {{name}}"
+    "rejectAria": "Rifiuta la relazione suggerita {{name}}",
+    "acceptAll": "Accetta tutti",
+    "rejectAll": "Rifiuta tutti",
+    "acceptAllTitle": "Accetta tutti i suggerimenti",
+    "rejectAllTitle": "Rifiuta tutti i suggerimenti",
+    "acceptAllConsequence": "Accettare il {{count}} suggerimento elencato? Diventa una relazione registrata.",
+    "acceptAllConsequence_other": "Accettare tutti i {{count}} suggerimenti elencati? Ognuno diventa una relazione registrata.",
+    "rejectAllConsequence": "Rifiutare il {{count}} suggerimento elencato? Non verrà più suggerito finché i rifiuti non vengono cancellati.",
+    "rejectAllConsequence_other": "Rifiutare tutti i {{count}} suggerimenti elencati? Non verranno più suggeriti finché i rifiuti non vengono cancellati.",
+    "acceptedAll": "{{count}} suggerimento accettato.",
+    "acceptedAll_other": "{{count}} suggerimenti accettati.",
+    "rejectedAll": "{{count}} suggerimento rifiutato.",
+    "rejectedAll_other": "{{count}} suggerimenti rifiutati.",
+    "acceptFailed": "{{count}} suggerimento non è stato accettato:",
+    "acceptFailed_other": "{{count}} suggerimenti non sono stati accettati:",
+    "rejectFailed": "{{count}} suggerimento non è stato rifiutato:",
+    "rejectFailed_other": "{{count}} suggerimenti non sono stati rifiutati:",
+    "failedOne": "{{name}}: {{error}}",
+    "reducedInformation": "Informazioni ridotte: nessun valore è stato confrontato",
+    "reducedInformationHelp": "Una di queste tabelle richiede un parametro, quindi non viene mai letta. Questo suggerimento si basa solo su nomi, descrizioni, tipi e parametri obbligatori."
   }
 }

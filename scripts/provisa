@@ -467,10 +467,11 @@ native_env_pairs() {
         "TENANT_DATABASE_URL=${CONTROL_PLANE_URL}"
         # Remote MCP on by default for the native/desktop tier (REQ-1101): a ready same-machine
         # Claude Desktop connector, loopback-only (127.0.0.1) so the always-on server stays off the
-        # LAN. Role pinned explicitly (native auth:none = one local admin user), all overridable.
+        # LAN. Role pinned explicitly, all overridable: org_admin, the role the bootstrap admin
+        # holds ('admin' is a retired role id, REQ-1297).
         "PROVISA_MCP_PORT=${PROVISA_MCP_PORT:-8009}"
         "PROVISA_MCP_HOST=${PROVISA_MCP_HOST:-127.0.0.1}"
-        "PROVISA_MCP_ROLE=${PROVISA_MCP_ROLE:-admin}"
+        "PROVISA_MCP_ROLE=${PROVISA_MCP_ROLE:-org_admin}"
         # MCP stays plain HTTP: Claude Desktop reaches a LOCAL server only via the stdio bridge
         # (mcp-proxy), which works over http. Its custom-connector URL path is brokered from
         # Anthropic (needs a public HTTPS endpoint), so TLS buys nothing locally. TLS stays opt-in
@@ -482,6 +483,10 @@ native_env_pairs() {
         # server.public_url, the operator setting in Deployment settings, when nothing sets it.
         "PROVISA_LOCAL_ADDRESS=http://localhost:${API_PORT}"
     )
+    # REQ-1105: the principal local MCP calls act for, beside the pinned role. No default here:
+    # first-run setup names the bootstrap admin (mcp.principal, a stored setting, which outranks
+    # this variable), and until something names one every local MCP call is refused, by name.
+    [ -n "${PROVISA_MCP_PRINCIPAL:-}" ] && e+=("PROVISA_MCP_PRINCIPAL=${PROVISA_MCP_PRINCIPAL}")
     [ -n "$ENGINE_URL" ]      && e+=("PROVISA_ENGINE_URL=${ENGINE_URL}")
     [ -n "$MATERIALIZE_URL" ] && e+=("PROVISA_MATERIALIZE_URL=${MATERIALIZE_URL}")
     [ -n "$TRINO_HOST" ]      && e+=("TRINO_HOST=${TRINO_HOST}")

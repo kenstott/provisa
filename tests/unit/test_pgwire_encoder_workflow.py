@@ -18,7 +18,6 @@ imports it, so an artifact without it is never built."""
 
 from __future__ import annotations
 
-import fnmatch
 import hashlib
 import importlib.util
 import re
@@ -41,7 +40,7 @@ RUST = "1.95.0"
 PLATFORMS = {
     "linux-x86_64": ("ubuntu-latest", "manylinux_2_28_x86_64"),
     "linux-aarch64": ("ubuntu-24.04-arm", "manylinux_2_28_aarch64"),
-    "macos-arm64": ("macos-14", r"macosx_\d+_\d+_arm64"),
+    "macos-arm64": ("macos-15", r"macosx_\d+_\d+_arm64"),
     "windows-x64": ("windows-latest", "win_amd64"),
 }
 
@@ -394,22 +393,24 @@ def test_the_sbom_and_cve_gate_run_once_for_every_wheel():
     assert "pip-audit" not in _runs(jobs["build-provisa-wheel"])
 
 
-def test_provisas_pypi_upload_takes_every_platforms_wheel():
-    """The download is a pattern (one artifact per platform): it has to match each of them, and
-    the -dist names are also what the release attaches."""
+def test_the_release_attaches_every_platforms_wheel():
+    """The server wheels reach users from the release (the Pages index links them there), not
+    PyPI: each platform's wheel job attaches its wheel to the draft itself, and the publish step
+    refuses to undraft without each platform's wheel."""
     jobs = _jobs("build-dmg.yml")
     assert not [name for name in jobs if "pgwire" in name]
-    download = _steps(jobs["publish-provisa-pypi"])["Download dist"]
-    assert download["uses"] == "actions/download-artifact@v4"
-    assert download["with"]["merge-multiple"] is True
-    pattern = download["with"]["pattern"]
-    for label in PLATFORMS:
-        artifact = f"provisa-wheel-{label}-dist"
-        assert fnmatch.fnmatch(artifact, pattern), artifact
-        assert fnmatch.fnmatch(artifact, "*-dist"), artifact
-    assert not fnmatch.fnmatch("provisa-ui-build", pattern)
-    attached = _jobs("release-publish.yml")["publish-release"]["steps"]
-    assert any((s.get("with") or {}).get("pattern") == "*-dist" for s in attached)
+    assert "publish-provisa-pypi" not in jobs
+    wheel = _jobs("release-packages.yml")["build-provisa-wheel"]
+    attach = [
+        s for s in wheel["steps"] if s.get("uses") == "./.github/actions/attach-release-assets"
+    ]
+    assert [s["with"]["files"] for s in attach] == ["dist/provisa-*.whl"]
+    assert attach[0]["if"] == "inputs.publish"
+    steps = _steps(_jobs("release-publish.yml")["publish-release"])
+    required = steps["Publish release (verify every asset, then undraft)"]["env"]["REQUIRED"]
+    for tag in ("manylinux_2_28_x86_64", "manylinux_2_28_aarch64", "macosx_*_arm64", "win_amd64"):
+        assert f"-cp312-cp312-{tag}.whl" in required, tag
+    assert len(PLATFORMS) == 4
 
 
 # ── installers and images ─────────────────────────────────────────────────────
@@ -430,6 +431,17 @@ def test_every_installer_builds_provisa_with_its_encoders_and_fails_without_them
     build = (REPO / "scripts/build-wheel.sh").read_text()
     assert "--target provisa-wheel" in build
     assert 'scripts/check-provisa-wheel.py" "${REPO_ROOT}"/dist/provisa-*.whl' in build
+
+
+def test_the_installers_check_the_runtime_not_the_checkout():
+    """The DMG and SFX check the bundled runtime from the repository root, where `python -c` puts
+    the checkout first on sys.path. The checkout's provisa has the notices but no compiled module,
+    so an unisolated check imports it in place of the installed wheel (alpha.499). -I drops it."""
+    dmg = (REPO / "packaging/macos/build-dmg.sh").read_text()
+    assert '"$py" -I -c "import provisa, sqlite3, mcp_proxy, provisa._encoders.pgwire' in dmg
+    sfx = (REPO / "packaging/windows/build-sfx.ps1").read_text()
+    checks = re.findall(r"^& \$RuntimePy (.*?)-c \"import ", sfx, re.M)
+    assert checks and all(flags == "-I " for flags in checks)
 
 
 def test_a_macos_wheel_is_tagged_for_the_one_architecture_its_module_is_built_for():

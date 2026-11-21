@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Provisa and Starburst — Provisa</title>
-  <meta name="description" content="Starburst is a managed Trino lakehouse centred on SQL analytics. Provisa is a governed model over the engine you choose, Starburst included. See where each fits." />
+  <meta name="description" content="Keep Starburst as your engine. Provisa puts a governed model over the same data and adds GraphQL, Cypher, SPARQL and governed agent access." />
   <link rel="icon" type="image/svg+xml" href="../favicon.svg" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -31,13 +31,9 @@
         <span class="brand-tag">Preview</span>
       </a>
       <nav class="nav-links" aria-label="Primary">
-        <a href="/#interfaces">Interfaces</a>
-        <a href="/#governance">Governance</a>
-        <a href="/#sources">Sources</a>
-        <a href="/compare">Compare</a>
-        <a href="/#deploy">Deploy</a>
-        <a href="/how-it-works">How</a>
+        <a href="/#use-cases">Use cases</a>
         <a href="/demos">Demos</a>
+        <a href="/works-with">Works with</a>
         <a href="/docs">Docs</a>
         <a class="nav-cta" href="/#download">Download</a>
       </nav>
@@ -47,66 +43,28 @@
   <main id="main" class="doc">
     <div class="container">
       <div class="doc-head">
-        <p class="crumb"><a href="/">Provisa</a> <span>/</span> <span>Provisa and Starburst</span></p>
-        <h1>Starburst centres on an engine. Provisa centres on a model.</h1>
+        <p class="crumb"><a href="/">Provisa</a> <span>/</span> <a href="/works-with">Works with</a> <span>/</span> <span>Provisa and Starburst</span></p>
+        <h1>Keep Starburst. Put a governed model on top.</h1>
         <p class="lead">
-          Starburst is centred on SQL analytics in a managed Trino lakehouse, and governance, data products and agent access all build outward from that engine. Provisa is
-          centred on a governed model that works over the engine you choose, Starburst
-          included. Start by deciding which of those centres you need.
+          Starburst runs SQL analytics at scale in a managed Trino lakehouse, with Gravity for tags and ABAC and Galaxy for data products. Register it as the query engine in Provisa and it keeps doing all of that. Provisa adds a governed model over the same data, and more ways to reach it.
         </p>
       </div>
 
       <div class="doc-body">
-        <h2>Where each fits</h2>
-        <div class="cmp-wrap">
-          <table class="cmp">
-            <thead>
-              <tr><th>You need to&hellip;</th><th>Starburst</th><th>Provisa</th></tr>
-            </thead>
-            <tbody>
-              <tr>
-                <th>Run SQL analytics across many sources at scale</th>
-                <td>&#10003; Managed Trino lakehouse; Gravity for tags and ABAC; cluster-scale execution</td>
-                <td class="is-us">Works with Starburst as the query engine; adds GraphQL, Cypher and more protocols over the same data</td>
-              </tr>
-              <tr>
-                <th>Build an app API with transactional writes, governed</th>
-                <td>SQL analytics workload; writes are engine-mediated</td>
-                <td class="is-us">&#10003; Transactional writes routed direct to the source driver, sub-100&thinsp;ms; governed on every protocol</td>
-              </tr>
-              <tr>
-                <th>Give AI agents governed access</th>
-                <td>MCP server (read-only SQL, public preview since January 2026)</td>
-                <td class="is-us">&#10003; MCP server where the OAuth token maps to a role; agents inherit the same six access-control layers as a person</td>
-              </tr>
-              <tr>
-                <th>Keep catalog, semantic layer and governance tools in sync</th>
-                <td>Gravity manages tags and ABAC; Alation, Atlan and a community Collibra utility crawl Starburst</td>
-                <td class="is-us">&#10003; Publishes to external catalogs; imports from your semantic layer; or run it standalone</td>
-              </tr>
-              <tr>
-                <th>Ask graph or path questions over relationships</th>
-                <td>SQL</td>
-                <td class="is-us">&#10003; Cypher and SPARQL as first-class query languages alongside SQL</td>
-              </tr>
-              <tr>
-                <th>Hand curated datasets to other teams</th>
-                <td>&#10003; Data products (GA in Galaxy); Context Studio for glossary and business rules (private preview)</td>
-                <td class="is-us">Governed domains and views; model is declarative config in git</td>
-              </tr>
-              <tr>
-                <th>Change engines later without rewriting queries or policy</th>
-                <td>The engine is the product</td>
-                <td class="is-us">&#10003; Swap to Trino, Starburst, DuckDB, ClickHouse, Postgres, Snowflake, Databricks or BigQuery</td>
-              </tr>
-              <tr>
-                <th>Run air-gapped or on a regulated network</th>
-                <td>Galaxy cloud or an enterprise cluster</td>
-                <td class="is-us">&#10003; <code>pip install "provisa[embedded]"</code>: one wheel, no Docker, no JVM, no root</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
+        <h2>What Starburst keeps doing</h2>
+        <ul>
+          <li>SQL federation and analytics at cluster scale</li>
+          <li>Gravity for tags and ABAC</li>
+          <li>Galaxy data products, and agent access over SQL</li>
+        </ul>
+
+        <h2>What Provisa adds</h2>
+        <ul>
+          <li>GraphQL, Cypher and SPARQL over the same data</li>
+          <li>Governed transactional writes routed direct to the source driver, in under 100 ms</li>
+          <li>Consistent policy on every protocol, MCP agents included</li>
+          <li>Publishing to external catalogs and importing from your semantic layer</li>
+        </ul>
 
         <h2>Use them together</h2>
         <p>
@@ -125,18 +83,10 @@
           with governance (Gravity), curated data products, and agent access over SQL.
           You are committed to Trino as the engine. Starburst covers that well on its own.
         </p>
-
-        <h2>If you only need Provisa</h2>
-        <p>
-          You need GraphQL, Cypher, SPARQL or transactional writes as well as SQL.
-          Governance must hold identically on every protocol, agents included. You want
-          to connect the model to your existing catalog and lineage tools instead of running everything inside one engine vendor. Or you need to run from a single
-          wheel, on a laptop, without a cluster.
-        </p>
       </div>
 
       <div class="doc-next">
-        <a class="more" href="/why/no-lock-in">Why the engine should be replaceable</a>
+        <a class="more" href="/why/no-lock-in">Choosing your engine</a>
         <a class="more" href="/#download">Try Provisa on your own engine</a>
       </div>
     </div>
@@ -156,7 +106,7 @@
         </svg>
         <span class="brand-word">Provisa</span>
       </div>
-      <p class="footer-note">Provisa is a data kernel: a compiler and runtime for building your data control plane. Federation, metrics, ontology and governance from a single model. Nothing to keep in sync. Business Source License 1.1. Non-production use (including evaluation) is free forever, for any size organization. Production use is also free for organizations that, together with their affiliates, have under 100 employees and contractors and under $1M in annual revenue, budget, or expenditures; others need a <a href="mailto:license@provisa.dev">commercial license</a> for production use.</p>
+      <p class="footer-note">Provisa is a compiler and runtime for building your data control plane. Federation, metrics, ontology and governance from a single model. Nothing to keep in sync. Business Source License 1.1. Non-production use (including evaluation) is free forever, for any size organization. Production use is also free for organizations that, together with their affiliates, have under 100 employees and contractors and under $1M in annual revenue, budget, or expenditures; others need a <a href="mailto:license@provisa.dev">commercial license</a> for production use.</p>
       <nav class="footer-links" aria-label="Footer">
         <a href="/why/one-model">One model</a>
         <a href="/why/interfaces">Interfaces</a>
@@ -165,12 +115,15 @@
         <a href="/why/materialized-views">Materialized views</a>
         <a href="/why/catalog">Catalog</a>
         <a href="/why/no-lock-in">No lock-in</a>
+        <a href="/why/environments">Environments</a>
+        <a href="/how-it-works">How it works</a>
+        <a href="/architecture-faq">Architecture FAQ</a>
         <a href="/why/data-mesh">Data mesh</a>
         <a href="/why/ai">Data for AI</a>
         <a href="/why/ontology">Ontology</a>
         <a href="/why/glossary-that-grounds">Glossary that grounds</a>
-        <a href="/vs/starburst">vs Starburst</a>
-        <a href="/vs/denodo">vs Denodo</a>
+        <a href="/vs/starburst">With Starburst</a>
+        <a href="/vs/denodo">With Denodo</a>
         <a href="/vs/hasura">Coming from Hasura</a>
         <a href="/docs">Docs</a>
         <a href="/register">Register (free license)</a>

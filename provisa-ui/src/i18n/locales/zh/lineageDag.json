@@ -1,0 +1,7 @@
+{
+  "lineageDag": {
+    "job": "OpenLineage 作业",
+    "outsideModel": "模型之外",
+    "reportedEdge": "由 OpenLineage 上报"
+  }
+}

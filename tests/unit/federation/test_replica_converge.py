@@ -110,7 +110,7 @@ class _Model:
         self.parameters: dict[tuple, tuple] = {}  # key -> its parameter columns
         self.regions: dict[tuple, str] = {}  # key -> the region the table names (REQ-1921)
         self.attaches: set[str] = set()  # source types the engine reads in place
-        self.drafts: set[tuple] = set()  # declared, and draft: offered to no reader (REQ-1921)
+        self.withdrawn: set[tuple] = set()  # withdrawn: out of the registry (REQ-1921)
         self.kicks = 0
         model = self
         backend = SimpleNamespace(
@@ -128,7 +128,7 @@ class _Model:
             model_stamp=stamp,
         )
 
-        async def replica_tables(engine, state, *, draft=False):
+        async def replica_tables(engine, state):
             return [
                 (
                     src,
@@ -146,33 +146,21 @@ class _Model:
                     },
                 )
                 for key, (src, cols, _pk) in model.tables.items()
-                if (key in model.drafts) == draft
+                if key not in model.withdrawn
             ]
 
-        async def draft_replica_tables(engine, state):
-            return await replica_tables(engine, state, draft=True)
-
-        async def landing_worklist(engine, state, *, draft=False):
+        async def landing_worklist(engine, state):
             return [
                 (src, key[1], key[2], cols, pk, None)
                 for key, (src, cols, pk) in model.tables.items()
-                if key not in model.unresolved and (key in model.drafts) == draft
+                if key not in model.unresolved and key not in model.withdrawn
             ]
-
-        async def draft_landing_worklist(engine, state):
-            return await landing_worklist(engine, state, draft=True)
 
         def kick(org_id):
             model.kicks += 1
 
         monkeypatch.setattr("provisa.federation.replica_routing.replica_tables", replica_tables)
         monkeypatch.setattr("provisa.federation.replica_routing.landing_worklist", landing_worklist)
-        monkeypatch.setattr(
-            "provisa.federation.replica_routing.draft_replica_tables", draft_replica_tables
-        )
-        monkeypatch.setattr(
-            "provisa.federation.replica_routing.draft_landing_worklist", draft_landing_worklist
-        )
         monkeypatch.setattr("provisa.federation.replica_builds.store_identity", lambda s: STORE)
         monkeypatch.setattr("provisa.federation.replica_builds.kick", kick)
         monkeypatch.setattr(replica_converge, "last_error", {})
@@ -487,8 +475,8 @@ async def test_a_table_naming_a_region_is_built_only_there(model):
 
     platform = {
         "regions": [
-            {"id": "eu", "address": "https://eu.example.com"},
-            {"id": "us", "address": "https://us.example.com"},
+            {"id": "eu", "description": "The eu region", "purposes": ["residency"]},
+            {"id": "us", "description": "The us region", "purposes": ["residency"]},
         ]
     }
     was = process_region._region
@@ -507,8 +495,8 @@ async def test_a_table_naming_a_region_is_built_only_there(model):
 
 _PLATFORM = {
     "regions": [
-        {"id": "eu", "address": "https://eu.example.com"},
-        {"id": "us", "address": "https://us.example.com"},
+        {"id": "eu", "description": "The eu region", "purposes": ["residency"]},
+        {"id": "us", "description": "The us region", "purposes": ["residency"]},
     ]
 }
 
@@ -588,61 +576,54 @@ async def test_an_older_model_node_does_not_retire_a_copy_a_newer_model_wants_he
     assert (await older.record(key)).retired_at is None
 
 
-# --- REQ-1921: a draft may hold a replica; it is kept, and never built on the model's word -------
+# --- REQ-1921: a withdrawn table keeps no replica, and is built again once put back --------------
 
 
-async def test_a_draft_table_has_no_build_asked_for_by_the_model(model):
-    served, draft = model.declare("orders"), model.declare("refunds")
-    model.drafts.add(draft)
+async def test_a_withdrawn_table_has_no_build_asked_for_by_the_model(model):
+    served, withdrawn = model.declare("orders"), model.declare("refunds")
+    model.withdrawn.add(withdrawn)
     done = await converge_replicas(model.state)
     assert done.requested == [served]
-    assert await model.record(draft) is None
+    assert await model.record(withdrawn) is None
 
 
-async def test_a_table_made_draft_keeps_the_replica_it_has(model, monkeypatch):
+async def test_a_table_withdrawn_has_its_replica_retired_and_dropped(model, monkeypatch):
     key = model.declare("orders")
     await converge_replicas(model.state)
     await model.build(key)
-    model.drafts.add(key)  # taken out of service: offered to no reader, its data still landed
-
-    done = await converge_replicas(model.state)
-    assert (done.retired, done.requested) == ([], [])
-    assert (await model.record(key)).retired_at is None
-    monkeypatch.setattr(replica_converge, "drop_grace_seconds", lambda: 0.0)
-    assert await drop_retired(model.state, BuildLocks(model.url), ORG) == []
-    assert model.store.dropped == []
+    model.withdrawn.add(key)  # taken out of production: it keeps no replica
+    await _retired_then_dropped(model, monkeypatch, key)
 
 
-async def test_a_build_asked_for_a_draft_by_its_preview_is_not_retired(model):
+async def test_a_build_asked_for_a_withdrawn_table_is_retired_once_built(model, monkeypatch):
+    """No preview asks for one (a withdrawn table is read live, or refused): a build asked
+    before it was withdrawn is retired once it completes."""
     key = model.declare("refunds")
-    model.drafts.add(key)
-    async with model.db.acquire() as conn:  # as a steward's preview asks (query_residency)
+    async with model.db.acquire() as conn:
         assert await replica_state.request_build(
             conn, key, replica_state.REASON_MODEL, model_stamp=10, now=datetime.now(UTC)
         )
-    done = await converge_replicas(model.state)
-    assert done.retired == []
     await model.build(key)
-    assert (await converge_replicas(model.state)).retired == []
-    assert (await model.record(key)).retired_at is None
+    model.withdrawn.add(key)
+    await _retired_then_dropped(model, monkeypatch, key)
 
 
-async def test_a_draft_whose_definition_changed_is_rebuilt_only_when_previewed(model):
+async def test_a_withdrawn_table_whose_definition_changed_asks_for_no_build(model):
     key = model.declare("refunds")
     await converge_replicas(model.state)
     await model.build(key)
-    model.drafts.add(key)
+    model.withdrawn.add(key)
     model.declare("refunds", columns=[*COLUMNS, ("note", "text")])
     kicks = model.kicks
     done = await converge_replicas(model.state)
     assert done.requested == [] and model.kicks == kicks
 
 
-async def test_a_draft_released_is_built_and_kept_as_any_table(model):
+async def test_a_withdrawn_table_put_back_is_built_and_kept_as_any_table(model):
     key = model.declare("refunds")
-    model.drafts.add(key)
+    model.withdrawn.add(key)
     await converge_replicas(model.state)
-    model.drafts.discard(key)
+    model.withdrawn.discard(key)
     assert (await converge_replicas(model.state)).requested == [key]
 
 
@@ -667,34 +648,34 @@ async def test_a_build_another_server_completes_after_this_one_read_its_records_
     assert (await model.record(key)).build_state == "idle"
 
 
-# --- a table's region, while a draft and when it is released (REQ-1921, REQ-1922) ----------------
+# --- a move between regions passes through withdrawn (REQ-1921, REQ-1922) ------------------------
 
 
-def test_a_draft_naming_a_region_is_previewed_only_on_that_regions_nodes(node_region):
-    """A draft has no replica: its preview reads it, and lands it, where it is read. One that
+def test_a_withdrawn_table_naming_a_region_is_previewed_only_on_that_regions_nodes(node_region):
+    """A withdrawn table has no replica: its preview reads it live, where it is read. One that
     names eu is refused on a us node before any statement is built, and read on an eu node."""
     from provisa.core.region_stores import HomeRegionUnavailable
-    from provisa.federation.query_residency import require_draft_read_in_its_region
+    from provisa.federation.query_residency import require_preview_in_its_region
 
     node_region("us")
     with pytest.raises(HomeRegionUnavailable):
-        require_draft_read_in_its_region("refunds", "eu")
+        require_preview_in_its_region("refunds", "eu")
     node_region("eu")
-    require_draft_read_in_its_region("refunds", "eu")
+    require_preview_in_its_region("refunds", "eu")
 
 
-async def test_a_draft_given_a_region_then_released_is_built_only_in_that_region(
+async def test_a_table_withdrawn_then_put_back_into_a_region_is_built_only_there(
     model, node_region
 ):
-    """Draft, then assigned eu, then released: eu's nodes build it into eu's store; us's never
-    do, before the release or after."""
+    """Withdrawn, then put back into eu: eu's nodes build it into eu's store; us's never do,
+    while it is withdrawn or after."""
     key = model.declare("refunds")
-    model.drafts.add(key)
-    model.regions[key] = "eu"
-    for region in ("us", "eu"):  # a draft: built by no node on the model's word
+    model.withdrawn.add(key)
+    for region in ("us", "eu"):  # withdrawn: built by no node
         node_region(region)
         assert (await converge_replicas(model.state)).requested == []
-    model.drafts.discard(key)  # released
+    model.withdrawn.discard(key)  # put back, into eu
+    model.regions[key] = "eu"
     node_region("us")
     assert (await converge_replicas(model.state)).requested == []
     assert await model.record(key) is None
@@ -702,21 +683,21 @@ async def test_a_draft_given_a_region_then_released_is_built_only_in_that_region
     assert (await converge_replicas(model.state)).requested == [key]
 
 
-async def test_a_draft_copy_held_outside_the_region_it_is_given_is_retired(
+async def test_a_move_through_withdrawn_leaves_no_copy_in_the_region_it_left(
     model, monkeypatch, node_region
 ):
-    """A draft previewed on a us node while it named no region holds a copy there; once it names
-    eu, that copy is data us may not keep, draft or not: it goes."""
+    """Kept in us, withdrawn by us's holder: its copy there goes at once, so nothing is held
+    anywhere while it is withdrawn; put back into eu, us builds nothing."""
     node_region("us")
     key = model.declare("refunds")
-    model.drafts.add(key)
-    async with model.db.acquire() as conn:  # its steward's preview on us, before a region
-        await replica_state.request_build(
-            conn, key, replica_state.REASON_MODEL, model_stamp=10, now=datetime.now(UTC)
-        )
+    model.regions[key] = "us"
+    await converge_replicas(model.state)
     await model.build(key)
-    model.regions[key] = "eu"
+    model.withdrawn.add(key)
     await _retired_then_dropped(model, monkeypatch, key)
+    model.withdrawn.discard(key)
+    model.regions[key] = "eu"
+    assert (await converge_replicas(model.state)).requested == []
 
 
 async def test_a_table_moved_to_another_region_is_built_there(model, monkeypatch, node_region):

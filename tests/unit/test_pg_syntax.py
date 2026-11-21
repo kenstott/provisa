@@ -62,11 +62,31 @@ def test_bit_varying_cast_reads_with_and_without_a_length() -> None:
         ("postgres", "SELECT CAST(NULL AS _cstring) FROM t"),
         ("duckdb", "SELECT CAST(NULL AS TEXT[]) FROM t"),
         ("trino", "SELECT CAST(NULL AS ARRAY(VARCHAR)) FROM t"),
-        ("clickhouse", "SELECT CAST(NULL AS Array(Nullable(String))) FROM t"),
+        # ClickHouse holds no NULL of an array (an Array is never Nullable; CAST(NULL AS
+        # Array(...)) is its error): a bare NULL, which pgwire describes as the cast's type.
+        ("clickhouse", "SELECT NULL FROM t"),
     ],
 )
 def test_cstring_array_is_its_array_type_not_a_subscript(dialect: str, written: str) -> None:
     assert transpile("SELECT NULL::cstring[] FROM t", dialect) == written
+
+
+@pytest.mark.parametrize(
+    ("sql", "oid"),
+    [
+        ("SELECT NULL::cstring[] FROM t", 1263),
+        ("SELECT NULL::text[] AS v", 1009),
+        ("SELECT NULL::integer[] AS v", 1007),
+    ],
+)
+def test_a_null_array_clickhouse_serves_untyped_is_described_as_its_cast(sql: str, oid: int):
+    """ClickHouse serves the bare NULL with no type (BLOB): the cast's array type describes it."""
+    from provisa.pgwire.server import _describe_casts, _sql_type_to_bvtype, _type_oid
+
+    types = [_sql_type_to_bvtype("BLOB")]
+    oids: list[int | None] = [_type_oid("BLOB")]
+    _describe_casts(sql, types, oids, [-1], [], ["BLOB"])
+    assert oids == [oid]
 
 
 def test_object_identifier_arrays_are_named_as_postgresql_names_them() -> None:
@@ -128,7 +148,8 @@ def test_convert_is_refused_by_name_where_it_has_no_form(dialect: str) -> None:
         ("postgres", "SELECT JSON_OBJECT('{a,1}') FROM t"),
         ("duckdb", "SELECT JSON_OBJECT('{a,1}') FROM t"),
         ("trino", "SELECT JSON_OBJECT('{a,1}') FROM t"),
-        ("clickhouse", "SELECT json_object('{a,1}') FROM t"),
+        # computed as the statement is read (polyfill.json_literal): PostgreSQL's answer
+        ("clickhouse", 'SELECT CAST(\'{"a" : "1"}\' AS Nullable(String)) AS json_object FROM t'),
     ],
 )
 def test_json_object_of_an_array_is_postgresql_s_call(dialect: str, written: str) -> None:
@@ -157,8 +178,8 @@ def test_negative_inner_product_reads_and_writes_back() -> None:
     [
         ("postgres", "SELECT REGEXP_REPLACE(s, 'a(b)', '\\1', 'g') FROM t"),
         ("duckdb", "SELECT pg_catalog.regexp_replace(s, 'a(b)', '\\1', 'g') FROM t"),
-        ("trino", "SELECT REGEXP_REPLACE(s, 'a(b)', '\\1') FROM t"),
-        ("clickhouse", "SELECT REGEXP_REPLACE(s, 'a(b)', '\\\\1') FROM t"),
+        ("trino", "SELECT REGEXP_REPLACE(s, 'a(b)', '\\1') AS regexp_replace FROM t"),
+        ("clickhouse", "SELECT REGEXP_REPLACE(s, 'a(b)', '\\\\1') AS regexp_replace FROM t"),
     ],
 )
 def test_pg_catalog_regexp_replace_is_the_bare_call(dialect: str, written: str) -> None:
@@ -279,3 +300,47 @@ def test_a_null_input_is_postgresqls_null_of_its_type_on_postgres(call: str, wri
     """REQ-2167: PostgreSQL holds interval, jsonb and xid8, so a strict input's NULL is of that
     type there, as PostgreSQL describes it; only an engine without the type answers text."""
     assert transpile(f"SELECT {call} AS v", "postgres") == f"SELECT CAST(NULL AS {written}) AS v"
+
+
+# --- a keyword as a column label after AS ------------------------------------------------------
+
+# Metabase 0.5x's table-privileges statement (bi_tools/metabase.yaml, id 10), as it sends it.
+_METABASE_PRIVILEGES = """with table_privileges as (
+ select
+   NULL as role,
+   t.schemaname as schema,
+   t.objectname as table,
+   pg_catalog.has_any_column_privilege(current_user, '"' || replace(t.schemaname, '"', '""') || '"' || '.' || '"' || replace(t.objectname, '"', '""') || '"',  'update') as update,
+   pg_catalog.has_any_column_privilege(current_user, '"' || replace(t.schemaname, '"', '""') || '"' || '.' || '"' || replace(t.objectname, '"', '""') || '"',  'select') as select,
+   pg_catalog.has_any_column_privilege(current_user, '"' || replace(t.schemaname, '"', '""') || '"' || '.' || '"' || replace(t.objectname, '"', '""') || '"',  'insert') as insert,
+   pg_catalog.has_table_privilege(     current_user, '"' || replace(t.schemaname, '"', '""') || '"' || '.' || '"' || replace(t.objectname, '"', '""') || '"',  'delete') as delete
+ from (
+   select schemaname, tablename as objectname from pg_catalog.pg_tables
+   union
+   select schemaname, viewname as objectname from pg_catalog.pg_views
+   union
+   select schemaname, matviewname as objectname from pg_catalog.pg_matviews
+ ) t
+ where t.schemaname !~ '^pg_'
+   and t.schemaname <> 'information_schema'
+   and pg_catalog.has_schema_privilege(current_user, t.schemaname, 'usage')
+)
+select t.*
+from table_privileges t"""
+
+
+def test_metabase_privileges_statement_reads_select_as_a_label() -> None:
+    written = sqlglot.parse_one(_METABASE_PRIVILEGES, read="postgres").sql("postgres")
+    assert 'AS "select"' in written
+    assert " AS select" not in written.lower()
+    assert sqlglot.parse_one(written, read="postgres").sql("postgres") == written
+
+
+@pytest.mark.parametrize("keyword", ["select", "not", "SELECT", "Not"])
+def test_any_keyword_after_as_is_a_quoted_label(keyword: str) -> None:
+    tree = sqlglot.parse_one(f"SELECT 1 AS {keyword}, 2 AS x", read="postgres")
+    assert tree.sql("postgres") == f'SELECT 1 AS "{keyword.lower()}", 2 AS x'
+
+
+def test_a_label_without_as_is_untouched() -> None:
+    assert sqlglot.parse_one("SELECT 1 x", read="postgres").sql("postgres") == "SELECT 1 AS x"

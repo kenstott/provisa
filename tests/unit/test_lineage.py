@@ -55,3 +55,13 @@ def test_find_cycle_detects_transitive_cycle():
 
 def test_self_reference_is_a_cycle():
     assert find_cycle({"mv.x": {"mv.x"}}) == ["mv.x", "mv.x"]
+
+
+def test_extract_inputs_ignores_function_call_tables():
+    # REQ-2226: a command's SQL reads a table via a function call: FROM read_whole('fx.vault') AS r.
+    # sqlglot parses the function as exp.Table(this=exp.Anonymous), not a real table reference.
+    # extract_inputs must not return 'read_whole' as an input.
+    sql = "SELECT r.status, r.body FROM read_whole('fx.vault') AS r"
+    result = extract_inputs(sql)
+    assert "read_whole" not in result, f"function call treated as table ref: {result}"
+    assert result == set()

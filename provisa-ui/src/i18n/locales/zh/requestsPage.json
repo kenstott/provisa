@@ -34,6 +34,11 @@
     "reasonGovernanceViolation": "违反治理规定",
     "reasonOutOfScope": "超出范围",
     "reasonEndpointUnreachable": "终结点不可达",
-    "reasonSchemaMismatch": "架构不匹配"
+    "reasonSchemaMismatch": "架构不匹配",
+    "delivery": "通知方式",
+    "deliveryHelp": "如何告知请求所指向角色的成员。电子邮件：Provisa 向每位成员发送通知。仅事件：Provisa 不发送通知；您的工作流工具订阅 ops.requests。两者：电子邮件和事件。",
+    "deliveryEmail": "电子邮件",
+    "deliveryEvents": "仅事件",
+    "deliveryBoth": "两者"
   }
 }

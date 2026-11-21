@@ -23,6 +23,7 @@ Provisa it is not there, and code that imports it is tested by mocking it.
     ps.http.get("https://api.example.com/rates").json()
     ps.llm.chat("provisa:sql_generation", [{"role": "user", "content": "..."}])
     ps.log("scored", level="info", accounts=12); ps.metric("scored", 12)
+    ps.audit("spark.run", application_id=app_id, ui=ui_url, rows=12)
 
 Each call is made to ``$PROVISA_SERVICES`` through the worker's egress proxy, naming the call it
 serves, so what it does is recorded against the request that called the code. A refusal is raised
@@ -60,13 +61,16 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Generic, TypeVar
 
 __all__ = [
     "Filter",
     "Order",
     "ReadContext",
+    "TableConnection",
+    "TableRef",
     "ServiceError",
+    "audit",
     "cache",
     "dq",
     "http",
@@ -162,6 +166,23 @@ def _reason(body: bytes) -> str:
 
 def _q(name: str) -> str:
     return urllib.parse.quote(name, safe="")
+
+
+#: REQ-2225: a script connector's setup values, given by the host's front end; memory only.
+_setup_values: dict[str, Any] = {}
+
+
+def _set_values(values: dict[str, Any]) -> None:
+    _setup_values.clear()
+    _setup_values.update(values)
+
+
+def setup_value(name: str) -> Any:
+    """REQ-2225: the setup value ``name`` of a connector that serves a script; KeyError naming it
+    when the host has not been given it."""
+    if name not in _setup_values:
+        raise KeyError(f"this host has no setup value {name!r}")
+    return _setup_values[name]
 
 
 class secrets:  # noqa: N801 -- a namespace, named as the service
@@ -352,6 +373,13 @@ def metric(name: str, value: float, kind: str = "counter", **attributes: Any) ->
     )
 
 
+def audit(event: str, /, **fields: Any) -> None:
+    """A structured event written to the org's trail, attached to the request this call serves:
+    ``event`` names it (lower-case letters, digits, ``_`` and ``.``), ``fields`` are JSON values,
+    at most 64 KB. A secret value does not belong in it, and is redacted if it is there."""
+    _json("audit", "POST", "audit", {"event": event, "fields": fields})
+
+
 # -- the read context (REQ-2100) ---------------------------------------------------------------
 
 
@@ -373,6 +401,35 @@ class Order:
     column: str
     descending: bool = False
     nulls_first: bool = False
+
+
+_Row = TypeVar("_Row")
+
+
+@dataclass(frozen=True)
+class TableConnection:
+    """REQ-2226: how a function reaches its table: a PostgreSQL connection, ``password`` a token
+    good for this call only. ``sslmode`` is the TLS the listener requires of it."""
+
+    host: str
+    port: int
+    user: str
+    password: str
+    database: str
+    sslmode: str
+
+
+@dataclass(frozen=True)
+class TableRef(Generic[_Row]):
+    """REQ-2226: a governed Provisa table given to a ``@command`` or ``@query``, ``TableRef[Row]``
+    with ``Row`` the input columns it declares. The function reads the table as the calling role,
+    so what the role cannot see it cannot read: run ``sql`` on a PostgreSQL connection made with
+    ``connection``."""
+
+    ref: str
+    columns: tuple[str, ...]
+    connection: TableConnection
+    sql: str
 
 
 @dataclass(frozen=True)

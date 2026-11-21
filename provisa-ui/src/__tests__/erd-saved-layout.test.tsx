@@ -25,6 +25,7 @@ import {
   type ErdPlaces,
 } from "../components/erd/erd-saved-layout";
 import { ErdLayoutMenu } from "../components/erd/ErdLayoutMenu";
+import { runUiActions } from "../mcp/uiActions";
 
 const listed = (id: number, tableName: string, domainId: string) =>
   ({ id, tableName, domainId, columns: [] }) as unknown as ListedTable;
@@ -168,6 +169,22 @@ describe("the Layout menu", () => {
     fireEvent.click(screen.getByTestId("erd-layout-menu"));
     fireEvent.click(await screen.findByTestId("erd-layout-save"));
     expect(props.onSave).toHaveBeenCalledWith("Sales overview");
+  });
+
+  // REQ-2115: Save writes at once, with no dialog of its own, so Polly asks the user first.
+  it("is saved by Polly only on the user's yes", async () => {
+    const props = menu("Sales overview", true);
+    const confirm = vi.fn().mockResolvedValueOnce(false).mockResolvedValueOnce(true);
+    const steps = { confirm, paceMs: 0, waitMs: 300 };
+    const save = [
+      { do: "press", target: { testId: "erd-layout-menu" } },
+      { do: "press", target: { testId: "erd-layout-save" } },
+    ] as const;
+    expect((await runUiActions(save, steps)).success).toBe(false);
+    expect(props.onSave).not.toHaveBeenCalled();
+    expect((await runUiActions(save.slice(1), steps)).success).toBe(true);
+    expect(props.onSave).toHaveBeenCalledWith("Sales overview");
+    expect(confirm).toHaveBeenCalledTimes(2);
   });
 
   it("offers Save only once the layout is edited, and shows no unsaved mark before", async () => {

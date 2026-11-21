@@ -1,0 +1,143 @@
+{
+  "entitlements": {
+    "kind": {
+      "domains": "ドメイン",
+      "tables": "テーブル",
+      "columns": "列",
+      "metrics": "メトリック",
+      "relationships": "リレーションシップ",
+      "commands": "コマンド",
+      "data_products": "データプロダクト",
+      "sources": "ソース",
+      "environments": "環境",
+      "roles": "ロール",
+      "regions": "リージョン"
+    },
+    "origin": {
+      "idp": "ID プロバイダー",
+      "provisa": "Provisa で設定",
+      "role": "ロールの既定値"
+    },
+    "finding": {
+      "unknown_identifier": "{{kind}} の {{identifier}} はモデル内の何も指していません。",
+      "unused_kind": "このロールは {{kind}} を使用しないため、そのリストは何も選択しません。"
+    },
+    "picker": {
+      "everything": "すべて (後から追加されるものを含む)",
+      "typedLabel": "エントリ",
+      "typedPlaceholder": "エントリを入力して Enter キーを押します",
+      "noObjects": "モデルにはまだこの種類のものがありません。",
+      "otherValues": "その他のエントリ",
+      "removeValue": "{{value}} を削除",
+      "domains": {
+        "label": "ドメイン",
+        "search": "ドメインを検索"
+      },
+      "tables": {
+        "label": "テーブル",
+        "search": "選択したドメインのテーブルを検索",
+        "searchAll": "すべてのテーブルを検索",
+        "chooseAbove": "選択したドメインにテーブルがありません"
+      },
+      "columns": {
+        "label": "列",
+        "search": "選択したテーブルの列を検索",
+        "chooseAbove": "テーブルを選択すると列が表示されます"
+      },
+      "noMatch": "一致するものがありません",
+      "more": "{{total}} 件中 {{shown}} 件を表示。入力して絞り込みます。",
+      "unknownValue": "モデルにこの項目はありません。削除するまで保持されます。"
+    },
+    "people": {
+      "placeholder": "名前またはメールで検索",
+      "typedEmail": "{{email}} (初回サインイン待ち)",
+      "typeMore": "2 文字以上入力してください",
+      "noneFound": "該当者がいません。完全なメールアドレスを入力すると、そのアドレスに付与できます。"
+    },
+    "form": {
+      "personLabel": "ユーザー",
+      "personHint": "まだサインインしていないユーザーにはメールで付与できます。",
+      "roleLabel": "ロール",
+      "rolePlaceholder": "ロールを選択",
+      "kindLabel": "種類",
+      "kindPlaceholder": "種類を選択",
+      "entriesLabel": "エントリ",
+      "entriesHelp": "ロールが許可する範囲のうち、この人が到達できるもの。配下で何も選択せずに選んだドメインやテーブルは、その全体が含まれます。空のリストはこの種類のものに何も到達しません。",
+      "endsOnLabel": "終了日",
+      "endsOnHint": "空のままにすると、終了されるまでリストを維持します。",
+      "reasonLabel": "理由",
+      "reasonHint": "変更と共に記録され、アクセスのレビューに使われます。",
+      "noRoles": "この人には、あなたが管理するロールがありません。"
+    },
+    "person": {
+      "help": "各ロール割り当てを通じてこのユーザーが到達できるもの (種類ごとのリスト)。ID プロバイダーのリストが優先され、そちらで変更します。",
+      "roleLabel": "ロール割り当て",
+      "rolePlaceholder": "ロールを選択",
+      "roleHint": "Provisa でリストが設定されたロールが先頭に表示されます。",
+      "roleWithLists": "{{role}} (リスト設定済み)",
+      "readOnly": "この割り当てのリストはすべて ID プロバイダーから提供されるため、そちらで変更します。ここでは読み取り専用です。",
+      "grantEnded": "この割り当て全体の終了日を過ぎています: 以下のいずれにも到達しません。",
+      "colKind": "種類",
+      "colEntries": "エントリ",
+      "colOrigin": "提供元",
+      "colEnds": "終了",
+      "noLists": "リストなし: この割り当てはロールが許可するすべてに到達します。",
+      "nothing": "なし",
+      "everything": "すべて",
+      "more": "他 {{count}} 件",
+      "endedHint": "終了日の経過により終了",
+      "superseded": "置き換え前: {{entries}}",
+      "supersededHint": "このリストが置き換えたリスト",
+      "setBy": "{{who}} が設定: {{reason}}",
+      "editList": "{{kind}} リストを編集",
+      "endList": "{{kind}} リストを終了",
+      "addList": "リストを追加",
+      "endPrompt": "{{kind}} リストを終了します。ロールの既定値が再び適用されます。",
+      "endButton": "リストを終了",
+      "noRoles": "この人には、あなたが管理するロールがありません。",
+      "roleNotHeld": "{{role}} (保持していません、リスト設定済み)"
+    },
+    "grants": {
+      "heading": "アクセス付与",
+      "help": "ロール内のアクセスを種類ごとにユーザーへ付与します。まだサインインしていないユーザーにはメールで付与し、初回サインイン時に適用されます。",
+      "grantButton": "アクセスを付与",
+      "saved": "ロール {{role}} のアクセスを保存しました。",
+      "savedPending": "保存しました。付与は {{email}} のサインインを待っています。",
+      "pendingHeading": "サインイン待ち",
+      "colEmail": "メール",
+      "colRole": "ロール",
+      "colKind": "種類",
+      "colEntries": "エントリ",
+      "colEnds": "終了",
+      "colReason": "理由",
+      "colActions": "操作",
+      "noPending": "待機中の付与はありません。",
+      "endPrompt": "ロール {{role}} での {{email}} の {{kind}} 付与を終了します。",
+      "endButton": "終了"
+    },
+    "roleHeld": "{{role}} · {{origins}}",
+    "roleOrigin": {
+      "provisa": "Provisa で割り当て",
+      "default_assignment": "既定の割り当て",
+      "idp": "ID プロバイダー"
+    },
+    "expiry": {
+      "heading": "終了日",
+      "none": "終了日なし: この割り当ては終了されるまで有効です。",
+      "colEndsOn": "終了日",
+      "colEnds": "終了するもの",
+      "colReason": "理由",
+      "wholeGrant": "割り当て全体",
+      "everyCapability": "すべての機能",
+      "capability": "{{capability}}",
+      "everywhere": "{{what}}（すべての範囲）",
+      "on": "{{what}}（{{entries}}）",
+      "passed": "期限切れ",
+      "noReason": "—",
+      "extend": "延長",
+      "extendPrompt": "{{kind}}リストの終了日を変更します。現在は{{date}}です。",
+      "newDateLabel": "新しい終了日",
+      "newDateHint": "リストのエントリは変更されません。"
+    }
+  }
+}

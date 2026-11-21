@@ -25,7 +25,7 @@
     "leaveOrg": "脱退",
     "leaveHelp": "脱退すると、その組織へのアクセスが失われます。あなたが唯一の組織管理者である場合は、先に他のメンバーを昇格させてください。",
     "patHeading": "個人用アクセストークン",
-    "patHelp": "個人用アクセストークンを使うと、ブラウザーを開けないツール (psql、Neo4j クライアント、Arrow Flight や gRPC のクライアント、MCP クライアント、スクリプトなど) からサインインできます。この組織においてあなた自身として動作します。",
+    "patHelp": "個人アクセストークンを使うと、psql、Neo4j クライアント、Arrow Flight や gRPC のクライアント、MCP クライアント、スクリプトなど、ブラウザーを開けないツールからサインインできます。この組織内で、あなたとして動作します。",
     "patName": "名前",
     "patExpiresInDays": "有効期限 (日)",
     "patIssue": "トークンを作成",
@@ -44,6 +44,9 @@
     "deleteAccountConfirmLabel": "確認のため {{userId}} と入力してください",
     "deleteAccountButton": "アカウントを削除",
     "patEnvironment": "環境",
-    "patEnvironmentHelp": "トークンは 1 つの環境でのみ機能します。発行時に表示していた環境です。新しいトークンは {{env}} で機能します。"
+    "patEnvironmentHelp": "トークンは 1 つの環境でのみ機能します。発行時に表示していた環境です。新しいトークンは {{env}} で機能します。",
+    "patRoles": "ロール",
+    "patRolesHelp": "トークンは、ここで選択したロールとしてのみ、かつそのロールを保持している間のみ動作します。",
+    "patRolesPlaceholder": "ロールを選択"
   }
 }

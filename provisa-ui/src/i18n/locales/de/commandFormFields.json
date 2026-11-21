@@ -29,7 +29,7 @@
     "query": "Abfrage",
     "domain": "Domäne",
     "selectDomain": "Domäne auswählen...",
-    "dataProduct": "Datenprodukt (optional)",
+    "dataProduct": "Datenprodukte",
     "dataProductPlaceholder": "Datenprodukt auswählen...",
     "description": "Beschreibung",
     "descriptionPlaceholder": "optional",
@@ -52,6 +52,8 @@
     "colVisibleTo": "Sichtbar für (Rollen, kommagetrennt; leer = alle)",
     "colVisibleToPlaceholder": "analyst, org_admin",
     "colMask": "Maske",
+    "exposedAsTable": "Auch als Tabelle",
+    "exposedAsTableHint": "Clients, die Tabellen lesen, etwa BI-Tools, lesen diese Funktion als Tabelle mit ihren Parametern als Spalten. Ausgeschaltet liefert sie die Zeilen der Liste der Quelle desselben Typs, und die Tabelle wird entfernt.",
     "requiresApproval": "Erfordert Genehmigung",
     "requiresApprovalHint": "Jeder Aufruf wird erst ausgeführt, wenn der Genehmigungs-Hook ihn genehmigt. Ohne konfigurierten Hook werden Aufrufe abgelehnt.",
     "writesTable": "Schreibt Tabelle",
@@ -68,6 +70,8 @@
     "bindingTemplate": "SQL-Ausdruck",
     "bindingTemplateHint": "Ein SQL-Ausdruck. Schreiben Sie jedes Argument als {{placeholder}}; er wird innerhalb der aufrufenden Abfrage ausgeführt.",
     "argDefault": "Standardwert des Arguments {{name}}",
-    "argDefaultPlaceholder": "Standardwert (leer lassen, wenn erforderlich)"
+    "argDefaultPlaceholder": "Standardwert (leer lassen, wenn erforderlich)",
+    "nativeSql": "Natives SQL",
+    "nativeSqlHint": "SQL im eigenen Dialekt der Quelle, eine Anweisung oder mehrere, in einer Transaktion auf der Quelle ausgeführt: Alle werden festgeschrieben oder keine. Schreiben Sie ein Argument als {{placeholder}}; jedes wird als Wert gebunden. Die Antwort sind die Zeilen der letzten Anweisung."
   }
 }

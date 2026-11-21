@@ -27,7 +27,7 @@
     "datasetLabel": "Jeu de données",
     "datasetHelp": "La table observée par le vérificateur, sous la forme « <source de données>/<schéma>/<table> ». Elle est résolue sur le catalogue gouverné, de la même façon que lors du scan.",
     "datasetTableLabel": "Table",
-    "argsHelp": "Chaque ligne est un contrôle. Modifiez ses arguments directement — le texte du contrat du vérificateur est sérialisé à partir de ces lignes.",
+    "argsHelp": "Chaque ligne est un contrôle. Modifiez ses arguments directement ; le texte du contrat du vérificateur est sérialisé à partir de ces lignes.",
     "invalidRow": "Les arguments de cette ligne n'ont pas pu être analysés ; la valeur précédente a été conservée."
   }
 }

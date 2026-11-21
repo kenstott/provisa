@@ -67,6 +67,16 @@ class _Embedder:
         return [[0.1, 0.2, 0.3] for _ in texts], 5 * len(texts)
 
 
+@pytest.fixture(autouse=True)
+def _revoke_issued():
+    """Each test revokes every grant it issued: the services' grants are the process's, and a
+    grant left behind is another test's."""
+    before = set(services._grants)
+    yield
+    for token in set(services._grants) - before:
+        services.revoke(token)
+
+
 @pytest.fixture
 def service(monkeypatch: pytest.MonkeyPatch) -> dict:
     """The org's config, its vendors and its meter, as the service reads them."""
@@ -171,7 +181,7 @@ def test_what_goes_out_is_redacted(service):
         "chat/completions",
         {"model": "provisa:sql_generation", "messages": [{"role": "user", "content": secret}]},
     )
-    assert service["sent"]["messages"] == [{"role": "user", "content": "[REDACTED:bearer_token]"}]
+    assert service["sent"]["messages"] == [{"role": "user", "content": "[REDACTED]"}]
 
 
 def test_streaming_is_refused_by_name(service):

@@ -39,6 +39,7 @@ under ``named_demos_dir()`` -- a source checkout's, for development, and the bun
 from __future__ import annotations
 
 import asyncio
+import contextvars
 import os
 import re
 import threading
@@ -226,12 +227,13 @@ async def profile_template(demo: "PublishedDemo", org_id: str) -> list[str]:
 
 def demo_scans(directory: Path) -> list[str]:
     """The documents demo ``directory``'s setup.yaml scans for terms (REQ-2201): each ``scan``
-    step's URL, in order; none when it has no setup.yaml."""
+    step's URL (the step's value, or its ``url``), in order; none when it has no setup.yaml."""
     path = directory / "setup.yaml"
     if not path.is_file():
         return []
     steps = (yaml.safe_load(path.read_text()) or {}).get("steps") or []
-    return [step["scan"] for step in steps if "scan" in step]
+    scans = [step["scan"] for step in steps if "scan" in step]
+    return [scan["url"] if isinstance(scan, dict) else scan for scan in scans]
 
 
 async def scan_template(demo: "PublishedDemo", org_id: str) -> list[str]:
@@ -423,15 +425,19 @@ async def write_declared_settings(model_db: Any, seed: Any) -> None:  # REQ-2006
     the configuration does not declare is cleared, as the rest of the template's model is rebuilt
     from its configuration (REQ-1919); a setting the configuration cannot declare is cleared too."""
     from provisa.core.env_classes import carries_setting
-    from provisa.core.org_settings import NAMING_ORG_KEYS, ORG_OVERRIDABLE_KEYS, write_org_overrides
+    from provisa.core.org_settings import (
+        ORG_BLOCK_FIELDS,
+        ORG_OVERRIDABLE_KEYS,
+        write_org_overrides,
+    )
 
     updates: dict[str, Any] = {}
     for key in sorted(k for k in ORG_OVERRIDABLE_KEYS if carries_setting(k)):
         declared = key in seed.model_fields_set
         value = getattr(seed, key) if declared else None
-        if key == "naming" and value is not None:
-            # Only the naming keys an org owns; the rest configure the process (org_settings).
-            value = {k: getattr(value, k) for k in value.model_fields_set & NAMING_ORG_KEYS}
+        if key in ORG_BLOCK_FIELDS and value is not None:
+            # Only the fields an org owns; the rest of the block is the platform's (org_settings).
+            value = {k: getattr(value, k) for k in value.model_fields_set & ORG_BLOCK_FIELDS[key]}
         elif isinstance(value, list):
             value = [v.model_dump() for v in value]
         elif value is not None:
@@ -687,7 +693,8 @@ async def ensure_demo_templates(pool) -> dict[str, str]:
 
     A bundled demo whose stores the node has not brought up is not built here: the node starts
     no demo's stores at boot, and a template is built from its stores. One served as built is
-    served so; any other is built ahead (:func:`build_ahead`), its stores asked of the node."""
+    served so; any other is built ahead (:func:`build_ahead`). Every demo's stores are asked of
+    the node there, at once, served as built or not."""
     outcome = {}
     for demo in published_demos().values():
         if demo.stores_ready:
@@ -736,21 +743,24 @@ def building_ahead() -> bool:
 
 
 async def build_ahead(pool) -> None:
-    """REQ-2006: build the template of every published demo that has none for the version served,
-    so no visitor waits on it: the node starts a demo's stores only when asked, and a template is
-    built from its stores, so left to a visitor's open each first open took a build. Its stores
-    are asked of the node one demo at a time and let go when its template is built: the node
-    cannot hold every demo's up at once (sandbox.demo_stores_linger). What it finds is the log's:
-    a demo that cannot be built is said by name, and does not keep the others."""
+    """REQ-2006: prepare every published demo at the tier's start, all at once, so no visitor waits
+    on it: the node starts a demo's stores only when asked, and a template is built from its
+    stores, so left to a visitor's open each first open after a wake waited for its demo's stores,
+    and took a build. Every demo's stores are asked of the node together -- a template served as
+    built included, whose stores are down after a wake as any other's -- and each template not
+    built for the version served is queued once its stores are up, the queue building
+    sandbox.template_builds_at_once at a time. A visitor's open during it waits on that same
+    preparation (follow_latest). Each demo's stores are let go when it is prepared, to linger
+    (sandbox.demo_stores_linger). What it finds is the log's: a demo that cannot be prepared is
+    said by name, and does not keep the others."""
+    ahead = []
     for demo in published_demos().values():
         if (demo.name, demo.directory.name) in _tried_ahead:
             continue
-        state = template_builds.state_of(demo.name)
-        if state == "ready" and await _templated(pool, demo.name) == demo.directory.name:
-            continue
-        if state in ("unknown", "ready"):
+        if template_builds.state_of(demo.name) in ("unknown", "ready"):
             _tried_ahead.add((demo.name, demo.directory.name))
-            await _build_one_ahead(pool, demo.name)
+            ahead.append(demo.name)
+    await asyncio.gather(*(_build_one_ahead(pool, name) for name in ahead))
 
 
 async def _build_one_ahead(pool, name: str) -> None:
@@ -977,17 +987,56 @@ class TemplateBuilds:
             self._starting = False
             self._workers += workers
 
+        tasks: set[asyncio.Task] = set()
+
+        def _start_worker() -> None:
+            tasks.add(asyncio.ensure_future(_work()))
+
         async def _work() -> None:
             while (waiting := self._next()) is not None:
                 demo, build = waiting
+                aside = False
+
+                def _step_aside() -> None:
+                    # This worker leaves the queue and a new one takes its place: the count
+                    # of workers (claim) is unchanged, and this one ends with its template.
+                    nonlocal aside
+                    if not aside:
+                        aside = True
+                        _start_worker()
+
+                token = _queue_place.set(_step_aside)
                 try:
                     ready = await prepare(demo, build)
                 except Exception:  # allow-ble: one template that cannot be built leaves the others to build; logged with its cause, and its demo is refused as not ready by name
                     log.exception("demo template %s could not be prepared", demo.name)
                     ready = False
+                finally:
+                    _queue_place.reset(token)
                 self._done(demo.name, "ready" if ready else "failed")
+                if aside:
+                    return
 
-        await asyncio.gather(*(_work() for _ in range(workers)))
+        for _ in range(workers):
+            _start_worker()
+        while tasks:
+            done, _pending = await asyncio.wait(set(tasks))
+            tasks.difference_update(done)
+            for task in done:
+                task.result()
+
+
+#: The place in the build queue of the template its worker is preparing (TemplateBuilds.run):
+#: :func:`step_aside` gives it up.
+_queue_place: contextvars.ContextVar[Callable[[], None]] = contextvars.ContextVar("queue_place")
+
+
+def step_aside() -> None:
+    """Give the template being prepared's place in the build queue to the next template, while it
+    only waits (a live landing, REQ-2049: about 35 minutes for the provisioning demo's Kafka
+    topics, which held every template behind it after a cloud patch). It keeps being prepared
+    beside the queue. Called only from a template's preparation, which the queue runs."""
+    _queue_place.get()()
 
 
 #: The tier's template builds (ensure_demo_templates); a visitor's open moves its demo forward.
@@ -1031,10 +1080,12 @@ async def record_ready(pool, demo: PublishedDemo) -> None:
 async def warm_ready(pool, demo: PublishedDemo) -> bool:
     """Whether ``demo``'s template can be served as it is, right after a start, with no build and
     no wait for its replicas: its org is ready, its readiness record is for this demo version and
-    this Provisa release, and its store on disk holds exactly the rows recorded."""
+    this Provisa release, its folder is on this node, and its store there holds exactly the rows
+    recorded."""
     from sqlalchemy import select
 
     from provisa.api.demo_replicas import store_counts
+    from provisa.core import org_files
     from provisa.core.schema_admin import demo_template_readiness, orgs
 
     async with pool.acquire() as conn:
@@ -1058,6 +1109,11 @@ async def warm_ready(pool, demo: PublishedDemo) -> bool:
         return False
     held = await asyncio.to_thread(store_counts, demo.template_org)
     if held != {"replicas": dict(record.replicas), "views": dict(record.views)}:
+        return False
+    if not org_files.folder(demo.template_org).is_dir():
+        # A node with a fresh disk under a shared control plane: the template's folder is not
+        # here, whatever its record holds -- an empty store's matches the none read here. Served
+        # as built, no runtime build here makes it ready, and an open reads it.
         return False
     # REQ-2052: and the profile runs its bundle carries, which every sandbox of it is cloned with.
     # A template served as built without them gave every sandbox an empty run history; one that
@@ -1416,6 +1472,8 @@ async def _prepare(demo: PublishedDemo, build: bool) -> bool:
     # its views count: a sandbox is opened holding what its template landed (carry_landed_data).
     said = None
     while live and (waiting := await live_landing_waits(org_id, template_seed(org_id), ends)):
+        # Waiting on a topic's landing builds nothing: the next template is built meanwhile.
+        step_aside()
         if waiting != said:
             said = waiting
             log.warning("demo template %s: waiting on its live landing: %s", demo.name, waiting)
@@ -1437,6 +1495,7 @@ async def _prepare(demo: PublishedDemo, build: bool) -> bool:
         reset_current_org(token)
     from provisa.api.demo_region_seed import (
         regional,
+        seeding_node_addresses,
         unanswered_regions,
         views_built_here,
         views_kept_here,
@@ -1459,12 +1518,14 @@ async def _prepare(demo: PublishedDemo, build: bool) -> bool:
             kept := views_kept_here(template_seed(org_id))
         ):
             waiting = await views_waiting_here(org_id, landed_at)
-            # A view may read a table another region keeps in place: that region's node answers
-            # at the address the deployment config declares for it, or the view never builds.
+            # A view may read a table another region keeps in place: that region's seeding node
+            # answers where the build says it listens, or the view never builds.
             from provisa.api.app import state
 
             down = dict(
-                await unanswered_regions({r.id: r.address for r in state.config.platform.regions})
+                await unanswered_regions(
+                    seeding_node_addresses([r.id for r in state.config.platform.regions])
+                )
             )
             dead, unanswered_since = silent_regions(down, unanswered_since, time.monotonic())
             if dead:

@@ -74,6 +74,7 @@ function table(
     tableName,
     alias: null,
     description: null,
+    registeredAt: "2026-11-01T00:00:00+00:00",
     cacheTtl: 60,
     roleTtl,
     pagingKind: null,
@@ -81,7 +82,8 @@ function table(
     pagingCeilingRows: null,
     replicate: null,
     region: null,
-    draft: false,
+    withdrawn: false,
+    sourceWithdrawn: false,
     rowMaterialize: false,
     loadProtected: null,
     offPeakWindow: null,
@@ -118,12 +120,14 @@ function table(
     mvPersist: "replace",
     mvPrimaryKey: [],
     mvIncremental: false,
+    mvRebuildEvery: null,
+    incrementalOption: { available: true, code: null, reason: null },
     mvCalendar: null,
     mvGrain: null,
     mvAllowedLateness: 0,
     mvExpectedEvents: null,
     mvBusinessDayGrain: false,
-    productId: null, // REQ-1634
+    productIds: [], // REQ-1634
     enableAggregates: false,
     enableGroupBy: false,
     canDeployToDb: false,
@@ -248,7 +252,7 @@ import { TablesPage } from "../TablesPage";
 async function openEditor(name: string) {
   render(<TablesPage />);
   const row = (await screen.findByText(name)).closest("tr") as HTMLElement;
-  await userEvent.click(row.querySelector("td") as HTMLElement);
+  await userEvent.click(row.querySelector("td:not(.list-select)") as HTMLElement);
   await userEvent.click(await screen.findByTestId("table-read-view-edit"));
   await userEvent.click(await screen.findByTestId("table-section-load"));
 }
@@ -350,7 +354,7 @@ describe("TablesPage — the writes a table takes", () => {
   async function openTable(name: string): Promise<void> {
     render(<TablesPage />);
     const row = (await screen.findByText(name)).closest("tr") as HTMLElement;
-    await userEvent.click(row.querySelector("td") as HTMLElement);
+    await userEvent.click(row.querySelector("td:not(.list-select)") as HTMLElement);
     await userEvent.click(await screen.findByTestId("table-section-query"));
   }
 
@@ -368,9 +372,9 @@ describe("TablesPage — the writes a table takes", () => {
     expect(writes).not.toHaveTextContent("UPDATE");
   });
 
-  it("shows the empty mark for a table whose source takes no writes", async () => {
+  it("says No writes for a table whose source takes no writes", async () => {
     await openTable("graph");
-    expect(await screen.findByTestId("table-read-view-writable")).toHaveTextContent("—");
+    expect(await screen.findByTestId("table-read-view-writable")).toHaveTextContent("No writes");
   });
 });
 
@@ -378,7 +382,7 @@ describe("TablesPage — a table that needs a required filter", () => {
   async function openTable(name: string): Promise<void> {
     render(<TablesPage />);
     const row = (await screen.findByText(name)).closest("tr") as HTMLElement;
-    await userEvent.click(row.querySelector("td") as HTMLElement);
+    await userEvent.click(row.querySelector("td:not(.list-select)") as HTMLElement);
   }
 
   // #204: both stay, and each asks for the required value before anything is read.
@@ -409,7 +413,7 @@ describe("TablesPage — Invalidate Cache is the panel's, not the list's", () =>
   async function openTable(name: string): Promise<void> {
     render(<TablesPage />);
     const row = (await screen.findByText(name)).closest("tr") as HTMLElement;
-    await userEvent.click(row.querySelector("td") as HTMLElement);
+    await userEvent.click(row.querySelector("td:not(.list-select)") as HTMLElement);
   }
 
   it("offers it as an action in the panel's head for a table whose source caches results", async () => {

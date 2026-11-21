@@ -192,14 +192,16 @@ Tests
 - `require_tier(org_id, Feature.METADATA_EXPORT)` at the publish entry point and at the
   config-write endpoint, both of them, so a non-premium org cannot stage a config that a later
   reconcile would honour.
-- Admin UI tab: provider selection, credential entry, `health()` check, last-publish
-  status and per-asset error list.
+- Admin UI: provider selection, credential entry, `health()` check, last-publish
+  status and per-asset error list. (REQ-2247: these are now on each entry of the Syncing page,
+  `provisa/api/admin/syncing_router.py`, which replaced the Catalogs panel and this tab.)
 
 Tests
-- `tests/unit/test_metadata_export_admin_surface.py`: the four endpoints driven directly,
-  which is what the planned admin e2e would have covered; premium publishes, non-premium is
-  refused at read, write, health and publish.
-- `provisa-ui/src/__tests__/MetadataExportTab.test.tsx` and `provisa-ui/e2e/metadata-export-admin.spec.ts`.
+- `tests/unit/test_syncing_admin_surface.py`: the Syncing endpoints driven directly;
+  premium publishes, non-premium is refused at Publish now, at turning an entry's Export on and
+  at changing the schedule.
+- `provisa-ui/src/__tests__/SyncingTab.test.tsx`, `provisa-ui/e2e/syncing-admin.spec.ts` and
+  `provisa-ui/e2e/syncing-publish.spec.ts`.
 - No `REQ-1073.feature`: REQ-1073 is a constraint, and the generator writes features only
   for behavioral requirements.
 

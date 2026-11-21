@@ -26,7 +26,7 @@ import pytest
 
 from provisa.api.errors import ApiError
 from provisa.pgwire._pipeline import _Plan, _run_plan_terminal
-from provisa.transpiler.metadata_settings import enter_client_role
+from provisa.transpiler.metadata_settings import WITHOUT_JIT, enter_client_role
 from provisa.transpiler.router import Route
 
 
@@ -37,6 +37,7 @@ class _ModelStore:
         self.ran: list[str] = []
         self.bound: list[tuple[tuple, bool]] = []
         self.entered: list[str] = []
+        self.prepared: list[bool] = []
 
     @asynccontextmanager
     async def acquire(self):
@@ -50,10 +51,11 @@ class _ModelStore:
             async def execute(self, sql):
                 store.entered.append(sql)
 
-            async def fetch_with_columns(self, sql, *args, bind_as_given=False):
+            async def fetch_with_columns(self, sql, *args, bind_as_given=False, prepared=True):
                 assert store.entered, "a client statement reached the store as the pool role"
                 store.ran.append(sql)
                 store.bound.append((args, bind_as_given))
+                store.prepared.append(prepared)
                 return ["n"], [(1,)]
 
         yield _Conn()
@@ -95,7 +97,17 @@ async def test_a_statement_that_is_told_nothing_still_runs_as_the_client_role():
     that is no catalog view has no settings and runs as the client role all the same."""
     store = _ModelStore()
     await _run_plan_terminal(_plan("provisa-admin", "SELECT 1 AS n"), _state(store))
-    assert store.entered == [enter_client_role()]
+    assert store.entered == [WITHOUT_JIT, enter_client_role()]
+
+
+async def test_a_client_statement_is_run_once_neither_prepared_nor_jit_compiled():
+    """A client's statement is its own text, its literals written into it: kept prepared on the
+    pooled connection, its plan (tens of megabytes for a catalog statement) stays in the server
+    backend; JIT compiled, a privilege function's call took minutes on the control plane."""
+    store = _ModelStore()
+    await _run_plan_terminal(_plan("provisa-admin", "SELECT 1 AS n"), _state(store))
+    assert store.prepared == [False]
+    assert WITHOUT_JIT in store.entered
 
 
 async def test_the_admin_source_receives_the_statements_bound_values():

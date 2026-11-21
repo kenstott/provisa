@@ -137,27 +137,35 @@ def test_sharepoint_missing_tenant_is_loud():
 # -- REQ-1693: certificate auth's three Calcite-adapter contracts --------------
 
 
-def test_sharepoint_certificate_auth_names_the_adapter_and_auth_type():
+def _pfx(directory) -> str:
+    """An existing certificate file under ``directory``: the model refuses a path absent on the
+    host its server runs on (REQ-1693)."""
+    path = directory / "cert.pfx"
+    path.write_bytes(b"")
+    return str(path)
+
+
+def test_sharepoint_certificate_auth_names_the_adapter_and_auth_type(tmp_path):
     """Without authType, SharePointAuthFactory.createAuth defaults to CLIENT_CREDENTIALS and dies
     on the absent secret — the operand must say CERTIFICATE, and the schema factory must be the
     adapter's own class name."""
     src = _sharepoint_source(
         password="",
-        mapping={"certificate_path": "/abs/cert.pfx", "certificate_password": ""},
+        mapping={"certificate_path": _pfx(tmp_path), "certificate_password": ""},
     )
     model = pr.build_model_json(src)
     operand = model["schemas"][0]["operand"]
     assert operand["authType"] == "CERTIFICATE"
-    assert operand["certificatePath"] == "/abs/cert.pfx"
+    assert operand["certificatePath"] == _pfx(tmp_path)
     assert operand["certificatePassword"] == ""
     assert "clientSecret" not in operand
     assert model["schemas"][0]["factory"] == pr._SCHEMA_FACTORY["sharepoint"]
 
 
-def test_sharepoint_certificate_password_is_preserved_when_non_empty():
+def test_sharepoint_certificate_password_is_preserved_when_non_empty(tmp_path):
     src = _sharepoint_source(
         password="",
-        mapping={"certificate_path": "/abs/cert.pfx", "certificate_password": "s3cret"},
+        mapping={"certificate_path": _pfx(tmp_path), "certificate_password": "s3cret"},
     )
     operand = pr.build_model_json(src)["schemas"][0]["operand"]
     assert operand["certificatePassword"] == "s3cret"
@@ -174,17 +182,31 @@ def test_sharepoint_certificate_relative_path_is_loud():
         pr.build_model_json(src)
 
 
-def test_sharepoint_certificate_missing_password_key_is_loud():
+def test_sharepoint_certificate_absent_on_this_host_is_loud(tmp_path):
+    """The model is for the server started on THIS host, so a certificate_path that resolves only
+    inside a container (the Trino lane's ``/certs/sharepoint.pfx``) is refused up front, naming
+    the path. Started anyway, the adapter died with FileNotFoundException and Provisa reported only
+    the log's last lines: "Error instantiating JsonCustomSchema" with no cause (REQ-1693)."""
+    absent = tmp_path / "absent.pfx"
+    src = _sharepoint_source(
+        password="",
+        mapping={"certificate_path": str(absent), "certificate_password": ""},
+    )
+    with pytest.raises(pr.MissingConnectorConfig, match=f"{absent}.*does not exist on this host"):
+        pr.build_model_json(src)
+
+
+def test_sharepoint_certificate_missing_password_key_is_loud(tmp_path):
     """CertificateAuth calls certificatePassword.toCharArray() and createCertificateAuth rejects a
     null password, so an absent mapping key is a config error, never silently defaulted to ""."""
-    src = _sharepoint_source(password="", mapping={"certificate_path": "/abs/cert.pfx"})
+    src = _sharepoint_source(password="", mapping={"certificate_path": _pfx(tmp_path)})
     with pytest.raises(pr.MissingConnectorConfig, match="certificate_password"):
         pr.build_model_json(src)
 
 
-def test_sharepoint_certificate_non_string_password_is_loud():
+def test_sharepoint_certificate_non_string_password_is_loud(tmp_path):
     src = _sharepoint_source(
-        password="", mapping={"certificate_path": "/abs/cert.pfx", "certificate_password": None}
+        password="", mapping={"certificate_path": _pfx(tmp_path), "certificate_password": None}
     )
     with pytest.raises(pr.MissingConnectorConfig, match="certificate_password"):
         pr.build_model_json(src)
@@ -619,6 +641,32 @@ def test_lifecycle_start_writes_model_and_spawns(tmp_path):
     # only --port and --calcite-child flags (REQ-955): no PGWIRE_PORT / --model
     assert "--model" not in cmd
     assert not any(f.startswith("PGWIRE_PORT") for f in cmd)
+
+
+def test_log_tail_names_innermost_java_cause_beyond_the_tail(tmp_path):
+    """A JVM failure's Caused-by chain is longer than the tail window: the error still names the
+    innermost cause, which is the last Caused-by line of the chain."""
+    server, _, _ = _server(tmp_path)
+    chain = ['Exception in thread "main" java.lang.RuntimeException: Error instantiating Schema']
+    for depth in range(30):
+        chain.append(f"\tat org.example.Frame{depth}.run(Frame.java:{depth})")
+    chain.append("Caused by: java.io.IOException: wrapper")
+    chain += [f"\tat org.example.Inner{d}.run(Inner.java:{d})" for d in range(30)]
+    chain.append("Caused by: java.security.cert.CertificateException: cannot read certificate")
+    chain += [f"\t... {d} more" for d in range(25)]
+    chain.append("Traceback (most recent call last):")
+    (tmp_path / pr.SERVER_LOG_NAME).write_text("\n".join(chain) + "\n")
+    tail = server.log_tail()
+    assert "Caused by: java.security.cert.CertificateException: cannot read certificate" in tail
+    assert "wrapper" not in tail
+    assert tail.endswith("\n".join(chain[-pr._LOG_TAIL_LINES :]))
+
+
+def test_log_tail_without_a_java_chain_is_only_the_tail(tmp_path):
+    server, _, _ = _server(tmp_path)
+    lines = [f"line {n}" for n in range(30)]
+    (tmp_path / pr.SERVER_LOG_NAME).write_text("\n".join(lines) + "\n")
+    assert server.log_tail() == "\n".join(lines[-pr._LOG_TAIL_LINES :])
 
 
 def test_lifecycle_health_and_stop(tmp_path):

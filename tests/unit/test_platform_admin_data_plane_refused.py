@@ -69,6 +69,9 @@ ROLES["settings_only"] = {
     "capabilities": ["platform_settings", "usage"],
     "domain_access": ["*"],
 }
+# REQ-2153: a built role carries its own domain access beside its reach (no domain tree here).
+for _role in ROLES.values():
+    _role["own_domain_access"] = list(_role["domain_access"])
 
 PLATFORM_ONLY = ["platform_admin"]
 BOOTSTRAP = ["platform_admin", "org_admin"]
@@ -214,10 +217,10 @@ async def test_platform_admin_alone_is_refused_the_admin_data_routes(monkeypatch
 def test_the_role_row_itself_authorizes_no_write():
     import pytest
 
-    from provisa.security.mutation_authz import CommandNotFound, MutationNotPermitted, admit_command
+    from provisa.security.mutation_authz import CommandNotFound, admit_command
 
     # Assigned a command in a domain it does not reach, the platform role finds no command; even
-    # where it is reached, being assigned grants no write.
+    # where it is reached, the role row holds no command_execution.
     with pytest.raises(CommandNotFound):
         admit_command(
             {"kind": "mutation", "visible_to": ["platform_admin"], "domain_id": "sales"},
@@ -225,12 +228,20 @@ def test_the_role_row_itself_authorizes_no_write():
             "refund",
         )
     reaching = {**ROLES["platform_admin"], "domain_access": ["*"]}
-    with pytest.raises(MutationNotPermitted, match="WRITE"):
+    # REQ-870: without command_execution it finds no command, reach or no reach.
+    with pytest.raises(CommandNotFound):
         admit_command(
             {"kind": "mutation", "visible_to": ["platform_admin"], "domain_id": "sales"},
             reaching,
             "refund",
         )
+    # Given command_execution, the assignment is the grant: that right, not the role row, admits it.
+    reaching["capabilities"] = [*reaching["capabilities"], "command_execution"]
+    admit_command(
+        {"kind": "mutation", "visible_to": ["platform_admin"], "domain_id": "sales"},
+        reaching,
+        "refund",
+    )
 
 
 def test_platform_admin_alone_keeps_the_platform_plane():
@@ -265,6 +276,7 @@ def test_platform_admin_adds_no_domain_scope_to_a_role_held_beside_it(monkeypatc
             "description": "Test role.",
             "capabilities": ["query_development", "create_view"],
             "domain_access": ["sales"],
+            "own_domain_access": ["sales"],  # REQ-2153: a built role carries it
         },
     }
     monkeypatch.setattr(appmod.state, "roles", roles, raising=False)
@@ -858,13 +870,22 @@ async def test_an_org_administrator_cannot_assign_a_role_carrying_a_platform_rig
 
 @pytest.fixture
 def org_runtime(monkeypatch):
-    """ensure_org_runtime answering with a tenant plane that holds the given role rows."""
+    """ensure_org_runtime answering with a tenant plane that holds the given role rows.
+
+    As the real one does (OrgRegistry.get_or_build), an org with no runtime gets one registered,
+    so work bound to the org afterwards (REQ-2219: an auto-join recomputing the member's effective
+    rows) reads it; no model is built in it (``names_table`` None). The deployment org's runtime is
+    already registered and stays. The registration is undone at teardown without retiring the
+    stand-in, which holds no engine to stop."""
 
     def _install(rows: list[dict]) -> Any:
         db = _Db(rows)
 
-        async def _ensure(_org_id):
-            return types.SimpleNamespace(model_db=db, tenant_db=db)
+        async def _ensure(org_id):
+            rt: Any = types.SimpleNamespace(model_db=db, tenant_db=db, names_table=None)
+            if appmod.state.org_registry.get(org_id) is None:
+                monkeypatch.setitem(appmod.state.org_registry._runtimes, org_id, rt)
+            return rt
 
         monkeypatch.setattr(appmod, "ensure_org_runtime", _ensure)
         return db

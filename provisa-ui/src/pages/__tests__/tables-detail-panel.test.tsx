@@ -33,7 +33,7 @@ vi.mock("../../context/AuthContext", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../context/AuthContext")>()),
   useAuth: () => ({
     role: "admin",
-    selectedRoles: ["admin"],
+    selectedRoles: [{ id: "admin", effectiveCapabilities: [], effectiveResidencyValues: [] }],
     // REQ-1944: the table editor's right -- without it the page is the governance-only view.
     capabilities: ["admin", "table_registration"],
     domainAccess: ["*"],
@@ -70,6 +70,7 @@ function table(
     tableName,
     alias: null,
     description: null,
+    registeredAt: "2026-11-01T00:00:00+00:00",
     cacheTtl: 60,
     roleTtl,
     pagingKind: null,
@@ -77,7 +78,8 @@ function table(
     pagingCeilingRows: null,
     replicate: null,
     region: null,
-    draft: false,
+    withdrawn: false,
+    sourceWithdrawn: false,
     rowMaterialize: false,
     loadProtected: null,
     offPeakWindow: null,
@@ -114,12 +116,14 @@ function table(
     mvPersist: "replace",
     mvPrimaryKey: [],
     mvIncremental: false,
+    mvRebuildEvery: null,
+    incrementalOption: { available: true, code: null, reason: null },
     mvCalendar: null,
     mvGrain: null,
     mvAllowedLateness: 0,
     mvExpectedEvents: null,
     mvBusinessDayGrain: false,
-    productId: null, // REQ-1634
+    productIds: [], // REQ-1634
     enableAggregates: false,
     enableGroupBy: false,
     canDeployToDb: false,
@@ -131,6 +135,7 @@ function table(
   };
 }
 
+const detailsAsked = vi.hoisted(() => [] as unknown[]);
 const TABLES = [
   table(7, "orders", [], {
     region: "eu",
@@ -145,7 +150,7 @@ const TABLES = [
       } as unknown as RegisteredTable["columns"][number],
     ],
   }),
-  table(8, "staging", [], { region: "eu", draft: true }),
+  table(8, "staging", [], { region: "eu", withdrawn: true }),
 ];
 const SOURCES = [
   {
@@ -178,10 +183,6 @@ const updateTableLoadProtection = vi.fn();
 const updateTableRoleTtl = vi.fn();
 
 const calls: string[] = [];
-const setTableDraft = vi.fn(async (id: number, draft: boolean) => {
-  calls.push(`draft ${id} ${draft}`);
-  return ok;
-});
 const setTableRegion = vi.fn(async (id: number, region: string | null) => {
   calls.push(`region ${id} ${region}`);
   return ok;
@@ -190,7 +191,6 @@ const setTableRegion = vi.fn(async (id: number, region: string | null) => {
 vi.mock("../../hooks/useRegionQueries", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../hooks/useRegionQueries")>()),
   useRegionChoices: () => ({ regions: ["eu", "us"], connected: "eu" }),
-  useSetTableDraft: () => setTableDraft,
   useSetTableRegion: () => setTableRegion,
 }));
 
@@ -203,7 +203,10 @@ vi.mock("../../hooks/useAdminOpsQueries", async (importOriginal) => ({
 vi.mock("../../hooks/useAdminQueries", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../hooks/useAdminQueries")>()),
   useTables: () => ({ tables: TABLES, loading: false, refetch: vi.fn() }),
-  useTableDetails: () => ({ tables: TABLES, loading: false, refetch: vi.fn() }),
+  useTableDetails: (opts?: unknown) => {
+    detailsAsked.push(opts);
+    return { tables: TABLES, loading: false, refetch: vi.fn() };
+  },
   useSources: () => ({ sources: SOURCES, loading: false, refetch: vi.fn() }),
   useDomains: () => ({ domains: DOMAINS, loading: false, refetch: vi.fn() }),
   useRoles: () => ({ roles: ROLES, loading: false, refetch: vi.fn() }),
@@ -229,9 +232,32 @@ async function select(name: string) {
   // The name is in the list and, once selected, in the panel's title: take the list's.
   const list = await screen.findByTestId("tables-list");
   const row = (await within(list).findByText(name)).closest("tr") as HTMLElement;
-  await userEvent.click(row.querySelector("td") as HTMLElement);
+  await userEvent.click(row.querySelector("td:not(.list-select)") as HTMLElement);
   return row;
 }
+
+// REQ-1921: the page lists the withdrawn tables, marked, so they can be put back.
+describe("TablesPage — withdrawn tables", () => {
+  beforeEach(() => localStorage.clear());
+
+  it("asks for the withdrawn tables, and marks only them Withdrawn", async () => {
+    render(<TablesPage />);
+    const list = await screen.findByTestId("tables-list");
+    expect(detailsAsked.at(-1)).toEqual({ includeWithdrawn: true });
+    expect(within(list).getByTestId("tables-withdrawn-staging")).toHaveTextContent("Withdrawn");
+    expect(within(list).queryByTestId("tables-withdrawn-orders")).toBeNull();
+  });
+
+  it("offers Put back on a withdrawn table's panel, and Withdraw on one in production", async () => {
+    render(<TablesPage />);
+    await select("staging");
+    const panel = await screen.findByTestId("tables-split-panel");
+    expect(within(panel).getByTestId("table-read-view-put-back")).toBeInTheDocument();
+    expect(within(panel).queryByTestId("table-read-view-withdraw")).toBeNull();
+    await select("orders");
+    expect(await within(panel).findByTestId("table-read-view-withdraw")).toBeInTheDocument();
+  });
+});
 
 describe("TablesPage — the detail panel", () => {
   beforeEach(() => localStorage.clear());
@@ -271,7 +297,7 @@ describe("TablesPage — the detail panel", () => {
     await select("orders");
     await userEvent.click(await screen.findByTestId("table-read-view-edit"));
     const panel = screen.getByTestId("tables-split-panel");
-    expect(await within(panel).findByTestId("table-draft-checkbox")).toBeInTheDocument();
+    expect(await within(panel).findByTestId("table-edit-save")).toBeInTheDocument();
   });
 
   it("closes from the panel’s own button, and from a second click on the row", async () => {
@@ -299,7 +325,7 @@ describe("TablesPage — the detail panel", () => {
     render(<TablesPage />);
     await select("orders");
     const head = (await screen.findByTestId("tables-split-title")).parentElement as HTMLElement;
-    for (const id of ["table-read-view-preview", "table-read-view-edit", "table-read-view-draft"]) {
+    for (const id of ["table-read-view-preview", "table-read-view-edit"]) {
       expect(await within(head).findByTestId(id)).toBeInTheDocument();
     }
   });
@@ -310,7 +336,7 @@ describe("TablesPage — the detail panel", () => {
     const head = screen.getByTestId("tables-split-title").parentElement as HTMLElement;
     expect(await within(head).findByTestId("table-read-view-preview")).toBeInTheDocument();
     await userEvent.click(await screen.findByTestId("table-read-view-edit"));
-    await screen.findByTestId("table-draft-checkbox");
+    await screen.findByTestId("table-edit-save");
     // The name, then Save and Cancel: nothing of the read view's actions is left to grey out.
     const save = await within(head).findByTestId("table-edit-save");
     const cancel = within(head).getByTestId("table-edit-cancel");
@@ -328,12 +354,14 @@ describe("TablesPage — the detail panel", () => {
     expect(within(head).queryByTestId("table-edit-save")).toBeNull();
   });
 
-  it("puts a create form's Continue and Cancel in the head too", async () => {
+  it("puts a create form's Register and Cancel in the head too", async () => {
     render(<TablesPage />);
     await userEvent.click(await screen.findByTestId("tables-add-toggle"));
     const head = (await screen.findByTestId("tables-split-title")).parentElement as HTMLElement;
-    // Choosing what is registered continues to its settings, where Save registers it (REQ-2109).
-    expect(await within(head).findByTestId("register-table-submit")).toHaveTextContent("Continue");
+    // The tables picked are registered from the head; with none picked there is nothing to register.
+    const register = await within(head).findByTestId("register-many-tables-submit");
+    expect(register).toHaveTextContent(/Register/);
+    expect(register).toBeDisabled();
     expect(within(head).getByTestId("register-table-cancel")).toHaveTextContent("Cancel");
     const body = screen.getByTestId("tables-split-panel").querySelector(".split-pane__body")!;
     expect(body.querySelector(".form-footer")).toBeNull();
@@ -343,7 +371,7 @@ describe("TablesPage — the detail panel", () => {
     render(<TablesPage />);
     await select("orders");
     await userEvent.click(await screen.findByTestId("table-read-view-edit"));
-    await screen.findByTestId("table-draft-checkbox");
+    await screen.findByTestId("table-edit-save");
     fireEvent.keyDown(screen.getByTestId("tables-split-panel"), { key: "Escape" });
     expect(screen.getByTestId("tables-split-panel")).toBeInTheDocument();
   });
@@ -366,5 +394,42 @@ describe("TablesPage — the detail panel", () => {
     expect(screen.queryByRole("dialog")).toBeNull();
     await userEvent.click(within(panel).getByTestId("table-preview-back"));
     expect(await within(panel).findByTestId("table-read-view-edit")).toBeInTheDocument();
+  });
+
+  describe("an action that shows something in the panel leaves the preview first", () => {
+    const openPreview = async () => {
+      render(<TablesPage />);
+      await select("orders");
+      await userEvent.click(await screen.findByTestId("table-read-view-preview"));
+      await screen.findByTestId("table-preview-modal");
+    };
+
+    it("Edit closes the preview and shows the edit form", async () => {
+      await openPreview();
+      await userEvent.click(screen.getByTestId("table-read-view-edit"));
+      await screen.findByTestId("table-edit-save");
+      expect(screen.queryByTestId("table-preview-modal")).toBeNull();
+    });
+
+    it("Profile closes the preview, the profile being read on Quality", async () => {
+      await openPreview();
+      await userEvent.click(screen.getByTestId("table-read-view-profile"));
+      await waitFor(() => expect(screen.queryByTestId("table-preview-modal")).toBeNull());
+    });
+
+    it("the eye closes the preview", async () => {
+      await openPreview();
+      await userEvent.click(screen.getByTestId("table-read-view-preview"));
+      await waitFor(() => expect(screen.queryByTestId("table-preview-modal")).toBeNull());
+      expect(screen.getByTestId("table-read-view-edit")).toBeInTheDocument();
+    });
+
+    it("selecting another row shows that table, and the first is not in preview when reselected", async () => {
+      await openPreview();
+      await select("staging");
+      expect(screen.queryByTestId("table-preview-modal")).toBeNull();
+      await select("orders");
+      expect(screen.queryByTestId("table-preview-modal")).toBeNull();
+    });
   });
 });

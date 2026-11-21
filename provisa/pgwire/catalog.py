@@ -337,6 +337,7 @@ def classify(sql: str) -> str:  # REQ-127, REQ-128, REQ-363
                 "SessionUser",
                 "CurrentDatabase",
                 "CurrentSchema",
+                "CurrentCatalog",
             ):
                 return "INTERCEPT"
     except Exception:
@@ -441,36 +442,49 @@ def _set_config_value(sql: str, settings: Mapping[str, str]) -> str | None:
 
 
 def _handle_current_setting(sql: str, settings: Mapping[str, str]):
-    """Answer SELECT current_setting(...) [+ set_config(...)] without DuckDB."""
+    """Answer a statement that is only SELECT current_setting('x') [AS a] [, set_config(...) [AS b]]
+    without DuckDB. Any other statement that mentions current_setting is None: the catalog read
+    answers it with the rest of the statement intact (REQ-2167, REQ-2204)."""
+    import sqlglot
+    import sqlglot.errors
+    import sqlglot.expressions as exp
     from provisa.executor.result import QueryResult
 
-    lower = sql.lower()
-    if "current_setting" not in lower:
+    if "current_setting" not in sql.lower():
+        return None
+    try:
+        tree = sqlglot.parse_one(sql, read="postgres")
+    except sqlglot.errors.SqlglotError:
+        return None
+    if not isinstance(tree, exp.Select) or any(
+        tree.args.get(k) for k in tree.args if k not in ("expressions", "kind")
+    ):
         return None
 
-    # Multi-expression startup query: SELECT current_setting('x') AS a, set_config(...) AS b
-    # Detect alias names from the SQL so we return the right column names for asyncpg.
-    if "set_config" in lower:
-        m1 = re.search(
-            r"current_setting\s*\(\s*['\"]([^'\"]+)['\"]\s*\)(?:\s+AS\s+(\w+))?",
-            sql,
-            re.IGNORECASE,
-        )
-        m2 = re.search(r"set_config\s*\([^)]+\)(?:\s+AS\s+(\w+))?", sql, re.IGNORECASE)
-        col1 = (m1.group(2) or "current_setting") if m1 else "current_setting"
-        col2 = (m2.group(1) or "set_config") if m2 else "set_config"
-        key = m1.group(1).lower() if m1 else ""
-        val1 = settings.get(key, "")
-        return QueryResult(
-            rows=[(val1, _set_config_value(sql, settings))], column_names=[col1, col2]
-        )
+    names: list[str] = []
+    values: list[str | None] = []
+    for projection in tree.expressions:
+        alias = projection.alias if isinstance(projection, exp.Alias) else ""
+        call = projection.this if isinstance(projection, exp.Alias) else projection
+        if not isinstance(call, exp.Anonymous):
+            return None
+        fn = call.name.lower()
+        args = call.expressions
+        if fn == "current_setting" and len(args) == 1 and _is_string_literal(args[0]):
+            names.append(alias or "current_setting")
+            values.append(settings.get(args[0].name.lower(), ""))
+        elif fn == "set_config" and names:  # only after a current_setting
+            names.append(alias or "set_config")
+            values.append(_set_config_value(call.sql(dialect="postgres"), settings))
+        else:
+            return None
+    return QueryResult(rows=[tuple(values)], column_names=names)
 
-    m = re.search(r"current_setting\s*\(\s*['\"]([^'\"]+)['\"]\s*\)", sql, re.IGNORECASE)
-    if not m:
-        return None
-    key = m.group(1).lower()
-    value = settings.get(key, "")
-    return QueryResult(rows=[(value,)], column_names=["current_setting"])
+
+def _is_string_literal(node) -> bool:
+    import sqlglot.expressions as exp
+
+    return isinstance(node, exp.Literal) and node.is_string
 
 
 #: An object identifier value a statement reads with its name, its oid and name held together.
@@ -578,6 +592,10 @@ class CatalogSession:
     client_settings: dict[str, str] | None = None
     #: The cursors pg_cursors lists of the connection: its DECLAREd ones and the open portal.
     cursors: tuple[dict, ...] = ()
+    #: The client's end of the connection, (host, port), which pg_stat_activity lists.
+    client_end: tuple = ()
+    #: The statements the connection has run, this one with them: pg_stat_database's xact_commit.
+    queries: int = 0
 
 
 def _session_settings(sql: str, session: CatalogSession | None) -> Mapping[str, str]:
@@ -656,6 +674,8 @@ def _catalog_request(
             "pid": str(session.pid),
             "application_name": session.application_name,
             "backend_start": session.backend_start.isoformat() if session.backend_start else "",
+            "queries": str(session.queries),
+            **_client_end_told(session.client_end),
             **({"system_user": session.system_user} if session.system_user else {}),
             **({"time_zone": session.time_zone} if session.time_zone else {}),
         }
@@ -674,10 +694,31 @@ def _catalog_request(
             **({"locks": _advisory_locks(session)} if "pg_locks" in sql.lower() else {}),
             **({"enums": _enums_told(enums)} if enums else {}),
             **({"cursors": _cursors_told(session)} if "pg_cursor" in sql.lower() else {}),
+            **(
+                {"row_estimates": _row_estimates_told(row_counts(role_id, state))}
+                if "pg_stat_user_tables" in sql.lower()
+                else {}
+            ),
         },
         enums=enums,
         reltuples=row_counts(role_id, state) if "reltuples" in sql.lower() else {},
     )
+
+
+def _client_end_told(end: tuple) -> dict[str, str]:
+    """The client's address and port, as pg_stat_activity's view reads them: none where the
+    connection's client end is not known."""
+    if len(end) < 2:
+        return {}
+    return {"client_addr": str(end[0]), "client_port": str(end[1])}
+
+
+def _row_estimates_told(counts: Mapping[int, float]) -> str:
+    """The role's row estimates by relation oid, as pg_stat_user_tables' view reads them (JSON):
+    a table with none is not in it."""
+    import json
+
+    return json.dumps({str(oid): round(rows) for oid, rows in counts.items()})
 
 
 def _cursors_told(session: CatalogSession | None) -> str:

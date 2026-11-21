@@ -75,7 +75,7 @@ def metadata_export(target: MetadataExportTarget) -> MetadataExport:
         provider = _PROVIDERS[target.provider]
     except KeyError:
         raise MetadataExportNotConfiguredError(
-            f"Unknown metadata export provider {target.provider!r} for target {target.id!r} "
-            f"(metadata_export.targets); expected one of: {', '.join(registered_providers())}"
+            f"Unknown metadata export provider {target.provider!r} for entry {target.id!r} "
+            f"(catalogs); expected one of: {', '.join(registered_providers())}"
         ) from None
     return provider(target)

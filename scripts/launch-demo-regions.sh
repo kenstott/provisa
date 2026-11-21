@@ -133,7 +133,6 @@ PG_URL="postgresql+psycopg://provisa:$PGPW@/provisa?host=$PGHOST&port=$PGPORT"
 # --- render the config template for this launch ---
 # Rendered in Python, not sed: the pg URL carries & ? = / which sed's replacement treats specially
 # (& inserts the matched token), and that mangled a store URL.
-EU_ADDRESS="http://127.0.0.1:$EU_UI" US_ADDRESS="http://127.0.0.1:$US_UI" \
 EU_ENGINE_URL="duckdb:///$INSTANCE_DIR/eu/engine.duckdb" \
 US_ENGINE_URL="duckdb:///$INSTANCE_DIR/us/engine.duckdb" \
 PG_URL="$PG_URL" REDIS_URL="$REDIS_URL" DATA_CSV_DIR="$CSV_DIR" JWT_SECRET="$JWT_SECRET" \
@@ -141,7 +140,7 @@ PG_URL="$PG_URL" REDIS_URL="$REDIS_URL" DATA_CSV_DIR="$CSV_DIR" JWT_SECRET="$JWT
 import os, sys
 src, out = sys.argv[1], sys.argv[2]
 text = open(src).read()
-for tok in ("EU_ADDRESS","US_ADDRESS","EU_ENGINE_URL","US_ENGINE_URL","PG_URL","REDIS_URL","DATA_CSV_DIR","JWT_SECRET"):
+for tok in ("EU_ENGINE_URL","US_ENGINE_URL","PG_URL","REDIS_URL","DATA_CSV_DIR","JWT_SECRET"):
     text = text.replace(f"@@{tok}@@", os.environ[tok])
 open(out, "w").write(text)
 PY

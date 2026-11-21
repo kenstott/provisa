@@ -35,6 +35,7 @@ from provisa.cache.middleware import build_cache_headers
 from provisa.api.errors import ApiError
 from provisa.core.read_refusal import ReadRefused
 from provisa.compiler.complexity import ComplexityLimitExceeded
+from provisa.api.engine_error_names import client_value
 
 log = logging.getLogger(__name__)
 
@@ -264,7 +265,11 @@ def _refused(refused: ReadRefused | ApiError) -> JSONResponse:
 def _error_response(message: str, code: str, status: int = 400) -> JSONResponse:
     return JSONResponse(
         status_code=status,
-        content={"errors": [{"message": message, "code": f"Neo.ClientError.Statement.{code}"}]},
+        content={
+            "errors": [
+                {"message": client_value(message), "code": f"Neo.ClientError.Statement.{code}"}
+            ]
+        },
     )
 
 

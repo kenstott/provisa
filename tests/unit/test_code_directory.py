@@ -9,7 +9,7 @@
 # permission from the copyright holder.
 
 """A code source read from a directory on the server (REQ-2121): only under the operator's
-allowed directories and never on a server of many organizations; copied without what the
+allowed directories and, for a held organization, inside its own folder (REQ-1997); copied without what the
 developer's tools make; read as it is now, so an edit is read by the next query; never pinned."""
 
 # Requirements: REQ-2121
@@ -23,6 +23,8 @@ import pytest
 from provisa.codesource import install
 from provisa.codesource import source as code_source
 from provisa.codesource.bundle import BundleRefused
+from provisa.codesource.manifest import Manifest
+from provisa.python import prepare as python_prepare
 
 pytestmark = pytest.mark.unit
 
@@ -66,10 +68,20 @@ def test_a_directory_it_may_not_read_is_refused_by_name(roots, tmp_path, where, 
     assert refused.value.code == code
 
 
-def test_a_server_of_many_organizations_runs_no_code_from_its_own_disk(roots, monkeypatch):
+def test_a_held_org_on_a_server_of_many_runs_no_code_from_its_own_disk(roots, monkeypatch):
+    """REQ-1997: an org that is not the deployment's own on a server of many is held: a code
+    directory outside its folder is refused whatever the operator's directories allow."""
+    from provisa.core.request_context import reset_current_org, set_current_org
+    from provisa.security import sandbox_egress
+
     monkeypatch.setattr("provisa.core.secrets_providers.many_organisations", lambda: True)
-    with pytest.raises(BundleRefused) as refused:
-        code_source.config_of("python", _mapping(roots / "rates"))
+    monkeypatch.setattr(sandbox_egress, "_deployment_org", lambda: "default")
+    token = set_current_org("acme")
+    try:
+        with pytest.raises(BundleRefused) as refused:
+            code_source.config_of("python", _mapping(roots / "rates"))
+    finally:
+        reset_current_org(token)
     assert refused.value.code == "codesource.directory_refused"
 
 
@@ -95,9 +107,9 @@ async def test_an_edit_in_the_directory_is_read_by_the_next_query(roots, monkeyp
 
         found = content_hash(roots / "rates", install.DIRECTORY_SKIPPED)
         built.append(found)
-        return SimpleNamespace(content_hash=found)
+        return SimpleNamespace(content_hash=found, manifest=Manifest(exports=(), types={}))
 
-    monkeypatch.setattr(code_source, "_prepare_python", _build)
+    monkeypatch.setattr(python_prepare, "prepare", _build)
     monkeypatch.setattr(code_source, "_prepared", {})
     ctx = SimpleNamespace(org_id="acme", admin_db=None)
     mapping = _mapping(roots / "rates")

@@ -109,14 +109,47 @@ fn push_ymd(days: i64, out: &mut Vec<u8>) {
     push2(out, d);
 }
 
-/// _date_text of days since 1970-01-01, or the ±infinity `inf` marks.
+/// PostgreSQL's dates as days since 1970-01-01: Julian day 0 (4714-11-24 BC) to 5874897-12-31
+/// (DATE_END_JULIAN 2147483494, exclusive). An engine's date32 holds every one of them.
+const PG_MIN_DAY: i64 = -2_440_588;
+const PG_END_DAY: i64 = 2_147_483_494 - 2_440_588;
+
+/// A date PostgreSQL holds; date_in's 22008 "date out of range" for any other.
+pub fn check_pg_date(days: i64) -> R<()> {
+    if !(PG_MIN_DAY..PG_END_DAY).contains(&days) {
+        return Err(EncErr::Value("date out of range".into()));
+    }
+    Ok(())
+}
+
+/// date_out of days since 1970-01-01 in DateStyle ISO (REQ-2236): a year past 9999 in all its
+/// digits, a year BC as its number before year 1, four digits at least, then " BC".
+fn push_pg_date(days: i64, out: &mut Vec<u8>) {
+    let (y, m, d) = civil(days);
+    let bc = y <= 0;
+    let year = if bc { 1 - y } else { y };
+    let mut b = itoa::Buffer::new();
+    let digits = b.format(year).as_bytes();
+    out.extend(std::iter::repeat(b'0').take(4usize.saturating_sub(digits.len())));
+    out.extend_from_slice(digits);
+    out.push(b'-');
+    push2(out, m);
+    out.push(b'-');
+    push2(out, d);
+    if bc {
+        out.extend_from_slice(b" BC");
+    }
+}
+
+/// A date column's text of days since 1970-01-01, or the ±infinity `inf` marks: every date
+/// PostgreSQL holds, as date_out writes it.
 pub fn date_text(days: i64, inf: i32, out: &mut Vec<u8>) -> R<()> {
     match inf {
         1 => out.extend_from_slice(b"infinity"),
         -1 => out.extend_from_slice(b"-infinity"),
         _ => {
-            check_date(days)?;
-            push_ymd(days, out);
+            check_pg_date(days)?;
+            push_pg_date(days, out);
         }
     }
     Ok(())

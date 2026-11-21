@@ -820,8 +820,13 @@ class EngineRuntime:  # REQ-825, REQ-840
         (wake-on-traffic). No-op for in-process engines."""
         self._backend.bind_terminal(self._state)
 
+    def open(self) -> None:
+        """Lifecycle: a lifespan starts serving on this engine (``EngineBackend.open``)."""
+        self._backend.open(self._state)
+
     def close(self) -> None:
-        """Lifecycle: tear down the engine terminal (no-op for native)."""
+        """Lifecycle: tear down the engine terminal; a native engine closes its runtime and
+        refuses work until it is opened again (``NativeEngineBackend.close``)."""
         self._backend.close(self._state)
 
     def register_kafka_catalog(self, kafka_source: dict, catalog: str) -> None:

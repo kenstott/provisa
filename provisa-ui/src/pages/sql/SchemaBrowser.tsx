@@ -98,6 +98,11 @@ function ModelingTableRow({
   );
 }
 
+// Schemas and the tables under each list alphabetically, case-insensitive, by the displayed name.
+// Display-only: the server order is untouched, and columns keep their declared order.
+const byDisplayName = (a: string, b: string) =>
+  a.localeCompare(b, undefined, { sensitivity: "base" });
+
 export function SchemaBrowser({
   sidebarOpen,
   setSidebarOpen,
@@ -117,6 +122,18 @@ export function SchemaBrowser({
   const { t } = useTranslation();
   // REQ-1322: role-aware top-level groups (Metrics / Facts / Dimensions).
   const { facts, dimensions } = useMemo(() => groupModelingTables(tables), [tables]);
+  const sortedDomainGroups = useMemo(
+    () =>
+      Object.entries(domainGroups)
+        .sort(([a], [b]) => byDisplayName(a, b))
+        .map(([domain, domainTables]): [string, ListedTable[]] => [
+          domain,
+          [...domainTables].sort((a, b) =>
+            byDisplayName(a.alias || a.tableName, b.alias || b.tableName),
+          ),
+        ]),
+    [domainGroups],
+  );
   const [openGroups, setOpenGroups] = useState<Set<string>>(new Set(["metrics"]));
   const toggleGroup = (g: string) =>
     setOpenGroups((prev) => {
@@ -335,7 +352,7 @@ export function SchemaBrowser({
             >
               {t("schemaBrowser.heading")}
             </Text>
-            {Object.entries(domainGroups).map(([domain, domainTables]) => {
+            {sortedDomainGroups.map(([domain, domainTables]) => {
               const domainOpen = expandedDomains.has(domain);
               return (
                 <div key={domain}>

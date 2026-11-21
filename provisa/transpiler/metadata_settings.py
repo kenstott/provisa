@@ -35,14 +35,19 @@ NAMES = (
     "pid",
     "application_name",
     "backend_start",
+    "client_addr",
+    "client_port",
+    "queries",
     "system_user",
     "time_zone",
     "query",
     "locks",
     "enums",
     "cursors",
+    "row_estimates",
     "scope",
     "asked",
+    "masked",
 )
 _PREFIX = "provisa.catalog"
 _WRITES_SETTINGS = re.compile(r"\bset_config\b", re.IGNORECASE)
@@ -60,26 +65,52 @@ def enter_client_role() -> str:
     return f"SET LOCAL ROLE {CLIENT_ROLE}"
 
 
-def setting(name: str) -> str:
-    """SQL reading setting ``name``: NULL or empty on a statement that was not given it."""
+#: A client statement on the control plane is not compiled to machine code. Its plan inlines the
+#: catalog views a form reads, once for each place the form names an argument: thousands of
+#: expressions, which PostgreSQL's JIT (on in the control-plane image, off in pgserver's) compiles
+#: anew for every statement, and slower than it runs them -- minutes for one privilege function's
+#: call, and memory its backend keeps.
+WITHOUT_JIT = "SET LOCAL jit = off"
+
+
+def setting_expr(name: str) -> exp.Expression:  # REQ-913
+    """Reading setting ``name``: NULL or empty on a statement that was not given it."""
     assert name in NAMES, name
-    return f"NULLIF(CURRENT_SETTING('{_PREFIX}.{name}', TRUE), '')"
+    told = exp.Anonymous(
+        this="CURRENT_SETTING",
+        expressions=[exp.Literal.string(f"{_PREFIX}.{name}"), exp.true()],
+    )
+    return exp.Nullif(this=told, expression=exp.Literal.string(""))
 
 
-def scope_ids_sql() -> str:
+def setting(name: str) -> str:
+    """:func:`setting_expr` as SQL, for a catalog view's or function's definition."""
+    return setting_expr(name).sql(dialect="postgres")
+
+
+def scope_ids() -> exp.Select:  # REQ-913
     """The table ids a role's meta rows are scoped to, told once by the statement's settings: a
     list written into the statement would be parsed, governed and planned for each view it
     reads. A statement that was not told them reads none."""
-    return f"SELECT UNNEST(CAST({setting('scope')} AS INTEGER[]))"
+    ids = exp.cast(setting_expr("scope"), exp.DataType.build("INT[]", dialect="postgres"))
+    return exp.select(exp.Explode(this=ids))
 
 
-def asked_sql(*names: str) -> str:
-    """Whether a row with any of ``names`` (SQL) is one the statement asks about: the relation
-    names a statement's pin tells its views (provisa.pgwire.catalog_pin), all of them where none
-    was told."""
-    asked = f"CAST({setting('asked')} AS TEXT[])"
-    matches = " OR ".join(f"{name} = ANY({asked})" for name in names)
-    return f"({setting('asked')} IS NULL OR {matches})"
+def asked(*names: exp.Expression) -> exp.Expression:  # REQ-913
+    """Whether a row with any of ``names`` is one the statement asks about: the relation names a
+    statement's pin tells its views (provisa.pgwire.catalog_pin), all of them where none was
+    told."""
+    told = exp.cast(setting_expr("asked"), exp.DataType.build("TEXT[]", dialect="postgres"))
+    test: exp.Expression = exp.Is(this=setting_expr("asked"), expression=exp.Null())
+    for name in names:
+        match = exp.EQ(this=name.copy(), expression=exp.Any(this=exp.paren(told.copy())))
+        test = exp.Or(this=test, expression=match)
+    return exp.paren(test)
+
+
+def asked_sql(*names: exp.Expression) -> str:
+    """:func:`asked` as SQL, for a catalog view's definition."""
+    return asked(*names).sql(dialect="postgres")
 
 
 def relation_names_literal(names: Iterable[str]) -> str:
@@ -97,18 +128,31 @@ def set_statement(values: Mapping[str, str]) -> tuple[str, tuple[str, ...]]:
     return f"SELECT {calls}", tuple(values[n] for n in names)
 
 
+def masked_column_key(table_id: str, column: str) -> str:
+    """How :func:`masked_columns_literal` names a column, as SQL over a table id and a column name
+    (each an SQL expression): what a catalog view compares to the ``masked`` setting."""
+    return f"CAST({table_id} AS TEXT) || '.' || {column}"
+
+
+def masked_columns_literal(masked: Iterable[tuple[int, str]]) -> str:
+    """``masked`` -- (table id, column) -- as the text array the ``masked`` setting holds."""
+    return relation_names_literal(f"{table_id}.{column}" for table_id, column in masked)
+
+
 def statement_settings(
     role_id: str,
     can_write: bool,
     database: str,
     domain_prefix: bool,
     *,
+    masked: Iterable[tuple[int, str]],
     session: Mapping[str, str] | None = None,
     scope: str | None = None,
 ) -> dict[str, str]:
     """What a statement's catalog views are told: who asks, what database it is on, the naming in
-    force, where a connection asks, that connection (pid, application_name, backend_start,
-    query), and where the role's meta rows are scoped, to which tables."""
+    force, the columns the role reads under a mask (``masked``: table id, column; each listed
+    nullable, REQ-2131), where a connection asks, that connection (pid, application_name,
+    backend_start, query), and where the role's meta rows are scoped, to which tables."""
     from provisa.compiler.naming import active_gql_convention, active_sql_form
 
     return {
@@ -118,6 +162,7 @@ def statement_settings(
         "sql_convention": active_sql_form(),
         "gql_convention": active_gql_convention(),
         "domain_prefix": "true" if domain_prefix else "false",
+        "masked": masked_columns_literal(masked),
         **(session or {}),
         **({"scope": scope} if scope is not None else {}),
     }

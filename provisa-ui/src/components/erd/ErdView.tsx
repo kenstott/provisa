@@ -41,6 +41,7 @@ import {
   type ErdPlaces,
 } from "./erd-saved-layout";
 import { useErdView } from "./useErdView";
+import { useShowWithdrawn } from "./useShowWithdrawn";
 
 /** Names the focus, says what of it does not exist, and clears it. */
 function ErdFocusBar({ resolved, onClear }: { resolved: ResolvedErdFocus; onClear: () => void }) {
@@ -88,12 +89,13 @@ export function ErdView({
   // A click leaves the form open in the panel, as a list row's does.
   const guard = useLeaveGuard();
   const { focus, setFocus, collapsed, layout, setLayout, takeFocus } = useErdView();
-  // Polly's read_screen reads the collapsed domains from here: they are the panel's own state.
   const [collapsedDomains, setCollapsedDomains] = useState<string[] | "all">([]);
-  useScreenInputs(`/${page}`, { collapsed: collapsedDomains });
   const { checkedDomains, domains: filterDomains } = useDomainFilter();
-  const { tables, loading: tablesLoading } = useTables();
-  const { relationships, loading: relationshipsLoading } = useAllRelationships();
+  const withdrawn = useShowWithdrawn();
+  const { tables, loading: tablesLoading } = useTables({ includeWithdrawn: withdrawn.include });
+  const { relationships, loading: relationshipsLoading } = useAllRelationships({
+    includeWithdrawn: withdrawn.include,
+  });
   const { domains, loading: domainsLoading } = useDomains();
   const resolved = useMemo(
     () =>
@@ -141,12 +143,19 @@ export function ErdView({
   useEffect(() => {
     latest.current = { tables, takeFocus };
   });
+  // Only while the link names that layout: a Save as sets the saved layout before the link follows,
+  // and a write made then would carry the old name back into the link.
   useEffect(() => {
-    if (focused !== null) latest.current.takeFocus(layoutFocus(focused, latest.current.tables));
-  }, [focused]);
+    if (focused !== null && focused.name === layout) {
+      latest.current.takeFocus(layoutFocus(focused, latest.current.tables));
+    }
+  }, [focused, layout]);
   const unsaved =
     edited ||
     (shown !== null && shown === focused && !sameFocus(focus, layoutFocus(shown, tables)));
+  // Polly's read_screen reads the collapsed domains (the panel's own state) and the saved layout
+  // shown, with whether it is edited since it was loaded or saved, from here.
+  useScreenInputs(`/${page}`, { collapsed: collapsedDomains, layout, layoutUnsaved: unsaved });
   // The filter hides only the domains it offers and the reader unticked: a domain it does not offer
   // (a system domain the acting roles' domain list leaves out, ops among them) cannot be ticked
   // again from the page, so it stays drawn.
@@ -268,6 +277,7 @@ export function ErdView({
               />
             )
           }
+          withdrawn={withdrawn.control}
           highlightTableIds={highlightTableIds}
           highlightRelationshipIds={highlightRelationshipIds}
           search={search}

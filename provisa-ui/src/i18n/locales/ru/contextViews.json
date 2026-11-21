@@ -1,0 +1,16 @@
+{
+  "contextViews": {
+    "colWhereApplied": "Где применяется",
+    "colDependents": "Зависит от него",
+    "detectedHeader": "Обнаружено в",
+    "nowhere": "Нигде",
+    "hiddenPlaces_one": "Ещё недоступных для чтения: {{count}}",
+    "hiddenPlaces_other": "Ещё недоступных для чтения: {{count}}",
+    "rowFilters_one": "Фильтров строк: {{count}}",
+    "rowFilters_other": "Фильтров строк: {{count}}",
+    "classifiedAs": "Назначен классификацией: {{kind}}",
+    "noDependents": "Ничего",
+    "enabled": "Включено",
+    "disabled": "Отключено"
+  }
+}

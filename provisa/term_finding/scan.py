@@ -19,16 +19,25 @@ Two steps, each a model call:
    it, the sense the passage uses it in and the variants it is called by. A mention is kept only
    when its category is one of :data:`CATEGORIES` and its quote is the passage's own text
    (:func:`read_mentions`); what is left out is counted, never silently dropped.
-2. **Candidates.** The mentions are resolved into concepts in one call (:func:`resolution_prompt`):
-   the mentions of one concept grouped, however worded; one word used with two meanings split
-   into two groups, each named apart and scoped by its passages; explanations that cannot both be
-   true named in pairs; and, for a group with no explicit definition, one synthesized from its
-   mentions' quotes, naming the mentions it drew from (:func:`read_groups`).
+2. **Candidates.** The mentions are resolved into concepts (:func:`resolution_prompt`): the
+   mentions of one concept grouped, however worded; one word used with two meanings split into two
+   groups, each named apart and scoped by its passages; explanations that cannot both be true
+   named in pairs; and, for a group with no explicit definition, one synthesized from its
+   mentions' quotes, naming the mentions it drew from (:func:`read_groups`). The answer grows with
+   the document -- a group for every concept -- so the mentions are resolved in parts small enough
+   for their answer to fit a call's output limit (:func:`resolution_batches`), mentions named
+   alike always in one part. When there is more than one part, one more call joins the groups the
+   parts named differently that are one concept (:func:`joining_prompt`, :func:`read_joins`).
 
 A dense batch can ask for more than a call's output limit holds. An answer cut off there is read
-again as the batch's two halves, down to one passage, which is then named; the resolution cannot
-be split, its mentions being one concept's across the document, and is named. An answer that is
-not JSON is asked for once more, then named. Each of these is one more call (:func:`run`).
+again as the batch's two halves, down to one passage, which is then named; a resolution or a
+joining cut off is named. An answer that is not JSON is asked for once more, then named. Each of
+these is one more call (:func:`run`).
+
+Every answer is one JSON object (:class:`Answer`): the mentions under ``"mentions"``, the groups
+under ``"groups"``, the joined sets under ``"joins"``. Each call names its answer's JSON schema, so
+the model is asked for exactly that one value on a wire that can hold it to one
+(provisa.llm.client); a bare list invites a model to answer with two lists, or a list and prose.
 
 :func:`candidates` turns the groups into proposals: an explicit definition first (the earliest in
 the document), every other explanation kept as a supporting passage; a synthesized definition
@@ -52,7 +61,9 @@ import re
 from collections import Counter, deque
 from collections.abc import Awaitable, Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, TypeVar
+
+_T = TypeVar("_T")
 
 #: The kinds of concept a scan proposes (REQ-2179). A named individual -- a particular person,
 #: company or policy edition -- is none of these.
@@ -71,9 +82,13 @@ VARIANT_KINDS = ("abbreviation", "alternative name", "form", "reference")
 SYNONYM_KINDS = frozenset({"abbreviation", "alternative name"})
 #: About how much passage text one mention-finding call reads, in characters.
 BATCH_CHARS = 6000
-#: The most output one mention-finding call and the resolution call may use, in tokens.
+#: The most output one mention-finding call and one resolution or joining call may use, in tokens.
 EXTRACT_MAX_TOKENS = 4096
 RESOLVE_MAX_TOKENS = 8192
+#: About how many mentions one resolution call groups. Each may come back a group of its own,
+#: with a sense, its variants and a synthesized definition -- about 120 tokens of answer -- so
+#: this many leave room within :data:`RESOLVE_MAX_TOKENS`.
+RESOLVE_BATCH_MENTIONS = 50
 
 EXPLICIT = "explicit"
 SYNTHESIZED = "synthesized"
@@ -111,6 +126,68 @@ class NotJSON(ScanFailed):
 class ScanStopped(Exception):
     """The scan's row is no longer running: someone cancelled it, or it was given up on. The row
     already says why."""
+
+
+@dataclass(frozen=True)
+class Answer:
+    """The one JSON object a call is answered with: ``key`` holds its list, ``schema`` is its
+    JSON schema, every property required and no other allowed, as the vendors' structured output
+    asks (provisa.llm.client)."""
+
+    name: str
+    key: str
+    schema: dict[str, Any]
+
+
+def _object(properties: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "type": "object",
+        "properties": properties,
+        "required": list(properties),
+        "additionalProperties": False,
+    }
+
+
+def _answer(key: str, item: dict[str, Any]) -> Answer:
+    return Answer(key, key, _object({key: {"type": "array", "items": item}}))
+
+
+_STRING = {"type": "string"}
+_IDS = {"type": "array", "items": {"type": "integer"}}
+_VARIANTS = {"type": "array", "items": _object({"text": _STRING, "kind": _STRING})}
+
+#: The answer naming a batch's mentions (:func:`extraction_prompt`).
+MENTIONS = _answer(
+    "mentions",
+    _object(
+        {
+            "passage": {"type": "integer"},
+            "name": _STRING,
+            "category": _STRING,
+            "sense": _STRING,
+            "quote": _STRING,
+            "explicit": {"type": "boolean"},
+            "variants": _VARIANTS,
+        }
+    ),
+)
+#: The answer grouping mentions into concepts (:func:`resolution_prompt`).
+GROUPS = _answer(
+    "groups",
+    _object(
+        {
+            "name": _STRING,
+            "sense": _STRING,
+            "mentions": _IDS,
+            "variants": _VARIANTS,
+            "conflicts": {"type": "array", "items": _IDS},
+            "definition": _STRING,
+            "uses": _IDS,
+        }
+    ),
+)
+#: The answer naming the sets of groups that are one concept (:func:`joining_prompt`).
+JOINS = _answer("joins", _IDS)
 
 
 @dataclass(frozen=True)
@@ -205,6 +282,17 @@ def _json(raw: str, what: str) -> Any:
         return json.loads(text)
     except ValueError as exc:
         raise NotJSON(f"the model's answer to {what} was not JSON: {exc}") from None
+
+
+def _listed(raw: str, answer: Answer, what: str) -> list[Any]:
+    """The list ``answer`` holds in the model's answer ``raw`` to ``what``."""
+    found = _json(raw, what)
+    held = found.get(answer.key) if isinstance(found, dict) else None
+    if not isinstance(held, list):
+        raise ScanFailed(
+            f"the model's answer to {what} was not an object holding a list of {answer.key!r}"
+        )
+    return held
 
 
 _QUOTES = str.maketrans({"‘": "'", "’": "'", "“": '"', "”": '"'})
@@ -327,8 +415,8 @@ def extraction_prompt(title: str, batch: Sequence[Passage], kind: str = DOCUMENT
         "difference, 'reference' for a phrase such as 'as defined in Section 2'. An empty "
         "list when there are none.\n\n"
         f"Passages:\n\n{numbered}\n\n"
-        "Respond with only a JSON array of these objects, no prose, no code fences. An empty "
-        "array when the passages hold no such concept."
+        'Respond with only one JSON object, {"mentions": [...]}, its list these objects; no '
+        'prose, no code fences. {"mentions": []} when the passages hold no such concept.'
     )
 
 
@@ -340,9 +428,7 @@ def read_mentions(
     text is counted in ``left_out``."""
     by_ordinal = {p.ordinal: p for p in batch}
     what = f"passages {batch[0].ordinal}-{batch[-1].ordinal}"
-    found = _json(raw, what)
-    if not isinstance(found, list):
-        raise ScanFailed(f"the model's answer to {what} was not a list")
+    found = _listed(raw, MENTIONS, what)
     mentions: list[Mention] = []
     for item in found:
         if not isinstance(item, dict):
@@ -429,12 +515,13 @@ def resolution_prompt(
         + ".\n"
         + '- "conflicts": pairs [a, b] of its mentions whose explanations cannot both be true. '
         "Do not reconcile them. An empty list when there are none.\n"
-        '- "definition" and "uses": only when none of its mentions is a definition. '
-        "definition is one or two sentences in plain business language drawn only from its "
-        + "mentions' quotes, never blending explanations that conflict; uses lists the mention "
-        "numbers it drew on. Leave both out when a mention is a definition.\n\n"
+        '- "definition" and "uses": when none of its mentions is a definition, definition is '
+        "one or two sentences in plain business language drawn only from its mentions' quotes, "
+        "never blending explanations that conflict, and uses lists the mention numbers it drew "
+        'on. When a mention is a definition, definition is "" and uses is [].\n\n'
         f"Mentions:\n{listed}\n\n"
-        "Respond with only a JSON array of these objects, no prose, no code fences."
+        'Respond with only one JSON object, {"groups": [...]}, its list these objects; no '
+        "prose, no code fences."
     )
 
 
@@ -449,9 +536,7 @@ def _ids(raw: Any) -> list[int] | None:
 def read_groups(raw: str, mentions: Sequence[Mention], left_out: LeftOut) -> list[Group]:
     """The groups in the model's resolution of ``mentions``. A mention in no group is counted
     in ``left_out`` as unresolved; a mention named by a second group stays in its first."""
-    found = _json(raw, "the mentions' resolution")
-    if not isinstance(found, list):
-        raise ScanFailed("the model's resolution of the mentions was not a list")
+    found = _listed(raw, GROUPS, "the mentions' resolution")
     known = {m.id for m in mentions}
     placed: set[int] = set()
     groups: list[Group] = []
@@ -492,6 +577,102 @@ def read_groups(raw: str, mentions: Sequence[Mention], left_out: LeftOut) -> lis
         )
     left_out.unresolved += len(known - placed)
     return groups
+
+
+def resolution_batches(
+    mentions: Sequence[Mention], limit: int = RESOLVE_BATCH_MENTIONS
+) -> list[list[Mention]]:
+    """``mentions`` gathered into parts of about ``limit`` to resolve one call each. Mentions that
+    share a name or a variant (compared as :func:`normal` compares names), directly or through
+    another mention, are always in one part, so one word's meanings are told apart and its
+    conflicting explanations seen side by side. Such a set larger than ``limit`` is a part of its
+    own."""
+    parent = list(range(len(mentions)))
+
+    def root(i: int) -> int:
+        while parent[i] != i:
+            parent[i] = parent[parent[i]]
+            i = parent[i]
+        return i
+
+    named: dict[str, int] = {}
+    for i, m in enumerate(mentions):
+        for key in {normal(m.name), *(normal(v.text) for v in m.variants)} - {""}:
+            parent[root(i)] = root(named.setdefault(key, i))
+    alike: dict[int, list[Mention]] = {}
+    for i, m in enumerate(mentions):
+        alike.setdefault(root(i), []).append(m)
+    out: list[list[Mention]] = []
+    current: list[Mention] = []
+    for members in alike.values():
+        if current and len(current) + len(members) > limit:
+            out.append(current)
+            current = []
+        current.extend(members)
+    if current:
+        out.append(current)
+    return [sorted(part, key=lambda m: m.id) for part in out]
+
+
+def joining_prompt(title: str, groups: Sequence[Group], kind: str = DOCUMENT) -> str:
+    """The prompt naming which of ``groups`` -- resolved from different parts of the mentions --
+    are one concept."""
+
+    def line(n: int, g: Group) -> str:
+        variants = ", ".join(f"{v.text} ({v.kind})" for v in g.variants) or "none"
+        return f"G{n} {g.name!r} -- sense: {g.sense or 'not given'}; variants: {variants}"
+
+    listed = "\n".join(line(n, g) for n, g in enumerate(groups))
+    return (
+        f"You are helping a data steward build a business glossary from a {kind}. Below are "
+        f"the concepts found in parts of the {kind} {title!r}, each numbered G<n>, with what it "
+        "is and the other names it is called by.\n\n"
+        "Some of them may be one concept named differently in different parts: another name, "
+        "an abbreviation, a reference such as 'as defined in Section 2'. Name each set of "
+        "concepts that are one concept. One word used with two different meanings is two "
+        "concepts: never put those in one set.\n\n"
+        f"Concepts:\n{listed}\n\n"
+        'Respond with only one JSON object, {"joins": [...]}, its list the sets, each an array '
+        "of the numbers n of its concepts G<n>; leave out every concept that is one with no "
+        'other. {"joins": []} when there are none. No prose, no code fences.'
+    )
+
+
+def read_joins(raw: str, groups: Sequence[Group], left_out: LeftOut) -> list[Group]:
+    """``groups`` with each set the model's answer names as one concept joined into one group,
+    named by its first in the list: its mentions, variants and conflicts all the set's, its
+    synthesized definition the first the set has. A group named by a second set stays in its
+    first."""
+    found = _listed(raw, JOINS, "the concepts' joining")
+    into: dict[int, int] = {}
+    for item in found:
+        ids = _ids(item)
+        if ids is None:
+            left_out.malformed += 1
+            continue
+        members = sorted(i for i in set(ids) if 0 <= i < len(groups) and i not in into)
+        if len(members) > 1:
+            into.update((i, members[0]) for i in members)
+    sets: dict[int, list[Group]] = {}
+    for n, g in enumerate(groups):
+        sets.setdefault(into.get(n, n), []).append(g)
+    return [_joined(gs) for gs in sets.values()]
+
+
+def _joined(groups: Sequence[Group]) -> Group:
+    head = groups[0]
+    if len(groups) == 1:
+        return head
+    synthesized = next((g for g in groups if g.definition is not None and g.uses), None)
+    return Group(
+        name=head.name,
+        sense=head.sense,
+        mentions=tuple(i for g in groups for i in g.mentions),
+        variants=tuple(v for g in groups for v in g.variants),
+        conflicts=tuple(c for g in groups for c in g.conflicts),
+        definition=None if synthesized is None else synthesized.definition,
+        uses=() if synthesized is None else synthesized.uses,
+    )
 
 
 def _base(name: str) -> str:
@@ -669,14 +850,16 @@ class Result:
 async def run(
     title: str,
     passages: Sequence[Passage],
-    call: Callable[[str, int], Awaitable[str]],
+    call: Callable[[str, int, Answer], Awaitable[str]],
     report: Callable[[str, int, int], Awaitable[None]],
     kind: str = DOCUMENT,
 ) -> Result:
-    """Scan ``passages`` with ``call`` (a prompt and an output limit to the model's answer).
+    """Scan ``passages`` with ``call`` (a prompt, an output limit to the model's answer and the
+    :class:`Answer` it is asked to be).
     ``report`` hears each call before it is made: :data:`READING` a call of how many are now known
     to be needed, the total growing as a batch is split or asked for again, then :data:`MERGING`
-    (0 of 0); it raises :class:`ScanStopped` to stop the scan there."""
+    (0 of 0) for each resolution or joining call; it raises :class:`ScanStopped` to stop the scan
+    there."""
     if not passages:
         raise ScanFailed(f"the {kind} {title!r} holds no passages to scan")
     left_out = LeftOut()
@@ -689,7 +872,7 @@ async def run(
         await report(READING, calls + 1, calls + 1 + len(waiting))
         calls += 1
         try:
-            raw = await call(extraction_prompt(title, batch, kind), EXTRACT_MAX_TOKENS)
+            raw = await call(extraction_prompt(title, batch, kind), EXTRACT_MAX_TOKENS, MENTIONS)
             mentions.extend(read_mentions(raw, batch, len(mentions), left_out))
         except AnswerCutOff as exc:
             if len(batch) == 1:
@@ -706,22 +889,41 @@ async def run(
     by_ordinal = {p.ordinal: p for p in passages}
     if not mentions:
         return Result([], len(passages), 0, left_out, calls)
-    prompt = resolution_prompt(title, mentions, by_ordinal, kind)
-    groups: list[Group] | None = None
-    retried = False
-    while groups is None:
-        await report(MERGING, 0, 0)
-        calls += 1
-        try:
-            groups = read_groups(await call(prompt, RESOLVE_MAX_TOKENS), mentions, left_out)
-        except AnswerCutOff as exc:
-            raise ScanFailed(
-                f"the model's answer to the mentions' resolution was cut off: {exc}"
-            ) from None
-        except NotJSON as exc:
-            if retried:
-                raise ScanFailed(f"{exc} (asked twice)") from None
-            retried = True
+
+    async def answer(prompt: str, shape: Answer, read: Callable[[str], _T], what: str) -> _T:
+        nonlocal calls
+        retried = False
+        while True:
+            await report(MERGING, 0, 0)
+            calls += 1
+            try:
+                return read(await call(prompt, RESOLVE_MAX_TOKENS, shape))
+            except AnswerCutOff as exc:
+                raise ScanFailed(f"the model's answer to {what} was cut off: {exc}") from None
+            except NotJSON as exc:
+                if retried:
+                    raise ScanFailed(f"{exc} (asked twice)") from None
+                retried = True
+
+    parts = resolution_batches(mentions)
+    groups: list[Group] = []
+    for n, part in enumerate(parts, start=1):
+        what = "the mentions' resolution"
+        if len(parts) > 1:
+            what += f" (part {n} of {len(parts)})"
+        groups += await answer(
+            resolution_prompt(title, part, by_ordinal, kind),
+            GROUPS,
+            lambda raw, part=part: read_groups(raw, part, left_out),
+            what,
+        )
+    if len(parts) > 1:
+        groups = await answer(
+            joining_prompt(title, groups, kind),
+            JOINS,
+            lambda raw: read_joins(raw, groups, left_out),
+            "the concepts' joining",
+        )
     return Result(
         candidates(groups, mentions, by_ordinal), len(passages), len(mentions), left_out, calls
     )

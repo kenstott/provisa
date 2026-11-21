@@ -27,15 +27,17 @@ from tests.unit.pgwire.test_type_conversions import conn, pgwire  # noqa: F401
 
 # int42pl overflows on the last row only, PostgreSQL's 22003 raised by its catalog macro: past what
 # the engine computes when the statement is run (about 128K rows), so it is met as a batch is read.
-_ROWS = 400_000
+# Far enough that the first batches are read before the error: DuckDB's threads run ahead of the
+# reader, so at 400,000 rows about one read in thirteen under load met it before the first.
+_ROWS = 2_000_000
 _LATE_OVERFLOW = (
     f"SELECT pg_catalog.int42pl((2147483647 - {_ROWS} + g.i)::int4, 1::int2) AS v "
     f"FROM generate_series(1, {_ROWS}) AS g(i)"
 )
 
 
-# A zero divisor on row 300,000: the transpiler's division guard, met as a batch is read.
-_LATE_ZERO_DIVISOR = "SELECT 1/(g.i - 300000) AS v FROM generate_series(1, 400000) AS g(i)"
+# A zero divisor on row 1,900,000: the transpiler's division guard, met as a batch is read.
+_LATE_ZERO_DIVISOR = f"SELECT 1/(g.i - 1900000) AS v FROM generate_series(1, {_ROWS}) AS g(i)"
 # Engine errors no catalog macro raises, on the last row: DuckDB's own conversion and overflow.
 _LATE_CONVERSION = (
     f"SELECT CASE WHEN g.i = {_ROWS} THEN 'x' ELSE g.i::text END::int AS v "

@@ -36,6 +36,7 @@ from __future__ import annotations
 from enum import Enum
 from typing import TYPE_CHECKING, Any
 
+from provisa.codesource.languages import CODE_SOURCE_TYPES
 from provisa.federation.connector import Mechanism
 from provisa.federation.engine import UnreachableSource
 
@@ -116,8 +117,8 @@ _MATERIALIZE_ONLY = frozenset(
         "grpc_remote",
         "mongodb",
         "cosmosdb",  # REQ-1982: no engine reaches it; read by its SDK and landed
-        "node",  # REQ-1984: a function's rows, read in its worker and landed
-        "python",  # REQ-1993: the same, for a Python function
+        # REQ-1984, REQ-1993, REQ-2200: a function's rows, read in its worker and landed
+        *CODE_SOURCE_TYPES,
         "cassandra",
         "redis",
         "elasticsearch",
@@ -147,6 +148,8 @@ _MATERIALIZE_ONLY = frozenset(
         # REQ-1934: a profiler's rows are written by its runs into the org's control plane, as
         # ingest's are; there is no remote table to federate.
         "data_profiler",
+        # REQ-2228: a dbt source holds no table; its models register on their warehouse source.
+        "dbt",
         # REQ-1730: sqlite/firebird/airport are DuckDB-ATTACH-only (no Trino/pg connector exists for
         # any of them) — before this, an engine with no connector raised UnreachableSource outright
         # rather than falling back to landing, the ONLY of Provisa's DIRECT/FETCH-shaped source
@@ -177,6 +180,12 @@ _MATERIALIZE_ONLY = frozenset(
         "pinot",
         "druid",
         "hive_s3",
+        # REQ-1998 (MOTHERDUCK LANDS THROUGH ITS POSTGRES ENDPOINT): an engine with no live reach
+        # for either lands it -- google_sheets through the Sheets API, motherduck through
+        # MotherDuck's Postgres endpoint (build_adapter_loaders); an engine that attaches one
+        # (Trino's gsheets, the pg engine's MotherDuck FDW) keeps its connector.
+        "google_sheets",
+        "motherduck",
     }
 )
 

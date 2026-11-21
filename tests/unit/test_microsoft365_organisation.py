@@ -175,7 +175,7 @@ async def test_the_admin_route_reads_and_sets_the_switch(plane, monkeypatch):
 async def test_saving_a_source_of_the_organisations_mailboxes_needs_the_switch(plane, monkeypatch):
     from provisa.api.admin.schema_common import microsoft_365_organisation_refusal
 
-    monkeypatch.setattr("provisa.api.app.state", SimpleNamespace(admin_db=plane))
+    monkeypatch.setattr("provisa.api.app.state", SimpleNamespace(admin_db=plane, org_registry={}))
     monkeypatch.setattr("provisa.core.request_context.require_current_org", lambda: "acme")
 
     def source(mapping, type_=SOURCE_TYPE):
@@ -570,7 +570,7 @@ def organisation(plane, monkeypatch):
     from provisa.core import request_context, secrets, settings_registry
 
     monkeypatch.setattr(request_context, "require_current_org", lambda: "acme")
-    monkeypatch.setattr(secrets, "resolve_secrets", lambda value: "the-secret")
+    monkeypatch.setattr(secrets, "resolve_secrets", lambda value, **_marked: "the-secret")
     monkeypatch.setattr(
         settings_registry,
         "value",
@@ -597,7 +597,7 @@ async def test_a_build_signs_in_as_the_organisation_and_lists_its_mailboxes(orga
     await _put(
         plane, platform=SOURCE_TYPE, settings={"tenant": TENANT}, organisation_mailboxes=True
     )
-    connect = loader.make_connect(SimpleNamespace(admin_db=plane))
+    connect = loader.make_connect(SimpleNamespace(admin_db=plane, org_registry={}))
     reading = await connect(SimpleNamespace(id="m365", mapping=ORG))
     assert reading.organisation and reading.accounts == (A, B) and reading.at_once == 3
     assert reading.token() == "access-token"
@@ -611,7 +611,7 @@ async def test_a_build_is_refused_where_its_token_is_asked_for_once_the_switch_i
     await _put(
         plane, platform=SOURCE_TYPE, settings={"tenant": TENANT}, organisation_mailboxes=True
     )
-    connect = loader.make_connect(SimpleNamespace(admin_db=plane))
+    connect = loader.make_connect(SimpleNamespace(admin_db=plane, org_registry={}))
     await connect(SimpleNamespace(id="m365", mapping=ORG))  # allowed
     await _put(
         plane, platform=SOURCE_TYPE, settings={"tenant": TENANT}, organisation_mailboxes=False

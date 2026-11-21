@@ -673,7 +673,9 @@ async def test_discovery_answers_while_the_adapters_catalog_is_still_being_prepa
     }
 
 
-def _cancelling_server(monkeypatch, *, catalog_pending: bool) -> list[str]:
+def _cancelling_server(
+    monkeypatch, *, catalog_pending: bool, catalog_requested: bool = True
+) -> list[str]:
     """A listening server that cancels the read it held queued, as the adapter answers a
     statement it held past its queue bound behind its catalog's preparation (SQLSTATE 57014)."""
     import asyncpg
@@ -686,6 +688,9 @@ def _cancelling_server(monkeypatch, *, catalog_pending: bool) -> list[str]:
 
         def catalog_pending(self):
             return catalog_pending
+
+        def catalog_requested(self):
+            return catalog_requested
 
         def catalog_preparing(self):
             return False
@@ -716,6 +721,15 @@ async def test_a_read_cancelled_while_the_catalog_is_prepared_is_still_starting(
     with pytest.raises(pr.SourceStillStartingError) as raised:
         await pr.adapter_tables(_source(), "sec")
     assert raised.value.preparing_catalog
+    assert statements[-1] == "closed"
+
+
+@pytest.mark.asyncio
+async def test_a_read_cancelled_on_a_catalog_never_requested_claims_no_preparation(monkeypatch):
+    statements = _cancelling_server(monkeypatch, catalog_pending=True, catalog_requested=False)
+    with pytest.raises(pr.SourceStillStartingError) as raised:
+        await pr.adapter_tables(_source(), "sec")
+    assert raised.value.catalog_not_requested and not raised.value.preparing_catalog
     assert statements[-1] == "closed"
 
 
@@ -788,6 +802,7 @@ def _replica_of(source_type: str = "govdata") -> pr.ConnectorReplica:
     replica._server = None
     replica._retired = False
     replica._discovery_reads = 0
+    replica._request_waiting_until = 0.0
     return replica
 
 
@@ -832,6 +847,123 @@ def test_a_discovery_read_that_fails_frees_the_server():
             raise OSError("connection refused")
     with replica.discovery_read():
         pass
+
+
+# -- a read on a request goes before the catalog index's next read ------------------------------
+#
+# Saving a source starts its catalog index (catalog_cache.index_source), which lists every schema
+# the source serves, one read after another, on the server's one discovery slot. A Register Table
+# listing refused while one of those reads held the slot found it taken again by the next: on a
+# cold AskAmerica server (weather, ref, geo) the listing of "weather" was refused for the whole
+# walk -- 76 s here, past the minute the form gives it in CI (core lane run 42260219138) -- though
+# "weather" itself had been read 54 s before it got through.
+
+
+def test_a_background_read_yields_the_server_to_a_refused_request_read():
+    replica = _replica_of()
+    with pr.background_discovery():
+        with replica.discovery_read():  # the index reads "weather"
+            with pytest.raises(pr.SourceStillStartingError) as refused:
+                with _request_read(replica):
+                    raise AssertionError("a request read was sent behind the index's")
+            assert refused.value.answering_read
+        # The index's next read ("ref") waits: the refused request read goes first.
+        with pytest.raises(pr.SourceStillStartingError) as deferred:
+            with replica.discovery_read():
+                raise AssertionError("the index took the server back from a waiting request")
+        assert deferred.value.answering_read
+    with replica.discovery_read():  # the request read, asked again: sent
+        pass
+    with pr.background_discovery():
+        with replica.discovery_read():  # and then the index's
+            pass
+
+
+@contextlib.contextmanager
+def _request_read(replica: pr.ConnectorReplica):
+    """A discovery read on a request, made while the caller runs a background one."""
+    token = pr._BACKGROUND_DISCOVERY.set(False)
+    try:
+        with replica.discovery_read():
+            yield
+    finally:
+        pr._BACKGROUND_DISCOVERY.reset(token)
+
+
+def test_a_request_that_does_not_ask_again_holds_off_the_index_for_a_bounded_time(monkeypatch):
+    monkeypatch.setattr(pr, "REQUEST_READ_PRIORITY_SECONDS", 0.05)
+    replica = _replica_of()
+    with pr.background_discovery():
+        with replica.discovery_read():
+            with pytest.raises(pr.SourceStillStartingError):
+                with _request_read(replica):
+                    pass
+        time.sleep(0.1)  # the request went away
+        with replica.discovery_read():  # the index goes on
+            pass
+
+
+def test_background_discovery_is_scoped_to_its_block():
+    assert not pr.in_background_discovery()
+    with pr.background_discovery():
+        assert pr.in_background_discovery()
+    assert not pr.in_background_discovery()
+
+
+@pytest.mark.asyncio
+async def test_a_listing_polled_during_the_index_walk_is_answered_after_one_read(monkeypatch):
+    """The index walks weather, ref and geo on a cold server, each read slow; the Register Table
+    form polls "weather". The poll is answered once the read in flight when it was first refused
+    is answered -- not after the whole walk."""
+    import asyncio
+
+    replica = _replica_of()
+    replica._catalog_ready, replica._catalog_error, replica._catalog_thread = False, None, None
+    replica.endpoint = lambda *, timeout=None: pr.PortPair(5440, "127.0.0.1", 5540)
+    gates = {schema: asyncio.Event() for schema in ("weather", "ref", "geo")}
+    sent: list[str] = []
+
+    class _Cold:
+        async def fetch(self, sql, *args, timeout=None):
+            schema = sql.split("table_schema = '")[1].split("'")[0]
+            sent.append(schema)
+            if len(sent) <= 3:  # the walk's reads are cold; the poll's, later, is warm
+                await gates[schema].wait()
+            return [(f"{schema}_t",)]
+
+        async def close(self):
+            pass
+
+    async def _connect(host, port, password):
+        return _Cold()
+
+    async def _index_walk():
+        with pr.background_discovery():
+            for schema in ("weather", "ref", "geo"):
+                while True:
+                    try:
+                        await pr.adapter_tables(_source(), schema)
+                        break
+                    except pr.SourceStillStartingError:
+                        await asyncio.sleep(0.01)  # catalog_cache's INDEX_STARTING_POLL_SECONDS
+
+    monkeypatch.setattr(pr, "_endpoint_replica", lambda source: replica)
+    monkeypatch.setattr(pr, "_pg_connect", _connect)
+    walk = asyncio.create_task(_index_walk())
+    while sent != ["weather"]:
+        await asyncio.sleep(0)
+    with pytest.raises(pr.SourceStillStartingError):  # the form's first poll, refused
+        await pr.adapter_tables(_source(), "weather")
+    gates["weather"].set()  # the index's "weather" is answered
+    while replica._discovery_reads:
+        await asyncio.sleep(0)
+    await asyncio.sleep(0.03)  # the index asks for "ref" meanwhile, and is held off
+    assert sent == ["weather"]
+    assert await pr.adapter_tables(_source(), "weather") == ["weather_t"]  # the form's next poll
+    gates["ref"].set()
+    gates["geo"].set()
+    await asyncio.wait_for(walk, 5)
+    assert sent == ["weather", "weather", "ref", "geo"]
 
 
 @pytest.mark.asyncio
@@ -1392,7 +1524,7 @@ def test_a_single_schema_sibling_attaches_on_postgres_exactly_as_before(endpoint
             'CREATE USER MAPPING IF NOT EXISTS FOR CURRENT_USER SERVER "fdw_pgwire_my_src" '
             "OPTIONS (user 'provisa')",
             'CREATE SCHEMA IF NOT EXISTS "fdw_pgwire_my_src"',
-            'IMPORT FOREIGN SCHEMA my_src FROM SERVER "fdw_pgwire_my_src" INTO "fdw_pgwire_my_src"',
+            'IMPORT FOREIGN SCHEMA "my_src" FROM SERVER "fdw_pgwire_my_src" INTO "fdw_pgwire_my_src"',
         ],
         "local_schema": "fdw_pgwire_my_src",
     }
@@ -1747,9 +1879,41 @@ def test_a_source_not_yet_in_use_has_no_catalog_preparation_sent():
     with pytest.raises(pr.SourceStillStartingError) as raised:
         replica.await_catalog(ports, 5)
     assert time.monotonic() - started < 1
-    assert raised.value.preparing_catalog
+    assert raised.value.catalog_not_requested and not raised.value.preparing_catalog
     assert replica._catalog_thread is None and asked == []
     assert not replica.catalog_preparing()  # the Register Table lists are read at once
+
+
+def test_a_catalog_never_requested_is_reported_as_such():
+    """Nothing is being prepared, so the answer does not say so. The STARTING prefix stays: the
+    source is not failed, and the frontend polls on that prefix."""
+    replica = _replica_with_server(healthy=True, exit_code=None, catalog_ready=False, in_use=False)
+    with pytest.raises(pr.SourceStillStartingError) as raised:
+        replica.await_catalog(pr.PortPair(5440, "127.0.0.1", 5540), 5)
+    said = str(raised.value)
+    assert said.startswith("STARTING: 'test-askamerica'")
+    assert "has not been requested" in said
+    assert "reading the columns" not in said
+    assert "try again shortly" not in said
+
+
+def test_a_catalog_really_being_prepared_is_still_reported_starting():
+    release = threading.Event()
+    replica = _replica_with_server(
+        healthy=True,
+        exit_code=None,
+        catalog_ready=False,
+        prepare=lambda ports, password: release.wait(5),
+        in_use=True,
+    )
+    with pytest.raises(pr.SourceStillStartingError) as raised:
+        replica.await_catalog(pr.PortPair(5440, "127.0.0.1", 5540), 0)
+    release.set()
+    replica._catalog_thread.join(5)  # type: ignore[union-attr]
+    assert raised.value.preparing_catalog and not raised.value.catalog_not_requested
+    said = str(raised.value)
+    assert said.startswith("STARTING: 'test-askamerica'")
+    assert "reading the columns" in said and "try again shortly" in said
 
 
 def test_an_attach_of_a_source_not_yet_in_use_sends_no_preparation(monkeypatch):
@@ -2187,7 +2351,12 @@ def test_the_engines_attach_pass_never_waits_on_a_source_whose_catalog_is_being_
     """The pass runs under the engine's one attach lock, on the request path. Over [a fast
     source, an AskAmerica source whose catalog is still being prepared, another fast source] it
     returns at once, attaches the other two, and leaves the pass incomplete so the next one
-    retries the source that was starting."""
+    retries the source that was starting.
+
+    What is timed is the starting source's attach alone, not the whole pass: the pass also does
+    this process's one-time work (a first import of its readers, the first transpile of the ops
+    signal views), about a second and a half alone and several under a parallel run's load, and
+    none of it waits on any source."""
     release = threading.Event()
     replica = _replica_with_server(
         healthy=True,
@@ -2201,10 +2370,15 @@ def test_the_engines_attach_pass_never_waits_on_a_source_whose_catalog_is_being_
     class _Runtime:
         def __init__(self) -> None:
             self.attached: list[str] = []
+            self.starting_attach_seconds: float | None = None
 
         def attach_source(self, merged) -> None:
             if merged.type.value == "govdata":
-                pr.ensure_endpoint(merged)  # what the connector's details() does first
+                started = time.monotonic()
+                try:
+                    pr.ensure_endpoint(merged)  # what the connector's details() does first
+                finally:
+                    self.starting_attach_seconds = time.monotonic() - started
             self.attached.append(merged.id)
 
         def attach_region_ops(self, catalog, schema, stores, views) -> None:  # noqa: ANN001
@@ -2229,6 +2403,7 @@ def test_the_engines_attach_pass_never_waits_on_a_source_whose_catalog_is_being_
             federation_hints={},
             mapping={},
             max_live_concurrency=None,  # REQ-1909: a source always carries its cap
+            download_from=None,  # REQ-1997: a source always carries it
             cache_ttl=None,
         )
 
@@ -2249,12 +2424,15 @@ def test_the_engines_attach_pass_never_waits_on_a_source_whose_catalog_is_being_
         tables=[],
         source_catalogs={"pg-a": "pg_a", "aa": "aa", "pg-b": "pg_b"},
     )
-    started = time.monotonic()
     complete = backend._walk_registry(state, config)
-    elapsed = time.monotonic() - started
+    # The pass returned with the catalog still being prepared: it did not wait for it.
+    preparing = replica._catalog_thread is not None and replica._catalog_thread.is_alive()
     release.set()
 
-    assert elapsed < 2, f"the attach pass waited {elapsed:.1f}s on the starting source"
+    waited = backend._runtime.starting_attach_seconds
+    assert waited is not None, "the pass never tried the starting source"
+    assert waited < 2, f"the attach pass waited {waited:.1f}s on the starting source"
+    assert preparing, "the pass returned only once the catalog was no longer being prepared"
     assert backend._runtime.attached == ["pg-a", "pg-b"]
     assert complete is False  # retried by the next pass, when the catalog is prepared
 

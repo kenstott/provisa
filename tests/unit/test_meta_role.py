@@ -26,6 +26,7 @@ from provisa.security.meta_role import (
     resolve_requested_role,
 )
 from tests.role_state import RoleState
+from tests.rules import rule_of, rules_of
 
 
 def _tm(table_id: int) -> SimpleNamespace:
@@ -66,6 +67,7 @@ def _state(*, rls: dict[str, RLSContext], reads: dict[str, list[int]], roles: di
             # Each stored role's chain, as the build keeps it: these roles have no parent.
             "role_chains": {r: [r] for r in roles},
             "tables": tables,
+            "withdrawn_tables": [],
             "metrics": [],
             "functions": [],
             "webhooks": [],
@@ -94,6 +96,7 @@ def _role(rid: str, *, caps=(), domains=("sales",), max_rows=None, session_vars=
         "description": f"What {rid} is for.",
         "capabilities": list(caps),
         "domain_access": list(domains),
+        "own_domain_access": list(domains),  # REQ-2153: a built role carries it
         "max_rows": max_rows,
         "rate_limit": None,
         "session_vars": session_vars or {},
@@ -111,7 +114,7 @@ def test_two_filtered_roles_see_the_or_of_their_filters():
     )
     meta = ensure_meta_role(state, ["west", "east"])
     assert meta == "meta:east+west"
-    assert state.rls_contexts[meta].rules == {1: "(region = 'east') OR (region = 'west')"}
+    assert state.rls_contexts[meta].rules == rules_of({1: "(region = 'east') OR (region = 'west')"})
 
 
 def test_a_member_reading_the_table_unfiltered_lifts_the_filter():
@@ -135,7 +138,7 @@ def test_a_member_that_cannot_read_the_table_does_not_lift_its_filter():
         roles={"east": _role("east"), "hr": _role("hr", domains=["hr"])},
     )
     meta = ensure_meta_role(state, ["east", "hr"])
-    assert state.rls_contexts[meta].rules == {1: "(region = 'east')"}
+    assert state.rls_contexts[meta].rules == rules_of({1: "region = 'east'"})
 
 
 def test_a_member_with_no_data_surface_adds_nothing(_no_surface_build):
@@ -153,7 +156,7 @@ def test_a_member_with_no_data_surface_adds_nothing(_no_surface_build):
     assert "platform_admin" not in state.surfaces
     # It is no member: the set acts as the one role that reaches data.
     assert ensure_meta_role(state, ["east", "platform_admin"]) == "east"
-    assert state.rls_contexts["east"].rules == {1: "region = 'east'"}
+    assert state.rls_contexts["east"].rules == rules_of({1: "region = 'east'"})
 
 
 def test_each_members_role_constants_are_written_into_its_own_term():
@@ -167,7 +170,7 @@ def test_each_members_role_constants_are_written_into_its_own_term():
         },
     )
     meta = ensure_meta_role(state, ["east", "west"])
-    assert state.rls_contexts[meta].rules[1] == (
+    assert state.rls_contexts[meta].rules[1] == rule_of(
         "(region = 'east') OR (region = current_setting('provisa.region'))"
     )
 
@@ -293,11 +296,11 @@ def test_a_member_u_rule_holds_only_the_rows_that_member_writes():  # REQ-2188
     folded = next(
         g for g in state.role_build_inputs["tables"][0]["write_grants"] if g["role"] == meta
     )
-    assert folded["rows"] == "((id > 0) AND (region = 'east')) OR (email IS NOT NULL)"
+    assert folded["rows"] == rule_of("((id > 0) AND (region = 'east')) OR (email IS NOT NULL)")
     by_columns = {tuple(h["columns"]): h["rows"] for h in folded["holders"]}
     assert by_columns == {
-        ("region",): "(id > 0) AND (region = 'east')",
-        ("email",): "email IS NOT NULL",
+        ("region",): rule_of("(id > 0) AND (region = 'east')"),
+        ("email",): rule_of("email IS NOT NULL"),
     }
 
 
@@ -317,7 +320,7 @@ def test_a_member_holding_no_grant_gives_nothing_by_its_u_rule():  # REQ-2188
     folded = next(
         g for g in state.role_build_inputs["tables"][0]["write_grants"] if g["role"] == meta
     )
-    assert folded["rows"] == "(id > 0)"
+    assert folded["rows"] == rule_of("id > 0")
 
 
 _PLACED = {"column": "status", "source": "literal", "value": "placed"}
@@ -334,9 +337,9 @@ def test_a_meta_roles_write_grant_is_the_fold_of_its_members():
     assert set(folded) == {"update", "delete"}  # the ops any member holds; no insert
     update = folded["update"]
     assert update["columns"] == ["region", "email"]
-    assert update["rows"] == "(region = 'east') OR (email IS NOT NULL)"
-    assert update["check"] == "TRUE"  # a holder admits every row
-    assert folded["delete"]["rows"] == "(region = 'west')"
+    assert update["rows"] == rule_of("(region = 'east') OR (email IS NOT NULL)")
+    assert update["check"] == rule_of("TRUE")  # a holder admits every row
+    assert folded["delete"]["rows"] == rule_of("region = 'west'")
 
 
 def test_the_fold_does_not_depend_on_the_order_of_the_members():

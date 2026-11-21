@@ -306,11 +306,11 @@ class TestAWriteMarksTheViewsThatReadItStale:
                     refresh_interval=300,
                     enabled=True,
                     sql=view_sql,
-                    read_tables=read_table_names(view_sql),
+                    read_tables=read_table_names(view_sql, {}),
                     status=MVStatus.FRESH,
                 )
             )
-        assert read_table_names(sql) == frozenset({"orders", "customers"})
+        assert read_table_names(sql, {}) == frozenset({"orders", "customers"})
         assert registry.mark_stale("orders") == ["view-a"]
         assert registry.get("view-a").status == MVStatus.STALE
         assert registry.get("view-b").status == MVStatus.FRESH

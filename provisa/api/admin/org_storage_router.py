@@ -10,19 +10,20 @@
 
 """REQ-1046/1048/1049: the org's materialization storage — what it uses, and whose disk it is on.
 
-The storage counterpart to ``org_engine_router``: that surface decides which coordinator answers
-the org's queries, this one decides where the org's materialized bytes land. Gated on
-``org_settings`` for the same reason — an org administrator owns their org's data plane.
+REQ-1327: an organization's stores are the platform administrator's to assign, so registering one
+is a deployment-check route that names the org in its path. It cannot read the acting org: the
+platform role is stripped in a tenant org (REQ-1297), so a platform administrator is never acting
+in the org it assigns a store to.
 
-GET reports the footprint against the allowance so the org can see the ceiling before it hits it,
-and can act (drop something, upgrade, or register a bucket) rather than discovering the limit at
-the moment a refresh is refused.
+GET /admin/org-storage reports the footprint against the allowance so the org can see the ceiling
+before it hits it, and can act (drop something or upgrade) rather than discovering the limit at
+the moment a refresh is refused. It is read-only and stays on ``org_settings``.
 
-PUT registers a store the ORG owns (REQ-1048). From that point its materializations are written
-there and its bytes stop being measured or capped here. The DSN is stored encrypted and is never
-returned by the GET — it is a credential to a system the platform does not own, so the surface
-reports only whether one is set and re-entry replaces it. Clearing it moves the org back onto the
-platform store, where the allowance applies again.
+PUT /admin/platform/orgs/{org_id}/storage registers the org's own store (REQ-1048). From that point
+its materializations are written there and its bytes stop being measured or capped here. The DSN is
+stored encrypted and is never returned by a GET — it is a credential to a system the platform does
+not own, so the surface reports only whether one is set and re-entry replaces it. Clearing it moves
+the org back onto the platform store, where the allowance applies again.
 """
 
 from __future__ import annotations
@@ -34,7 +35,7 @@ from pydantic import BaseModel
 from sqlalchemy import select, update
 
 from provisa.api.admin._guards import require_active_org_id
-from provisa.api.admin._platform_guard import require_org_settings
+from provisa.api.admin._platform_guard import require_deployment_settings, require_org_settings
 from provisa.api.errors import ApiError
 from provisa.core.schema_admin import orgs
 
@@ -78,13 +79,26 @@ async def get_org_storage(request: Request):  # REQ-1046, REQ-1049
     return await storage_report(org_id)
 
 
-@router.put("/admin/org-storage")
-async def put_org_storage(body: OrgStorageBody, request: Request):  # REQ-1048
-    """Register (or clear) the org's own materialization store."""
-    require_org_settings(request)
+@router.get("/admin/platform/orgs/{org_id}/storage")
+async def get_platform_org_storage(org_id: str, request: Request):  # REQ-1327, REQ-1049
+    """A named org's storage footprint, for the platform administrator assigning its store."""
+    require_deployment_settings(request)
+    from provisa.storage.quota import storage_report
+
+    await _storage_url_set(org_id)
+    return await storage_report(org_id)
+
+
+@router.put("/admin/platform/orgs/{org_id}/storage")
+async def put_org_storage(  # REQ-1048, REQ-1327
+    org_id: str, body: OrgStorageBody, request: Request
+):
+    """Register (or clear) a named org's own materialization store."""
+    require_deployment_settings(request)
     from provisa.api.app import _read_org_flags, build_org_runtime, state
 
-    org_id = require_active_org_id(request)
+    # The org comes from the path here, so an unknown one must stop before the write and rebuild.
+    await _storage_url_set(org_id)
     url = body.storage_url.strip() if body.storage_url else None
 
     if url is not None:

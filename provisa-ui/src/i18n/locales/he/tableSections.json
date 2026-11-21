@@ -5,10 +5,9 @@
     "identity": "זהות",
     "associations": "שיוכים",
     "load": "ניהול עומס ועדכניות",
-    "query": "שאילתה",
+    "query": "API",
     "quality": "איכות",
     "columns": "עמודות",
-    "writes": "כתיבות",
     "source": "מקור",
     "schema": "סכמה",
     "table": "טבלה",
@@ -18,6 +17,10 @@
     "noTerms": "אף מונח אינו נותן שם לעמודה בטבלה זו",
     "relationships": "קשרים",
     "noRelationships": "טבלה זו אינה משתתפת באף קשר",
+    "metrics": "מדדים",
+    "noMetrics": "אף מדד אינו משתמש בטבלה זו",
+    "metricTerm": "{{term}}:",
+    "metricMethod": "מחושב כ: {{method}}",
     "fromSource": "{{value}} (מהמקור)",
     "fromSourceAsIs": "כפי שמוגדר במקור",
     "notScheduledLikeSource": "אינה נקראת רק לפי לוח זמנים, אף שהמקור שלה כן: שאילתה עשויה לקרוא את המקור.",
@@ -33,9 +36,11 @@
       "skipped": "דולג"
     },
     "classTerm": "השורות הן מופעים של",
-    "classTermPlaceholder": "בחר מונח",
     "noClassTerm": "אין מונח",
     "classTermUnreadable": "לא ניתן היה לקרוא את המונח שלה: {{error}}",
+    "classTermNoModel": "לא ניתן היה לקרוא את המונח שלה: התפקידים שלך אינם יכולים לקרוא את הטבלאות של המודל.",
+    "classTermNoEntry": "לא ניתן היה לקרוא את המונח שלה: התפקידים שלך אינם יכולים לקרוא את הרשומה של טבלה זו במודל.",
+    "classTermNoField": "לא ניתן היה לקרוא את המונח שלה: התפקידים שלך אינם יכולים לקרוא מאיזה מונח שורות הטבלה הן מופעים.",
     "access": "גישה"
   }
 }

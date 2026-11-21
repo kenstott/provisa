@@ -8,7 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import { initializeApp, getApps, type FirebaseApp } from "firebase/app";
+import { initializeApp, getApps, type FirebaseApp } from "@firebase/app";
 import {
   getAuth,
   GithubAuthProvider,
@@ -20,7 +20,7 @@ import {
   signInWithEmailAndPassword,
   signOut as fbSignOut,
   type Auth,
-} from "firebase/auth";
+} from "@firebase/auth";
 import { removeStored, SessionStorageError, setStored } from "./browserStorage";
 
 type FirebaseWebConfig = { apiKey: string; authDomain: string; projectId: string };

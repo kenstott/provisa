@@ -379,9 +379,14 @@ glossary_terms:
   definition: 'A recorded description of what a table holds: for each column its nulls, distinct values, range, distribution and the shapes its values take, measured by a profile run.'
   domains:
   - harbor
+- name: null share
+  approve: true
+  definition: 'The share of a column''s rows with no value, measured by a profile run.'
+  domains:
+  - harbor
   edges:
-  - to: null share
-    rel_type: RELATED_TO
+  - to: data profile
+    rel_type: PART_OF
 - name: plausible type
   approve: true
   definition: 'What a column actually holds -- an email, a phone number, a postal code, a category -- inferred from its profile, name and tags. A label, not a value.'

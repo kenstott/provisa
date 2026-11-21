@@ -34,6 +34,11 @@
     "reasonGovernanceViolation": "Violation de gouvernance",
     "reasonOutOfScope": "Hors périmètre",
     "reasonEndpointUnreachable": "Endpoint inaccessible",
-    "reasonSchemaMismatch": "Schéma non concordant"
+    "reasonSchemaMismatch": "Schéma non concordant",
+    "delivery": "Notifier par",
+    "deliveryHelp": "Comment les membres des rôles auxquels une demande est adressée en sont informés. E-mail : Provisa envoie un avis à chacun d'eux. Événements uniquement : Provisa n'envoie aucun avis ; votre outil de workflow s'abonne à ops.requests. Les deux : e-mail et événements.",
+    "deliveryEmail": "E-mail",
+    "deliveryEvents": "Événements uniquement",
+    "deliveryBoth": "Les deux"
   }
 }

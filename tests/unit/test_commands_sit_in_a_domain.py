@@ -56,6 +56,14 @@ async def plane(monkeypatch, control_plane) -> Database:
     monkeypatch.setattr(appmod.state, "tenant_db", db, raising=False)
     monkeypatch.setattr(appmod.state, "model_db", appmod.state.tenant_db, raising=False)
     monkeypatch.setattr(appmod.state, "roles", ROLES, raising=False)
+    # REQ-2216: a webhook awaiting approval raises a request, which looks up the mail channel;
+    # none is configured here.
+    monkeypatch.setattr(
+        appmod.state,
+        "config",
+        types.SimpleNamespace(mail=types.SimpleNamespace(provider="")),
+        raising=False,
+    )
     monkeypatch.setattr(domain_policy, "single_domain", lambda: False)
 
     async def _rebuild() -> None:
@@ -253,7 +261,7 @@ def _command(name: str, domain: str) -> dict:
 
 @pytest.mark.parametrize("access", [["sales"], ["*"]], ids=["one-domain", "all-domains"])
 def test_a_stored_command_with_no_domain_is_shown_to_no_role(access):
-    role = {"id": "r", "capabilities": ["usage"], "domain_access": access}
+    role = {"id": "r", "capabilities": ["usage", "command_execution"], "domain_access": access}
     items = [_command("in_sales", "sales"), _command("in_none", "")]
     shown = _fields(role, items)
     assert any("in_sales" in f or "inSales" in f for f in shown), shown

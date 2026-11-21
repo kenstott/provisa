@@ -318,3 +318,52 @@ def test_a_key_recorded_sign_extended_is_the_key_the_system_lists(monkeypatch):
     assert pg_shared_memory._listed(18446744071564963621, 4915208)
     assert pg_shared_memory._listed(0x802C2F25, 4915208)
     assert not pg_shared_memory._listed(0x802C2F26, 4915208)
+
+
+# -- a starter's record, read by another worker's reaper while it is being written -----------------
+
+
+def test_a_starter_whose_record_is_empty_is_judged_by_age_not_read_as_a_pid(tmp_path):
+    """Another xdist worker's reaper looked at a directory whose starter had made its owner.pid
+    but not yet written its pid: ``int('')`` raised, and that worker's session fixture errored
+    every test on it (1788 errors in one unit shard). A record that is not a pid is judged as no
+    record at all: by the directory's age, never by raising and never as an orphan now."""
+    day = embedded_pg.OWNERLESS_AFTER_SECONDS
+    young = _ownerless(tmp_path, "young", 60)
+    (young / "owner.pid").write_text("")
+    os.utime(young, (time.time() - 60, time.time() - 60))
+    old = _ownerless(tmp_path, "old", day + 60)
+    (old / "owner.pid").write_text("")
+    os.utime(old, (time.time() - day - 60, time.time() - day - 60))
+    assert embedded_pg._orphaned(young) is False
+    assert embedded_pg._orphaned(old) is True
+
+
+def test_a_young_directory_with_an_empty_record_survives_a_reap(tmp_path, monkeypatch):
+    monkeypatch.setattr(embedded_pg.tempfile, "gettempdir", lambda: str(tmp_path))
+    young = _ownerless(tmp_path, "young", 60)
+    (young / "owner.pid").write_text("")
+    os.utime(young, (time.time() - 60, time.time() - 60))
+    embedded_pg._stop_orphans()
+    assert young.exists()
+
+
+def test_a_starters_record_is_never_seen_half_written(tmp_path, monkeypatch):
+    """The record is written beside its name and moved onto it whole: a reader finds either no
+    record or the starter's whole pid, never an empty file."""
+    root = tmp_path / "pv-pg-starting"
+    root.mkdir()
+    owner = root / "owner.pid"
+    seen: list[tuple[bool, str]] = []
+    replace = os.replace
+
+    def watched(src, dst):
+        if Path(dst) == owner:
+            seen.append((owner.exists(), Path(src).read_text()))
+        replace(src, dst)
+
+    monkeypatch.setattr(embedded_pg.os, "replace", watched)
+    embedded_pg._record_owner(root)
+    assert seen == [(False, str(os.getpid()))]
+    assert owner.read_text() == str(os.getpid())
+    assert [p.name for p in root.iterdir()] == ["owner.pid"]  # no temporary left behind

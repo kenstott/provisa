@@ -146,4 +146,4 @@ glossary_terms:
   - to: complaint
     rel_type: KIND_OF
   - to: complaint status
-    rel_type: RELATED_TO
+    rel_type: DERIVED_FROM

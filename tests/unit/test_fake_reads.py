@@ -322,3 +322,15 @@ def test_a_hash_of_a_narrower_integer_column_fits_its_type(monkeypatch, dtype):
     stage2._bind_fakes(gov)
     rows = con.execute(apply_governance("SELECT id, ref FROM sales.customers", gov)).fetchall()
     assert len(rows) == 199 and all(a == b for a, b in rows)
+
+
+def test_a_schema_qualified_reference_reads_the_faked_projection(con):
+    """REQ-2204: Metabase qualifies every column by its table's schema; the reference reads the
+    projection the table is replaced by, never the real column."""
+    rows = _run(
+        con,
+        "SELECT sales.customers.id, sales.customers.email FROM sales.customers "
+        "WHERE sales.customers.id = 7",
+    )
+    assert rows == _run(con, "SELECT id, email FROM sales.customers WHERE id = 7")
+    assert not rows[0][1].endswith("@real.example")

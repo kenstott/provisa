@@ -42,6 +42,7 @@ async def _seed(
     from provisa.compiler.naming import domain_to_sql_name
 
     from provisa.core.schema_org import (
+        data_product_tables,
         data_products,
         domains,
         registered_tables,
@@ -56,15 +57,14 @@ async def _seed(
     for pid in ("p1", "p2"):
         await conn.execute_core(insert(data_products).values(id=pid, domain_id=domain, name=pid))
     tables = [
-        dict(id=A, table_name="a", product_id="p1"),
-        dict(id=B, table_name="b", product_id="p2"),
+        dict(id=A, table_name="a"),
+        dict(id=B, table_name="b"),
         dict(id=C, table_name="c"),
         dict(id=D, table_name="d"),
         dict(id=E, table_name="e"),
         dict(
             id=V,
             table_name="v",
-            product_id="p1",
             source_id=DERIVED_SOURCE_ID,
             alias=view_alias,
             view_sql=f"SELECT d.amount AS amount FROM {domain_to_sql_name(domain)}.d d",
@@ -75,6 +75,11 @@ async def _seed(
             insert(registered_tables).values(
                 **{"source_id": "crm", "domain_id": domain, "schema_name": "public", **t}
             )
+        )
+    # REQ-1634: membership is its own relation.
+    for product_id, table_id in (("p1", A), ("p2", B), ("p1", V)):
+        await conn.execute_core(
+            insert(data_product_tables).values(product_id=product_id, table_id=table_id)
         )
     for table_id, column in ((D, "amount"), (V, "amount"), (A, "id"), (B, "id")):
         await conn.execute_core(
@@ -149,6 +154,37 @@ async def test_two_paths_to_another_product_are_one_direct_edge(control_plane):
         if r["kind"] == "related"
     )
     assert related == [(B, "p2", "toB"), (C, None, None)]
+
+
+@pytest.mark.asyncio
+async def test_a_related_table_in_two_other_products_is_one_row_for_each(control_plane):
+    """REQ-1634: a table may be a member of several products; the related row it is for one
+    product names each other product it is in, one row each, each its own id."""
+    from sqlalchemy import insert
+
+    from provisa.core.schema_org import data_product_tables, data_products
+
+    db = control_plane.org()
+    try:
+        async with db.acquire() as conn:
+            await _seed(conn)
+            await conn.execute_core(
+                insert(data_products).values(id="p3", domain_id="sales", name="p3")
+            )
+            await conn.execute_core(insert(data_product_tables).values(product_id="p3", table_id=B))
+            rows = await _edges(conn, "p1")
+    finally:
+        await db.close()
+
+    related = sorted(
+        (r["id"], r["target_product_id"])
+        for r in rows
+        if r["kind"] == "related" and r["target_table_id"] == B
+    )
+    assert related == [(f"p1:related:{B}:product:p2", "p2"), (f"p1:related:{B}:product:p3", "p3")]
+    # The relationship edge reaches each product B is a member of.
+    reached = sorted(r["target_product_id"] for r in rows if r["kind"] == "relationship")
+    assert reached == ["p2", "p3"]
 
 
 @pytest.mark.asyncio
@@ -227,6 +263,7 @@ async def test_the_cost_grows_with_the_model_not_with_the_routes(control_plane):
 
     from provisa.api.startup_seed import _adapt_view_ddl
     from provisa.core.schema_org import (
+        data_product_tables,
         data_products,
         domains,
         lineage_edges,
@@ -255,10 +292,14 @@ async def test_the_cost_grows_with_the_model_not_with_the_routes(control_plane):
                             domain_id="s",
                             schema_name="public",
                             table_name=f"t{i}",
-                            product_id={1: "p1", 2: "p2"}.get(i),
                         )
                         for i in range(1, tables + 1)
                     ]
+                )
+            )
+            await conn.execute_core(
+                insert(data_product_tables).values(
+                    [dict(product_id="p1", table_id=1), dict(product_id="p2", table_id=2)]
                 )
             )
             pairs = set()

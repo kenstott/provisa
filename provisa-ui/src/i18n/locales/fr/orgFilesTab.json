@@ -2,7 +2,7 @@
   "orgFilesTab": {
     "panelTitle": "Chiffrement du dossier de fichiers",
     "loading": "Chargement…",
-    "intro": "Les fichiers que Provisa conserve pour votre organisation sur chaque serveur — caches, conversions, réplicas et résultats volumineux — sont conservés dans le dossier propre à votre organisation. Activez le chiffrement pour les conserver chiffrés sous une clé que votre organisation détient.",
+    "intro": "Sur chaque serveur, Provisa conserve les caches, conversions, répliques et gros résultats de votre organisation dans le dossier propre à votre organisation. Activez le chiffrement pour les garder chiffrés sous une clé détenue par votre organisation.",
     "encrypt": "Chiffrer le dossier de fichiers de l'organisation",
     "referenceLabel": "Référence de la clé",
     "referenceHelp": "Le nom de la clé dans le coffre de secrets de votre organisation, écrit ${secret:NAME}. Provisa ne stocke que cette référence, jamais la clé.",

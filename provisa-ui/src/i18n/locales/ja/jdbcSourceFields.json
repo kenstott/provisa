@@ -16,7 +16,7 @@
     "checkPassed": "{{capability}}: 合格",
     "checkFailed": "{{capability}}: 不合格（{{reason}}）",
     "jdbcDriverJar": "JDBC ドライバー JAR",
-    "jdbcDriverJarHint": "ドライバーの JAR ファイル (お使いのマシンからアップロード)。セルフホスト環境のみ。",
+    "jdbcDriverJarHint": "お使いのマシンからアップロードするドライバーの jar ファイル。セルフホスト環境のみ。",
     "jdbcDriverClass": "ドライバークラス",
     "driver": "ドライバー",
     "jarDriver": "独自の JDBC ドライバー (JAR)",

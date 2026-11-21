@@ -81,8 +81,8 @@ def _config(stack: "_Stack", files: Path, work: Path, kind: str) -> dict:
         "federation_engine": "duckdb",
         "platform": {
             "regions": [
-                {"id": "eu", "address": "https://eu.example.com"},
-                {"id": "us", "address": "https://us.example.com"},
+                {"id": "eu", "description": "The eu region", "purposes": ["residency"]},
+                {"id": "us", "description": "The us region", "purposes": ["residency"]},
             ]
         },
         "stores": stores,

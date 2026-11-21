@@ -156,6 +156,19 @@ describe("RoleSelector", () => {
     expect(menu.getByText("analyst")).toBeInTheDocument();
   });
 
+  it("offers the union of every held role first, ahead of each single role", async () => {
+    // REQ-2155: acting with every held role is the default; a single role narrows.
+    mockUseAuth.mockReturnValue(makeAuthValue({}));
+
+    render(<RoleSelector />);
+    expect(screen.getByRole("button")).toHaveTextContent(t("roleSelector.role", { role: "All" }));
+    await openMenu();
+    const items = [...document.querySelectorAll("[data-role-option]")].map((el) =>
+      el.getAttribute("data-role-option"),
+    );
+    expect(items).toEqual(["all", "admin", "analyst"]);
+  });
+
   it("closes the menu when an item is selected", async () => {
     const selectRole = vi.fn();
     mockUseAuth.mockReturnValue(makeAuthValue({ selectRole }));

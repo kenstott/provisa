@@ -10,7 +10,8 @@
 
 """pg_forms_system on an engine that is not DuckDB (REQ-2171): each statement of system_corpus as
 Provisa writes it for the engine, run there, against postgres:17.11's recorded answers.
-tests/unit/pgwire/test_pg_system_forms.py proves the same on DuckDB."""
+tests/unit/pgwire/test_pg_system_forms.py proves the same on DuckDB. A statement conformance-functions
+measures on the engine is not replayed here (tests/integration/replay_coverage.py)."""
 
 # Requirements: REQ-2167, REQ-2171
 
@@ -23,8 +24,11 @@ from typing import Any
 import pytest
 
 from provisa.core.pg_error import PostgresError, from_engine
+from provisa.transpiler.function_macros import FunctionRefused
+from provisa.transpiler.pg_forms_enum import NOT_SUPPORTED
 from provisa.transpiler.pg_forms_types import REFUSED
 from provisa.transpiler.transpile import transpile
+from tests.integration.replay_coverage import remaining
 from tests.unit.pgwire.pg17_system_answers import RECORDED
 
 pytestmark = [pytest.mark.integration]
@@ -40,15 +44,25 @@ def _agrees(got: Any, want: tuple[Any, Any, Any], function_refused: bool) -> boo
     return want[0] == "ok" and want[2] == [None if cell is None else str(cell) for cell in got]
 
 
+def _refused_by_decision(got: Any, sql: str, dialect: str) -> bool:
+    """REQ-2167 (amended 2026-11-03, Privileges, visibility and notifications): what a decision does
+    not support, pg_notify among it, is refused by name on every engine whatever PostgreSQL
+    answered, as test_pg_system_forms holds on DuckDB."""
+    named = [name for name in NOT_SUPPORTED if f'"{name}"(' in sql]
+    refused = isinstance(got, FunctionRefused)
+    return bool(named) and refused and str(got) == f"{named[0]}() has no form on {dialect}"
+
+
 def _check(run: Callable[[str], Any], dialect: str, written_from_a_value: bool) -> None:
     wrong = {}
-    for sql, want in RECORDED.items():
+    for sql in remaining("system_forms", dialect, RECORDED):
+        want = RECORDED[sql]
         try:
             got = run(transpile(sql, dialect))
         except Exception as raised:  # noqa: BLE001 -- the engine's refusal is the answer compared
             got = raised
         refused = written_from_a_value and "regexp_replace" in sql and want[0] == "err"
-        if not _agrees(got, want, refused):
+        if not (_refused_by_decision(got, sql, dialect) or _agrees(got, want, refused)):
             wrong[sql] = str(got)[:300]
     assert not wrong, f"{len(wrong)} wrong {list(wrong.items())[:8]}"
 

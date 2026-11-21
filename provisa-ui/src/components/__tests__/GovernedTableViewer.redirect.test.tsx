@@ -12,7 +12,8 @@
 // says so, with where it is: never "No rows", and never a crash on the column list it did not get.
 
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { render, screen } from "../../test-utils/render";
+import { render, screen, waitFor } from "../../test-utils/render";
+import userEvent from "@testing-library/user-event";
 import type { RegisteredTable } from "../../types/admin";
 import { GovernedTableViewer } from "../GovernedTableViewer";
 
@@ -59,5 +60,57 @@ describe("GovernedTableViewer — a result landed in the results store", () => {
       "https://results.example/r/abc.parquet",
     );
     expect(screen.queryByText("No rows.")).toBeNull();
+  });
+
+  const REDIRECT_BODY = {
+    data: { sql: null },
+    redirect: {
+      redirect_url: "https://results.example/r/abc.parquet",
+      row_count: 1001,
+      expires_in: 3600,
+      content_type: "application/vnd.apache.parquet",
+    },
+  };
+  const json = (body: unknown) =>
+    new Response(JSON.stringify(body), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+
+  it("keeps the toolbar beside the notice, and its controls still run the query again", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(json(REDIRECT_BODY))
+      .mockResolvedValue(json({ data: { sql: [{ id: 1 }] }, columns: ["id"] }));
+    vi.stubGlobal("fetch", fetchMock);
+    render(<GovernedTableViewer table={TABLE} role="analyst" />);
+    await screen.findByTestId("result-redirected");
+
+    // The person is not stranded: the row-limit control and the page controls are on screen.
+    const pageSize = screen.getByTestId("page-size-select");
+    expect(pageSize).toBeInTheDocument();
+    expect(screen.getByTestId("clear-filters-btn")).toBeInTheDocument();
+    // The rows are in the results store: no "0 rows" count beside the notice.
+    expect(screen.queryByText(/^0 rows?$/)).toBeNull();
+
+    // Changing the row limit runs the query again and the rows replace the notice.
+    await userEvent.click(pageSize);
+    // The listbox is in a portal whose dropdown jsdom reports as display:none while its
+    // transition runs, so the option is looked up with hidden: true (as the page-size test does).
+    await userEvent.click(await screen.findByRole("option", { name: "25", hidden: true }));
+    await waitFor(() => expect(screen.queryByTestId("result-redirected")).toBeNull());
+    expect(fetchMock.mock.calls.length).toBeGreaterThan(1);
+    const second = JSON.parse(String(fetchMock.mock.calls[1][1].body));
+    expect(second.sql).toContain("LIMIT 26");
+  });
+
+  it("sends each page as a page, so its probe row is not counted against the threshold", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(json({ data: { sql: [] }, columns: ["id"] }));
+    vi.stubGlobal("fetch", fetchMock);
+    render(<GovernedTableViewer table={TABLE} role="analyst" />);
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    const body = JSON.parse(String(fetchMock.mock.calls[0][1].body));
+    expect(body.paged).toBe(true);
+    expect(body.sql).toMatch(/LIMIT \d+ OFFSET 0/);
   });
 });

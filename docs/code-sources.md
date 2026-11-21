@@ -1,6 +1,6 @@
 # Code Resolvers
 
-Business logic in Python or Node.
+Business logic in Python, Node or Go.
 
 If you have written a GraphQL server, you know this pattern. A code resolver is a function that answers for one object type. Over GraphQL, a function tagged `@table` *is* the resolver for its table's type. Provisa calls it with the query's arguments and governs what comes back.
 
@@ -370,9 +370,105 @@ Writing works the way it does for any table:
 
 When two commands fit one operation, tag the one it is with `@insert <table>`, `@update <table>` or `@delete <table>`, where `<table>` is the table's `@table` function. Two that fit with no tag are refused when you register the table, and so is a tag on a command that doesn't fit. A write to a table with no command bound for it is refused, naming the operation.
 
+### Relating two tables: code resolvers {: #code-resolvers }
+
+Sometimes equal column values don't tell you which rows of two tables belong together. A store sits inside a region, a document resembles another, or a name nearly matches. A code resolver decides it with your own algorithm. It is a `@query` that takes the source table and the target table as its two table parameters, in that order, and returns one row per match. Each row carries the key of each side and any other column you compute, such as a score.
+
+```python
+from dataclasses import dataclass
+
+from provisa_services import TableRef
+
+
+@dataclass
+class Store:
+    id: int
+    lat: float
+    lon: float
+
+
+@dataclass
+class Region:
+    id: int
+    polygon: str
+
+
+@dataclass
+class Match:
+    store_id: int
+    region_id: int
+    score: float
+
+
+def stores_in_regions(stores: TableRef[Store], regions: TableRef[Region]) -> list[Match]:
+    """@query"""
+    ...
+```
+
+Register the function as a command. Then, on the Relationships page, add a relationship whose target type is **Code resolver**. Pick the source table and its key, the target table and its key, the resolver, and the columns of its rows that hold each key. Provisa keeps the choice as objects of kinds it already has:
+
+- a materialized view over the resolver's call, `SELECT * FROM stores_in_regions('retail.stores', 'geo.regions') AS m`, named by the id you give;
+- `<id>`, a junction relationship from the source table to the target table through that view. Cypher serves it as one edge named by the id in upper case, with the match's other columns as its properties: `MATCH (s)-[m:STORE_REGIONS]->(r) RETURN s.id, m.score, r.name`;
+- `<id>_matches`, from the source table to that view (one-to-many), served in GraphQL under the id;
+- `<id>_target`, from the view to the target table (many-to-one), served in GraphQL under the target table's name.
+
+GraphQL follows the two plain relationships as two nested levels: `stores { store_regions { score regions { name } } }`. Cypher leaves them out, since a junction's view is not a node.
+
+- **Landed.** The matches are kept as a table. Provisa works them out again when either table changes, and at the latest after the refresh interval. A view over a command call counts the tables the call is given as its inputs. The matches can't be computed each time they are read: Provisa runs a command call before it expands the views a statement reads, so a view held only as SQL would never call its resolver.
+- **Governed.** The build reads both tables as the organisation's administrator, as any materialized view's build does. A column of the view is visible to the roles that see both keys. Following `<id>_target` reads the target table under the reader's own row rules and column visibility.
+- **Refused.** A command that isn't a code `@query`, doesn't take exactly two tables, takes any other argument, or whose rows lack either key is refused when you save the relationship, with the reason.
+- **One thing.** The view and the three relationships carry the set's id, and you change or retire them only as a set. The Relationships page offers **Change code resolver** and **Retire code resolver** on each of the relationships. Editing or deleting one of them on its own page is refused, naming the set. Retiring the set retires all four, and their names stay taken.
+
+#### Keeping the matches incrementally: `@change` {: #code-resolver-change }
+
+By default every refresh runs the resolver again and replaces all the matches. When that costs too much, add a second function to the same source, tagged `@change`. Provisa then asks it only for the matches that changed since the last run.
+
+```python
+@dataclass
+class Changed:
+    store_id: int
+    region_id: int
+    removed: bool
+    seq: int
+
+
+def store_regions_changes(
+    stores: TableRef[Store], regions: TableRef[Region], since: int | None = None
+) -> list[Changed]:
+    """Store-region matches changed since ``since``.
+
+    @change table=store_regions
+    @change key=store_id,region_id
+    @change removed=removed
+    @change cursor=seq
+    """
+    ...
+```
+
+The four tag lines state what only you know.
+
+| Line | States |
+|---|---|
+| `table=` | The landed table this function keeps fresh. For a code resolver that is the id you gave the set. |
+| `key=` | The columns that identify one match, separated by commas. |
+| `removed=` | The column that is true when a match no longer holds. |
+| `cursor=` | The column whose value orders the changes. |
+
+The function takes the resolver's two tables and one more parameter, the cursor. Provisa passes the largest cursor value it stored after the last run that succeeded. Your function returns the matches that changed after it. Provisa upserts each returned row by its key and deletes the key of a row whose removed column is true. The function never learns where the matches are stored.
+
+On the first run and on every whole rebuild Provisa passes no cursor, and your function returns every match. One function serves both cases, so write the no-cursor branch to return the full result.
+
+Turn it on in the code resolver's form on the Relationships page. Tick **Keep matches incrementally**, then set **Whole rebuild every (seconds)**. The interval is required. A whole rebuild corrects anything the changes missed, and Provisa won't save the setting without one. An administrator's full refresh of the view is also a whole rebuild.
+
+A view you define yourself over a code command has the same setting on its **Load** tab, as **Incremental maintenance** with its own **Whole rebuild every (seconds)**.
+
+- **Unavailable without `@change`.** When the resolver's source declares no `@change` function for the table, the tick is disabled and its help icon says so. A save that turns it on by another route, such as the API, is refused with the same reason.
+- **Off means whole.** With the setting off, every refresh runs the resolver's own function and `@change` is never called.
+- **Refused results.** A refresh fails, applies nothing and keeps the old cursor when a returned row lacks a key column, when a key appears twice in one result, or when a returned cursor is before the stored one. The view's last error names the function and the row's fault.
+
 ### Where the code comes from {: #where-the-code-comes-from }
 
-- **A package.** An npm package for Node or a PyPI package for Python, at an exact version.
+- **A package.** An npm package for Node, a PyPI package for Python, or a Go module for Go, at an exact version (a Go module's is `v1.2.0`).
 - **A Git repository.** A full 40-character commit, with a subdirectory if the code isn't at the top.
 - **An upload.** A `.zip`, `.tgz` or `.tar.gz` of the code.
 - **A folder on your machine.** **Choose folder** zips the folder in your browser, leaving out `node_modules`, `.venv`, `__pycache__` and `.git`, and uploads it as the source's archive. In a browser that can keep the folder (Chrome, Edge), **Save** zips and sends it again; another browser asks you for the folder again.
@@ -381,6 +477,7 @@ When two commands fit one operation, tag the one it is with `@insert <table>`, `
 Every origin but the server directory is pinned, so the source runs exactly what was saved.
 
 - **Entry module.** When Python code has more than one top-level module, name the one to enter by.
+- **Package.** Go code is a module; its functions are those of one package, the module's root package unless you name another by its directory (`feeds`).
 - **Open in VS Code.** A server directory opens in your installed VS Code; a Git origin opens at its commit on vscode.dev. A package or an upload has no such link.
 
 ### Installing dependencies {: #installing-dependencies }
@@ -393,12 +490,13 @@ Code with dependencies needs a lockfile, and every install follows it exactly. W
 | Bun | `bun.lock` or `bun.lockb` |
 | Deno | `deno.lock` |
 | Python | `uv.lock` (with its `pyproject.toml`), `pylock.toml`, or a `requirements.txt` with `--hash` on every line |
+| Go | `go.sum` |
 
 - **Carried or given.** Code that carries its own lockfile installs from it: a Git repository, upload or folder with one, or an npm package whose author published `npm-shrinkwrap.json` (npm never publishes `package-lock.json`). Most npm packages, and Python packages from PyPI, carry none, so give a lockfile beside them.
 - **Why it matters.** Without one, two installs of the same code can differ, and a test that passes today can fail tomorrow on a new dependency version.
 - **A built image is fixed already.** Once you [build the source's image](#running-on-a-remote-host), its dependencies are inside it. A lockfile matters for dev mode and for each new build.
-- **No install scripts.** npm installs with `--ignore-scripts`, and Python installs wheels only, never building from a source distribution.
-- **Your registries.** Packages come from your organization's own npm registries, PyPI indexes and Git hosts, entered once under **Admin → Package registries**. The public npm registry and PyPI need no entry. See [Package Registries](package-registries.md).
+- **No install scripts.** npm installs with `--ignore-scripts`, and Python installs wheels only, never building from a source distribution. Go runs no code while it fetches modules, and every module is checked against the code's `go.sum`; one it does not cover is refused by name.
+- **Your registries.** Packages come from your organization's own npm registries, PyPI indexes, Go module proxies and Git hosts, entered once under **Admin → Package registries**. The public npm registry, PyPI and Go module proxy need no entry. See [Package Registries](package-registries.md).
 - **Cached.** An install is cached by the code's content hash, so the same code installs once.
 
 ### Node {: #node }
@@ -457,6 +555,40 @@ export async function churnScore(
     rows.map(([h, row], i) => [h, [{ customer_id: row.customer_id, score: scores[i] }]]),
   );
   return context.keys ? out : out[""]; // a loader call returns the hash of key to rows
+}
+```
+
+### Go {: #go }
+
+- Go code runs as one program: Provisa compiles your package into its host once per version of the code, with the pinned Go toolchain (1.27.3). A `go.mod` that asks for a newer Go is refused.
+- Tags go in the doc comment, each on a line of its own, and types come from the function's signature. An exported function is offered; a method or an unexported function is not.
+- A function takes an optional `context.Context` first, cancelled when the read stops, then one struct of its inputs. A pointer field is an optional input; any other field is required.
+- A field is named as `encoding/json` names it: its `json` tag, else its Go name.
+- A `@table` returns `[]T`, `([]T, error)`, `iter.Seq[T]` or `iter.Seq2[T, error]`. A `@stream` returns `iter.Seq2[T, error]`; a row it yields with an error ends the stream with that error.
+- A `string` type with constants of its own is an enum of them; `time.Time` is a timestamp.
+- `@loader` and the read context are not yet offered for Go.
+
+The scored account in Go:
+
+```go
+package scoring
+
+import "context"
+
+type Risk struct {
+	Score   float64  `json:"score"`
+	Reasons []string `json:"reasons"`
+}
+
+type RiskInputs struct {
+	AccountID string `json:"account_id"`
+}
+
+// ChurnRisk is the churn risk of one account.
+//
+// @table
+func ChurnRisk(ctx context.Context, in RiskInputs) ([]Risk, error) {
+	return []Risk{{Score: 0.82, Reasons: []string{"no logins in 30 days"}}}, nil
 }
 ```
 
@@ -530,7 +662,7 @@ On its first start the container prints a line beginning `pairing code:` in its 
 
 ### Provisa's services {: #provisas-services }
 
-Your code can import one module that Provisa always provides on the server: `provisa_services` in Python, `@provisa/services` in Node.js, Bun and Deno. Nothing needs installing, and it isn't on any package registry. Outside Provisa it doesn't exist, so your tests mock it.
+Your code can import one module that Provisa always provides on the server: `provisa_services` in Python and Go, `@provisa/services` in Node.js, Bun and Deno. Nothing needs installing, and it isn't on any package registry. Outside Provisa it doesn't exist, so your tests mock it.
 
 ```python
 import provisa_services as ps
@@ -547,6 +679,23 @@ const region = await settings.get("region");
 const rates = (await cache.get("rates")) ?? (await fetchRates());
 await cache.set("rates", rates, 3600);
 ```
+
+```go
+import ps "provisa_services"
+
+func Rates(ctx context.Context, in RatesInputs) ([]Rate, error) {
+	region, err := ps.Settings.Get(ctx, "region")
+	if err != nil {
+		return nil, err
+	}
+	cached, err := ps.Cache.Get(ctx, "rates")
+	// ...
+	err = ps.Cache.Set(ctx, "rates", rates, 3600)
+	// ...
+}
+```
+
+In Go the calls have the same names, capitalized (`ps.Cache.Set`, `ps.HTTP.Get`, `ps.LLM.BaseURL`, `ps.DQ.Dataset`, `ps.Log`, `ps.Audit`), and each returns an `error` last. Every call but `ps.LLM.BaseURL` takes a `context.Context` first: give your function a leading `context.Context` and pass that one along, because it is what ties the call to the request your code is serving. Your `go.mod` doesn't need to name the module. To compile outside Provisa, point it at your own mock with a `replace provisa_services => ./mock`; on the server Provisa's module takes its place.
 
 | Call | What it does |
 |---|---|

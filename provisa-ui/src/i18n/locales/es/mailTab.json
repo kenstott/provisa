@@ -1,10 +1,10 @@
 {
   "mailTab": {
     "loading": "Cargando…",
-    "intro": "El servidor de correo a través del cual este despliegue envía los mensajes de la plataforma: invitaciones y otros avisos. Se enumeran todos los transportes que la compilación conoce; el que necesita un paquete lo nombra.",
+    "intro": "El servidor de correo a través del cual este despliegue envía invitaciones y otros avisos de la plataforma. Se enumeran todos los transportes que conoce la compilación; uno que necesita un paquete lo nombra.",
     "providerLabel": "Transporte",
-    "providerRequires": "{{label}} — instale {{library}}",
-    "secretOnFile": "Hay una credencial almacenada: escriba para reemplazarla",
+    "providerRequires": "{{label}} (instale {{library}})",
+    "secretOnFile": "Hay una credencial registrada. Escriba para reemplazarla.",
     "secretNotSet": "Sin definir",
     "fromAddressLabel": "Dirección del remitente",
     "fromAddressHelp": "La dirección que ven los destinatarios. La mayoría de los transportes exigen que sea un remitente verificado.",
@@ -12,7 +12,7 @@
     "baseUrlHelp": "La dirección a la que apuntan los enlaces de un mensaje, como un enlace de invitación.",
     "timeoutLabel": "Tiempo de espera (segundos)",
     "save": "Guardar configuración de correo",
-    "saved": "Configuración de correo guardada: envío a través de {{provider}}.",
+    "saved": "Configuración de correo guardada. Enviando a través de {{provider}}.",
     "testTitle": "Enviar un mensaje de prueba",
     "testIntro": "Envía a través del transporte configurado, con las mismas credenciales que usa una invitación, y registra el intento a continuación.",
     "testRecipient": "Enviar a",

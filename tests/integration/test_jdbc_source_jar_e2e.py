@@ -91,9 +91,11 @@ async def test_a_jdbc_url_reads_lists_and_writes_through_the_customers_driver(hi
 
 
 async def test_detect_runs_through_the_driver_and_offers_no_attach(hints):
-    checks = {c.capability: c for c in await detect.detect(hints, "", "")}
-    assert (
-        not checks["attach"].passed and "jdbc URL has no engine attach" in checks["attach"].reason
-    )
+    from provisa.federation.engine import build_duckdb_engine
+
+    engine = build_duckdb_engine().complete_reach()
+    checks = {c.capability: c for c in await detect.detect(hints, "", "", engine)}
+    assert not checks["attach"].passed
+    assert checks["attach"].reason == "a jdbc URL never attaches"
     for capability in ("predicate", "join", "aggregate", "key_range"):
         assert checks[capability].passed, checks[capability].reason

@@ -60,8 +60,11 @@ class _Db:
         return _Ctx()
 
 
-def _request():
-    identity = types.SimpleNamespace(user_id="dana", email="dana@eu.acme.com")
+def _request(*, email_verified: bool = True):
+    # An address dana's identity provider verified (REQ-1261), unless the test says not.
+    identity = types.SimpleNamespace(
+        user_id="dana", email="dana@eu.acme.com", email_verified=email_verified
+    )
     return types.SimpleNamespace(state=types.SimpleNamespace(identity=identity))
 
 
@@ -83,6 +86,15 @@ async def test_single_tenant_offers_nothing_even_when_orgs_claim_the_address(cla
 
     monkeypatch.setattr(claims, "multitenancy", False)
     assert await _auto_join_offers(_request()) == []
+
+
+@pytest.mark.asyncio
+async def test_an_unverified_address_is_offered_nothing(claims, monkeypatch):
+    """REQ-1261: orgs claim the address, but nothing verified it is the caller's."""
+    from provisa.api.auth_router import _auto_join_offers
+
+    monkeypatch.setattr(claims, "multitenancy", True)
+    assert await _auto_join_offers(_request(email_verified=False)) == []
 
 
 @pytest.mark.asyncio

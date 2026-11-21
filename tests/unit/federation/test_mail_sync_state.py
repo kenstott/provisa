@@ -70,14 +70,17 @@ async def test_a_kind_of_token_nobody_reads_is_refused_and_nothing_is_changed(db
 
 
 async def test_what_was_kept_goes_with_its_source(db):
+    """REQ-2248 (amended 2026-11-15): deleting the source retires it, and what was kept moves with
+    it to the key it is retired under, so a new source at its id starts from nothing."""
     from provisa.core.repositories import source as source_repo
 
     async with db.acquire() as conn:
         await conn.execute_core(insert(sources).values(id="mail", type="microsoft_365"))
         await kept.replace(conn, "mail", {(A, "", kept.DELTA): "l0"})
         assert await source_repo.delete(conn, "mail") is True
+        [retired] = await source_repo.list_all(conn, retired=True)
         rows = (await conn.execute_core(select(table.c.source_id))).fetchall()
-        assert rows == []
+        assert rows == [(retired["id"],)]
 
 
 def test_it_is_state_of_one_environment_and_region_not_part_of_the_model():

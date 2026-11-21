@@ -24,6 +24,8 @@ from provisa.pgwire.server import ProvisaSession, _transaction_open
     [
         ("BEGIN", False, True),
         ("begin transaction isolation level serializable", False, True),
+        # REQ-883: DuckDB's postgres extension opens its catalog scan with this exact form.
+        ("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY", False, True),
         ("START TRANSACTION", False, True),
         ("COMMIT", True, False),
         ("END", True, False),
@@ -37,6 +39,18 @@ from provisa.pgwire.server import ProvisaSession, _transaction_open
 )
 def test_statement_moves_the_transaction(sql, before, after):
     assert _transaction_open(sql, before) is after
+
+
+def test_duckdb_begin_transaction_isolation_level_read_only_is_intercepted():
+    """REQ-883: DuckDB's postgres extension opens its catalog scan with ONE simple-Query message
+    whose first statement is 'BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY'.
+    The catalog must classify it as INTERCEPT (a transaction no-op) so it never reaches the
+    catalog pipeline that requires state.model_db to have meta.* views."""
+    sql = "BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY"
+    assert classify(sql) == "INTERCEPT", (
+        f"classify({sql!r}) returned non-INTERCEPT; "
+        "DuckDB's catalog scan batch will fail on this BEGIN form"
+    )
 
 
 @pytest.mark.parametrize("sql", ["END", "ABORT"])

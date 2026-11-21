@@ -40,6 +40,7 @@ import datetime
 import decimal
 import enum
 import importlib
+import importlib.util
 import inspect
 import itertools
 import json
@@ -54,18 +55,25 @@ from pathlib import Path
 
 BATCH = 1000
 #: The protocol this host speaks (provisa/codesource/worker.py PROTOCOL).
-PROTOCOL = 4
+PROTOCOL = 5
 _EXACT = 2**53 - 1
 _HEAD = struct.Struct(">I")
 _ID = struct.Struct(">Q")
 _IR_KEY = b"provisa.ir"
-_WHOLE_ROW = "$row"
 #: REQ-2100: the field a loader call's row carries its key in.
 _KEY = "$key"
 #: An argument the read does not give: left out of the call, so the function's default applies.
 _ABSENT = object()
+#: REQ-2225: a connector's script, served in place of the entry module when this is set.
+SCRIPT_FILE_ENV = "PROVISA_SCRIPT_FILE"
+_SCRIPT_MODULE = "connector_script"
 #: How many connections the host makes to a socket path (provisa/codesource/worker.py).
 CONNECTIONS_ENV = "PROVISA_HOST_CONNECTIONS"
+#: REQ-2133: the function of the entry module that runs a preflight check. Only the module Provisa
+#: serves preflights with has it; any other code's host answers a preflight call with an error.
+PREFLIGHT = "_provisa_preflight"
+#: Put on a preflight's queue of pulled batches when Provisa cancels the call.
+_STOPPED = object()
 
 
 def _is_model(value: typing.Any) -> bool:
@@ -168,6 +176,38 @@ def _inputs_and_context(
     return out
 
 
+def _is_table_ref(hint: typing.Any) -> bool:
+    origin = typing.get_origin(hint)
+    return getattr(origin, "__module__", "") == "provisa_services" and (
+        origin.__name__ == "TableRef"
+    )
+
+
+def _with_table_refs(fn: typing.Callable, args: list, keywords: dict) -> tuple[list, dict]:
+    """REQ-2226: each argument of a parameter annotated ``TableRef[Row]``, as the TableRef."""
+    hints = typing.get_type_hints(fn)
+    tables = {n for n in inspect.signature(fn).parameters if _is_table_ref(hints.get(n))}
+    if not tables:
+        return args, keywords
+    services = sys.modules["provisa_services"]
+
+    def made(name: str, value: typing.Any) -> typing.Any:
+        if name not in tables:
+            return value
+        return services.TableRef(
+            value["ref"],
+            tuple(value["columns"]),
+            services.TableConnection(**value["connection"]),
+            value["sql"],
+        )
+
+    names = list(inspect.signature(fn).parameters)
+    return (
+        [made(n, v) for n, v in zip(names, args, strict=False)],
+        {n: made(n, v) for n, v in keywords.items()},
+    )
+
+
 def _arrow() -> typing.Any:  # the pyarrow module
     lib = os.environ.get("PROVISA_HOST_LIB")
     # Set for the local worker only (python/source.py): a remote host's image installs pyarrow
@@ -244,6 +284,61 @@ class Host:
         #: Each call's credit (REQ-2100): how many more rows frames it may send before its
         #: reader takes one.
         self.credits: dict[int, asyncio.Semaphore] = {}
+        #: REQ-2133: each preflight call's answers to its pulls, as Provisa sends them.
+        self.pulled: dict[int, asyncio.Queue] = {}
+
+    async def preflight(self, call_id: int, message: dict) -> None:
+        """REQ-2133: run a preflight check, its text in the call. The check runs on a thread; each
+        batch it reads of an input is pulled from Provisa as it reads it, and its answer (the
+        verdict, or what it raised, and its warnings) is the call's value."""
+        started = time.process_time()
+        _bind_call(call_id, message.get("traceparent"))
+        loop = asyncio.get_running_loop()
+
+        async def ask(name: str) -> typing.Any:
+            waiting = self.pulled.get(call_id)
+            if waiting is None:
+                return _STOPPED
+            await self.send({"op": "pull", "id": call_id, "input": name})
+            return await waiting.get()
+
+        def pull(name: str) -> bytes | None:
+            """The next batch of the input ``name`` (an Arrow IPC stream), None at its end."""
+            got = asyncio.run_coroutine_threadsafe(ask(name), loop).result()
+            if got is _STOPPED:
+                raise RuntimeError("the preflight was cancelled")
+            return got
+
+        try:
+            run = getattr(self.module, PREFLIGHT, None)
+            if run is None:
+                raise LookupError("this host serves no preflight")
+            value = await asyncio.to_thread(
+                run,
+                message["source"],
+                from_wire(message["ctx"]),
+                message["inputs"],
+                message["whole"],
+                pull,
+                _arrow(),
+            )
+            await self.send({"op": "value", "id": call_id, "value": to_wire(value)})
+            cpu_ms = round((time.process_time() - started) * 1000, 3)
+            await self.send({"op": "end", "id": call_id, "cpu_ms": cpu_ms})
+        except asyncio.CancelledError:
+            pass  # Provisa stopped the call and is no longer waiting for it
+        except BaseException as exc:  # noqa: BLE001 -- the host's own failure, sent back by name
+            await self.send(
+                {
+                    "op": "error",
+                    "id": call_id,
+                    "message": f"{type(exc).__name__}: {exc}",
+                    "stack": "".join(traceback.format_exception(exc)),
+                }
+            )
+        finally:
+            self.running.pop(call_id, None)
+            self.pulled.pop(call_id, None)
 
     async def send(self, message: dict) -> None:
         body = b"J" + json.dumps(message, separators=(",", ":")).encode()
@@ -253,17 +348,13 @@ class Host:
     async def send_rows(self, call_id: int, rows: list, schema: typing.Any) -> None:
         """``rows`` as one Arrow IPC frame, against ``schema`` (a pyarrow Schema)."""
         pa = _arrow()
-        if schema.names == [_WHOLE_ROW]:
-            field = schema.field(_WHOLE_ROW)
-            values = [{_WHOLE_ROW: _for_field(row, field)} for row in rows]
-        else:
-            fields = [schema.field(i) for i in range(len(schema))]
-            values = []
-            for row in rows:
-                plain = _plain(row)
-                if not isinstance(plain, dict):
-                    raise TypeError(f"a {type(row).__name__} is not a row")
-                values.append({f.name: _for_field(plain.get(f.name), f) for f in fields})
+        fields = [schema.field(i) for i in range(len(schema))]
+        values = []
+        for row in rows:
+            plain = _plain(row)
+            if not isinstance(plain, dict):
+                raise TypeError(f"a {type(row).__name__} is not a row")
+            values.append({f.name: _for_field(plain.get(f.name), f) for f in fields})
         await self.send_batch(call_id, pa.RecordBatch.from_pylist(values, schema=schema))
 
     async def send_batch(self, call_id: int, batch: typing.Any) -> None:  # a pyarrow RecordBatch
@@ -363,6 +454,8 @@ class Host:
         keywords: dict,
         schema: typing.Any,  # the rows' pyarrow Schema; None for a single value
     ) -> None:
+        if kind == "command":
+            args, keywords = _with_table_refs(fn, args, keywords)
         if inspect.isasyncgenfunction(fn) or inspect.isgeneratorfunction(fn):
             result = fn(*args, **keywords)
         elif inspect.iscoroutinefunction(fn):
@@ -493,6 +586,15 @@ def load(code: str, entry: str) -> typing.Any:  # the code's entry module
     # a built image alike. The host runs isolated (-I), so it is put on the path here.
     sys.path.insert(1, str(Path(__file__).resolve().parent / "services"))
     importlib.import_module("provisa_services")
+    script = os.environ.get(SCRIPT_FILE_ENV)
+    if script:
+        # REQ-2225: the script given at setup is the code; the image's own code is what it imports.
+        spec = importlib.util.spec_from_file_location(_SCRIPT_MODULE, script)
+        assert spec is not None and spec.loader is not None
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[_SCRIPT_MODULE] = module
+        spec.loader.exec_module(module)
+        return module
     return importlib.import_module(entry)
 
 
@@ -513,20 +615,46 @@ async def serve(
     while True:
         try:
             head = await reader.readexactly(_HEAD.size)
-            message = json.loads((await reader.readexactly(_HEAD.unpack(head)[0]))[1:])
+            body = await reader.readexactly(_HEAD.unpack(head)[0])
         except (asyncio.IncompleteReadError, ConnectionError):
+            for waiting in host.pulled.values():
+                waiting.put_nowait(_STOPPED)
             for task in list(host.running.values()):
                 task.cancel()
             return  # the socket closed: Provisa stopped the worker
+        if body[:1] == b"A":
+            # REQ-2133: rows Provisa sends: the batch a preflight call pulled.
+            waiting = host.pulled.get(_ID.unpack(body[1 : 1 + _ID.size])[0])
+            if waiting is not None:
+                waiting.put_nowait(body[1 + _ID.size :])
+            continue
+        message = json.loads(body[1:])
         op = message["op"]
         if op == "refused":
             raise Refused(message["message"])
         if op == "ping":
             await host.send({"op": "pong", "id": message["id"]})
+        elif op == "values":
+            # REQ-2225: the connector's setup values, held in this process's memory and nowhere
+            # else, for code that reads them (provisa_services.setup_value).
+            sys.modules["provisa_services"]._set_values(message["values"])
+            await host.send({"op": "end", "id": message["id"]})
         elif op == "cancel":
+            waiting = host.pulled.get(message["id"])
+            if waiting is not None:
+                waiting.put_nowait(_STOPPED)  # the check's thread stops at its next read
             task = host.running.get(message["id"])
             if task is not None:
                 task.cancel()
+        elif op == "drained":
+            waiting = host.pulled.get(message["id"])
+            if waiting is not None:
+                waiting.put_nowait(None)
+        elif op == "call" and message["kind"] == "preflight":
+            host.pulled[message["id"]] = asyncio.Queue()
+            host.running[message["id"]] = asyncio.create_task(
+                host.preflight(message["id"], message)
+            )
         elif op == "credit":
             # The call's reader took ``n`` of its rows frames: as many more may go.
             credits = host.credits.get(message["id"])

@@ -50,7 +50,7 @@ def _input(functions: list[dict], webhooks: list[dict] | None = None, tables=Non
         relationships=[],
         column_types={1: [_col("id", "integer")]} if tables else {},
         naming_rules=[],
-        role={"id": "admin", "capabilities": [], "domain_access": ["*"]},
+        role={"id": "admin", "capabilities": ["command_execution"], "domain_access": ["*"]},
         domains=[{"id": "pets", "description": "Pets"}],
         domain_prefix=False,
         functions=functions,

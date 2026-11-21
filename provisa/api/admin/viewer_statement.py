@@ -12,7 +12,7 @@
 viewer chose: its column filters, sorts, grouping and page.
 
 The viewer of a table in service writes this statement itself and sends it as any statement is
-sent. A DRAFT is read by no statement a caller sends (admin/table_read.py), so its viewer sends
+sent. A WITHDRAWN table is read by no statement a caller sends (admin/table_read.py), so its viewer sends
 the choices and the server writes the statement — over that one table, naming only columns the
 table is registered with, with every value bound. Nothing a caller sends is written into the
 text: a column is checked against the registration and quoted, an operator is one of a fixed

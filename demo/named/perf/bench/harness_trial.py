@@ -502,8 +502,8 @@ def main() -> int:
     parser.add_argument(
         "--pg-image",
         default=PERF_PG_IMAGE,
-        help="The Postgres image of --engine pg. postgres:16 has none of the engine's extensions: "
-        "the trial must then report the engine failed",
+        help="The Postgres image of --engine pg. postgres:16 has none of the engine's extensions, nor "
+        "pgvector: the trial must then report the engine failed",
     )
     parser.add_argument(
         "--chaos",

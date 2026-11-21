@@ -422,3 +422,74 @@ def test_the_install_reads_on_after_engines_race_to_replace_it(fake_psycopg2, mo
     monkeypatch.setattr(_FakeCursor, "execute", racing)
     PgFederationRuntime(engine_dsn="postgresql://x")
     assert any("to_regprocedure" in sql for sql in fake_psycopg2[0].executed)
+
+
+class _FakeAdbcCursor:
+    def __init__(self, con: "_FakeAdbcConnection") -> None:
+        self.con = con
+
+    def execute(self, sql: str, params: Any = None) -> None:
+        del sql, params
+        # ADBC dbapi: a statement outside autocommit opens a transaction
+        if not self.con.autocommit:
+            self.con.in_transaction = True
+
+    def fetch_arrow_table(self) -> Any:
+        import pyarrow as pa
+
+        return pa.table({"id": [1]})
+
+    def fetch_record_batch(self) -> Any:
+        import pyarrow as pa
+
+        return pa.RecordBatchReader.from_batches(
+            pa.schema([("id", pa.int64())]), [pa.record_batch({"id": [1]})]
+        )
+
+    def adbc_cancel(self) -> None:
+        pass
+
+    def close(self) -> None:
+        pass
+
+
+class _FakeAdbcConnection:
+    def __init__(self, autocommit: bool) -> None:
+        self.autocommit = autocommit
+        self.in_transaction = False
+
+    def cursor(self) -> _FakeAdbcCursor:
+        return _FakeAdbcCursor(self)
+
+    def commit(self) -> None:
+        self.in_transaction = False
+
+    def rollback(self) -> None:
+        self.in_transaction = False
+
+    def close(self) -> None:
+        pass
+
+
+def test_an_arrow_read_gives_back_no_connection_inside_a_transaction(
+    fake_psycopg2, monkeypatch
+) -> None:
+    """A pooled engine connection left idle in its read's transaction keeps that read's lock on the
+    tables it read: a session's DROP SCHEMA in the same database then waits on it, for as long as
+    the connection sits in the pool (DELETE /data/cypher/session hung on the pg engine)."""
+    from adbc_driver_postgresql import dbapi as adbc_pg
+
+    made: list[_FakeAdbcConnection] = []
+
+    def _connect(dsn: str, *_: Any, autocommit: bool = False, **__: Any) -> _FakeAdbcConnection:
+        del dsn
+        made.append(_FakeAdbcConnection(autocommit))
+        return made[-1]
+
+    monkeypatch.setattr(adbc_pg, "connect", _connect)
+    rt = _runtime(fake_psycopg2)
+    monkeypatch.setattr(rt, "refresh_live_relations", lambda sql: None)
+    assert rt.run_arrow("SELECT id FROM t").num_rows == 1
+    schema, batches = rt.run_arrow_stream("SELECT id FROM t")
+    assert sum(b.num_rows for b in batches) == 1 and schema.names == ["id"]
+    assert made and not any(con.in_transaction for con in made)

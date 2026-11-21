@@ -44,7 +44,7 @@ def _at(monkeypatch, hour: int, minute: int = 0) -> None:
 def _stored_view_state(monkeypatch):
     """A stored (materialized) view readable 02:00-04:00 UTC, over a table in service."""
     view = _view(_OVER_A_SERVED_TABLE, off_peak_window="02:00-04:00", off_peak_tz="UTC")
-    state = _build(monkeypatch, view=view, drafts=[])
+    state = _build(monkeypatch, view=view, withdrawn=[])
     stored = {
         f"view-{view['table_name']}": SimpleNamespace(
             region=None, enabled=True, status="stale", target_table=None

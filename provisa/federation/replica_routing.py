@@ -23,8 +23,10 @@ with (``replica_address.address_replicas``).
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 
+import contextlib
+import contextvars
 import functools
 import asyncio
 import logging
@@ -33,6 +35,7 @@ from typing import TYPE_CHECKING, Any, NamedTuple
 if TYPE_CHECKING:
     from provisa.mv.models import TableIdentity
 
+from provisa.compiler.schema_types import physical_table_name
 from provisa.federation.replica_address import (
     ReplicaRoute,
     ReplicaRoutes,
@@ -232,7 +235,7 @@ async def registered_table_key(engine: Any, state: Any, table: "TableIdentity") 
         raise UnknownRegisteredTable(table.label)
     reg = found[0]
     physical = getattr(state, "kafka_table_physical", None) or {}
-    name = physical.get(reg.table_name, reg.table_name)
+    name = physical_table_name(physical, reg.source_id, reg.table_name)
     # The last key is the form the engine executes: three-part, or folded where it has no catalog.
     return engine_table_keys(engine, state.catalog_for(reg.source_id), reg.schema_name, name)[-1]
 
@@ -265,12 +268,56 @@ class _Registry(NamedTuple):
     kept_sources: frozenset[str] = frozenset()
 
 
+class _OneModelRead:
+    """The model's part of :func:`_registry` (registered tables, sources, synthetic tables, bound
+    sources), read once per model store while ``open``. A task made inside :func:`one_model_read`
+    holds this object past its end; closed, it is read through."""
+
+    def __init__(self) -> None:
+        self.open = True
+        self.reads: dict[int, tuple[Any, tuple[list[dict], dict[str, Any], dict, frozenset]]] = {}
+
+
+_one_model_read: contextvars.ContextVar[_OneModelRead | None] = contextvars.ContextVar(
+    "replica_routing_one_model_read", default=None
+)
+
+
+@contextlib.contextmanager
+def one_model_read() -> Iterator[None]:
+    """Within, every :func:`_registry` of a model store reads its model once: a schema rebuild,
+    which built the model it publishes routes for from one read, reconciles the landed tables and
+    publishes the routes by it (REQ-1882). What is promoted, serving and kept is state, read each
+    time."""
+    held = _OneModelRead()
+    token = _one_model_read.set(held)
+    try:
+        yield
+    finally:
+        held.open = False
+        held.reads.clear()
+        _one_model_read.reset(token)
+
+
+async def _model_read(state: Any, mdb: Any) -> tuple[list[dict], dict[str, Any], dict, frozenset]:
+    from provisa.api.admin.db_queries import fetch_tables
+    from provisa.federation.registry_view import registered_sources
+    from provisa.synthetic.datasets import generated_tables, synthetic_sources
+
+    # A SQL catalog's views are on a built-in source, never among ``sources``: nothing here
+    # routes, floors or keeps them, so their rows and columns are not read (REQ-2190).
+    async with mdb.acquire() as conn:
+        registered = await fetch_tables(conn, catalog=False)
+        sources = {s.id: s for s in await registered_sources(state, conn)}
+        synthetic = await generated_tables(conn)
+        bound = frozenset(await synthetic_sources(conn))
+    return registered, sources, synthetic, bound
+
+
 async def _registry(state: Any) -> _Registry:
     """The registered tables, their sources by id and the Hot replication sets, read together
     from the control plane (REQ-1674): the names the compiler emits; a source created in the UI
     and a table registered at runtime count exactly like config-declared ones."""
-    from provisa.api.admin.db_queries import fetch_tables
-    from provisa.federation.registry_view import registered_sources
     from provisa.federation.replica_builds import store_identity
     from provisa.federation.replica_state import promotion
 
@@ -279,14 +326,18 @@ async def _registry(state: Any) -> _Registry:
     tdb = getattr(state, "tenant_db", None)
     if config is None or mdb is None or tdb is None:
         return _Registry([], {}, frozenset(), frozenset(), {})
-    from provisa.synthetic.datasets import generated_tables, synthetic_sources
 
     # REQ-1922: the registry is the model (model store); what is promoted is this region's state.
-    async with mdb.acquire() as conn:
-        registered = await fetch_tables(conn)
-        sources = {s.id: s for s in await registered_sources(state, conn)}
-        synthetic = await generated_tables(conn)
-        bound = frozenset(await synthetic_sources(conn))
+    held = _one_model_read.get()
+    if held is None or not held.open:
+        model = await _model_read(state, mdb)
+    else:
+        kept_read = held.reads.get(id(mdb))
+        if kept_read is None or kept_read[0] is not mdb:
+            kept_read = (mdb, await _model_read(state, mdb))
+            held.reads[id(mdb)] = kept_read
+        model = kept_read[1]
+    registered, sources, synthetic, bound = model
     from provisa.core.cache_ttl import NEVER_EXPIRES
     from provisa.federation.replica_state import read_all
 
@@ -400,63 +451,15 @@ async def served_tables(
     return registry.registered, registry.sources, served
 
 
-async def draft_replica_tables(engine: Any, state: Any) -> list[tuple[Any, dict]]:
-    """Every DRAFT table that has, or may come to have, a replica on ``engine`` (REQ-1921), by
-    the same decision as :func:`replica_tables`. A draft is offered to no reader, and it may hold
-    a replica: its steward's preview lands it the way a read of a table in service does
-    (admin/table_read.py), and it is kept for the table's release. What the replicator keeps
-    by, and finds a requested build's table by; it asks for no build of a draft itself."""
-    from provisa.api.admin.db_queries import fetch_tables
-
-    registry = await _registry(state)
-    if state.model_db is None:
-        return []
-    async with state.model_db.acquire() as conn:
-        drafts = await fetch_tables(conn, draft=True)
-    return _served_from_replica(engine, registry._replace(registered=drafts), frozenset())
-
-
-def routes_with_draft(state: Any, draft: dict, source: Any) -> ReplicaRoutes:
-    """The published routes of ``state`` and, where the bound engine reads ``draft`` from a
-    replica, the draft's own route (REQ-1921). For the one read its steward's preview is: the
-    published routes never hold a draft, so no other statement is addressed at its replica."""
+def routes_with_previewed(published: ReplicaRoutes, table_id: int, source_id: str) -> ReplicaRoutes:
+    """``published`` -- the routes of the state a steward's preview of a withdrawn table reads in
+    -- with that table read live from its source (REQ-1921). A withdrawn table keeps no replica,
+    so it has no route: the preview reads it in place, or is refused before it gets here
+    (admin/table_read._require_previewable). For that one read: the published routes never name
+    a withdrawn table."""
     import dataclasses
 
-    published: ReplicaRoutes = state.replica_routes
-    engine = state.federation_engine.engine
-    if not reads_replica(source, draft, engine, promoted=False):
-        return dataclasses.replace(
-            published, unfloored={**published.unfloored, draft["id"]: source.id}
-        )
-    backend = engine.backend
-    physical = getattr(state, "kafka_table_physical", None) or {}
-    name = physical.get(draft["table_name"], draft["table_name"])
-    address = backend.replica_address(
-        state,
-        source_id=source.id,
-        schema_name=draft["schema_name"],
-        table_name=draft["table_name"],
-    )
-    route = ReplicaRoute(
-        source_id=source.id,
-        table_name=draft["table_name"],
-        target=(backend.replica_read_catalog(state), address.schema, address.table),
-        not_landed=_not_landed(source, draft, lambda: backend.dialect),  # REQ-2171
-    )
-    keys = engine_table_keys(engine, state.source_catalogs[source.id], draft["schema_name"], name)
-    setting = table_floor(source, draft, promoted=False)
-    floored, unfloored = dict(published.floored), dict(published.unfloored)
-    if setting is not None:
-        floored[draft["id"]] = (source.id, setting)
-    else:
-        unfloored[draft["id"]] = source.id
-    return dataclasses.replace(
-        published,
-        engine_name=engine.name,
-        routes={**published.routes, **dict.fromkeys(keys, route)},
-        floored=floored,
-        unfloored=unfloored,
-    )
+    return dataclasses.replace(published, unfloored={**published.unfloored, table_id: source_id})
 
 
 async def floored_tables(state: Any) -> dict[int, tuple[str, str]]:
@@ -501,14 +504,6 @@ async def landing_worklist(
     it was re-created, dropping the rows a read had just fetched. Shared by every backend's ``reconcile_landed_tables`` so the engines agree on exactly
     which tables are reconciled — they differ only in what they do with each entry."""
     return _worklist(engine, await replica_tables(engine, state))
-
-
-async def draft_landing_worklist(
-    engine: Any, state: Any
-) -> list[tuple[Any, str, str, list[tuple[str, str]], list[str], str | None]]:
-    """:func:`landing_worklist` for the DRAFT tables (:func:`draft_replica_tables`, REQ-1921):
-    what the definition of a draft's replica is judged by."""
-    return _worklist(engine, await draft_replica_tables(engine, state))
 
 
 def _worklist(
@@ -589,7 +584,7 @@ async def replica_routes(state: Any) -> ReplicaRoutes:
         # worker (REQ-1882).
         read_catalog = await asyncio.to_thread(backend.replica_read_catalog, state)
     for src, reg in tables:
-        name = physical.get(reg["table_name"], reg["table_name"])
+        name = physical_table_name(physical, reg["source_id"], reg["table_name"])
         keys = engine_table_keys(engine, state.source_catalogs[src.id], reg["schema_name"], name)
         address = backend.replica_address(
             state,
@@ -629,7 +624,7 @@ async def replica_routes(state: Any) -> ReplicaRoutes:
         region = state.foreign_regions[home]  # bound with the org: its selected regions
         if not home_keeps_replica(src, reg, region):
             continue
-        name = physical.get(reg["table_name"], reg["table_name"])
+        name = physical_table_name(physical, reg["source_id"], reg["table_name"])
         keys = engine_table_keys(engine, state.source_catalogs[src.id], reg["schema_name"], name)
         address = backend.replica_address(  # where the home region wrote it (REQ-1922)
             state,
@@ -662,7 +657,7 @@ async def replica_routes(state: Any) -> ReplicaRoutes:
         src = registry.sources.get(reg["source_id"])
         if found is None or src is None:
             continue
-        name = physical.get(reg["table_name"], reg["table_name"])
+        name = physical_table_name(physical, reg["source_id"], reg["table_name"])
         target = (
             read_catalog,
             found[1],

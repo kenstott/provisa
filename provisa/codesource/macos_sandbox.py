@@ -13,7 +13,7 @@
 The worker is started under ``sandbox-exec`` with a profile that denies everything, then allows:
 reading the directories named (the code, the runtime, the host program) and the system's own
 libraries; writing nothing but ``/dev/null``; running only its runtime; and connecting only to its
-worker socket and to the egress proxy on loopback. A host without ``sandbox-exec`` refuses the
+worker socket, to the egress proxy on loopback, and to the minted-token listener (REQ-2226). A host without ``sandbox-exec`` refuses the
 worker by name (:class:`SandboxUnavailable`)."""
 
 # Requirements: REQ-1984, REQ-1993
@@ -46,15 +46,42 @@ def _quote(text: str) -> str:
     return '"' + text.replace("\\", "\\\\").replace('"', '\\"') + '"'
 
 
+def framework_app(executable: Path) -> str | None:
+    """The program a framework build of Python re-executes as it starts, or None for any other
+    executable. A python.org (framework) interpreter's ``bin/python3.X`` is a stub that runs
+    ``Resources/Python.app/Contents/MacOS/Python`` of the same framework version; a profile that
+    lets only the stub run ends the interpreter before its first line."""
+    real = Path(os.path.realpath(executable))
+    version = real.parent.parent  # <prefix>/<Name>.framework/Versions/<v>
+    framework = version.parent.parent
+    if real.parent.name != "bin" or version.parent.name != "Versions":
+        return None
+    if framework.suffix != ".framework":
+        return None
+    name = framework.stem
+    app = version / "Resources" / f"{name}.app" / "Contents" / "MacOS" / name
+    return os.path.realpath(app) if app.is_file() else None
+
+
 def profile(
-    *, executable: Path, read: Sequence[Path], socket_path: Path | None, proxy_port: int
+    *,
+    executable: Path,
+    read: Sequence[Path],
+    socket_path: Path | None,
+    proxy_port: int,
+    connect_ports: Sequence[int] = (),
 ) -> str:
-    """The sandbox profile for one worker (or, with no ``socket_path``, one run of a reader)."""
+    """The sandbox profile for one worker (or, with no ``socket_path``, one run of a reader). It
+    runs ``executable`` and, for a framework Python, the one program that stub re-executes."""
     readable = [os.path.realpath(p) for p in (*read, executable.parent)]
+    runs = [os.path.realpath(executable)]
+    app = framework_app(executable)
+    if app is not None:
+        runs.append(app)
     lines = [
         "(version 1)",
         "(deny default)",
-        f"(allow process-exec (literal {_quote(os.path.realpath(executable))}))",
+        f"(allow process-exec {' '.join(f'(literal {_quote(r)})' for r in runs)})",
         "(allow signal (target self))",
         "(allow sysctl-read)",
         "(allow file-read-metadata)",
@@ -76,6 +103,7 @@ def profile(
             if socket_path is not None
             else []
         ),
+        *(f'  (remote ip "localhost:{port}")' for port in connect_ports),
         f'  (remote ip "localhost:{proxy_port}"))',
     ]
     return "\n".join(lines) + "\n"
@@ -88,9 +116,16 @@ def confined_argv(
     read: Sequence[Path],
     socket_path: Path | None,
     proxy_port: int,
+    connect_ports: Sequence[int] = (),
 ) -> list[str]:
     """``argv`` run under the sandbox."""
     if not SANDBOX_EXEC.is_file():
         raise SandboxUnavailable(f"{SANDBOX_EXEC} is not on this host")
-    text = profile(executable=executable, read=read, socket_path=socket_path, proxy_port=proxy_port)
+    text = profile(
+        executable=executable,
+        read=read,
+        socket_path=socket_path,
+        proxy_port=proxy_port,
+        connect_ports=connect_ports,
+    )
     return [str(SANDBOX_EXEC), "-p", text, *argv]

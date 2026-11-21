@@ -9,6 +9,6 @@
     "detachToSemantic": "Détacher en SQL sémantique",
     "expansionTitle": "Expansion de la métrique",
     "expansionLoading": "Récupération de l'expansion…",
-    "expansionNoMetric": "Cette instruction ne référence aucune métrique : il n'y a rien à développer."
+    "expansionNoMetric": "Cette instruction ne référence aucune métrique, il n'y a donc rien à développer."
   }
 }

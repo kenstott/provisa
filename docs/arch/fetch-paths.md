@@ -40,7 +40,7 @@ the event loop does no per-row work.
 pgwire's DataRow messages are written by the Rust encoder (`provisa._encoders.pgwire`, crate
 `rust/pgwire`) and by nothing else, and so are gRPC's messages (`provisa._encoders.grpc`) and the
 JSON surfaces' documents (`provisa._encoders.json`). Each encoder takes a result in the form it
-has (REQ-2195), and nothing converts a result into another form only to encode it:
+has, and nothing converts a result into another form only to encode it:
 
 - an Arrow result (`ArrowResult`, `ArrowStreamResult`; `executor.result.is_arrow`) hands the
   encoder the engine's record batches (`arrow_batches()`);
@@ -108,7 +108,7 @@ the row stream into a `QueryResult` on the executor thread: the same `to_pylist`
 
 | Source | Driver | Python rows built at | Columnar alternative |
 |---|---|---|---|
-| PostgreSQL, pgwire servers | psycopg 3 pool (`drivers/postgresql.py`), server-side cursor for streams | psycopg 3 binary/text loaders | none taken: stays a row source, its rows encoded as they are (REQ-2195; ADBC postgresql not taken, see section 3, item 4); for pgwire, the raw DataRow passthrough is the direct cursor `[code]` |
+| PostgreSQL, pgwire servers | psycopg 3 pool (`drivers/postgresql.py`), server-side cursor for streams | psycopg 3 binary/text loaders | none taken: stays a row source, its rows encoded as they are (ADBC postgresql not taken, see section 3, item 4); for pgwire, the raw DataRow passthrough is the direct cursor `[code]` |
 | DuckDB / MotherDuck | **this change:** `drivers/duckdb_driver.py` reads `to_arrow_table` (an `ArrowResult`) and streams from `to_arrow_reader`; before, `fetchall` / `fetchmany` | `duckdb_arrow.arrow_rows`, in the driver (`execute`) or per fetch (`open_stream`) | — (done) `[code]` |
 | Snowflake | `drivers/snowflake.py`: `fetchall` / `fetchmany` | the connector's row conversion | `fetch_arrow_batches` (the runtime already uses it) or ADBC snowflake (installed, 1.11.0) `[code]` |
 | Databricks | `drivers/databricks.py` via `pooled.py`: `fetchall` / `fetchmany` | the connector | `fetchmany_arrow` / `fetchall_arrow` (the runtime already uses it) `[code]` |
@@ -151,9 +151,8 @@ Ordered by what it costs today and how small the change is.
    `job.result().to_arrow_iterable(bqstorage_client=BigQueryReadClient(...))`. The Storage Read
    API is billed per byte read; a small result read through it costs more than through
    `tabledata.list`. Warehouse lane.
-4. **Postgres DIRECT driver: decided, stays psycopg rows** (maintainer, 2026-11-03). Since
-   REQ-2195 every encoder takes a row result's rows as they are, so the Arrow build in Python that
-   made DIRECT Postgres slow is gone; what remains is psycopg's own per-value decode. ADBC
+4. **Postgres DIRECT driver: decided, stays psycopg rows** (maintainer, 2026-11-03). Every encoder now
+   takes a row result's rows as they are, so the Arrow build in Python that made DIRECT Postgres slow is gone; what remains is psycopg's own per-value decode. ADBC
    postgresql (1.11.0, probed against PostgreSQL 17, J567) was not taken because it cannot give
    the values the driver serves today: PostgreSQL's `infinity` / `-infinity` dates and timestamps
    raise inside ADBC ("date value out of range"), so there is no value to encode; uuid, inet,

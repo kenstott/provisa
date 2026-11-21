@@ -8,37 +8,64 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { Select, TextInput } from "@mantine/core";
 import { useTranslation } from "react-i18next";
-import type { RegisteredTable } from "../../types/admin";
-import {
-  FormChecks,
-  FormField,
-  FormIdentifiers,
-  FormLayout,
-} from "../../components/form/FormLayout";
+import type { RegisteredTable, Relationship, Source } from "../../types/admin";
+import { FormField, FormIdentifiers, FormLayout } from "../../components/form/FormLayout";
 import { namingConventionLabel, useNamingConventions } from "../../hooks/useNamingConventions";
 import { DescriptionField } from "./DescriptionField";
 import { FieldLabel } from "./FieldLabel";
-import { TableDraftTick, TableRegionField } from "./TablePlacementFields";
+import { UNREGISTERED_ID } from "./draftTable";
+import { TableRegionField } from "./TablePlacementFields";
+import { FilesGlobFieldset } from "./FilesGlobFieldset";
+import { ImportSetField } from "./ImportSetField";
+import { isFilesSourceType } from "./tableSectionFields";
+import { SparqlQueryField } from "./SparqlQueryField";
 
 /** The Identity section of a table's form: the same when it is created and when it is edited. */
 export function TableIdentitySection({
   editingTable,
   setEditingTable,
   isView,
+  source,
   describe,
+  domainChoices,
+  relationships,
 }: {
   editingTable: RegisteredTable;
   setEditingTable: React.Dispatch<React.SetStateAction<RegisteredTable | null>>;
   isView: boolean;
+  /** The table's source: its type decides the settings only some sources' tables have. */
+  source?: Source;
   /** Writes a description from the saved table; absent while the table is being created. */
   describe?: () => Promise<string>;
+  /** REQ-1531: the domains the member may change, the ones the table may be moved to. */
+  domainChoices: string[];
+  /** The org's relationships: a query edit warns before dropping a column one joins on. */
+  relationships: Relationship[];
 }) {
   const { t } = useTranslation();
   const conventions = useNamingConventions();
+  // The domains offered: those the member may change, with the one the table is in kept listed.
+  const domainData = [
+    ...new Set([...(editingTable.domainId ? [editingTable.domainId] : []), ...domainChoices]),
+  ];
   const [generatingDesc, setGeneratingDesc] = useState(false);
+  // A view not yet registered (a new one, or a duplicate) is named by its own name: it is the
+  // identity being chosen. A registered table or view keeps the name it was registered under.
+  const nameEditable = isView && editingTable.id === UNREGISTERED_ID;
+  const sourceType = (source?.type ?? "").toLowerCase();
+  // Kept for the import set's own clearing: a stable callback over the latest table.
+  const setImportSet = useCallback(
+    (importSet: string | null) =>
+      setEditingTable((current) =>
+        current === null || (current.importSet ?? null) === importSet
+          ? current
+          : { ...current, importSet },
+      ),
+    [setEditingTable],
+  );
   return (
     <FormLayout className="form-card" data-testid="table-section-identity-panel">
       <FormIdentifiers>
@@ -64,17 +91,32 @@ export function TableIdentitySection({
           <TextInput
             label={t("tableSections.table")}
             value={editingTable.tableName}
-            readOnly
-            styles={{ input: { color: "var(--text-muted)", cursor: "default" } }}
+            readOnly={!nameEditable}
+            required={nameEditable}
+            onChange={
+              nameEditable
+                ? (e) => setEditingTable({ ...editingTable, tableName: e.target.value })
+                : undefined
+            }
+            styles={
+              nameEditable
+                ? undefined
+                : { input: { color: "var(--text-muted)", cursor: "default" } }
+            }
             data-testid="table-edit-table"
           />
         </FormField>
-        <FormField size="medium">
-          <TextInput
+        <FormField help={t("tableEditForm.domainHelp")} size="medium">
+          {/* REQ-1531: a table's domain is changed here, among the domains the member may
+              change; the save needs the right on both the old and the new domain. */}
+          <Select
             label={t("tableSections.domain")}
-            value={editingTable.domainId}
-            readOnly
-            styles={{ input: { color: "var(--text-muted)", cursor: "default" } }}
+            required
+            searchable
+            data={domainData}
+            value={editingTable.domainId || null}
+            onChange={(v) => setEditingTable({ ...editingTable, domainId: v ?? "" })}
+            placeholder={t("tableEditForm.domainPlaceholder")}
             data-testid="table-edit-domain"
           />
         </FormField>
@@ -112,7 +154,43 @@ export function TableIdentitySection({
         />
       </FormField>
       <TableRegionField table={editingTable} isView={isView} onChange={setEditingTable} />
+      {/* REQ-788: a files source's table may be one table over a glob of its files. */}
+      {!isView && isFilesSourceType(sourceType) && (
+        <FilesGlobFieldset
+          fileGlob={editingTable.fileGlob ?? ""}
+          // With no glob the table is one file again, and has no column naming each row's file.
+          setFileGlob={(v) =>
+            setEditingTable({
+              ...editingTable,
+              fileGlob: v || null,
+              sourceFileColumn: v.trim() ? editingTable.sourceFileColumn : null,
+            })
+          }
+          sourceFileColumn={editingTable.sourceFileColumn ?? ""}
+          setSourceFileColumn={(v) =>
+            setEditingTable({ ...editingTable, sourceFileColumn: v || null })
+          }
+        />
+      )}
+      {/* REQ-1954: a ServiceNow table's inserts may go through one of its transform maps. */}
+      {!isView && sourceType === "servicenow" && (
+        <ImportSetField
+          sourceId={editingTable.sourceId}
+          schemaName={editingTable.schemaName}
+          tableName={editingTable.tableName}
+          value={editingTable.importSet ?? null}
+          onChange={setImportSet}
+        />
+      )}
 
+      {/* REQ-1923: a SPARQL-defined table's query, edited here; its columns follow its SELECT. */}
+      {sourceType === "sparql" && editingTable.queryTemplate && (
+        <SparqlQueryField
+          editingTable={editingTable}
+          setEditingTable={setEditingTable}
+          relationships={relationships}
+        />
+      )}
       {/* Its source's document could not be read: no endpoint, and why. */}
       {editingTable.apiEndpointError && (
         <FormField size="long">
@@ -136,9 +214,6 @@ export function TableIdentitySection({
           />
         </FormField>
       )}
-      <FormChecks>
-        <TableDraftTick table={editingTable} onChange={setEditingTable} />
-      </FormChecks>
       <FormField size="full">
         <div>
           <FieldLabel

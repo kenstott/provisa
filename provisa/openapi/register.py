@@ -15,7 +15,6 @@ other operations commands on offer, each registered one at a time (REQ-316, REQ-
 
 from __future__ import annotations
 import logging
-import re
 from typing import TYPE_CHECKING
 
 
@@ -25,59 +24,6 @@ if TYPE_CHECKING:
 # Requirements: REQ-314, REQ-316, REQ-317, REQ-319, REQ-320, REQ-321
 
 log = logging.getLogger(__name__)
-
-_VERB_PREFIXES = (
-    "get",
-    "list",
-    "fetch",
-    "search",
-    "find",
-    "query",
-    "create",
-    "post",
-    "add",
-    "insert",
-    "update",
-    "put",
-    "patch",
-    "edit",
-    "delete",
-    "remove",
-    "destroy",
-)
-
-
-def _singularize(word: str) -> str:
-    """Best-effort English singularization for the noun segment of an alias."""
-    if word.endswith("ies") and len(word) > 3:
-        return word[:-3] + "y"
-    if word.endswith("ses") or word.endswith("xes") or word.endswith("zes"):
-        return word[:-2]
-    if word.endswith("s") and not word.endswith("ss") and len(word) > 2:
-        return word[:-1]
-    return word
-
-
-def _operation_id_to_alias(op_id: str) -> str:
-    """Convert camelCase/PascalCase/snake_case operationId to a snake_case alias.
-
-    Format: {noun_singular}_{modifiers} (e.g. findPetsByStatus → pet_by_status).
-    """
-    # camelCase / PascalCase → snake_case (intermediate normalization for verb-stripping parse)
-    s = re.sub(r"([A-Z]+)([A-Z][a-z])", r"\1_\2", op_id)
-    s = re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", s).lower()
-    # strip leading verb segment
-    for verb in _VERB_PREFIXES:
-        if s.startswith(verb + "_"):
-            s = s[len(verb) + 1 :]
-            break
-        if s == verb:
-            return s
-    # singularize the first (noun) segment
-    parts = s.split("_", 1)
-    parts[0] = _singularize(parts[0])
-    return "_".join(parts) or op_id.lower()
-
 
 _OPENAPI_TYPE_MAP = {
     "string": "string",

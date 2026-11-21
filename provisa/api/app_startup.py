@@ -338,6 +338,40 @@ def _log_http_surfaces(app: Any, _log: logging.Logger) -> None:
             _log.warning("%s endpoint not served at %s", name, path)
 
 
+async def _start_minted_pgwire(_log: logging.Logger) -> None:
+    """The listener for minted tokens (REQ-2226): the one port a sandbox may reach. Under
+    high-security mode no pgwire listener starts (REQ-693), and a command given a table is refused,
+    naming why. TLS is the main listener's certificate without its client-certificate policy: the
+    minted token authenticates the connection."""
+    import ssl
+
+    from provisa.api.app import state
+    from provisa.core import settings_registry
+    from provisa.pgwire.minted_server import start_minted_pgwire_server
+    from provisa.security.high_security import pgwire_start_allowed
+
+    port = settings_registry.value("server.minted_pgwire_port")
+    if not port:
+        return
+    if not pgwire_start_allowed(state, port):
+        _log.warning("minted-token pgwire listener not started: security.mode=high (REQ-693)")
+        return
+    try:
+        pair = _resolve_tls("PROVISA_PGWIRE_CERT", "PROVISA_PGWIRE_KEY")
+        context = None
+        if pair is not None:
+            context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+            context.load_cert_chain(*pair)
+        state._minted_pgwire_server = start_minted_pgwire_server(
+            host="0.0.0.0",  # nosec B104 - a remote host reaches it; it accepts only minted tokens
+            port=port,
+            ssl_ctx=context,
+        )
+        _log.info("minted-token pgwire listener on 0.0.0.0:%d (TLS=%s)", port, context is not None)
+    except Exception:
+        _log.exception("minted-token pgwire listener startup failed")
+
+
 async def _start_servers(_log: logging.Logger) -> None:
     """Start gRPC, Arrow Flight, pgwire, and APQ cache servers."""
     from provisa.api.app import state  # lazy: avoid app<->app_startup cycle
@@ -515,6 +549,8 @@ async def _start_servers(_log: logging.Logger) -> None:
         except Exception:
             _log.exception("pgwire server startup failed")
 
+    await _start_minted_pgwire(_log)
+
     bolt_port = settings_registry.value("server.bolt_port")  # REQ-1913; 0 = not started
     if bolt_port and not bolt_start_allowed(state, bolt_port):
         # REQ-693: high-security mode never starts the Bolt server — Bolt's HELLO/LOGON exchange
@@ -584,6 +620,11 @@ async def _start_servers(_log: logging.Logger) -> None:
     from provisa.kafka import change_events
 
     change_events.start()
+
+    # REQ-2221: each process polls the health of the connector hosts it serves.
+    from provisa.codesource import lifecycle
+
+    spawn_long_lived(lifecycle.run(state), name="code-source-health")
 
     # REQ-1120: airport Flight service (opt-in via PROVISA_AIRPORT_PORT). Serves the DuckDB
     # `airport` community-extension protocol over the governed query pipeline. Isolated hook.
@@ -864,7 +905,8 @@ async def _seed_demo_templates(_log: logging.Logger) -> None:  # REQ-2006
 # (employee != employeeId), so it emits an empty source_column that these rows correct. schedules
 # keys on the landed employee_id scalar (config gql_selection "employee_id: employee { id }"), not
 # the raw employee object field -- keying on a column the config does not land refuses the startup
-# column-drop of the stale object field.
+# column-drop of the stale object field. No pets<->assignments breed_name row: either direction makes
+# breed_name a replica key and it repeats on both tables (pets reach assignments via animal_breeds).
 _DEMO_GRAPHQL_RELATIONSHIPS: tuple[tuple[str, str, str, str, str, str, str | None], ...] = (
     (
         "employees_to_assignments",
@@ -892,24 +934,6 @@ _DEMO_GRAPHQL_RELATIONSHIPS: tuple[tuple[str, str, str, str, str, str, str | Non
         "breed_name",
         "one-to-many",
         "PETS_OF_BREED",
-    ),
-    (
-        "pets-to-shelter-assignments",
-        "pets",
-        "assignments",
-        "breed_name",
-        "breed_name",
-        "many-to-one",
-        None,
-    ),
-    (
-        "shelter-assignments-to-pets",
-        "assignments",
-        "pets",
-        "breed_name",
-        "breed_name",
-        "one-to-many",
-        None,
     ),
     (
         "shelter-assignments-to-employees",

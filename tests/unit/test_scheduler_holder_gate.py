@@ -243,7 +243,11 @@ def test_a_nodes_region_claim_is_its_regions_and_with_no_regions_the_deployments
     from provisa.api import app_startup
     from provisa.core import process_region
 
-    platform = {"regions": [{"id": "eu", "address": "https://eu.example.com"}]} if region else None
+    platform = (
+        {"regions": [{"id": "eu", "description": "The eu region", "purposes": ["residency"]}]}
+        if region
+        else None
+    )
     was = process_region._region
     process_region.bind_launch(platform, requested=region)
     url = control_plane.url

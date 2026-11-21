@@ -35,7 +35,8 @@ from graphql import (
 from provisa.api._query_helpers import native_arguments
 from provisa.api.rest.generator import _agg_fields_map
 from provisa.api.role_surface import role_surface
-from provisa.security.mutation_authz import command_assigned
+from provisa.security.mutation_authz import command_reachable
+from provisa.security.rights import require_role
 
 _WHERE_OPS = ["eq", "neq", "gt", "gte", "lt", "lte", "like"]
 
@@ -90,6 +91,32 @@ def _is_scalar(gql_type: Any) -> bool:
     if isinstance(gql_type, (GraphQLNonNull, GraphQLList)):
         return _is_scalar(gql_type.of_type)
     return isinstance(gql_type, (GraphQLScalarType, GraphQLEnumType))
+
+
+_FIELD_PATH_PATTERN = r"^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*$"
+
+
+def _fields_items(
+    field_enum_name: str, relationships: list[tuple[str, GraphQLObjectType, bool]]
+) -> dict[str, Any]:
+    """The items of a row read's ``fields`` parameter: a field of the row, or, when the row has
+    relationships, a dot-path through them (REQ-1929)."""
+    field_ref = {"$ref": f"#/components/schemas/{field_enum_name}"}
+    if not relationships:
+        return field_ref
+    examples = []
+    for rel_name, rel_type, _is_list in relationships:
+        scalars = [
+            n for n, f in rel_type.fields.items() if not n.startswith("_") and _is_scalar(f.type)
+        ]
+        examples.append(f"{rel_name}.{scalars[0]}" if scalars else rel_name)
+    path_form = {
+        "type": "string",
+        "pattern": _FIELD_PATH_PATTERN,
+        "description": "A path through the row's relationships, one dot per relationship",
+        "examples": examples,
+    }
+    return {"anyOf": [field_ref, path_form]}
 
 
 def _arg_type_to_openapi(arg_type: str) -> dict[str, Any]:
@@ -185,15 +212,40 @@ def generate_rest_openapi_spec(
                     col_schema = {**col_schema, "description": col_field.description}
                 columns.append((col_name, col_schema))
 
+        # REQ-1929: each relationship of the row, read nested when ?fields= names a path through
+        # it: a many-to-one as an object, a one-to-many as a list.
+        relationships: list[tuple[str, GraphQLObjectType, bool]] = []
+        for rel_name, rel_field in inner.fields.items():
+            if rel_name.startswith("_") or _is_scalar(rel_field.type):
+                continue
+            rel_type, is_list = rel_field.type, False
+            while isinstance(rel_type, (GraphQLNonNull, GraphQLList)):
+                is_list = is_list or isinstance(rel_type, GraphQLList)
+                rel_type = rel_type.of_type
+            if isinstance(rel_type, GraphQLObjectType):
+                relationships.append((rel_name, rel_type, is_list))
+
         field_enum_name = f"{type_name}Field"
         filter_type_name = f"{type_name}Filter"
         col_names = [col for col, _ in columns]
 
         # Register named schemas in components
-        row_schema: dict[str, Any] = {
-            "type": "object",
-            "properties": {col: schema_obj for col, schema_obj in columns},
-        }
+        row_properties: dict[str, Any] = {col: schema_obj for col, schema_obj in columns}
+        for rel_name, rel_type, is_list in relationships:
+            nested = f"Present when fields names a path through {rel_name} ({rel_name}.<field>)"
+            row_properties[rel_name] = (
+                {
+                    "type": "array",
+                    "items": {"type": "object"},
+                    "description": f"The related {rel_type.name} rows. {nested}",
+                }
+                if is_list
+                else {
+                    "type": "object",
+                    "description": f"The related {rel_type.name} row. {nested}",
+                }
+            )
+        row_schema: dict[str, Any] = {"type": "object", "properties": row_properties}
         if table_description:
             row_schema["description"] = table_description
         components[type_name] = row_schema
@@ -268,11 +320,13 @@ def generate_rest_openapi_spec(
                 "in": "query",
                 "style": "form",
                 "explode": False,
-                "schema": {
-                    "type": "array",
-                    "items": {"$ref": f"#/components/schemas/{field_enum_name}"},
-                },
-                "description": "Fields to return",
+                "schema": {"type": "array", "items": _fields_items(field_enum_name, relationships)},
+                "description": (
+                    "Fields to return. A bare name is a field of the row; a dot-path goes "
+                    "through relationships (`<relationship>.<field>`, one dot per relationship) and "
+                    "returns the related row nested: a many-to-one as an object, a one-to-many "
+                    "as a list. A relationship named alone returns its fields."
+                ),
             },
             {
                 "name": "filter",
@@ -450,7 +504,7 @@ def generate_rest_openapi_spec(
         cmd_domain = fn.get("domain_id", "")
         if domain_filter is not None and cmd_domain not in domain_filter:
             continue
-        if not command_assigned(fn, role_id):  # REQ-2153: an empty list names no role
+        if not command_reachable(fn, require_role(state.roles, role_id)):  # REQ-870
             continue
         _seen_cmd.add(fn["name"])
 

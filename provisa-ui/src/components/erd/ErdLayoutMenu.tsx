@@ -115,6 +115,8 @@ export function ErdLayoutMenu({
           <Menu.Item
             disabled={current === null || !unsaved}
             onClick={() => current !== null && void onSave(current)}
+            // REQ-2115: saves at once, with no dialog; Polly asks the user before she presses it.
+            data-changes="true"
             data-testid="erd-layout-save"
           >
             {t("erdLayouts.save")}

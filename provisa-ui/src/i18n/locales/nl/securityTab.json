@@ -1,6 +1,6 @@
 {
   "securityTab": {
-    "intro": "Regelt de beveiligingshouding van het platform. De hoge (zero-trust) modus heeft grote impact — lees de waarschuwing voordat deze wordt ingeschakeld.",
+    "intro": "Regelt de beveiligingshouding van het platform. Lees de waarschuwing voordat de modus Hoog (zero trust) wordt ingeschakeld.",
     "modeLabel": "Beveiligingsmodus",
     "highWarningTitle": "De hoge (zero-trust) modus heeft grote impact",
     "highWarning": "De pgwire-server start niet, en REST- en GraphQL-data-endpoints retourneren 403. Alleen clients die lokaal ontsleutelen (kms_key_arn geconfigureerd) hebben toegang tot data. Controleer of de clients zijn geconfigureerd voordat dit wordt ingeschakeld.",

@@ -20,6 +20,12 @@ The stamp is used strictly for reloading. It is never what an update is checked 
 Kinds, and where their row lives:
 
 * ``model`` — the tenant plane (one per org and environment): the governed model and its rules.
+  What is keyed by the model a process loaded follows it: the response cache, the hot tables, the
+  audit record of the model commit.
+* ``build`` — the tenant plane: the part of the model the schema build reads. Every write that
+  advances ``model`` advances it too, except an update that changes only columns of
+  :data:`NOT_READ_BY_THE_BUILD`. A process whose ``build`` stamp is current takes the new ``model``
+  stamp without building anything (``provisa/api/model_reload.py``).
 * ``settings`` — the tenant plane (``org_settings``) and the platform plane
   (``deployment_settings``), each with its own row.
 * ``replica`` — the tenant plane: which tables are served from a replica because they are busy
@@ -32,6 +38,7 @@ Kinds, and where their row lives:
 
 from __future__ import annotations
 
+import zlib
 from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import text, update
@@ -40,6 +47,7 @@ if TYPE_CHECKING:
     from provisa.core.database import Connection, Database
 
 MODEL = "model"
+BUILD = "build"
 SETTINGS = "settings"
 REPLICA = "replica"
 
@@ -62,6 +70,10 @@ TENANT_TABLES: dict[str, str] = {
     "sources": MODEL,
     "domains": MODEL,
     "data_products": MODEL,
+    "data_product_tables": MODEL,  # REQ-1634
+    "data_product_commands": MODEL,  # REQ-1634
+    # REQ-2180: a synthetic offer's role reads its product's datasets through their fakes.
+    "data_product_offers": MODEL,
     "naming_rules": MODEL,
     "registered_tables": MODEL,
     "table_columns": MODEL,
@@ -70,6 +82,9 @@ TENANT_TABLES: dict[str, str] = {
     "roles": MODEL,
     # REQ-1382: read into the runtime build (state.user_attributes), so every worker reloads.
     "user_attributes": MODEL,
+    # REQ-2219: read into the runtime build (state.held_entitlements), so every worker reloads.
+    "entitlements": MODEL,
+    "entitlement_expiries": MODEL,
     "rls_rules": MODEL,
     "table_write_grants": MODEL,  # REQ-2074
     "tags": MODEL,
@@ -82,6 +97,7 @@ TENANT_TABLES: dict[str, str] = {
     "api_endpoints": MODEL,
     "kafka_sources": MODEL,
     "kafka_topics": MODEL,
+    "connectors": MODEL,  # REQ-2221
     "table_meta_links": MODEL,
     "calendars": MODEL,
     "materialized_views": MODEL,
@@ -93,40 +109,105 @@ TENANT_TABLES: dict[str, str] = {
 
 PLATFORM_TABLES: dict[str, str] = {"deployment_settings": SETTINGS}
 
+# The columns of a ``model`` table that nothing a schema build makes depends on: an update of these
+# alone advances ``model`` and not ``build``. A column is named here only once every reader of it
+# reads the store when asked, so one not named always rebuilds. A data product's lifecycle: the
+# build reads a product's id and domain (the entitlement refs) and its owner role (REQ-2188); its
+# status is read from the store by the admin surfaces, the catalog exports and the meta view.
+NOT_READ_BY_THE_BUILD: dict[str, tuple[str, ...]] = {
+    "data_products": (
+        "status",
+        "status_reason",
+        "retire_on",
+        "status_by",
+        "status_at",
+        "successor_id",
+    ),
+    # REQ-2180: the build reads an offer's product, role and data level (its synthetic masks);
+    # the rest of its terms are read from the store when asked.
+    "data_product_offers": (
+        "name",
+        "sample_views",
+        "dq_results",
+        "profiles",
+        "open",
+        "duration_days",
+        "version",
+        "published_by",
+        "review",
+        "created_at",
+        "updated_at",
+    ),
+}
+
 # Serializes trigger creation across the worker processes of a launch (PostgreSQL). "PROVISA4".
 _INSTALL_LOCK_KEY = 0x50524F5649534134
 
 _PG_FUNCTION = "advance_config_stamp"
 
 
+def _install_lock_key(schema: str) -> int:
+    """REQ-2006: the lock of one schema's install. What it serializes is two installs of the same
+    schema's function and triggers (the worker processes of a launch); one key for every schema
+    queued each environment a sandbox's open lays out side by side behind the other's."""
+    return ((_INSTALL_LOCK_KEY & 0x7FFFFFFF) << 32) | zlib.crc32(schema.encode())
+
+
 def _seed(conn: Any, qualified: str, kinds: set[str]) -> None:
-    for kind in sorted(kinds):
-        conn.execute(
-            text(
-                f"INSERT INTO {qualified} (kind, stamp) SELECT :kind, 0 "
-                f"WHERE NOT EXISTS (SELECT 1 FROM {qualified} WHERE kind = :kind)"
-            ),
-            {"kind": kind},
-        )
+    """A row of stamp 0 for each of ``kinds`` that has none: one statement, whatever their number."""
+    conn.execute(
+        text(
+            f"INSERT INTO {qualified} (kind, stamp) "
+            "SELECT k, 0 FROM unnest(CAST(:kinds AS text[])) AS k "
+            f"WHERE NOT EXISTS (SELECT 1 FROM {qualified} s WHERE s.kind = k)"
+        ),
+        {"kinds": sorted(kinds)},
+    )
+
+
+def trigger_function_body() -> str:
+    """The trigger function's PL/pgSQL. Its rule lives here and not in the triggers' definitions:
+    an existing schema keeps its triggers, and laying it out again replaces this function, so the
+    rule reaches every org schema (``db.layout_digest`` carries this text).
+
+    The table's own schema names the stamp it advances, so the trigger is right whatever
+    search_path the writing connection carries."""
+    cases = " ".join(
+        f"WHEN '{table}' THEN ARRAY[{', '.join(repr(column) for column in columns)}]"
+        for table, columns in sorted(NOT_READ_BY_THE_BUILD.items())
+    )
+    return (
+        "DECLARE kinds text[] := ARRAY[TG_ARGV[0]]; ignored text[]; "
+        "BEGIN "
+        f"IF TG_ARGV[0] = '{MODEL}' THEN "
+        f"ignored := CASE TG_TABLE_NAME {cases} END; "
+        # OLD and NEW are read only for an UPDATE: a statement-level TRUNCATE has neither.
+        "IF TG_OP <> 'UPDATE' OR ignored IS NULL THEN "
+        f"kinds := array_append(kinds, '{BUILD}'); "
+        "ELSIF (to_jsonb(OLD) - ignored) IS DISTINCT FROM (to_jsonb(NEW) - ignored) THEN "
+        f"kinds := array_append(kinds, '{BUILD}'); "
+        "END IF; "
+        "END IF; "
+        "EXECUTE format('UPDATE %I.config_stamp SET stamp = stamp + 1 WHERE kind = ANY($1)', "
+        "TG_TABLE_SCHEMA) USING kinds; "
+        "RETURN NULL; "
+        "END"
+    )
 
 
 def _install_postgresql(conn: Any, tables: dict[str, str], schema: str | None) -> None:
-    conn.execute(text(f"SELECT pg_advisory_xact_lock({_INSTALL_LOCK_KEY})"))
     if schema is None:
         schema = conn.execute(text("SELECT current_schema()")).scalar_one()
+    assert schema is not None
+    conn.execute(text(f"SELECT pg_advisory_xact_lock({_install_lock_key(schema)})"))
     stamp = f'"{schema}".config_stamp'
-    _seed(conn, stamp, set(tables.values()))
+    kinds = set(tables.values())
+    _seed(conn, stamp, kinds | {BUILD} if MODEL in kinds else kinds)
     function = f'"{schema}".{_PG_FUNCTION}'
-    # The table's own schema names the stamp it advances, so the trigger is right whatever
-    # search_path the writing connection carries.
     conn.execute(
         text(
             f"CREATE OR REPLACE FUNCTION {function}() RETURNS trigger LANGUAGE plpgsql AS $fn$ "
-            "BEGIN "
-            "EXECUTE format('UPDATE %I.config_stamp SET stamp = stamp + 1 WHERE kind = $1', "
-            "TG_TABLE_SCHEMA) USING TG_ARGV[0]; "
-            "RETURN NULL; "
-            "END $fn$"
+            f"{trigger_function_body()} $fn$"
         )
     )
     existing = {
@@ -144,16 +225,24 @@ def _install_postgresql(conn: Any, tables: dict[str, str], schema: str | None) -
     # A table holding a ``json`` column (one created from the portable metadata rather than
     # schema.sql, which declares jsonb) cannot be compared row to row: json has no equality
     # operator. Its every UPDATE advances the stamp.
+    # Read from pg_catalog: information_schema.columns is a view over every schema's columns that
+    # PostgreSQL filters by privilege row by row, and a control plane holding many org schemas
+    # made it the slowest statement of a layout.
     uncomparable = {
         row[0]
         for row in conn.execute(
             text(
-                "SELECT DISTINCT table_name FROM information_schema.columns "
-                "WHERE table_schema = :schema AND data_type = 'json'"
+                "SELECT DISTINCT c.relname FROM pg_catalog.pg_attribute a "
+                "JOIN pg_catalog.pg_class c ON c.oid = a.attrelid "
+                "JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace "
+                "WHERE n.nspname = :schema AND c.relkind IN ('r', 'p', 'v', 'm', 'f') "
+                "AND a.attnum > 0 AND NOT a.attisdropped "
+                "AND a.atttypid = 'pg_catalog.json'::pg_catalog.regtype"
             ),
             {"schema": schema},
         )
     }
+    missing: list[str] = []
     for table, kind in tables.items():
         target = f'"{schema}"."{table}"'
         call = f"EXECUTE FUNCTION {function}('{kind}')"
@@ -164,9 +253,14 @@ def _install_postgresql(conn: Any, tables: dict[str, str], schema: str | None) -
             "config_stamp_update": (f"AFTER UPDATE ON {target} FOR EACH ROW {changed}{call}"),
             "config_stamp_truncate": f"AFTER TRUNCATE ON {target} FOR EACH STATEMENT {call}",
         }
-        for name, definition in wanted.items():
-            if (table, name) not in existing:
-                conn.execute(text(f"CREATE TRIGGER {name} {definition}"))
+        missing.extend(
+            f"CREATE TRIGGER {name} {definition};"
+            for name, definition in wanted.items()
+            if (table, name) not in existing
+        )
+    if missing:
+        # One statement for them all: a new schema has ~100 of them, and each was a round trip.
+        conn.execute(text(f"DO $install$ BEGIN {' '.join(missing)} END $install$"))
 
 
 def install(

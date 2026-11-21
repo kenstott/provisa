@@ -66,7 +66,7 @@ def _make_role(role_id: str, domain_access: list[str] | None = None) -> dict:
         "description": "Test role.",
         "id": role_id,
         "domain_access": domain_access if domain_access is not None else ["*"],
-        "capabilities": [],
+        "capabilities": ["usage"],
     }
 
 
@@ -111,7 +111,7 @@ def _catalog_columns_for_role(
     """Build the CatalogIndex for a role and return visible column names for table_id."""
     si = _make_si(tables, column_types, role_id)
     ctx = build_context(si)
-    idx = _build_catalog_index(ctx, column_types, database="provisa")
+    idx = _build_catalog_index(ctx, column_types, database="provisa", masked=frozenset())
     return [col_name for toid, col_name, *_ in idx.all_cols if toid == 16384 + table_id]
 
 
@@ -214,7 +214,7 @@ class TestJDBCGetColumnsRoleVisibility:
         # REQ-128: _populate_is_columns creates DuckDB rows only for role-visible columns
         si = _make_si(_TABLES, _COL_TYPES, role_id="analyst")
         ctx = build_context(si)
-        idx = _build_catalog_index(ctx, _COL_TYPES, database="provisa")
+        idx = _build_catalog_index(ctx, _COL_TYPES, database="provisa", masked=frozenset())
 
         db = duckdb.connect(":memory:")
         _populate_is_columns(db, idx)

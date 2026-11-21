@@ -32,7 +32,7 @@ from provisa.api_source.oauth_grants import CredentialRefused
 from provisa.quickbooks import entities, query
 from provisa.quickbooks import read as qb_read
 from provisa.quickbooks import token as qb_token
-from provisa.quickbooks.entities import columns_of, entity, snake
+from provisa.quickbooks.entities import columns_of, entity
 from provisa.quickbooks.persist import QuickBooksTableRefused, build_endpoint, table_paging
 from provisa.quickbooks.pushdown import pushed_arguments
 from provisa.quickbooks.rows import page_rows
@@ -67,12 +67,21 @@ def test_the_named_entities_are_all_offered():
 
 
 def test_field_names_are_written_in_snake_case():
-    assert snake("TotalAmt") == "total_amt"
-    assert snake("PrimaryEmailAddr") == "primary_email_addr"
-    assert snake("APAccountRef") == "ap_account_ref"
-    assert snake("AllowOnlineACHPayment") == "allow_online_ach_payment"
-    assert snake("domain") == "domain"
-    assert snake("Id") == "id"
+    from provisa.quickbooks.rows import row
+
+    names = ["TotalAmt", "PrimaryEmailAddr", "APAccount", "AllowOnlineACHPayment", "domain", "Id"]
+    assert list(row(dict.fromkeys(names, 1))) == [
+        "total_amt",
+        "primary_email_addr",
+        "ap_account",
+        "allow_online_ach_payment",
+        "domain",
+        "id",
+    ]
+    assert list(row({"APAccountRef": {"value": "1", "name": "AP"}})) == [
+        "ap_account_ref_value",
+        "ap_account_ref_name",
+    ]
 
 
 def test_a_reference_is_two_columns_and_line_items_one_json_column():
@@ -284,6 +293,29 @@ def test_an_or_and_a_join_are_not_pushed():
         )
         == {}
     )
+
+
+_INVOICES = (
+    '(SELECT "i"."id" AS "id", "i"."balance" AS "balance", \'***\' AS "doc_number" '
+    'FROM "qb"."invoice" AS "i" WHERE "i"."txn_date" >= \'2026-01-01\') AS "i"'
+)
+
+
+def test_a_governed_read_pushes_its_row_rule_its_conditions_and_its_limit():
+    args = pushed_arguments(
+        _endpoint(), f"SELECT i.id FROM {_INVOICES} WHERE i.balance > 0 LIMIT 7", "invoice"
+    )
+    assert args == {
+        "query": "SELECT * FROM Invoice WHERE TxnDate >= '2026-01-01' AND Balance > '0'",
+        "max_rows": 7,
+    }
+
+
+def test_a_governed_condition_on_a_masked_column_is_left_to_the_engine():
+    args = pushed_arguments(
+        _endpoint(), f"SELECT i.id FROM {_INVOICES} WHERE i.doc_number = '1' LIMIT 7", "invoice"
+    )
+    assert args == {"query": "SELECT * FROM Invoice WHERE TxnDate >= '2026-01-01'"}
 
 
 def test_a_customer_condition_on_active_replaces_the_read_of_both():

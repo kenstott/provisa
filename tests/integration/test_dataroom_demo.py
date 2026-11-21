@@ -260,15 +260,16 @@ def test_the_aggregates_are_the_seller_s_own_numbers(server, analysts):
         ("customers", "phone has ten digits"): 55,
         ("invoices", "paid"): 282,
     }
-    counts = _rows(
-        _as(
-            server,
-            _ana(analysts),
-            "bidder_a",
-            'SELECT SUM(customers) AS customers FROM "dataroom"."view_customer_counts"',
-        )
+    counted = _as(
+        server,
+        _ana(analysts),
+        "bidder_a",
+        'SELECT SUM(customers) AS customers FROM "dataroom"."view_customer_counts"',
     )
-    assert counts == [{"customers": 2400}]
+    # The view reads one PostgreSQL source, so the statement runs there, and PostgreSQL's SUM of a
+    # bigint is a numeric: written as the string of its exact digits (REQ-1867, amended 2026-11-02).
+    assert _rows(counted) == [{"customers": "2400"}]
+    assert counted.json()["column_types"] == ["numeric"]
     assert _rows(_as(server, _ana(analysts), "bidder_a", ANSWER_SQL))
 
 

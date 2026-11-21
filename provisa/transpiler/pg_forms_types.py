@@ -234,9 +234,6 @@ _ORDERED: tuple[_Ordered, ...] = (
     _Ordered("pg_lsn_", _lsn_key("{}"), cmp=True, picks=True, shown=_lsn_text(_lsn_number("{}"))),
     _Ordered("tid", _tid_key("{}"), picks=True, shown=_TEXT),
     _Ordered("name", _NAME),
-    _Ordered("array_", "{}", picks=True),
-    _Ordered("record_", "({})"),
-    _Ordered("record_image_", "({})"),
 )
 
 
@@ -679,7 +676,12 @@ def _inet_moved(name: str, params: str, inet: str, number: str) -> Form:
 
 
 def _set_masklen(name: str, cleared: bool) -> Form:
-    bits = "CASE WHEN CAST(b AS INTEGER) = -1 THEN 32 ELSE CAST(b AS INTEGER) END"
+    # NULL for an IPv6 value, which _v4 refuses before this branch: DuckDB 2.0 evaluates the
+    # branch's bound subquery even when it is not taken, and its mask check must not raise then.
+    bits = (
+        "CASE WHEN STRPOS(CAST(a AS TEXT), ':') > 0 THEN CAST(NULL AS INTEGER) "
+        "WHEN CAST(b AS INTEGER) = -1 THEN 32 ELSE CAST(b AS INTEGER) END"
+    )
     wrote = _inet_text(_network("a", "_n") if cleared else "_ipa", "_n")
     if cleared:
         wrote = f"CAST({_dotted(_network('a', '_n'))} || '/' || CAST(_n AS TEXT) AS TEXT)"
@@ -865,7 +867,7 @@ def _interval_of(months: str, days: str, micros: str) -> str:
     )
 
 
-def _interval_scaled(function: str, op: str) -> str:
+def _interval_scaled(function: str, op: str, factor: str = "CAST(b AS DOUBLE PRECISION)") -> str:
     """interval_mul and interval_div, as timestamp.c cascades them: what ``op`` leaves of a month
     runs on to days at thirty a month and what it leaves of a day to seconds, each rounded to six
     places; rounding may leave a whole day of seconds, which is carried."""
@@ -880,7 +882,7 @@ def _interval_scaled(function: str, op: str) -> str:
     return _bound(
         "CAST(a AS INTERVAL)",
         _bound(
-            "CAST(b AS DOUBLE PRECISION)",
+            factor,
             f"CASE WHEN ABS(_x) = CAST('Infinity' AS DOUBLE PRECISION) "
             f"OR _x = CAST('NaN' AS DOUBLE PRECISION) "
             f"THEN {_not_served(function, 'INTERVAL')} "
@@ -900,7 +902,9 @@ _INTERVAL_SCALED: tuple[Form, ...] = (
         "a, b",
         f"CASE {_strict('INTERVAL')}WHEN CAST(b AS DOUBLE PRECISION) = 0 "
         f"THEN {_fails('22012', _DIVISION_BY_ZERO, 'INTERVAL')} ELSE "
-        + _interval_scaled("interval_div", "/")
+        # The divisor bound NULLIF 0: this branch's subquery is evaluated by DuckDB 2.0 even when
+        # the zero divisor (or a NULL argument) has already been answered above.
+        + _interval_scaled("interval_div", "/", "NULLIF(CAST(b AS DOUBLE PRECISION), 0)")
         + " END",
     ),
 )
@@ -999,6 +1003,12 @@ DUCKDB_TWEAKS = {
     )
     for form in OPERATORS
     if form.name == "int8div"
+} | {
+    # DuckDB's date holds infinity, which PostgreSQL's date_pli and date_mii answer as it is: the
+    # day count of DuckDB's marker would read as a finite day past the range.
+    form.name: f"CASE WHEN isfinite(CAST(a AS DATE)) THEN {form.sql} ELSE CAST(a AS DATE) END"
+    for form in _DATED_ARITHMETIC
+    if form.name in ("date_pli", "date_mii")
 }
 #: The forms that read an argument's text: a statement's cast to their type says nothing more, and
 #: a cast to character(n) says how far it pads.

@@ -9,6 +9,6 @@
     "detachToSemantic": "Loskoppelen naar semantische SQL",
     "expansionTitle": "Metriekexpansie",
     "expansionLoading": "Expansie ophalen...",
-    "expansionNoMetric": "Deze instructie verwijst naar geen enkele metriek — er valt niets te expanderen."
+    "expansionNoMetric": "Dit statement verwijst naar geen enkele metric, dus er valt niets uit te breiden."
   }
 }

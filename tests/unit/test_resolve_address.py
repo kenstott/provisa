@@ -36,6 +36,7 @@ def _ctx(pk=("id",)):
         domain_id="sales",
         display_name="",
         original_table_name="",
+        schema_name="public",
         table_name="orders",
         field_name="sales__orders",
     )
@@ -44,6 +45,7 @@ def _ctx(pk=("id",)):
         domain_id="hr",
         display_name="People",
         original_table_name="",
+        schema_name="hr",
         table_name="employees",
         field_name="hr__people",
     )
@@ -157,7 +159,9 @@ def test_as_of_on_a_table_with_no_history_is_refused_by_name():
     address = SemanticAddress("acme", "sales", "orders", ("7",), None)
     with pytest.raises(AddressError, match="keeps no history"):
         build_statement("u", address, _ctx(), as_of="TIMESTAMP '2026-01-01'", bitemporal=set())
-    build_statement("u", address, _ctx(), as_of="TIMESTAMP '2026-01-01'", bitemporal={"orders"})
+    build_statement(
+        "u", address, _ctx(), as_of="TIMESTAMP '2026-01-01'", bitemporal={"public.orders"}
+    )
 
 
 # -- the one function runs the one pipeline --------------------------------------------------------
@@ -394,12 +398,19 @@ async def test_the_mcp_tool_answers_under_meta_with_the_bound_org(resolved, monk
     from provisa.api.mcp import server
     from tests.unit.test_mcp_server import _make_state
 
-    token = server._request_role.set("analyst")  # what the bearer token resolves to
+    from provisa.auth.models import AuthIdentity
+
+    # What the transport binds for a bearer token: its principal and the role it resolves to
+    # (REQ-1105: a call runs as a principal, never a role alone).
+    identity = AuthIdentity(user_id="ada", email=None, display_name=None, roles=["analyst"])
+    token = server._request_role.set("analyst")
+    identity_token = server._request_identity.set(identity)
     try:
         content = await server.build_mcp_server(_make_state()).call_tool(
             "meta_resolve", {"uri": "provisa://acme/sales/tables/orders/pk=7"}
         )
     finally:
+        server._request_identity.reset(identity_token)
         server._request_role.reset(token)
     blocks = content[0] if isinstance(content, tuple) else content
     assert json.loads(blocks[0].text)["row"] == {"amount": 1}

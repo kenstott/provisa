@@ -8,7 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import React, { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { User, Compass, ChevronDown } from "lucide-react";
 import { ActionIcon, Badge, Button, Checkbox, Menu, Modal, Stack, Text } from "@mantine/core";
@@ -16,7 +16,6 @@ import { useTranslation } from "react-i18next";
 import { FormFooter } from "./form/FormLayout";
 import { BrandMark } from "./BrandMark";
 import { CapabilityGate } from "./CapabilityGate";
-import { HIDING_RIGHTS } from "../lib/capabilities";
 import { useTour } from "../tour/useTour";
 import { RoleSelector } from "./RoleSelector";
 import { OrgSwitcher } from "./OrgSwitcher";
@@ -32,7 +31,14 @@ import { useAuth } from "../context/AuthContext";
 import { signOut } from "../lib/session";
 import { deleteSandboxAccount } from "../api/admin";
 import { notifications } from "@mantine/notifications";
-import { NAV_GROUPS, activeGroupId, entryItem, labelKeyFor, writeLastSubnav } from "./navGroups";
+import {
+  NAV_BAR,
+  NAV_GROUPS,
+  activeGroupId,
+  barEntryTarget,
+  entryItem,
+  writeLastSubnav,
+} from "./navGroups";
 import { Tip } from "./Tip";
 
 export function NavBar() {
@@ -153,7 +159,7 @@ export function NavBar() {
     location.pathname === "/openapi" ||
     // REQ-1591: the glossary list is narrowed by the same selection, and its create modal makes a
     // term's domains from it.
-    location.pathname === "/admin/ontology";
+    location.pathname === "/context/ontology";
 
   function toggleGroup(id: string) {
     // If already in this group's route, just toggle the pin
@@ -178,65 +184,44 @@ export function NavBar() {
           </NavLink>
         </div>
         <div className="navbar-links">
-          <CapabilityGate capability="source_registration">
-            <NavLink to="/sources" data-tour="nav-sources">
-              {t("navBar.sources")}
-            </NavLink>
-          </CapabilityGate>
-          <CapabilityGate capability="table_registration" anyOf={HIDING_RIGHTS}>
-            <NavLink to="/tables" data-tour="nav-tables">
-              {t("navBar.tables")}
-            </NavLink>
-          </CapabilityGate>
-          {/* Same capability the /relationships route gates on — an ungated link led an analyst
-              straight to "You do not have permission to view this page." */}
-          <CapabilityGate capability="create_relationship">
-            <NavLink to="/relationships" data-tour="nav-relationships">
-              {t("navBar.relationships")}
-            </NavLink>
-          </CapabilityGate>
-          {/* REQ-1590: gated on the glossary's own read right, not org_settings — every seeded
-              role reads the vocabulary the model is described in. */}
-          <CapabilityGate capability="glossary_read">
-            <NavLink to="/admin/ontology" data-tour="nav-glossary">
-              {t("navBar.itemGlossary")}
-            </NavLink>
-          </CapabilityGate>
-          {/* REQ-1351: a group whose every item is denied has nowhere to go, so it is not offered —
-              rendering it left a tab that swallowed the click and never navigated. */}
-          {NAV_GROUPS.filter((group) => entryItem(group, capabilities, billing)).map((group) => {
+          {/* The bar's entries, in NAV_BAR order — the same list the landing page walks. */}
+          {NAV_BAR.map((entry) => {
+            if (entry.kind === "link") {
+              return (
+                <CapabilityGate
+                  key={entry.to}
+                  capability={entry.capability}
+                  orCapability={entry.orCapability}
+                  anyOf={entry.anyOf}
+                  andCapability={entry.andCapability}
+                  orAllOf={entry.orAllOf}
+                >
+                  <NavLink to={entry.to} data-tour={entry.tour}>
+                    {t(entry.labelKey)}
+                  </NavLink>
+                </CapabilityGate>
+              );
+            }
+            const group = entry.group;
+            // REQ-1351: a group whose every item is denied has nowhere to go, so it is not offered —
+            // rendering it left a tab that swallowed the click and never navigated.
+            if (barEntryTarget(entry, capabilities, billing) === undefined) return null;
             const isActive = routeGroup === group.id || pinnedGroup === group.id;
             return (
-              <React.Fragment key={group.id}>
-                <button
-                  type="button"
-                  data-tour={`nav-${group.id}`}
-                  data-testid={`nav-group-${group.id}`}
-                  className={`nav-group-label${isActive ? " nav-group-active" : ""}`}
-                  aria-expanded={isActive}
-                  aria-current={isActive ? "true" : undefined}
-                  onClick={() => toggleGroup(group.id)}
-                >
-                  {t(group.labelKey)}
-                </button>
-                {/* REQ-1634: Data Products is a top-level list/detail page, not an admin sub-tab —
-                    placed right after Model so it reads as a peer of the modeling surfaces. */}
-                {/* REQ-1634: gated on the data product read right, not org_settings — every
-                    seeded role reads the catalog. */}
-                {group.id === "model" && (
-                  <CapabilityGate capability="data_product_read">
-                    <NavLink to="/data-products" data-tour="nav-data-products">
-                      {t("navBar.itemDataProducts")}
-                    </NavLink>
-                  </CapabilityGate>
-                )}
-              </React.Fragment>
+              <button
+                key={group.id}
+                type="button"
+                data-tour={`nav-${group.id}`}
+                data-testid={`nav-group-${group.id}`}
+                className={`nav-group-label${isActive ? " nav-group-active" : ""}`}
+                aria-expanded={isActive}
+                aria-current={isActive ? "true" : undefined}
+                onClick={() => toggleGroup(group.id)}
+              >
+                {t(group.labelKey)}
+              </button>
             );
           })}
-          {/* Docs — ungated, available to everyone */}
-          <NavLink to="/docs" data-tour="nav-docs">
-            {t("navBar.docs")}
-          </NavLink>
         </div>
         <OrgSwitcher />
         <div className="navbar-role">
@@ -329,14 +314,8 @@ export function NavBar() {
                   </Menu.Label>
                 )}
                 <Menu.Item onClick={() => setProfileOpen(true)}>{t("navBar.profile")}</Menu.Item>
-                {/* REQ-1349: shown when the caller has ANY admin surface, and it opens the first
-                    one they hold — gating on the `admin` wildcard hid it from every org_admin, and
-                    the hardcoded /admin/overview needs `observability` the wildcard does not imply. */}
-                {adminEntry && (
-                  <Menu.Item onClick={() => navigate(adminEntry.to)}>
-                    {t("navBar.settings")}
-                  </Menu.Item>
-                )}
+                {/* REQ-1327: no Settings entry. For an admin it opened the same page as Admin, so
+                    Admin (below the divider) is the one way into administration. */}
                 {/* REQ-1469: the plan, the running bill and the next charge are the org's
                     commercial relationship, not an operational setting, so they sit with the
                     account rather than under Admin. Shown only where the deployment mounts
@@ -358,6 +337,18 @@ export function NavBar() {
                     {t("navBar.whatsNew")}
                   </Menu.Item>
                 )}
+                {/* Admin and Docs sit below a divider, not in the top navigation. Admin is offered
+                    to a caller holding an admin surface and opens the first one they hold; Docs is
+                    open to everyone. */}
+                <Menu.Divider data-testid="navbar-menu-divider" />
+                {adminEntry && (
+                  <Menu.Item onClick={() => navigate(adminEntry.to)} data-testid="navbar-admin">
+                    {t("navBar.groupAdmin")}
+                  </Menu.Item>
+                )}
+                <Menu.Item component={NavLink} to="/docs" data-testid="navbar-docs">
+                  {t("navBar.docs")}
+                </Menu.Item>
                 {authEnabled && (
                   <Menu.Item color="red" onClick={handleLogout}>
                     {t("navBar.logout")}
@@ -385,9 +376,12 @@ export function NavBar() {
                   <CapabilityGate
                     capability={item.capability}
                     orCapability={item.orCapability}
+                    anyOf={item.anyOf}
+                    andCapability={item.andCapability}
+                    orAllOf={item.orAllOf}
                     navigable
                   >
-                    <NavLink to={item.to}>{t(labelKeyFor(item, capabilities))}</NavLink>
+                    <NavLink to={item.to}>{t(item.labelKey)}</NavLink>
                   </CapabilityGate>
                 )}
               </span>
@@ -416,12 +410,15 @@ export function NavBar() {
           {/* The dialog's action first, then the other, at the start of the line. */}
           <FormFooter
             action={
-              <Button onClick={() => navigate("/admin/orgs")}>
+              // REQ-1931: an organization is created by a sign-in with no membership, which lands
+              // on organization setup. So this does what Log Out does: the sandbox account is
+              // deleted and the visitor signed out, and their next sign-in creates the org.
+              <Button onClick={proceedWithLogout} data-testid="sandbox-exit-create-org">
                 {t("navBar.sandboxExitCreateOrg")}
               </Button>
             }
           >
-            <Button variant="default" onClick={proceedWithLogout}>
+            <Button variant="default" onClick={proceedWithLogout} data-testid="sandbox-exit-logout">
               {t("navBar.sandboxExitLogOut")}
             </Button>
           </FormFooter>

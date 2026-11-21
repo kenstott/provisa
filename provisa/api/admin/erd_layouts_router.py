@@ -31,6 +31,7 @@ from fastapi import APIRouter, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 
+from provisa.api.admin.capabilities import require_capability_request
 from provisa.api.errors import ApiError
 
 router = APIRouter(prefix="/admin", tags=["admin", "erd"])
@@ -74,6 +75,11 @@ def _db() -> Any:
     if state.model_db is None:
         raise ApiError(503, "erd.database_unavailable", "Database unavailable")
     return state.model_db
+
+
+def _require_write(request: Request) -> None:
+    """A layout is shared in the environment; arranging the model's diagram is modelling."""
+    require_capability_request(request, "table_registration")
 
 
 def _caller(request: Request) -> str | None:
@@ -128,7 +134,7 @@ def _answer(layout: dict[str, Any]) -> dict[str, Any]:
 
 
 @router.get("/erd-layouts")
-async def list_layouts() -> dict:
+async def list_layouts(request: Request) -> dict:
     from provisa.core.repositories import erd_layout
 
     async with _db().acquire() as conn:
@@ -160,6 +166,7 @@ async def get_layout(request: Request, name: str) -> dict:
 async def save_layout(request: Request, name: str, body: LayoutBody) -> dict:
     from provisa.core.repositories import erd_layout
 
+    _require_write(request)
     if name.strip() == "":
         raise ApiError(422, "erd.layout_name_required", "A layout needs a name")
     async with _db().acquire() as conn:
@@ -200,8 +207,10 @@ async def save_layout(request: Request, name: str, body: LayoutBody) -> dict:
 
 
 @router.delete("/erd-layouts/{name}")
-async def delete_layout(name: str) -> dict:
+async def delete_layout(request: Request, name: str) -> dict:
     from provisa.core.repositories import erd_layout
+
+    _require_write(request)
 
     async with _db().acquire() as conn:
         async with conn.transaction():

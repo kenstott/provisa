@@ -28,6 +28,7 @@ from typing import Any, cast
 import pytest
 from sqlalchemy import insert, select, update
 
+from provisa.api.admin import capabilities as capmod
 from provisa.api.admin import erd_layouts_router as router_mod
 from provisa.api.errors import ApiError
 from provisa.core.env_deploy import _decompose, _existing_ids, _roles_after
@@ -62,7 +63,7 @@ def _table(name: str, domain: str) -> Table:
 
 
 @asynccontextmanager
-async def _model(control_plane, monkeypatch):
+async def _model(control_plane, monkeypatch, held=frozenset({"table_registration"})):
     """customers in sales and ledger in finance; the router bound to the test's own plane, its
     caller reading what ``reads[0]`` says (everything until a test narrows it)."""
     with control_plane.engine().begin() as c:
@@ -76,6 +77,8 @@ async def _model(control_plane, monkeypatch):
     async def _readable(conn, request):
         return reads[0]
 
+    # The caller models the environment: it holds the right the Tables page is opened with.
+    monkeypatch.setattr(capmod, "_resolved_capabilities", lambda _identity, _state: held)
     monkeypatch.setattr(router_mod, "_db", lambda: db)
     monkeypatch.setattr(router_mod, "_readable", _readable)
     ids: dict[str, int] = {}
@@ -132,7 +135,7 @@ async def test_a_saved_layout_reloads_with_every_place_and_option(control_plane,
         finance = next(d for d in answer["domains"] if d["domainId"] == "finance")
         assert (finance["collapsed"], finance["w"], finance["h"]) == (True, 130.0, 90.0)
         assert answer["updatedBy"] == "sam"
-        listed = await router_mod.list_layouts()
+        listed = await router_mod.list_layouts(cast(Any, _request()))
         assert [r["name"] for r in listed["layouts"]] == ["Sales overview"]
 
 
@@ -206,22 +209,44 @@ async def test_a_save_placing_what_the_caller_cannot_read_is_refused(control_pla
             await router_mod.save_layout(cast(Any, _request()), "L", _body(ids))
         assert refused.value.status_code == 403
         assert refused.value.code == "erd.layout_place_unreadable"
-        assert (await router_mod.list_layouts())["layouts"] == []
+        assert (await router_mod.list_layouts(cast(Any, _request())))["layouts"] == []
 
 
 @pytest.mark.asyncio
 async def test_a_layout_is_deleted_and_a_missing_one_is_not_found(control_plane, monkeypatch):
     async with _model(control_plane, monkeypatch) as (_db, ids, _reads):
         await router_mod.save_layout(cast(Any, _request()), "L", _body(ids))
-        assert await router_mod.delete_layout("L") == {"deleted": "L"}
+        assert await router_mod.delete_layout(cast(Any, _request()), "L") == {"deleted": "L"}
         for missing in (
-            router_mod.delete_layout("L"),
+            router_mod.delete_layout(cast(Any, _request()), "L"),
             router_mod.get_layout(cast(Any, _request()), "L"),
         ):
             with pytest.raises(ApiError) as refused:
                 await missing
             assert refused.value.status_code == 404
             assert refused.value.code == "erd.layout_not_found"
+
+
+@pytest.mark.asyncio
+async def test_a_caller_without_the_modelling_right_reads_layouts_but_cannot_change_them(
+    control_plane, monkeypatch
+):
+    async with _model(control_plane, monkeypatch) as (_db, ids, _reads):
+        request = cast(Any, _request())
+        await router_mod.save_layout(request, "L", _body(ids))
+        monkeypatch.setattr(
+            capmod, "_resolved_capabilities", lambda _identity, _state: {"query_development"}
+        )
+        assert [r["name"] for r in (await router_mod.list_layouts(request))["layouts"]] == ["L"]
+        assert (await router_mod.get_layout(request, "L"))["name"] == "L"
+        for refused_call in (
+            router_mod.save_layout(request, "L", _body(ids)),
+            router_mod.delete_layout(request, "L"),
+        ):
+            with pytest.raises(ApiError) as refused:
+                await refused_call
+            assert refused.value.status_code == 403
+            assert refused.value.code == "auth.missing_capability"
 
 
 @pytest.mark.asyncio

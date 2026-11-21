@@ -14,10 +14,14 @@ Two kinds are exchanged here for the short-lived token a call is sent with:
 
 - an OAuth2 refresh token, a person's standing approval of a client (RFC 6749 section 6);
 - a Google service account reading as a named account of a Workspace domain that has delegated
-  to it: an assertion the account's key signs is exchanged for the token (RFC 7523).
+  to it: an assertion the account's key signs is exchanged for the token (RFC 7523);
+- a Google service account reading as itself, what a file shared with the account is read as
+  (:func:`service_account_token`, a Google Sheets source, REQ-1998).
 
 A token is kept in this process until shortly before the issuer says it lapses, and nowhere
-else. A credential the issuer refuses is a :class:`CredentialRefused` carrying the issuer's own
+else. It is held for the organization whose request obtained it and for the credential, as it
+resolves now, that obtained it (:func:`held_key`): another organization naming the same issuer and
+client never receives it, and a secret changed behind the same reference is exchanged again. A credential the issuer refuses is a :class:`CredentialRefused` carrying the issuer's own
 reason -- a lapsed or withdrawn approval is never answered as an empty read.
 
 Some issuers answer an exchange with a new refresh token that replaces the one sent, which then
@@ -42,6 +46,7 @@ import jwt
 
 from provisa.api_source.caller import ApiCallError
 from provisa.core.auth_models import ApiAuthGoogleServiceAccount, ApiAuthOAuth2RefreshToken
+from provisa.core.request_context import require_current_org
 from provisa.core.secrets import resolve_secrets
 
 _TIMEOUT = 10.0
@@ -52,7 +57,7 @@ _JWT_BEARER = "urn:ietf:params:oauth:grant-type:jwt-bearer"
 _REFUSED = frozenset({400, 401})
 _KEY_FIELDS = ("client_email", "private_key", "token_uri")
 
-#: Tokens this process holds: digest of what identifies the credential -> (token, lapses at).
+#: Tokens this process holds: :func:`held_key` -> (token, lapses at).
 _tokens: dict[str, tuple[str, float]] = {}
 _tokens_lock = threading.Lock()
 
@@ -96,14 +101,21 @@ def access_token(auth: ApiAuthOAuth2RefreshToken | ApiAuthGoogleServiceAccount) 
     has one that has not lapsed, else from the issuer."""
     if isinstance(auth, ApiAuthGoogleServiceAccount):
         return _service_account_grant(auth)
-    key = _held_key(auth.type, auth.token_url, auth.client_id, auth.refresh_token, auth.scope or "")
-    held = _held(key)
+    key = held_key(
+        auth.type,
+        auth.token_url,
+        resolve_secrets(auth.client_id),
+        resolve_secrets(auth.refresh_token, credential=True),
+        resolve_secrets(auth.client_secret, credential=True) if auth.client_secret else "",
+        auth.scope or "",
+    )
+    held = held_token(key)
     if held is not None:
         return held
     grant = exchange_refresh_token(auth)
     if grant.replacement is not None:
         raise ReplacementNotKept(_approval(resolve_secrets(auth.client_id)))
-    _hold(key, grant.access_token, grant.expires_in)
+    hold_token(key, grant.access_token, grant.expires_in)
     return grant.access_token
 
 
@@ -111,10 +123,10 @@ def exchange_refresh_token(auth: ApiAuthOAuth2RefreshToken) -> RefreshGrant:
     """One exchange of exactly the refresh token ``auth`` states. Nothing is held and nothing
     is stored: what the issuer answered is the caller's to keep."""
     client_id = resolve_secrets(auth.client_id)
-    refresh_token = resolve_secrets(auth.refresh_token)
+    refresh_token = resolve_secrets(auth.refresh_token, credential=True)
     form = {"grant_type": "refresh_token", "client_id": client_id, "refresh_token": refresh_token}
     if auth.client_secret is not None:
-        form["client_secret"] = resolve_secrets(auth.client_secret)
+        form["client_secret"] = resolve_secrets(auth.client_secret, credential=True)
     if auth.scope:
         form["scope"] = auth.scope
     body = _exchange(auth.token_url, form, _approval(client_id))
@@ -130,12 +142,20 @@ def _approval(client_id: str) -> str:
     return f"The sign-in approved for client {client_id}"
 
 
-def _held_key(*identity: str) -> str:
-    # What identifies a credential may itself be the credential, so only its digest is kept.
+def held_key(*credential: str) -> str:
+    """The key a token is held by: a digest of the organization the current request acts in and
+    of ``credential``, every part of the credential that obtained the token, secrets resolved.
+    The organization keeps one org's token from another org's request naming the same issuer and
+    client; the resolved secret makes a secret changed behind the same reference miss. What
+    identifies a credential is itself the credential, so only its digest is kept. With no org
+    bound it raises (``require_current_org``): a token is never held for no org."""
+    identity = (require_current_org(), *credential)
     return hashlib.sha256("\x00".join(identity).encode()).hexdigest()
 
 
-def _held(key: str) -> str | None:
+def held_token(key: str) -> str | None:
+    """The token held under ``key`` (:func:`held_key`), or None when none is or it lapses within
+    the margin."""
     with _tokens_lock:
         held = _tokens.get(key)
     if held is not None and time.time() < held[1] - _EXPIRY_MARGIN:
@@ -156,7 +176,8 @@ def _refusal(resp: httpx.Response) -> str:
     return f"{body['error']}: {described}" if described else str(body["error"])
 
 
-def _hold(key: str, token: str, expires_in: float | None) -> None:
+def hold_token(key: str, token: str, expires_in: float | None) -> None:
+    """Hold ``token`` under ``key`` (:func:`held_key`) until ``expires_in`` seconds from now."""
     # An issuer that does not say when the token lapses gives nothing to hold it by: it is
     # used for this call and asked for again at the next.
     if expires_in is not None:
@@ -165,17 +186,23 @@ def _hold(key: str, token: str, expires_in: float | None) -> None:
 
 
 def _exchange(token_url: str, form: dict[str, str], credential: str) -> dict:
-    """The issuer's answer to a grant, or its refusal."""
-    resp = httpx.post(token_url, data=form, timeout=_TIMEOUT)
+    """The issuer's answer to a grant, or its refusal. A held org's issuer is a public
+    destination, each request checked (REQ-2006): the token URL, and a service account key's
+    ``token_uri``, are the org's own."""
+    from provisa.security import sandbox_egress
+
+    with httpx.Client(timeout=_TIMEOUT, event_hooks=sandbox_egress.http_sync_event_hooks()) as c:
+        resp = c.post(token_url, data=form)
     if resp.status_code in _REFUSED:
         raise CredentialRefused(credential, _refusal(resp))
     resp.raise_for_status()
     return resp.json()
 
 
-def _service_account_key(auth: ApiAuthGoogleServiceAccount) -> dict:
+def _service_account_key(resolved: str) -> dict:
+    """The key in ``resolved``, the key's text with its secret references already resolved."""
     try:
-        key = json.loads(resolve_secrets(auth.key))
+        key = json.loads(resolved)
     except ValueError:
         # The text is the credential, so the parser's message, which quotes it, is not passed on.
         raise ServiceAccountKeyInvalid("The service account key is not JSON") from None
@@ -188,20 +215,38 @@ def _service_account_key(auth: ApiAuthGoogleServiceAccount) -> dict:
 
 
 def _service_account_grant(auth: ApiAuthGoogleServiceAccount) -> str:
-    held_key = _held_key(auth.type, auth.key, auth.subject, " ".join(sorted(auth.scopes)))
-    held = _held(held_key)
+    return _signed_grant(auth.key, auth.subject, auth.scopes)
+
+
+def service_account_token(key: str, scopes: list[str]) -> str:
+    """The access token of the service account whose key (JSON, as Google issues it) is ``key``,
+    reading as itself under ``scopes``: what a file shared with the account is read with. Held
+    as :func:`access_token`'s are."""
+    return _signed_grant(key, None, scopes)
+
+
+def _signed_grant(key_text: str, subject: str | None, scopes: list[str]) -> str:
+    """The token an assertion signed with the key ``key_text`` is exchanged for: reading as
+    ``subject``, an account of a domain that delegated ``scopes`` to the service account, or,
+    with none, as the service account itself."""
+    resolved_key = resolve_secrets(key_text, credential=True)
+    key_of_hold = held_key(
+        "google_service_account", resolved_key, subject or "", " ".join(sorted(scopes))
+    )
+    held = held_token(key_of_hold)
     if held is not None:
         return held
-    key = _service_account_key(auth)
+    key = _service_account_key(resolved_key)
     now = int(time.time())
     claims = {
         "iss": key["client_email"],
-        "sub": auth.subject,
-        "scope": " ".join(auth.scopes),
+        "scope": " ".join(scopes),
         "aud": key["token_uri"],
         "iat": now,
         "exp": now + _ASSERTION_LIFETIME,
     }
+    if subject is not None:
+        claims["sub"] = subject
     try:
         assertion = jwt.encode(claims, key["private_key"], algorithm="RS256")
     except (ValueError, TypeError, jwt.PyJWTError):
@@ -209,12 +254,15 @@ def _service_account_grant(auth: ApiAuthGoogleServiceAccount) -> str:
         raise ServiceAccountKeyInvalid(
             "The service account key's private_key is not a key an assertion can be signed with"
         ) from None
+    reading_as = subject if subject is not None else "itself"
     body = _exchange(
         key["token_uri"],
         {"grant_type": _JWT_BEARER, "assertion": assertion},
-        f"Service account {key['client_email']} reading as {auth.subject}",
+        f"Service account {key['client_email']} reading as {reading_as}",
     )
-    _hold(
-        held_key, body["access_token"], float(body["expires_in"]) if "expires_in" in body else None
+    hold_token(
+        key_of_hold,
+        body["access_token"],
+        float(body["expires_in"]) if "expires_in" in body else None,
     )
     return body["access_token"]

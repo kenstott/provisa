@@ -276,10 +276,27 @@ def _running(pid: int, since: float) -> bool:
 OWNERLESS_AFTER_SECONDS = 24 * 60 * 60
 
 
+def _record_owner(root: Path) -> None:
+    """Record this process as ``root``'s starter. Written beside the record and moved onto it whole:
+    another worker's reaper reads the record without waiting for its writer, and one written in
+    place was read empty (``int('')`` errored that reaper's whole session)."""
+    fd, partial = tempfile.mkstemp(prefix=f".{_OWNER}.", dir=root)
+    with os.fdopen(fd, "w") as record:
+        record.write(str(os.getpid()))
+    os.replace(partial, root / _OWNER)
+
+
 def _orphaned(root: Path) -> bool:
     owner = root / _OWNER
     if owner.is_file():
-        return not _running(int(owner.read_text()), owner.stat().st_mtime)
+        try:
+            pid = int(owner.read_text())
+        except ValueError:
+            # Not a pid: a record a starter died writing, from before records were written whole
+            # (_record_owner). It names no starter, so it is judged as no record is, by age below.
+            pass
+        else:
+            return not _running(pid, owner.stat().st_mtime)
     return time.time() - root.stat().st_mtime > OWNERLESS_AFTER_SECONDS
 
 
@@ -350,7 +367,7 @@ def start_local_postgres(
 
     _stop_orphans()
     root = Path(tempfile.mkdtemp(prefix=_PREFIX, dir=RUN_ROOT))
-    (root / _OWNER).write_text(str(os.getpid()))
+    _record_owner(root)
     pg = LocalPostgres(
         port=lease_port() if port is None else port,
         root=root,

@@ -34,27 +34,37 @@ class FakeObserver {
 }
 vi.stubGlobal("IntersectionObserver", FakeObserver);
 
-vi.mock("../useProductGraph", () => ({
-  useProductGraph: (_product: string | null, enabled: boolean) => ({
-    data: enabled ? DATA : null,
-    error: null,
-    scoped: enabled ? { data: DATA, query: "query DataProductGraph { x }" } : null,
-    onScope: () => {},
-  }),
+vi.mock("../ontologyData", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../ontologyData")>()),
+  // The query stands for its scope; the server below answers it with the graph read.
+  ontologyQuery: (_m: unknown, s: { layers: Set<string> }) =>
+    JSON.stringify({ ...s, layers: [...s.layers] }),
+  ontologyCountQuery: () => "count",
+  ontologyGraph: () => DATA,
+}));
+vi.mock("../../../api/metaGraph", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../../api/metaGraph")>()),
+  metaReader: async () => ({ schema: null, roots: new Map() }),
+  dataGraphql: async (query: string) => {
+    void query;
+    return { _terms: [] };
+  },
 }));
 
-// The panel is the product graph in place, Open as query among its controls: it compiles as the
-// acting roles.
+// The product's snippet reads the ontology as the acting roles.
 vi.mock("../../../context/AuthContext", () => ({ useAuth: () => ({ actingRoles: "analyst" }) }));
 
-import { GraphPanel } from "../GraphPanel";
+import { OntologySnippet } from "../OntologyGraph";
+import { productPreset } from "../ontologyPresets";
 
 afterEach(() => vi.restoreAllMocks());
 
 describe("the 3D stage without WebGL", () => {
   it("shows that the 3D view could not start, logs it, and is never ready", async () => {
     const logged = vi.spyOn(console, "error").mockImplementation(() => {});
-    render(<GraphPanel productId="c360" productName="customer_360" graph={DATA} />);
+    render(
+      <OntologySnippet preset={productPreset("c360")} name="customer_360" testId="graph-panel" />,
+    );
     act(() => observed.fire.forEach((f) => f()));
     const alert = await screen.findByTestId("graph-panel-stage-error", {}, { timeout: 10_000 });
     expect(alert).toHaveTextContent("The 3D view could not start");

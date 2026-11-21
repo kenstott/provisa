@@ -42,6 +42,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, NamedTuple
 
 from provisa.core import deployment_settings
+from provisa.core.request_context import acting_org_overrides
 
 if TYPE_CHECKING:
     from provisa.core.database import Database
@@ -117,6 +118,8 @@ class Setting:
     # The Helm chart value that sets this setting where the chart renders the engine's config
     # (``PROVISA_ENGINE_CONFIG_SOURCE=chart``): there it is shown read-only, naming the value.
     chart_value: str | None = None
+    # REQ-1327: the acting org's own value, from its settings rows, is read before anything else.
+    org_owned: bool = False
 
 
 class Resolved(NamedTuple):
@@ -379,6 +382,14 @@ def _stored_raw(s: Setting) -> Any | None:
     return raw
 
 
+def _org_raw(s: Setting) -> Any | None:
+    """The acting org's stored value for an org-owned setting, unparsed (REQ-1327)."""
+    if not s.org_owned:
+        return None
+    block, _, field_name = s.key.partition(".")
+    return (acting_org_overrides().get(block) or {}).get(field_name)
+
+
 def _env_raw(s: Setting) -> str | None:
     if s.env is None:
         return None
@@ -514,8 +525,12 @@ def adopt_created(key: str) -> None:
 
 
 def value(key: str) -> Any:
-    """The value in force in this process: the reader's one door."""
+    """The value in force in this process: the reader's one door. An org-owned setting (REQ-1327)
+    reads the acting org's own value first; the rest of the order is what that org inherits."""
     s = setting(key)
+    own = _org_raw(s)
+    if own is not None:
+        return parse(s, own, "org")
     if s.effect == "restart" and _frozen is not None:
         if key not in _frozen:
             raise RuntimeError(f"setting {key} was declared after this process booted")
@@ -620,11 +635,28 @@ async def reload_and_apply() -> None:
 # environment, the config file and the store resolve to). A pair that cannot work is refused at
 # both, by name -- it is never quietly bent into something that runs.
 
-# (the setting, the setting it may not be below, the refusal's reason)
-_AT_LEAST: tuple[tuple[str, str, str], ...] = (
+#: REQ-2100: the least memory a code source's DuckDB may give each of its threads, in MiB. 16 is
+#: the smallest measured to sort millions of rows (64 MiB on 4 threads, 2 million rows); at 8
+#: (64 MiB on 8 threads) a sort of one million rows fails, so 8 is not a working bound.
+DUCKDB_MIN_MEMORY_MB_PER_THREAD = 16
+
+# (the setting, the setting it may not be below, the refusal's reason, how many of the second
+# setting's units one of the first must hold)
+_AT_LEAST: tuple[tuple[str, str, str, int], ...] = (
     # REQ-1915: the wait before a failed build is tried again grows from the interval up to the
     # ceiling, so a ceiling below the interval is no ceiling the interval could reach.
-    ("replication.retry_interval_max", "replication.retry_interval", "retry_max_below_interval"),
+    (
+        "replication.retry_interval_max",
+        "replication.retry_interval",
+        "retry_max_below_interval",
+        1,
+    ),
+    (
+        "codesource.duckdb_memory_mb",
+        "codesource.duckdb_threads",
+        "memory_below_thread_minimum",
+        DUCKDB_MIN_MEMORY_MB_PER_THREAD,
+    ),
 )
 
 
@@ -651,12 +683,12 @@ def check_pairs(values: dict[str, Any] | None = None) -> None:
     (a load): every pair is judged on what it resolves to now, and each value's source is
     named."""
     _ensure_loaded()
-    for higher, lower, reason in _AT_LEAST:
+    for higher, lower, reason, scale in _AT_LEAST:
         if higher not in _settings or lower not in _settings:
             continue  # a registry that declares neither has no such pair (a test's own catalog)
         if values is None:
             top, floor = resolve(higher), resolve(lower)
-            if top.value < floor.value:
+            if top.value < floor.value * scale:
                 raise SettingsConflict(
                     higher,
                     lower,
@@ -671,7 +703,7 @@ def check_pairs(values: dict[str, Any] | None = None) -> None:
         if not saved:
             continue
         top, floor = prospective(higher, values), prospective(lower, values)
-        if top < floor:
+        if top < floor * scale:
             field = saved[0]
             raise SettingsConflict(
                 field,

@@ -165,8 +165,13 @@ def principal_session_vars(
 def principal_scope(state: Any, identity: Any, role_id: str | None) -> Iterator[None]:
     """Bind ``identity``'s session variables, acting as ``role_id``, for one call of a transport
     that authenticates its own caller, as the HTTP middleware binds them for a request."""
+    from provisa.entitlements.runtime import entitlements_scope  # REQ-2219
+
     attributes, _held = principal_of(state, identity)
-    with session_vars_scope(principal_session_vars(identity.user_id, attributes, role_id)):
+    with (
+        session_vars_scope(principal_session_vars(identity.user_id, attributes, role_id)),
+        entitlements_scope(identity),
+    ):
         yield
 
 
@@ -188,9 +193,11 @@ def bind_principal_session_vars(state: Any, identity: Any, role_id: str | None) 
     own (gRPC's RPC context, an Airport handler thread), where every call binds its own before
     it runs a statement."""
     from provisa.core.request_context import set_session_vars
+    from provisa.entitlements.runtime import bind_entitlements  # REQ-2219
 
     attributes, _held = principal_of(state, identity)
     set_session_vars(principal_session_vars(identity.user_id, attributes, role_id))
+    bind_entitlements(identity)
 
 
 #: The attribute a regional node's own region is carried as, on its service calls.
