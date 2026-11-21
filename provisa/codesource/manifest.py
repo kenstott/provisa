@@ -599,6 +599,25 @@ def ir_of(shape: Shape) -> str:
     return "json"
 
 
+def _loader_rows(result: dict) -> dict:
+    """REQ-1984: a ``@loader`` alone may return a list of rows or a mapping of names to lists of
+    those rows (a loader call answers the hash of each key to its rows). That union is its rows;
+    any other union is left as it is, and refused as a table's return is."""
+    if result["kind"] != "union":
+        return result
+    members = result["members"]
+    rows = [m for m in members if m["kind"] in ("array", "iterable")]
+    mappings = [m for m in members if m["kind"] == "record"]
+    if len(members) != 2 or len(rows) != 1 or len(mappings) != 1:
+        return result
+    value = mappings[0].get("value")  # Python's reader does not carry the mapping's value type
+    if value is not None and not (
+        value["kind"] in ("array", "iterable") and value["element"] == rows[0]["element"]
+    ):
+        return result
+    return rows[0]
+
+
 def _loader(
     mapper: _Mapper, name: str, entry: dict, takes: tuple[str, ...]
 ) -> tuple[bool, int | None]:
@@ -900,6 +919,8 @@ def read_manifest(raw: dict, rules: Rules = NODE_RULES) -> Manifest:
                 parameters.append(Parameter(p["name"], shape, nullable, required=not p["optional"]))
         if kind == TABLE:
             result = _unwrap_promise(returns)
+            if loading:
+                result = _loader_rows(result)
             if result["kind"] == "array":
                 element = result["element"]
             elif result["kind"] == "iterable":
@@ -943,6 +964,13 @@ def read_manifest(raw: dict, rules: Rules = NODE_RULES) -> Manifest:
             )
         else:
             result = _unwrap_promise(returns)
+            if result["kind"] == "union" and _loader_rows(result) is not result:
+                # REQ-1984: that union is a loader's alone.
+                problems.append(
+                    f"{name}: only a @table @loader may return a list of rows or a mapping of "
+                    f"names to lists of rows, and {name} is a @{kind}"
+                )
+                continue
             if result["kind"] == "undefined":
                 shape, many = None, False
             elif result["kind"] in ("array", "iterable"):
