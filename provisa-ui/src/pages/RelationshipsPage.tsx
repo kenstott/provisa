@@ -73,7 +73,7 @@ export function RelationshipsPage() {
   const { relationships: rels, loading: relsLoading, refetch: refetchRels } = useRelationships();
   // What the ERD draws, the system's own relationships too (REQ-2187: a line opens its panel here).
   const { relationships: allRels } = useAllRelationships();
-  const { tables, loading: tablesLoading } = useTables();
+  const { tables, loading: tablesLoading, refetch: refetchTables } = useTables();
   // REQ-2187: the ERD in the list's place, its state in the URL.
   const erd = useErdView();
   const { upsertRelationship } = useUpsertRelationship();
@@ -374,9 +374,11 @@ export function RelationshipsPage() {
   const refreshDiscovery = discovery.refresh;
   const handleApplied = useCallback(() => {
     void refetchRels();
+    // An accepted proposal can register tables and always adds relationships over them.
+    void refetchTables();
     load();
     void refreshDiscovery();
-  }, [load, refetchRels, refreshDiscovery]);
+  }, [load, refetchRels, refetchTables, refreshDiscovery]);
 
   // The form's values for a relationship, as its edit form holds them.
   const formOf = useCallback(
@@ -684,6 +686,7 @@ export function RelationshipsPage() {
       saving={saving}
       problem={saveProblem}
       tables={tables}
+      refetchTables={refetchTables}
       functions={functions}
       actingRole={actingRoles}
       tableDomainById={tableDomainById}
