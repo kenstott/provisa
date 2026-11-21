@@ -51,11 +51,13 @@ pytestmark = [pytest.mark.integration, pytest.mark.requires_warehouse]
 
 _SOURCE_ID = "askamerica-trino-itest"
 _CATALOG = "askamerica_trino_itest"
-_SCHEMAS = "weather,ref,geo"
-_SCHEMA = "weather"
-# A materialized table: engine-v0.128.8 declares tables with no data yet (fec.candidates), which
-# Trino refuses as having no supported columns.
-_TABLE = "nws_stations"
+_SCHEMAS = "econ,ref,geo"
+_SCHEMA = "econ"
+# econ.inflation_metrics is always materialized (6,001 rows). Two others are avoided on
+# engine-v0.128.8: weather.nws_stations reports TABLE_NOT_FOUND to Trino though its data exists
+# (calcite catalog/describe bug, govdata-ops #1416/#1420), and fec.candidates shows 0 columns for
+# the same reason.
+_TABLE = "inflation_metrics"
 _COLD_START_SECONDS = 600
 
 
