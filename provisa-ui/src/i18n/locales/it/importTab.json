@@ -37,7 +37,7 @@
     "warningMessage": "Cosa fare",
     "warningLocation": "Posizione",
     "configHeading": "Configurazione generata",
-    "configHelp": "Modificala prima di applicarla se la conversione ha sbagliato: dati di connessione, nomi di dominio, nomi dei ruoli. Ciò che applichi è esattamente quanto mostrato qui.",
+    "configHelp": "Modificare i dettagli di connessione, i nomi di dominio o i nomi di ruolo se la conversione ha sbagliato. Ciò che si applica è esattamente ciò che è mostrato qui.",
     "apply": "Applica a questa organizzazione",
     "applied": "Applicato: {{sources}} origini dati, {{tables}} tabelle, {{roles}} ruoli.",
     "domainNew": "nuovo dominio",

@@ -1425,6 +1425,6 @@ def test_the_tck_session_user_holds_the_role_its_bolt_sessions_act_as(monkeypatc
         raw_claims={"username": catalog.TCK_SESSION_USER},
     )
     acts_as, may_name = asyncio.run(
-        held_module.sign_in_roles(SimpleNamespace(auth_config=auth), identity, None, naming=True)
+        held_module.sign_in_roles(SimpleNamespace(auth_config=auth), identity, None)
     )
     assert (acts_as, may_name) == (bolt.EMPTY_ROLE, [bolt.EMPTY_ROLE])

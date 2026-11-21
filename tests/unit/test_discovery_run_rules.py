@@ -964,7 +964,7 @@ def test_the_instructions_say_what_a_confidence_states_and_where_a_suggestion_is
 
 
 async def test_every_element_of_an_answer_is_kept_with_why_it_is_left_out():
-    from provisa.discovery.runner import NOT_NAMED, judged, read_answers
+    from provisa.discovery.runner import NOT_NAMED, SAME_NAME, judged, read_answers
 
     orders = tbl(
         1,
@@ -1025,10 +1025,13 @@ async def test_every_element_of_an_answer_is_kept_with_why_it_is_left_out():
     ]
     assert {e for reason, e in left[6:]} == unnamed
     assert all(reason == "below_threshold" for reason, _ in left[6:])
-    assert all(
-        r.proposal is not None and (r.proposal.confidence, r.proposal.reasoning) == (0.0, NOT_NAMED)
+    # The same-name pair says why it is there whatever the model answered (REQ-413, amended
+    # 2026-11-20).
+    assert {
+        r.proposal.edge: (r.proposal.confidence, r.proposal.reasoning)
         for r in tally.left_out[6:]
-    )
+        if r.proposal is not None
+    } == {e: (0.0, SAME_NAME if e == (1, "id", 2, "id") else NOT_NAMED) for e in unnamed}
     below = tally.left_out[5].proposal
     assert below is not None and below.confidence == 0.4 and below.reasoning == "names match"
     # An element that made no proposal is kept as the model wrote it.

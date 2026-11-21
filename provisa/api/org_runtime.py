@@ -209,7 +209,8 @@ class OrgRuntime:
     # REQ-147: each Kafka source's entry as declared, its references resolved where a client opens.
     kafka_declared: dict[str, dict] = field(default_factory=dict)
     kafka_table_configs: dict[str, KafkaTableConfig] = field(default_factory=dict)
-    kafka_table_physical: dict[str, str] = field(default_factory=dict)
+    # (source_id, virtual table name) → the topic's physical table (physical_table_map).
+    kafka_table_physical: dict[tuple[str, str], str] = field(default_factory=dict)
     table_approval_hooks: dict[int, bool] = field(default_factory=dict)
     source_approval_hooks: dict[str, bool] = field(default_factory=dict)
     pg_enum_types: dict = field(default_factory=dict)
@@ -241,6 +242,10 @@ class OrgRuntime:
     # REQ-2219: user id -> the lists their identity provider last sent, per role and kind.
     idp_entitlements: dict[str, dict[str, dict[str, tuple[str, ...]]]] = field(default_factory=dict)
     data_product_refs: tuple[tuple[str, str], ...] = ()
+    # REQ-2219, OWNER KINDS: (name, domain ids) of every glossary term and the id of every
+    # judgment basis, which a term_owner or judgment_basis_owner list can name.
+    glossary_term_refs: tuple[tuple[str, tuple[str, ...]], ...] = ()
+    judgment_basis_ids: tuple[str, ...] = ()
     entitlement_masks: MaskCache = field(default_factory=MaskCache)
     # role id -> everything the role is served through, from ONE build (api/role_surface.py):
     # its schema, compilation context, row filters, REST path map and proto. A build installs a

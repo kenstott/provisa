@@ -31,7 +31,7 @@
     "policiesTitle": "このテーブルの行レベルセキュリティポリシーを表示します",
     "editButtonLabel": "テーブル {{name}} を編集",
     "deleteButtonLabel": "テーブル {{name}} を削除",
-    "profileHeading": "プロファイル — サンプリング {{count}} 行",
+    "profileHeading": "プロファイル: サンプル {{count}} 行",
     "colNulls": "NULL",
     "colNullsTitle": "NULL値",
     "colBlanks": "空白",

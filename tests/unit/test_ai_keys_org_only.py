@@ -416,7 +416,7 @@ class _Constructed(Exception):
 async def _run_anthropic_chat(chat_mod) -> None:
     turns = chat_mod._run_chat_anthropic(
         SimpleNamespace(), "analyst", [{"role": "user", "content": "hi"}],
-        max_iterations=1, budget=None,
+        max_iterations=1, budget=None, scope=None,
     )  # fmt: skip
     async for _ in turns:
         pass

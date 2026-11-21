@@ -1,7 +1,7 @@
 {
   "nlPage": {
     "guideTitle": "Come scrivere una buona domanda",
-    "guideDesc": "Questo strumento genera query direttamente dallo schema — non ragiona su testo libero o conoscenza generale. Formulare la domanda come composizione di tabelle, campi e relazioni presenti nei dati.",
+    "guideDesc": "Questo strumento genera query a partire dallo schema. Non ragiona su testo libero o conoscenze generali, quindi formulare la domanda in termini di tabelle, campi e relazioni presenti nei dati.",
     "guideRuleNames": "Usare i nomi delle entità, non sinonimi ({{entity}}, non {{synonym}})",
     "guideRuleFilters": "Specificare filtri, raggruppamenti e aggregazioni come in una query",
     "guideRuleSchema": "Se un campo o una relazione non è nello schema, non può essere interrogato",
@@ -24,8 +24,8 @@
     "strictModeTooltip": "Tutta la generazione si basa rigorosamente sull'espressione GraphQL: prima viene generato GraphQL e validato sullo schema, poi compilato in SQL e infine in Cypher. Disattivato: SQL, GraphQL e Cypher vengono generati ciascuno in modo indipendente, come la query più vicina alla domanda.",
     "strictLocked": "Questo ruolo può usare solo relazioni approvate",
     "questionTooltip": "Chiedi in linguaggio naturale usando i tuoi nomi di tabelle, colonne e relazioni. Invio invia; Maiusc+Invio aggiunge una riga.",
-    "generateTooltip": "Genera una query per ogni superficie — GraphQL, SQL e Cypher — a partire da questa domanda, usando lo schema visibile al tuo ruolo attuale.",
-    "mcpChatTooltip": "Affida questa domanda all'assistente MCP, che esplora il catalogo ed esegue la query al posto tuo invece di limitarsi a generarla.",
+    "generateTooltip": "Genera query GraphQL, SQL e Cypher da questa domanda, usando lo schema visibile al ruolo corrente.",
+    "mcpChatTooltip": "Invia questa domanda all'assistente MCP, che esplora il catalogo ed esegue la query.",
     "questionHelpTitle": "Porre la domanda",
     "strictHelpTitle": "Generazione strict",
     "generateHelpTitle": "Cosa produce Genera",

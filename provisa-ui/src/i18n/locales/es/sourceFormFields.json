@@ -94,7 +94,7 @@
     "authMechanismGssapi": "GSSAPI (Kerberos)",
     "upload": "Subir archivo",
     "uploadReplace": "Subir un archivo nuevo",
-    "uploadNeedsId": "Escriba primero el ID del origen: el archivo se guarda bajo él.",
+    "uploadNeedsId": "Introduzca primero el ID del origen, porque el archivo se guarda bajo él.",
     "uploadedFileHint": "El archivo subido de este origen, guardado en la carpeta de su organización. Suba otro para reemplazarlo.",
     "fileLocationsHint": "{files}/… en los archivos de la organización, una ruta en el servidor, una dirección https:// o s3://, gs:// o az:// con las credenciales del almacén; o suba el archivo.",
     "fileDatabaseLocationsHint": "{files}/… en los archivos de la organización, una ruta en el servidor, una dirección https:// o s3://, gs:// o az:// con las credenciales del almacén (allí, solo lectura); o suba el archivo.",

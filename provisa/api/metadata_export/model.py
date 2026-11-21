@@ -584,6 +584,15 @@ class OfferExport:  # REQ-2180
     freshness: int | None = None
 
 
+@dataclass(frozen=True)
+class EnvironmentStage:  # REQ-2261
+    """An environment's name and the stage it declares (production | preprod | test |
+    development) when a snapshot was read."""
+
+    name: str
+    stage: str
+
+
 @dataclass
 class MetadataSnapshot:  # REQ-1070
     """Everything Provisa publishes about one org at one moment.
@@ -617,6 +626,11 @@ class MetadataSnapshot:  # REQ-1070
     # REQ-2180: each product's offers, by product id, with the contracts derived from them: what
     # its output ports are, and what another product's input port on its datasets names.
     offers: Mapping[str, tuple[OfferExport, ...]] = field(default_factory=dict)
+    # REQ-2261: the environment the snapshot was read in and the stage it declares, so a catalog
+    # can tell production assets from others. Set by the publish path (publishing.org_snapshot)
+    # from the environment registry; None only where no environment registry exists -- a
+    # deployment without a control plane, or a snapshot built outside a publish.
+    environment: "EnvironmentStage | None" = None
 
     def columns(self) -> list[ColumnAsset]:
         return [column for table in self.tables for column in table.columns]

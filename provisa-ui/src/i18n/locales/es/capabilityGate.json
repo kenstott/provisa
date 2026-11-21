@@ -8,7 +8,7 @@
       "purpose": {
         "environment_management": {
           "title": "Los entornos son una función de producción",
-          "body": "Un entorno es una copia completa y gobernada por separado de su modelo: orígenes, tablas, políticas, reglas de enmascaramiento y concesiones. Los equipos mantienen un entorno de desarrollo para cambiar el modelo, uno de staging para revisarlo y prod para servirlo, y luego hacen avanzar el cambio fusionando un entorno en el siguiente con un diff, una aprobación y un historial reversible.\n\nSu entorno de pruebas ES uno de estos entornos, creado solo para usted. Gestionarlos (crear, fusionar, desplegar, retirar) corresponde a la organización que los posee, por lo que aquí se muestra la interfaz en lugar de entregarla: puede ver qué hace, pero no actúa sobre nada."
+          "body": "Un entorno es una copia completa y gobernada por separado de su modelo: sus orígenes, tablas, políticas, reglas de enmascaramiento y concesiones. Los equipos cambian el modelo en dev, lo revisan en staging y sirven desde prod, haciendo merge de un entorno en el siguiente con un diff, una aprobación y un historial que se puede deshacer.\n\nSu sandbox es uno de estos entornos, creado solo para usted. Crear, hacer merge, desplegar y retirar entornos corresponde a la organización que los posee, así que esta página se muestra como referencia y no actúa sobre nada."
         }
       }
     }

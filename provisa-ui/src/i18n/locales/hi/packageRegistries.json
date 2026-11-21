@@ -18,7 +18,7 @@
     "cargoNone": "कोई Cargo रजिस्ट्री नहीं। Crates, crates.io से आते हैं।",
     "add_cargo": "Cargo रजिस्ट्री जोड़ें",
     "gitTitle": "Git होस्ट",
-    "gitHelp": "वे होस्ट जिनसे कोड स्रोत Git कोड और Git निर्भरताएँ लाते हैं।",
+    "gitHelp": "वे होस्ट जिनसे कोड स्रोत Git कोड और Git डिपेंडेंसी लाते हैं।",
     "gitNone": "कोई Git होस्ट नहीं।",
     "add_git": "Git होस्ट जोड़ें",
     "npmAddress": "रजिस्ट्री URL",

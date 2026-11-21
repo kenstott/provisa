@@ -12,6 +12,7 @@ RUN apt-get update \
 COPY --from=rust-toolchain /usr/local/cargo /usr/local/cargo
 COPY --from=rust-toolchain /usr/local/rustup /usr/local/rustup
 ENV CARGO_HOME=/usr/local/cargo RUSTUP_HOME=/usr/local/rustup PATH=/usr/local/cargo/bin:$PATH
+ENV PIP_DEFAULT_TIMEOUT=120 PIP_RETRIES=10
 # zig on PATH: the build runs in an isolated environment whose python has no ziglang.
 RUN pip install --no-cache-dir "build==1.6.1" "cargo-zigbuild==0.24.0" "ziglang==0.17.0" \
  && ln -s "$(python -c 'import os, ziglang; print(os.path.dirname(ziglang.__file__))')/zig" /usr/local/bin/zig \

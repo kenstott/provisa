@@ -627,6 +627,7 @@ class RegisteredTableType:  # REQ-013, REQ-014, REQ-016, REQ-135
         row = {
             "id": self.id,
             "source_id": self.source_id,
+            "schema_name": self.schema_name,
             "table_name": self.table_name,
             "view_sql": self.view_sql,
         }

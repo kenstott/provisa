@@ -29,7 +29,7 @@
     "no": "No",
     "typeSomethingElse": "Scrivi qualcos'altro",
     "confirm": "Conferma",
-    "confirmed": "Confermato: procedi.",
+    "confirmed": "Confermato. Procedi.",
     "cancelled": "Annullato.",
     "chooseFile": "File da inviare",
     "graphCaption": "Nodi: {{nodes}} · Relazioni: {{relationships}}",

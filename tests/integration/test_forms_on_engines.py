@@ -12,7 +12,9 @@
 SQLGLOT EXPANSION, AN ANSWER THAT DIFFERS IS REFUSED): each call of
 tests/unit/pgwire/pg17_forms_answers.py, written as Provisa writes it for the engine and run there,
 its cells as pgwire would serve them, against PostgreSQL 17's recorded answer. What an engine does
-not serve is pg17_forms_matrix.py's, by statement: replayed, never derived."""
+not serve is pg17_forms_matrix.py's, by statement: replayed, never derived. A statement
+conformance-functions measures on the engine is not replayed here
+(tests/integration/replay_coverage.py)."""
 
 # Requirements: REQ-2167, REQ-2171
 
@@ -31,6 +33,7 @@ from provisa.transpiler.function_macros import FunctionRefused
 from provisa.transpiler.pg_forms_types import REFUSED as NOT_READ
 from provisa.transpiler.pg_xml import XmlFunctionRefused
 from provisa.transpiler.transpile import transpile, transpile_to_trino
+from tests.integration.replay_coverage import remaining
 from tests.unit.pgwire.pg17_forms_answers import RECORDED
 from tests.unit.pgwire.pg17_forms_matrix import DIFFERS, ERROR, MATRIX, REFUSED, compared, text_of
 
@@ -81,15 +84,23 @@ def _refused_by_its_form(error: Exception) -> bool:
     return said is not None and said.sqlstate == "0A000" and str(said).endswith(NOT_READ)
 
 
+def _expected(engine: str) -> dict[str, str]:
+    """pg17_forms_matrix's outcomes on ``engine`` of the statements replayed there."""
+    replayed_there = frozenset(remaining("forms", engine, RECORDED))
+    return {sql: said for sql, said in MATRIX[engine].items() if sql in replayed_there}
+
+
 def replayed(
+    engine: str,
     written: Callable[[str], str],
     run: Callable[[str], list[Any]],
     held: Callable[[Any, int], Any] = _as_is,
 ) -> dict[str, str]:
-    """Each statement's outcome, where it is not the answer PostgreSQL gave."""
+    """Each statement's outcome on ``engine``, where it is not the answer PostgreSQL gave."""
     found: dict[str, str] = {}
     _SAID.clear()
-    for sql, (oids, want, values) in RECORDED.items():
+    for sql in remaining("forms", engine, RECORDED):
+        oids, want, values = RECORDED[sql]
         try:
             rows = run(written(sql))
         except (FunctionRefused, XmlFunctionRefused):
@@ -114,7 +125,7 @@ def trino_replay(conn: Any) -> dict[str, str]:
         cursor.execute(sql)
         return cursor.fetchall()
 
-    return replayed(transpile_to_trino, run)
+    return replayed("trino", transpile_to_trino, run)
 
 
 def clickhouse_replay(client: Any) -> dict[str, str]:
@@ -128,13 +139,13 @@ def clickhouse_replay(client: Any) -> dict[str, str]:
         result = client.query(sql, query_formats={"String": "bytes"}, tz_mode="schema")
         return list(result.result_rows)
 
-    return replayed(written, run, _held)
+    return replayed("clickhouse", written, run, _held)
 
 
 @pytest.mark.requires_trino
 def test_forms_on_trino(trino_conn):
     found = trino_replay(trino_conn)
-    assert found == MATRIX["trino"], json.dumps({"trino": found, "said": _SAID})
+    assert found == _expected("trino"), json.dumps({"trino": found, "said": _SAID})
 
 
 @pytest.mark.requires_clickhouse
@@ -148,4 +159,4 @@ def test_forms_on_clickhouse():
         password=os.environ.get("CLICKHOUSE_PASSWORD", ""),
     )
     found = clickhouse_replay(client)
-    assert found == MATRIX["clickhouse"], json.dumps({"clickhouse": found, "said": _SAID})
+    assert found == _expected("clickhouse"), json.dumps({"clickhouse": found, "said": _SAID})

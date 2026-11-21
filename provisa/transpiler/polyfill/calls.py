@@ -30,7 +30,7 @@ from __future__ import annotations
 
 import sqlglot.expressions as exp
 
-from provisa.transpiler.polyfill import clickhouse, trino
+from provisa.transpiler.polyfill import clickhouse, json_built, json_literal, trino
 from provisa.transpiler.polyfill.grid import Feature, Limitation, Rule, Side
 from provisa.transpiler.polyfill.matching import graft
 from provisa.transpiler.polyfill.notation import Refused, Rewrite, replacement
@@ -210,14 +210,37 @@ FEATURES: tuple[Feature, ...] = (
         _of_no_listagg,
         (*trino.TRINO, "clickhouse"),
     ),
-    trino.refused_feature(
+    Feature(
         "json_object",
         FAMILY,
         "A JSON object of arrays of keys and values.",
-        "Of arrays, refused by name: Trino builds an object of text keys only.",
-        "json_object of arrays: refused by name.",
-        _of_arrays,
-        (*trino.TRINO, "clickhouse"),
+        read=Side(
+            rules=(
+                Rule(
+                    None,
+                    {
+                        **dict.fromkeys(
+                            trino.TRINO,
+                            trino.refusing(
+                                "json_object", "json_object of arrays: refused by name.", _of_arrays
+                            ),
+                        ),
+                        "clickhouse": json_built.for_name("json_object", json_literal.literal_call),
+                    },
+                ),
+            ),
+            limitations={
+                **dict.fromkeys(
+                    trino.TRINO,
+                    (
+                        Limitation(
+                            "Of arrays, refused by name: Trino builds an object of text keys only."
+                        ),
+                    ),
+                ),
+                "clickhouse": (json_literal.LITERALS,),
+            },
+        ),
     ),
     *(
         trino.by_name(

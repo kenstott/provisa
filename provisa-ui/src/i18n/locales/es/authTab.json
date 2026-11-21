@@ -9,12 +9,12 @@
     "assignmentsSourceClaims": "Claims del token",
     "assignmentsSourceProvisa": "Provisa (asignaciones locales)",
     "trustUpstream": "Confiar en los encabezados de identidad del proxy ascendente",
-    "allowSimpleAuth": "Permitir autenticación simple (protección de producción — requerida para habilitar usuario/contraseña)",
+    "allowSimpleAuth": "Permitir autenticación simple (protección de producción, necesaria para habilitar usuario/contraseña)",
     "saveButton": "Guardar configuración de autenticación",
     "loading": "Cargando…",
     "saved": "Guardado.",
     "savedRestartRequired": "Guardado. Reinicie el servicio para aplicar los cambios.",
-    "secretOnFile": "Almacenado: déjelo en blanco para conservarlo",
+    "secretOnFile": "Guardado. Déjelo en blanco para conservarlo.",
     "secretNotSet": "Sin definir",
     "allowRegistration": "Permitir que las personas creen sus propias cuentas"
   }

@@ -12,6 +12,8 @@
 
 from __future__ import annotations
 
+from typing import Annotated
+
 from fastapi import APIRouter, Query, Request
 
 from provisa.api.admin.engine_auth import run_admin_catalog_sql
@@ -21,7 +23,47 @@ from provisa.api.admin.capabilities import require_capability_request
 
 router = APIRouter(prefix="/admin/sources", tags=["admin", "table-search"])
 
-# Requirements: REQ-464
+# Requirements: REQ-464, REQ-2253
+
+#: REQ-2253: the navbar filter's selection, as repeated ``domains=`` parameters (as the glossary's
+#: AI assistants take it, glossary_router._view_scope). Absent is no selection.
+Selected = Annotated[list[str] | None, Query()]
+
+
+def _selection(request: Request, selected: list[str] | None) -> frozenset[str] | None:
+    """REQ-2253: the caller's authority intersected with the selection, or ``None`` when nothing
+    is selected, which leaves the search as it was."""
+    from provisa.api.admin.glossary_router import _view_scope
+
+    return None if selected is None else _view_scope(request, selected)
+
+
+def _require_source_within(state, source_id: str, scope: frozenset[str]) -> None:  # REQ-2253
+    """Refuse a search of a source none of whose tables may be registered in a selected domain:
+    its ``allowed_domains`` (empty: every domain) and the selection share none."""
+    from provisa.api.errors import ApiError
+
+    allowed = state.source_allowed_domains.get(source_id)
+    if allowed and not scope.intersection(allowed):
+        raise ApiError(
+            403,
+            "table_search.outside_selection",
+            f"source {source_id!r} is outside the domains selected in the domain filter",
+            source=source_id,
+        )
+
+
+def _within_selection(  # REQ-2253
+    state, source_id: str, schema_name: str, candidates: list[TableCandidate], scope: frozenset[str]
+) -> list[TableCandidate]:
+    """``candidates`` less the tables registered only in domains outside the selection, so none of
+    them is ranked or sent to the model. A table not yet registered is in no domain; it stays, to be
+    registered in a selected one."""
+    registered: dict[str, set[str]] = {}
+    for t in state.tables:
+        if t["source_id"] == source_id and t["schema_name"] == schema_name:
+            registered.setdefault(t["table_name"], set()).add(t["domain_id"])
+    return [c for c in candidates if c.name not in registered or registered[c.name] & scope]
 
 
 async def _candidates_from_cache(  # REQ-464
@@ -135,6 +177,7 @@ async def search_source_tables(
     source_id: str,
     q: str = Query(..., description="Natural language search query"),
     schema_name: str = Query("public", description="Schema to search within"),
+    domains: Selected = None,
 ) -> dict:
     """Search tables in a source using NL query.
 
@@ -146,6 +189,10 @@ async def search_source_tables(
     is ``loading`` while the schema's column names are still being loaded (a table that
     matches only by a column may be missing: ask again), ``unavailable`` when they could not be
     loaded, else ``complete``.
+
+    REQ-2253: with the filter's selection (the ``domains`` parameters) the search works only within
+    it: a source whose tables may be registered in none of the selected domains is refused, and a
+    table registered only outside them is neither ranked nor sent to the model.
     """
     require_capability_request(request, "source_registration")
     from provisa.api.app import state
@@ -156,6 +203,9 @@ async def search_source_tables(
         request_column_fill,
     )
 
+    scope = _selection(request, domains)
+    if scope is not None:
+        _require_source_within(state, source_id, scope)
     source_type = state.source_types.get(source_id, "")
     # A source registered from a specification is searched over the tables its specification
     # offers now -- the list the Register Table form offers -- read with no call to the source.
@@ -173,6 +223,8 @@ async def search_source_tables(
         request_column_fill(source_id, source_type, schema_name, candidates, state)
     else:
         candidates = await _candidates_live(source_id, schema_name, state)
+    if scope is not None:
+        candidates = _within_selection(state, source_id, schema_name, candidates, scope)
     columns = column_names_state(source_id, source_type, schema_name, candidates)
 
     assert state.model_db is not None

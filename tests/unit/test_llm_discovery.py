@@ -33,7 +33,7 @@ import pytest
 from provisa.discovery.columns import UNKNOWN, ColumnFacts, TableFacts, type_groups
 from provisa.discovery.direction import Proposal
 from provisa.discovery import threshold
-from provisa.discovery.runner import NOT_NAMED, Tally, execute, read_answers
+from provisa.discovery.runner import NOT_NAMED, SAME_NAME, Tally, execute, read_answers
 from provisa.discovery.runner import judged
 from provisa.discovery.windows import Call, Plan, plan
 from tests.unit.discovery_answers import from_ids, listed_tables
@@ -129,11 +129,11 @@ async def _read(
 
 def _named_left(tally: Tally) -> list[str | None]:
     """Why each element the model wrote was left out: the column pairs it did not name, scored
-    zero, aside."""
+    zero, aside, the same-name ones among them (REQ-413, amended 2026-11-20)."""
     return [
         r.left_out
         for r in tally.left_out
-        if r.proposal is None or r.proposal.reasoning != NOT_NAMED
+        if r.proposal is None or r.proposal.reasoning not in (NOT_NAMED, SAME_NAME)
     ]
 
 

@@ -8,7 +8,7 @@
     "never": "Live se possibile",
     "always": "Sempre",
     "hot": "Hot-{{threshold}}",
-    "neverWithLoadProtection": "«Live se possibile» non può essere combinato con la protezione dal carico: una tabella protetta dal carico non viene mai letta in tempo reale.",
+    "neverWithLoadProtection": "“Live se possibile” non può essere combinato con la protezione dal carico, perché una tabella protetta dal carico non viene mai letta live.",
     "scheduled": "Sempre, origine letta solo su pianificazione",
     "helpScheduled": "Sempre, origine letta solo su pianificazione: le letture provengono sempre dalla replica e una query non causa mai la lettura dell’origine; lo scheduler aggiorna la replica nella finestra fuori picco, secondo il TTL cache o la verifica delle modifiche, e almeno uno dei tre è richiesto."
   }

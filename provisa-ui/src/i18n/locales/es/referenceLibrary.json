@@ -1,6 +1,6 @@
 {
   "referenceLibrary": {
-    "title": "Biblioteca",
+    "title": "Documentos",
     "why": "Por qué: los documentos que dan significado a sus datos",
     "filterPlaceholder": "Filtrar documentos",
     "colIndex": "Estado del índice",
@@ -47,7 +47,7 @@
     "byFile": "Archivo",
     "byUrl": "URL",
     "file": "Archivo",
-    "fileHelp": "Un archivo PDF, Word (.docx), HTML, Markdown, XML de eCFR (.xml) o de texto plano.",
+    "fileHelp": "Un archivo PDF, Word (.docx), Excel (.xlsx), HTML, Markdown, eCFR XML (.xml) o de texto sin formato.",
     "url": "URL",
     "urlHelp": "Una dirección http(s). El documento se obtiene ahora y de nuevo cada vez que se actualiza.",
     "fieldTitle": "Título",

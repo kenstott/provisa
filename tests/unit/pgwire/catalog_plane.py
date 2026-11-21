@@ -237,6 +237,7 @@ class Plane:
             _can_write(role_id, state),
             request.database,
             False,
+            masked=(),
             session=request.session,
         )
         setting, values = set_statement(settings)

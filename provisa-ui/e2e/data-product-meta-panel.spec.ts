@@ -58,10 +58,15 @@ async function shows(locator: Locator, refused: string[], timeout: number) {
   }
 }
 
-/** Opens the panel's `section` row: every row but Offers starts closed, and Related (its commands
- * and graph) is mounted only once open. */
+/** Opens the panel's `section` row: every row but Offers starts closed, and a closed row's content
+ * is not mounted (Related, its commands and graph, always; every row under reduced motion).
+ * Details, the product's own fields, is the header's row. */
 async function openSection(page: Page, section: string) {
-  const toggle = page.getByTestId(`data-product-row-${section}-${PRODUCT}-toggle`);
+  const toggle = page.getByTestId(
+    section === "details"
+      ? `data-product-card-details-${PRODUCT}-toggle`
+      : `data-product-row-${section}-${PRODUCT}-toggle`,
+  );
   await toggle.click();
   await expect(toggle).toHaveAttribute("aria-expanded", "true");
 }
@@ -85,22 +90,25 @@ test.describe("a data product's panel and graph, read from the meta domain", () 
     await page.goto(`/data-products?product=${PRODUCT}`);
     await shows(page.getByTestId(`data-product-detail-${PRODUCT}`), refused, 90_000);
 
-    // The product's own fields (the SQL read of its row).
+    // The product's own fields (the SQL read of its row), in the Details row, which starts closed.
+    await openSection(page, "details");
     await expect(page.getByTestId(`data-product-read-${PRODUCT}`)).toContainText("Pet Health", {
       timeout: 60_000,
     });
-    // Its members, its command, and its checkers with the table each scans (the nested read).
+    // Its members and its checkers with the table each scans (the nested read), in Quality.
+    await openSection(page, "quality");
     const ports = page.getByTestId(`data-product-detail-tables-${PRODUCT}`);
     await expect(ports).toContainText("pet-store.pets");
     await expect(ports).toContainText("pet-store.vets");
     await expect(ports).not.toContainText("pets_quality");
+    const dq = page.getByTestId(`data-product-detail-dq-tables-${PRODUCT}`);
+    await expect(dq).toContainText("pets_quality");
+    await expect(dq).toContainText("scans pet-store.pets");
+    // Its command, in Related.
     await openSection(page, "related");
     await expect(page.getByTestId(`data-product-detail-commands-${PRODUCT}`)).toContainText(
       "add_pet",
     );
-    const dq = page.getByTestId(`data-product-detail-dq-tables-${PRODUCT}`);
-    await expect(dq).toContainText("pets_quality");
-    await expect(dq).toContainText("scans pet-store.pets");
 
     // The GraphQL the panel ran, replayed as the same role, answers the same.
     const sent = await panelRead;

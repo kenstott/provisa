@@ -422,3 +422,19 @@ def test_each_tour_rest_call_answers(landed, pulled, step):
     assert resp.status_code == 200, resp.text
     if pulled is not None:
         assert resp.json()["data"], step["key"]
+
+
+def test_the_first_example_query_answers_one_group_per_category_as_finance(landed):
+    """The demo's first query, as its comment says to run it: one group per product category
+    (db/init.sql: beans, equipment, merchandise and services). Outside the dataset's window it is
+    refused, naming the view."""
+    text = (_DEMO / "queries" / "1-dataset-by-category.graphql").read_text()
+    resp = _post(landed, "/data/graphql", {"query": text}, "finance")
+    if not _dataset_open(_utc()):
+        _refused_outside_window(resp, "view_order_margins")
+        return
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert not body.get("errors"), body
+    [groups] = body["data"].values()
+    assert len(groups) == 4, groups

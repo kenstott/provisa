@@ -406,7 +406,9 @@ def meta():
         # As the server registers them: each table read through its system view, its fields
         # domain-prefixed.
         domain_prefix=True,
-        physical_table_map={name: _VIEW_OF.get(name, f"{name}_meta") for name in _META_COLUMNS},
+        physical_table_map={
+            ("provisa-admin", name): _VIEW_OF.get(name, f"{name}_meta") for name in _META_COLUMNS
+        },
     )
     ctx = build_context(si)
     c = duckdb.connect()

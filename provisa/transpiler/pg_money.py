@@ -327,7 +327,12 @@ def _cents_double(value: exp.Expr) -> exp.Expr:
 
 
 def _from_cents(cents: exp.Expr) -> exp.Expr:
-    return exp.Mul(this=exp.Paren(this=cents), expression=exp.Literal.number("0.01"))
+    """Whole cents as money's dollars, a decimal times a decimal: ClickHouse reads a number literal
+    with a fraction as a Float64, which holds no int8 of cents past 2^53 (cash_div_int2 of
+    -92233720368547758.08 by 3 answered -30744573456182581.66)."""
+    whole = exp.Cast(this=exp.Paren(this=cents), to=exp.DataType.build("DECIMAL(19, 0)"))
+    cent = exp.Cast(this=exp.Literal.number("0.01"), to=exp.DataType.build("DECIMAL(3, 2)"))
+    return exp.Mul(this=whole, expression=cent)
 
 
 def _rint(value: exp.Expr, dialect: str) -> exp.Expr:

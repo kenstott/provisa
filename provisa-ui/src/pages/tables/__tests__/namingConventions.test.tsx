@@ -35,7 +35,12 @@ const table = draftFromRegistration({
 
 async function offered(conventions: string[]): Promise<string[]> {
   renderInForm(
-    <TableIdentitySection editingTable={table} setEditingTable={vi.fn()} isView={false} />,
+    <TableIdentitySection
+      editingTable={table}
+      setEditingTable={vi.fn()}
+      isView={false}
+      relationships={[]}
+    />,
     { mocks: [listed(conventions)] },
   );
   const select = screen.getByRole("textbox", { name: t("tableEditForm.namingConventionLabel") });

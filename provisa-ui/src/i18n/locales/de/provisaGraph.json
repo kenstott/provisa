@@ -11,7 +11,7 @@
       "table": "Tabelle",
       "view": "Sicht",
       "relation": "Externe Tabelle",
-      "junction": "Verknüpfung",
+      "junction": "Verbindungstabelle",
       "column": "Spalte",
       "term": "Begriff",
       "concept": "Konzept",

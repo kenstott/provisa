@@ -82,9 +82,15 @@ def plane(monkeypatch):
     async def _remove_from_org(admin_db, model_db, user_id, org_id):
         p.calls.append(f"remove_from_org:{user_id}:{org_id}")
 
+    async def _record_people(org_id, principals):
+        p.calls.append(f"record_people:{org_id}:{','.join(principals)}")
+
     monkeypatch.setattr("provisa.api.admin.orgs_router._org_model_db", _org_model_db)
     monkeypatch.setattr("provisa.auth.providers.firebase.delete_user", _delete_user)
     monkeypatch.setattr("provisa.core.org_membership.remove_from_org", _remove_from_org)
+    # REQ-2219: the removed role grants recompute the visitor's effective rows in the sandbox's
+    # prod model store, whose runtime _org_model_db built; the stand-in records the recompute.
+    monkeypatch.setattr("provisa.api.effective_rows.record_people", _record_people)
     return p
 
 
@@ -94,6 +100,7 @@ async def test_a_sandbox_only_visitor_is_deleted_identity_provider_first(plane):
     assert plane.calls == [
         "idp_delete:visitor-1",
         f"remove_from_org:visitor-1:{SANDBOX_ORG_ID}",
+        f"record_people:{SANDBOX_ORG_ID}:visitor-1",
         "delete_profile",
     ]
 

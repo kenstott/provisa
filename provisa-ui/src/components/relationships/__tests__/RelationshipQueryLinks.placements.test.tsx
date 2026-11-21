@@ -152,7 +152,7 @@ describe("the relationship detail panel", () => {
       to: "/grpc",
       state: {
         grpcMethod: "QuerySalesOrders()",
-        grpcBody: { read_mask: { paths: ["customer_id", "sales_clients"] }, limit: 25 },
+        grpcBody: { read_mask: { paths: ["customer_id", "client.id"] }, limit: 25 },
         autoRun: true,
       },
     });

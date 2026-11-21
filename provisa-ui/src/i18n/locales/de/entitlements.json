@@ -62,7 +62,7 @@
       "kindLabel": "Art",
       "kindPlaceholder": "Art auswählen",
       "entriesLabel": "Einträge",
-      "entriesHelp": "Was diese Person von dem erreichen darf, was die Rolle erlaubt. Eine ausgewählte Domain oder Tabelle ohne weitere Auswahl darunter umfasst alles darin. Eine leere Liste erreicht nichts dieser Art.",
+      "entriesHelp": "Was diese Person von dem erreichen darf, was die Rolle erlaubt. Eine Domäne oder Tabelle, unter der nichts ausgewählt ist, schließt alles darin ein. Eine leere Liste erreicht nichts dieser Art.",
       "endsOnLabel": "Endet am",
       "endsOnHint": "Leer lassen, um die Liste bis zu ihrer Beendigung zu behalten.",
       "reasonLabel": "Grund",

@@ -86,7 +86,8 @@ class TestInjectMasking:
         result = governed_for_role(
             'SELECT "amount" FROM "public"."orders"', _ctx(), "viewer", masking_rules=rules
         )
-        assert_same_answer(pg, result, 'SELECT 0 AS "amount" FROM "public"."orders"')
+        # REQ-2131: an integer column reads a constant mask as NULL, keeping its type.
+        assert_same_answer(pg, result, 'SELECT NULL AS "amount" FROM "public"."orders"')
 
     def test_truncate_mask(self, pg):
         rules: MaskingRules = {

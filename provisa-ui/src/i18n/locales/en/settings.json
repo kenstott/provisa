@@ -41,6 +41,12 @@
         "help": "The highest complexity score one statement may have, for every role. A role may set a lower limit of its own. Leave unset for no limit."
       }
     },
+    "sparql": {
+      "query_timeout": {
+        "label": "SPARQL query timeout",
+        "help": "How long one SPARQL query may run before it is given up: a preview, a Wikidata class lookup, and each replica load of a SPARQL table. A public endpoint may stop a query sooner by its own limit (Wikidata's is 60 seconds)."
+      }
+    },
     "sampling": {
       "default_sample_size": {
         "label": "Default sample size",

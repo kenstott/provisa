@@ -31,7 +31,7 @@
     "policiesTitle": "Ver as políticas de RLS desta tabela",
     "editButtonLabel": "Editar tabela {{name}}",
     "deleteButtonLabel": "Excluir tabela {{name}}",
-    "profileHeading": "Perfil — {{count}} linhas amostradas",
+    "profileHeading": "Perfil: {{count}} linhas amostradas",
     "colNulls": "Nulos",
     "colNullsTitle": "Valores nulos",
     "colBlanks": "Vazios",

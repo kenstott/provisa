@@ -270,6 +270,8 @@ roles:
 - capabilities:
   - command_execution
   - data_product_read
+  - dq_read
+  - environment_switch
   - glossary_read
   - query_development
   - usage

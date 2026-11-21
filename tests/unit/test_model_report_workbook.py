@@ -111,6 +111,7 @@ def _header(**kwargs) -> wb.ReportHeader:
     defaults = dict(
         org_id=ORG,
         environment="prod",
+        stage="production",
         domains="all",
         generated_at=datetime(2026, 8, 26, 12, 0, tzinfo=UTC),
         included=wb.OBJECT_SHEETS,
@@ -130,6 +131,7 @@ def test_report_sheet_leads_and_names_the_scope():
     stated = {row[0]: row[1] for row in book[wb.REPORT].iter_rows(min_row=2, values_only=True)}
     assert stated["Organization"] == ORG
     assert stated["Environment"] == "prod"
+    assert stated["Stage"] == "production"  # REQ-2261
     assert stated["Domains covered"] == "sales"
     assert stated["Generated"] == "2026-08-26T12:00:00+00:00"
     assert stated["Sheets included"] == wb.TABLES

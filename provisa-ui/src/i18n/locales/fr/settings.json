@@ -41,6 +41,12 @@
         "help": "Le score de complexité le plus élevé qu'une instruction peut avoir, pour tous les rôles. Un rôle peut fixer sa propre limite, plus basse. Laissez vide pour ne pas limiter."
       }
     },
+    "sparql": {
+      "query_timeout": {
+        "label": "Délai d'expiration des requêtes SPARQL",
+        "help": "Durée maximale d'une requête SPARQL avant son abandon : une prévisualisation, une recherche de classe Wikidata et chaque chargement de la réplique d'une table SPARQL. Un point de terminaison public peut arrêter une requête plus tôt selon sa propre limite (60 secondes pour Wikidata)."
+      }
+    },
     "sampling": {
       "default_sample_size": {
         "label": "Taille d'échantillon par défaut",
@@ -194,7 +200,7 @@
       },
       "hot_threshold": {
         "label": "Seuil de table active",
-        "help": "Le nombre d'instructions gouvernées qu'une table doit recevoir dans la fenêtre de table active avant d'être répliquée, pour que les lectures suivantes viennent de sa réplique."
+        "help": "Combien d'instructions gouvernées une table doit recevoir dans la fenêtre des tables actives avant d'être répliquée, afin que les lectures suivantes proviennent de sa réplique."
       },
       "hot_interval": {
         "label": "Fenêtre de table active",
@@ -247,8 +253,8 @@
         }
       },
       "role_grant_notice_days": {
-        "label": "Préavis avant la fin d'une attribution de rôle ou de ses entrées",
-        "help": "Combien de jours avant la fin d'une attribution de rôle, ou de l'une de ses entrées de droits, ou avant sa suppression pour inutilisation, son titulaire et les administrateurs de l'organisation sont prévenus par e-mail."
+        "label": "Préavis avant la fin d'un octroi de rôle ou de ses entrées",
+        "help": "Combien de jours avant la fin d'un octroi de rôle, ou de l'une de ses entrées de droits, ou avant le retrait de l'octroi pour inutilisation, son titulaire et les administrateurs de l'organisation sont prévenus par e-mail."
       }
     },
     "server": {
@@ -291,6 +297,12 @@
       "node_url": {
         "label": "Adresse de ce nœud",
         "help": "L'adresse à laquelle les clients joignent ce nœud. L'interface d'un coordinateur le liste comme nœud de données quand la région n'en liste aucun. Le lanceur la définit pour chaque nœud ; si elle n'est pas définie, le nœud n'est pas listé."
+      }
+    },
+    "embedding": {
+      "hub_endpoint": {
+        "label": "Adresse du hub Hugging Face",
+        "help": "Le hub Hugging Face depuis lequel un modèle d'embeddings local est téléchargé, par exemple un miroir dans votre réseau. S'applique au prochain téléchargement de modèle."
       }
     },
     "tls": {
@@ -598,7 +610,7 @@
       },
       "principal": {
         "label": "Principal local MCP",
-        "help": "Le principal (identifiant utilisateur) pour lequel agissent les appels MCP locaux (stdio), à côté du rôle local ; les droits de cette personne restreignent le rôle. Tant qu'il n'est pas défini, ces appels sont refusés. Protégé, car quiconque peut lancer le client local agit avec l'accès de cette personne."
+        "help": "Le principal (ID utilisateur) au nom duquel agissent les appels MCP locaux (stdio), à côté du rôle local ; les droits de cette personne restreignent le rôle. Tant qu'il n'est pas défini, ces appels sont refusés. Protégé, car il agit avec l'accès de cette personne pour quiconque peut démarrer le client local."
       },
       "tools": {
         "label": "Outils MCP listés",
@@ -683,7 +695,7 @@
     "logs": {
       "allowed_roots": {
         "label": "Répertoires où les fichiers journaux peuvent être lus",
-        "help": "Les répertoires où peuvent se trouver les fichiers d'une source Logs, une fois leurs liens suivis ; par défaut /var/log. Ajoutez-en un, comme ~/Library/Logs, pour lire dans des tables les fichiers propres au serveur qui s'y trouvent. Une organisation sandbox et, sur un serveur de plusieurs organisations, toute organisation autre que celle du déploiement ne lit aucun fichier du serveur hors de son propre dossier, sauf ceux que nomment les sources de sa démo, quoi qu'indique ce réglage."
+        "help": "Les répertoires dans lesquels peuvent se trouver les fichiers d'une source Logs, une fois leurs liens suivis ; par défaut /var/log. Ajoutez-en un, comme ~/Library/Logs, pour lire dans des tables les fichiers propres au serveur qui s'y trouvent. Une organisation bac à sable, et sur un serveur à plusieurs organisations toute organisation autre que celle du déploiement, ne lit aucun fichier propre au serveur hors de son propre dossier, à l'exception de ceux que nomment les sources de sa démo, quel que soit ce paramètre."
       },
       "preview_lines": {
         "label": "Lignes lues pour trouver les colonnes d'un journal",
@@ -711,7 +723,7 @@
       },
       "download_roots": {
         "label": "Répertoires d'où les fichiers des sources peuvent être téléchargés",
-        "help": "Les répertoires d'où le fichier d'une source CSV ou Parquet peut être téléchargé par son chemin sur ce serveur, une fois ses liens suivis ; aucun par défaut. Ajoutez-en un pour qu'un steward puisse copier un fichier qui s'y trouve dans le dossier de l'organisation. Une organisation sandbox et, sur un serveur de plusieurs organisations, toute organisation autre que celle du déploiement ne copie aucun fichier du serveur hors de son propre dossier, sauf ceux que nomment les sources de sa démo, quoi qu'indique ce réglage."
+        "help": "Les répertoires depuis lesquels le fichier d'une source CSV ou Parquet peut être téléchargé par son chemin sur ce serveur, une fois ses liens suivis ; aucun par défaut. Ajoutez-en un pour permettre à un intendant de copier un fichier qui s'y trouve dans le dossier de l'organisation. Une organisation bac à sable, et sur un serveur à plusieurs organisations toute organisation autre que celle du déploiement, ne copie aucun fichier propre au serveur hors de son propre dossier, à l'exception de ceux que nomment les sources de sa démo, quel que soit ce paramètre."
       }
     },
     "polly": {
@@ -814,7 +826,7 @@
     "graph": {
       "depth_limit": {
         "label": "Chemin de graphe le plus profond",
-        "help": "Le nombre maximal de sauts parcourus par un chemin Cypher de longueur variable ou un chemin de propriétés SPARQL quand la requête ne fixe pas sa propre limite. Un résultat coupé à cette profondeur l'indique."
+        "help": "Le nombre maximal de sauts que parcourt un chemin Cypher de longueur variable ou un chemin de propriétés SPARQL lorsque la requête ne fixe pas sa propre limite. Un chemin Cypher n'emprunte aucune relation deux fois et, s'il devait aller plus loin, échoue avec une erreur explicite ; un résultat SPARQL tronqué à cette profondeur indique qu'il l'a été. Très grand par défaut (1000)."
       },
       "union_limit": {
         "label": "Nombre maximal de prédicats couverts par un prédicat variable",
@@ -873,12 +885,6 @@
       "max_calls_per_statement": {
         "label": "Appels par instruction à une table paramétrée",
         "help": "Le nombre maximal d'appels qu'une instruction adresse à une table paramétrée. Chaque valeur qu'une instruction donne à un paramètre est un appel à la source : chaque valeur d'une liste IN, chaque branche d'un OR, chaque clé distincte d'une jointure. Une instruction qui en demande davantage est refusée."
-      }
-    },
-    "embedding": {
-      "hub_endpoint": {
-        "label": "Adresse du hub Hugging Face",
-        "help": "Le hub Hugging Face depuis lequel un modèle d'embeddings local est téléchargé, par exemple un miroir dans votre réseau. S'applique au prochain téléchargement de modèle."
       }
     },
     "subscriptions": {

@@ -1,6 +1,6 @@
 {
   "proposalsTable": {
-    "intro": "Een aangevinkte rij wordt geaccepteerd wanneer je toepast. Rijen met een score van ten minste de drempel staan bij het begin aangevinkt. Een rij zonder vinkje blijft onbeslist.",
+    "intro": "Een aangevinkte rij wordt geaccepteerd bij toepassen. Rijen met een score van minstens de drempel beginnen aangevinkt. Een rij zonder aangevinkt vakje blijft onbeslist.",
     "colScore": "Score",
     "colConfidence": "Betrouwbaarheid",
     "colJev": "Jev",
@@ -27,7 +27,7 @@
       "invalid_shape": "Geen relatie in de gevraagde vorm: een veld ontbreekt of heeft de verkeerde vorm",
       "unknown_column": "Noemt een tabel of kolom die het verzoek niet vergeleek",
       "not_comparable": "De twee kolommen hebben verschillende klassen en worden dus niet vergeleken",
-      "below_threshold": "Score onder de {{threshold}}% waarop een suggestie wordt bewaard.",
+      "below_threshold": "Scoorde onder de {{threshold}}% waarboven een suggestie wordt behouden.",
       "same_column": "Van een kolom naar zichzelf",
       "existing": "Al geregistreerd",
       "rejected": "Eerder afgewezen",

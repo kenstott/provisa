@@ -260,16 +260,14 @@ async def held_assignments(
 
 
 async def sign_in_roles(
-    state: Any, identity: AuthIdentity, org_id: str | None, *, naming: bool
+    state: Any, identity: AuthIdentity, org_id: str | None
 ) -> tuple[str, list[str]]:  # REQ-273, REQ-1263, REQ-120
-    """What a sign-in acts as on a transport that is not the HTTP API: the role it acts as when
-    it names none, and the roles it may name (that role first). ``naming``: whether the sign-in
-    names a role, or may later (a Bolt session picks a database, an MCP call names a role); one
-    that does not, where roles are the sign-in's claims, is answered from its claims alone, with
-    nothing read.
+    """What a sign-in holds on a transport that is not the HTTP API: its first role, and the roles
+    it may name (that role first), read on every sign-in. One that names none acts as the union of
+    the roles it may name (:func:`default_request`, REQ-2155).
 
-    The role an identity's claims map to (``role_mapping``, else ``default_role``) is what it acts
-    as, beside the roles it holds. Where Provisa holds the assignments they are read on every
+    The role an identity's claims map to (``role_mapping``, else ``default_role``) is first,
+    beside the roles it holds. Where Provisa holds the assignments they are read on every
     sign-in, and a mapped role the identity does not hold gives way to one it holds, as on the HTTP
     API: a sign-in acts as a role it holds, on every transport (REQ-120, amended 2026-11-01;
     REQ-802). One that holds none is refused by name (:class:`NoRoleHeld`).
@@ -285,10 +283,6 @@ async def sign_in_roles(
         raise PermissionError("identity matched no role and no default_role is configured")
     mapped = resolve_role(identity, auth.get("role_mapping", []), default_role)
     provisa_held = auth.get("assignments_source", CLAIMS) == PROVISA
-    # Where Provisa holds the assignments the mapped role says nothing about what this identity
-    # holds, so they are read on every sign-in, naming a role or not.
-    if token_scopes(identity) is None and not naming and not provisa_held:
-        return mapped, [mapped]
     held = list(dict.fromkeys(a.role_id for a in await held_assignments(state, identity, org_id)))
     live = live_scopes(identity, held)
     if live is not None:
@@ -305,19 +299,37 @@ async def sign_in_roles(
     return mapped, [mapped, *[r for r in held if r != mapped]]
 
 
+def default_request(
+    state: Any, identity: AuthIdentity, acts_as: str, may_name: list[str]
+) -> str:  # REQ-2155
+    """What a sign-in that names no role acts as, written as a request naming roles: holding
+    several roles, all of them, so it acts as their union -- their meta-role
+    (provisa.security.meta_role), which leaves out a role with no data surface such as
+    platform_admin; holding one, ``acts_as``. Naming a single role is the narrowing. The roles held
+    are ``may_name`` (:func:`sign_in_roles`), less a role the claims are mapped to that they do not
+    name, as the HTTP API counts them. A personal access token acts as ``acts_as``, the first of
+    its scopes its owner still holds (REQ-1263)."""
+    if token_scopes(identity) is not None:
+        return acts_as
+    held = list(dict.fromkeys(may_name))
+    if (state.auth_config or {}).get("assignments_source", CLAIMS) != PROVISA:
+        from provisa.auth.role_mapping import resolve_assignments
+
+        claimed = {a.role_id for a in resolve_assignments(identity)}
+        held = [r for r in held if r in claimed]
+    return ",".join(held) if len(held) > 1 else acts_as
+
+
 async def may_act_cross_org(state: Any, identity: AuthIdentity) -> bool:  # REQ-1337, REQ-802
     """Whether ``identity`` holds the cross_org right, judged from what its principal holds on the
     platform plane (the deployment's own org) -- its assignments where Provisa holds them, a
     token's scopes its owner still holds -- as the HTTP API judges it, never from the role claims
-    a credential carries. Read before any org is bound to the sign-in."""
-    from provisa.core.request_context import current_org
+    a credential carries. Read before any org is bound to the sign-in, with the deployment's own
+    org bound: the platform plane lives in its schema, as the HTTP middleware reads it (REQ-1266,
+    REQ-1327)."""
     from provisa.security.rights import can_act_cross_org, capabilities_for_claims
 
-    unbound = current_org.set(None)
-    try:
-        held = await held_assignments(state, identity, None)
-    finally:
-        current_org.reset(unbound)
+    held = await held_assignments(state, identity, _root_org_id(state))
     return can_act_cross_org(
         capabilities_for_claims({a.role_id for a in held}, state.platform_roles)
     )

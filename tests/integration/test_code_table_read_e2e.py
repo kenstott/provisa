@@ -302,8 +302,8 @@ def server(tmp_path_factory, minted_port):
             "description": "Test role.",
             # A child holds only what it is given of what its parents hold (REQ-2155). /data/sql
             # needs query_development, a command needs command_execution, and of the standard
-            # roles developer is the one holding those with full_results.
-            "parents": ["developer"],
+            # roles data_writer is the one holding those with full_results.
+            "parents": ["data_writer"],
             "capabilities": ["usage", "query_development", "command_execution", "full_results"],
             "domain_access": ["*"],
         }
@@ -697,10 +697,19 @@ def test_a_landed_code_resolver_is_followed_to_its_matches_and_the_target(server
 
 def test_the_target_is_read_under_the_readers_row_rules(server, order_clips):
     """The landed matches were built as the administrator, who reads both clips; the analyst's
-    row rule on clips (id = 1) still holds where the relationship reaches the target."""
+    row rule on clips (id = 1) holds at each hop (REQ-2249): the stored bridge rows are filtered
+    by the analyst's rule on each input through its relationship to the view, so order 2's match
+    (clip 2) is not served to the analyst at all (REQ-2131, amended 2026-11-16: a code-command
+    view's bridge rows are filtered by the reader's rule on each input, through its relationship).
+
+    The score is computed from the whole of each table the resolver is given (its call may read
+    any column of them), so it derives from orders.tag, which the analyst sees masked: the score
+    is masked for the analyst with that column's mask (REQ-2131, amended 2026-11-16: only an
+    output that is an input's relationship key escapes a mask elsewhere on the input). The score
+    is a Float, so the mask keeps its type and it reads as null (REQ-2131, amended 77da388aa6)."""
     orders = _graphql(server, _ANALYST, _FOLLOW)["orders"]
-    assert orders[0]["order_clips"] == [{"score": 1.0, "clips": {"id": 1, "region": "emea"}}]
-    assert orders[1]["order_clips"] == [{"score": 1.0, "clips": None}]
+    assert orders[0]["order_clips"] == [{"score": None, "clips": {"id": 1, "region": "emea"}}]
+    assert orders[1]["order_clips"] == []
 
 
 def test_a_resolver_whose_rows_lack_a_key_is_refused_with_the_reason(server, ledger):

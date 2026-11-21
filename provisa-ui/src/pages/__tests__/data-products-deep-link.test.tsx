@@ -137,8 +137,12 @@ vi.mock("../../hooks/useAdminQueries", async (importOriginal) => ({
   useUpdateTable: () => ({ updateTable: vi.fn(), loading: false }),
 }));
 
-import { DataProductsPage, EXPANDED_STORAGE_KEY } from "../DataProductsPage";
-import { storageKey as scopedKey } from "../../lib/browserStorage";
+import { DataProductsPage } from "../DataProductsPage";
+import { getStored, setStored } from "../../lib/browserStorage";
+import { TEST_VIEWER } from "../../test-setup";
+
+// REQ-2260: the product left open, remembered for the viewer.
+const REMEMBERED = `detail.${TEST_VIEWER}.products`;
 
 describe("the Data Products list's search", () => {
   it("lists the products matching every word of the search, or either side of or", async () => {
@@ -178,7 +182,7 @@ describe("Data Products deep link (REQ-1659)", () => {
   });
 
   it("opens the product named by ?product= ahead of the remembered row", async () => {
-    localStorage.setItem(scopedKey(EXPANDED_STORAGE_KEY), "pet_health");
+    setStored(REMEMBERED, "pet_health");
     render(<DataProductsPage />, { initialEntries: ["/data-products?product=workforce_ops"] });
     await waitFor(() => expect(screen.getByTestId("data-product-detail")).toBeInTheDocument());
     expect(screen.getByTestId("detail-panel")).toHaveTextContent("workforce_ops");
@@ -199,10 +203,10 @@ describe("Data Products deep link (REQ-1659)", () => {
     );
     fireEvent.click(screen.getByTestId("data-products-row-pet_health"));
     await waitFor(() => expect(screen.getByTestId("detail-panel")).toHaveTextContent("pet_health"));
-    expect(localStorage.getItem(scopedKey(EXPANDED_STORAGE_KEY))).toBe("pet_health");
+    expect(getStored(REMEMBERED)).toBe("pet_health");
     fireEvent.click(screen.getByTestId("data-products-row-pet_health"));
     await waitFor(() => expect(screen.queryByTestId("detail-panel")).not.toBeInTheDocument());
-    expect(localStorage.getItem(scopedKey(EXPANDED_STORAGE_KEY))).toBeNull();
+    expect(getStored(REMEMBERED)).toBeNull();
   });
 });
 

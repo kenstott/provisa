@@ -293,3 +293,60 @@ async def test_a_thousand_lines_are_one_embedding_call_and_a_few_batch_requests(
     assert len(asked.embedded) == 1 and len(asked.embedded[0]) == 2155
     assert asked.batches == [256] * 8 + [2155 - 8 * 256]
     assert len(searched) == 2155 and len(put_in["lines_like"].rows) == 2155
+
+
+# The statement as link_echoes writes it: each line of a range of sonnets joined to its search.
+_LINKED = (
+    'SELECT "l"."id", "s"."id", "s"."score" FROM "public"."line" AS "l" '
+    'JOIN "public"."lines_like" AS "s" ON "s"."_nf_query" = "l"."text" '
+    'WHERE "s"."_nf_k" = 3 AND "l"."sonnet_number" BETWEEN 1 AND 50'
+)
+_SEARCH_PARAMETERS = {"_nf_query": "array(double)", "_nf_sonnet": "integer", "_nf_k": "integer"}
+
+
+async def _bound(sql: str):
+    """``sql`` governed for the reader and bound (REQ-1986), the join keys it asks for recorded."""
+    from provisa.api.data.materialization import bind_statement
+
+    ctx = _ctx()
+    ctx.native_filter_columns = {NEAR: dict(_SEARCH_PARAMETERS)}
+    asked: list = []
+
+    async def join_keys(join, _ctx, _role_id):
+        asked.append(join)
+        return ["From fairest creatures we desire increase,"]
+
+    with patch("provisa.api.data.materialization._join_keys", side_effect=join_keys):
+        bound = await bind_statement(
+            governed_for_role(sql, ctx, "reader"),
+            [],
+            _state(),
+            ctx,
+            [LINES, NEAR],
+            "reader",
+            set(_SEARCH_PARAMETERS),
+        )
+    return bound, asked
+
+
+async def test_a_join_over_the_feeding_relationship_is_left_to_the_feed():
+    """A join on the search's query over the relationship that feeds it is the feed's: binding
+    it as a join key would search each line's words alone, its sonnet's points not left out."""
+    bound, asked = await _bound(_LINKED)
+    assert asked == []
+    assert bound.nf_args == {"k": 3}
+    assert '"_nf_query" = "l"."text"' in bound.sql
+
+
+def test_only_the_feeding_relationships_join_is_the_feeds():
+    from provisa.api.data.materialization import fed_join_parameters
+
+    assert fed_join_parameters(_state(), [LINES, NEAR], _LINKED) == {"_nf_query"}
+    # A phrase of its own: the statement gives the query, and the relationship feeds nothing.
+    own = (
+        'SELECT "s"."id" FROM "public"."line" AS "l" JOIN "public"."lines_like" AS "s" '
+        'ON "l"."id" = "s"."id" WHERE "s"."_nf_query" = \'the ravages of time\''
+    )
+    assert fed_join_parameters(_state(), [LINES, NEAR], own) == set()
+    # The source not read: no relationship joins the search.
+    assert fed_join_parameters(_state(), [NEAR], _LINKED) == set()

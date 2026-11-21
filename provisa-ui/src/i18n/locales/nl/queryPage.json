@@ -7,7 +7,7 @@
     "redirectHint": "Alle resultaten worden omgeleid naar S3",
     "queryStats": "Querystatistieken",
     "schemaError": "Schemafout: {{message}}",
-    "redirectReady": "Omleiding gereed — {{rowCount}} rijen ({{contentType}})",
+    "redirectReady": "Omleiding klaar: {{rowCount}} rijen ({{contentType}})",
     "download": "Downloaden",
     "dismissRedirect": "Omleidingsmelding sluiten",
     "formatNone": "Geen",

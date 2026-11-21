@@ -1,6 +1,6 @@
 {
   "proposalsTable": {
-    "intro": "套用時會接受已剔選的列。評分至少達到閾值的列預設剔選。兩個方格都未剔選的列保持未決定。",
+    "intro": "已勾選的行會在套用時被接受。分數達到門檻的行預設為勾選。兩個方塊都未勾選的行會保持未決定。",
     "colScore": "評分",
     "colConfidence": "信賴度",
     "colJev": "Jev",
@@ -27,7 +27,7 @@
       "invalid_shape": "不是所要求形式的關係：欠缺欄位或欄位形式有誤",
       "unknown_column": "引用了請求未比較的表或欄",
       "not_comparable": "兩欄的類別不同，因此不作比較",
-      "below_threshold": "評分低於保留建議所需的 {{threshold}}%。",
+      "below_threshold": "分數低於保留建議所需的 {{threshold}}%。",
       "same_column": "由某欄指向其本身",
       "existing": "已登記",
       "rejected": "之前已拒絕",

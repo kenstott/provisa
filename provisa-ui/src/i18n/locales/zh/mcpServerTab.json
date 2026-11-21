@@ -1,6 +1,6 @@
 {
   "mcpServerTab": {
-    "intro": "Model Context Protocol (MCP) 服务器向外部 AI 代理开放受治理的目录发现与 SQL 执行。每次调用都按调用者的角色进行治理 — 服务器绝不会默认使用管理员身份。",
+    "intro": "Model Context Protocol（MCP）服务器向外部 AI 代理开放受治理的目录发现和 SQL 执行。每次调用都受调用方角色约束，服务器绝不会默认使用 admin。",
     "loading": "正在加载…",
     "statusLabel": "状态",
     "statusEnabled": "已启用",
@@ -8,7 +8,7 @@
     "endpointLabel": "终结点",
     "transportLabel": "传输",
     "stdioRoleLabel": "绑定的 stdio 角色",
-    "stdioRoleNone": "未设置 — stdio 调用需要 <code>{{envVar}}</code>",
+    "stdioRoleNone": "未设置；stdio 调用需要 <code>{{envVar}}</code>",
     "principalLabel": "本地主体",
     "principalNone": "未设置 — 在 <code>{{envVar}}</code> 指定主体之前，本地调用将被拒绝",
     "maxRowsLabel": "行数上限 (run_sql)",

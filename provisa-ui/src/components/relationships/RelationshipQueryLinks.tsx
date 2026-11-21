@@ -18,21 +18,12 @@ import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 import { ActionIcon, Button, Group, Text } from "@mantine/core";
-import {
-  Braces,
-  Cable,
-  FileJson,
-  Globe,
-  Share2,
-  Table as TableIcon,
-  Waypoints,
-} from "lucide-react";
 import { Tip } from "../Tip";
+import { GLYPH } from "./queryGlyphs";
 import {
   relationshipQueryLinks,
   type QueryLink,
   type RelationshipQueryRef,
-  type RelationshipSurface,
   type RelationshipSurfaces,
 } from "./relationshipQueries";
 
@@ -62,16 +53,6 @@ export function QueryLinkIcon({
     </Tip>
   );
 }
-
-const GLYPH: Record<RelationshipSurface, ReactNode> = {
-  cypher: <Share2 size={14} />,
-  sql: <TableIcon size={14} />,
-  sparql: <Waypoints size={14} />,
-  graphql: <Braces size={14} />,
-  rest: <Globe size={14} />,
-  grpc: <Cable size={14} />,
-  jsonapi: <FileJson size={14} />,
-};
 
 /** One query link named by its surface: its glyph and the surface's name, with its tip. */
 function QueryLinkButton({

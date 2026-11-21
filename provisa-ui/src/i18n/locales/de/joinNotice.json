@@ -7,20 +7,20 @@
     "ack": "Verstanden",
     "leave": "Das ist nicht meine Organisation",
     "leaveError": "Die Organisation konnte nicht verlassen werden.",
-    "sandboxIntro": "Sie befinden sich auf unserer gemeinsamen Starter-Instanz, in einer eigenen, isolierten Umgebung. Die Beispieldaten sind eine private Kopie – nichts, was Sie hier tun, ist für andere Besucher sichtbar, und nichts hier berührt die Daten anderer.",
+    "sandboxIntro": "Sie befinden sich auf unserer gemeinsamen Starter-Instanz, in einer eigenen isolierten Umgebung. Die Beispieldaten sind eine private Kopie. Andere Besucher sehen nicht, was Sie hier tun, und nichts hier berührt die Daten anderer.",
     "sandboxOpen": "Fast jeder Vorgang steht Ihnen offen: eigene Quellen registrieren, sie modellieren, Richtlinien und Maskierungsregeln schreiben und das Ergebnis in SQL, GraphQL oder Cypher abfragen.",
-    "sandboxHeldBack": "Zurückgehalten sind die organisationsweiten Steuerungen – Umgebungen wechseln oder verwalten, Personen einladen und Rollen vergeben, Organisationseinstellungen und organisationsweite Beobachtbarkeit. Diese Seiten bleiben sichtbar und sind als Teil des Produktivsystems gekennzeichnet.",
-    "sandboxTemporary": "Ihre Umgebung ist temporär. Beim Abmelden wird sie gelöscht, und nach einem Tag ohne Aktivität wird sie ebenfalls zurückgenommen. Nichts, was Sie hier aufbauen, ist zum Aufbewahren gedacht.",
+    "sandboxHeldBack": "Organisationsweite Steuerungen sind zurückgehalten: Wechseln oder Verwalten von Umgebungen, Einladen von Personen und Vergeben von Rollen, Organisationseinstellungen und organisationsweite Observability. Diese Seiten bleiben sichtbar und sind als Teil des Produktivsystems gekennzeichnet.",
+    "sandboxTemporary": "Ihre Umgebung ist temporär. Beim Abmelden wird sie gelöscht, und nach einem Tag Inaktivität wird sie ebenfalls freigegeben.",
     "sandboxUpgrade": "Wenn Sie bereit für eine dauerhafte Organisation sind, wechseln Sie zu einem Starter-Tarif.",
     "sandboxAck": "Erkundung starten",
     "demoSandboxTitle": "Willkommen in Ihrer Demo-Sandbox",
     "demoSandboxIntro": "Diese Sandbox ist Ihre eigene Kopie der Demo und eine schlanke Version von Provisa. Das sind ihre Grenzen:",
-    "demoSandboxEngine": "Sie läuft auf einer DuckDB-Engine in einem einzigen Prozess, nicht auf der Engine, die Produktionsorganisationen nutzen.",
+    "demoSandboxEngine": "Sie läuft auf einer DuckDB-Engine mit einem einzigen Prozess. Produktive Organisationen verwenden eine andere Engine.",
     "demoSandboxMemory": "Ihre Engine darf höchstens {{memory}} Arbeitsspeicher nutzen; eine Abfrage, die mehr braucht, wird abgelehnt.",
     "demoSandboxDisk": "Sie darf höchstens {{disk}} auf der Festplatte belegen, ihre Daten und Ihre hochgeladenen Dateien zusammen; ein Schreibvorgang darüber hinaus wird abgelehnt.",
     "demoSandboxConflicts": "Gleichzeitige Änderungen von mehreren Geräten können als Konflikt abgelehnt werden. Versuchen Sie es erneut.",
     "demoSandboxExpires": "Sie wird nach {{idle}} ohne Nutzung mit allem darin gelöscht.",
     "demoSandboxHeldBack": "Sie können keine Personen einladen und keine Umgebungen wechseln oder verwalten.",
-    "demoSandboxSources": "Die Beispielquellen sind schreibgeschützt: Was Sie schreiben, bleibt in der Sandbox."
+    "demoSandboxSources": "Die Beispielquellen sind schreibgeschützt, daher bleibt, was Sie schreiben, in der Sandbox."
   }
 }

@@ -21,7 +21,7 @@ const node = (type: NodeType, id: string, parent?: string): GraphNode =>
 // One node of each kind, keyed by kind so a kind added to NodeType without an entry here fails
 // to compile.
 const EACH: Record<NodeType, [GraphNode, string][]> = {
-  term: [[node("term", "term:12"), "/admin/ontology?term=12"]],
+  term: [[node("term", "term:12"), "/context/ontology?term=12"]],
   product: [[node("product", "p:c360"), "/data-products?product=c360"]],
   command: [[node("command", "f:refresh"), "/commands?command=refresh"]],
   table: [[node("table", "t:7"), "/tables?table=7"]],

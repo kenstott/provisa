@@ -12,47 +12,40 @@
 
 The names a relationship is reached by are derived when no steward pinned them -- the Cypher type
 from its foreign-key column and cardinality, or a junction's nominated label (REQ-1586); the
-GraphQL field from its target table and cardinality, in the deployment's naming convention. They
+GraphQL field by the schema build's own rule (``naming.relationship_field_name``): named for the
+GraphQL field of the table it reaches and its cardinality, in the deployment's naming convention. They
 are derived here, once, and stored, so every reader -- the schema build, the admin API, the meta
 domain (a product's panel, the knowledge graph, SPARQL) -- reads the same names rather than each
 deriving its own (REQ-351)."""
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
+
+from provisa.core.inflection import singular
 
 if TYPE_CHECKING:
-    from inflect import Word as InflectWord
-    from inflect import engine as _Engine
-
     from provisa.core.database import Connection
 
-_inflect: "_Engine | None" = None
 
+def target_field_name(  # REQ-155, REQ-194
+    table_name: str,
+    alias: str | None,
+    naming_rules: list[dict],
+    convention: str | None,
+) -> str:
+    """The GraphQL field name of the table a relationship reaches, as the schema build names it
+    (``schema_gen._assign_names``): its alias, else its name under the naming rules, in its own
+    convention (``convention``: the table's, else its source's) or the one in force."""
+    from provisa.compiler.naming import active_gql_convention, generate_name
 
-def _engine() -> "_Engine":
-    global _inflect
-    if _inflect is None:
-        import inflect
-
-        _inflect = inflect.engine()
-    return _inflect
-
-
-def _to_singular(camel: str) -> str:
-    """Singularize camelCase word using inflect with round-trip validation."""
-    eng = _engine()
-    candidate = eng.singular_noun(cast("InflectWord", camel))
-    if candidate is False:
-        return camel  # already singular
-    # Validate: if round-trip doesn't reconstruct original, inflect got it wrong
-    if eng.plural(cast("InflectWord", candidate)) == camel:
-        return candidate
-    return camel
+    return generate_name(
+        table_name, naming_rules, alias=alias, convention=convention or active_gql_convention()
+    )
 
 
 def derive_graphql_alias(  # REQ-155, REQ-194, REQ-351, REQ-1586
-    target_table_name: str,
+    target_field: str,
     cardinality: str,
     convention: str = "apollo_graphql",
     *,
@@ -61,32 +54,25 @@ def derive_graphql_alias(  # REQ-155, REQ-194, REQ-351, REQ-1586
     via_table_name: str | None = None,
     cypher_alias: str | None = None,
 ) -> str | None:
-    """Derive GraphQL field name from target table name + cardinality.
+    """The derived GraphQL field of a relationship reaching the table whose GraphQL field name is
+    ``target_field`` (:func:`target_field_name`), in ``convention``: the schema build's own rule,
+    :func:`provisa.compiler.naming.relationship_field_name`. None for a relationship reaching no
+    table (a computed one, served under its function's return table) that is no junction."""
+    from provisa.compiler.naming import apply_convention, relationship_field_name
 
-    Always strips verb prefixes (find/get/list/…) via rel_field_name.
-    snake / hasura_graphql → snake_case output; apollo_graphql → camelCase.
-
-    REQ-1586: a junction-backed edge is named for its nominated label instead. Several such edges
-    share one junction table and one target table, so the target's name does not tell them apart —
-    it hands every one of them the same field name.
-    """
-    from provisa.compiler.naming import apply_convention, junction_field_name, rel_field_name
-
-    if via_label_source:
-        return apply_convention(
-            junction_field_name(
-                via_label_source,
-                cardinality,
-                type_value=via_type_value,
-                via_table_name=via_table_name,
-                cypher_alias=cypher_alias,
-            ),
-            convention,
-        )
-    if not target_table_name:
+    if not target_field and via_table_name is None and not via_label_source:
         return None
-    name = rel_field_name(target_table_name, cardinality)
-    return apply_convention(name, convention)
+    return apply_convention(
+        relationship_field_name(
+            cardinality,
+            target_field_name=target_field,
+            via_label_source=via_label_source,
+            via_type_value=via_type_value,
+            via_table_name=via_table_name,
+            cypher_alias=cypher_alias,
+        ),
+        convention,
+    )
 
 
 def derive_cypher_alias(source_column: str, cardinality: str) -> str:  # REQ-351
@@ -94,7 +80,7 @@ def derive_cypher_alias(source_column: str, cardinality: str) -> str:  # REQ-351
 
     Rules:
     - Strip _id/_fk/_pk suffix from source_column
-    - Singularize with inflect (same helper as derive_graphql_alias)
+    - Singularize by dictionary lookup (provisa.core.inflection, as every naming path)
     - Prepend direction verb based on cardinality:
       one-to-many  → HAS_<ENTITY>
       many-to-one  → BELONGS_TO_<ENTITY>
@@ -105,8 +91,7 @@ def derive_cypher_alias(source_column: str, cardinality: str) -> str:  # REQ-351
         if col.endswith(suffix) and len(col) > len(suffix):
             col = col[: -len(suffix)]
             break
-    singular = _to_singular(col) if col else col
-    entity = (singular or col).upper()
+    entity = (singular(col) if col else col).upper()
     if cardinality == "one-to-many":
         return f"HAS_{entity}"
     if cardinality == "many-to-one":
@@ -150,10 +135,23 @@ async def store_effective_names(conn: "Connection", ids: list[str] | None = None
 
     from sqlalchemy import select, update
 
-    from provisa.core.schema_org import registered_tables, relationships
+    from provisa.core.schema_org import naming_rules, registered_tables, relationships, sources
 
     convention = active_gql_convention()
+    # REQ-155: the derived field is named for the target's GraphQL field, which the naming rules
+    # shape, in the order the schema build applies them.
+    rules = [
+        {"pattern": r.pattern, "replacement": r.replacement}
+        for r in (
+            await conn.execute_core(
+                select(naming_rules.c.pattern, naming_rules.c.replacement).order_by(
+                    naming_rules.c.id
+                )
+            )
+        ).fetchall()
+    ]
     target = registered_tables.alias("target")
+    target_source = sources.alias("target_source")
     via = registered_tables.alias("via")
     query = select(
         relationships.c.id,
@@ -166,11 +164,14 @@ async def store_effective_names(conn: "Connection", ids: list[str] | None = None
         relationships.c.cypher_type,
         relationships.c.graphql_field,
         target.c.table_name.label("target_table_name"),
+        target.c.alias.label("target_alias"),
+        target.c.gql_naming_convention.label("target_convention"),
+        target_source.c.gql_naming_convention.label("target_source_convention"),
         via.c.table_name.label("via_table_name"),
     ).select_from(
-        relationships.outerjoin(target, target.c.id == relationships.c.target_table_id).outerjoin(
-            via, via.c.id == relationships.c.via_table_id
-        )
+        relationships.outerjoin(target, target.c.id == relationships.c.target_table_id)
+        .outerjoin(target_source, target_source.c.id == target.c.source_id)
+        .outerjoin(via, via.c.id == relationships.c.via_table_id)
     )
     if ids is not None:
         query = query.where(relationships.c.id.in_(ids))
@@ -186,7 +187,14 @@ async def store_effective_names(conn: "Connection", ids: list[str] | None = None
             via_table_name=r["via_table_name"],
         )
         graphql_field = r["graphql_alias"] or derive_graphql_alias(
-            r["target_table_name"] or "",
+            target_field_name(
+                r["target_table_name"],
+                r["target_alias"],
+                rules,
+                r["target_convention"] or r["target_source_convention"],
+            )
+            if r["target_table_name"]
+            else "",
             r["cardinality"] or "",
             convention,
             via_label_source=r["via_label_source"],

@@ -250,19 +250,23 @@ class TestInheritedRolesRLS:
 
 class TestInheritedRolesMasking:
     def test_child_overrides_parent_mask(self, pg):
-        """The mask the child role is given for a column is the one its reads carry."""
-        child_rule = MaskingRule(mask_type=MaskType.constant, value=999)
+        """The mask the child role is given for a column is the one its reads carry. A text
+        column, so each constant reads as itself (a non-text one reads as NULL, REQ-2131)."""
+        child_rule = MaskingRule(mask_type=MaskType.constant, value="child")
         child_masking: MaskingRules = {
-            (ORDERS_TABLE_ID, "child"): {"amount": (child_rule, "integer")},
+            (ORDERS_TABLE_ID, "child"): {"region": (child_rule, "varchar")},
             (ORDERS_TABLE_ID, "parent"): {
-                "amount": (MaskingRule(mask_type=MaskType.constant, value=0), "integer")
+                "region": (MaskingRule(mask_type=MaskType.constant, value="parent"), "varchar")
             },
         }
-        result = governed_for_role(
-            _ORDERS_T0_SQL, _orders_ctx(), "child", masking_rules=child_masking
-        )
-        expected = 'SELECT "t0"."id", 999 AS "amount" FROM "public"."orders" AS "t0"'
-        assert assert_same_rows(pg, result, expected, _ROWS) == [(1, 999), (2, 999), (3, 999)]
+        sql = 'SELECT "t0"."id", "t0"."region" FROM "public"."orders" "t0"'
+        result = governed_for_role(sql, _orders_ctx(), "child", masking_rules=child_masking)
+        expected = 'SELECT "t0"."id", \'child\' AS "region" FROM "public"."orders" AS "t0"'
+        assert assert_same_rows(pg, result, expected, _ROWS) == [
+            (1, "child"),
+            (2, "child"),
+            (3, "child"),
+        ]
 
     def test_no_masking_rules_for_role_leaves_sql_unchanged(self, pg):
         """A role with no masking rules must not alter the compiled SQL."""
@@ -279,5 +283,5 @@ class TestInheritedRolesMasking:
         result = governed_for_role(
             _ORDERS_T0_SQL, _orders_ctx(), "child", masking_rules=inherited_masking
         )
-        expected = 'SELECT "t0"."id", 0 AS "amount" FROM "public"."orders" AS "t0"'
-        assert assert_same_rows(pg, result, expected, _ROWS) == [(1, 0), (2, 0), (3, 0)]
+        expected = 'SELECT "t0"."id", NULL AS "amount" FROM "public"."orders" AS "t0"'
+        assert assert_same_rows(pg, result, expected, _ROWS) == [(1, None), (2, None), (3, None)]

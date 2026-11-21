@@ -20,7 +20,11 @@ from __future__ import annotations
 
 from provisa.transpiler.polyfill import (
     aggregates,
+    array_dimensions,
+    array_sets,
     arrays,
+    bits,
+    byte_compares,
     bytea,
     calls,
     casts,
@@ -28,9 +32,15 @@ from provisa.transpiler.polyfill import (
     clocks,
     collations,
     dates,
+    float_aggregates,
+    floats,
     geometric,
     instants,
     intervals,
+    json_built,
+    json_keys,
+    json_literal,
+    json_members,
     json_values,
     money,
     network,
@@ -41,6 +51,7 @@ from provisa.transpiler.polyfill import (
     regex,
     server,
     snapshots,
+    texts,
     textsearch,
     type_io,
     unheld,
@@ -64,7 +75,10 @@ from provisa.transpiler.polyfill.notation import Refusal, Rewrite, RuleError, ho
 
 #: The one grid: every family's features.
 GRID = Grid(
-    arrays.FEATURES
+    # an array of dimensions is read before any row of its call's name
+    array_dimensions.FEATURES
+    + arrays.FEATURES
+    + array_sets.FEATURES
     + zones.FEATURES
     + records.FEATURES
     + money.FEATURES
@@ -75,11 +89,17 @@ GRID = Grid(
     + network.FEATURES
     + unheld.FEATURES
     + numbers.FEATURES
+    + floats.FEATURES
+    + float_aggregates.FEATURES
     + dates.FEATURES
     + calls.FEATURES
     + casts.FEATURES
     + server.FEATURES
     + ranges.FEATURES
+    + json_keys.FEATURES
+    + json_built.FEATURES
+    + json_members.FEATURES
+    + json_literal.FEATURES
     + json_values.FEATURES
     + clickhouse.FEATURES
     + clocks.FEATURES
@@ -89,6 +109,10 @@ GRID = Grid(
     + intervals.FEATURES
     + instants.FEATURES
     + geometric.FEATURES
+    # a text's rows are read before bytea's, whose rows of one name keep what is no bytea
+    + texts.FEATURES
+    + bits.FEATURES
+    + byte_compares.FEATURES
     + bytea.FEATURES
     + ported.FEATURES
 )

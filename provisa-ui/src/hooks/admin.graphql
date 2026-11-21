@@ -942,6 +942,36 @@ query GenerateTableDescription($tableId: String!) {
   generateTableDescription(tableId: $tableId)
 }
 
+query GenerateUnregisteredTableDescription(
+  $sourceId: String!
+  $schemaName: String!
+  $tableName: String!
+  $columns: [String!]!
+) {
+  generateTableDescription(
+    sourceId: $sourceId
+    schemaName: $schemaName
+    tableName: $tableName
+    columns: $columns
+  )
+}
+
+query GenerateUnregisteredColumnDescription(
+  $sourceId: String!
+  $schemaName: String!
+  $tableName: String!
+  $columns: [String!]!
+  $columnName: String!
+) {
+  generateColumnDescription(
+    sourceId: $sourceId
+    schemaName: $schemaName
+    tableName: $tableName
+    columns: $columns
+    columnName: $columnName
+  )
+}
+
 query SuggestTableAlias($tableName: String!, $domainId: String!, $sourceId: String!) {
   suggestTableAlias(tableName: $tableName, domainId: $domainId, sourceId: $sourceId)
 }

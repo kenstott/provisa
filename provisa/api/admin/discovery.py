@@ -10,16 +10,16 @@
 
 """Admin API router for LLM relationship discovery."""
 
-# Requirements: REQ-018, REQ-167, REQ-413, REQ-612
+# Requirements: REQ-018, REQ-167, REQ-413, REQ-612, REQ-2253
 
 from __future__ import annotations
 
 import asyncio
 import logging as _logging
 from dataclasses import dataclass, replace
-from typing import TYPE_CHECKING, Any, Literal, cast
+from typing import TYPE_CHECKING, Annotated, Any, Literal, cast
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Query, Request
 from pydantic import BaseModel, ConfigDict, Field
 
 from provisa.api.admin import discovery_dimension, join_through
@@ -27,6 +27,7 @@ from provisa.api.app import state
 from provisa.api.errors import ApiError
 from provisa.core.relationship_naming import RelationshipNameTaken
 from provisa.discovery import candidates as candidates_repo
+from provisa.discovery import gather
 from provisa.discovery import proposals as proposals_repo
 from provisa.discovery import runs as runs_repo
 from provisa.discovery import threshold as threshold_repo
@@ -44,7 +45,7 @@ from provisa.discovery.run import (
 from provisa.discovery.windows import NoRoomError
 from provisa.otel_compat import get_tracer as _get_tracer
 from provisa.otel_compat import stage as _stage
-from provisa.api.admin.capabilities import require_capability_request
+from provisa.api.admin.capabilities import require_capability_request, selected_domains_request
 from provisa.api.engine_error_names import client_text
 
 if TYPE_CHECKING:
@@ -53,6 +54,11 @@ if TYPE_CHECKING:
 _tracer = _get_tracer(__name__)
 
 router = APIRouter(prefix="/admin/discover")
+
+# REQ-2253: the navbar filter's selection, as repeated ``domains=`` parameters
+# (capabilities.selected_domains_request). Annotated so a handler awaited directly defaults to
+# None, not to the Query marker.
+SelectedDomains = Annotated[list[str] | None, Query()]
 
 #: The kinds of discovery a run can be asked for: foreign keys read from the sources' own
 #: constraints, and semantics inferred by the model assigned to relationship inference.
@@ -211,8 +217,10 @@ class RunScope(BaseModel):  # REQ-413
             self.measure_cutoff, self.sample_size, self.contained_at, self.shared_ceiling
         )
 
-    def spec(self, role: str) -> RunSpec:
-        """The run asked for, by the person acting as ``role``: its pairs are measured as it."""
+    def spec(self, role: str, within: frozenset[str] | None) -> RunSpec:
+        """The run asked for, by the person acting as ``role``: its pairs are measured as it, and
+        no table outside ``within`` (the selected domains as the person may reach them, REQ-2253;
+        None: no narrowing) is read or proposed."""
         if (self.vendor is None) != (self.model is None):
             raise ApiError(
                 400,
@@ -231,6 +239,7 @@ class RunScope(BaseModel):  # REQ-413
             key_values=self.key_values(),
             threshold=self.threshold,
             samples_per_column=self.samples_per_column,
+            within=within,
         )
 
 
@@ -363,25 +372,54 @@ def _refuse_empty(
     )
 
 
-async def _require_tables(spec: RunSpec) -> None:  # REQ-413
+async def _refuse_outside(
+    conn: "Connection",
+    side: str,
+    resolved: list[int],
+    named: tuple[int, ...] | None,
+    within: frozenset[str] | None,
+) -> None:
+    """REQ-2253: a set whose chosen tables all lie outside the selected domains is refused,
+    naming them; none is read."""
+    if resolved or named is None or within is None:
+        return
+    outside = await gather.outside_selected_domains(conn, named, within)
+    if outside:
+        raise ApiError(
+            400,
+            f"discovery.{side}_tables_outside_domains",
+            f"The chosen {side} tables are outside the selected domains: {', '.join(outside)}",
+            tables=outside,
+            names=", ".join(outside),
+        )
+
+
+async def _require_tables(spec: RunSpec) -> None:  # REQ-413, REQ-2253
     """Refuse, before anything runs, a scope whose source or target resolves to no table."""
     pool = state.model_db
     assert pool is not None
     async with pool.acquire() as _conn:
-        source, target = await table_sets(cast("Connection", _conn), spec)
+        conn = cast("Connection", _conn)
+        source, target = await table_sets(conn, spec)
+        await _refuse_outside(conn, "source", source, spec.source_tables, spec.within)
+        if target is not None:
+            await _refuse_outside(conn, "target", target, spec.target_tables, spec.within)
     _refuse_empty("source", source, spec.source_tables)
     if target is not None:
         _refuse_empty("target", target, spec.target_tables)
 
 
 @router.post("/runs/count")
-async def count_run(request: Request, body: RunScope):  # REQ-413
+async def count_run(
+    request: Request, body: RunScope, domains: SelectedDomains = None
+):  # REQ-413, REQ-2253
     """Before Run: at most how many calls the run would make, and the table pairs they list, for the chosen
     kinds, model and sets. Computed from the model store alone: no table is read, no source is
     asked and no model is called, so it can be asked again on every change of the scope. It is
-    an upper bound (``requests_are``): the run reads the tables and may make fewer."""
+    an upper bound (``requests_are``): the run reads the tables and may make fewer. ``domains``
+    is the navbar filter's selection: no table outside it is counted."""
     require_capability_request(request, "create_relationship")
-    spec = body.spec(_acting(request))
+    spec = body.spec(_acting(request), selected_domains_request(request, domains))
     model = await _run_model(spec)
     await _require_tables(spec)
     try:
@@ -471,10 +509,13 @@ def _launch(run_id: int, spec: RunSpec, model: ChosenModel | None) -> None:
 
 
 @router.post("/runs")
-async def start_run(request: Request, body: RunScope):  # REQ-413
-    """Start a run in the background; answered at once with the run, running."""
+async def start_run(
+    request: Request, body: RunScope, domains: SelectedDomains = None
+):  # REQ-413, REQ-2253
+    """Start a run in the background; answered at once with the run, running. ``domains`` is the
+    navbar filter's selection: no table outside it is read or proposed."""
     require_capability_request(request, "create_relationship")
-    spec = body.spec(_acting(request))
+    spec = body.spec(_acting(request), selected_domains_request(request, domains))
     model = await _run_model(spec)
     await _require_tables(spec)
     pool = state.model_db
@@ -526,11 +567,12 @@ async def _source_domains(conn: "Connection", body: DiscoverRequest) -> list[str
 
 @router.post("/relationships")
 async def trigger_discovery(
-    request: Request, body: DiscoverRequest
-):  # REQ-018, REQ-167, REQ-413, REQ-612
+    request: Request, body: DiscoverRequest, domains: SelectedDomains = None
+):  # REQ-018, REQ-167, REQ-413, REQ-612, REQ-2253
     """A discovery run done while the caller waits: started, performed and stored as a run the
     dialog starts (its proposals kept, Jev's scores beside the model's), and answered with the
-    run and what each kind found."""
+    run and what each kind found. ``domains`` is the navbar filter's selection: no table outside
+    it is read or proposed."""
     require_capability_request(request, "create_relationship")
     pool = state.model_db
     assert pool is not None
@@ -547,7 +589,7 @@ async def trigger_discovery(
             threshold=kept.threshold,
             samples_per_column=kept.samples_per_column,
         )
-        spec = scope.spec(_acting(request))
+        spec = scope.spec(_acting(request), selected_domains_request(request, domains))
         model = await _run_model(spec)
         async with pool.acquire() as _conn:
             run_id = await runs_repo.start(
