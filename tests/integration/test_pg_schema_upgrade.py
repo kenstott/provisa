@@ -294,6 +294,7 @@ async def test_a_table_schema_sql_does_not_create_lands_in_the_org_schema(own_da
         "as_of",  # REQ-1163: the time travel the statement read at
         "as_recorded",
         "logged_at",
+        "stage",  # REQ-2261: the stage of the environment the statement ran in
     }
     assert _column_shapes(db, _SCHEMA, "query_audit_log") == declared
     with db.engine.begin() as conn:

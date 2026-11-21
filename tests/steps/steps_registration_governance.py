@@ -1541,33 +1541,6 @@ class _FakePgDriver:
         return _FakeDriverResult(self._inbound)
 
 
-class _FakeConfigConn:
-    """Stands in for the asyncpg config connection."""
-
-    def __init__(self):
-        self.inserted: list[dict] = []
-        self._table_ids = {"orders": 1, "customers": 2}
-
-    async def fetchrow(self, sql, source_id, table_name):
-        tid = self._table_ids.get(table_name)
-        return {"id": tid} if tid is not None else None
-
-    async def execute(self, sql, *args):
-        rel_id, src_id, tgt_id, src_col, tgt_col, cardinality, alias = args
-        self.inserted.append(
-            {
-                "id": rel_id,
-                "source_table_id": src_id,
-                "target_table_id": tgt_id,
-                "source_column": src_col,
-                "target_column": tgt_col,
-                "cardinality": cardinality,
-                "alias": alias,
-            }
-        )
-        return "INSERT 0 1"
-
-
 class _FakeSourcePools:
     def __init__(self, source_id, driver):
         self._sid = source_id
@@ -1584,40 +1557,63 @@ import asyncio as _asyncio  # noqa: E402
 
 
 @given("a database source with FK constraints")
-def _req413_source(shared_data):
-    # orders.customer_id -> customers.id
+def _req413_source(shared_data, control_plane):
+    # orders.customer_id -> customers.id; the source driver is the only fake (client boundary),
+    # the registered tables live in the test's own PostgreSQL control plane.
     driver = _FakePgDriver(
         outbound=[("customer_id", "customers", "id")],
         inbound=[],
     )
     shared_data["r413_pools"] = _FakeSourcePools("sales_pg", driver)
-    shared_data["r413_conn"] = _FakeConfigConn()
+    shared_data["r413_plane"] = control_plane
+
+    async def _seed():
+        async with control_plane.org().acquire() as conn:
+            await conn.execute("INSERT INTO domains (id) VALUES ('d')")
+            await conn.execute("INSERT INTO sources (id, type) VALUES ('sales_pg', 'postgresql')")
+            for table_id, name in ((1, "orders"), (2, "customers")):
+                await conn.execute(
+                    "INSERT INTO registered_tables (id, source_id, domain_id, schema_name,"
+                    f" table_name) VALUES ({table_id}, 'sales_pg', 'd', 'public', '{name}')"
+                )
+
+    _asyncio.run(_seed())
 
 
 @when("schema introspection runs")
 def _req413_run(shared_data):
     from provisa.discovery.fk_introspect import auto_register_fk_relationships
 
-    inserted = _asyncio.run(
-        auto_register_fk_relationships(
-            shared_data["r413_pools"],
-            "postgresql",
-            "sales_pg",
-            "public",
-            "orders",
-            shared_data["r413_conn"],
-        )
-    )
-    shared_data["r413_inserted"] = inserted
+    async def _run():
+        async with shared_data["r413_plane"].org().acquire() as conn:
+            return await auto_register_fk_relationships(
+                shared_data["r413_pools"],
+                "postgresql",
+                "sales_pg",
+                "public",
+                "orders",
+                conn,
+            )
+
+    shared_data["r413_inserted"] = _asyncio.run(_run())
 
 
 @then("GQL relationships are auto-generated from the FK metadata")
 def _req413_then(shared_data):
+    from sqlalchemy import select
+
+    from provisa.core.schema_org import relationships as rel_t
+
     # Both directions inserted: many-to-one and one-to-many.
     assert shared_data["r413_inserted"] == 2
-    rows = shared_data["r413_conn"].inserted
-    cards = {r["cardinality"] for r in rows}
-    assert cards == {"many-to-one", "one-to-many"}
+
+    async def _rows():
+        async with shared_data["r413_plane"].org().acquire() as conn:
+            res = await conn.execute_core(select(rel_t))
+            return [dict(r._mapping) for r in res.fetchall()]
+
+    rows = _asyncio.run(_rows())
+    assert {r["cardinality"] for r in rows} == {"many-to-one", "one-to-many"}
     m2o = next(r for r in rows if r["cardinality"] == "many-to-one")
     assert m2o["source_table_id"] == 1 and m2o["target_table_id"] == 2
     assert m2o["alias"] == "customers"  # default (non-Hasura) style
