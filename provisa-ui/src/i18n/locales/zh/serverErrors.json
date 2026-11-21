@@ -14,7 +14,8 @@
       "webhook_not_found": "未找到 Webhook '{{name}}'",
       "written_table_not_registered": "'{{table}}' 不是数据源 '{{source_id}}' 的已注册表",
       "function_exists": "函数 '{{name}}' 已存在",
-      "webhook_exists": "Webhook '{{name}}' 已存在"
+      "webhook_exists": "Webhook '{{name}}' 已存在",
+      "mask_constant_not_text": "非文本列上的常量脱敏规则读取为 NULL；只能保存 NULL：{{column}} ({{type}})"
     },
     "ai_models": {
       "vector_model_fields_required": "每个 vector_models 条目都需要 id、provider 和 dimensions",
@@ -566,7 +567,9 @@
       "withdrawn_table_not_previewable": "无法预览表 {{table}}：它已撤下且不保留副本，而引擎只能通过副本读取其源。",
       "table_not_withdrawn": "表 {{table}} 未撤下：只有已撤下的表才能恢复。要将生产中的表移到另一个区域，请设置其区域。",
       "source_not_withdrawn": "源 {{source}} 未撤下：只有已撤下的源才能恢复。要更改其区域，请设置其区域。",
-      "put_back_needs_region": "恢复 {{object}} 需指定一个区域：请给出一个区域，无区域则不给出。"
+      "put_back_needs_region": "恢复 {{object}} 需指定一个区域：请给出一个区域，无区域则不给出。",
+      "table_domain_required": "表 '{{table}}' 未指定域：每个表都注册在一个域中",
+      "mask_constant_not_text": "非文本列上的常量脱敏规则读取为 NULL；只能保存 NULL：{{column}} ({{type}})"
     },
     "secrets": {
       "env_reference_object_locked": "此对象属于运营方：它读取服务器自身的环境，无法在此更改。请改为添加您自己的对象。",
@@ -616,7 +619,8 @@
     "sparql": {
       "columns_not_inferred": "无法推断列：探测未返回任何行，也未找到 SELECT 变量。",
       "probe_failed": "SPARQL 终结点探测失败：{{error}}",
-      "source_not_found": "未找到 SPARQL 数据源 '{{source_id}}'"
+      "source_not_found": "未找到 SPARQL 数据源 '{{source_id}}'",
+      "no_select_variables": "查询未指定 SELECT 变量（SELECT * 或不是 SELECT 查询）：无法从中读取其列"
     },
     "subscribe": {
       "avro_topic_without_registry": "主题“{{topic}}”包含 Avro 消息，但其数据源未指定用于读取的模式注册表：请设置数据源的模式注册表 URL",
@@ -829,7 +833,9 @@
       "not_bulk_approvable": "只有已定义且已锚定的草稿术语才能一起批准；以下不符合：{{terms}}。",
       "term_ids_required": "请指定要批准的术语。",
       "impact_action": "该操作没有预览。",
-      "impact_table_required": "绑定指定一张表或其中的一列。"
+      "impact_table_required": "绑定指定一张表或其中的一列。",
+      "name_taken": "域 {{domain}} 中已存在名为 '{{name}}' 的术语。请选择其他名称，或将该术语放入其他域。",
+      "name_taken_unscoped": "已存在名为 '{{name}}' 且不属于任何域的术语，它适用于所有域。请选择其他名称。"
     },
     "table": {
       "requires_parameters": "无法对表 {{table}} 计数或生成概要：它需要 {{parameters}}。请为每个参数提供值以读取其行。"

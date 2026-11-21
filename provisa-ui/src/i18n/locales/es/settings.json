@@ -293,12 +293,6 @@
         "help": "La dirección en la que los clientes llegan a este nodo. La interfaz de un coordinador lo lista como nodo de datos cuando la región no lista ninguno. El lanzador la establece para cada nodo; sin ella, el nodo no se lista."
       }
     },
-    "embedding": {
-      "hub_endpoint": {
-        "label": "Dirección del hub de Hugging Face",
-        "help": "El hub de Hugging Face desde el que se descarga un modelo de embeddings local, como un espejo dentro de su red. Se aplica a la próxima descarga de un modelo."
-      }
-    },
     "tls": {
       "cert": {
         "label": "Certificado TLS",
@@ -843,6 +837,10 @@
       "health_poll_interval": {
         "label": "Intervalo de sondeo del estado del conector",
         "help": "Con qué frecuencia cada proceso de Provisa pregunta al host de un conector por su estado y muestra el resultado en la fuente. Un host reiniciado se detecta en el siguiente sondeo, que vuelve a ejecutar su función on-start."
+      },
+      "worker_idle_timeout": {
+        "label": "Tiempo de inactividad del worker de código",
+        "help": "Cuánto tiempo puede pasar sin uso el worker de una fuente de código, o el worker de preflight de una organización, antes de que Provisa termine su proceso. La siguiente llamada inicia uno nuevo."
       }
     },
     "config": {
@@ -881,10 +879,22 @@
         "help": "El máximo de llamadas que una sentencia hace a una tabla parametrizada. Cada valor que una sentencia da a un parámetro es una llamada al origen: cada valor de una lista IN, cada rama de un OR, cada clave distinta de un join. Una sentencia que necesita más se rechaza."
       }
     },
+    "embedding": {
+      "hub_endpoint": {
+        "label": "Dirección del hub de Hugging Face",
+        "help": "El hub de Hugging Face desde el que se descarga un modelo de embeddings local, como un espejo dentro de su red. Se aplica a la próxima descarga de un modelo."
+      }
+    },
     "subscriptions": {
       "max_sinks_per_principal": {
         "label": "Sinks de Kafka en ejecución por persona",
         "help": "Cuántos sinks de Kafka puede tener una persona en ejecución a la vez. Una solicitud para iniciar otro se rechaza hasta que se detenga uno de los suyos."
+      }
+    },
+    "sparql": {
+      "query_timeout": {
+        "label": "Tiempo de espera de consultas SPARQL",
+        "help": "Cuánto puede durar una consulta SPARQL antes de abandonarla: una vista previa, una búsqueda de clases de Wikidata y cada carga de la réplica de una tabla SPARQL. Un endpoint público puede detener una consulta antes por su propio límite (el de Wikidata es de 60 segundos)."
       }
     }
   }

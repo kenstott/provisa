@@ -29,6 +29,23 @@ from lemminflect import getAllInflectionsOOV, getAllLemmasOOV
 
 _TABLE = Path(__file__).parent / "data" / "noun_plurals.tsv.gz"
 
+# Recorded supplement (REQ-194): words the dictionary and lemminflect inflect wrongly or lack
+# (coined table-name nouns, abbreviations). Consulted before the dictionary.
+_SUPPLEMENT: tuple[tuple[str, str], ...] = (
+    ("person", "people"),
+    ("doc", "docs"),
+    ("dataset", "datasets"),
+    ("timestamp", "timestamps"),
+    ("webhook", "webhooks"),
+    ("endpoint", "endpoints"),
+    ("username", "usernames"),
+    ("signup", "signups"),
+    ("lineitem", "lineitems"),
+    ("littermate", "littermates"),
+    ("sku", "skus"),
+    ("kpi", "kpis"),
+)
+
 
 @functools.cache
 def _dictionary() -> tuple[dict[str, str], dict[str, str], frozenset[str]]:
@@ -40,6 +57,10 @@ def _dictionary() -> tuple[dict[str, str], dict[str, str], frozenset[str]]:
     plural_of: dict[str, str] = {}
     singular_of: dict[str, str] = {}
     own: set[str] = set()
+    for singular_form, plural_form in _SUPPLEMENT:
+        plural_of[singular_form] = plural_form
+        singular_of[plural_form] = singular_form
+        own.discard(singular_form)
     with gzip.open(_TABLE, "rt", encoding="utf-8") as f:
         for line in f:
             singular_form, plural_form, *mark = line.rstrip("\n").split("\t")

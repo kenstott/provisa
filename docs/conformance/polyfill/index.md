@@ -6,14 +6,14 @@ A polyfill is how Provisa gives a PostgreSQL client PostgreSQL's behaviour on a 
 
 ## [PostgreSQL](postgres.md)
 
-578 of the grid's 578 features are native on PostgreSQL and left out.
+579 of the grid's 579 features are native on PostgreSQL and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 </tbody></table>
 
 ## [DuckDB](duckdb.md)
 
-227 of the grid's 578 features are native on DuckDB and left out.
+228 of the grid's 579 features are native on DuckDB and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -211,7 +211,7 @@ CASE WHEN CAST(round(($v) * 100, 0) AS BIGINT) &lt; 0 THEN &#x27;-&#x27; ELSE &#
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: pg_collation_for($v COLLATE $c). <code>0A000</code> pg_collation_for does not read this value</li><li>Only the built-in collations (default, C, POSIX, ucs_basic, unicode, pg_c_utf8) of a text, character or name value: any other COLLATE is refused. <code>0A000</code> pg_collation_for does not read this value</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>ts_delete</strong><br>A vector without the lexemes a list holds; a NULL item of the list is skipped.</td><td><pre><code>ts_delete_array($v, $x)
 =&gt;
-CASE WHEN $v IS NULL THEN NULL ELSE CASE WHEN CASE WHEN coalesce(NOT regexp_matches($v, &#x27;\A(?:&#x27;&#x27;(?:[^&#x27;&#x27;]|&#x27;&#x27;&#x27;&#x27;)*&#x27;&#x27;(?::[0-9]+[A-C]?(?:,[0-9]+[A-C]?)*)?(?: &#x27;&#x27;(?:[^&#x27;&#x27;]|&#x27;&#x27;&#x27;&#x27;)*&#x27;&#x27;(?::[0-9]+[A-C]?(?:,[0-9]+[A-C]?)*)?)*)?\z&#x27;), false) THEN CAST(CAST(&#x27;postgresql-error 0A000: ts_delete does not read this value &lt;end of postgresql-error&gt;&#x27; AS INTEGER) AS INTEGER) ELSE 0 END = 0 THEN array_to_string(list_filter(regexp_extract_all($v, &#x27;&#x27;&#x27;(?:[^&#x27;&#x27;]|&#x27;&#x27;&#x27;&#x27;)*&#x27;&#x27;(?::[0-9]+[A-C]?(?:,[0-9]+[A-C]?)*)?&#x27;), _t -&gt; NOT list_contains($x, replace(replace(regexp_extract(_t, &#x27;\A&#x27;&#x27;((?:[^&#x27;&#x27;]|&#x27;&#x27;&#x27;&#x27;)*)&#x27;&#x27;&#x27;, 1), &#x27;&#x27;&#x27;&#x27;&#x27;&#x27;, &#x27;&#x27;&#x27;&#x27;), &#x27;\\&#x27;, &#x27;\&#x27;))), &#x27; &#x27;) END END</code></pre></td><td></td><td></td><td></td></tr>
+CASE WHEN $v IS NULL THEN NULL ELSE CASE WHEN CASE WHEN coalesce(NOT regexp_matches($v, &#x27;\A(?:&#x27;&#x27;(?:[^&#x27;&#x27;]|&#x27;&#x27;&#x27;&#x27;)*&#x27;&#x27;(?::[0-9]+[A-C]?(?:,[0-9]+[A-C]?)*)?(?: &#x27;&#x27;(?:[^&#x27;&#x27;]|&#x27;&#x27;&#x27;&#x27;)*&#x27;&#x27;(?::[0-9]+[A-C]?(?:,[0-9]+[A-C]?)*)?)*)?\z&#x27;), false) THEN CAST(CAST(&#x27;postgresql-error 0A000: ts_delete does not read this value &lt;end of postgresql-error&gt;&#x27; AS INTEGER) AS INTEGER) ELSE 0 END = 0 THEN array_to_string(list_filter(regexp_extract_all($v, &#x27;&#x27;&#x27;(?:[^&#x27;&#x27;]|&#x27;&#x27;&#x27;&#x27;)*&#x27;&#x27;(?::[0-9]+[A-C]?(?:,[0-9]+[A-C]?)*)?&#x27;), LAMBDA _t : NOT list_contains($x, replace(replace(regexp_extract(_t, &#x27;\A&#x27;&#x27;((?:[^&#x27;&#x27;]|&#x27;&#x27;&#x27;&#x27;)*)&#x27;&#x27;&#x27;, 1), &#x27;&#x27;&#x27;&#x27;&#x27;&#x27;, &#x27;&#x27;&#x27;&#x27;), &#x27;\\&#x27;, &#x27;\&#x27;))), &#x27; &#x27;) END END</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>macaddr_and</strong><br>The bitwise AND of two MAC addresses.</td><td><pre><code>macaddr_and($a, $b)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
@@ -1019,7 +1019,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Trino](trino.md)
 
-126 of the grid's 578 features are native on Trino and left out.
+127 of the grid's 579 features are native on Trino and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>an array of dimensions</strong><br>cardinality, unnest and array_to_string of an array of more than one dimension: of every element, in storage order.</td><td><pre><code>function provisa.transpiler.polyfill.array_dimensions.of_dimensions: cardinality, unnest or array_to_string of an array of more than one dimension: of every</code></pre></td><td></td><td></td><td></td></tr>
@@ -2150,7 +2150,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Presto](presto.md)
 
-126 of the grid's 578 features are native on Presto and left out.
+127 of the grid's 579 features are native on Presto and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>an array of dimensions</strong><br>cardinality, unnest and array_to_string of an array of more than one dimension: of every element, in storage order.</td><td><pre><code>function provisa.transpiler.polyfill.array_dimensions.of_dimensions: cardinality, unnest or array_to_string of an array of more than one dimension: of every</code></pre></td><td></td><td></td><td></td></tr>
@@ -3281,7 +3281,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Athena](athena.md)
 
-126 of the grid's 578 features are native on Athena and left out.
+127 of the grid's 579 features are native on Athena and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>an array of dimensions</strong><br>cardinality, unnest and array_to_string of an array of more than one dimension: of every element, in storage order.</td><td><pre><code>function provisa.transpiler.polyfill.array_dimensions.of_dimensions: cardinality, unnest or array_to_string of an array of more than one dimension: of every</code></pre></td><td></td><td></td><td></td></tr>
@@ -4412,7 +4412,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [ClickHouse](clickhouse.md)
 
-37 of the grid's 578 features are native on ClickHouse and left out.
+37 of the grid's 579 features are native on ClickHouse and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>an array of dimensions</strong><br>cardinality, unnest and array_to_string of an array of more than one dimension: of every element, in storage order.</td><td><pre><code>function provisa.transpiler.polyfill.array_dimensions.of_dimensions: cardinality, unnest or array_to_string of an array of more than one dimension: of every</code></pre></td><td></td><td></td><td></td></tr>
@@ -5065,6 +5065,11 @@ arrayJoin(if(throwIf(ifNull($v IS NOT NULL AND substring(trimLeft($v), 1, 1) NOT
 <tr><td><strong>array_agg</strong><br>The values of an aggregate as an array, a NULL kept; NULL of no rows.</td><td><pre><code>array_agg($a)
 =&gt;
 function provisa.transpiler.polyfill.clickhouse.kept_nulls: array_agg of every value, a NULL kept, and NULL of no rows; of arrays, their array.</code></pre></td><td><ul><li>Of arrays, no rows have no answer: ClickHouse holds no NULL of an array, so the call raises. <code>0A000</code> array_agg of no rows does not read this value</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>percentile_cont and percentile_disc</strong><br>The percentile of a group&#x27;s keys at a fraction, or at each of an array of them.</td><td><pre><code>percentile_cont($f) WITHIN GROUP (ORDER BY $k)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>percentile_disc($f) WITHIN GROUP (ORDER BY $k)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td><ul><li>Of an array of fractions, no keys (no rows, or only NULL ones) have no answer: ClickHouse holds no NULL of an array, so the call raises. <code>0A000</code> percentile of an array of fractions over no keys does not read this value</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>date_trunc</strong><br>The start of a unit of a timestamp.</td><td><pre><code>date_trunc($u, $t)
 =&gt;
 function provisa.transpiler.polyfill.clickhouse.started: date_trunc of a timestamp: its start as DateTime64(6, &#x27;UTC&#x27;), whatever the unit. Of a</code></pre><pre><code>date_trunc($u, $t, $z)
@@ -5634,7 +5639,7 @@ function provisa.transpiler.polyfill.bytea.encode_of_bytes: encode of a bytea he
 
 ## [Snowflake](snowflake.md)
 
-227 of the grid's 578 features are native on Snowflake and left out.
+228 of the grid's 579 features are native on Snowflake and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -6650,7 +6655,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Databricks](databricks.md)
 
-227 of the grid's 578 features are native on Databricks and left out.
+228 of the grid's 579 features are native on Databricks and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -7666,7 +7671,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [BigQuery](bigquery.md)
 
-227 of the grid's 578 features are native on BigQuery and left out.
+228 of the grid's 579 features are native on BigQuery and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -8682,7 +8687,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [T-SQL (SQL Server, Fabric, Synapse)](tsql.md)
 
-227 of the grid's 578 features are native on T-SQL (SQL Server, Fabric, Synapse) and left out.
+228 of the grid's 579 features are native on T-SQL (SQL Server, Fabric, Synapse) and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -9698,7 +9703,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Redshift](redshift.md)
 
-227 of the grid's 578 features are native on Redshift and left out.
+228 of the grid's 579 features are native on Redshift and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -10714,7 +10719,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [MySQL](mysql.md)
 
-227 of the grid's 578 features are native on MySQL and left out.
+228 of the grid's 579 features are native on MySQL and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -11730,7 +11735,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [SingleStore](singlestore.md)
 
-227 of the grid's 578 features are native on SingleStore and left out.
+228 of the grid's 579 features are native on SingleStore and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -12746,7 +12751,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [SQLite](sqlite.md)
 
-227 of the grid's 578 features are native on SQLite and left out.
+228 of the grid's 579 features are native on SQLite and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -13762,7 +13767,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Oracle](oracle.md)
 
-227 of the grid's 578 features are native on Oracle and left out.
+228 of the grid's 579 features are native on Oracle and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -14778,7 +14783,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Hive](hive.md)
 
-227 of the grid's 578 features are native on Hive and left out.
+228 of the grid's 579 features are native on Hive and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -15794,7 +15799,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Exasol](exasol.md)
 
-227 of the grid's 578 features are native on Exasol and left out.
+228 of the grid's 579 features are native on Exasol and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -16810,7 +16815,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Druid](druid.md)
 
-227 of the grid's 578 features are native on Druid and left out.
+228 of the grid's 579 features are native on Druid and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)

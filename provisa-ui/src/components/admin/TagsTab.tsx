@@ -606,8 +606,8 @@ export function TagsTab({ readOnly = false }: { readOnly?: boolean }) {
                 tag.id
               )}
               {(tag.required ||
-                tag.reasonPolicy !== "optional" ||
-                tag.expiresPolicy !== "optional" ||
+                tag.reasonPolicy === "required" ||
+                tag.expiresPolicy === "required" ||
                 tag.requiresCitation ||
                 tag.needsReview) && (
                 <Group gap={4} mt={2}>
@@ -633,14 +633,14 @@ export function TagsTab({ readOnly = false }: { readOnly?: boolean }) {
                       </Badge>
                     </Tip>
                   )}
-                  {tag.reasonPolicy !== "optional" && (
+                  {tag.reasonPolicy === "required" && (
                     <Badge size="xs" variant="light" color="gray">
                       {t("tagsTab.reasonPolicyBadge", {
                         policy: policyLabel(tag.reasonPolicy),
                       })}
                     </Badge>
                   )}
-                  {tag.expiresPolicy !== "optional" && (
+                  {tag.expiresPolicy === "required" && (
                     <Badge size="xs" variant="light" color="gray">
                       {t("tagsTab.expiresPolicyBadge", {
                         policy: policyLabel(tag.expiresPolicy),

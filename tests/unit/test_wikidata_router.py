@@ -51,7 +51,8 @@ def test_the_starter_tables_are_listed(client):
     names = [s["name"] for s in answer.json()]
     assert names == ["countries", "currencies", "languages", "admin_regions", "organizations"]
     countries = answer.json()[0]
-    assert {"name": "population", "data_type": "integer"} in countries["columns"]
+    # REQ-1923 (amended 2026-11-20): read from the query's SELECT variables, every binding text.
+    assert {"name": "population", "data_type": "text"} in countries["columns"]
 
 
 @respx.mock
@@ -60,7 +61,8 @@ def test_search_answers_the_matches(client):
         return_value=httpx.Response(200, json={"search": [{"id": "Q515", "label": "city"}]})
     )
     answer = client.get(
-        "/admin/sources/sparql/wikidata/search", params={"q": "city", "language": "en"}
+        "/admin/sources/sparql/wikidata/search",
+        params={"q": "city", "language": "en", "kind": "item"},
     )
     assert answer.status_code == 200
     assert answer.json() == [{"id": "Q515", "label": "city", "description": None}]
@@ -111,6 +113,7 @@ def test_a_bad_class_id_is_refused(client):
 def test_wikidata_unreachable_is_a_502(client):
     respx.get(wikidata.SEARCH_API).mock(side_effect=httpx.ConnectError("down"))
     answer = client.get(
-        "/admin/sources/sparql/wikidata/search", params={"q": "city", "language": "en"}
+        "/admin/sources/sparql/wikidata/search",
+        params={"q": "city", "language": "en", "kind": "item"},
     )
     assert answer.status_code == 502

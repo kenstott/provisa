@@ -10,7 +10,7 @@
 
 """Terms sourced from a catalog's business glossary (REQ-2247, TERMS SOURCED FROM CATALOGS).
 
-A catalog term (``CatalogTerm``, read by a provider's ``list_glossary``) becomes a Provisa term
+A catalog term (``CatalogTerm``, read by a ``CatalogReader``'s ``list_glossary``) becomes a Provisa term
 in one of two ways, the steward's choice:
 
 * ``create_drafts``: a draft term with the catalog's definition, a KIND_OF edge to each broader
@@ -34,7 +34,7 @@ from typing import TYPE_CHECKING
 
 from sqlalchemy import select
 
-from provisa.api.metadata_export.provider import CatalogTerm
+from provisa.api.catalog_import.reader import CatalogTerm
 from provisa.core.repositories import glossary as glossary_repo
 from provisa.core.schema_org import glossary_terms
 from provisa.ontology_import import align

@@ -218,3 +218,50 @@ def test_one_proxy_serves_every_worker_with_the_same_allow_list():
     first = sandbox.egress_proxy(["a.example.test", "B.example.test"])
     assert sandbox.egress_proxy(["b.example.test", "a.example.test"]) is first
     assert sandbox.egress_proxy(["c.example.test"]) is not first
+
+
+def _framework(tmp_path: Path, *, app: bool) -> tuple[Path, Path]:
+    """A python.org (framework) Python laid out under ``tmp_path``: its ``bin/python3.12`` stub,
+    and (with ``app``) the ``Python.app`` program the stub re-executes; a venv's ``python3``
+    links to the stub."""
+    version = tmp_path / "Library/Frameworks/Python.framework/Versions/3.12"
+    stub = version / "bin" / "python3.12"
+    stub.parent.mkdir(parents=True)
+    stub.write_text("")
+    real = version / "Resources/Python.app/Contents/MacOS/Python"
+    if app:
+        real.parent.mkdir(parents=True)
+        real.write_text("")
+    venv = tmp_path / "venv" / "bin" / "python3"
+    venv.parent.mkdir(parents=True)
+    venv.symlink_to(stub)
+    return venv, real
+
+
+def _runs(text: str) -> list[str]:
+    (line,) = [each for each in text.splitlines() if each.startswith("(allow process-exec")]
+    return [part.split('"')[1] for part in line.split("(literal ")[1:]]
+
+
+def test_a_framework_python_may_run_only_itself_and_the_program_it_re_executes(tmp_path):
+    venv, real = _framework(tmp_path, app=True)
+    text = macos_sandbox.profile(executable=venv, read=[], socket_path=None, proxy_port=1)
+    assert _runs(text) == [str(venv.resolve()), str(real.resolve())]
+
+
+def test_a_framework_with_no_python_app_adds_nothing_to_run(tmp_path):
+    venv, _ = _framework(tmp_path, app=False)
+    text = macos_sandbox.profile(executable=venv, read=[], socket_path=None, proxy_port=1)
+    assert _runs(text) == [str(venv.resolve())]
+
+
+def test_any_other_runtime_may_run_only_itself(tmp_path):
+    node = tmp_path / "rt" / "bin" / "node"
+    node.parent.mkdir(parents=True)
+    node.write_text("")
+    # A Python.app beside it is not its framework's: only a <Name>.framework/Versions layout is.
+    app = tmp_path / "rt" / "Resources/Python.app/Contents/MacOS/Python"
+    app.parent.mkdir(parents=True)
+    app.write_text("")
+    text = macos_sandbox.profile(executable=node, read=[], socket_path=None, proxy_port=1)
+    assert _runs(text) == [str(node.resolve())]

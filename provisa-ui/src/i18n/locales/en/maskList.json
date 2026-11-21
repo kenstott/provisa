@@ -13,6 +13,8 @@
     "replace": "Replacement",
     "value": "Constant value",
     "valuePlaceholder": "Value (blank for NULL)",
+    "readsNull": "Reads as NULL: this column is not text, so a constant mask can only be NULL.",
+    "notTextConstant": "This column is not text: a constant mask reads as NULL, so only NULL (blank) can be saved.",
     "precision": "Precision",
     "year": "Year",
     "month": "Month",

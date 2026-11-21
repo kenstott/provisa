@@ -117,14 +117,15 @@ class _Backend:
     elements: dict[str, _ElementForm]
 
 
-def _lambda_each(function: str) -> Callable[[str, int, str], str]:
-    """Nested ``function(c, x -> ...)`` to depth ``n`` (DuckDB list_transform, Trino transform)."""
+def _lambda_each(function: str, lambda_form: str) -> Callable[[str, int, str], str]:
+    """Nested ``function(c, <lambda>)`` to depth ``n`` (DuckDB list_transform with
+    ``LAMBDA x : ...``, Trino transform with ``x -> ...``)."""
 
     def each(col: str, depth: int, element: str) -> str:
         body = element.format(x=f"x{depth}")
         for level in range(depth, 0, -1):
             operand = col if level == 1 else f"x{level - 1}"
-            body = f"{function}({operand}, x{level} -> {body})"
+            body = f"{function}({operand}, {lambda_form.format(x=f'x{level}', body=body)})"
         return body
 
     return each
@@ -179,7 +180,7 @@ _BACKENDS: dict[str, _Backend] = {
     # Verified in-process: tests/unit/test_native_json_duckdb.py executes every form.
     "duckdb": _Backend(
         to_json="to_json({col})",
-        each=_lambda_each("list_transform"),
+        each=_lambda_each("list_transform", "LAMBDA {x} : {body}"),
         elements={
             "text": _AS_WRITTEN,
             "smallint": _AS_WRITTEN,
@@ -228,7 +229,7 @@ _BACKENDS: dict[str, _Backend] = {
     # Pinned by the container lane: tests/integration/test_native_json_trino_e2e.py.
     "trino": _Backend(
         to_json="CAST({col} AS JSON)",
-        each=_lambda_each("transform"),
+        each=_lambda_each("transform", "{x} -> {body}"),
         elements={
             "text": _AS_WRITTEN,
             "smallint": _AS_WRITTEN,

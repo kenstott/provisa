@@ -290,7 +290,17 @@ async def test_the_one_run_sweeps_the_grants_and_records_the_entries(control_pla
         "held_entitlements",
         property(lambda s: None, lambda s, held: reloaded.append(held)),
     )
+    # REQ-2219: a removed grant recomputes its holder's effective rows from the org's runtime.
+    # The model store above stands in for that runtime's, so the recompute is recorded here.
+    recomputed: list[str] = []
+
+    async def _write_person(conn, state, principal, now=None):
+        recomputed.append(principal)
+        return 0
+
+    monkeypatch.setattr("provisa.entitlements.effective_store.write_person", _write_person)
     outcome = await expiry_run.run_org("acme")
+    assert recomputed == ["ada"]
     assert list(reloaded[-1]) == ["bob"]  # the runtime reads the store as the run left it
     assert [(g.user_id, g.role_id) for g in outcome.grants.expired] == [("ada", "org_admin")]
     assert [d.rule.rule_key for d in outcome.entries.expired] == [entry]

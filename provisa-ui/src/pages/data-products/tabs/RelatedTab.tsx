@@ -27,6 +27,8 @@ import { ConsumersList } from "../dataProductDq";
 import { Empty, Muted } from "../DetailCard";
 import { modelName, type CoreEdge, type ProductCore } from "../productCore";
 import { LineagePending } from "./LineagePending";
+import { asNamed } from "../productCore";
+import { termLabel } from "../../../components/admin/termLabel";
 
 /** A product sharing one or more of this product's datasets. */
 export interface SharingProduct {
@@ -186,9 +188,10 @@ export function RelatedTab({
             <Empty text={t("dataProductsTab.relatedTermsEmpty")} />
           ) : (
             <List size="sm" data-testid={`data-product-detail-related-terms-${productId}`}>
-              {core.terms.map((term) => (
+              {core.terms.map((term, _, all) => (
                 <List.Item key={term.id} ff="monospace">
-                  {term.name}
+                  {/* REQ-1591: a name two listed terms share carries its domains */}
+                  {termLabel(asNamed(term), all.map(asNamed))}
                   {term.isAbstract && <Muted>({t("dataProductsTab.relatedTermsConcept")})</Muted>}
                   {term.definition && <Muted>— {term.definition}</Muted>}
                 </List.Item>

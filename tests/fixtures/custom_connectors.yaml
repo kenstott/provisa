@@ -17,7 +17,7 @@ connectors:
     install_from_community: false
     probe_symbol: ducklake_snapshots
     mechanism: attach_rw
-    attach_template: "ATTACH 'ducklake:{path}' AS \"{alias}\" (DATA_PATH '{data_path}')"
+    attach_template: "ATTACH 'ducklake:' || {path} AS {alias:ident} (DATA_PATH {data_path})"
     remote_schema: main
   - engine: duckdb            # DuckDB SCAN → excel/read_xlsx
     source_type: xlsx
@@ -25,19 +25,19 @@ connectors:
     extension: excel
     install_from_community: false
     probe_symbol: read_xlsx
-    scan_template: "read_xlsx('{path}')"
+    scan_template: "read_xlsx({path})"
   - engine: clickhouse        # ClickHouse DATABASE → Redis (REQ-1178)
     source_type: redis
     kind: clickhouse_database
     ch_engine: Redis
-    engine_template: "Redis('{host}:{port}', {db_index}, '{password}')"
+    engine_template: "Redis(concat({host}, ':', {port}), {db_index:int}, {password})"
   - engine: clickhouse        # ClickHouse TABLE (columns from registry) → JDBC bridge (REQ-1178)
     source_type: jdbc
     kind: clickhouse_table
     ch_engine: JDBC
-    engine_template: "JDBC('{jdbc_url}', '{database}', '{table}')"
+    engine_template: "JDBC({jdbc_url}, {database}, {table})"
   - engine: clickhouse        # ClickHouse SCAN (schema-inferred) → HDFS (REQ-1178)
     source_type: hdfs
     kind: clickhouse_scan
     ch_engine: HDFS
-    engine_template: "HDFS('{path}', '{format}')"
+    engine_template: "HDFS({path}, {format})"

@@ -14,7 +14,8 @@
       "webhook_not_found": "Webhook « {{name}} » introuvable",
       "written_table_not_registered": "'{{table}}' n'est pas une table enregistrée de la source '{{source_id}}'",
       "function_exists": "La fonction « {{name}} » existe déjà",
-      "webhook_exists": "Le webhook « {{name}} » existe déjà"
+      "webhook_exists": "Le webhook « {{name}} » existe déjà",
+      "mask_constant_not_text": "Un masque constant sur une colonne non textuelle est lu comme NULL ; seul NULL peut être enregistré : {{column}} ({{type}})"
     },
     "ai_models": {
       "vector_model_fields_required": "chaque entrée vector_models requiert id, provider et dimensions",
@@ -566,7 +567,9 @@
       "withdrawn_table_not_previewable": "Impossible de prévisualiser la table {{table}} : elle est retirée et ne conserve aucune réplique, et le moteur ne lit sa source qu'à travers une réplique.",
       "table_not_withdrawn": "La table {{table}} n'est pas retirée : seule une table retirée est remise en service. Pour déplacer une table en production vers une autre région, définissez sa région.",
       "source_not_withdrawn": "La source {{source}} n'est pas retirée : seule une source retirée est remise en service. Pour changer sa région, définissez sa région.",
-      "put_back_needs_region": "Remettre en service {{object}} nomme une région : indiquez-en une, ou aucune pour aucune région."
+      "put_back_needs_region": "Remettre en service {{object}} nomme une région : indiquez-en une, ou aucune pour aucune région.",
+      "table_domain_required": "La table '{{table}}' ne nomme aucun domaine : toute table est enregistrée dans un domaine",
+      "mask_constant_not_text": "Un masque constant sur une colonne non textuelle est lu comme NULL ; seul NULL peut être enregistré : {{column}} ({{type}})"
     },
     "secrets": {
       "env_reference_object_locked": "Cet objet appartient à l'opérateur : il lit l'environnement propre du serveur et ne peut pas être modifié ici. Ajoutez plutôt le vôtre.",
@@ -616,7 +619,8 @@
     "sparql": {
       "columns_not_inferred": "Impossible d'inférer les colonnes : le sondage n'a renvoyé aucune ligne et aucune variable SELECT n'a été trouvée.",
       "probe_failed": "Échec du sondage de l'endpoint SPARQL : {{error}}",
-      "source_not_found": "Source SPARQL « {{source_id}} » introuvable"
+      "source_not_found": "Source SPARQL « {{source_id}} » introuvable",
+      "no_select_variables": "La requête ne nomme aucune variable SELECT (SELECT * ou pas une requête SELECT) : ses colonnes ne peuvent pas en être lues"
     },
     "subscribe": {
       "avro_topic_without_registry": "Le topic '{{topic}}' transporte des messages Avro et sa source ne désigne aucun registre de schémas pour les lire : renseignez l'URL du registre de schémas de la source",
@@ -829,7 +833,9 @@
       "not_bulk_approvable": "Seuls les brouillons définis et ancrés sont approuvés ensemble ; pas : {{terms}}.",
       "term_ids_required": "Indiquez les termes à approuver.",
       "impact_action": "Aucun aperçu n'existe pour cette action.",
-      "impact_table_required": "Une liaison nomme une table, ou l'une de ses colonnes."
+      "impact_table_required": "Une liaison nomme une table, ou l'une de ses colonnes.",
+      "name_taken": "Un terme nommé '{{name}}' existe déjà dans le domaine {{domain}}. Choisissez un autre nom ou placez le terme dans un autre domaine.",
+      "name_taken_unscoped": "Un terme nommé '{{name}}' existe déjà sans domaine : il s'applique donc à tous les domaines. Choisissez un autre nom."
     },
     "table": {
       "requires_parameters": "La table {{table}} ne peut être ni comptée ni profilée : elle exige {{parameters}}. Donnez une valeur à chacun pour lire ses lignes."

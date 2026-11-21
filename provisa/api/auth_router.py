@@ -599,49 +599,6 @@ async def decline_auto_join(request: Request):  # REQ-1568
     return {"declined": [o["org_id"] for o in offers]}
 
 
-@router.get("/invite/{token}")
-async def get_invite(token: str):  # REQ-516
-    """Fetch invite info without authentication. Invites are public until redeemed."""
-    from provisa.api.app import state
-
-    # org_invites/orgs live in the platform control plane.
-    admin_db = state.admin_db
-    assert admin_db is not None
-    async with admin_db.acquire() as conn:
-        result = await conn.execute_core(
-            select(
-                org_invites.c.token,
-                org_invites.c.org_id,
-                orgs.c.name.label("org_name"),
-                org_invites.c.role_id,
-                org_invites.c.expires_at,
-                org_invites.c.uses,
-                org_invites.c.max_uses,
-            )
-            .select_from(org_invites.join(orgs, orgs.c.id == org_invites.c.org_id))
-            .where(org_invites.c.token == token)
-        )
-        fetched = result.fetchone()
-    row = dict(fetched._mapping) if fetched is not None else None
-    if row is None:
-        raise ApiError(404, "auth.invite_not_found", "Invite not found")
-    import datetime
-    from datetime import timezone
-
-    now = datetime.datetime.now(tz=timezone.utc)
-    if is_spent(row):  # REQ-1594: spent, not merely used — an open link is used and still open
-        raise ApiError(410, "auth.invite_already_used", "Invite already used")
-    if row["expires_at"] < now:
-        raise ApiError(410, "auth.invite_expired", "Invite expired")
-    return {
-        "token": row["token"],
-        "org_id": row["org_id"],
-        "org_name": row["org_name"],
-        "role_id": row["role_id"],
-        "valid": True,
-    }
-
-
 class RegisterRequest(BaseModel):
     username: str
     password: str

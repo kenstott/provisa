@@ -236,7 +236,9 @@ def _item(src: str, confidence: float) -> dict:
 
 
 async def test_a_run_asks_the_model_then_jev_then_measures_only_the_band():
-    orders = _tbl(1, "orders", _col("id", pk=True), _col("customer_id"), _col("store_id"))
+    # orders' key is named apart from customers.id: a same-name pair is measured whatever the
+    # model answers (REQ-413, amended 2026-11-20), and the band is what is under test.
+    orders = _tbl(1, "orders", _col("order_id", pk=True), _col("customer_id"), _col("store_id"))
     customers = _tbl(2, "customers", _col("id", pk=True))
     planned = plan([orders], [customers], *DEFAULT_LIMITS)
     events: list[tuple[str, list]] = []
@@ -310,7 +312,9 @@ async def test_the_runs_threshold_is_the_one_its_summary_reports():
 
 
 async def test_a_run_tells_the_model_its_threshold_and_judges_against_it():
-    orders = _tbl(1, "orders", _col("id", pk=True), _col("customer_id"), _col("store_id"))
+    # orders' key is named apart from customers.id: a same-name pair is measured whatever the
+    # model answers (REQ-413, amended 2026-11-20), and the band is what is under test.
+    orders = _tbl(1, "orders", _col("order_id", pk=True), _col("customer_id"), _col("store_id"))
     customers = _tbl(2, "customers", _col("id", pk=True))
     planned = plan([orders], [customers], *DEFAULT_LIMITS)
     events: list[tuple[str, list]] = []

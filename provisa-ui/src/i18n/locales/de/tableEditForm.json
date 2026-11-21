@@ -287,6 +287,16 @@
     "holdOnFailingChecksCodeHelp": "Die Prüfung, die diese Option anwendet. Kopieren Sie sie in die obige Vorabprüfung, um sie zu ändern.",
     "discoverHint": "Beim Speichern werden die Spalten der Live-Quelle gelesen und die fehlenden zu dieser Tabelle hinzugefügt; ihre vorhandenen Spalten bleiben unverändert. Eine hinzugefügte Spalte ist für keine Rolle sichtbar, bis sie freigegeben wird.",
     "mvRebuildEveryLabel": "Vollständiger Neuaufbau alle (Sekunden)",
-    "mvRebuildEveryHelp": "Wie oft die gesamte Sicht neu berechnet wird. Erforderlich für eine Sicht, die von der @change-Funktion einer Codequelle gepflegt wird."
+    "mvRebuildEveryHelp": "Wie oft die gesamte Sicht neu berechnet wird. Erforderlich für eine Sicht, die von der @change-Funktion einer Codequelle gepflegt wird.",
+    "domainHelp": "Um die Tabelle in eine andere Domäne zu verschieben, ist das Recht nötig, Tabellen in beiden Domänen zu ändern.",
+    "domainPlaceholder": "Domäne wählen",
+    "sparqlQueryLabel": "SPARQL-Abfrage",
+    "sparqlQueryHelp": "Die Abfrage, deren Zeilen diese Tabelle enthält. Ihre Spalten sind ihre SELECT-Variablen: Eine Änderung fügt Spalten passend hinzu oder entfernt sie und behält die Einstellungen der Spalten, die bleiben. Das nächste Laden des Replikats liest mit der gespeicherten Abfrage.",
+    "sparqlQueryDrops": "Diese Abfrage entfernt Spalten, die verwendet werden: {{columns}}. Beim Speichern werden sie mit allem entfernt, was sie verwendet.",
+    "sparqlQueryDropUse": "{{column}} ({{uses}})",
+    "sparqlQueryUse_mask": "eine Maskierung",
+    "sparqlQueryUse_grant": "eine Schreibberechtigung",
+    "sparqlQueryUse_relationship": "eine Beziehung",
+    "sparqlQueryDropAgree": "Diese Spalten entfernen"
   }
 }

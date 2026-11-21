@@ -5729,8 +5729,10 @@ def create_app() -> FastAPI:
 
     app.include_router(sparql_router)
     from provisa.api.admin.wikidata_router import router as wikidata_router
+    from provisa.api.admin.wikidata_router import sparql_router
 
     app.include_router(wikidata_router)  # REQ-1923
+    app.include_router(sparql_router)  # REQ-1923: a SPARQL table's columns, from its query
     from provisa.api.admin.graphql_remote_router import router as graphql_remote_router
 
     app.include_router(graphql_remote_router)

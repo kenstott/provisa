@@ -141,6 +141,7 @@ function renderForm(table: RegisteredTable, sources: Source[]) {
       section="associations"
       onSectionChange={vi.fn()}
       savedProfilerId={null}
+      domainChoices={[]}
       editingTable={table}
       savedTable={table}
       setEditingTable={vi.fn()}

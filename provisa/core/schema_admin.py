@@ -49,6 +49,7 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     ForeignKeyConstraint,
+    Index,
     Integer,
     LargeBinary,
     MetaData,
@@ -167,6 +168,11 @@ orgs = Table(
     # install and across restarts; set by a platform administrator (Admin > Orgs). NULL: no tier
     # has been set, and no tier-gated feature is entitled.
     Column("tier", Text),
+    # REQ-1250: whether a signed-in person who is not invited may ask to join. False is
+    # invite_only, the default: a request to such an org is refused without saying so, so the
+    # answer reveals nothing about whether the org exists. True is open_to_requests: a request is
+    # logged in org_join_requests for an org admin to decide.
+    Column("open_to_requests", Boolean, nullable=False, server_default=false()),
     CheckConstraint(
         "tier IS NULL OR tier IN ('free', 'standard', 'premium')", name="orgs_tier_check"
     ),
@@ -266,6 +272,41 @@ simple_user_ids = Table(
 # super-admin slot. The first login INSERTs id=1 (first writer wins the race — see
 # AuthMiddleware bootstrap gate); every later, unrecorded user is denied. No multi-org, no
 # second admin. The row IS the claim; the CheckConstraint forbids a second slot.
+# REQ-1250: membership asked for, the inverse of org_invites. Every attempt writes one row, and only
+# an attempt an org admin is to decide is ``pending``: one to an invite_only org, to no org at all,
+# from a member, or repeating a live pending request is ``rejected``. Recording the refused ones is
+# what lets the per-requester rate limit count every attempt alike, so the limit cannot be used to
+# tell an open org from an invite_only or missing one. For the same reason ``org_id`` carries no
+# foreign key: a refused attempt may name an org that does not exist, and destroy_org deletes the
+# rows explicitly, as it does every registry row of the org.
+org_join_requests = Table(
+    "org_join_requests",
+    metadata,
+    Column("id", Text, primary_key=True),
+    Column("user_id", Text, nullable=False),
+    Column("org_id", Text, nullable=False),
+    Column("status", Text, nullable=False),
+    Column("requested_at", DateTime(timezone=True), nullable=False),
+    # The invite TTL at the time of asking, fixed on the row: a pending request past it is expired.
+    Column("expires_at", DateTime(timezone=True), nullable=False),
+    Column("decided_by", Text),
+    Column("decided_at", DateTime(timezone=True)),
+    CheckConstraint(
+        "status IN ('pending', 'rejected', 'expired', 'approved', 'denied')",
+        name="ck_org_join_requests_status",
+    ),
+    # At most one open request per (user, org). The control plane is PostgreSQL (REQ-2014).
+    Index(
+        "uq_org_join_requests_open",
+        "user_id",
+        "org_id",
+        unique=True,
+        postgresql_where=text("status = 'pending'"),
+    ),
+    # The rate limit counts one requester's attempts in a recent window.
+    Index("ix_org_join_requests_user_time", "user_id", "requested_at"),
+)
+
 superadmin_bootstrap = Table(
     "superadmin_bootstrap",
     metadata,
@@ -1042,6 +1083,7 @@ REGISTRY_TABLES = [
     local_users,
     simple_user_ids,
     org_invites,
+    org_join_requests,
     superadmin_bootstrap,
     environments,
     env_merge_requests,

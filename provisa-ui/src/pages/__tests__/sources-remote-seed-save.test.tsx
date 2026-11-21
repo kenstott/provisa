@@ -85,6 +85,7 @@ describe("an OpenAPI source's edit saves its stored spec", () => {
               base_url: "https://pets.test",
               cache_ttl: 300,
               auth_config: null,
+              setup: {},
             },
           ]),
         );

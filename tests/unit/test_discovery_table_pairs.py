@@ -33,7 +33,7 @@ from provisa.discovery.columns import UNKNOWN, ColumnFacts, TableFacts, type_gro
 from provisa.discovery.context import SAMPLE_VALUES
 from provisa.discovery.direction import Proposal
 from provisa.discovery.proposals import BELOW_THRESHOLD
-from provisa.discovery.runner import NOT_NAMED, Tally, execute
+from provisa.discovery.runner import SAME_NAME, Tally, execute
 from provisa.discovery.windows import bound, plan, table_pairs
 from provisa.llm.client import Completion
 from provisa.llm.limits import DEFAULT_LIMITS
@@ -171,7 +171,8 @@ async def test_answers_are_read_per_number_and_an_unnamed_column_pair_scores_zer
     rows = {r.proposal.edge: (r.left_out, r.proposal) for r in tally.left_out if r.proposal}
     left_out, zero = rows[(1, "id", 2, "id")]
     assert left_out == BELOW_THRESHOLD
-    assert (zero.confidence, zero.reasoning) == (0.0, NOT_NAMED)
+    # Its two columns share a name: it says so (REQ-413, amended 2026-11-20).
+    assert (zero.confidence, zero.reasoning) == (0.0, SAME_NAME)
     assert tally.zero_scored == 1 and tally.unanswered == [] and tally.asked_again == 0
 
 

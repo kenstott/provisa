@@ -402,8 +402,9 @@ async def store_lineage_edges(conn, rows: list[dict]) -> None:
 
     async with replacing_build_output(conn, lineage_edges):
         await conn.execute_core(delete(lineage_edges))
-        if rows:
-            await conn.execute_core(insert(lineage_edges).values(rows))
+        # executemany, not ``.values(rows)``: one multi-VALUES statement binds every cell and
+        # overflows Postgres's 65,535-parameter limit on a large model.
+        await conn.execute_core_many(insert(lineage_edges), rows)
 
 
 async def write_lineage_edges(conn, state) -> None:

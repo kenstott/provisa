@@ -58,6 +58,7 @@ function Panel({ saved }: { saved: boolean }) {
       section="load"
       onSectionChange={vi.fn()}
       savedProfilerId={null}
+      domainChoices={[]}
       editingTable={table}
       savedTable={saved ? table : null}
       setEditingTable={setTable}
