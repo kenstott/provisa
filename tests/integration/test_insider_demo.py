@@ -252,7 +252,10 @@ def test_a_first_level_reviewer_reads_no_row_of_the_watch_list(set_up, column):
     resp = _post(
         set_up, "/data/sql", {"sql": f'SELECT {column} FROM "bank"."deal"'}, "reviewer_ben"
     )
-    assert resp.status_code == 403 and "V003" in resp.text, resp.text
+    # no column of the deal sheet is visible to the reviewer, so the whole table is withheld
+    assert resp.status_code == 403 and "not accessible for role 'reviewer_ben'" in resp.text, (
+        resp.text
+    )
 
 
 def test_a_first_level_reviewer_reads_the_flagged_entity_of_their_cases(set_up):
