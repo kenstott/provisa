@@ -50,6 +50,8 @@ PURPOSES: dict[str, str] = {
     "data_products": "Manage data products: list, create, set members, publish, deprecate, "
     "retire and restore.",
     "metric_management": "Create, replace and delete governed metrics.",
+    "tags": "Propose tag edits for a person to confirm: assign and unassign a tag on an object, "
+    "and cite or uncite a place for an assignment or a tag's definition.",
     "proposals": "Propose a new source or table for a person to review and register.",
     "test_data": "Test data and environments: profiling and constraints, fake and synthetic "
     "data, environment data modes and bindings, and exporting the model's config.",
@@ -110,6 +112,13 @@ GROUP_OF: dict[str, str] = {
     "unground_glossary_term_from_table": "glossary",
     "tag_glossary_term": "glossary",
     "untag_glossary_term": "glossary",
+    # tags
+    "assign_tag": "tags",
+    "unassign_tag": "tags",
+    "cite_tag_assignment": "tags",
+    "uncite_tag_assignment": "tags",
+    "cite_tag_definition": "tags",
+    "uncite_tag_definition": "tags",
     # data_products
     "list_data_products": "data_products",
     "create_data_product": "data_products",
@@ -171,6 +180,18 @@ GROUP_OF: dict[str, str] = {
 _NONE: frozenset[str] = frozenset()
 _GLOSSARY_READ = frozenset({"glossary_read"})
 _GLOSSARY_RW = frozenset({"glossary_rw"})
+# schema_mutation._require_tag_editor: a table editor, a holder of sensitive_data, or the right
+# that curates the kind of object the tag lands on; the per-tag checks then narrow it.
+_TAG_EDITOR = frozenset(
+    {
+        "table_registration",
+        "sensitive_data",
+        "data_product_rw",
+        "glossary_rw",
+        "masking_config",
+        "user_management",
+    }
+)
 _PRODUCT_READ = frozenset({"data_product_read"})
 _PRODUCT_RW = frozenset({"data_product_rw"})
 _TABLE_EDITOR = frozenset({"table_registration"})
@@ -205,6 +226,13 @@ RIGHTS_OF: dict[str, frozenset[str]] = {
     "unground_glossary_term_from_table": _GLOSSARY_RW,
     "tag_glossary_term": _GLOSSARY_RW,
     "untag_glossary_term": _GLOSSARY_RW,
+    # tags
+    "assign_tag": _TAG_EDITOR,
+    "unassign_tag": _TAG_EDITOR,
+    "cite_tag_assignment": _TAG_EDITOR,
+    "uncite_tag_assignment": _TAG_EDITOR,
+    "cite_tag_definition": _TAG_EDITOR,
+    "uncite_tag_definition": _TAG_EDITOR,
     # data_products
     "list_data_products": _PRODUCT_READ,
     "create_data_product": _PRODUCT_RW,
