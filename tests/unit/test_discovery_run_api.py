@@ -2277,7 +2277,12 @@ class _Made:
                         target_table_id=ids[input.target_table_id],
                         target_column=input.target_column,
                         cardinality=input.cardinality,
+                        alias=input.alias,
                         graphql_alias=input.graphql_alias,
+                        via_table_id=ids[input.via_table] if input.via_table else None,
+                        via_source_column=input.via_source_column or None,
+                        via_target_column=input.via_target_column or None,
+                        via_label_source=input.via_label_source or None,
                     )
                 )
             return MutationResult(success=True, message="saved")
@@ -2314,10 +2319,14 @@ class _Made:
         return {r.table_name: r.view_sql for r in rows}
 
     async def relationships(self, db: Database) -> set[tuple]:
+        """Each relationship as (source, column, target, cardinality), with the table it is
+        joined through when it is junction-backed (REQ-1586)."""
         async with db.acquire() as conn:
             rows = (await conn.execute_core(select(so.relationships))).fetchall()
         return {
-            (r.source_table_id, r.source_column, r.target_table_id, r.cardinality) for r in rows
+            (r.source_table_id, r.source_column, r.target_table_id, r.cardinality)
+            + (() if r.via_table_id is None else (r.via_table_id,))
+            for r in rows
         }
 
 
@@ -2367,12 +2376,20 @@ async def test_a_many_to_many_pair_is_accepted_as_a_shared_dimension_both_sides_
     assert [(c.name, c.data_type, c.is_primary_key, c.visible_to) for c in view.columns] == [
         ("neighborhood", "text", True, ["steward"])
     ]
-    # A many-to-one relationship from each side to it, through the relationship's creation.
+    # A many-to-one relationship from each side to it, through the relationship's creation, and
+    # the two sides joined to each other through it, many-to-many (REQ-1586).
     assert await made.relationships(db) == {
         (1, "hood", 101, "many-to-one"),
         (4, "hood", 101, "many-to-one"),
+        (1, "hood", 4, "one-to-many", 101),
     }
-    assert {e.graphql_alias for e in made.edges} == {"neighborhood_dimension"}
+    assert {e.graphql_alias for e in made.edges if not e.via_table} == {"neighborhood_dimension"}
+    (joined,) = [e for e in made.edges if e.via_table]
+    assert (joined.via_table, joined.via_source_column, joined.via_target_column) == (
+        "neighborhood",
+        "neighborhood",
+        "neighborhood",
+    )
     # The pair is decided: accepted, so a later run never reopens it.
     assert _named((await discovery.list_proposals(_REQUEST, run["id"]))["proposals"]) == []
     # The city's other same-name pairs are measured as well (REQ-413, amended 2026-11-20).
@@ -2408,6 +2425,8 @@ async def test_a_second_pair_on_the_same_values_reuses_the_dimension(monkeypatch
         (1, "hood", 101, "many-to-one"),
         (4, "hood", 101, "many-to-one"),
         (3, "hood", 101, "many-to-one"),
+        (1, "hood", 4, "one-to-many", 101),
+        (3, "hood", 1, "one-to-many", 101),
     }
 
 
@@ -2445,6 +2464,117 @@ async def test_a_many_to_many_pair_can_be_marked_not_again(monkeypatch, tmp_path
     (hood,) = listed
     marked = await discovery.apply_decisions(_REQUEST, run["id"], _apply(not_again=[hood["id"]]))
     assert marked["results"] == [{"id": hood["id"], "action": "not_again", "ok": True}]
+
+
+# --- a junction found whole is proposed as one suggestion (REQ-1586) ------------------------------
+
+
+async def _orders_between(db: Database) -> None:
+    """orders refers to a customer and a store: a junction between the two."""
+    await _table(
+        db,
+        1,
+        "sales",
+        "orders",
+        [
+            ("id", "integer", True),
+            ("customer_id", "integer", False),
+            ("store_id", "integer", False),
+            ("total", "numeric", False),
+        ],
+    )
+    await _table(db, 2, "sales", "customers", [("id", "integer", True), ("name", "text", False)])
+    await _table(db, 3, "sales", "stores", [("id", "integer", True), ("city", "text", False)])
+
+
+_JUNCTION_LEGS = [
+    _suggestion((1, "customer_id"), (2, "id"), 0.95),
+    _suggestion((1, "store_id"), (3, "id"), 0.9),
+]
+
+
+async def test_a_run_finding_both_legs_of_a_junction_proposes_the_combined_relationship(
+    monkeypatch, tmp_path
+):
+    db = await _store(f"sqlite+pysqlite:///{tmp_path / 'store.db'}")
+    await _orders_between(db)
+    world = _World(monkeypatch, db, config=_ASSIGNED, api_keys={"openai": "k"})
+    _, listed = await _answered(world, _JUNCTION_LEGS)
+    # The two legs as suggestions, and the relationship they make through orders as one more.
+    assert sorted((r["source_table_id"], r["target_table_id"]) for r in listed) == [
+        (1, 2),
+        (1, 3),
+        (2, 3),
+    ]
+    (combined,) = [r for r in listed if r["via"] is not None]
+    assert (combined["source_column"], combined["target_column"]) == ("id", "id")
+    assert combined["via"] == {
+        "table_id": 1,
+        "source_column": "customer_id",
+        "target_column": "store_id",
+    }
+    assert combined["reason"] is None and combined["acceptable"] is True
+    # As confident as its less confident leg.
+    assert combined["confidence"] == 0.9
+    assert [r["via"] for r in listed if r is not combined] == [None, None]
+
+
+async def test_accepting_a_junction_suggestion_creates_one_relationship_through_it(
+    monkeypatch, tmp_path
+):
+    db = await _store(f"sqlite+pysqlite:///{tmp_path / 'store.db'}")
+    await _orders_between(db)
+    world = _World(monkeypatch, db, config=_ASSIGNED, api_keys={"openai": "k"})
+    made = _Made(monkeypatch, db)
+    run, listed = await _answered(world, _JUNCTION_LEGS)
+    (combined,) = [r for r in listed if r["via"] is not None]
+    applied = await discovery.apply_decisions(
+        _REQUEST, run["id"], _apply(accept=[(combined["id"], "customers-stores")])
+    )
+    assert applied["results"] == [
+        {
+            "id": combined["id"],
+            "action": "accept",
+            "ok": True,
+            "relationship_id": "customers-stores",
+        }
+    ]
+    # One junction-backed relationship; the legs, not accepted, are not made.
+    assert await made.relationships(db) == {(2, "id", 3, "one-to-many", 1)}
+    (edge,) = made.edges
+    assert (edge.via_table, edge.via_source_column, edge.via_target_column) == (
+        "orders",
+        "customer_id",
+        "store_id",
+    )
+    remaining = _named((await discovery.list_proposals(_REQUEST, run["id"]))["proposals"])
+    assert [r["via"] for r in remaining] == [None, None]
+    # A later run finding the legs again finds the relationship through orders already there:
+    # kept with why, and not listed (REQ-413, amended 2026-11-18: an existing pair is left out).
+    # Its legs are existing too, as a junction relationship's legs are (amended 2026-11-16).
+    later, again = await _answered(world, _JUNCTION_LEGS)
+    assert again == []
+    (joined,) = [r for r in await _proposals(db, later["id"]) if r["via_table_id"] is not None]
+    assert joined["left_out"] == "existing"
+
+
+async def test_a_junction_suggestion_marked_not_again_is_left_out_of_later_runs(
+    monkeypatch, tmp_path
+):
+    db = await _store(f"sqlite+pysqlite:///{tmp_path / 'store.db'}")
+    await _orders_between(db)
+    world = _World(monkeypatch, db, config=_ASSIGNED, api_keys={"openai": "k"})
+    run, listed = await _answered(world, _JUNCTION_LEGS)
+    (combined,) = [r for r in listed if r["via"] is not None]
+    marked = await discovery.apply_decisions(
+        _REQUEST, run["id"], _apply(not_again=[combined["id"]])
+    )
+    assert marked["results"] == [{"id": combined["id"], "action": "not_again", "ok": True}]
+    # Kept with why, and not listed (REQ-413, amended 2026-11-18: a not-again pair is left out).
+    later, again = await _answered(world, _JUNCTION_LEGS)
+    assert [r["via"] for r in again] == [None, None]
+    (joined,) = [r for r in await _proposals(db, later["id"]) if r["via_table_id"] is not None]
+    assert joined["left_out"] == "rejected"
 
 
 async def test_a_pair_with_a_table_that_requires_a_parameter_keeps_the_models_score_and_says_so(

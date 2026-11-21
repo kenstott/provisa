@@ -22,17 +22,17 @@
       "embedding_library_missing": "O modelo de embeddings {{model}} usa o provedor {{provider}}, que precisa do extra {{extra}} (o módulo {{module}} não está instalado): pip install 'provisa[{{extra}}]'."
     },
     "ai": {
-      "key_required": "{{vendor}} não tem chave. Defina uma em Administração, Modelos de IA.",
-      "vendor_uses_server_credentials": "{{vendor}} é acessado com as credenciais do próprio servidor, que uma organização neste servidor não usa. Escolha um fornecedor que aceite uma chave, ou um endpoint de IA, em Administração, Modelos de IA.",
+      "endpoint_address_from_server": "O endpoint de IA {{vendor}} obtém seu endereço do ambiente do servidor, que uma organização neste servidor não usa. Atribua a ele um endereço próprio em Administração, Modelos de IA.",
       "endpoint_key_from_server": "O endpoint de IA {{vendor}} obtém sua chave do ambiente do servidor, que uma organização neste servidor não usa. Atribua a ele uma chave própria em Administração, Modelos de IA.",
       "endpoint_key_unset": "O endpoint de IA {{vendor}} não tem chave: {{field}} não está definido.",
-      "endpoint_address_from_server": "O endpoint de IA {{vendor}} obtém seu endereço do ambiente do servidor, que uma organização neste servidor não usa. Atribua a ele um endereço próprio em Administração, Modelos de IA.",
+      "key_required": "{{vendor}} não tem chave. Defina uma em Administração, Modelos de IA.",
       "local_server_from_environment": "{{vendor}} é acessado no endereço do próprio servidor, que uma organização neste servidor não usa. Declare um endpoint de IA no seu próprio endereço em Administração, Modelos de IA.",
       "server_environment_sets": "{{vendor}} não pode ser chamado aqui: o ambiente do servidor define {{variable}}, que o cliente dele enviaria para todas as organizações.",
+      "vector_model_address_from_server": "O modelo de embedding {{vendor}} obtém seu endereço do ambiente do servidor, que uma organização neste servidor não usa. Atribua a ele um endereço próprio em Administração, Modelos de IA.",
       "vector_model_key_from_server": "O modelo de embedding {{vendor}} obtém sua chave do ambiente do servidor, que uma organização neste servidor não usa. Atribua a ele uma chave própria em Administração, Modelos de IA.",
       "vector_model_key_unset": "O modelo de embedding {{vendor}} não tem chave: {{field}} não está definido.",
-      "vector_model_address_from_server": "O modelo de embedding {{vendor}} obtém seu endereço do ambiente do servidor, que uma organização neste servidor não usa. Atribua a ele um endereço próprio em Administração, Modelos de IA.",
-      "vector_model_local_server": "O modelo de embedding {{vendor}} é acessado no endereço do próprio servidor, que uma organização neste servidor não usa. Atribua a ele um endereço próprio em Administração, Modelos de IA."
+      "vector_model_local_server": "O modelo de embedding {{vendor}} é acessado no endereço do próprio servidor, que uma organização neste servidor não usa. Atribua a ele um endereço próprio em Administração, Modelos de IA.",
+      "vendor_uses_server_credentials": "{{vendor}} é acessado com as credenciais do próprio servidor, que uma organização neste servidor não usa. Escolha um fornecedor que aceite uma chave, ou um endpoint de IA, em Administração, Modelos de IA."
     },
     "api": {
       "answer_cut": "A resposta para {{table}} foi cortada em max_pages={{max_pages}} ({{rows}} linhas): a API tem mais. Aumente max_pages ou o tamanho de página do endpoint para ler tudo.",
@@ -174,13 +174,14 @@
     },
     "discovery": {
       "adapter_missing_discover_schema": "O adaptador para '{{source_type}}' não implementa discover_schema",
+      "answer_unreadable": "A resposta do modelo não continha uma lista legível.",
       "cassandra_discovery_unsupported": "A descoberta de esquema do Cassandra requer uma sessão CQL ativa, que não está disponível. Defina as colunas manualmente para esta fonte.",
       "database_not_connected": "Banco de dados não conectado",
+      "decided_both_ways": "Uma proposta é aceita ou não é recomendada de novo, não as duas coisas.",
       "domain_id_required": "domain_id obrigatório para escopo de domínio",
       "elasticsearch_index_hint_required": "A descoberta do Elasticsearch requer uma dica de 'index'.",
       "elasticsearch_mapping_failed": "Falha ao ler o mapeamento do Elasticsearch para o índice '{{index}}': {{error}}",
       "endpoint_already_registered": "Endpoint já registrado: {{error}}",
-      "decided_both_ways": "Uma proposta é aceita ou não é recomendada de novo, não as duas coisas.",
       "model_has_no_room": "O modelo {{model}} não comporta uma solicitação: {{reason}}",
       "model_incomplete": "Um modelo escolhido indica tanto o fornecedor quanto o modelo.",
       "no_adapter_for_source_type": "Nenhum adaptador registrado para o tipo de fonte '{{source_type}}'",
@@ -194,15 +195,14 @@
       "source_domains_empty": "Os domínios de origem escolhidos não contêm nenhuma tabela que a descoberta lê.",
       "source_not_found": "Fonte '{{source_id}}' não encontrada",
       "source_tables_not_read": "Nenhuma das tabelas de origem escolhidas ({{count}}) é lida: a descoberta deixa de fora as tabelas de um domínio do sistema e as fora de serviço.",
-      "source_tables_outside_domains": "As tabelas de origem escolhidas estão fora dos domínios selecionados no filtro de domínios: {{names}}.",
       "table_id_required": "table_id obrigatório para escopo de tabela",
       "table_not_found": "A tabela {{table_id}} não está registrada.",
       "target_domains_empty": "Os domínios de destino escolhidos não contêm nenhuma tabela que a descoberta lê.",
       "target_tables_not_read": "Nenhuma das tabelas de destino escolhidas ({{count}}) é lida: a descoberta deixa de fora as tabelas de um domínio do sistema e as fora de serviço.",
-      "target_tables_outside_domains": "As tabelas de destino escolhidas estão fora dos domínios selecionados no filtro de domínios: {{names}}.",
       "unknown_source_type": "Tipo de fonte desconhecido: {{type}}",
       "vendor_unknown": "{{vendor}} não lista modelos aqui; digite o nome do modelo.",
-      "answer_unreadable": "A resposta do modelo não continha uma lista legível."
+      "source_tables_outside_domains": "As tabelas de origem escolhidas estão fora dos domínios selecionados no filtro de domínios: {{names}}.",
+      "target_tables_outside_domains": "As tabelas de destino escolhidas estão fora dos domínios selecionados no filtro de domínios: {{names}}."
     },
     "llm": {
       "request_failed": "A solicitação ao modelo falhou: {{reason}}",
@@ -568,8 +568,9 @@
       "table_not_withdrawn": "A tabela {{table}} não está retirada: só se repõe uma tabela retirada. Para mover para outra região uma tabela em produção, defina a sua região.",
       "source_not_withdrawn": "A fonte {{source}} não está retirada: só se repõe uma fonte retirada. Para mudar a sua região, defina a sua região.",
       "put_back_needs_region": "Repor {{object}} indica uma região: indique uma, ou nenhuma para nenhuma região.",
+      "mask_constant_not_text": "Uma máscara constante em uma coluna que não é de texto é lida como NULL; só é possível salvar NULL: {{column}} ({{type}})",
       "table_domain_required": "A tabela '{{table}}' não indica nenhum domínio: toda tabela é registrada em um domínio",
-      "mask_constant_not_text": "Uma máscara constante em uma coluna que não é de texto é lida como NULL; só é possível salvar NULL: {{column}} ({{type}})"
+      "table_name_reserved": "O nome de tabela '{{table}}' é reservado: os comandos de um domínio são servidos sob 'commands'. Registre a tabela com outro nome ou alias."
     },
     "secrets": {
       "env_reference_object_locked": "Este objeto é do operador: ele lê o ambiente próprio do servidor e não pode ser alterado aqui. Adicione um seu em vez disso.",
@@ -900,10 +901,10 @@
       "unknown_kind": "{{kind}} não é um tipo de lista de direitos de acesso.",
       "idp_supersedes": "O provedor de identidade envia a lista de {{kind}} desta pessoa para a função {{role_id}}. Essa lista prevalece: é alterada lá, não aqui.",
       "blank_identifier": "Uma entrada não pode ficar em branco.",
-      "invalid_identifier": "{{identifier}} não é uma entrada {{kind}} válida.",
       "expiry_in_past": "A data de término deve ser futura.",
       "expiry_removes_nothing": "Uma data de término nesta lista de {{kind}} não removeria nada.",
-      "pending_not_found": "Nenhuma concessão aguarda {{email}} para a função {{role_id}} e {{kind}}."
+      "pending_not_found": "Nenhuma concessão aguarda {{email}} para a função {{role_id}} e {{kind}}.",
+      "invalid_identifier": "{{identifier}} não é uma entrada {{kind}} válida."
     },
     "mv": {
       "change_key_missing": "{{function}} devolveu uma linha sem a sua coluna de chave {{column}}",
@@ -931,7 +932,8 @@
       "filter_operator_refused": "{{operator}} não é um operador com o qual um filtro de permissão possa ser convertido."
     },
     "relationship": {
-      "name_taken": "O nome '{{name}}' já é usado pelo relacionamento '{{held_by}}'. Dê outro nome a este."
+      "name_taken": "O nome '{{name}}' já é usado pelo relacionamento '{{held_by}}'. Dê outro nome a este.",
+      "join_through_none": "Os relacionamentos '{{first}}' e '{{second}}' não compartilham uma tabela intermediária, ou suas outras extremidades já estão unidas através dela."
     },
     "wikidata": {
       "no_credential": "O serviço de consultas do Wikidata não exige credencial",

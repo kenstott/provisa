@@ -144,12 +144,7 @@ export const NAV_GROUPS: NavGroup[] = [
         capability: "glossary_read",
         comingSoon: true,
       },
-      {
-        to: "/context/glossary",
-        labelKey: "navBar.itemGlossary",
-        capability: "glossary_read",
-        comingSoon: true,
-      },
+      { to: "/context/glossary", labelKey: "navBar.itemGlossary", capability: "glossary_read" },
       // REQ-1590: gated on the glossary's own read right, not org_settings -- every seeded role
       // reads the vocabulary the model is described in.
       { to: "/context/ontology", labelKey: "navBar.itemOntology", capability: "glossary_read" },

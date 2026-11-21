@@ -9,7 +9,7 @@
 # permission from the copyright holder.
 
 """How each engine is told a statement's zone, and that nothing it shares keeps it (REQ-2171): Trino
-on a connection of the statement's own, ClickHouse in the request's settings, PostgreSQL in a SET
+in the statement's own session through the proxy (its call header), ClickHouse in the request's settings, PostgreSQL in a SET
 LOCAL that ends with the transaction. chdb is ClickHouse, so its answers here are ClickHouse's. What
 these engines then answer of a stored instant is tests/integration/test_engine_session_zone.py's."""
 
@@ -18,17 +18,23 @@ these engines then answer of a stored instant is tests/integration/test_engine_s
 from __future__ import annotations
 
 from collections.abc import Iterator
-from types import SimpleNamespace
 from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
 from provisa.core.pg_error import PostgresError
 from provisa.core.session_time_zone import StatementZone, bind_zone, reset_zone
 from provisa.executor import trino as trino_exec
+from provisa.executor.trino_flight import (
+    EngineUnreachable,
+    TrinoContext,
+    execute_trino_flight,
+    execute_trino_flight_sync,
+)
 from provisa.executor.drivers import postgresql
 from provisa.federation import clickhouse_runtime, pg_runtime
+from tests.zaychik_double import ProxyConnection, backend_state, trino_backend
 
 _TOKYO = StatementZone("Asia/Tokyo", name="Asia/Tokyo", posix="Asia/Tokyo")
 _HALF = StatementZone("<+05:30>-05:30", offset="+05:30", posix="<+05:30>-05:30")
@@ -42,82 +48,82 @@ def on_zone(request: pytest.FixtureRequest) -> Iterator[None]:
     reset_zone(token)
 
 
-def _fake_trino() -> MagicMock:
-    connection = MagicMock()
-    cursor = connection.cursor.return_value
-    cursor.fetchall.return_value = []
-    cursor.description = []
-    return connection
+def _no_wait(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(trino_exec, "_retry_budget", lambda: 30.0)
+    monkeypatch.setattr(trino_exec, "_backoff_secs", lambda attempt, cap=30.0: 0.0)
 
 
-def _trino(state: Any, shared: MagicMock, sql: str = "SELECT 1") -> tuple[MagicMock, Any]:
-    with (
-        patch("provisa.api.app.state", state),
-        patch.object(trino_exec, "_alive", return_value=True),
-        patch.object(trino_exec.trino.dbapi, "connect") as connect,
-    ):
-        connect.return_value = _fake_trino()
-        return connect, trino_exec.execute_trino(shared, sql)
-
-
-def _trino_state(shared: MagicMock) -> SimpleNamespace:
-    return SimpleNamespace(
-        engine_conn=shared,
-        engine_conn_kwargs={"host": "trino", "port": 8080},
-        engine_session_hints={},
-    )
+_ORG = TrinoContext(source="provisa/org-1", catalog="system", schema="org_1")
 
 
 @pytest.mark.parametrize("on_zone", [_TOKYO], indirect=True)
-def test_trino_gets_the_zone_on_a_connection_of_the_statements_own(on_zone):
-    shared = _fake_trino()
-    state = _trino_state(shared)
-    connect, _ = _trino(state, shared)
-    assert connect.call_args.kwargs == {"host": "trino", "port": 8080, "timezone": "Asia/Tokyo"}
-    shared.cursor.assert_not_called()
-    assert state.engine_conn is shared
-    assert "timezone" not in state.engine_conn_kwargs
-    connect.return_value.close.assert_called_once()
+def test_trino_gets_the_zone_in_the_statements_own_session(on_zone):
+    proxy = ProxyConnection()
+    execute_trino_flight(proxy, "SELECT 1", context=_ORG)
+    (session,) = proxy.sessions
+    assert session["timeZone"] == "Asia/Tokyo"
+    assert session["source"] == "provisa/org-1"
+    assert "timeZone" not in _ORG.body()  # the context another statement is given is unchanged
 
 
 @pytest.mark.parametrize("on_zone", [_HALF], indirect=True)
 def test_trino_reads_an_offset_where_the_tz_database_names_none(on_zone):
-    shared = _fake_trino()
-    connect, _ = _trino(_trino_state(shared), shared)
-    assert connect.call_args.kwargs["timezone"] == "+05:30"
-
-
-def test_trino_on_utc_keeps_the_shared_connection():
-    shared = _fake_trino()
-    connect, _ = _trino(_trino_state(shared), shared)
-    connect.assert_not_called()
-    shared.cursor.assert_called()
+    proxy = ProxyConnection()
+    execute_trino_flight(proxy, "SELECT 1", context=_ORG)
+    assert proxy.sessions[0]["timeZone"] == "+05:30"
 
 
 @pytest.mark.parametrize("on_zone", [_TOKYO], indirect=True)
-def test_a_trino_retry_keeps_the_zone_and_leaves_the_shared_connection(on_zone):
-    shared = _fake_trino()
-    state = _trino_state(shared)
-    failing, healed = _fake_trino(), _fake_trino()
-    failing.cursor.return_value.execute.side_effect = ConnectionError("gone")
-    with (
-        patch("provisa.api.app.state", state),
-        patch.object(trino_exec, "_alive", return_value=True),
-        patch.object(trino_exec, "_is_retryable", return_value=True),
-        patch.object(trino_exec, "_backoff_secs", return_value=0),
-        patch.object(trino_exec.trino.dbapi, "connect", side_effect=[failing, healed]) as connect,
-    ):
-        trino_exec.execute_trino(shared, "SELECT 1")
-    assert [call.kwargs["timezone"] for call in connect.call_args_list] == ["Asia/Tokyo"] * 2
-    assert state.engine_conn is shared
-    healed.close.assert_called_once()
+def test_trino_gets_the_zone_on_a_statement_sent_with_no_context(on_zone):
+    proxy = ProxyConnection()
+    execute_trino_flight(proxy, "SELECT 1")
+    assert proxy.sessions == [{"timeZone": "Asia/Tokyo"}]
+
+
+def test_trino_on_utc_names_no_zone():
+    proxy = ProxyConnection()
+    execute_trino_flight(proxy, "SELECT 1", context=_ORG)
+    assert "timeZone" not in proxy.sessions[0]
+    bare = ProxyConnection()
+    execute_trino_flight(bare, "SELECT 1")
+    assert bare.sessions == []  # nothing to send: the proxy's own session
+
+
+@pytest.mark.parametrize("on_zone", [_TOKYO], indirect=True)
+def test_a_trino_retry_keeps_the_zone(on_zone, monkeypatch):
+    _no_wait(monkeypatch)
+    failures = [EngineUnreachable("gone")]
+
+    def fail_once(sql: str, session: dict | None) -> None:
+        if failures:
+            raise failures.pop()
+
+    proxy = ProxyConnection(on_execute=fail_once)
+    execute_trino_flight(proxy, "SELECT 1", context=_ORG)
+    assert [session["timeZone"] for session in proxy.sessions] == ["Asia/Tokyo"] * 2
+
+
+@pytest.mark.parametrize("on_zone", [_TOKYO], indirect=True)
+def test_the_streamed_read_gets_the_zone(on_zone):
+    proxy = ProxyConnection()
+    execute_trino_flight_sync(proxy, "SELECT 1", context=_ORG)
+    assert proxy.sessions[0]["timeZone"] == "Asia/Tokyo"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("on_zone", [_TOKYO], indirect=True)
+async def test_the_backend_carries_the_zone_to_the_executor_thread(on_zone):
+    proxy = ProxyConnection()
+    await trino_backend().execute(backend_state(proxy), "SELECT 1")
+    assert proxy.sessions[0]["timeZone"] == "Asia/Tokyo"
 
 
 @pytest.mark.parametrize("on_zone", [_RULED], indirect=True)
 def test_trino_refuses_what_could_depend_on_a_zone_it_cannot_read(on_zone):
-    shared = _fake_trino()
+    proxy = ProxyConnection()
     with pytest.raises(PostgresError, match="Trino cannot run this statement"):
-        _trino(_trino_state(shared), shared, "SELECT CAST(c AS VARCHAR) FROM t")
+        execute_trino_flight(proxy, "SELECT CAST(c AS VARCHAR) FROM t", context=_ORG)
+    assert proxy.statements == []
 
 
 # -- ClickHouse ------------------------------------------------------------------------------------

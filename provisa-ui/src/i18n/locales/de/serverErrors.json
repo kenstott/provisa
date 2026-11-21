@@ -195,14 +195,14 @@
       "source_domains_empty": "Die gewählten Quelldomänen enthalten keine Tabelle, die die Erkennung liest.",
       "source_not_found": "Quelle '{{source_id}}' nicht gefunden",
       "source_tables_not_read": "Keine der gewählten Quelltabellen ({{count}}) wird gelesen: Die Erkennung lässt Tabellen einer Systemdomäne und Tabellen außer Betrieb aus.",
-      "source_tables_outside_domains": "Die gewählten Quelltabellen liegen außerhalb der im Domänenfilter ausgewählten Domänen: {{names}}.",
       "table_id_required": "table_id für den Tabellen-Geltungsbereich erforderlich",
       "table_not_found": "Die Tabelle {{table_id}} ist nicht registriert.",
       "target_domains_empty": "Die gewählten Zieldomänen enthalten keine Tabelle, die die Erkennung liest.",
       "target_tables_not_read": "Keine der gewählten Zieltabellen ({{count}}) wird gelesen: Die Erkennung lässt Tabellen einer Systemdomäne und Tabellen außer Betrieb aus.",
-      "target_tables_outside_domains": "Die gewählten Zieltabellen liegen außerhalb der im Domänenfilter ausgewählten Domänen: {{names}}.",
       "unknown_source_type": "Unbekannter Quellentyp: {{type}}",
-      "vendor_unknown": "{{vendor}} listet hier keine Modelle auf; geben Sie den Modellnamen ein."
+      "vendor_unknown": "{{vendor}} listet hier keine Modelle auf; geben Sie den Modellnamen ein.",
+      "source_tables_outside_domains": "Die gewählten Quelltabellen liegen außerhalb der im Domänenfilter ausgewählten Domänen: {{names}}.",
+      "target_tables_outside_domains": "Die gewählten Zieltabellen liegen außerhalb der im Domänenfilter ausgewählten Domänen: {{names}}."
     },
     "llm": {
       "request_failed": "Die Anfrage an das Modell ist fehlgeschlagen: {{reason}}",
@@ -568,8 +568,9 @@
       "table_not_withdrawn": "Tabelle {{table}} ist nicht zurückgezogen: nur eine zurückgezogene Tabelle wird wieder in Betrieb genommen. Um eine Tabelle in Produktion in eine andere Region zu verschieben, setzen Sie ihre Region.",
       "source_not_withdrawn": "Quelle {{source}} ist nicht zurückgezogen: nur eine zurückgezogene Quelle wird wieder in Betrieb genommen. Um ihre Region zu ändern, setzen Sie ihre Region.",
       "put_back_needs_region": "Wer {{object}} wieder in Betrieb nimmt, nennt eine Region: geben Sie eine an, oder keine für keine Region.",
+      "mask_constant_not_text": "Eine konstante Maske auf einer Nicht-Text-Spalte wird als NULL gelesen; nur NULL kann gespeichert werden: {{column}} ({{type}})",
       "table_domain_required": "Tabelle '{{table}}' nennt keine Domäne: Jede Tabelle wird in einer Domäne registriert",
-      "mask_constant_not_text": "Eine konstante Maske auf einer Nicht-Text-Spalte wird als NULL gelesen; nur NULL kann gespeichert werden: {{column}} ({{type}})"
+      "table_name_reserved": "Der Tabellenname '{{table}}' ist reserviert: Die Commands einer Domäne werden unter 'commands' bereitgestellt. Registrieren Sie die Tabelle unter einem anderen Namen oder Alias."
     },
     "secrets": {
       "env_reference_object_locked": "Dieses Objekt gehört dem Betreiber: Es liest die eigene Umgebung des Servers und kann hier nicht geändert werden. Legen Sie stattdessen ein eigenes an.",
@@ -900,10 +901,10 @@
       "unknown_kind": "{{kind}} ist keine Art von Berechtigungsliste.",
       "idp_supersedes": "Der Identitätsanbieter sendet die Liste {{kind}} dieser Person für Rolle {{role_id}}. Diese Liste hat Vorrang und wird dort geändert, nicht hier.",
       "blank_identifier": "Ein Eintrag darf nicht leer sein.",
-      "invalid_identifier": "{{identifier}} ist kein gültiger Eintrag vom Typ {{kind}}.",
       "expiry_in_past": "Ein Enddatum muss in der Zukunft liegen.",
       "expiry_removes_nothing": "Ein Enddatum für diese Liste {{kind}} würde nichts entfernen.",
-      "pending_not_found": "Keine Gewährung wartet auf {{email}} für Rolle {{role_id}} und {{kind}}."
+      "pending_not_found": "Keine Gewährung wartet auf {{email}} für Rolle {{role_id}} und {{kind}}.",
+      "invalid_identifier": "{{identifier}} ist kein gültiger Eintrag vom Typ {{kind}}."
     },
     "mv": {
       "change_key_missing": "{{function}} hat eine Zeile ohne ihre Schlüsselspalte {{column}} zurückgegeben",
@@ -931,7 +932,8 @@
       "filter_operator_refused": "{{operator}} ist kein Operator, mit dem ein Berechtigungsfilter umgewandelt werden kann."
     },
     "relationship": {
-      "name_taken": "Der Name „{{name}}“ ist bereits von der Beziehung „{{held_by}}“ belegt. Benennen Sie diese anders."
+      "name_taken": "Der Name „{{name}}“ ist bereits von der Beziehung „{{held_by}}“ belegt. Benennen Sie diese anders.",
+      "join_through_none": "Die Beziehungen '{{first}}' und '{{second}}' haben keine gemeinsame Zwischentabelle, oder ihre anderen Enden sind bereits darüber verknüpft."
     },
     "wikidata": {
       "no_credential": "Der Wikidata-Abfragedienst benötigt keine Anmeldedaten",

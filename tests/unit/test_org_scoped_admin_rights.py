@@ -164,6 +164,8 @@ def test_overridable_keys_exclude_every_deployment_wide_concern():
         "requests",
         # REQ-2180: where the org's access requests go, and the secret reference they are signed with.
         "offer_hook",
+        # REQ-2266: when the org's scheduled access review is taken.
+        "access_review",
     }
     for deployment_wide in (
         "federation_engine",

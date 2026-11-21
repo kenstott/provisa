@@ -31,10 +31,11 @@ from __future__ import annotations
 import sqlglot.expressions as exp
 
 from provisa.transpiler.polyfill import trino
-from provisa.transpiler.polyfill.grid import Feature, Rule, Side
+from provisa.transpiler.polyfill.grid import Feature, Rule, Side, written_in
 from provisa.transpiler.polyfill.matching import graft
 from provisa.transpiler.polyfill.notation import Rewrite, replacement
 from provisa.transpiler.polyfill.numbers import FAMILY, ch_checked, ch_fail, ch_only
+from provisa.transpiler.polyfill.numbers import fail as numbers_fail
 
 _NAN = "toFloat64('nan')"
 _OVERFLOW = ch_fail("22003", "value out of range: overflow")
@@ -83,6 +84,23 @@ AVG_OF_DOUBLES = ch_checked(
     [_OVERFLOW.format(condition=f"NOT {_V_NOT_FINITE} AND isInfinite({_SUM})")],
     f"if({_N} < 1, NULL, {_SUM} / {_N})",
 )
+
+
+#: On Trino: whether a group's real or double values are each finite (Trino's own sums and
+#: variances read them), and PostgreSQL's 22003 where they are and a sum, or the sum of squares,
+#: overflows (float8_accum).
+_T_FINITE = "count_if(NOT is_finite($v)) = 0"
+_T_OVERFLOW = numbers_fail("22003", "value out of range: overflow")
+
+
+def trino_of_doubles(function: str) -> str:
+    """``function`` (sum, avg, a variance or a standard deviation) of a real or a double on Trino,
+    of ``$v``: Trino's own, the overflow of its sums from finite values raised."""
+    squares = "" if function == "sum" else " OR is_infinite(var_pop($v) * count($v))"
+    return (
+        f"CASE WHEN {_T_FINITE} AND (is_infinite(sum($v)){squares}) THEN {_T_OVERFLOW} "
+        f"ELSE {function}($v) END"
+    )
 
 
 def is_spread(function: str) -> bool:
@@ -135,6 +153,23 @@ _REGRESSIONS = {
     ),
 }
 
+
+def _trino_line(name: str) -> str:
+    """regr_slope or regr_intercept on Trino, whose own answers NULL where a variable holds NaN or
+    an infinity: a non-finite x makes Sxx NaN, and the answer NaN; a non-finite y makes Sxy NaN,
+    and the answer NaN unless Sxx is 0 (a vertical line, NULL). Else Trino's own."""
+    pair = "$y IS NOT NULL AND $x IS NOT NULL"
+    return (
+        f"CASE WHEN count_if({pair} AND NOT is_finite($x)) > 0 THEN nan() "
+        f"WHEN count_if({pair} AND NOT is_finite($y)) > 0 "
+        "THEN IF(var_pop(IF($y IS NULL, NULL, $x)) = 0, NULL, nan()) "
+        f"ELSE {name}($y, $x) END"
+    )
+
+
+#: The regressions whose Trino answer differs from PostgreSQL's at NaN.
+_TRINO_LINES = ("regr_slope", "regr_intercept")
+
 REGRESSIONS: tuple[Feature, ...] = tuple(
     Feature(
         name,
@@ -144,7 +179,12 @@ REGRESSIONS: tuple[Feature, ...] = tuple(
             rules=(
                 Rule(
                     f"{name}($y, $x)",
-                    ch_only(ch_checked([_PAIR_OVERFLOWS], f"if({_PAIRS} < 1, NULL, {answer})")),
+                    {
+                        **ch_only(
+                            ch_checked([_PAIR_OVERFLOWS], f"if({_PAIRS} < 1, NULL, {answer})")
+                        ),
+                        **(trino.on_trino(_trino_line(name)) if name in _TRINO_LINES else {}),
+                    },
                 ),
             )
         ),
@@ -188,6 +228,25 @@ def _sum(node: exp.Expr, dialect: str) -> exp.Expr | None:
     return graft(replacement(form, dialect, "sum($v)"), {"v": argument})
 
 
+def _trino_sum(node: exp.Expr, dialect: str) -> exp.Expr | None:
+    """sum of a real or a double on Trino, as the statement says its argument's type: the overflow
+    of the sum from finite values raised (float4pl, float8pl). Any other keeps what it had, as
+    does one over a window or under a FILTER."""
+    from provisa.transpiler.function_macros import said_type
+
+    call = trino.called(node)
+    if call is None or "sum" not in call[0] or len(call[1]) != 1:
+        return None
+    argument = call[1][0]
+    if isinstance(argument, exp.Distinct) or _over_or_filtered(node):
+        return None
+    if (said_type(argument) or trino.said(argument)) not in ("real", "double precision"):
+        return None
+    return graft(
+        replacement(trino_of_doubles("sum"), written_in(dialect), "sum($v)"), {"v": argument}
+    )
+
+
 def _over_or_filtered(node: exp.Expr) -> bool:
     outer = node.parent.parent if isinstance(node.parent, exp.Dot) else node.parent
     return isinstance(outer, (exp.Filter, exp.Window))
@@ -197,7 +256,20 @@ SUM = Feature(
     "sum",
     FAMILY,
     "The sum of a group's bigints, exact; of its reals or doubles, the overflow raised.",
-    read=Side(rules=(Rule(None, {"clickhouse": Rewrite(_sum, mentions=r"\bsum\s*\(")}),)),
+    read=Side(
+        rules=(
+            Rule(
+                None,
+                {
+                    "clickhouse": Rewrite(_sum, mentions=r"\bsum\s*\("),
+                    **trino.on_trino(Rewrite(_trino_sum, mentions=r"\bsum\s*\(")),
+                },
+            ),
+        )
+    ),
 )
 
+#: The family's place in the grid (polyfill.GRID), which tries the rules of one function in
+#: the order of their families.
+ORDER = 150
 FEATURES: tuple[Feature, ...] = (*REGRESSIONS, SUM)

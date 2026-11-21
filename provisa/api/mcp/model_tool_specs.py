@@ -571,3 +571,123 @@ SYSTEM_SECTION = (
     "Tables are named by numeric id: get it from find_table_id, never guess one. Per the page-first rule, navigate to /tables before a profiler, constraint, check or fake "
     "change, and to /admin/environments before a synthetic dataset change."
 )
+
+
+# -- tags: the tag assignment form's and the tag editor's edits ----------------------------------
+
+_OBJECT = {
+    "object_kind": {
+        "type": "string",
+        "enum": [
+            "source",
+            "table",
+            "column",
+            "relationship",
+            "command",
+            "product",
+            "term",
+            "rls_rule",
+            "role",
+            "metric",
+            "document",
+            "section",
+        ],
+    },
+    "object_key": {
+        "type": "string",
+        "description": "As read_screen's tags give it: <kind>:<id>, column:<table id>:<column>.",
+    },
+    "tag_id": {
+        "type": "string",
+        "description": "Tag id with its parameter if any (entity:customer).",
+    },
+}
+_CITATION = {
+    "type": "object",
+    "description": "A library document or one of its sections, by heading or by page.",
+    "properties": {
+        "document_id": {"type": "integer"},
+        "section_heading": {"type": "string"},
+        "section_page": {"type": "integer"},
+    },
+    "required": ["document_id"],
+}
+_CONFIRMED = " Shown to the user to confirm in the chat; written at once over MCP."
+
+TAG_SPECS: list[dict] = [
+    {
+        "name": "assign_tag",
+        "description": (
+            "Put a tag on an object or change that assignment (assignTag): reason, expiry (ISO "
+            "date) and citations, the whole set, where the tag asks for them." + _CONFIRMED
+        ),
+        "input_schema": _obj(
+            {
+                **_OBJECT,
+                "reason": {"type": "string"},
+                "expires_on": {"type": "string"},
+                "citations": {"type": "array", "items": _CITATION},
+            },
+            ["object_kind", "object_key", "tag_id"],
+        ),
+    },
+    {
+        "name": "unassign_tag",
+        "description": (
+            "Take a tag off an object (unassignTag); an inherited or derived tag is refused."
+            + _CONFIRMED
+        ),
+        "input_schema": _obj(_OBJECT, ["object_kind", "object_key", "tag_id"]),
+    },
+    {
+        "name": "cite_tag_assignment",
+        "description": (
+            "An assignment of a tag cites a document or section (citeTagAssignment); citing again "
+            "re-records it, confirming one that needs review." + _CONFIRMED
+        ),
+        "input_schema": _obj(
+            {**_OBJECT, "citation": _CITATION},
+            ["object_kind", "object_key", "tag_id", "citation"],
+        ),
+    },
+    {
+        "name": "uncite_tag_assignment",
+        "description": (
+            "Take a citation off one assignment of a tag (unciteTagAssignment)." + _CONFIRMED
+        ),
+        "input_schema": _obj(
+            {**_OBJECT, "citation": _CITATION},
+            ["object_kind", "object_key", "tag_id", "citation"],
+        ),
+    },
+    {
+        "name": "cite_tag_definition",
+        "description": (
+            "A tag's definition cites the document or section saying why it exists "
+            "(citeTagDefinition); citing again re-records it." + _CONFIRMED
+        ),
+        "input_schema": _obj(
+            {"tag_id": _OBJECT["tag_id"], "citation": _CITATION}, ["tag_id", "citation"]
+        ),
+    },
+    {
+        "name": "uncite_tag_definition",
+        "description": (
+            "Take a citation off a tag's definition (unciteTagDefinition)." + _CONFIRMED
+        ),
+        "input_schema": _obj(
+            {"tag_id": _OBJECT["tag_id"], "citation": _CITATION}, ["tag_id", "citation"]
+        ),
+    },
+]
+
+TAG_NAMES: frozenset[str] = frozenset(s["name"] for s in TAG_SPECS)
+
+TAG_SYSTEM_SECTION = (
+    "Tag edits: assign_tag, unassign_tag, cite_tag_assignment, uncite_tag_assignment, "
+    "cite_tag_definition, uncite_tag_definition are the tag assignment form's and the tag "
+    "editor's own changes. Name the object by object_kind and object_key exactly as read_screen's "
+    "tags report it. Each is a proposal: the user sees the change and confirms it before it is "
+    "written, so never ask a separate yes/no first; a refusal is the form's own message, report "
+    "it as it is."
+)

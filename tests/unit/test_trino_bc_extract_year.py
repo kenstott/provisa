@@ -38,3 +38,16 @@ def test_other_parts_unchanged() -> None:
 
 def test_other_engines_unchanged() -> None:
     assert "CASE" not in transpile("SELECT EXTRACT(YEAR FROM d) AS v FROM t", "duckdb")
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "SELECT EXTRACT(YEAR FROM DATE '4713-01-01') AS v",
+        "SELECT date_part('year', DATE '4713-01-01') AS v",
+        "SELECT EXTRACT(YEAR FROM d) AS v FROM t",
+        "SELECT date_part('year', d) AS v FROM t",
+    ],
+)
+def test_year_is_corrected_exactly_once(sql: str) -> None:
+    assert transpile(sql, "trino").count("<= 0") == 1

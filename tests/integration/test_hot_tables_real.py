@@ -85,7 +85,7 @@ class TestHotTableRedisRoundTrip:
         rows = [{"id": 1, "name": "alpha"}, {"id": 2, "name": "beta"}]
 
         # REQ-688: store via the manager (encrypts at rest), then read back decrypted.
-        await hot_mgr._store_rows(table_id, "ht_test_t", rows, "id", "cat", "sch")
+        await hot_mgr._store_rows(table_id, "ht_test_t", rows, "id", "cat", "sch", {})
         # The rows this process holds are not what is read: the blob is read first.
         hot_mgr._hot_tables[table_id].rows = []
 

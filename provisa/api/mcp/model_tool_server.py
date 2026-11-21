@@ -25,9 +25,9 @@ from collections.abc import Callable
 from typing import Any
 
 from provisa.api.mcp import model_tools as mt
-from provisa.api.mcp.model_tool_specs import SPECS
+from provisa.api.mcp.model_tool_specs import SPECS, TAG_SPECS
 
-_DESCRIPTIONS = {s["name"]: s["description"] for s in SPECS}
+_DESCRIPTIONS = {s["name"]: s["description"] for s in [*SPECS, *TAG_SPECS]}
 
 
 def register(
@@ -274,3 +274,44 @@ def register(
     @described
     async def export_model_config(role: str | None = None) -> dict:
         return await mt.export_model_config(*ctx(role))
+
+    # The tag edits act at once over MCP, as the caller, as set_table_profiler does.
+    @described
+    async def assign_tag(
+        object_kind: str,
+        object_key: str,
+        tag_id: str,
+        reason: str | None = None,
+        expires_on: str | None = None,
+        citations: list[dict] | None = None,
+        role: str | None = None,
+    ) -> dict:
+        return await mt.assign_tag(
+            *ctx(role), object_kind, object_key, tag_id, reason, expires_on, citations
+        )
+
+    @described
+    async def unassign_tag(
+        object_kind: str, object_key: str, tag_id: str, role: str | None = None
+    ) -> dict:
+        return await mt.unassign_tag(*ctx(role), object_kind, object_key, tag_id)
+
+    @described
+    async def cite_tag_assignment(
+        object_kind: str, object_key: str, tag_id: str, citation: dict, role: str | None = None
+    ) -> dict:
+        return await mt.cite_tag_assignment(*ctx(role), object_kind, object_key, tag_id, citation)
+
+    @described
+    async def uncite_tag_assignment(
+        object_kind: str, object_key: str, tag_id: str, citation: dict, role: str | None = None
+    ) -> dict:
+        return await mt.uncite_tag_assignment(*ctx(role), object_kind, object_key, tag_id, citation)
+
+    @described
+    async def cite_tag_definition(tag_id: str, citation: dict, role: str | None = None) -> dict:
+        return await mt.cite_tag_definition(*ctx(role), tag_id, citation)
+
+    @described
+    async def uncite_tag_definition(tag_id: str, citation: dict, role: str | None = None) -> dict:
+        return await mt.uncite_tag_definition(*ctx(role), tag_id, citation)

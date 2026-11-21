@@ -230,6 +230,9 @@ class RelationshipMapping:
     #: traverses it only from its source to its target. A model relationship is a join, which a
     #: directed pattern may read from either end (False).
     directed: bool = False
+    #: REQ-1586: a registered relationship row declares this edge (JoinMeta.registered); a
+    #: synthetic edge (HAS_TABLE) does not. Only a registered edge keeps a junction's node.
+    registered: bool = False
 
     @property
     def properties(self) -> dict[str, str]:
@@ -733,19 +736,31 @@ def _drop_junction_nodes(  # REQ-1586
     nodes_by_table: dict[str, list[str]],
     aliases: dict[str, list[RelationshipMapping]],
 ) -> None:
-    """Remove every declared junction table from the node side of the Cypher schema.
+    """Remove every declared junction table no registered relationship of its own joins from the
+    node side of the Cypher schema.
 
     A declared junction is an edge, not an entity: it must not appear as a label a pattern can
     match, as a pill a client can drag onto a canvas, or under a domain's label list. It stays a
     registered table and is still queryable in SQL and GraphQL — this drops it from the graph
     schema only.
 
-    The junction's own foreign keys also produced ordinary FK edges into and out of it. Those
-    edges are what the junction edge replaces, and they name a label that no longer exists, so
-    they go with the node — otherwise any consumer resolving an endpoint label (the graph-schema
-    endpoint, a label count) reads a key that was just removed. Mutates every dict passed in.
+    Edges into and out of a dropped junction name a label that no longer exists, so they go with
+    the node — otherwise any consumer resolving an endpoint label (the graph-schema endpoint, a
+    label count) reads a key that was just removed.
+
+    (Amended 2026-11-18) A junction that registered relationships of its own join (as after Join
+    through, which keeps its two hops beside the joined relationship) keeps its node and every
+    edge, so all three relationships are offered in Cypher as in SQL and GraphQL. A synthetic edge
+    (HAS_TABLE) is no relationship of its own. Mutates every dict passed in.
     """
-    junction_types = {rm.via.type_name for rm in relationships.values() if rm.via is not None}
+    declared = {rm.via.type_name for rm in relationships.values() if rm.via is not None}
+    joined = {
+        label
+        for rm in relationships.values()
+        if rm.via is None and rm.registered
+        for label in (rm.source_label, rm.target_label)
+    }
+    junction_types = declared - joined
     if not junction_types:
         return
     for rel_key, rm in list(relationships.items()):
@@ -1031,6 +1046,7 @@ def _build_relationship_mappings(
             target_expr=getattr(join_meta, "target_expr", None),
             many=(cardinality == "one-to-many"),
             via=via,
+            registered=join_meta.registered,
         )
         rel_key = f"{rel_type}::{source_type_name}→{join_meta.target.type_name}"
         relationships[rel_key] = rm
@@ -1234,6 +1250,7 @@ def _add_cross_domain_nodes(
                 source_expr=_xsource_expr,
                 many=(rel_cardinality == "one-to-many"),
                 via=xvia,
+                registered=True,  # every row of all_relationships is a registered relationship
             )
             relationships[rel_key] = xrel
             aliases.setdefault(rel_type, []).append(xrel)

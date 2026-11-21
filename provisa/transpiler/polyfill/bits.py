@@ -535,6 +535,9 @@ AGGREGATES: tuple[Feature, ...] = tuple(
     for name, (verb, _) in _AGGREGATED.items()
 )
 
+#: The family's place in the grid (polyfill.GRID), which tries the rules of one function in
+#: the order of their families.
+ORDER = 340
 FEATURES: tuple[Feature, ...] = (
     LITERAL,
     *COMPARISONS,

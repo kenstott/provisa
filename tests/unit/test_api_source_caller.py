@@ -389,6 +389,41 @@ class TestPaginate:
         ]
 
     @pytest.mark.asyncio
+    async def test_a_cursor_nested_in_the_answer_is_read_by_its_dotted_path(self):
+        # REQ-2265: OpenMetadata answers {data, paging: {after}}; the last page has no after.
+        pagination = PaginationConfig(
+            type=PaginationType.cursor, cursor_param="after", cursor_field="paging.after"
+        )
+        client = MagicMock()
+        client.request = AsyncMock(
+            side_effect=[
+                _resp(200, {"data": [1], "paging": {"after": "c1", "total": 3}}),
+                _resp(200, {"data": [2], "paging": {"after": "c2", "total": 3}}),
+                _resp(200, {"data": [3], "paging": {"total": 3}}),
+            ]
+        )
+        endpoint = _endpoint(pagination=pagination)
+        pages = await _paginate(client, endpoint, "/tables", {}, {}, None, 30.0)
+        assert [p["data"] for p in pages] == [[1], [2], [3]]
+        assert [c.kwargs["params"] for c in client.request.await_args_list] == [
+            {},
+            {"after": "c1"},
+            {"after": "c2"},
+        ]
+
+    @pytest.mark.asyncio
+    async def test_a_nested_cursor_whose_holder_is_absent_ends_the_paging(self):
+        pagination = PaginationConfig(
+            type=PaginationType.cursor, cursor_param="after", cursor_field="paging.after"
+        )
+        client = MagicMock()
+        client.request = AsyncMock(return_value=_resp(200, {"data": [1]}))
+        endpoint = _endpoint(pagination=pagination)
+        pages = await _paginate(client, endpoint, "/tables", {}, {}, None, 30.0)
+        assert pages == [{"data": [1]}]
+        assert client.request.await_count == 1
+
+    @pytest.mark.asyncio
     async def test_cursor_pagination_default_names(self):
         pagination = PaginationConfig(type=PaginationType.cursor, max_pages=3)
         endpoint = _endpoint(pagination=pagination)

@@ -26,9 +26,11 @@ from graphql import (
     GraphQLString,
 )
 
+from provisa.api.command_fields import CommandField, command_fields
 from provisa.api.jsonapi.naming import scalar_name_maps
 from provisa.api.jsonapi.resource_id import resource_id_columns
 from provisa.api.role_surface import role_surface
+from provisa.compiler.type_map import JSONScalar
 
 _FILTER_OPS = ["eq", "neq", "gt", "gte", "lt", "lte", "like"]
 
@@ -272,6 +274,22 @@ def generate_jsonapi_openapi_spec(
                 field_name, domain_id, table_name, id_columns, resource_schema, parameters
             )
 
+    # REQ-1929: the role's GraphQL command fields, under their REST command bindings: GET reads a
+    # Query field, POST runs a Mutation field.
+    for cf in command_fields(schema):
+        if domain_filter is not None and cf.domain_id not in domain_filter:
+            continue
+        cmd_name = cf.name_in("rest")
+        if cmd_name is None:
+            continue
+        if cf.domain_id not in seen_tags:
+            seen_tags.add(cf.domain_id)
+            tag_entry = {"name": cf.domain_id}
+            if domain_desc_map.get(cf.domain_id):
+                tag_entry["description"] = domain_desc_map[cf.domain_id]
+            tags.append(tag_entry)
+        paths[f"/{cf.domain_id}/commands/{cmd_name}"] = _command_path(cf, cmd_name)
+
     return {
         "openapi": "3.1.0",
         "info": {
@@ -343,6 +361,91 @@ def _lookup_path(  # REQ-1929
             },
         }
     }
+
+
+def _argument_schema(arg: Any) -> dict[str, Any]:
+    named = arg.type
+    while isinstance(named, (GraphQLNonNull, GraphQLList)):
+        named = named.of_type
+    # REQ-1924: a JSON argument takes any JSON value, passed to the command as written.
+    return {} if named is JSONScalar else _gql_to_schema(arg.type)
+
+
+def _command_path(cf: CommandField, cmd_name: str) -> dict[str, Any]:  # REQ-1929
+    """A command's path item: GET with a collection's filter[], sort and page[] and the
+    command's arguments for a read, POST with the arguments as the body's meta for a write. The
+    rows answer under meta.rows: a command's rows are not resources."""
+    row_type = cf.row_type
+    row_props = (
+        {n: _gql_to_schema(f.type) for n, f in row_type.fields.items() if _is_scalar(f.type)}
+        if row_type is not None
+        else {}
+    )
+    rows_doc = {
+        "type": "object",
+        "properties": {
+            "meta": {
+                "type": "object",
+                "properties": {
+                    "rows": {"type": "array", "items": {"type": "object", "properties": row_props}}
+                },
+            }
+        },
+    }
+    operation: dict[str, Any] = {
+        "summary": f"{'Read' if cf.is_read else 'Run'} command {cf.domain_id}.{cmd_name}",
+        "operationId": f"call_{cmd_name}",
+        "tags": [cf.domain_id],
+        **({"description": cf.field.description} if cf.field.description else {}),
+        "responses": {
+            "200": {
+                "description": "JSON:API document",
+                "content": {"application/vnd.api+json": {"schema": rows_doc}},
+            },
+            "400": {"description": "Bad request / invalid parameter"},
+            "403": {"description": "Governance policy violation"},
+            "404": {"description": "Command not found"},
+        },
+    }
+    arguments = {name: _argument_schema(arg) for name, arg in cf.arguments.items()}
+    if not cf.is_read:
+        operation["requestBody"] = {
+            "required": bool(arguments),
+            "content": {
+                "application/vnd.api+json": {
+                    "schema": {
+                        "type": "object",
+                        "properties": {"meta": {"type": "object", "properties": arguments}},
+                    }
+                }
+            },
+        }
+        return {"post": operation}
+    parameters: list[dict[str, Any]] = [
+        {"name": "page[size]", "in": "query", "schema": {"type": "integer", "minimum": 1}},
+        {"name": "page[number]", "in": "query", "schema": {"type": "integer", "minimum": 1}},
+        {
+            "name": "sort",
+            "in": "query",
+            "schema": {"type": "string"},
+            "description": "Comma-separated columns; a leading '-' sorts descending",
+        },
+    ]
+    for column in row_props:
+        parameters.append(
+            {"name": f"filter[{column}]", "in": "query", "schema": {"type": "string"}}
+        )
+    for name, schema in arguments.items():
+        parameters.append(
+            {
+                "name": name,
+                "in": "query",
+                "required": isinstance(cf.arguments[name].type, GraphQLNonNull),
+                "schema": schema,
+            }
+        )
+    operation["parameters"] = parameters
+    return {"get": operation}
 
 
 def _empty_spec() -> dict[str, Any]:

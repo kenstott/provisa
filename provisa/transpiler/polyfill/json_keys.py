@@ -123,6 +123,9 @@ _OBJECT = "JSONExtractKeys(ifNull($v, '{}'))"
 #: Nullable(Array) of its keys.
 _HELD = "ifNull(_v, 'null')"
 
+#: The family's place in the grid (polyfill.GRID), which tries the rules of one function in
+#: the order of their families.
+ORDER = 210
 FEATURES: tuple[Feature, ...] = (
     _feature(
         "jsonb_exists",

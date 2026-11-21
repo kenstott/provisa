@@ -301,4 +301,7 @@ CARRIED = Feature(
     read=Side(rules=(Rule(None, {_CLICKHOUSE: Rewrite(carried, mentions=_MENTIONS)}),)),
 )
 
+#: The family's place in the grid (polyfill.GRID), which tries the rules of one function in
+#: the order of their families.
+ORDER = 370
 FEATURES: tuple[Feature, ...] = (CARRIED,)

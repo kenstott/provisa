@@ -26,7 +26,7 @@ Nemmeno le origini **Materialize** hanno un connettore federato. Provisa recuper
 
 ## Tutte le origini {: #all-sources }
 
-Provisa registra **80** tipi di origine, quelli che il modulo Sources offre. Le tabelle qui sotto le coprono tutte e 80; l'indice è il conteggio.
+Provisa registra **82** tipi di origine, quelli che il modulo Sources offre. Le tabelle qui sotto le coprono tutte e 82; l'indice è il conteggio.
 
 | # | Gruppo | Tipi di origine |
 | --- | --- | --- |
@@ -42,12 +42,12 @@ Provisa registra **80** tipi di origine, quelli che il modulo Sources offre. Le 
 | 51–55 | [Basate su file](#file-based) | `sqlite`, `csv`, `parquet`, `files`, `logs` |
 | 56–57 | [Osservabilità e altro](#observability-other) | `google_sheets`, `prometheus` |
 | 58–66 | [Connettori SaaS enterprise](#enterprise-saas-connectors) | `sharepoint`, `salesforce`, `servicenow`, `jira`, `cloudops`, `splunk`, `google_workspace`, `microsoft_365`, `quickbooks` |
-| 67–74 | [Origini API](#api-sources) | `openapi`, [`dbt`](#dbt), `graphql_remote`, `grpc_remote`, GitHub, GitLab, Shopify, Stripe |
-| 75 | [GovData](#govdata) | `govdata` |
-| 76–77 | [Controlli di qualità dei dati](#data-quality-checkers) | `soda`, `great_expectations` |
-| 78 | [Data profiler](#data-profiler) | `data_profiler` |
-| 79 | [Dataset Kaggle](#kaggle-datasets) | Kaggle (messo in stage tramite il modulo Sources; si registra come origine `files` — vedere [Dataset Kaggle](#kaggle-datasets)) |
-| 80 | [Wikipedia](#wikipedia) | Wikipedia (si registra come origine `files` che scansiona le pagine indicate — vedere [Wikipedia](#wikipedia)) |
+| 67–76 | [Origini API](#api-sources) | `openapi`, [`dbt`](#dbt), `graphql_remote`, `grpc_remote`, GitHub, GitLab, Shopify, Stripe, OpenMetadata, DataHub |
+| 77 | [GovData](#govdata) | `govdata` |
+| 78–79 | [Controlli di qualità dei dati](#data-quality-checkers) | `soda`, `great_expectations` |
+| 80 | [Data profiler](#data-profiler) | `data_profiler` |
+| 81 | [Dataset Kaggle](#kaggle-datasets) | Kaggle (messo in stage tramite il modulo Sources; si registra come origine `files` — vedere [Dataset Kaggle](#kaggle-datasets)) |
+| 82 | [Wikipedia](#wikipedia) | Wikipedia (si registra come origine `files` che scansiona le pagine indicate — vedere [Wikipedia](#wikipedia)) |
 
 Riferimento per ogni tipo di origine supportato da Provisa. "Driver diretto" significa che le query a singola origine vengono eseguite nativamente contro l'origine (sub-100ms). "Nome connettore" è il connettore federato usato quando l'origine partecipa a JOIN multi-source.
 

@@ -22,7 +22,7 @@ from typing import TYPE_CHECKING, Annotated, Any, Literal, cast
 from fastapi import APIRouter, Query, Request
 from pydantic import BaseModel, ConfigDict, Field
 
-from provisa.api.admin import discovery_dimension
+from provisa.api.admin import discovery_dimension, join_through
 from provisa.api.app import state
 from provisa.api.errors import ApiError
 from provisa.core.relationship_naming import RelationshipNameTaken
@@ -849,7 +849,12 @@ async def apply_decisions(request: Request, run_id: int, body: ApplyRequest):  #
             )
         for each in body.accept:
             try:
-                if await proposals_repo.shared_pair(conn, run_id, each.id):
+                if await proposals_repo.junction_of(conn, run_id, each.id) is not None:
+                    # REQ-1586: a junction suggestion joins its two ends through the junction.
+                    relationship_id = await join_through.accept_proposal(
+                        request, conn, run_id, each.id, each.name
+                    )
+                elif await proposals_repo.shared_pair(conn, run_id, each.id):
                     # REQ-413: a many-to-many pair is accepted as a shared dimension.
                     relationship_id = await discovery_dimension.accept(
                         request, conn, run_id, each.id, each.name

@@ -442,4 +442,7 @@ PG_TYPEOF = Feature(
     ),
 )
 
+#: The family's place in the grid (polyfill.GRID), which tries the rules of one function in
+#: the order of their families.
+ORDER = 190
 FEATURES: tuple[Feature, ...] = (AGE, MXID_AGE, PG_CHAR_TO_ENCODING, *SIZE_FUNCTIONS, PG_TYPEOF)

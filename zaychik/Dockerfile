@@ -9,6 +9,20 @@ WORKDIR /src
 COPY fix-decode-peer-identity.patch /tmp/
 RUN git apply /tmp/fix-decode-peer-identity.patch
 
+# REQ-2194: a Flight SQL statement runs through the Trino client protocol (StatementClient), not
+# JDBC, so Provisa's reads arrive as Arrow with what JDBC drops (docs/arch/fetch-paths.md §4):
+#  - TIME/TIMESTAMP in microseconds (half-even past six digits, as the Trino Python client rounds);
+#  - every field's Trino type ("trino.type"), type signature and encoding in its metadata; a type
+#    Arrow lacks (map, row, json, uuid, ipaddress, intervals, time with time zone, an array of one
+#    of them) is Utf8 holding the protocol's text/JSON instead of failing as an unmapped JDBC type;
+#  - an array of a type Arrow has is an Arrow list of it, nested as deep as the array;
+#  - source, catalog, schema, session properties and time zone from the x-provisa-trino-context
+#    call header;
+#  - Trino's error name/type/code and query id in the Flight error's trailers.
+# The statement runs at GetFlightInfo up to its columns; DoGet streams the rows.
+COPY trino-statement-protocol.patch /tmp/
+RUN git apply /tmp/trino-statement-protocol.patch
+
 # Maven's HTTP transport retries a request three times and only on 429 and 503. Maven Central
 # answering one POM with 502 Bad Gateway therefore failed the whole image build on the first try.
 # A gateway error is retried too, five times, with the transport's own backoff.

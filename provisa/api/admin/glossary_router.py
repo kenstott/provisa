@@ -871,7 +871,9 @@ async def gather_relationships(
         return Gathered(proposals, message)
 
 
-def resolve_shapes(raw: object) -> list[dict]:
+def resolve_shapes(
+    raw: object,  # object-ok: the model's untrusted JSON, narrowed below
+) -> list[dict]:
     """A RELATED_TO proposal's resolving shapes, tightest first, each with its candidate names.
 
     The model's ``resolve`` is untrusted: an unknown shape, a non-list or a blank name is dropped,
@@ -1575,6 +1577,21 @@ async def stewardship(request: Request) -> dict:
     async with pool.acquire() as conn:
         _conn = cast("Connection", conn)
         return await _named_readable(_conn, request, await glossary_repo.stewardship_summary(_conn))
+
+
+@router.get("/entries")
+async def glossary_entries(request: Request) -> dict:
+    """The Glossary page (REQ-2259): the approved terms the caller reads, with their names,
+    definitions, domains and when each last changed (an ISO time, the recent-change sort), and the
+    a-kind-of, see-also and also-called edges between them. No
+    grounding, provenance, tags or status: the page shows none of them."""
+    _require_glossary_read(request)
+    require_active_org_id(request)
+    pool = await _pool()
+    async with pool.acquire() as conn:
+        return await glossary_repo.glossary_entries(
+            cast("Connection", conn), _view_scope(request, None)
+        )
 
 
 async def _term_ids_by_name(conn: "Connection") -> dict[str, int]:

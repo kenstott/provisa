@@ -335,10 +335,32 @@ def _from_cents(cents: exp.Expr) -> exp.Expr:
     return exp.Mul(this=whole, expression=cent)
 
 
+#: The dialects whose forms are Trino's SQL.
+_TRINO = frozenset({"trino", "presto", "athena"})
+
+
 def _rint(value: exp.Expr, dialect: str) -> exp.Expr:
     """C's rint: to the nearest whole number, an exact half to the even one."""
     if dialect == "duckdb":
         return exp.Anonymous(this="round_even", expressions=[value, exp.Literal.number(0)])
+    if dialect in _TRINO:
+        # Trino's round of a double, a double: sqlglot writes ROUND(x, 0) of a cast to DECIMAL,
+        # and Trino's double to decimal reads its shortest digits (-4611686018427387904 as
+        # -4611686018427388000, run 44670380355).
+        return _case(
+            exp.EQ(
+                this=exp.Sub(this=value.copy(), expression=exp.Floor(this=value.copy())),
+                expression=exp.Literal.number("0.5"),
+            ),
+            exp.Mul(
+                this=exp.Literal.number(2),
+                expression=exp.Anonymous(
+                    this="round",
+                    expressions=[exp.Div(this=value.copy(), expression=exp.Literal.number(2))],
+                ),
+            ),
+            exp.Anonymous(this="round", expressions=[value]),
+        )
     half = exp.EQ(
         this=exp.Sub(this=value.copy(), expression=exp.Floor(this=value.copy())),
         expression=exp.Literal.number("0.5"),
@@ -356,7 +378,9 @@ def _rint(value: exp.Expr, dialect: str) -> exp.Expr:
 def _rounded(cents: exp.Expr, dialect: str) -> exp.Expr:
     """A cents double, rounded as cash.c rounds it, as the base; PostgreSQL's error outside int8."""
     whole = _rint(cents, dialect)
-    value = _from_cents(_as(whole, "NUMERIC(19,0)"))
+    # On Trino a whole double is exact as a bigint, where its cast to a decimal is not (_rint).
+    exact = _as(whole, "BIGINT") if dialect in _TRINO else whole
+    value = _from_cents(_as(exact, "NUMERIC(19,0)"))
     if dialect not in _RAISERS and dialect != "clickhouse":
         return exp.Cast(this=value, to=_base())
     limit = _as(exp.Literal.number(_FLOAT_LIMIT), "DOUBLE PRECISION")

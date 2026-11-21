@@ -1203,6 +1203,12 @@ HYPERBOLICS = {
     ),
 }
 COT = f"1.0 / TAN({_X})"
+#: asinh on Trino, whose double holds no x * x past 1e154: past 1e8, x * x + 1 is x * x to a
+#: double's precision, and asinh(x) is the sign of x times ln(2|x|), as libm's asinh answers.
+TRINO_ASINH = (
+    f"SIGN({_X}) * CASE WHEN ABS({_X}) > 1e8 THEN LN(ABS({_X})) + LN(2.0) "
+    f"ELSE LN(ABS({_X}) + SQRT({_X} * {_X} + 1.0)) END"
+)
 
 
 #: The parts of a date every dialect's EXTRACT answers as PostgreSQL does, a second's fraction
@@ -1214,18 +1220,20 @@ _INSTANT = "CAST(value AS TIMESTAMP)"
 
 def _date_part_of(extras: str, otherwise: str) -> str:
     named = " ".join(
-        f"WHEN LOWER(part) = '{name}' THEN EXTRACT({name.upper()} FROM {_INSTANT})"
+        f"WHEN LOWER(part) = '{name}' THEN " + f"EXTRACT({name.upper()} FROM {_INSTANT})"
         for name in _DATE_PARTS
     )
     return f"CASE WHEN part IS NULL OR value IS NULL THEN NULL {named} {extras} {otherwise} END"
 
 
+_DATE_PART_EXTRAS = (
+    f"WHEN LOWER(part) = 'dow' THEN EXTRACT(DOW FROM {_INSTANT}) % 7 "
+    f"WHEN LOWER(part) = 'doy' THEN EXTRACT(DOY FROM {_INSTANT})"
+)
+
+
 def date_part_form(called: str) -> str:
-    extras = (
-        f"WHEN LOWER(part) = 'dow' THEN EXTRACT(DOW FROM {_INSTANT}) % 7 "
-        f"WHEN LOWER(part) = 'doy' THEN EXTRACT(DOY FROM {_INSTANT})"
-    )
-    return _date_part_of(extras, f"ELSE {not_served(called, 'BIGINT')}")
+    return _date_part_of(_DATE_PART_EXTRAS, f"ELSE {not_served(called, 'BIGINT')}")
 
 
 #: A part that is no constant is refused by name (engine_refusals), as a refusal here would be

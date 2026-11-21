@@ -4605,7 +4605,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         self, info: StrawberryInfo, input: TableInput
     ) -> MutationResult:  # REQ-013, REQ-016, REQ-252, REQ-366, REQ-413, REQ-432, REQ-433, REQ-434
         # REQ-1531: a registration naming no domain is refused by name, before its right is asked.
-        _no_domain = table_domain_refusal(input.domain_id, input.table_name)
+        _no_domain = table_domain_refusal(input.domain_id, input.table_name, input.alias)
         if _no_domain is not None:
             return _no_domain
         require_capability(info, "table_registration", domain_id=input.domain_id)
@@ -4753,7 +4753,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         )
 
         # REQ-1531: a table stays in a domain; a save naming none is refused by name.
-        _no_domain = table_domain_refusal(input.domain_id, input.table_name)
+        _no_domain = table_domain_refusal(input.domain_id, input.table_name, input.alias)
         if _no_domain is not None:
             return _no_domain
         _governance_sets = governance_sets(info, input)  # REQ-1958: of the input as sent
@@ -6044,6 +6044,38 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         self, info: StrawberryInfo, input: RelationshipInput
     ) -> MutationResult:
         return await _save_relationship_as_caller(info, input, creating=False)
+
+    @strawberry.mutation
+    async def join_through(  # REQ-1586
+        self, info: StrawberryInfo, first_id: str, second_id: str, id: str
+    ) -> MutationResult:
+        """One junction-backed relationship between the other ends of two relationships that share
+        a middle table, named ``id``; the two stay."""
+        from provisa.api.admin import join_through
+        from provisa.core.relationship_naming import RelationshipNameTaken
+
+        require_capability(info, "create_relationship")
+        pool = await _get_pool()
+        async with pool.acquire() as _conn:
+            conn = cast("Connection", _conn)
+            planned = await join_through.plan(conn, first_id, second_id)
+            if planned is None:
+                return MutationResult(
+                    success=False,
+                    message=(
+                        f"Relationships {first_id!r} and {second_id!r} share no middle table, "
+                        "or their other ends are joined through it already"
+                    ),
+                    code="relationship.join_through_none",
+                    params={"first": first_id, "second": second_id},
+                )
+            try:
+                result, _ = await join_through.create(info, conn, planned.through, id)
+            except RelationshipNameTaken as taken:
+                return MutationResult(
+                    success=False, message=str(taken), code=taken.code, params=taken.params
+                )
+        return result
 
     @strawberry.mutation
     async def create_code_resolver(  # REQ-2249
