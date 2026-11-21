@@ -8,7 +8,7 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""REQ-2247: a provider lists its catalog's whole business glossary, every page read.
+"""REQ-2247: a CatalogReader lists its catalog's whole business glossary, every page read.
 
 The catalog's HTTP API is mocked at the client: OpenMetadata pages by the ``paging.after``
 cursor, DataHub by GraphQL scroll ids. Each term comes back with its name, its definition and its
@@ -22,10 +22,14 @@ from __future__ import annotations
 import httpx
 import pytest
 
+from provisa.api.catalog_import import (
+    CatalogReader,
+    CatalogTerm,
+    GlossaryListingUnsupported,
+    catalog_reader,
+)
 from provisa.api.metadata_export.datahub import DataHubExport
 from provisa.api.metadata_export.openmetadata import OpenMetadataExport
-from provisa.api.metadata_export.provider import CatalogTerm, GlossaryListingUnsupported
-from provisa.api.metadata_export.registry import metadata_export
 from provisa.core.models import MetadataExportTarget
 
 
@@ -176,8 +180,15 @@ async def test_openmetadata_http_failure_is_raised(monkeypatch):
         await OpenMetadataExport(_target("openmetadata")).list_glossary()
 
 
-@pytest.mark.asyncio
-async def test_a_provider_without_a_glossary_listing_refuses_by_name():
-    provider = metadata_export(_target("atlas"))
+def test_a_provider_without_a_glossary_listing_refuses_by_name():
     with pytest.raises(GlossaryListingUnsupported, match="'atlas'"):
-        await provider.list_glossary()
+        catalog_reader(_target("atlas"))
+
+
+@pytest.mark.parametrize(
+    ("provider", "cls"), [("openmetadata", OpenMetadataExport), ("datahub", DataHubExport)]
+)
+def test_catalog_reader_resolves_the_reading_adapters(provider, cls):
+    reader = catalog_reader(_target(provider))
+    assert isinstance(reader, cls)
+    assert isinstance(reader, CatalogReader)

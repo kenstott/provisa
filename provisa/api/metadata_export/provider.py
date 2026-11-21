@@ -14,12 +14,11 @@ Mirrors the provider pattern already in the tree: an abstract base with a stable
 ``provider_name`` (``provisa/auth/models.py`` ``AuthProvider``) resolved by a factory that
 refuses an unknown name at construction (``provisa/core/mail.py`` ``email_sender``).
 
-Outbound, with one read: ``list_glossary`` reads the catalog's whole business glossary, so a
-term present only in the catalog can become a draft Provisa term (REQ-2247, TERMS SOURCED FROM
-CATALOGS).
+Outbound only. Reading a catalog's glossary back (REQ-2247) is the separate inbound port
+``provisa.api.catalog_import.reader.CatalogReader``.
 """
 
-# Requirements: REQ-1068, REQ-1069, REQ-2247
+# Requirements: REQ-1068, REQ-1069
 
 from __future__ import annotations
 
@@ -34,26 +33,6 @@ if TYPE_CHECKING:
 
 class MetadataExportNotConfiguredError(RuntimeError):  # REQ-1068
     """Raised when export is asked for but no usable provider is configured."""
-
-
-class GlossaryListingUnsupported(NotImplementedError):  # REQ-2247
-    """Raised when a provider that cannot read its catalog's glossary is asked to list it."""
-
-
-@dataclass(frozen=True)
-class CatalogTerm:  # REQ-2247
-    """One term of a catalog's business glossary, as the catalog holds it.
-
-    ``ref`` is the catalog's own id for the term (an OpenMetadata entity id, a DataHub URN), kept
-    as the provenance of a term made from it. ``broader`` names the terms it is a kind of in the
-    catalog: OpenMetadata's parent term, DataHub's IsA (Inherits) terms. ``definition`` is None
-    when the catalog holds none.
-    """
-
-    name: str
-    definition: str | None
-    broader: tuple[str, ...]
-    ref: str
 
 
 @dataclass(frozen=True)
@@ -186,13 +165,3 @@ class MetadataExport(ABC):  # REQ-1068
         message, so a health check that returned a boolean would discard the diagnosis.
         """
         ...
-
-    async def list_glossary(self) -> list[CatalogTerm]:  # REQ-2247
-        """Every term of the catalog's business glossary, all pages read.
-
-        A provider whose catalog Provisa does not read terms from refuses by name; it never
-        answers with an empty glossary.
-        """
-        raise GlossaryListingUnsupported(
-            f"metadata export provider {self.provider_name!r} does not list its catalog's glossary"
-        )
