@@ -952,7 +952,10 @@
       "decision_invalid": "A decision is confirmed or revoked",
       "cron_invalid": "Not a five-field cron expression: {{cron}}",
       "not_owner": "Only the owner of domain {{domain}} decides this row",
-      "own_access": "You cannot review your own access. Ask another owner."
+      "own_access": "You cannot review your own access. Ask another owner.",
+      "read_only": "This role is held through the identity provider; Provisa holds no grant of it to confirm or revoke",
+      "webhook_invalid": "The webhook URL is not usable: {{url}}",
+      "webhook_secret_required": "A webhook needs the secret scheduled reviews are signed with"
     }
   }
 }

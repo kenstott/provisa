@@ -1,0 +1,51 @@
+{
+  "accessReview": {
+    "heading": "Revisão de acessos",
+    "help": "Cada revisão lista a atribuição de função de cada membro com seus direitos e último uso, agrupadas por domínio. O proprietário de cada domínio confirma ou revoga cada linha e informa o motivo. Uma revogação remove a atribuição imediatamente.",
+    "scheduleLabel": "Agendamento da revisão",
+    "scheduleHint": "Cron em UTC: minuto hora dia mês dia da semana. Vazio: nenhuma revisão agendada.",
+    "scheduleSaved": "Agendamento da revisão salvo",
+    "reviewLabel": "Revisão",
+    "reviewOption": "{{when}} · {{by}} · {{decided}} de {{rows}} decididas",
+    "bySchedule": "por agendamento",
+    "noReviews": "Nenhuma revisão foi feita ainda.",
+    "noRows": "Nenhuma linha nesta revisão para os domínios que você possui.",
+    "start": "Iniciar uma revisão",
+    "started_one": "Revisão iniciada: {{count}} atribuição para revisar",
+    "started_other": "Revisão iniciada: {{count}} atribuições para revisar",
+    "export": "Exportar CSV",
+    "colDomain": "Domínio",
+    "colMember": "Membro",
+    "colRole": "Função",
+    "colEntitlements": "Direitos",
+    "colLastUsed": "Último uso",
+    "colDecision": "Decisão",
+    "colActions": "Ações",
+    "everyDomain": "Todos os domínios",
+    "wholeRole": "A função inteira",
+    "neverUsed": "Nunca",
+    "undecided": "Não decidido",
+    "decision": {
+      "confirmed": "Confirmado",
+      "revoked": "Revogado"
+    },
+    "decidedBy": "{{who}}, {{when}}",
+    "confirm": "Confirmar",
+    "revoke": "Revogar",
+    "prompt": {
+      "confirmed": "Confirmar a atribuição da função {{role}} de {{member}} em {{domain}}.",
+      "revoked": "Revogar a atribuição da função {{role}} de {{member}} em {{domain}}. Ela é removida imediatamente."
+    },
+    "reasonLabel": "Motivo",
+    "reasonHint": "Por que você confirma ou revoga este acesso. Fica registrado junto com sua decisão.",
+    "webhookUrlLabel": "URL do webhook",
+    "webhookUrlHint": "Cada revisão agendada é enviada aqui, assinada com o segredo. Vazio: sem webhook.",
+    "webhookSecretLabel": "Segredo do webhook",
+    "webhookSecretHint": "Somente escrita: assina cada envio e nunca é exibido novamente. Deixe vazio para manter o atual.",
+    "webhookSecretHeld": "Há um segredo guardado",
+    "webhookFailed": "A revisão agendada não foi enviada ao webhook: {{error}}",
+    "webhookDelivered": "Esta revisão agendada foi enviada ao webhook.",
+    "sourceIdp": "Atribuído pelo provedor de identidade",
+    "readOnly": "Somente leitura: o Provisa não mantém nenhuma atribuição para revogar"
+  }
+}
