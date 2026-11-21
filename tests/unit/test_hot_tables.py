@@ -180,6 +180,7 @@ class TestHotTableManager:
             "public",
             "pg",
             "id",
+            {},
         )
         assert count == 2
         assert manager.is_hot(1)
@@ -207,6 +208,7 @@ class TestHotTableManager:
             "public",
             "pg",
             "id",
+            {},
         )
         assert count == 10_001
         assert not manager.is_hot(2)
@@ -301,7 +303,7 @@ class TestHotTableManager:
         mgr._redis = mock_redis
 
         wide = [{"id": i, "blob": "x" * 100} for i in range(10)]
-        count = await mgr._store_rows(3, "wide", wide, "id", "pg", "public")
+        count = await mgr._store_rows(3, "wide", wide, "id", "pg", "public", {})
         assert count == 10
         assert not mgr.is_hot(3)  # over byte ceiling → not stored
         mock_redis.pipeline.assert_not_called()
@@ -663,7 +665,9 @@ class TestEngineAddressing:
         runtime, sent = _recording_runtime(engine_key)
         mgr = HotTableManager(None, auto_threshold=100, max_rows=100)
         mgr._store_rows = AsyncMock(return_value=1)  # type: ignore[method-assign]
-        assert await mgr.load_table(runtime, 5, "regions", "public", "bench_postgresql", "id") == 1
+        assert (
+            await mgr.load_table(runtime, 5, "regions", "public", "bench_postgresql", "id", {}) == 1
+        )
         assert sent == [f"SELECT * FROM {_HOT_ADDRESSING[engine_key]}"]
         # The cache entry is still filed under the registered catalog and schema.
         mgr._store_rows.assert_awaited_once_with(
