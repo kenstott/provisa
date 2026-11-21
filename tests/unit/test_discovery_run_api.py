@@ -2008,6 +2008,7 @@ async def test_the_latest_run_a_person_started_is_listed_for_that_person(monkeyp
         "sample_size": None,
         "contained_at": None,
         "shared_ceiling": None,
+        "either_way": False,
     }
 
 
