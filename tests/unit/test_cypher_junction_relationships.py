@@ -428,9 +428,7 @@ def test_a_junction_only_synthetic_edges_reach_stays_dropped():
 def test_a_registered_join_marks_its_relationship_mapping_registered():
     """REQ-1586: the registered loop's JoinMeta says it came from a relationship row, and the
     label map carries that onto the edge; a synthetic join (HAS_TABLE) does not."""
-    from types import SimpleNamespace
-
-    from provisa.compiler.sql_types import JoinMeta, TableMeta
+    from provisa.compiler.sql_types import CompilationContext, JoinMeta, TableMeta
     from provisa.gql.label_map import _build_relationship_mappings
 
     def _tm(table_id: int, type_name: str) -> TableMeta:
@@ -464,10 +462,10 @@ def test_a_registered_join_marks_its_relationship_mapping_registered():
             cypher_alias="HAS_TABLE",
         ),
     }
-    ctx = SimpleNamespace(joins=joins, aggregate_columns={})
+    ctx = CompilationContext(joins=joins)
     relationships: dict[str, RelationshipMapping] = {}
 
-    _build_relationship_mappings(ctx, relationships)  # type: ignore[arg-type]
+    _build_relationship_mappings(ctx, relationships)
 
     by_type = {rm.rel_type: rm for rm in relationships.values()}
     assert by_type["HAS_TABLE"].registered is False

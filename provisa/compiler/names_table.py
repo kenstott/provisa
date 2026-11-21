@@ -209,6 +209,14 @@ class NamesTable:
         """The object's name on ``surface``; KeyError when it has none there."""
         return self._by_object[(object_kind, object_id, surface)].name
 
+    def names_of(self, object_kind: str, object_id: str) -> dict[str, str]:
+        """The object's name on each surface."""
+        return {
+            r.surface: r.name
+            for r in self.rows
+            if r.object_kind == object_kind and r.object_id == object_id
+        }
+
     def root_field(self, name: str) -> NameRow | None:  # REQ-467
         """The row of GraphQL query root field ``name`` (a table's field, its aggregate,
         group-by or connection field: the row's surface says which); None when no table's root
@@ -699,12 +707,16 @@ def root_field(ctx: CompilationContext, field_name: str) -> tuple[str, TableMeta
     table: its surface (``graphql_field``, ``graphql_aggregate``, ``graphql_group_by``,
     ``graphql_connection``) and its table. None when no table of ``ctx`` has a root field so
     named."""
-    names = context_names(ctx)
-    row = names.root_field(field_name)
+    from provisa.compiler.sql_rewrite import context_derived
+
+    row = context_names(ctx).root_field(field_name)
     if row is None:
         return None
     assert row.table_id is not None  # a table's root-field row carries its table (_table_rows)
-    return row.surface, ctx.tables[names.table_row(row.table_id, "graphql_field").name]
+    by_id = context_derived(
+        ctx, "tables_by_id", lambda c: {tm.table_id: tm for tm in c.tables.values()}
+    )
+    return row.surface, by_id[row.table_id]
 
 
 def root_table(ctx: CompilationContext, field_name: str) -> TableMeta:  # REQ-467
