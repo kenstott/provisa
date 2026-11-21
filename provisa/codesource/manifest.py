@@ -964,6 +964,13 @@ def read_manifest(raw: dict, rules: Rules = NODE_RULES) -> Manifest:
             )
         else:
             result = _unwrap_promise(returns)
+            if result["kind"] == "union" and _loader_rows(result) is not result:
+                # REQ-1984: that union is a loader's alone.
+                problems.append(
+                    f"{name}: only a @table @loader may return a list of rows or a mapping of "
+                    f"names to lists of rows, and {name} is a @{kind}"
+                )
+                continue
             if result["kind"] == "undefined":
                 shape, many = None, False
             elif result["kind"] in ("array", "iterable"):

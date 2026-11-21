@@ -612,4 +612,4 @@ def test_a_union_return_is_refused_for_every_kind_but_a_loader(tags):
 def test_a_command_returning_the_union_is_not_a_loader():
     returns = _union(arr(ref("Order")), _record(arr(ref("Order"))))
     problems = refused(fn("orders", ["command"], [], returns))
-    assert problems and problems[0].startswith("orders:")
+    assert problems and problems[0].startswith("orders: only a @table @loader may return")
