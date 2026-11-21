@@ -226,7 +226,12 @@ def test_a_ceiling_below_the_interval_from_the_environment_stops_the_load_by_nam
         "replication.retry_interval": Resolved(60, "default"),
         "replication.retry_interval_max": Resolved(30, "env"),
     }
-    monkeypatch.setattr(settings_registry, "resolve", lambda key: resolved[key])
+    real_resolve = settings_registry.resolve  # the other pairs are judged on what is in force
+    monkeypatch.setattr(
+        settings_registry,
+        "resolve",
+        lambda key: resolved[key] if key in resolved else real_resolve(key),
+    )
     with pytest.raises(SettingsConflict) as refused:
         settings_registry.check_pairs()
     said = str(refused.value)

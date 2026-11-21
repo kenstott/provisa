@@ -109,7 +109,8 @@ class TestAScopedMerge:
         with pytest.raises(MergeSelectionError, match="removal"):
             _merged(dict(target), ["metrics/old.yaml"])
         merged, _ = _merged(dict(target), ["metrics/old.yaml"], removals=True)
-        assert "metrics/old.yaml" not in merged
+        # REQ-2248: the removal of a metric retires it in the target.
+        assert merged["metrics/old.yaml"]["retired"] is True
 
     def test_removals_reach_only_what_was_selected(self):
         target = {"metrics/old.yaml": {"expression": "SUM(1)"}, "metrics/keep.yaml": {"x": 1}}
@@ -120,7 +121,6 @@ class TestAScopedMerge:
 class TestWhatAnObjectRequires:
     def test_a_table_requires_its_domain_source_and_the_tables_it_points_at(self):
         body = _order(
-            product_id="orders",
             glossary=[{"column_name": "total", "term": "terms/revenue.yaml"}],
             meta_links=[{"target": "meta/tables/Catalog.yaml"}],
         )
@@ -134,7 +134,21 @@ class TestWhatAnObjectRequires:
             "sales/tables/Link.yaml",
             "terms/revenue.yaml",
             "meta/tables/Catalog.yaml",
-            "data-products/orders.yaml",
+        }
+
+    def test_a_data_product_requires_its_domain_and_its_members(self):
+        # REQ-1634: the product owns its membership, so it stands on its member tables and
+        # commands; a member names no product.
+        body = {
+            "domain_id": "sales",
+            "tables": [{"table": ORDER}, {"table": CUSTOMER}],
+            "commands": [{"command_name": "refund"}],
+        }
+        assert requirements("data-products/orders.yaml", body, {}) == {
+            DOMAIN,
+            ORDER,
+            CUSTOMER,
+            "commands/refund.yaml",
         }
 
     def test_a_table_in_no_domain_requires_the_root_domain(self):

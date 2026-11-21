@@ -27,17 +27,23 @@ def names_a_cte_in_scope(table: exp.Table) -> bool:
     """Whether unqualified ``table`` names a CTE of a WITH it sits within: the statement's own,
     or one of the statement it is part of (an EXISTS or a COLLECT, embedded with its own WITH).
     A CTE never names a relation outside the statement that defines it."""
+    return cte_in_scope(table) is not None
+
+
+def cte_in_scope(table: exp.Table) -> exp.CTE | None:
+    """The CTE unqualified ``table`` names, of the nearest WITH it sits within that defines it
+    (see :func:`names_a_cte_in_scope`); None where it names none."""
     if table.db:
-        return False
+        return None
     node: exp.Expr | None = table.parent
     while node is not None:
         with_clause = node.args.get("with_") if isinstance(node, exp.Expression) else None
-        if with_clause is not None and any(
-            cte.alias == table.name for cte in with_clause.expressions
-        ):
-            return True
+        if with_clause is not None:
+            for cte in with_clause.expressions:
+                if cte.alias == table.name:
+                    return cte
         node = node.parent
-    return False
+    return None
 
 
 def physical_tables(tree: exp.Expr) -> list[exp.Table]:

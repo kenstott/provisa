@@ -284,17 +284,19 @@ You can see the semantic SQL for any GraphQL read in the Provisa panel of the Gr
 
 | Path | Transport | Via | When used |
 | ------ | ----------- | ----- | ----------- |
-| REST | federation engine client (HTTP :8080) | Direct query | Default, always available |
-| Flight SQL | `adbc-driver-flightsql` (gRPC :8480) | Zaychik proxy → JDBC | When Zaychik is running |
+| REST | federation engine client (HTTP :8080) | Direct statement | Catalog provisioning and writes |
+| Flight SQL | `adbc-driver-flightsql` (gRPC :8480) | Zaychik proxy → Trino client protocol | Every read |
 | CTAS | federation engine client (HTTP :8080) | Direct write, Iceberg to S3 | Parquet/ORC redirect |
 
 ### Zaychik Arrow Flight SQL Proxy
 
-The federation engine does not natively support the Arrow Flight SQL protocol. [Zaychik](https://github.com/Raiffeisen-DGTL/zaychik-trino-proxy) is a Java proxy that implements the Arrow Flight SQL gRPC interface, translates requests to JDBC queries, and streams results back as Arrow record batches.
+The federation engine does not natively support the Arrow Flight SQL protocol. [Zaychik](https://github.com/Raiffeisen-DGTL/zaychik-trino-proxy) is a Java proxy that implements the Arrow Flight SQL gRPC interface. Provisa's image patches it to run each statement through Trino's client protocol and stream the results back as Arrow record batches.
 
 ```text
-ADBC client → gRPC :8480 → Zaychik → JDBC :8080 → Federation Engine → results → Arrow batches → client
+ADBC client → gRPC :8480 → Zaychik → Trino client protocol :8080 → Federation Engine → JSON pages → Arrow batches → client
 ```
+
+Trino delivers results only as JSON, paged or spooled. Zaychik converts them to Arrow once, in Java, so no Python touches the rows; that decode is the remaining cost of a Trino read. Every Trino read in Provisa, row or Arrow, goes through this path.
 
 The Provisa Flight server (port 8815) connects to Zaychik as an ADBC client, so Arrow streams end to end and results are never materialized.
 
@@ -417,7 +419,7 @@ These headers implement client-controlled redirect.
 | Env var | Default | Purpose |
 | --------- | --------- | --------- |
 | `PROVISA_REDIRECT_ENABLED` | `false` | Enable server-side threshold redirect |
-| `PROVISA_REDIRECT_THRESHOLD` | `1000` | Default row count threshold |
+| `PROVISA_REDIRECT_THRESHOLD` | `100000` | Default row count threshold |
 | `PROVISA_REDIRECT_FORMAT` | `parquet` | Default redirect format |
 | `PROVISA_REDIRECT_BUCKET` | `provisa-results` | S3 bucket name |
 | `PROVISA_REDIRECT_ENDPOINT` | | S3-compatible endpoint URL |
@@ -624,7 +626,7 @@ The vendor field accepts any `aisuite`-compatible vendor (`anthropic`, `openai`,
 
 **Vector model registry.** A list of embedding models (fields: `id`, `provider`, `dimensions`, optional `api_key_env` and `base_url`, `enabled` flag). Full-list replacement: every entry must have `id`, `provider`, and `dimensions` or the write is rejected `400`.
 
-**API keys.** Each vendor's LLM API key is stored encrypted through `provisa.core.org_secrets` (see below). The `GET` response says only whether a key is set for each vendor and never returns the value. Sending a blank string for a vendor clears its key, so LLM calls for that vendor go back to the deployment's environment-variable credential.
+**API keys.** Each vendor's LLM API key is stored encrypted through `provisa.core.org_secrets` (see below). The `GET` response says only whether a key is set for each vendor and never returns the value. Sending a blank string for a vendor clears its key. On an install of one organization, calls to that vendor then use the deployment's environment variable. On a server of many organizations the vendor has no key, and its calls are refused. See [Where an AI key comes from](secrets.md#where-an-ai-key-comes-from).
 
 ## Per-Org Encrypted Secrets
 
@@ -730,7 +732,7 @@ Every registered table gets an auto-generated `{table}_aggregate` root field (`c
 
 A role names the roles it inherits from in `parents`, in order. At runtime build, `security/inheritance.py` walks each role's ancestors depth-first in that order, each once, and folds them into the build's own copies of the loaded data, so every later lookup stays keyed by the acting role id. A role holds what it is given intersected with the union of what its parents hold, for capabilities, domains and regions, by one function (`effective_rights`); a standard role's capabilities add to its ancestors'. A column's `visible_to`, each entry of its mask list, and a metric's, function's or webhook's `visible_to`, hold for a role when they name it or an ancestor. RLS resolves per table: the role's own rule (its table rule before its domain rule) AND the rules its parents resolve combined with OR, a parent with no rule standing for every row, in one predicate. Write grants resolve per operation the same way: their columns are unioned and their row and check conditions combined with OR. A property (rate limit, `max_rows`, a session value) comes from the role, else the first ancestor that sets it. A parent must exist, be named once, not be the role itself and not close a cycle; a role other roles inherit from cannot be deleted until they are reparented.
 
-The standard roles are defined in `core/standard_roles.yaml`, written into every model schema on each `init_schema` (`db.assert_standard_roles`) and refused by the admin surfaces and the config loader. The sandbox role a "Try it Out" visitor holds is a union of standard roles; the visitor reads a copied demo's columns through the grants that name `viewer` or `data_steward`, which the sandbox inherits.
+The standard roles are defined in `core/standard_roles.yaml`, written into every model schema on each `init_schema` (`db.assert_standard_roles`) and refused by the admin surfaces and the config loader. Each is one job: `viewer`, `analyst`, `data_writer`, `developer`, `modeler`, `data_product_owner`, `data_steward`, `security_admin`, `dq_steward`, `source_admin`, `member_admin`, `org_operator`, `org_admin` and `platform_admin`. A request acts with the roles it names, each checked as assigned in the environment it is served by; several roles act as one meta-role, the union of their rights (`security/meta_role.py`). Because roles and assignments are rows in each environment's schema, what a person may do in an environment comes only from what is assigned there, and no environment overrides a right. The sandbox role a "Try it Out" visitor holds is a union of standard roles; the visitor reads a copied demo's columns through the grants that name `viewer` or `data_steward`, which the sandbox inherits.
 
 ## ABAC Approval Hook
 

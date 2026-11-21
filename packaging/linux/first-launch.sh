@@ -449,7 +449,7 @@ write_protocol_overlay() {
     # MCP must bind 0.0.0.0 to be reachable from outside the container; role picks
     # the query identity (defaults set by the deploy env).
     env="${env}      PROVISA_MCP_HOST: \"0.0.0.0\""$'\n'
-    env="${env}      PROVISA_MCP_ROLE: \"${PROVISA_MCP_ROLE:-admin}\""$'\n'
+    env="${env}      PROVISA_MCP_ROLE: \"${PROVISA_MCP_ROLE:-org_admin}\""$'\n'
   fi
 
   if [ -z "$ports" ]; then
@@ -900,25 +900,27 @@ services:
       PROVISA_EMAIL_API_KEY: "\${PROVISA_EMAIL_API_KEY:-}"
       PROVISA_MAIL_FROM: "\${PROVISA_MAIL_FROM:-}"
       PROVISA_MAIL_BASE_URL: "\${PROVISA_MAIL_BASE_URL:-}"
-      # REQ-1455/REQ-1474: the merchant of record. This base REPLACES docker-compose.app.yml
-      # and forwards no variable it does not name, so the commercial plugin's credentials have
-      # to be listed here or they never enter the container — provisa.env holding them is not
-      # enough. LEMONSQUEEZY_MODE selects the store: "test" reads TEST_LEMONSQUEEZY_API_KEY,
-      # anything else the live key, so both are forwarded and the mode decides which is read.
-      LEMONSQUEEZY_MODE: "\${LEMONSQUEEZY_MODE:-}"
-      LEMONSQUEEZY_API_KEY: "\${LEMONSQUEEZY_API_KEY:-}"
-      TEST_LEMONSQUEEZY_API_KEY: "\${TEST_LEMONSQUEEZY_API_KEY:-}"
-      LEMONSQUEEZY_STORE_ID: "\${LEMONSQUEEZY_STORE_ID:-}"
-      LEMONSQUEEZY_VARIANT_STARTER: "\${LEMONSQUEEZY_VARIANT_STARTER:-}"
-      LEMONSQUEEZY_VARIANT_PRO_S: "\${LEMONSQUEEZY_VARIANT_PRO_S:-}"
-      LEMONSQUEEZY_VARIANT_PRO_M: "\${LEMONSQUEEZY_VARIANT_PRO_M:-}"
-      LEMONSQUEEZY_VARIANT_PRO_L: "\${LEMONSQUEEZY_VARIANT_PRO_L:-}"
-      # REQ-1482: egress rides a second subscription, so each plan names a second variant too.
-      LEMONSQUEEZY_VARIANT_EGRESS_STARTER: "\${LEMONSQUEEZY_VARIANT_EGRESS_STARTER:-}"
-      LEMONSQUEEZY_VARIANT_EGRESS_PRO_S: "\${LEMONSQUEEZY_VARIANT_EGRESS_PRO_S:-}"
-      LEMONSQUEEZY_VARIANT_EGRESS_PRO_M: "\${LEMONSQUEEZY_VARIANT_EGRESS_PRO_M:-}"
-      LEMONSQUEEZY_VARIANT_EGRESS_PRO_L: "\${LEMONSQUEEZY_VARIANT_EGRESS_PRO_L:-}"
-      LEMONSQUEEZY_SIGNING_SECRET: "\${LEMONSQUEEZY_SIGNING_SECRET:-}"
+      # REQ-1455/REQ-1474: the merchant of record, Stripe. This base REPLACES docker-compose.app.yml
+      # and forwards no variable it does not name, so the commercial plugin's settings have to be
+      # listed here or they never enter the container — provisa.env holding them is not enough.
+      # STRIPE_MODE selects the credentials: "test" reads the STRIPE_TEST_ pair, anything else the
+      # live pair, so both are forwarded and the mode decides which is read. STRIPE_BASE_URL is
+      # not forwarded: it points the plugin at a stub in tests and has no production value.
+      STRIPE_MODE: "\${STRIPE_MODE:-}"
+      STRIPE_SECRET_KEY: "\${STRIPE_SECRET_KEY:-}"
+      STRIPE_PUBLISHABLE_KEY: "\${STRIPE_PUBLISHABLE_KEY:-}"
+      STRIPE_TEST_SECRET_KEY: "\${STRIPE_TEST_SECRET_KEY:-}"
+      STRIPE_TEST_PUBLISHABLE_KEY: "\${STRIPE_TEST_PUBLISHABLE_KEY:-}"
+      STRIPE_WEBHOOK_SECRET: "\${STRIPE_WEBHOOK_SECRET:-}"
+      STRIPE_PRICE_STARTER: "\${STRIPE_PRICE_STARTER:-}"
+      STRIPE_PRICE_PRO_S: "\${STRIPE_PRICE_PRO_S:-}"
+      STRIPE_PRICE_PRO_M: "\${STRIPE_PRICE_PRO_M:-}"
+      STRIPE_PRICE_PRO_L: "\${STRIPE_PRICE_PRO_L:-}"
+      # REQ-1482: each plan's one subscription carries a second, data transfer price.
+      STRIPE_PRICE_EGRESS_STARTER: "\${STRIPE_PRICE_EGRESS_STARTER:-}"
+      STRIPE_PRICE_EGRESS_PRO_S: "\${STRIPE_PRICE_EGRESS_PRO_S:-}"
+      STRIPE_PRICE_EGRESS_PRO_M: "\${STRIPE_PRICE_EGRESS_PRO_M:-}"
+      STRIPE_PRICE_EGRESS_PRO_L: "\${STRIPE_PRICE_EGRESS_PRO_L:-}"
     depends_on: &provisa_depends
       redis:
         condition: service_healthy
@@ -958,7 +960,7 @@ services:
       # one's bundle into demo-bundles/ and runs its stores; the tier serves the ready version
       # and, at each sandbox opened, asks for a newer published one -- no redeploy. A demo's
       # logs are read live from its bundle there.
-      PROVISA_DEMO_BUNDLES: "starthere,weblogs,files,sonnets,reviews,quality,insider,testdata,datavault,profiling,vulnerabilities,agriculture,streaming,storefront,churn,provisioning,hasuramigration,insurance,worldcup,cloudpolicy,churnprod,dataroom,reproduce,opioids,pharma,groupexposure,agentdata,banksecrecy"
+      PROVISA_DEMO_BUNDLES: "starthere,weblogs,files,sonnets,reviews,quality,insider,testdata,datavault,profiling,vulnerabilities,agriculture,streaming,storefront,churn,provisioning,hasuramigration,insurance,worldcup,cloudpolicy,churnprod,dataroom,reproduce,opioids,pharma,groupexposure,agentdata,banksecrecy,audit,affirmation"
       PROVISA_DEMO_REGISTRY: "https://ghcr.io/kenstott"
       PROVISA_LOGS_ALLOWED_ROOTS: /var/lib/provisa/demo-bundles
       # This tier builds the deployment's org at startup too, from the control plane, and the
@@ -1302,10 +1304,11 @@ write_env_file() {
 # ── Install systemd service (non-interactive / cloud deployments) ─────────────
 install_systemd() {
   local unit="/etc/systemd/system/provisa.service"
+  local env_file="${PROVISA_HOME}/provisa.env"
   # Persist auth env (PROVISA_IDP + provider secrets) so the server, running
   # under systemd rather than this first-launch process, auto-configures the IdP
   # and can resolve ${env:...} secret placeholders at runtime.
-  write_env_file "${PROVISA_HOME}/provisa.env"
+  write_env_file "$env_file"
   # $USER is not exported under the GCE metadata runner / systemd-run; resolve it.
   local run_user; run_user="$(id -un)"
   # System Docker runs as its own systemd service — order after it and skip the
@@ -1317,7 +1320,9 @@ install_systemd() {
   else
     xdg_line="Environment=XDG_RUNTIME_DIR=${PROVISA_HOME}/run"
   fi
-  cat > "$unit" <<UNIT
+  # Rendered beside the unit and moved into place, so a failure never leaves it empty.
+  local unit_tmp; unit_tmp="$(mktemp "${unit}.XXXXXX")"
+  cat > "$unit_tmp" <<UNIT
 [Unit]
 Description=Provisa Data Platform
 After=${after}
@@ -1342,6 +1347,8 @@ TimeoutStartSec=300
 [Install]
 WantedBy=multi-user.target
 UNIT
+  chmod 644 "$unit_tmp"
+  mv -f "$unit_tmp" "$unit"
   systemctl daemon-reload
   systemctl enable provisa
   # restart, not `enable --now`: on a version-change re-provision the stack is already
@@ -1503,6 +1510,10 @@ setup_native_venv() {
 
   if _online; then
     info "Installing Provisa from PyPI..."
+    # The embedded extra carries the vector extra (the default config's embedding model). PyPI's
+    # Linux torch is the CUDA build, so torch comes first from PyTorch's CPU-only index; the extra's
+    # torch requirement is then already met.
+    "$pip" install --quiet --index-url https://download.pytorch.org/whl/cpu torch
     "$pip" install --quiet "provisa[${extras}]${pin}" uvicorn mcp-proxy
   elif [ -n "$wheels" ]; then
     info "Installing Provisa from bundled wheels (offline)..."
@@ -1514,6 +1525,11 @@ setup_native_venv() {
   # REQ-2194: provisa's encoders are compiled into it; an install without them is a broken install.
   "${venv}/bin/python3" -c "import provisa._encoders.pgwire" || {
     err "Provisa's compiled encoders (provisa._encoders) did not install — reinstall Provisa."
+    exit 1
+  }
+  # The default config's embedding model runs on sentence-transformers over CPU-only torch.
+  "${venv}/bin/python3" -c "import sentence_transformers, torch; assert torch.version.cuda is None" || {
+    err "The embedding library (sentence-transformers on CPU-only torch) did not install — reinstall Provisa."
     exit 1
   }
 

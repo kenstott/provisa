@@ -2,7 +2,7 @@
   "jsonApiPage": {
     "title": "JSON:API-Explorer",
     "specLink": "Spezifikation",
-    "description": "Sparse Fieldsets, Filtern, Sortieren und Paginierung. Governance gilt einheitlich, unabhängig vom Übertragungsprotokoll.",
+    "description": "Sparse Fieldsets, Filtern, Sortieren und Paginierung. Auf jedem Wire-Protokoll gilt dieselbe Governance.",
     "tableLabel": "Tabelle",
     "loadingOption": "Wird geladen…",
     "selectTablePlaceholder": "Tabelle auswählen",

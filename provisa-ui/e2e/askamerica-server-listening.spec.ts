@@ -14,7 +14,7 @@
 // business and is the full case's to judge (source-to-query-special-cases.spec.ts).
 
 import { test, expect } from "./coverage";
-import { deleteSourceAndItsTables } from "./delete-source";
+import { deleteSourceHoldingNoTable } from "./retire-source-tables";
 import {
   ASKAMERICA_SERVING_BUDGET_MS,
   openSourcesForm,
@@ -25,18 +25,25 @@ import {
 // (SourceStillStartingError, preparing_catalog): "... is listening, and its tables can be registered now ...".
 const LISTENING = "is listening";
 
+// How long one poll waits for its listing. A fresh server's first read of a schema can hold its
+// request for over a minute (ConnectorReplica.discovery_read), and the budget would run out on that
+// one answer. The read stays in flight; the next poll is refused at once, "... is listening, and is
+// answering another read ...", which is what this spec is after.
+const LISTING_ANSWER_MS = 10_000;
+
 test.describe("govdata: a saved source's server listens", () => {
   const apiKey = process.env.FREE_ASKAMERICA_KEY ?? "";
 
-  // The instance serves ONE AskAmerica source: a spec that fails before its own cleanup would leave
-  // its source behind and refuse every later one ("already exists"), so it is removed whatever the
-  // outcome.
+  // The instance serves ONE AskAmerica source (REQ-540): a spec that fails before its own cleanup
+  // would leave its source behind and refuse every later one ("already exists"), so it is removed
+  // whatever the outcome. It may be: this spec registers no table on it, and only a source that
+  // holds a table, retired or not, is kept (REQ-2248).
   let created: string | undefined;
   test.afterEach(async ({ page }) => {
     if (created === undefined) return;
     const id = created;
     created = undefined;
-    await deleteSourceAndItsTables(async (query, variables) => {
+    await deleteSourceHoldingNoTable(async (query, variables) => {
       const res = await page.request.post("/admin/graphql", { data: { query, variables } });
       return res.json();
     }, id);
@@ -57,24 +64,31 @@ test.describe("govdata: a saved source's server listens", () => {
 
     // The listing answers once the server serves, and STARTING until then: "still starting up"
     // while its port is closed, LISTENING once it is open. Any other error is the server's failure.
+    const listing = async (): Promise<string> => {
+      const res = await page.request.post("/admin/graphql", {
+        data: {
+          query:
+            "query($sourceId: String!, $schema: String!) { availableTables(sourceId: $sourceId, schemaName: $schema) { name } }",
+          variables: { sourceId, schema: "weather" },
+        },
+      });
+      expect(res.ok(), await res.text()).toBeTruthy();
+      const body = await res.json();
+      if (!body.errors?.length) return "serving";
+      const message = body.errors.map((e: { message: string }) => e.message).join("; ");
+      expect(message, message).toContain("STARTING:");
+      return message.includes(LISTENING) ? "listening" : "starting";
+    };
     await expect
       .poll(
-        async () => {
-          const res = await page.request.post("/admin/graphql", {
-            data: {
-              query:
-                "query($sourceId: String!, $schema: String!) { availableTables(sourceId: $sourceId, schemaName: $schema) { name } }",
-              variables: { sourceId, schema: "weather" },
-            },
-          });
-          expect(res.ok(), await res.text()).toBeTruthy();
-          const body = await res.json();
-          if (!body.errors?.length) return "serving";
-          const message = body.errors.map((e: { message: string }) => e.message).join("; ");
-          expect(message, message).toContain("STARTING:");
-          return message.includes(LISTENING) ? "listening" : "starting";
-        },
-        { timeout: ASKAMERICA_SERVING_BUDGET_MS, intervals: [5000] },
+        () =>
+          Promise.race([
+            listing(),
+            new Promise<string>((resolve) =>
+              setTimeout(() => resolve("unanswered"), LISTING_ANSWER_MS),
+            ),
+          ]),
+        { timeout: ASKAMERICA_SERVING_BUDGET_MS, intervals: [1000] },
       )
       .toMatch(/^(listening|serving)$/);
   });

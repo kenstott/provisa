@@ -4,7 +4,6 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 OUT_DIR="${SCRIPT_DIR}/dist"
 IMAGES_DIR="${SCRIPT_DIR}/obs-images"
 DMG_NAME="Provisa-Obs.dmg"
@@ -113,7 +112,7 @@ check_prereqs() {
 save_images() {
   mkdir -p "$IMAGES_DIR"
   local count
-  count=$(ls "${IMAGES_DIR}"/*.tar.gz 2>/dev/null | wc -l | tr -d ' ')
+  count=$(find "$IMAGES_DIR" -maxdepth 1 -name '*.tar.gz' | wc -l | tr -d ' ')
   if [ "$count" -ge "${#OBS_IMAGES[@]}" ]; then
     info "Obs images pre-populated (${count} tarballs) — skipping docker pull."
     return
@@ -256,63 +255,13 @@ create_dmg() {
   ok "DMG created: ${DMG_PATH}"
 }
 
-notarize_dmg() {
-  if [ -z "${APPLE_NOTARYTOOL_APPLE_ID:-}" ]; then
-    info "APPLE_NOTARYTOOL_APPLE_ID not set — skipping notarization."
-    return
-  fi
-  local notary_args=(
-    --apple-id "${APPLE_NOTARYTOOL_APPLE_ID}"
-    --password "${APPLE_NOTARYTOOL_PASSWORD}"
-    --team-id  "${APPLE_NOTARYTOOL_TEAM_ID}"
-  )
-  info "Submitting DMG for notarization..."
-  local submit_out submit_err submit_rc
-  submit_out=$(xcrun notarytool submit "$DMG_PATH" "${notary_args[@]}" --output-format json 2>/tmp/notary-submit-err) \
-    && submit_rc=0 || submit_rc=$?
-  submit_err=$(cat /tmp/notary-submit-err 2>/dev/null || true)
-  rm -f /tmp/notary-submit-err
-  if [ $submit_rc -ne 0 ]; then
-    if printf '%s\n%s' "$submit_out" "$submit_err" | grep -qi "required agreement\|403"; then
-      info "WARNING: Notarization skipped — Apple Developer agreement missing or expired (HTTP 403). DMG will be unsigned."
-      return
-    fi
-    err "notarytool submit failed (exit $submit_rc): $submit_err"
-    exit 1
-  fi
-  local submission_id
-  submission_id=$(printf '%s' "$submit_out" | python3 -c "import sys,json; print(json.load(sys.stdin)['id'])")
-  ok "Submission ID: ${submission_id}"
-  local max_polls=30 poll=0 status=""
-  while [ $poll -lt $max_polls ]; do
-    status=$(xcrun notarytool info "$submission_id" "${notary_args[@]}" \
-               --output-format json 2>/dev/null \
-             | python3 -c "import sys,json; print(json.load(sys.stdin).get('status',''))" \
-             2>/dev/null || echo "network-error")
-    case "$status" in
-      Accepted) ok "Notarization accepted."; break ;;
-      Invalid|Rejected)
-        err "Notarization ${status}:"
-        xcrun notarytool log "$submission_id" "${notary_args[@]}" >&2 || true
-        exit 1 ;;
-      *) info "  Status: ${status:-unknown} (poll $((poll+1))/${max_polls})" ;;
-    esac
-    sleep 40
-    poll=$((poll + 1))
-  done
-  [ "$status" = "Accepted" ] || { err "Notarization timed out."; exit 1; }
-  xcrun stapler staple "$DMG_PATH"
-  ok "DMG notarized and stapled."
-}
-
 main() {
-  printf "\n${BOLD}Provisa Obs DMG Builder${NC}\n"
+  printf '\n%bProvisa Obs DMG Builder%b\n' "$BOLD" "$NC"
   printf "═══════════════════════════════════════════\n\n"
   check_prereqs
   save_images
   create_dmg
-  notarize_dmg
-  printf "\n${GREEN}${BOLD}Build complete.${NC}\n"
+  printf '\n%b%bBuild complete.%b\n' "$GREEN" "$BOLD" "$NC"
   printf "DMG: %s\n" "${DMG_PATH}"
 }
 

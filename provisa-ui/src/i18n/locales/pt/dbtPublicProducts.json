@@ -1,0 +1,23 @@
+{
+  "dbtPublicProducts": {
+    "modeLabel": "O que registrar",
+    "modeTables": "Escolher tabelas",
+    "modeProducts": "Modelos públicos como produtos de dados",
+    "intro_one": "Cada modelo público com contrato aplicado é registrado como tabela, e {{count}} produto de dados é criado como rascunho para um steward revisar.",
+    "intro_other": "Cada modelo público com contrato aplicado é registrado como tabela, e {{count}} produtos de dados são criados como rascunhos para um steward revisar.",
+    "none": "Nenhum modelo deste manifesto é público com contrato aplicado.",
+    "groupProduct": "Produto de dados {{id}} (grupo dbt)",
+    "projectProduct": "Produto de dados {{id}} (o projeto inteiro)",
+    "exists": "Já existe um produto de dados chamado {{id}}. Renomeie-o ou remova-o para registrar estes modelos.",
+    "owner": "Proprietário: {{owner}}",
+    "ownerRole": "papel de proprietário {{role}}",
+    "tests": "Testes: {{tests}}",
+    "version": "Versão {{version}}",
+    "columns": "Colunas prometidas: {{columns}}",
+    "required": "obrigatória",
+    "alreadyRegistered": "já registrado",
+    "ungrouped": "Fora de qualquer grupo, por isso não registrados aqui: {{models}}. Escolha-os como tabelas.",
+    "confirm_one": "Registrar e criar {{count}} rascunho de produto",
+    "confirm_other": "Registrar e criar {{count}} rascunhos de produto"
+  }
+}

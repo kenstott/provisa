@@ -223,14 +223,14 @@ def test_who_stood_at_the_window_and_whose_cash_it_is_are_two_fields(server):
     # own $7,000 she brought herself (1004).
     gql = (
         "{ b__cashTransactions(where: { id: { in: [1004, 1005] } }, order_by: [{ id: asc }]) "
-        "{ id conductedBy { name } onBehalfOf { name } } }"
+        "{ id conductedByCustomer { name } onBehalfOfCustomer { name } } }"
     )
     resp = _post(server, "/data/graphql", {"query": gql}, _COMPLIANCE)
     assert resp.status_code == 200, resp.text
     body = resp.json()
     assert not body.get("errors"), body
     assert [
-        (r["id"], r["conductedBy"]["name"], r["onBehalfOf"]["name"])
+        (r["id"], r["conductedByCustomer"]["name"], r["onBehalfOfCustomer"]["name"])
         for r in body["data"]["b__cashTransactions"]
     ] == [(1004, "Dana Whitmore", "Dana Whitmore"), (1005, "Paul Greer", "Dana Whitmore")]
 

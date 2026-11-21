@@ -55,9 +55,10 @@ import { Tip } from "../Tip";
 import { ScanStatusBadge, TermReviewQueue } from "./TermReviewQueue";
 import { useScanProgress } from "./useScanProgress";
 import { documentMark } from "../../lib/documentMark";
+import { useViewDomains } from "../../lib/viewDomains";
 
 /** The files the reference library reads. */
-const ACCEPT = ".html,.htm,.md,.markdown,.txt,.pdf,.docx,.xml";
+const ACCEPT = ".html,.htm,.md,.markdown,.txt,.pdf,.docx,.xlsx,.xml";
 /** How often the list is read again while a scan in it is running, in milliseconds. */
 const POLL_MS = 2000;
 
@@ -92,7 +93,10 @@ const NO_TABLE: TablePick = {
 function TableFields({ value, onChange }: { value: TablePick; onChange: (v: TablePick) => void }) {
   const { t } = useTranslation();
   const { tables } = useTables();
-  const scannable = useMemo(() => tables.filter((tbl) => isUserTable(tbl) && !tbl.draft), [tables]);
+  const scannable = useMemo(
+    () => tables.filter((tbl) => isUserTable(tbl) && !tbl.withdrawn),
+    [tables],
+  );
   const domains = useMemo(
     () =>
       [...new Set(scannable.map((tbl) => tbl.domainId))]
@@ -197,6 +201,8 @@ function ScanForm({
   const [domains, setDomains] = useState<string[]>(defaultDomains);
   const [problem, setProblem] = useState("");
   const [starting, setStarting] = useState(false);
+  // REQ-2253: the scan works only within the navbar filter's selection.
+  const viewDomains = useViewDomains();
 
   const source = (): ScanSource | null => {
     if (origin === "table") {
@@ -229,7 +235,7 @@ function ScanForm({
     }
     setStarting(true);
     try {
-      const { scan } = await startScan(chosen, domainsEnabled ? domains : []);
+      const { scan } = await startScan(chosen, domainsEnabled ? domains : [], viewDomains);
       onStarted(scan);
     } catch (e) {
       setProblem(e instanceof Error ? e.message : String(e));
@@ -532,17 +538,22 @@ export function FindTermsDialog({
   const [scans, setScans] = useState<Scan[] | null>(null);
   const [openScan, setOpenScan] = useState<number | null>(null);
   const [problem, setProblem] = useState("");
+  // REQ-2253: only the documents and scans of the navbar filter's selection are offered.
+  const viewDomains = useViewDomains();
 
   const load = useCallback(async () => {
     try {
-      const [docs, found] = await Promise.all([fetchScannableDocuments(), fetchScans()]);
+      const [docs, found] = await Promise.all([
+        fetchScannableDocuments(viewDomains),
+        fetchScans(viewDomains),
+      ]);
       setDocuments(docs);
       setScans(found);
     } catch (e) {
       setProblem(e instanceof Error ? e.message : String(e));
       setDocuments([]);
     }
-  }, []);
+  }, [viewDomains]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => void load(), 0);
@@ -554,12 +565,12 @@ export function FindTermsDialog({
   useEffect(() => {
     if (!running) return;
     const timer = window.setTimeout(() => {
-      fetchScans().then(setScans, (e: unknown) =>
+      fetchScans(viewDomains).then(setScans, (e: unknown) =>
         setProblem(e instanceof Error ? e.message : String(e)),
       );
     }, POLL_MS);
     return () => window.clearTimeout(timer);
-  }, [running, scans]);
+  }, [running, scans, viewDomains]);
 
   const rescan = async (s: Scan) => {
     setProblem("");
@@ -567,7 +578,7 @@ export function FindTermsDialog({
       const again: ScanSource = s.source_table
         ? { table: s.source_table }
         : { document_id: s.document_id! };
-      const { scan } = await startScan(again, s.domains);
+      const { scan } = await startScan(again, s.domains, viewDomains);
       setOpenScan(scan.id);
     } catch (e) {
       setProblem(e instanceof Error ? e.message : String(e));

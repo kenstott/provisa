@@ -26,6 +26,7 @@ import os
 import subprocess
 import sys
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 
 import httpx
@@ -34,11 +35,50 @@ URL = os.environ["PROVISA_URL"]
 ADMIN = {"X-Provisa-Role": "org_admin"}
 #: The dataset is ready to pull once it holds this many orders of the month's history.
 READY_ROWS = 10000
-WAIT_S = 900
+#: The overall wait: the dataset's build, and the consumer's run, with room for a read window's
+#: closed hour (the view's read window is 00:30-00:00 UTC, so up to 30 minutes) before them.
+WAIT_S = 3600
+#: The longest the setup waits for a read window to open; a refusal naming a later opening fails.
+WINDOW_WAIT_S = 1860
+_WINDOW_CODE = "data.view_outside_load_window"
+
+
+def _now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _opens_at(response: httpx.Response) -> datetime:
+    """When the window the refusal names opens (its params.opens_at); anything else is an error."""
+    try:
+        opens_at = datetime.fromisoformat(response.json()["params"]["opens_at"])
+    except (ValueError, KeyError, TypeError) as exc:
+        raise SystemExit(
+            f"{_WINDOW_CODE} refusal does not state a usable opening time: {response.text}"
+        ) from exc
+    if opens_at.tzinfo is None:
+        raise SystemExit(f"{_WINDOW_CODE} refusal's opening time has no zone: {response.text}")
+    return opens_at
+
+
+def _refused_for_window(response: httpx.Response) -> bool:
+    if response.status_code != 503:
+        return False
+    try:
+        return response.json().get("code") == _WINDOW_CODE
+    except ValueError:
+        return False
 
 
 def _sql(client: httpx.Client, sql: str) -> list[dict]:
     response = client.post("/data/sql", json={"sql": sql})
+    while _refused_for_window(response):
+        # The view is read only within its window: wait until it opens, as the refusal says.
+        wait = (_opens_at(response) - _now()).total_seconds()
+        if wait > WINDOW_WAIT_S:
+            raise SystemExit(f"{sql}: the read window opens in {wait:.0f}s: {response.text}")
+        print(f"read window closed; waiting {max(wait, 0):.0f}s for it to open", flush=True)
+        time.sleep(max(wait, 0))
+        response = client.post("/data/sql", json={"sql": sql})
     if response.status_code != 200:
         raise SystemExit(f"{sql}: HTTP {response.status_code}: {response.text}")
     return response.json()["data"]["sql"]

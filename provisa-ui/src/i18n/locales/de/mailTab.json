@@ -1,10 +1,10 @@
 {
   "mailTab": {
     "loading": "Wird geladen…",
-    "intro": "Der Mailserver, über den diese Bereitstellung Plattformnachrichten versendet – Einladungen und andere Benachrichtigungen. Jeder dem Build bekannte Transport ist aufgeführt; einer, der ein Paket benötigt, nennt es.",
+    "intro": "Der Mailserver, über den dieses Deployment Einladungen und andere Plattformmitteilungen versendet. Jeder Transport, den der Build kennt, ist aufgeführt; einer, der ein Paket benötigt, nennt es.",
     "providerLabel": "Transport",
-    "providerRequires": "{{label}} — {{library}} installieren",
-    "secretOnFile": "Ein Credential ist hinterlegt – zum Ersetzen eintippen",
+    "providerRequires": "{{label}} ({{library}} installieren)",
+    "secretOnFile": "Anmeldedaten sind hinterlegt. Tippen Sie, um sie zu ersetzen.",
     "secretNotSet": "Nicht gesetzt",
     "fromAddressLabel": "Absenderadresse",
     "fromAddressHelp": "Die Adresse, die Empfänger sehen. Die meisten Transporte verlangen einen verifizierten Absender.",
@@ -12,7 +12,7 @@
     "baseUrlHelp": "Die Adresse, auf die Links in einer Nachricht zeigen, etwa ein Einladungslink.",
     "timeoutLabel": "Timeout (Sekunden)",
     "save": "Mail-Einstellungen speichern",
-    "saved": "Mail-Einstellungen gespeichert – Versand über {{provider}}.",
+    "saved": "Mail-Einstellungen gespeichert. Versand über {{provider}}.",
     "testTitle": "Testnachricht senden",
     "testIntro": "Sendet über den konfigurierten Transport, mit denselben Credentials wie eine Einladung, und protokolliert den Versuch unten.",
     "testRecipient": "Senden an",

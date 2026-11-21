@@ -28,6 +28,7 @@ import {
 import { ontologyCountQuery, ontologyQuery } from "../../components/graph3d/ontologyData";
 import type { QueryScope } from "../../components/graph3d/graphModel";
 import { listQuery, panelQueries } from "../../pages/data-products/productCore";
+import { searchItems } from "../../lib/searchItems";
 
 const scalar: GraphqlType = { kind: "SCALAR", name: "String" };
 const list = (name: string): GraphqlType => ({
@@ -87,7 +88,7 @@ const snake = (name: string) =>
 /** The relationships the meta seed declares a graphql_alias for: schema_gen takes one as written,
  * so these keep their camelCase under ``snake`` and ``hasura_graphql``, and every other field,
  * a derived relationship's among them, takes the convention. */
-const DECLARED = new Set(["edgesOut", "edgesIn", "sourceTerm", "targetTerm", "memberTables"]);
+const DECLARED = new Set(["edgesOut", "edgesIn", "sourceTerm", "targetTerm"]);
 
 interface MetaSchemaDoc {
   introspection: Introspection;
@@ -142,7 +143,7 @@ const SCOPE: QueryScope = {
   tags: [],
   sensitivities: [],
   orphans: true,
-  search: ["party"],
+  search: searchItems("party"),
   focus: null,
   depth: 2,
 };

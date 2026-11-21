@@ -501,9 +501,15 @@ def test_localhost_resolves_to_none():
 
 
 def test_control_plane_host_cloud_uses_x_org_provisa_header():
-    # REQ-1276: cloud.provisa.dev requires x-org-provisa header for org
+    # REQ-1276: cloud.provisa.dev requires x-org-provisa header for org. The member holds a data
+    # role there: holding none, it is refused by name (REQ-802).
     db = _Pool(
-        rows_by_table={"user_role_assignments": [{"role_id": "platform_admin", "domain_id": "*"}]}
+        rows_by_table={
+            "user_role_assignments": [
+                {"role_id": "platform_admin", "domain_id": "*"},
+                {"role_id": "developer", "domain_id": "*"},
+            ]
+        }
     )
     admin = _Pool(rows_by_table={"user_org_memberships": [{"org_id": "acme"}]})
     app = _make_app(assignments_source="provisa", db_pool=db, admin_pool=admin, multitenancy=True)
@@ -625,9 +631,16 @@ def test_bootstrap_platform_admin_naming_no_org_is_refused_by_name():
 def test_platform_admin_named_org_requires_membership_req1327():
     # REQ-1327: naming a tenant org selects it ONLY for members. A platform admin who was granted
     # membership + a role in that org (the audited REQ-1303 path) binds it and resolves the role
-    # THAT org assigned — the platform set never carries across.
+    # THAT org assigned — the platform set never carries across. (This fake pool answers every
+    # org's read alike: acme's platform_admin row is dropped there, developer is what acme assigns.
+    # Without it the admin holds no role in acme and is refused by name, REQ-802.)
     db = _Pool(
-        rows_by_table={"user_role_assignments": [{"role_id": "platform_admin", "domain_id": "*"}]}
+        rows_by_table={
+            "user_role_assignments": [
+                {"role_id": "platform_admin", "domain_id": "*"},
+                {"role_id": "developer", "domain_id": "*"},
+            ]
+        }
     )
     admin = _Pool(rows_by_table={"user_org_memberships": [{"org_id": "acme"}]})
     app = _make_app(
@@ -642,6 +655,7 @@ def test_platform_admin_named_org_requires_membership_req1327():
     )
     assert resp.status_code == 200
     assert resp.json()["active_org_id"] == "acme"
+    assert resp.json()["role"] == "developer"
 
 
 def test_non_admin_member_less_user_is_still_blocked_on_the_tenant_plane():
@@ -1144,3 +1158,62 @@ def test_a_default_org_role_sets_meta_role_is_built_in_the_environment_the_reque
 def _declared_org_base_domain(monkeypatch):
     """REQ-1276: a host names an org only under the deployment's declared base domain."""
     monkeypatch.setenv("VITE_ORG_BASE_DOMAIN", "provisa.org")
+
+
+# --- a sign-in holding no role (REQ-120, REQ-802) --------------------------------------------------
+#
+# Where Provisa holds the assignments, a sign-in holding no role acts as none: it is refused by
+# name (auth.no_role_held), as every wire sign-in refuses it, rather than acting as the default
+# role nobody granted it. The platform-plane endpoints still serve it.
+
+
+def _holds_nothing(multitenancy: bool, member_of: list[str]):
+    db = _Pool(rows_by_table={"user_role_assignments": []})
+    admin = _Pool(rows_by_table={"user_org_memberships": [{"org_id": o} for o in member_of]})
+    return _make_app(
+        assignments_source="provisa",
+        db_pool=db,
+        admin_pool=admin,
+        multitenancy=multitenancy,
+        default_org_id="root",
+    )
+
+
+def _refused_by_name(resp) -> None:
+    assert resp.status_code == 403
+    assert resp.json() == {
+        "detail": "'u1' holds no role in this organization",
+        "code": "auth.no_role_held",
+        "params": {"user": "u1"},
+    }
+
+
+def test_a_single_tenant_sign_in_holding_no_role_is_refused_by_name():
+    """It acted as the default role, analyst."""
+    _refused_by_name(TestClient(_holds_nothing(False, [])).get("/test", headers=_auth("u1")))
+
+
+def test_a_member_holding_no_role_in_its_org_is_refused_by_name():
+    app = _holds_nothing(True, ["acme"])
+    _refused_by_name(TestClient(app).get("/test", headers=_auth_in("u1", "acme")))
+
+
+@pytest.mark.parametrize("multitenancy", [False, True])
+def test_a_sign_in_holding_no_role_still_reaches_the_platform_plane(multitenancy):
+    resp = TestClient(_holds_nothing(multitenancy, [])).get("/auth/me", headers=_auth("u1"))
+    assert resp.status_code == 200
+    assert resp.json()["roles"] == []
+
+
+def test_a_sign_in_holding_a_default_assignment_acts_as_it():
+    db = _Pool(rows_by_table={"user_role_assignments": []})
+    app = _make_app(
+        assignments_source="provisa",
+        db_pool=db,
+        admin_pool=_Pool(),
+        default_org_id="root",
+        default_assignments=[{"role_id": "developer", "domain_id": "*"}],
+    )
+    resp = TestClient(app).get("/test", headers=_auth("u1"))
+    assert resp.status_code == 200
+    assert resp.json()["role"] == "developer"

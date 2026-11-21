@@ -237,9 +237,10 @@ async def test_run_builds_its_rows_off_the_event_loop(runtime, monkeypatch):
     assert loop_thread not in built_on
 
 
-#: The row the engine raises PostgreSQL's own error on (pg_error.raising): past what DuckDB
-#: computes when the statement is run (about 128K rows), so it is met only as a batch is read.
-_LATE = 400_000
+#: The row the engine raises PostgreSQL's own error on (pg_error.raising): far enough that the
+#: first batches are read before it. DuckDB's threads run ahead of the reader, so at 400,000 rows
+#: about one read in thirteen under load met the error before its first batch.
+_LATE = 2_000_000
 _LATE_ERROR = (
     f"select case when x = {_LATE} then error('postgresql-error 22012: division by zero') "
     f"else x end as v from range({_LATE + 1}) t(x)"
@@ -272,3 +273,14 @@ def test_run_sync_raises_any_other_engine_error_as_duckdb_raises_it(runtime):
     assert next(read)
     with pytest.raises(duckdb.InvalidInputException, match="Invalid Input Error: no$"):
         list(read)
+
+
+def test_run_arrow_stream_reads_its_batches_lazily(runtime):
+    """REQ-986: the Arrow transport's stream is pulled batch by batch, so opening it computes no
+    more than DuckDB runs to start the statement: an engine error in a later batch is met only as
+    that batch is read, after the first full batch has been handed over."""
+    schema, batches = runtime.run_arrow_stream(_LATE_ERROR)
+    assert schema.names == ["v"]
+    assert next(batches).num_rows == _ARROW_STREAM_BATCH_ROWS
+    with pytest.raises(OSError, match="postgresql-error 22012: division by zero"):
+        list(batches)

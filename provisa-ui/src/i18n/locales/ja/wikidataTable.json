@@ -1,0 +1,36 @@
+{
+  "wikidataTable": {
+    "modeClass": "クラスのテーブル",
+    "starters": {
+      "countries": "国 (ISO コード、首都、人口)",
+      "currencies": "通貨 (ISO 4217)",
+      "languages": "言語 (ISO 639)",
+      "admin_regions": "第一級行政区画",
+      "organizations": "上場組織 (LEI、ティッカー、ISIN)"
+    },
+    "class": "クラス",
+    "classHint": "名前でクラスを検索するか、下のよく使われるクラスから始めます。テーブルにはクラスのインスタンスが入ります。",
+    "nothingFound": "見つかりません",
+    "instances": "インスタンス: {{value}}",
+    "broader": "上位クラス",
+    "narrower": "下位クラス",
+    "columns": "列",
+    "columnsHint": "このクラスのインスタンスが最もよく使うプロパティ。",
+    "filterRequired": "{{limit}} 件を超えるインスタンス: フィルターを選択してください。",
+    "filterProperty": "フィルター条件",
+    "filterValue": "値",
+    "useClass": "このクラスを使用",
+    "browseTitle": "よく使われるクラス",
+    "browseLoading": "よく使われるクラスを数えています…",
+    "members": "メンバー",
+    "starterDescriptions": {
+      "countries": "国ごとに 1 行。",
+      "currencies": "ISO 4217 コードを持つ通貨ごとに 1 行。",
+      "languages": "ISO 639-3 コードを持つ言語ごとに 1 行。",
+      "admin_regions": "州、県などの第一級行政区画と、その国。",
+      "organizations": "現在の証券取引所上場ごとに 1 行。"
+    },
+    "searching": "検索しています…",
+    "loadingClass": "クラスのクエリを作成しています…"
+  }
+}

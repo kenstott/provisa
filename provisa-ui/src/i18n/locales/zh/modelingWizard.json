@@ -210,7 +210,7 @@
       "description": "描述草稿",
       "notCreatedTitle": "已记录,未创建",
       "ruleNotCreated": "Business Vault 规则“{{rule}}”:已记录在其表的描述中;请将其构建为这些表之上的视图。",
-      "draftNote": "每条描述都是初稿,供数据管家在“已注册的表”中修订。",
+      "draftNote": "每条描述都是初稿,供数据管家在“表”页面中修订。",
       "create": "创建",
       "nameRequired": "请为每张表命名。",
       "nameTaken": "有两张表名称相同。请为每张表起不同的名称。"
@@ -219,8 +219,8 @@
       "created_one": "已创建 {{count}} 张表",
       "created_other": "已创建 {{count}} 张表",
       "stopped": "在 {{name}} 处停止",
-      "draftNote": "它们的描述是初稿:请在“已注册的表”中修订。",
-      "oneWay": "向导只负责创建。请在“已注册的表”或实体/事实表单中修改这些表;向导不会重新生成它们。",
+      "draftNote": "它们的描述是初稿:请在“表”页面中修订。",
+      "oneWay": "向导只负责创建。请在“表”页面或实体/事实表单中修改这些表;向导不会重新生成它们。",
       "relatesTo": "关联到 {{tables}}",
       "status": {
         "created": "已创建",

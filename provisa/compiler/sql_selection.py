@@ -48,7 +48,9 @@ from provisa.compiler.sql_where import (
     _below_takes_lateral_args,
     _has_lateral_force_args,
     _joins_row_level_to_one,
+    JunctionHop,
     RelationshipConditions,
+    junction_hop,
     where_names_relationship,
 )
 
@@ -64,10 +66,14 @@ def _lateral_join(
     exposed_to_physical: dict | None = None,
     relationships: RelationshipConditions | None = None,
     column_types: dict[int, list[tuple[str, str]]] | None = None,
+    hop: JunctionHop | None = None,
 ) -> str:
     """``relationships`` are the target's: a where stating a relationship's condition is compiled
     to EXISTS correlated with the target's rows, read here under the join's alias (REQ-2136).
-    ``column_types`` types the where's comparison values (``sql_where._compile_where``)."""
+    ``column_types`` types the where's comparison values (``sql_where._compile_where``).
+    ``hop`` is a junction-backed relationship's two hops (REQ-1586): the target's rows are those
+    its junction rows correlated with the source name, read with the junction beside them, so
+    every column of the target is read under the join's alias."""
     args = _field_args(field_node, variables)
     _tid = join_meta.target.table_id
     _e2p = exposed_to_physical or {}
@@ -86,6 +92,8 @@ def _lateral_join(
         and "where" in args
         and where_names_relationship(args["where"], relationships.ctx, relationships.type_name)
     )
+    # Beside a junction, a bare column could be the junction's: the target's are qualified.
+    qualifier = join_alias if hop is not None else None
     # REQ-1163: a target read at its own time keeps it under the join's alias. The rows are always
     # read under it: the star is expanded by its table's alias, and a table with no alias of its
     # own expands under a physical name the statement's FROM no longer holds once it is renamed.
@@ -95,17 +103,26 @@ def _lateral_join(
         distinct_cols = args["distinct_on"]
         if isinstance(distinct_cols, str):
             distinct_cols = [distinct_cols]
-        distinct_prefix = ", ".join(_q(_e2p.get((_tid, c), c)) for c in distinct_cols)
+        distinct_prefix = ", ".join(
+            (f"{_q(qualifier)}." if qualifier else "") + _q(_e2p.get((_tid, c), c))
+            for c in distinct_cols
+        )
         distinct = f"DISTINCT ON ({distinct_prefix}) "
-    sql = (
-        f"LEFT JOIN LATERAL (SELECT {distinct}* FROM {target} {_q(join_alias)} "
-        f"WHERE {_lat_tgt_expr} = {src_expr}"
-    )
+    if hop is not None:
+        sql = (
+            f"LEFT JOIN LATERAL (SELECT {distinct}{_q(join_alias)}.* FROM "
+            f"{hop.from_clause(f'{target} {_q(join_alias)}')} WHERE {hop.to_source}"
+        )
+    else:
+        sql = (
+            f"LEFT JOIN LATERAL (SELECT {distinct}* FROM {target} {_q(join_alias)} "
+            f"WHERE {_lat_tgt_expr} = {src_expr}"
+        )
     if "where" in args:
         where_sql = _compile_where(
             args["where"],
             collector,
-            join_alias if related else None,
+            join_alias if related else qualifier,
             None,
             _tid,
             exposed_to_physical,
@@ -117,7 +134,7 @@ def _lateral_join(
         order_by_val = args["order_by"]
         if isinstance(order_by_val, dict):
             order_by_val = [order_by_val]
-        sql += f" ORDER BY {_compile_order_by(order_by_val, None, _tid, exposed_to_physical)}"
+        sql += f" ORDER BY {_compile_order_by(order_by_val, qualifier, _tid, exposed_to_physical)}"
     limit_value = args.get("limit", join_meta.default_limit)
     if limit_value is not None:
         limit_value = _extract_non_negative_int(limit_value, "limit")
@@ -232,6 +249,11 @@ def _build_rel_json_kv(
                 f" {_q(sub_alias)}"
             )
             sub_where = f"{sub_tgt} = {sub_src}"
+            # REQ-1586: a junction-backed relationship reaches its rows through its junction.
+            sub_hop = junction_hop(sub_join_meta, table_alias, sub_alias, use_catalog, sources)
+            if sub_hop is not None:
+                sub_from = sub_hop.from_clause(sub_from)
+                sub_where = sub_hop.to_source
             sub_limit = _explicit_limit(sel, variables) or sub_join_meta.default_limit
             # Prefer child_src_val (explicit varchar constant) over sub_src. Fall back to
             # sub_src for non-integer joins; block propagation for integer joins to avoid
@@ -287,6 +309,13 @@ EMPTY_JSON_LIST = "CAST('[]' AS JSON)"
 
 def _empty_list_if_none(subquery: str) -> str:
     return f"COALESCE({subquery}, {EMPTY_JSON_LIST})"
+
+
+def _when_joined(expr: str, joined: str | None) -> str:
+    """``expr`` -- a value a joined row does not hold itself (a list nested in it, a literal) --
+    null when no row joined: ``joined`` is its join's condition, null when the row is absent.
+    The encoder answers a to-many row of nulls as no element, a to-one as null (J1218)."""
+    return expr if joined is None else f"CASE WHEN {joined} THEN {expr} END"
 
 
 def _build_rel_json_expr(
@@ -391,8 +420,10 @@ def _collect_nested_columns(
     variables: dict | None,
     cardinality: str | None = None,
     flat: bool = False,
+    joined: str | None = None,
 ) -> tuple[int, bool]:
-    """Recursively collect columns and JOINs from nested selections."""
+    """Recursively collect columns and JOINs from nested selections. ``joined`` is the condition
+    of the join reading ``parent_alias`` (``_when_joined``); None for the root's own rows."""
     has_lateral = False
     for nested_sel in selections:
         if not isinstance(nested_sel, FieldNode):
@@ -441,6 +472,9 @@ def _collect_nested_columns(
                     nested_join_meta.target_column_type,
                     nested_join_meta.source_column_type,
                 )
+            # REQ-1586: a junction-backed relationship reaches its rows through its junction.
+            hop = junction_hop(nested_join_meta, parent_alias, nested_alias, use_catalog, sources)
+            nested_joined = hop.joined if hop is not None else f"{tgt_expr} = {src_expr}"
             nested_key = nested_sel.alias.value if nested_sel.alias else nested_name
             _below = _below_takes_lateral_args(nested_sel, ctx, nested_join_meta.target.type_name)
             _use_agg = (
@@ -471,6 +505,7 @@ def _collect_nested_columns(
                             ctx, nested_join_meta.target.type_name, use_catalog, sources
                         ),
                         ctx.aggregate_columns,
+                        hop,
                     )
                 )
             elif _use_agg and nested_sel.selection_set:
@@ -482,15 +517,18 @@ def _collect_nested_columns(
                     else (src_expr if nested_join_meta.source_column_type != "integer" else None)
                 )
                 _json_text: set[str] = set()
+                nested_from = (
+                    f"{travel_ref(_table_ref(nested_join_meta.target, use_catalog), nested_sel, variables)}"
+                    f" {_q(nested_alias)}"
+                )
                 json_expr, alias_counter = _build_rel_json_expr(
                     nested_sel.selection_set.selections,
                     ctx,
                     nested_join_meta.target.type_name,
                     nested_join_meta.target,
                     nested_alias,
-                    f"{travel_ref(_table_ref(nested_join_meta.target, use_catalog), nested_sel, variables)}"
-                    f" {_q(nested_alias)}",
-                    f"{tgt_expr} = {src_expr}",
+                    nested_from if hop is None else hop.from_clause(nested_from),
+                    f"{tgt_expr} = {src_expr}" if hop is None else hop.to_source,
                     nested_join_meta.cardinality,
                     _explicit_limit(nested_sel, variables) or nested_join_meta.default_limit,
                     use_catalog,
@@ -501,6 +539,9 @@ def _collect_nested_columns(
                     json_text=_json_text,
                 )
                 json_alias = f"{nesting_path}.{nested_key}".replace(".", "__")
+                # A to-one's subquery is null with its row; a list is [] for none, never null.
+                if nested_join_meta.cardinality == "one-to-many":
+                    json_expr = _when_joined(json_expr, joined)
                 select_parts.append(f"{json_expr} AS {_q(json_alias)}")
                 columns.append(
                     ColumnRef(
@@ -514,11 +555,14 @@ def _collect_nested_columns(
                     )
                 )
             else:
-                join_clauses.append(
-                    f"LEFT JOIN "
+                nested_from = (
                     f"{travel_ref(_table_ref(nested_join_meta.target, use_catalog), nested_sel, variables)}"
                     f" {_q(nested_alias)}"
-                    f" ON {src_expr} = {tgt_expr}"
+                )
+                join_clauses.append(
+                    f"LEFT JOIN {nested_from} ON {src_expr} = {tgt_expr}"
+                    if hop is None
+                    else hop.left_joins(nested_from)
                 )
 
             sub_path = f"{nesting_path}.{nested_key}"  # its response key, as the path
@@ -540,6 +584,7 @@ def _collect_nested_columns(
                     variables,
                     cardinality=nested_join_meta.cardinality,
                     flat=flat,
+                    joined=nested_joined,
                 )
                 has_lateral |= _child_lateral
         else:
@@ -606,11 +651,11 @@ def _collect_nested_columns(
             )
             nested_sql = ctx.physical_to_sql.get((parent_table.table_id, nested_phys), nested_phys)
             if nested_name == "__typename":  # the object's GraphQL type, not a column
-                col_expr = _sql_str_literal(parent_type_name)
+                col_expr = _when_joined(_sql_str_literal(parent_type_name), joined)
                 nested_sql = nested_response_key
             elif nested_phys in _VIRTUAL_COLS:
                 _nvc = (ctx.virtual_columns.get(parent_table.table_id) or {}).get(nested_phys, "")
-                col_expr = _sql_str_literal(_nvc)
+                col_expr = _when_joined(_sql_str_literal(_nvc), joined)
             else:
                 col_expr = f"{_q(parent_alias)}.{_q(nested_sql)}"
             # Named by its response path (edges_out__target_term__id): the statement reads as the

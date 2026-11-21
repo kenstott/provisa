@@ -25,7 +25,13 @@ from typing import TYPE_CHECKING, Any
 from sqlalchemy import select
 
 from provisa.core.repositories import data_product as data_product_repo
-from provisa.core.schema_org import data_products, domains, registered_tables, tag_assignments
+from provisa.core.schema_org import (
+    data_product_tables,
+    data_products,
+    domains,
+    registered_tables,
+    tag_assignments,
+)
 
 if TYPE_CHECKING:
     from provisa.core.database import Connection
@@ -77,7 +83,7 @@ async def member_deprecated(conn: "Connection", _ctx: Context) -> dict[str, list
     rows = (
         await conn.execute_core(
             select(
-                registered_tables.c.product_id,
+                data_product_tables.c.product_id,
                 registered_tables.c.id,
                 registered_tables.c.source_id,
                 registered_tables.c.schema_name,
@@ -85,11 +91,12 @@ async def member_deprecated(conn: "Connection", _ctx: Context) -> dict[str, list
                 tag_assignments.c.expires_on,
             )
             .join(tag_assignments, tag_assignments.c.table_id == registered_tables.c.id)
-            .join(data_products, data_products.c.id == registered_tables.c.product_id)
+            .join(data_product_tables, data_product_tables.c.table_id == registered_tables.c.id)
+            .join(data_products, data_products.c.id == data_product_tables.c.product_id)
             .where(tag_assignments.c.object_type == "table")
             .where(tag_assignments.c.base_tag_id == "deprecated")
             .where(data_products.c.status != "retired")
-            .order_by(registered_tables.c.id)
+            .order_by(registered_tables.c.id, data_product_tables.c.product_id)
         )
     ).fetchall()
     out: dict[str, list[Finding]] = {}
@@ -161,7 +168,11 @@ async def domain_steward_unset(conn: "Connection", _ctx: Context) -> dict[str, l
     unset = {
         r.id
         for r in (
-            await conn.execute_core(select(domains.c.id).where(domains.c.steward.is_(None)))
+            await conn.execute_core(
+                select(domains.c.id).where(
+                    domains.c.steward.is_(None), domains.c.retired.is_(False)
+                )
+            )
         ).fetchall()
     }
     return {
@@ -230,15 +241,12 @@ async def context(today: datetime.date) -> Context:
     """The finders' context for the current org: a support contact is required when its metadata
     export is on and lists products in Horizon."""
     from provisa.api.app import state
-    from provisa.core.models import CatalogsConfig, MetadataExportConfig
+    from provisa.core.models import CatalogsConfig
     from provisa.core.org_settings import resolve_org_config
 
     assert state.model_db is not None, "the org's model store is bound with its runtime"
     resolved = await resolve_org_config(state.model_db)
-    config = MetadataExportConfig(**dict(resolved.get("metadata_export") or {}))
-    # Each export names a catalog; its provider is the catalog's (REQ-2122).
+    # What is published is each Syncing entry whose direction includes Export (REQ-2247).
     catalogs = CatalogsConfig(catalogs=list(resolved.get("catalogs") or []))
-    required = config.enabled and any(
-        t.provider == "snowflake_horizon" for t in config.export_targets(catalogs)
-    )
+    required = any(t.provider == "snowflake_horizon" for t in catalogs.export_targets())
     return Context(today=today, support_contact_required=required)

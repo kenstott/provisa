@@ -35,7 +35,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from provisa.core import model_change
-from provisa.core import settings_registry
+from provisa.core import settings_registry, step_clock
 from provisa.core.env_copy import REPLACE, CopyReport, copy_model
 from provisa.core.env_source_files import fork_file_sources
 from provisa.core.env_classes import landing_binding
@@ -108,41 +108,45 @@ async def create_environment(
     """
     from provisa.core.org_provisioning import deprovision_org, provision_org
 
-    await reserve_env(
-        state,
-        admin_db,
-        org_id,
-        name,
-        created_by=created_by,
-        expires_at=expires_at,
-        idle_ttl_seconds=idle_ttl_seconds,
-        # REQ-1942: the environment it is created from is always recorded, whatever its mode.
-        parent=from_env,
-        data_mode=data_mode,
-        mutation_handling=mutation_handling,
-    )
+    stepped = f"environment {name}"
+    with step_clock.step(f"{stepped}: its reservation"):
+        await reserve_env(
+            state,
+            admin_db,
+            org_id,
+            name,
+            created_by=created_by,
+            expires_at=expires_at,
+            idle_ttl_seconds=idle_ttl_seconds,
+            # REQ-1942: the environment it is created from is always recorded, whatever its mode.
+            parent=from_env,
+            data_mode=data_mode,
+            mutation_handling=mutation_handling,
+        )
     owns_branch = False
     try:
-        await provision_org(
-            tenant_pool,
-            _schema_sql(),
-            org_id=org_id,
-            redis_url=redis_url(),
-            redis_password=settings_registry.value("cache.redis_org_password"),
-            env=name,
-        )
-        report = await copy_model(
-            model_db,
-            org_id,
-            from_env,
-            name,
-            mode=REPLACE,
-            # REQ-1539: the only call that seeds roles and assignments. A new environment needs
-            # them to be usable at all; every later copy leaves the target's own answer alone.
-            seed=True,
-            strip_identities=strip_identities,
-            landing=landing_binding(data_mode),
-        )
+        with step_clock.step(f"{stepped}: its schema"):
+            await provision_org(
+                tenant_pool,
+                _schema_sql(),
+                org_id=org_id,
+                redis_url=redis_url(),
+                redis_password=settings_registry.value("cache.redis_org_password"),
+                env=name,
+            )
+        with step_clock.step(f"{stepped}: its model's copy"):
+            report = await copy_model(
+                model_db,
+                org_id,
+                from_env,
+                name,
+                mode=REPLACE,
+                # REQ-1539: the only call that seeds roles and assignments. A new environment needs
+                # them to be usable at all; every later copy leaves the target's own answer alone.
+                seed=True,
+                strip_identities=strip_identities,
+                landing=landing_binding(data_mode),
+            )
         if expires_at is not None:
             # REQ-1620: an EPHEMERAL environment, and only that one. Every other environment is a
             # first-class place with its own features, free to point at any data source it likes --
@@ -199,16 +203,19 @@ async def create_environment(
             # then changed once offered two undos -- the change, and then a step onto the source's
             # model wearing this environment's name.
             await set_origin(admin_db, org_id, name, started)
-        async with model_db.acquire() as conn:
-            await write_through(
-                conn,
-                admin_db,
-                org_id,
-                name,
-                org_schema(org_id, name),
-                note,
-                created_by,
-            )
+        with step_clock.step(f"{stepped}: its history"):
+            async with model_db.acquire() as conn:
+                await write_through(
+                    conn,
+                    admin_db,
+                    org_id,
+                    name,
+                    org_schema(org_id, name),
+                    note,
+                    created_by,
+                    # REQ-2006: its model is from_env's a moment ago, and so is its rendering.
+                    like=(org_id, from_env),
+                )
     except BaseException:
         # Compensating rollback, mirroring provision_org's own: an environment that exists and
         # holds part of a model is worse than one that was never created. The failure is re-raised,

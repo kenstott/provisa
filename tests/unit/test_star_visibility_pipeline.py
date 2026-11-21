@@ -48,7 +48,9 @@ async def _raw(monkeypatch, sql: str, *, tables: list[dict], views: dict | None 
     state = _fake_pipeline_state(tables=tables)
     if views:
         state.view_sql_map = views
-        state.role_build_inputs = {"draft_tables": []}  # every input of the view in service
+        state.role_build_inputs = {
+            "withdrawn_tables": [],
+        }  # every input of the view in service
     monkeypatch.setattr(app_mod, "state", state, raising=False)
     decision = RouteDecision(
         route=Route.DIRECT, source_id=SOURCE_ID, dialect="postgres", reason="t"
@@ -82,7 +84,8 @@ async def test_the_raw_path_refuses_a_star_over_a_table_the_role_is_served_nothi
 
 async def test_the_raw_path_reads_a_qualified_star_as_the_served_columns_masked(monkeypatch):
     governed = await _raw(monkeypatch, "SELECT o.* FROM orders AS o", tables=[_ORDERS_TABLE_DICT])
-    assert "amount" not in governed and ".*" not in governed
+    # REQ-039: the star reads the governed relation, which exposes only the served columns.
+    assert "amount" not in governed
     assert "'***'" in governed  # the analyst's mask on region
 
 
@@ -91,7 +94,18 @@ async def test_a_view_whose_body_is_a_star_reads_only_the_served_columns(monkeyp
     governed = await _raw(
         monkeypatch, "SELECT * FROM everything", tables=[_ORDERS_TABLE_DICT], views=views
     )
-    assert "amount" not in governed and "'***'" in governed
+    # REQ-039: the view body is the administrator's -- its relation keeps the column hidden from
+    # the reader for the body's own clauses -- and its select list returns only what is served.
+    import sqlglot
+    import sqlglot.expressions as exp
+
+    view = next(
+        s
+        for s in sqlglot.parse_one(governed, read="postgres").find_all(exp.Subquery)
+        if s.alias == "everything"
+    )
+    assert [e.alias_or_name for e in view.this.expressions] == ["id", "region"]
+    assert "'***'" in governed
 
 
 async def test_a_view_whose_body_is_a_star_over_a_hidden_table_is_refused(monkeypatch):
@@ -112,7 +126,7 @@ async def test_the_compiled_path_refuses_a_star_over_a_table_the_role_is_served_
 
 async def test_the_compiled_path_reads_a_star_as_the_served_columns_masked(monkeypatch):
     governed = await _compiled(monkeypatch, "SELECT * FROM orders", tables=[_ORDERS_TABLE_DICT])
-    assert "amount" not in governed and "*" not in governed.replace("'***'", "")
+    assert "amount" not in governed
     assert "'***'" in governed
 
 

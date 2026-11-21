@@ -13,6 +13,8 @@
     "replace": "החלפה",
     "value": "ערך קבוע",
     "valuePlaceholder": "ערך (ריק עבור NULL)",
+    "readsNull": "נקרא כ-NULL: עמודה זו אינה טקסט, ולכן מסכה קבועה יכולה להיות רק NULL.",
+    "notTextConstant": "עמודה זו אינה טקסט: מסכה קבועה נקראת כ-NULL, ולכן ניתן לשמור רק NULL (ריק).",
     "precision": "דיוק",
     "year": "שנה",
     "month": "חודש",

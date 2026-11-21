@@ -36,8 +36,9 @@ from provisa.core.request_context import (
     set_current_org,
     set_session_vars,
 )
-from provisa.pgwire._pipeline import _resolve_session_settings
+from provisa.pgwire._pipeline import resolve_settings
 from provisa.scheduler.jobs import _TRACE_EXTRA_COLS, _build_row, _insert_otel_iceberg
+from tests.rules import rule_of, rules_of
 
 pytestmark = pytest.mark.unit
 
@@ -121,19 +122,23 @@ def test_every_signals_table_answers_only_the_reading_orgs_rows():
 def test_a_rule_of_the_role_on_a_signals_table_still_holds_beside_the_orgs():
     rls = RLSContext(rules={7: "role_id = 'analyst'", 2: "region = 'EU'"})
     scoped = org_scoped_signals(rls, _TABLES)
-    assert scoped.rules[7] == f"({ORG_SCOPED_SIGNALS_RULE}) AND (role_id = 'analyst')"
-    assert scoped.rules[2] == "region = 'EU'"  # not a signals table: untouched
-    assert rls.rules == {7: "role_id = 'analyst'", 2: "region = 'EU'"}  # input not mutated
+    assert scoped.rules[7] == rule_of(
+        "(tenant_id = current_setting('provisa.org')) AND (role_id = 'analyst')"
+    )
+    assert scoped.rules[2] == rule_of("region = 'EU'")  # not a signals table: untouched
+    assert rls.rules == rules_of({7: "role_id = 'analyst'", 2: "region = 'EU'"})  # not mutated
 
 
 def test_the_rule_reads_the_bound_org_and_no_org_reads_nothing():
     with _serving("acme"):
-        bound = _resolve_session_settings(ORG_SCOPED_SIGNALS_RULE, session_vars_for(None), "trino")
+        bound = resolve_settings(ORG_SCOPED_SIGNALS_RULE.copy(), session_vars_for(None)).sql(
+            dialect="trino"
+        )
     assert bound == "tenant_id = 'acme'"
     # Unbound (a background path): NULL, which no row's tenant equals -- not even a NULL one.
     with _serving(None):
-        unbound = _resolve_session_settings(
-            ORG_SCOPED_SIGNALS_RULE, session_vars_for(None), "trino"
+        unbound = resolve_settings(ORG_SCOPED_SIGNALS_RULE.copy(), session_vars_for(None)).sql(
+            dialect="trino"
         )
     assert unbound == "tenant_id = NULL"
 

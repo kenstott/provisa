@@ -57,6 +57,7 @@ from provisa.compiler.sql_rewrite import (
 from provisa.compiler.sql_where import (
     RelationshipConditions,
     join_exprs,
+    junction_hop,
     where_names_relationship,
     native_arg_conditions,
     native_args,
@@ -162,6 +163,9 @@ def _compile_root_field(  # REQ-009, REQ-011, REQ-032, REQ-033, REQ-034, REQ-035
             sources.add_table(join_meta.target)
 
             src_expr, tgt_expr = join_exprs(join_meta, root_alias, join_alias, ctx, table.table_id)
+            # REQ-1586: a junction-backed relationship reaches its rows through its junction.
+            hop = junction_hop(join_meta, root_alias, join_alias, use_catalog, sources)
+            joined = hop.joined if hop is not None else f"{tgt_expr} = {src_expr}"
             _below = _below_takes_lateral_args(sel, ctx, join_meta.target.type_name)
             _use_agg = (
                 not flat
@@ -192,6 +196,7 @@ def _compile_root_field(  # REQ-009, REQ-011, REQ-032, REQ-033, REQ-034, REQ-035
                             ctx, join_meta.target.type_name, use_catalog, sources
                         ),
                         ctx.aggregate_columns,
+                        hop,
                     )
                 )
                 if sel.selection_set:
@@ -213,6 +218,7 @@ def _compile_root_field(  # REQ-009, REQ-011, REQ-032, REQ-033, REQ-034, REQ-035
                         variables,
                         cardinality=join_meta.cardinality,
                         flat=flat,
+                        joined=joined,
                     )
                     has_lateral_ops_joins |= _child_lateral
             elif _use_agg and sel.selection_set:
@@ -220,6 +226,9 @@ def _compile_root_field(  # REQ-009, REQ-011, REQ-032, REQ-033, REQ-034, REQ-035
                 _target_ref = travel_ref(_table_ref(join_meta.target, use_catalog), sel, variables)
                 _from_clause = f"{_target_ref} {_q(join_alias)}"
                 _where_expr = f"{tgt_expr} = {src_expr}"
+                if hop is not None:
+                    _from_clause = hop.from_clause(_from_clause)
+                    _where_expr = hop.to_source
                 _rel_key = sel.alias.value if sel.alias else sel_name
                 _pv = (
                     join_meta.child_src_val
@@ -258,11 +267,14 @@ def _compile_root_field(  # REQ-009, REQ-011, REQ-032, REQ-033, REQ-034, REQ-035
                     )
                 )
             else:
-                _join_on = f"{src_expr} = {tgt_expr}"
-                join_clauses.append(
-                    f"LEFT JOIN {travel_ref(_table_ref(join_meta.target, use_catalog), sel, variables)}"
+                _target_from = (
+                    f"{travel_ref(_table_ref(join_meta.target, use_catalog), sel, variables)}"
                     f" {_q(join_alias)}"
-                    f" ON {_join_on}"
+                )
+                join_clauses.append(
+                    f"LEFT JOIN {_target_from} ON {src_expr} = {tgt_expr}"
+                    if hop is None
+                    else hop.left_joins(_target_from)
                 )
                 if sel.selection_set:
                     alias_counter, _child_lateral = _collect_nested_columns(
@@ -283,6 +295,7 @@ def _compile_root_field(  # REQ-009, REQ-011, REQ-032, REQ-033, REQ-034, REQ-035
                         variables,
                         cardinality=join_meta.cardinality,
                         flat=flat,
+                        joined=joined,
                     )
                     has_lateral_ops_joins |= _child_lateral
         else:
@@ -339,37 +352,14 @@ def _compile_root_field(  # REQ-009, REQ-011, REQ-032, REQ-033, REQ-034, REQ-035
                     base = _q(sel_name)
                 _emit_root_json_cols(sel.selection_set.selections, base, sel_name, sel_name)
                 continue
-            # Scalar field — check for JSON path extraction
+            # Scalar field. A column registered at a path in its document is read by its own
+            # name: its governed relation serves it so (stage2; on Trino's MongoDB catalog the
+            # routed statement reads it at its path, sql_rewrite.read_document_paths).
             response_key = sel.alias.value if sel.alias else sel_name
             gql_field_name = response_key
-            col_path = ctx.column_paths.get((table.table_id, sel_name))
             phys_name = ctx.exposed_to_physical.get((table.table_id, sel_name), sel_name)
             sql_name = ctx.physical_to_sql.get((table.table_id, phys_name), phys_name)
-            if col_path:
-                # path is "source_col.key1.key2" → PG JSON extraction, or just "key"
-                # when the column is aliased (phys_name is the JSON source column).
-                # Emits PG syntax; SQLGlot transpiles to the engine json_extract_scalar
-                path_parts = col_path.split(".")
-                if len(path_parts) == 1:
-                    # Single-key path: phys_name is the JSON column, col_path is the key.
-                    source_col = phys_name
-                    keys = [col_path]
-                else:
-                    source_col = path_parts[0]
-                    keys = path_parts[1:]
-                if use_aliases:
-                    assert root_alias is not None
-                    expr = f"{_q(root_alias)}.{_q(source_col)}"
-                else:
-                    expr = _q(source_col)
-                # Navigate with -> for intermediate keys, ->> for final (text extract)
-                for i, key in enumerate(keys):
-                    op = "->>" if i == len(keys) - 1 else "->"
-                    expr = f"{expr}{op}'{key}'"
-                if sel.alias:
-                    expr = f"{expr} AS {_q(response_key)}"
-                select_parts.append(expr)
-            elif phys_name in _VIRTUAL_COLS:
+            if phys_name in _VIRTUAL_COLS:
                 vval = (ctx.virtual_columns.get(table.table_id) or {}).get(phys_name, "")
                 expr = _sql_str_literal(vval)
                 select_parts.append(f"{expr} AS {_q(response_key)}")
@@ -391,10 +381,8 @@ def _compile_root_field(  # REQ-009, REQ-011, REQ-032, REQ-033, REQ-034, REQ-035
                     column=sql_name,
                     field_name=gql_field_name,
                     nested_in=None,
-                    # a path into a JSON column (col_path) is read as text (->>)
-                    json=not col_path and (table.table_id, phys_name.lower()) in ctx.json_columns,
-                    integer=not col_path
-                    and (table.table_id, phys_name.lower()) in ctx.integer_columns,
+                    json=(table.table_id, phys_name.lower()) in ctx.json_columns,
+                    integer=(table.table_id, phys_name.lower()) in ctx.integer_columns,
                 )
             )
 
@@ -428,7 +416,7 @@ def _compile_root_field(  # REQ-009, REQ-011, REQ-032, REQ-033, REQ-034, REQ-035
     # Native filter args (any arg not handled by SQL compilation): each a _nf_-prefixed condition
     # of the root's WHERE, so the SQL/CQL preview shows the filter. nf_extractor strips them before
     # the engine runs the statement; endpoint.py uses api_args for the REST call.
-    api_args = native_args(args, _STANDARD_ARGS, ctx.native_filter_columns.get(table.table_id, {}))
+    api_args = native_args(args, _STANDARD_ARGS, ctx.parameter_names.get(table.table_id, {}))
 
     # WHERE
     where_parts: list[str] = []

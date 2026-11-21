@@ -98,7 +98,7 @@ async def _query(servicer, request, metadata) -> list[dict]:
     context = AsyncMock(spec=grpc.aio.ServicerContext)
     context.invocation_metadata = MagicMock(return_value=metadata)
     orders = _orders_service().Orders
-    sent = [m async for m in servicer._handle_query(request, context, "Orders", "orders")]
+    sent = [m async for m in servicer._handle_query(request, context, "Orders")]
     rows = [{f.name: v for f, v in orders.FromString(m).ListFields()} for m in sent]
     context.abort.assert_not_awaited()
     return rows

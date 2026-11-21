@@ -1,0 +1,27 @@
+{
+  "provisaGraph": {
+    "legend": "Légende",
+    "hint": "Glisser pour déplacer · défiler pour parcourir · Ctrl/⌘ + défilement pour zoomer",
+    "layingOut": "Disposition en cours…",
+    "type": {
+      "product": "Produit de données",
+      "source": "Source",
+      "domain": "Domaine",
+      "group": "Groupe",
+      "table": "Table",
+      "view": "Vue",
+      "relation": "Table externe",
+      "junction": "Table de jonction",
+      "column": "Colonne",
+      "term": "Terme",
+      "concept": "Concept",
+      "class": "Classe",
+      "property": "Propriété",
+      "command": "Commande",
+      "checker": "Contrôle de qualité",
+      "profile": "Profil",
+      "tag": "Étiquette",
+      "more": "Plus"
+    }
+  }
+}

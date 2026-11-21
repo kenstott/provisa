@@ -98,7 +98,20 @@ PAGES: dict[str, PollyPage] = {
     "/python": PollyPage("Python tab", "state.code, state.newTab, state.title", "editor"),
     "/notebook": PollyPage("Notebook tab", "state.cells", "the run's output in navigate's result"),
     "/science": PollyPage("redirects to /python"),
-    "/explore": PollyPage("this same chat, full page"),
+    "/explore": PollyPage(
+        "the MCP explorer: a separate chat, not yours, in which an agent answers with the governed "
+        "MCP tools under the active role; the tool calls of its last answer are listed as badges, "
+        "and a run_sql call's badge shows its statement and its explain. To carry its statement "
+        "to another tab, read it from the run_sql call's sql and navigate to /sql with it as "
+        "state.sql, or to /python with a script that runs it (import provisa_client) as "
+        "state.code",
+        "state.mcpQuestion, a question sent to its agent at once; state.mcpConnect true opens "
+        "its Connect Claude Desktop panel",
+        "inputs: status (idle, running, answered or failed), error, tools (each call of the last "
+        "answer: name, status running, done or error, and sql, a run_sql call's statement in "
+        "full), draft (the text in its input), messageCount, messages (the last 4: role, text "
+        "cut at 500 characters, cut true when it was)",
+    ),
     "/views": PollyPage("views"),
     "/metrics": PollyPage("governed metrics"),
     "/data-products": PollyPage(
@@ -111,7 +124,7 @@ PAGES: dict[str, PollyPage] = {
     "/lineage": PollyPage("lineage"),
     "/admin": PollyPage("redirects to the first admin page the role may open"),
     "/admin/requests": PollyPage("approval requests"),
-    "/admin/ontology": PollyPage(
+    "/context/ontology": PollyPage(
         "the glossary's terms, or the ontology graph",
         "state.panel 'graph' or 'terms', state.term <id>, and state.graph, the graph's controls: "
         "flat true (2D) or false (3D), layout 'auto', 'force' or 'layered', preset 'ontology' or "
@@ -132,18 +145,37 @@ PAGES: dict[str, PollyPage] = {
     "/admin/encryption": PollyPage("encryption settings"),
     "/admin/auth": PollyPage("authentication settings"),
     "/admin/system-health": PollyPage("system health"),
-    "/admin/observability": PollyPage("observability settings"),
+    "/admin/observability": PollyPage("the org's traces and debug tracing"),
+    "/admin/platform-observability": PollyPage("the deployment's telemetry and query engine"),
     "/admin/mcp-server": PollyPage("the MCP server's settings"),
     "/admin/local-users": PollyPage("local users"),
     "/admin/orgs": PollyPage("organizations"),
     "/admin/ai-models": PollyPage("AI model settings"),
     "/admin/package-registries": PollyPage("package registries"),
     "/admin/container-registries": PollyPage("container registries"),
-    "/admin/catalogs": PollyPage("catalogs"),
-    "/admin/reference-library": PollyPage("the reference library"),
-    "/admin/metadata-export": PollyPage("metadata export"),
+    "/context/sync": PollyPage(
+        "context sync: the outside systems kept in step with Provisa (data catalogs, ontologies, "
+        "custom), each with its direction and, for a data catalog, its export settings"
+    ),
+    "/context/documents": PollyPage("documents: the reference library"),
+    "/context/metrics": PollyPage(
+        "the governed metrics as /metrics shows them, read-only; metrics are edited on /metrics"
+    ),
+    "/context/tags": PollyPage(
+        "each tag, where it is applied and what depends on it, read-only; tags are edited on "
+        "/admin/tags"
+    ),
+    "/context/classification": PollyPage(
+        "the classification kinds and where each was detected, read-only; kinds are switched on "
+        "/admin/classification-kinds, and a column's classification is decided in the table editor"
+    ),
     "/admin/import": PollyPage("import"),
-    "/admin/tags": PollyPage("tags"),
+    "/admin/tags": PollyPage(
+        "tags. The tag form's Required switch (tags-required) makes every object of the kinds "
+        "in Applies to carry the tag; one without it is a missing row in the tags report. Its "
+        "Allowed Domains field (tags-allowed-domains) offers the tag only on objects of those "
+        "domains and requires it only there; none selected means all domains"
+    ),
     "/admin/classification-kinds": PollyPage("classification kinds"),
     "/admin/reports": PollyPage("reports"),
     "/admin/security": PollyPage("security settings"),

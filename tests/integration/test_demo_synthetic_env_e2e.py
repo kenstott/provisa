@@ -134,6 +134,13 @@ def _tier(work: Path, demos: Path, data: Path, *, seeding: bool):
         _ORG,
         engine="duckdb",
         config=str(config),
+        # Its own control plane: a demo's template org (sbxtpl<demo>) is global, so on the
+        # session's shared plane every module serving a demo of the same name shares one template,
+        # and one module's record of it was served to the next as theirs (release 510). The
+        # seeding tier and the deployed tier each get a plane of their own: the bundle is built on
+        # one install and deployed on another, so all the deployed tier has of the template's dev
+        # is the seed written beside the replicas.
+        control_plane="own",
         auth={"provider": "basic", "jwt_secret": _JWT_SECRET, "assignments_source": "provisa"},
         env={
             "PROVISA_SANDBOX_TIER": "true",

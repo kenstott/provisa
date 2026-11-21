@@ -8,72 +8,51 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// REQ-2127: the Data Product detail panel. Its core -- the product's fields, member tables,
-// commands, tags, glossary terms, data-quality and profile evidence, related tables and lineage --
-// is read from the meta domain as the signed-in user (productCore.ts); a part the role cannot
-// read there is absent. Drilling down opens the detail where it lives: a member table's rows, a
-// checker's or profile run's results, read in their own domains as the same user.
+// REQ-2127: the Data Product detail panel, the right-hand panel of the products list. Its core --
+// the product's fields, member tables, commands, tags, glossary terms, related tables -- is read
+// from the meta domain as the signed-in user (productCore.ts); a part the role cannot read there is
+// absent. REQ-2180 (amended 2026-11-11, THE PRODUCT PAGE IS SUMMARY ROWS): a short header, then one
+// section per subject in a fixed order -- Offers, Quality, Profile, Lineage, Related, Requests (its
+// owner's alone), Access -- each a row of the application's collapsible whose one-line summary is
+// computed from its content, expanded in place, open or closed as this viewer left it. Offers is
+// open at first; a graph is drawn only inside an expanded row. REQ-2160: one page for owner and
+// reader alike; what a reader may do is their rights', not another page's. The same rows for the
+// read view and the edit view, each composed of the components the tables page uses.
 
-import { DetailFields, type DetailField } from "../../components/detail/DetailFields";
-import { useCallback, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
-import { ActionIcon, Alert, Badge, Group, List, Loader, Modal, Stack, Text } from "@mantine/core";
-import {
-  Braces,
-  Cable,
-  FileJson,
-  Globe,
-  ListChecks,
-  Pencil,
-  Share2,
-  Table as TableIcon,
-} from "lucide-react";
-import type { DataProduct } from "../../types/admin";
-import { DqRulesModal } from "./DqRulesModal";
+import { ActionIcon, Alert, Group, Loader, Stack, Text } from "@mantine/core";
+import { Pencil } from "lucide-react";
+import type { DataProduct, ListedTable, Relationship } from "../../types/admin";
 import { OwnerResolutionInline } from "../../components/OwnerResolution";
 import { Tip } from "../../components/Tip";
 import { PanelDelete } from "../../components/list/PanelDelete";
-import { LineageDag } from "../../components/lineage/LineageDag";
-import type { DescribeColumn } from "../../components/lineage/column-descriptions";
-import type { ProductDq, ProductDqEntry, ProductLineage } from "../../api/lineage";
+import { PanelDuplicate } from "../../components/list/PanelDuplicate";
+import { PanelActions } from "../../components/list/SplitPane";
+import type { DetailField } from "../../components/detail/DetailFields";
+import type { ProductLineage } from "../../api/lineage";
 import type { MetaReader } from "../../api/metaGraph";
-import { OntologySnippet } from "../../components/graph3d/OntologyGraph";
-import { productPreset } from "../../components/graph3d/ontologyPresets";
-import type { ContractViewer } from "./ContractView";
-import { ProductContracts } from "./ProductContracts";
-import {
-  graphqlExample,
-  grpcExample,
-  jsonApiExample,
-  restExample,
-  sqlExample,
-  type ExampleLink,
-  type TableRef,
-} from "./tableExamples";
-import { DetailCard, Empty, Muted } from "./DetailCard";
-import { ClampedDetail } from "./ClampedDetail";
+import { tableSqlRef } from "../../naming";
 import { useProductLifecycle } from "./ProductLifecycle";
 import type { DataProductStatus, ProductFinding } from "../../hooks/useDataProductMutations";
+import { modelName, type ProductCore } from "./productCore";
+import { ProductHeader } from "./ProductHeader";
+import { AccessSection } from "./AccessSection";
 import { CollapsibleItem, Collapsibles } from "../../components/collapsible/Collapsible";
-import {
-  modelName,
-  restModelName,
-  type CoreEdge,
-  type CoreTable,
-  type ProductCore,
-} from "./productCore";
-import { ClaimsCallout, ConsumersList, DqIcon, InputsList, OutcomeBadge } from "./dataProductDq";
-import { COLOR, dqStatus } from "./dataProductClaims";
-
-/** REQ-2157: the data quality section's rows, in order. */
-const DQ_ROWS = ["expectations", "promises", "related"] as const;
-
-// A zero-width space after "/" gives the browser a break opportunity there — plain "/" doesn't
-// wrap on its own, so a long gqlName/cqlName pair would otherwise overflow its monospace panel.
-function joinAliasPair(names: (string | null | undefined)[]): string {
-  return names.filter(Boolean).join("/​");
-}
+import type { Bid, Offer, ProductProfile } from "../../api/dataProductOffers";
+import { qualitySummary, useQualityWords } from "./productQuality";
+import { WorstBadge } from "./QualityStatus";
+import type { ContractViewer } from "./ContractView";
+import { OffersTab } from "./offers/OffersTab";
+import type { OfferDataset } from "./offers/AddOfferForm";
+import { QualityTab } from "./tabs/QualityTab";
+import { ProfileTab } from "./tabs/ProfileTab";
+import { LineageTab } from "./tabs/LineageTab";
+import { RelatedTab, type SharingProduct } from "./tabs/RelatedTab";
+import { RequestsTab } from "./tabs/RequestsTab";
+import { PRODUCT_SECTIONS, type ProductSection } from "./productSections";
+import { TablePreviewPane } from "../tables/TablePreviewPane";
 
 interface DataProductDetailPanelProps {
   p: DataProduct;
@@ -87,29 +66,40 @@ interface DataProductDetailPanelProps {
   // REQ-1634, REQ-2188: gates Edit and Delete: data_product_rw, on the products its rules leave it.
   canEdit: boolean;
   canDelete: boolean;
-  /** REQ-2160: the reader holds the product's owner or team role. The owner also sees its
-   *  expectations, related and unattached checks, and its input ports; any other reader sees its
-   *  promises. The split hides lists and cards only, never a right: Edit and Delete follow
-   *  canEdit. What either view is shown is already cut to the reader's rights (REQ-2152). */
+  /** REQ-2160: the reader holds the product's owner or team role: they see its expectations,
+   *  related and unattached checks, its full profile and its requests; they add offers. Any other
+   *  reader sees its promises, a read-only profile, and bids. The split never grants a right. */
   owner: boolean;
+  /** REQ-2174 (amended 2026-11-07), REQ-2219: the reader owns the product (productOwner.ts): only
+   *  then are its consumers shown. */
+  seesConsumers: boolean;
   lineageLoading: boolean;
   lineageError: string;
-  // REQ-1640, REQ-2156: the product's member tables, their full upstream ancestry and one hop
-  // downstream, with its nearest physical inputs, cut to what the reader may read (the product
-  // lineage endpoint) -- rendered with the same LineageDag component the Lineage page uses
-  // (REQ-1161/1627). Any reader of the product sees it.
+  // REQ-1640, REQ-2156: the product's tables, their upstream ancestry and one hop downstream, with
+  // its nearest physical inputs, cut to what the reader may read.
   lineageGraph: ProductLineage | null;
-  // REQ-2158: bumped when the product's members can have changed (a save, a retirement): each open
-  // contract row reads its contract again.
-  contractsVersion: number;
-  // REQ-1667: the member relations the DAG's swimlanes are built around (lane 0).
-  lineageMembers?: ReadonlySet<string>;
-  // A field's registered description for the lineage hover, over every table (not just members).
-  describeColumn?: DescribeColumn;
   // A lineage relation as the catalog names its table.
   relationLabel?: (relation: string) => string;
+  // Bumped when the product's members can have changed (a save, a retirement): its offers and
+  // their contracts are read again.
+  contractsVersion?: number;
+  /** Every registered table the reader lists: a dataset's (or sample view's) rows are previewed
+   *  through it. */
+  tables?: ListedTable[];
+  /** The products sharing one of this product's datasets. */
+  sharing?: SharingProduct[];
+  /** The model's relationships, for each dataset's associations. */
+  relationships?: Relationship[];
+  /** The role (or roles) the reader acts as: a preview's rows and the profile are read as it. */
+  actingRole?: string | null;
+  /** The edit form, in place of the header's values while the product is edited; the rows stay. */
+  editForm?: ReactNode;
+  /** REQ-1634: a tag was put on the product or taken off; its core is read again. */
+  onTagsChanged: () => void;
   /** Opens the edit form, on ``focus`` where given. */
   onEdit: (focus?: "supportContact") => void;
+  /** Opens the create form filled from the product; given to a caller who may create products. */
+  onDuplicate?: () => void;
   /** REQ-2198: resolves once the product is deleted and the list read again (PanelDelete). */
   onDelete: () => Promise<boolean | void>;
   // REQ-1634 STATUS, REQ-2146: its lifecycle -- the products a successor is chosen from, the
@@ -124,30 +114,12 @@ interface DataProductDetailPanelProps {
   statusActions: DataProductStatus;
 }
 
-function relatedLabel(e: CoreEdge): string {
-  return e.targetTable ? modelName(e.targetTable) : String(e.targetTableId);
-}
+/** A section keeps its content inside it: what cannot wrap scrolls within the section. */
+const SECTION_BODY = { overflowX: "auto", overflowWrap: "anywhere" } as const;
 
-/** REQ-2160: any reader but the owner or team sees that the list exists and whose it is, never a
- *  list and never "None" (an empty list is the owner's to read). */
-function OwnerOnlyList() {
-  const { t } = useTranslation();
-  return <Empty text={t("dataProductCore.ownerOnlyList")} />;
-}
+/** The sections whose content is a graph, or holds one: mounted only while expanded. */
+const DRAWS_A_GRAPH: ReadonlySet<ProductSection> = new Set(["lineage", "related"]);
 
-/** The owner's card while lineage is unread: loading, or the read's error; never a false "None". */
-function LineagePending({ loading, error }: { loading: boolean; error: string }) {
-  const { t } = useTranslation();
-  if (loading) return <Empty text={t("dataProductsTab.detail.lineageLoading")} />;
-  return error ? (
-    <Text size="sm" c="red">
-      {error}
-    </Text>
-  ) : null;
-}
-
-// Row-click detail view for a data product — same detail-then-edit pattern as
-// MetricDetailPanel (REQ-1323): the read-only facts with Edit/Delete inside.
 export function DataProductDetailPanel({
   p,
   core,
@@ -157,14 +129,20 @@ export function DataProductDetailPanel({
   canEdit,
   canDelete,
   owner,
+  seesConsumers,
   lineageLoading,
   lineageError,
   lineageGraph,
-  contractsVersion,
-  lineageMembers,
-  describeColumn,
   relationLabel,
+  contractsVersion = 0,
+  tables = [],
+  sharing = [],
+  relationships = [],
+  actingRole = null,
+  editForm,
+  onTagsChanged,
   onEdit,
+  onDuplicate,
   onDelete,
   products,
   members,
@@ -176,32 +154,23 @@ export function DataProductDetailPanel({
 }: DataProductDetailPanelProps) {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
-  const openExample = (example: ExampleLink) => navigate(example.to, { state: example.state });
-  // REQ-1640/REQ-1627: expanded by default, same as statement lineage's initial view — this
-  // subgraph (member tables + one relation-hop) is small like a single query's lineage, not
-  // federation-scale, so it reads better column-by-column with the real role colours than
-  // collapsed to indigo dataset boxes.
-  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
-  // REQ-1667: the same graph at 90% of the viewport; collapse state is shared with the inline one.
-  const [lineageModalOpen, setLineageModalOpen] = useState(false);
-  // REQ-1667: lane 0 is the product's published surface; the others are named by distance.
-  const laneTitle = useCallback(
-    (lane: number) =>
-      lane === 0
-        ? t("dataProductsTab.tablesLabel")
-        : lane === -1
-          ? t("dataProductsTab.detail.field.inputPorts")
-          : lane > 0
-            ? t("dataProductsTab.detail.lineageLaneDownstream", { n: lane })
-            : t("dataProductsTab.detail.lineageLaneUpstream", { n: -lane }),
-    [t],
-  );
-  const toggleRelation = (relation: string) =>
-    setCollapsed((prev) => {
-      const next = new Set(prev);
-      if (!next.delete(relation)) next.add(relation);
-      return next;
-    });
+  // A section a link inside the page asks to expand (See Quality, an input's lineage).
+  const [reveal, setReveal] = useState<ProductSection | null>(null);
+  useEffect(() => {
+    // Expanded and remembered so by the collapsible, which opens an item when ``reveal`` changes:
+    // cleared once consumed, the same link asked again expands it again.
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- a one-shot request, consumed.
+    if (reveal) setReveal(null);
+  }, [reveal]);
+  // What each section's summary is computed from, as its content reads it.
+  const [offers, setOffers] = useState<Offer[] | null>(null);
+  const [profiles, setProfiles] = useState<ProductProfile[] | null>(null);
+  const [requests, setRequests] = useState<Bid[] | null>(null);
+  const qualityWords = useQualityWords();
+  // A dataset whose rows are looked at, in place of the rows.
+  const [preview, setPreview] = useState<ListedTable | null>(null);
+  // Bumped when a bid is made: the Requests section reads them again.
+  const [bids, setBids] = useState(0);
   // Its lifecycle reads the list's row, so it is drawn while the panel's core is read.
   const lifecycle = useProductLifecycle({
     product: p,
@@ -215,25 +184,7 @@ export function DataProductDetailPanel({
     openProduct,
     status: statusActions,
   });
-  // REQ-1443 clause 10: the checker table whose rules modal is open, by table id.
-  const [rulesFor, setRulesFor] = useState<number | null>(null);
 
-  // REQ-1634: Cypher click-through only for relationships that resolve to a usable type and
-  // aren't opted out — mirrors GraphPage's handleRelClick input contract.
-  // The relationships between the product's member tables, under the names meta stores on each.
-  const memberIds = new Set((core?.tables ?? []).map((tb) => tb.id));
-  const internalRelationships = (core?.tables ?? []).flatMap((tb) =>
-    (tb.sourceRelationships ?? [])
-      .filter((r) => r.targetTable != null && memberIds.has(r.targetTable.id))
-      .map((r) => ({ ...r, source: tb })),
-  );
-  const cypherRows = internalRelationships
-    .filter((r) => !r.disableCypher)
-    .map((r) => ({ r, type: r.cypherType }));
-
-  // Masonry panel grid: a CSS multi-column layout packs each card into whichever column has room
-  // next, instead of flex-wrap's row-by-row layout (which pads every card in a row up to the row's
-  // tallest neighbor, leaving the shorter cards full of unused whitespace).
   if (coreError) {
     return (
       <Alert color="red" data-testid={`data-product-detail-error-${p.id}`}>
@@ -247,19 +198,20 @@ export function DataProductDetailPanel({
 
   const product = core.product;
   // REQ-1443 clause 10: a checker table (one carrying a contract) is a member only because the
-  // table it scans is — its rows are the product's quality evidence, not part of its published
-  // surface, so it is listed under Data Quality rather than among the output ports.
+  // table it scans is: its rows are the product's quality evidence, not one of its datasets.
   const outputTables = core.tables?.filter((tb) => tb.dqContract == null);
   const dqTables = core.tables?.filter((tb) => tb.dqContract != null);
-  const profiled = outputTables?.filter((tb) => (tb.profileResults ?? []).length > 0);
-  // REQ-2126: the tables with a direct declared relationship to a member, not themselves members;
-  // the indirect relationship rows are the product graph's, not the panel's.
-  const related = core.edges?.filter((e) => e.kind === "related");
-  // REQ-2157: the product's checks, from its lineage as its reader may read it (REQ-2156).
-  const dq: ProductDq | undefined = lineageGraph?.dq;
-  // REQ-2160: the owner sees every row; any other reader the product's promises.
-  const shownDqRows: readonly (typeof DQ_ROWS)[number][] = owner ? DQ_ROWS : ["promises"];
-  const customPropertyEntries = Object.entries(product.customProperties ?? {});
+  const datasets: OfferDataset[] = (outputTables ?? []).map((tb) => ({
+    id: tb.id,
+    name: modelName(tb),
+  }));
+  // The views over the product's datasets a sample offer may name: its readers one hop downstream.
+  const views: OfferDataset[] = (lineageGraph?.consumers ?? [])
+    .filter((c) => c.kind !== "table")
+    .map((c) => ({ id: c.table_id, name: c.alias ? `${c.domain_id}.${c.alias}` : c.table_name }));
+  const shown = PRODUCT_SECTIONS.filter((s) => s !== "requests" || owner);
+  const promises = lineageGraph?.dq.promises;
+  const quality = promises ? qualitySummary(promises) : null;
 
   // Every value of the product, under the labels its form gives them.
   const fields: DetailField[] = [
@@ -298,681 +250,261 @@ export function DataProductDetailPanel({
     },
   ];
 
-  const sqlDrill = (tb: TableRef & { id: number }, testId: string) => (
-    <Tip text={t("dataProductsTab.sqlQueryAria", { table: tb.tableName })} named>
-      <ActionIcon
-        variant="subtle"
-        size="sm"
-        aria-label={t("dataProductsTab.sqlQueryAria", { table: tb.tableName })}
-        data-testid={testId}
-        onClick={() => openExample(sqlExample(tb))}
-      >
-        <TableIcon size={14} />
-      </ActionIcon>
-    </Tip>
+  const previewTable = (tableId: number) => {
+    const found = tables.find((tb) => tb.id === tableId);
+    if (found) setPreview(found);
+  };
+  const queryNow = () => {
+    const first = outputTables?.[0];
+    if (!first) return;
+    navigate("/sql", {
+      state: { sql: `select * from ${tableSqlRef(first)} limit 10`, autoRun: true },
+    });
+  };
+
+  const actions = (canEdit || canDelete || onDuplicate) && !editForm && (
+    <PanelActions>
+      {lifecycle.actions}
+      {canEdit && (
+        <Tip text={t("dataProductsTab.editDataProduct", { id: p.id })} named>
+          <ActionIcon
+            aria-label={t("dataProductsTab.editDataProduct", { id: p.id })}
+            data-testid={`data-product-detail-edit-${p.id}`}
+            onClick={(e) => {
+              e.stopPropagation();
+              onEdit();
+            }}
+          >
+            <Pencil size={14} />
+          </ActionIcon>
+        </Tip>
+      )}
+      {onDuplicate && (
+        <PanelDuplicate
+          name={p.id}
+          onDuplicate={onDuplicate}
+          testId={`data-product-detail-duplicate-${p.id}`}
+        />
+      )}
+      {canDelete && (
+        <PanelDelete
+          itemKey={p.id}
+          title={t("dataProductsTab.deleteTitle")}
+          consequence={t("dataProductsTab.deleteConfirm", { id: p.id })}
+          ariaLabel={t("dataProductsTab.deleteDataProduct", { id: p.id })}
+          testId={`data-product-detail-delete-${p.id}`}
+          confirmTestId="data-product-delete-modal"
+          onDelete={onDelete}
+        />
+      )}
+    </PanelActions>
   );
 
-  // One check in a data quality row: its claim, the checker by its model name with its results
-  // in SQL and, where the product holds the checker, its rules; the table it scans; its latest run.
-  // A related check names the product owning it, or that none does.
-  const dqItem = (c: ProductDqEntry, related: boolean) => {
-    const checker = {
-      id: c.checker_table_id,
-      domainId: c.domain_id,
-      tableName: c.table_name,
-      alias: c.alias,
-    };
-    const held = dqTables?.find((tb) => tb.id === c.checker_table_id);
-    return (
-      <List.Item key={c.checker_table_id} ff="monospace">
-        {c.description && (
-          <Text
-            size="sm"
-            fw={600}
-            ff="text"
-            data-testid={`data-product-detail-dq-claim-${c.checker_table_id}`}
-          >
-            {c.description}
-          </Text>
-        )}
-        <Group gap={4} wrap="nowrap">
-          <Text component="span" size="sm" ff="monospace">
-            {modelName(checker)}
-          </Text>
-          {/* The scan results are reached through SQL alone here — the other access patterns
-              belong to the output ports, not to the evidence. */}
-          {sqlDrill(checker, `data-product-detail-dq-sql-query-${c.checker_table_id}`)}
-          {held && (
-            <>
-              <Tip text={t("dataProductsTab.detail.dqRulesAria", { table: c.table_name })}>
-                <ActionIcon
-                  variant="subtle"
-                  size="sm"
-                  aria-label={t("dataProductsTab.detail.dqRulesAria", { table: c.table_name })}
-                  data-testid={`data-product-detail-dq-rules-${c.checker_table_id}`}
-                  onClick={() => setRulesFor(c.checker_table_id)}
-                >
-                  <ListChecks size={14} />
-                </ActionIcon>
-              </Tip>
-              <DqRulesModal
-                opened={rulesFor === c.checker_table_id}
-                onClose={() => setRulesFor(null)}
-                rules={held.dqRules ?? []}
-                scans={c.checked_table}
-                tableName={c.table_name}
-              />
-            </>
-          )}
-        </Group>
-        {/* Its latest run beside what it scans, on a line that wraps rather than clip either. */}
-        <Group gap={6}>
-          <OutcomeBadge outcome={c.latest_outcome} />
-          <Text
-            c="var(--text-muted)"
-            ff="text"
-            size="xs"
-            data-testid={`data-product-detail-dq-checks-${c.checker_table_id}`}
-          >
-            {t("dataProductCore.scans", { table: restModelName(c.checked_table) })}
-            {related &&
-              ` · ${
-                c.owner_product_id
-                  ? t("dataProductCore.assignedTo", { product: c.owner_product_id })
-                  : t("dataProductCore.unassigned")
-              }`}
-          </Text>
-        </Group>
-      </List.Item>
-    );
+  /** A section's one-line summary, computed from its content; an ellipsis while it is read. */
+  const summary = (section: ProductSection): string => {
+    const pending = "…";
+    switch (section) {
+      case "offers": {
+        if (offers === null) return pending;
+        const open = offers.filter((o) => o.open).length;
+        const review = offers.filter((o) => o.review !== null).length;
+        return [
+          t("dataProductOffers.summaryOffers", { count: offers.length }),
+          open > 0 ? t("dataProductOffers.summaryOpen", { count: open }) : null,
+          review > 0 ? t("dataProductOffers.summaryInReview", { count: review }) : null,
+        ]
+          .filter(Boolean)
+          .join(" · ");
+      }
+      case "quality":
+        return quality ? qualityWords(quality) : pending;
+      case "profile": {
+        if (!actingRole) return t("dataProductOffers.summaryProfileNoRole");
+        if (profiles === null) return pending;
+        return t("dataProductOffers.summaryProfiles", {
+          profiled: profiles.filter((pr) => pr.run !== null).length,
+          count: datasets.length,
+        });
+      }
+      case "lineage":
+        return lineageGraph
+          ? [
+              t("dataProductOffers.summaryDatasets", { count: datasets.length }),
+              t("dataProductOffers.summaryInputs", { count: lineageGraph.inputs.length }),
+            ].join(" · ")
+          : pending;
+      case "related":
+        return [
+          t("dataProductOffers.summarySharing", { count: sharing.length }),
+          t("dataProductOffers.summaryRelatedTables", {
+            count: core.edges?.filter((e) => e.kind === "related").length ?? 0,
+          }),
+          t("dataProductOffers.summaryTerms", { count: core.terms?.length ?? 0 }),
+        ].join(" · ");
+      case "requests": {
+        if (requests === null) return pending;
+        const waiting = requests.filter((b) => b.status === "pending").length;
+        return [
+          t("dataProductOffers.summaryRequests", { count: requests.length }),
+          waiting > 0 ? t("dataProductOffers.summaryPending", { count: waiting }) : null,
+        ]
+          .filter(Boolean)
+          .join(" · ");
+      }
+      case "access":
+        return t("dataProductOffers.summaryAccess", { count: datasets.length });
+    }
   };
 
-  const consumerRow = (tb: CoreTable) => {
-    const graphql = graphqlExample(reader, tb);
-    const rest = restExample(reader, tb);
-    const grpc = grpcExample(reader, tb);
-    return (
-      <List.Item key={`gql-${tb.id}`} ff="monospace">
-        <Group gap={4} wrap="nowrap">
-          <Text component="span" size="sm" ff="monospace">
-            {modelName(tb)}
-          </Text>
-          {graphql && (
-            <Tip text={t("dataProductsTab.graphqlQueryAria", { table: tb.tableName })}>
-              <ActionIcon
-                variant="subtle"
-                size="sm"
-                aria-label={t("dataProductsTab.graphqlQueryAria", { table: tb.tableName })}
-                data-testid={`data-product-detail-graphql-query-${tb.id}`}
-                onClick={() => openExample(graphql)}
-              >
-                <Braces size={14} />
-              </ActionIcon>
-            </Tip>
-          )}
-          {sqlDrill(tb, `data-product-detail-sql-query-${tb.id}`)}
-          <Tip text={t("dataProductsTab.jsonapiQueryAria", { table: tb.tableName })} named>
-            <ActionIcon
-              variant="subtle"
-              size="sm"
-              aria-label={t("dataProductsTab.jsonapiQueryAria", { table: tb.tableName })}
-              data-testid={`data-product-detail-jsonapi-query-${tb.id}`}
-              onClick={() => openExample(jsonApiExample(tb))}
-            >
-              <FileJson size={14} />
-            </ActionIcon>
-          </Tip>
-          {rest && (
-            <Tip text={t("dataProductsTab.openApiQueryAria", { table: tb.tableName })} named>
-              <ActionIcon
-                variant="subtle"
-                size="sm"
-                aria-label={t("dataProductsTab.openApiQueryAria", { table: tb.tableName })}
-                data-testid={`data-product-detail-openapi-query-${tb.id}`}
-                onClick={() => openExample(rest)}
-              >
-                <Globe size={14} />
-              </ActionIcon>
-            </Tip>
-          )}
-          {grpc && (
-            <Tip text={t("dataProductsTab.grpcQueryAria", { table: tb.tableName })} named>
-              <ActionIcon
-                variant="subtle"
-                size="sm"
-                aria-label={t("dataProductsTab.grpcQueryAria", { table: tb.tableName })}
-                data-testid={`data-product-detail-grpc-query-${tb.id}`}
-                onClick={() => openExample(grpc)}
-              >
-                <Cable size={14} />
-              </ActionIcon>
-            </Tip>
-          )}
-        </Group>
-      </List.Item>
-    );
+  /** A section's content, expanded in place. */
+  const body = (section: ProductSection): ReactNode => {
+    switch (section) {
+      case "offers":
+        return (
+          <OffersTab
+            productId={p.id}
+            owner={owner}
+            canEdit={canEdit}
+            datasets={datasets}
+            views={views}
+            onShowQuality={() => setReveal("quality")}
+            onPreview={previewTable}
+            onQueryNow={queryNow}
+            onBid={() => setBids((n) => n + 1)}
+            context={{ ports: outputTables ?? [], lineage: lineageGraph, reader, viewer }}
+            version={contractsVersion}
+            onLoaded={setOffers}
+          />
+        );
+      case "quality":
+        return (
+          <QualityTab
+            productId={p.id}
+            owner={owner}
+            dq={lineageGraph?.dq}
+            lineageGraph={lineageGraph}
+            lineageLoading={lineageLoading}
+            lineageError={lineageError}
+            outputTables={outputTables}
+            dqTables={dqTables}
+            offers={offers}
+            onShowLineage={() => setReveal("lineage")}
+          />
+        );
+      case "profile":
+        return (
+          <ProfileTab productId={p.id} owner={owner} role={actingRole} onLoaded={setProfiles} />
+        );
+      case "lineage":
+        return (
+          <LineageTab
+            productId={p.id}
+            loading={lineageLoading}
+            error={lineageError}
+            graph={lineageGraph}
+            relationLabel={relationLabel}
+          />
+        );
+      case "related":
+        return (
+          <RelatedTab
+            productId={p.id}
+            core={core}
+            seesConsumers={seesConsumers}
+            lineageGraph={lineageGraph}
+            lineageLoading={lineageLoading}
+            lineageError={lineageError}
+            sharing={sharing}
+            relationships={relationships}
+            openProduct={openProduct}
+          />
+        );
+      case "requests":
+        return (
+          <RequestsTab key={bids} productId={p.id} datasets={datasets} onLoaded={setRequests} />
+        );
+      case "access":
+        return (
+          <AccessSection
+            core={core}
+            reader={reader}
+            relationships={relationships}
+            tables={tables}
+            actingRole={actingRole}
+          />
+        );
+    }
   };
+
+  if (preview) {
+    return (
+      <div className="split-pane__fill" data-testid={`data-product-preview-${p.id}`}>
+        {actions}
+        <TablePreviewPane table={preview} role={actingRole} onBack={() => setPreview(null)} />
+      </div>
+    );
+  }
 
   return (
     <Stack gap="sm" data-testid={`data-product-detail-${p.id}`}>
+      {actions}
       {lifecycle.toReview}
-      <div style={{ columnWidth: "320px", columnGap: "var(--mantine-spacing-sm)" }}>
-        <DetailCard
-          section="details"
-          testId={`data-product-card-details-${p.id}`}
-          label={t("dataProductsTab.detail.field.details")}
-        >
-          <DetailFields testId={`data-product-read-${p.id}`} fields={fields} />
-        </DetailCard>
-        <DetailCard
-          section="customProperties"
-          testId={`data-product-card-customProperties-${p.id}`}
-          label={t("dataProductsTab.detail.field.customProperties")}
-        >
-          {customPropertyEntries.length === 0 ? (
-            <Empty text={t("dataProductsTab.detail.customPropertiesEmpty")} />
-          ) : (
-            <List size="sm" data-testid={`data-product-detail-custom-properties-${p.id}`}>
-              {customPropertyEntries.map(([key, val]) => (
-                <List.Item key={key} ff="monospace">
-                  {key}
-                  <Muted>= {String(val)}</Muted>
-                </List.Item>
-              ))}
-            </List>
-          )}
-        </DetailCard>
-        {core.tags !== undefined && (
-          <DetailCard
-            section="tags"
-            testId={`data-product-card-tags-${p.id}`}
-            label={t("dataProductCore.tags")}
-          >
-            {core.tags.length === 0 ? (
-              <Empty text={t("dataProductCore.tagsEmpty")} />
-            ) : (
-              <List size="sm" data-testid={`data-product-detail-tags-${p.id}`}>
-                {core.tags.map((tag) => (
-                  <List.Item key={tag} ff="monospace">
-                    {tag}
-                  </List.Item>
-                ))}
-              </List>
-            )}
-          </DetailCard>
-        )}
-        {(outputTables !== undefined || core.commands !== undefined) && (
-          <DetailCard
-            section="outputPorts"
-            testId={`data-product-card-outputPorts-${p.id}`}
-            label={t("dataProductsTab.tablesLabel")}
-            hint={t("dataProductsTab.detail.outputPortsHint")}
-          >
-            {/* REQ-2132: the product's promises, the checks it makes on its output ports. */}
-            {dq && (
-              <ClaimsCallout
-                kind="promises"
-                checks={dq.promises}
-                testId={`data-product-detail-promises-${p.id}`}
-              />
-            )}
-            {outputTables !== undefined && (
-              <>
-                {outputTables.length === 0 ? (
-                  <Empty text={t("dataProductsTab.tablesEmpty")} />
-                ) : (
-                  <List size="sm" data-testid={`data-product-detail-tables-${p.id}`}>
-                    {outputTables.map((tb) => (
-                      <List.Item key={tb.id} ff="monospace">
-                        {modelName(tb)}
-                        {dq && (
-                          <DqIcon
-                            checks={dq.promises}
-                            tableId={tb.id}
-                            testId={`data-product-detail-port-dq-${tb.id}`}
-                          />
-                        )}
-                        {tb.description && <Muted>— {tb.description}</Muted>}
-                      </List.Item>
-                    ))}
-                  </List>
-                )}
-              </>
-            )}
-            {core.commands !== undefined && (
-              <div
-                style={{
-                  marginTop: "var(--mantine-spacing-sm)",
-                  marginLeft: "var(--mantine-spacing-md)",
-                }}
-              >
-                <Text c="dimmed" fw={500} size="xs" tt="uppercase">
-                  {t("dataProductsTab.commandsLabel")}
-                </Text>
-                {core.commands.length === 0 ? (
-                  <Empty text={t("dataProductsTab.commandsEmpty")} />
-                ) : (
-                  <List size="sm" data-testid={`data-product-detail-commands-${p.id}`}>
-                    {core.commands.map((fn) => (
-                      <List.Item key={fn.name} ff="monospace">
-                        {fn.name}
-                        {fn.description && <Muted>— {fn.description}</Muted>}
-                      </List.Item>
-                    ))}
-                  </List>
-                )}
-              </div>
-            )}
-          </DetailCard>
-        )}
-        {dq && (
-          <DetailCard
-            section="dataQuality"
-            testId={`data-product-card-dataQuality-${p.id}`}
-            label={t("dataProductsTab.detail.field.dataQuality")}
-            hint={t("dataProductsTab.detail.dataQualityHint")}
-            tourId="data-product-dq"
-          >
-            {shownDqRows.every((row) => dq[row].length === 0) &&
-            (!owner || dq.unattached.length === 0) ? (
-              <Empty text={t("dataProductsTab.detail.dataQualityEmpty")} />
-            ) : (
-              // REQ-2157: three expandable rows -- the product's expectations on its inputs, its
-              // promises on its members, and the related checks others make on either.
-              <div data-testid={`data-product-detail-dq-tables-${p.id}`}>
-                <Collapsibles id="data-product.dq-rows">
-                  {shownDqRows.map((row) => {
-                    const status = dqStatus(dq[row]);
-                    return (
-                      <CollapsibleItem
-                        key={row}
-                        value={row}
-                        testId={`data-product-detail-dq-${row}-${p.id}`}
-                        controlTestId={`data-product-detail-dq-${row}-${p.id}-toggle`}
-                        title={
-                          <Group gap={6} wrap="nowrap">
-                            <Text size="sm" fw={500}>
-                              {t(`dataProductCore.dqRow_${row}`)}
-                            </Text>
-                            <Badge size="sm" variant="light" color="gray">
-                              {dq[row].length}
-                            </Badge>
-                            {status && (
-                              <Badge size="sm" variant="light" color={COLOR[status]}>
-                                {t(`dataProductCore.status_${status}`)}
-                              </Badge>
-                            )}
-                          </Group>
-                        }
-                      >
-                        {dq[row].length === 0 ? (
-                          <Empty text={t("dataProductCore.dqRowEmpty")} />
-                        ) : (
-                          <List size="sm">{dq[row].map((c) => dqItem(c, row === "related"))}</List>
-                        )}
-                      </CollapsibleItem>
-                    );
-                  })}
-                </Collapsibles>
-              </div>
-            )}
-            {/* The product's own checks that scan neither an input nor a member: the owner's. */}
-            {(owner ? dq.unattached : []).map((c) => (
-              <Alert
-                key={c.checker_table_id}
-                color="yellow"
-                mt="xs"
-                title={t("dataProductCore.orphan")}
-                data-testid={`data-product-detail-dq-${p.id}-orphan-${c.checker_table_id}`}
-              >
-                {t("dataProductCore.orphanWarning", {
-                  checker: restModelName(c),
-                  table: restModelName(c.checked_table),
-                })}
-              </Alert>
-            ))}
-          </DetailCard>
-        )}
-        {profiled !== undefined && outputTables?.some((tb) => tb.profileResults !== undefined) && (
-          <DetailCard
-            section="profiles"
-            testId={`data-product-card-profiles-${p.id}`}
-            label={t("dataProductCore.profiles")}
-            hint={t("dataProductCore.profilesHint")}
-          >
-            {profiled.length === 0 ? (
-              <Empty text={t("dataProductCore.profilesEmpty")} />
-            ) : (
-              <List size="sm" data-testid={`data-product-detail-profiles-${p.id}`}>
-                {profiled.map((tb) => (
-                  <List.Item key={tb.id} ff="monospace">
-                    {modelName(tb)}
-                    <List size="xs" withPadding>
-                      {(tb.profileResults ?? []).map((r) => (
-                        <List.Item key={r.id} ff="monospace">
-                          <Group gap={4} wrap="nowrap">
-                            <Text component="span" size="xs" ff="monospace">
-                              {r.tableName}
-                            </Text>
-                            {sqlDrill(r, `data-product-detail-profile-sql-query-${r.id}`)}
-                          </Group>
-                        </List.Item>
-                      ))}
-                    </List>
-                  </List.Item>
-                ))}
-              </List>
-            )}
-          </DetailCard>
-        )}
-        {core.terms !== undefined && (
-          <DetailCard
-            section="relatedTerms"
-            testId={`data-product-card-relatedTerms-${p.id}`}
-            label={t("dataProductsTab.relatedTermsLabel")}
-          >
-            {core.terms.length === 0 ? (
-              <Empty text={t("dataProductsTab.relatedTermsEmpty")} />
-            ) : (
-              <List size="sm" data-testid={`data-product-detail-related-terms-${p.id}`}>
-                {core.terms.map((term) => (
-                  <List.Item key={term.id} ff="monospace">
-                    {term.name}
-                    {term.isAbstract && (
-                      <Muted>({t("dataProductsTab.relatedTermsConcept")})</Muted>
-                    )}
-                    {term.definition && <Muted>— {term.definition}</Muted>}
-                  </List.Item>
-                ))}
-              </List>
-            )}
-          </DetailCard>
-        )}
-        {outputTables !== undefined && (
-          <DetailCard
-            section="consumerQueries"
-            testId={`data-product-card-consumerQueries-${p.id}`}
-            label={t("dataProductsTab.graphqlQueriesLabel")}
-          >
-            {outputTables.length === 0 && cypherRows.length === 0 ? (
-              <Empty text={t("dataProductsTab.graphqlQueriesEmpty")} />
-            ) : (
-              <List size="sm" data-testid={`data-product-detail-graphql-queries-${p.id}`}>
-                {outputTables.map(consumerRow)}
-                {cypherRows.map(({ r, type }) => (
-                  <List.Item key={`cy-${r.id}`} ff="monospace">
-                    <Group gap={4} wrap="nowrap">
-                      <Text component="span" size="sm" ff="monospace">
-                        {type}
-                      </Text>
-                      <Tip text={t("dataProductsTab.cypherQueryAria", { type })} named>
-                        <ActionIcon
-                          variant="subtle"
-                          size="sm"
-                          aria-label={t("dataProductsTab.cypherQueryAria", { type })}
-                          data-testid={`data-product-detail-cypher-query-${r.id}`}
-                          onClick={() =>
-                            navigate("/graph", {
-                              state: {
-                                query: `MATCH ()-[r:${type}]->() RETURN r LIMIT 25`,
-                                autoRun: true,
-                              },
-                            })
-                          }
-                        >
-                          <Share2 size={14} />
-                        </ActionIcon>
-                      </Tip>
-                    </Group>
-                  </List.Item>
-                ))}
-              </List>
-            )}
-          </DetailCard>
-        )}
-        {related !== undefined && (
-          <DetailCard
-            section="relatedTables"
-            testId={`data-product-card-relatedTables-${p.id}`}
-            label={t("dataProductsTab.detail.field.relatedTables")}
-            hint={t("dataProductsTab.detail.relatedTablesHint")}
-          >
-            {related.length === 0 ? (
-              <Empty text={t("dataProductsTab.detail.relatedTablesEmpty")} />
-            ) : (
-              <List size="sm" data-testid={`data-product-detail-related-tables-${p.id}`}>
-                {related.map((e) => (
-                  <List.Item key={e.id} ff="monospace">
-                    {/* The whole entry at most three lines; its ellipsis opens it in place. */}
-                    <ClampedDetail
-                      testId={`data-product-related-${p.id}-${e.targetProductId ?? e.targetTableId}`}
-                    >
-                      {relatedLabel(e)}
-                      {e.targetProduct && (
-                        <Muted>
-                          ({t("dataProductCore.inProduct", { product: e.targetProduct.name })})
-                        </Muted>
-                      )}
-                      <Text size="xs" c="var(--text-muted)">
-                        {[
-                          e.aliases,
-                          e.pathCount > 1
-                            ? t("dataProductCore.paths", { count: e.pathCount })
-                            : null,
-                        ]
-                          .filter(Boolean)
-                          .join(" · ")}
-                      </Text>
-                      {e.targetTable?.description && (
-                        <Text size="xs" c="var(--text-muted)">
-                          {e.targetTable.description}
-                        </Text>
-                      )}
-                    </ClampedDetail>
-                  </List.Item>
-                ))}
-              </List>
-            )}
-          </DetailCard>
-        )}
-        <DetailCard
-          section="relationships"
-          testId={`data-product-card-relationships-${p.id}`}
-          label={t("dataProductsTab.detail.field.relationships")}
-        >
-          {internalRelationships.length === 0 ? (
-            <Empty text={t("dataProductsTab.detail.relationshipsEmpty")} />
-          ) : (
-            <List size="sm" data-testid={`data-product-detail-relationships-${p.id}`}>
-              {internalRelationships.map((r) => (
-                <List.Item key={r.id} ff="monospace">
-                  {/* GQL field name and Cypher relationship type are independent names for the
-                      same edge — show both when set. */}
-                  {joinAliasPair([r.graphqlField, r.cypherType])}
-                  <Muted>
-                    {r.source.tableName}.{r.sourceColumn}
-                    {" → "}
-                    {r.targetTable?.tableName}
-                    {r.targetColumn ? `.${r.targetColumn}` : ""} ({r.cardinality})
-                  </Muted>
-                </List.Item>
-              ))}
-            </List>
-          )}
-        </DetailCard>
-        {/* REQ-2126, REQ-2132: the nearest physical inputs and the product's expectations of them,
-            found on the product's lineage as its reader may read it (REQ-2156). */}
-        <DetailCard
-          section="inputPorts"
-          testId={`data-product-card-inputPorts-${p.id}`}
-          label={t("dataProductsTab.detail.field.inputPorts")}
-          hint={t("dataProductCore.inputsHint")}
-        >
-          {!owner ? (
-            <OwnerOnlyList />
-          ) : lineageGraph ? (
-            <>
-              <ClaimsCallout
-                kind="expectations"
-                checks={lineageGraph.dq.expectations}
-                testId={`data-product-detail-expectations-${p.id}`}
-              />
-              <InputsList
-                inputs={lineageGraph.inputs}
-                expectations={lineageGraph.dq.expectations}
-                testId={`data-product-detail-inputs-${p.id}`}
-              />
-            </>
-          ) : (
-            <LineagePending loading={lineageLoading} error={lineageError} />
-          )}
-        </DetailCard>
-        {/* REQ-2160: the owner's view of who reads the product, one hop downstream (the product
-            lineage endpoint, cut to the reader). */}
-        <DetailCard
-          section="consumers"
-          testId={`data-product-card-consumers-${p.id}`}
-          label={t("dataProductCore.consumers")}
-          hint={t("dataProductCore.consumersHint")}
-        >
-          {!owner ? (
-            <OwnerOnlyList />
-          ) : lineageGraph ? (
-            <ConsumersList
-              consumers={lineageGraph.consumers}
-              ports={core.tables}
-              testId={`data-product-detail-consumers-${p.id}`}
-            />
-          ) : (
-            <LineagePending loading={lineageLoading} error={lineageError} />
-          )}
-        </DetailCard>
-        {/* Compact: the product, its members, commands and bound terms; the full graph opens
-            from its expand button. */}
-        <DetailCard
-          section="graph"
-          testId={`data-product-card-graph-${p.id}`}
-          label={t("graph3d.panelTitle")}
-        >
-          {/* REQ-2174: the ontology, focused on the product. */}
-          <OntologySnippet preset={productPreset(p.id)} name={product.name} testId="graph-panel" />
-        </DetailCard>
-      </div>
-      {/* REQ-1640: the product's lineage DAG, full width below the cards, as the Lineage page draws
-          it; the tallest panel on the page, so it starts closed. */}
-      <div>
-        <Collapsibles id="data-products.lineage">
+      {editForm ?? (
+        <ProductHeader
+          core={core}
+          fields={fields}
+          quality={quality}
+          consumers={seesConsumers && lineageGraph ? lineageGraph.consumers.length : null}
+          canEdit={canEdit}
+          onTagsChanged={onTagsChanged}
+        />
+      )}
+      <Collapsibles
+        id="data-product.sections"
+        reveal={reveal}
+        testId={`data-product-sections-${p.id}`}
+      >
+        {shown.map((section) => (
           <CollapsibleItem
-            value="lineage"
-            defaultOpen={false}
-            controlTestId={`data-product-detail-lineage-toggle-${p.id}`}
+            key={section}
+            value={section}
+            defaultOpen={section === "offers"}
+            mountWhenOpen={DRAWS_A_GRAPH.has(section)}
+            testId={`data-product-row-${section}-${p.id}`}
+            controlTestId={`data-product-row-${section}-${p.id}-toggle`}
             title={
-              <Group gap={4} align="baseline" component="span">
-                <span>{t("dataProductsTab.detail.field.lineage")}</span>
-                <Tip text={t("dataProductsTab.detail.lineageHint")}>
-                  <Text
-                    size="xs"
-                    c="var(--text-muted)"
-                    component="span"
-                    style={{ cursor: "help" }}
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    ⓘ
-                  </Text>
-                </Tip>
+              <Group
+                gap="sm"
+                wrap="nowrap"
+                style={{ minWidth: 0 }}
+                // The guided tour's anchor for a product's data quality: its row, always there.
+                data-tour={section === "quality" ? "data-product-dq" : undefined}
+              >
+                <Text
+                  size="sm"
+                  fw={600}
+                  style={{ flexShrink: 0 }}
+                  data-testid={`data-product-row-${section}-${p.id}-name`}
+                >
+                  {t(`dataProductOffers.section_${section}`)}
+                </Text>
+                {section === "quality" && quality?.worst && <WorstBadge worst={quality.worst} />}
+                <Text
+                  size="xs"
+                  c="dimmed"
+                  truncate="end"
+                  data-testid={`data-product-row-${section}-${p.id}-summary`}
+                >
+                  {summary(section)}
+                </Text>
               </Group>
             }
           >
-            {lineageLoading ? (
-              <Text size="sm" c="var(--text-muted)">
-                {t("dataProductsTab.detail.lineageLoading")}
-              </Text>
-            ) : lineageError ? (
-              <Text size="sm" c="red">
-                {lineageError}
-              </Text>
-            ) : !lineageGraph || lineageGraph.nodes.length === 0 ? (
-              <Text size="sm" c="var(--text-muted)">
-                {t("dataProductsTab.detail.lineageEmpty")}
-              </Text>
-            ) : (
-              <div data-testid={`data-product-detail-lineage-${p.id}`}>
-                <LineageDag
-                  graph={lineageGraph}
-                  height={720}
-                  readable
-                  relationLabel={relationLabel}
-                  collapsedRelations={collapsed}
-                  onToggleRelation={toggleRelation}
-                  lanes={lineageMembers && { members: lineageMembers, title: laneTitle }}
-                  onOpenModal={() => setLineageModalOpen(true)}
-                  describeColumn={describeColumn}
-                />
-                <Modal
-                  opened={lineageModalOpen}
-                  onClose={() => setLineageModalOpen(false)}
-                  size="90%"
-                  title={t("dataProductsTab.detail.field.lineage")}
-                  data-testid={`data-product-detail-lineage-modal-${p.id}`}
-                  styles={{ body: { padding: "var(--mantine-spacing-xs)" } }}
-                >
-                  <LineageDag
-                    graph={lineageGraph}
-                    height="calc(90vh - 140px)"
-                    relationLabel={relationLabel}
-                    collapsedRelations={collapsed}
-                    onToggleRelation={toggleRelation}
-                    lanes={lineageMembers && { members: lineageMembers, title: laneTitle }}
-                    describeColumn={describeColumn}
-                  />
-                </Modal>
-              </div>
-            )}
+            <div style={SECTION_BODY}>{body(section)}</div>
           </CollapsibleItem>
-        </Collapsibles>
-      </div>
-      {/* REQ-2158: the product's contracts, one row per output port's contract, beneath its
-          lineage; a row opens to that contract's cards and reads it then. */}
-      <ProductContracts
-        productId={p.id}
-        core={core}
-        lineage={lineageGraph}
-        version={contractsVersion}
-        reader={reader}
-        viewer={viewer}
-      />
+        ))}
+      </Collapsibles>
       {lifecycle.dialogs}
-      {(canEdit || canDelete) && (
-        <Group gap="xs" mt={4}>
-          {lifecycle.actions}
-          {canEdit && (
-            <Tip text={t("dataProductsTab.editDataProduct", { id: p.id })} named>
-              <ActionIcon
-                variant="subtle"
-                aria-label={t("dataProductsTab.editDataProduct", { id: p.id })}
-                data-testid={`data-product-detail-edit-${p.id}`}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onEdit();
-                }}
-              >
-                <Pencil size={14} />
-              </ActionIcon>
-            </Tip>
-          )}
-          {canDelete && (
-            <PanelDelete
-              itemKey={p.id}
-              title={t("dataProductsTab.deleteTitle")}
-              consequence={t("dataProductsTab.deleteConfirm", { id: p.id })}
-              ariaLabel={t("dataProductsTab.deleteDataProduct", { id: p.id })}
-              testId={`data-product-detail-delete-${p.id}`}
-              confirmTestId="data-product-delete-modal"
-              onDelete={onDelete}
-            />
-          )}
-        </Group>
-      )}
     </Stack>
   );
 }

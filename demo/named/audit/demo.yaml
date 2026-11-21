@@ -17,7 +17,7 @@ description: >-
   from government data. Do a client's recorded federal awards match what the government's records
   show paying it?
 screenshot: card.png
-published: false
+published: true
 group: public-data
 # The oldest Provisa this demo's bundle runs on (REQ-2049): a puller running an older one is refused
 # by name. The first release carrying the demo.

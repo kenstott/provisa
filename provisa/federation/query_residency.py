@@ -28,14 +28,19 @@ and never ask for a build. A source with ``freshness_gate`` set is judged by its
 
 Concurrent stale reads of one table share one build: the request is one conditional write in
 the state store, and every reader waits on the same record. The wait is an await inside the
-request's own coroutine, bounded by the request's deadline (``ReplicaBuilding``).
+request's own coroutine, bounded by the request's deadline (``ReplicaBuilding``), or by the
+table's own limit while nothing of it has landed (``read_wait``, REQ-2224).
 
 A build that fails is recorded on the replica and fails the query with the build's own cause;
 the query never reads what the failed build left (REQ-1661, amended 2026-09-30). A read does
 not ask again until the build's retry wait (``replica_state.RetryPolicy``) has passed.
+
+Only a source with ``freshness_gate`` waits for a refresh of a replica it already holds (REQ-860,
+amended 2026-11-09). Without the guarantee the reader is answered from the current copy, and the
+refresh it asked for runs in the background.
 """
 
-# Requirements: REQ-1661, REQ-860, REQ-855, REQ-1141, REQ-1907, REQ-1915
+# Requirements: REQ-1661, REQ-860, REQ-855, REQ-1141, REQ-1907, REQ-1915, REQ-2224
 
 from __future__ import annotations
 
@@ -202,13 +207,55 @@ class Residency:
     #: REQ-1922: the region whose data answers the statement when it reads only what that one
     #: other region keeps, in place there; None when this node's region answers it.
     answered_in: str | None = None
+    #: REQ-2224: the tables this statement reads as empty, because nothing of them has landed.
+    no_rows: NoRows | None = None
+
+
+@dataclass(frozen=True)
+class NoRows:
+    """The replicas a statement reads as empty (REQ-2224): each replica's name, with the columns
+    (name, type) its landing will give it, and the dialect of the statement that names them."""
+
+    dialect: str
+    columns: dict[str, list[tuple[str, str]]]
+
+
+def read_as_empty(sql: str, no_rows: NoRows) -> str:
+    """``sql`` with each replica of ``no_rows`` read as a relation of its columns and no rows: the
+    statement stays the statement, so its joins, aggregates and result columns are the engine's
+    answer over an empty table, on every surface."""
+    import sqlglot
+    import sqlglot.expressions as exp
+
+    tree = sqlglot.parse_one(sql, read=no_rows.dialect)
+    for node in list(tree.find_all(exp.Table)):
+        columns = no_rows.columns.get(node.name)
+        if columns is None:
+            continue
+        empty = exp.select(
+            *(
+                exp.alias_(
+                    exp.cast(exp.null(), exp.DataType.build(type_, no_rows.dialect, udt=True)),
+                    name,
+                    quoted=True,
+                )
+                for name, type_ in columns
+            )
+        ).where(exp.false())
+        node.replace(empty.subquery(exp.to_identifier(node.alias_or_name, quoted=True)))
+    return tree.sql(dialect=no_rows.dialect)
 
 
 def put_on_plan(plan: Any, residency: Residency) -> None:
     """Put what ``residency`` says the statement was answered from on ``plan``, where its audit
-    record reads it: the replicas read (its data age) and the region whose data answered it."""
+    record reads it: the replicas read (its data age) and the region whose data answered it. A
+    statement that reads a table with nothing landed (REQ-2224) is run reading it as empty, and its
+    answer is not kept: the next read after the landing has rows to find."""
     plan.replicas_read = residency.replicas_read
     plan.answered_in = residency.answered_in
+    if residency.no_rows is not None:
+        plan.physical_sql = read_as_empty(plan.physical_sql, residency.no_rows)
+        plan.no_rows_yet = True
 
 
 class ReplicaAgeUnknown(RuntimeError):
@@ -245,18 +292,18 @@ async def require_home_replica(state: Any, table: Any, home: str) -> Any:
     return record
 
 
-def require_draft_read_in_its_region(table_name: str, home: str | None) -> None:
+def require_preview_in_its_region(table_name: str, home: str | None) -> None:
     """A table that names a region is read in that region. One in service is read there from
-    its replica (:func:`require_home_replica`); a draft has no replica, so it is read live, and
-    only by the cluster of its own region — refused elsewhere as a table in service whose
-    replica is not there is refused (``query.home_region_unavailable``). A draft that names no
-    region is read where the caller is."""
+    its replica (:func:`require_home_replica`); a withdrawn table has no replica (REQ-1921), so
+    its steward's preview reads it live, and only by the cluster of its own region -- refused
+    elsewhere as a table in service whose replica is not there is refused
+    (``query.home_region_unavailable``). One that names no region is read where the caller is."""
     from provisa.core import process_region
     from provisa.core.region_stores import HomeRegionUnavailable
 
     if home and home != process_region.region():
         raise HomeRegionUnavailable(
-            table_name, home, "a draft does not have: preview it from that region"
+            table_name, home, "a withdrawn table does not have: preview it from that region"
         )
 
 
@@ -419,7 +466,14 @@ async def ensure_resident(
     it never copies a table on its own thread. A build that failed fails the read
     (:class:`ReplicaBuildFailed`); it is asked for again only after
     its retry wait (``replica_state.RetryPolicy``). A read whose deadline passes while the build is still
-    running raises :class:`ReplicaBuilding`; the build goes on.
+    running raises :class:`ReplicaBuilding`; the build goes on. A source without
+    ``freshness_gate`` that holds a built replica does not wait for its refresh (REQ-860): the
+    read asks for the build and is answered from the replica it holds.
+
+    REQ-2224: a table's ``read_wait`` says what a read does while nothing of it has landed: waits
+    up to that long, in place of the request's timeout, or (``READ_WAIT_NO_ROWS``) asks for the
+    landing and reads the table as empty (``Residency.no_rows``). A replica that has landed and
+    gone stale is waited for as before, bounded by the request.
 
     ``table_ids`` are the registered tables the STATEMENT reads (REQ-826): only those are judged
     and waited for. A statement that reads one table of a source does not wait on the source's
@@ -550,6 +604,7 @@ async def ensure_resident(
     protected_of = {s.id: _load_protected(s, tables_by_source.get(s.id, [])) for s in sources}
 
     from provisa.core import request_deadline
+    from provisa.core.models import READ_WAIT_NO_ROWS
     from provisa.core.request_context import current_org
     from provisa.federation import replica_builds, replica_state
     from provisa.federation.replica_routing import live_while_building
@@ -623,9 +678,33 @@ async def ensure_resident(
         resident = state_ is not None and state_["last_refresh_at"] is not None
         return _plan(source, is_stale, lambda sid: resident)
 
+    def _answers_while_refreshing(source: Any, key_: ReplicaKey, record: Any) -> bool:
+        """Whether a read of a replica past its freshness is answered from the copy it holds
+        while the refresh runs (REQ-860): the source gives no freshness guarantee and there is a
+        built copy this engine can read and the model can use. Not one a failed build left, while
+        that failure stands, retry included (REQ-1661: ``last_error`` lasts until a build
+        completes)."""
+        return (
+            not source.freshness_gate
+            and record is not None
+            and record.last_error is None
+            and record.exists_in(_store())
+            and view.serves(org_id, key_, record)
+        )
+
     retry = replica_state.retry_policy()
     waiting: list[tuple[Any, Any, replica_state.ReplicaKey]] = []
     replicas_read: dict[ReplicaKey, datetime] = {}
+    refreshing = False
+    # REQ-2224: each table's limit of its own on this read's wait, and those read as empty.
+    own_wait: dict[ReplicaKey, float] = {}
+    empty: dict[str, list[tuple[str, str]]] = {}
+
+    def _nothing_landed(key: ReplicaKey, record: Any) -> bool:
+        """Whether this engine's store holds nothing of the replica a read could answer from."""
+        return (
+            record is None or not record.exists_in(_store()) or not view.serves(org_id, key, record)
+        )
 
     def _read_from(key: ReplicaKey, record: Any) -> None:
         """The statement reads this replica: keep the time its copy is current as of (its
@@ -689,37 +768,71 @@ async def ensure_resident(
                 raise replica_state.ReplicaBuildFailed(".".join(key), record.last_error)
             if live_while_building(source, t, engine.engine):
                 continue  # read live while the build runs; the build is requested, not awaited
+            if _answers_while_refreshing(source, key, record):
+                _read_from(key, record)
+                refreshing = True
+                continue
+            if t.read_wait is not None and _nothing_landed(key, record):
+                if t.read_wait == READ_WAIT_NO_ROWS:
+                    address = backend.replica_address(
+                        state,
+                        source_id=source.id,
+                        schema_name=t.schema_name,
+                        table_name=t.table_name,
+                    )
+                    empty[address.table] = resolve_landing_args_for(
+                        source, t, backend.dialect
+                    ).columns
+                    continue
+                own_wait[key] = float(t.read_wait)
             waiting.append((source, t, key))
-    if not waiting:
+    no_rows = NoRows(engine.dialect, empty) if empty else None
+    if waiting or refreshing or no_rows is not None:
+        replica_builds.kick(org_id)
+    if not waiting and no_rows is None:
         return Residency(replicas_read=replicas_read, answered_in=answered_in)
-    replica_builds.kick(org_id)
     built = [(key[0], key[2]) for _source, _table, key in waiting]
     started = time.monotonic()
     asked_at = datetime.now(UTC)
     budget = request_deadline.remaining()
-    while waiting:
-        still: list[tuple[Any, Any, replica_state.ReplicaKey]] = []
-        async with db.acquire() as conn:
-            for source, t, key in waiting:
-                record = await replica_state.read(conn, key)
-                view.read(org_id, key, record)
-                if record is not None and record.build_state == replica_state.FAILED:
-                    raise replica_state.ReplicaBuildFailed(".".join(key), record.last_error)
-                if _stale(source, t, record) and not _landed_since(record, asked_at):
-                    still.append((source, t, key))
-                else:
-                    _read_from(key, record)
-        waiting = still
-        if not waiting:
-            break
-        waited = time.monotonic() - started
-        if budget is not None and waited + _BUILD_POLL_S + _ANSWER_RESERVE_S >= budget:
-            # The request answers with ReplicaBuilding before its own deadline cuts it off with
-            # a timeout that says nothing about why. The build goes on.
-            raise replica_state.ReplicaBuilding(".".join(waiting[0][2]), waited)
-        await asyncio.sleep(_BUILD_POLL_S)
-    log.info("query residency: %s built before the read", built)
-    return Residency(built=built, replicas_read=replicas_read, answered_in=answered_in)
+
+    def _out_of_time(key: ReplicaKey, waited: float) -> bool:
+        """Whether this table's wait is over: its own limit, or the request's. The request answers
+        with ReplicaBuilding before its own deadline cuts it off with a timeout that says nothing
+        about why."""
+        own = own_wait.get(key)
+        if own is not None:
+            return waited >= own
+        return budget is not None and waited + _BUILD_POLL_S + _ANSWER_RESERVE_S >= budget
+
+    # REQ-2224: while a table's own limit bounds the wait, the wait is not the request's to time.
+    with request_deadline.clock_stopped(max(own_wait.values(), default=0.0)):
+        while waiting:
+            still: list[tuple[Any, Any, replica_state.ReplicaKey]] = []
+            async with db.acquire() as conn:
+                for source, t, key in waiting:
+                    record = await replica_state.read(conn, key)
+                    view.read(org_id, key, record)
+                    if record is not None and record.build_state == replica_state.FAILED:
+                        raise replica_state.ReplicaBuildFailed(".".join(key), record.last_error)
+                    if _stale(source, t, record) and not _landed_since(record, asked_at):
+                        still.append((source, t, key))
+                    else:
+                        _read_from(key, record)
+            waiting = still
+            if not waiting:
+                break
+            waited = time.monotonic() - started
+            late = next((key for _s, _t, key in waiting if _out_of_time(key, waited)), None)
+            if late is not None:
+                # The build goes on.
+                raise replica_state.ReplicaBuilding(".".join(late), waited)
+            await asyncio.sleep(_BUILD_POLL_S)
+    if built:
+        log.info("query residency: %s built before the read", built)
+    return Residency(
+        built=built, replicas_read=replicas_read, answered_in=answered_in, no_rows=no_rows
+    )
 
 
 def _landed_since(record: Any, asked_at: datetime) -> bool:
@@ -924,6 +1037,21 @@ def _join_key_column(join: Any, target_alias: str) -> tuple[str, Any] | None:
     return None
 
 
+def join_key_column(join: Any) -> tuple[str, Any] | None:
+    """``_join_key_column`` for the item ``join`` reads, by its own alias, with the target's column
+    named as its table's: a governed relation (REQ-039) is read as the table it reads, and its
+    column as the table column it serves as it is. None when that column is masked or computed --
+    its value is not the key's."""
+    from provisa.compiler.governed_relation import read_through
+
+    found = _join_key_column(join, join.this.alias_or_name)
+    relation = read_through(join.this)
+    if found is None or relation is None:
+        return found
+    physical = relation.column(found[0])
+    return None if physical is None else (physical, found[1])
+
+
 def _pushdown_alias(table: Any) -> str:
     """The probe's output column carrying a row-level table's join keys: named for the table's
     registered name, a plain identifier whatever its replica is called."""
@@ -1019,7 +1147,13 @@ async def pushdown_row_materialize(
     if not isinstance(tree, exp.Select):
         return set()
 
-    all_joins = {j.this.name: j for j in tree.find_all(exp.Join) if j.this.name in tables_by_name}
+    from provisa.compiler.governed_relation import base_table
+
+    def joined(join: Any) -> str:
+        read = base_table(join.this)  # REQ-039: a governed relation is read as its table
+        return read.name if read is not None else ""
+
+    all_joins = {joined(j): j for j in tree.find_all(exp.Join) if joined(j) in tables_by_name}
     if not all_joins:
         return set()
 
@@ -1062,14 +1196,14 @@ async def pushdown_row_materialize(
             break
 
         pass_tree = tree.copy()
-        joins_by_name = {j.this.name: j for j in pass_tree.find_all(exp.Join)}
+        joins_by_name = {joined(j): j for j in pass_tree.find_all(exp.Join)}
         key_cols: dict[str, tuple[str, Any]] = {}
         skip: set[str] = set()
         for name in still_pending:
             # _join_key_column matches against the join's OWN alias (e.g. "ce"), not the bare
             # table name ("bench_contains_edge") -- an aliased join's ON-condition columns are
             # always alias-qualified, never re-qualified back to the physical table name.
-            kc = _join_key_column(joins_by_name[name], joins_by_name[name].this.alias_or_name)
+            kc = join_key_column(joins_by_name[name])
             if kc is None:
                 skip.add(name)  # never guessed -- bound by a key predicate (REQ-1915)
                 continue

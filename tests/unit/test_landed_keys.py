@@ -22,7 +22,9 @@ from provisa.federation.landed_keys import (
     derived_registration,
     key_plan,
     relationship_edges,
+    plan_targets,
     with_tags,
+    with_terms,
 )
 
 pytestmark = pytest.mark.unit
@@ -193,3 +195,65 @@ def test_derived_registration_matches_the_mv_store_table_to_its_registration_row
     assert derived_registration(rows, "mv_dim_pet") is rows[0]
     assert derived_registration(rows, "dim-pet") is rows[0]
     assert derived_registration(rows, "mv_other") is None
+
+
+def _term(term_id: int, name: str, *, approved: bool = True, excluded: bool = False) -> dict:
+    return {
+        "id": term_id,
+        "name": name,
+        "definition": None,
+        "is_abstract": False,
+        "deprecated": False,
+        "deprecation_asserted": False,
+        "approved": approved,
+        "retired": False,
+        "export_excluded": excluded,
+        "status_reason": None,
+        "retire_on": None,
+    }
+
+
+def _ref(term_id: int, table: str, column: str) -> dict:
+    return {
+        "term_id": term_id,
+        "source_id": "pet-store-sqlite",
+        "schema_name": "pet_store",
+        "table_name": table,
+        "column_name": column,
+    }
+
+
+def test_with_terms_names_a_column_only_for_a_term_an_agent_may_see_by_name():
+    glossary = {
+        "terms": [
+            _term(1, "pet name"),
+            _term(2, "draft alone", approved=False),  # a draft on no approved path
+            _term(3, "secret", excluded=True),  # export_excluded withholds the name
+            _term(4, "elsewhere"),  # grounded on a table that has not landed
+        ],
+        "refs": [
+            _ref(1, "pets", "name"),
+            _ref(2, "pets", "id"),
+            _ref(3, "pets", "owner"),
+            _ref(4, "other", "x"),
+        ],
+        "table_refs": [],
+        "edges": [],
+    }
+    landed = _landed({_BY_ID[1]: ("id",), _BY_ID[2]: ()})
+    out = {t.identity: t for t in with_terms(landed, glossary)}
+    assert out[_BY_ID[1]].column_terms == {"name": "pet name"}
+    assert out[_BY_ID[2]].column_terms == {}
+    assert plan_targets_terms(out[_BY_ID[1]]) == {"name": "pet name"}
+
+
+def plan_targets_terms(table: LandedTable) -> dict[str, str]:
+    from provisa.federation.landed_keys import KeyPlan
+
+    plan = KeyPlan(
+        tables={table.identity: table},
+        store_parts={table.identity: ("db", "s", "t")},
+    )
+    (target,) = plan_targets(plan).values()
+    assert target.column_terms is not None
+    return target.column_terms

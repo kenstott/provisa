@@ -46,12 +46,10 @@ from provisa.core.schema_org import (
     roles,
     sources,
     table_columns,
-    user_directory,
-    user_idp_attributes,
-    user_role_assignments,
 )
 from tests.integration.test_auth_integration import _FirebaseLikeProvider
 from tests.served_config import served_config
+from tests.integration.signin_tables import SIGN_IN_TABLES
 
 # The middleware here is built without the wiring, so it serves its own default org, root; the app
 # serves root as its own org to match (REQ-1266) -- every request reads that org's runtime.
@@ -91,16 +89,13 @@ def _prepare_sync():
         org_metadata.create_all(
             conn,
             tables=[
-                roles,
-                user_role_assignments,
+                *SIGN_IN_TABLES,  # every authenticated request reads or writes them
                 sources,
                 domains,
                 data_products,  # REQ-1634: registered_tables.product_id FKs it
                 glossary_terms,  # REQ-2130: registered_tables.class_term_id FKs it
                 registered_tables,
                 table_columns,
-                user_directory,  # REQ-1439: every authenticated request upserts it
-                user_idp_attributes,  # REQ-1383: every authenticated request records it
             ],
         )
         conn.execute(insert(roles).values(id="org_admin"))

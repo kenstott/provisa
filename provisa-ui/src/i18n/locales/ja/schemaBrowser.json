@@ -1,7 +1,7 @@
 {
   "schemaBrowser": {
-    "collapsePanel": "スキーマパネルを折りたたむ",
-    "expandPanel": "スキーマパネルを展開",
+    "collapsePanel": "スキーマパネルを隠す",
+    "expandPanel": "スキーマパネルを表示",
     "heading": "スキーマ",
     "groupMetrics": "メトリクス",
     "groupFacts": "ファクト",

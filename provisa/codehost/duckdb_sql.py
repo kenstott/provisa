@@ -22,14 +22,47 @@ attaches (codehost.residual).
   SELECT's own ORDER BY: a window's or an aggregate's is no scan's, and a UNION's orders the
   union's rows, which no one scan answers (DuckDB takes no expression key there).
 
-Each is idempotent. This module is carried, as it is, by every built image's front end
-(provisa/codesource/image_build.py): it imports nothing but sqlglot.
+Each is idempotent.
+
+An error DuckDB meets as its Arrow reader produces a later batch reaches Python as an ``OSError``
+carrying only DuckDB's message (DuckDB 2.0 streams a statement's relation through Arrow's C
+stream); :func:`engine_error` is the exception DuckDB raises for that error when it is met as the
+statement is run.
+
+This module is carried, as it is, by every built image's front end
+(provisa/codesource/image_build.py): it imports nothing but sqlglot and DuckDB.
 """
 
 # Requirements: REQ-066, REQ-2100
 from __future__ import annotations
 
+import functools
+
 from sqlglot import exp
+
+
+@functools.cache
+def _engine_errors() -> dict[str, type[Exception]]:
+    """DuckDB's exceptions by the kind its message opens with, spaced and cased as there ("Out of
+    Range Error: ..." is an OutOfRangeException). DuckDB is imported here, not by the module: the
+    transpiler's rewrites (null_order_as_key) read no DuckDB, and a process that only translates
+    does not load it; one that streams DuckDB's answers has it loaded already."""
+    import duckdb
+
+    return {
+        name.removesuffix("Exception").lower(): cls
+        for name, cls in vars(duckdb).items()
+        if name.endswith("Exception") and isinstance(cls, type) and issubclass(cls, duckdb.Error)
+    }
+
+
+def engine_error(error: OSError) -> Exception:
+    """The exception DuckDB raises for the error its Arrow reader raised as ``error``; ``error``
+    itself where its message names no kind DuckDB has an exception for."""
+    message = str(error)
+    kind, sep, _ = message.partition(" Error: ")
+    raised = _engine_errors().get(kind.replace(" ", "").lower()) if sep else None
+    return error if raised is None else raised(message)
 
 
 def escape_likes(tree: exp.Expr) -> exp.Expr:

@@ -438,7 +438,7 @@ fn scalar_enc(kind: Kind, binary: bool, arr: &ArrayRef) -> R<Enc> {
                     if inf != 0 {
                         out.extend_from_slice(&(if inf > 0 { i32::MAX } else { i32::MIN }).to_be_bytes());
                     } else {
-                        temporal::check_date(days)?;
+                        temporal::check_pg_date(days)?;
                         out.extend_from_slice(&((days - 10957) as i32).to_be_bytes());
                     }
                     Ok(())

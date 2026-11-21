@@ -33,7 +33,7 @@ def _checker(cid: int, checked: int, owner: str | None, columns: tuple[str, ...]
         "table_name": f"check_{cid}",
         "alias": None,
         "description": f"Claim {cid}",
-        "product_id": owner,
+        "product_ids": [owner] if owner is not None else [],
         "checked_table_id": checked,
         "checked_table": {
             "id": checked,
@@ -48,6 +48,7 @@ def _checker(cid: int, checked: int, owner: str | None, columns: tuple[str, ...]
         ],
         "latest_outcome": "pass",
         "latest_run_at": None,
+        "failing_checks": [],
     }
 
 
@@ -87,7 +88,7 @@ def test_an_entry_names_its_checker_owner_and_latest_run() -> None:
         "table_name": "check_10",
         "alias": None,
         "description": "Claim 10",
-        "owner_product_id": "p1",
+        "owner_product_ids": ["p1"],
         "checked_table_id": MEMBER,
         "checked_table": {"id": MEMBER, "domain_id": "sales", "table_name": "t1", "alias": None},
         "rules": [
@@ -95,6 +96,7 @@ def test_an_entry_names_its_checker_owner_and_latest_run() -> None:
         ],
         "latest_outcome": "pass",
         "latest_run_at": None,
+        "failing_checks": [],
     }
 
 
@@ -107,6 +109,16 @@ def test_another_products_promise_on_an_input_is_related() -> None:
         "related": [11],
         "unattached": [15],
     }
+
+
+def test_a_checker_table_in_two_products_is_each_products_own() -> None:
+    # REQ-1634: a checker table may be a member of several products; it is each one's check.
+    shared = {**_checker(16, MEMBER, "p1"), "product_ids": ["p1", "p2"]}
+    served = ALL | {16: {"ok"}}
+    for product in ("p1", "p2"):
+        out = product_dq(product, [shared], members={MEMBER}, inputs=set(), served=served)
+        assert _ids(out)["promises"] == [16]
+        assert out["promises"][0]["owner_product_ids"] == ["p1", "p2"]
 
 
 def test_a_check_on_a_column_the_reader_cannot_read_is_in_no_list() -> None:
@@ -131,3 +143,11 @@ def test_a_checker_table_the_reader_cannot_read_is_in_no_list() -> None:
     served = {k: v for k, v in ALL.items() if k != 10}
     out = product_dq("p1", CHECKERS, members={MEMBER}, inputs={INPUT}, served=served)
     assert all(10 not in ids for ids in _ids(out).values())
+
+
+def test_an_entry_names_the_checks_its_latest_run_failed() -> None:
+    """REQ-2180 (QUALITY IS STATUS AND COUNTS): a promise carries the checks that did not pass."""
+    failing = [{"name": "unique", "column": "id", "outcome": "fail"}]
+    checker = {**_checker(10, MEMBER, "p1"), "latest_outcome": "fail", "failing_checks": failing}
+    (promise,) = product_dq("p1", [checker], members={MEMBER}, inputs=set(), served=ALL)["promises"]
+    assert promise["failing_checks"] == failing

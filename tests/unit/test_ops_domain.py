@@ -191,7 +191,7 @@ class TestOpsCatalog:
                 _Col("status_code", "integer"),
             ]
         }
-        idx = _build_catalog_index(_ops_ctx(), col_types, database="provisa")
+        idx = _build_catalog_index(_ops_ctx(), col_types, database="provisa", masked=frozenset())
 
         schemas = {row[1] for row in idx.tables}
         names = {(row[1], row[2]) for row in idx.tables}
@@ -270,6 +270,10 @@ _REPORT_VIEW_NAMES = {
     "ontology_quality",
     # REQ-1386 (SENSITIVE COVERAGE IS A STANDARD REPORT)
     "sensitive_column_coverage",
+    # REQ-194 (THE NAMES TABLE IS A META TABLE WITH A REPORT)
+    "names_report",
+    # REQ-2208 (THE TAGS REPORT)
+    "tags_report",
 }
 
 

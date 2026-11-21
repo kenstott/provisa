@@ -1,8 +1,8 @@
 {
   "schemaSidebar": {
     "title": "Schema",
-    "collapse": "Schema-Panel einklappen",
-    "expand": "Schema-Panel ausklappen",
+    "collapse": "Schema-Panel ausblenden",
+    "expand": "Schema-Panel anzeigen",
     "dragToCanvas": "Auf die Arbeitsfläche ziehen",
     "doubleClickToInsert": "Doppelklick fügt den qualifizierten Namen ein",
     "insertTableReference": "Tabellenreferenz in den SQL-Editor einfügen",

@@ -43,10 +43,10 @@ from provisa.core.schema_admin import REGISTRY_TABLES
 from provisa.core.schema_admin import metadata as admin_metadata
 from provisa.core.schema_admin import orgs, user_org_memberships
 from provisa.core.schema_org import metadata as org_metadata
-from provisa.core.schema_org import user_idp_attributes
 from provisa.api.org_runtime import OrgRegistry, OrgRuntime
-from provisa.core.schema_org import roles, user_directory, user_role_assignments
+from provisa.core.schema_org import roles, user_role_assignments
 from tests.integration.test_auth_integration import _FirebaseLikeProvider
+from tests.integration.signin_tables import SIGN_IN_TABLES
 
 pytestmark = [pytest.mark.integration]
 
@@ -58,6 +58,10 @@ _ASYNC_URL = f"postgresql+psycopg://provisa:provisa@{_PG_HOST}:{_PG_PORT}/provis
 _ADMIN_SCHEMA = "test_req1295_admin"
 _TENANT_SCHEMA = "test_req1295_tenant"
 _ORG = "kstott"
+# The deployment org: the one the middleware below binds for the platform plane, and so the one
+# whose runtime its sign-in writes land in (REQ-2219 mirrors the token's entitlement lists there).
+# Keyed by this id rather than by ``app_state.org_id``, which other tests in the process rebind.
+_DEPLOYMENT_ORG = "root"
 
 
 def _prepare_sync():
@@ -75,9 +79,7 @@ def _prepare_sync():
         conn.execute(insert(user_org_memberships).values(user_id="alice", org_id=_ORG))
 
         conn.execute(text(f"SET search_path TO {_TENANT_SCHEMA}"))
-        org_metadata.create_all(
-            conn, tables=[roles, user_role_assignments, user_directory, user_idp_attributes]
-        )
+        org_metadata.create_all(conn, tables=SIGN_IN_TABLES)
         # The org's schema carries the same seeded role catalog every org gets: `admin` exists as a
         # row, which is precisely why "is this role defined?" is the wrong question — the creator is
         # assigned org_admin and only org_admin.
@@ -94,10 +96,7 @@ def _prepare_sync():
 
 @pytest.fixture
 def planes(monkeypatch):
-    try:
-        sync_engine = _prepare_sync()
-    except Exception as exc:  # noqa: BLE001 — the suite provisions this PG; a miss is a config fault
-        pytest.skip(f"live Postgres not reachable at {_SYNC_URL}: {exc}")
+    sync_engine = _prepare_sync()
 
     admin_db = Database(create_engine_from_url(_ASYNC_URL), name="admin", search_path=_ADMIN_SCHEMA)
     tenant_db = Database(
@@ -122,14 +121,20 @@ def planes(monkeypatch):
     # the deployment's own, whose org_admin may carry one (a single-tenant grant) — which the
     # tenant org's assignment must not be judged by.
     org_roles = {
+        # Reads nothing on purpose: no capability, no domain (J354).
         "admin": {"id": "admin", "capabilities": []},
         "analyst": {"id": "analyst", "capabilities": ["usage"]},
         "org_admin": {"id": "org_admin", "capabilities": ["user_management", "usage"]},
     }
     root_roles = {"org_admin": {"id": "org_admin", "capabilities": ["platform_settings"]}}
+    # A served process boots its deployment id and the middleware's default org from the one
+    # control-plane config: the platform roles are read from the runtime under the first, and the
+    # sign-in's writes land in the runtime of the second. Other tests in the process rebind
+    # app_state.org_id, so it is pinned here (before the registry swap, so undo runs in reverse).
+    monkeypatch.setattr(app_state, "org_id", _DEPLOYMENT_ORG, raising=False)
     registry = OrgRegistry()
-    # The deployment's own runtime, under the id this process boots with.
-    registry.set(app_state.org_id, OrgRuntime(org_id=app_state.org_id, roles=root_roles))
+    # The deployment's own runtime.
+    registry.set(_DEPLOYMENT_ORG, OrgRuntime(org_id=_DEPLOYMENT_ORG, roles=root_roles))
     registry.set(
         _ORG,
         OrgRuntime(
@@ -165,7 +170,7 @@ def _make_app(admin_db: Database, tenant_db: Database) -> FastAPI:
         assignments_source="provisa",
         default_assignments=[],
         multitenancy=True,
-        default_org_id="root",
+        default_org_id=_DEPLOYMENT_ORG,
     )
 
     @app.get("/whoami")

@@ -54,9 +54,12 @@ import {
 import { generateGlossaryRelationships, type GlossaryTermSummary } from "../../api/glossary";
 import { Tip } from "../Tip";
 import { useScanProgress } from "./useScanProgress";
+import { useViewDomains } from "../../lib/viewDomains";
 import { FormChecks, FormField, FormFooter, FormLayout } from "../form/FormLayout";
 import { CollapsibleItem, Collapsibles } from "../collapsible/Collapsible";
 import { documentMark } from "../../lib/documentMark";
+import { StopButton } from "../StopButton";
+import { termLabel } from "./termLabel";
 
 /** How often a running scan is read again, in milliseconds. */
 const POLL_MS = 2000;
@@ -434,7 +437,10 @@ function DraftCard({
                 searchable
                 value={target}
                 onChange={setTarget}
-                data={terms.map((term) => ({ value: String(term.id), label: term.name }))}
+                data={terms.map((term) => ({
+                  value: String(term.id),
+                  label: termLabel(term, terms),
+                }))}
                 data-testid="find-terms-merge-target"
               />
             </FormField>
@@ -528,6 +534,7 @@ export function TermReviewQueue({
   onGlossaryChanged: () => void;
 }) {
   const { t } = useTranslation();
+  const viewDomains = useViewDomains();
   const progress = useScanProgress();
   const [scan, setScan] = useState<Scan | null>(null);
   const [drafts, setDrafts] = useState<Draft[]>([]);
@@ -607,7 +614,7 @@ export function TermReviewQueue({
     setProblem("");
     setBusy(true);
     try {
-      const { added } = await generateGlossaryRelationships();
+      const { added } = await generateGlossaryRelationships(viewDomains);
       await changed(t("findTerms.relationshipsDone", { count: added }));
     } catch (e) {
       setProblem(e instanceof Error ? e.message : String(e));
@@ -667,17 +674,12 @@ export function TermReviewQueue({
               )}
             </Stack>
           </Group>
-          <Button
-            size="xs"
-            variant="light"
-            color="red"
-            leftSection={<X size={12} />}
-            loading={busy}
+          <StopButton
             onClick={() => void cancel()}
-            data-testid="find-terms-cancel"
-          >
-            {t("findTerms.cancel")}
-          </Button>
+            tip={t("findTerms.stopTip")}
+            disabled={busy}
+            testId="find-terms-cancel"
+          />
         </Group>
       )}
       {scan.budget_limit !== null && (

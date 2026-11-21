@@ -14,6 +14,8 @@
     "deleteConfirm": "レポート {{name}} を削除しますか?",
     "deleted": "レポート {{name}} を削除しました。",
     "empty": "ops ドメインに登録されたレポートはありません。",
+    "filterPlaceholder": "レポートを絞り込む…",
+    "noMatch": "一致するレポートはありません",
     "resize": "レポート一覧のサイズを変更",
     "drift": {
       "title": "前期間からのドリフト",

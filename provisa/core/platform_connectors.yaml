@@ -1,0 +1,4 @@
+# REQ-2225: the connectors the platform offers every organization, beside its own. The release
+# build writes this file; a checkout's stays empty, so Sources shows none of these until a release
+# fills it. Read by provisa/core/repositories/connector.py.
+connectors: []

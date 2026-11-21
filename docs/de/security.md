@@ -158,7 +158,7 @@ Rechte und Daten folgen nur den Rollen, als die die Anfrage handelt: Eine Rolle 
 
 Genannte abgeleitete Rollen gehen als Qualifikatoren ein. Ein Qualifikator hat keine eigenen Rechte, keinen Domänenzugriff, keine Masken und keine Zeilenfilter, also ist er kein Mitglied der Rechte der Meta-Rolle: Als Mitglied ohne Masken würde er jede Spalte demaskieren, und als eines, das keine Tabelle liest, würde er jedes OR von Zeilenfiltern beenden. Er geht nur in die Freigaben ein: Eine Freigabe oder ein Maskeneintrag, der `region__eu` nennt, erreicht eine Anfrage, die diesen Qualifikator neben einer gewährten Rolle nennt.
 
-Ein MCP-Agent handelt nie über die Rollen hinaus, die ihm gegeben wurden. Ein entfernter Agent nennt nur Rollen, die der Prinzipal seines Tokens hält. Ein lokaler stdio-Agent nennt nur Rollen innerhalb der in `mcp.role` (`PROVISA_MCP_ROLE`) festgelegten Menge und handelt als diese Menge, wenn er keine nennt; jede andere Rolle wird namentlich abgelehnt.
+Ein MCP-Agent handelt nie über die Rollen hinaus, die ihm gegeben wurden. Ein entfernter Agent nennt nur Rollen, die der Prinzipal seines Tokens hält. Ein lokaler stdio-Agent nennt nur Rollen innerhalb der in `mcp.role` (`PROVISA_MCP_ROLE`) festgelegten Menge und handelt als diese Menge, wenn er keine nennt; jede andere Rolle wird namentlich abgelehnt. Ein lokaler Agent handelt für den in `mcp.principal` (`PROVISA_MCP_PRINCIPAL`) genannten Prinzipal, die Benutzer-ID, die ein Anmeldetoken für diese Person trägt; deren Berechtigungen schränken die festgelegte Rolle genauso ein wie die Abfragen derselben Person auf jedem anderen Client. Ein lokaler MCP-Server, dessen Konfiguration keinen Prinzipal nennt, lehnt jeden Aufruf ab und nennt die Einstellung; einer, der einen Prinzipal nennt, der nicht in der Organisation ist, lehnt ebenfalls jeden Aufruf ab.
 
 Ein Agent fragt mit dem MCP-Werkzeug `describe_role`, als welche Rolle er handelt. Die Antwort ist diese Rolle und wofür sie da ist (eine Meta-Rolle mit jedem ihrer Mitglieder) sowie die Rollen, zu denen der Agent wechseln darf, jede mit ihrer Beschreibung. Sie enthält nie eine Zeilenregel, Maske, Freigabe oder Bedingung. Provisa sagt einem Agenten nie, warum ein Ergebnis eingeschränkt wurde, und ein Ergebnis trägt kein „gefiltert“-Kennzeichen: Die Daten einer Rolle sind ihre ganze Sicht, und ein Grund für das Fehlende würde dazu einladen, danach zu sondieren.
 
@@ -392,7 +392,7 @@ Zeilen bleiben dauerhaft erhalten. Provisa hat keine Aufbewahrungseinstellung un
 
 ## Schwärzung {: #redaction }
 
-Was Provisa über seine eigene Arbeit aufzeichnet, durchläuft eine Liste von Schwärzungsregeln, bevor es irgendwohin geschrieben wird. Text, auf den eine Regel passt, wird durch `[REDACTED:<rule>]` ersetzt, das die passende Regel nennt.
+Was Provisa über seine eigene Arbeit aufzeichnet, und jeder Fehlertext, den es einem Client sendet, durchläuft eine Liste von Schwärzungsregeln, bevor es irgendwohin geschrieben wird. In den Logs, Spans und im Audit-Trail von Provisa wird Text, auf den eine Regel passt, durch `[REDACTED:<rule>]` ersetzt, das die passende Regel nennt. Ein Client erhält die bloße Markierung `[REDACTED]`. Sie nennt keine Regel und keine Variable, sodass Sie nicht erfahren können, welchem Secret ein von Ihnen gesendetes Wort entspricht.
 
 Die Liste hat vier Teile:
 
@@ -412,7 +412,8 @@ Die Liste gilt an jedem Ausgang, an den Provisa schreibt:
 - jeder Span, als eine geschwärzte Kopie, die jedem Exporter übergeben wird, und die Ansicht der letzten Spans;
 - jeder Log-Eintrag in der OpenTelemetry-Log-Pipeline von Provisa und jede Zeile, die ein Logging-Handler schreibt, Standardausgabe und Container-Logs eingeschlossen;
 - der Abfragetext des Audit-Logs, bevor er gehasht und verschlüsselt wird, sodass weder der Text noch sein Hash einen erkannten Wert preisgibt; und das Detail des administrativen Protokolls;
-- die Fehlermeldungen, die ein Client über HTTP, pgwire, gRPC, Arrow Flight und MCP erhält.
+- die Fehlermeldungen, die ein Client über HTTP, pgwire, gRPC, Arrow Flight, MCP und Bolt erhält. Ein Fehler in einer erfolgreichen Antwort, etwa eine GraphQL-Liste `errors` in einer 200-Antwort oder der letzte Frame einer Subscription, wird genauso geschwärzt wie einer in einer 400-Antwort;
+- der Text, den Provisa an ein Modell sendet, etwa ein Prompt oder eine Embedding-Eingabe; er trägt die bloße Markierung.
 
 Telemetrie und Client-Fehler sind beim Schreiben keiner einzelnen Organisation zugeordnet; sie werden daher mit den Regeln aller Organisationen zusammen geschwärzt. Zwei Fehler gehen ungeschwärzt durch: ein HTTP-Fehlerrumpf größer als 1 MiB und der Fehler eines Arrow-Flight-Streams, der fehlschlägt, nachdem er zu senden begonnen hat.
 

@@ -110,7 +110,7 @@ def test_mysql_fdw_attach_ddl_creates_server_user_mapping_and_import():
     assert "CREATE EXTENSION IF NOT EXISTS mysql_fdw" in ddl[0]
     assert any("FOREIGN DATA WRAPPER mysql_fdw" in s and "host 'mysqlhost'" in s for s in ddl)
     assert any("CREATE USER MAPPING" in s and "username 'u'" in s for s in ddl)
-    assert any('IMPORT FOREIGN SCHEMA inventory FROM SERVER "fdw_inv"' in s for s in ddl)
+    assert any('IMPORT FOREIGN SCHEMA "inventory" FROM SERVER "fdw_inv"' in s for s in ddl)
 
 
 # ---- functional probe (REQ-904 / REQ-907) ------------------------------------

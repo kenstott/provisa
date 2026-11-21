@@ -35,6 +35,7 @@ export function DescriptionField({
   rows = 2,
   onGenerate,
   generating,
+  ariaLabel,
 }: {
   value: string;
   onChange: (v: string) => void;
@@ -42,6 +43,8 @@ export function DescriptionField({
   rows?: number;
   onGenerate?: () => void;
   generating?: boolean;
+  /** The field's accessible name, where no visible label names it (a grid cell). */
+  ariaLabel?: string;
 }) {
   const { t } = useTranslation();
   const [focused, setFocused] = useState(false);
@@ -70,6 +73,7 @@ export function DescriptionField({
           value={value}
           onChange={(e) => onChange(e.target.value)}
           placeholder={placeholder}
+          aria-label={ariaLabel}
           rows={rows}
           onFocus={(e) => {
             const slot = e.currentTarget.getBoundingClientRect();

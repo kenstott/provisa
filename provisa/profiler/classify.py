@@ -468,21 +468,39 @@ def _tested_value(family: str, value: str) -> str | None:
     return str(int(number)) if number.is_integer() and number >= 0 else None
 
 
-def classify(family: str, values: list[str | None], kinds: tuple[Kind, ...]) -> list[Match]:
-    """The kinds ``values`` (one column's sampled values, of ``family``) reach the threshold of."""
-    usable = [k for k in kinds if family in k.families]
-    if not usable:
-        return []
+@dataclass(frozen=True)
+class Judgement:
+    """What one column's sampled values say of it (REQ-2147): ``values``, the non-null values
+    sampled; ``matches``, the kinds they reached the threshold of. A column with fewer than
+    :data:`MIN_TESTED` values is ``too_few`` -- too few values to classify, which is not the same
+    statement as matching no kind."""
+
+    values: int
+    matches: tuple[Match, ...]
+
+    @property
+    def too_few(self) -> bool:
+        return self.values < MIN_TESTED
+
+
+def judge(family: str, values: Sequence[str | None], kinds: tuple[Kind, ...]) -> Judgement:
+    """``values`` (one column's sampled values, of ``family``) judged against ``kinds``."""
     tested = [_tested_value(family, v) for v in values if v is not None]
-    if len(tested) < MIN_TESTED:
-        return []
+    usable = [k for k in kinds if family in k.families]
+    if len(tested) < MIN_TESTED or not usable:
+        return Judgement(len(tested), ())
     out = []
     for kind in usable:
         passed = sum(1 for v in tested if v is not None and _passes(kind, v))
         match = Match(kind, len(tested), passed)
         if match.share >= kind.threshold:
             out.append(match)
-    return out
+    return Judgement(len(tested), tuple(out))
+
+
+def classify(family: str, values: Sequence[str | None], kinds: tuple[Kind, ...]) -> list[Match]:
+    """The kinds ``values`` (one column's sampled values, of ``family``) reach the threshold of."""
+    return list(judge(family, values, kinds).matches)
 
 
 def classified_families() -> frozenset[str]:

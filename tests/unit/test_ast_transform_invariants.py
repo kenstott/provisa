@@ -23,11 +23,19 @@ move to AST-based transforms. Marked xfail(strict) so the suite stays green whil
 and flips to a hard failure (forcing marker removal) once the restructure lands.
 """
 
+import pytest
+
 from provisa.compiler.mask_inject import MaskingRules
 from provisa.compiler.rls import RLSContext
 from provisa.compiler.sql_gen import CompilationContext, TableMeta
 from provisa.security.masking import MaskType, MaskingRule
 from tests.helpers import governed_for_role
+from tests.governed_pg import assert_same_answer, governed_database
+
+
+@pytest.fixture(scope="module")
+def pg(embedded_postgres):
+    return governed_database(embedded_postgres, "test_ast_transform_invariants")
 
 
 def _meta(table_id=2, field_name="customers", table_name="customers", source_id="pg"):
@@ -49,7 +57,7 @@ def _ctx(tables=None):
     return ctx
 
 
-def test_masking_survives_scalar_subquery_in_projection():
+def test_masking_survives_scalar_subquery_in_projection(pg):
     """A scalar subquery in the SELECT list must not move the masking boundary.
 
     The first `FROM` belongs to the inner subquery, so the string transform never
@@ -65,13 +73,17 @@ def test_masking_survives_scalar_subquery_in_projection():
         }
     }
     result = governed_for_role(sql, _ctx(), "analyst", masking_rules=rules)
-    assert result == (
-        'SELECT (SELECT MAX("total") FROM "public"."orders") AS "cnt", '
-        '\'HIDDEN\' AS "ssn" FROM "public"."customers"'
-    ), "ssn leaked unmasked"
+    assert_same_answer(
+        pg,
+        result,
+        (
+            'SELECT (SELECT MAX("total") FROM "public"."orders") AS "cnt", '
+            '\'HIDDEN\' AS "ssn" FROM "public"."customers"'
+        ),
+    )
 
 
-def test_rls_predicate_is_scoped_to_root_alias_regardless_of_alias_name():
+def test_rls_predicate_is_scoped_to_root_alias_regardless_of_alias_name(pg):
     """RLS filter must bind to the root table's alias for any alias convention.
 
     The query aliases the root as "c" (not "t0"); the injected predicate must be
@@ -82,9 +94,11 @@ def test_rls_predicate_is_scoped_to_root_alias_regardless_of_alias_name():
         'SELECT "c"."id" FROM "public"."customers" "c"', _ctx(), "analyst", rls=rls
     )
     # The predicate column must be qualified with the root alias, not emitted bare.
-    assert result == (
-        'SELECT "c"."id" FROM "public"."customers" AS "c" WHERE ("c"."region" = \'us\')'
-    ), "RLS predicate not scoped to root alias"
+    assert_same_answer(
+        pg,
+        result,
+        ('SELECT "c"."id" FROM "public"."customers" AS "c" WHERE ("c"."region" = \'us\')'),
+    )
 
 
 def test_row_cap_ceiling_enforced_over_parameterized_limit():

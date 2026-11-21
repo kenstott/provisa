@@ -74,6 +74,7 @@ class _State:
     def __init__(self, views, sources):
         self.mv_registry = _Registry(views)
         self.config = _Config(sources)
+        self.org_registry: dict = {}
 
 
 @pytest.fixture

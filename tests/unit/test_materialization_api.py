@@ -41,6 +41,7 @@ from provisa.api.data.materialization import (
 )
 from provisa.api_source.engine_cache import CacheLocation
 from provisa.api_source.models import ApiColumn, ApiColumnType, ParamType
+from provisa.federation.replica_address import ReplicaRoutes
 
 # asyncio_mode = "auto" (pyproject.toml) picks up async defs automatically;
 # no module-level pytest.mark.asyncio needed (and it would warn on sync tests).
@@ -61,7 +62,7 @@ def _pets_row(source_id: str, **table) -> dict:
         "id": PETS,
         "source_id": source_id,
         "table_name": "pets",
-        "columns": [{"column_name": "id"}],
+        "columns": [{"column_name": "id", "data_type": "integer"}],
         "cache_ttl": 300,
         **table,
     }
@@ -91,7 +92,9 @@ class TestStatementEndpoints:
     named within its source, so two sources' ``pets`` are two endpoints."""
 
     def _state(self, endpoints, tables):
-        return SimpleNamespace(api_endpoints=endpoints, tables=tables)
+        return SimpleNamespace(
+            api_endpoints=endpoints, tables=tables, replica_routes=ReplicaRoutes()
+        )
 
     def test_found(self):
         ep = SimpleNamespace(source_id="src", table_name="pets")
@@ -350,6 +353,7 @@ class TestMatStoreRows:
                 MagicMock(),
                 cache_rewrites,
                 values_cte_entries,
+                column_types={"id": "integer", "name": "varchar"},
                 whole=True,
             )
             mock_insert.assert_called_once()
@@ -385,6 +389,7 @@ class TestMatStoreRows:
                 {},
                 values_cte_entries,
                 all_ep_col_names=["id", "photo_urls"],
+                column_types={"id": "integer", "name": "varchar"},
                 whole=True,
             )
 
@@ -419,6 +424,7 @@ class TestMatStoreRows:
                 MagicMock(),
                 cache_rewrites,
                 values_cte_entries,
+                column_types={"id": "integer", "name": "varchar"},
                 whole=True,
             )
 
@@ -452,6 +458,7 @@ class TestMatStoreRows:
                 MagicMock(),
                 cache_rewrites,
                 values_cte_entries,
+                column_types={"id": "integer", "name": "varchar"},
                 whole=True,
             )
 
@@ -482,6 +489,7 @@ class TestMatStoreRows:
                 MagicMock(),
                 {},
                 values_cte_entries,
+                column_types={"id": "integer", "name": "varchar"},
                 whole=False,
             )
         assert values_cte_entries["pets"].rows == [{"id": 1}]
@@ -511,8 +519,10 @@ class TestPromoteJoinedFromFills:
                 set(),
                 loc,
                 500,
+                {"id": "integer", "name": "varchar"},
             )
         assert hot_mgr._hot_tables[PETS].rows == [{"id": 1, "name": "Fido"}]
+        assert hot_mgr._hot_tables[PETS].column_types == {"id": "integer", "name": "varchar"}
 
     async def test_over_threshold_not_promoted(self):
         hot_mgr = _hot_manager()
@@ -527,6 +537,7 @@ class TestPromoteJoinedFromFills:
                 set(),
                 loc,
                 2,
+                {"id": "integer", "name": "varchar"},
             )
         assert hot_mgr._hot_tables == {}
 
@@ -544,6 +555,7 @@ class TestPromoteJoinedFromFills:
                 set(),
                 loc,
                 500,
+                {"id": "integer", "name": "varchar"},
             )
         assert hot_mgr._hot_tables == {}
 
@@ -783,7 +795,11 @@ class TestMatApiEpTable:
             )
         assert cache_rewrites["pets"] == (loc, "r_x")
 
-    async def test_path_param_skip_on_pg_miss(self):
+    async def test_a_path_param_not_given_is_refused_never_skipped(self):
+        """REQ-1986: a read that reaches the endpoint without its path parameter is refused
+        naming it. It was once logged and skipped, and the table answered as if it held no row."""
+        from provisa.core.parameter_binding import ParameterRequired
+
         state = SimpleNamespace(
             api_sources={},
             org_id="default",
@@ -804,17 +820,18 @@ class TestMatApiEpTable:
             patch("provisa.api_source.engine_cache.ensure_cache_schema"),
             patch("provisa.api_source.engine_cache.table_exists", return_value=False),
         ):
-            await _mat_api_ep_table(
-                "pets",
-                ep,
-                state,
-                _statement_hot(),
-                500,
-                set(),
-                cache_rewrites,
-                values_cte_entries,
-                registration=_pets_row("src"),
-            )
+            with pytest.raises(ParameterRequired, match="owner_id"):
+                await _mat_api_ep_table(
+                    "pets",
+                    ep,
+                    state,
+                    _statement_hot(),
+                    500,
+                    set(),
+                    cache_rewrites,
+                    values_cte_entries,
+                    registration=_pets_row("src"),
+                )
         assert cache_rewrites == {}
         assert values_cte_entries == {}
 
@@ -1045,7 +1062,10 @@ def _gql_registration(**table):
     return {
         "table_name": "pets",
         "source_id": "ghsrc",
-        "columns": [{"column_name": "id"}, {"column_name": "name"}],
+        "columns": [
+            {"column_name": "id", "data_type": "integer"},
+            {"column_name": "name", "data_type": "text"},
+        ],
         "cache_ttl": 300,
         **table,
     }
@@ -1272,6 +1292,7 @@ class TestMaterializeApiToEngineCache:
         state = SimpleNamespace(
             hot_manager=hot_mgr,
             api_endpoints={},
+            replica_routes=ReplicaRoutes(),
             graphql_remote_sources={},
             tables=[{"id": PETS, "source_id": "src", "table_name": "pets", "columns": []}],
         )
@@ -1289,6 +1310,7 @@ class TestMaterializeApiToEngineCache:
         state = SimpleNamespace(
             hot_manager=None,
             api_endpoints={("src", "pets"): ep},
+            replica_routes=ReplicaRoutes(),
             # The registered table the statement reads: its endpoint is keyed by source and name.
             tables=[{"id": PETS, "source_id": "src", "table_name": "pets", "columns": []}],
             graphql_remote_sources={},
@@ -1326,6 +1348,7 @@ class TestMaterializeApiToEngineCache:
         state = SimpleNamespace(
             hot_manager=None,
             api_endpoints={("src", "pets"): ep},
+            replica_routes=ReplicaRoutes(),
             tables=[{"id": PETS, "source_id": "src", "table_name": "pets", "columns": []}],
             graphql_remote_sources={},
         )
@@ -1359,6 +1382,7 @@ class TestMaterializeApiToEngineCache:
         }
         name = {
             "column_name": "_nf_name",
+            "data_type": "text",
             "native_filter_type": "graphql_arg",
             "native_filter_required": True,
             "required_by_steward": False,
@@ -1366,6 +1390,7 @@ class TestMaterializeApiToEngineCache:
         state = SimpleNamespace(
             hot_manager=None,
             api_endpoints={},
+            replica_routes=ReplicaRoutes(),
             graphql_remote_sources={"gh": reg},
             tables=[
                 {"id": PETS, "source_id": "ghsrc", "table_name": "pets", "columns": [name]},
@@ -1389,6 +1414,7 @@ class TestMaterializeApiToEngineCache:
         state = SimpleNamespace(
             hot_manager=None,
             api_endpoints={},
+            replica_routes=ReplicaRoutes(),
             graphql_remote_sources={},
         )
         # 'pets' is not a known API endpoint nor a graphql_remote table → falls through
@@ -1419,6 +1445,7 @@ class TestMaterializeApiToEngineCache:
             tables=[_pets_row("ghsrc")],
             hot_manager=None,
             api_endpoints={},
+            replica_routes=ReplicaRoutes(),
             graphql_remote_sources={"gh": reg},
             org_id="default",
             federation_engine=SimpleNamespace(
@@ -1457,6 +1484,7 @@ class TestMaterializeApiToEngineCache:
             tables=[_pets_row("ghsrc")],
             hot_manager=None,
             api_endpoints={},
+            replica_routes=ReplicaRoutes(),
             graphql_remote_sources={"gh": reg},
             org_id="default",
             federation_engine=SimpleNamespace(
@@ -1497,6 +1525,7 @@ class TestMaterializeApiToEngineCache:
             tables=[_pets_row("ghsrc")],
             hot_manager=None,
             api_endpoints={},
+            replica_routes=ReplicaRoutes(),
             graphql_remote_sources={"gh": reg},
             org_id="default",
             federation_engine=SimpleNamespace(
@@ -1519,11 +1548,15 @@ class TestMaterializeApiToEngineCache:
         ):
             await _materialize_api_to_engine_cache("SELECT * FROM pets", state, table_ids=[PETS])
 
-    async def test_ep_found_but_unmaterializable_dropped(self):
+    async def test_an_endpoint_read_without_its_path_param_is_refused_not_dropped(self):
+        """REQ-1986: it was once dropped from the statement as "could not be materialized"."""
+        from provisa.core.parameter_binding import ParameterRequired
+
         ep = _ep([_col("id"), _col("owner_id", param_type=ParamType.path)])
         state = SimpleNamespace(
             hot_manager=None,
             api_endpoints={("src", "pets"): ep},
+            replica_routes=ReplicaRoutes(),
             # The registered table the statement reads: its endpoint is keyed by source and name.
             tables=[{"id": PETS, "source_id": "src", "table_name": "pets", "columns": []}],
             graphql_remote_sources={},
@@ -1546,12 +1579,10 @@ class TestMaterializeApiToEngineCache:
             patch("provisa.api_source.engine_cache.table_exists", return_value=False),
         ):
             m_loc.return_value = CacheLocation("cat", "sch", "relational")
-            rewrites, ctes, dropped = await _materialize_api_to_engine_cache(
-                "SELECT * FROM pets", state, table_ids=[PETS]
-            )
-        assert dropped == {"pets": "could not be materialized"}
-        assert rewrites == {}
-        assert ctes == {}
+            with pytest.raises(ParameterRequired, match="owner_id"):
+                await _materialize_api_to_engine_cache(
+                    "SELECT * FROM pets", state, table_ids=[PETS]
+                )
 
     async def test_a_failed_grpc_branch_fails_the_query(self):
         """REQ-1661 (amended 2026-09-30): a failed gRPC remote fetch fails the query instead of
@@ -1560,6 +1591,7 @@ class TestMaterializeApiToEngineCache:
             tables=[_pets_row("grpc_src")],
             hot_manager=None,
             api_endpoints={},
+            replica_routes=ReplicaRoutes(),
             graphql_remote_sources={},
         )
         m = "provisa.api.data.materialization"

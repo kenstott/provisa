@@ -22,9 +22,11 @@ Python rule they restate.
 from __future__ import annotations
 
 import pytest
+import sqlglot.expressions as exp
 
 from provisa.api._meta_seed import META_RELATIONSHIPS
 from provisa.api._ontology_views import ONTOLOGY_TABLE_VIEWS
+from tests.rules import holds
 
 # Terms: ROOTED holds a ref (and a stale declared domain); ABSTRACT declares the enterprise scope;
 # BARE has neither; UNDEFINED has no definition but an edge to ROOTED; RETIRED is out of service;
@@ -213,8 +215,9 @@ async def test_a_sales_caller_reads_only_the_terms_the_glossary_lets_it_read(con
     from provisa.security.rights import GLOSSARY_SCOPED_VIEWS
 
     def where(view: str) -> str:
+        # The rule written out to query the control plane directly with it.
         return " AND ".join(
-            _readable_term_predicate(col, frozenset({"sales"}))
+            _readable_term_predicate(col, frozenset({"sales"})).sql(dialect="postgres")
             for col in GLOSSARY_SCOPED_VIEWS[view]
         )
 
@@ -279,8 +282,8 @@ def test_the_scope_is_injected_for_a_narrowed_role_and_not_for_an_unlimited_one(
     ids = {view: i for i, view in enumerate(GLOSSARY_SCOPED_VIEWS, start=400)}
     narrowed = rules([ONTOLOGY_DOMAIN_ID, "sales"])
     assert set(narrowed) == set(ids.values())
-    assert "POSITION('|sales|' IN term_domains) > 0" in narrowed[400]
-    assert "POSITION('|*|' IN term_domains) > 0" in narrowed[400]
+    assert holds(narrowed[400], "POSITION('|sales|' IN term_domains) > 0")
+    assert holds(narrowed[400], "POSITION('|*|' IN term_domains) > 0")
     edges = narrowed[ids["_term_edges_ontology"]]
-    assert "from_term_domains" in edges and "to_term_domains" in edges
+    assert {"from_term_domains", "to_term_domains"} <= {c.name for c in edges.find_all(exp.Column)}
     assert rules(["*"]) == {}

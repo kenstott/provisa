@@ -1,6 +1,6 @@
 {
   "candidatesTable": {
-    "heading": "AI-सुझाए गए संबंध",
+    "heading": "सुझाए गए संबंध",
     "colName": "नाम",
     "colSource": "स्रोत",
     "colTarget": "लक्ष्य",
@@ -10,6 +10,25 @@
     "accept": "स्वीकारें",
     "reject": "अस्वीकारें",
     "acceptAria": "सुझाया गया संबंध {{name}} स्वीकारें",
-    "rejectAria": "सुझाया गया संबंध {{name}} अस्वीकारें"
+    "rejectAria": "सुझाया गया संबंध {{name}} अस्वीकारें",
+    "acceptAll": "सभी स्वीकारें",
+    "rejectAll": "सभी अस्वीकारें",
+    "acceptAllTitle": "सभी सुझाव स्वीकारें",
+    "rejectAllTitle": "सभी सुझाव अस्वीकारें",
+    "acceptAllConsequence": "सूची का {{count}} सुझाव स्वीकारें? यह एक पंजीकृत संबंध बन जाएगा।",
+    "acceptAllConsequence_other": "सूची के सभी {{count}} सुझाव स्वीकारें? हर एक पंजीकृत संबंध बन जाएगा।",
+    "rejectAllConsequence": "सूची का {{count}} सुझाव अस्वीकारें? अस्वीकृतियाँ साफ़ होने तक यह फिर से सुझाया नहीं जाएगा।",
+    "rejectAllConsequence_other": "सूची के सभी {{count}} सुझाव अस्वीकारें? अस्वीकृतियाँ साफ़ होने तक ये फिर से सुझाए नहीं जाएँगे।",
+    "acceptedAll": "{{count}} सुझाव स्वीकार किया गया।",
+    "acceptedAll_other": "{{count}} सुझाव स्वीकार किए गए।",
+    "rejectedAll": "{{count}} सुझाव अस्वीकार किया गया।",
+    "rejectedAll_other": "{{count}} सुझाव अस्वीकार किए गए।",
+    "acceptFailed": "{{count}} सुझाव स्वीकार नहीं किया जा सका:",
+    "acceptFailed_other": "{{count}} सुझाव स्वीकार नहीं किए जा सके:",
+    "rejectFailed": "{{count}} सुझाव अस्वीकार नहीं किया जा सका:",
+    "rejectFailed_other": "{{count}} सुझाव अस्वीकार नहीं किए जा सके:",
+    "failedOne": "{{name}}: {{error}}",
+    "reducedInformation": "सीमित जानकारी: किसी मान की तुलना नहीं की गई",
+    "reducedInformationHelp": "इनमें से एक तालिका को पैरामीटर चाहिए, इसलिए उसे कभी पढ़ा नहीं जाता। यह सुझाव केवल नामों, विवरणों, प्रकारों और आवश्यक पैरामीटरों पर आधारित है।"
   }
 }

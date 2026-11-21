@@ -21,6 +21,7 @@ from httpx import ASGITransport, AsyncClient
 from provisa.compiler.rls import RLSContext
 from provisa.compiler.sql_gen import CompilationContext, TableMeta
 from provisa.executor.result import QueryResult
+from tests.governed_pg import assert_same_rows, governed_database
 
 
 # ---------------------------------------------------------------------------
@@ -52,6 +53,15 @@ def _make_ctx(table_name: str = "orders", table_id: int = 1) -> CompilationConte
 
 
 AUDIT_ROWS: list[dict] = []  # query_audit_log appends the endpoint made, newest last
+
+
+#: What each governed read is answered over, on PostgreSQL (tests/governed_pg.py).
+_ROWS = {"orders": [{"id": 1, "status": "active"}, {"id": 2, "status": "closed"}]}
+
+
+@pytest.fixture(scope="module")
+def pg(embedded_postgres):
+    return governed_database(embedded_postgres, "test_sql_endpoint_governance")
 
 
 def _make_query_result(**kwargs) -> QueryResult:
@@ -88,7 +98,9 @@ async def sql_client(monkeypatch):
     async def _no_registered_sources(_conn):
         return []
 
-    monkeypatch.setattr("provisa.core.repositories.source.list_all", _no_registered_sources)
+    monkeypatch.setattr(
+        "provisa.core.repositories.source.list_in_production", _no_registered_sources
+    )
     # The middleware reads the bound org's declared claim types (REQ-2057); the state here
     # carries no config, and no org declares any.
     monkeypatch.setattr("provisa.auth.middleware._loaded_derived_roles", lambda: [])
@@ -216,7 +228,7 @@ class TestSQLForbiddenTable:
             new=AsyncMock(return_value=fallback_result),
         ):
             with patch(
-                "provisa.executor.trino.execute_trino",
+                "provisa.executor.trino_flight.execute_trino_flight",
                 new=AsyncMock(return_value=fallback_result),
             ):
                 resp = await sql_client.post("/data/sql", json=payload)
@@ -227,7 +239,7 @@ class TestSQLForbiddenTable:
 
 @pytest.mark.asyncio
 class TestSQLGovernanceApplied:
-    async def test_sql_governance_applied_rls_injected(self):
+    async def test_sql_governance_applied_rls_injected(self, pg):
         """When an RLS rule exists for the table, build_governance_context + apply_governance
         produce SQL with the RLS filter injected. Tested end-to-end via stage2 directly."""
         from provisa.compiler.stage2 import apply_governance, build_governance_context
@@ -243,8 +255,8 @@ class TestSQLGovernanceApplied:
                 "schema_name": "public",
                 "table_name": "orders",
                 "columns": [
-                    {"column_name": "id", "data_type": "integer", "visible_to": ["org_admin"]},
-                    {"column_name": "status", "data_type": "varchar", "visible_to": ["org_admin"]},
+                    {"column_name": "id", "data_type": "integer", "visible_to": ["analyst"]},
+                    {"column_name": "status", "data_type": "varchar", "visible_to": ["analyst"]},
                 ],
             }
         ]
@@ -266,8 +278,9 @@ class TestSQLGovernanceApplied:
         sql = "SELECT id FROM orders"
         governed = apply_governance(sql, gov_ctx)
 
-        assert "\"status\" = 'active'" in governed
-        assert "WHERE" in governed
+        # Only the rows the rule keeps are read.
+        expected = f"{sql} WHERE status = 'active'"
+        assert assert_same_rows(pg, governed, expected, _ROWS) == [(1,)]
 
     async def test_sql_endpoint_rls_applied_via_http(self, sql_client):
         """Via HTTP: a role with RLS rules results in non-403 for allowed table."""
@@ -278,7 +291,7 @@ class TestSQLGovernanceApplied:
             new=AsyncMock(return_value=fallback_result),
         ):
             with patch(
-                "provisa.executor.trino.execute_trino",
+                "provisa.executor.trino_flight.execute_trino_flight",
                 new=AsyncMock(return_value=fallback_result),
             ):
                 resp = await sql_client.post(
@@ -288,30 +301,32 @@ class TestSQLGovernanceApplied:
         # Not forbidden — 200 or some execution result
         assert resp.status_code != 403
 
-    async def test_apply_governance_with_rls_directly(self):
+    async def test_apply_governance_with_rls_directly(self, pg):
         """Direct test: apply_governance injects RLS into raw SQL for the matching table."""
         from provisa.compiler.stage2 import GovernanceContext, apply_governance
 
         gov = GovernanceContext(
             rls_rules={1: "status = 'active'"},
             table_map={"orders": 1},
+            all_columns={1: [("id", "integer"), ("status", "varchar")]},
         )
         sql = "SELECT id FROM orders"
         result = apply_governance(sql, gov)
-        assert "\"status\" = 'active'" in result
-        assert "WHERE" in result
+        expected = f"{sql} WHERE status = 'active'"
+        assert assert_same_rows(pg, result, expected, _ROWS) == [(1,)]
 
-    async def test_apply_governance_no_rls_unchanged_tables(self):
+    async def test_apply_governance_no_rls_unchanged_tables(self, pg):
         """apply_governance does not inject WHERE if no matching RLS rule exists."""
         from provisa.compiler.stage2 import GovernanceContext, apply_governance
 
         gov = GovernanceContext(
             rls_rules={99: "region = 'us'"},  # table_id 99 not in table_map
             table_map={"orders": 1},
+            all_columns={1: [("id", "integer")]},
         )
         sql = "SELECT id FROM orders"
         result = apply_governance(sql, gov)
-        assert "WHERE" not in result
+        assert assert_same_rows(pg, result, sql, _ROWS) == [(1,), (2,)]
 
 
 class TestImplicitTraversalDomains:
@@ -698,7 +713,7 @@ class TestRoleNamedByTheRequest:
         client, _plans = two_roles
         ran: list[str] = []
 
-        async def _run_job(job_id, nl_query, role, app_state, llm, strict, delivery):
+        async def _run_job(job_id, nl_query, role, app_state, llm, strict, delivery, scope):
             ran.append(role)
 
         async def _llm(state):
@@ -820,7 +835,10 @@ class TestSQLEachStatement:
         rows = _make_query_result(rows=[(1,)], column_names=["id"])
         with (
             patch("provisa.executor.direct.execute_direct", new=AsyncMock(return_value=rows)),
-            patch("provisa.executor.trino.execute_trino", new=AsyncMock(return_value=rows)),
+            patch(
+                "provisa.executor.trino_flight.execute_trino_flight",
+                new=AsyncMock(return_value=rows),
+            ),
         ):
             return await sql_client.post(
                 "/data/sql", json={"sql": sql, "role": "org_admin", "results": "each"}
@@ -851,7 +869,10 @@ class TestSQLEachStatement:
         rows = _make_query_result(rows=[(1, 2)], column_names=["id", "id"])
         with (
             patch("provisa.executor.direct.execute_direct", new=AsyncMock(return_value=rows)),
-            patch("provisa.executor.trino.execute_trino", new=AsyncMock(return_value=rows)),
+            patch(
+                "provisa.executor.trino_flight.execute_trino_flight",
+                new=AsyncMock(return_value=rows),
+            ),
         ):
             resp = await sql_client.post(
                 "/data/sql",
@@ -877,7 +898,10 @@ class TestSQLEachStatement:
         rows = _make_query_result(rows=[(1,)], column_names=["id"])
         with (
             patch("provisa.executor.direct.execute_direct", new=AsyncMock(return_value=rows)),
-            patch("provisa.executor.trino.execute_trino", new=AsyncMock(return_value=rows)),
+            patch(
+                "provisa.executor.trino_flight.execute_trino_flight",
+                new=AsyncMock(return_value=rows),
+            ),
         ):
             resp = await sql_client.post(
                 "/data/sql",
@@ -895,3 +919,37 @@ async def test_statements_are_split_as_data_sql_splits_them(sql_client):
     )
     assert resp.status_code == 200, resp.text
     assert resp.json() == {"statements": ["SELECT 'a;b'", "SELECT 1 /* c;d */"]}
+
+
+class TestSqlPageIsNotCountedAgainstTheThreshold:
+    """REQ-029 (amended 2026-11-08): a viewer page is capped by its own LIMIT, so it is not a
+    buffered result measured against the large-result threshold. A viewer asking pageSize+1 rows
+    to learn whether another page exists would otherwise cross a threshold equal to its page."""
+
+    async def _buffered_flag(self, sql_client, monkeypatch, body: dict):
+        seen: dict = {}
+
+        async def _batch(sql, role, state, **kw):
+            seen.update(kw)
+            return _make_query_result(rows=[(1,)], column_names=["id"])
+
+        monkeypatch.setattr("provisa.pgwire._pipeline.execute_sql_batch", _batch)
+        resp = await sql_client.post("/data/sql", json=body)
+        assert resp.status_code == 200, resp.text
+        return seen["buffered"]
+
+    async def test_a_page_runs_unbuffered(self, sql_client, monkeypatch):
+        buffered = await self._buffered_flag(
+            sql_client,
+            monkeypatch,
+            {"sql": "SELECT id FROM orders LIMIT 1001", "role": "org_admin", "paged": True},
+        )
+        assert buffered is False
+
+    async def test_a_statement_that_is_not_a_page_stays_buffered(self, sql_client, monkeypatch):
+        buffered = await self._buffered_flag(
+            sql_client,
+            monkeypatch,
+            {"sql": "SELECT id FROM orders", "role": "org_admin"},
+        )
+        assert buffered is True

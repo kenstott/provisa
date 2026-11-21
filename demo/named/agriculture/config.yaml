@@ -274,17 +274,22 @@ glossary_terms:
   - agriculture
   edges:
   - to: indemnity
-    rel_type: RELATED_TO
+    rel_type: DERIVED_FROM
   - to: premium
-    rel_type: RELATED_TO
+    rel_type: DERIVED_FROM
 - name: cause of loss
   approve: true
   definition: 'The peril an indemnity is paid for -- drought, heat, excess moisture, hail, freeze. The USDA publishes the whole market''s indemnities by cause for every county.'
   domains:
   - agriculture
+- name: cause of loss description
+  approve: true
+  definition: 'The USDA''s name for a peril in its cause-of-loss records: Drought, Heat, Excess Moisture/Precip/Rain, Hail, Freeze and others.'
+  domains:
+  - agriculture
   edges:
-  - to: cause of loss description
-    rel_type: RELATED_TO
+  - to: cause of loss
+    rel_type: PART_OF
 - name: actual production history
   approve: true
   definition: 'APH: a farm''s average yield over its recent years, the yield its policy guarantees a share of.'
@@ -292,7 +297,7 @@ glossary_terms:
   - agriculture
   edges:
   - to: aph yield
-    rel_type: RELATED_TO
+    rel_type: SYNONYM_OF
 - name: coverage level
   approve: true
   definition: 'The share of the APH yield a policy insures, from 50 to 85 percent; the farmer bears the rest.'
@@ -308,17 +313,28 @@ glossary_terms:
   - agriculture
   edges:
   - to: coverage level
-    rel_type: RELATED_TO
+    rel_type: DERIVED_FROM
 - name: growing season
   approve: true
   definition: 'May to August in the Corn Belt: planting, pollination and grain fill, when rain and heat decide the yield.'
   domains:
   - agriculture
+- name: hot days
+  approve: true
+  definition: 'The days of a county''s growing season above 32 degrees Celsius (90 F).'
+  domains:
+  - agriculture
   edges:
-  - to: season rain mm
-    rel_type: RELATED_TO
-  - to: hot days
-    rel_type: RELATED_TO
+  - to: growing season
+    rel_type: PART_OF
+- name: season rain mm
+  approve: true
+  definition: 'The rain that fell on a county over its May-to-August growing season, in millimetres, from NOAA.'
+  domains:
+  - agriculture
+  edges:
+  - to: growing season
+    rel_type: PART_OF
 - name: crop year
   approve: true
   definition: 'The year a crop is planted and insured; a policy, its premium and its claims all belong to one.'

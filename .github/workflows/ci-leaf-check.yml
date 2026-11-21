@@ -31,6 +31,16 @@ on:
       - ".github/**"
       - "scripts/ci/**"
   workflow_dispatch:
+    # The orchestrator's two inputs, because the release's control flow below reads them.
+    inputs:
+      version:
+        description: The release's version; empty reads as the ref's name.
+        type: string
+        default: ""
+      publish:
+        description: Read as the orchestrator reads it; only ever true on the tag it names.
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -110,9 +120,9 @@ jobs:
       - uses: ./.github/actions/setup-ui
         with:
           playwright: chromium
-      - name: Node 22, the UI's dependencies and Chromium are there
+      - name: Node at .nvmrc, the UI's dependencies and Chromium are there
         run: |
-          node --version | grep -E '^v22\.'
+          test "$(node --version)" = "v$(cat .nvmrc)"
           test -x provisa-ui/node_modules/.bin/vite
           test -x provisa-ui/node_modules/.bin/playwright
           ls "$HOME/.cache/ms-playwright" | grep -E '^chromium'
@@ -126,11 +136,10 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-ui
         with:
-          node-version: "20"
           install: "false"
-      - name: Node 20 and no installed dependencies
+      - name: Node at .nvmrc and no installed dependencies
         run: |
-          node --version | grep -E '^v20\.'
+          test "$(node --version)" = "v$(cat .nvmrc)"
           test ! -e provisa-ui/node_modules
 
   mssql-odbc:
@@ -209,68 +218,118 @@ jobs:
             if [ -e "$dir" ]; then echo "::error::$dir is still there"; exit 1; fi
           done
 
-  # A round trip on a key of this run's own (key-prefix): the real cache is never touched.
-  # One job, one round trip through the cache service: a key nobody saved misses; the jars are
-  # saved under it; the local copies are removed; the same key then hits and brings them back.
-  # It was two jobs (save, then a fresh runner restores). Run 38046755990 showed why it cannot
-  # be: the second job waited 33 minutes for a runner, main's suite saved 13 GB of image caches
-  # in that time, the repository went past its 10 GB of cache and GitHub evicted this one.
+  # The real key, primed (a hit asks Maven Central for nothing; a miss downloads every jar once,
+  # each checked by sha256, and saves it), then a lane's restore of it: the jars come back and
+  # verify. A lane's restore of a key nobody saved fails the step rather than downloading. The
+  # leaf lane's java case (level-0 needs this job) restores the key primed here.
   trino-plugins:
-    name: action / trino-plugins (miss, save, hit)
+    name: action / trino-plugins (prime, restore, a miss refused)
     needs: scope
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+      - name: Prime
+        id: prime
+        uses: ./.github/actions/trino-plugins
+        with:
+          phase: prime
+      - name: Remove the local jars
+        env:
+          JARS: ${{ steps.prime.outputs.jars }}
+        run: |
+          [ -n "$JARS" ]
+          for jar in $JARS; do
+            case "$jar" in trino/plugins/trino-*/trino-*.jar) ;; *) echo "unexpected: $jar"; exit 1 ;; esac
+            rm "$jar"
+          done
+          rm trino/plugins/provisa-functions/provisa-functions-1.jar
       - name: Restore
         id: restore
         uses: ./.github/actions/trino-plugins
         with:
           phase: restore
-          key-prefix: leafcheck-${{ github.run_id }}-${{ github.run_attempt }}-
-      - name: A key nobody saved misses, and the pin names its jars
+      - name: The primed key hits and every jar is back
         env:
           HIT: ${{ steps.restore.outputs.cache-hit }}
           JARS: ${{ steps.restore.outputs.jars }}
         run: |
-          [ "$HIT" != "true" ]
-          [ -n "$JARS" ]
-          for jar in $JARS; do
-            case "$jar" in trino/plugins/trino-*/trino-*.jar) ;; *) echo "unexpected: $jar"; exit 1 ;; esac
-            mkdir -p "$(dirname "$jar")"
-            echo "stand-in for $jar" > "$jar"
-          done
-      - name: Save
-        uses: ./.github/actions/trino-plugins
-        with:
-          phase: save
-          cache-hit: ${{ steps.restore.outputs.cache-hit }}
-          key-prefix: leafcheck-${{ github.run_id }}-${{ github.run_attempt }}-
-      - name: Remove the local jars
-        env:
-          JARS: ${{ steps.restore.outputs.jars }}
-        run: |
-          for jar in $JARS; do rm "$jar"; done
-      - name: Restore again
-        id: again
+          [ "$HIT" = "true" ]
+          for jar in $JARS; do [ -s "$jar" ]; done
+          [ -s trino/plugins/provisa-functions/provisa-functions-1.jar ]
+      # A key of this run's own, which nobody saved: a lane's restore fails on it.
+      - name: Restore a key nobody saved
+        id: miss
+        continue-on-error: true
         uses: ./.github/actions/trino-plugins
         with:
           phase: restore
           key-prefix: leafcheck-${{ github.run_id }}-${{ github.run_attempt }}-
-      - name: The saved key hits and every jar is back
+      - name: The miss failed the restore
         env:
-          HIT: ${{ steps.again.outputs.cache-hit }}
-          JARS: ${{ steps.again.outputs.jars }}
-        run: |
-          [ "$HIT" = "true" ]
-          for jar in $JARS; do grep -q "stand-in for $jar" "$jar"; done
-      # A hit is not saved again: the save phase does nothing, and says so by doing nothing.
-      - name: Save after a hit
-        uses: ./.github/actions/trino-plugins
+          OUTCOME: ${{ steps.miss.outcome }}
+        run: '[ "$OUTCOME" = "failure" ]'
+
+  # The real key, primed (a hit builds nothing; a miss builds the image from zaychik/ once and
+  # saves it), then a lane's restore of it on a runner whose image was removed: zaychik:latest is
+  # back without a build.
+  zaychik-image:
+    name: action / zaychik-image (prime, then a restore that loads the image)
+    needs: scope
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prime
+        uses: ./.github/actions/zaychik-image
         with:
-          phase: save
-          cache-hit: ${{ steps.again.outputs.cache-hit }}
-          key-prefix: leafcheck-${{ github.run_id }}-${{ github.run_attempt }}-
+          phase: prime
+      # A prime that hit loaded nothing; one that missed built the image here.
+      - name: Remove the local image
+        run: |
+          if docker image inspect zaychik:latest > /dev/null 2>&1; then
+            docker image rm zaychik:latest
+          fi
+      - name: Restore
+        uses: ./.github/actions/zaychik-image
+        with:
+          phase: restore
+      - name: The image is loaded
+        run: docker image inspect zaychik:latest --format '{{.Id}}'
+
+  # The real key, not one of this run's own: what the action keeps is the pinned files themselves,
+  # each checked against its recorded sha256, so a save from here is the entry any job would save.
+  # A miss downloads them (the one request to Pyodide's CDN per pin); a hit asks it for nothing.
+  pyodide-downloads:
+    name: action / pyodide-downloads (every pinned file, and a build that asks the CDN for nothing)
+    needs: scope
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Pyodide downloads
+        id: downloads
+        uses: ./.github/actions/pyodide-downloads
+      - name: The directory is named, and holds every file a build fetches, each the pinned one
+        env:
+          DIR: ${{ steps.downloads.outputs.dir }}
+          PYTHONPATH: provisa-notebook
+        run: |
+          [ -n "$DIR" ]
+          [ "$PROVISA_NOTEBOOK_DOWNLOADS" = "$DIR" ]
+          python3 - <<'EOF'
+          import urllib.request
+
+          def refuse(*args, **kwargs):
+              raise AssertionError(f"asked the network for {args[0]}")
+
+          urllib.request.urlopen = refuse
+          from provisa_notebook import build
+
+          names = build.download_only()
+          assert {build.LOCK, *build.CORE} < set(names), names
+          print(f"{len(names)} files kept, none downloaded")
+          EOF
 
   release-metadata:
     name: action / release-metadata
@@ -356,6 +415,35 @@ jobs:
           fi
           echo "no release $TAG"
 
+  # attach-release-assets has no switch of its own either: a leg skips it with `if: inputs.publish`.
+  # Gated the same way with the condition false, it must be skipped and no release may exist.
+  attach-release-assets-off:
+    name: action / attach-release-assets (publish off)
+    needs: scope
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      TAG: v0.0.0-leafcheck.${{ github.run_id }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Attach to the draft release
+        id: attach
+        if: ${{ fromJSON('false') }}
+        uses: ./.github/actions/attach-release-assets
+        with:
+          tag: ${{ env.TAG }}
+          files: README.md
+      - name: The step was skipped and there is no such release
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          CONCLUSION: ${{ steps.attach.conclusion }}
+        run: |
+          [ "$CONCLUSION" = "skipped" ]
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            echo "::error::a release $TAG exists"; exit 1
+          fi
+          echo "no release $TAG"
+
   # Level 0 as one job: it succeeds only when every composite action's check did, and level 1
   # needs it.
   level-0:
@@ -371,8 +459,11 @@ jobs:
       - free-runner-disk
       - demo-bundle
       - trino-plugins
+      - zaychik-image
+      - pyodide-downloads
       - release-metadata
       - ensure-release-off
+      - attach-release-assets-off
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -528,7 +619,7 @@ jobs:
     uses: ./.github/workflows/ci-leaf-stub-leg.yml
     with:
       version: ${{ inputs.version || github.ref_name }}
-      # The manual half of the orchestrator's expression (a tag push is its other half): false here.
+      # The orchestrator's expression: false here.
       publish: ${{ inputs.publish == true && github.ref_type == 'tag' && github.ref_name == inputs.version }}
 
   # Its own condition, on the leg it reads: with none, GitHub's implicit success() skips it,
@@ -587,8 +678,11 @@ jobs:
       - free-runner-disk
       - demo-bundle
       - trino-plugins
+      - zaychik-image
+      - pyodide-downloads
       - release-metadata
       - ensure-release-off
+      - attach-release-assets-off
       - lane
       - lane-fails
       - lane-results

@@ -27,6 +27,8 @@
     "permit": "Consenti",
     "revoke": "Revoca",
     "noHintRoles": "A nessun ruolo è consentita l'indicazione.",
-    "loadFailed": "Impossibile caricare le impostazioni del tracciamento di debug"
+    "loadFailed": "Impossibile caricare le impostazioni del tracciamento di debug",
+    "introPlatform": "Per impostazione predefinita il tracciamento registra uno span per richiesta. Il tracciamento di debug aggiunge uno span per ogni fase della pipeline e per ogni chiamata alla sorgente, con il testo SQL. Aggiunge carico, quindi attivalo per un'intera organizzazione per un tempo stabilito; si disattiva da solo allo scadere del tempo. Il tracciamento di un ruolo o di una sorgente specifici spetta all'amministratore di quell'organizzazione.",
+    "introOrg": "Per impostazione predefinita il tracciamento registra uno span per richiesta. Il tracciamento di debug aggiunge uno span per ogni fase della pipeline e per ogni chiamata alla sorgente, con il testo SQL. Aggiunge carico, quindi attivalo per un ruolo o una sorgente per un tempo stabilito; si disattiva da solo allo scadere del tempo."
   }
 }

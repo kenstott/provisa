@@ -64,16 +64,15 @@ def fetch_predicate(state: Any, table: Any) -> str | None:
     rule = region_admin.row_rule(state, table)
     if rule is None:
         return None
-    import sqlglot
     import sqlglot.expressions as exp
 
-    from provisa.pgwire._pipeline import _resolve_session_settings
+    from provisa.pgwire._pipeline import resolve_settings
 
-    resolved = _resolve_session_settings(rule, region_admin.session_vars(state), "postgres")
-    tree = sqlglot.parse_one(resolved, read="postgres")
-    if tree.find(exp.Select) is not None or tree.find(exp.Table) is not None:
+    resolved = resolve_settings(rule.copy(), region_admin.session_vars(state))
+    if resolved.find(exp.Select) is not None or resolved.find(exp.Table) is not None:
         return None
-    return resolved
+    # REQ-913: rendered once, where it leaves: a source's keyed fetch carries PostgreSQL text.
+    return resolved.sql(dialect="postgres")
 
 
 def admit_rows(state: Any, table: Any, data: "pa.Table") -> "pa.Table":
@@ -87,10 +86,10 @@ def admit_rows(state: Any, table: Any, data: "pa.Table") -> "pa.Table":
     if rule is None:
         return data
 
-    import sqlglot
+    import sqlglot.expressions as exp
 
-    from provisa.compiler.stage2 import GovernanceContext, apply_governance
-    from provisa.pgwire._pipeline import _resolve_session_settings
+    from provisa.compiler.stage2 import GovernanceContext, govern
+    from provisa.pgwire._pipeline import resolve_settings
 
     names = list(data.column_names)
     gov = GovernanceContext(role_id=region_admin.ROLE)
@@ -98,12 +97,14 @@ def admit_rows(state: Any, table: Any, data: "pa.Table") -> "pa.Table":
     gov.all_columns[table.id] = [(n, "varchar") for n in names]
     gov.visible_columns[table.id] = frozenset(names)
     gov.rls_rules[table.id] = rule
-    projected = ", ".join(f'"{n}"' for n in names)
-    governed = apply_governance(f'SELECT {projected} FROM "{_RELATION}"', gov)
-    governed = _resolve_session_settings(governed, region_admin.session_vars(state), "postgres")
+    # REQ-913: the read is built, governed and resolved as a tree, and written once for DuckDB.
+    read = exp.select(*(exp.column(n, quoted=True) for n in names)).from_(
+        exp.table_(_RELATION, quoted=True)
+    )
+    governed = resolve_settings(govern(read, gov), region_admin.session_vars(state))
     from provisa.federation.duckdb_backend import LocalEvaluationFailed, evaluate_over_arrow
 
-    local = sqlglot.transpile(governed, read="postgres", write="duckdb")[0]
+    local = governed.sql(dialect="duckdb")
     try:
         return evaluate_over_arrow(local, _RELATION, data)
     except LocalEvaluationFailed as exc:

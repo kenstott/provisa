@@ -1,22 +1,22 @@
 {
   "observabilityTab": {
-    "noSpansYet": "Noch keine Spans — führen Sie eine Anfrage aus, um Traces zu sehen.",
+    "noSpansYet": "Noch keine Spans. Senden Sie eine Anfrage, um Traces zu sehen.",
     "noSpansMatch": "Keine Spans entsprechen dem Filter.",
     "traces": "Traces",
     "filterPlaceholder": "Filtern…",
     "pause": "Pausieren",
     "resume": "Fortsetzen",
-    "collapse": "Einklappen",
-    "expand": "Ausklappen",
+    "collapse": "Schließen",
+    "expand": "Vergrößern",
     "traceLabel": "Trace:",
     "spanLabel": "Span:",
     "timeLabel": "Zeit:",
     "otelTitle": "OpenTelemetry-Tracing",
     "statusLabel": "Status:",
     "statusExporting": "Export → {{endpoint}}",
-    "statusActiveNoCollector": "Aktiv (Traces werden für diese Seite behalten, nicht exportiert)",
+    "statusActiveNoCollector": "Aktiv (Traces werden für diese Seite aufbewahrt, nicht exportiert)",
     "endpointLabel": "OTLP-Collector-Endpunkt",
-    "endpointHelp": "Auf den eigenen Collector von Provisa zeigen lassen und einen externen Anbieter als Exporter im Collector ergänzen, damit die Trace-Tabellen weiter gefüllt werden. Leer lassen, um Traces nur auf dieser Seite zu behalten. Überschreibbar mit der Umgebungsvariable OTEL_EXPORTER_OTLP_ENDPOINT.",
+    "endpointHelp": "Richten Sie dies auf Provisas eigenen Collector und fügen Sie im Collector einen externen Anbieter als Exporter hinzu, damit sich die Trace-Tabellen weiter füllen. Leer lassen, um Traces nur auf dieser Seite zu behalten. Überschreiben mit OTEL_EXPORTER_OTLP_ENDPOINT.",
     "serviceNameLabel": "Dienstname",
     "serviceNameHelp": "Überschreibbar mit der Umgebungsvariable OTEL_SERVICE_NAME.",
     "sampleRateLabel": "Sampling-Rate",
@@ -86,6 +86,7 @@
     },
     "tracesTableCheckFailed": "Die Trace-Tabellen von Provisa konnten nicht geprüft werden ({{reason}}). Ob sie Zeilen empfangen, ist unbekannt; die Prüfung wird alle 30 Sekunden wiederholt.",
     "tracesTableEmpty": "Ein Endpunkt ist gesetzt, aber die Trace-Tabellen von Provisa enthalten noch keine Zeilen. Ist der Endpunkt ein externer Anbieter und nicht der Collector von Provisa, verschieben Sie ihn in die Exporter des Collectors.",
-    "tracesTableStale": "Ein Endpunkt ist gesetzt, aber die Trace-Tabellen von Provisa haben in den letzten {{minutes}} Minuten keine Zeilen erhalten. War Provisa untätig, ist das zu erwarten. Andernfalls prüfen Sie, ob der Endpunkt der Collector von Provisa und kein externer Anbieter ist."
+    "tracesTableStale": "Ein Endpunkt ist gesetzt, aber die Trace-Tabellen von Provisa haben in den letzten {{minutes}} Minuten keine Zeilen erhalten. War Provisa untätig, ist das zu erwarten. Andernfalls prüfen Sie, ob der Endpunkt der Collector von Provisa und kein externer Anbieter ist.",
+    "schemaClustersTitle": "Schema-Cluster"
   }
 }

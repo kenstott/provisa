@@ -38,6 +38,7 @@ async def _seed(conn) -> None:
     from sqlalchemy import insert
 
     from provisa.core.schema_org import (
+        data_product_tables,
         data_products,
         domains,
         registered_tables,
@@ -59,21 +60,22 @@ async def _seed(conn) -> None:
             table_name="m",
             view_sql="SELECT pv.x AS x FROM s.pv pv",
             materialize=True,
-            product_id="q",
             **derived,
         ),
-        dict(
-            id=RV, table_name="rv", view_sql="SELECT m.x AS x FROM s.m m", product_id="r", **derived
-        ),
+        dict(id=RV, table_name="rv", view_sql="SELECT m.x AS x FROM s.m m", **derived),
     ]
     checkers = [(K_PROMISE, "q"), (K_EXPECTATION, "q"), (K_ORPHAN, "r"), (K_UNASSIGNED, None)]
     tables += [
-        dict(id=k, source_id="dq", table_name=f"k{k}", dq_contract="checks", product_id=pid)
-        for k, pid in checkers
+        dict(id=k, source_id="dq", table_name=f"k{k}", dq_contract="checks") for k, _pid in checkers
     ]
     for t in tables:
         await conn.execute_core(
             insert(registered_tables).values(domain_id="s", schema_name="public", **t)
+        )
+    # REQ-1634: membership is its own relation.
+    for pid, table_id in [("q", M), ("r", RV), *((p, k) for k, p in checkers if p is not None)]:
+        await conn.execute_core(
+            insert(data_product_tables).values(product_id=pid, table_id=table_id)
         )
     for table_id in (S, PV, M, RV):
         await conn.execute_core(
@@ -83,15 +85,17 @@ async def _seed(conn) -> None:
         )
 
 
+#: Each checker's checked table, as the build resolved it: published on the runtime and stored.
+_CHECKED = {K_PROMISE: M, K_EXPECTATION: S, K_ORPHAN: S, K_UNASSIGNED: S}
+
+
 async def _build(conn) -> None:
     """The model build's two writes, then the views over them."""
     from provisa.api.admin.lineage_router import write_lineage_edges
     from provisa.api.startup_seed import _adapt_view_ddl
 
     await write_lineage_edges(conn, SimpleNamespace(tracked_functions={}))
-    await write_checker_targets(
-        conn, {K_PROMISE: M, K_EXPECTATION: S, K_ORPHAN: S, K_UNASSIGNED: S}
-    )
+    await write_checker_targets(conn, _CHECKED)
     for name in ("table_inputs", "data_product_edges"):
         await conn.execute(_adapt_view_ddl(_META_TABLE_VIEWS[name]))
 
@@ -141,7 +145,7 @@ async def test_each_product_shows_each_check_by_what_it_checks_and_who_owns_it(c
                 product: {i.table_id for i in await nearest_physical_inputs(conn, member)}
                 for product, member in (("q", M), ("r", RV))
             }
-        checkers = await _fetch_checkers(SimpleNamespace(model_db=db))
+        checkers = await _fetch_checkers(SimpleNamespace(model_db=db, checked_targets=_CHECKED))
     finally:
         await db.close()
 
@@ -170,3 +174,54 @@ async def test_each_product_shows_each_check_by_what_it_checks_and_who_owns_it(c
         # R's check on S, which is neither R's member nor its input: a curation gap for R.
         "unattached": [K_ORPHAN],
     }
+
+
+@pytest.mark.asyncio
+async def test_a_checkers_latest_scan_names_the_checks_that_did_not_pass(control_plane):
+    """REQ-2180 (QUALITY IS STATUS AND COUNTS, NOT A SCORE): a product's quality names its failing
+    checks, so each checker carries the checks of its latest scan that did not pass -- an earlier
+    scan's failures are not its, and a checker never run names none."""
+    from datetime import UTC, datetime, timedelta
+
+    from provisa.api.admin.lineage_router import _fetch_checkers
+    from provisa.dq.results import RESULT_FIELDS, results_sa_table
+    from provisa.dq.scan import ensure_relation, record_latest_run
+
+    def row(scan_id: str, at: datetime, name: str, column: str, outcome: str) -> dict:
+        out = {field: None for field in RESULT_FIELDS}
+        out.update(
+            scan_id=scan_id, scan_time=at, check_name=name, column_name=column, outcome=outcome
+        )
+        return out
+
+    earlier = datetime(2026, 11, 11, 9, 0, tzinfo=UTC)
+    latest = earlier + timedelta(hours=1)
+    first = [row("s1", earlier, "row_count", "", "fail")]
+    second = [
+        row("s2", latest, "row_count", "", "pass"),
+        row("s2", latest, "unique", "customer_id", "fail"),
+        row("s2", latest, "missing", "email", "warn"),
+    ]
+    db = control_plane.org()
+    try:
+        async with db.acquire() as conn:
+            await _seed(conn)
+            await _build(conn)
+            await ensure_relation(conn, f"k{K_PROMISE}")
+            relation = results_sa_table(f"k{K_PROMISE}")
+            await conn.execute_core_many(relation.insert(), first + second)
+            await record_latest_run(conn, K_PROMISE, "s1", earlier, first)
+            await record_latest_run(conn, K_PROMISE, "s2", latest, second)
+        checkers = {
+            c["id"]: c
+            for c in await _fetch_checkers(SimpleNamespace(model_db=db, checked_targets=_CHECKED))
+        }
+    finally:
+        await db.close()
+
+    assert checkers[K_PROMISE]["latest_outcome"] == "fail"
+    assert checkers[K_PROMISE]["failing_checks"] == [
+        {"name": "missing", "column": "email", "outcome": "warn"},
+        {"name": "unique", "column": "customer_id", "outcome": "fail"},
+    ]
+    assert checkers[K_EXPECTATION]["failing_checks"] == []

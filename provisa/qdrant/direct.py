@@ -47,6 +47,7 @@ from typing import Any
 import sqlglot
 from sqlglot import exp
 
+from provisa.compiler.governed_relation import inline
 from provisa.executor.drivers.base import DirectDriver
 from provisa.executor.result import QueryResult
 from provisa.federation.mail_write import WriteRefused
@@ -321,7 +322,9 @@ def _table(tree: exp.Expr) -> exp.Table:
 def analyse(tree: exp.Expr, table: dict, distance_of: Any) -> ReadPlan:
     """``tree`` (a governed SELECT on ``table``) as one read of Qdrant's API, or
     :class:`NotExpressible` naming what Qdrant does not state exactly. ``distance_of(vector)``
-    is the distance a collection's vector is searched by."""
+    is the distance a collection's vector is searched by. The collection's governed relation is
+    read as the collection, its row rules as the statement's conditions (REQ-039)."""
+    tree = inline(tree)
     if not isinstance(tree, exp.Select):
         raise NotExpressible("the statement is not a single SELECT")
     for part, said in (
@@ -622,7 +625,7 @@ class QdrantDriver(DirectDriver):  # REQ-2000
             return await self._update(tree, params)
         if isinstance(tree, exp.Delete):
             return await self._delete(tree, params)
-        table = self.table(_table(tree).name)
+        table = self.table(_table(inline(tree)).name)
         distances = await asyncio.to_thread(self.distance_of, table["table_name"])
         plan = analyse(tree, table, distances)
         return await asyncio.to_thread(self._read, plan, params)

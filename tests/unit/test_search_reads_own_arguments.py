@@ -27,7 +27,7 @@ import sqlglot
 from sqlglot import exp
 
 from provisa.compiler.compiled_query_cache import CompiledQueryCache
-from provisa.compiler.nf_extractor import extract_nf_args, read_base, separate_parameter_reads
+from provisa.compiler.nf_extractor import bind_parameters, extract_nf_args, read_base
 from provisa.compiler.sql_gen import CompilationContext
 from provisa.compiler.sql_types import TableMeta
 from provisa.federation.replica_address import ReplicaRoutes
@@ -56,23 +56,29 @@ def _tables(sql: str) -> list[tuple[str, str]]:
     ]
 
 
+def _bound(sql: str):
+    return bind_parameters(sql, [], _PARAMS).bound()
+
+
 def test_each_read_of_a_search_table_is_named_with_its_own_arguments():
-    sql, reads = separate_parameter_reads(_TWO_THEMES, _PARAMS)
-    assert sorted(reads.values(), key=lambda r: r[1]["query"]) == [
+    bound = _bound(_TWO_THEMES)
+    assert sorted(bound.reads.values(), key=lambda r: r[1]["query"]) == [
         ("lines_like", {"query": "beauty", "k": 20}),
         ("lines_like", {"query": "time", "k": 20}),
     ]
-    assert "_nf_" not in sql  # every read's arguments taken out of its own WHERE
-    named = [(name, alias) for name, alias in _tables(sql) if name != "line"]
+    assert "_nf_" not in bound.sql  # every read's arguments taken out of its own WHERE
+    named = [(name, alias) for name, alias in _tables(bound.sql) if name != "line"]
     assert sorted(named) == [("lines_like__nf1", "s"), ("lines_like__nf2", "s")]
     assert {read_base(name) for name, _alias in named} == {"lines_like"}
 
 
-def test_a_single_read_is_left_to_extract_nf_args():
+def test_a_single_read_keeps_its_name_and_gives_the_statement_its_arguments():
     one = _theme("time")
-    assert separate_parameter_reads(one, _PARAMS) == (one, {})
+    bound = _bound(one)
+    assert bound.reads == {} and bound.nf_args == {"query": "time", "k": 20}
     clean, _params, args = extract_nf_args(one, [], _PARAMS)
     assert args == {"query": "time", "k": 20} and "_nf_" not in clean
+    assert clean == bound.sql
 
 
 def test_an_unaliased_read_keeps_its_name_for_its_columns():
@@ -81,9 +87,9 @@ def test_an_unaliased_read_keeps_its_name_for_its_columns():
         "UNION ALL SELECT * FROM (SELECT lines_like.id FROM lines_like "
         "WHERE lines_like._nf_query = 'b') AS y"
     )
-    named, reads = separate_parameter_reads(sql, _PARAMS)
-    assert len(reads) == 2
-    assert sorted(_tables(named)) == [
+    bound = _bound(sql)
+    assert len(bound.reads) == 2
+    assert sorted(_tables(bound.sql)) == [
         ("lines_like__nf1", "lines_like"),
         ("lines_like__nf2", "lines_like"),
     ]

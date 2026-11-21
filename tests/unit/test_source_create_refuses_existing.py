@@ -84,6 +84,7 @@ async def test_an_update_provisions_the_source_on_the_bound_engine_again(
 
         engine: Any = MagicMock()
         engine.reconcile_landed_tables = AsyncMock()
+        engine.engine.unreachable_reason.return_value = None  # the engine reads the source
         monkeypatch.setattr(state, "federation_engine", engine, raising=False)
         register, rebuild = MagicMock(), AsyncMock()
         with (

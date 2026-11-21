@@ -114,7 +114,7 @@ async def _answered(result, *, cached: bool = False) -> list:
             "provisa.pgwire._pipeline.cached_result", new_callable=AsyncMock, return_value=result
         ),
     ):
-        sent = [m async for m in servicer._handle_query(request, context, "Orders", "orders")]
+        sent = [m async for m in servicer._handle_query(request, context, "Orders")]
     return [_SERVICE.Orders.FromString(m) for m in sent]
 
 

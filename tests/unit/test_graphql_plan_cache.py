@@ -47,7 +47,7 @@ def _cq(
 
 _ROLE = {"id": "analyst"}
 _SCHEMA = object()
-_CTX = object()
+_CTX = SimpleNamespace()
 _RLS = object()
 _DIRECTIVES = QueryDirectives()
 

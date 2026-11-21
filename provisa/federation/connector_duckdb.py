@@ -34,7 +34,17 @@ from provisa.federation.connector_base import (
     RuntimeDep,
     probe_pg_extension,
 )
+from provisa.federation.duckdb_extensions import bring_up_statements
 from provisa.federation.duckdb_extensions import connect as _duckdb_connect
+from provisa.federation.duckdb_quoting import (
+    ado_dsn,
+    bigquery_dsn,
+    firebird_url,
+    ident,
+    libpq_dsn,
+    lit,
+)
+from provisa.federation.pg_quoting import pg_ident, pg_lit
 
 if TYPE_CHECKING:
     from provisa.core.models import Source
@@ -56,9 +66,13 @@ def read_flat_file_sync(path: str, fmt: str, sql: str) -> list[dict]:  # REQ-229
     con = _duckdb_connect()
     try:
         if fmt == "csv":
-            con.execute(f"CREATE VIEW {view_name} AS SELECT * FROM read_csv_auto('{path}')")
+            con.execute(
+                f"CREATE VIEW {ident(view_name)} AS SELECT * FROM read_csv_auto({lit(path)})"
+            )
         else:
-            con.execute(f"CREATE VIEW {view_name} AS SELECT * FROM read_parquet('{path}')")
+            con.execute(
+                f"CREATE VIEW {ident(view_name)} AS SELECT * FROM read_parquet({lit(path)})"
+            )
         rel = con.execute(sql)
         cols = [desc[0] for desc in rel.description]
         rows = rel.fetchall()
@@ -98,6 +112,9 @@ class DuckDBPostgresConnector(Connector):
     source_type = "postgresql"
     materialized_store = True  # REQ-846: PG is the one proven materialized store today
     mechanism = Mechanism.ATTACH_RW
+    # REQ-1142 (ATTACHABLE MEANS STAGED): what the attach needs staged. Not ``extension``, which
+    # names the extensions provisa-duckdb-ext mirrors (postgres is a core wheel's).
+    staged_needs = ("postgres",)
 
     def capability(self) -> Capability:
         # REQ-1934: no key_range. Measured: a BETWEEN on the key is pushed to Postgres and read
@@ -108,11 +125,18 @@ class DuckDBPostgresConnector(Connector):
         return Capability(predicate_pushdown=True, write=True)
 
     def details(self, source: Source) -> dict:
-        pw = f" password={source.password}" if source.password else ""
-        dsn = (
-            f"host={source.host} port={source.port} dbname={source.database} "
-            f"user={source.username}{pw}"
-        )
+        # Each value is written for libpq, which reads the string again, and the string as a
+        # literal: a host, database or user holding a space or a quote is that value, never
+        # another connection keyword or another statement.
+        fields: dict[str, str | int] = {
+            "host": source.host,
+            "port": source.port,
+            "dbname": source.database,
+            "user": source.username,
+        }
+        if source.password:
+            fields["password"] = source.password
+        dsn = libpq_dsn(**fields)
         # Attach the raw remote under a private ``_src_`` alias, distinct from the physical catalog
         # (``_to_catalog_name(id)``) the runtime creates for the compiler-visible views — else a
         # hyphen-free id collides (id "ordr" → catalog "ordr" == attach alias "ordr"). Quote it:
@@ -120,15 +144,18 @@ class DuckDBPostgresConnector(Connector):
         # attached Postgres exposes its own schemas verbatim, so the remote schema IS the registered
         # schema — the runtime defaults there (no remote_schema override).
         alias = f"_src_{source.id}"
-        details = {"attach": f"ATTACH '{dsn}' AS \"{alias}\" (TYPE postgres)", "raw_alias": alias}
+        details = {
+            "attach": f"ATTACH {lit(dsn)} AS {ident(alias)} (TYPE postgres)",
+            "raw_alias": alias,
+        }
         # REQ-1909: the extension's pool otherwise keeps up to 18 connections and connects past its
         # limit ('force'); a capped source's pool holds its share of the cap and waits for a free
         # connection instead.
         pool = pg_pool_max_connections(source.id, source.max_live_concurrency)
         if pool is not None:
             details["configure_pool"] = (
-                f"FROM postgres_configure_pool(catalog_name='{alias}', "
-                f"max_connections={pool}, acquire_mode='wait')"
+                f"FROM postgres_configure_pool(catalog_name={lit(alias)}, "
+                f"max_connections={int(pool)}, acquire_mode='wait')"
             )
         return details
 
@@ -143,7 +170,7 @@ class DuckDBCsvConnector(Connector):
 
     def details(self, source: Source) -> dict:
         return {
-            "view_ddl": f"CREATE VIEW {source.id} AS SELECT * FROM read_csv_auto('{_located(source)}')",
+            "view_ddl": _scan_view_ddl(source, "read_csv_auto", _located(source)),
             **file_location_details(source),  # REQ-1997: any location, with its credentials
         }
 
@@ -160,12 +187,18 @@ def _s3_secret_ddl(source: "Source") -> str | None:
     secret = hints.get("secret_access_key")
     if not (key_id and secret):
         return None
-    clauses = [f"KEY_ID '{key_id}'", f"SECRET '{secret}'"]
+    clauses = [f"KEY_ID {lit(key_id)}", f"SECRET {lit(secret)}"]
     endpoint = hints.get("endpoint")
     if endpoint:
-        clauses.append(f"ENDPOINT '{endpoint.split('://', 1)[-1]}'")  # bare host, no scheme
+        clauses.append(f"ENDPOINT {lit(endpoint.split('://', 1)[-1])}")  # bare host, no scheme
         clauses.append("URL_STYLE 'path'")  # R2/MinIO-style endpoints reject virtual-hosted URLs
-    return f'CREATE OR REPLACE SECRET "_s3_{source.id}" (TYPE s3, {", ".join(clauses)})'
+    return f"CREATE OR REPLACE SECRET {ident('_s3_' + source.id)} (TYPE s3, {', '.join(clauses)})"
+
+
+def _scan_view_ddl(source: "Source", scanner: str, location: str) -> str:
+    """The view a scanner connector declares over ``location``: ``scanner`` is the connector's
+    own table function, the location a literal."""
+    return f"CREATE VIEW {ident(source.id)} AS SELECT * FROM {scanner}({lit(location)})"
 
 
 def _located(source: "Source") -> str:
@@ -200,10 +233,6 @@ def location_kind(path: str | None) -> str | None:
     raise ValueError(f"{path!r}: DuckDB reads no file at a {scheme}:// location")
 
 
-def _quoted(value: str) -> str:
-    return "'" + str(value).replace("'", "''") + "'"
-
-
 def _scope(path: str) -> str:
     """The bucket or container ``path`` is in, as a secret's scope: a source's credentials are
     used for its own location only, never for another source's."""
@@ -219,26 +248,26 @@ def object_store_secret_ddl(source: "Source") -> str | None:
     path = getattr(source, "path", None) or ""
     kind = location_kind(path)
     hints = getattr(source, "federation_hints", None) or {}
-    name = f'"_os_{source.id}"'
+    name = ident("_os_" + source.id)
     if kind == "s3":
         if not (hints.get("access_key_id") and hints.get("secret_access_key")):
             return None
         clauses = [
-            f"KEY_ID {_quoted(hints['access_key_id'])}",
-            f"SECRET {_quoted(hints['secret_access_key'])}",
+            f"KEY_ID {lit(hints['access_key_id'])}",
+            f"SECRET {lit(hints['secret_access_key'])}",
         ]
         if hints.get("region"):
-            clauses.append(f"REGION {_quoted(hints['region'])}")
+            clauses.append(f"REGION {lit(hints['region'])}")
         if hints.get("endpoint"):
-            clauses.append(f"ENDPOINT {_quoted(hints['endpoint'].split('://', 1)[-1])}")
+            clauses.append(f"ENDPOINT {lit(hints['endpoint'].split('://', 1)[-1])}")
             clauses.append("URL_STYLE 'path'")
-        return f"CREATE OR REPLACE SECRET {name} (TYPE s3, {', '.join(clauses)}, SCOPE {_quoted(_scope(path))})"
+        return f"CREATE OR REPLACE SECRET {name} (TYPE s3, {', '.join(clauses)}, SCOPE {lit(_scope(path))})"
     if kind == "gcs":
         if not (hints.get("gcs_access_id") and hints.get("gcs_secret_key")):
             return None
         return (
-            f"CREATE OR REPLACE SECRET {name} (TYPE gcs, KEY_ID {_quoted(hints['gcs_access_id'])}, "
-            f"SECRET {_quoted(hints['gcs_secret_key'])}, SCOPE {_quoted(_scope(path))})"
+            f"CREATE OR REPLACE SECRET {name} (TYPE gcs, KEY_ID {lit(hints['gcs_access_id'])}, "
+            f"SECRET {lit(hints['gcs_secret_key'])}, SCOPE {lit(_scope(path))})"
         )
     if kind == "azure":
         account, key = hints.get("azure_account_name"), hints.get("azure_account_key")
@@ -250,7 +279,7 @@ def object_store_secret_ddl(source: "Source") -> str | None:
         )
         return (
             f"CREATE OR REPLACE SECRET {name} (TYPE azure, CONNECTION_STRING "
-            f"{_quoted(connection)}, SCOPE {_quoted(_scope(path))})"
+            f"{lit(connection)}, SCOPE {lit(_scope(path))})"
         )
     return None
 
@@ -290,7 +319,7 @@ class DuckDBParquetConnector(Connector):
 
     def details(self, source: Source) -> dict:
         return {
-            "view_ddl": f"CREATE VIEW {source.id} AS SELECT * FROM read_parquet('{_located(source)}')",
+            "view_ddl": _scan_view_ddl(source, "read_parquet", _located(source)),
             **file_location_details(source),  # REQ-1997: any location, with its credentials
         }
 
@@ -299,9 +328,11 @@ class DuckDBSqliteConnector(Connector):
     engine = "duckdb"
     source_type = "sqlite"
     mechanism = Mechanism.ATTACH_RW  # the sqlite extension attaches the file in place
+    staged_needs = ("sqlite",)  # REQ-1142: a core wheel's, as postgres
 
     def capability(self) -> Capability:
-        return Capability(predicate_pushdown=True, write=True)
+        # REQ-863: measured on DuckDB 2.0, the sqlite extension pushes projections only.
+        return Capability(write=True)
 
     def details(self, source: Source) -> dict:
         # ``_src_`` alias: distinct from the physical catalog the runtime creates (see the postgres
@@ -309,7 +340,7 @@ class DuckDBSqliteConnector(Connector):
         # regardless of the registered schema name — the runtime references the remote there.
         alias = f"_src_{source.id}"
         return {
-            "attach": f"ATTACH '{_located(source)}' AS \"{alias}\" ({_attach_options(source, 'sqlite')})",
+            "attach": f"ATTACH {lit(_located(source))} AS {ident(alias)} ({_attach_options(source, 'sqlite')})",
             "raw_alias": alias,
             "remote_schema": "main",
             **file_location_details(source),  # REQ-1997: any location, with its credentials
@@ -331,7 +362,7 @@ class DuckDBDuckdbConnector(Connector):
         # remote under its default ``main`` schema, aliased away from the physical catalog.
         alias = f"_src_{source.id}"
         return {
-            "attach": f"ATTACH '{_located(source)}' AS \"{alias}\" ({_attach_options(source, 'duckdb')})",
+            "attach": f"ATTACH {lit(_located(source))} AS {ident(alias)} ({_attach_options(source, 'duckdb')})",
             "raw_alias": alias,
             "remote_schema": "main",
             **file_location_details(source),  # REQ-1997: any location, with its credentials
@@ -363,22 +394,20 @@ class _DuckDBExtensionConnector(Connector):  # REQ-899
     def capability(self) -> Capability:
         return Capability(predicate_pushdown=True)
 
-    def _install_sql(self) -> str:
-        return (
-            f"INSTALL {self.extension} FROM community"
-            if self.install_from_community
-            else f"INSTALL {self.extension}"
-        )
+    def _bring_up(self) -> list[str]:
+        if self.extension is None:  # every extension connector names its extension
+            raise TypeError(f"{type(self).__name__} names no extension")
+        return bring_up_statements(self.extension, from_community=self.install_from_community)
 
     async def probe(self, fetch) -> ProbeResult:  # REQ-904 / REQ-899 — load-only, no live source
         try:
-            await fetch(self._install_sql())
-            await fetch(f"LOAD {self.extension}")
+            for statement in self._bring_up():
+                await fetch(statement)
         except Exception as e:
             return ProbeResult(
                 False,
                 f"{self.extension} did not load: {type(e).__name__}",
-                f"stage it: {self._install_sql()}",
+                f"stage it: {'; '.join(self._bring_up())}",
             )
         rows = await fetch(self._registered_query())
         if rows and rows[0]["n"]:
@@ -395,7 +424,7 @@ class _DuckDBExtensionConnector(Connector):  # REQ-899
         """``SELECT count(*) AS n ...`` of what the loaded extension must have registered."""
         return (
             "SELECT count(*) AS n FROM duckdb_functions() "
-            f"WHERE function_name = '{self.probe_symbol}'"
+            f"WHERE function_name = {lit(str(self.probe_symbol))}"
         )
 
     def _registered_what(self) -> str:
@@ -458,11 +487,18 @@ class _DuckDBPgwireConnector(_DuckDBExtensionConnector):  # REQ-1690
 
         ports = ensure_endpoint(source)
         password = sign_in_password(source)
-        pw = f" password={password}" if password else ""
-        dsn = f"host={ports.pgwire_host} port={ports.pgwire_port} user=provisa dbname=provisa{pw}"
+        fields: dict[str, str | int] = {
+            "host": ports.pgwire_host,
+            "port": ports.pgwire_port,
+            "user": "provisa",
+            "dbname": "provisa",
+        }
+        if password:
+            fields["password"] = password
+        dsn = libpq_dsn(**fields)
         alias = f"_src_{source.id}"
         attached = {
-            "attach": f"ATTACH '{dsn}' AS \"{alias}\" (TYPE postgres, READ_ONLY)",
+            "attach": f"ATTACH {lit(dsn)} AS {ident(alias)} (TYPE postgres, READ_ONLY)",
             "raw_alias": alias,
         }
         if serves_table_schemas(source):
@@ -540,16 +576,27 @@ class DuckDBMssqlConnector(_DuckDBExtensionConnector):  # REQ-899
         self.source_type = source_type
         # Unique per instance: the probe report and the disabled-connector list key on it.
         self.key = "duckdb_mssql" if source_type == "sqlserver" else f"duckdb_mssql_{source_type}"
+        # REQ-1142: an Entra sign-in is an azure secret, so it needs azure staged as well.
+        self.staged_needs = ("mssql", "azure") if source_type in self.ENTRA_TYPES else ("mssql",)
 
     def details(self, source: Source) -> dict:
         alias = f"_src_{source.id}"
         if self.source_type not in self.ENTRA_TYPES:
-            dsn = (
-                f"Server={source.host},{source.port};Database={source.database};"
-                f"User Id={source.username};Password={source.password}"
+            dsn = ado_dsn(
+                ("Server", f"{source.host},{source.port}"),
+                ("Database", source.database),
+                ("User Id", source.username),
+                ("Password", source.password),
             )
-            return {"attach": f"ATTACH '{dsn}' AS \"{alias}\" (TYPE mssql)", "raw_alias": alias}
-        from provisa.compiler.sql_literals import sql_literal
+            # The mssql extension for DuckDB 2.0 verifies the server's TLS certificate: a
+            # self-signed one is accepted only where the source pins it (federation_hints), as
+            # Source.jdbc_url does for Trino -- never a default.
+            if source.federation_hints.get("trust_server_certificate"):
+                dsn += ";TrustServerCertificate=yes"
+            return {
+                "attach": f"ATTACH {lit(dsn)} AS {ident(alias)} (TYPE mssql)",
+                "raw_alias": alias,
+            }
         from provisa.core.secrets import resolve_secrets
 
         hints = {k: resolve_secrets(v) for k, v in source.federation_hints.items()}
@@ -557,9 +604,9 @@ class DuckDBMssqlConnector(_DuckDBExtensionConnector):  # REQ-899
         if hints.get("tenant_id") and hints.get("client_id") and hints.get("client_secret"):
             provider = (
                 "PROVIDER service_principal, "
-                f"TENANT_ID {sql_literal(hints['tenant_id'], 'duckdb')}, "
-                f"CLIENT_ID {sql_literal(hints['client_id'], 'duckdb')}, "
-                f"CLIENT_SECRET {sql_literal(hints['client_secret'], 'duckdb')}"
+                f"TENANT_ID {lit(hints['tenant_id'])}, "
+                f"CLIENT_ID {lit(hints['client_id'])}, "
+                f"CLIENT_SECRET {lit(hints['client_secret'])}"
             )
         else:
             # The source names no identity of its own: the ambient one, as the DIRECT driver uses
@@ -567,12 +614,14 @@ class DuckDBMssqlConnector(_DuckDBExtensionConnector):  # REQ-899
             # 'env;cli' with no AZURE_* variables set it fails on 'env' (verified live), so the
             # ambient identity is the Azure CLI's signed-in one.
             provider = "PROVIDER credential_chain, CHAIN 'cli'"
-        dsn = f"Server={source.host},{source.port or 1433};Database={source.database}"
+        dsn = ado_dsn(
+            ("Server", f"{source.host},{source.port or 1433}"), ("Database", source.database)
+        )
         return {
             "attach": (
-                f'CREATE OR REPLACE SECRET "{secret}" (TYPE azure, {provider}); '
-                f'ATTACH {sql_literal(dsn, "duckdb")} AS "{alias}" '
-                f"(TYPE mssql, AZURE_SECRET '{secret}')"
+                f"CREATE OR REPLACE SECRET {ident(secret)} (TYPE azure, {provider}); "
+                f"ATTACH {lit(dsn)} AS {ident(alias)} "
+                f"(TYPE mssql, AZURE_SECRET {lit(secret)})"
             ),
             "raw_alias": alias,
         }
@@ -587,14 +636,13 @@ class DuckDBMongoConnector(_DuckDBExtensionConnector):  # REQ-899
     probe_symbol = "mongo_scan"
 
     def details(self, source: Source) -> dict:
-        from provisa.compiler.sql_literals import sql_literal
         from provisa.mongodb.fetch import MongoConnection
 
         # REQ-1985: the extension takes a mongodb:// or mongodb+srv:// connection string; the
         # source's credentials are encoded into it.
-        dsn = sql_literal(MongoConnection.from_source(source).url(), "duckdb")
+        dsn = MongoConnection.from_source(source).url()
         return {
-            "attach": f'ATTACH {dsn} AS "_src_{source.id}" (TYPE mongo)',
+            "attach": f"ATTACH {lit(dsn)} AS {ident('_src_' + source.id)} (TYPE mongo)",
             "raw_alias": f"_src_{source.id}",
         }
 
@@ -611,11 +659,7 @@ class DuckDBSnowflakeConnector(_DuckDBExtensionConnector):  # REQ-899
     probe_symbol = "snowflake_query"
 
     def details(self, source: Source) -> dict:
-        from provisa.compiler.sql_literals import sql_literal
         from provisa.core.secrets import resolve_secrets
-
-        def lit(value: str) -> str:
-            return sql_literal(value, "duckdb")
 
         host = resolve_secrets(source.host or "")
         suffix = ".snowflakecomputing.com"
@@ -624,7 +668,7 @@ class DuckDBSnowflakeConnector(_DuckDBExtensionConnector):  # REQ-899
             "TYPE snowflake",
             f"ACCOUNT {lit(account)}",
             f"USER {lit(resolve_secrets(source.username or ''))}",
-            f"PASSWORD {lit(resolve_secrets(source.password or ''))}",
+            f"PASSWORD {lit(resolve_secrets(source.password or '', credential=True))}",
             f"DATABASE {lit(resolve_secrets(source.database or ''))}",
         ]
         for hint, option in (("warehouse", "WAREHOUSE"), ("role", "ROLE")):
@@ -634,8 +678,8 @@ class DuckDBSnowflakeConnector(_DuckDBExtensionConnector):  # REQ-899
         alias = f"_src_{source.id}"
         return {
             "attach": (
-                f'CREATE OR REPLACE SECRET "{secret}" ({", ".join(options)}); '
-                f'ATTACH \'\' AS "{alias}" (TYPE snowflake, SECRET "{secret}", READ_ONLY)'
+                f"CREATE OR REPLACE SECRET {ident(secret)} ({', '.join(options)}); "
+                f"ATTACH '' AS {ident(alias)} (TYPE snowflake, SECRET {ident(secret)}, READ_ONLY)"
             ),
             "raw_alias": alias,
         }
@@ -681,11 +725,9 @@ class DuckDBMotherDuckConnector(_DuckDBExtensionConnector):  # REQ-1998
         database = source.database
         if not database:
             raise ValueError(f"Source {source.id!r}: name the MotherDuck database to attach")
-        from provisa.compiler.sql_literals import sql_literal
-
         alias = f"_src_{source.id}"
         return {
-            "attach": f'ATTACH {sql_literal("md:" + database, "duckdb")} AS "{alias}"',
+            "attach": f"ATTACH {lit('md:' + database)} AS {ident(alias)}",
             "raw_alias": alias,
             "signs_in": "motherduck",
         }
@@ -703,7 +745,10 @@ class DuckDBBigQueryConnector(_DuckDBExtensionConnector):  # REQ-899
     def details(self, source: Source) -> dict:
         project = source.federation_hints["project"]
         return {
-            "attach": f"ATTACH 'project={project}' AS \"_src_{source.id}\" (TYPE bigquery, READ_ONLY)",
+            "attach": (
+                f"ATTACH {lit(bigquery_dsn(project))} AS {ident('_src_' + source.id)} "
+                "(TYPE bigquery, READ_ONLY)"
+            ),
             "raw_alias": f"_src_{source.id}",
         }
 
@@ -717,12 +762,11 @@ class DuckDBFirebirdConnector(_DuckDBExtensionConnector):  # REQ-899
     probe_symbol = "firebird_scan"
 
     def details(self, source: Source) -> dict:
-        dsn = (
-            f"firebird://{source.username}:{source.password}"
-            f"@{source.host}:{source.port}/{source.path}"
-        )
+        if source.path is None:
+            raise ValueError(f"firebird source {source.id!r} has no path (the database file)")
+        dsn = firebird_url(source.username, source.password, source.host, source.port, source.path)
         return {
-            "attach": f"ATTACH '{dsn}' AS \"_src_{source.id}\" (TYPE firebird)",
+            "attach": f"ATTACH {lit(dsn)} AS {ident('_src_' + source.id)} (TYPE firebird)",
             "raw_alias": f"_src_{source.id}",
         }
 
@@ -754,14 +798,12 @@ class DuckDBGsheetsConnector(_DuckDBExtensionConnector):  # REQ-899
                 "google_sheets connector"
             )
         sheet = source.database
-        details: dict[str, str] = {
-            "view_ddl": f"CREATE VIEW {source.id} AS SELECT * FROM read_gsheet('{sheet}')"
-        }
+        details: dict[str, str] = {"view_ddl": _scan_view_ddl(source, "read_gsheet", sheet)}
         credentials = source.mapping.get("credentials_json")
         if credentials:
             details["secret_ddl"] = (
-                f'CREATE OR REPLACE SECRET "_gsheet_{source.id}" '
-                f"(TYPE gsheet, PROVIDER key_file, FILEPATH '{credentials}')"
+                f"CREATE OR REPLACE SECRET {ident('_gsheet_' + source.id)} "
+                f"(TYPE gsheet, PROVIDER key_file, FILEPATH {lit(credentials)})"
             )
         return details
 
@@ -782,7 +824,7 @@ class DuckDBAirportConnector(_DuckDBExtensionConnector):  # REQ-899
     def details(self, source: Source) -> dict:
         location = source.base_url or f"grpc://{source.host}:{source.port}"
         return {
-            "attach": f"ATTACH '{location}' AS \"_src_{source.id}\" (TYPE AIRPORT)",
+            "attach": f"ATTACH {lit(location)} AS {ident('_src_' + source.id)} (TYPE AIRPORT)",
             "raw_alias": f"_src_{source.id}",
         }
 
@@ -796,13 +838,14 @@ class DuckDBIcebergConnector(_DuckDBExtensionConnector):  # REQ-899
     source_type = "iceberg"
     key = "duckdb_iceberg"
     extension = "iceberg"
+    staged_needs = ("iceberg", "avro")  # REQ-1142: iceberg loads avro
     install_from_community = False  # core registry — INSTALL iceberg (no FROM community)
     probe_symbol = "iceberg_scan"
     mechanism = Mechanism.SCAN  # iceberg_scan scanner view — read in place, no attach (REQ-951)
 
     def details(self, source: Source) -> dict:
         details: dict[str, str] = {
-            "view_ddl": f"CREATE VIEW {source.id} AS SELECT * FROM iceberg_scan('{source.path}')"
+            "view_ddl": _scan_view_ddl(source, "iceberg_scan", str(source.path))
         }
         secret_ddl = _s3_secret_ddl(source)
         if secret_ddl:
@@ -826,7 +869,7 @@ class DuckDBDeltaConnector(_DuckDBExtensionConnector):  # REQ-899
 
     def details(self, source: Source) -> dict:
         details: dict[str, str] = {
-            "view_ddl": f"CREATE VIEW {source.id} AS SELECT * FROM delta_scan('{source.path}')"
+            "view_ddl": _scan_view_ddl(source, "delta_scan", str(source.path))
         }
         secret_ddl = _s3_secret_ddl(source)
         if secret_ddl:
@@ -850,6 +893,7 @@ class DuckDBDatabricksIcebergConnector(_DuckDBExtensionConnector):  # REQ-1867
     source_type = "databricks"
     key = "duckdb_databricks_iceberg"
     extension = "iceberg"
+    staged_needs = ("iceberg", "avro")  # REQ-1142: iceberg loads avro
     install_from_community = False  # core registry — INSTALL iceberg (no FROM community)
     probe_symbol = "iceberg_scan"
     mechanism = Mechanism.SCAN  # iceberg_scan scanner view — read in place, no copy (REQ-951)
@@ -966,13 +1010,14 @@ class PostgresFdwConnector(Connector):  # REQ-893
         return {
             "attach_ddl": [
                 "CREATE EXTENSION IF NOT EXISTS postgres_fdw",
-                f'CREATE SERVER IF NOT EXISTS "{server}" FOREIGN DATA WRAPPER postgres_fdw '
-                f"OPTIONS (host '{source.host}', port '{source.port}', dbname '{source.database}')",
-                f'CREATE USER MAPPING IF NOT EXISTS FOR CURRENT_USER SERVER "{server}" '
-                f"OPTIONS (user '{source.username}', password '{source.password}')",
-                f'CREATE SCHEMA IF NOT EXISTS "{local_schema}"',
-                f'IMPORT FOREIGN SCHEMA "{remote_schema}" FROM SERVER "{server}" '
-                f'INTO "{local_schema}"',
+                f"CREATE SERVER IF NOT EXISTS {pg_ident(server)} FOREIGN DATA WRAPPER postgres_fdw "
+                f"OPTIONS (host {pg_lit(source.host)}, port {pg_lit(source.port)}, "
+                f"dbname {pg_lit(source.database)})",
+                f"CREATE USER MAPPING IF NOT EXISTS FOR CURRENT_USER SERVER {pg_ident(server)} "
+                f"OPTIONS (user {pg_lit(source.username)}, password {pg_lit(source.password)})",
+                f"CREATE SCHEMA IF NOT EXISTS {pg_ident(local_schema)}",
+                f"IMPORT FOREIGN SCHEMA {pg_ident(remote_schema)} FROM SERVER {pg_ident(server)} "
+                f"INTO {pg_ident(local_schema)}",
             ],
             "local_schema": local_schema,
             # What an engine-side copy of ONE table needs (replica_target.pg_statement_copy):
@@ -980,11 +1025,12 @@ class PostgresFdwConnector(Connector):  # REQ-893
             # foreign table by.
             "server_ddl_for_copy": [
                 "CREATE EXTENSION IF NOT EXISTS postgres_fdw",
-                f'CREATE SERVER IF NOT EXISTS "{server}" FOREIGN DATA WRAPPER postgres_fdw '
-                f"OPTIONS (host '{source.host}', port '{source.port}', dbname '{source.database}')",
-                f'CREATE USER MAPPING IF NOT EXISTS FOR CURRENT_USER SERVER "{server}" '
-                f"OPTIONS (user '{source.username}', password '{source.password}')",
-                f'CREATE SCHEMA IF NOT EXISTS "{local_schema}"',
+                f"CREATE SERVER IF NOT EXISTS {pg_ident(server)} FOREIGN DATA WRAPPER postgres_fdw "
+                f"OPTIONS (host {pg_lit(source.host)}, port {pg_lit(source.port)}, "
+                f"dbname {pg_lit(source.database)})",
+                f"CREATE USER MAPPING IF NOT EXISTS FOR CURRENT_USER SERVER {pg_ident(server)} "
+                f"OPTIONS (user {pg_lit(source.username)}, password {pg_lit(source.password)})",
+                f"CREATE SCHEMA IF NOT EXISTS {pg_ident(local_schema)}",
             ],
             "server": server,
             "remote_schema": remote_schema,
@@ -1033,14 +1079,15 @@ class PgClickHouseFdwConnector(Connector):  # REQ-1870
         return {
             "attach_ddl": [
                 "CREATE EXTENSION IF NOT EXISTS pg_clickhouse",
-                f'CREATE SERVER IF NOT EXISTS "{server}" FOREIGN DATA WRAPPER clickhouse_fdw '
-                f"OPTIONS (driver 'http', host '{source.host}', port '{port}', "
-                f"secure '{'on' if secure else 'off'}', dbname '{remote_database}')",
-                f'CREATE USER MAPPING IF NOT EXISTS FOR CURRENT_USER SERVER "{server}" '
-                f"OPTIONS (user '{source.username or 'default'}', password '{source.password}')",
-                f'CREATE SCHEMA IF NOT EXISTS "{local_schema}"',
-                f'IMPORT FOREIGN SCHEMA "{remote_database}" FROM SERVER "{server}" '
-                f'INTO "{local_schema}"',
+                f"CREATE SERVER IF NOT EXISTS {pg_ident(server)} FOREIGN DATA WRAPPER clickhouse_fdw "
+                f"OPTIONS (driver 'http', host {pg_lit(source.host)}, port {pg_lit(port)}, "
+                f"secure {pg_lit('on' if secure else 'off')}, dbname {pg_lit(remote_database)})",
+                f"CREATE USER MAPPING IF NOT EXISTS FOR CURRENT_USER SERVER {pg_ident(server)} "
+                f"OPTIONS (user {pg_lit(source.username or 'default')}, "
+                f"password {pg_lit(source.password)})",
+                f"CREATE SCHEMA IF NOT EXISTS {pg_ident(local_schema)}",
+                f"IMPORT FOREIGN SCHEMA {pg_ident(remote_database)} FROM SERVER {pg_ident(server)} "
+                f"INTO {pg_ident(local_schema)}",
             ],
             "local_schema": local_schema,
         }
@@ -1172,15 +1219,15 @@ class _PgPgwireConnector(Connector):  # REQ-1730
 
         ports = ensure_endpoint(source)  # starts (once) the source's bundled Calcite pgwire server
         password = sign_in_password(source)
-        pw = f", password '{password}'" if password else ""
+        pw = f", password {pg_lit(password)}" if password else ""
         server = engine_attach_name("fdw_pgwire", attach_catalog(source))
         local_schema = engine_attach_name("fdw_pgwire", attach_catalog(source))
         server_ddl = [
             "CREATE EXTENSION IF NOT EXISTS postgres_fdw",
-            f'CREATE SERVER IF NOT EXISTS "{server}" FOREIGN DATA WRAPPER postgres_fdw '
-            f"OPTIONS (host '{ports.pgwire_host}', port '{ports.pgwire_port}', "
+            f"CREATE SERVER IF NOT EXISTS {pg_ident(server)} FOREIGN DATA WRAPPER postgres_fdw "
+            f"OPTIONS (host {pg_lit(ports.pgwire_host)}, port {pg_lit(ports.pgwire_port)}, "
             f"dbname 'provisa')",
-            f'CREATE USER MAPPING IF NOT EXISTS FOR CURRENT_USER SERVER "{server}" '
+            f"CREATE USER MAPPING IF NOT EXISTS FOR CURRENT_USER SERVER {pg_ident(server)} "
             f"OPTIONS (user 'provisa'{pw})",
         ]
         if serves_table_schemas(source):
@@ -1191,12 +1238,12 @@ class _PgPgwireConnector(Connector):  # REQ-1730
 
             schema = remote_schema(source, getattr(source, "schema_name", None))
             local_schema = f"{local_schema}_{schema}"
-            server_ddl.append(f'CREATE SCHEMA IF NOT EXISTS "{local_schema}"')
+            server_ddl.append(f"CREATE SCHEMA IF NOT EXISTS {pg_ident(local_schema)}")
             return {
                 "attach_ddl": [
                     *server_ddl,
-                    f'IMPORT FOREIGN SCHEMA "{schema}" FROM SERVER "{server}" '
-                    f'INTO "{local_schema}"',
+                    f"IMPORT FOREIGN SCHEMA {pg_ident(schema)} FROM SERVER {pg_ident(server)} "
+                    f"INTO {pg_ident(local_schema)}",
                 ],
                 "local_schema": local_schema,
                 "server_ddl_for_copy": server_ddl,
@@ -1206,9 +1253,9 @@ class _PgPgwireConnector(Connector):  # REQ-1730
         return {
             "attach_ddl": [
                 *server_ddl,
-                f'CREATE SCHEMA IF NOT EXISTS "{local_schema}"',
-                f'IMPORT FOREIGN SCHEMA {schema_name(source)} FROM SERVER "{server}" '
-                f'INTO "{local_schema}"',
+                f"CREATE SCHEMA IF NOT EXISTS {pg_ident(local_schema)}",
+                f"IMPORT FOREIGN SCHEMA {pg_ident(schema_name(source))} "
+                f"FROM SERVER {pg_ident(server)} INTO {pg_ident(local_schema)}",
             ],
             "local_schema": local_schema,
         }
@@ -1270,10 +1317,12 @@ class FileFdwConnector(Connector):  # REQ-893
         return {
             "server_ddl": [
                 "CREATE EXTENSION IF NOT EXISTS file_fdw",
-                f'CREATE SERVER IF NOT EXISTS "{server}" FOREIGN DATA WRAPPER file_fdw',
+                f"CREATE SERVER IF NOT EXISTS {pg_ident(server)} FOREIGN DATA WRAPPER file_fdw",
             ],
             "server": server,
-            "table_options": f"OPTIONS (filename '{_located(source)}', format 'csv', header 'true')",
+            "table_options": (
+                f"OPTIONS (filename {pg_lit(_located(source))}, format 'csv', header 'true')"
+            ),
         }
 
 
@@ -1304,10 +1353,11 @@ class SqliteFdwConnector(Connector):  # REQ-907
         return {
             "attach_ddl": [
                 "CREATE EXTENSION IF NOT EXISTS sqlite_fdw",
-                f'CREATE SERVER IF NOT EXISTS "{server}" FOREIGN DATA WRAPPER sqlite_fdw '
-                f"OPTIONS (database '{_located(source)}')",
-                f'CREATE SCHEMA IF NOT EXISTS "{local_schema}"',
-                f'IMPORT FOREIGN SCHEMA public FROM SERVER "{server}" INTO "{local_schema}"',
+                f"CREATE SERVER IF NOT EXISTS {pg_ident(server)} FOREIGN DATA WRAPPER sqlite_fdw "
+                f"OPTIONS (database {pg_lit(_located(source))})",
+                f"CREATE SCHEMA IF NOT EXISTS {pg_ident(local_schema)}",
+                f"IMPORT FOREIGN SCHEMA public FROM SERVER {pg_ident(server)} "
+                f"INTO {pg_ident(local_schema)}",
             ],
             "local_schema": local_schema,
         }
@@ -1343,12 +1393,13 @@ class MysqlFdwConnector(Connector):  # REQ-907
         return {
             "attach_ddl": [
                 "CREATE EXTENSION IF NOT EXISTS mysql_fdw",
-                f'CREATE SERVER IF NOT EXISTS "{server}" FOREIGN DATA WRAPPER mysql_fdw '
-                f"OPTIONS (host '{source.host}', port '{source.port}')",
-                f'CREATE USER MAPPING IF NOT EXISTS FOR CURRENT_USER SERVER "{server}" '
-                f"OPTIONS (username '{source.username}', password '{source.password}')",
-                f'CREATE SCHEMA IF NOT EXISTS "{local_schema}"',
-                f'IMPORT FOREIGN SCHEMA {remote_schema} FROM SERVER "{server}" INTO "{local_schema}"',
+                f"CREATE SERVER IF NOT EXISTS {pg_ident(server)} FOREIGN DATA WRAPPER mysql_fdw "
+                f"OPTIONS (host {pg_lit(source.host)}, port {pg_lit(source.port)})",
+                f"CREATE USER MAPPING IF NOT EXISTS FOR CURRENT_USER SERVER {pg_ident(server)} "
+                f"OPTIONS (username {pg_lit(source.username)}, password {pg_lit(source.password)})",
+                f"CREATE SCHEMA IF NOT EXISTS {pg_ident(local_schema)}",
+                f"IMPORT FOREIGN SCHEMA {pg_ident(remote_schema)} FROM SERVER {pg_ident(server)} "
+                f"INTO {pg_ident(local_schema)}",
             ],
             "local_schema": local_schema,
         }
@@ -1383,13 +1434,14 @@ class TdsFdwConnector(Connector):  # REQ-900
         return {
             "attach_ddl": [
                 "CREATE EXTENSION IF NOT EXISTS tds_fdw",
-                f'CREATE SERVER IF NOT EXISTS "{server}" FOREIGN DATA WRAPPER tds_fdw '
-                f"OPTIONS (servername '{source.host}', port '{source.port}', "
-                f"database '{source.database}', msg_handler 'notice')",
-                f'CREATE USER MAPPING IF NOT EXISTS FOR CURRENT_USER SERVER "{server}" '
-                f"OPTIONS (username '{source.username}', password '{source.password}')",
-                f'CREATE SCHEMA IF NOT EXISTS "{local_schema}"',
-                f'IMPORT FOREIGN SCHEMA {remote_schema} FROM SERVER "{server}" INTO "{local_schema}"',
+                f"CREATE SERVER IF NOT EXISTS {pg_ident(server)} FOREIGN DATA WRAPPER tds_fdw "
+                f"OPTIONS (servername {pg_lit(source.host)}, port {pg_lit(source.port)}, "
+                f"database {pg_lit(source.database)}, msg_handler 'notice')",
+                f"CREATE USER MAPPING IF NOT EXISTS FOR CURRENT_USER SERVER {pg_ident(server)} "
+                f"OPTIONS (username {pg_lit(source.username)}, password {pg_lit(source.password)})",
+                f"CREATE SCHEMA IF NOT EXISTS {pg_ident(local_schema)}",
+                f"IMPORT FOREIGN SCHEMA {pg_ident(remote_schema)} FROM SERVER {pg_ident(server)} "
+                f"INTO {pg_ident(local_schema)}",
             ],
             "local_schema": local_schema,
         }
@@ -1425,12 +1477,13 @@ class OracleFdwConnector(Connector):  # REQ-900
         return {
             "attach_ddl": [
                 "CREATE EXTENSION IF NOT EXISTS oracle_fdw",
-                f'CREATE SERVER IF NOT EXISTS "{server}" FOREIGN DATA WRAPPER oracle_fdw '
-                f"OPTIONS (dbserver '//{source.host}:{source.port}/{source.database}')",
-                f'CREATE USER MAPPING IF NOT EXISTS FOR CURRENT_USER SERVER "{server}" '
-                f"OPTIONS (user '{source.username}', password '{source.password}')",
-                f'CREATE SCHEMA IF NOT EXISTS "{local_schema}"',
-                f'IMPORT FOREIGN SCHEMA "{remote_schema}" FROM SERVER "{server}" INTO "{local_schema}"',
+                f"CREATE SERVER IF NOT EXISTS {pg_ident(server)} FOREIGN DATA WRAPPER oracle_fdw "
+                f"OPTIONS (dbserver {pg_lit(f'//{source.host}:{source.port}/{source.database}')})",
+                f"CREATE USER MAPPING IF NOT EXISTS FOR CURRENT_USER SERVER {pg_ident(server)} "
+                f"OPTIONS (user {pg_lit(source.username)}, password {pg_lit(source.password)})",
+                f"CREATE SCHEMA IF NOT EXISTS {pg_ident(local_schema)}",
+                f"IMPORT FOREIGN SCHEMA {pg_ident(remote_schema)} FROM SERVER {pg_ident(server)} "
+                f"INTO {pg_ident(local_schema)}",
             ],
             "local_schema": local_schema,
         }
@@ -1483,7 +1536,7 @@ class _PgDuckdbScanConnector(Connector):  # REQ-901
         return {
             "requires_preload": "pg_duckdb",
             "reader": self._reader,
-            "scan": f"{self._reader}('{_located(source)}'{self._scan_args})",
+            "scan": f"{self._reader}({pg_lit(_located(source))}{self._scan_args})",
         }
 
 

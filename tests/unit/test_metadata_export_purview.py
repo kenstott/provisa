@@ -118,7 +118,6 @@ def _snapshot(
                 domain_id=domain,
                 schema_name="public",
                 table_name=name,
-                product_id="sales_360" if members else None,
                 cache_ttl=ttl,
                 columns=[Column(name="id", data_type="integer", visible_to=["admin"])],
             )
@@ -135,6 +134,7 @@ def _snapshot(
                 limitations="No refunds",
                 status=status,
                 status_reason="Replaced." if status in ("deprecated", "retired") else None,
+                tables=["pg.public.orders", "pg.public.customers"] if members else [],
             )
         ],
         roles=[],
@@ -437,6 +437,7 @@ def _term(term_id: int, name: str, **extra: Any) -> dict:
         "approved": True,
         "retired": False,
         "export_excluded": False,
+        "calculation_method": None,
         "status_reason": None,
         "retire_on": None,
         **extra,

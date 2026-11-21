@@ -61,19 +61,19 @@ async def plane(monkeypatch, control_plane) -> Database:
             await conn.execute_core(
                 insert(data_products).values(id=product_id, domain_id="sales", name=product_id)
             )
-        await conn.execute_core(
-            insert(registered_tables).values(
-                source_id="pg",
-                domain_id="sales",
-                schema_name="public",
-                table_name="orders",
-                product_id="orders_product",
+        table_id_of_orders = (
+            await conn.execute_core(
+                insert(registered_tables)
+                .values(
+                    source_id="pg", domain_id="sales", schema_name="public", table_name="orders"
+                )
+                .returning(registered_tables.c.id)
             )
-        )
-        await conn.execute_core(
-            insert(tracked_functions).values(
-                name="refund", domain_id="sales", product_id="orders_product"
-            )
+        ).scalar_one()
+        await conn.execute_core(insert(tracked_functions).values(name="refund", domain_id="sales"))
+        # REQ-1634: membership is its own relation.
+        await data_product_repo.set_members(
+            conn, "orders_product", table_ids=[table_id_of_orders], commands=["refund"]
         )
     monkeypatch.setattr(appmod.state, "tenant_db", db, raising=False)
     return db
@@ -89,12 +89,12 @@ async def test_a_data_product_with_members_is_refused_naming_each(plane):
         table_id = (await conn.execute_core(select(registered_tables.c.id))).scalar_one()
         with pytest.raises(data_product_repo.DataProductDeleteRefused) as err:
             await data_product_repo.delete(conn, "orders_product")
-        still = (await conn.execute_core(select(registered_tables.c.product_id))).scalar_one()
+        still = await data_product_repo.products_of_table(conn, table_id)
     assert [(d.ref.kind, d.ref.id) for d in err.value.dependents] == [
         ("command", "refund"),
         ("table", table_id),
     ]
-    assert still == "orders_product" and await _count(plane, data_products) == 2
+    assert still == ["orders_product"] and await _count(plane, data_products) == 2
 
 
 async def test_a_data_product_with_no_members_goes_with_its_tags(plane):
@@ -126,7 +126,8 @@ async def test_the_mutation_refuses_with_the_members(plane, monkeypatch):
     assert await _count(plane, data_products) == 2
 
 
-async def test_a_tag_takes_its_assignments_and_values_with_it(plane):
+async def test_a_tag_is_retired_with_its_assignments_and_values_kept(plane):
+    """REQ-2248: deleting it retires it; what is attached to it is kept."""
     async with plane.acquire() as conn:
         for tag_id in ("pii", "gold"):
             await conn.execute_core(insert(tags).values(id=tag_id))
@@ -145,5 +146,10 @@ async def test_a_tag_takes_its_assignments_and_values_with_it(plane):
         assert await tag_repo.delete(conn, "pii:high") is True  # any value names the tag
         assert await tag_repo.delete(conn, "pii") is False
         left = (await conn.execute_core(select(tag_assignments.c.base_tag_id))).fetchall()
-    assert [r[0] for r in left] == ["gold"]
-    assert await _count(plane, tag_param_values) == 0 and await _count(plane, tags) == 1
+    assert sorted(r[0] for r in left) == ["gold", "pii", "pii"]
+    assert await _count(plane, tag_param_values) == 1 and await _count(plane, tags) == 2
+    async with plane.acquire() as conn:
+        retired = (
+            await conn.execute_core(select(tags.c.retired).where(tags.c.id == "pii"))
+        ).scalar_one()
+    assert retired is True

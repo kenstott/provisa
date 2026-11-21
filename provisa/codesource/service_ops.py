@@ -27,6 +27,9 @@ for the worker holding the token, as JSON:
   ``REQUESTS_CA_BUNDLE``), recorded in the org's trail.
 - ``log`` POST ``{level, message, fields}`` and ``metric`` POST ``{name, value, kind,
   attributes}``: a log record and a metric point attached to the request the call serves.
+- ``audit`` POST ``{event, fields}``: a structured event the code writes to the org's trail, with
+  the trace of the request the call serves. Its fields are redacted as every record Provisa writes
+  is; a secret the code read through ``secrets`` is matched by value, in a key as in a value.
 """
 
 # Requirements: REQ-2106
@@ -55,6 +58,9 @@ MAX_UPSERT = 1000
 MAX_HTTP_BODY = 32 * 1024 * 1024
 HTTP_TIMEOUT_S = 60.0
 HTTP_CALL = "code_source.http"
+#: The audit trail's action for one event the code wrote.
+CODE_AUDIT = "code_source.audit"
+MAX_AUDIT_FIELDS = 64 * 1024
 _LEVELS = {
     "debug": logging.DEBUG,
     "info": logging.INFO,
@@ -430,6 +436,7 @@ async def http(grant: ServiceGrant, method: str, body: bytes, span: Any) -> byte
     async with org_bound(grant) as (model_db, _cfg):
         await record_admin_action(
             model_db,
+            org_id=grant.org_id,
             action=HTTP_CALL,
             actor_id=f"source:{grant.source_id}",
             subject_id=parts.hostname,
@@ -530,4 +537,68 @@ def metric(grant: ServiceGrant, method: str, body: bytes, span: Any) -> bytes:
     else:
         instrument.record(value, point)
     span.set_attribute("codesource.metric", name)
+    return _answer({})
+
+
+# -- audit --------------------------------------------------------------------------------------
+
+
+def _keys_redacted(value: Any, org_id: str) -> Any:
+    """``value`` with the key of every mapping inside it redacted by ``org_id``'s rules: the
+    trail's own redaction walks the values, and an event's keys are the code's to choose."""
+    from provisa.security.redaction import redact
+
+    if isinstance(value, dict):
+        return {redact(k, org_id): _keys_redacted(v, org_id) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_keys_redacted(v, org_id) for v in value]
+    return value
+
+
+def _audit_fields(request: dict) -> dict:
+    fields = request.get("fields", {})
+    if not isinstance(fields, dict):
+        raise ServiceRefused(400, "an audit event's fields are a mapping")
+    try:
+        text = json.dumps(fields, allow_nan=False)
+    except ValueError:
+        raise ServiceRefused(400, "an audit event's numbers are finite") from None
+    if len(text.encode()) > MAX_AUDIT_FIELDS:
+        raise ServiceRefused(413, f"an audit event's fields are at most {MAX_AUDIT_FIELDS} bytes")
+    return fields
+
+
+async def audit(grant: ServiceGrant, method: str, body: bytes, span: Any) -> bytes:
+    from provisa.codesource.llm_service import org_bound
+    from provisa.core.org_membership import record_admin_action
+    from provisa.otel_compat import current_traceparent, request_event
+    from provisa.security.redaction import redact
+
+    _method(method, "POST")
+    request = _json(body)
+    event = request.get("event")
+    if not isinstance(event, str) or not _METRIC_NAME.match(event):
+        raise ServiceRefused(
+            400, "an audit event's name is lower-case letters, digits, _ and ., up to 64"
+        )
+    # The name is the row's subject, which the trail does not redact: one that would be is refused.
+    if redact(event, grant.org_id) != event:
+        raise ServiceRefused(400, "an audit event's name matches a redaction rule")
+    fields = _audit_fields(request)
+    traceparent = current_traceparent()
+    async with org_bound(grant) as (model_db, _cfg):
+        await record_admin_action(
+            model_db,
+            org_id=grant.org_id,
+            action=CODE_AUDIT,
+            actor_id=f"source:{grant.source_id}",
+            subject_id=event,
+            detail={
+                "source": grant.source_id,
+                "trace_id": traceparent.split("-")[1] if traceparent else None,
+                "fields": _keys_redacted(fields, grant.org_id),
+            },
+        )
+    request_event("codesource.audit", source=grant.source_id, event=event)
+    span.set_attribute("codesource.audit", event)
     return _answer({})

@@ -19,6 +19,12 @@ import pytest
 
 from provisa.compiler.stage2 import GovernanceContext, apply_governance
 from provisa.security.masking import MaskingRule, MaskType
+from tests.governed_pg import assert_same_answer, governed_database
+
+
+@pytest.fixture(scope="module")
+def pg(embedded_postgres):
+    return governed_database(embedded_postgres, "test_masked_column_name")
 
 
 def _gov() -> GovernanceContext:
@@ -43,5 +49,5 @@ def _gov() -> GovernanceContext:
         ("SELECT id FROM sales.orders", "SELECT id FROM sales.orders"),
     ],
 )
-def test_a_masked_column_keeps_its_name(sql, governed):
-    assert apply_governance(sql, _gov()) == governed
+def test_a_masked_column_keeps_its_name(sql, governed, pg):
+    assert_same_answer(pg, apply_governance(sql, _gov()), governed)

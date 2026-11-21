@@ -14,6 +14,8 @@
     "deleteConfirm": "Supprimer le rapport {{name}} ?",
     "deleted": "Rapport {{name}} supprimé.",
     "empty": "Aucun rapport enregistré dans le domaine ops.",
+    "filterPlaceholder": "Filtrer les rapports…",
+    "noMatch": "Aucun rapport ne correspond",
     "resize": "Redimensionner la liste des rapports",
     "drift": {
       "title": "Dérive depuis la période précédente",

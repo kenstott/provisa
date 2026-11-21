@@ -75,6 +75,7 @@ const REVENUE: GlossaryTermSummary = {
   id: 1,
   name: "Revenue",
   definition: "Money in.",
+  calculation_method: null,
   is_abstract: false,
   deprecated: false,
   ref_count: 1,
@@ -101,14 +102,15 @@ const detailOf = (term: GlossaryTermSummary): GlossaryTermDetail => ({
   experts: [],
   tags: [],
   pending_on: [],
+  iri: null,
 });
 const REVENUE_DETAIL: GlossaryTermDetail = {
   ...detailOf(REVENUE),
-  edges_out: [{ term_id: 2, rel_type: "RELATED_TO", name: "Churn" }],
+  edges_out: [{ term_id: 2, rel_type: "RELATED_TO", name: "Churn", domains: [] }],
 };
 const CHURN_DETAIL: GlossaryTermDetail = {
   ...detailOf(CHURN),
-  edges_in: [{ term_id: 1, rel_type: "RELATED_TO", name: "Revenue" }],
+  edges_in: [{ term_id: 1, rel_type: "RELATED_TO", name: "Revenue", domains: [] }],
 };
 
 describe("the RELATED_TO review link", () => {
@@ -121,14 +123,14 @@ describe("the RELATED_TO review link", () => {
   });
 
   it("opens the list filtered to the terms on a Related to edge", async () => {
-    render(<GlossaryTab />, { initialEntries: ["/admin/ontology?term=1&relatedTo=1"] });
+    render(<GlossaryTab />, { initialEntries: ["/context/ontology?term=1&relatedTo=1"] });
     await screen.findByTestId("glossary-item-1");
     expect(screen.queryByTestId("glossary-item-2")).toBeNull();
     expect(screen.getByTestId("glossary-related-to-only")).toBeChecked();
   });
 
   it("without it, the list is not filtered", async () => {
-    render(<GlossaryTab />, { initialEntries: ["/admin/ontology?term=1"] });
+    render(<GlossaryTab />, { initialEntries: ["/context/ontology?term=1"] });
     await screen.findByTestId("glossary-item-2");
     expect(screen.getByTestId("glossary-related-to-only")).not.toBeChecked();
   });

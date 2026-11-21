@@ -44,15 +44,17 @@ describe("entryItem", () => {
     expect(entryItem(admin, ["platform_settings", "cross_org"])?.to).toBe("/admin/orgs");
   });
 
-  it("gives the retired wildcard strings no admin surface at all", () => {
-    // REQ-1327: no capability stands in for another.
-    expect(entryItem(admin, ["admin"])).toBeUndefined();
-    expect(entryItem(admin, ["superadmin"])).toBeUndefined();
+  it("gives the retired wildcard strings only the pages every member opens", () => {
+    // REQ-1327: no capability stands in for another. My Secrets and Requests ask no right
+    // (amended 2026-11-14), so they are all a wildcard string reaches, as for a caller with none.
+    expect(entryItem(admin, ["admin"])?.to).toBe("/admin/my-secrets");
+    expect(entryItem(admin, ["superadmin"])?.to).toBe("/admin/my-secrets");
   });
 
-  it("returns undefined when the caller holds no admin surface", () => {
-    expect(entryItem(admin, ["query_development"])).toBeUndefined();
-    expect(entryItem(admin, [])).toBeUndefined();
+  it("enters on My Secrets when the caller holds no admin right", () => {
+    // REQ-1560, REQ-1327: every member has a vault of their own, so Admin always has a page.
+    expect(entryItem(admin, ["query_development"])?.to).toBe("/admin/my-secrets");
+    expect(entryItem(admin, [])?.to).toBe("/admin/my-secrets");
   });
 
   it("hides the org-engine tab on a deployment without the commercial plugin", () => {
@@ -68,7 +70,9 @@ describe("entryItem", () => {
     // hosted is what removes it.
     remember("/admin/federation-engine");
     expect(entryItem(admin, ["platform_settings"], true)?.to).not.toBe("/admin/federation-engine");
-    expect(entryItem(admin, ["platform_settings"], false)?.to).toBe("/admin/federation-engine");
+    expect(entryItem(admin, ["platform_settings", "cross_org"], false)?.to).toBe(
+      "/admin/federation-engine",
+    );
   });
 
   it("clears the remembered item at session start so it cannot cross identities", () => {

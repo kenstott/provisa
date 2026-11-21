@@ -135,7 +135,10 @@ def _use_db(monkeypatch, app_state, by_table: dict[str, list[dict]]) -> _Conn:
 
 def _request(role: str, org: str = "acme"):
     identity = SimpleNamespace(user_id="u1", roles=[role], acting_roles=[role])
-    return SimpleNamespace(state=SimpleNamespace(identity=identity, active_org_id=org, role=role))
+    # The MCP server's request shim: no headers, so no Idempotency-Key (REQ-2216).
+    return SimpleNamespace(
+        headers={}, state=SimpleNamespace(identity=identity, active_org_id=org, role=role)
+    )
 
 
 # -- governance: a role without the right is refused by name -----------------------------------
@@ -222,7 +225,12 @@ async def test_chat_routes_the_new_tools_and_lists_them_for_the_model(app_state)
     assert model_tool_specs.SYSTEM_SECTION in chat._SYSTEM
     with pytest.raises(ApiError, match="source_registration"):
         await chat._execute_tool(
-            app_state, "viewer", "run_profiler", {"source_id": "p"}, request=_request("viewer")
+            app_state,
+            "viewer",
+            "run_profiler",
+            {"source_id": "p"},
+            scope=None,
+            request=_request("viewer"),
         )
 
 
@@ -575,6 +583,7 @@ def _column(name: str, data_type: str, **kw: Any) -> admin_types.TableColumnType
 def _table(**kw: Any) -> admin_types.RegisteredTableType:
     base: dict[str, Any] = {
         "id": 7,
+        "registered_at": "2026-11-17T00:00:00+00:00",
         "source_id": "pg",
         "domain_id": "sales",
         "schema_name": "public",
@@ -595,9 +604,10 @@ def _table(**kw: Any) -> admin_types.RegisteredTableType:
             _column("created", "bigint", epoch_unit="ms"),
         ],
         "profiler_source_id": "prof",
-        "stored_product_id": "p1",
+        "stored_product_ids": ["p1"],
         "region": None,  # REQ-1921
-        "draft": False,  # REQ-1921
+        "withdrawn": False,  # REQ-1921
+        "source_withdrawn": False,  # REQ-1921
         "row_materialize": False,  # REQ-1865
     }
     base.update(kw)
@@ -687,11 +697,9 @@ async def test_set_column_fake_is_checked_then_saved_with_the_whole_table(monkey
     # Everything else is saved back as it was, including what the editor holds elsewhere.
     assert by_name["id"].fake is None and by_name["created"].epoch_unit == "ms"
     assert saved.mv_primary_key == ["id"]
-    assert (saved.load_protected, saved.off_peak_window, saved.product_id) == (
-        True,
-        "01:00-05:00",
-        "p1",
-    )
+    assert (saved.load_protected, saved.off_peak_window) == (True, "01:00-05:00")
+    # REQ-1634: a table's products are set on each product, never by a table's save.
+    assert not hasattr(saved, "product_id")
     assert saved.profiler_source_id == "prof"
 
 

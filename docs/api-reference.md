@@ -47,6 +47,8 @@ Execute a GraphQL query or mutation.
 }
 ```
 
+**Filters.** A field's `where` takes one condition per column, each with its operators: `eq`, `neq`, `in`, `is_null`, and on ordered types `gt`, `gte`, `lt`, `lte`, and on text `like` and `ilike` (`like` with case ignored). Conditions in one object must all hold. `_and` and `_or` take a list of where objects, all or any of which must hold; `_not` takes one where object, and keeps the rows it does not hold for. `_not` is SQL's NOT: a comparison with a null value is neither true nor false, so `{_not: {name: {eq: "x"}}}` does not keep a row whose `name` is null. A relationship's name takes a where object for the related rows. A masked column cannot be filtered on, inside `_not` as anywhere else.
+
 The request runs as its acting role: the authenticated user's role, or in dev mode (no auth) the `X-Provisa-Role` header, `org_admin` when the header is absent. The `role` field in the body does not select a role. If it is present it must equal the acting role; a different value returns `400` with code `data.role_mismatch`, naming both roles. The same rule applies to `POST /data/sql`, `POST /data/query` and `POST /query/nl`.
 
 **GraphQL over HTTP.** The endpoint follows the GraphQL-over-HTTP specification. It also answers `GET /data/graphql`, with `query`, `operationName`, `variables` and `extensions` URL-encoded (`variables` and `extensions` as JSON strings); a mutation sent with `GET` returns `405`. A request whose `Accept` lists `application/graphql-response+json` before `application/json` is answered with that media type; every other request is answered with `application/json`. A request that is not a GraphQL request returns `400`: no body, a body that is not a JSON object, or a parameter of the wrong JSON type (`query` and `operationName` are strings, `variables` and `extensions` are objects). A document that does not parse or validate, or whose variables do not coerce, is answered with its `errors` and no `data`: status `200` under `application/json`, and `400` under `application/graphql-response+json` or when `Accept` asks for a file format such as CSV.
@@ -340,7 +342,18 @@ Auto-generated [JSON:API](https://jsonapi.org)-compliant endpoint for every regi
 
 - `include`: comma-separated relationship names, physical spelling, e.g. `?include=order_items,shipment`. Each related resource is returned once in `included`, and each primary resource links what it includes under `relationships.<name>.data` (a list of resource identifiers for a to-many relationship, one identifier or `null` for a to-one).
 
-Responses are resource objects with `type`/`id`/`attributes`. A resource's `id` is its table's primary key: the key column's value, or for a composite key its columns' values in key order joined by `:` (order 7's line 2 of a table keyed `(order_id, line)` is `7:2`). A `:` or `\` inside a value is escaped with `\`. A table with no declared primary key uses its `id` column; a table with neither returns `400`, as does an `include` that reaches one. Errors follow the JSON:API error object shape.
+Responses are resource objects with `type`/`id`/`attributes`. No table is refused because it declares no primary key. A resource's `id` is chosen in this order:
+
+1. Its declared primary key. For a composite key, the values are joined by `:` in key order (`7:2` for order 7 line 2). A `:` or `\` inside a value is escaped with `\`.
+2. The column an approved relationship points at.
+3. A column named `id`.
+4. The resource's position in the response.
+
+A single-resource lookup (`GET /{type}/{id}`) is offered only when the id is a real identifier—one of the first three—not when it is a position. A table identified only by position responds to list requests and includes but not to single-resource lookups.
+
+For `include`, a resource reached by a many-to-one relationship is identified by the column that relationship points at. A resource reached by a one-to-many relationship is identified by its primary key when one is declared, otherwise by its position among its parent's included resources. Every child row stays its own resource.
+
+Errors follow the JSON:API error object shape.
 
 **Response cache:** opt in with a request header, `Cache-Control: max-age=N` or `x-provisa-cache: true` (see [Response cache request headers](#response-cache-request-headers)). Every response carries `X-Provisa-Cache: HIT|MISS`, and `X-Provisa-Cache-Age` on a hit. Two forms that disagree return `400` as a JSON:API error object.
 
@@ -639,16 +652,23 @@ Return the acting org's AI-model assignments, vector-model registry, and NL rate
 ```json
 {
   "ai_models": {
-    "nl": "claude-3-5-sonnet-20241022",
-    "embedding": "text-embedding-3-small"
+    "relationship_inference": {"vendor": "anthropic", "model": "claude-sonnet-4-5"},
+    "sql_generation": "...",
+    "...": "..."
   },
+  "model_limits": {"anthropic": {"claude-sonnet-4-5": {...}}},
   "vector_models": [...],
+  "ai_endpoints": [...],
   "nl": {"rate_limit": 20},
-  "api_keys_set": {"anthropic": true, "openai": false}
+  "api_keys_set": {"anthropic": true, "openai": false, "jev": false},
+  "deployment_keys": true,
+  "restart_required_note": "AI model settings apply to this org and take effect on the next query."
 }
 ```
 
-API keys are never sent back. `api_keys_set` says only whether each vendor has a key configured. Changes apply from the next request, with no restart.
+`ai_models` has one entry per role: `table_description`, `column_description`, `relationship_inference`, `sql_generation`, `table_selection`, `mcp_chat` and `glossary_term_finding`. Each entry is a model name, or an object with `vendor`, `model` and an optional `fallback`. The model id in the example is illustrative.
+
+API keys are never sent back. `api_keys_set` says only whether the org stored a key for each vendor and for Jev. A key the deployment's environment supplies is not counted. `deployment_keys` is `true` on an install of one organization, where a vendor with no key set falls back to the deployment's environment variable. On a server of many organizations it is `false`. See [Where an AI key comes from](secrets.md#where-an-ai-key-comes-from). Changes apply from the next request, with no restart.
 
 #### `PUT /admin/ai-models`
 
@@ -658,9 +678,18 @@ Update the org's AI-model assignments, vector-model registry, or NL rate limit. 
 
 Return the model names a vendor currently serves, for the model picker.
 
-The list is read live from the vendor's own list-models API, with the org's configured key, or with the deployment credential when the org has no key. A model released after this build shipped can be selected the same day the vendor starts serving it.
+The list is read live from the vendor's own list-models API, with the same key the org's calls to that vendor use ([Where an AI key comes from](secrets.md#where-an-ai-key-comes-from)). A model released after this build shipped can be selected the same day the vendor starts serving it.
 
-Returns `400` when the vendor publishes no list-models API (enter the model name directly in that case) or when no key is available.
+`{vendor}` may also be the id of one of your enabled AI endpoints. Its models are then read from the endpoint's own address, with the endpoint's key.
+
+| Status | Code | When |
+|---|---|---|
+| `400` | `ai_models.vendor_has_no_model_api` | The vendor publishes no list-models API and no enabled endpoint has that id. Enter the model name directly |
+| `409` | `ai.key_required` | There is no key to use for the vendor |
+| `409` | `ai.endpoint_key_unset` | The endpoint's key resolves to nothing |
+| `409` | `ai.endpoint_key_from_server`, `ai.endpoint_address_from_server` | On a server of many organizations, the endpoint's key or address comes from the server's environment |
+| `502` | `ai_models.vendor_list_failed` | The vendor rejected the listing with an HTTP error |
+| `502` | `ai_models.vendor_unreachable` | The vendor could not be reached |
 
 ---
 
@@ -755,20 +784,38 @@ Restart the federation engine container (single-node dev only).
 
 #### `POST /admin/discover/relationships`
 
-Trigger relationship discovery. Always runs FK introspection from the federation engine. Runs LLM inference if `ANTHROPIC_API_KEY` is set.
+Run relationship discovery while you wait. The run is stored like one started from the discovery dialog, and its proposals are kept as candidates.
 
 **Request body:**
 
 ```json
 {
   "scope": "domain",
-  "domain_id": "sales"
+  "domain_id": "sales",
+  "kinds": ["foreign_keys", "semantics"]
 }
 ```
 
-`scope` must be one of `"table"`, `"domain"`, `"cross-domain"`. For `"table"` scope, `table_id` (integer) is required. For `"domain"` scope, `domain_id` is required.
+`scope` is one of `"table"`, `"domain"` or `"cross-domain"`. A `"table"` scope compares the tables of that table's domain and needs `table_id` (integer). A `"domain"` scope needs `domain_id`. A `"cross-domain"` scope compares the tables of every domain. To compare chosen domains or tables, start a run with `POST /admin/discover/runs`.
 
-**Response.** `{"candidates_found": 12, "stored_ids": [1, 2, 3, ...]}`
+The caller needs the `create_relationship` capability.
+
+| Status | Code | When |
+|---|---|---|
+| `400` | `discovery.table_id_required` | `scope` is `"table"` and `table_id` is missing |
+| `400` | `discovery.domain_id_required` | `scope` is `"domain"` and `domain_id` is missing |
+| `404` | `discovery.table_not_found` | `table_id` names no registered table |
+| `422` | — | The body has a field not named here, or `kinds` is empty |
+
+`kinds` names at least one of `"foreign_keys"` and `"semantics"`. The `semantics` kind asks the model your organization assigns to relationship inference. When that model's vendor has no key to use, the request is refused with `409` and code `discovery.semantics_unavailable`.
+
+**Response.** The run, the number of candidates found, their ids, and a report for each kind that ran:
+
+```json
+{"run": {...}, "candidates_found": 12, "stored_ids": [1, 2, 3], "foreign_keys": {...}, "semantics": {...}}
+```
+
+A run that fails answers `502` with code `discovery.run_failed`.
 
 #### `GET /admin/discover/candidates`
 
@@ -836,9 +883,13 @@ Report the acting org's storage footprint against its platform allowance, and wh
 
 When the org has registered its own DSN, its materializations go there and are no longer counted against the allowance. The DSN itself is never returned.
 
-#### `PUT /admin/org-storage`
+#### `GET /admin/platform/orgs/{org_id}/storage`
 
-Register (or clear) the org's own materialization store.
+The same report for a named organization. Requires a platform administrator.
+
+#### `PUT /admin/platform/orgs/{org_id}/storage`
+
+Register (or clear) a named organization's own materialization store. Requires a platform administrator; an organization that does not exist is a 404.
 
 **Request body:**
 

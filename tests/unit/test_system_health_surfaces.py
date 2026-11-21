@@ -46,6 +46,7 @@ _NO_ROW = {
     "/data/grpc-commands",
     # Operations rather than a query language.
     "/data/compile",
+    "/data/explain",
     "/data/impute-relationships",
     "/data/ingest",
     "/data/neo4j-export",

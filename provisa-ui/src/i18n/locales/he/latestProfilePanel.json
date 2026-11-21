@@ -1,6 +1,8 @@
 {
   "latestProfilePanel": {
     "heading": "פרופיל אחרון, הרצה {{time}}",
-    "none": "עדיין אין הרצות פרופיל."
+    "none": "עדיין אין הרצות פרופיל.",
+    "viewTable": "טבלה",
+    "viewTerrain": "תבליט"
   }
 }

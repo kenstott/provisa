@@ -111,12 +111,9 @@ async def test_saving_stores_the_tier_settings_and_leaves_the_config_file_alone(
         deployment.request(
             {
                 "cache": {"enabled": False, "default_ttl": 45},
-                "hot_tables": {"auto_threshold": 500, "max_rows": "", "refresh_interval": 60},
-                "replication": {
-                    "hot_threshold": 250,
-                    "hot_interval": 120,
-                    "hot_max_rows": 5_000_000,
-                },
+                # REQ-1327: not this door's, so not stored by it (the org saves them).
+                "hot_tables": {"auto_threshold": 500},
+                "replication": {"hot_threshold": 250},
                 "materialized_views": {"default_ttl": 900},
             }
         )
@@ -125,14 +122,10 @@ async def test_saving_stores_the_tier_settings_and_leaves_the_config_file_alone(
     stored = settings_registry.resolve
     assert stored("cache.enabled") == (False, "stored")
     assert stored("cache.default_ttl") == (45, "stored")
-    assert stored("hot_tables.auto_threshold") == (500, "stored")
-    assert stored("hot_tables.max_rows") == (None, "default")  # blank clears
-    assert stored("hot_tables.refresh_interval") == (60, "stored")
-    assert stored("replication.hot_threshold") == (250, "stored")
-    assert stored("replication.hot_interval") == (120, "stored")
-    assert stored("replication.hot_max_rows") == (5_000_000, "stored")
+    assert stored("hot_tables.auto_threshold").source == "default"
+    assert stored("replication.hot_threshold") == (150, "config")
     assert stored("materialized_views.default_ttl") == (900, "stored")
-    assert "replication.hot_threshold" in result["updated"]
+    assert "replication.hot_threshold" not in result["updated"]
     assert deployment.config.read_text() == before
 
 
@@ -142,11 +135,14 @@ async def test_a_value_that_cannot_be_used_is_refused_naming_the_field(deploymen
     with pytest.raises(ApiError) as err:
         await set_cache_storage(
             deployment.request(
-                {"hot_tables": {"auto_threshold": 500}, "replication": {"hot_max_rows": "many"}}
+                {"cache": {"default_ttl": 45}, "materialized_views": {"default_ttl": "many"}}
             )
         )
-    assert (err.value.status_code, err.value.params["field"]) == (400, "replication.hot_max_rows")
-    assert settings_registry.resolve("hot_tables.auto_threshold").source == "default"
+    assert (err.value.status_code, err.value.params["field"]) == (
+        400,
+        "materialized_views.default_ttl",
+    )
+    assert settings_registry.resolve("cache.default_ttl").source == "default"
 
 
 async def test_the_page_reads_back_what_was_saved(deployment):
@@ -155,16 +151,10 @@ async def test_the_page_reads_back_what_was_saved(deployment):
     first = await get_cache_storage(deployment.request())
     # The response cache is ON unless turned off; the page used to report it off when unset.
     assert first["cache"]["enabled"] is True
-    assert first["replication"]["hot_threshold"] == 150
-    # REQ-230: with no ceiling of its own, the hot tier's row ceiling is its auto threshold.
-    assert first["hot_tables"]["max_rows"] == first["hot_tables"]["auto_threshold"]
-    await set_cache_storage(
-        deployment.request(
-            {"hot_tables": {"max_rows": 2000}, "materialized_views": {"default_ttl": 120}}
-        )
-    )
+    # REQ-1327: hot tables and replication are the org's, read from GET /admin/settings.
+    assert "replication" not in first and "hot_tables" not in first
+    await set_cache_storage(deployment.request({"materialized_views": {"default_ttl": 120}}))
     after = await get_cache_storage(deployment.request())
-    assert after["hot_tables"]["max_rows"] == 2000
     assert after["materialized_views"]["default_ttl"] == 120
 
 

@@ -8,110 +8,107 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""REQ-1634: a table's product_id must reference a DataProduct in the table's own domain.
 
-Enforced at the last write gate (table_repo.upsert) so every caller — config load, admin
-GraphQL, introspection — is covered, not only the picker UI (provisa/core/repositories/table.py).
-"""
-
-from typing import cast
-from contextlib import asynccontextmanager
-from unittest.mock import AsyncMock, MagicMock
+"""REQ-1634: a data product's members all share its domain. A table joins only products of its own
+domain (data_product.set_members, the one membership write), and a member's save -- the last write
+gate, covering config load, admin GraphQL and introspection -- may not move it out of the domain
+of any product it is a member of."""
 
 import pytest
-from sqlalchemy.sql import Select
-from sqlalchemy.sql.dml import Insert
+from sqlalchemy import insert, select
 
-from provisa.core.database import Connection
-from provisa.core.models import Table
-from provisa.core.schema_org import data_products, table_columns
-
-
-class _FakeConn:
-    """Enough of Connection for table_repo.upsert to run against a canned data_products row."""
-
-    def __init__(self, product_row: dict | None):
-        self.product_row = product_row
-        self.upsert = AsyncMock()
-        self.upsert_returning = AsyncMock(return_value=7)
-        self.inserted_columns: list[dict] = []
-
-    @asynccontextmanager
-    async def transaction(self):
-        """table_repo.upsert runs as one transaction (REQ-1914); the fake has nothing to commit."""
-        yield
-
-    async def execute_core(self, stmt, *_a, **_k):
-        if isinstance(stmt, Select) and stmt.get_final_froms()[0] is data_products:
-            result = MagicMock()
-            row = MagicMock()
-            row._mapping = self.product_row
-            result.fetchone.return_value = row if self.product_row is not None else None
-            return result
-        if isinstance(stmt, Insert) and stmt.table is table_columns:
-            self.inserted_columns.append(dict(stmt.compile().params))
-        result = MagicMock()
-        result.fetchall.return_value = []
-        result.fetchone.return_value = None
-        return result
+from provisa.core.database import Database
+from provisa.core.models import Column, DataProduct, Table
+from provisa.core.repositories import data_product as data_product_repo
+from provisa.core.repositories import table as table_repo
+from provisa.core.schema_org import domains, registered_tables, sources
 
 
-def _table(*, domain_id: str, product_id: str | None) -> Table:
+def _table(*, domain_id: str) -> Table:
     return Table(
         source_id="s",
         domain_id=domain_id,
         schema_name="public",
         table_name="orders",
-        product_id=product_id,
-        columns=[],
+        columns=[Column(name="id", data_type="integer", visible_to=["analyst"])],
     )
 
 
-@pytest.mark.asyncio
-async def test_upsert_rejects_a_product_in_a_different_domain():
-    from provisa.core.repositories import table as table_repo
-
-    conn = _FakeConn(product_row={"id": "checkout", "domain_id": "finance"})
-    tbl = _table(domain_id="sales", product_id="checkout")
-
-    with pytest.raises(ValueError, match="sales.*finance|finance.*sales"):
-        await table_repo.upsert(cast(Connection, conn), tbl)
-
-
-@pytest.mark.asyncio
-async def test_upsert_rejects_a_nonexistent_product_id():
-    from provisa.core.repositories import table as table_repo
-
-    conn = _FakeConn(product_row=None)
-    tbl = _table(domain_id="sales", product_id="missing")
-
-    with pytest.raises(ValueError, match="missing"):
-        await table_repo.upsert(cast(Connection, conn), tbl)
+@pytest.fixture
+async def plane(control_plane) -> Database:
+    """sales holding checkout, finance holding ledger, and orders registered in sales."""
+    db = control_plane.org()
+    async with db.acquire() as conn:
+        await conn.execute_core(insert(sources).values(id="s", type="postgresql"))
+        for domain in ("sales", "finance"):
+            await conn.execute_core(insert(domains).values(id=domain))
+        await data_product_repo.upsert(
+            conn, DataProduct(id="checkout", domain_id="sales", name="Checkout")
+        )
+        await data_product_repo.upsert(
+            conn, DataProduct(id="ledger", domain_id="finance", name="Ledger")
+        )
+        await table_repo.upsert(conn, _table(domain_id="sales"))
+    return db
 
 
-@pytest.mark.asyncio
-async def test_upsert_accepts_a_product_in_the_same_domain():
-    from provisa.core.repositories import table as table_repo
-
-    conn = _FakeConn(product_row={"id": "checkout", "domain_id": "sales"})
-    tbl = _table(domain_id="sales", product_id="checkout")
-
-    await table_repo.upsert(cast(Connection, conn), tbl)
-
-    conn.upsert_returning.assert_awaited_once()
-    values = conn.upsert_returning.await_args.args[1]
-    assert values["product_id"] == "checkout"
+async def _orders(conn) -> int:
+    return (
+        await conn.execute_core(
+            select(registered_tables.c.id).where(registered_tables.c.table_name == "orders")
+        )
+    ).scalar_one()
 
 
 @pytest.mark.asyncio
-async def test_upsert_allows_no_product_id():
-    from provisa.core.repositories import table as table_repo
+async def test_a_table_joining_a_product_in_a_different_domain_is_refused(plane):
+    async with plane.acquire() as conn:
+        with pytest.raises(
+            data_product_repo.MembershipRefused, match="sales.*finance|finance.*sales"
+        ):
+            await data_product_repo.set_members(
+                conn, "ledger", table_ids=[await _orders(conn)], commands=[]
+            )
+        assert await data_product_repo.member_table_ids(conn, "ledger") == []
 
-    conn = _FakeConn(product_row=None)
-    tbl = _table(domain_id="sales", product_id=None)
 
-    await table_repo.upsert(cast(Connection, conn), tbl)
+@pytest.mark.asyncio
+async def test_a_nonexistent_product_is_refused(plane):
+    async with plane.acquire() as conn:
+        with pytest.raises(data_product_repo.MembershipRefused, match="missing"):
+            await data_product_repo.set_members(
+                conn, "missing", table_ids=[await _orders(conn)], commands=[]
+            )
 
-    conn.upsert_returning.assert_awaited_once()
-    values = conn.upsert_returning.await_args.args[1]
-    assert values["product_id"] is None
+
+@pytest.mark.asyncio
+async def test_a_table_joins_a_product_in_its_own_domain(plane):
+    async with plane.acquire() as conn:
+        table_id = await _orders(conn)
+        await data_product_repo.set_members(conn, "checkout", table_ids=[table_id], commands=[])
+        assert await data_product_repo.products_of_table(conn, table_id) == ["checkout"]
+
+
+@pytest.mark.asyncio
+async def test_a_member_saved_into_another_domain_is_refused(plane):
+    async with plane.acquire() as conn:
+        table_id = await _orders(conn)
+        await data_product_repo.set_members(conn, "checkout", table_ids=[table_id], commands=[])
+        with pytest.raises(data_product_repo.MembershipRefused, match="take it out"):
+            await table_repo.upsert(conn, _table(domain_id="finance"))
+        # Saved in its own domain, it is accepted.
+        await table_repo.upsert(conn, _table(domain_id="sales"))
+
+
+@pytest.mark.asyncio
+async def test_a_table_in_no_product_moves_domain_freely(plane):
+    async with plane.acquire() as conn:
+        await table_repo.upsert(conn, _table(domain_id="finance"))
+        domain = (
+            await conn.execute_core(
+                select(registered_tables.c.domain_id).where(
+                    registered_tables.c.table_name == "orders"
+                )
+            )
+        ).scalar_one()
+        assert domain == "finance"

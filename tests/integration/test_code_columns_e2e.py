@@ -33,7 +33,6 @@ import httpx
 import pytest
 import yaml
 
-from tests.helpers import registered_id, release_field
 from tests.integration.test_code_source_llm import _MODEL, _Endpoint
 from tests.integration.test_code_sources_e2e import (
     _ROLE,
@@ -224,14 +223,13 @@ def _command(srv, source_id: str, function: str) -> None:
 
 
 def _view(srv, name: str, sql: str) -> None:
-    registered = _admin(
+    _admin(
         srv,
         f'registerTable(input: {{sourceId: "__derived__", domainId: "fx", schemaName: "views", '
         f'tableName: "{name}", alias: "{name}", viewSql: {json.dumps(sql)}, materialize: true, '
         f"mvRefreshInterval: 3600, columns: [{_column('id', 'bigint')}, "
         f"{_column('street', 'text')}, {_column('city', 'text')}, {_column('country', 'text')}]}})",
     )
-    _admin(srv, release_field(registered_id(registered["message"])))
 
 
 @pytest.fixture(scope="module")
@@ -259,13 +257,12 @@ def code_source(server):
         f'database: "", cacheTtl: 300, mappingJson: {json.dumps(json.dumps(mapping))}}})',
     )
     id_type = "bigint" if language == "python" else "double"
-    registered = _admin(
+    _admin(
         server,
         f'registerTable(input: {{sourceId: "{source_id}", domainId: "fx", '
         f'schemaName: "default", tableName: "suppliers", cacheTtl: 300, '
         f"columns: [{_column('id', id_type)}, {_column('raw_address', 'text')}]}})",
     )
-    _admin(server, release_field(registered_id(registered["message"])))
     for function in ("clean_address", "short_address"):
         _command(server, source_id, function)
     _view(server, "clean_suppliers", "SELECT id, clean_address(raw_address) FROM suppliers")
@@ -323,7 +320,7 @@ def test_a_plain_view_applying_it_is_landed_and_a_filter_on_an_output_answers(se
     """A view applying a column transform is landed though not declared materialized: built through
     the materialized views' build, read from its stored table, so a statement filtering on an
     output column answers from the values the function returned."""
-    registered = _admin(
+    _admin(
         server,
         'registerTable(input: {sourceId: "__derived__", domainId: "fx", schemaName: "views", '
         'tableName: "plain_suppliers", alias: "plain_suppliers", '
@@ -331,7 +328,6 @@ def test_a_plain_view_applying_it_is_landed_and_a_filter_on_an_output_answers(se
         f"columns: [{_column('id', 'bigint')}, {_column('street', 'text')}, "
         f"{_column('city', 'text')}, {_column('country', 'text')}]}})",
     )
-    _admin(server, release_field(registered_id(registered["message"])))
     views = httpx.post(
         f"{server.base_url}/admin/graphql",
         json={"query": "{ mvList { id } }"},

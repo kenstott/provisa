@@ -124,7 +124,7 @@ class Engine:
 _DUCKDB_EXPONENT = "CAST(regexp_extract(_a, 'p([-+][0-9]+)', 1) AS BIGINT)"
 _DUCKDB_MANTISSA = "CAST('0x' || rpad(regexp_extract(_a, '[.]([0-9a-f]+)', 1), 13, '0') AS BIGINT)"
 _DUCKDB_FLOAT = (
-    "list_transform([format('{{:a}}', abs({0}))], _a -> "
+    "list_transform([format('{{:a}}', abs({0}))], LAMBDA _a : "
     f"CASE WHEN {_DUCKDB_EXPONENT} >= -1022 THEN "
     f"printf('%03x%013x', CASE WHEN {{0}} < 0 THEN 2048 ELSE 0 END + {_DUCKDB_EXPONENT} + 1023, "
     f"{_DUCKDB_MANTISSA}) "
@@ -142,11 +142,11 @@ DUCKDB = Engine(
     size="len({})",
     concat="list_concat({}, {})",
     zero_to="range(CAST({} AS BIGINT))",
-    let="list_transform([{1}], {0} -> {2})[1]",
-    map="list_transform({0}, {1} -> {2})",
+    let="list_transform([{1}], LAMBDA {0} : {2})[1]",
+    map="list_transform({0}, LAMBDA {1} : {2})",
     # list_reduce's start has the list's item type, so an item is a list of one number.
-    fold="list_reduce({0}, ({1}, {2}) -> {3}, {4})",
-    item="list_transform({}, _n -> [_n])",
+    fold="list_reduce({0}, LAMBDA {1}, {2} : {3}, {4})",
+    item="list_transform({}, LAMBDA _n : [_n])",
     item_of="{}[1]",
     hex_word="CAST('0x' || {} AS BIGINT)",
     word_hex="printf('%08x', {})",

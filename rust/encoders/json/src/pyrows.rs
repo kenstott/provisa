@@ -99,10 +99,17 @@ impl<'py> Cells<'py> {
             let us = clock_us(t.get_hour(), t.get_minute(), t.get_second(), t.get_microsecond());
             return Ok(match t.get_tzinfo() {
                 None => P::Time(us),
-                // a time with a zone, as a timestamp on 1970-01-01 at its offset (ir_arrow._clocks)
+                // a time with a zone: its time of day and offset as JSON writes it
+                // (serialize.temporal_text), no date (REQ-2171). Text, not a timestamp: the Arrow
+                // form row_batch holds it as (ir_arrow._clocks) carries a date this value has not.
                 Some(_) => {
-                    let offset = utc_offset(v)?;
-                    P::Dt(Dt { local_us: us, offset: Some(offset), tz: Tz::Py(offset) })
+                    let text = v
+                        .py()
+                        .import("provisa.executor.serialize")?
+                        .getattr("temporal_text")?
+                        .call1((v,))?
+                        .extract::<String>()?;
+                    P::Str(Cow::Owned(text.into_bytes()))
                 }
             });
         }

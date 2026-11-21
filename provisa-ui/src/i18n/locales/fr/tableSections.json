@@ -17,6 +17,10 @@
     "noTerms": "Aucun terme ne nomme une colonne de cette table",
     "relationships": "Relations",
     "noRelationships": "Cette table ne participe à aucune relation",
+    "metrics": "Métriques",
+    "noMetrics": "Aucune métrique n’utilise cette table",
+    "metricTerm": "{{term}} :",
+    "metricMethod": "Calculé comme : {{method}}",
     "fromSource": "{{value}} (de la source)",
     "fromSourceAsIs": "Comme dans la source",
     "notScheduledLikeSource": "Pas lue uniquement selon la planification, alors que sa source l'est : une requête peut lire la source.",
@@ -34,6 +38,9 @@
     "classTerm": "Les lignes sont des instances de",
     "noClassTerm": "Aucun terme",
     "classTermUnreadable": "Son terme n’a pas pu être lu : {{error}}",
+    "classTermNoModel": "Son terme n'a pas pu être lu : vos rôles ne peuvent pas lire les tables du modèle.",
+    "classTermNoEntry": "Son terme n'a pas pu être lu : vos rôles ne peuvent pas lire l'entrée propre à cette table dans le modèle.",
+    "classTermNoField": "Son terme n'a pas pu être lu : vos rôles ne peuvent pas lire de quel terme les lignes d'une table sont des instances.",
     "access": "Accès"
   }
 }

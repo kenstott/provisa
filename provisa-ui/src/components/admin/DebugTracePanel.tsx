@@ -25,14 +25,16 @@ import { FieldGroup, FormField, FormLayout } from "../form/FormLayout";
 /**
  * REQ-1910: the operator's control over debug tracing.
  *
- * Tracing is lean by default. Here the operator turns debug detail on for an org, a role or a
- * source for a stated number of minutes, sees the open windows counting down, stops one early,
- * and names the roles whose requests may ask for a debug trace of themselves. Rendered only for a
- * holder of `platform_settings` (it sits in the deployment-wide half of the Observability page).
+ * Tracing is lean by default. Debug detail is turned on for a stated number of minutes, the open
+ * windows count down, and one can be stopped early. REQ-1327 divides it by layer, as the server
+ * does. Without `orgId` this is the platform's panel: a window over any org as a whole. With
+ * `orgId` it is that org's administrator's: a window naming a role or source in the org, and the
+ * roles whose requests may ask for a debug trace of themselves. An org-wide window of its org is
+ * listed to the org, and only the platform stops it.
  */
 
 const DEFAULT_MINUTES = 15;
-const SCOPES: DebugTraceScope[] = ["org", "role", "source"];
+const ORG_SCOPES: DebugTraceScope[] = ["role", "source"];
 const SCOPE_LABEL: Record<DebugTraceScope, string> = {
   org: "debugTracePanel.scopeOrg",
   role: "debugTracePanel.scopeRole",
@@ -46,8 +48,9 @@ function formatRemaining(seconds: number): string {
   return hours > 0 ? `${hours}:${String(minutes).padStart(2, "0")}:${secs}` : `${minutes}:${secs}`;
 }
 
-export function DebugTracePanel() {
+export function DebugTracePanel({ orgId: ownOrg }: { orgId?: string }) {
   const { t } = useTranslation();
+  const platform = ownOrg === undefined;
   // The server's answer and the moment it arrived: time remaining is the server's figure minus
   // the seconds that have passed here since, so the countdown does not depend on this clock
   // agreeing with the server's.
@@ -57,12 +60,11 @@ export function DebugTracePanel() {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
-  const [scope, setScope] = useState<DebugTraceScope>("org");
-  const [orgId, setOrgId] = useState("");
+  const [scope, setScope] = useState<DebugTraceScope>(platform ? "org" : "role");
+  const [orgId, setOrgId] = useState(ownOrg ?? "");
   const [target, setTarget] = useState("");
   const [minutes, setMinutes] = useState<number>(DEFAULT_MINUTES);
 
-  const [hintOrgId, setHintOrgId] = useState("");
   const [hintRole, setHintRole] = useState("");
 
   const accept = useCallback((state: DebugTraceState) => {
@@ -75,19 +77,19 @@ export function DebugTracePanel() {
     fetchDebugTrace()
       .then(accept)
       .catch((e: Error) => setError(e.message || t("debugTracePanel.loadFailed")));
+    if (!platform) return;
     fetchOrgs()
       .then((list) => {
         setOrgs(list);
-        if (list.length > 0) {
-          setOrgId((current) => current || list[0].id);
-          setHintOrgId((current) => current || list[0].id);
-        }
+        if (list.length > 0) setOrgId((current) => current || list[0].id);
       })
       .catch((e: Error) => setError(e.message || t("debugTracePanel.loadFailed")));
-  }, [accept, t]);
+  }, [accept, platform, t]);
 
   const elapsed = loaded ? Math.floor((now - loaded.at) / 1000) : 0;
   const windows = (loaded?.state.windows ?? [])
+    // The server lists a caller both reaches together; each panel shows its own layer's.
+    .filter((w) => (platform ? w.scope === "org" : w.org_id === ownOrg))
     .map((w) => ({ ...w, remaining: w.remaining_seconds - elapsed }))
     .filter((w) => w.remaining > 0);
   const counting = windows.length > 0;
@@ -126,7 +128,7 @@ export function DebugTracePanel() {
   const permit = () =>
     run(async () => {
       const next = await setDebugHintRole({
-        org_id: hintOrgId,
+        org_id: orgId,
         role_id: trimmedHintRole,
         permitted: true,
       });
@@ -138,13 +140,13 @@ export function DebugTracePanel() {
     value: o.id,
     label: o.name ? `${o.name} (${o.id})` : o.id,
   }));
-  const hintRoles = loaded?.state.hint_roles ?? [];
+  const hintRoles = (loaded?.state.hint_roles ?? []).filter((r) => r.org_id === ownOrg);
   const maxMinutes = loaded?.state.max_minutes;
 
   return (
     <Stack gap="md" data-testid="debug-trace-panel">
       <Text c="dimmed" size="sm">
-        {t("debugTracePanel.intro")}
+        {t(platform ? "debugTracePanel.introPlatform" : "debugTracePanel.introOrg")}
       </Text>
 
       {error && (
@@ -156,40 +158,44 @@ export function DebugTracePanel() {
       <Title order={5}>{t("debugTracePanel.startTitle")}</Title>
       <FormLayout>
         <FieldGroup row>
-          <FormField size="medium">
-            <label>
-              {t("debugTracePanel.scopeLabel")}
-              <select
-                className="form-select"
-                value={scope}
-                onChange={(e) => setScope(e.currentTarget.value as DebugTraceScope)}
-                data-testid="debug-trace-scope"
-              >
-                {SCOPES.map((s) => ({ value: s, label: t(SCOPE_LABEL[s]) })).map((o) => (
-                  <option key={o.value} value={o.value}>
-                    {o.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </FormField>
-          <FormField size="medium">
-            <label>
-              {t("debugTracePanel.orgLabel")}
-              <select
-                className="form-select"
-                value={orgId}
-                onChange={(e) => setOrgId(e.currentTarget.value)}
-                data-testid="debug-trace-org"
-              >
-                {orgOptions.map((o) => (
-                  <option key={o.value} value={o.value}>
-                    {o.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </FormField>
+          {!platform && (
+            <FormField size="medium">
+              <label>
+                {t("debugTracePanel.scopeLabel")}
+                <select
+                  className="form-select"
+                  value={scope}
+                  onChange={(e) => setScope(e.currentTarget.value as DebugTraceScope)}
+                  data-testid="debug-trace-scope"
+                >
+                  {ORG_SCOPES.map((s) => ({ value: s, label: t(SCOPE_LABEL[s]) })).map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </FormField>
+          )}
+          {platform && (
+            <FormField size="medium">
+              <label>
+                {t("debugTracePanel.orgLabel")}
+                <select
+                  className="form-select"
+                  value={orgId}
+                  onChange={(e) => setOrgId(e.currentTarget.value)}
+                  data-testid="debug-trace-org"
+                >
+                  {orgOptions.map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </FormField>
+          )}
           {scope !== "org" && (
             <FormField size="medium">
               <TextInput
@@ -237,7 +243,7 @@ export function DebugTracePanel() {
           <Table.Thead>
             <Table.Tr>
               <Table.Th>{t("debugTracePanel.colScope")}</Table.Th>
-              <Table.Th>{t("debugTracePanel.colOrg")}</Table.Th>
+              {platform && <Table.Th>{t("debugTracePanel.colOrg")}</Table.Th>}
               <Table.Th>{t("debugTracePanel.colTarget")}</Table.Th>
               <Table.Th>{t("debugTracePanel.colRemaining")}</Table.Th>
               <Table.Th>{t("debugTracePanel.colStartedBy")}</Table.Th>
@@ -248,22 +254,24 @@ export function DebugTracePanel() {
             {windows.map((w) => (
               <Table.Tr key={w.id} data-testid={`debug-trace-window-${w.id}`}>
                 <Table.Td>{t(SCOPE_LABEL[w.scope])}</Table.Td>
-                <Table.Td>{w.org_id}</Table.Td>
+                {platform && <Table.Td>{w.org_id}</Table.Td>}
                 <Table.Td>{w.target ?? t("debugTracePanel.wholeOrg")}</Table.Td>
                 <Table.Td data-testid={`debug-trace-remaining-${w.id}`}>
                   {formatRemaining(w.remaining)}
                 </Table.Td>
                 <Table.Td>{w.created_by ?? "—"}</Table.Td>
                 <Table.Td>
-                  <Button
-                    size="xs"
-                    variant="default"
-                    disabled={busy}
-                    onClick={() => run(() => stopDebugWindow(w.id))}
-                    data-testid={`debug-trace-stop-${w.id}`}
-                  >
-                    {t("debugTracePanel.stop")}
-                  </Button>
+                  {(platform || w.scope !== "org") && (
+                    <Button
+                      size="xs"
+                      variant="default"
+                      disabled={busy}
+                      onClick={() => run(() => stopDebugWindow(w.id))}
+                      data-testid={`debug-trace-stop-${w.id}`}
+                    >
+                      {t("debugTracePanel.stop")}
+                    </Button>
+                  )}
                 </Table.Td>
               </Table.Tr>
             ))}
@@ -271,88 +279,74 @@ export function DebugTracePanel() {
         </Table>
       )}
 
-      <Title order={5}>{t("debugTracePanel.hintTitle")}</Title>
-      <Text c="dimmed" size="sm">
-        {t("debugTracePanel.hintIntro")}
-      </Text>
-      <FormLayout>
-        <FieldGroup row>
-          <FormField size="medium">
-            <label>
-              {t("debugTracePanel.orgLabel")}
-              <select
-                className="form-select"
-                value={hintOrgId}
-                onChange={(e) => setHintOrgId(e.currentTarget.value)}
-                data-testid="debug-trace-hint-org"
+      {/* REQ-1327: a hint names a role in an org, so it is that org's administrator's. */}
+      {!platform && (
+        <>
+          <Title order={5}>{t("debugTracePanel.hintTitle")}</Title>
+          <Text c="dimmed" size="sm">
+            {t("debugTracePanel.hintIntro")}
+          </Text>
+          <FormLayout>
+            <FieldGroup row>
+              <FormField size="medium">
+                <TextInput
+                  label={t("debugTracePanel.roleLabel")}
+                  value={hintRole}
+                  onChange={(e) => setHintRole(e.currentTarget.value)}
+                  data-testid="debug-trace-hint-role"
+                />
+              </FormField>
+              <Button
+                onClick={permit}
+                disabled={busy || trimmedHintRole === ""}
+                data-testid="debug-trace-hint-permit"
               >
-                {orgOptions.map((o) => (
-                  <option key={o.value} value={o.value}>
-                    {o.label}
-                  </option>
+                {t("debugTracePanel.permit")}
+              </Button>
+            </FieldGroup>
+          </FormLayout>
+          {loaded && hintRoles.length === 0 && (
+            <Text c="dimmed" size="sm" data-testid="debug-trace-no-hint-roles">
+              {t("debugTracePanel.noHintRoles")}
+            </Text>
+          )}
+          {hintRoles.length > 0 && (
+            <Table data-testid="debug-trace-hint-roles">
+              <Table.Thead>
+                <Table.Tr>
+                  <Table.Th>{t("debugTracePanel.roleLabel")}</Table.Th>
+                  <Table.Th />
+                </Table.Tr>
+              </Table.Thead>
+              <Table.Tbody>
+                {hintRoles.map((r) => (
+                  <Table.Tr key={`${r.org_id}/${r.role_id}`}>
+                    <Table.Td>{r.role_id}</Table.Td>
+                    <Table.Td>
+                      <Button
+                        size="xs"
+                        variant="default"
+                        disabled={busy}
+                        onClick={() =>
+                          run(() =>
+                            setDebugHintRole({
+                              org_id: r.org_id,
+                              role_id: r.role_id,
+                              permitted: false,
+                            }),
+                          )
+                        }
+                        data-testid={`debug-trace-hint-revoke-${r.org_id}-${r.role_id}`}
+                      >
+                        {t("debugTracePanel.revoke")}
+                      </Button>
+                    </Table.Td>
+                  </Table.Tr>
                 ))}
-              </select>
-            </label>
-          </FormField>
-          <FormField size="medium">
-            <TextInput
-              label={t("debugTracePanel.roleLabel")}
-              value={hintRole}
-              onChange={(e) => setHintRole(e.currentTarget.value)}
-              data-testid="debug-trace-hint-role"
-            />
-          </FormField>
-          <Button
-            onClick={permit}
-            disabled={busy || hintOrgId === "" || trimmedHintRole === ""}
-            data-testid="debug-trace-hint-permit"
-          >
-            {t("debugTracePanel.permit")}
-          </Button>
-        </FieldGroup>
-      </FormLayout>
-      {loaded && hintRoles.length === 0 && (
-        <Text c="dimmed" size="sm" data-testid="debug-trace-no-hint-roles">
-          {t("debugTracePanel.noHintRoles")}
-        </Text>
-      )}
-      {hintRoles.length > 0 && (
-        <Table data-testid="debug-trace-hint-roles">
-          <Table.Thead>
-            <Table.Tr>
-              <Table.Th>{t("debugTracePanel.colOrg")}</Table.Th>
-              <Table.Th>{t("debugTracePanel.roleLabel")}</Table.Th>
-              <Table.Th />
-            </Table.Tr>
-          </Table.Thead>
-          <Table.Tbody>
-            {hintRoles.map((r) => (
-              <Table.Tr key={`${r.org_id}/${r.role_id}`}>
-                <Table.Td>{r.org_id}</Table.Td>
-                <Table.Td>{r.role_id}</Table.Td>
-                <Table.Td>
-                  <Button
-                    size="xs"
-                    variant="default"
-                    disabled={busy}
-                    onClick={() =>
-                      run(() =>
-                        setDebugHintRole({
-                          org_id: r.org_id,
-                          role_id: r.role_id,
-                          permitted: false,
-                        }),
-                      )
-                    }
-                    data-testid={`debug-trace-hint-revoke-${r.org_id}-${r.role_id}`}
-                  >
-                    {t("debugTracePanel.revoke")}
-                  </Button>
-                </Table.Td>
-              </Table.Tr>
-            ))}
-          </Table.Tbody>
-        </Table>
+              </Table.Tbody>
+            </Table>
+          )}
+        </>
       )}
     </Stack>
   );

@@ -210,7 +210,7 @@
       "description": "描述草稿",
       "notCreatedTitle": "已記錄,未建立",
       "ruleNotCreated": "Business Vault 規則「{{rule}}」:已記錄在其資料表的描述中;請將它建立為這些資料表之上的檢視。",
-      "draftNote": "每段描述都是初稿,供數據管家在「已註冊資料表」中修訂。",
+      "draftNote": "每段描述都是初稿,供數據管家在「表格」頁面中修訂。",
       "create": "建立",
       "nameRequired": "請為每個資料表命名。",
       "nameTaken": "有兩個資料表名稱相同。請為每個資料表另起名稱。"
@@ -219,8 +219,8 @@
       "created_one": "已建立 {{count}} 個資料表",
       "created_other": "已建立 {{count}} 個資料表",
       "stopped": "在 {{name}} 停止",
-      "draftNote": "它們的描述是初稿:請在「已註冊資料表」中修訂。",
-      "oneWay": "精靈只負責建立。請在「已註冊資料表」或實體/事實表單中修改這些資料表;精靈不會重新產生它們。",
+      "draftNote": "它們的描述是初稿:請在「表格」頁面中修訂。",
+      "oneWay": "精靈只負責建立。請在「表格」頁面或實體/事實表單中修改這些資料表;精靈不會重新產生它們。",
       "relatesTo": "關聯到 {{tables}}",
       "status": {
         "created": "已建立",

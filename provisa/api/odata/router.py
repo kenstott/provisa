@@ -82,6 +82,7 @@ from provisa.executor.json_encoders import (
 )
 from provisa.federation.pgwire_replica import SourceStillStartingError
 from provisa.security.masking import MaskType
+from provisa.api.engine_error_names import client_value
 
 log = logging.getLogger(__name__)
 
@@ -100,7 +101,7 @@ class _Refused(Exception):
 
 
 def _error(status: int, code: str, message: str) -> Response:
-    body = {"error": {"code": code, "message": message}}
+    body = {"error": {"code": code, "message": client_value(message)}}
     return OrjsonResponse(content=body, status_code=status, media_type=_JSON)
 
 

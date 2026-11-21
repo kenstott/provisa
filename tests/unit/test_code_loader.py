@@ -247,7 +247,7 @@ def test_the_loader_is_no_parameter_of_the_table_and_its_size_is_read(tmp_path, 
                 x: int | None = None
 
 
-            def f(inputs: In) -> list[dict]:
+            def f(inputs: In) -> list[In]:
                 """@table
                 @loader 10
                 """
@@ -257,10 +257,16 @@ def test_the_loader_is_no_parameter_of_the_table_and_its_size_is_read(tmp_path, 
         ),
         (
             '''
+            from typing import TypedDict
+
             from provisa_services import ReadContext
 
 
-            def f(context: ReadContext) -> list[dict]:
+            class Row(TypedDict):
+                x: int
+
+
+            def f(context: ReadContext) -> list[Row]:
                 """@table
                 @loader many
                 """
@@ -270,10 +276,16 @@ def test_the_loader_is_no_parameter_of_the_table_and_its_size_is_read(tmp_path, 
         ),
         (
             '''
+            from typing import TypedDict
+
             from provisa_services import ReadContext
 
 
-            def f(context: ReadContext) -> list[dict]:
+            class Row(TypedDict):
+                x: int
+
+
+            def f(context: ReadContext) -> list[Row]:
                 """@table
                 @loader 10
                 @loader 5

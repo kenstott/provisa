@@ -255,10 +255,14 @@ def test_the_data_product_holds_gold_silver_and_the_checks(server):
     resp = _post(
         server,
         "/admin/graphql",
-        {"query": "{ dataProducts { id domainId } tables { tableName productId } }"},
+        {"query": "{ dataProducts { id domainId tableIds } tables { id tableName productIds } }"},
     )
     assert resp.status_code == 200, resp.text
     data = resp.json()["data"]
     assert [p["id"] for p in data["dataProducts"] if p["domainId"] == "sales"] == ["daily_sales"]
-    members = sorted(t["tableName"] for t in data["tables"] if t["productId"] == "daily_sales")
+    members = sorted(t["tableName"] for t in data["tables"] if "daily_sales" in t["productIds"])
     assert members == ["view_dq_results", "view_gold", "view_silver"]
+    # REQ-1634: the product lists the same members a table names its products by.
+    (product,) = [p for p in data["dataProducts"] if p["id"] == "daily_sales"]
+    by_id = {t["id"]: t["tableName"] for t in data["tables"]}
+    assert sorted(by_id[i] for i in product["tableIds"]) == members

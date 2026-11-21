@@ -71,6 +71,7 @@ def _apply_read_mask(rows: list[dict], mask_paths: list[str]) -> list[dict]:
     ctx = SimpleNamespace(
         tables={"pets": SimpleNamespace(type_name="Pets", table_id=1)},
         aggregate_columns={1: list(columns.items())},
+        joins={},  # no relationships: every path is a column's (REQ-1929)
     )
     mask = resolve_read_mask(ctx, "Pets", mask_paths)
     if mask is None:

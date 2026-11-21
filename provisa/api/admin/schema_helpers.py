@@ -20,6 +20,7 @@ from __future__ import annotations
 
 
 import logging
+from collections.abc import Coroutine
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
@@ -27,6 +28,9 @@ import httpx
 
 from sqlalchemy import func, or_, select
 
+from provisa.core.http_failure import describe_http_failure
+from provisa.api.rebuild_trace import passes_on
+from provisa.core.org_settings import graphql_remote_max_rows
 from provisa.core.schema_org import (
     registered_tables,
     sources,
@@ -35,11 +39,13 @@ from provisa.core.schema_org import (
 
 if TYPE_CHECKING:
     from provisa.core.database import Database
+    from provisa.llm.client import Completion, ProvisaLLMClient
 
 from provisa.api_source.openapi_endpoint import normalize_op_id
 from provisa.core.models import DERIVED_SOURCE_ID
 from provisa.api.admin.types import (
     ImplicitMeasureType,
+    MutationResult,
     RegisteredTableType,
     RoleTtlType,
     UniqueConstraintType,
@@ -74,12 +80,20 @@ async def _dynamic_openapi_columns(base_url: str, query) -> list[dict]:
     import httpx
     from provisa.openapi.register import _openapi_to_provisa_type
 
+    from provisa.security import sandbox_egress
+
     url = base_url.rstrip("/") + query.path
     params = {p["name"]: "" for p in query.query_params}
     try:
-        r = httpx.get(url, params=params, timeout=10, follow_redirects=True)
+        # REQ-2006: a held org's endpoint is a public destination, each redirect checked.
+        with httpx.Client(
+            timeout=10, follow_redirects=True, event_hooks=sandbox_egress.http_sync_event_hooks()
+        ) as client:
+            r = client.get(url, params=params)
         r.raise_for_status()
         data = r.json()
+    except sandbox_egress.PrivateDestinationRefused:
+        raise  # refused by name, never read as an endpoint with no columns
     except Exception:
         return []
     if isinstance(data, list):
@@ -118,7 +132,7 @@ async def _ensure_openapi_spec(source_id: str) -> bool:
         return False
     async with pool.acquire() as conn:
         result = await conn.execute_core(
-            select(sources.c.type, sources.c.path, sources.c.mapping).where(
+            select(sources.c.type, sources.c.path, sources.c.mapping, sources.c.brand_setup).where(
                 sources.c.id == source_id
             )
         )
@@ -150,14 +164,19 @@ async def _ensure_openapi_spec(source_id: str) -> bool:
         "base_url": base_url,
         "domain_id": "",
         "cache_ttl": 300,
+        "setup": row["brand_setup"],  # REQ-2265: what a brand's setup was given
     }
     return True
 
 
-async def _rebuild_schemas():
+@passes_on
+def _rebuild_schemas() -> Coroutine[Any, Any, bool]:
+    """The schema build (``app._rebuild_schemas``), for the mutations that import it from here.
+    The build's recorded cause is the mutation calling this, not this pass-through (REQ-1914): a
+    plain function, so the caller's frame is under it when the build is called."""
     from provisa.api.app import _rebuild_schemas as rebuild
 
-    await rebuild()
+    return rebuild()
 
 
 def _compute_can_deploy_to_db(
@@ -272,7 +291,10 @@ class TableListing:
     pii: dict[int, dict[str, str | None]]
     sources: dict[str, tuple[str, str | None]]  # source id -> (type, path)
     grants: dict[int, list[dict]]  # table id -> its write grants (REQ-2074)
+    products: dict[int, list[str]]  # table id -> the products it is a member of (REQ-1634)
     endpoints: dict[str, tuple[str, dict[str, Any]]]  # OpenAPI source -> (base url, ops by id)
+    # REQ-1921: the withdrawn sources among theirs: each table of one is withdrawn through it.
+    withdrawn_sources: frozenset[str]
     # OpenAPI source -> why its document could not be read: its tables are listed all the same,
     # saying so, since one source out of reach fails no listing.
     endpoint_errors: dict[str, str] = field(default_factory=dict)
@@ -306,6 +328,7 @@ def _openapi_operations(source_id: str) -> tuple[str, dict[str, Any]] | None:
 
 async def table_listing(conn, rows: list[dict]) -> TableListing:
     """What ``rows`` (registered tables) need beside themselves, one query per kind."""
+    from provisa.core.repositories import data_product as data_product_repo
     from provisa.core.repositories import write_grant as write_grant_repo
 
     ids = [r["id"] for r in rows]
@@ -313,7 +336,8 @@ async def table_listing(conn, rows: list[dict]) -> TableListing:
     for r in (
         await conn.execute_core(
             select(table_columns)
-            .where(table_columns.c.table_id.in_(ids))
+            # REQ-2248: a retired column is not in its table's listing.
+            .where(table_columns.c.table_id.in_(ids), table_columns.c.retired.is_(False))
             .order_by(table_columns.c.table_id, table_columns.c.id)
         )
     ).fetchall():
@@ -333,7 +357,7 @@ async def table_listing(conn, rows: list[dict]) -> TableListing:
     # REQ-1997: the source's path too -- where its file is decides whether it takes writes.
     source_rows = (
         await conn.execute_core(
-            select(sources.c.id, sources.c.type, sources.c.path).where(
+            select(sources.c.id, sources.c.type, sources.c.path, sources.c.withdrawn).where(
                 sources.c.id.in_(sorted({r["source_id"] for r in rows}))
             )
         )
@@ -349,8 +373,9 @@ async def table_listing(conn, rows: list[dict]) -> TableListing:
         except (httpx.HTTPError, OSError) as exc:
             # A document out of reach (its host, its file) is that source's alone: named on its
             # tables and logged, the rest listed.
+            reason = describe_http_failure(exc) if isinstance(exc, httpx.HTTPError) else str(exc)
             endpoint_errors[source_id] = (
-                f"the API document of source {source_id!r} could not be read: {exc}"
+                f"the API document of source {source_id!r} could not be read: {reason}"
             )
             log.warning("%s", endpoint_errors[source_id])
             continue
@@ -363,8 +388,10 @@ async def table_listing(conn, rows: list[dict]) -> TableListing:
         pii=pii,
         sources=known,
         grants=await write_grant_repo.for_tables(conn, ids),
+        products=await data_product_repo.table_memberships(conn),
         endpoints=endpoints,
         endpoint_errors=endpoint_errors,
+        withdrawn_sources=frozenset(r.id for r in source_rows if r.withdrawn),
     )
 
 
@@ -502,7 +529,8 @@ async def _fetch_table_with_columns(
         cache_ttl=row.get("cache_ttl"),
         replicate=row["replicate"],  # REQ-826
         region=row["region"],  # REQ-1921
-        draft=row["draft"],  # REQ-1921
+        withdrawn=row["withdrawn"],  # REQ-1921
+        source_withdrawn=row["source_id"] in listing.withdrawn_sources,  # REQ-1921
         row_materialize=row["row_materialize"],  # REQ-1865
         load_protected=row.get("load_protected"),  # REQ-1141
         off_peak_window=row.get("off_peak_window"),  # REQ-1141
@@ -510,6 +538,7 @@ async def _fetch_table_with_columns(
         gql_naming_convention=row.get("gql_naming_convention"),
         watermark_column=row.get("watermark_column"),
         columns=columns,
+        registered_at=row["created_at"].isoformat(),  # REQ-413
         write_grants=write_grants,
         unique_constraints=unique_constraints,  # REQ-1093
         api_endpoint=api_endpoint,
@@ -519,7 +548,7 @@ async def _fetch_table_with_columns(
         ],  # REQ-1907
         paging_kind=_paging_kind,  # REQ-318
         pagination=paging_type(row["pagination"]),
-        paging_ceiling_rows=_state.config.graphql_remote.max_rows,
+        paging_ceiling_rows=graphql_remote_max_rows(_state.config.graphql_remote.max_rows),
         view_sql=view_sql,
         dq_contract=row.get("dq_contract"),  # REQ-1443
         profiler_source_id=row.get("profiler_source_id"),  # REQ-1934
@@ -535,6 +564,7 @@ async def _fetch_table_with_columns(
         import_set=row.get("import_set"),  # REQ-1954
         arguments=dict(row["arguments"] or {}),  # REQ-2061: NULL = none fixed
         landing_filter=row["landing_filter"],  # REQ-2062
+        read_wait=row["read_wait"],  # REQ-2224
         view_metrics=_view_metrics_type_from_row(row.get("view_metrics")),  # REQ-1318
         change_signal=row.get("change_signal"),
         probe_query=row.get("probe_query"),
@@ -554,6 +584,7 @@ async def _fetch_table_with_columns(
         mv_persist=row.get("mv_persist") or "replace",  # REQ-965
         mv_primary_key=list(row.get("mv_primary_key") or []),  # REQ-970
         mv_incremental=bool(row.get("mv_incremental", False)),  # REQ-969
+        mv_rebuild_every=row.get("mv_rebuild_every"),  # REQ-2249
         mv_calendar=row.get("mv_calendar"),  # REQ-962
         mv_grain=row.get("mv_grain"),  # REQ-962/1168
         mv_allowed_lateness=float(row.get("mv_allowed_lateness") or 0.0),  # REQ-961
@@ -561,7 +592,7 @@ async def _fetch_table_with_columns(
         mv_business_day_grain=bool(row.get("mv_business_day_grain", False)),  # REQ-962
         modeling_role=row.get("modeling_role"),  # REQ-1320
         modeling_history=row.get("modeling_history"),  # REQ-1320
-        stored_product_id=row.get("product_id"),  # REQ-1634
+        stored_product_ids=listing.products.get(row["id"], []),  # REQ-1634
         enable_aggregates=bool(row.get("enable_aggregates", False)),
         enable_group_by=bool(row.get("enable_group_by", False)),
         can_deploy_to_db=can_deploy,
@@ -572,17 +603,38 @@ async def _fetch_table_with_columns(
     )
 
 
-async def _call_llm(prompt: str, operation: str, max_tokens: int = 256) -> str:
+async def _catalog_client(operation: str) -> ProvisaLLMClient:
     # REQ-1395, REQ-1398: the acting org's own per-vendor keys, when set.
     from provisa.api.app import state
     from provisa.core.org_secrets import read_org_api_keys
     from provisa.llm.client import ProvisaLLMClient
 
     api_keys = await read_org_api_keys(state.model_db) if state.model_db else None
-    client = ProvisaLLMClient(operation, api_keys=api_keys)
+    return ProvisaLLMClient(operation, api_keys=api_keys)
+
+
+async def _call_llm(prompt: str, operation: str, max_tokens: int = 256) -> str:
+    client = await _catalog_client(operation)
     return await client.complete(
         prompt, system="You are a data catalog assistant.", max_tokens=max_tokens
     )
+
+
+async def _call_llm_detailed(prompt: str, operation: str, max_tokens: int = 256) -> Completion:
+    """:func:`_call_llm` with the answer's ``cut_off`` (:class:`provisa.llm.client.Completion`):
+    a caller reading a structured answer learns it stopped at ``max_tokens``. An answer that
+    stopped at its limit before any text is that answer, with no text."""
+    from provisa.llm.client import LLMEmptyResponseError
+
+    client = await _catalog_client(operation)
+    try:
+        return await client.complete_detailed(
+            prompt, system="You are a data catalog assistant.", max_tokens=max_tokens
+        )
+    except LLMEmptyResponseError as exc:
+        if not exc.answer.cut_off:
+            raise
+        return exc.answer
 
 
 from provisa.api.admin._table_ops import (  # noqa: E402
@@ -627,40 +679,17 @@ async def _domain_table_conflict(  # REQ-432
     return None
 
 
-def _normalize_dataset_name(name: str) -> str:
-    """Snake-case + lowercase normalization for dataset ownership comparison (REQ-433)."""
-    from provisa.compiler.naming import apply_sql_name
-
-    return apply_sql_name(name, "snake").lower()
-
-
-async def _dataset_ownership_conflict(  # REQ-433
-    conn, source_id: str, table_name: str, domain_id: str
-) -> str | None:
-    """Return an error if this dataset is already claimed by a DIFFERENT domain (REQ-433).
-
-    First-come ownership: a physical dataset — identified by (source_id, normalized
-    table name) — may be registered by only one domain. Re-registration by the owning
-    domain is allowed. Virtual Provisa views (``__derived__``) are exempt: they are not
-    datasource claims and many domains legitimately share that source id.
-    """
-    if source_id == DERIVED_SOURCE_ID:
-        return None
+def table_domain_refusal(domain_id: str | None, table_name: str) -> "MutationResult | None":
+    """REQ-1531/REQ-433: a table registration names its domain, refused by name when it does not
+    (the table repository refuses it again at the write: every path)."""
     from provisa.core import domain_policy
 
-    target_domain = domain_policy.resolve_domain_id(domain_id)
-    norm = _normalize_dataset_name(table_name)
-    _res = await conn.execute_core(
-        select(registered_tables.c.domain_id, registered_tables.c.table_name).where(
-            registered_tables.c.source_id == source_id
+    try:
+        domain_policy.table_domain_id(domain_id, table_name)
+    except domain_policy.TableDomainRequired as refused:
+        return MutationResult(
+            success=False, message=str(refused), code=refused.code, params={"table": table_name}
         )
-    )
-    for r in _res.fetchall():
-        if _normalize_dataset_name(r.table_name) == norm and r.domain_id != target_domain:
-            return (
-                f"Table {table_name!r} on source {source_id!r} is already claimed by "
-                f"domain {r.domain_id!r} (first-come ownership)."
-            )
     return None
 
 

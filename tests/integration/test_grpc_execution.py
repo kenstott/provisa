@@ -10,7 +10,7 @@
 
 """Integration tests for gRPC query execution (not just reflection).
 
-Pure-logic tests (_pascal_to_snake, ProvisaServicer.__getattr__, _get_role)
+Pure-logic tests (ProvisaServicer.__getattr__, _get_role)
 have been moved to tests/unit/test_grpc_server.py.
 
 Tests cover:
@@ -423,6 +423,22 @@ class TestGrpcQueryExecution:
         state.source_pools = source_pool
         state.source_types = {"test-pg": "postgresql"}
         state.source_dialects = {"test-pg": "postgres"}
+        # REQ-870: governance column visibility (V003) reads state.tables; a bare MagicMock
+        # resolves no columns for the role, refusing every column reference.
+        state.tables = [
+            {
+                "id": 1,
+                "source_id": "test-pg",
+                "domain_id": "default",
+                "schema_name": "public",
+                "table_name": "orders",
+                "columns": [
+                    {"column_name": "id", "data_type": "integer", "visible_to": ["admin"]},
+                    {"column_name": "region", "data_type": "varchar", "visible_to": ["admin"]},
+                    {"column_name": "amount", "data_type": "numeric", "visible_to": ["admin"]},
+                ],
+            }
+        ]
         state.masking_rules = {}
         state.mv_registry = MagicMock()
         state.mv_registry.get_fresh.return_value = []
@@ -575,7 +591,7 @@ class TestGrpcQueryExecution:
 
         request = MagicMock()
         # Consume the async generator; abort is called internally
-        async for _ in servicer._handle_query(request, ctx, "UnknownType", "unknown_type"):
+        async for _ in servicer._handle_query(request, ctx, "UnknownType"):
             pass
 
         ctx.abort.assert_called_once()

@@ -32,6 +32,7 @@ from provisa.compiler.sql_gen import CompilationContext
 from provisa.compiler.sql_validator import READ, validate_sql
 from provisa.compiler.stage2 import GovernanceContext
 from provisa.compiler.temp_tables import TempSession, TempTable
+from provisa.ephemeral.store import anchor_table
 from tests.unit.ephemeral_harness import Session
 
 pytestmark = pytest.mark.unit
@@ -103,7 +104,7 @@ def test_each_session_table_is_named_as_the_session_holds_it(monkeypatch):
         s.sql("MATCH (o:Orders)-[:FLAGGED]->(f:Flag) RETURN f.why AS why"), read=READ
     )
     named = [t for t in tree.find_all(exp.Table) if t.name in s.session.tables]
-    assert {t.name for t in named} >= {"cypher__anchor__Flag", "cypher__rels"}
+    assert {t.name for t in named} >= {anchor_table("Flag"), "cypher__rels"}
     assert all(isinstance(t.this, exp.Identifier) and t.this.quoted for t in named), [
         t.sql(dialect="postgres") for t in named
     ]

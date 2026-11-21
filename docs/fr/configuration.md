@@ -1754,7 +1754,7 @@ Pour les sources Google Cloud, définissez `GOOGLE_APPLICATION_CREDENTIALS` sur 
 | `FLIGHT_PORT` | `8815` | Port du serveur Arrow Flight de Provisa |
 | `GRPC_PORT` | `50051` | Port du serveur gRPC Protobuf de Provisa |
 | `PROVISA_REDIRECT_ENABLED` | `false` | Active la redirection côté serveur au-delà d'un seuil |
-| `PROVISA_REDIRECT_THRESHOLD` | `1000` | Seuil de nombre de lignes par défaut |
+| `PROVISA_REDIRECT_THRESHOLD` | `100000` | Seuil de nombre de lignes par défaut |
 | `PROVISA_REDIRECT_FORMAT` | `parquet` | Format de redirection par défaut |
 | `PROVISA_REDIRECT_BUCKET` | `provisa-results` | Bucket S3 des résultats redirigés |
 | `PROVISA_REDIRECT_ENDPOINT` | — | URL d'endpoint compatible S3 |

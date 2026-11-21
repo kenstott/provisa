@@ -8,6 +8,13 @@
     "argumentsNotJson": "Not valid JSON",
     "argumentsNotObject": "Give a JSON object of argument names and values",
     "readFilter": "Landing filter",
-    "readArguments": "Fixed arguments"
+    "readArguments": "Fixed arguments",
+    "readWaitLabel": "Read before the first landing",
+    "readWaitHelp": "What a read does while none of this table has landed. Waits as long as the request allows by default; it can instead wait a time of its own, or answer no rows with the table's columns and start the landing.",
+    "readWaitRequest": "Wait for the request timeout",
+    "readWaitTimed": "Wait up to a set time",
+    "readWaitNoRows": "Answer no rows and start the landing",
+    "readWaitSeconds": "Wait (seconds)",
+    "readWaitUpTo": "Waits up to {{seconds}}s"
   }
 }

@@ -2,6 +2,7 @@
   "resultRedirect": {
     "landed": "Le résultat ({{rows}} lignes) a été écrit dans le magasin de résultats.",
     "landedAt": "Le résultat ({{rows}} lignes) a été écrit dans le magasin de résultats : {{url}}",
-    "download": "Le télécharger"
+    "download": "Le télécharger",
+    "downloadFailed": "Le téléchargement a échoué : {{reason}}"
   }
 }

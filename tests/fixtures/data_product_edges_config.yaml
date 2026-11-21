@@ -18,6 +18,7 @@ data_products:
   - id: order_book
     domain_id: dpe
     name: Order Book
+    tables: [view_open_orders]
 sources:
   - id: dpe-pg
     type: postgresql
@@ -41,7 +42,6 @@ tables:
 views:
   - id: open_orders
     domain_id: dpe
-    product_id: order_book
     sql: SELECT o.id, o.customer FROM "dpe"."orders" o
     columns:
       - {name: id, data_type: integer, visible_to: [org_admin]}

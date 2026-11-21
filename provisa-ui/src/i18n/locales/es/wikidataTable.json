@@ -1,0 +1,36 @@
+{
+  "wikidataTable": {
+    "modeClass": "Tabla de una clase",
+    "starters": {
+      "countries": "Países (códigos ISO, capital, población)",
+      "currencies": "Monedas (ISO 4217)",
+      "languages": "Idiomas (ISO 639)",
+      "admin_regions": "Divisiones administrativas de primer nivel",
+      "organizations": "Organizaciones cotizadas (LEI, ticker, ISIN)"
+    },
+    "class": "Clase",
+    "classHint": "Busque clases por nombre o empiece por una de las clases más usadas de abajo; la tabla contiene las instancias de la clase.",
+    "nothingFound": "No se encontró nada",
+    "instances": "Instancias: {{value}}",
+    "broader": "Clase superior",
+    "narrower": "Clase inferior",
+    "columns": "Columnas",
+    "columnsHint": "Las propiedades que más usan las instancias de esta clase.",
+    "filterRequired": "Más de {{limit}} instancias: elija un filtro.",
+    "filterProperty": "Filtrar por",
+    "filterValue": "Valor",
+    "useClass": "Usar esta clase",
+    "browseTitle": "Clases más usadas",
+    "browseLoading": "Contando las clases más usadas…",
+    "members": "Miembros",
+    "starterDescriptions": {
+      "countries": "Una fila por país.",
+      "currencies": "Una fila por moneda con código ISO 4217.",
+      "languages": "Una fila por idioma con código ISO 639-3.",
+      "admin_regions": "Estados, provincias y otras subdivisiones de primer nivel, con su país.",
+      "organizations": "Una fila por cotización bursátil vigente."
+    },
+    "searching": "Buscando…",
+    "loadingClass": "Creando la consulta de la clase…"
+  }
+}

@@ -2,7 +2,7 @@
   "cacheTtl": {
     "neverExpires": "אינו פג לעולם",
     "inputHint": "‎-1: אינו פג לעולם",
-    "neverExpiresHint": "אינו פג לעולם: נטען פעם אחת.",
+    "neverExpiresHint": "לעולם לא פג תוקף ונטען פעם אחת.",
     "asOf": "{{ttl}}, נכון ל-{{when}}",
     "roleTtlUnlisted": "ה-Cache TTL אינו פג לעולם, לכל תפקיד.",
     "roleTtlNoEffect": "ה-Cache TTL אינו פג לעולם, ולכן לרשומה זו אין השפעה."

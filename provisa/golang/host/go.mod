@@ -2,7 +2,14 @@ module provisa/codehost
 
 go 1.26.0
 
-require github.com/apache/arrow-go/v18 v18.8.0
+require (
+	github.com/apache/arrow-go/v18 v18.8.0
+	provisa_services v0.0.0
+)
+
+// Provisa's services to the code (REQ-2106), which a call's context is bound to. It ships with
+// the host; provisa/golang/build.py replaces it the same way in every build.
+replace provisa_services => ../services
 
 require (
 	github.com/goccy/go-json v0.10.6 // indirect

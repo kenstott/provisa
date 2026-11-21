@@ -33,6 +33,8 @@ export interface Registration {
   pagingCeilingRows: number | null;
   /** REQ-1934: a profiler result table's row rules, saved once the table exists. */
   rowRules: ProfilerRowRule[];
+  /** REQ-1924: an OpenAPI table with no response schema, whose columns the panel declares. */
+  declaresColumns?: boolean;
 }
 
 /** One column of a registration input, as the create step builds it. */
@@ -60,7 +62,7 @@ export const UNREGISTERED_ID = 0;
 
 const str = (v: unknown): string | null => (typeof v === "string" && v !== "" ? v : null);
 
-function draftColumn(c: ColumnInput, i: number): TableColumn {
+export function draftColumn(c: ColumnInput, i: number): TableColumn {
   return {
     // Its position until the server gives it an id: what the form keys its rows on.
     id: i + 1,
@@ -106,6 +108,7 @@ export function draftFromRegistration(r: Registration): RegisteredTable {
     tableName: i.tableName as string,
     alias: str(i.alias),
     description: str(i.description),
+    registeredAt: null, // not registered yet
     cacheTtl: typeof i.cacheTtl === "number" ? i.cacheTtl : null,
     roleTtl: [],
     pagingKind: r.pagingKind,
@@ -113,7 +116,8 @@ export function draftFromRegistration(r: Registration): RegisteredTable {
     pagingCeilingRows: r.pagingCeilingRows,
     replicate: null,
     region: str(i.region),
-    draft: true,
+    withdrawn: false,
+    sourceWithdrawn: false,
     rowMaterialize: false, // REQ-1865: chosen on the Load and timeliness tab
     loadProtected: null,
     offPeakWindow: null,
@@ -139,6 +143,8 @@ export function draftFromRegistration(r: Registration): RegisteredTable {
     queryTemplate: str(i.queryTemplate),
     fileGlob: str(i.fileGlob),
     sourceFileColumn: str(i.sourceFileColumn),
+    importSet: str(i.importSet),
+    discover: i.discover === true,
     materialize: i.materialize === true,
     mvRefreshInterval: 300,
     mvDebounceQuiet: 0,
@@ -154,12 +160,14 @@ export function draftFromRegistration(r: Registration): RegisteredTable {
     mvPersist: "replace",
     mvPrimaryKey: [],
     mvIncremental: false,
+    mvRebuildEvery: null,
+    incrementalOption: { available: true, code: null, reason: null },
     mvCalendar: null,
     mvGrain: null,
     mvAllowedLateness: 0,
     mvExpectedEvents: null,
     mvBusinessDayGrain: false,
-    productId: null,
+    productIds: [],
     enableAggregates: false,
     enableGroupBy: false,
     canDeployToDb: false,
@@ -171,4 +179,56 @@ export function draftFromRegistration(r: Registration): RegisteredTable {
     implicitMeasures: [],
     implicitDimensions: [],
   };
+}
+
+/** What a duplicate of `table` is created from: the create step's registration and the draft. */
+export interface TableDuplicate {
+  registration: Registration;
+  draft: RegisteredTable;
+}
+
+/** The name a duplicate is offered under: editable, and refused on save if it exists. A table's
+ * alias and a view's name are SQL names, which take no hyphen unquoted: `_copy`. */
+export const duplicateName = (name: string) => `${name}_copy`;
+
+/**
+ * A table's Duplicate: the create form's table, filled with the table's settings and columns.
+ * Not copied: the table's data, its relationships (they are the relationships' own), the
+ * products it is in, and who may write to it. A view is named by its own name, so a view's copy
+ * takes the new name there; a registered table is the source's table, so its copy is told
+ * apart by its SQL alias. A name that exists is refused by the create on save.
+ */
+export function duplicateOfTable(table: RegisteredTable): TableDuplicate {
+  const draft: RegisteredTable = {
+    ...(JSON.parse(JSON.stringify(table)) as RegisteredTable),
+    id: UNREGISTERED_ID,
+    productIds: [],
+    writeGrants: [],
+    withdrawn: false,
+    sourceWithdrawn: false,
+  };
+  if (table.viewSql != null || table.viewMetrics != null) {
+    draft.tableName = duplicateName(table.tableName);
+  } else {
+    draft.alias = duplicateName(table.alias || table.tableName);
+  }
+  const registration: Registration = {
+    input: {
+      sourceId: draft.sourceId,
+      domainId: draft.domainId,
+      schemaName: draft.schemaName,
+      tableName: draft.tableName,
+      alias: draft.alias ?? undefined,
+      description: draft.description ?? undefined,
+      viewSql: draft.viewSql ?? undefined,
+      viewMetrics: draft.viewMetrics ?? undefined,
+      ...(draft.region !== null ? { region: draft.region } : {}),
+      columns: draft.columns.map((c) => ({ name: c.columnName })),
+    },
+    pagination: draft.pagination,
+    pagingKind: draft.pagingKind,
+    pagingCeilingRows: draft.pagingCeilingRows,
+    rowRules: [],
+  };
+  return { registration, draft };
 }

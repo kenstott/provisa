@@ -22,12 +22,8 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/memory"
 )
 
-const (
-	// The field metadata key naming the IR type a text field carries (arrow_rows.IR_KEY).
-	irKey = "provisa.ir"
-	// The one field of a loose row type: each row whole, as JSON (arrow_rows.WHOLE_ROW).
-	wholeRow = "$row"
-)
+// The field metadata key naming the IR type a text field carries (arrow_rows.IR_KEY).
+const irKey = "provisa.ir"
 
 // readSchema is the schema a call gives: an Arrow IPC stream of it with no batches.
 func readSchema(raw []byte) (*arrow.Schema, error) {
@@ -43,14 +39,7 @@ func readSchema(raw []byte) (*arrow.Schema, error) {
 func arrowRows(schema *arrow.Schema, rows []any) ([]byte, error) {
 	builder := array.NewRecordBuilder(memory.DefaultAllocator, schema)
 	defer builder.Release()
-	whole := schema.NumFields() == 1 && schema.Field(0).Name == wholeRow
 	for _, row := range rows {
-		if whole {
-			if err := appendValue(builder.Field(0), schema.Field(0), row); err != nil {
-				return nil, err
-			}
-			continue
-		}
 		values, ok := row.(map[string]any)
 		if !ok {
 			return nil, fmt.Errorf("a %T is not a row", row)

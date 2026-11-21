@@ -255,7 +255,7 @@ async def test_a_trader_asks_for_a_build_only_past_the_cache_ttl_floor(db, build
     await _built(db, 200)
     assert (
         await ensure_resident(_state(db, _Backend()), {"s"}, reader_role="trader", table_ids=_READ)
-    ).built == [("s", "orders")]
+    ).built == []  # no freshness guarantee: the build is asked for, not waited for (REQ-860)
     await builds.drain()
     assert builds.count == 1
     assert await _age(db) < 5  # the build's completion is the persisted state now
@@ -270,4 +270,4 @@ async def test_two_concurrent_trader_reads_share_one_build(db, builds):
     )
     await builds.drain()
     assert builds.count == 1
-    assert first.built == second.built == [("s", "orders")]  # both waited for that one build
+    assert first.built == second.built == []  # no freshness guarantee: neither waited (REQ-860)

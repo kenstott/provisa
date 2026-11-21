@@ -16,7 +16,7 @@
     "checkPassed": "{{capability}}: bestanden",
     "checkFailed": "{{capability}}: fehlgeschlagen ({{reason}})",
     "jdbcDriverJar": "JDBC-Treiber-JAR",
-    "jdbcDriverJarHint": "Die JAR-Datei des Treibers, von Ihrem Rechner hochgeladen. Nur selbst gehostete Installationen.",
+    "jdbcDriverJarHint": "Die JAR-Datei des Treibers, von Ihrem Rechner hochgeladen. Nur bei selbst gehosteten Installationen.",
     "jdbcDriverClass": "Treiberklasse",
     "driver": "Treiber",
     "jarDriver": "Eigener JDBC-Treiber (JAR)",

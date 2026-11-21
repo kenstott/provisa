@@ -8,10 +8,11 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""The read a registration grants (REQ-2154): the role the registrant acts as, and the standard
-Viewer role, written into each grant list where they can be seen and changed. Registration never
-grants write. A grant to Viewer reaches every role built on it (security.inheritance.expand_grants),
-which is how a column is granted to every role; removing Viewer is how it is made sensitive."""
+"""The read a registration grants (REQ-2154): to a column registered with no grant named, the role
+the registrant acts as and the standard Viewer role, written into its grant list where they can be
+seen and changed; a grant list named is used as given. Registration never grants write. A grant
+to Viewer reaches every role built on it (security.inheritance.expand_grants), which is how a
+column is granted to every role; removing Viewer is how it is made sensitive."""
 
 # Requirements: REQ-2154, REQ-2155
 
@@ -34,17 +35,15 @@ def default_read_grant(acting_role: str) -> list[str]:
 
 
 def with_read_grant(table: Any, acting_role: str) -> Any:
-    """``table`` (a Table model being registered) with every column's grant list also naming the
-    registrant's role and Viewer, beside what the registration names (REQ-2154)."""
+    """``table`` (a Table model being registered) with each column registered with no grant named
+    granted the registrant's role and Viewer; a column whose registration names a grant list keeps
+    exactly that list (REQ-2154, amended 2026-11-10), as a metric, a command and an MCP tool do.
+    Added to a named list, Viewer served every role a column granted to one (REQ-2226)."""
     grant = default_read_grant(acting_role)
     return table.model_copy(
         update={
             "columns": [
-                c.model_copy(
-                    update={
-                        "visible_to": [*c.visible_to, *(g for g in grant if g not in c.visible_to)]
-                    }
-                )
+                c.model_copy(update={"visible_to": list(c.visible_to) if c.visible_to else grant})
                 for c in table.columns
             ]
         }

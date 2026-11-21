@@ -124,19 +124,14 @@ def _delta_rebuild_due(record: Any, delta_cfg: Any) -> bool:
 async def _model_row(state: Any, key: ReplicaKey) -> tuple[Any, Any, list[Any]]:
     """The source and table ``key`` names, as the model in this process has them, and every
     registered source (the vault a build dials sources under is bound for all of them)."""
-    from provisa.federation.registry_view import (
-        draft_tables,
-        registered_sources,
-        registered_tables,
-    )
+    from provisa.federation.registry_view import registered_sources, registered_tables
 
     sources = await registered_sources(state)
     source = next((s for s in sources if s.id == key[0]), None)
     table = next(
         (
             t
-            # REQ-1921: a draft's build is asked for by its steward's preview; it is found here.
-            for t in [*await registered_tables(state), *await draft_tables(state)]
+            for t in await registered_tables(state)
             if (t.source_id, t.schema_name, t.table_name) == key
         ),
         None,
@@ -419,7 +414,7 @@ async def _probe_decides(state: Any, key: ReplicaKey, source: Any, table: Any) -
     from provisa.core.change_signal import is_poll
     from provisa.core.secrets import resolve_secrets
     from provisa.events.app_wiring import build_adapter_loaders
-    from provisa.events.probes import can_probe, loader_probe
+    from provisa.events.probes import can_probe, source_transport
     from provisa.federation.residency import resolve_landing_args
 
     if key not in (getattr(state, "replica_nodes", None) or {}):
@@ -435,8 +430,8 @@ async def _probe_decides(state: Any, key: ReplicaKey, source: Any, table: Any) -
         source_path=resolve_secrets(getattr(source, "path", "") or "") or None,  # REQ-788
         file_glob=getattr(table, "file_glob", None),  # REQ-788
         # The source's own adapter asks its provider (a mail source's mailboxes).
-        loader_probe=loader_probe(
-            build_adapter_loaders(state, state.federation_engine), source, table
+        loader_probe=source_transport(
+            state, build_adapter_loaders(state, state.federation_engine), source, table
         )
         is not None,
     )
@@ -621,7 +616,7 @@ async def group_of(state: Any, key: ReplicaKey) -> list[ReplicaKey] | None:
     says come from the same read, that the model declares and that have a replica. None for a
     table read on its own, which is every table of most sources; an empty list for a table
     of a group whose siblings are not declared or have no replica."""
-    from provisa.federation.registry_view import draft_tables, registered_tables
+    from provisa.federation.registry_view import registered_tables
 
     try:
         source, table, _sources = await _model_row(state, key)
@@ -633,7 +628,7 @@ async def group_of(state: Any, key: ReplicaKey) -> list[ReplicaKey] | None:
         return None
     declared = {
         (t.source_id, t.schema_name, t.table_name)
-        for t in [*await registered_tables(state), *await draft_tables(state)]
+        for t in await registered_tables(state)
         if t.source_id == key[0] and t.schema_name == key[1] and t.table_name in names
     }
     siblings: list[ReplicaKey] = []

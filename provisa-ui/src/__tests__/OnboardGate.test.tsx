@@ -55,11 +55,21 @@ vi.mock("../hooks/useAdminQueries", async (importOriginal) => ({
   }),
   useDomains: () => ({ refetch: vi.fn().mockResolvedValue({ data: { domains: [] } }) }),
 }));
+// The Firebase SDK's own session outlives localStorage: dropping `provisa_token` alone leaves it able
+// to mint a fresh bearer for every request (lib/authFetch currentBearer). Spied so the gate's exits
+// can be held to ending it.
+vi.mock("../lib/firebase", () => ({
+  signOutFirebase: vi.fn().mockResolvedValue(undefined),
+  currentFirebaseToken: vi.fn().mockResolvedValue(null),
+}));
 vi.mock("../pages/OnboardOrgPage", () => ({
   OnboardOrgPage: () => <div data-testid="onboard-org-page" />,
 }));
 
 import { AuthMeError, fetchBootstrapStatus, fetchMe } from "../api/admin";
+import { signOutFirebase } from "../lib/firebase";
+import { noteOrgSelectionRefusal, orgSelectionRequired } from "../lib/orgSelection";
+const mockSignOutFirebase = vi.mocked(signOutFirebase);
 const mockFetchMe = vi.mocked(fetchMe);
 const mockBootstrapStatus = vi.mocked(fetchBootstrapStatus);
 
@@ -139,9 +149,12 @@ describe("OnboardGate", () => {
     async (status) => {
       const onSessionExpired = vi.fn();
       mockFetchMe.mockRejectedValue(new AuthMeError(status));
+      mockSignOutFirebase.mockClear();
       renderGate(onSessionExpired);
       await waitFor(() => expect(onSessionExpired).toHaveBeenCalled());
       expect(localStorage.getItem("provisa_token")).toBeNull();
+      // A credential the deployment refuses is not one the SDK may keep re-minting either.
+      expect(mockSignOutFirebase).toHaveBeenCalled();
       expect(screen.queryByTestId("no-account")).not.toBeInTheDocument();
       expect(screen.queryByTestId("identity-unavailable")).not.toBeInTheDocument();
       expect(screen.queryByTestId("app-shell")).not.toBeInTheDocument();
@@ -329,6 +342,43 @@ describe("unclaimed platform-admin slot outranks org onboarding (REQ-1292)", () 
     expect(screen.queryByTestId("app-shell")).not.toBeInTheDocument();
   });
 
+  // 2026-11-17, cloud-dev: the slot was unclaimed and the browser's Firebase session still verified.
+  // The gate dropped `provisa_token` but left the SDK signed in, so on the sign-in page every request
+  // still carried a freshly minted bearer naming no org; the 401 it drew raised the non-dismissible
+  // select-an-org prompt over the first-login page, and the provider button under it could not be
+  // clicked -- the claim was never sent. Sending the user back to sign-in ends the whole session.
+  it("ends the Firebase session too, so the sign-in page is reached signed out", async () => {
+    const onSessionExpired = vi.fn();
+    mockSignOutFirebase.mockClear();
+    resolvesTo({ userId: "u1" });
+    mockBootstrapStatus.mockResolvedValue(true);
+
+    renderGate(onSessionExpired);
+
+    await waitFor(() => expect(onSessionExpired).toHaveBeenCalled());
+    expect(mockSignOutFirebase).toHaveBeenCalled();
+    // Firebase is signed out before the sign-in page is asked for, or that page's first requests
+    // still carry the old session.
+    expect(mockSignOutFirebase.mock.invocationCallOrder[0]).toBeLessThan(
+      onSessionExpired.mock.invocationCallOrder[0],
+    );
+  });
+
+  it("clears a pending select-an-org prompt with the session it belonged to", async () => {
+    const onSessionExpired = vi.fn();
+    await noteOrgSelectionRefusal(
+      new Response(JSON.stringify({ code: "auth.org_selection_required" }), { status: 401 }),
+    );
+    expect(orgSelectionRequired()).toBe(true);
+    resolvesTo({ userId: "u1" });
+    mockBootstrapStatus.mockResolvedValue(true);
+
+    renderGate(onSessionExpired);
+
+    await waitFor(() => expect(onSessionExpired).toHaveBeenCalled());
+    expect(orgSelectionRequired()).toBe(false);
+  });
+
   it("decides nothing while the slot answer is still in flight", async () => {
     const onSessionExpired = vi.fn();
     resolvesTo({ userId: "u1" });
@@ -419,12 +469,15 @@ describe("a live demo's visitor", () => {
     localStorage.setItem("provisa_token", "login-token");
     visit();
     mockFetchMe.mockRejectedValue(new AuthMeError(401));
+    mockSignOutFirebase.mockClear();
 
     renderGate(onSessionExpired);
 
     await waitFor(() => expect(onSessionExpired).toHaveBeenCalled());
     expect(visitorActive()).toBe(false);
     expect(localStorage.getItem("provisa_token")).toBe("login-token");
+    // The browser's own Firebase session is the login the visit never touched.
+    expect(mockSignOutFirebase).not.toHaveBeenCalled();
   });
 
   it("still sends a signed-in user to first-login once the visit is over", async () => {

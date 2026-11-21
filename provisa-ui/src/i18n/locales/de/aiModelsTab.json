@@ -1,11 +1,13 @@
 {
   "aiModelsTab": {
     "apiKeysHeading": "API-Schlüssel der KI-Anbieter",
-    "apiKeysIntro": "Der eigene API-Schlüssel Ihrer Organisation je Anbieter, verwendet für KI-gestützte Operationen, die diesem Anbieter zugewiesen sind. Ist für einen Anbieter keiner gesetzt, wird der Standardschlüssel der Installation verwendet. Schlüssel werden nach dem Speichern nie wieder angezeigt. Statt des Schlüssels können Sie auch eine Tresor-Referenz einfügen: ${secret:NAME} wird bei jeder Verwendung gegen die Secrets Ihrer Organisation aufgelöst.",
+    "apiKeysIntro": "Der eigene API-Schlüssel Ihrer Organisation für jeden Anbieter, verwendet für KI-gestützte Vorgänge, die diesem Anbieter zugewiesen sind. Ist für einen Anbieter keiner gesetzt, wird der Standardschlüssel des Deployments verwendet. Schlüssel werden nach dem Speichern nie wieder angezeigt. Statt des Schlüssels können Sie eine Vault-Referenz wie ${secret:NAME} einfügen; sie wird bei jeder Verwendung gegen die Secrets Ihrer Organisation aufgelöst.",
+    "apiKeysIntroOrgOnly": "Der eigene API-Schlüssel Ihrer Organisation je Anbieter, verwendet für KI-gestützte Operationen, die diesem Anbieter zugewiesen sind. Ein Anbieter ohne gesetzten Schlüssel wird nicht verwendet. Schlüssel werden nach dem Speichern nie wieder angezeigt. Statt des Schlüssels können Sie auch eine Tresor-Referenz einfügen: ${secret:NAME} wird bei jeder Verwendung gegen die Secrets Ihrer Organisation aufgelöst.",
     "apiKeyLabel": "API-Schlüssel für {{vendor}}",
     "apiKeyPlaceholder": "API-Schlüssel",
     "apiKeySet": "Schlüssel ist gesetzt",
-    "apiKeyNotSet": "Kein Schlüssel gesetzt — Standard der Installation wird verwendet",
+    "apiKeyNotSet": "Kein Schlüssel gesetzt. Der Standard des Deployments wird verwendet.",
+    "apiKeyNotSetOrgOnly": "Kein Schlüssel gesetzt",
     "apiKeyClear": "Schlüssel löschen",
     "apiKeyWillClear": "Der Schlüssel wird beim Speichern gelöscht.",
     "modelsHeading": "KI-Modellzuweisungen",
@@ -43,10 +45,18 @@
     "addEndpoint": "Endpunkt hinzufügen",
     "removeEndpoint": "Entfernen",
     "jevHeading": "Jev (TypeSafe AI)",
-    "jevIntro": "Optional. Ist der Schlüssel gesetzt, verwendet Provisa die API für kalibrierte Konfidenzentscheidungen von Jev, um Vorschläge für Ontologie-Beziehungstypen und erkannte Fremdschlüssel-Beziehungen zu bewerten, statt sich allein auf die selbst angegebene Konfidenz des erzeugenden Modells zu verlassen. Ist er nicht gesetzt, verwenden diese Funktionen weiterhin ihr bisheriges, rein modellbasiertes Verhalten. Ist hier keiner gesetzt, wird die Umgebungsvariable TYPESAFEAI_API_KEY der Installation verwendet, sofern vorhanden.",
+    "jevIntro": "Optional. Ist er gesetzt, bewertet Provisa Vorschläge für Ontologie-Beziehungstypen und erkannte Fremdschlüsselbeziehungen zusätzlich zur selbst gemeldeten Konfidenz des erzeugenden Modells mit der Entscheidungs-API für kalibrierte Konfidenz von Jev. Ist hier keiner gesetzt, wird die Umgebungsvariable TYPESAFEAI_API_KEY des Deployments verwendet, sofern vorhanden. Fehlt beides, verwenden diese Funktionen nur die Konfidenz des Modells.",
+    "jevIntroOrgOnly": "Optional. Ist der Schlüssel gesetzt, verwendet Provisa die API für kalibrierte Konfidenzentscheidungen von Jev, um Vorschläge für Ontologie-Beziehungstypen und erkannte Fremdschlüssel-Beziehungen zu bewerten, statt sich allein auf die selbst angegebene Konfidenz des erzeugenden Modells zu verlassen. Ist er nicht gesetzt, verwenden diese Funktionen weiterhin ihr bisheriges, rein modellbasiertes Verhalten.",
     "saveButtonLabel": "KI-Modelleinstellungen speichern",
     "loading": "Wird geladen…",
     "saved": "Gespeichert.",
-    "savedRestartRequired": "Gespeichert. Starten Sie den Dienst neu, um die Änderungen zu übernehmen."
+    "savedRestartRequired": "Gespeichert. Starten Sie den Dienst neu, um die Änderungen zu übernehmen.",
+    "limitsIntro": "Jedes Modell hat zwei Grenzen in Tokens: das Meiste, was es in einer Anfrage lesen kann (Eingabe), und die längste Antwort, die es schreiben kann (Ausgabe). Ein Modell mit veröffentlichten Werten beginnt mit diesen; ändern Sie sie, wenn Ihre abweichen.",
+    "inputLimitLabel": "Eingabegrenze (Tokens)",
+    "outputLimitLabel": "Ausgabegrenze (Tokens)",
+    "limitsDefaultNote": "Standard: Für dieses Modell ist kein veröffentlichter Wert bekannt.",
+    "limitsResetKnown": "Veröffentlichte Grenzen verwenden",
+    "limitsResetDefault": "Standardgrenzen verwenden",
+    "limitsIncomplete": "Geben Sie beide Grenzen für {{model}} als ganze Zahlen größer als null ein."
   }
 }

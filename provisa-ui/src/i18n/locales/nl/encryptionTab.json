@@ -14,11 +14,11 @@
     "generating": "Genereren…",
     "generateKey": "Hoofdsleutel genereren",
     "saveTitle": "Encryptie-instellingen opslaan",
-    "keyGeneratedStored": "Hoofdsleutel gegenereerd en opgeslagen in de OS-sleutelhanger (sleutel-id: {{keyId}}) — direct van kracht, geen herstart nodig.",
-    "keyGeneratedNoKeychain": "Geen OS-sleutelhanger beschikbaar — kopieer deze sleutel en stel deze in als {{envVar}}. De sleutel wordt niet opnieuw getoond.",
+    "keyGeneratedStored": "Hoofdsleutel gegenereerd en opgeslagen in de sleutelhanger van het besturingssysteem (sleutel-ID: {{keyId}}). Hij is nu actief, zonder herstart.",
+    "keyGeneratedNoKeychain": "Geen sleutelhanger van het besturingssysteem beschikbaar. Kopieer deze sleutel en stel hem in als {{envVar}}. Hij wordt niet opnieuw getoond.",
     "savedRestartRequired": "Opgeslagen. Herstart de service om toe te passen.",
     "saved": "Opgeslagen.",
-    "secretOnFile": "Opgeslagen — leeg laten om te behouden",
+    "secretOnFile": "Opgeslagen. Laat leeg om te behouden.",
     "secretNotSet": "Niet ingesteld",
     "fingerprintLabel": "Vingerafdruk"
   }
