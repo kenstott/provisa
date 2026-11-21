@@ -14,11 +14,11 @@
     "generating": "Gerando…",
     "generateKey": "Gerar chave mestra",
     "saveTitle": "Salvar configurações de criptografia",
-    "keyGeneratedStored": "Chave mestra gerada e armazenada no chaveiro do sistema operacional (ID da chave: {{keyId}}) — em vigor imediatamente, sem necessidade de reiniciar.",
-    "keyGeneratedNoKeychain": "Nenhum keychain do SO disponível — copie esta chave e defina-a como {{envVar}}. Ela não será exibida novamente.",
+    "keyGeneratedStored": "Chave mestra gerada e armazenada no chaveiro do sistema operacional (ID da chave: {{keyId}}). Ela já está em vigor, sem reinicialização.",
+    "keyGeneratedNoKeychain": "Nenhum chaveiro do sistema operacional disponível. Copie esta chave e defina-a como {{envVar}}. Ela não será exibida novamente.",
     "savedRestartRequired": "Salvo. Reinicie o serviço para aplicar.",
     "saved": "Salvo.",
-    "secretOnFile": "Armazenado — deixe em branco para mantê-lo",
+    "secretOnFile": "Armazenado. Deixe em branco para manter.",
     "secretNotSet": "Não definido",
     "fingerprintLabel": "Impressão digital"
   }

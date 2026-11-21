@@ -97,6 +97,8 @@ export interface GlossaryEdge {
   term_id: number;
   rel_type: GlossaryRelType;
   name: string;
+  // REQ-1591: the related term's domains, which tell related terms of one name apart
+  domains: string[];
 }
 
 export interface GlossaryExpert {
@@ -238,9 +240,16 @@ function selectedDomainsQuery(domains: ReadonlySet<string> | null): string {
   return `?${params.toString()}`;
 }
 
+// REQ-1387: a draft says which bound tables gave no samples, so the curator knows the AI read no
+// values from them.
+export interface GeneratedDefinition {
+  definition: string;
+  tables_without_samples: string[];
+}
+
 export async function generateAllGlossaryDefinitions(
   domains: ReadonlySet<string> | null,
-): Promise<{ generated: number }> {
+): Promise<{ generated: number; tables_without_samples: string[] }> {
   const res = await fetch(
     `${API_BASE}/admin/glossary/definitions/generate${selectedDomainsQuery(domains)}`,
     {
@@ -370,14 +379,13 @@ export async function generateGlossaryRelationships(domains: ReadonlySet<string>
 export async function generateGlossaryDefinition(
   termId: number,
   domains: ReadonlySet<string> | null,
-): Promise<string> {
+): Promise<GeneratedDefinition> {
   const res = await fetch(
     `${API_BASE}/admin/glossary/terms/${termId}/definition/generate${selectedDomainsQuery(domains)}`,
     { method: "POST" },
   );
   if (!res.ok) throw await mutationError(res, "generateGlossaryDefinition");
-  const data = (await res.json()) as { definition: string };
-  return data.definition;
+  return res.json();
 }
 
 export async function deleteGlossaryTerm(termId: number): Promise<void> {
@@ -583,22 +591,17 @@ export async function deprecateGlossaryTerm(
 }
 
 /** What a retired term applied to (REQ-2144): its columns (table path and column) and tables at
- * the model commit before its retirement. None when the model's history holds no retirement of it
- * (404 glossary.no_retirement_history). */
+ * the model commit before its retirement. When the model's history holds no retirement of it, the
+ * same shape comes back emptied: ``retired_in`` and ``as_of`` null, no columns, no tables. */
 export interface AppliedHistory {
-  retired_in: string;
+  retired_in: string | null;
   as_of: string | null;
   columns: { table: string; column: string }[];
   tables: string[];
 }
 
-export async function fetchAppliedHistory(termId: number): Promise<AppliedHistory | null> {
+export async function fetchAppliedHistory(termId: number): Promise<AppliedHistory> {
   const res = await fetch(`${API_BASE}/admin/glossary/terms/${termId}/applied-history`);
-  if (res.status === 404) {
-    const data = await res.json();
-    if (data.code === "glossary.no_retirement_history") return null;
-    throw new Error(serverMessage(data, requestFailed("fetchAppliedHistory", res.status)));
-  }
   if (!res.ok) throw await mutationError(res, "fetchAppliedHistory");
   return res.json();
 }

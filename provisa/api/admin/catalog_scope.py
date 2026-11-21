@@ -121,6 +121,7 @@ def catalog_scope(info: Any) -> CatalogScope:
     from provisa.api.app import state
     from provisa.api.flight.catalog import role_visibility
     from provisa.security.rights import acting_claims, capabilities_for_claims
+    from provisa.security.selected_domains import narrowed
 
     context = info.context
     request = context.get("request") if isinstance(context, dict) else context.request
@@ -148,7 +149,7 @@ def catalog_scope(info: Any) -> CatalogScope:
         # No auth provider: no right is enforced, but the catalog is the one the roles the request
         # names (X-Provisa-Role, the role picker's selection) carry and reach.
         caps = capabilities_for_claims(acting_claims(identity), getattr(state, "roles", {}))
-        reach = _acting_reach(identity, state)
+        reach = narrowed(_acting_reach(identity, state))  # REQ-2253
     else:
         caps = _resolved_capabilities(identity, state)
         reach = allowed_domains_request(request)
@@ -162,7 +163,7 @@ def catalog_scope(info: Any) -> CatalogScope:
         subjects=_subjects(state, role) if role else (),
     )
     if role is None:
-        return scope  # no acting role: served nothing, withdrawn tables included
+        return _within_selection(scope, state)  # no acting role: served nothing
     # REQ-1921: a withdrawn table is answered by its stored columns only to a role that may
     # preview it -- one holding table registration reaching its domain.
     from provisa.security.rights import registers_tables_in
@@ -173,7 +174,27 @@ def catalog_scope(info: Any) -> CatalogScope:
         if registers_tables_in(state.roles[role], state.roles, table["domain_id"])
         and (served := scope.stored_columns(table))
     }
-    return dataclasses.replace(scope, served={**withdrawn, **scope.served})
+    return _within_selection(
+        dataclasses.replace(scope, served={**withdrawn, **scope.served}), state
+    )
+
+
+def _within_selection(scope: CatalogScope, state: Any) -> CatalogScope:
+    """``scope`` serving only the tables of the domains selected in the domain filter, under an
+    AI-assisted call (REQ-2253); its reach is already narrowed (``allowed_domains_request``)."""
+    from provisa.security.selected_domains import current
+
+    selected = current()
+    if selected is None:
+        return scope
+    domain_of = {
+        t["id"]: t["domain_id"]
+        for t in [*state.tables, *state.role_build_inputs["withdrawn_tables"]]
+    }
+    return dataclasses.replace(
+        scope,
+        served={tid: cols for tid, cols in scope.served.items() if domain_of[tid] in selected},
+    )
 
 
 def _acting_reach(identity: Any, state: Any) -> frozenset[str] | None:

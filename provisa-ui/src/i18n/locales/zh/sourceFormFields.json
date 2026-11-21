@@ -94,7 +94,7 @@
     "authMechanismGssapi": "GSSAPI（Kerberos）",
     "upload": "上传文件",
     "uploadReplace": "上传新文件",
-    "uploadNeedsId": "请先输入数据源的 ID：文件保存在它之下。",
+    "uploadNeedsId": "请先输入数据源的 ID，因为文件保存在该 ID 下。",
     "uploadedFileHint": "此数据源上传的文件，保存在您组织的文件夹中。上传新文件即可替换。",
     "fileLocationsHint": "组织文件中的 {files}/…、服务器上的路径、https:// 地址，或带存储凭据的 s3://、gs://、az://；或上传文件。",
     "fileDatabaseLocationsHint": "组织文件中的 {files}/…、服务器上的路径、https:// 地址，或带存储凭据的 s3://、gs://、az://（在那里只读）；或上传文件。",

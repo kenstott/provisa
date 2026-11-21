@@ -99,8 +99,8 @@ DUCKDB = Engine(
     matches="regexp_matches({}, {})",
     replace_all="regexp_replace({}, {}, {}, 'g')",
     group="\\1",
-    map="list_transform({0}, {1} -> {2})",
-    keep="list_filter({0}, {1} -> {2})",
+    map="list_transform({0}, LAMBDA {1} : {2})",
+    keep="list_filter({0}, LAMBDA {1} : {2})",
     join="array_to_string({}, {})",
     split="string_split({}, {})",
     size="len({})",
@@ -115,8 +115,8 @@ DUCKDB = Engine(
     distinct="list_distinct({})",
     flatten="flatten({})",
     concat="list_concat({}, {})",
-    fold="list_reduce({0}, ({1}, {2}) -> {3}, {4})",
-    let="list_transform([{1}], {0} -> {2})[1]",
+    fold="list_reduce({0}, LAMBDA {1}, {2} : {3}, {4})",
+    let="list_transform([{1}], LAMBDA {0} : {2})[1]",
     upto="range(1, {} + 1)",
     first="{}[1]",
     largest="list_max({})",
@@ -1191,7 +1191,9 @@ def _lexized(name: str, args: list[exp.Expr]) -> exp.Expr:
     if not _is_constant(args[1]):
         return _row_of("ts_lexize", dictionary, args[1], name)
     found = parse.lexize(dictionary, _text_of(args[1], name))
-    return exp.Array(expressions=[_text_value(x) for x in found])
+    # A text[] even of no lexeme: an empty array of no type is ClickHouse's Array(Nothing).
+    lexemes = exp.Array(expressions=[_text_value(x) for x in found])
+    return exp.Cast(this=lexemes, to=exp.DataType.build("TEXT[]", dialect="postgres"))
 
 
 def _rank_terms(query: Node | None) -> list[Node]:

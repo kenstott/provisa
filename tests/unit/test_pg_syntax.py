@@ -148,7 +148,8 @@ def test_convert_is_refused_by_name_where_it_has_no_form(dialect: str) -> None:
         ("postgres", "SELECT JSON_OBJECT('{a,1}') FROM t"),
         ("duckdb", "SELECT JSON_OBJECT('{a,1}') FROM t"),
         ("trino", "SELECT JSON_OBJECT('{a,1}') FROM t"),
-        ("clickhouse", "SELECT json_object('{a,1}') FROM t"),
+        # computed as the statement is read (polyfill.json_literal): PostgreSQL's answer
+        ("clickhouse", 'SELECT CAST(\'{"a" : "1"}\' AS Nullable(String)) AS json_object FROM t'),
     ],
 )
 def test_json_object_of_an_array_is_postgresql_s_call(dialect: str, written: str) -> None:

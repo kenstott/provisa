@@ -267,7 +267,7 @@ describe("a product's panel", () => {
     fireEvent.click(within(screen.getByTestId("snip-depth")).getByRole("radio", { name: "3" }));
     await waitFor(() => expect(nodeIds(drawn())).toContain("term:customer"));
     act(() => made.callbacks[0].onSelect({ kind: "node", id: "term:customer" }));
-    expect(nav.to).toEqual(["/admin/ontology?term=customer"]);
+    expect(nav.to).toEqual(["/context/ontology?term=customer"]);
   });
 });
 

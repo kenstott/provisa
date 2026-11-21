@@ -14,7 +14,8 @@
       "webhook_not_found": "Webhook '{{name}}' לא נמצא",
       "written_table_not_registered": "'{{table}}' אינה טבלה רשומה של המקור '{{source_id}}'",
       "function_exists": "הפונקציה '{{name}}' כבר קיימת",
-      "webhook_exists": "ה-webhook '{{name}}' כבר קיים"
+      "webhook_exists": "ה-webhook '{{name}}' כבר קיים",
+      "mask_constant_not_text": "מסכה קבועה על עמודה שאינה טקסט נקראת כ-NULL; ניתן לשמור רק NULL: {{column}} ({{type}})"
     },
     "ai_models": {
       "vector_model_fields_required": "כל רשומת vector_models דורשת id, provider ו-dimensions",
@@ -65,7 +66,7 @@
     },
     "billing": {
       "checkout_not_complete": "התשלום הזה לא הושלם, ולכן עדיין אין מינוי לשייך.",
-      "invalid_signature": "חתימת webhook לא חוקית",
+      "invalid_signature": "חתימת Webhook לא תקינה",
       "no_trial": "לארגון הזה אין תקופת ניסיון",
       "org_no_customer": "לארגון הזה עדיין אין חשבון חיוב.",
       "org_not_found": "הארגון לא נמצא",
@@ -147,7 +148,7 @@
       "viewer_column_unknown": "'{{column}}' אינה עמודה של הטבלה '{{table}}'",
       "viewer_filter_unknown": "'{{operator}}' אינו מסנן של העמודה '{{column}}'",
       "viewer_value_invalid": "המסנן על '{{column}}' אינו יכול להשתמש בערך '{{value}}'",
-      "replica_building": "העותק של {{replica}} עדיין נבנה. הבנייה נמשכת; פתחו שוב את התצוגה המקדימה לאחר שתסתיים.",
+      "replica_building": "הרפליקה של {{replica}} עדיין נבנית. הבנייה ממשיכה; יש לפתוח את התצוגה המקדימה שוב לאחר שתסתיים.",
       "address_invalid": "לא ניתן לפענח את הכתובת: {{reason}}",
       "address_not_found": "אין מה לפענח: {{reason}}",
       "mixed_resolve_and_other_fields": "לא ניתן לשלב את resolve עם שדות שורש אחרים באותה פעולה",
@@ -168,7 +169,8 @@
       "table_is_withdrawn": "{{table}} הוסרה מהייצור: מחוץ לייצור עד שתוחזר",
       "view_awaits_rule_rebuild": "התצוגה {{view}} נבנית מחדש בעקבות שינוי בכללי השורות של הקלטים שלה. תפקיד זה יוכל לקרוא אותה לאחר שהבנייה תפורסם.",
       "parameter_required": "הטבלה '{{table}}' דורשת את הפרמטר או הפרמטרים {{parameters}}: תנו לכל אחד ערך (תנאי WHERE על העמודה שלו ב-SQL, ארגומנט ב-GraphQL).",
-      "parameter_wrong_type": "הפרמטר {{parameter}} מקבל ערך מסוג {{type}}; '{{value}}' אינו כזה."
+      "parameter_wrong_type": "הפרמטר {{parameter}} מקבל ערך מסוג {{type}}; '{{value}}' אינו כזה.",
+      "statement_failed": "ההוראה נכשלה בתוך השרת ({{kind}}): {{error}}"
     },
     "discovery": {
       "adapter_missing_discover_schema": "המתאם עבור '{{source_type}}' אינו מממש discover_schema",
@@ -243,7 +245,8 @@
       "host_code_refused": "הפקודה '{{name}}' היא מסוג {{impl_kind}}, שמריץ קוד על מארח השרת. קוד מארח כבוי בפריסה זו; השתמשו במקום זאת במפענח קוד.",
       "no_plain_list": "אף פעולה של המקור '{{source_id}}' ללא פרמטר חובה אינה מחזירה את השורות של '{{operation}}', ולכן הטבלה שלה נשארת מופעלת",
       "plain_list_unregistered": "'{{operation}}' של המקור '{{source_id}}' מחזירה את השורות של הרשימה שלה {{lists}}; יש לרשום תחילה את הרשימה הזו כטבלה",
-      "table_has_dependents": "אובייקטים אחרים עדיין מפנים לטבלה '{{table}}' של הפונקציה '{{name}}'; יש להסיר תחילה את ההפניות האלה"
+      "table_has_dependents": "אובייקטים אחרים עדיין מפנים לטבלה '{{table}}' של הפונקציה '{{name}}'; יש להסיר תחילה את ההפניות האלה",
+      "statement_failed": "הפקודה '{{name}}' נכשלה: {{error}}"
     },
     "graphql_remote": {
       "introspection_failed": "Introspection נכשל: {{error}}",
@@ -290,22 +293,22 @@
       "auth_required_create": "נדרש אימות כדי ליצור ארגון",
       "auth_required_leave": "נדרש אימות כדי לעזוב ארגון",
       "auto_join_breadth_unacknowledged": "סקרו את כלל ההצטרפות האוטומטית הזה בקפידה, אחרת תוכלו לקבל אנשים מחוץ לארגון שלכם: מלבד {{domains}}, הוא מקבל גם כתובות כגון {{admits}}. כל אדם בדומיין שאינכם שולטים בו יוכל אז להצטרף לארגון שלכם אוטומטית. אשרו שאתם מקבלים את הסיכון הזה כדי לשמור.",
-      "auto_join_public_domain": "auto_join מחייב כלל דוא\"ל המוגבל לדומיין שבבעלותכם — כלל זה תואם ל־{{domain}}.",
+      "auto_join_public_domain": "auto_join דורש כלל דוא\"ל המוגבל לדומיין שבשליטתך. הכלל הזה תואם ל-{{domain}}.",
       "auto_join_requires_role": "auto_join דורש auto_join_role",
-      "auto_join_rule_taken": "ארגון אחר כבר מקבל אוטומטית את כל מי שמתאים לכלל זה. שני ארגונים אינם יכולים לתבוע את אותן כתובות — בקשו מהם הזמנה, או צמצמו את הכלל לדומיין שרק הארגון שלכם משתמש בו.",
+      "auto_join_rule_taken": "ארגון אחר כבר מצרף אוטומטית את כל מי שתואם לכלל הזה. שני ארגונים לא יכולים לתבוע את אותן כתובות. אפשר לבקש מהם הזמנה, או לצמצם את הכלל לדומיין שרק הארגון שלך משתמש בו.",
       "auto_join_rule_unbounded": "לכלל ההצטרפות האוטומטית הזה אין גבול: הוא היה מקבל כתובות בדומיינים שאינכם שולטים בהם. עגנו אותו לדומיין שבבעלותכם, לדוגמה \"@acme\\\\.com$\".",
       "cannot_delete_root": "לא ניתן למחוק את ארגון ה-root",
-      "delete_confirm_required": "מחיקת '{{org}}' משמידה את כל הנתונים שלו לצמיתות — איש, כולל מנהל פלטפורמה, לא יוכל לשחזרם. חזרו על מזהה הארגון בפרמטר 'confirm' כדי להמשיך.",
+      "delete_confirm_required": "מחיקת '{{org}}' משמידה את כל הנתונים שלו לצמיתות, ואף אחד, כולל מנהל פלטפורמה, לא יכול לשחזר אותם. יש לחזור על מזהה הארגון בפרמטר 'confirm' כדי להמשיך.",
       "invalid_email_rule": "כלל דוא\"ל לא תקין: {{error}}",
       "invalid_org_id": "מזהה ארגון לא תקין '{{org}}': 2-40 תווים, אותיות לטיניות קטנות וספרות בלבד, המתחילים באות. המזהה הופך לשם סכמת מסד הנתונים ולתת-הדומיין, ולא ניתן לשנותו בהמשך.",
       "limit_reached": "הגעת למגבלת הארגונים: חשבון בודד רשאי ליצור לכל היותר {{limit}} ארגונים. מחקו ארגון שאינו נחוץ עוד כדי ליצור אחד נוסף.",
       "membership_not_found": "החברות לא נמצאה",
-      "no_tenant_runtime": "לארגון '{{org}}' אין סביבת ריצה של דייר — ייתכן שהוא עדיין בתהליך הקצאה.",
+      "no_tenant_runtime": "לארגון '{{org}}' אין סביבת ריצה של דייר. ייתכן שהוא עדיין בהקצאה.",
       "not_found": "הארגון לא נמצא",
       "not_org_admin": "{{user}} אינו מחזיק ב-org_admin ב-{{org}}",
       "org_id_reserved": "מזהה הארגון '{{org}}' שמור. מזהים שמורים: {{reserved}}.",
       "platform_admin_required": "נדרש platform_admin",
-      "retry_not_failed": "הארגון '{{org}}' נמצא במצב '{{state}}', לא 'failed' — אין מה לנסות שוב.",
+      "retry_not_failed": "הארגון '{{org}}' במצב '{{state}}', לא 'failed', ולכן אין מה לנסות שוב.",
       "self_role_change": "משתמש אינו יכול לשנות את התפקיד של עצמו. פנו למנהל אחר.",
       "view_not_permitted": "אין הרשאה לצפות בארגון זה",
       "org_id_sandbox_prefix": "מזהי ארגון שמתחילים ב־{{prefix}} שמורים לארגזי חול של הדגמה.",
@@ -365,13 +368,13 @@
       "cache_purged": "נוקו {{count}} רשומות מטמון",
       "cache_purged_table": "נוקו {{count}} רשומות מטמון עבור הטבלה {{table}}",
       "calendar_deleted": "לוח השנה '{{calendar}}' נמחק",
-      "calendar_in_use": "לוח השנה '{{calendar}}' נמצא בשימוש על ידי Materialized Views — נקו את לוח הזמנים של תמונות המצב שלהם לפני המחיקה",
+      "calendar_in_use": "לוח השנה '{{calendar}}' נמצא בשימוש של תצוגות Materialized View. יש לנקות את תזמון ה-snapshot שלהן לפני המחיקה.",
       "calendar_not_found": "לוח השנה '{{calendar}}' לא נמצא",
       "calendar_saved": "לוח השנה '{{calendar}}' {{version}} נשמר",
       "column_natively_nested": "לא ניתן לרשום: העמודה {{column}} היא באופן מקורי {{native_type}} במקור שלה, ולכן הסוג שלה הוא json ולא {{type}}.",
       "column_types_unresolved": "לא ניתן לרשום: לא נמצא סוג נתונים מהמקור עבור העמודות: {{columns}}. בצעו Introspection לטבלה (Discover schema) או הגדירו Data Type לכל אחת לפני הרישום.",
       "config_not_found": "קובץ התצורה לא נמצא",
-      "creation_request_queued": "נכנס לתור כבקשת יצירה מס' {{id}} — ממתין למשתמש המחזיק ב-'{{capability}}' שיבצע או ידחה אותה.",
+      "creation_request_queued": "הוכנס לתור כבקשת יצירה מס' {{id}}, וממתין למשתמש בעל '{{capability}}' שיבצע או ידחה אותה.",
       "db_pool_unavailable": "מאגר מסד הנתונים אינו זמין",
       "discovery_failed": "גילוי הסכמה נכשל: {{error}}",
       "domain_created": "הדומיין '{{domain}}' נוצר",
@@ -383,7 +386,7 @@
       "invalid_calendar": "לוח שנה לא תקין: {{error}}",
       "invalid_cardinality": "קרדינליות לא תקינה: '{{cardinality}}'",
       "invalid_off_peak_window": "חלון שפל לא תקין: {{error}}",
-      "load_protection_gate_required": "{{who}}: הגנת עומס דורשת לפחות שער רענון אחד — הגדירו חלון שפל, קצב cache_ttl, או change_signal מסוג בדיקה (probe/ttl_probe)",
+      "load_protection_gate_required": "{{who}}: הגנת עומס דורשת לפחות שער רענון אחד. יש להגדיר חלון שעות שפל, קצב cache_ttl או change_signal מתשאל (probe/ttl_probe)",
       "metric_deleted": "המדד '{{metric}}' נמחק",
       "metric_not_found": "המדד '{{metric}}' לא נמצא",
       "metric_saved": "המדד '{{metric}}' נשמר",
@@ -564,7 +567,9 @@
       "withdrawn_table_not_previewable": "לא ניתן להציג תצוגה מקדימה של הטבלה {{table}}: היא הוסרה מהייצור ואינה שומרת רפליקה, והמנוע קורא את המקור שלה רק דרך רפליקה.",
       "table_not_withdrawn": "הטבלה {{table}} לא הוסרה מהייצור: רק טבלה שהוסרה מהייצור מוחזרת. כדי להעביר טבלה בייצור לאזור אחר, הגדירו את האזור שלה.",
       "source_not_withdrawn": "המקור {{source}} לא הוסר מהייצור: רק מקור שהוסר מהייצור מוחזר. כדי לשנות את האזור שלו, הגדירו את האזור שלו.",
-      "put_back_needs_region": "החזרת {{object}} מציינת אזור: ציינו אזור, או אף אחד ללא אזור."
+      "put_back_needs_region": "החזרת {{object}} מציינת אזור: ציינו אזור, או אף אחד ללא אזור.",
+      "table_domain_required": "הטבלה '{{table}}' אינה מציינת תחום: כל טבלה נרשמת בתחום",
+      "mask_constant_not_text": "מסכה קבועה על עמודה שאינה טקסט נקראת כ-NULL; ניתן לשמור רק NULL: {{column}} ({{type}})"
     },
     "secrets": {
       "env_reference_object_locked": "אובייקט זה שייך למפעיל: הוא קורא את סביבת השרת עצמו ואי אפשר לשנותו כאן. יש להוסיף אובייקט משלך במקומו.",
@@ -614,7 +619,8 @@
     "sparql": {
       "columns_not_inferred": "לא ניתן היה להסיק עמודות: הבדיקה לא החזירה שורות ולא נמצאו משתני SELECT.",
       "probe_failed": "בדיקת נקודת הקצה של SPARQL נכשלה: {{error}}",
-      "source_not_found": "מקור SPARQL '{{source_id}}' לא נמצא"
+      "source_not_found": "מקור SPARQL '{{source_id}}' לא נמצא",
+      "no_select_variables": "השאילתה אינה מציינת משתני SELECT (SELECT * או שאינה שאילתת SELECT): לא ניתן לקרוא ממנה את העמודות"
     },
     "subscribe": {
       "avro_topic_without_registry": "הנושא '{{topic}}' נושא הודעות Avro, והמקור שלו אינו מציין רישום סכמות לקריאתן: הגדירו את כתובת ה-URL של רישום הסכמות של המקור",
@@ -625,7 +631,7 @@
       "schema_not_avro": "סכמה {{schema_id}} ברישום {{registry}} היא {{kind}}, לא Avro",
       "schema_registry_error": "רישום הסכמות {{registry}} השיב HTTP {{http_status}}: {{error}}",
       "schema_registry_refused_credentials": "רישום הסכמות {{registry}} דחה את פרטי הגישה של המקור (HTTP {{http_status}}, אימות '{{method}}')",
-      "schema_registry_unreachable": "לא ניתן להגיע לרישום הסכמות: {{error}}",
+      "schema_registry_unreachable": "לא ניתן להגיע ל-Schema Registry: ‏{{error}}",
       "sse_limit_reached": "הגעת למספר המרבי של מנויי SSE במקביל",
       "table_not_found": "הטבלה '{{table}}' לא נמצאה",
       "unknown_role": "תפקיד לא מוכר '{{role}}'",
@@ -810,7 +816,6 @@
       "status_by_action": "הסטטוס של מונח משתנה דרך אישור, סימון כמיושן, הוצאה משימוש או שחזור.",
       "successor_required": "למונח זה עדיין יש עמודות או טבלאות; גריעתו מעבירה אותן ליורש. בחרו יורש.",
       "successor_role": "היורש של {{role}} חייב להיות {{role}} או מושג; '{{successor}}' הוא {{successor_role}}.",
-      "no_retirement_history": "בהיסטוריה של המודל אין גריעה של מונח זה.",
       "finding": {
         "unlinked_tables": "מחלקה זו מעוגנת בטבלאות שקשרי אותה-ישות אינם מחברים את כולן: {{tables}}.",
         "class_and_attribute": "למחלקה זו יש גם עמודות שאינן המפתחות שלה: {{columns}}.",
@@ -828,7 +833,9 @@
       "not_bulk_approvable": "רק טיוטות מוגדרות ומעוגנות מאושרות יחד; לא: {{terms}}.",
       "term_ids_required": "ציינו את המונחים לאישור.",
       "impact_action": "אין תצוגה מקדימה לפעולה זו.",
-      "impact_table_required": "קישור מציין טבלה או אחת מעמודותיה."
+      "impact_table_required": "קישור מציין טבלה או אחת מעמודותיה.",
+      "name_taken": "מונח בשם '{{name}}' כבר קיים בתחום {{domain}}. בחרו שם אחר, או שייכו את המונח לתחום אחר.",
+      "name_taken_unscoped": "מונח בשם '{{name}}' כבר קיים ללא תחום, ולכן הוא חל על כל התחומים. בחרו שם אחר."
     },
     "table": {
       "requires_parameters": "לא ניתן לספור או ליצור פרופיל לטבלה {{table}}: היא דורשת את {{parameters}}. תנו ערך לכל אחד מהם כדי לקרוא את השורות שלה."
@@ -893,6 +900,7 @@
       "unknown_kind": "{{kind}} אינו סוג של רשימת הרשאות.",
       "idp_supersedes": "ספק הזהויות שולח את רשימת {{kind}} של אדם זה עבור התפקיד {{role_id}}. רשימה זו גוברת, ולכן היא משתנה שם ולא כאן.",
       "blank_identifier": "פריט אינו יכול להיות ריק.",
+      "invalid_identifier": "{{identifier}} אינו פריט {{kind}} תקין.",
       "expiry_in_past": "תאריך סיום חייב להיות בעתיד.",
       "expiry_removes_nothing": "תאריך סיום ברשימת {{kind}} זו לא היה מסיר דבר.",
       "pending_not_found": "אין הענקה הממתינה ל-{{email}} עבור התפקיד {{role_id}} ו-{{kind}}."
@@ -923,7 +931,16 @@
       "filter_operator_refused": "{{operator}} אינו אופרטור שבעזרתו ניתן להמיר מסנן הרשאה."
     },
     "relationship": {
-      "name_taken": "השם '{{name}}' כבר תפוס על ידי הקשר '{{held_by}}'. יש לתת לקשר הזה שם אחר."
+      "name_taken": "השם '{{name}}' תפוס על ידי הקשר '{{held_by}}'. יש לתת לקשר הזה שם אחר."
+    },
+    "wikidata": {
+      "no_credential": "שירות השאילתות של ויקינתונים אינו דורש אישורים",
+      "bad_id": "{{value}} אינו {{kind}} של ויקינתונים",
+      "bad_language": "{{language}} אינו קוד שפה",
+      "bad_column_type": "סוגי עמודות שאינם מוצעים למאפיין של ויקינתונים: {{types}}",
+      "filter_required": "למחלקה זו יש {{count}} מופעים, יותר מ-{{limit}}: בחרו מסנן",
+      "filter_too_wide": "המסנן משאיר יותר מ-{{limit}} מופעים",
+      "unreachable": "לא ניתן להגיע לוויקינתונים: {{reason}}"
     }
   }
 }

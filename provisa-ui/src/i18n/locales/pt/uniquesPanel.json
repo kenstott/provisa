@@ -1,7 +1,7 @@
 {
   "uniquesPanel": {
     "title": "Chaves únicas",
-    "infoTooltip": "Restrições UNIQUE declaradas para esta tabela — de coluna única ou compostas. Chaves estrangeiras podem apontar para qualquer chave única, e os clientes as veem como restrições UNIQUE. Semeadas a partir da fonte no registro; edite ou adicione as suas.",
+    "infoTooltip": "Restrições UNIQUE declaradas para esta tabela, de coluna única ou compostas. Chaves estrangeiras podem apontar para qualquer chave única, e os clientes as veem como restrições UNIQUE. Obtidas da fonte no registro; edite-as ou adicione as suas.",
     "addConstraint": "Restrição",
     "nameLabel": "Nome",
     "namePlaceholder": "nome da restrição (ex.: users_tenant_email_key)",

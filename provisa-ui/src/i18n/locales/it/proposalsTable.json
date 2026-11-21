@@ -1,6 +1,6 @@
 {
   "proposalsTable": {
-    "intro": "Una riga spuntata viene accettata quando applichi. Le righe con un punteggio almeno pari alla soglia partono spuntate. Una riga senza caselle spuntate resta da decidere.",
+    "intro": "Una riga selezionata viene accettata quando si applica. Le righe con punteggio almeno pari alla soglia partono selezionate. Una riga senza caselle selezionate resta indecisa.",
     "colScore": "Punteggio",
     "colConfidence": "Attendibilità",
     "colJev": "Jev",
@@ -27,7 +27,7 @@
       "invalid_shape": "Non è una relazione nella forma richiesta: un campo manca o ha una forma errata",
       "unknown_column": "Nomina una tabella o una colonna che la richiesta non ha confrontato",
       "not_comparable": "Le due colonne hanno classi diverse, quindi non vengono confrontate",
-      "below_threshold": "Punteggio sotto il {{threshold}}% a cui un suggerimento viene mantenuto.",
+      "below_threshold": "Punteggio inferiore alla soglia del {{threshold}}% oltre la quale un suggerimento viene mantenuto.",
       "same_column": "Da una colonna a se stessa",
       "existing": "Già registrata",
       "rejected": "Rifiutata in precedenza",

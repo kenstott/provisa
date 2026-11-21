@@ -62,6 +62,7 @@ import { changes, draftOf, type Change, type TermDraft, type TermTags } from "./
 import { useAssignTag, useUnassignTag } from "../../hooks/useTagQueries";
 import { refusalError } from "../../i18n/serverMessage";
 import { useViewDomains } from "../../lib/viewDomains";
+import { type TermOption } from "./termLabel";
 
 type Option = { value: string; label: string };
 
@@ -80,7 +81,7 @@ export function TermEditForm({
   onTermCreated,
 }: {
   term: GlossaryTermDetail;
-  otherTermOptions: Option[];
+  otherTermOptions: TermOption[];
   relTypeOptions: Option[];
   kindOptions: Option[];
   memberOptions: Option[];
@@ -118,6 +119,8 @@ export function TermEditForm({
       if (!r.success) throw refusalError(r);
     },
   };
+  // REQ-1387: the bound tables the last draft read no samples from.
+  const [unsampled, setUnsampled] = useState<string[]>([]);
   const [refused, setRefused] = useState<{ field: Change["field"]; message: string } | null>(null);
   // A column's move refused over the tags it takes off (REQ-2145): which change, and what it does.
   const [loss, setLoss] = useState<{
@@ -163,7 +166,10 @@ export function TermEditForm({
     };
   }, [actingRoles]);
 
-  const nameOf = (id: number) => otherTermOptions.find((o) => o.value === String(id))?.label ?? "";
+  const optionOf = (id: number) => otherTermOptions.find((o) => o.value === String(id));
+  const nameOf = (id: number) => optionOf(id)?.name ?? "";
+  // REQ-1591: an edge's other term carries its domains, which tell same-named terms apart
+  const domainsOf = (id: number) => optionOf(id)?.domains ?? [];
   const own = useMemo(
     () => new Set(term.refs.map((r) => columnKey(r.table_id, r.column_name))),
     [term.refs],
@@ -265,9 +271,14 @@ export function TermEditForm({
 
   const generate = async () => {
     setGenerating(true);
+    setUnsampled([]);
     try {
-      const text = await generateGlossaryDefinition(term.id, viewDomains);
+      const { definition: text, tables_without_samples } = await generateGlossaryDefinition(
+        term.id,
+        viewDomains,
+      );
       if (text) set({ definition: text });
+      setUnsampled(tables_without_samples);
     } catch (e) {
       setRefused({ field: "fields", message: e instanceof Error ? e.message : String(e) });
     } finally {
@@ -285,11 +296,22 @@ export function TermEditForm({
         : from === term.id
           ? {
               ...d,
-              edgesOut: [...d.edgesOut, { term_id: to, rel_type: rel, name: name ?? nameOf(to) }],
+              edgesOut: [
+                ...d.edgesOut,
+                { term_id: to, rel_type: rel, name: name ?? nameOf(to), domains: domainsOf(to) },
+              ],
             }
           : {
               ...d,
-              edgesIn: [...d.edgesIn, { term_id: from, rel_type: rel, name: name ?? nameOf(from) }],
+              edgesIn: [
+                ...d.edgesIn,
+                {
+                  term_id: from,
+                  rel_type: rel,
+                  name: name ?? nameOf(from),
+                  domains: domainsOf(from),
+                },
+              ],
             },
     );
   const removeEdge = async (from: number, to: number, rel: GlossaryRelType) =>
@@ -339,6 +361,11 @@ export function TermEditForm({
               generating={generating}
               onGenerate={() => void generate()}
             />
+            {unsampled.length > 0 && (
+              <Alert color="yellow" data-testid="glossary-definition-unsampled">
+                {t("glossaryTab.tablesWithoutSamples", { tables: unsampled.join(", ") })}
+              </Alert>
+            )}
           </Stack>
         </FormField>
         <FormField size="long">

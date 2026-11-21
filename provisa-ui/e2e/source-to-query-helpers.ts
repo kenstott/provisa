@@ -428,7 +428,7 @@ export interface RegisteredColumnEdits {
 
 /**
  * REQ-1921: a table or view registered through the admin is live on registration. Asserts every
- * table matching ``match`` (a source's, or one table by name) is listed and none is a draft, and
+ * table matching ``match`` (a source's, or one table by name) is listed and none is withdrawn, and
  * returns how many matched.
  */
 export async function expectRegisteredLive(
@@ -437,14 +437,16 @@ export async function expectRegisteredLive(
   baseUrl = "",
 ): Promise<number> {
   const res = await page.request.post(`${baseUrl}/admin/graphql`, {
-    data: { query: "{ tables { id sourceId tableName draft } }" },
+    data: { query: "{ tables { id sourceId tableName withdrawn } }" },
   });
   expect(res.ok(), await res.text()).toBeTruthy();
-  const tables = (await res.json()).data.tables as {
+  const body = await res.json();
+  expect(body.errors, JSON.stringify(body.errors)).toBeUndefined();
+  const tables = body.data.tables as {
     id: number;
     sourceId: string;
     tableName: string;
-    draft: boolean;
+    withdrawn: boolean;
   }[];
   const matched = tables.filter(
     (t) =>
@@ -453,8 +455,8 @@ export async function expectRegisteredLive(
   );
   expect(matched.length, `no registered table matches ${JSON.stringify(match)}`).toBeGreaterThan(0);
   expect(
-    matched.filter((t) => t.draft).map((t) => t.tableName),
-    "a registered table is live, never a draft",
+    matched.filter((t) => t.withdrawn).map((t) => t.tableName),
+    "a registered table is live, never withdrawn",
   ).toEqual([]);
   return matched.length;
 }
@@ -470,6 +472,46 @@ export async function submitRegister(page: Page, cacheTtlSeconds = 300): Promise
 }
 
 /**
+ * Click `target` and return the parsed answer of the /admin/graphql operation it sends whose body
+ * matches `operation`. The answer is read in the page, from a clone of the response the app's own
+ * fetch receives (apolloClient.ts calls the global fetch on every request), not through
+ * Response.json(): that reads Chromium's inspector cache, which evicted a 198-byte UpdateTable
+ * answer the moment it landed while the Vite dev server streamed the next page's modules
+ * (run 44756391787, "Request content was evicted from inspector cache").
+ */
+async function clickAndReadAdminAnswer(
+  page: Page,
+  target: Locator,
+  operation: RegExp,
+): Promise<{ errors?: unknown; data: Record<string, unknown> }> {
+  await page.evaluate(
+    ({ source, flags }) => {
+      const pattern = new RegExp(source, flags);
+      const w = window as unknown as { __adminAnswer?: string; fetch: typeof fetch };
+      delete w.__adminAnswer;
+      const original = w.fetch;
+      w.fetch = async (input, init) => {
+        const response = await original(input, init);
+        const sent = typeof init?.body === "string" ? init.body : "";
+        if (String(input).includes("/admin/graphql") && pattern.test(sent)) {
+          w.fetch = original;
+          w.__adminAnswer = await response.clone().text();
+        }
+        return response;
+      };
+    },
+    { source: operation.source, flags: operation.flags },
+  );
+  await target.click();
+  const answer = await page.waitForFunction(
+    () => (window as unknown as { __adminAnswer?: string }).__adminAnswer,
+    undefined,
+    { timeout: 120000 },
+  );
+  return JSON.parse((await answer.jsonValue()) as string);
+}
+
+/**
  * Save the registration and wait for its answer, asserted whole. The registration rebuilds the
  * schemas before it answers, so a wait for what it lands (a row, a badge) starts here, not at the
  * click: on a busy runner the registration alone took 19.7 s of a 20 s wait (run 40177970935).
@@ -477,16 +519,13 @@ export async function submitRegister(page: Page, cacheTtlSeconds = 300): Promise
 export async function saveRegistration(page: Page): Promise<void> {
   // A table registered on its own is registered by this Save; one picked in the Tables field was
   // registered already, and this Save updates it.
-  const saved = page.waitForResponse(
-    (r) =>
-      r.url().includes("/admin/graphql") &&
-      /RegisterTable\b|UpdateTable\b/.test(r.request().postData() ?? ""),
-    { timeout: 120000 },
+  const body = await clickAndReadAdminAnswer(
+    page,
+    page.getByTestId("table-edit-save"),
+    /RegisterTable\b|UpdateTable\b/,
   );
-  await page.getByTestId("table-edit-save").click();
-  const body = await (await saved).json();
   expect(body.errors, JSON.stringify(body)).toBeUndefined();
-  const answer = body.data.registerTable ?? body.data.updateTable;
+  const answer = (body.data.registerTable ?? body.data.updateTable) as { success: boolean };
   expect(answer.success, JSON.stringify(body)).toBe(true);
 }
 
@@ -510,14 +549,11 @@ async function continueRegister(page: Page, cacheTtlSeconds: number): Promise<vo
   const table = pickedTable as string;
   if (await isPicked(page, table)) {
     const sourceId = await page.getByTestId("register-table-source-select").inputValue();
-    const registered = page.waitForResponse(
-      (r) =>
-        r.url().includes("/admin/graphql") &&
-        (r.request().postData() ?? "").includes("RegisterTables"),
-      { timeout: 120000 },
+    const body = await clickAndReadAdminAnswer(
+      page,
+      page.getByTestId("register-many-tables-submit"),
+      /RegisterTables\b/,
     );
-    await page.getByTestId("register-many-tables-submit").click();
-    const body = await (await registered).json();
     expect(body.errors, JSON.stringify(body)).toBeUndefined();
     const outcomes = body.data.registerTables as { result: { success: boolean } }[];
     expect(
@@ -679,7 +715,8 @@ export async function registerOfferedTable(
       variables: {
         t: {
           sourceId,
-          domainId: "",
+          // REQ-1531: every table is registered in a domain (the demo's).
+          domainId: "pet-store",
           schemaName,
           tableName,
           columns: columns.map((name) => ({ name, visibleTo: ["org_admin"] })),

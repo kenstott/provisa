@@ -47,7 +47,7 @@ def _published(name: str) -> set[str]:
 
 def test_the_routes_are_read_from_the_app():
     routes = _app_routes()
-    assert {"/tables", "/python", "/notebook", "/admin/ontology", "/sparql"} <= routes
+    assert {"/tables", "/python", "/notebook", "/context/ontology", "/sparql"} <= routes
     assert len(routes) > 50
 
 
@@ -127,7 +127,7 @@ def _reads(route: str) -> set[str]:
     [
         ("/tables", {"modeling", "wizardStep", "layout", "layoutUnsaved", "collapsed"}),
         ("/relationships", {"layout", "layoutUnsaved", "collapsed"}),
-        ("/admin/ontology", {"findTerms"}),
+        ("/context/ontology", {"findTerms"}),
     ],
 )
 def test_the_new_screens_inputs_are_named(route, keys):

@@ -96,8 +96,11 @@ beforeEach(() => {
     { id: 1, name: "customer", status: "draft" } as GlossaryTermSummary,
   ]);
   vi.mocked(generateGlossaryRelationships).mockResolvedValue({ added: 0, review: [] });
-  vi.mocked(generateAllGlossaryDefinitions).mockResolvedValue({ generated: 0 });
-  vi.mocked(generateGlossaryDefinition).mockResolvedValue("One who buys.");
+  vi.mocked(generateAllGlossaryDefinitions).mockResolvedValue({ generated: 0, tables_without_samples: [] });
+  vi.mocked(generateGlossaryDefinition).mockResolvedValue({
+    definition: "One who buys.",
+    tables_without_samples: [],
+  });
 });
 
 describe("the ontology's AI assistants ask for the selected domains", () => {

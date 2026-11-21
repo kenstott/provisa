@@ -2,7 +2,7 @@
   "jsonApiPage": {
     "title": "JSON:API 探索器",
     "specLink": "規格",
-    "description": "疏欄位集、篩選、排序及分頁。無論採用哪種傳輸協定，治理均一致套用。",
+    "description": "稀疏欄位集、篩選、排序和分頁。每種傳輸協定都適用相同的治理。",
     "tableLabel": "表格",
     "loadingOption": "載入中…",
     "selectTablePlaceholder": "選取表格",

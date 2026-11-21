@@ -1,6 +1,6 @@
 {
   "relationshipRow": {
-    "fkBadge": "De FK",
+    "fkBadge": "Desde FK",
     "fkBadgeTitle": "Creada a partir de una clave externa de la fuente",
     "yes": "Sí",
     "no": "No",
@@ -51,6 +51,8 @@
     "retireResolverConsequence": "Su vista de coincidencias y sus tres relaciones se retiran juntas. Sus nombres siguen ocupados.",
     "queryLinks": {
       "heading": "Consultar",
+      "tableMissing": "Los enlaces de consulta no están disponibles: la tabla {{ids}} que nombra esta relación no figura entre las tablas registradas.",
+      "tablesUnread": "Los enlaces de consulta no están disponibles: no se pudieron leer las tablas registradas ({{error}}).",
       "cypher": "Leer {{name}} en Cypher",
       "sql": "Leer {{name}} en SQL",
       "sparql": "Leer {{name}} en SPARQL",

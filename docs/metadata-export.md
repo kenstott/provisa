@@ -4,7 +4,7 @@ Provisa publishes the metadata it governs (tables, columns, domains, stewards, a
 relationships and column-level lineage) to an external data catalog.
 
 Export writes to a catalog. A catalog's descriptions, owners, tags and glossary links can also
-be read back into Provisa, table by table, when a steward asks for it (see the Syncing page).
+be read back into Provisa, table by table, when a steward asks for it (see the Context Sync page).
 Governance (grants, row rules and masks) is never read from a catalog. A description edited in
 the target catalog is overwritten by the next publish, unless the table is locked to that catalog.
 
@@ -33,7 +33,7 @@ The Atlan adapter has not yet run against a live Atlan tenant. It is built on At
 API as Atlan documents it, and its updates follow Atlas's rules: an update starts from the live
 asset's attributes, only Provisa's `provisa_*` tags are added or removed, and an asset whose live
 read fails is not written. Unit tests cover all of this; no end-to-end run against Atlan does yet.
-Until one does, the Syncing page and every page that names Atlan as a target show it as
+Until one does, the Context Sync page and every page that names Atlan as a target show it as
 **Atlan (beta)**.
 
 Snowflake Horizon Catalog and BigQuery Analytics Hub only publish **Data Products** (see [Data Products](data-products.md#metadata-export)), not the general
@@ -173,7 +173,7 @@ table at three columns and an approved relationship carries far more than that.
 
 ## Configuration
 
-Metadata export is a **per-organization** setting, made on the **Admin → Syncing** page or under
+Metadata export is a **per-organization** setting, made on the **Context → Context Sync** page or under
 `catalogs` in the config YAML. Each outside system kept in step with Provisa is one entry there,
 connected once. An entry has a `type`: `data_catalog` (a catalog Provisa has an adapter for, below),
 `ontology`, or `custom`. Each entry also states its `direction`: `export` (Provisa to the system),
@@ -247,11 +247,11 @@ Export schedule:
 | --- | --- |
 | `reconcile_cron` | Cron schedule for this org's full-snapshot reconcile to every entry that exports. Re-armed when you save, so a change takes effect without a restart. See [How the target stays current](#how-the-target-stays-current). |
 
-Credentials are **write-only through the UI**. The Syncing page reports each entry's credentials as
+Credentials are **write-only through the UI**. The Context Sync page reports each entry's credentials as
 set or not set and never returns a stored value, so leaving a credential field blank keeps the one
 stored for that entry and clearing it removes it.
 
-### Operating it from the Syncing page
+### Operating it from the Context Sync page
 
 - **Test connection** on a data catalog calls its provider and reports the text it refused with,
   which is what separates a wrong URL from a rejected credential.
@@ -413,7 +413,7 @@ Three paths publish, and all three send the same full snapshot.
   publish the same change to the same catalog.
 - **Scheduled reconcile.** The org's `reconcile_cron` republishes the whole snapshot, correcting
   drift from an event that never arrived or a catalog restored from a backup.
-- **On demand.** **Publish now** on the Syncing page, or `provisa metadata export` from the command line. Both call the same endpoint and return the same result.
+- **On demand.** **Publish now** on the Context Sync page, or `provisa metadata export` from the command line. Both call the same endpoint and return the same result.
 
 They send the same snapshot because a delta on the change path would need its own builder and
 its own correctness argument, while the full snapshot already has one: every adapter upserts by

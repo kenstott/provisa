@@ -1,0 +1,8 @@
+{
+  "environmentStage": {
+    "production": "生產",
+    "preprod": "預生產",
+    "test": "測試",
+    "development": "開發"
+  }
+}

@@ -78,7 +78,11 @@ beforeEach(() => {
 });
 afterEach(() => vi.unstubAllGlobals());
 
-function detail(rel = placedBy()) {
+function detail(
+  rel = placedBy(),
+  tables: ListedTable[] = LISTED,
+  refetchTables: () => Promise<unknown> = () => Promise.resolve(),
+) {
   return (
     <RelationshipDetail
       rel={rel}
@@ -91,7 +95,8 @@ function detail(rel = placedBy()) {
       onEditSave={vi.fn()}
       saving={null}
       problem=""
-      tables={LISTED}
+      tables={tables}
+      refetchTables={refetchTables}
       functions={[]}
       tableDomainById={{}}
       domainsEnabled={false}
@@ -111,6 +116,34 @@ const SURFACE_NAMES: [string, string][] = [
 ];
 
 describe("the relationship detail panel", () => {
+  it("reads the tables again when one of the relationship's is not listed, then shows its links", async () => {
+    const refetch = vi.fn(() => Promise.resolve());
+    const view = routed(detail(placedBy(), [], refetch));
+    await vi.waitFor(() => expect(refetch).toHaveBeenCalledTimes(1));
+    expect(screen.queryByTestId("relationship-detail-query-sql")).toBeNull();
+    view.rerender(
+      <Routes>
+        <Route path="/" element={detail(placedBy(), LISTED, refetch)} />
+      </Routes>,
+    );
+    expect(await screen.findByTestId("relationship-detail-query-sql")).toBeInTheDocument();
+    expect(refetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("says why when the table is still missing after the read", async () => {
+    routed(detail(placedBy(), [], () => Promise.resolve()));
+    expect(await screen.findByTestId("relationship-detail-query-links-unavailable")).toHaveTextContent(
+      "not among the registered tables",
+    );
+  });
+
+  it("says why when the tables cannot be read", async () => {
+    routed(detail(placedBy(), [], () => Promise.reject(new Error("boom"))));
+    expect(await screen.findByTestId("relationship-detail-query-links-unavailable")).toHaveTextContent(
+      "boom",
+    );
+  });
+
   it("links the relationship on every surface, each named by its surface", async () => {
     routed(detail());
     for (const [surface, text] of SURFACE_NAMES) {
@@ -139,7 +172,7 @@ describe("the relationship detail panel", () => {
     expect(opened()).toEqual({
       to: "/openapi",
       state: {
-        openApiUrl: "GET /data/rest/sales__orders?fields=id,customerId,client&limit=25",
+        openApiUrl: "GET /data/rest/sales/orders?fields=id,customerId,client&limit=25",
         autoRun: true,
       },
     });
@@ -152,7 +185,7 @@ describe("the relationship detail panel", () => {
       to: "/grpc",
       state: {
         grpcMethod: "QuerySalesOrders()",
-        grpcBody: { read_mask: { paths: ["customer_id", "sales_clients"] }, limit: 25 },
+        grpcBody: { read_mask: { paths: ["customer_id", "client.id"] }, limit: 25 },
         autoRun: true,
       },
     });

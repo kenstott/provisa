@@ -18,7 +18,7 @@
     "cargoNone": "Cargo レジストリはありません。クレートは crates.io から取得されます。",
     "add_cargo": "Cargo レジストリを追加",
     "gitTitle": "Git ホスト",
-    "gitHelp": "コードソースが Git のコードと Git の依存関係を取得するホストです。",
+    "gitHelp": "コードソースが Git コードと Git 依存関係を取得するホスト。",
     "gitNone": "Git ホストはありません。",
     "add_git": "Git ホストを追加",
     "npmAddress": "レジストリ URL",

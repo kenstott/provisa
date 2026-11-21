@@ -1,6 +1,6 @@
 {
   "proposalsTable": {
-    "intro": "Une ligne cochée est acceptée à l'application. Les lignes dont le score atteint au moins le seuil sont cochées au départ. Une ligne sans case cochée reste non décidée.",
+    "intro": "Une ligne cochée est acceptée lorsque vous appliquez. Les lignes dont le score atteint au moins le seuil sont cochées au départ. Une ligne sans case cochée reste indécise.",
     "colScore": "Score",
     "colConfidence": "Confiance",
     "colJev": "Jev",
@@ -27,7 +27,7 @@
       "invalid_shape": "Pas une relation sous la forme demandée : un champ manque ou a une forme incorrecte",
       "unknown_column": "Nomme une table ou une colonne que la requête n'a pas comparée",
       "not_comparable": "Les deux colonnes ont des classes différentes, elles ne sont donc pas comparées",
-      "below_threshold": "Score inférieur aux {{threshold}} % à partir desquels une suggestion est conservée.",
+      "below_threshold": "Score inférieur aux {{threshold}} % à partir desquels une suggestion est conservée.",
       "same_column": "D'une colonne vers elle-même",
       "existing": "Déjà enregistrée",
       "rejected": "Rejetée auparavant",

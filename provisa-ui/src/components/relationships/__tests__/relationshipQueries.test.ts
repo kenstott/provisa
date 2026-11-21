@@ -11,6 +11,8 @@
 // REQ-2252: a relationship's query on each surface, by the names the role is served, with a row
 // limit; a surface that does not serve it to the role has none.
 
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { RoleSchema, type GraphqlType } from "../../../api/metaGraph";
 import {
@@ -18,6 +20,7 @@ import {
   relationshipGraphql,
   relationshipJsonApi,
   relationshipQueryLinks,
+  protoRelationFieldName,
   relationshipGrpc,
   relationshipQueryRef,
   relationshipRest,
@@ -43,11 +46,13 @@ function twoToClients(): RoleSchema {
   ]);
 }
 
-/** The role's schema with a column of orders named as customers' proto field. */
-function clientsColumnOnOrders(): RoleSchema {
+/** The role's schema with a second relationship to customers and a column of orders its gRPC
+ * field name translates to. */
+function billedToColumnOnOrders(): RoleSchema {
   return schemaWith((fields) => [
     ...fields,
-    { name: "sales_clients", type: { kind: "SCALAR", name: "String" } },
+    { name: "billedTo", type: { kind: "OBJECT", name: "SalesClients" } },
+    { name: "billed_to", type: { kind: "SCALAR", name: "String" } },
   ]);
 }
 
@@ -228,7 +233,7 @@ describe("GraphQL", () => {
 describe("REST", () => {
   it("reads the source's columns with the relationship nested, by its GraphQL name, limited", () => {
     expect(relationshipRest(ref(), reader())).toBe(
-      "GET /data/rest/sales__orders?fields=id,customerId,client&limit=25",
+      "GET /data/rest/sales/orders?fields=id,customerId,client&limit=25",
     );
   });
 
@@ -242,26 +247,51 @@ describe("REST", () => {
 });
 
 describe("gRPC", () => {
-  it("calls the source's Query method, masking its join column and the related table's field", () => {
+  it("calls the source's Query method, masking its join column and the relationship field's", () => {
     expect(relationshipGrpc(ref(), reader())).toEqual({
       method: "QuerySalesOrders()",
-      body: { read_mask: { paths: ["customer_id", "sales_clients"] }, limit: 25 },
+      body: { read_mask: { paths: ["customer_id", "client.id"] }, limit: 25 },
     });
   });
 
-  it("is none while another relationship reaches the same table (one relation field per table)", () => {
-    const r = reader();
-    const second = { ...r, schema: twoToClients() };
-    expect(relationshipGrpc(ref(), second)).toBeNull();
+  it("gives each of two relationships to one table its own field in the read_mask", () => {
+    const r = { ...reader(), schema: twoToClients() };
+    expect(relationshipGrpc(ref(), r)?.body.read_mask).toEqual({
+      paths: ["customer_id", "client.id"],
+    });
+    expect(
+      relationshipGrpc(ref(placedBy({ graphqlAlias: "billedTo" })), r)?.body.read_mask,
+    ).toEqual({ paths: ["customer_id", "billed_to.id"] });
   });
 
-  it("is none when a column of the source takes the relation field's name", () => {
+  it("is none when a column of the source takes the relationship's field name", () => {
     const r = reader();
-    expect(relationshipGrpc(ref(), { ...r, schema: clientsColumnOnOrders() })).toBeNull();
+    const billed = ref(placedBy({ graphqlAlias: "billedTo" }));
+    expect(relationshipGrpc(billed, { ...r, schema: billedToColumnOnOrders() })).toBeNull();
+  });
+
+  it("is none for a field the role's schema does not serve", () => {
+    expect(relationshipGrpc(ref(placedBy({ graphqlAlias: "owner" })), reader())).toBeNull();
   });
 
   it("is none for a junction-backed edge", () => {
     expect(relationshipGrpc(ref(tagged()), reader())).toBeNull();
+  });
+});
+
+describe("protoRelationFieldName", () => {
+  // The examples tests/unit/test_proto_relation_field_name_examples.py pins proto_gen's
+  // proto_relation_field_name to: one translation on both sides.
+  const fixture = resolve(
+    __dirname,
+    "../../../../../tests/fixtures/proto_relation_field_names.json",
+  );
+  const { examples } = JSON.parse(readFileSync(fixture, "utf8")) as {
+    examples: [string, string][];
+  };
+
+  it.each(examples)("translates %s to %s as proto_gen does", (graphqlField, protoField) => {
+    expect(protoRelationFieldName(graphqlField)).toBe(protoField);
   });
 });
 
@@ -314,7 +344,7 @@ describe("relationshipQueryLinks", () => {
     expect(links[4].link.state.openApiUrl).toContain("fields=id,customerId,client");
     expect(links[5].link.state).toEqual({
       grpcMethod: "QuerySalesOrders()",
-      grpcBody: { read_mask: { paths: ["customer_id", "sales_clients"] }, limit: 25 },
+      grpcBody: { read_mask: { paths: ["customer_id", "client.id"] }, limit: 25 },
       autoRun: true,
     });
     expect(links[6].link.state.jsonapiUrl).toContain("include=client");

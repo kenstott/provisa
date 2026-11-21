@@ -1,7 +1,7 @@
 {
   "nodeContextMenu": {
     "excludeTooltip": "Excluir este nodo de la consulta",
-    "excludeDisabledTooltip": "No hay clave primaria configurada — no se puede excluir",
+    "excludeDisabledTooltip": "No se puede excluir: no hay clave primaria configurada",
     "excludeFromQuery": "Excluir de la consulta",
     "excludeCount": "Excluir {{count}} nodos",
     "unfixPosition": "Liberar posición",

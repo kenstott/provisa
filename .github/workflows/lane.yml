@@ -186,16 +186,9 @@ on:
       GSHEETS_TEST_SHEET_ID:
         required: false
       # Fabric
-      FABRIC_SQL_SERVER:
-        required: false
-      FABRIC_DATABASE:
-        required: false
       FABRIC_RESOURCE_GROUP:
         required: false
       FABRIC_CAPACITY_NAME:
-        required: false
-      # the workspace the run's own Fabric capacity is assigned (scripts/fabric_e2e.py)
-      FABRIC_WORKSPACE_ID:
         required: false
       # the Azure service principal Fabric's capacity and SQL endpoint are reached as
       AZURE_CLIENT_ID:
@@ -219,6 +212,17 @@ on:
       SP_SITE_URL:
         required: false
       SP_CERT_PASSWORD:
+        required: false
+      # SingleStore Cloud shared-tier workspace (source-to-query-community-ext.spec.ts)
+      SINGLESTORE_HOST:
+        required: false
+      SINGLESTORE_PORT:
+        required: false
+      SINGLESTORE_USERNAME:
+        required: false
+      SINGLESTORE_PASSWORD:
+        required: false
+      SINGLESTORE_DATABASE:
         required: false
 
 permissions:
@@ -388,11 +392,8 @@ jobs:
           GOOGLE_CLOUD_PROJECT: ${{ secrets.GOOGLE_CLOUD_PROJECT }}
           GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
           GSHEETS_TEST_SHEET_ID: ${{ secrets.GSHEETS_TEST_SHEET_ID }}
-          FABRIC_SQL_SERVER: ${{ secrets.FABRIC_SQL_SERVER }}
-          FABRIC_DATABASE: ${{ secrets.FABRIC_DATABASE }}
           FABRIC_RESOURCE_GROUP: ${{ secrets.FABRIC_RESOURCE_GROUP }}
           FABRIC_CAPACITY_NAME: ${{ secrets.FABRIC_CAPACITY_NAME }}
-          FABRIC_WORKSPACE_ID: ${{ secrets.FABRIC_WORKSPACE_ID }}
           AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
           AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
           AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
@@ -403,6 +404,11 @@ jobs:
           SP_CLIENT_ID: ${{ secrets.SP_CLIENT_ID }}
           SP_SITE_URL: ${{ secrets.SP_SITE_URL }}
           SP_CERT_PASSWORD: ${{ secrets.SP_CERT_PASSWORD }}
+          SINGLESTORE_HOST: ${{ secrets.SINGLESTORE_HOST }}
+          SINGLESTORE_PORT: ${{ secrets.SINGLESTORE_PORT }}
+          SINGLESTORE_USERNAME: ${{ secrets.SINGLESTORE_USERNAME }}
+          SINGLESTORE_PASSWORD: ${{ secrets.SINGLESTORE_PASSWORD }}
+          SINGLESTORE_DATABASE: ${{ secrets.SINGLESTORE_DATABASE }}
         run: bash ${{ inputs.prepare }}
 
       # REQ-2073: the lane's app runs as the runner's user beside Trino's container (uid and gid

@@ -677,8 +677,9 @@ def test_every_row_states_its_bound_on_clickhouse():
     rows = [f for f in GRID.features if f.family == intervals.FAMILY]
     # the 27 calls, interval_mul, mul_d_interval and interval_div, and the literal (J1337); a time
     # of day plus or less an interval, interval(time), time(interval) and overlaps with an end
-    # given as an interval (J1366); a time less a time, an interval (time_mi_time, J1391)
-    assert len(rows) == 38
+    # given as an interval (J1366); a time less a time, an interval (time_mi_time, J1391);
+    # make_interval (CONF-CH4)
+    assert len(rows) == 39
     for feature in rows:
         (limitation,) = feature.read.limitations["clickhouse"]
         assert "Tuple(months Int32, days Int32, microseconds Int64)" in limitation.text

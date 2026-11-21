@@ -18,7 +18,7 @@
     "cargoNone": "没有 Cargo 注册表。crate 来自 crates.io。",
     "add_cargo": "添加 Cargo 注册表",
     "gitTitle": "Git 主机",
-    "gitHelp": "代码数据源获取 Git 代码和 Git 依赖的主机。",
+    "gitHelp": "代码数据源获取 Git 代码和 Git 依赖项的主机。",
     "gitNone": "没有 Git 主机。",
     "add_git": "添加 Git 主机",
     "npmAddress": "注册表 URL",

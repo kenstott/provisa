@@ -3,7 +3,7 @@
     "panelTitle": "Regras de ocultação",
     "loading": "Carregando…",
     "intro": "O texto que corresponde a estas regras é substituído antes de sair do Provisa: em traces e logs exportados, na saída dos contêineres, no log de auditoria e em cada mensagem de erro devolvida a um cliente, inclusive dentro de uma resposta bem-sucedida. Um cliente recebe [REDACTED], que não nomeia nenhuma regra. Os logs, os traces e o log de auditoria mantêm [REDACTED:<rule>]. Os segredos da própria organização são ocultados automaticamente.",
-    "bestEffort": "A ocultação é feita na medida do possível. Os padrões integrados são um conjunto inicial, não uma garantia: adicione aqui padrões para os formatos sensíveis próprios da sua organização. Os logs próprios de uma fonte estão fora do alcance do Provisa.",
+    "bestEffort": "A ocultação é feita na medida do possível. Os padrões integrados são apenas um conjunto inicial, então adicione aqui padrões para os formatos sensíveis próprios da sua organização. Os logs próprios de uma fonte estão fora do alcance do Provisa.",
     "unresolved": "Estas regras de referência não se resolvem e não ocultam nada: {{names}}",
     "orgTitle": "Regras desta organização",
     "deploymentTitle": "Regras da implantação (todas as organizações)",

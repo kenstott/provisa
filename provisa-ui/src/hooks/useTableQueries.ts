@@ -96,11 +96,16 @@ export function useTableDetails({ includeWithdrawn = false }: { includeWithdrawn
 const TABLE_QUERY_NAMES = ["TablesQuery", "TableListQuery", "TableRowsQuery"];
 
 /** The table queries a view is showing, for a table write's refetchQueries: the write refetches
- * those and no other. A `{ query: TablesQuery }` entry fetched the editor's whole catalog on every
+ * those and no other, and drops every cached table list so none is read stale. A `{ query: TablesQuery }` entry fetched the editor's whole catalog on every
  * write whether or not anything showed it. */
 export function useShownTableQueries(): () => string[] {
   const client = useApolloClient();
   return useCallback(() => {
+    // A write changed the catalog: every cached table list is stale, shown or not. A list nothing
+    // shows is not refetched by name, and a page that reads it cache-first (`inPage`) would
+    // otherwise serve the old one -- a relationship's tables missing from it hid its query links.
+    client.cache.evict({ fieldName: "tables" });
+    client.cache.gc();
     const shown = new Set([...client.getObservableQueries("active")].map((oq) => oq.queryName));
     return TABLE_QUERY_NAMES.filter((name) => shown.has(name));
   }, [client]);

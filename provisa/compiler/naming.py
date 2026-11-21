@@ -18,37 +18,15 @@ Names must be valid GraphQL identifiers: [_A-Za-z][_0-9A-Za-z]*.
 import functools
 import re
 from collections.abc import Callable, Mapping
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any
 
+from provisa.core.inflection import plural, singular
 from provisa.core.request_context import acting_org_overrides
 
 if TYPE_CHECKING:
     from types import SimpleNamespace
 
-    from inflect import Word
-    from inflect import engine as _Engine
-
     from provisa.core.models import Source
-
-# inflect's import + engine() build costs ~0.8s. Lazy-load it so that cost is paid ONCE on first
-# pluralization (schema generation), never at module import — keeps the desktop/demo cold start
-# instant (import is otherwise ~1.6s, dominated by inflect). Behaviour is identical; just deferred.
-_inflect: "_Engine | None" = None
-
-
-def _engine() -> "_Engine":
-    global _inflect
-    if _inflect is None:
-        import inflect
-
-        _inflect = inflect.engine()
-    return _inflect
-
-
-# inflect applies the generic consonant+y -> ies rule to any word, but these are actor-reference
-# particles (treated_by, created_by, owned_by), not countable nouns — "by" pluralizes to "bys",
-# never "bies".
-_PLURAL_OVERRIDES = {"by": "bys"}
 
 
 _VERB_PREFIXES = frozenset(
@@ -71,7 +49,7 @@ _VERB_PREFIXES = frozenset(
 
 
 def rel_field_name(target_field_name: str, cardinality: str) -> str:  # REQ-194, REQ-415
-    """Build {noun}_{modifiers} relationship field name with library-based pluralization.
+    """Build {noun}_{modifiers} relationship field name with dictionary-based pluralization.
 
     Handles camelCase (OpenAPI operation IDs) and strips leading verb prefixes
     so findPetsByStatus → pet_by_status (many-to-one).
@@ -103,23 +81,8 @@ def _rel_words(target_field_name: str, cardinality: str) -> str:
         noun, modifiers = parts[-1], parts[:-1]
     else:
         noun, modifiers = parts[0], parts[1:]
-    eng = _engine()
-    if cardinality == "one-to-many":
-        if noun in _PLURAL_OVERRIDES:
-            noun = _PLURAL_OVERRIDES[noun]
-        else:
-            singular = eng.singular_noun(cast("Word", noun))
-            if singular is False:
-                # noun is singular — pluralize it
-                noun = eng.plural_noun(cast("Word", noun)) or noun
-            elif singular.endswith("s") and not noun.endswith("ies"):
-                # inflect returned a false singular ending in 's' (e.g. address→addres) — force plural
-                noun = eng.plural_noun(cast("Word", noun)) or noun
-            # else: genuinely plural (e.g. inquiries, orders) — leave as-is
-    else:
-        singular = eng.singular_noun(cast("Word", noun))
-        if singular:
-            noun = singular
+    # REQ-194: the head noun takes its dictionary number; a word the dictionary lacks stays as written.
+    noun = plural(noun) if cardinality == "one-to-many" else singular(noun)
     if not verb_was_stripped and len(parts) > 1:
         words = [*modifiers, noun]
     else:
@@ -337,6 +300,14 @@ def _to_snake_case(name: str) -> str:
 def source_to_catalog(source_id: str) -> str:  # REQ-471
     """Convert a source ID to the engine catalog name (hyphens → underscores)."""
     return source_id.replace("-", "_")
+
+
+def lowered_catalog(source_catalogs: Mapping[str, str] | None, source_id: str) -> str:  # REQ-1266
+    """The catalog a statement's reference to a table of ``source_id`` is lowered under: the org's
+    name for the source in ``source_catalogs`` (org- and environment-prefixed, REQ-1266/1529), else
+    the source's base catalog name -- the one rule the compilation context names a table's catalog
+    by (``compiler.context``), so a lowered statement is read back under the same name."""
+    return (source_catalogs or {}).get(source_id) or source_to_catalog(source_id)
 
 
 #: The kinds of object an engine keeps to reach a source live, each named ``<kind>_<catalog>``:

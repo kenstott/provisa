@@ -710,6 +710,32 @@ ALTER TABLE entitlement_expiries ADD COLUMN IF NOT EXISTS list_kind TEXT;
 CREATE INDEX IF NOT EXISTS entitlement_expiries_principal_idx
     ON entitlement_expiries (principal, role_id);
 
+-- REQ-2219: ops.entitlements and ops.entitlement_expiries are subscribable, as ops.requests is.
+-- Every change of either table is reported on its schema's own channel
+-- (subscriptions.pg_provider.schema_channel, named for the table) with the row's id only; the
+-- subscription reads the row back through the governed pipeline as the subscriber.
+CREATE OR REPLACE FUNCTION provisa_notify_entitlement_rows()
+RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE
+  rid bigint;
+BEGIN
+  rid := CASE WHEN TG_OP = 'DELETE' THEN OLD.id ELSE NEW.id END;
+  PERFORM pg_notify(
+    'provisa_' || TG_TABLE_NAME || '_' || substr(md5(TG_TABLE_SCHEMA), 1, 12),
+    json_build_object('op', lower(TG_OP), 'row', json_build_object('id', rid))::text
+  );
+  RETURN CASE WHEN TG_OP = 'DELETE' THEN OLD ELSE NEW END;
+END;
+$$;
+DROP TRIGGER IF EXISTS provisa_sub_entitlements ON entitlements;
+CREATE TRIGGER provisa_sub_entitlements
+AFTER INSERT OR UPDATE OR DELETE ON entitlements
+FOR EACH ROW EXECUTE FUNCTION provisa_notify_entitlement_rows();
+DROP TRIGGER IF EXISTS provisa_sub_entitlement_expiries ON entitlement_expiries;
+CREATE TRIGGER provisa_sub_entitlement_expiries
+AFTER INSERT OR UPDATE OR DELETE ON entitlement_expiries
+FOR EACH ROW EXECUTE FUNCTION provisa_notify_entitlement_rows();
+
 -- REQ-2219, ONE API, THREE WAYS TO USE IT: a list granted by typed email to a person not yet seen.
 -- Append-only, keyed by (email, role_id, kind): the last row is the grant's state. outcome is NULL
 -- while it waits, and ended, attached or refused once it does not; principal names whom a sign-in
@@ -729,6 +755,28 @@ CREATE TABLE IF NOT EXISTS entitlement_pending (
     recorded_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS entitlement_pending_email_idx ON entitlement_pending (email);
+
+-- REQ-2219: one effective row per person, role and capability, computed after precedence and
+-- within the ceiling. bits is the mask over the role's schema, in hex, for a data-plane capability
+-- (NULL for one with no mask); model_version is the version of the bit positions it is over
+-- (provisa.entitlements.mask.index_version); expansion is the identifiers it covers (NULL for an
+-- unscoped capability, held wherever the role is). Append-only as the source rows are: a change
+-- appends a row whose valid_from ends the one before it; ``removed`` ends it with none. Derived
+-- state, written from the source rows: it advances no config stamp.
+CREATE TABLE IF NOT EXISTS effective_entitlements (
+    id             BIGSERIAL PRIMARY KEY,
+    principal      TEXT NOT NULL,
+    role_id        TEXT NOT NULL,
+    capability     TEXT NOT NULL,
+    bits           TEXT,
+    model_version  TEXT NOT NULL,
+    expansion      JSONB,
+    removed        BOOLEAN NOT NULL DEFAULT FALSE,
+    valid_from     TIMESTAMPTZ NOT NULL DEFAULT now(),
+    recorded_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS effective_entitlements_principal_idx
+    ON effective_entitlements (principal, role_id, capability);
 
 CREATE TABLE IF NOT EXISTS rls_rules (
     id          SERIAL PRIMARY KEY,
@@ -1045,9 +1093,12 @@ CREATE TABLE IF NOT EXISTS glossary_terms (
     -- provisa/ontology_import): the term's own IRI when imported as a new term, or the IRI of the
     -- imported concept a steward aligned with it as the same entity. Curator work, like a definition.
     iri             TEXT,
-    tenant_id       UUID,
-    UNIQUE (name)
+    -- REQ-1591 (amended 2026-11-18): a name is unique only within a domain, and a term's domains
+    -- are derived from its refs (glossary.term_domains), so no table constraint can state it; the
+    -- create and rename paths refuse a name already held in one of the term's domains.
+    tenant_id       UUID
 );
+ALTER TABLE glossary_terms DROP CONSTRAINT IF EXISTS glossary_terms_name_key;  -- REQ-1591
 ALTER TABLE glossary_terms ADD COLUMN IF NOT EXISTS retired BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE glossary_terms ADD COLUMN IF NOT EXISTS calculation_method TEXT;  -- REQ-2243
 ALTER TABLE glossary_terms ADD COLUMN IF NOT EXISTS export_excluded BOOLEAN NOT NULL DEFAULT FALSE;
@@ -1150,6 +1201,18 @@ CREATE TABLE IF NOT EXISTS glossary_term_statements (
     statement TEXT NOT NULL,
     tenant_id UUID,
     UNIQUE (term_id, ordinal)
+);
+
+-- REQ-2247: the catalogs a term was sourced from, one row a catalog: the catalog entry's id, the
+-- catalog's own id for its term (an OpenMetadata entity id, a DataHub URN) and when it was taken.
+CREATE TABLE IF NOT EXISTS glossary_term_sources (
+    id          SERIAL PRIMARY KEY,
+    term_id     INTEGER NOT NULL REFERENCES glossary_terms(id) ON DELETE CASCADE,
+    catalog     TEXT NOT NULL,
+    catalog_ref TEXT NOT NULL,
+    sourced_at  TIMESTAMPTZ NOT NULL,
+    tenant_id   UUID,
+    UNIQUE (term_id, catalog)
 );
 
 -- People who can answer questions about the term or who authored its definition.
@@ -1354,6 +1417,19 @@ CREATE TABLE IF NOT EXISTS openlineage_run_datasets (
     column_lineage    JSONB NOT NULL DEFAULT '{}',
     CONSTRAINT openlineage_run_datasets_key UNIQUE
         (job_namespace, job_name, run_id, direction, dataset_namespace, dataset_name)
+);
+
+-- REQ-2263: each dataset's latest schema, documentation and ownership facet any OpenLineage event
+-- carried, with the run and event time it came from. One row per dataset and facet.
+CREATE TABLE IF NOT EXISTS openlineage_dataset_facets (
+    dataset_namespace TEXT NOT NULL,
+    dataset_name      TEXT NOT NULL,
+    facet             TEXT NOT NULL CONSTRAINT openlineage_dataset_facets_facet_check
+                      CHECK (facet IN ('schema', 'documentation', 'ownership')),
+    payload           JSONB NOT NULL,
+    run_id            TEXT NOT NULL,
+    event_time        TIMESTAMPTZ NOT NULL,
+    PRIMARY KEY (dataset_namespace, dataset_name, facet)
 );
 
 -- REQ-2125: the governed table each checker table's contract scans, as the model build resolved

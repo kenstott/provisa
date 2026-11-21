@@ -35,6 +35,7 @@ import { TermGroundingChip, TermRoleBadge, TermStatusBadge } from "./TermRoleBad
 import { RetiredTermRecord } from "./RetiredTermRecord";
 import { OntologySnippet } from "../graph3d/OntologyGraph";
 import { termPreset } from "../graph3d/ontologyPresets";
+import { type TermOption } from "./termLabel";
 
 type Option = { value: string; label: string };
 
@@ -91,7 +92,7 @@ export function TermReadView({
 }: {
   term: GlossaryTermDetail;
   relTypeOptions: Option[];
-  otherTermOptions: Option[];
+  otherTermOptions: TermOption[];
   relLabel: (options: Option[], relType: string) => string;
   navigateToTerm: (termId: number) => void;
   /** The reader curates the glossary: the term's tags are changed here, with the chip. */

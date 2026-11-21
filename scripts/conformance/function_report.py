@@ -121,6 +121,7 @@ JSON_KEY_ORDER = "json-key-order"
 ARRAY_ORDER = "array-order"
 CLOCK_FIELD = "clock-field"
 ZONE_PACKAGING = "tzdata-packaging"
+COMPARISON_SIGN = "comparison-sign"
 
 RULES = (
     Rule(
@@ -187,6 +188,14 @@ RULES = (
         "distribution's tzdata packaging is skipped by design (time zones follow upstream "
         "tzdata): Debian drops the backward links, a link Provisa "
         "lists whose zone both list, and adds `localtime` and `posixrules`.",
+    ),
+    Rule(
+        COMPARISON_SIGN,
+        "A comparison function compared by its sign",
+        "A btree or GIN comparison support function, such as `byteacmp` or `bttextcmp`, is "
+        "documented to return less than zero, zero or greater than zero. PostgreSQL's magnitude "
+        "is a byte difference that varies with its build and platform, so these answers compare "
+        "by sign.",
     ),
 )
 

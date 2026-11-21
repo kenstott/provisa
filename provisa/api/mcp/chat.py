@@ -783,7 +783,7 @@ _CLIENT_TOOLS: list[Any] = [
         "name": "navigate",
         "description": (
             "Navigate the browser to a route within the Provisa app. Common ones: /sources, "
-            "/tables (the ERD at /tables?view=erd), /relationships, /admin/ontology, /schema. Explore's query surfaces "
+            "/tables (the ERD at /tables?view=erd), /relationships, /context/ontology, /schema. Explore's query surfaces "
             "(never guess a route for these — NOT /explore, the MCP explorer, a separate chat, and NOT "
             "/admin/explorer, which doesn't exist): /query (GraphQL), /graph (Cypher), /sparql "
             "(SPARQL), /sql, /grpc, /jsonapi, /openapi, /nl (Natural Language). When you have "
@@ -1158,7 +1158,7 @@ _SYSTEM = (
     "THE PAGE-FIRST RULE: before performing an action that corresponds to a specific admin page (creating or "
     "registering a source/table, editing a ontology term, upserting/deleting a relationship, "
     "running a GraphQL query in Explorer, or anything else with a dedicated screen), call navigate "
-    "to that page FIRST (e.g. /admin/ontology for any ontology edit), then perform the action — so "
+    "to that page FIRST (e.g. /context/ontology for any ontology edit), then perform the action — so "
     "the user sees, on their own screen, the same page you're acting on, not just a chat "
     "transcript. Do this every single time that kind of action comes up, not just the first time "
     "in a conversation — a later ontology edit needs its own navigate call exactly as much as the "
@@ -1185,7 +1185,7 @@ _SYSTEM = (
     "glossary_terms first to avoid creating a duplicate term. A term's status is set by people "
     "(approve_glossary_term approves a defined draft); its grounding is computed from its "
     "edges and bindings and is never set. Per "
-    "the page-first rule above: navigate to /admin/ontology before calling any of these — every time, for "
+    "the page-first rule above: navigate to /context/ontology before calling any of these — every time, for "
     "every term you touch in the turn, not only the first.\n\n"
     "Manage data products with list_data_products/list_data_product_findings/create_data_product/"
     "set_data_product_members/delete_data_product -- a product's members are set on the product "

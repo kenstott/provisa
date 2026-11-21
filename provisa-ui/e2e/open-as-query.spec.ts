@@ -77,7 +77,7 @@ function collectReads(page: Page, match: (query: string) => boolean) {
 /** The Ontology View filtered (Taxonomy's two edge types, Unconnected off): the query it read and its
  * answer. One root: the terms, each with the edges leaving it. */
 async function filteredView(page: Page) {
-  await page.goto("/admin/ontology");
+  await page.goto("/context/ontology");
   await expect(page.getByTestId("glossary-search")).toBeVisible({ timeout: 90_000 });
   await page.getByTestId("glossary-ontology-toggle").click();
   await expect(page.locator('[data-testid="ontology-stage"][data-ready]')).toBeVisible({
@@ -154,7 +154,7 @@ test.describe("Open as query", () => {
   test("a searched view's query states its search and neighbourhood, and run answers what it read", async ({
     page,
   }) => {
-    await page.goto("/admin/ontology");
+    await page.goto("/context/ontology");
     await expect(page.getByTestId("glossary-search")).toBeVisible({ timeout: 90_000 });
     await page.getByTestId("glossary-ontology-toggle").click();
     await expect(page.locator('[data-testid="ontology-stage"][data-ready]')).toBeVisible({

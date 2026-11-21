@@ -9,12 +9,12 @@
     "assignmentsSourceClaims": "Claims du jeton",
     "assignmentsSourceProvisa": "Provisa (attributions locales)",
     "trustUpstream": "Faire confiance aux en-têtes d'identité du proxy amont",
-    "allowSimpleAuth": "Autoriser l'authentification simple (garde-fou de production — requis pour activer nom d'utilisateur/mot de passe)",
+    "allowSimpleAuth": "Autoriser l'authentification simple (garde-fou de production, nécessaire pour activer nom d'utilisateur/mot de passe)",
     "saveButton": "Enregistrer les paramètres d'authentification",
     "loading": "Chargement…",
     "saved": "Enregistré.",
     "savedRestartRequired": "Enregistré. Redémarrez le service pour appliquer.",
-    "secretOnFile": "Stocké ; laissez vide pour le conserver",
+    "secretOnFile": "Enregistré. Laissez vide pour le conserver.",
     "secretNotSet": "Non défini",
     "allowRegistration": "Permettre aux utilisateurs de créer leur propre compte"
   }

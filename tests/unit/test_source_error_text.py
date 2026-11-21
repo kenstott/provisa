@@ -80,7 +80,7 @@ def test_a_public_address_stays():
 
 
 def _table() -> dict:
-    return {"source_id": "reviews-search", "landing_ttl": 0}
+    return {"source_id": "reviews-search", "landing_ttl": 0, "columns": []}
 
 
 def test_a_read_a_source_fails_is_refused_naming_the_source_and_the_detail_is_logged(
@@ -89,7 +89,7 @@ def test_a_read_a_source_fails_is_refused_naming_the_source_and_the_detail_is_lo
     async def answer():
         raise _status_error()
 
-    async def live(_tn, _state, _loc, _rewrites, _values, read):
+    async def live(_tn, _state, _loc, _rewrites, _values, read, _registered):
         await read()
 
     monkeypatch.setattr(materialization, "landing_ttl", lambda *_: 0)

@@ -605,6 +605,9 @@ def _route_publish(monkeypatch, snapshot, db, exporters: dict) -> None:
             tenant_db=_one_db,
             contexts={},
             multitenancy=False,
+            # No platform control plane, as a single-tenant deployment: it keeps no environment
+            # registry, so the export states no stage (REQ-2261).
+            admin_db=None,
             # REQ-1659: the listing links back at the org's public origin, read off config.mail.
             config=types.SimpleNamespace(
                 mail=types.SimpleNamespace(base_url="https://provisa.test")
@@ -906,6 +909,9 @@ async def test_a_retired_product_is_sent_only_where_it_was_published(
             tenant_db=_one_db,
             contexts={},
             multitenancy=False,
+            # No platform control plane, as a single-tenant deployment: it keeps no environment
+            # registry, so the export states no stage (REQ-2261).
+            admin_db=None,
             config=types.SimpleNamespace(
                 mail=types.SimpleNamespace(base_url="https://provisa.test")
             ),

@@ -613,6 +613,22 @@ entitlement_expiries = Table(
     Column("recorded_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
 )
 
+# REQ-2219: one effective row per person, role and capability. See the matching block in schema.sql.
+effective_entitlements = Table(
+    "effective_entitlements",
+    metadata,
+    Column("id", BigInteger, primary_key=True, autoincrement=True),
+    Column("principal", Text, nullable=False),
+    Column("role_id", Text, nullable=False),
+    Column("capability", Text, nullable=False),
+    Column("bits", Text),  # hex; NULL for a capability with no mask
+    Column("model_version", Text, nullable=False),
+    Column("expansion", JSON(none_as_null=True)),  # NULL: unscoped
+    Column("removed", Boolean, nullable=False, server_default=false()),
+    Column("valid_from", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    Column("recorded_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+)
+
 # REQ-2219, ONE API, THREE WAYS TO USE IT: a list granted by typed email to a person not yet seen.
 # Append-only, keyed by (email, role_id, kind): the last row is the grant's state. ``outcome`` is
 # NULL while it waits; ``principal`` names whom a sign-in attached it to, or was refused for.
@@ -839,8 +855,8 @@ glossary_terms = Table(
     Column("status_at", DateTime(timezone=True)),
     # REQ-2237: the IRI of the imported concept the term is (schema.sql).
     Column("iri", Text),
+    # REQ-1591: no unique name; a name is unique only within a domain (schema.sql).
     Column("tenant_id", Uuid),
-    UniqueConstraint("name"),
 )
 
 # Physical ref = (table_id, column_name): the stable column identity — table_columns.id is
@@ -905,6 +921,19 @@ glossary_term_statements = Table(
     Column("statement", Text, nullable=False),
     Column("tenant_id", Uuid),
     UniqueConstraint("term_id", "ordinal"),
+)
+
+# REQ-2247: the catalogs a term was sourced from, one row a catalog. See schema.sql.
+glossary_term_sources = Table(
+    "glossary_term_sources",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("term_id", Integer, ForeignKey("glossary_terms.id", ondelete="CASCADE"), nullable=False),
+    Column("catalog", Text, nullable=False),
+    Column("catalog_ref", Text, nullable=False),
+    Column("sourced_at", DateTime(timezone=True), nullable=False),
+    Column("tenant_id", Uuid),
+    UniqueConstraint("term_id", "catalog"),
 )
 
 # People who can answer questions about the term or who authored its definition.
@@ -1114,6 +1143,24 @@ openlineage_run_datasets = Table(
         "dataset_namespace",
         "dataset_name",
         name="openlineage_run_datasets_key",
+    ),
+)
+
+# REQ-2263: each dataset's latest schema, documentation and ownership facet any OpenLineage event
+# carried, with the run and event time it came from
+# (provisa.core.repositories.openlineage_facets). One row per dataset and facet.
+openlineage_dataset_facets = Table(
+    "openlineage_dataset_facets",
+    metadata,
+    Column("dataset_namespace", Text, primary_key=True),
+    Column("dataset_name", Text, primary_key=True),
+    Column("facet", Text, primary_key=True),
+    Column("payload", JSON, nullable=False),
+    Column("run_id", Text, nullable=False),
+    Column("event_time", DateTime(timezone=True), nullable=False),
+    CheckConstraint(
+        "facet IN ('schema', 'documentation', 'ownership')",
+        name="openlineage_dataset_facets_facet_check",
     ),
 )
 
@@ -2114,6 +2161,10 @@ query_audit_log = Table(
     Column("as_of", Text),
     Column("as_recorded", Text),
     Column("logged_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    # REQ-2261: the stage (production | preprod | test | development) the environment declared when
+    # the statement ran, so reports filter and group by it. NULL only for a deployment without a
+    # control plane, which keeps no environment registry to read a stage from.
+    Column("stage", Text),
 )
 
 # Service-level breaches (REQ-506). A row is opened when a measure goes past its limit and closed

@@ -1,6 +1,6 @@
 {
   "relationshipRow": {
-    "fkBadge": "Uit FK",
+    "fkBadge": "Van FK",
     "fkBadgeTitle": "Gemaakt op basis van een foreign key in de bron",
     "yes": "Ja",
     "no": "Nee",
@@ -51,6 +51,8 @@
     "retireResolverConsequence": "Zijn overeenkomstenview en zijn drie relaties worden samen buiten gebruik gesteld. Hun namen blijven bezet.",
     "queryLinks": {
       "heading": "Bevragen",
+      "tableMissing": "Querylinks zijn niet beschikbaar: tabel {{ids}} die deze relatie noemt, staat niet bij de geregistreerde tabellen.",
+      "tablesUnread": "Querylinks zijn niet beschikbaar: de geregistreerde tabellen konden niet worden gelezen ({{error}}).",
       "cypher": "{{name}} lezen in Cypher",
       "sql": "{{name}} lezen in SQL",
       "sparql": "{{name}} lezen in SPARQL",
