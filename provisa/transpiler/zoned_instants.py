@@ -26,7 +26,7 @@ to_json of an instant on Trino is written here, where the statement says the val
 to timestamptz, as the compiler states a registered column's type, or the clock): PostgreSQL's
 text of it as a JSON string. Trino refuses a cast of an instant to JSON while it types the
 statement, which no branch can avoid, so an instant the statement does not say is one is refused by
-name there (execute_trino), and one it says is inside an array or a row is refused by name here,
+name there (trino_flight), and one it says is inside an array or a row is refused by name here,
 as is one json_agg or json_build_object reads: Trino's forms of them cast it to JSON too.
 ClickHouse has no form of to_json."""
 

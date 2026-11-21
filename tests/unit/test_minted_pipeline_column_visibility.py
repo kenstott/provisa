@@ -192,7 +192,9 @@ def test_a_correlated_reference_to_a_hidden_column_is_refused_by_the_column_chec
         "SELECT o.id FROM fx.orders AS o "
         "WHERE EXISTS (SELECT 1 FROM fx.orders AS i WHERE i.id = 1 AND o.secret IS NOT NULL)"
     )
-    assert refused == []  # a WHERE is another rule's; the select list is this one's
+    # A hidden column is refused in every clause, a correlated WHERE included (REQ-039, amended
+    # 2026-11-04, A HIDDEN COLUMN IS REFUSED IN EVERY CLAUSE).
+    assert any("o.secret" in m for m in refused), refused
     # A lateral derived table's select list reads the outer table: no enclosing select list
     # reaches the column, so only resolving the qualifier outward judges it.
     refused = _v003("SELECT d.x FROM fx.orders AS o, LATERAL (SELECT o.secret AS x) AS d")

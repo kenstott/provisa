@@ -14,7 +14,7 @@
 import { PasswordInput, TextInput } from "@mantine/core";
 import { useTranslation } from "react-i18next";
 import { FormField } from "../../components/form/FormLayout";
-import { BRAND_AUTH, BRAND_SETUP } from "./constants";
+import { BRAND_AUTH, BRAND_SETUP, BRAND_TOKEN_HINT } from "./constants";
 
 export interface BrandFieldsProps {
   brand: string;
@@ -51,7 +51,7 @@ export function BrandFields({
       {BRAND_AUTH[brand] === "token" && (
         <FormField
           section="authentication"
-          hint={t("sourceFormFieldsExtended.accessTokenHint")}
+          hint={t(BRAND_TOKEN_HINT[brand] ?? "sourceFormFieldsExtended.accessTokenHint")}
           size="long"
         >
           <PasswordInput

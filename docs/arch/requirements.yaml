@@ -4140,8 +4140,8 @@
   description: A datasource may be associated with multiple domains. Any domain owner may register any
     unclaimed table from that source. Once a table is claimed by one domain, no other domain may register it (first-come ownership). Unique constraint enforced on (source_id, normalized_table_name).
     The UI greys out claimed tables regardless of which domain claimed them. (Amended 2026-11-20 by the maintainer. First-come ownership is withdrawn. Every name in the model is unique within its domain, except the names that are unique across the organisation, which are source ids, environment names (REQ-1523) and secrets provider names. A source's table may be registered in more than one domain, once per domain, and the uniqueness checked is (domain, table name), not (source, table name). The UI no longer greys out a table another domain registered. Removing a table frees its name in its domain at once, including a table that was registered with no domain.) (Amended 2026-11-20 by the maintainer, the general rule. Operational objects are named per organisation (for example sources, environments, secrets providers, roles, settings, schedules), and model objects are named per domain (tables, relationships, commands, products, metrics and views). A model object's name is unique within its domain and the same name may exist in another domain; an operational object's name is unique within the organisation.) (Amended 2026-11-20, correcting the earlier amendment's wording. Removing a table retires it per REQ-2248; registering the same source table again in that domain restores it, and the retired row never blocks registration in another domain.)
-  use_case: Multi-domain with first-claim ownership prevents the same physical table from being registered
-    multiple times while allowing flexible domain-to-source associations.
+  use_case: Model objects are named per domain, so two domains can each register their own orders table and
+    a deleted table comes back with its links when it is registered again.
   code:
   - provisa/api/admin/schema_helpers.py
   - provisa/api/admin/schema_mutation.py
@@ -4153,18 +4153,26 @@
   - tests/unit/test_dataset_uniqueness.py
   - provisa-ui/e2e/registration-admin.spec.ts
   since: 2026-01
-  scenario: 'Given a datasource shared across multiple domains
+  scenario: 'Given tables registered in domains A and B
 
-    When a domain owner claims a table
+    When a table named orders is registered in domain A and a table named orders in domain B
 
-    Then no other domain may claim that same physical table; the UI greys it out for all other
+    Then both registrations succeed, each name being unique only within its own domain
 
-    domains
+    When a second table named orders is registered in domain A
+
+    Then it is refused by name
+
+    When the table orders in domain A is deleted and the same source table is registered again in domain A
+
+    Then the retired table is restored with its id, relationships and tags
+
+    And the register form does not grey out a table another domain registered
 
     '
   integration_test: not_required
-  integration_test_reason: First-claim ownership model is state management; can be tested without real
-    data sources.
+  integration_test_reason: Per-domain naming and retired-table restore are state management; tested without real
+    external services.
   e2e: true
   e2e_reason: The UI greying-out of claimed tables across domains requires a browser- level E2E test —
     the visual behaviour and UI state cannot be verified by unit or integration tests alone.
@@ -76491,7 +76499,7 @@
     does when the whole source is mapped at once, so the relationship and a column never share a name.
     (Amended 2026-11-19, A COLUMN IN USE REFUSES THE REGISTRATION:) Maintainer 2026-11-19. When the nested
     column a relationship would take is used by a view, metric or row filter, registering the table is
-    refused, naming what uses it, and nothing is written.'
+    refused, naming what uses it, and nothing is written. (Amended 2026-11-21 by the maintainer. A Query-kind command read over REST or JSON:API is lowered to the role''s GraphQL command field and runs through the one SQL pipeline, so its filtering, ordering, paging and governance match GraphQL. The REST read is GET on the command and takes the table parameters filter, orderBy, limit and offset plus the declared arguments; a Mutation-kind command stays POST. JSON:API serves commands at /data/jsonapi/<domain>/commands/<name>, GET to read and POST to write.)'
   use_case: An operator who assigns a command to a role, hides a column, or moves an object to another
     domain changes what every API offers in one place, and no surface can offer what another surface hides.
   scenario: 'Given a query-kind command find_pets in domain petstore, assigned to role analyst
@@ -82283,7 +82291,7 @@
     code that imports nothing of Provisa''s keeps working, tagged as today. A decorator and the docstring
     tag produce the same manifest through the one reader; at runtime the SDK does nothing. The SDK has a
     local check command that runs the server''s own reader. It is published from this repository with each
-    release, has no dependencies, and is allowed by default in the build sandbox.'
+    release, has no dependencies, and is allowed by default in the build sandbox. (Amended 2026-11-21 by the maintainer, deciding the open questions of the optional SDK design. The SDK types ReadContext only and adds no pushdown parameters. The docs show the docstring tag first and the SDK as the second tab everywhere, and the docstring form is never deprecated. The Python decorator appends the tag line to __doc__, so the reader is unchanged and it works on every server. The check command is provisa code check in the full CLI, run as uvx provisa==V. provisa-sdk is an ordinary runtime dependency, so a code source that adds it needs a lockfile. Go takes the SDK as an ordinary module pinned by go.sum, and Rust as macro_rules! registrations with no proc-macro crate. The SDK has no test helpers, and authors mock as REQ-2106 says. Its column types are aliases of the type mapping and nothing more. The Go path is the vanity path provisa.dev/sdk/go when the site can serve go-import. A tag enters the SDK only in the change that adds it to the manifest and the binding corpus. A loader alone may return a list of rows or a mapping of names to lists of rows. The SDK is built TypeScript and Python first, then Go and Rust.)'
   related_reqs:
   - REQ-1987
   notes: 'Maintainer 2026-10-12, through the lead: a backlog requirement; the description is his decisions, verbatim. His rulings on the design note docs/arch/node-connector.md (2026-10-12) are the sentences from the loose-element-type preview and from "Installs run with install scripts disabled" on; the last five (Git tokens, the upload store, number and any/unknown, one worker per process, the command kind) are ci-fix''s recommendations, which he accepted. Not built. The group, category, priority and type are ci-fix''s choices, not his. To be related to the MongoDB pipeline tables requirement and to the parameterized-tables requirement once both are in this file. Roadmap audit 2026-10-13: delivered; verified against the code'
@@ -88632,7 +88640,7 @@ Then the auditor sees the 30 attached disks without a customer-managed key, each
   feature: connector-catalog-streams-logs-and-public-data
   priority: SHOULD
   type: behavioral
-  description: "A Visual Studio Code extension for Node and Python code sources, published on the VS Code Marketplace. In the open workspace it lists the functions Provisa would serve as @table or command, with the columns and parameters Provisa infers for each, before anything is registered. It points a code source at the workspace folder in dev mode against a chosen Provisa instance, so an edit is read by the next query. It marks the pushdown conventions inline (raw column names, {op}_{column} parameters, the tag and Annotated forms) and flags a filter parameter that names no column. From the command palette it runs Build image and copies the compose snippet through the API the Provisa UI uses (REQ-2098), with no backend of its own. It reaches the code-source services shim ($PROVISA_SERVICES: secrets, the LLM endpoint and the rest) locally with the developer's own credentials. It edits no model and offers no query editor: GraphQL, SQL and Cypher authoring use the existing VS Code extensions pointed at Provisa (the role-scoped SDL, pgwire), and a docs page says how."
+  description: "A Visual Studio Code extension for Node and Python code sources, published on the VS Code Marketplace. In the open workspace it lists the functions Provisa would serve as @table or command, with the columns and parameters Provisa infers for each, before anything is registered. It points a code source at the workspace folder in dev mode against a chosen Provisa instance, so an edit is read by the next query. It marks the pushdown conventions inline (raw column names, {op}_{column} parameters, the tag and Annotated forms) and flags a filter parameter that names no column. From the command palette it runs Build image and copies the compose snippet through the API the Provisa UI uses (REQ-2098), with no backend of its own. It reaches the code-source services shim ($PROVISA_SERVICES: secrets, the LLM endpoint and the rest) locally with the developer's own credentials. It edits no model and offers no query editor: GraphQL, SQL and Cypher authoring use the existing VS Code extensions pointed at Provisa (the role-scoped SDL, pgwire), and a docs page says how. (Amended 2026-11-21 by the maintainer. The extension marks the tag and Annotated forms and the SDK forms inline. The pushdown-conventions clause, raw column names and filter parameters, is superseded, since the SDK types ReadContext only.)"
   use_case: A developer writes a Python function in VS Code, sees the table Provisa would make of it, queries it against a Provisa instance in dev mode as they edit, and builds its image without leaving the editor.
   scenario: "Given a Python workspace with a function decorated @table and a Provisa instance the extension is signed in to
 
@@ -91217,7 +91225,7 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     2026-11-20, SEVERAL PARENTS'' ROW RULES ARE ORED:) Maintainer 2026-11-20. A role that inherits from
     several parents each carrying a row rule on the same table reads the rows that match any of those rules,
     consistent with acting with the union of held roles; inheriting a parent never narrows access. Earlier
-    text that each parent''s rule is ANDed in is superseded. (Amended 2026-11-20, maintainer: a personal access token naming no role still acts as its first live scope per REQ-1263, not the union of its scopes; in claims mode the union counts only roles the claims name, and a role reached only through role_mapping or default_role is not added to it.) (Amended 2026-11-20 by the maintainer. The member access form gives every role selected in one save the same domain and end date; different domains for different roles take another save.)'
+    text that each parent''s rule is ANDed in is superseded. (Amended 2026-11-20, maintainer: a personal access token naming no role still acts as its first live scope per REQ-1263, not the union of its scopes; in claims mode the union counts only roles the claims name, and a role reached only through role_mapping or default_role is not added to it.) (Amended 2026-11-20 by the maintainer. The member access form gives every role selected in one save the same domain and end date; different domains for different roles take another save.) (Amended 2026-11-21 by the maintainer. The rule A ROLE JUST TO RUN A COMMAND is superseded by REQ-870 COMMAND EXECUTION IS A CAPABILITY (2026-11-09). A role that exists only to run a command holds command_execution alone, runs its assigned commands, and reads no data; a role with no capabilities reaches no command.)'
   scenario: 'Given an org role ''dq lead'' inheriting from Data quality steward and Data product owner
 
     Then it holds the union of both roles'' capabilities
@@ -97363,7 +97371,7 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     NAMED DERIVED:) Maintainer 2026-11-12: a button that stops an operation in progress says Stop, not Cancel;
     Cancel is kept for leaving a form or dialog with nothing changed. The top navigation group holding Views,
     Metrics, Commands and Lineage is named Derived, not Model: model keeps its two other meanings, the whole
-    declared model and an entity or fact added with + Model.'
+    declared model and an entity or fact added with + Model. (Amended 2026-11-21 by the maintainer decisions of 2026-11-13. The schema panel toggle reads Hide schema panel and Show schema panel, since it draws the panel or not. Leaving an enlarged view reads Restore size, in the graph frame and the ER diagram alike. The observability tab''s close control reads Close.)'
   scenario: |
     Given a graph that draws a table with its columns collapsed into it
     When a reader looks at the table's control
@@ -98043,7 +98051,7 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     types among the new tables, and from joins between the new tables and tables already in the model,
     across sources. Every candidate, declared foreign keys included, waits for review: each shows its
     cardinality and why it was proposed, and is accepted, edited or skipped; accepted ones follow the normal
-    relationship approval rules. Done returns to the source with the count of relationships created.'
+    relationship approval rules. Done returns to the source with the count of relationships created. (Amended 2026-11-21 by the maintainer. Editing a candidate before accepting it covers its name and its cardinality, in a per-row edit dialog.)'
 - id: REQ-2263
   status: proposed
   target: 2026-Q4

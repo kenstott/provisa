@@ -35,6 +35,9 @@ class HotRows(Protocol):
     @property
     def rows(self) -> list[dict]: ...
 
+    @property
+    def column_types(self) -> Mapping[str, str]: ...
+
 
 @dataclass(frozen=True)
 class InlineRows:
@@ -102,7 +105,7 @@ def _values_cte(cte_name: str, entry: HotRows) -> Any:  # noqa: ANN401 — a sql
     import sqlglot.expressions as exp
 
     columns = [exp.to_identifier(c, quoted=True) for c in entry.column_names]
-    types = entry.column_types if isinstance(entry, InlineRows) else {}
+    types = entry.column_types
     if entry.rows:
         values = exp.Values(
             expressions=[

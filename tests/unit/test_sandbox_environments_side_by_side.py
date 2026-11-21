@@ -100,8 +100,15 @@ class _Db:
 class _Plane:
     """What the open writes, in memory, and when each line was in what."""
 
-    def __init__(self, fail: dict[tuple[str, str], Exception] | None = None) -> None:
+    def __init__(
+        self, fail: dict[tuple[str, str], Exception] | None = None, *, meet: bool = False
+    ) -> None:
         self.fail = fail or {}
+        #: When set, the two runtime builds meet inside their domain-policy windows: each waits
+        #: there for the other, and test's reads its policy only after dev's has set the org's
+        #: own. Builds made one at a time never meet (the barrier breaks).
+        self.meet = threading.Barrier(2, timeout=5) if meet else None
+        self.dev_set_its_own = threading.Event()
         self.rows: dict[str, dict[str, Any]] = {}
         self.schemas: set[str] = set()
         self.given_rows: set[str] = set()
@@ -217,18 +224,27 @@ def _install(monkeypatch, tmp_path: Path, plane: _Plane) -> OrgRegistry:
         return plane.rows.get(env)
 
     async def _build(org_id, *, env, model_cloned=False, **kwargs):
-        # app._build_org_runtime's domain-policy window: the deployment's naming set (app.py,
-        # ``domain_policy.configure(seed.naming...)``), the model read under it, then the org's
-        # own set (``naming_override``) -- on the org's one policy, which every build shares.
+        # app._build_org_runtime's domain-policy window (domain_policy.staged): the deployment's
+        # naming set (app.py, ``domain_policy.configure(seed.naming...)``), the model read under
+        # it, then the org's own set (``naming_override``) -- on the org's one policy, which every
+        # build shares.
         plane.events.append(("building", env))
         plane.count("building", +1)
         token = set_current_org(org_id)
         try:
-            domain_policy.configure(*SEED)
-            await asyncio.sleep(0.01)
-            plane._maybe_fail("runtime", env)
-            plane.policy_read[env] = domain_policy.snapshot()
-            domain_policy.configure(*OWN)
+            with domain_policy.staged():
+                domain_policy.configure(*SEED)
+                if plane.meet is not None:
+                    # Blocks this line's thread, as the control plane does.
+                    plane.meet.wait()
+                    if env == "test":
+                        assert plane.dev_set_its_own.wait(5), "dev's build never went on"
+                await asyncio.sleep(0.01)
+                plane._maybe_fail("runtime", env)
+                plane.policy_read[env] = domain_policy.snapshot()
+                domain_policy.configure(*OWN)
+                if env == "dev":
+                    plane.dev_set_its_own.set()
             await asyncio.sleep(0)
         finally:
             reset_current_org(token)
@@ -288,9 +304,9 @@ _DEMO = PublishedDemo(name="alpha", title="Alpha", directory=Path("/demos/alpha"
 
 
 def _opened(
-    monkeypatch, tmp_path: Path, how, fail: dict | None = None
+    monkeypatch, tmp_path: Path, how, fail: dict | None = None, *, meet: bool = False
 ) -> tuple[_Plane, OrgRegistry, BaseException | None]:
-    plane = _Plane(fail)
+    plane = _Plane(fail, meet=meet)
     registry = _install(monkeypatch, tmp_path, plane)
 
     async def _open() -> BaseException | None:
@@ -357,8 +373,20 @@ def test_the_environments_are_created_side_by_side(monkeypatch, tmp_path):
     assert raised is None
     # test's creation ran while dev's did: one after another, never more than one at once.
     assert plane.most_creating == 2, plane.events
-    # The runtimes are built one at a time: each sets the org's one domain policy.
-    assert plane.most_building == 1, plane.events
+    assert plane.most_building == 2, plane.events
+
+
+def test_the_runtimes_are_built_side_by_side_each_in_its_own_policy(monkeypatch, tmp_path):
+    """The two builds are in their domain-policy windows at once, and test's reads the
+    deployment's naming after dev's has set the org's own. Built one at a time, they never meet
+    (the barrier breaks and the open fails); with the org's one policy shared, test's reads dev's
+    value."""
+    plane, registry, raised = _opened(monkeypatch, tmp_path, demo_sandbox._environments, meet=True)
+
+    assert raised is None, raised
+    assert plane.most_building == 2, plane.events
+    assert plane.policy_read == {"dev": SEED, "test": SEED}
+    assert _left(plane, registry)["policy"] == OWN
 
 
 def test_side_by_side_leaves_what_one_after_another_left(monkeypatch, tmp_path):
@@ -453,8 +481,7 @@ def test_a_failure_surfaces_as_it_did_one_after_another(monkeypatch, tmp_path, f
 
 def test_every_part_of_the_environments_stage_is_timed(monkeypatch, tmp_path, caplog):
     """The open's environments are timed whole and in their parts (REQ-2006): the template's list
-    of them, the fan-out of their lines, and each line's wait for its turn to build, which a slow
-    open otherwise spends in no named step."""
+    of them, the fan-out of their lines, and each line's creation and runtime."""
     from provisa.core import step_clock
 
     label = f"demo sandbox {ORG} of {_DEMO.name}"
@@ -478,7 +505,6 @@ def test_every_part_of_the_environments_stage_is_timed(monkeypatch, tmp_path, ca
         "its redaction rules and secrets",
         "its environments",
         *(f"its environment {name}" for name in names),
-        *(f"environment {name}: its turn to build" for name in names),
         *(f"its environment {name}'s runtime" for name in names),
     }
     assert expected <= timed, sorted(expected - timed)

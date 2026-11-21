@@ -23,7 +23,7 @@ from referencing.exceptions import Unresolvable
 
 from provisa.core.paging import PaginationConfig, PaginationType
 
-# Requirements: REQ-314, REQ-316, REQ-317, REQ-408
+# Requirements: REQ-314, REQ-316, REQ-317, REQ-408, REQ-2265
 
 
 @dataclass
@@ -231,9 +231,12 @@ _IDENTITY = frozenset({"id", "key", "name"})
 
 def _wrapped_rows(schema: SchemaPath) -> str | None:
     """The property a page wrapper holds its rows under (REQ-316): the response is an object
-    with exactly one property that is an array of objects, and no identity of its own. Offered
-    to the steward as where the table's rows are; nothing is read from it until it is accepted."""
-    properties = _schema(schema, 1).get("properties") or {}
+    with no identity of its own and exactly one property that is an array of objects -- or,
+    where it has several (a page's rows beside its errors and warnings, REQ-2265), exactly one
+    of them that the response requires. Offered to the steward as where the table's rows are;
+    nothing is read from it until it is accepted."""
+    read = _schema(schema, 1)
+    properties = read.get("properties") or {}
     if _IDENTITY & set(properties):
         return None
     lists = [
@@ -241,6 +244,8 @@ def _wrapped_rows(schema: SchemaPath) -> str | None:
         for name, prop in properties.items()
         if prop.get("type") == "array" and _holds_objects(_property(schema, name))
     ]
+    if len(lists) > 1:
+        lists = [name for name in lists if name in (read.get("required") or ())]
     return lists[0] if len(lists) == 1 else None
 
 
@@ -436,14 +441,41 @@ def _declares_link_header(operation: SchemaPath) -> bool:
     return headers is not None and any(name.lower() == "link" for name in headers.str_keys())
 
 
-def _answered_cursor(operation: SchemaPath, names: list[str]) -> str | None:
-    """The query parameter the answer carries the next value of: ``x`` where the success
-    response declares a ``next_x`` property."""
+# Parameters that page backwards: never the cursor a read follows to the end.
+_BACKWARD_NAMES = frozenset({"before", "ending_before", "prev", "previous"})
+
+
+def _answered_cursor(
+    operation: SchemaPath, query_params: list[dict], rows_field: str | None
+) -> tuple[str, str] | None:
+    """(the query parameter the answer carries the next value of, where in the answer it is):
+    ``x`` where the success response declares a ``next_x`` property; else (REQ-2265) a text
+    parameter ``x`` the answer holds as text, beside its rows (``scrollId``) or in an object
+    property of its own (``paging.after``), the dotted path to it naming where. A parameter
+    that pages backwards, sizes or numbers a page, or starts it at an offset is not one."""
     response = _success_response(operation)
     answer = None if response is None else _json_schema(response)
     if answer is None:
         return None
-    return next((n for n in names if _property(answer, f"next_{n}") is not None), None)
+    names = [p["name"] for p in query_params]
+    named = next((n for n in names if _property(answer, f"next_{n}") is not None), None)
+    if named is not None:
+        return named, f"next_{named}"
+    excluded = _BACKWARD_NAMES.union(_SIZE_NAMES, _PAGE_NAMES, _OFFSET_NAMES)
+    tokens = [
+        p["name"] for p in query_params if p["type"] == "string" and p["name"] not in excluded
+    ]
+    properties = _schema(answer, 2).get("properties") or {}
+    for name in tokens:
+        if properties.get(name, {}).get("type") == "string":
+            return name, name
+    for name in tokens:
+        for holder, prop in properties.items():
+            if holder == rows_field or prop.get("type") not in ("object", None):
+                continue
+            if (prop.get("properties") or {}).get(name, {}).get("type") == "string":
+                return name, f"{holder}.{name}"
+    return None
 
 
 def propose_paging(
@@ -458,7 +490,8 @@ def propose_paging(
     page after the last row's id (the rows, ``row_properties``, having one), a page-number
     parameter, an offset with a size parameter, or a ``Link`` response header. Only a list is
     paged. A cursor the answer carries is proposed where the spec names it: a parameter ``x``
-    beside a ``next_x`` property of the answer, with the size parameter where it declares one."""
+    beside a ``next_x`` property of the answer, or one the answer holds itself or in an object
+    property (:func:`_answered_cursor`), with the size parameter where it declares one."""
     if not is_list:
         return None
     declared: dict = {} if rows_field is None else {"rows_field": rows_field}
@@ -474,11 +507,11 @@ def propose_paging(
             "cursor_field": _ROW_ID,
             "page_size_param": size,
         }
-    elif (cursor := _answered_cursor(operation, names)) is not None:
+    elif (cursor := _answered_cursor(operation, query_params, rows_field)) is not None:
         declared |= {
             "type": PaginationType.cursor,
-            "cursor_param": cursor,
-            "cursor_field": f"next_{cursor}",
+            "cursor_param": cursor[0],
+            "cursor_field": cursor[1],
         }
         if size is not None:
             declared["page_size_param"] = size

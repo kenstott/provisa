@@ -342,6 +342,9 @@ _ROOT = (
     "Int256, rounded only where PostgreSQL's sqrt_var rounds."
 )
 
+#: The family's place in the grid (polyfill.GRID), which tries the rules of one function in
+#: the order of their families.
+ORDER = 280
 FEATURES: tuple[Feature, ...] = (
     _feature("avg", "The mean of a group's values.", _DIGITS),
     _feature("variance", "The sample variance of a group's values.", _DIGITS),

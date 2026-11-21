@@ -856,6 +856,9 @@ glossary_terms = Table(
     # REQ-2237: the IRI of the imported concept the term is (schema.sql).
     Column("iri", Text),
     # REQ-1591: no unique name; a name is unique only within a domain (schema.sql).
+    # REQ-2259: when the term last changed; the server default dates rows older than the
+    # column (schema.sql), and every repository write sets it.
+    Column("changed_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
     Column("tenant_id", Uuid),
 )
 
@@ -2818,6 +2821,12 @@ discovery_run_proposals = Table(
     Column("answer", Text, nullable=True),
     Column("decision", Text, nullable=True),
     Column("accepted_as", Text, nullable=True),
+    # REQ-1586: a suggestion joining two ends through a junction both its legs refer from: the
+    # junction and its two referring columns (source_column = via_source_column, via_target_column
+    # = target_column). Null for every other proposal.
+    Column("via_table_id", Integer, ForeignKey("registered_tables.id"), nullable=True),
+    Column("via_source_column", Text, nullable=True),
+    Column("via_target_column", Text, nullable=True),
     Column("tenant_id", Uuid),
 )
 

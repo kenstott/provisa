@@ -1,7 +1,7 @@
 {
   "schemaBrowser": {
-    "collapsePanel": "摺疊結構描述面板",
-    "expandPanel": "展開結構描述面板",
+    "collapsePanel": "隱藏結構描述面板",
+    "expandPanel": "顯示結構描述面板",
     "heading": "結構描述",
     "groupMetrics": "指標",
     "groupFacts": "事實",

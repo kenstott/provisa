@@ -518,3 +518,6 @@ FEATURES: tuple[Feature, ...] = (
         "no precision rounds it to the millisecond.",
     ),
 )
+
+#: The family's place in the grid (polyfill.GRID): read before any row reads it as a value.
+ORDER = 12

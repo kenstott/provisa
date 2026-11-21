@@ -195,14 +195,14 @@
       "source_domains_empty": "所選來源域中沒有探索會讀取的表。",
       "source_not_found": "找不到數據來源「{{source_id}}」",
       "source_tables_not_read": "所選來源表（{{count}} 個）都不會被讀取：探索會略過系統域的表和已停用的表。",
-      "source_tables_outside_domains": "所選來源表不在域篩選器中選定的域內：{{names}}。",
       "table_id_required": "資料表範圍需要 table_id",
       "table_not_found": "表格 {{table_id}} 未登記。",
       "target_domains_empty": "所選目標域中沒有探索會讀取的表。",
       "target_tables_not_read": "所選目標表（{{count}} 個）都不會被讀取：探索會略過系統域的表和已停用的表。",
-      "target_tables_outside_domains": "所選目標表不在域篩選器中選定的域內：{{names}}。",
       "unknown_source_type": "未知的數據來源類型：{{type}}",
-      "vendor_unknown": "{{vendor}} 在此處不列出模型；請輸入模型名稱。"
+      "vendor_unknown": "{{vendor}} 在此處不列出模型；請輸入模型名稱。",
+      "source_tables_outside_domains": "所選來源表不在域篩選器中選定的域內：{{names}}。",
+      "target_tables_outside_domains": "所選目標表不在域篩選器中選定的域內：{{names}}。"
     },
     "llm": {
       "request_failed": "對模型的請求失敗：{{reason}}",
@@ -568,8 +568,8 @@
       "table_not_withdrawn": "表 {{table}} 未撤下：只有已撤下的表才能恢復。要將生產中的表移到另一個區域，請設定其區域。",
       "source_not_withdrawn": "來源 {{source}} 未撤下：只有已撤下的來源才能恢復。要更改其區域，請設定其區域。",
       "put_back_needs_region": "恢復 {{object}} 需指定一個區域：請給出一個區域，無區域則不給出。",
-      "table_domain_required": "表 '{{table}}' 未指定域：每個表都註冊在一個域中",
-      "mask_constant_not_text": "非文字欄上的常數遮罩讀取為 NULL；只能儲存 NULL：{{column}} ({{type}})"
+      "mask_constant_not_text": "非文字欄上的常數遮罩讀取為 NULL；只能儲存 NULL：{{column}} ({{type}})",
+      "table_domain_required": "表 '{{table}}' 未指定域：每個表都註冊在一個域中"
     },
     "secrets": {
       "env_reference_object_locked": "此物件屬於營運方：它讀取伺服器自身的環境，無法在此更改。請改為新增您自己的物件。",
@@ -900,10 +900,10 @@
       "unknown_kind": "{{kind}} 不是權益清單的類型。",
       "idp_supersedes": "身分識別提供者為角色 {{role_id}} 傳送了此人員的 {{kind}} 清單。該清單優先，因此須在該處更改，而非此處。",
       "blank_identifier": "項目不可留空。",
-      "invalid_identifier": "{{identifier}} 不是有效的 {{kind}} 項目。",
       "expiry_in_past": "結束日期必須是將來的日期。",
       "expiry_removes_nothing": "在此 {{kind}} 清單設定結束日期不會移除任何內容。",
-      "pending_not_found": "沒有等待 {{email}} 的角色 {{role_id}} 及 {{kind}} 授予。"
+      "pending_not_found": "沒有等待 {{email}} 的角色 {{role_id}} 及 {{kind}} 授予。",
+      "invalid_identifier": "{{identifier}} 不是有效的 {{kind}} 項目。"
     },
     "mv": {
       "change_key_missing": "{{function}} 傳回了缺少鍵欄 {{column}} 的資料列",
@@ -931,7 +931,8 @@
       "filter_operator_refused": "{{operator}} 不是可用於轉換權限篩選器的運算子。"
     },
     "relationship": {
-      "name_taken": "名稱「{{name}}」已被關係「{{held_by}}」使用。請為此關係另取名稱。"
+      "name_taken": "名稱「{{name}}」已被關係「{{held_by}}」使用。請為此關係另取名稱。",
+      "join_through_none": "關係 '{{first}}' 和 '{{second}}' 沒有共同的中間表，或者它們的另一端已經透過該表連接。"
     },
     "wikidata": {
       "no_credential": "Wikidata 查詢服務毋須憑證",

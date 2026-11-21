@@ -241,3 +241,6 @@ FEATURES: tuple[Feature, ...] = tuple(
         ),
     )
 )
+
+#: The family's place in the grid (polyfill.GRID): read before any row reads it as a value.
+ORDER = 14

@@ -464,10 +464,9 @@ def _can_see_relationship(rel: dict, table_lookup: dict[int, _TableInfo]) -> boo
     tgt_id = rel.get("target_table_id")
     if tgt_id not in table_lookup:
         return False
-    # REQ-1586: a junction-backed edge is a Cypher relationship, not a GraphQL join field. The
-    # GraphQL join emitter builds its ON clause as SQL text for a single column pair and has no
-    # place to put the second hop; the junction table stays queryable as its own root field.
-    if rel.get("via_table_id"):
+    # REQ-1586: a junction-backed edge reaches its rows through its junction, so the role must
+    # see the junction too; the join emitter reads it as the edge's second hop.
+    if rel.get("via_table_id") and rel["via_table_id"] not in table_lookup:
         return False
     # Both tables are visible: the relationship is offered. Its join columns are read by the
     # engine to join, never returned, so the role need not be able to select them (governance
@@ -692,24 +691,22 @@ def _where_relationships(  # REQ-2136
 ) -> Callable[[], dict[str, GraphQLInputField]]:
     """``table``'s relationships as where conditions, each under its field's name and taking its
     target's where: a row with a related row matching it (sql_where compiles it to EXISTS). Read
-    when the schema is built, once every table's where exists. A junction-backed edge is not one:
-    its rows are reached through the junction, which the condition does not state."""
+    when the schema is built, once every table's where exists. A junction-backed edge's related
+    rows are those its junction names (REQ-1586), under the field name it is served as."""
 
     def fields() -> dict[str, GraphQLInputField]:
+        # The name the join is registered under, so the condition and the field are one name.
+        from provisa.compiler.context import _join_field_name
+
         out: dict[str, GraphQLInputField] = {}
         for rel in visible_rels:
-            if rel["source_table_id"] != table.table_id or rel.get("via_table_id"):
+            if rel["source_table_id"] != table.table_id:
                 continue
             target = table_lookup.get(rel["target_table_id"])
             target_where = where_types.get(target.table_id) if target else None
             if target is None or target_where is None:
                 continue
-            name = relationship_field_name(
-                rel["cardinality"],
-                target_field_name=unprefixed_field_name(target.field_name, target.domain_id),
-                graphql_alias=rel.get("graphql_alias"),
-            )
-            out[name] = GraphQLInputField(target_where)
+            out[_join_field_name(rel, target, table_lookup)] = GraphQLInputField(target_where)
         return out
 
     return fields

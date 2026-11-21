@@ -342,7 +342,18 @@ Auto-generated [JSON:API](https://jsonapi.org)-compliant endpoint for every regi
 
 - `include`: comma-separated relationship names, physical spelling, e.g. `?include=order_items,shipment`. Each related resource is returned once in `included`, and each primary resource links what it includes under `relationships.<name>.data` (a list of resource identifiers for a to-many relationship, one identifier or `null` for a to-one).
 
-Responses are resource objects with `type`/`id`/`attributes`. A resource's `id` is its table's primary key: the key column's value, or for a composite key its columns' values in key order joined by `:` (order 7's line 2 of a table keyed `(order_id, line)` is `7:2`). A `:` or `\` inside a value is escaped with `\`. A table with no declared primary key uses its `id` column; a table with neither returns `400`, as does an `include` that reaches one. Errors follow the JSON:API error object shape.
+Responses are resource objects with `type`/`id`/`attributes`. No table is refused because it declares no primary key. A resource's `id` is chosen in this order:
+
+1. Its declared primary key. For a composite key, the values are joined by `:` in key order (`7:2` for order 7 line 2). A `:` or `\` inside a value is escaped with `\`.
+2. The column an approved relationship points at.
+3. A column named `id`.
+4. The resource's position in the response.
+
+A single-resource lookup (`GET /{type}/{id}`) is offered only when the id is a real identifier—one of the first three—not when it is a position. A table identified only by position responds to list requests and includes but not to single-resource lookups.
+
+For `include`, a resource reached by a many-to-one relationship is identified by the column that relationship points at. A resource reached by a one-to-many relationship is identified by its primary key when one is declared, otherwise by its position among its parent's included resources. Every child row stays its own resource.
+
+Errors follow the JSON:API error object shape.
 
 **Response cache:** opt in with a request header, `Cache-Control: max-age=N` or `x-provisa-cache: true` (see [Response cache request headers](#response-cache-request-headers)). Every response carries `X-Provisa-Cache: HIT|MISS`, and `X-Provisa-Cache-Age` on a hit. Two forms that disagree return `400` as a JSON:API error object.
 
