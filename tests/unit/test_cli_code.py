@@ -32,7 +32,10 @@ class Row(TypedDict):
     id: int
     name: str
 
-def customers(region: str) -> list[Row]:
+class Inputs(TypedDict):
+    region: str
+
+def customers(inputs: Inputs) -> list[Row]:
     \"\"\"@table\"\"\"
     return []
 
@@ -164,6 +167,7 @@ def test_typescript_is_read_through_the_node_reader(tmp_path, capsys, monkeypatc
         "exports": [
             {
                 "name": "ping",
+                "description": "",
                 "tags": ["command"],
                 "tag_arguments": [],
                 "signatures": [{"parameters": [], "returns": {"kind": "string"}}],
