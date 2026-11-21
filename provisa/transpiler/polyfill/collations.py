@@ -134,5 +134,5 @@ COLLATED_ORDERS: tuple[Feature, ...] = tuple(
 
 #: The family's place in the grid (polyfill.GRID), which tries the rules of one function in
 #: the order of their families.
-ORDER = 70
+ORDER = 90
 FEATURES: tuple[Feature, ...] = (PG_COLLATION_FOR, *COLLATED_ORDERS)

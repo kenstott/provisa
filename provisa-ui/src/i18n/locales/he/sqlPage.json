@@ -9,6 +9,6 @@
     "detachToSemantic": "ניתוק ל-SQL סמנטי",
     "expansionTitle": "הרחבת מדד",
     "expansionLoading": "מביא הרחבה...",
-    "expansionNoMetric": "משפט זה אינו מפנה לאף מדד — אין מה להרחיב."
+    "expansionNoMetric": "ההצהרה הזו לא מפנה לאף מדד, ולכן אין מה להרחיב."
   }
 }

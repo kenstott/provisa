@@ -106,20 +106,17 @@ describe("the Library in the app", () => {
   const SRC = resolve(__dirname, "..");
   const read = (path: string) => readFileSync(resolve(SRC, path), "utf-8");
 
-  it("sits beside the Ontology and before the Security group, on the glossary's read right", () => {
-    // The bar's entries are the NAV_BAR list NavBar renders, in order.
-    const at = (to: string) => NAV_BAR.findIndex((e) => e.kind === "link" && e.to === to);
-    const ontology = at("/admin/ontology");
-    const library = at("/library");
-    const security = NAV_BAR.findIndex((e) => e.kind === "group" && e.group.id === "security");
-    expect(ontology).toBeGreaterThan(-1);
-    expect(library).toBe(ontology + 1);
-    expect(library).toBeLessThan(security);
-    expect(NAV_BAR[library]).toMatchObject({ capability: "glossary_read" });
-    expect(read("components/NavBar.tsx")).toContain("NAV_BAR.map(");
+  it("is the Documents page of the Context group, on the glossary's read right", () => {
+    // REQ-2259: the library is the Context group's Documents page, at /context/documents.
+    const context = NAV_BAR.find((e) => e.kind === "group" && e.group.id === "context");
+    expect(context).toBeDefined();
+    const documents =
+      context!.kind === "group" ? context!.group.items.find((i) => i.to === "/context/documents") : undefined;
+    expect(documents).toMatchObject({ labelKey: "navBar.itemDocuments", capability: "glossary_read" });
     expect(read("App.tsx")).toMatch(
-      /path="\/library"\s+element=\{\s+<CapabilityGate\s+capability="glossary_read"/,
+      /path="\/context\/documents"\s+element=\{\s+<CapabilityGate capability="glossary_read"/,
     );
+    expect(read("App.tsx")).not.toContain('path="/library"');
   });
 
   it("is no longer an Admin page", () => {
@@ -135,7 +132,7 @@ describe("LibraryPage", () => {
     expect(await screen.findByTestId("reflib-why")).toHaveTextContent(
       "Why: the documents that give your data its meaning",
     );
-    expect(screen.getByTestId("page-title")).toHaveTextContent("Library");
+    expect(screen.getByTestId("page-title")).toHaveTextContent("Documents");
   });
 
   it("filters the list by title, source or reader", async () => {

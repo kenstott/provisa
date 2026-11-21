@@ -29,7 +29,7 @@
     "no": "Нет",
     "typeSomethingElse": "Ввести другое",
     "confirm": "Подтвердить",
-    "confirmed": "Подтверждено — выполняйте.",
+    "confirmed": "Подтверждено. Продолжайте.",
     "cancelled": "Отменено.",
     "chooseFile": "Файл для отправки",
     "graphCaption": "Узлы: {{nodes}} · Связи: {{relationships}}",

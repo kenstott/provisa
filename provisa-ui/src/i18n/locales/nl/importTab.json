@@ -37,7 +37,7 @@
     "warningMessage": "Wat te doen",
     "warningLocation": "Locatie",
     "configHeading": "Gegenereerde configuratie",
-    "configHelp": "Bewerk deze voor het toepassen als de conversie verkeerd gokte — verbindingsgegevens, domeinnamen, rolnamen. Wat u toepast is precies wat hier staat.",
+    "configHelp": "Bewerk verbindingsgegevens, domeinnamen of rolnamen als de conversie verkeerd heeft gegokt. Wat wordt toegepast is precies wat hier staat.",
     "apply": "Toepassen op deze organisatie",
     "applied": "Toegepast: {{sources}} gegevensbronnen, {{tables}} tabellen, {{roles}} rollen.",
     "domainNew": "nieuw domein",

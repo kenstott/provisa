@@ -56,3 +56,6 @@ async def join_org_automatically(
             await grant_org_role(rt.model_db, user_id, role_id, granter_capabilities=())
         finally:
             reset_current_org(org_token)
+        from provisa.api.effective_rows import record_people
+
+        await record_people(org_id, [user_id])

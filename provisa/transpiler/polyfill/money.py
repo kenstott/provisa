@@ -75,5 +75,5 @@ MONEY_TEXT = Feature(
 
 #: The family's place in the grid (polyfill.GRID), which tries the rules of one function in
 #: the order of their families.
-ORDER = 40
+ORDER = 60
 FEATURES: tuple[Feature, ...] = (MONEY_TEXT,)

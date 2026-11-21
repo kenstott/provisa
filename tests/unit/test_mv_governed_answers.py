@@ -255,7 +255,8 @@ def test_a_masked_measure_is_never_read_from_the_views_unmasked_measures(con, ag
     # What the role reads is the mask's: over the masked value, not the stored measure.
     masked = {r[1] for r in _rows(con, governed)}
     if aggregate.startswith("COUNT"):
-        assert masked == ({1, 2} if value is not None else {0})  # rows per region, or none
+        # REQ-2131: an integer column reads any constant mask as NULL, so no value is counted.
+        assert masked == {0}
     else:
         assert masked <= {0, None}
 
@@ -403,7 +404,7 @@ def test_a_mask_on_a_column_the_join_view_keeps_answers_as_its_tables(
         # the mask is the matched customer's value; order 6 has no customer, and reads NULL
         assert {r[0]: r[2] for r in rows} == {i: None if i == 6 else "X" for i, _ in _NO_NAME}
     if column == "amount":
-        assert {r[1] for r in rows} == {0}
+        assert {r[1] for r in rows} == {None}  # REQ-2131: an integer reads the constant as NULL
 
 
 def test_a_mask_on_a_column_the_join_view_does_not_keep_is_never_answered(con):

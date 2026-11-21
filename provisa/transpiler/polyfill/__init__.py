@@ -40,7 +40,7 @@ from provisa.transpiler.polyfill.notation import Refusal, Rewrite, RuleError, ho
 
 #: The package's modules that hold no family: the grid, its notation and matching, the pages, and
 #: the Trino helpers families share.
-_NOT_FAMILIES = frozenset({"docs", "grid", "matching", "notation", "trino"})
+_NOT_FAMILIES = frozenset({"docs", "grid", "inet_literal", "matching", "notation", "trino"})
 
 
 def _features() -> tuple[Feature, ...]:

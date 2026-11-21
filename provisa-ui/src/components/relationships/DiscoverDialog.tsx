@@ -124,8 +124,8 @@ export function DiscoverDialog({
               setReset(true);
             }}
             onCancel={close}
-            onRun={async (scope: DiscoveryScope) => {
-              await discovery.start(scope);
+            onRun={async (scope: DiscoveryScope, domains: ReadonlySet<string> | null) => {
+              await discovery.start(scope, domains);
             }}
           />
         ))}

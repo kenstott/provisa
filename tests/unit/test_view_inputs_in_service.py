@@ -105,7 +105,10 @@ def _build(monkeypatch, *, view: dict, withdrawn: list[dict], role: dict | None 
     )
     monkeypatch.setattr(state, "tables", tables, raising=False)
     monkeypatch.setattr(
-        state, "view_sql_map", {view["table_name"]: view["view_sql"]}, raising=False
+        state,
+        "view_sql_map",
+        {f"{view['schema_name']}.{view['table_name']}": view["view_sql"]},
+        raising=False,
     )
     return state
 

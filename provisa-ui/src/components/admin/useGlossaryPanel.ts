@@ -14,8 +14,9 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { useDetailParam } from "../list/useDetailParam";
+import { namedIn, rememberedDetail, useRememberedDetail } from "../list/useDetailParam";
 import { getStored, setStored } from "../../lib/browserStorage";
+import { listGlossaryTerms, type GlossaryTermSummary } from "../../api/glossary";
 import { useNavPayload } from "../../hooks/useNavPayload";
 import { useScreenInputsReader } from "../../mcp/screenState";
 import {
@@ -54,38 +55,69 @@ export function writeStored(key: string, value: string): void {
   }
 }
 
-export function useGlossaryPanel(canEdit: boolean) {
+/**
+ * REQ-2260: the ids of every term the viewer can read, unnarrowed by the search: what the term left
+ * open is checked against before it is reopened; null until read. `read` reads the list (every
+ * status) for a search: an unnarrowed read is the ids; under a search the unnarrowed list is read
+ * too, once per domains shown.
+ */
+export function useReadableTermIds() {
+  const [ids, setIds] = useState<string[] | null>(null);
+  const scope = useRef<string | null>(null);
+  const read = useCallback(
+    async (query: string, domains: string[] | null): Promise<GlossaryTermSummary[]> => {
+      const listed = await listGlossaryTerms(query, true, domains);
+      const at = JSON.stringify(domains);
+      if (query === "" || scope.current !== at) {
+        const readable = query === "" ? listed : await listGlossaryTerms("", true, domains);
+        scope.current = at;
+        setIds(readable.map((term) => String(term.id)));
+      }
+      return listed;
+    },
+    [],
+  );
+  return [ids, read] as const;
+}
+
+/**
+ * `listed`: the ids of every term the viewer can read, unnarrowed by the search; `null` while
+ * they load.
+ */
+export function useGlossaryPanel(canEdit: boolean, listed: readonly string[] | null) {
   // REQ-1387, REQ-2241: the selected term is the URL's ?term= (the shared detail parameter), so a
   // relationship link, a shared URL, or Back and Forward all show the term it names.
   const [searchParams, setSearchParams] = useSearchParams();
-  const detail = useDetailParam("ontology");
   // REQ-2130: the Ontology View, in place of the term list while it is open. A ?term= link opens
   // the term, so it opens the list.
   const [ontology, setOntologyState] = useState(
-    () => detail.id === null && readStoredString("glossary.view") === "ontology",
+    () =>
+      namedIn("ontology", searchParams.toString()) === null &&
+      readStoredString("glossary.view") === "ontology",
   );
+  // REQ-2260: a visit naming no term reopens the term left open (the shared memory of list pages),
+  // once the terms are read; under the graph it waits, as the graph holds the page's place.
+  const detail = useRememberedDetail("ontology", ontology ? null : listed);
   const { open: openTerm, close: closeTerm } = detail;
-  // A visit with nothing in its URL reopens the term the reader left open: it is the page's term
-  // from the first paint, while the URL is given it.
+  // The term the page reopens: it is the page's term once the terms read hold it, while the URL is
+  // given it.
   const [reopened] = useState(() =>
-    searchParams.toString() === "" && !ontology ? readStoredString("glossary.term") : null,
+    searchParams.toString() === "" && !ontology ? rememberedDetail("ontology") : null,
   );
-  useEffect(() => {
-    if (reopened) openTerm(reopened, { replace: true });
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- once, as the page opens.
-  }, []);
   // The term last open: under the graph a term is not in the URL (reloading opens what was left,
   // the graph), and back to the list it is open again.
   const [held, setHeld] = useState<string | null>(
-    () => detail.id ?? (searchParams.toString() === "" ? readStoredString("glossary.term") : null),
+    () => detail.id ?? (searchParams.toString() === "" ? rememberedDetail("ontology") : null),
   );
   if (detail.id !== null && detail.id !== held) setHeld(detail.id);
-  const named = ontology ? held : (detail.id ?? (held === reopened ? reopened : null));
+  // A reopened term the terms read do not hold is not reopened (useRememberedDetail forgets it).
+  const reopenHeld =
+    held === reopened && reopened !== null && listed !== null && listed.includes(reopened);
+  const named = ontology ? held : (detail.id ?? (reopenHeld ? reopened : null));
   const parsed = named === null ? NaN : Number(named);
   const selectedId = Number.isFinite(parsed) ? parsed : null;
   const setSelectedId = useCallback(
     (id: number | null) => {
-      writeStored("glossary.term", id === null ? "" : String(id));
       setHeld(id === null ? null : String(id));
       if (id === null) closeTerm();
       else openTerm(String(id));
@@ -95,7 +127,7 @@ export function useGlossaryPanel(canEdit: boolean) {
   const setOntology = (open: boolean) => {
     setOntologyState(open);
     writeStored("glossary.view", open ? "ontology" : "list");
-    if (open) closeTerm({ replace: true });
+    if (open) closeTerm({ replace: true, keep: true });
     else if (held !== null) openTerm(held, { replace: true });
   };
   // The term open as one form (TermEditForm), or read. A URL's ?term= naming the remembered term
@@ -105,7 +137,7 @@ export function useGlossaryPanel(canEdit: boolean) {
     return (
       canEdit &&
       opening !== null &&
-      readStoredString("glossary.term") === opening &&
+      rememberedDetail("ontology") === opening &&
       readStoredBool("glossary.editing", false)
     );
   });
@@ -165,18 +197,23 @@ export function useGlossaryPanel(canEdit: boolean) {
       graph: { flat, layout, preset, layers, domains, edgeTypes },
     };
   }, [ontology, selectedId, editing]);
-  useScreenInputsReader("/admin/ontology", readInputs);
+  useScreenInputsReader("/context/ontology", readInputs);
 
   // Each term opens read, not in the form the previous term was left in; the term the page opened
   // on keeps its remembered form. Deferred for the same set-state-in-effect rule as the list
   // refresh in GlossaryTab.
   const termOpened = useRef(selectedId ?? (reopened === null ? null : Number(reopened)));
   useEffect(() => {
+    // Waiting for the terms read to reopen the remembered term is no change of term; closing is.
+    if (selectedId === null) {
+      if (held !== reopened) termOpened.current = null;
+      return;
+    }
     if (termOpened.current === selectedId) return;
     termOpened.current = selectedId;
     const timer = window.setTimeout(() => setEditing(false), 0);
     return () => window.clearTimeout(timer);
-  }, [selectedId, setEditing]);
+  }, [selectedId, setEditing, held, reopened]);
 
   return { ontology, setOntology, selectedId, setSelectedId, editing, setEditing };
 }

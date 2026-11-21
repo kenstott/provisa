@@ -8,7 +8,7 @@
       "purpose": {
         "environment_management": {
           "title": "Umgebungen sind eine Produktionsfunktion",
-          "body": "Eine Umgebung ist eine vollständige, getrennt gesteuerte Kopie Ihres Modells – Quellen, Tabellen, Richtlinien, Maskierungsregeln und Berechtigungen. Teams halten eine Dev-Umgebung, in der das Modell geändert wird, eine Staging-Umgebung zur Prüfung und Prod zur Auslieferung und führen Änderungen weiter, indem sie eine Umgebung mit einem Diff, einer Freigabe und einem umkehrbaren Verlauf in die nächste mergen.\n\nIhre Sandbox IST eine dieser Umgebungen, eigens für Sie erstellt. Ihre Verwaltung – Erstellen, Mergen, Deployen, Stilllegen – obliegt der Organisation, der sie gehören. Deshalb wird die Oberfläche hier nur gezeigt und nicht übergeben: Sie sehen, was sie leistet, aber sie wirkt auf nichts."
+          "body": "Eine Umgebung ist eine vollständige, separat verwaltete Kopie Ihres Modells: Quellen, Tabellen, Richtlinien, Maskierungsregeln und Berechtigungen. Teams ändern das Modell in dev, prüfen es in staging und liefern aus prod aus. Dabei wird eine Umgebung mit Diff, Genehmigung und rückgängig machbarer Historie in die nächste gemergt.\n\nIhre Sandbox ist eine dieser Umgebungen, nur für Sie angelegt. Das Erstellen, Mergen, Bereitstellen und Stilllegen von Umgebungen obliegt der Organisation, der sie gehören. Diese Seite dient daher nur zur Ansicht und bewirkt nichts."
         }
       }
     }

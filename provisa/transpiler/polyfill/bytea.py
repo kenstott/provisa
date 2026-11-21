@@ -231,9 +231,10 @@ def _overlay(length: str) -> str:
 
 
 #: bytea_substring: from max($s, 1), to $s + $l (none past the end, nothing before 1).
-_SUBSTRING = "substring($a, greatest($s, 1))"
+#: A NULL start or length answers NULL (ClickHouse's greatest passes over a NULL).
+_SUBSTRING = "if($s IS NULL, NULL, substring($a, greatest($s, 1)))"
 _SUBSTRING_FOR = (
-    f"CASE WHEN $l < 0 THEN {_raise('22011', _LENGTH, _BYTES)} "
+    f"CASE WHEN $s IS NULL OR $l IS NULL THEN NULL WHEN $l < 0 THEN {_raise('22011', _LENGTH, _BYTES)} "
     "ELSE substring($a, greatest($s, 1), greatest($s + $l - greatest($s, 1), 0)) END"
 )
 
@@ -664,7 +665,7 @@ def _like_arguments(name: str) -> _Arguments:
 
 #: The family's place in the grid (polyfill.GRID), which tries the rules of one function in
 #: the order of their families.
-ORDER = 250
+ORDER = 360
 FEATURES: tuple[Feature, ...] = (
     _feature(
         "octet_length(bytea)", "A bytea's number of bytes.", ("octet_length($a)",),

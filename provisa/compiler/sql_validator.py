@@ -44,7 +44,7 @@ Security model / layer responsibilities:
 from __future__ import annotations
 
 from collections.abc import Collection, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 import sqlglot
 import sqlglot.expressions as exp
@@ -109,6 +109,11 @@ class GovernanceRefused(PermissionError):
     the tables a V002 names back to the model (REQ-603)."""
 
     def __init__(self, violations: list[ValidationViolation]) -> None:
+        from provisa.compiler.view_expand import without_marks  # noqa: PLC0415
+
+        # REQ-039: a violation of a marked statement may name a view body's marked alias; the
+        # mark never leaves the server.
+        violations = [replace(v, message=without_marks(v.message)) for v in violations]
         super().__init__("; ".join(f"[{v.code}] {v.message}" for v in violations))
         self.violations = violations
         # REQ-2222: answered by the app's PermissionError handler under this stable code.
@@ -140,8 +145,39 @@ def validate_sql(  # REQ-001, REQ-002, REQ-038, REQ-266
     reading refuses. The folded reading is what the engine executes; the written one is what stage
     2 matches its rules against, name for name. A spelling only one of them resolves -- ``C.ssn``
     over ``FROM bank.customer c`` -- is refused, so no column reaches the engine past either."""
+    from provisa.compiler.view_expand import marks_withheld  # noqa: PLC0415
+
+    with marks_withheld():  # REQ-039: an error judging a marked statement names no mark
+        return _validate_sql(
+            sql,
+            ctx,
+            gov_ctx,
+            role,
+            raw_tables,
+            bypass_relationship_guard=bypass_relationship_guard,
+            bypass_uncovered_relationships=bypass_uncovered_relationships,
+            table_functions=table_functions,
+            view_commands=view_commands,
+        )
+
+
+def _validate_sql(
+    sql: str,
+    ctx: CompilationContext,
+    gov_ctx: GovernanceContext,
+    role: dict,
+    raw_tables: list[dict],
+    *,
+    bypass_relationship_guard: bool,
+    bypass_uncovered_relationships: bool,
+    table_functions: frozenset[str],
+    view_commands: Mapping[str, dict] | None,
+) -> list[ValidationViolation]:
+    from provisa.compiler.view_expand import parse_marked  # noqa: PLC0415
+
     try:
-        written = sqlglot.parse_one(sql, read=READ)
+        # REQ-039: an error is reported against the statement without its view marks.
+        written = parse_marked(sql, read=READ)
     except Exception as exc:
         return [ValidationViolation("V000", f"SQL parse error: {exc}")]
     flatten_leftmost_join_groups(written)  # as stage 2 does: a leftmost group is the flat join
@@ -302,14 +338,20 @@ def view_command(tbl: exp.Table, view_commands: Mapping[str, dict]) -> dict | No
     command = view_commands.get(target.name.lower())
     if command is None:
         return None
+    return command if _in_view_body(tbl) else None
+
+
+def _in_view_body(node: exp.Expr) -> bool:
+    """Whether ``node`` is inside an administrator's view body, marked where it was expanded
+    (``view_expand.VIEW_MARK``), which no statement a role writes can name."""
     from provisa.compiler.view_expand import marked_view  # noqa: PLC0415
 
-    node = tbl.parent
-    while node is not None:
-        if isinstance(node, exp.Subquery) and marked_view(node.alias) is not None:
-            return command
-        node = node.parent
-    return None
+    parent = node.parent
+    while parent is not None:
+        if isinstance(parent, exp.Subquery) and marked_view(parent.alias) is not None:
+            return True
+        parent = parent.parent
+    return False
 
 
 def _view_command_columns(tree: exp.Expr, view_commands: Mapping[str, dict]) -> None:
@@ -1338,8 +1380,11 @@ def _check_server_functions(tree: exp.Expr) -> list[ValidationViolation]:  # REQ
     call is written with, in any case, quoted or schema-qualified, wherever the statement calls
     it; a function that runs SQL it is given as text is refused whatever the text. A statement
     naming no table is the engine's, which answers a function of its own state as every Provisa
-    server does (server_functions.RUNS_SQL_AS_TEXT says which are refused there too). The XML
-    mappings are refused by their own rule (:func:`_check_xml_mappings`)."""
+    server does (server_functions.RUNS_SQL_AS_TEXT says which are refused there too). A call of
+    the product's own inside a view's body is governance's (a mask on the view's own table,
+    mv.view_read._with_own_rules) or the administrator's, marked where it was expanded
+    (``view_expand.VIEW_MARK``), which no statement a role writes can name. The XML mappings are
+    refused by their own rule (:func:`_check_xml_mappings`)."""
     names_a_table = any(
         isinstance(tbl.this, exp.Identifier) and not names_a_cte_in_scope(tbl)
         for tbl in tree.find_all(exp.Table)
@@ -1348,6 +1393,8 @@ def _check_server_functions(tree: exp.Expr) -> list[ValidationViolation]:  # REQ
     for call in tree.find_all(exp.Anonymous):
         name = call.name.lower()
         why = refused_in_a_governed_statement(name, names_a_table)
+        if why == "own" and _in_view_body(call):
+            continue
         if why is not None and name not in MAPPINGS:
             refused[name] = why
     return [

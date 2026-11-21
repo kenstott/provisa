@@ -9,6 +9,6 @@
     "detachToSemantic": "セマンティックSQLへ切り離す",
     "expansionTitle": "メトリクス展開",
     "expansionLoading": "展開を取得中...",
-    "expansionNoMetric": "このステートメントはメトリクスを参照していません。展開するものがありません。"
+    "expansionNoMetric": "このステートメントはメトリクスを参照していないため、展開するものはありません。"
   }
 }

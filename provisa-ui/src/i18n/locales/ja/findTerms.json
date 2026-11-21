@@ -121,7 +121,7 @@
     "roleSynthesis": "使用",
     "roleSupporting": "補足",
     "conflicts": "食い違う説明",
-    "conflictsHint": "これらのパッセージは両方が正しいことはありえません。混ぜずに並べて表示します。",
+    "conflictsHint": "これらの記述は両方とも正しいことはありえないため、並べて表示しています。",
     "accept": "承認",
     "merge": "マージ",
     "mergeInto": "マージ先",

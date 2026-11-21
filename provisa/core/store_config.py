@@ -435,6 +435,11 @@ async def store_model(conn: "Connection") -> dict[str, Any]:
 
     relationships = []
     for row in await rel_repo.list_all(conn):
+        # A built-in relationship (``meta:``/``ontology:``) is the startup seed's, written by it
+        # alone, never the model's: a configuration does not declare it, and the user path that
+        # applies a configuration's relationships refuses its prefix.
+        if rel_repo.reserved_prefix_of(row["id"]) is not None:
+            continue
         fields = _fields(Relationship, row)
         fields["source_table_id"] = name_of[int(row["source_table_id"])]
         if row.get("target_table_id") is not None:

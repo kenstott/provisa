@@ -17,9 +17,10 @@ descriptions, every class unknown, the first sample values of each column), with
 generator writes (demo/named/files/generate.py): six neighborhoods, each repeated in every table.
 
 Under the window packing the pair was dropped at the model: an answer that omitted it left it in
-no row of the run. Now (REQ-413, amended 2026-11-18) code lists the table pair complaints x
-building_permits in exactly one call; an answer naming the column pair scores it like the budget
-pair, and an answer to the table pair that omits the column pair scores it zero and lists it.
+no row of the run. Code lists the table pair complaints x building_permits in exactly one call
+(REQ-413, amended 2026-11-18), and every same-name column pair in one type group is measured
+whatever the model answers (amended 2026-11-20): an answer that omits the pair, or no answer at
+all, still measures it and lists it with its measure, as the budget pair is listed.
 """
 
 # Requirements: REQ-413
@@ -189,6 +190,16 @@ class _Watcher:
         return None
 
 
+class _Stopped:
+    """Stop pressed before the first request."""
+
+    async def stop_asked(self) -> bool:
+        return True
+
+    async def returned(self, tally: Tally, proposals: list[Proposal]) -> None:
+        return None
+
+
 async def _direct(fn, *args):
     return fn(*args)
 
@@ -197,7 +208,9 @@ async def _no_sample(table: TableFacts, column: str) -> Sampled:
     raise AssertionError(f"no direction is left to a sample here: {table.table_name}.{column}")
 
 
-async def _run(given: list[dict[str, Any]]) -> tuple[list[Recorded], _Reader, list[str]]:
+async def _run(
+    given: list[dict[str, Any]], respond: Any = None, control: Any = None
+) -> tuple[list[Recorded], _Reader, list[str]]:
     """A run over the four tables with Key value overlap chosen, the model answering each listed
     table pair with the column pairs of ``given`` naming its tables, or "none": every row the run
     keeps (as :func:`provisa.discovery.run.perform` records them), the measure's reads, and the
@@ -215,13 +228,14 @@ async def _run(given: list[dict[str, Any]]) -> tuple[list[Recorded], _Reader, li
 
     def ask(prompt: str, max_tokens: int) -> Completion:
         prompts.append(prompt)
-        return Completion(answer(prompt, given), "acme", "m", None, False)
+        text = answer(prompt, given) if respond is None else respond(prompt)
+        return Completion(text, "acme", "m", None, False)
 
     tally, found = await execute(
         the_plan,
         DEFAULT_LIMITS[1],
         ask,
-        _Watcher(),
+        _Watcher() if control is None else control,
         threshold=0.7,
         key_values=KeyValues(measurer.all, CUTOFF),
         to_thread=_direct,
@@ -263,21 +277,55 @@ def test_the_table_pair_is_listed_in_exactly_one_call():
     assert '"source":"building_permits","target":"complaints"' in prompt
 
 
-async def test_an_answer_omitting_the_column_pair_scores_it_zero_and_lists_it():
-    """The red test of J1462, flipped: the model answers the table pair without naming the
-    column pair, which is scored zero and listed below the threshold, not left in no row."""
+def _measured_as_the_budget_pair(rows: list[Recorded], reader: _Reader) -> None:
+    ours, budget = _row(rows, THE_PAIR), _row(rows, BUDGET_PAIR)
+    assert ours is not None and ours.proposal is not None
+    assert (COMPLAINTS, "neighborhood") in reader.read
+    assert ours.proposal.confidence == 0.0  # the model gave it no confidence
+    assert (ours.left_out, ours.proposal.cardinality, ours.proposal.score) == (
+        BELOW_THRESHOLD,
+        "many-to-many",
+        SHARED_CEILING,
+    )
+    assert budget is not None and budget.proposal is not None
+    assert (budget.left_out, budget.proposal.cardinality, budget.proposal.score) == (
+        BELOW_THRESHOLD,
+        "many-to-many",
+        SHARED_CEILING,
+    )
+
+
+async def test_an_answer_omitting_the_same_name_pair_still_measures_it():
+    """The red test of J1462, flipped by REQ-413 amended 2026-11-20: the model answers the table
+    pair without naming the same-name column pair, which is measured all the same and listed
+    with its measure, not left in no row and not scored zero unmeasured."""
     rows, reader, prompts = await _run(OBSERVED)
     assert any('"name":"complaints"' in p and '"name":"building_permits"' in p for p in prompts)
-    ours = _row(rows, THE_PAIR)
-    assert ours is not None and ours.proposal is not None
-    assert ours.left_out == BELOW_THRESHOLD
-    assert ours.proposal.confidence == 0.0
-    assert (COMPLAINTS, "neighborhood") not in reader.read  # zero is under the cutoff
-    budget = _row(rows, BUDGET_PAIR)
-    assert budget is not None and budget.proposal is not None
-    assert budget.left_out == BELOW_THRESHOLD
-    assert budget.proposal.cardinality == "many-to-many"
-    assert budget.proposal.score == SHARED_CEILING
+    _measured_as_the_budget_pair(rows, reader)
+
+
+async def test_no_answer_at_all_still_measures_every_same_name_pair():
+    """The model returns an empty list to every call: no table pair is answered, and every
+    same-name pair in one type group is measured and recorded with its reason all the same."""
+    rows, reader, _ = await _run([], respond=lambda prompt: "[]")
+    _measured_as_the_budget_pair(rows, reader)
+    inspections = _row(rows, frozenset({(INSPECTIONS, "permit_id"), (PERMITS, "permit_id")}))
+    assert inspections is not None and inspections.proposal is not None
+    assert (INSPECTIONS, "permit_id") in reader.read
+    pairs = [r.proposal.pair for r in rows if r.proposal is not None]
+    assert len(pairs) == len(set(pairs))  # each same-name pair once
+    assert all(len({c for _, c in pair}) == 1 for pair in pairs)  # only same-name pairs
+
+
+async def test_a_failed_call_still_measures_its_same_name_pairs():
+    """Every call fails: the table pairs are named unanswered and their same-name pairs are
+    measured all the same."""
+
+    def refuse(prompt: str) -> str:
+        raise RuntimeError("the provider is down")
+
+    rows, reader, _ = await _run([], respond=refuse)
+    _measured_as_the_budget_pair(rows, reader)
 
 
 async def test_the_pair_proposed_is_listed_as_the_budget_pair_is():
@@ -297,3 +345,12 @@ async def test_the_pair_proposed_is_listed_as_the_budget_pair_is():
         == (BELOW_THRESHOLD, "many-to-many", SHARED_CEILING)
     )
     assert ours.left_out in ACCEPTABLE
+
+
+async def test_a_stopped_run_measures_no_same_name_pair():
+    """Stopped means stopped: a run stopped before its requests asks nothing and measures no
+    same-name pair of the table pairs it never asked about."""
+    rows, reader, prompts = await _run([], control=_Stopped())
+    assert prompts == []
+    assert reader.read == []
+    assert rows == []

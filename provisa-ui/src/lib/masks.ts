@@ -16,6 +16,24 @@
 import type { TFunction } from "i18next";
 import { grantLabel } from "./grants";
 
+// REQ-2131: the types a constant mask reads as text, as provisa.security.masking._TEXT_TYPES has
+// them. On any other column a constant mask reads as NULL, so only NULL can be saved.
+const TEXT_TYPES = new Set([
+  "varchar",
+  "char",
+  "text",
+  "character varying",
+  "character",
+  "bpchar",
+  "nvarchar",
+  "string",
+]);
+
+/** Whether a column of ``dataType`` holds text: the only type a constant mask reads as a string. */
+export function isTextType(dataType: string): boolean {
+  return TEXT_TYPES.has(dataType.split("(")[0].trim().toLowerCase());
+}
+
 /** The picker's choice for every other reader, which a list stores as ``to: null``. */
 export const EVERYONE = "*";
 

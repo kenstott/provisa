@@ -47,7 +47,7 @@ def _sha(bits: int) -> Macro:
     }
     if bits in (256, 512):  # the digests Trino and SQL Server have
         forms[_TRINOS] = f"sha{bits}(value)"
-        forms[frozenset({"tsql"})] = Pg(f"sha{bits}(value)")
+        forms[frozenset({"tsql"})] = f"HASHBYTES('SHA2_{bits}', value)"  # sqlglot 30.29 writes none
     return Macro(f"sha{bits}", ("value",), forms)
 
 

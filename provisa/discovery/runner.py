@@ -48,7 +48,7 @@ from provisa.discovery.proposals import (
     UNKNOWN_COLUMN,
     Recorded,
 )
-from provisa.discovery.windows import Call, Plan, TablePair
+from provisa.discovery.windows import Call, ColumnPair, Plan, TablePair
 from provisa.llm.client import failure
 
 # What a vendor says when it refuses a request as longer than the model reads: Anthropic's
@@ -71,6 +71,21 @@ _REQUIRED = (
 #: An answered table pair's column pair the answer does not name: it scores zero (REQ-413,
 #: amended 2026-11-18).
 NOT_NAMED = "not named by the model for its table pair"
+
+#: A same-name column pair in one type group that no answer named: it is measured whatever the
+#: model answered (REQ-413, amended 2026-11-20).
+SAME_NAME = "same name in one type group, measured whatever the model answered"
+
+
+def same_name(proposal: Proposal) -> bool:
+    """Its two columns share a name (REQ-413, amended 2026-11-20): with Key value overlap chosen
+    it is measured whatever its model confidence, and the model can only add pairs to it."""
+    return proposal.start[1] == proposal.end[1]
+
+
+def same_name_pairs(pair: TablePair) -> list[ColumnPair]:
+    """The column pairs of ``pair`` compared in some type group whose two columns share a name."""
+    return [(a, b) for a, b in pair.column_pairs() if a.name == b.name]
 
 
 #: An answer no list could be read from, as a failed request's catalogued message.
@@ -322,7 +337,30 @@ def _zeros(pair: TablePair, named: set[frozenset], tally: Tally) -> list[Proposa
         if frozenset({source, target}) in named:
             continue
         tally.zero_scored += 1
-        out.append(from_answer("semantics", source, target, "many-to-one", 0.0, NOT_NAMED))
+        reason = SAME_NAME if a.name == b.name else NOT_NAMED
+        out.append(from_answer("semantics", source, target, "many-to-one", 0.0, reason))
+    return out
+
+
+def unanswered_same_name(
+    plan: Plan, answered: set[tuple[int, int]], tally: Tally
+) -> list[Proposal]:
+    """Every same-name column pair of a table pair of ``plan`` no answer covered (unanswered,
+    failed or unreadable), once each, scored zero (REQ-413, amended 2026-11-20)."""
+    seen: set[frozenset] = set()
+    out: list[Proposal] = []
+    for call in plan.calls:
+        for pair in call.pairs:
+            if pair.key in answered:
+                continue
+            for a, b in same_name_pairs(pair):
+                source = (pair.source.table_id, a.name)
+                target = (pair.target.table_id, b.name)
+                if frozenset({source, target}) in seen:
+                    continue
+                seen.add(frozenset({source, target}))
+                tally.zero_scored += 1
+                out.append(from_answer("semantics", source, target, "many-to-one", 0.0, SAME_NAME))
     return out
 
 
@@ -335,7 +373,8 @@ Measure = Callable[[list[Proposal]], Awaitable[list[Proposal]]]
 class KeyValues:
     """Key value overlap, chosen for a run (REQ-413, amended 2026-11-16): ``measure`` measures
     the semantic pairs whose MODEL confidence is at ``cutoff`` or more and under the run's
-    threshold (:attr:`Tally.threshold`); no other pair is measured."""
+    threshold (:attr:`Tally.threshold`), and every same-name pair under the threshold whatever
+    its model confidence (amended 2026-11-20); no other pair is measured."""
 
     measure: Measure
     cutoff: float
@@ -383,7 +422,9 @@ async def judged(
     measure otherwise. Proposals whose columns are not compared are left out unmeasured.
     ``zeros``: column pairs the model was asked about and did not name, scored zero (REQ-413,
     amended 2026-11-18); the second scorer is not asked of them, and they are judged with the
-    rest, so the band and the list see them."""
+    rest, so the band and the list see them. A same-name pair (:func:`same_name`) under the
+    threshold is in the band whatever its model confidence (REQ-413, amended 2026-11-20): the
+    model may add pairs to the measure but never drop one."""
     threshold = tally.threshold
     tally.left_out.extend(Recorded("semantics", NOT_COMPARABLE, p) for p in apart)
     if refine is not None and found:
@@ -393,7 +434,11 @@ async def judged(
     band = (
         []
         if key_values is None
-        else [p for p in found if key_values.cutoff <= p.confidence < threshold]
+        else [
+            p
+            for p in found
+            if p.confidence < threshold and (key_values.cutoff <= p.confidence or same_name(p))
+        ]
     )
     in_band = {id(p) for p in band}
     below = [p for p in found if p.confidence < threshold and id(p) not in in_band]
@@ -434,6 +479,7 @@ async def execute(
     tally = Tally(total=len(queue), threshold=threshold, table_pairs=plan.table_pairs)
     proposals: list[Proposal] = []
     unanswered: list[TablePair] = []
+    covered: set[tuple[int, int]] = set()
     second = False
 
     def left(call: Call, pairs: list[TablePair]) -> None:
@@ -479,8 +525,14 @@ async def execute(
             continue
         answered, found, apart, zeros = read_answers(call, read.items, tally)
         proposals.extend(await judged(found, apart, key_values, refine, tally, zeros))
+        covered.update(call.pairs[n - 1].key for n in answered)
         left(call, [p for n, p in enumerate(call.pairs, start=1) if n not in answered])
         if answer.cut_off:
             tally.cut_short += 1
         await control.returned(tally, proposals)
+    if not tally.stopped:
+        rest = unanswered_same_name(plan, covered, tally)
+        if rest:
+            proposals.extend(await judged([], [], key_values, None, tally, rest))
+            await control.returned(tally, proposals)
     return tally, proposals

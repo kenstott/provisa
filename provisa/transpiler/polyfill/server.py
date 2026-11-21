@@ -295,7 +295,154 @@ PG_CHAR_TO_ENCODING = Feature(
     ),
 )
 
+# --- pg_size_pretty, pg_encoding_max_length, pg_typeof on ClickHouse ------------------------------
+
+
+def _ch_kept(form: str | Rewrite) -> dict[str, str | Rewrite]:
+    """ClickHouse's ``form``, every other dialect keeping what it had (the old table's form)."""
+    return {**{d: trino.KEPT for d in DIALECTS if d not in NATIVE}, "clickhouse": form}
+
+
+#: dbsize.c's size_pretty_units (PostgreSQL 16): each unit's name, the magnitude below which a size
+#: is written in it, and whether it is rounded half away from zero first.
+_UNITS = (("bytes", 10240, False), ("kB", 20479, True), ("MB", 20479, True), ("GB", 20479, True),
+          ("TB", 20479, True), ("PB", 0, True))  # fmt: skip
+#: The bits each step divides by: the next unit's bits less this one's, less one where the next
+#: rounds and plus one where this one does (bytes to kB 9, then 10).
+_STEPS = (9, 10, 10, 10, 10)
+
+
+def _size_pretty() -> str:
+    """pg_size_pretty of a bigint: divided (truncating, as C divides) until its magnitude, as an
+    unsigned 64-bit value (i64abs), is below the unit's limit, rounded half away from zero in a
+    rounded unit."""
+    sizes = ["toInt64($v)"]
+    for bits in _STEPS:
+        sizes.append(f"intDiv({sizes[-1]}, {1 << bits})")
+
+    def magnitude(size: str) -> str:
+        return f"if({size} < 0, toUInt64(-toInt128({size})), toUInt64({size}))"
+
+    def written(size: str, name: str, rounded: bool) -> str:
+        value = f"intDiv({size} + if({size} < 0, -1, 1), 2)" if rounded else size
+        return f"concat(toString({value}), ' {name}')"
+
+    branches = []
+    for (name, limit, rounded), size in zip(_UNITS[:-1], sizes[:-1], strict=True):
+        branches.append(f"{magnitude(size)} < {limit}, {written(size, name, rounded)}")
+    last = written(sizes[-1], _UNITS[-1][0], _UNITS[-1][2])
+    return f"if($v IS NULL, NULL, multiIf({', '.join(branches)}, {last}))"
+
+
+#: pg_encoding_max_length of each encoding's number (PostgreSQL 16's pg_wchar_table); NULL of any
+#: other number.
+_MAX_LENGTHS = (1, 3, 2, 3, 4, 3, 4, 4, *([1] * 27), 2, 2, 2, 2, 4, 3, 2)
+_ENCODING_MAX_LENGTH = (
+    f"if(toInt64($v) BETWEEN 0 AND {len(_MAX_LENGTHS) - 1}, "
+    f"toInt32(arrayElement([{', '.join(map(str, _MAX_LENGTHS))}], toInt64($v) + 1)), NULL)"
+)
+
+
+def _of_an_integer(node: exp.Expr, dialect: str) -> exp.Expr | None:
+    """pg_size_pretty of a value the statement says is an integer; any other keeps what it had."""
+    call = trino.called(node)
+    if call is None or len(call[1]) != 1:
+        return None
+    if trino.said(call[1][0]) not in ("bigint", "integer", "smallint"):
+        return None
+    return graft(replacement(_size_pretty(), dialect, "pg_size_pretty($v)"), {"v": call[1][0]})
+
+
+SIZE_FUNCTIONS: tuple[Feature, ...] = (
+    Feature(
+        "pg_size_pretty",
+        FAMILY,
+        "A bigint count of bytes in the largest unit below its limit, as dbsize.c writes it.",
+        read=Side(rules=(Rule("pg_size_pretty($v)", _ch_kept(Rewrite(_of_an_integer))),)),
+    ),
+    Feature(
+        "pg_encoding_max_length",
+        FAMILY,
+        "The most bytes of a character of an encoding, by its number.",
+        read=Side(rules=(Rule("pg_encoding_max_length($v)", _ch_kept(_ENCODING_MAX_LENGTH)),)),
+    ),
+)
+
+
+_T = exp.DataType.Type
+#: format_type's name of each type a cast says, where the cast names it exactly (its length or
+#: precision is no part of pg_typeof's answer).
+_FORMAT_TYPE = {
+    _T.SMALLINT: "smallint", _T.INT: "integer", _T.BIGINT: "bigint", _T.DECIMAL: "numeric",
+    _T.FLOAT: "real", _T.DOUBLE: "double precision", _T.BOOLEAN: "boolean", _T.TEXT: "text",
+    _T.VARCHAR: "character varying", _T.CHAR: "character", _T.BPCHAR: "character",
+    _T.DATE: "date", _T.TIMESTAMP: "timestamp without time zone",
+    _T.TIMESTAMPTZ: "timestamp with time zone", _T.TIME: "time without time zone",
+    _T.TIMETZ: "time with time zone", _T.INTERVAL: "interval", _T.VARBINARY: "bytea",
+    _T.JSON: "json", _T.JSONB: "jsonb", _T.UUID: "uuid",
+}  # fmt: skip
+
+
+def _type_of(node: exp.Expr, dialect: str) -> exp.Expr | None:
+    """pg_typeof of a value whose type the statement says, as format_type names it: a string
+    literal and a bare NULL are of type unknown, an integer literal an integer, a bigint or a
+    numeric by its size, a number with a point a numeric, a truth value a boolean, a cast its type
+    (an integer literal read as PostgreSQL reads it). Any other value keeps what ClickHouse had."""
+    from provisa.transpiler.polyfill import clickhouse
+
+    call = trino.called(node)
+    if call is None or "pg_typeof" not in call[0] or len(call[1]) != 1:
+        return None
+    value = call[1][0]
+    while isinstance(value, exp.Paren):
+        value = value.this
+    named = None
+    if trino.said(value) in ("json", "jsonb"):  # ClickHouse holds a json value as its text
+        named = trino.said(value)
+    elif isinstance(value, exp.Null) or (isinstance(value, exp.Literal) and value.is_string):
+        named = "unknown"
+    elif isinstance(value, exp.Literal) and value.is_int:
+        number = int(value.this)
+        named = "integer" if number < 1 << 31 else "bigint" if number < 1 << 63 else "numeric"
+    elif isinstance(value, exp.Literal):
+        named = "numeric"
+    elif isinstance(value, exp.Boolean):
+        named = "boolean"
+    elif isinstance(value, exp.Cast) and not isinstance(value, exp.TryCast):
+        try:
+            clickhouse.integer_read(value, dialect)  # 22003 or 22P02 of a literal it does not fit
+        except Refused as refused:
+            raise Refused(refused.refusal, ruling=True) from refused
+        named = (
+            _FORMAT_TYPE.get(value.to.this)
+            if not value.to.expressions
+            or value.to.this
+            in (_T.VARCHAR, _T.CHAR, _T.DECIMAL, _T.TIMESTAMP, _T.TIMESTAMPTZ, _T.TIME, _T.TIMETZ)
+            else None
+        )
+    return None if named is None else exp.Literal.string(named)
+
+
+PG_TYPEOF = Feature(
+    "pg_typeof",
+    FAMILY,
+    "The type of a value, as format_type names it.",
+    read=Side(
+        rules=(
+            Rule(None, {"clickhouse": Rewrite(_type_of, mentions=r"\bpg_typeof\b", first=True)}),
+        ),
+        limitations={
+            "clickhouse": (
+                Limitation(
+                    "A value whose type the statement does not say (a column of a source table) "
+                    "keeps ClickHouse's refusal."
+                ),
+            )
+        },
+    ),
+)
+
 #: The family's place in the grid (polyfill.GRID), which tries the rules of one function in
 #: the order of their families.
-ORDER = 150
-FEATURES: tuple[Feature, ...] = (AGE, MXID_AGE, PG_CHAR_TO_ENCODING)
+ORDER = 190
+FEATURES: tuple[Feature, ...] = (AGE, MXID_AGE, PG_CHAR_TO_ENCODING, *SIZE_FUNCTIONS, PG_TYPEOF)

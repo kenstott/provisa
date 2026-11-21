@@ -22,7 +22,15 @@ import type { ProductCore } from "../../../pages/data-products/productCore";
 import { AccessSection } from "../../../pages/data-products/AccessSection";
 import { RelationshipDetail } from "../RelationshipDetail";
 import { metaReader } from "../../../api/metaGraph";
-import { GRAPH, TABLES, VOCABULARY, placedBy, reader, tagged } from "./relationshipQueryFixtures";
+import {
+  GRAPH,
+  TABLES,
+  VOCABULARY,
+  placedBy,
+  reader,
+  tagged,
+  toDimension,
+} from "./relationshipQueryFixtures";
 
 vi.mock("../../../api/metaGraph", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../../api/metaGraph")>()),
@@ -70,7 +78,11 @@ beforeEach(() => {
 });
 afterEach(() => vi.unstubAllGlobals());
 
-function detail(rel = placedBy()) {
+function detail(
+  rel = placedBy(),
+  tables: ListedTable[] = LISTED,
+  refetchTables: () => Promise<unknown> = () => Promise.resolve(),
+) {
   return (
     <RelationshipDetail
       rel={rel}
@@ -83,7 +95,8 @@ function detail(rel = placedBy()) {
       onEditSave={vi.fn()}
       saving={null}
       problem=""
-      tables={LISTED}
+      tables={tables}
+      refetchTables={refetchTables}
       functions={[]}
       tableDomainById={{}}
       domainsEnabled={false}
@@ -92,12 +105,90 @@ function detail(rel = placedBy()) {
   );
 }
 
+const SURFACE_NAMES: [string, string][] = [
+  ["cypher", "Cypher"],
+  ["sql", "SQL"],
+  ["sparql", "SPARQL"],
+  ["graphql", "GraphQL"],
+  ["rest", "REST"],
+  ["grpc", "gRPC"],
+  ["jsonapi", "JSON:API"],
+];
+
 describe("the relationship detail panel", () => {
-  it("links the relationship on Cypher, SQL, SPARQL, GraphQL and JSON:API", async () => {
+  it("reads the tables again when one of the relationship's is not listed, then shows its links", async () => {
+    const refetch = vi.fn(() => Promise.resolve());
+    const view = routed(detail(placedBy(), [], refetch));
+    await vi.waitFor(() => expect(refetch).toHaveBeenCalledTimes(1));
+    expect(screen.queryByTestId("relationship-detail-query-sql")).toBeNull();
+    view.rerender(
+      <Routes>
+        <Route path="/" element={detail(placedBy(), LISTED, refetch)} />
+      </Routes>,
+    );
+    expect(await screen.findByTestId("relationship-detail-query-sql")).toBeInTheDocument();
+    expect(refetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("says why when the table is still missing after the read", async () => {
+    routed(detail(placedBy(), [], () => Promise.resolve()));
+    expect(await screen.findByTestId("relationship-detail-query-links-unavailable")).toHaveTextContent(
+      "not among the registered tables",
+    );
+  });
+
+  it("says why when the tables cannot be read", async () => {
+    routed(detail(placedBy(), [], () => Promise.reject(new Error("boom"))));
+    expect(await screen.findByTestId("relationship-detail-query-links-unavailable")).toHaveTextContent(
+      "boom",
+    );
+  });
+
+  it("links the relationship on every surface, each named by its surface", async () => {
     routed(detail());
-    for (const surface of ["cypher", "sql", "sparql", "graphql", "jsonapi"])
-      expect(await screen.findByTestId(`relationship-detail-query-${surface}`)).toBeInTheDocument();
+    for (const [surface, text] of SURFACE_NAMES) {
+      const link = await screen.findByTestId(`relationship-detail-query-${surface}`);
+      expect(link).toHaveTextContent(text);
+      expect(link).toHaveAccessibleName(`Read placed-by in ${text}`);
+    }
     expect(screen.getByTestId("relationship-detail-query-links")).toHaveTextContent("Query it");
+  });
+
+  it("links a discovery-made shared dimension on Cypher and SPARQL too", async () => {
+    const rel = toDimension();
+    routed(detail(rel));
+    for (const [surface] of SURFACE_NAMES)
+      expect(await screen.findByTestId(`relationship-detail-query-${surface}`)).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId("relationship-detail-query-cypher"));
+    expect(opened().state.query).toBe(
+      "MATCH (a:Shelter:BuildingPermits)-[r:IS_PERMIT_NEIGHBORHOOD_DIMENSION]->" +
+        "(b:Shelter:PermitNeighborhood) RETURN a, r, b LIMIT 25",
+    );
+  });
+
+  it("opens the REST explorer with the relationship in ?fields=, run at once", async () => {
+    routed(detail());
+    fireEvent.click(await screen.findByTestId("relationship-detail-query-rest"));
+    expect(opened()).toEqual({
+      to: "/openapi",
+      state: {
+        openApiUrl: "GET /data/rest/sales__orders?fields=id,customerId,client&limit=25",
+        autoRun: true,
+      },
+    });
+  });
+
+  it("opens the gRPC explorer with the related table's field in the read_mask, run at once", async () => {
+    routed(detail());
+    fireEvent.click(await screen.findByTestId("relationship-detail-query-grpc"));
+    expect(opened()).toEqual({
+      to: "/grpc",
+      state: {
+        grpcMethod: "QuerySalesOrders()",
+        grpcBody: { read_mask: { paths: ["customer_id", "client.id"] }, limit: 25 },
+        autoRun: true,
+      },
+    });
   });
 
   it("opens the SQL editor with the join, run at once", async () => {
@@ -186,10 +277,10 @@ describe("the data product Access section", () => {
 
   it("lists each relationship among its tables with the same links as the detail panel", async () => {
     routed(access());
-    for (const surface of ["cypher", "sql", "sparql", "graphql", "jsonapi"])
+    for (const [surface, text] of SURFACE_NAMES)
       expect(
         await screen.findByTestId(`data-product-detail-relationship-placed-by-query-${surface}`),
-      ).toBeInTheDocument();
+      ).toHaveAccessibleName(`Read placed-by in ${text}`);
     // tags is no member: orders -> tags is not the product's.
     expect(screen.queryByTestId("data-product-detail-relationship-tagged-query-links")).toBeNull();
     // The Cypher-only link per relationship type is replaced.

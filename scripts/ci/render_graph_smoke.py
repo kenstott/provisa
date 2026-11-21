@@ -3,7 +3,7 @@
 #
 # This source code is licensed under the Business Source License 1.1
 """Inside the built image: render_graph draws a graph through the image's own node, renderer and
-fonts, on the page's light and dark backgrounds. Run as `docker run -i <image> python - < this`."""
+fonts, on the graph canvas colour for the light and dark themes. Run as `docker run -i <image> python - < this`."""
 
 from __future__ import annotations
 
@@ -40,8 +40,10 @@ placed = {
     "endNode": order,
 }
 elements = tools.cytoscape_elements([{"r": placed}])
+# The graph canvas colour (graphTokens canvas), from provisa-ui/src/theme/palette.ts: SCALES.gray[0]
+# light, SCALES.dark[7] dark. The image carries no UI source, so the two values are literals here.
 for layout in tools.GRAPH_LAYOUTS:
-    for theme, background in (("light", "#ffffff"), ("dark", "#0f1117")):
+    for theme, background in (("light", "#f8f9fa"), ("dark", "#242424")):
         png = tools.render_graph(elements, layout, theme)
         assert first_pixel(png) == background, (layout, theme, first_pixel(png))
         print(f"render_graph {layout} {theme}: {len(png)} bytes on {background}")

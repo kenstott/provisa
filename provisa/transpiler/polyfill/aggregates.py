@@ -30,7 +30,9 @@ The bound: Int256 holds every intermediate of a group of up to 2^40 values. A gr
 groupUniqArray's, each value once. Under a FILTER or over a window the call is refused by name, as
 it was: the form's aggregates are several, and ClickHouse would read the window or the filter of
 the outer call only. A call of another argument type (numeric, a float, a column no statement
-types) keeps what it had."""
+types) keeps what it had, but a real's or a double's, which float_aggregates writes at
+PostgreSQL's edges (NaN, infinity, overflow); over a window, under a FILTER or of DISTINCT values
+a real's or a double's keeps what it had."""
 
 # Requirements: REQ-2236, REQ-2167
 
@@ -38,7 +40,7 @@ from __future__ import annotations
 
 import sqlglot.expressions as exp
 
-from provisa.transpiler.polyfill import trino
+from provisa.transpiler.polyfill import float_aggregates, trino
 from provisa.transpiler.polyfill.grid import DIALECTS, NATIVE, Feature, Limitation, Rule, Side
 from provisa.transpiler.polyfill.matching import graft
 from provisa.transpiler.polyfill.notation import Refused, Rewrite, replacement
@@ -223,6 +225,23 @@ def _integer_argument(node: exp.Expr) -> tuple[exp.Expr, bool] | None:
     return (argument, distinct) if said in _INTEGERS else None
 
 
+#: The float types whose aggregates float_aggregates writes.
+_DOUBLES = frozenset({"double precision", "real"})
+
+
+def _double_argument(node: exp.Expr) -> exp.Expr | None:
+    """The one argument of a plain call (no DISTINCT), where the statement says it is a real or a
+    double (provisa.transpiler.polyfill.float_aggregates)."""
+    from provisa.transpiler.function_macros import said_type
+
+    call = trino.called(node)
+    if call is None or len(call[1]) != 1 or isinstance(call[1][0], exp.Distinct):
+        return None
+    argument = call[1][0]
+    said = said_type(argument) or trino.said(argument)
+    return argument if said in _DOUBLES else None
+
+
 def _over_or_filtered(node: exp.Expr) -> bool:
     outer = node.parent.parent if isinstance(node.parent, exp.Dot) else node.parent
     return isinstance(outer, (exp.Filter, exp.Window))
@@ -235,6 +254,15 @@ def exact_of_integers(node: exp.Expr, dialect: str) -> exp.Expr | None:
     refused by name: ClickHouse would read the window or the filter of the form's outer call
     only."""
     function = _function(node)
+    if function is not None and not _over_or_filtered(node):
+        double = _double_argument(node)
+        if double is not None:
+            form = (
+                float_aggregates.AVG_OF_DOUBLES
+                if function == _AVG
+                else float_aggregates.spread_of_doubles(function)
+            )
+            return graft(replacement(form, dialect, _PATTERN.format(function)), {"v": double})
     argued = None if function is None else _integer_argument(node)
     if function is None or argued is None:
         return None
@@ -283,7 +311,7 @@ _ROOT = (
 
 #: The family's place in the grid (polyfill.GRID), which tries the rules of one function in
 #: the order of their families.
-ORDER = 200
+ORDER = 280
 FEATURES: tuple[Feature, ...] = (
     _feature("avg", "The mean of a group's values.", _DIGITS),
     _feature("variance", "The sample variance of a group's values.", _DIGITS),

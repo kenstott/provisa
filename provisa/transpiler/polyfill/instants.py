@@ -601,7 +601,7 @@ _UNBOUNDED = (
 
 #: The family's place in the grid (polyfill.GRID), which tries the rules of one function in
 #: the order of their families.
-ORDER = 230
+ORDER = 310
 FEATURES: tuple[Feature, ...] = (
     *_features(),
     _one_feature(
@@ -837,6 +837,12 @@ def to_precision(node: exp.Expr, dialect: str) -> exp.Expr | None:
     if call is None or "timestamptz" not in call[0] or len(call[1]) != 2:
         return None
     value, digits = call[1]
+    from provisa.transpiler.polyfill import clocks
+
+    if trino.said(digits) in ("time without time zone", "time") or clocks.time_valued(digits):
+        from provisa.transpiler.polyfill import dates  # timestamptz(date, time): its own row
+
+        return dates.instant_of_wall(node, dialect)
     instants = _literal_instants(value)
     if instants is None:
         return None

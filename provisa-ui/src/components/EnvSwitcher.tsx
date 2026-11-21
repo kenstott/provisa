@@ -19,6 +19,7 @@ import { modelReplaced } from "../apolloClient";
 import { notifications } from "@mantine/notifications";
 import {
   ENVIRONMENTS_CHANGED_EVENT,
+  STAGE_COLOR,
   fetchBranchSync,
   fetchEnvironments,
   redoEnvironment,
@@ -259,6 +260,17 @@ export function EnvSwitcher() {
         >
           <Group gap="xs" wrap="nowrap">
             {label}
+            {standingAt !== null && (
+              <Badge
+                size="xs"
+                variant="light"
+                color={STAGE_COLOR[standingAt.stage]}
+                data-testid="env-switcher-stage"
+                data-stage={standingAt.stage}
+              >
+                {t(`environmentStage.${standingAt.stage}`)}
+              </Badge>
+            )}
             {state !== null && (
               <Badge
                 size="xs"
@@ -287,6 +299,17 @@ export function EnvSwitcher() {
               onClick={() => select(e.name)}
             >
               {e.name}
+              {/* REQ-2261: the stage each environment declares, beside its name. */}
+              <Badge
+                size="xs"
+                variant="light"
+                color={STAGE_COLOR[e.stage]}
+                ml="xs"
+                data-testid={`env-stage-${e.name}`}
+                data-stage={e.stage}
+              >
+                {t(`environmentStage.${e.stage}`)}
+              </Badge>
               {e.drifted && (
                 <Text span size="xs" c="orange" ml="xs">
                   {t("envSwitcher.drifted")}

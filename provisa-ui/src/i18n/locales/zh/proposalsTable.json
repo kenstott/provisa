@@ -1,6 +1,6 @@
 {
   "proposalsTable": {
-    "intro": "应用时会接受已勾选的行。评分至少达到阈值的行默认勾选。两个框都未勾选的行保持未决定。",
+    "intro": "勾选的行在应用时会被接受。得分不低于阈值的行默认勾选。两个框都未勾选的行保持待定。",
     "colScore": "评分",
     "colConfidence": "置信度",
     "colJev": "Jev",
@@ -27,7 +27,7 @@
       "invalid_shape": "不是所要求形式的关系：缺少字段或字段形式有误",
       "unknown_column": "引用了请求未比较的表或列",
       "not_comparable": "两列的类别不同，因此不作比较",
-      "below_threshold": "评分低于保留建议所需的 {{threshold}}%。",
+      "below_threshold": "得分低于保留建议所需的 {{threshold}}%。",
       "same_column": "从某列指向其自身",
       "existing": "已注册",
       "rejected": "之前已拒绝",

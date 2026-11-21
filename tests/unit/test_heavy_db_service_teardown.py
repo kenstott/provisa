@@ -126,3 +126,36 @@ class TestHeavyDbServiceTeardownRemovesNamedVolumes:
         assert volume_rm == [["docker", "volume", "rm", "-f", "proj_firebird_data"]], calls
         rm_index = next(i for i, c in enumerate(calls) if "rm" in c and "compose" in c)
         assert calls.index(volume_rm[0]) > rm_index, "volumes go after their containers"
+
+
+class TestNamedVolumesSharedWithOtherServices:
+    """A per-test service's teardown must not remove a volume another service also mounts.
+
+    Root cause: hive-metastore and hive-server2 mount hive_warehouse, which the session-wide Trino
+    also mounts. Teardown's ``docker volume rm -f`` of it failed with "volume is in use" while
+    Trino kept running, so every hive test errored at teardown.
+    """
+
+    def test_a_volume_shared_with_a_service_outside_the_set_is_kept(self):
+        import json
+
+        from tests.conftest import _named_volumes
+
+        def vol(source):
+            return {"type": "volume", "source": source, "target": "/data"}
+
+        config = {
+            "services": {
+                "trino": {"volumes": [vol("hive_warehouse")]},
+                "hive-metastore": {"volumes": [vol("hive_warehouse"), vol("metastore_db")]},
+                "hive-server2": {"volumes": [vol("hive_warehouse")]},
+            },
+            "volumes": {
+                "hive_warehouse": {"name": "proj_hive_warehouse"},
+                "metastore_db": {"name": "proj_metastore_db"},
+            },
+        }
+        result = MagicMock()
+        result.stdout = json.dumps(config)
+        with patch("tests.conftest.subprocess.run", return_value=result):
+            assert _named_volumes(["hive-metastore", "hive-server2"]) == ["proj_metastore_db"]

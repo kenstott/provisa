@@ -151,11 +151,9 @@ class AggregationPlan(NamedTuple):
     The ``row_*`` fields carry a plain row read's selection, relationships nested (REQ-1929,
     amended 2026-11-16), in each surface's own form: ``row_paths`` are REST ``?fields=`` dot-paths
     by GraphQL name (``buildingPermit.permitNumber``); ``row_paths_grpc`` are ``read_mask`` paths,
-    a column by its physical (proto) name and a relationship by the related table's proto field;
-    ``row_fields_api`` is JSON:API's sparse fieldset of the base resource (physical) and
-    ``row_include_api`` its ``include`` (physical relationship paths). ``row_grpc_refusal`` says
-    why the gRPC ``{Type}`` message cannot read a selected relationship: it declares one relation
-    field per related table, the first relationship to it.
+    a column by its physical (proto) name and a relationship by its relation field (its GraphQL
+    relationship field, proto-cased); ``row_fields_api`` is JSON:API's sparse fieldset of the base
+    resource (physical) and ``row_include_api`` its ``include`` (physical relationship paths).
     """
 
     meta: Any
@@ -167,7 +165,6 @@ class AggregationPlan(NamedTuple):
     dim_paths_api: list[str] = []
     row_paths: list[str] = []
     row_paths_grpc: list[str] = []
-    row_grpc_refusal: str | None = None
     row_fields_api: list[str] = []
     row_include_api: list[str] = []
 
@@ -296,7 +293,6 @@ def _plan_for_root_field(ctx: Any, meta: Any, field_node: Any) -> AggregationPla
         dim_paths_api,
         row.paths,
         row.paths_grpc,
-        row.grpc_refusal,
         row.fields_api,
         list(dict.fromkeys(row.include_api)),
     )
@@ -309,7 +305,6 @@ class _RowSelection:
     def __init__(self) -> None:
         self.paths: list[str] = []
         self.paths_grpc: list[str] = []
-        self.grpc_refusal: str | None = None
         self.fields_api: list[str] = []
         self.include_api: list[str] = []
 
@@ -324,8 +319,7 @@ class _RowSelection:
     ) -> None:
         from graphql import FieldNode
 
-        from provisa.grpc.proto_gen import _to_proto_field_name
-        from provisa.grpc.query_ir import _relation_field
+        from provisa.grpc.proto_gen import proto_relation_field_name
 
         for sel in node.selection_set.selections:
             if not isinstance(sel, FieldNode) or sel.name.value.startswith("__"):
@@ -340,15 +334,9 @@ class _RowSelection:
                 continue
             # The query is schema-validated, so a field with a selection is a relationship the
             # compiler registered a join for.
+            # REQ-1929: the {Type} message's relation field is the relationship's own name.
             join = ctx.joins[(meta.type_name, name)]
-            proto = _to_proto_field_name(join.target.field_name)
-            read_by = _relation_field(ctx, meta, proto)
-            if self.grpc_refusal is None and (read_by is None or read_by[0] != name):
-                held = "no relationship" if read_by is None else f"relationship {read_by[0]!r}"
-                self.grpc_refusal = (
-                    f"the gRPC {_to_proto_type_name(meta.type_name)} message has no field for "
-                    f"relationship {name!r}: its {proto!r} field reads {held}"
-                )
+            proto = proto_relation_field_name(name)
             rel_api = [*api_path, physical_rel_name(name)]
             self.include_api.append(".".join(rel_api))
             self.walk(ctx, sel, join.target, [*gql_path, name], [*grpc_path, proto], rel_api)
@@ -533,11 +521,9 @@ def _generate_grpc_query(
                 return f"Query{proto_type}Aggregate({funcs_arg})", None
             return f"Query{proto_type}Aggregate", None
         if not plan.group_cols:
-            if plan.row_grpc_refusal is not None:
-                return None, plan.row_grpc_refusal
             if plan.row_paths_grpc:
-                # REQ-1929: read_mask names the GraphQL selection, a relationship by the related
-                # table's proto field, so the row's relationships come back nested.
+                # REQ-1929: read_mask names the GraphQL selection, a relationship by its relation
+                # field, so the row's relationships come back nested.
                 return f"Query{proto_type}(read_mask=[{', '.join(plan.row_paths_grpc)}])", None
             return f"Query{proto_type}", None
         args = [f"by=[{', '.join(plan.group_cols)}]"]
@@ -668,8 +654,13 @@ async def _generate_sql_from_nl(
     app_state: AppState,
     pre_selected_types: "set[str] | None" = None,
     check: "Callable[[str], Awaitable[str | None]] | None" = None,
+    *,
+    scope: "frozenset[str] | None" = None,
 ) -> tuple[str | None, str | None]:
     """Generate semantic SQL via the proven endpoint_dev pipeline -- non-strict NL's SQL.
+
+    ``scope`` (REQ-2253): the domain filter's selection within the role's authority; only its
+    tables are sent to the model or read. ``None`` is no selection.
 
     The statement is the semantic SQL with the relationship guard's opt-out (GUARD_OPT_OUT,
     REQ-603). ``check`` runs it through the governed path; each attempt is refined against that
@@ -698,7 +689,7 @@ async def _generate_sql_from_nl(
     raw_tables = getattr(app_state, "tables", [])
 
     all_tables, user_nodes, table_name_to_type, lm = _collect_nl_user_tables(
-        ctx, role_obj["domain_access"]
+        ctx, role_obj["domain_access"], scope
     )
     llm_config, llm_api_keys = await _resolve_llm_org_ctx(app_state)
 
@@ -719,7 +710,7 @@ async def _generate_sql_from_nl(
     multihop_lines = _build_multihop_lines(selected_types, lm, _sql_domain)
     relevant_type_names = _build_relevant_type_names(selected_types, lm)
     schema_block, table_columns = _build_schema_block(
-        all_tables, relevant_type_names, ctx, _sql_domain, multihop_lines
+        all_tables, relevant_type_names, ctx, _sql_domain, multihop_lines, scope
     )
 
     async def _check_shown(sql: str) -> str | None:
@@ -738,6 +729,7 @@ async def _generate_sql_from_nl(
         api_keys=llm_api_keys,
         check=None if check is None else _check_shown,
         best_effort=True,
+        scoped=scope is not None,
     )
 
     if last_error:
@@ -745,18 +737,22 @@ async def _generate_sql_from_nl(
     return non_strict_sql(last_sql, ctx), None
 
 
-def _relationship_hints(refused: Any, role: str, app_state: AppState) -> list[str]:
+def _relationship_hints(
+    refused: Any, role: str, app_state: AppState, scope: "frozenset[str] | None" = None
+) -> list[str]:
     """The registered path between each pair of tables ``refused`` (a GovernanceRefused) names
-    as joined outside a relationship, in the role's graph and named as its SQL writes them."""
+    as joined outside a relationship, in the role's graph and named as its SQL writes them.
+    ``scope`` (REQ-2253): only paths through the selected domains are offered."""
     from provisa.compiler.naming import domain_to_sql_name
     from provisa.nl.paths import relationship_hints
+    from provisa.nl.scope import label_map_within
 
     if not any(v.tables is not None for v in refused.violations):
         return []
     surface = role_surface(app_state, role)
     if surface is None:
         return []  # no schema for the role: the refusal alone (run_nl refuses it first)
-    label_map = _build_cypher_label_map(surface.context, role, app_state)
+    label_map = label_map_within(_build_cypher_label_map(surface.context, role, app_state), scope)
     return relationship_hints(
         label_map,
         refused.violations,
@@ -778,15 +774,22 @@ def non_strict_sql(sql: str, ctx: Any) -> str:
     return f"{GUARD_OPT_OUT}\n{make_semantic_sql(rewrite_semantic_to_physical(sql, ctx), ctx)}"
 
 
-def _nl_cypher_compiler(surface: Any, role: str, app_state: AppState) -> Any:
+def _nl_cypher_compiler(
+    surface: Any, role: str, app_state: AppState, scope: "frozenset[str] | None" = None
+) -> Any:
     """The validator non-strict NL's Cypher is refined against: with the role's label map, an
     unbound name that is a bound variable's property is offered as it in the refusal the retry is
-    given (REQ-778), as every other Cypher surface offers it."""
+    given (REQ-778), as every other Cypher surface offers it. ``scope`` (REQ-2253): a label
+    outside the selected domains is unknown to it."""
+    from provisa.nl.scope import label_map_within
+
     if surface is None:
         # No schema for the role: no graph to read a label map from. The SQL branch refuses the
         # job by name ("No schema context for role"); Cypher is checked for its syntax alone.
         return make_cypher_compiler()
-    return make_cypher_compiler(_build_cypher_label_map(surface.context, role, app_state))
+    return make_cypher_compiler(
+        label_map_within(_build_cypher_label_map(surface.context, role, app_state), scope)
+    )
 
 
 def _build_cypher_label_map(
@@ -834,8 +837,13 @@ async def _generate_graphql_sql_from_nl(
     role: str,
     app_state: AppState,
     check: "Callable[[NlTarget, str], Awaitable[str | None]] | None" = None,
+    *,
+    scope: "frozenset[str] | None" = None,
 ) -> tuple[str | None, str | None, str | None, str | None]:
     """Generate GraphQL, SQL, and Cypher via the GraphQL-backed pipeline ("strict" mode).
+
+    ``scope`` (REQ-2253): the SDL sent to the model and the schema its query is validated against
+    are the role's narrowed to the selected domains, so nothing outside them is sent or read.
 
     The NL question is first compiled to a schema-validated GraphQL query, then to SQL via
     the same compiler the GraphQL Explorer uses — join reachability and aggregate/group-by
@@ -860,8 +868,17 @@ async def _generate_graphql_sql_from_nl(
     schema = getattr(app_state, "schemas", {}).get(role)
     if not isinstance(schema, GraphQLSchema):
         return None, None, None, f"No GraphQL schema for role: {role}"
+    if scope is not None:
+        surface = role_surface(app_state, role)
+        if surface is None:
+            return None, None, None, f"No schema context for role: {role}"
+        from provisa.nl.scope import schema_within
 
-    schema_sdl = _get_schema_sdl(app_state, role)
+        schema = schema_within(schema, surface.context, scope)
+
+    from graphql import print_schema
+
+    schema_sdl = print_schema(schema)
     validate_graphql = make_graphql_compiler(schema)
     validate_sql = make_sql_compiler()
     llm_config, llm_api_keys = await _resolve_llm_org_ctx(app_state)
@@ -926,8 +943,14 @@ async def run_nl_job(  # REQ-355, REQ-357, REQ-358, REQ-359
     strict: bool = False,
     *,
     deliver: "Delivery | None",
+    scope: "frozenset[str] | None" = None,
 ) -> None:
     """Background coroutine: runs all six generation branches, writes results.
+
+    ``scope`` (REQ-2253): the domain filter's selection within the role's authority
+    (``provisa.nl.scope.selected_scope``). Every branch's model input -- the table list, the
+    schema block, the SDL, the label map and the metrics -- is narrowed to it, so nothing outside
+    the selected domains is sent to the model or chosen. ``None`` is no selection.
 
     ``deliver``: the delivery the request forced (REQ-1194), or None; each branch's statement is
     delivered to the results store and its handle is the branch's result.
@@ -949,10 +972,20 @@ async def run_nl_job(  # REQ-355, REQ-357, REQ-358, REQ-359
     # REQ-603: a role that may not bypass the relationship guard uses strict NL only.
     strict = effective_strict(strict, role, app_state)
 
-    schema_sdl = _get_schema_sdl(app_state, role)
     # One snapshot of the role's surface for the whole job: its schema and its context.
     surface = role_surface(app_state, role)
     graphql_schema = None if surface is None else surface.schema
+    if scope is not None and surface is not None and graphql_schema is not None:
+        from provisa.nl.scope import schema_within
+
+        graphql_schema = schema_within(graphql_schema, surface.context, scope)
+    if scope is None:
+        schema_sdl = _get_schema_sdl(app_state, role)
+    else:
+        from graphql import print_schema
+
+        # A role with no schema has no SDL to narrow: the same empty SDL as _get_schema_sdl's.
+        schema_sdl = "" if graphql_schema is None else print_schema(graphql_schema)
 
     # Semantic entity matching: surface exact schema names for the LLM prompt.
     from provisa.nl.schema_matcher import get_matcher, make_embed_fn
@@ -964,13 +997,20 @@ async def run_nl_job(  # REQ-355, REQ-357, REQ-358, REQ-359
     _metrics = [
         m for m in (getattr(app_state, "metrics", {}) or {}).values() if role in m.visible_to
     ]
+    if scope is not None and surface is not None:
+        from provisa.nl.scope import metrics_within
+
+        # REQ-2253: a metric over a table outside the selected domains is no vocabulary.
+        _metrics = metrics_within(_metrics, surface.context, scope)
     _table_roles = {
         t["table_name"]: t["modeling_role"]
         for t in getattr(app_state, "tables", [])
         if t.get("modeling_role")
     }
+    # Cached per role and selection, so a narrowed question does not evict the role's matcher.
+    matcher_key = role if scope is None else f"{role}|{','.join(sorted(scope))}"
     matcher = await get_matcher(
-        role, schema_sdl, embed_fn, metrics=_metrics, table_roles=_table_roles
+        matcher_key, schema_sdl, embed_fn, metrics=_metrics, table_roles=_table_roles
     )
     query_emb: list[float] | None = None
     if embed_fn is not None:
@@ -994,7 +1034,7 @@ async def run_nl_job(  # REQ-355, REQ-357, REQ-358, REQ-359
     if not strict:
         # Non-strict: each of SQL, GraphQL and Cypher is the model's best effort from the question,
         # generated on its own (REQ-603); Cypher is generated like GraphQL, not derived from SQL.
-        compilers["cypher"] = _nl_cypher_compiler(surface, role, app_state)
+        compilers["cypher"] = _nl_cypher_compiler(surface, role, app_state, scope)
         if graphql_schema is not None:
             compilers["graphql"] = make_graphql_compiler(graphql_schema)
 
@@ -1014,7 +1054,7 @@ async def run_nl_job(  # REQ-355, REQ-357, REQ-358, REQ-359
         from provisa.security.rights import require_role
 
         _, _u_nodes, _tbl_to_type, _ = _collect_nl_user_tables(
-            ctx, require_role(app_state.roles, role)["domain_access"]
+            ctx, require_role(app_state.roles, role)["domain_access"], scope
         )
 
         def _sql_dom(d: str | None) -> str:
@@ -1065,7 +1105,7 @@ async def run_nl_job(  # REQ-355, REQ-357, REQ-358, REQ-359
         except GovernanceRefused as refused:
             # Two tables joined outside a relationship: the retry is given the registered path
             # between them, and a strict "Not available" names it (REQ-603).
-            return "\n".join([str(refused), *_relationship_hints(refused, role, app_state)])
+            return "\n".join([str(refused), *_relationship_hints(refused, role, app_state, scope)])
         # complexity-gate: allow-ble=3 reason="[file ceiling 3] Per-branch NL execution boundary: running a generated query against the pluggable engine has an unbounded failure surface; a failure is that query's error, which its generation loop refines against or its panel shows as the reason it has no query -- never an abort of the other branches."
         except Exception as exc:
             return str(exc)
@@ -1087,7 +1127,7 @@ async def run_nl_job(  # REQ-355, REQ-357, REQ-358, REQ-359
         async def _run_strict_chain() -> tuple[str | None, str | None, str | None, str | None]:
             try:
                 return await _generate_graphql_sql_from_nl(
-                    nl_query, role, app_state, check=_governed
+                    nl_query, role, app_state, check=_governed, scope=scope
                 )
             # complexity-gate: allow-ble=3 reason="[file ceiling 3] The strict chain runs an
             # LLM + compiler pipeline with an unbounded failure surface; a failure must become
@@ -1132,6 +1172,7 @@ async def run_nl_job(  # REQ-355, REQ-357, REQ-358, REQ-359
                     app_state,
                     pre_selected_types=shared_selected_types,
                     check=lambda query: _governed("sql", query),
+                    scope=scope,
                 )
                 return target, valid_query, error
             if target in ("grpc", "jsonapi", "openapi"):

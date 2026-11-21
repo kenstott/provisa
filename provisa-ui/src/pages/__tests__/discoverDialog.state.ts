@@ -34,13 +34,15 @@ export const REGISTERED = [
   table(5, "crm", "contacts"),
   table(4, "meta", "registered_tables"),
 ];
-export const TABLES = { tables: REGISTERED, loading: false };
+export const TABLES = { tables: REGISTERED, loading: false, refetch: () => Promise.resolve() };
 export const AUTH = { capabilities: ["create_relationship"] };
-// The Domains picker has shop ticked and crm not: the source domains start as shop.
+// The Domains picker has shop, crm and files ticked and meta not: the dialog offers only those
+// (REQ-2253) and its source domains start as those of them holding a table.
+export const CHECKED = ["shop", "crm", "files"];
 export const FILTER = {
   domainsEnabled: true,
-  domains: ["shop", "crm", "meta"],
-  checkedDomains: new Set<string>(["shop"]),
+  domains: ["shop", "crm", "files", "meta"],
+  checkedDomains: new Set<string>(CHECKED),
 };
 
 /** useAdminQueries, answering from the state above. */

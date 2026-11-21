@@ -35,6 +35,7 @@ from typing import TYPE_CHECKING, Any, NamedTuple
 if TYPE_CHECKING:
     from provisa.mv.models import TableIdentity
 
+from provisa.compiler.schema_types import physical_table_name
 from provisa.federation.replica_address import (
     ReplicaRoute,
     ReplicaRoutes,
@@ -234,7 +235,7 @@ async def registered_table_key(engine: Any, state: Any, table: "TableIdentity") 
         raise UnknownRegisteredTable(table.label)
     reg = found[0]
     physical = getattr(state, "kafka_table_physical", None) or {}
-    name = physical.get(reg.table_name, reg.table_name)
+    name = physical_table_name(physical, reg.source_id, reg.table_name)
     # The last key is the form the engine executes: three-part, or folded where it has no catalog.
     return engine_table_keys(engine, state.catalog_for(reg.source_id), reg.schema_name, name)[-1]
 
@@ -583,7 +584,7 @@ async def replica_routes(state: Any) -> ReplicaRoutes:
         # worker (REQ-1882).
         read_catalog = await asyncio.to_thread(backend.replica_read_catalog, state)
     for src, reg in tables:
-        name = physical.get(reg["table_name"], reg["table_name"])
+        name = physical_table_name(physical, reg["source_id"], reg["table_name"])
         keys = engine_table_keys(engine, state.source_catalogs[src.id], reg["schema_name"], name)
         address = backend.replica_address(
             state,
@@ -623,7 +624,7 @@ async def replica_routes(state: Any) -> ReplicaRoutes:
         region = state.foreign_regions[home]  # bound with the org: its selected regions
         if not home_keeps_replica(src, reg, region):
             continue
-        name = physical.get(reg["table_name"], reg["table_name"])
+        name = physical_table_name(physical, reg["source_id"], reg["table_name"])
         keys = engine_table_keys(engine, state.source_catalogs[src.id], reg["schema_name"], name)
         address = backend.replica_address(  # where the home region wrote it (REQ-1922)
             state,
@@ -656,7 +657,7 @@ async def replica_routes(state: Any) -> ReplicaRoutes:
         src = registry.sources.get(reg["source_id"])
         if found is None or src is None:
             continue
-        name = physical.get(reg["table_name"], reg["table_name"])
+        name = physical_table_name(physical, reg["source_id"], reg["table_name"])
         target = (
             read_catalog,
             found[1],

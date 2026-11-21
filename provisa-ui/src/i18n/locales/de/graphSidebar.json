@@ -24,7 +24,7 @@
     "history": "Verlauf",
     "noHistory": "Noch kein Verlauf",
     "favorites": "Favoriten",
-    "noFavorites": "Noch keine Favoriten — klicken Sie auf ★ in einem Ergebnisrahmen",
+    "noFavorites": "Noch keine Favoriten. Klicken Sie in einem Ergebnisrahmen auf ★.",
     "matchAllNodes": "MATCH (n) RETURN n LIMIT 25",
     "matchAllRels": "MATCH p=()-->() RETURN p LIMIT 25",
     "firstPage": "Erste Seite",

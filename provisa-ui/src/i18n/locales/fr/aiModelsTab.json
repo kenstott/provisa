@@ -1,12 +1,12 @@
 {
   "aiModelsTab": {
     "apiKeysHeading": "Clés d'API des fournisseurs d'IA",
-    "apiKeysIntro": "La clé d'API propre à votre organisation pour chaque fournisseur, utilisée pour les opérations assistées par IA affectées à ce fournisseur. Si aucune n'est définie pour un fournisseur, la clé par défaut de l'installation est utilisée. Les clés ne sont plus affichées une fois enregistrées. Vous pouvez coller une référence au coffre au lieu de la clé : ${secret:NAME} est résolu sur les secrets de votre organisation à chaque utilisation.",
+    "apiKeysIntro": "La clé d'API propre à votre organisation pour chaque fournisseur, utilisée pour les opérations assistées par IA attribuées à ce fournisseur. Si aucune n'est définie pour un fournisseur, la clé par défaut du déploiement est utilisée. Les clés ne sont jamais réaffichées une fois enregistrées. Vous pouvez coller une référence de coffre-fort comme ${secret:NAME} à la place de la clé ; elle est résolue avec les secrets de votre organisation à chaque utilisation.",
     "apiKeysIntroOrgOnly": "La clé d'API propre à votre organisation pour chaque fournisseur, utilisée pour les opérations assistées par IA affectées à ce fournisseur. Un fournisseur sans clé définie n'est pas utilisé. Les clés ne sont plus affichées une fois enregistrées. Vous pouvez coller une référence au coffre au lieu de la clé : ${secret:NAME} est résolu sur les secrets de votre organisation à chaque utilisation.",
     "apiKeyLabel": "Clé d'API {{vendor}}",
     "apiKeyPlaceholder": "Clé d'API",
     "apiKeySet": "La clé est définie",
-    "apiKeyNotSet": "Aucune clé définie — la valeur par défaut de l'installation est utilisée",
+    "apiKeyNotSet": "Aucune clé définie. La clé par défaut du déploiement est utilisée.",
     "apiKeyNotSetOrgOnly": "Aucune clé définie",
     "apiKeyClear": "Effacer la clé",
     "apiKeyWillClear": "La clé sera effacée à l'enregistrement.",
@@ -45,7 +45,7 @@
     "addEndpoint": "Ajouter un endpoint",
     "removeEndpoint": "Supprimer",
     "jevHeading": "Jev (TypeSafe AI)",
-    "jevIntro": "Facultatif. Si elle est définie, Provisa utilise l'API de décisions à confiance calibrée de Jev pour évaluer les propositions de type de relation de l'ontologie et les relations de clé étrangère découvertes, au lieu de se fier uniquement à la confiance autodéclarée par le modèle générateur. Si elle n'est pas définie, ces fonctionnalités conservent leur comportement actuel, basé uniquement sur le modèle. Si elle n'est pas définie ici, la variable d'environnement TYPESAFEAI_API_KEY de l'installation est utilisée si elle est présente.",
+    "jevIntro": "Facultatif. S'il est défini, Provisa évalue les propositions de types de relations de l'ontologie et les relations de clé étrangère découvertes avec l'API de décision à confiance calibrée de Jev, en plus de la confiance déclarée par le modèle générateur. S'il n'est pas défini ici, la variable d'environnement TYPESAFEAI_API_KEY du déploiement est utilisée si elle existe. Sans l'une ni l'autre, ces fonctionnalités utilisent uniquement la confiance du modèle.",
     "jevIntroOrgOnly": "Facultatif. Si elle est définie, Provisa utilise l'API de décisions à confiance calibrée de Jev pour évaluer les propositions de type de relation de l'ontologie et les relations de clé étrangère découvertes, au lieu de se fier uniquement à la confiance autodéclarée par le modèle générateur. Si elle n'est pas définie, ces fonctionnalités conservent leur comportement actuel, basé uniquement sur le modèle.",
     "saveButtonLabel": "Enregistrer les paramètres des modèles d'IA",
     "loading": "Chargement…",

@@ -211,5 +211,5 @@ ORDERS: tuple[Feature, ...] = tuple(
 
 #: The family's place in the grid (polyfill.GRID), which tries the rules of one function in
 #: the order of their families.
-ORDER = 30
+ORDER = 50
 FEATURES: tuple[Feature, ...] = (RECORD_EQ, RECORD_NE, RECORD_IMAGE_EQ, RECORD_IMAGE_NE, *ORDERS)

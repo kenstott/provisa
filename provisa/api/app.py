@@ -55,6 +55,7 @@ from provisa.api.data.endpoint_grpc_proxy import router as grpc_proxy_router
 from provisa.api.data.sdl import router as sdl_router
 from provisa.api._ontology_views import ONTOLOGY_TABLE_ALIAS
 from provisa.api.app_loaders import (
+    physical_table_map,
     _META_TABLE_ALIAS,
     _apply_server_and_engine_config,
     _build_and_register_schemas,
@@ -662,12 +663,12 @@ class AppState:
         self._active_runtime().kafka_table_configs = value
 
     @property
-    def kafka_table_physical(self) -> dict[str, str]:
+    def kafka_table_physical(self) -> dict[tuple[str, str], str]:
         """Virtual GraphQL table → the engine's physical table (Kafka sources)."""
         return self._active_runtime().kafka_table_physical
 
     @kafka_table_physical.setter
-    def kafka_table_physical(self, value: dict[str, str]) -> None:
+    def kafka_table_physical(self, value: dict[tuple[str, str], str]) -> None:
         self._active_runtime().kafka_table_physical = value
 
     @property
@@ -975,6 +976,24 @@ class AppState:
     @data_product_refs.setter
     def data_product_refs(self, value: tuple[tuple[str, str], ...]) -> None:
         self._active_runtime().data_product_refs = value
+
+    @property
+    def glossary_term_refs(self) -> tuple[tuple[str, tuple[str, ...]], ...]:
+        """(name, domain ids) of every glossary term, for term_owner lists (REQ-2219)."""
+        return self._active_runtime().glossary_term_refs
+
+    @glossary_term_refs.setter
+    def glossary_term_refs(self, value: tuple[tuple[str, tuple[str, ...]], ...]) -> None:
+        self._active_runtime().glossary_term_refs = value
+
+    @property
+    def judgment_basis_ids(self) -> tuple[str, ...]:
+        """The id of every judgment basis, for judgment_basis_owner lists (REQ-2219)."""
+        return self._active_runtime().judgment_basis_ids
+
+    @judgment_basis_ids.setter
+    def judgment_basis_ids(self, value: tuple[str, ...]) -> None:
+        self._active_runtime().judgment_basis_ids = value
 
     @property
     def entitlement_masks(self) -> Any:
@@ -3440,6 +3459,48 @@ async def _rebuild_schemas(
     return False
 
 
+async def _load_roles(conn: Any) -> list[dict[str, Any]]:
+    """The model's roles as the build reads them, each with its default lists as the entitlement
+    store holds them (REQ-2219): the build writes the role rows (``write_role_rows``) before it
+    reads them here, so a role's defaults are what the model states at this build."""
+    from provisa.entitlements.store import load_role_rows
+
+    roles = [
+        dict(r._mapping)
+        for r in (
+            await conn.execute_core(
+                # REQ-1174: include rate_limit so state.roles carries the per-role rate +
+                # query-complexity limits the data endpoint enforces.
+                select(
+                    _roles_t.c.id,
+                    _roles_t.c.description,  # REQ-2080: what the role is for
+                    _roles_t.c.capabilities,
+                    _roles_t.c.domain_access,
+                    _roles_t.c.rate_limit,
+                    _roles_t.c.parents,  # REQ-2155
+                    # REQ-1921: the data_residency grant's covered values. state.roles feeds
+                    # residency_values_for_claims (the region-edit gate); without this column a
+                    # role holding data_residency resolves to a dict with no residency_values
+                    # and every region change raises KeyError.
+                    _roles_t.c.residency_values,
+                    # REQ-1682: the role's constant session values; flatten_role_dicts folds
+                    # the ancestors' in under the role's own.
+                    _roles_t.c.session_vars,
+                    # REQ-005, REQ-1919: the role's own ceiling and join guard, as stored.
+                    _roles_t.c.max_rows,
+                    _roles_t.c.relationship_guard,
+                )
+            )
+        ).fetchall()
+    ]
+    role_rows = await load_role_rows(conn)
+    for role in roles:
+        role["default_entitlements"] = {
+            kind: list(identifiers) for kind, identifiers in role_rows[role["id"]].defaults.items()
+        }
+    return roles
+
+
 async def _rebuild_schemas_impl(
     raw_config: dict | None = None, *, announce: bool = True, converge: bool = True
 ) -> None:
@@ -3469,6 +3530,12 @@ async def _rebuild_schemas_impl(
     _build.phase(rebuild_trace.EFFECTIVE_NAMES)
     async with state.model_db.acquire() as _names_conn:
         await store_effective_names(cast("Connection", _names_conn))
+        # REQ-2219: each role's defaults and ceiling are rows of the entitlement store, written
+        # from the model at each build; one that changed neither appends nothing. Before the stamp
+        # read for the same reason: each row appended advances it.
+        from provisa.entitlements.store import write_role_rows
+
+        await write_role_rows(cast("Connection", _names_conn))
 
     _build.phase(rebuild_trace.STAMP_READ)
     _stamped_runtime = state._active_runtime()
@@ -3734,34 +3801,7 @@ async def _rebuild_schemas_impl(
 
         await reconcile_sources(_connection_rows)
         _build.phase(rebuild_trace.ROLES)
-        roles = [
-            dict(r._mapping)
-            for r in (
-                await conn.execute_core(
-                    # REQ-1174: include rate_limit so state.roles carries the per-role rate +
-                    # query-complexity limits the data endpoint enforces.
-                    select(
-                        _roles_t.c.id,
-                        _roles_t.c.description,  # REQ-2080: what the role is for
-                        _roles_t.c.capabilities,
-                        _roles_t.c.domain_access,
-                        _roles_t.c.rate_limit,
-                        _roles_t.c.parents,  # REQ-2155
-                        # REQ-1921: the data_residency grant's covered values. state.roles feeds
-                        # residency_values_for_claims (the region-edit gate); without this column a
-                        # role holding data_residency resolves to a dict with no residency_values
-                        # and every region change raises KeyError.
-                        _roles_t.c.residency_values,
-                        # REQ-1682: the role's constant session values; flatten_role_dicts folds
-                        # the ancestors' in under the role's own.
-                        _roles_t.c.session_vars,
-                        # REQ-005, REQ-1919: the role's own ceiling and join guard, as stored.
-                        _roles_t.c.max_rows,
-                        _roles_t.c.relationship_guard,
-                    )
-                )
-            ).fetchall()
-        ]
+        roles = await _load_roles(conn)
         # REQ-1677: fold each role's inheritance chain into the build's own copies here, once, so
         # every role-keyed lookup below (rights, visibility, write grants, RLS) sees
         # the inherited grants under the acting role's own id.
@@ -3874,7 +3914,6 @@ async def _rebuild_schemas_impl(
             state.engine_conn,
             tables,
             sources,
-            {**_META_TABLE_ALIAS, **ONTOLOGY_TABLE_ALIAS, **(kafka_physical or {})},
         )
 
         _gql_remote_srcs = getattr(state, "graphql_remote_sources", {})
@@ -3911,14 +3950,18 @@ async def _rebuild_schemas_impl(
         from provisa.core.repositories import user_attribute as _attr_repo
 
         state.user_attributes = await _attr_repo.org_by_user(conn)
-        # REQ-2219: what Provisa holds of its members' entitlements, and the products a list can
-        # name, so a request's mask reads nothing.
+        # REQ-2219: what Provisa holds of its members' entitlements, and the products, glossary
+        # terms and judgment bases a list can name, so a request's mask reads nothing.
         from provisa.core.repositories import data_product as _product_repo
+        from provisa.core.repositories import glossary as _glossary_repo
         from provisa.entitlements import store as _entitlement_store
+        from provisa.judgments import bases as _bases
 
         state.held_entitlements = await _entitlement_store.load_held(conn)
         state.idp_entitlements = await _entitlement_store.load_idp(conn)
         state.data_product_refs = await _product_repo.refs(conn)
+        state.glossary_term_refs = await _glossary_repo.term_refs(conn)
+        state.judgment_basis_ids = await _bases.basis_ids(conn)
         await _check_fakes(conn)  # REQ-1494
 
         tracked_functions, tracked_webhooks = await _load_tracked_functions_and_webhooks(
@@ -4101,11 +4144,9 @@ async def _rebuild_schemas_impl(
         "functions": tracked_functions,
         "webhooks": tracked_webhooks,
         "enum_types": state.pg_enum_types,
-        "physical_table_map": {
-            **_META_TABLE_ALIAS,
-            **ONTOLOGY_TABLE_ALIAS,
-            **(kafka_physical or {}),
-        },
+        "physical_table_map": physical_table_map(
+            _META_TABLE_ALIAS, ONTOLOGY_TABLE_ALIAS, kafka_physical=kafka_physical
+        ),
         "metrics": _metric_dicts,  # REQ-1319
     }
     with _schema_version_guard:
@@ -4219,6 +4260,15 @@ def _after_answer_steps(
             from provisa.dq.registration import write_checker_targets
 
             await write_checker_targets(conn, checked)
+
+            # REQ-2219: every holder's effective rows recomputed over the model built, batched
+            # for the org; a build that moved no bit appends nothing. A record, never what a
+            # request is enforced from (the in-memory mask is). An env build's model is the
+            # prod's, whose pass writes them.
+            if env == PROD:
+                from provisa.entitlements.effective_store import write_every_holder
+
+                await write_every_holder(cast("Connection", conn), state)
 
     async def names_table() -> None:
         # REQ-194: the prod build's names table. An env build (a sandbox environment's runtime,
@@ -5678,6 +5728,11 @@ def create_app() -> FastAPI:
     from provisa.api.admin.sparql_router import router as sparql_router
 
     app.include_router(sparql_router)
+    from provisa.api.admin.wikidata_router import router as wikidata_router
+    from provisa.api.admin.wikidata_router import sparql_router
+
+    app.include_router(wikidata_router)  # REQ-1923
+    app.include_router(sparql_router)  # REQ-1923: a SPARQL table's columns, from its query
     from provisa.api.admin.graphql_remote_router import router as graphql_remote_router
 
     app.include_router(graphql_remote_router)
@@ -5772,6 +5827,11 @@ def create_app() -> FastAPI:
     )
 
     app.include_router(reference_library_router)
+    from provisa.api.admin.context_views_router import (  # REQ-2259
+        router as context_views_router,
+    )
+
+    app.include_router(context_views_router)
     from provisa.api.admin.term_finding_router import (  # REQ-2179
         router as term_finding_router,
     )

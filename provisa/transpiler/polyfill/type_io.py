@@ -98,5 +98,5 @@ XID8IN = _null_refused("xid8in", "xid8", ("xid8in(NULL)",))
 
 #: The family's place in the grid (polyfill.GRID), which tries the rules of one function in
 #: the order of their families.
-ORDER = 50
+ORDER = 70
 FEATURES: tuple[Feature, ...] = (INTERVAL_IN, JSONB_IN, XID8IN)

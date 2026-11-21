@@ -106,6 +106,12 @@ def _bare_runtime(monkeypatch):
     monkeypatch.setattr("provisa.auth.middleware._loaded_user_attributes", lambda user_id: {})
     monkeypatch.setattr("provisa.auth.middleware._loaded_roles", lambda: {})
     monkeypatch.setattr("provisa.auth.middleware._org_roles", _no_roles)
+    # REQ-2155: an owner holding several roles acts as their meta-role, built by id here: no
+    # deployment is loaded to build it from.
+    monkeypatch.setattr(
+        "provisa.security.meta_role.ensure_meta_role",
+        lambda _state, members, qualifiers=(): "meta:" + "+".join(sorted({*members, *qualifiers})),
+    )
 
 
 def _auth_config(source: str) -> dict:

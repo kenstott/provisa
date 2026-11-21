@@ -53,14 +53,23 @@ async def test_the_claimant_is_seated_in_the_deployment_org_with_no_org_bound(mo
     async def _sandbox(_admin_db):
         return None
 
+    recorded: list[tuple[str, list[str]]] = []
+
+    async def _record(org_id, principals):
+        recorded.append((org_id, list(principals)))
+
     monkeypatch.setattr("provisa.api.app.state", state)
     monkeypatch.setattr(org_membership, "grant_membership", _membership)
     monkeypatch.setattr(org_membership, "grant_org_role", _role)
     monkeypatch.setattr("provisa.api.sandbox_org.seat_platform_admins", _sandbox)
+    monkeypatch.setattr("provisa.api.effective_rows.record_people", _record)
 
     await auth_router._seat_claimant_in_root("founder")  # noqa: SLF001
 
     assert joined == [("founder", "root")]
+    # REQ-2219: the grants change the claimant's effective rows, recomputed in the deployment org
+    # by name -- the request is bound to none.
+    assert recorded == [("root", ["founder"])]
     # Both roles land in the deployment org's own store, named, not routed by the request.
     assert granted == [
         (state.platform_model_db, "founder", PLATFORM_ADMIN_ROLE),
@@ -128,17 +137,27 @@ async def test_removing_ones_account_names_the_store_of_the_platform_grants(monk
     state = _NoOrgBound()
     seen: dict = {}
 
+    removal = {"deleted": "pat", "tombstone": "deleted-user-pat", "left_orgs": ["root"]}
+
     async def _remove(admin_db, platform_db, user_id, *, model_db_of, record_db_of):
         seen.update(platform_db=platform_db, user_id=user_id)
-        return {"removed": user_id}
+        return removal
+
+    recorded: list[dict] = []
+
+    async def _record_removed(removed):
+        recorded.append(removed)
 
     monkeypatch.setattr("provisa.api.app.state", state)
     monkeypatch.setattr("provisa.core.org_membership.remove_account", _remove)
     monkeypatch.setattr("provisa.api.admin.orgs_router._admin_pool", lambda: state.admin_db)
+    monkeypatch.setattr("provisa.api.effective_rows.record_removed_account", _record_removed)
     request = SimpleNamespace(state=SimpleNamespace(identity=SimpleNamespace(user_id="pat")))
     answer = await auth_router.delete_account(request, confirm="pat")
     assert seen == {"platform_db": state.platform_model_db, "user_id": "pat"}
-    assert answer == {"removed": "pat"}
+    # REQ-2219: the removal's effective rows are closed in each org it left, as removed.
+    assert recorded == [removal]
+    assert answer == removal
 
 
 # --- the gates of /admin/orgs read rights, and they too are asked with no org bound --------------

@@ -27,6 +27,7 @@ import type { MaskEntry } from "../../lib/masks";
 import { masksSummary } from "./helpers";
 import { ColumnGlossaryHover, type ColumnDefinitionLine } from "./ColumnGlossaryHover";
 import { ColumnTabs } from "./ColumnTabs";
+import { DescriptionField } from "./DescriptionField";
 import { ColumnBadge } from "./ColumnBadge";
 import { METADATA_TABS, useColumnTab } from "./columnTopics";
 
@@ -39,6 +40,8 @@ export function ColumnsTable({
   readOnly = false,
   tableId,
   testId,
+  describeColumn,
+  setError,
 }: {
   columns: ColumnForm[];
   /** Absent in read-only mode: nothing is edited. */
@@ -56,6 +59,10 @@ export function ColumnsTable({
   /** The registered table the columns are of, for their glossary hover. */
   tableId?: number;
   testId?: string;
+  /** The AI describe of one column, by name: the sparkle on its description. */
+  describeColumn?: (column: string) => Promise<string>;
+  /** Where a describe that failed says so. */
+  setError?: (e: string | null) => void;
 }) {
   if (readOnly) {
     return (
@@ -75,6 +82,8 @@ export function ColumnsTable({
       roles={roles}
       irTypes={irTypes}
       sourceType={sourceType}
+      describeColumn={describeColumn}
+      setError={setError}
     />
   );
 }
@@ -213,6 +222,8 @@ function EditableColumns({
   roles,
   irTypes,
   sourceType,
+  describeColumn,
+  setError,
 }: {
   columns: ColumnForm[];
   updateCol: (
@@ -223,10 +234,28 @@ function EditableColumns({
   roles: Role[];
   irTypes: string[];
   sourceType: string;
+  describeColumn?: (column: string) => Promise<string>;
+  setError?: (e: string | null) => void;
 }) {
   const { t } = useTranslation();
   // A table not registered yet has no test data: its columns' own attributes only.
   const [tab, setTab] = useColumnTab(METADATA_TABS);
+  // The column whose description the AI is writing.
+  const [describing, setDescribing] = useState<string | null>(null);
+  const generateFor = (i: number, column: string) =>
+    describeColumn &&
+    (async () => {
+      setDescribing(column);
+      try {
+        const desc = await describeColumn(column);
+        if (desc) updateCol(i, "description", desc);
+      } catch (err) {
+        if (setError === undefined) throw err;
+        setError(err instanceof Error ? err.message : String(err));
+      } finally {
+        setDescribing(null);
+      }
+    });
   // The columns whose mask list is open below their row.
   const [masksOpen, setMasksOpen] = useState<Set<string>>(new Set());
   const toggleMasks = (column: string) =>
@@ -311,12 +340,15 @@ function EditableColumns({
                           onChange={(e) => updateCol(i, "alias", e.currentTarget.value)}
                         />
                       </Table.Td>
-                      <Table.Td>
-                        <TextInput
-                          aria-label={t("registerTableForm.colHeaderDescription")}
+                      <Table.Td data-testid={`register-table-col-description-${col.name}`}>
+                        <DescriptionField
                           value={col.description}
-                          onChange={(e) => updateCol(i, "description", e.currentTarget.value)}
+                          onChange={(v) => updateCol(i, "description", v)}
                           placeholder={t("registerTableForm.descriptionColPlaceholder")}
+                          ariaLabel={t("registerTableForm.colHeaderDescription")}
+                          rows={1}
+                          generating={describing === col.name}
+                          onGenerate={generateFor(i, col.name)}
                         />
                       </Table.Td>
                       {sourceType === "ingest" && (
@@ -435,6 +467,7 @@ function EditableColumns({
                         value={col.masks}
                         onChange={(next) => updateCol(i, "masks", next)}
                         roleOptions={roles.map((r) => ({ id: r.id, label: r.id }))}
+                        dataType={col.dataType || null}
                         testId={`register-mask-list-${col.name}`}
                       />
                     </Table.Td>

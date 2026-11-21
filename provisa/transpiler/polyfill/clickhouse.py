@@ -71,7 +71,9 @@ from __future__ import annotations
 import calendar
 import decimal
 import functools
+import math
 import re
+import struct
 
 import sqlglot.expressions as exp
 
@@ -311,6 +313,33 @@ NULL_ARRAY = Feature(
         },
     ),
 )
+
+#: percentile_cont and percentile_disc keep the old table's forms (function_macros._EXACT): the
+#: sorted keys, and the first past each fraction or the line between the two either side of it.
+PERCENTILE = Feature(
+    "percentile_cont and percentile_disc",
+    FAMILY,
+    "The percentile of a group's keys at a fraction, or at each of an array of them.",
+    read=Side(
+        rules=tuple(
+            Rule(f"{name}($f) WITHIN GROUP (ORDER BY $k)", {"clickhouse": trino.KEPT}, True)
+            for name in ("percentile_cont", "percentile_disc")
+        ),
+        limitations={
+            "clickhouse": (
+                Limitation(
+                    "Of an array of fractions, no keys (no rows, or only NULL ones) have no "
+                    "answer: ClickHouse holds no NULL of an array, so the call raises.",
+                    Refusal(
+                        "0A000",
+                        "percentile of an array of fractions over no keys does not read this value",
+                    ),
+                ),
+            )
+        },
+    ),
+)
+
 
 #: The units shorter than a minute, by the microseconds in one: dateTrunc keeps no fraction.
 SUBMINUTE = {
@@ -690,6 +719,258 @@ INTEGER = Feature(
     ),
 )
 
+#: A real's text as float4in reads it: a decimal number with an exponent, white space around.
+_REAL_TEXT = re.compile(r"\s*[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?\s*", re.ASCII)
+#: Half a unit past a real's largest value (2^128 - 2^104): strtof reads a value of this magnitude
+#: or more as infinity, which float4in raises as out of range.
+_REAL_PAST = decimal.Decimal((1 << 128) - (1 << 103))
+_REAL_LARGEST = struct.unpack("<f", struct.pack("<I", 0x7F7FFFFF))[0]
+#: Enough digits that a real's distance from a literal's digits is exact (a real has up to 149
+#: digits after the point, a literal is kept to a few hundred).
+_EXACT = decimal.Context(prec=1000)
+#: The integers a real holds exactly, which ClickHouse's cast reads as they are.
+_REAL_EXACT_INTEGERS = 1 << 24
+
+
+def _real_bits(value: float) -> int:
+    return struct.unpack("<I", struct.pack("<f", value))[0]
+
+
+def _real_of_bits(bits: int) -> float:
+    return struct.unpack("<f", struct.pack("<I", bits))[0]
+
+
+def _real_steps(value: float) -> list[float]:
+    """``value``, a real, and the reals either side of it (none past the largest)."""
+    if value == 0:
+        return [value, _real_of_bits(1), -_real_of_bits(1)]
+    bits = _real_bits(value)
+    steps = [value, _real_of_bits(bits - 1)]
+    if abs(value) < _REAL_LARGEST:
+        steps.append(_real_of_bits(bits + 1))
+    return steps
+
+
+def nearest_real(value: decimal.Decimal) -> float | None:
+    """The real nearest ``value``, a tie to the even one, as strtof reads its digits; None past the
+    type. A double's nearest value rounded to a real may be a tie the digits are not (rounding
+    twice), so the reals either side of it are compared with the digits too."""
+    if abs(value) >= _REAL_PAST:
+        return None
+    near = min(max(float(value), -_REAL_LARGEST), _REAL_LARGEST)
+    guess = struct.unpack("<f", struct.pack("<f", near))[0]
+    with decimal.localcontext(_EXACT):
+        return min(
+            _real_steps(guess),
+            key=lambda real: (abs(decimal.Decimal(real) - value), _real_bits(real) & 1),
+        )
+
+
+def real_read(node: exp.Expr, dialect: str) -> exp.Expr | None:
+    """A literal cast to a real, read as float4in reads its digits: ClickHouse's cast of a text to
+    a Float32 is no nearest value ('3.4028235e+38' read as 3.4028233e+38), and of a number goes by
+    way of a double. The real nearest the digits is written as its exact double, cast to a
+    Float32, which ClickHouse reads exactly. Past the type, and a value that is no zero read as
+    zero, PostgreSQL's 22003. NaN and infinity ClickHouse reads as they are."""
+    cast = _plain_cast(node, exp.DataType.Type.FLOAT)
+    if cast is None:
+        return None
+    text = _text_of(cast.this)
+    if text is not None:
+        if not _REAL_TEXT.fullmatch(text):
+            return None  # NaN, infinity, or a text the input refuses: ClickHouse's own
+        value = decimal.Decimal(text.strip())
+    else:
+        number = _number(cast.this)
+        if number is None:
+            return None
+        value = number
+    if value == value.to_integral_value() and abs(value) <= _REAL_EXACT_INTEGERS:
+        return None  # an integer a real holds, which ClickHouse casts as it is
+    real = nearest_real(value)
+    if real is None or (real == 0 and value != 0):
+        said = text if text is not None else format(value, "f")
+        raise Refused(Refusal("22003", f'"{said.strip()}" is out of range for type real'))
+    return exp.Cast(this=_as_number(decimal.Decimal(repr(real))), to=cast.to.copy())
+
+
+REAL = Feature(
+    "real",
+    FAMILY,
+    "A literal cast to a real.",
+    read=Side(
+        rules=(
+            Rule(
+                None,
+                {
+                    "clickhouse": Rewrite(
+                        real_read,
+                        mentions=r"[\d'.]\s*\)?\s*(?:::|\bas)\s*\"?(?:real|float4)\b"
+                        r"|\b(?:real|float4)\s+'",
+                    )
+                },
+            ),
+        ),
+        limitations={
+            "clickhouse": (
+                Limitation(
+                    "A number or a text the statement writes is read as float4in reads it: the "
+                    "real nearest its digits, a tie to the even one; past the type, or a value "
+                    "that is no zero read as zero, it raises 22003. A column's cast keeps "
+                    "ClickHouse's own, which reads a text to a Float32 less exactly."
+                ),
+            )
+        },
+    ),
+)
+
+#: The integers a double holds exactly, which ClickHouse's cast reads as they are.
+_DOUBLE_EXACT_INTEGERS = 1 << 53
+
+
+def double_read(node: exp.Expr, dialect: str) -> exp.Expr | None:
+    """A literal cast to a double, read as float8in reads its digits (strtod's nearest double, a
+    tie to the even one): ClickHouse's cast of a text to a Float64 is no nearest value without
+    precise_float_parsing ('4.029840426088479e+17' read as 4.0298404260884794e+17), where its
+    number literal is. The nearest double is written as its shortest digits, a number literal.
+    Past the type, and a value that is no zero read as zero, PostgreSQL's 22003. NaN, infinity
+    and a zero (its sign kept) ClickHouse reads as they are."""
+    cast = _plain_cast(node, exp.DataType.Type.DOUBLE)
+    if cast is None:
+        return None
+    text = _text_of(cast.this)
+    if text is not None:
+        if not _REAL_TEXT.fullmatch(text):
+            return None  # NaN, infinity, or a text the input refuses: ClickHouse's own
+        value = decimal.Decimal(text.strip())
+    else:
+        number = _number(cast.this)
+        if number is None:
+            return None
+        value = number
+    if value == value.to_integral_value() and abs(value) <= _DOUBLE_EXACT_INTEGERS:
+        return None  # an integer a double holds (a zero too), which ClickHouse casts as it is
+    double = float(value)  # the nearest double, as Python's decimal-to-float conversion rounds
+    if math.isinf(double) or double == 0:
+        said = text if text is not None else format(value, "f")
+        raise Refused(
+            Refusal("22003", f'"{said.strip()}" is out of range for type double precision')
+        )
+    return exp.Cast(this=_as_number(decimal.Decimal(repr(double))), to=cast.to.copy())
+
+
+DOUBLE = Feature(
+    "double precision",
+    FAMILY,
+    "A literal cast to a double.",
+    read=Side(
+        rules=(
+            Rule(
+                None,
+                {
+                    "clickhouse": Rewrite(
+                        double_read,
+                        mentions=r"[\d'.]\s*\)?\s*(?:::|\bas)\s*\"?(?:double\s+precision|float8)\b"
+                        r"|\b(?:double\s+precision|float8)\s+'",
+                    )
+                },
+            ),
+        ),
+        limitations={
+            "clickhouse": (
+                Limitation(
+                    "A number or a text the statement writes is read as float8in reads it: the "
+                    "double nearest its digits, a tie to the even one; past the type, or a value "
+                    "that is no zero read as zero, it raises 22003. A column's cast keeps "
+                    "ClickHouse's own, which reads a text to a Float64 less exactly."
+                ),
+            )
+        },
+    ),
+)
+
+#: An oid's text as PostgreSQL 16's oidin reads it (uint32in_subr): white space, a sign, decimal
+#: digits, white space.
+_OID_TEXT = re.compile(r"\s*([+-]?\d+)\s*", re.ASCII)
+
+
+def oid_read(node: exp.Expr, dialect: str) -> exp.Expr | None:
+    """A text cast to an oid, read as oidin reads it: from -2147483648 to 4294967295, a negative
+    value its 32 bits unsigned; PostgreSQL's 22003 past them and 22P02 of a text it does not read,
+    where ClickHouse's cast of the text to the bigint an oid is held as answers any number."""
+    if not (
+        isinstance(node, exp.Cast)
+        and not isinstance(node, exp.TryCast)
+        and isinstance(node.to, exp.ObjectIdentifier)
+        and node.to.name.lower() == "oid"
+    ):
+        return None
+    text = _text_of(node.this)
+    if text is None:
+        return None
+    read = _OID_TEXT.fullmatch(text)
+    if read is None:
+        raise Refused(Refusal("22P02", f'invalid input syntax for type oid: "{text}"'))
+    value = int(read[1])
+    if not -(1 << 31) <= value < (1 << 32):
+        raise Refused(Refusal("22003", f'value "{text}" is out of range for type oid'))
+    return exp.Cast(this=exp.Literal.number(value % (1 << 32)), to=node.to.copy())
+
+
+OID_LITERAL = Feature(
+    "an oid literal",
+    FAMILY,
+    "A text cast to an oid.",
+    read=Side(
+        rules=(Rule(None, {"clickhouse": Rewrite(oid_read, mentions=r"(?:::|\bas)\s*\"?oid\b")}),),
+        limitations={
+            "clickhouse": (
+                Limitation(
+                    "A text the statement writes is read as PostgreSQL reads it: past -2147483648 "
+                    "to 4294967295 it raises 22003, a text the input does not read 22P02, and a "
+                    "negative value is its 32 bits unsigned. A column's cast keeps ClickHouse's "
+                    "own."
+                ),
+            )
+        },
+    ),
+)
+
+
+#: A tid held as its text, '(block,offset)', as the number that orders it (block, then offset).
+_TID_KEY = (
+    "(toUInt64OrZero(splitByChar(',', replaceRegexpAll(ifNull($a, ''), '[() ]', ''))[1]) * 65536 + "
+    "toUInt64OrZero(splitByChar(',', replaceRegexpAll(ifNull($a, ''), '[() ]', ''))[2]))"
+)
+
+
+def _tid_extreme(node: exp.Expr, dialect: str) -> exp.Expr | None:
+    """max or min of tids, held as their text, in PostgreSQL's order (block, then offset); NULL of
+    no value. Over a window or under a FILTER it is no row's."""
+    if not isinstance(node, (exp.Max, exp.Min)) or isinstance(
+        node.parent, (exp.Window, exp.Filter)
+    ):
+        return None
+    value = node.this
+    if trino.said(value) != "tid":
+        return None
+    kind = "argMaxIf" if isinstance(node, exp.Max) else "argMinIf"
+    form = f"if(count($a) = 0, NULL, {kind}($a, {_TID_KEY}, $a IS NOT NULL))"
+    return graft(replacement(form, dialect, "f($a)"), {"a": value})
+
+
+TID_EXTREMES = Feature(
+    "max and min of tids",
+    FAMILY,
+    "The last or first tid of a group, by block and then offset.",
+    read=Side(
+        rules=(
+            Rule(None, {"clickhouse": Rewrite(_tid_extreme, mentions=r"::\s*tid\b", first=True)}),
+        ),
+    ),
+)
+
+
 #: The digits of a decimal ClickHouse holds where a literal says none (numeric with no precision).
 _MOST_DIGITS = 38
 _NUMERIC_OUT_OF_BOUND = (
@@ -712,6 +993,9 @@ def _numeric_of_text(text: str) -> decimal.Decimal | None:
         return None
     return decimal.Decimal(text.strip().replace("_", ""))
 
+
+#: The refusal of a numeric NaN or infinity, which ClickHouse's Decimal does not hold.
+_NUMERIC_NOT_FINITE = "numeric_in() of NaN or infinity has no form on clickhouse"
 
 #: A numeric's text ClickHouse's cast reads exactly where its digits fit the scale.
 _EXACT_TEXT = re.compile(r"[+-]?\d+(?:\.\d+)?", re.ASCII)
@@ -739,8 +1023,11 @@ def numeric_read(node: exp.Expr, dialect: str) -> exp.Expr | None:
             raise Refused(Refusal("22P02", f'invalid input syntax for type numeric: "{text}"'))
     else:
         value = _number(cast.this)
-    if value is None or not value.is_finite():
-        return None  # NaN and infinity: what reads them next answers or refuses them
+    if value is None:
+        return None
+    if not value.is_finite():
+        # ClickHouse's Decimal holds no NaN or infinity: its cast answers NULL for either.
+        raise Refused(Refusal("0A000", _NUMERIC_NOT_FINITE))
     said = _precision(cast.to)
     to = cast.to.copy()
     if said is None:
@@ -794,10 +1081,60 @@ NUMERIC = Feature(
                     "away from zero to the scale, as PostgreSQL rounds it; past the precision it "
                     "raises 22003, a text the input does not read 22P02. A value of no precision "
                     f"said holds up to {_MOST_DIGITS} digits; one of more raises 0A000 "
-                    f"({_NUMERIC_OUT_OF_BOUND}). A column's cast keeps ClickHouse's own."
+                    f"({_NUMERIC_OUT_OF_BOUND}). NaN and infinity raise 0A000 ({_NUMERIC_NOT_FINITE}): "
+                    "ClickHouse's Decimal holds neither. A column's cast keeps ClickHouse's own."
                 ),
             )
         },
+    ),
+)
+
+
+def _not_finite_numeric(value: exp.Expr) -> bool:
+    """Whether ``value`` is a literal NaN or infinity cast to a numeric."""
+    cast = _plain_cast(value.unnest(), exp.DataType.Type.DECIMAL)
+    text = None if cast is None else _text_of(cast.this)
+    if text is None:
+        return False
+    read = _numeric_of_text(text)
+    return read is not None and not read.is_finite()
+
+
+def _of_a_not_finite_numeric(node: exp.Expr, dialect: str) -> exp.Expr | None:
+    """scale, min_scale, hash_numeric and hash_numeric_extended of a literal NaN or infinity, as
+    numeric.c answers them (NULL; NULL; 0; the seed): the literal reader refuses the value itself,
+    which ClickHouse's Decimal does not hold."""
+    call = trino.called(node)
+    if call is None or not call[1] or not _not_finite_numeric(call[1][0]):
+        return None
+    names, args = call
+    if names & {"scale", "min_scale"} and len(args) == 1:
+        return exp.Null()
+    if "hash_numeric" in names and len(args) == 1:
+        return exp.Literal.number(0)
+    if "hash_numeric_extended" in names and len(args) == 2:  # noqa: PLR2004 -- value and seed
+        return exp.Cast(this=args[1].copy(), to=exp.DataType.build("BIGINT"))
+    return None
+
+
+NOT_FINITE_NUMERIC = Feature(
+    "numeric NaN's scale and hash",
+    FAMILY,
+    "The scale and the hash of a numeric NaN or infinity, which ClickHouse does not hold.",
+    read=Side(
+        rules=(
+            Rule(
+                None,
+                {
+                    "clickhouse": Rewrite(
+                        _of_a_not_finite_numeric,
+                        mentions=r"\b(?:scale|min_scale|hash_numeric|hash_numeric_extended)\s*\(",
+                        # Before the literal's reader refuses the value it is read of.
+                        first=True,
+                    )
+                },
+            ),
+        )
     ),
 )
 
@@ -1129,7 +1466,8 @@ def _scale_of(value: str) -> str:
     return f"toUInt8OrZero(extract(toTypeName({value}), 'Decimal\\\\(\\\\d+, (\\\\d+)\\\\)'))"
 
 
-#: numeric_mod: the remainder at 18 places, which keeps it exact, written at the larger scale of
+#: numeric_mod: the remainder at 38 places in a Decimal256 (an operand's 38 digits fit on either
+#: side of the point), which keeps it exact, written at the larger scale of
 #: its operands (toDecimalString writes a scale of 0 with its point, trimmed); by nullIf of the
 #: divisor, as ClickHouse folds a constant remainder by 0 whichever branch is chosen (the old table's form cut the text, which ClickHouse writes without trailing zeros:
 #: 1000 % 1000 answered '').
@@ -1137,8 +1475,8 @@ _NUMERIC_MOD = (
     "CASE WHEN $a IS NULL OR $b IS NULL THEN CAST(NULL AS Nullable(String)) "
     "WHEN $b = 0 THEN CAST(throwIf(1, 'postgresql-error 22012: division by zero"
     "<end of postgresql-error>') AS Nullable(String)) "
-    "ELSE trimRight(toDecimalString(CAST($a AS Nullable(Decimal(38, 18))) % "
-    "CAST(nullIf($b, 0) AS Nullable(Decimal(38, 18))), "
+    "ELSE trimRight(toDecimalString(CAST($a AS Nullable(Decimal(76, 38))) % "
+    "CAST(nullIf($b, 0) AS Nullable(Decimal(76, 38))), "
     f"greatest({_scale_of('$a')}, {_scale_of('$b')})), '.') END"
 )
 
@@ -1253,15 +1591,21 @@ SPG_POLY_QUAD_COMPRESS = Feature(
 
 #: The family's place in the grid (polyfill.GRID), which tries the rules of one function in
 #: the order of their families.
-ORDER = 180
+ORDER = 260
 FEATURES: tuple[Feature, ...] = (
     NULL_ARRAY,
     ARRAY_AGG,
+    PERCENTILE,
     DATE_TRUNC,
     DATE,
     TIME,
     INTEGER,
+    REAL,
+    DOUBLE,
+    OID_LITERAL,
+    TID_EXTREMES,
     NUMERIC,
+    NOT_FINITE_NUMERIC,
     DATE_DAYS,
     STAMP,
     *WINDOW_FEATURES,

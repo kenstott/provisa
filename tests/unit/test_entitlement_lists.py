@@ -18,7 +18,7 @@ from types import SimpleNamespace
 import pytest
 
 from provisa.compiler.names_table import NameRow, build_names_table
-from provisa.entitlements.index import build_index, check_lists
+from provisa.entitlements.index import build_index, check_lists, owned_objects
 from provisa.entitlements.lists import (
     EntitlementClaimError,
     ExpiryRule,
@@ -520,13 +520,16 @@ def test_the_mask_hash_changes_with_the_model_version():
 # ── checks ──────────────────────────────────────────────────────────────────────────────────────
 
 
+_NO_OWNED = owned_objects((), ())
+
+
 def _role(capabilities=(), domain_access=("*",)):
     return {"capabilities": list(capabilities), "domain_access": list(domain_access)}
 
 
 def test_an_unknown_identifier_is_flagged_by_name():
     lists = _effective({"viewer": {"tables": ("finance.revenue", "finance.nope")}})
-    findings = check_lists("viewer", _role(), lists, _model_index())
+    findings = check_lists("viewer", _role(), lists, _model_index(), _NO_OWNED)
     assert [(f.code, f.kind, f.identifier) for f in findings] == [
         ("unknown_identifier", "tables", "finance.nope")
     ]
@@ -535,31 +538,31 @@ def test_an_unknown_identifier_is_flagged_by_name():
 
 def test_an_identifier_outside_the_role_is_not_unknown():
     lists = _effective({"viewer": {"tables": ("hr.secret",)}})
-    assert check_lists("viewer", _role(), lists, _model_index()) == []
+    assert check_lists("viewer", _role(), lists, _model_index(), _NO_OWNED) == []
 
 
 def test_a_wildcard_matching_nothing_is_flagged():
     lists = _effective({"viewer": {"tables": ("nowhere.*",)}})
-    assert [f.code for f in check_lists("viewer", _role(), lists, _model_index())] == [
+    assert [f.code for f in check_lists("viewer", _role(), lists, _model_index(), _NO_OWNED)] == [
         "unknown_identifier"
     ]
 
 
 def test_a_list_for_a_kind_the_role_uses_nothing_of_is_flagged():
     lists = _effective({"viewer": {"environments": ("feature-*",)}})
-    findings = check_lists("viewer", _role(), lists, _model_index())
+    findings = check_lists("viewer", _role(), lists, _model_index(), _NO_OWNED)
     assert [(f.code, f.kind) for f in findings] == [("unused_kind", "environments")]
 
 
 def test_a_kind_the_role_uses_is_not_flagged():
     lists = _effective({"viewer": {"environments": ("feature-*",)}})
     role = _role(capabilities=("environment_switch",))
-    assert check_lists("viewer", role, lists, _model_index()) == []
+    assert check_lists("viewer", role, lists, _model_index(), _NO_OWNED) == []
 
 
 def test_an_unrecognised_kind_is_flagged_as_unused():
     lists = _effective({"viewer": {"bananas": ("x",)}})
-    assert [f.code for f in check_lists("viewer", _role(), lists, _model_index())] == [
+    assert [f.code for f in check_lists("viewer", _role(), lists, _model_index(), _NO_OWNED)] == [
         "unused_kind"
     ]
 
@@ -567,4 +570,6 @@ def test_an_unrecognised_kind_is_flagged_as_unused():
 def test_a_data_kind_on_a_role_with_no_data_plane_is_unused():
     lists = _effective({"viewer": {"tables": ("sales.*",)}})
     role = _role(capabilities=("platform_settings",), domain_access=())
-    assert [f.code for f in check_lists("viewer", role, lists, _model_index())] == ["unused_kind"]
+    assert [f.code for f in check_lists("viewer", role, lists, _model_index(), _NO_OWNED)] == [
+        "unused_kind"
+    ]

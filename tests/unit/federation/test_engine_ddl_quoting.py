@@ -841,6 +841,13 @@ REVIEWED: frozenset[tuple[str, str, str]] = frozenset(
         ("clickhouse_runtime.py", "attach_source", "staged"),  # ch_ident()
         ("clickhouse_runtime.py", "insert_arrow", "names"),  # ch_ident()
         ("clickhouse_runtime.py", "introspect_columns", "phys"),  # ch_ident()
+        # custom_connectors.py: a template takes raw values; each placeholder is quoted by kind
+        ("custom_connectors.py", "details", "_pg_options(self._server_options, fields)"),  # pg_lit
+        ("custom_connectors.py", "details", "_pg_options(self._table_options, fields)"),  # pg_lit
+        ("custom_connectors.py", "details", "_pg_options(self._user_mapping, fields)"),  # pg_lit
+        ("custom_connectors.py", "details", "scan"),  # _clause: lit() / ident() / int()
+        # _clause: ch_lit() / ch_ident() / int()
+        ("custom_connectors.py", "details", "_clause(self._engine_template, 'clickhouse', fields)"),
     }
 )
 
@@ -1015,18 +1022,6 @@ PENDING: frozenset[tuple[str, str, str]] = frozenset(
         ("connector_mssql.py", "fetch_database_comment", "username"),
         # connector_sqlite.py
         ("connector_sqlite.py", "fetch_all_rows", "table"),
-        # custom_connectors.py
-        ("custom_connectors.py", "_probe_clickhouse_engine", "ch_engine"),
-        ("custom_connectors.py", "details", "_fmt(self._engine_template, fields)"),
-        ("custom_connectors.py", "details", "_fmt(self._remote_schema, fields)"),
-        ("custom_connectors.py", "details", "_fmt(self._scan_template, fields)"),
-        ("custom_connectors.py", "details", "_opts(self._server_options, fields)"),
-        ("custom_connectors.py", "details", "_opts(self._table_options, fields)"),
-        ("custom_connectors.py", "details", "_opts(self._user_mapping, fields)"),
-        ("custom_connectors.py", "details", "local_schema"),
-        ("custom_connectors.py", "details", "self._fdw"),
-        ("custom_connectors.py", "details", "server"),
-        ("custom_connectors.py", "details", "source.id"),
         # databricks_runtime.py
         ("databricks_runtime.py", "attach_source", "catalog"),
         ("databricks_runtime.py", "attach_source", "d['format']"),
@@ -1531,6 +1526,7 @@ READ_IN_FULL = frozenset(
         "pg_motherduck.py",
         "clickhouse_connectors.py",
         "clickhouse_runtime.py",
+        "custom_connectors.py",
         "duckdb_quoting.py",
         "pg_quoting.py",
         "clickhouse_quoting.py",

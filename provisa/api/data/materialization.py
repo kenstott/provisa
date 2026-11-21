@@ -154,9 +154,16 @@ def api_answered_from_replica(state, table: dict) -> bool:
     endpoint: it never expires and its replica has landed here (``_kept_for_good``) -- a demo's
     declared rows, such as a Stripe source's. Refused (``ReplicaNotLanded``, naming it) when it
     never expires, its source's rows are declared and it has not landed: its rows are the declared
-    ones, and the live service is never asked for them."""
-    if not _is_api_table(state, table) or not _never_expires(state, table):
+    ones, and the live service is never asked for them.
+
+    REQ-030, REQ-826: any other API table the operator's setting puts on its replica (the
+    published routes floor it: Always, load_protected, or promoted and serving) is answered from
+    it too, when it has a whole copy (no parameter): the read backstop waits on its build and
+    routing reads the replica (a Wikidata class table, replicate Always)."""
+    if not _is_api_table(state, table):
         return False
+    if not _never_expires(state, table):
+        return table["id"] in state.replica_routes.floored and not is_parameterized(table)
     if _kept_for_good(state, table):
         return True
     from provisa.federation.declared_replica_rows import declares_rows
@@ -356,6 +363,53 @@ async def _join_keys(join, ctx, role_id: str) -> list:
     return [row[0] for row in result.rows]
 
 
+def fed_join_parameters(state, table_ids: Iterable[int], sql: str) -> set[str]:
+    """REQ-2099: the parameter columns a statement joins over a relationship that feeds them --
+    the relationship joins on the target's parameter column, the statement reads both of its ends
+    and equates that column with the relationship's source column, and the target is a code table
+    or a Qdrant search, which the feed reads. The materialize stage feeds them (``_feed_of``), each
+    call given every parameter the relationship feeds from one source row; binding the join's
+    column alone would give the target that one parameter, the rest unasked."""
+    import sqlglot
+    import sqlglot.expressions as exp
+
+    from provisa.codesource.table import is_code_table
+    from provisa.compiler.naming import apply_sql_name
+    from provisa.core.parameters import NF_PREFIX
+    from provisa.qdrant.table import is_search
+
+    if NF_PREFIX not in sql:
+        return set()
+    ids = set(table_ids)
+    types = getattr(state, "source_types", None) or {}
+    targets = {t["id"]: t for t in (getattr(state, "tables", None) or []) if t.get("id") in ids}
+    joins: dict[str, str] = {}
+    for rel in getattr(state, "relationships", None) or []:
+        target = targets.get(rel.get("target_table_id"))
+        column = rel.get("target_column") or ""
+        if (
+            rel["parameters"]
+            and target is not None
+            and rel["source_table_id"] in ids
+            and column.startswith(NF_PREFIX)
+            and column[len(NF_PREFIX) :] in rel["parameters"]
+            and (is_code_table(target, types) or is_search(target, types))
+        ):
+            joins[column.lower()] = apply_sql_name(rel["source_column"]).lower()
+    if not joins:
+        return set()
+    fed: set[str] = set()
+    for eq in sqlglot.parse_one(sql, dialect="postgres").find_all(exp.EQ):
+        left, right = eq.left, eq.right
+        if not (isinstance(left, exp.Column) and isinstance(right, exp.Column)):
+            continue
+        for parameter, other in ((left, right), (right, left)):
+            name = parameter.name.lower()
+            if joins.get(name) == other.name.lower():
+                fed.add(parameter.name)
+    return fed
+
+
 async def bind_statement(
     sql: str,
     params: list | None,
@@ -374,6 +428,9 @@ async def bind_statement(
     from provisa.core.parameter_binding import CALLS_SETTING
 
     table_ids = tuple(table_ids)
+    # REQ-2099: a join over a relationship that feeds the target's parameters is the feed's, not
+    # a join key's: the feed gives every fed parameter together, one set a source row.
+    parameters = parameters - fed_join_parameters(state, table_ids, sql)
     typed = {
         name: ir_type
         for columns in ctx.native_filter_columns.values()

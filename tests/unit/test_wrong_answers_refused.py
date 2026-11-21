@@ -184,7 +184,9 @@ def test_a_clickhouse_timestamp_keeps_its_fraction():
 
 
 def test_a_clickhouse_refusal_raises_where_a_nullable_cast_reads_null():
-    written = transpile("SELECT masklen('::1'::inet) AS v", "clickhouse")
+    # a literal PostgreSQL refuses as the statement is read (masklen of an inet literal is
+    # answered on ClickHouse since CONF-CH4)
+    written = transpile("SELECT numerictypmodin('{1001}'::cstring[]) AS v", "clickhouse")
     assert "accurateCast(materialize(" in written
 
 
@@ -281,7 +283,8 @@ def test_an_oid_is_held_as_a_bigint_and_reaches_a_call(sql, dialect):
     assert " oid" not in transpile(sql, dialect).lower()
 
 
-@pytest.mark.parametrize("dialect", ["trino", "clickhouse"])
+# ClickHouse answers both: the polyfill grid's rows (tests/unit/polyfill/test_polyfill_clickhouse_texts.py).
+@pytest.mark.parametrize("dialect", ["trino"])
 @pytest.mark.parametrize(
     "sql",
     [

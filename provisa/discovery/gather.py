@@ -35,7 +35,7 @@ own rule), and discovery reads it as it reads any stored table.
 request count before Run is computed from it. :func:`table_facts` adds what a run reads.
 """
 
-# Requirements: REQ-413, REQ-1986, REQ-2147
+# Requirements: REQ-413, REQ-1986, REQ-2147, REQ-2253
 
 from __future__ import annotations
 
@@ -119,11 +119,16 @@ def _system_domains() -> frozenset[str]:
 
 
 async def scope_table_ids(
-    conn: "Connection", domains: Sequence[str], table_ids: Sequence[int] | None
+    conn: "Connection",
+    domains: Sequence[str],
+    table_ids: Sequence[int] | None,
+    within: frozenset[str] | None,
 ) -> list[int]:
     """The tables of one set: those named, else every table of the chosen domains; never a table
     of a system domain (meta, ontology, ops) whatever was asked, nor a withdrawn one, itself or
-    through its source (REQ-1921: relationship discovery never includes it)."""
+    through its source (REQ-1921: relationship discovery never includes it), nor one outside
+    ``within``, the domains selected in the domain filter as the caller may reach them (REQ-2253:
+    a table named outside them is not read); ``within`` None narrows nothing."""
     from provisa.core.schema_org import registered_tables as rt
     from provisa.core.schema_org import sources as src
 
@@ -134,12 +139,31 @@ async def scope_table_ids(
         rt.c.source_id.notin_(withdrawn_sources),
         rt.c.domain_id.notin_(sorted(system)),
     )
+    if within is not None:
+        query = query.where(rt.c.domain_id.in_(sorted(within)))
     if table_ids is not None:
         query = query.where(rt.c.id.in_(sorted(set(table_ids))))
     else:
         query = query.where(rt.c.domain_id.in_(sorted(set(domains) - system)))
     rows = (await conn.execute_core(query.order_by(rt.c.id))).fetchall()
     return [int(r[0]) for r in rows]
+
+
+async def outside_selected_domains(
+    conn: "Connection", table_ids: Sequence[int], within: frozenset[str]
+) -> list[str]:
+    """The ``domain.table`` names of those of ``table_ids`` registered outside ``within``, the
+    domains selected in the domain filter (REQ-2253): the tables a run refuses by name."""
+    from provisa.core.schema_org import registered_tables as rt
+
+    rows = (
+        await conn.execute_core(
+            select(rt.c.domain_id, rt.c.table_name)
+            .where(rt.c.id.in_(sorted(set(table_ids))), rt.c.domain_id.notin_(sorted(within)))
+            .order_by(rt.c.domain_id, rt.c.table_name)
+        )
+    ).fetchall()
+    return [f"{r.domain_id}.{r.table_name}" for r in rows]
 
 
 async def _table_tags(conn: "Connection", ids: list[int]) -> dict[int, list[str]]:

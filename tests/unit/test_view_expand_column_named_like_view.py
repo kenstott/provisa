@@ -23,7 +23,7 @@ from __future__ import annotations
 
 from provisa.compiler.view_expand import expand_view_refs
 
-_VIEWS = {"neighborhood": "SELECT n FROM d"}
+_VIEWS = {"city_files.neighborhood": "SELECT n FROM d"}
 
 
 def test_a_quoted_column_named_like_a_view_stays_the_column():
@@ -75,7 +75,8 @@ def test_the_view_in_a_from_list_after_a_comma_is_expanded():
 
 
 def test_the_view_catalog_qualified_is_expanded():
-    sql = 'SELECT "d"."neighborhood" FROM "cat"."city_files"."neighborhood" "d"'
+    # Under the views' own catalog: under another one the name is that catalog's table.
+    sql = 'SELECT "d"."neighborhood" FROM "__derived__"."city_files"."neighborhood" "d"'
     assert expand_view_refs(sql, _VIEWS) == 'SELECT "d"."neighborhood" FROM (SELECT n FROM d) "d"'
 
 

@@ -58,7 +58,8 @@ export interface DiscoveryRunState {
   /** Read the latest runs from the server: one still going is shown. */
   refresh: () => Promise<void>;
   /** Start a run; a refusal is thrown with the server's words. */
-  start: (scope: DiscoveryScope) => Promise<void>;
+  /** Start a run within ``domains``, the navbar filter's selection (null: no narrowing). */
+  start: (scope: DiscoveryScope, domains: ReadonlySet<string> | null) => Promise<void>;
   /** Stop the run after the request in flight; what was found is kept. */
   stop: (runId: number) => Promise<void>;
   /** Show the latest run in the dialog. */
@@ -183,8 +184,8 @@ export function useDiscoveryRun(onStored: () => void): DiscoveryRunState {
     void count(endedId);
   }, [endedId, reads, count]);
 
-  const start = useCallback(async (scope: DiscoveryScope) => {
-    const started = await startDiscoveryRun(scope);
+  const start = useCallback(async (scope: DiscoveryScope, domains: ReadonlySet<string> | null) => {
+    const started = await startDiscoveryRun(scope, domains);
     setError("");
     setRun(started);
     setGoing((runs) => withGoing(runs, started));
