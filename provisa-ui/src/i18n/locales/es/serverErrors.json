@@ -568,6 +568,7 @@
       "table_not_withdrawn": "La tabla {{table}} no está retirada: solo se restablece una tabla retirada. Para mover a otra región una tabla en producción, establezca su región.",
       "source_not_withdrawn": "El origen {{source}} no está retirado: solo se restablece un origen retirado. Para cambiar su región, establezca su región.",
       "put_back_needs_region": "Restablecer {{object}} nombra una región: indique una, o ninguna para ninguna región.",
+      "table_domain_required": "La tabla '{{table}}' no indica ningún dominio: toda tabla se registra en un dominio",
       "mask_constant_not_text": "Una máscara constante en una columna que no es de texto se lee como NULL; solo se puede guardar NULL: {{column}} ({{type}})"
     },
     "secrets": {
@@ -899,10 +900,10 @@
       "unknown_kind": "{{kind}} no es un tipo de lista de derechos de acceso.",
       "idp_supersedes": "El proveedor de identidad envía la lista de {{kind}} de esta persona para el rol {{role_id}}. Esa lista prevalece: se cambia allí, no aquí.",
       "blank_identifier": "Una entrada no puede estar vacía.",
+      "invalid_identifier": "{{identifier}} no es una entrada válida de tipo {{kind}}.",
       "expiry_in_past": "La fecha de fin debe ser futura.",
       "expiry_removes_nothing": "Una fecha de fin en esta lista de {{kind}} no quitaría nada.",
-      "pending_not_found": "Ninguna concesión espera a {{email}} para el rol {{role_id}} y {{kind}}.",
-      "invalid_identifier": "{{identifier}} no es una entrada válida de tipo {{kind}}."
+      "pending_not_found": "Ninguna concesión espera a {{email}} para el rol {{role_id}} y {{kind}}."
     },
     "mv": {
       "change_key_missing": "{{function}} devolvió una fila sin su columna de clave {{column}}",

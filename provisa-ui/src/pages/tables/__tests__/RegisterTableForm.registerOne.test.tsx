@@ -194,6 +194,7 @@ describe("Register beside a table that cannot be picked in the Tables field", ()
         section="identity"
         onSectionChange={vi.fn()}
         savedProfilerId={null}
+        domainChoices={[]}
         editingTable={draft}
         savedTable={null}
         setEditingTable={vi.fn()}

@@ -568,6 +568,7 @@
       "table_not_withdrawn": "表 {{table}} 未撤下：只有已撤下的表才能恢復。要將生產中的表移到另一個區域，請設定其區域。",
       "source_not_withdrawn": "來源 {{source}} 未撤下：只有已撤下的來源才能恢復。要更改其區域，請設定其區域。",
       "put_back_needs_region": "恢復 {{object}} 需指定一個區域：請給出一個區域，無區域則不給出。",
+      "table_domain_required": "表 '{{table}}' 未指定域：每個表都註冊在一個域中",
       "mask_constant_not_text": "非文字欄上的常數遮罩讀取為 NULL；只能儲存 NULL：{{column}} ({{type}})"
     },
     "secrets": {
@@ -899,10 +900,10 @@
       "unknown_kind": "{{kind}} 不是權益清單的類型。",
       "idp_supersedes": "身分識別提供者為角色 {{role_id}} 傳送了此人員的 {{kind}} 清單。該清單優先，因此須在該處更改，而非此處。",
       "blank_identifier": "項目不可留空。",
+      "invalid_identifier": "{{identifier}} 不是有效的 {{kind}} 項目。",
       "expiry_in_past": "結束日期必須是將來的日期。",
       "expiry_removes_nothing": "在此 {{kind}} 清單設定結束日期不會移除任何內容。",
-      "pending_not_found": "沒有等待 {{email}} 的角色 {{role_id}} 及 {{kind}} 授予。",
-      "invalid_identifier": "{{identifier}} 不是有效的 {{kind}} 項目。"
+      "pending_not_found": "沒有等待 {{email}} 的角色 {{role_id}} 及 {{kind}} 授予。"
     },
     "mv": {
       "change_key_missing": "{{function}} 傳回了缺少鍵欄 {{column}} 的資料列",

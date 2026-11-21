@@ -568,6 +568,7 @@
       "table_not_withdrawn": "表 {{table}} 未撤下：只有已撤下的表才能恢复。要将生产中的表移到另一个区域，请设置其区域。",
       "source_not_withdrawn": "源 {{source}} 未撤下：只有已撤下的源才能恢复。要更改其区域，请设置其区域。",
       "put_back_needs_region": "恢复 {{object}} 需指定一个区域：请给出一个区域，无区域则不给出。",
+      "table_domain_required": "表 '{{table}}' 未指定域：每个表都注册在一个域中",
       "mask_constant_not_text": "非文本列上的常量脱敏规则读取为 NULL；只能保存 NULL：{{column}} ({{type}})"
     },
     "secrets": {
@@ -899,10 +900,10 @@
       "unknown_kind": "{{kind}} 不是权益列表的类型。",
       "idp_supersedes": "身份提供方为角色 {{role_id}} 发送了此人员的 {{kind}} 列表。该列表优先，因此需在那里更改，而非此处。",
       "blank_identifier": "条目不能为空。",
+      "invalid_identifier": "{{identifier}} 不是有效的 {{kind}} 条目。",
       "expiry_in_past": "结束日期必须是将来的日期。",
       "expiry_removes_nothing": "在此 {{kind}} 列表上设置结束日期不会移除任何内容。",
-      "pending_not_found": "没有等待 {{email}} 的角色 {{role_id}} 和 {{kind}} 授予。",
-      "invalid_identifier": "{{identifier}} 不是有效的 {{kind}} 条目。"
+      "pending_not_found": "没有等待 {{email}} 的角色 {{role_id}} 和 {{kind}} 授予。"
     },
     "mv": {
       "change_key_missing": "{{function}} 返回了缺少键列 {{column}} 的行",

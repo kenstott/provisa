@@ -568,6 +568,7 @@
       "table_not_withdrawn": "הטבלה {{table}} לא הוסרה מהייצור: רק טבלה שהוסרה מהייצור מוחזרת. כדי להעביר טבלה בייצור לאזור אחר, הגדירו את האזור שלה.",
       "source_not_withdrawn": "המקור {{source}} לא הוסר מהייצור: רק מקור שהוסר מהייצור מוחזר. כדי לשנות את האזור שלו, הגדירו את האזור שלו.",
       "put_back_needs_region": "החזרת {{object}} מציינת אזור: ציינו אזור, או אף אחד ללא אזור.",
+      "table_domain_required": "הטבלה '{{table}}' אינה מציינת תחום: כל טבלה נרשמת בתחום",
       "mask_constant_not_text": "מסכה קבועה על עמודה שאינה טקסט נקראת כ-NULL; ניתן לשמור רק NULL: {{column}} ({{type}})"
     },
     "secrets": {
@@ -899,10 +900,10 @@
       "unknown_kind": "{{kind}} אינו סוג של רשימת הרשאות.",
       "idp_supersedes": "ספק הזהויות שולח את רשימת {{kind}} של אדם זה עבור התפקיד {{role_id}}. רשימה זו גוברת, ולכן היא משתנה שם ולא כאן.",
       "blank_identifier": "פריט אינו יכול להיות ריק.",
+      "invalid_identifier": "{{identifier}} אינו פריט {{kind}} תקין.",
       "expiry_in_past": "תאריך סיום חייב להיות בעתיד.",
       "expiry_removes_nothing": "תאריך סיום ברשימת {{kind}} זו לא היה מסיר דבר.",
-      "pending_not_found": "אין הענקה הממתינה ל-{{email}} עבור התפקיד {{role_id}} ו-{{kind}}.",
-      "invalid_identifier": "{{identifier}} אינו פריט {{kind}} תקין."
+      "pending_not_found": "אין הענקה הממתינה ל-{{email}} עבור התפקיד {{role_id}} ו-{{kind}}."
     },
     "mv": {
       "change_key_missing": "{{function}} החזירה שורה ללא עמודת המפתח שלה {{column}}",

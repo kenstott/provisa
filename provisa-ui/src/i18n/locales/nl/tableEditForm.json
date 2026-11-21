@@ -288,6 +288,8 @@
     "discoverHint": "Opslaan leest de kolommen van de live bron en voegt toe wat deze tabel mist; de bestaande kolommen blijven zoals ze zijn. Een toegevoegde kolom is voor geen enkele rol zichtbaar totdat hij wordt toegekend.",
     "mvRebuildEveryLabel": "Volledige herbouw elke (seconden)",
     "mvRebuildEveryHelp": "Hoe vaak de hele view opnieuw wordt berekend. Verplicht voor een view die wordt bijgehouden door de @change-functie van een codebron.",
+    "domainHelp": "Om de tabel naar een ander domein te verplaatsen is het recht nodig om tabellen in beide domeinen te wijzigen.",
+    "domainPlaceholder": "Kies een domein",
     "sparqlQueryLabel": "SPARQL-query",
     "sparqlQueryHelp": "De query waarvan deze tabel de rijen bevat. De kolommen zijn de SELECT-variabelen: een wijziging voegt kolommen toe en verwijdert ze zodat ze overeenkomen, met behoud van de instellingen van de kolommen die blijven. De volgende keer dat de replica wordt geladen, wordt met de opgeslagen query gelezen.",
     "sparqlQueryDrops": "Deze query verwijdert kolommen die in gebruik zijn: {{columns}}. Opslaan verwijdert ze samen met wat ze gebruikt.",

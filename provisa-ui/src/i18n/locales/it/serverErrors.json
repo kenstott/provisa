@@ -568,6 +568,7 @@
       "table_not_withdrawn": "La tabella {{table}} non è ritirata: si ripristina solo una tabella ritirata. Per spostare in un'altra regione una tabella in produzione, impostane la regione.",
       "source_not_withdrawn": "L'origine {{source}} non è ritirata: si ripristina solo un'origine ritirata. Per cambiarne la regione, impostane la regione.",
       "put_back_needs_region": "Ripristinare {{object}} indica una regione: indicane una, o nessuna per nessuna regione.",
+      "table_domain_required": "La tabella '{{table}}' non indica alcun dominio: ogni tabella è registrata in un dominio",
       "mask_constant_not_text": "Una maschera costante su una colonna non di testo viene letta come NULL; si può salvare solo NULL: {{column}} ({{type}})"
     },
     "secrets": {
@@ -899,10 +900,10 @@
       "unknown_kind": "{{kind}} non è un tipo di lista di autorizzazioni.",
       "idp_supersedes": "Il provider di identità invia la lista {{kind}} di questa persona per il ruolo {{role_id}}. Quella lista prevale: si modifica lì, non qui.",
       "blank_identifier": "Una voce non può essere vuota.",
+      "invalid_identifier": "{{identifier}} non è una voce {{kind}} valida.",
       "expiry_in_past": "La data di fine deve essere futura.",
       "expiry_removes_nothing": "Una data di fine su questa lista {{kind}} non rimuoverebbe nulla.",
-      "pending_not_found": "Nessuna concessione attende {{email}} per il ruolo {{role_id}} e {{kind}}.",
-      "invalid_identifier": "{{identifier}} non è una voce {{kind}} valida."
+      "pending_not_found": "Nessuna concessione attende {{email}} per il ruolo {{role_id}} e {{kind}}."
     },
     "mv": {
       "change_key_missing": "{{function}} ha restituito una riga senza la sua colonna chiave {{column}}",

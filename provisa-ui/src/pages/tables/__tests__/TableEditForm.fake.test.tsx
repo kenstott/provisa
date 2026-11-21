@@ -108,6 +108,7 @@ function renderForm(table: RegisteredTable, sources: Source[], updateEditCol = v
       section="columns"
       onSectionChange={vi.fn()}
       savedProfilerId={null}
+      domainChoices={[]}
       editingTable={table}
       savedTable={table}
       setEditingTable={vi.fn()}

@@ -715,7 +715,8 @@ export async function registerOfferedTable(
       variables: {
         t: {
           sourceId,
-          domainId: "",
+          // REQ-1531: every table is registered in a domain (the demo's).
+          domainId: "pet-store",
           schemaName,
           tableName,
           columns: columns.map((name) => ({ name, visibleTo: ["org_admin"] })),

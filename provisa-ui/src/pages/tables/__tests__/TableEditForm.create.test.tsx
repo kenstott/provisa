@@ -62,6 +62,7 @@ function renderForm(
       section={section}
       onSectionChange={vi.fn()}
       savedProfilerId={null}
+      domainChoices={[]}
       editingTable={table}
       savedTable={saved}
       setEditingTable={setEditingTable}

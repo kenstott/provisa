@@ -568,6 +568,7 @@
       "table_not_withdrawn": "Table {{table}} is not withdrawn: only a withdrawn table is put back. To move a table in production to another region, set its region.",
       "source_not_withdrawn": "Source {{source}} is not withdrawn: only a withdrawn source is put back. To change its region, set its region.",
       "put_back_needs_region": "Putting back {{object}} names a region: give one, or none for no region.",
+      "table_domain_required": "Table '{{table}}' names no domain: every table is registered in a domain",
       "mask_constant_not_text": "A constant mask on a non-text column reads as NULL; only NULL can be saved: {{column}} ({{type}})"
     },
     "secrets": {
@@ -899,10 +900,10 @@
       "unknown_kind": "{{kind}} is not a kind of entitlement list.",
       "idp_supersedes": "The identity provider sends this person's {{kind}} list for role {{role_id}}. That list wins, so it is changed there, not here.",
       "blank_identifier": "An entry cannot be blank.",
+      "invalid_identifier": "{{identifier}} is not a valid {{kind}} entry.",
       "expiry_in_past": "An end date must be in the future.",
       "expiry_removes_nothing": "An end date on this {{kind}} list would remove nothing.",
-      "pending_not_found": "No grant waits on {{email}} for role {{role_id}} and {{kind}}.",
-      "invalid_identifier": "{{identifier}} is not a valid {{kind}} entry."
+      "pending_not_found": "No grant waits on {{email}} for role {{role_id}} and {{kind}}."
     },
     "mv": {
       "change_key_missing": "{{function}} returned a row without its key column {{column}}",
