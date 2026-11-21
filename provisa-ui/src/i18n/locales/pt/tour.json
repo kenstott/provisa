@@ -548,15 +548,23 @@
       },
       "insiderIntro": {
         "title": "Revisão de informação privilegiada em um banco",
-        "description": "A Northgate Partners, um banco fictício, mantém uma lista de observação das operações em que está trabalhando. Ela quer saber se alguém está enviando para fora do banco dados sensíveis de operações ou de clientes. <strong>bank</strong> é seu banco de dados: a lista de observação, os funcionários e seus e-mails, e os clientes e quem leu seus registros. Todos os nomes e registros aqui são gerados."
+        "description": "A Northgate Partners, um banco fictício, mantém uma lista de observação das operações em que está trabalhando. Ela quer saber se alguém está enviando para fora do banco dados sensíveis de operações ou de clientes. A resposta lê três sistemas ao mesmo tempo. <strong>bank</strong> é seu banco de dados Postgres: os funcionários e suas mesas, e os clientes e quem leu seus registros. Todos os nomes e registros aqui são gerados."
+      },
+      "insiderWorkbook": {
+        "title": "A pasta de trabalho da sala de controle",
+        "description": "<strong>control_room</strong> é uma pasta de trabalho do Excel que a própria sala de controle mantém. Cada planilha é uma tabela: as operações em discussão, quem foi trazido para além da muralha em cada uma, as contrapartes das operações e com quais operações cada mensagem é confrontada. O Provisa lê o arquivo onde ele está."
+      },
+      "insiderMailSource": {
+        "title": "O e-mail do banco",
+        "description": "<strong>mail</strong> é o e-mail do Microsoft 365 do banco, a caixa de correio de cada funcionário, nas mesmas tabelas de mensagens e destinatários que uma fonte do Google Workspace fornece. Esta demo não alcança nenhum tenant real: a caixa de correio vem com a demo como a cópia armazenada da fonte, que nunca é atualizada."
       },
       "insiderWatchList": {
         "title": "A lista de observação",
-        "description": "<strong>deal</strong> é a lista de observação da sala de controle, com a empresa de cada operação, os nomes pelos quais é conhecida, seu ticker, o codinome do projeto e se já é pública. É a tabela mais restrita aqui. A sala de controle a lê, uma equipe de operação apenas a própria operação, e um revisor de primeiro nível nunca."
+        "description": "<strong>deal</strong> é a lista de observação, a planilha de operações da pasta de trabalho, com a empresa de cada operação, os nomes pelos quais é conhecida, seu ticker, o codinome do projeto e se já é pública. É a tabela mais restrita aqui. A sala de controle a lê, uma equipe de operação apenas a própria operação, e um revisor de primeiro nível nunca."
       },
       "insiderMail": {
         "title": "Os e-mails",
-        "description": "<strong>message</strong> contém os e-mails enviados pelos funcionários, com quem enviou, quando e quantos destinatários estavam fora do banco ou em um endereço pessoal."
+        "description": "<strong>messages</strong> contém os e-mails enviados pelos funcionários a partir do Microsoft 365, cada mensagem na caixa de correio do remetente, com quem a enviou, quando e o seu texto. Os destinatários estão em <strong>message_recipients</strong>; a lista de funcionários do banco e os provedores de e-mail pessoal no Postgres distinguem endereços internos, externos e pessoais."
       },
       "insiderMatch": {
         "title": "Cada mensagem contra cada operação",

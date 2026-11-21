@@ -8,18 +8,21 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""REQ-2056: the named demo ``insider`` works as shipped.
+"""REQ-2056: the named demo ``insider`` works as shipped, over its three systems.
 
 Its own docker-compose.yml brings the bank's Postgres up on a port of this test's own, under a
 compose project of its own, its generated data loaded. A real Provisa server (DuckDB engine, its own
-control plane) loads the demo's config.yaml as is, and scripts/run_demo_setup.py runs its setup.yaml
-against it, as the bundle build does: match_deals matches every message to the watch list (the
-demo's local sentence-transformers model -- the vector extra) and the review queue is built. Then
-the ranking, the governance of a first-level reviewer, the example queries and the tour's
-statements are read, each statement as the role the tour runs it as.
+control plane) loads the demo's config.yaml as is: the bank's mail from its Microsoft 365 source,
+whose replica is the demo's declared rows (REQ-2089: no tenant is read), the watch list from the
+control room's Excel workbook through the files source, and the rest from the bank's Postgres.
+scripts/run_demo_setup.py runs its setup.yaml against it, as the bundle build does: match_deals
+matches every message to the watch list (the demo's local sentence-transformers model -- the vector
+extra) and the review queue is built. Then each system's reads, the ranking, the governance of a
+first-level reviewer, the example queries and the tour's statements are read, each statement as the
+role the tour runs it as.
 """
 
-# Requirements: REQ-2056
+# Requirements: REQ-2056, REQ-2089
 
 from __future__ import annotations
 
@@ -110,7 +113,13 @@ def server(stack, tmp_path_factory):
         config=str(_DEMO / "config.yaml"),
         control_plane="own",
         materialize_store_url=f"duckdb:///{home / 'store.duckdb'}",
-        env={**stack.env, "PROVISA_DATA_DIR": str(home / "provisa")},
+        env={
+            **stack.env,
+            "PROVISA_DATA_DIR": str(home / "provisa"),
+            # The control room's workbook is read from the demo's own directory, as the launcher
+            # and the bundle build set it.
+            "PROVISA_NAMED_DEMO_DIR": str(_DEMO),
+        },
     )
     srv.start(timeout=400)
     try:
@@ -151,6 +160,61 @@ def _queue(server, role: str = "org_admin") -> list[dict[str, Any]]:
         "ORDER BY score DESC",
         role,
     )
+
+
+def _declared_rows(table: str) -> int:
+    path = _DEMO / "replica_rows" / "mail" / f"default.{table}.tsv"
+    return len(path.read_text().splitlines()) - 1
+
+
+@pytest.mark.parametrize("table", ["messages", "message_recipients"])
+def test_the_mail_is_read_through_the_microsoft_365_source(set_up, table):
+    # No tenant is registered, so a build that read Microsoft Graph would fail: every row read
+    # is the source's replica, landed from the demo's declared rows (REQ-2089).
+    [held] = query(set_up, f'SELECT COUNT(*) AS n FROM "bank"."{table}"')
+    assert held["n"] == _declared_rows(table)
+
+
+def test_the_leak_is_held_in_its_sender_s_mailbox(set_up):
+    [leak] = query(
+        set_up,
+        'SELECT m.account, m.from_address, r.address FROM "bank"."messages" AS m '
+        'JOIN "bank"."message_recipients" AS r ON r.message_id = m.id '
+        f"WHERE m.id = '{_LEAK}' AND r.kind = 'to'",
+    )
+    assert leak["account"] == leak["from_address"]
+    assert leak["address"] == "jp.homebox@gmail.com"
+
+
+def test_the_watch_list_is_read_from_the_control_room_s_workbook(set_up):
+    deals = query(
+        set_up, 'SELECT deal_id, legal_name, announced_on FROM "bank"."deal" ORDER BY deal_id'
+    )
+    assert [d["deal_id"] for d in deals] == ["D-01", "D-02", "D-03", "D-04", "D-05"]
+    assert deals[0]["legal_name"] == "Halcyon Biosciences, Inc."
+    [team] = query(set_up, 'SELECT COUNT(*) AS n FROM "bank"."deal_team" WHERE deal_id = \'D-01\'')
+    assert team["n"] == 3
+    [scope] = query(set_up, 'SELECT COUNT(*) AS n FROM "bank"."screening"')
+    assert scope["n"] == _declared_rows("messages") * len(deals)
+
+
+def test_the_queue_joins_the_mail_the_matches_and_the_bank_s_staff(set_up):
+    [leak] = query(
+        set_up,
+        'SELECT sender, desk, outside_bank, personal FROM "bank"."view_review_queue" '
+        f"WHERE message_id = '{_LEAK}' AND deal_id = 'D-01'",
+    )
+    assert leak["sender"] == "Marcus Odum" and leak["desk"] == "Sales & Trading"
+    assert (leak["outside_bank"], leak["personal"]) == (1, 1)
+
+
+def test_the_deal_team_s_mail_to_counsel_is_to_a_counterparty(set_up):
+    [expected] = query(
+        set_up,
+        'SELECT sender_on_team, to_counterparty FROM "bank"."deal_match" '
+        f"WHERE message_id = '{_EXPECTED}' AND deal_id = 'D-01'",
+    )
+    assert expected == {"sender_on_team": 1, "to_counterparty": 1}
 
 
 def test_the_paraphrased_leak_outranks_the_deal_team_s_expected_mail(set_up):
