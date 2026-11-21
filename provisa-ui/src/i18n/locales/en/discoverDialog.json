@@ -80,6 +80,8 @@
       "newTables": "{{count}} table registered since your last run is in {{domains}}, which it did not look at.",
       "newTables_other": "{{count}} tables registered since your last run are in {{domains}}, which it did not look at.",
       "addNewTables": "Add to this run"
-    }
+    },
+    "keyNames": "Key names and types",
+    "reviewDone": "Done"
   }
 }
