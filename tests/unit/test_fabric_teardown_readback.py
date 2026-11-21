@@ -1,3 +1,13 @@
+# Copyright (c) 2026 Kenneth Stott
+# Canary: f4f382aa-0d89-42ce-9ed3-4532b58b0b67
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+
 """Fabric teardown item read-back: 401/403 count as gone only once the workspace answers 404."""
 
 import pytest
