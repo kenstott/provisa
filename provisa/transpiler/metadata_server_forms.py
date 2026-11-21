@@ -1669,9 +1669,9 @@ def _catalog_objects(a: _Answers) -> None:
         "options:array, catalog:bigint",
         "BOOLEAN",
         # A NULL element has no PostgreSQL answer (untransformRelOptions reads it as a text).
-        "CASE WHEN CARDINALITY(ARRAY_FILTER(options, _o -> _o IS NULL)) > 0 THEN "
+        "CASE WHEN ARRAY_SIZE(ARRAY_FILTER(options, _o -> _o IS NULL)) > 0 THEN "
         + raising("0A000", "'postgresql_fdw_validator of a NULL option has no form here'")
-        + f" WHEN CARDINALITY({_refused}) > 0 THEN "
+        + f" WHEN ARRAY_SIZE({_refused}) > 0 THEN "
         + raising("42601", f"'invalid option \"' || SPLIT_PART({_refused}[1], '=', 1) || '\"'")
         + " ELSE true END",
     )

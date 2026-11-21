@@ -106,3 +106,14 @@ def test_duckdb_refuses_a_null_option_by_name():
 
 def test_duckdb_answers_null_for_a_null_argument():
     assert _duckdb("NULL::VARCHAR[]", 1417) is None
+
+
+def test_a_trino_error_ends_its_message_before_the_query_id():
+    from provisa.core.pg_error import from_engine
+
+    raised = Exception(
+        'TrinoUserError(type=USER_ERROR, name=GENERIC_USER_ERROR, message="postgresql-error '
+        '42601: invalid option "user"", query_id=20261121_160523_00007_4ebgz)'
+    )
+    error = from_engine(raised)
+    assert (error.sqlstate, str(error)) == ("42601", 'invalid option "user"')

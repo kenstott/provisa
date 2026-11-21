@@ -42,8 +42,9 @@ def raising(sqlstate: str, message_sql: str) -> str:
 #: Where ClickHouse's message of an error starts writing the statement it ran: a mark past it is
 #: the statement's text, not what was raised (run 43410717058 read one as a refusal).
 _STATEMENT_ECHOED = re.compile(r":? In scope ")
-#: What ClickHouse writes after the message it raised: a mark with no end runs to it.
-_RAISED_BY = re.compile(r": while executing '")
+#: What ClickHouse writes after the message it raised, and what Trino writes after its quoted one
+#: (message="...", query_id=...): a mark with no end runs to it.
+_RAISED_BY = re.compile(r": while executing '|\"?, query_id=")
 
 
 def from_engine(error: Exception) -> PostgresError | None:

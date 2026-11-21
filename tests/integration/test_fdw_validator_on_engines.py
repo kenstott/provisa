@@ -97,13 +97,12 @@ def test_fdw_validator_on_clickhouse():
 
 
 @pytest.mark.usefixtures("docker_postgres")
-def test_fdw_validator_on_postgresql():
+def test_fdw_validator_on_postgresql(pg_dsn):
     import psycopg2
 
     from provisa.transpiler.metadata_server_forms import RAISE_FUNCTION_SQL
-    from tests.conftest import pg_dsn
 
-    con = psycopg2.connect(pg_dsn())
+    con = psycopg2.connect(pg_dsn)
     con.autocommit = True
     try:
         with con.cursor() as cur:
