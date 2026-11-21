@@ -207,8 +207,8 @@ legs:
     odbc: true
   - engine: synapse
     lane: warehouse
-    image: none (the warehouse lane's standing Synapse serverless workspace)
-    secrets: [SYNAPSE_SQL_SERVER, SYNAPSE_DATABASE, FABRIC_RESOURCE_GROUP, AZURE_CLIENT_ID, AZURE_CLIENT_SECRET, AZURE_TENANT_ID]
+    image: none (this run's own Synapse workspace and storage account, created and deleted by the leg, tests/integration/synapse_provision.py)
+    secrets: [FABRIC_RESOURCE_GROUP, AZURE_CLIENT_ID, AZURE_CLIENT_SECRET, AZURE_TENANT_ID]
     odbc: true
   - engine: redshift
     lane: warehouse

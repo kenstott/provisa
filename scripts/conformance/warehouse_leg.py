@@ -123,21 +123,21 @@ def _az_login(env: dict[str, str]) -> None:
     )  # fmt: skip
 
 
-def _synapse_workspace(env: dict[str, str]) -> str:
-    return env["SYNAPSE_SQL_SERVER"].removesuffix("-ondemand.sql.azuresynapse.net")
-
-
 def _synapse_up(env: dict[str, str], state: Path) -> tuple[str, dict[str, str]]:
-    # The pinned path of tests/integration/synapse_provision.py synapse_lane: the standing workspace
-    # admits only this runner's address, by a rule made here and removed by ``down``.
-    from tests.integration.synapse_provision import _open_firewall, _wait_admitted
+    # The leg's own workspace and storage account in the CI resource group (maintainer 2026-11-10,
+    # "Paid cloud resources"): tests/integration/synapse_provision.py _provision, which opens the
+    # runner's address and removes what it made when it fails part way. ``down`` deletes them from
+    # the lane it saved here.
+    from tests.integration.synapse_provision import _provision
 
     _az_login(env)
-    rule = "provisa-functions-" + datetime.now(UTC).strftime("%y%m%d%H%M%S")
-    (state / "synapse-rule").write_text(rule)
-    _open_firewall(_synapse_workspace(env), env["FABRIC_RESOURCE_GROUP"], rule)
-    _wait_admitted(env["SYNAPSE_SQL_SERVER"], env["SYNAPSE_DATABASE"])
-    return "", {}
+    lane, sql_server, database, adls_url = _provision()
+    (state / "synapse-lane.json").write_text(json.dumps(lane))
+    return "", {
+        "SYNAPSE_SQL_SERVER": sql_server,
+        "SYNAPSE_DATABASE": database,
+        "SYNAPSE_ADLS_URL": adls_url,
+    }
 
 
 def _redshift_state(state: Path) -> dict[str, str]:
@@ -223,12 +223,12 @@ def _fabric_down(env: dict[str, str], state: Path) -> None:
 
 
 def _synapse_down(env: dict[str, str], state: Path) -> None:
-    from tests.integration.synapse_provision import _close_firewall
+    from tests.integration.synapse_provision import _teardown
 
-    rule = state / "synapse-rule"
-    if rule.is_file():
-        _close_firewall(_synapse_workspace(env), env["FABRIC_RESOURCE_GROUP"], rule.read_text())
-        print("the Synapse firewall rule", rule.read_text(), "is removed")
+    saved = state / "synapse-lane.json"
+    if saved.is_file():
+        _teardown(json.loads(saved.read_text()))
+        print("this run's Synapse workspace and storage account are deleted")
 
 
 def _redshift_down(env: dict[str, str], state: Path) -> None:
