@@ -30,7 +30,7 @@ from provisa.core.paging import PaginationConfig, PaginationType
 if TYPE_CHECKING:
     from provisa.core.auth_models import ApiAuthOAuth2ClientCredentials
 
-# Requirements: REQ-295, REQ-297, REQ-298, REQ-316, REQ-320, REQ-322, REQ-325
+# Requirements: REQ-295, REQ-297, REQ-298, REQ-316, REQ-320, REQ-322, REQ-325, REQ-2265
 
 
 class ApiCallError(Exception):
@@ -223,6 +223,18 @@ def _last_row_value(endpoint: ApiEndpoint, page: Any, row_field: str) -> Any:
     return last[row_field]
 
 
+def _answered_cursor(page: Any, cursor_field: str) -> Any:
+    """Where the next page starts, as ``page`` answers it at ``cursor_field`` -- a property of
+    the answer, or a dotted path into one (``paging.after``, REQ-2265). None where the answer
+    does not hold it: a cursor API marks its last page by leaving the cursor out, whether the
+    cursor itself or the object that would hold it."""
+    for part in cursor_field.split("."):
+        if not isinstance(page, dict):
+            return None
+        page = page.get(part)
+    return page
+
+
 async def _pages(
     client: httpx.AsyncClient,
     endpoint: ApiEndpoint,
@@ -307,7 +319,7 @@ async def _pages(
                 timeout=timeout,
             )
             data = await loop.run_in_executor(None, _decoded, resp)
-            cursor = data.get(cursor_field) if isinstance(data, dict) else None
+            cursor = _answered_cursor(data, cursor_field)
             if paging is not None:
                 paging.more = bool(cursor)
             yield data

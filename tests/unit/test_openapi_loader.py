@@ -70,3 +70,38 @@ def test_http_404_raises():
     respx.get(url).mock(return_value=httpx.Response(404))
     with pytest.raises(httpx.HTTPStatusError):
         load_spec(url)
+
+
+# --- where a spec's calls go (REQ-2265) ---
+
+
+@pytest.mark.parametrize(
+    ("server", "read_from", "called_at"),
+    [
+        (
+            "https://api.example.com/v1/",
+            "https://docs.example.com/spec.json",
+            "https://api.example.com/v1",
+        ),
+        (
+            "/openapi/",
+            "http://gms:8080/openapi/v3/api-docs/10-openapi-v3",
+            "http://gms:8080/openapi",
+        ),
+        ("/", "https://dh.example.com/openapi/v3/api-docs/10-openapi-v3", "https://dh.example.com"),
+        ("v2", "https://h.example.com/specs/api.json", "https://h.example.com/specs/v2"),
+        ("/api", "/srv/specs/api.json", "/api"),
+    ],
+)
+def test_a_relative_server_is_read_against_where_the_spec_was_read_from(
+    server, read_from, called_at
+):
+    from provisa.openapi.loader import spec_server_url
+
+    assert spec_server_url({"servers": [{"url": server}]}, read_from) == called_at
+
+
+def test_a_spec_naming_no_server_names_no_address():
+    from provisa.openapi.loader import spec_server_url
+
+    assert spec_server_url({}, "https://h.example.com/spec.json") == ""
