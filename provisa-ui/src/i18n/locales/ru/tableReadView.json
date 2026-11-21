@@ -44,7 +44,6 @@
     "colTopValues": "Частые значения",
     "editDefinitionButton": "Редактировать определение",
     "editDefinitionTitle": "Редактировать определение представления (SQL или выбор метрик/измерений)",
-    "queryTemplate": "Cypher",
     "writable": "Источник принимает",
     "noWrites": "Нет записи",
     "notShown": "не показано",

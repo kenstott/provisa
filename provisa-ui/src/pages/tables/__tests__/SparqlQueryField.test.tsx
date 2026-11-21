@@ -29,7 +29,7 @@ vi.mock("../../../hooks/useAdminQueries", async (importOriginal) => ({
 }));
 
 const { SparqlQueryField } = await import("../SparqlQueryField");
-const { IdentityRead } = await import("../TableSectionsRead");
+const { IdentityRead, QueryRead } = await import("../TableSectionsRead");
 
 const QUERY = "SELECT ?id ?name ?capital WHERE { ?c wdt:P297 ?id }";
 const SPARQL = { id: "wd", type: "sparql" } as Source;
@@ -92,6 +92,12 @@ describe("a SPARQL-defined table's query", () => {
   it("is shown read-only in Identity", () => {
     render(<IdentityRead table={TABLE} source={SPARQL} />);
     expect(screen.getByTestId("table-identity-sparql-query")).toHaveTextContent(QUERY);
+  });
+
+  it("is never shown on the query tab, labelled Cypher or otherwise", () => {
+    render(<QueryRead table={TABLE} />);
+    expect(screen.queryByText(QUERY)).toBeNull();
+    expect(screen.queryByText("Cypher")).toBeNull();
   });
 
   it("re-derives the columns from the SELECT when edited, keeping the ones it keeps", async () => {

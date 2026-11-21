@@ -9445,7 +9445,6 @@
   "ru/tableReadView.json::tableReadView.profileTitle": "Sample and profile this table's columns",
   "ru/tableReadView.json::tableReadView.profilingButton": "Profiling…",
   "ru/tableReadView.json::tableReadView.queryBadge": "query",
-  "ru/tableReadView.json::tableReadView.queryTemplate": "Cypher",
   "ru/tableReadView.json::tableReadView.scopeDomain": "domain",
   "ru/tableReadView.json::tableReadView.sourceWithdrawnNote": "Its source {{source}} is withdrawn: no role reads this table until the source is put back.",
   "ru/tableReadView.json::tableReadView.viewSql": "View SQL",

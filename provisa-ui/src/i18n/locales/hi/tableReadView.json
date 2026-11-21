@@ -44,7 +44,6 @@
     "colTopValues": "शीर्ष मान",
     "editDefinitionButton": "परिभाषा संपादित करें",
     "editDefinitionTitle": "व्यू परिभाषा संपादित करें (SQL या मेट्रिक/डाइमेंशन चयनकर्ता)",
-    "queryTemplate": "Cypher",
     "writable": "स्रोत स्वीकार करता है",
     "noWrites": "कोई लेखन नहीं",
     "notShown": "नहीं दिखाया गया",

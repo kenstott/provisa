@@ -88,6 +88,15 @@ export function RefreshPolicyAlert({ policy }: { policy: RefreshPolicySummary })
   );
 }
 
+const SOURCE_QUERY_LABEL: Record<string, string> = {
+  sparql: "registerTableForm.sparqlQueryLabel",
+  neo4j: "registerTableForm.neo4jCypherLabel",
+  mongodb: "registerTableForm.pipelineQueryLabel",
+  cosmosdb: "registerTableForm.cosmosQueryLabel",
+  elasticsearch: "registerTableForm.esSearchLabel",
+  qdrant: "registerTableForm.qdrantSearchLabel",
+};
+
 export function IdentityRead({
   table,
   source,
@@ -154,11 +163,13 @@ export function IdentityRead({
           },
         ]
       : []),
-    // REQ-1923: a SPARQL-defined table's query, read-only here; edited with the table-edit right.
-    ...(source?.type.toLowerCase() === "sparql" && table.queryTemplate
+    // REQ-1923: a query-defined table's source query, in its source's own query language
+    // (SPARQL, Cypher, a native pipeline...), read-only here; edited with the table-edit right.
+    // It is never shown as the table's Cypher on the query tab.
+    ...(source && table.queryTemplate && SOURCE_QUERY_LABEL[source.type.toLowerCase()]
       ? [
           {
-            label: t("tableEditForm.sparqlQueryLabel"),
+            label: t(SOURCE_QUERY_LABEL[source.type.toLowerCase()]),
             value: <code className="detail-code">{table.queryTemplate}</code>,
             testId: "table-identity-sparql-query",
           },
@@ -361,15 +372,6 @@ export function QueryRead({ table }: { table: RegisteredTable }) {
           {
             label: t("registerTableForm.watermarkLabel"),
             value: <code>{table.watermarkColumn}</code>,
-          },
-        ]
-      : []),
-    ...(table.queryTemplate
-      ? [
-          {
-            label: t("tableReadView.queryTemplate"),
-            testId: "table-read-view-query-template",
-            value: <code className="detail-code">{table.queryTemplate}</code>,
           },
         ]
       : []),

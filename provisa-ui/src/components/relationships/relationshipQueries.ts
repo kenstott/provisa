@@ -250,7 +250,7 @@ export function relationshipRest(rel: RelationshipQueryRef, reader: MetaReader):
   if (path === null) return null;
   if (reader.schema.scalars(path.field.type).length === 0) return null;
   const fields = [...reader.schema.scalars(path.type), path.field.name].join(",");
-  return `GET /data/rest/${path.root}?fields=${fields}&limit=${RELATIONSHIP_QUERY_LIMIT}`;
+  return `GET /data/rest/${rel.source.domainId}/${rel.source.tableName}?fields=${fields}&limit=${RELATIONSHIP_QUERY_LIMIT}`;
 }
 
 /** A relationship's field of its source's gRPC {Type} message: its GraphQL relationship field in
