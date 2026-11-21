@@ -1048,12 +1048,21 @@ def _provided_names(  # REQ-039
     alias, WITH ORDINALITY's ``ordinality``. A registered or unknown table provides none here."""
     names: set[str] = set()
     for item in _scope_relations(select):
+        if not _in_from_clause(item, select):
+            continue  # a scalar or IN subquery is no source of the scope's names
         if isinstance(item, exp.Table) and isinstance(item.this, exp.Identifier):
             if not item.db and (item.name in cte_names_set or names_a_cte_in_scope(item)):
                 names |= _value_columns(item)
             continue
         names |= _source_columns(item)
     return names
+
+
+def _in_from_clause(node: exp.Expr, select: exp.Select) -> bool:
+    """Whether ``node`` stands in ``select``'s FROM clause or one of its joins."""
+    while node.parent is not None and node.parent is not select:
+        node = node.parent
+    return node.parent is select and node.arg_key in ("from", "from_", "joins")
 
 
 def _source_columns(item: exp.Expr) -> set[str]:
