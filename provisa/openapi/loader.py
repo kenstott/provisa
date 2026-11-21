@@ -18,7 +18,7 @@ import json
 import pathlib
 import yaml
 
-# Requirements: REQ-314, REQ-315
+# Requirements: REQ-314, REQ-315, REQ-2265
 
 
 def parse_text(content: str) -> dict:  # REQ-315, REQ-407
@@ -69,3 +69,17 @@ def load_spec(spec_path: str) -> dict:  # REQ-314, REQ-315
         return yaml.safe_load(text)
     except Exception:
         return json.loads(text)
+
+
+def spec_server_url(spec: dict, spec_path: str) -> str:  # REQ-2265
+    """Where a spec's calls go: its first server's URL. The OpenAPI specification reads a relative
+    server URL against the address the spec was read from, so a spec read over http(s) that
+    names its server as a path (``/openapi/``, as DataHub's GMS does) is called at that path on
+    the spec's own host. Empty where the spec names no server."""
+    from urllib.parse import urljoin
+
+    servers = spec.get("servers") or []
+    url = servers[0].get("url", "") if servers else ""
+    if url and "://" not in url and spec_path.startswith(("http://", "https://")):
+        url = urljoin(spec_path, url)
+    return url.rstrip("/") if "://" in url else url

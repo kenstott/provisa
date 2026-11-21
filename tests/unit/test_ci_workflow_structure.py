@@ -664,11 +664,9 @@ _LEAVES_THE_RUN = re.compile(
 )
 
 
-#: The orchestrator's own jobs, not legs: PyPI trusted publishing does not accept a token issued
-#: to a reusable workflow (pypa/gh-action-pypi-publish#166).
-#: The provisa server wheel is not among them: it outgrew PyPI's 10 GB project limit (alpha.510)
-#: and is installed from the release through the GitHub Pages index the publish leg writes.
-_RELEASE_PYPI = ("publish-pypi", "publish-notebook-pypi")
+#: Nothing in the release goes to PyPI (maintainer 2026-11-21): the server, client and notebook
+#: wheels are release assets, installed through the GitHub Pages index the publish leg writes.
+_RELEASE_PYPI: tuple[str, ...] = ()
 #: REQ-2225: the provisa wheel carries the platform connector block, so the release that attaches
 #: it waits for the image the block names, which the orchestrator pushes itself, after every leg.
 _RELEASE_IMAGE_PUSH = "publish-connector-image"
@@ -693,9 +691,8 @@ def _release_legs() -> dict[str, tuple[str, dict]]:
     return legs
 
 
-def test_the_release_orchestrator_calls_legs_and_publishes_to_pypi_itself():
+def test_the_release_orchestrator_calls_legs_and_pushes_the_connector_image_itself():
     jobs = yaml.safe_load(_RELEASE.read_text())["jobs"]
-    pypi = {job: jobs.pop(job) for job in _RELEASE_PYPI}
     image_push = jobs.pop(_RELEASE_IMAGE_PUSH)
     given = {job: body["with"] for job, body in jobs.items()}
     first = next(iter(given.values()))
@@ -709,21 +706,14 @@ def test_the_release_orchestrator_calls_legs_and_publishes_to_pypi_itself():
     assert trigger["workflow_dispatch"]["inputs"]["publish"]["default"] is False
     for body in jobs.values():
         assert "steps" not in body and body.get("secrets") != "inherit"
-    # PyPI's jobs: a download of the run's wheel and the upload, gated as the legs'
-    # publications are, holding only the OIDC token, after every build leg.
     builds = set(jobs) - {"publish"}
-    for job, body in pypi.items():
-        assert body["if"] == _RELEASE_PUBLISH, job
-        assert set(body["needs"]) == builds | _RELEASE_PYPI_AFTER.get(job, set()), job
-        assert body["permissions"] == {"id-token": "write"}, job
-        uses = [str(step.get("uses", "")) for step in body["steps"]]
-        assert uses == ["actions/download-artifact@v4", "pypa/gh-action-pypi-publish@release/v1"]
+    assert not any("pypi" in job for job in jobs)
     # The connector image's push: gated the same way, after every build leg, holding only what a
     # push to the registry needs.
     assert image_push["if"] == _RELEASE_PUBLISH
     assert set(image_push["needs"]) == builds
     assert image_push["permissions"] == {"contents": "read", "packages": "write"}
-    assert set(jobs["publish"]["needs"]) == builds | set(pypi) | {_RELEASE_IMAGE_PUSH}
+    assert set(jobs["publish"]["needs"]) == builds | {_RELEASE_IMAGE_PUSH}
 
 
 def test_every_step_of_the_release_that_leaves_the_run_waits_for_publish():
@@ -744,12 +734,8 @@ def test_every_step_of_the_release_that_leaves_the_run_waits_for_publish():
                 if push is not None:
                     seen += 1
                     assert job_gated or push == "${{ inputs.publish }}", where
-    # PyPI's uploads are the orchestrator's own jobs, gated as a whole by the publish expression.
-    # So is the connector image's push (REQ-2225).
+    # The connector image's push (REQ-2225) is the orchestrator's own job, gated as a whole.
     for job, body in yaml.safe_load(_RELEASE.read_text())["jobs"].items():
-        if job in _RELEASE_PYPI:
-            assert body["if"] == _RELEASE_PUBLISH, job
-            seen += sum("pypi-publish" in str(s.get("uses", "")) for s in body["steps"])
         if job == _RELEASE_IMAGE_PUSH:
             assert body["if"] == _RELEASE_PUBLISH, job
             seen += sum(bool(_LEAVES_THE_RUN.search(str(s.get("run", "")))) for s in body["steps"])
@@ -1571,7 +1557,7 @@ def test_every_plugin_restore_waits_for_a_job_that_primed_the_cache():
     fetched the jars from Maven Central inside collection at the same moment; core 17/18 got HTTP
     429 as an INTERNALERROR. Now one job per workflow run primes the cache (`phase: prime`: a hit,
     or one download, checksum-verified, saved at once) and every job that restores it (`phase:
-    restore`, which fails on a miss and verifies each jar) waits for that job, so the cache step
+    restore`, which takes a missed entry from the run's artifact and verifies each jar) waits for that job, so the cache step
     precedes pytest and no lane ever downloads."""
     restoring = []
     for path in WORKFLOWS:
@@ -1589,6 +1575,30 @@ def test_every_plugin_restore_waits_for_a_job_that_primed_the_cache():
                     f"that primes them (primers here: {sorted(primers)})"
                 )
     assert restoring, "no job restores the Trino plugins"
+
+
+def test_a_plugin_cache_miss_is_answered_by_the_runs_artifact_not_a_failure_or_a_download():
+    """Runs 44942101401 and 44940962731: the cache entry the priming job saved was evicted before
+    the lane's restore, which failed on the miss. The cache is branch-scoped and evictable; the
+    run's own artifact is not. Priming uploads the verified jars; a restore that missed takes
+    them from there."""
+    steps = yaml.safe_load(
+        (REPO / ".github" / "actions" / "trino-plugins" / "action.yml").read_text()
+    )["runs"]["steps"]
+    for s in steps:
+        if str(s.get("uses", "")).startswith("actions/cache/restore"):
+            assert s["with"]["fail-on-cache-miss"] is False, s["name"]
+    names = [s.get("name") for s in steps]
+    down = steps[names.index("Download the run's Trino plugins")]
+    up = steps[names.index("Upload the run's Trino plugins")]
+    assert down["uses"].startswith("actions/download-artifact")
+    assert up["uses"].startswith("actions/upload-artifact")
+    assert down["with"]["name"] == up["with"]["name"]
+    assert "restore" in down["if"] and "prime" in up["if"]
+    assert names.index("Download the run's Trino plugins") < names.index("Verify Trino plugins")
+    assert names.index("Upload the run's Trino plugins") > names.index(
+        "Verify the provisa-functions plugin"
+    )
 
 
 def test_the_lane_workflow_restores_the_plugins_before_its_lane_and_saves_none():

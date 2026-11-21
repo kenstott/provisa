@@ -252,6 +252,7 @@ def test_the_schemas_tags_are_the_products_short_fields():
         "provisa_product:team": "analyst",
         "provisa_product:version": "1.2.0",
         "provisa_product:status": "live",
+        "provisa_product:uri": product.semantic_uri,  # REQ-2122
     }
 
 
@@ -386,3 +387,16 @@ async def test_without_an_environment_no_view_claims_a_stage(warehouse):  # REQ-
     result = await _export().publish(_snapshot())
     assert result.ok, result.errors
     assert not any("provisa_stage" in s for s in warehouse.statements)
+
+
+async def test_each_view_carries_its_provisa_address_as_a_tag(warehouse):  # REQ-2122
+    snapshot = _snapshot()
+    result = await _export().publish(snapshot)
+    assert result.ok, result.errors
+    for table in snapshot.tables:
+        uri = table.semantic_uri
+        assert any(
+            s.startswith("ALTER VIEW `main`.`customer_360`.`")
+            and f"SET TAGS ('provisa_uri' = '{uri}')" in s
+            for s in warehouse.statements
+        ), uri

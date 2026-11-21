@@ -191,6 +191,11 @@ def _needs_shared_stack(items) -> bool:
         return False
     here = os.path.dirname(__file__)
     self_provisioned = tuple(os.path.join(here, sub) + os.sep for sub in ("unit", "mvmvp"))
+    # The Python SDK's tests (provisa-sdk/python/tests) run pyright and read files; like
+    # tests/unit they touch no service, so they may share a run with tests/unit.
+    self_provisioned += (
+        os.path.join(os.path.dirname(here), "provisa-sdk", "python", "tests") + os.sep,
+    )
     # A local_platform test runs on the local platform (tests/local_platform.py), not the stack —
     # unless the session asks for the real services (PROVISA_TEST_PLATFORM=docker: the nightly run
     # of the same tests against real Postgres and Redis, to catch divergence).
@@ -397,6 +402,13 @@ _ITEST_PORT_ENV = [
     "CLICKHOUSE_PORT",
     "FIREBIRD_PORT",
     "EXASOL_PORT",
+    # The engines only Conformance (functions) starts (docker-compose.test.yml): leased all the
+    # same, so a stack that ever starts one binds no fixed port.
+    "MYSQL_PORT",
+    "MONETDB_PORT",
+    "OPENGAUSS_PORT",
+    "VERTICA_PORT",
+    "DB2_PORT",
     "SPLUNK_MGMT_PORT",
     "SPLUNK_HEC_PORT",
     "AIRPORT_PORT",

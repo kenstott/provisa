@@ -604,6 +604,80 @@ def test_a_cursor_with_no_size_parameter_is_offered_without_one():
     }
 
 
+def _string_params(spec: dict, names: list[str]) -> dict:
+    """``spec`` with the listing's parameters declared as text, as cursor tokens are."""
+    operation = spec["paths"]["/repos"]["get"]
+    operation["parameters"] = [{"name": n, "in": "query", "type": "string"} for n in names]
+    return spec
+
+
+_PAGING = {
+    "type": "object",
+    "properties": {
+        "before": {"type": "string"},
+        "after": {"type": "string"},
+        "offset": {"type": "integer"},
+        "limit": {"type": "integer"},
+        "total": {"type": "integer"},
+    },
+}
+
+
+def test_a_cursor_the_answer_holds_in_an_object_property_is_offered_by_its_dotted_path():
+    # REQ-2265: OpenMetadata answers {data, paging: {before, after, ...}, errors}; it pages
+    # forward by `after` and its rows are the required array.
+    answer = _list_of(_CHARGE, {"paging": _PAGING, "errors": {"type": "array", "items": _REPO}})
+    answer["required"] = ["data"]
+    spec = _string_params(_wrapper_spec(answer), ["fields", "limit", "before", "after"])
+    spec["paths"]["/repos"]["get"]["parameters"][1]["type"] = "integer"
+    (query,), _ = parse_spec(spec)
+    assert query.pagination.model_dump(mode="json", exclude_unset=True) == {
+        "rows_field": "data",
+        "type": "cursor",
+        "cursor_param": "after",
+        "cursor_field": "paging.after",
+        "page_size_param": "limit",
+    }
+
+
+def test_a_cursor_the_answer_holds_beside_its_rows_is_offered_by_its_name():
+    # REQ-2265: DataHub's scroll answers {scrollId, entities} to a scrollId parameter.
+    answer = {
+        "type": "object",
+        "required": ["entities"],
+        "properties": {
+            "scrollId": {"type": "string"},
+            "entities": {"type": "array", "items": _CHARGE},
+        },
+    }
+    spec = _string_params(_wrapper_spec(answer), ["scrollId", "query"])
+    spec["paths"]["/repos"]["get"]["parameters"].append(
+        {"name": "count", "in": "query", "type": "integer"}
+    )
+    (query,), _ = parse_spec(spec)
+    assert query.pagination.model_dump(mode="json", exclude_unset=True) == {
+        "rows_field": "entities",
+        "type": "cursor",
+        "cursor_param": "scrollId",
+        "cursor_field": "scrollId",
+        "page_size_param": "count",
+    }
+
+
+def test_a_numeric_parameter_the_answer_echoes_is_not_a_cursor():
+    answer = _list_of(_CHARGE, {"paging": _PAGING})
+    (query,), _ = parse_spec(_wrapper_spec(answer, ["offset", "total"]))
+    assert query.pagination.model_dump(mode="json", exclude_unset=True) == {"rows_field": "data"}
+
+
+def test_of_several_lists_the_one_the_answer_requires_holds_the_rows():
+    answer = _list_of(_CHARGE, {"errors": {"type": "array", "items": _REPO}})
+    answer["required"] = ["data"]
+    (query,), _ = parse_spec(_wrapper_spec(answer))
+    assert (query.rows_field, query.is_list) == ("data", True)
+    assert set(query.response_schema["properties"]) == {"id", "paid"}
+
+
 def test_a_thing_with_one_list_of_its_own_is_not_a_page():
     commit = {
         "type": "object",

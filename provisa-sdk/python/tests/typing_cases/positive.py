@@ -82,6 +82,11 @@ def loader(inputs: Inputs, context: ReadContext) -> list[Row]:
     return []
 
 
+@table(loader=True)
+def loader_keyed(inputs: Inputs, context: ReadContext) -> list[Row] | dict[str, list[Row]]:
+    return {} if context.keys else []
+
+
 @table(loader=50)
 def loader_sized(context: ReadContext) -> list[Row]:
     return []

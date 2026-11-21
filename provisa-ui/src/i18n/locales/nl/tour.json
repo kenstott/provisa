@@ -79,10 +79,10 @@
       },
       "step2": {
         "title": "Registreer een bron",
-        "description": "➕ Nieuwe verbindingen beginnen met deze knop: PostgreSQL, Snowflake, MongoDB, een REST-API, een CSV en de rest van de 80 connectoren."
+        "description": "➕ Nieuwe verbindingen beginnen met deze knop: PostgreSQL, Snowflake, MongoDB, een REST-API, een CSV en de rest van de 82 connectoren."
       },
       "step3": {
-        "title": "80 brontypen, 14 categorieën",
+        "title": "82 brontypen, 14 categorieën",
         "description": "Eén kiezer toont elk type, gegroepeerd per categorie: <strong>Abonnementen, RDBMS, Cloud-datawarehouse, Analytics, Data lake, NoSQL, Code-resolvers, Grafen, Bestanden, API, Streaming, Enterprise, Datakwaliteit, Overig</strong>. Zoek op naam of alias, of beperk met de categoriechips. Elk type toont zijn logo en een bereikpictogram: ⚡ ter plekke live gelezen, of een kopiepictogram waar Provisa een ververst replica leest.<p>Kies er een, vul de verbinding in en sla op.</p>"
       },
       "stepBuildSource": {
@@ -548,15 +548,23 @@
       },
       "insiderIntro": {
         "title": "Insidercontrole bij een bank",
-        "description": "Northgate Partners, een verzonnen bank, houdt een watchlist bij van de deals waaraan ze werkt. Ze wil weten of iemand dealgevoelige of klantdata de bank uit stuurt. <strong>bank</strong> is haar database: de watchlist, de medewerkers en hun mail, en de klanten en wie hun gegevens las. Elke naam en elk record hier is gegenereerd."
+        "description": "Northgate Partners, een verzonnen bank, houdt een watchlist bij van de deals waaraan ze werkt. Ze wil weten of iemand dealgevoelige of klantdata de bank uit stuurt. Het antwoord leest drie systemen tegelijk. <strong>bank</strong> is haar Postgres-database: de medewerkers en hun desks, en de klanten en wie hun gegevens las. Elke naam en elk record hier is gegenereerd."
+      },
+      "insiderWorkbook": {
+        "title": "De werkmap van de control room",
+        "description": "<strong>control_room</strong> is een Excel-werkmap die de control room zelf bijhoudt. Elk blad is een tabel: de deals in bespreking, wie voor elke deal over de muur is gehaald, de tegenpartijen van de deals en tegen welke deals elk bericht wordt getoetst. Provisa leest het bestand waar het staat."
+      },
+      "insiderMailSource": {
+        "title": "De mail van de bank",
+        "description": "<strong>mail</strong> is de Microsoft 365-mail van de bank, de mailbox van elke medewerker, in dezelfde bericht- en ontvangerstabellen die een Google Workspace-bron geeft. Deze demo bereikt geen echte tenant: de mailbox wordt met de demo meegeleverd als de opgeslagen kopie van de bron, die nooit ververst."
       },
       "insiderWatchList": {
         "title": "De watchlist",
-        "description": "<strong>deal</strong> is de watchlist van de control room, met per deal het bedrijf, de namen waaronder het bekendstaat, de ticker, de projectcodenaam en of de deal al openbaar is. Het is de meest beperkte tabel hier. De control room leest hem, een dealteam alleen de eigen deal, en een reviewer op het eerste niveau nooit."
+        "description": "<strong>deal</strong> is de watchlist, het blad met deals in de werkmap, met per deal het bedrijf, de namen waaronder het bekendstaat, de ticker, de projectcodenaam en of de deal al openbaar is. Het is de meest beperkte tabel hier. De control room leest hem, een dealteam alleen de eigen deal, en een reviewer op het eerste niveau nooit."
       },
       "insiderMail": {
         "title": "De mail",
-        "description": "<strong>message</strong> bevat de uitgaande mail van de medewerkers, met de afzender, het tijdstip en hoeveel ontvangers buiten de bank of op een persoonlijk adres zaten."
+        "description": "<strong>messages</strong> bevat de verzonden mail van de medewerkers uit Microsoft 365, elk bericht in de mailbox van de afzender, met wie het stuurde, wanneer en de tekst. De ontvangers staan in <strong>message_recipients</strong>; de personeelslijst van de bank en de persoonlijke mailproviders in Postgres onderscheiden interne, externe en persoonlijke adressen."
       },
       "insiderMatch": {
         "title": "Elk bericht tegen elke deal",

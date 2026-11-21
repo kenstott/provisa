@@ -46,6 +46,7 @@
       "existing": "已注册",
       "rejected": "之前已拒绝",
       "out_of_scope": "不在所选表之内"
-    }
+    },
+    "keyNames": "键名称和类型：找到 {{found}} 个，建议 {{count}} 个。"
   }
 }

@@ -686,7 +686,7 @@ async def register_org_jobs(scheduler: AsyncIOScheduler, org_id: str) -> None:
     finally:
         reset_current_org(token)
 
-    from apscheduler.triggers.cron import CronTrigger
+    from provisa.core.cron import cron_trigger
     from apscheduler.triggers.interval import IntervalTrigger
 
     scheduler.add_job(
@@ -703,7 +703,7 @@ async def register_org_jobs(scheduler: AsyncIOScheduler, org_id: str) -> None:
     )
     scheduler.add_job(
         reconcile_org,
-        trigger=CronTrigger.from_crontab(config.reconcile_cron),
+        trigger=cron_trigger(config.reconcile_cron),
         args=[org_id],
         id=reconcile_job_id(org_id),
         name=f"metadata_export:reconcile:{org_id}",

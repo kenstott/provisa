@@ -130,6 +130,9 @@ SHOPIFY_SCHEMA = _make_schema(
                 {"name": "id", "type": _scalar("ID")},
                 {"name": "total", "type": _scalar("Float")},
                 {"name": "status", "type": _scalar("String")},
+                # The key scalar beside the nested object: a relationship joins on columns
+                # (REQ-313, J1435), so Order.product is offered as one through productId.
+                {"name": "productId", "type": _scalar("ID")},
                 {"name": "product", "type": _object_ref("Product")},
             ],
         },
@@ -272,7 +275,9 @@ def test_mapper_output_has_all_column_fields():
 def test_object_column_carries_gql_selection():
     # REQ-309: OBJECT-typed columns carry gql_selection so executor can embed
     # the sub-selection string when forwarding the query to the remote endpoint.
-    tables, _, _ = map_schema(SHOPIFY_SCHEMA, "Shopify", "shopify-src")
+    # Orders is mapped on its own (REQ-1929): with Products not mapped in the same walk, no
+    # relationship is offered, so the nested object stays a column.
+    tables, _, _ = map_schema(SHOPIFY_SCHEMA, "Shopify", "shopify-src", only={"Shopify__orders"})
     orders = next(t for t in tables if t["name"] == "Shopify__orders")
     col_map = {c["name"]: c for c in orders["columns"]}
 

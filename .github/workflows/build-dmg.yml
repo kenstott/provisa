@@ -6,21 +6,22 @@
 #
 #   prebuilt ─┬─ macos ───┐
 #             ├─ windows ─┤
-#             └─ linux ───┼─ publish-pypi, publish-notebook-pypi ─┬─ publish
-#   packages ─────────────┘  publish-connector-image ──────────────┘
+#             └─ linux ───┼─ publish-connector-image ─┬─ publish
+#   packages ─────────────┘                           ┘
 #
 # Every job that builds a release asset attaches it to the draft release itself, once
 # (.github/actions/attach-release-assets); the publish leg copies nothing -- it checks the draft
 # has every asset, undrafts it and regenerates the index. The provisa server wheel is not uploaded
-# to PyPI: it outgrew PyPI's 10 GB project limit (alpha.510). Each platform's wheel is a release
-# asset, listed by the package index on GitHub Pages (`pip install provisa --extra-index-url
-# https://kenstott.github.io/provisa/simple/`).
+# to PyPI: it outgrew PyPI's 10 GB project limit (alpha.510). Nothing is published to PyPI at all
+# (maintainer 2026-11-21): the server, client and notebook wheels (and the client and notebook
+# sdists) are release assets, listed by the package index on GitHub Pages (`pip install provisa
+# --extra-index-url https://kenstott.github.io/provisa/simple/`).
 #
 # A tag starts nothing. Run by hand (Actions -> Build Provisa Packages -> Run workflow) on
 # release/<version>, once the suites are green there, it is the release's DRY RUN, which "Release:
 # cut" requires: every artifact is built and uploaded to the run under the names the given
 # `version` produces (an asset's upload fails when its file is missing), and nothing leaves the
-# run -- no draft release, no attachment, no PyPI upload, no image push, no signed attestation. A run publishes only when it is started ON the tag
+# run -- no draft release, no attachment, no image push, no signed attestation. A run publishes only when it is started ON the tag
 # whose version it names with `publish` checked, which is how "Release: cut" starts it.
 #
 # A failed job is re-run alone with "Re-run failed jobs": the legs that passed are not built
@@ -130,57 +131,6 @@ jobs:
       version: ${{ inputs.version || github.ref_name }}
       publish: ${{ inputs.publish == true && github.ref_type == 'tag' && github.ref_name == inputs.version }}
 
-  # PyPI, client and notebook: the orchestrator's own jobs, never a reusable workflow's -- PyPI
-  # trusted publishing does not accept a token issued to a reusable workflow
-  # (pypa/gh-action-pypi-publish#166). Only after every leg has succeeded; nothing that cannot
-  # be taken back happens until every artifact exists. Not run on a dry run.
-  publish-pypi:
-    name: Publish Python client to PyPI
-    # Publishes and does nothing else: not run on a dry run.
-    if: ${{ inputs.publish == true && github.ref_type == 'tag' && github.ref_name == inputs.version }}
-    needs: [platform-connectors, prebuilt, packages, macos, windows, linux]
-    runs-on: ubuntu-latest
-    permissions:
-      id-token: write
-    steps:
-      - name: Download dist
-        uses: actions/download-artifact@v4
-        with:
-          name: python-client-dist
-          path: dist/
-
-      - name: Publish to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
-        with:
-          packages-dir: dist/
-          skip-existing: true
-          attestations: true
-
-  # REQ-2071: provisa pins provisa-notebook at its own version, so the notebook package is on PyPI
-  # before the release (and the provisa index that lists its wheels) is published: a `pip install
-  # provisa` never resolves to a provisa whose dependency is not there yet. Built with everything else; published only after every leg has succeeded.
-  publish-notebook-pypi:
-    name: Publish provisa-notebook to PyPI
-    # Publishes and does nothing else: not run on a dry run.
-    if: ${{ inputs.publish == true && github.ref_type == 'tag' && github.ref_name == inputs.version }}
-    needs: [platform-connectors, prebuilt, packages, macos, windows, linux]
-    runs-on: ubuntu-latest
-    permissions:
-      id-token: write
-    steps:
-      - name: Download dist
-        uses: actions/download-artifact@v4
-        with:
-          name: provisa-notebook-dist
-          path: dist/
-
-      - name: Publish to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
-        with:
-          packages-dir: dist/
-          skip-existing: true
-          attestations: true
-
   # REQ-2225: the Spark connector's image, built by platform-connectors and kept in the run, pushed
   # to the registry byte for byte -- after every leg, and before any package naming it (the provisa
   # wheel and the installers carry the block) is published. `connector push` refuses an image other
@@ -222,14 +172,14 @@ jobs:
             --config provisa/core/platform_connectors.yaml --name spark \
             --registry-user "$GITHUB_ACTOR" --registry-password-env REGISTRY_PASSWORD
 
-  # After every PyPI publication: the check that the draft has every asset and its undraft, the
-  # provisa wheel index on GitHub Pages, the image pushes. A failed or partial run publishes
-  # nothing. On a dry run the PyPI jobs are skipped, and a job is skipped with the jobs it needs
-  # unless it says otherwise: this one still runs (its images build without a push), and never
-  # after a publication that failed or was cancelled.
+  # After every leg: the check that the draft has every asset and its undraft, the wheel index on
+  # GitHub Pages, the image pushes. A failed or partial run publishes nothing. On a dry run the
+  # publishing jobs are skipped, and a job is skipped with the jobs it needs unless it says
+  # otherwise: this one still runs (its images build without a push), and never after a
+  # publication that failed or was cancelled.
   publish:
     name: Attach and publish
-    needs: [platform-connectors, prebuilt, packages, macos, windows, linux, publish-pypi, publish-notebook-pypi, publish-connector-image]
+    needs: [platform-connectors, prebuilt, packages, macos, windows, linux, publish-connector-image]
     if: ${{ !cancelled() && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') }}
     # The union of what the leg's jobs ask for: undraft the release (contents), the Pages
     # deployment's token (id-token), the image pushes (packages), the wheel index's deployment

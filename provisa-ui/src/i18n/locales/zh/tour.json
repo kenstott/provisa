@@ -79,10 +79,10 @@
       },
       "step2": {
         "title": "注册一个数据源",
-        "description": "➕ 新连接从这个按钮开始：PostgreSQL、Snowflake、MongoDB、REST API、CSV，以及其余的 80 个连接器。"
+        "description": "➕ 新连接从这个按钮开始：PostgreSQL、Snowflake、MongoDB、REST API、CSV，以及其余的 82 个连接器。"
       },
       "step3": {
-        "title": "80 种数据源类型，14 个类别",
+        "title": "82 种数据源类型，14 个类别",
         "description": "一个选择器按类别列出所有类型：<strong>订阅、RDBMS、云数据仓库、分析、数据湖、NoSQL、代码解析器、图、文件、API、流式、企业、数据质量、其他</strong>。可以按名称或别名搜索，也可以用类别标签缩小范围。每种类型都有徽标和可达性图标：⚡ 表示就地实时读取，复制图标表示 Provisa 读取已刷新的副本。<p>选一个，填写连接，保存。</p>"
       },
       "stepBuildSource": {
@@ -548,15 +548,23 @@
       },
       "insiderIntro": {
         "title": "银行的内幕信息审查",
-        "description": "虚构的银行 Northgate Partners 维护着一份其正在处理的交易观察名单。它想知道是否有人把交易敏感数据或客户数据发送到银行外部。<strong>bank</strong> 是它的数据库：观察名单、员工及其邮件，以及客户和查看过其记录的人。这里所有的姓名和记录都是生成的。"
+        "description": "虚构的银行 Northgate Partners 维护着一份其正在处理的交易观察名单。它想知道是否有人把交易敏感数据或客户数据发送到银行外部。答案同时读取三个系统。<strong>bank</strong> 是它的 Postgres 数据库：员工及其所属部门，以及客户和查看过其记录的人。这里所有的姓名和记录都是生成的。"
+      },
+      "insiderWorkbook": {
+        "title": "控制室的工作簿",
+        "description": "<strong>control_room</strong> 是控制室自己维护的 Excel 工作簿。每个工作表就是一张表：正在洽谈的交易、每笔交易中被带过信息隔离墙的人、交易的对手方，以及每封邮件要与哪些交易比对。Provisa 在文件所在之处直接读取它。"
+      },
+      "insiderMailSource": {
+        "title": "银行的邮件",
+        "description": "<strong>mail</strong> 是银行的 Microsoft 365 邮件，即每位员工的邮箱，使用与 Google Workspace 数据源相同的邮件表和收件人表。本演示不连接任何真实租户：邮箱作为该数据源的存储副本随演示一起提供，且从不刷新。"
       },
       "insiderWatchList": {
         "title": "观察名单",
-        "description": "<strong>deal</strong> 是控制室的观察名单，包含每笔交易的公司、其别称、股票代码、项目代号以及是否已公开。这是这里限制最严格的表。控制室可以读取，交易团队只能读取自己的交易，一线审核员则完全不能读取。"
+        "description": "<strong>deal</strong> 是观察名单，即工作簿中的交易工作表，包含每笔交易的公司、其别称、股票代码、项目代号以及是否已公开。这是这里限制最严格的表。控制室可以读取，交易团队只能读取自己的交易，一线审核员则完全不能读取。"
       },
       "insiderMail": {
         "title": "邮件",
-        "description": "<strong>message</strong> 保存员工的外发邮件，包括发件人、发送时间，以及有多少收件人在银行外部或使用个人地址。"
+        "description": "<strong>messages</strong> 保存员工从 Microsoft 365 发出的邮件，每封邮件位于其发件人的邮箱中，包括发件人、发送时间和正文。收件人在 <strong>message_recipients</strong> 中；Postgres 中的银行员工名单和个人邮箱服务商用来区分内部、外部和个人地址。"
       },
       "insiderMatch": {
         "title": "每封邮件对照每笔交易",

@@ -28,7 +28,7 @@ Provisa reads the common relational databases and cloud warehouses: PostgreSQL, 
 Files are sources too. CSV, Parquet, SQLite and DuckDB files, Iceberg and Delta Lake tables, and directories of files matched by a glob all register as tables, with column names mapped to GraphQL-friendly fields. Iceberg and Delta tables can be read as of an earlier point in time. A files source can also crawl web pages, landing HTML tables and linked data files as ordinary tables, which is how Wikipedia becomes a source.
 { #connector-catalog-files-and-lake }
 
-Non-relational stores appear as tables you can join to everything else. MongoDB and Cosmos DB, Elasticsearch, Redis, Cassandra, Druid, Pinot, Prometheus and Splunk are covered, along with the vector store Qdrant and the graph and triple stores Neo4j and SPARQL endpoints. SPARQL also carries branded sources: Wikidata is one, preset to the Wikidata Query Service with no credential, offering starter reference tables (countries, currencies, languages, organizations) and a table builder for any Wikidata class. Each has a mapping from its native shape to columns, so a document or a metric series reads like any other row.
+Non-relational stores appear as tables you can join to everything else. MongoDB and Cosmos DB, Elasticsearch, Redis, Cassandra, Druid, Pinot, Prometheus and Splunk are covered, along with the vector store Qdrant and the graph and triple stores Neo4j and SPARQL endpoints. Each has a mapping from its native shape to columns, so a document or a metric series reads like any other row.
 { #connector-catalog-nosql-search-and-graph }
 
 A remote GraphQL, gRPC or OpenAPI service can be registered as a source. Provisa introspects the schema or spec, turns each readable operation into a virtual table, and turns write operations into commands you register one at a time. The service's authentication, depth limits and relationships to local tables are configured at registration, and a refresh re-reads the spec on demand. Everything the service returns passes through the same row, column and masking rules as local data.
@@ -42,13 +42,13 @@ Event and reference data has its own source types. Kafka topics register with sc
 
 ### Semantic model
 
-Provisa decides every client-facing name in one place. You can alias a table or column, add a description that shows up in the schema, and prefix names with their domain. A naming convention can match Hasura's if you are migrating. Every protocol uses the same names, comparisons go through one normalizer, and nothing is matched by guesswork. A table's SQL address is unique within its domain. Singular and plural forms throughout—relationship fields, aliases, glossary terms—come from an English dictionary lookup; a word the dictionary does not know takes a rule-based form.
+Provisa decides every client-facing name in one place. You can alias a table or column, add a description that shows up in the schema, and prefix names with their domain. A naming convention can match Hasura's if you are migrating. Every protocol uses the same names, comparisons go through one normalizer, and nothing is matched by guesswork. A table's SQL address is unique within its domain.
 { #semantic-model-naming }
 
 Registered tables and views are queryable under the user's own rights, with no separate governance mode. You pick which columns to publish, mark primary keys, including composite ones, and declare unique constraints. Columns can pull values out of JSON with a path, and nested fields can be promoted to real columns. Path columns are computed and read-only.
 { #semantic-model-tables-and-columns }
 
-Relationships describe how tables join, and they turn into nested fields in GraphQL and joins elsewhere. Provisa proposes candidates from foreign keys and from key-value overlap, measuring how many rows of one column match the other through a governed query. Every column pair found in a discovery run appears in the results list, scored and filterable. Only pairs that are already registered or marked not to recommend again are left out. A steward confirms or rejects candidates. Cross-source relationships are declared by hand with a cardinality. Saving a relationship marks the key columns on both sides, and a relationship alias becomes the type name in Cypher. Discovery works within the domains currently selected in the domain filter.
+Relationships describe how tables join, and they turn into nested fields in GraphQL and joins elsewhere. Provisa proposes candidates from foreign keys and ranks them by how much evidence backs each one, and a steward confirms or rejects them. Cross-source relationships are declared by hand with a cardinality. Saving a relationship marks the key columns on both sides, and a relationship alias becomes the type name in Cypher. A relationship can feed a parameterized table, such as a code source's function, from its source's columns, so a join scores each source row the role reads, with the role's masks applied to the values passed.
 { #semantic-model-relationships }
 
 Domains group tables by business area. Each domain has a steward, can nest under a parent, and decides which other domains may read its tables. Views, relationships and grants that cross a domain boundary are approved by the domain that owns the data, and cross-domain access is enforced in GraphQL and in SQL alike. A deployment that does not want domains can turn them off.
@@ -84,7 +84,7 @@ A metric is a named, governed aggregate with its own definition. You write it on
 
 ### Glossary, tags and ontology
 
-The business glossary maps plain-language terms to the physical fields behind them. Terms can be derived from column names or written by hand, scoped to one or more domains, related to other terms, and owned by a curator. A term's name is unique within a domain; two terms in different domains may share a name. A term with relationships cannot be deleted. Reading the glossary and administering it are separate rights.
+The business glossary maps plain-language terms to the physical fields behind them. Terms can be derived from column names or written by hand, scoped to one or more domains, related to other terms, and owned by a curator. A term with relationships cannot be deleted. Reading the glossary and administering it are separate rights.
 { #glossary-tags-ontology-terms }
 
 Find terms proposes new terms from the places your organization already writes definitions down. It reads a document (PDF, Word, Markdown, HTML, plain text or a regulation's eCFR XML), a registered table of terms and definitions, or a registered table of text. A table of terms and definitions is read as it stands, with no AI model. A document or a table of text is read by the organization's AI model, within the role's AI budget. Every proposal lands in a review queue as a draft that cites the passages or rows it came from, and is matched against the glossary so it is offered as a new term or a merge. See [Finding terms in documents and tables](ontology.md#finding-terms-in-documents-and-tables).
@@ -331,7 +331,7 @@ In strict mode, one chain turns the question into GraphQL, then SQL, then Cypher
 
 ### REST, JSON:API and OpenAPI
 
-Every registered table gets a plain REST endpoint and a JSON:API endpoint with no setup. Query-string parameters map to filters, ordering and paging. JSON:API uses the physical column and relationship names throughout, and its total count is computed by pushing a COUNT down to the source. No table is refused because it lacks a primary key: JSON:API assigns each resource an id from its declared key, the column an approved relationship points at, a column named id, or its position in the response. Includes follow approved relationships without a key requirement, and a single-resource lookup is offered only where the id is a real identifier.
+Every registered table gets a plain REST endpoint and a JSON:API endpoint with no setup. Query-string parameters map to filters, ordering and paging. JSON:API uses the physical column and relationship names throughout, and its total count is computed by pushing a COUNT down to the source.
 { #rest-and-jsonapi-endpoints }
 
 An OpenAPI specification is generated from the model, with typed parameters for each table. Registered commands appear as POST paths, and an operation can be marked as a query or a mutation. Tools that read OpenAPI can use the API directly.

@@ -46,8 +46,10 @@ def _source():
     return types.SimpleNamespace(id="pet-store-pg")
 
 
-def _table():
-    return types.SimpleNamespace(source_id="pet-store-pg", schema_name="public", table_name="pets")
+def _table(name: str = "pets", columns: list | None = None):
+    return types.SimpleNamespace(
+        source_id="pet-store-pg", schema_name="public", table_name=name, columns=columns or []
+    )
 
 
 def test_analyze_runs_where_the_connector_collects_statistics():
@@ -64,3 +66,51 @@ def test_analyze_skipped_where_the_connector_collects_none():
     analyze_source_tables(conn, _source(), [_table()], catalog_name="org_ks__pet_store_sqlite")
 
     assert [sql for sql in conn.executed if sql.startswith("ANALYZE")] == []
+
+
+def test_a_table_whose_metadata_requires_a_parameter_is_not_analyzed():
+    """REQ-1986: statistics ask the table's metadata first. ANALYZE reads a table whole, which a
+    table that requires a parameter does not give; it is left out, never tried."""
+    conn = _Conn(["org_ks__lake"])
+    lookup = _table(
+        "pet_by_id",
+        [
+            {"column_name": "id", "native_filter_type": None},
+            {
+                "column_name": "_nf_petId",
+                "native_filter_type": "path_param",
+                "native_filter_required": True,
+            },
+        ],
+    )
+    stewarded = _table(
+        "pets_by_region",
+        [
+            {
+                "column_name": "_nf_region",
+                "native_filter_type": "query_param",
+                "native_filter_required": False,
+                "required_by_steward": True,
+            }
+        ],
+    )
+    optional = _table(
+        "pets_by_status",
+        [
+            {
+                "column_name": "_nf_status",
+                "native_filter_type": "query_param",
+                "native_filter_required": False,
+                "required_by_steward": False,
+            }
+        ],
+    )
+
+    analyze_source_tables(
+        conn, _source(), [_table(), lookup, stewarded, optional], catalog_name="org_ks__lake"
+    )
+
+    assert [sql for sql in conn.executed if sql.startswith("ANALYZE")] == [
+        "ANALYZE org_ks__lake.public.pets",
+        "ANALYZE org_ks__lake.public.pets_by_status",
+    ]

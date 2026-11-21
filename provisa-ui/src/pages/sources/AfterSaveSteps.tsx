@@ -30,8 +30,20 @@ import { RegisterTableForm } from "../tables/RegisterTableForm";
 import { YourDataStep } from "../tables/YourDataStep";
 import { registeredOf, type Registered } from "../tables/useManyTables";
 import { PanelWorking } from "./PanelWorking";
+import { Button } from "@mantine/core";
+import { RelationshipReview } from "../../components/relationships/RelationshipReview";
+import { useCapability } from "../../hooks/useCapability";
 
-export function AfterSaveSteps({ sourceId, onClose }: { sourceId: string; onClose: () => void }) {
+export function AfterSaveSteps({
+  sourceId,
+  onClose,
+  onRelated,
+}: {
+  sourceId: string;
+  onClose: () => void;
+  /** REQ-2262: the review after registration is done, with how many relationships it created. */
+  onRelated: (count: number) => void;
+}) {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const { domainAccess, actingRoles } = useAuth();
@@ -43,11 +55,33 @@ export function AfterSaveSteps({ sourceId, onClose }: { sourceId: string; onClos
   const { suggestTableAlias } = useSuggestTableAlias();
   const [error, setError] = useState<string | null>(null);
   const [registered, setRegistered] = useState<Registered | null>(null);
+  const [reviewing, setReviewing] = useState(false);
+  const mayRelate = useCapability("create_relationship");
 
   if (registered !== null) {
+    // REQ-2262: beside Close, Create relationships, when a table was just registered and the
+    // person may create relationships.
     return (
-      <PanelWorking back={t("yourData.close")} onBack={onClose} testId="your-data-back">
+      <PanelWorking
+        back={t("yourData.close")}
+        onBack={onClose}
+        testId="your-data-back"
+        actions={
+          mayRelate &&
+          registered.tableIds.length > 0 && (
+            <Button
+              variant="default"
+              size="compact-sm"
+              onClick={() => setReviewing(true)}
+              data-testid="your-data-create-relationships"
+            >
+              {t("yourData.createRelationships")}
+            </Button>
+          )
+        }
+      >
         <YourDataStep registered={registered} role={actingRoles} />
+        {reviewing && <RelationshipReview tableIds={registered.tableIds} onDone={onRelated} />}
       </PanelWorking>
     );
   }

@@ -246,6 +246,7 @@ async def _start_background_tasks(_log: logging.Logger) -> None:
                             entry.schema,
                             entry.catalog,
                             entry.pk_column,
+                            entry.column_types,
                         )
                     except Exception:
                         _log.exception("Hot table refresh failed: %s", entry.table_name)
@@ -662,7 +663,7 @@ def _start_scheduler(_log: logging.Logger) -> None:
     from provisa.api.app import state  # lazy: avoid app<->app_startup cycle
 
     try:
-        from apscheduler.triggers.cron import CronTrigger
+        from provisa.core.cron import cron_trigger
         from apscheduler.triggers.interval import IntervalTrigger
 
         from provisa.scheduler.jobs import new_scheduler
@@ -683,7 +684,7 @@ def _start_scheduler(_log: logging.Logger) -> None:
 
             scheduler.add_job(
                 reap_demo_sandboxes,
-                trigger=CronTrigger.from_crontab("* * * * *"),
+                trigger=cron_trigger("* * * * *"),
                 id="sandbox_reap",
                 name="sandboxes:reap_idle",
                 replace_existing=True,
@@ -695,7 +696,7 @@ def _start_scheduler(_log: logging.Logger) -> None:
             # REQ-2049: a bundle the node marks ready after the start has its template built.
             scheduler.add_job(
                 queue_late_demo_templates,
-                trigger=CronTrigger.from_crontab("* * * * *"),
+                trigger=cron_trigger("* * * * *"),
                 id="sandbox_late_templates",
                 name="sandboxes:queue_late_templates",
                 replace_existing=True,
@@ -708,7 +709,7 @@ def _start_scheduler(_log: logging.Logger) -> None:
             # does; never merged, a first read of an ops view over them opened every batch file.
             scheduler.add_job(
                 compact_otel_signals,
-                trigger=CronTrigger.from_crontab(state.otel_compact_cron),
+                trigger=cron_trigger(state.otel_compact_cron),
                 id="otel_compact",
                 name="otel:compact_signals",
                 replace_existing=True,
@@ -725,7 +726,7 @@ def _start_scheduler(_log: logging.Logger) -> None:
 
                 scheduler.add_job(
                     stop_idle_sandbox_vm,
-                    trigger=CronTrigger.from_crontab("* * * * *"),
+                    trigger=cron_trigger("* * * * *"),
                     kwargs={"since": datetime.now(UTC)},
                     id="sandbox_vm_idle_stop",
                     name="sandboxes:stop_idle_vm",
@@ -748,7 +749,7 @@ def _start_scheduler(_log: logging.Logger) -> None:
 
         scheduler.add_job(
             compact_otel_signals,
-            trigger=CronTrigger.from_crontab(state.otel_compact_cron),
+            trigger=cron_trigger(state.otel_compact_cron),
             id="otel_compact",
             name="otel:compact_signals",
             replace_existing=True,
@@ -760,7 +761,7 @@ def _start_scheduler(_log: logging.Logger) -> None:
         # of unreferenced files and filled the coordinator disk (REQ-303).
         scheduler.add_job(
             reclaim_otel_storage,
-            trigger=CronTrigger.from_crontab("0 * * * *"),
+            trigger=cron_trigger("0 * * * *"),
             id="otel_reclaim",
             name="otel:reclaim_storage",
             replace_existing=True,
@@ -769,7 +770,7 @@ def _start_scheduler(_log: logging.Logger) -> None:
         )
         scheduler.add_job(
             watch_engine,
-            trigger=CronTrigger.from_crontab("* * * * *"),
+            trigger=cron_trigger("* * * * *"),
             id="engine_watch",
             name="engine:watcher",
             replace_existing=True,
@@ -785,7 +786,7 @@ def _start_scheduler(_log: logging.Logger) -> None:
 
             scheduler.add_job(
                 reap_environments,
-                trigger=CronTrigger.from_crontab("* * * * *"),
+                trigger=cron_trigger("* * * * *"),
                 id="env_reap",
                 name="environments:reap_expired",
                 replace_existing=True,

@@ -35,9 +35,10 @@ from typing import TYPE_CHECKING, Any, TypeVar, cast
 from provisa.discovery import candidates as candidates_repo
 from provisa.discovery import gather
 from provisa.discovery.analyzer import RelationshipCandidate
-from provisa.discovery.collector import collect_fk_for_tables
+from provisa.discovery.collector import collect_fk_for_tables, same_source_ids
 from provisa.discovery.columns import TableFacts
 from provisa.discovery.context import Scoring
+from provisa.discovery.key_names import key_name_proposals
 from provisa.discovery.direction import (
     Edge,
     Kind,
@@ -139,6 +140,9 @@ class RunSpec:
     #: The domains selected in the domain filter, as the person who started the run may reach them
     #: (REQ-2253): no table outside them is read or proposed, named or not. None: no narrowing.
     within: frozenset[str] | None
+    #: REQ-2262: a relationship between the sets counts in either direction (the review after
+    #: registration: the tables just registered against every table, each way round).
+    either_way: bool = False
 
 
 @dataclass
@@ -452,13 +456,27 @@ async def perform(
         known: Known = await gather.known(conn)
         fk_found: list[RelationshipCandidate] = []
         if "foreign_keys" in spec.kinds:
+            # REQ-2262: either way, a target table of a source table's own source may declare a
+            # key into it; a foreign key never crosses sources, so no other table is asked.
+            declaring = (
+                prepared.source_ids
+                | await same_source_ids(conn, prepared.source_ids, prepared.target_ids)
+                if spec.either_way
+                else prepared.source_ids
+            )
             fk_found = await collect_fk_for_tables(
-                state.source_pools, state.source_types, conn, prepared.source_ids
+                state.source_pools, state.source_types, conn, declaring
             )
     tables = prepared.tables
     # Declared foreign keys are the first check and are never measured (REQ-413, amended
     # 2026-11-16): only semantic pairs in the band are (:func:`provisa.discovery.runner.judged`).
     fk = _fk_proposals(fk_found)
+    # REQ-2262: matching key names and types, from the registered columns alone.
+    named = (
+        key_name_proposals(prepared.source, prepared.target, either_way=spec.either_way)
+        if "key_names" in spec.kinds
+        else []
+    )
     publisher = Publisher(pool, scope)
     read_sample = _caching(gather.uniqueness_reader(state))
 
@@ -480,7 +498,13 @@ async def perform(
 
     async def settled(semantic: list[Proposal], unread: list[Recorded]) -> Outcome:
         outcome = await settle(
-            [*fk, *semantic], tables, prepared.source_ids, prepared.target_ids, known, read_sample
+            [*fk, *named, *semantic],
+            tables,
+            prepared.source_ids,
+            prepared.target_ids,
+            known,
+            read_sample,
+            either_way=spec.either_way,
         )
         await publisher.publish(outcome.kept)
         await record(
@@ -515,6 +539,11 @@ async def perform(
             out["foreign_keys"] = {
                 "found": len(fk_found),
                 "suggested": sum(1 for p in outcome.kept if p.kind == "foreign_keys"),
+            }
+        if "key_names" in spec.kinds:
+            out["key_names"] = {
+                "found": len(named),
+                "suggested": sum(1 for p in outcome.kept if p.kind == "key_names"),
             }
         if tally is not None:
             out["semantics"] = _semantics_report(tally, outcome)

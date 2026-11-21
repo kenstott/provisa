@@ -98,6 +98,7 @@ export const SCOPE: DiscoveryScope = {
   sample_size: 10000,
   contained_at: 0.95,
   shared_ceiling: 0.6,
+  either_way: false,
 };
 /** The scope with Key value overlap not chosen (or not offered, without Semantics). */
 export const UNMEASURED = {
@@ -356,4 +357,5 @@ export const LAST: DiscoveryScope = {
   sample_size: null,
   contained_at: null,
   shared_ceiling: null,
+  either_way: false,
 };

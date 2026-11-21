@@ -39,7 +39,7 @@ import {
   Text,
 } from "@mantine/core";
 import { X } from "lucide-react";
-import type { RunProposal } from "../../api/admin";
+import type { DiscoveryKind, RunProposal } from "../../api/admin";
 import { FormField, FormLayout } from "../form/FormLayout";
 import { BreakableName } from "../list/BreakableName";
 import { ListActionsHead, ListHead, ListRow, ListTable } from "../list/ListTable";
@@ -89,6 +89,13 @@ function valuesOf(rows: RunProposal[], col: FilterCol) {
     ? entries.sort((a, b) => Number(b.value) - Number(a.value))
     : entries.sort((a, b) => a.value.localeCompare(b.value));
 }
+
+/** What produced a candidate no values were compared for: the rule that proposed it, else the model. */
+const UNMEASURED_RULE_KEY: Record<DiscoveryKind, string> = {
+  foreign_keys: "proposalsTable.measure.ruleForeignKeys",
+  key_names: "proposalsTable.measure.ruleKeyNames",
+  semantics: "proposalsTable.measure.modelScore",
+};
 
 export function ProposalsTable({
   state,
@@ -151,7 +158,7 @@ export function ProposalsTable({
   const measured = (p: RunProposal) =>
     [
       ...(p.measure ? measureLines(p.measure, t) : []),
-      p.source_table_id !== null && !p.measured ? t("proposalsTable.measure.modelScore") : "",
+      p.source_table_id !== null && !p.measured ? t(UNMEASURED_RULE_KEY[p.kind]) : "",
     ]
       .filter(Boolean)
       .join(" ");
