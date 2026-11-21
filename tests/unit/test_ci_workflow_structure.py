@@ -1557,7 +1557,7 @@ def test_every_plugin_restore_waits_for_a_job_that_primed_the_cache():
     fetched the jars from Maven Central inside collection at the same moment; core 17/18 got HTTP
     429 as an INTERNALERROR. Now one job per workflow run primes the cache (`phase: prime`: a hit,
     or one download, checksum-verified, saved at once) and every job that restores it (`phase:
-    restore`, which fails on a miss and verifies each jar) waits for that job, so the cache step
+    restore`, which takes a missed entry from the run's artifact and verifies each jar) waits for that job, so the cache step
     precedes pytest and no lane ever downloads."""
     restoring = []
     for path in WORKFLOWS:
@@ -1575,6 +1575,30 @@ def test_every_plugin_restore_waits_for_a_job_that_primed_the_cache():
                     f"that primes them (primers here: {sorted(primers)})"
                 )
     assert restoring, "no job restores the Trino plugins"
+
+
+def test_a_plugin_cache_miss_is_answered_by_the_runs_artifact_not_a_failure_or_a_download():
+    """Runs 44942101401 and 44940962731: the cache entry the priming job saved was evicted before
+    the lane's restore, which failed on the miss. The cache is branch-scoped and evictable; the
+    run's own artifact is not. Priming uploads the verified jars; a restore that missed takes
+    them from there."""
+    steps = yaml.safe_load(
+        (REPO / ".github" / "actions" / "trino-plugins" / "action.yml").read_text()
+    )["runs"]["steps"]
+    for s in steps:
+        if str(s.get("uses", "")).startswith("actions/cache/restore"):
+            assert s["with"]["fail-on-cache-miss"] is False, s["name"]
+    names = [s.get("name") for s in steps]
+    down = steps[names.index("Download the run's Trino plugins")]
+    up = steps[names.index("Upload the run's Trino plugins")]
+    assert down["uses"].startswith("actions/download-artifact")
+    assert up["uses"].startswith("actions/upload-artifact")
+    assert down["with"]["name"] == up["with"]["name"]
+    assert "restore" in down["if"] and "prime" in up["if"]
+    assert names.index("Download the run's Trino plugins") < names.index("Verify Trino plugins")
+    assert names.index("Upload the run's Trino plugins") > names.index(
+        "Verify the provisa-functions plugin"
+    )
 
 
 def test_the_lane_workflow_restores_the_plugins_before_its_lane_and_saves_none():
