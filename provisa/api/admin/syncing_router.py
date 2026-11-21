@@ -435,8 +435,8 @@ async def _entry_differences(org_id: str, entry: CatalogConnection) -> tuple[Any
         raise ApiError(
             400,
             "syncing.read_not_supported",
-            f"catalog provider {entry.provider!r} is not supported for reading yet",
-            provider=entry.provider,
+            str(exc),
+            provider=exc.provider,
         ) from exc
     except httpx.HTTPError as exc:
         raise ApiError(

@@ -32,6 +32,10 @@ if TYPE_CHECKING:
 class GlossaryListingUnsupported(NotImplementedError):  # REQ-2247
     """Raised when a catalog provider that cannot read its glossary is asked to list it."""
 
+    def __init__(self, provider: str) -> None:
+        self.provider = provider
+        super().__init__(f"catalog provider {provider!r} is not supported for reading yet")
+
 
 @dataclass(frozen=True)
 class CatalogTerm:  # REQ-2247
