@@ -671,7 +671,7 @@ class TestEngineAddressing:
         assert sent == [f"SELECT * FROM {_HOT_ADDRESSING[engine_key]}"]
         # The cache entry is still filed under the registered catalog and schema.
         mgr._store_rows.assert_awaited_once_with(
-            5, "regions", [{"id": 1, "name": "a"}], "id", "bench_postgresql", "public"
+            5, "regions", [{"id": 1, "name": "a"}], "id", "bench_postgresql", "public", {}
         )
 
     @pytest.mark.parametrize("engine_key", sorted(_HOT_ADDRESSING))
