@@ -147,7 +147,8 @@ def _duckdb_answer(where: str) -> bool:
     statement = transpile(_marked(where), "duckdb")
     tree = sqlglot.parse_one(statement, read="duckdb")
     predicate = tree.args["where"].this.sql(dialect="duckdb")
-    return duckdb.sql(f"SELECT {predicate} FROM (SELECT * FROM _row) AS h").fetchone()[0]
+    ((value,),) = duckdb.sql(f"SELECT {predicate} FROM (SELECT * FROM _row) AS h").fetchall()
+    return value
 
 
 @pytest.fixture

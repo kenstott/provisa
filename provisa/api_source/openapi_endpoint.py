@@ -194,7 +194,8 @@ def endpoint_columns(
 
 
 def api_auth(auth_config: dict | None) -> dict | None:
-    """An OpenAPI source's auth (``{type, token | username+password | header_name+api_key}``)
+    """An OpenAPI source's auth (``{type, token | username+password | header_name+api_key |
+    client_id+client_secret+token_url[+scope]}``)
     as the typed auth the caller applies (core.auth_models.ApiAuth). Secret references are kept
     as written; the caller resolves them at each call."""
     if not auth_config or auth_config.get("type", "none") == "none":
@@ -215,18 +216,38 @@ def api_auth(auth_config: dict | None) -> dict | None:
             "name": auth_config["header_name"],
             "location": "header",
         }
+    if kind == "oauth2_client_credentials":  # REQ-2265: the caller fetches and holds the token
+        auth = {
+            "type": "oauth2_client_credentials",
+            "client_id": auth_config["client_id"],
+            "client_secret": auth_config["client_secret"],
+            "token_url": auth_config["token_url"],
+        }
+        if auth_config.get("scope"):
+            auth["scope"] = auth_config["scope"]
+        return auth
     raise ValueError(f"OpenAPI auth type {kind!r} is not one the caller applies")
 
 
 #: The credential of each auth type, as the registration states it (:func:`api_auth`).
-AUTH_SECRET = {"bearer": "token", "basic": "password", "api_key": "api_key"}
+AUTH_SECRET = {
+    "bearer": "token",
+    "basic": "password",
+    "api_key": "api_key",
+    "oauth2_client_credentials": "client_secret",
+}
 
 
 def auth_without_secret(auth: Any) -> dict | None:
     """A source's stored auth (core.auth_models.ApiAuth) as it may leave the server, in the
     shape a registration states it: its type, user name or header name, never the credential.
     A caller that changes the source supplies the credential again."""
-    from provisa.core.auth_models import ApiAuthApiKey, ApiAuthBasic, ApiAuthBearer
+    from provisa.core.auth_models import (
+        ApiAuthApiKey,
+        ApiAuthBasic,
+        ApiAuthBearer,
+        ApiAuthOAuth2ClientCredentials,
+    )
 
     match auth:
         case None:
@@ -237,6 +258,15 @@ def auth_without_secret(auth: Any) -> dict | None:
             return {"type": "basic", "username": username}
         case ApiAuthApiKey(name=name):
             return {"type": "api_key", "header_name": name}
+        case ApiAuthOAuth2ClientCredentials(client_id=client_id, token_url=token_url, scope=scope):
+            stated = {
+                "type": "oauth2_client_credentials",
+                "client_id": client_id,
+                "token_url": token_url,
+            }
+            if scope:
+                stated["scope"] = scope
+            return stated
     raise ValueError(f"OpenAPI auth {type(auth).__name__} is not one a registration states")
 
 

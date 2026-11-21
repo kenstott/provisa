@@ -2,6 +2,7 @@
   "resultRedirect": {
     "landed": "Het resultaat ({{rows}} rijen) is naar de resultatenopslag geschreven.",
     "landedAt": "Het resultaat ({{rows}} rijen) is naar de resultatenopslag geschreven: {{url}}",
-    "download": "Downloaden"
+    "download": "Downloaden",
+    "downloadFailed": "De download is mislukt: {{reason}}"
   }
 }

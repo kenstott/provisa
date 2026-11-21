@@ -1,0 +1,13 @@
+{
+  "dataAddress": {
+    "label": "Data node",
+    "heading": "Send data requests to",
+    "none": "No data node",
+    "noneOffered": "No data node is listed for this region. Type an address below.",
+    "typedLabel": "Data node address",
+    "typedPlaceholder": "https://data.example.com",
+    "typedInvalid": "Enter an http or https address",
+    "use": "Use",
+    "loadError": "Could not load the data nodes"
+  }
+}

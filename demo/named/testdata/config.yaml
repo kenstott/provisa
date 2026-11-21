@@ -42,8 +42,7 @@ roles:
 - id: shop_analyst
   parents: [analyst]
   description: "Queries the shop's data."
-  capabilities:
-  - query_development
+  capabilities: [data_product_read, glossary_read, query_development, usage]
   domain_access:
   - shop
 server:
@@ -51,6 +50,13 @@ server:
     default_row_limit: 100
     request_timeout: 60
     trino_query_timeout: 120
+vector_models:
+# A local sentence-transformers model for the assistant's catalog search: no key, no network once
+# it is cached (provisa[vector], which demo.yaml declares).
+- id: sentence-transformers/all-MiniLM-L6-v2
+  provider: huggingface
+  dimensions: 384
+  enabled: true
 sources:
 - id: shop-db
   type: postgresql

@@ -1,0 +1,27 @@
+{
+  "dbtFormSection": {
+    "specLegend": "Provenance du manifeste",
+    "specLocation": "URL ou emplacement de l'artefact",
+    "specUpload": "Téléverser",
+    "specCloud": "dbt Cloud",
+    "locationLabel": "URL du manifeste ou emplacement de l'artefact",
+    "locationPlaceholder": "https://example.com/manifest.json ou s3://bucket/target/manifest.json",
+    "uploadLabel": "Fichier manifest.json",
+    "cloudHostLabel": "URL dbt Cloud",
+    "accountLabel": "ID du compte",
+    "jobLabel": "ID du job",
+    "tokenLabel": "Jeton d'API",
+    "tokenHint": "Conservé avec cette source et utilisé pour lire le manifeste et exécuter des jobs.",
+    "commandLineLabel": "Commande qui exécute dbt",
+    "commandLineHint": "Exécutée là où dbt est installé, par exemple dbt --project-dir /srv/project.",
+    "previewButton": "Aperçu du manifeste",
+    "summary": "{{project}} ({{adapter}}) : {{models}} modèles et {{commands}} commandes disponibles.",
+    "warehouseFound": "{{database}} est lue via la source {{source}}.",
+    "warehouseMissing": "Aucune source enregistrée ne lit la base de données {{adapter}} {{database}}. Créez-en une :",
+    "warehouseId": "ID de la nouvelle source",
+    "warehouseHost": "Compte ou hôte",
+    "warehouseUser": "Nom d'utilisateur",
+    "warehouseCredential": "Identifiant",
+    "adapterUnknown": "L'adaptateur {{adapter}} n'a pas de type de source correspondant. Enregistrez d'abord son entrepôt de données, puis ajoutez cette source."
+  }
+}

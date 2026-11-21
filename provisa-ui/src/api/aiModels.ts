@@ -75,14 +75,42 @@ export type LlmVendor = (typeof LLM_VENDORS)[number];
 // (mirrors provisa.core.org_secrets.JEV_SECRET_KEY).
 export const JEV_KEY = "jev" as const;
 
+// REQ-464: a model's limits in tokens — the most it reads in one request (input) and the longest
+// answer it writes (output) — and where they come from: the org's own figure ("override"), the
+// vendor's published one ("known"), or the default pair for a model Provisa has no figure for.
+export type ModelLimitsSource = "override" | "known" | "default";
+
+export interface ModelLimits {
+  vendor: string;
+  model: string;
+  input_tokens: number;
+  output_tokens: number;
+  source: ModelLimitsSource;
+  // What clearing an override returns to: the published figure, else the default pair.
+  base_input_tokens: number;
+  base_output_tokens: number;
+  base_source: "known" | "default";
+}
+
+/** An org's own limits for one model; null in an update clears them. */
+export interface ModelLimitsOverride {
+  input_tokens: number;
+  output_tokens: number;
+}
+
 export interface AiModelsState {
   ai_models: AiModelAssignments;
+  // REQ-464: each assigned model's limits, by vendor then model id.
+  model_limits: Record<string, Record<string, ModelLimits>>;
   vector_models: VectorModel[];
   ai_endpoints: AiEndpoint[];
   nl: { rate_limit: number | null };
   // REQ-1395, REQ-1398: which vendors the org has set its own key for. Keys themselves are
   // never returned.
   api_keys_set: Record<string, boolean>;
+  // REQ-1395: whether a vendor with no key set is called with the deployment's own. False on a
+  // server of many organizations, where such a vendor is not called.
+  deployment_keys: boolean;
   restart_required_note: string;
 }
 
@@ -93,6 +121,9 @@ export interface AiModelsUpdate {
   vector_models?: VectorModel[];
   ai_endpoints?: AiEndpoint[];
   nl?: { rate_limit: number | null };
+  // REQ-464: per vendor and model, the org's own limits to set, or null to clear them; a model
+  // not named keeps what it has.
+  model_limits?: Record<string, Record<string, ModelLimitsOverride | null>>;
   // REQ-1395, REQ-1398: per-vendor keys to set/replace/clear. A non-empty string sets/replaces;
   // an empty string clears; a vendor omitted from the map is left unchanged.
   api_keys?: Record<string, string>;
@@ -114,6 +145,14 @@ export async function fetchVendorModels(vendor: string): Promise<string[]> {
   if (!resp.ok) throw new Error(requestFailed("vendor model listing", resp.status));
   const body: { vendor: string; models: string[] } = await resp.json();
   return body.models;
+}
+
+/** One vendor/model's limits, whether or not a task is assigned to it (REQ-464). */
+export async function fetchModelLimits(vendor: string, model: string): Promise<ModelLimits> {
+  const query = new URLSearchParams({ vendor, model });
+  const resp = await fetch(`${API_BASE}/admin/ai-models/limits?${query}`);
+  if (!resp.ok) throw new Error(requestFailed("model limits fetch", resp.status));
+  return resp.json();
 }
 
 export async function setAiModels(

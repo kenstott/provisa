@@ -87,7 +87,6 @@
     "graphqlQueriesEmpty": "कोई क्वेरी योग्य टेबल या संबंध नहीं",
     "graphqlQueryAria": "{{table}} के लिए उदाहरण GraphQL क्वेरी चलाएँ",
     "sqlQueryAria": "{{table}} के लिए उदाहरण SQL क्वेरी चलाएँ",
-    "cypherQueryAria": "{{type}} के लिए उदाहरण Cypher क्वेरी चलाएँ",
     "grpcQueryAria": "{{table}} के लिए उदाहरण gRPC कॉल चलाएँ",
     "jsonapiQueryAria": "{{table}} के लिए उदाहरण JSON:API अनुरोध चलाएँ",
     "openApiQueryAria": "{{table}} के लिए उदाहरण REST अनुरोध चलाएँ",
@@ -97,7 +96,6 @@
         "customProperties": "कस्टम प्रॉपर्टी",
         "relatedTables": "संबंधित टेबल",
         "relationships": "संबंध",
-        "lineage": "लिनिएज",
         "inputPorts": "इनपुट पोर्ट",
         "dataQuality": "डेटा क्वालिटी"
       },
@@ -107,18 +105,21 @@
       "dqRulesTitle": "क्वालिटी नियम — {{table}}",
       "dqRulesEmpty": "कॉन्ट्रैक्ट कोई चेक परिभाषित नहीं करता",
       "relatedTablesEmpty": "कोई संबंधित टेबल नहीं",
-      "relatedTablesHint": "इस प्रोडक्ट की टेबल से किसी स्वीकृत संबंध के माध्यम से पहुँच-योग्य, लेकिन (अभी) इसका हिस्सा नहीं।",
+      "relatedTablesHint": "इस उत्पाद की टेबलों से एक स्वीकृत रिलेशनशिप के ज़रिए पहुँचा जा सकता है, लेकिन अभी यह इसका हिस्सा नहीं है।",
       "relationshipsEmpty": "इस प्रोडक्ट की टेबल के बीच कोई संबंध नहीं",
       "lineageEmpty": "कोई लिनिएज नहीं",
       "lineageLoading": "लिनिएज लोड हो रहा है…",
-      "lineageHint": "कॉलम लिनिएज ग्राफ़ जो इस प्रोडक्ट की टेबल को प्रकाशित एंडपॉइंट के रूप में दिखाता है, साथ ही उन्हें व्युत्पन्न करने में उपयोग हुई हर अपस्ट्रीम टेबल। केवल जानकारी के लिए — view_governance क्षमता आवश्यक है।",
+      "lineageTitle": "कॉलम लिनिएज: यह प्रोडक्ट कहाँ से आता है",
+      "lineageHint": "यह उत्पाद जो भी कॉलम प्रकाशित करता है और वह इनपुट कॉलम जिससे वह आता है, बीच के हर चरण के साथ। view_governance क्षमता आवश्यक है।",
       "outputPortsHint": "इस प्रोडक्ट की क्वेरी योग्य सतह: इसकी सदस्य तालिकाएँ और कमांड। हर एक के उदाहरण क्वेरी एक्सेस पैटर्न में हैं।",
       "customPropertiesEmpty": "कोई कस्टम प्रॉपर्टी नहीं",
-      "lineageLaneUpstream": "अपस्ट्रीम, चरण {{n}}",
-      "lineageLaneDownstream": "डाउनस्ट्रीम, चरण {{n}}"
+      "lineageLaneTables": "इस प्रोडक्ट की टेबल",
+      "lineageLaneInputs": "इनपुट",
+      "lineageLaneUpstream": "अपस्ट्रीम, इनपुट से {{n}} हॉप आगे",
+      "inputsLineageLink": "कॉलम लिनिएज देखें"
     },
     "readOnly": "केवल-पठन",
-    "readOnlyHint": "आपके पास केवल data_product_read है — संपादित करने के लिए org_admin data_product_rw दे सकता है।",
+    "readOnlyHint": "आपके पास केवल data_product_read है। संपादन के लिए org_admin data_product_rw दे सकता है।",
     "relatedTermsConcept": "अवधारणा",
     "status_draft": "ड्राफ़्ट",
     "status_live": "सक्रिय",
@@ -131,15 +132,15 @@
     "successorHint": "इसकी तालिकाएँ, व्यू और कमांड उत्तराधिकारी को चले जाते हैं, जो उसी डोमेन का प्रोडक्ट है।",
     "reasonLabel": "कारण",
     "publish": "प्रकाशित करें",
-    "publishHint": "इस ड्राफ़्ट को सक्रिय करें: यह उपभोक्ताओं और कैटलॉग को उपलब्ध होता है।",
+    "publishHint": "इस ड्राफ़्ट को लाइव करें और उपभोक्ताओं व कैटलॉग को पेश करें।",
     "deprecate": "अप्रचलित करें",
-    "deprecateHint": "इस सक्रिय प्रोडक्ट को सेवा से बाहर जाने वाला चिह्नित करें: यह सेवा में रहता है, एक कारण और वैकल्पिक नियोजित सेवा-समाप्ति के साथ।",
+    "deprecateHint": "इस लाइव उत्पाद को समाप्ति की ओर चिह्नित करें। यह कारण और वैकल्पिक नियोजित रिटायरमेंट के साथ सेवा में बना रहता है।",
     "deprecateTitle": "'{{product}}' को अप्रचलित करें",
     "retire": "सेवा से हटाएँ",
-    "retireHint": "इस प्रोडक्ट को सेवा से हटाएँ: इसकी तालिकाएँ, व्यू और कमांड इसके डोमेन के उत्तराधिकारी को चले जाते हैं।",
+    "retireHint": "इस उत्पाद को सेवा से हटाएँ। इसकी टेबल, व्यू और कमांड इसके डोमेन में किसी उत्तराधिकारी के पास चले जाते हैं।",
     "retireTitle": "'{{product}}' को सेवा से हटाएँ",
     "retireMoves": "जो सदस्य जाएँगे: {{members}}",
-    "retireNoMembers": "इसका कोई सदस्य नहीं है: उत्तराधिकारी वैकल्पिक है।",
+    "retireNoMembers": "इसके कोई सदस्य नहीं हैं, इसलिए उत्तराधिकारी वैकल्पिक है।",
     "restore": "पुनर्स्थापित करें",
     "restoreHint": "अप्रचलन (वापस सक्रिय) या सेवा से हटाना (वापस ड्राफ़्ट) पूर्ववत करें।",
     "toReview": "समीक्षा हेतु",
@@ -177,9 +178,6 @@
       "versionLabel": "अनुबंध संस्करण",
       "statusLabel": "अनुबंध स्थिति",
       "descriptionLabel": "यह किसलिए है",
-      "columnsLabel": "कॉलम",
-      "columnsHelp": "किसी कॉलम को हटाने या उसका प्रकार बदलने के लिए नया संस्करण चाहिए।",
-      "requiredLabel": "कभी null नहीं",
       "slaLabel": "सेवा स्तर",
       "slaProperty": "गुण",
       "slaValue": "मान",
@@ -211,7 +209,56 @@
         "check_removed": "गुणवत्ता जाँच {{subject}} हटाई गई",
         "check_changed": "गुणवत्ता जाँच {{subject}} बदली गई",
         "description_changed": "विवरण बदला गया",
-        "terms_changed": "शर्तें बदली गईं: {{subject}}"
+        "terms_changed": "शर्तें बदली गईं: {{subject}}",
+        "field_masked": "फ़ील्ड {{subject}} मास्क किया गया ({{after}})",
+        "field_unmasked": "फ़ील्ड {{subject}} अब मास्क नहीं है",
+        "row_rule_added": "पंक्ति नियम जोड़ा गया: {{subject}}",
+        "row_rule_removed": "पंक्ति नियम हटाया गया: {{subject}}",
+        "data_level_changed": "डेटा स्तर {{before}} से {{after}} में बदला",
+        "dq_results_changed": "क्वालिटी परिणाम {{before}} से {{after}} में बदले",
+        "profiles_changed": "प्रोफ़ाइल {{before}} से {{after}} में बदले",
+        "duration_changed": "अवधि {{before}} से {{after}} में बदली",
+        "terms_of_use_changed": "उपयोग की शर्तें बदलीं: {{subject}}"
+      },
+      "howToUse": {
+        "column": {
+          "surface": "सतह",
+          "address": "पता",
+          "how": "उपयोग कैसे करें",
+          "link": "उदाहरण"
+        },
+        "surface": {
+          "pgwire": "PostgreSQL",
+          "flight-sql": "Arrow Flight SQL",
+          "grpc": "gRPC",
+          "graphql": "GraphQL",
+          "rest": "REST",
+          "openapi": "OpenAPI",
+          "jsonapi": "JSON:API",
+          "sparql": "SPARQL"
+        },
+        "how": {
+          "pgwire": "कोई भी PostgreSQL क्लाइंट, जैसे psql या DBeaver। डेटाबेस {{database}}, स्कीमा {{schema}}।",
+          "flight-sql": "कोई भी Arrow Flight SQL क्लाइंट, जैसे ADBC ड्राइवर। डेटाबेस {{database}}, स्कीमा {{schema}}।",
+          "grpc": "कोई भी gRPC क्लाइंट, सेवा {{service}} पर, मेटाडेटा authorization: Bearer <token> के साथ।",
+          "graphql": "कोई भी GraphQL क्लाइंट: इस तालिका पर क्वेरी POST करें, हेडर Authorization: Bearer <token> के साथ।",
+          "rest": "कोई भी HTTP क्लाइंट: इस पते पर GET करें, हेडर Authorization: Bearer <token> के साथ।",
+          "openapi": "केवल इस तालिका का विवरण: इसे Swagger UI, Postman या क्लाइंट जनरेटर में लोड करें।",
+          "jsonapi": "कोई भी JSON:API क्लाइंट: इस पते पर GET करें, हेडर Authorization: Bearer <token> के साथ।",
+          "sparql": "कोई भी SPARQL 1.1 क्लाइंट: इस तालिका की क्लास पर क्वेरी POST करें, हेडर Authorization: Bearer <token> के साथ।"
+        },
+        "access": {
+          "granted": "केवल तब काम करता है जब {{approvers}} द्वारा पहुँच प्रदान कर दी जाए।",
+          "noApprover": "केवल तब काम करता है जब {{roles}} के धारक द्वारा पहुँच प्रदान कर दी जाए। यह अनुबंध किसी अनुमोदक का नाम नहीं देता।",
+          "undeclared": "केवल तब काम करता है जब पहुँच प्रदान कर दी जाए। यह अनुबंध किसी भूमिका या अनुमोदक का नाम नहीं देता।"
+        },
+        "ask": {
+          "approvers": "{{approvers}} से पहुँच माँगें",
+          "roles": "{{roles}} के धारक से पहुँच माँगें",
+          "nobody": "यह अनुबंध किसी ऐसे व्यक्ति का नाम नहीं देता जिससे पूछा जाए"
+        },
+        "open": "उदाहरण खोलें",
+        "openAria": "{{table}} के लिए {{surface}} उदाहरण खोलें"
       },
       "loadError": "अनुबंध पढ़े नहीं जा सके: {{error}}",
       "notExported": "{{member}} का कोई निर्यातित अनुबंध नहीं है",
@@ -221,7 +268,7 @@
         "quality": "गुणवत्ता",
         "sla": "SLA",
         "support": "सहायता और टीम",
-        "servers": "सर्वर",
+        "howToUse": "उपयोग कैसे करें",
         "pricing": "मूल्य निर्धारण",
         "custom": "कस्टम गुण और टैग"
       },
@@ -260,6 +307,12 @@
         "roles": "भूमिकाएँ",
         "history": "संस्करण इतिहास"
       }
-    }
+    },
+    "detailPanel": "डेटा प्रोडक्ट का विवरण",
+    "tagFacetLabel": "टैग",
+    "tagFacetPlaceholder": "टैग से फ़िल्टर करें",
+    "noMatch": "फ़िल्टर से कोई डेटा प्रोडक्ट मेल नहीं खाता",
+    "domainFacetLabel": "डोमेन",
+    "domainFacetPlaceholder": "डोमेन से फ़िल्टर करें"
   }
 }

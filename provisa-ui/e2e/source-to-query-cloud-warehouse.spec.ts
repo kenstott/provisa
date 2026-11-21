@@ -51,7 +51,7 @@
 
 import { test, expect, BACKEND_URL } from "./coverage";
 import { seedWarehouse, WAREHOUSE_SCHEMA } from "./cloud-warehouse";
-import { deleteSourceAndItsTables } from "./delete-source";
+import { retireSourceTables } from "./retire-source-tables";
 import {
   expectDiscoveredColumns,
   openSourcesForm,
@@ -65,10 +65,11 @@ import {
 
 
 
-// A test removes the source it added before dropping its schema: left registered, its replica
-// keeps rebuilding a table that no longer exists (TABLE_OR_VIEW_NOT_FOUND, run 40365790222).
-async function removeSource(sourceId: string): Promise<void> {
-  await deleteSourceAndItsTables(async (query, variables = {}) => {
+// A test retires the table it registered before dropping its schema: left in service, its replica
+// keeps rebuilding a table that no longer exists (TABLE_OR_VIEW_NOT_FOUND, run 40365790222). The
+// source is kept (REQ-2248).
+async function retireSourceTablesOf(sourceId: string): Promise<void> {
+  await retireSourceTables(async (query, variables = {}) => {
     const res = await fetch(`${BACKEND_URL}/admin/graphql`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -145,7 +146,7 @@ test.describe("cloud warehouse sources through the UI (REQ-1747)", () => {
       expect(combined).toEqual(expect.arrayContaining(WIDGET_ROWS));
     } finally {
       try {
-        await removeSource(sourceId);
+        await retireSourceTablesOf(sourceId);
       } finally {
         seedWarehouse("snowflake", "down");
       }
@@ -204,7 +205,7 @@ test.describe("cloud warehouse sources through the UI (REQ-1747)", () => {
       expect(rows).toEqual(WIDGET_ROWS);
     } finally {
       try {
-        await removeSource(sourceId);
+        await retireSourceTablesOf(sourceId);
       } finally {
         seedWarehouse("databricks", "down");
       }
@@ -254,7 +255,7 @@ test.describe("cloud warehouse sources through the UI (REQ-1747)", () => {
       expect(rows).toEqual(WIDGET_ROWS);
     } finally {
       try {
-        await removeSource(sourceId);
+        await retireSourceTablesOf(sourceId);
       } finally {
         seedWarehouse("bigquery", "down");
       }
@@ -322,7 +323,7 @@ test.describe("cloud warehouse sources through the UI (REQ-1747)", () => {
       expect(rows).toEqual(WIDGET_ROWS);
     } finally {
       try {
-        await removeSource(sourceId);
+        await retireSourceTablesOf(sourceId);
       } finally {
         seedWarehouse("fabric", "down");
       }

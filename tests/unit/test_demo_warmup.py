@@ -243,3 +243,39 @@ def test_the_warmup_binds_an_earlier_statements_answer_to_the_next_statement():
     [audit] = [s for sql, s in seen.items() if "query_audit_log" in sql]
     assert audit["params"] is None
     assert not [h for s in seen.values() for h in s["headers"] if h.startswith(b"x-provisa-as")]
+
+
+def test_tours_warm_one_at_a_time(monkeypatch):
+    """REQ-2006: each warm-up's requests are queries of a sandbox at its coldest: several at once
+    took the threads and the cores the visitors opening demos needed, and answered 503 themselves."""
+    import threading
+    import time
+    from types import SimpleNamespace
+
+    from provisa.api import demo_templates
+
+    held = {"now": 0, "most": 0}
+    lock = threading.Lock()
+    finished = threading.Semaphore(0)
+
+    async def _warm(*args):
+        with lock:
+            held["now"] += 1
+            held["most"] = max(held["most"], held["now"])
+        time.sleep(0.05)
+        with lock:
+            held["now"] -= 1
+        finished.release()
+
+    monkeypatch.setattr(demo_warmup, "_warm", _warm)
+    monkeypatch.setattr(
+        demo_templates,
+        "published_demo",
+        lambda name: SimpleNamespace(template_org="sbxtplweblogs", directory=Path("/none")),
+    )
+    monkeypatch.setattr(demo_templates, "demo_roles", lambda org: [])
+    for number in range(3):
+        demo_warmup.warm_tour(object(), f"sbx{number}", "weblogs", {})
+    for _ in range(3):
+        assert finished.acquire(timeout=5)
+    assert held["most"] == 1

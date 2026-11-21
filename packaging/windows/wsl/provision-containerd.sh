@@ -1,8 +1,8 @@
 #!/bin/sh
 # Provision containerd + nerdctl inside the Provisa WSL2 distro (one-time).
 # Installs the bundled nerdctl-full archive (containerd, runc, CNI, buildkit) and
-# writes a start script. The Windows equivalent of the Lima nerdctl-full install
-# on macOS. Runs as root inside the distro. POSIX sh (Alpine/Ubuntu rootfs).
+# writes a start script. Windows only: the macOS container tier uses the user's
+# own Docker. Runs as root inside the distro. POSIX sh (Alpine/Ubuntu rootfs).
 set -eu
 
 NERDCTL_ARCHIVE="$1"   # /mnt/... path to nerdctl-full-<ver>-linux-amd64.tar.gz

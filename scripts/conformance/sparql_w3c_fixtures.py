@@ -404,8 +404,8 @@ def relationship_entries(f: Fixture) -> list[dict]:
     ]
 
 
-def access(served: list[Fixture]) -> dict:
-    """Each dataset's domain and role. The job user holds them all (``default_assignments``) and
+def access(served: list[Fixture], user: str) -> dict:
+    """Each dataset's domain and role. The job user holds them all (``assignments``) and
     names one per request (REQ-273)."""
     return {
         "domains": [{"id": f.domain, "description": f"W3C SPARQL dataset {f.id}"} for f in served],
@@ -418,8 +418,7 @@ def access(served: list[Fixture]) -> dict:
             }
             for f in served
         ],
-        "role_mapping": [],
-        "default_assignments": [{"domain_id": "*", "role_id": f.role} for f in served],
+        "assignments": {user: [{"domain_id": "*", "role_id": f.role} for f in served]},
         "glossary_terms": [
             {
                 "name": name,
@@ -433,7 +432,9 @@ def access(served: list[Fixture]) -> dict:
     }
 
 
-def seed(root: Path, pg_dsn: str, tables: Path, relationships: Path, access_out: Path) -> None:
+def seed(
+    root: Path, pg_dsn: str, user: str, tables: Path, relationships: Path, access_out: Path
+) -> None:
     import psycopg
     import yaml
 
@@ -464,7 +465,7 @@ def seed(root: Path, pg_dsn: str, tables: Path, relationships: Path, access_out:
     relationships.write_text(
         yaml.safe_dump([r for f in served for r in relationship_entries(f)], sort_keys=False)
     )
-    access_out.write_text(yaml.safe_dump(access(served), sort_keys=False))
+    access_out.write_text(yaml.safe_dump(access(served, user), sort_keys=False))
     print(f"seeded {len(served)} datasets in {SCHEMA}")
 
 
@@ -474,11 +475,12 @@ def main(argv: list[str]) -> int:
     s = sub.add_parser("seed")
     s.add_argument("--suite", required=True, type=Path)
     s.add_argument("--pg", required=True)
+    s.add_argument("--user", required=True)
     s.add_argument("--tables", required=True, type=Path)
     s.add_argument("--relationships", required=True, type=Path)
     s.add_argument("--access", required=True, type=Path)
     args = parser.parse_args(argv)
-    seed(args.suite, args.pg, args.tables, args.relationships, args.access)
+    seed(args.suite, args.pg, args.user, args.tables, args.relationships, args.access)
     return 0
 
 

@@ -22,15 +22,17 @@ from decimal import Decimal
 from provisa.compiler.sql_gen import ColumnRef, CompiledQuery
 from provisa.executor.serialize import (
     _convert_value,
-    _recursive_json_convert,
-    _to_hashable,
-    serialize_aggregate,
+    json_value,
     serialize_connection,
-    serialize_rows,
 )
+from tests.unit.json_encoder.rows import serialize_aggregate, serialize_rows
 
 
-def _cr(field_name, column=None, nested_in=None, cardinality=None, is_agg=False, alias=None):
+def _cr(
+    field_name, column=None, nested_in=None, cardinality=None, is_agg=False, alias=None, json=None
+):
+    # A nodes / relationship column (is_agg) is one the statement builds as JSON: the compiler
+    # marks it json (REQ-1867).
     return ColumnRef(
         alias=alias,
         column=column or field_name,
@@ -38,21 +40,23 @@ def _cr(field_name, column=None, nested_in=None, cardinality=None, is_agg=False,
         nested_in=nested_in,
         cardinality=cardinality,
         is_agg=is_agg,
+        json=is_agg if json is None else json,
     )
 
 
 # ---------------------------------------------------------------------------
-# _convert_value / _recursive_json_convert / _to_hashable
+# _convert_value / json_value / the encoder's row identity
 # ---------------------------------------------------------------------------
 
 
 class TestConvertValue:
+    # REQ-1867 (amended 2026-11-02): a DECIMAL is the JSON string of its exact digits. Before, it
+    # was a float, or an int made from one.
     def test_decimal_integral(self):
-        assert _convert_value(Decimal("5")) == 5
-        assert isinstance(_convert_value(Decimal("5")), int)
+        assert _convert_value(Decimal("5")) == "5"
 
     def test_decimal_fractional(self):
-        assert _convert_value(Decimal("5.50")) == 5.5
+        assert _convert_value(Decimal("5.50")) == "5.50"
 
     def test_date_isoformat(self):
         d = date(2024, 1, 15)
@@ -62,11 +66,12 @@ class TestConvertValue:
         dt = datetime(2024, 1, 15, 10, 30)
         assert _convert_value(dt) == dt.isoformat()
 
-    def test_json_string_object_parsed(self):
-        assert _convert_value('{"a": 1}') == {"a": 1}
+    # REQ-1867: text is the string it is, even when it reads as JSON. Before, it was parsed.
+    def test_json_looking_text_stays_a_string(self):
+        assert _convert_value('{"a": 1}') == '{"a": 1}'
 
-    def test_json_string_array_parsed(self):
-        assert _convert_value("[1, 2, 3]") == [1, 2, 3]
+    def test_json_looking_array_text_stays_a_string(self):
+        assert _convert_value("[1, 2, 3]") == "[1, 2, 3]"
 
     def test_invalid_json_string_passthrough(self):
         assert _convert_value("{not valid json") == "{not valid json"
@@ -78,46 +83,58 @@ class TestConvertValue:
         assert _convert_value(None) is None
 
     def test_native_dict_recursed(self):
-        assert _convert_value({"x": Decimal("2")}) == {"x": 2}
+        assert _convert_value({"x": Decimal("2")}) == {"x": "2"}
 
     def test_native_list_recursed(self):
-        assert _convert_value([Decimal("2"), Decimal("3.5")]) == [2, 3.5]
+        assert _convert_value([Decimal("2"), Decimal("3.5")]) == ["2", "3.5"]
 
     def test_int_passthrough(self):
         assert _convert_value(42) == 42
 
-    def test_nested_json_string_with_decimal_like_values(self):
-        # Nested list-in-dict: outer dict, inner list of scalars
-        result = _convert_value('{"items": [1, 2], "count": 2}')
+    def test_native_string_inside_a_dict_is_not_parsed(self):
+        assert _convert_value({"a": "[1]"}) == {"a": "[1]"}
+
+
+class TestJsonValue:
+    """A JSON-typed column's value (REQ-1867): its text parsed, its strings left as text."""
+
+    def test_json_text_is_parsed(self):
+        result = json_value('{"items": [1, 2], "count": 2}', "f")
         assert result == {"items": [1, 2], "count": 2}
 
+    def test_a_driver_parsed_value_is_kept(self):
+        assert json_value({"a": Decimal("1.5")}, "f") == {"a": "1.5"}
 
-class TestRecursiveJsonConvert:
-    def test_dict_input(self):
-        result = _recursive_json_convert({"a": Decimal("1.5")})
-        assert result == {"a": 1.5}
+    def test_a_string_inside_is_not_parsed_again(self):
+        assert json_value('{"a": "[1]"}', "f") == {"a": "[1]"}
 
-    def test_list_input(self):
-        result = _recursive_json_convert([Decimal("1"), "x"])
-        assert result == [1, "x"]
-
-    def test_scalar_passthrough(self):
-        assert _recursive_json_convert("plain") == "plain"
+    def test_a_json_text_path_is_parsed(self):
+        # Trino's json_format makes a nested relationship's list text inside its parent.
+        got = json_value('[{"id": 1, "items": "[{\\"n\\": 2}]"}]', "f", frozenset({"items"}))
+        assert got == [{"id": 1, "items": [{"n": 2}]}]
 
 
-class TestToHashable:
-    def test_dict_becomes_json_string(self):
-        result = _to_hashable({"b": 1, "a": 2})
-        assert result == '{"a": 2, "b": 1}'
+class TestRowIdentity:
+    """Rows are one when they are the same typed value (REQ-2194, REQ-1867): the Rust encoder's
+    dedup key, which replaced ``_to_hashable``'s ``json.dumps(default=str)`` text."""
 
-    def test_list_becomes_json_string(self):
-        result = _to_hashable([1, 2])
-        assert result == "[1, 2]"
+    def test_equal_objects_are_one_row(self):
+        cols = [_cr("doc", json=True)]
+        rows = [('{"b": 1, "a": 2}',), ('{"b":1,"a":2}',)]
+        assert serialize_rows(rows, cols, "t")["data"]["t"] == [{"doc": {"b": 1, "a": 2}}]
 
-    def test_scalar_passthrough(self):
-        assert _to_hashable(5) == 5
-        assert _to_hashable("x") == "x"
-        assert _to_hashable(None) is None
+    def test_an_object_and_its_text_are_two_rows(self):
+        cols = [_cr("doc", json=True)]
+        rows = [('{"a": 1}',), ('"{\\"a\\": 1}"',)]
+        assert serialize_rows(rows, cols, "t")["data"]["t"] == [
+            {"doc": {"a": 1}},
+            {"doc": '{"a": 1}'},
+        ]
+
+    def test_a_number_and_its_digits_are_two_rows(self):
+        cols = [_cr("v", json=True)]
+        rows = [("5",), ('"5"',), ("5.0",), ("5",)]
+        assert serialize_rows(rows, cols, "t")["data"]["t"] == [{"v": 5}, {"v": "5"}, {"v": 5.0}]
 
 
 # ---------------------------------------------------------------------------
@@ -261,7 +278,7 @@ class TestSerializeAggregate:
         agg_columns = [_cr("amount", nested_in="aggregate.sum")]
         agg_rows = [(Decimal("100.00"),)]
         result = serialize_aggregate(agg_rows, agg_columns, "orders")
-        assert result["data"]["orders"]["aggregate"]["sum"]["amount"] == 100
+        assert result["data"]["orders"]["aggregate"]["sum"]["amount"] == "100.00"
 
     def test_aggregate_empty_rows(self):
         result = serialize_aggregate([], [_cr("count")], "orders")

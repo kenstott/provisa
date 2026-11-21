@@ -513,20 +513,20 @@ def rewrite_correlated_subqueries_for_trino(sql: str) -> str:  # REQ-066, REQ-06
     if not modified:
         return tree.sql(dialect="postgres") if recursed else sql
 
-    new_tree = tree.copy()
-    new_tree.set("expressions", new_exprs)
-    existing_joins = list(new_tree.args.get("joins") or [])
-    new_tree.set("joins", existing_joins + new_joins)
+    # In place: this function parsed the tree and returns its text. The render below keeps its copy.
+    tree.set("expressions", new_exprs)
+    existing_joins = list(tree.args.get("joins") or [])
+    tree.set("joins", existing_joins + new_joins)
 
     if cte_defs:
-        existing_with = new_tree.args.get("with_")
+        existing_with = tree.args.get("with_")
         if existing_with:
             existing_ctes = list(existing_with.args.get("expressions") or [])
             existing_with.set("expressions", existing_ctes + cte_defs)
         else:
-            new_tree.set("with_", exp.With(expressions=cte_defs))
+            tree.set("with_", exp.With(expressions=cte_defs))
 
-    return new_tree.sql(dialect="postgres")
+    return tree.sql(dialect="postgres")
 
 
 def _rewrite_from_join_subqueries(tree: exp.Select) -> tuple[exp.Select, bool]:
@@ -537,22 +537,23 @@ def _rewrite_from_join_subqueries(tree: exp.Select) -> tuple[exp.Select, bool]:
     inside a derived table's SELECT one or more FROM/JOIN levels down. Recurse into
     every FROM/JOIN Subquery's inner SELECT and rewrite it independently — the nested
     SELECT's own CTEs stay local to that derived table, which is valid SQL.
+
+    Edits ``tree`` in place; its one caller passes the tree it parsed and keeps the result.
     """
     changed = False
-    new_tree = tree.copy()
 
-    from_clause = new_tree.args.get("from_")
+    from_clause = tree.args.get("from_")
     if from_clause is not None and isinstance(from_clause.this, exp.Subquery):
         rewritten_from, sub_changed = _rewrite_subquery_node(from_clause.this)
         if sub_changed:
             new_from = from_clause.copy()
             new_from.set("this", rewritten_from)
-            new_tree.set("from_", new_from)
+            tree.set("from_", new_from)
             changed = True
 
     new_joins: list[exp.Join] = []
     joins_changed = False
-    for join in new_tree.args.get("joins") or []:
+    for join in tree.args.get("joins") or []:
         if isinstance(join.this, exp.Subquery):
             rewritten_join_subq, sub_changed = _rewrite_subquery_node(join.this)
             if sub_changed:
@@ -563,10 +564,10 @@ def _rewrite_from_join_subqueries(tree: exp.Select) -> tuple[exp.Select, bool]:
                 continue
         new_joins.append(join)
     if joins_changed:
-        new_tree.set("joins", new_joins)
+        tree.set("joins", new_joins)
         changed = True
 
-    return new_tree, changed
+    return tree, changed
 
 
 def _rewrite_subquery_node(subq: exp.Subquery) -> tuple[exp.Subquery, bool]:

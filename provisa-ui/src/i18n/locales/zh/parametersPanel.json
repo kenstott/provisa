@@ -2,9 +2,13 @@
   "parametersPanel": {
     "title": "参数",
     "summary": "{{count}} 个中有 {{required}} 个必填",
+    "limits": "此表需要 {{parameters}}。未为每个参数提供值时，它不提供行数、概要或样本。",
     "name": "参数",
     "type": "类型",
     "reaches": "传给源的方式",
+    "meaning": "含义",
+    "opaque": "传给源的不透明输入",
+    "realColumn": "表的真实列",
     "required": "必填",
     "requiredBySource": "源要求必填",
     "requiredAria": "{{name}} 为必填",
@@ -13,7 +17,9 @@
       "query_param": "查询参数",
       "graphql_arg": "GraphQL 参数",
       "grpc_input": "gRPC 请求字段",
-      "query_arg": "原生查询参数"
+      "query_arg": "原生查询参数",
+      "partition_key": "分区键",
+      "column_value": "列值"
     }
   }
 }

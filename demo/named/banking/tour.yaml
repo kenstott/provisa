@@ -65,11 +65,10 @@ steps:
   capability: create_relationship
   relationship: MADE_UP_OF
 # The dashboard, over GraphQL: totals with their postings nested, as operations reads them.
-- key: bankingAsOps
+- key: bankingDashboard
   route: /query
   capability: query_development
   role: ops_analyst
-- key: bankingDashboard
   example: 1-eod-dashboard
 # Back as the administrator, for every page after the dashboard.
 - key: bankingAsAdmin
@@ -77,11 +76,10 @@ steps:
   capability: query_development
   role: all
 # BI, over SQL: the day's totals, as reported at the close and as restated since.
-- key: bankingAsAnalyst
+- key: bankingDay
   route: /sql
   capability: query_development
   role: banking_analyst
-- key: bankingDay
   sql: >-
     SELECT e.business_date, e.branch, e.product, e.currency, e.posting_count, e.credits, e.debits,
       e.net_movement

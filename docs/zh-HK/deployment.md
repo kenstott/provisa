@@ -505,7 +505,7 @@ ssh ubuntu@<primary-public-ip> cat ~/.provisa/config.yaml | grep admin_token
    | ------- | ---------- |
    | `provisa/provisa:<version>` | Provisa API |
    | `trinodb/trino:480` | 聯邦引擎協調器 + 工作處理程序 |
-   | `postgres:16` | 叢集內 PostgreSQL（若 `postgresql.enabled`） |
+   | `pgvector/pgvector:pg16-trixie` | 叢集內 PostgreSQL（若 `postgresql.enabled`） |
    | `edoburu/pgbouncer:latest` | 叢集內 PgBouncer（若 `pgbouncer.enabled`） |
    | `redis:7.2` | 叢集內 Redis（若 `redis.enabled` 且無 `redis.host`） |
    | `minio/minio:latest` | 叢集內 MinIO（若 `minio.enabled`） |
@@ -817,7 +817,7 @@ Databricks 連接器從 `requests` 繼承這項設定，所以毋須 Databricks 
 | `PG_PASSWORD` | | PostgreSQL 密碼 |
 | `PROVISA_CONFIG` | `config/provisa.yaml` | 設定檔路徑 |
 | `PROVISA_REDIRECT_ENABLED` | `false` | 啟用大型結果重新導向至 S3 |
-| `PROVISA_REDIRECT_THRESHOLD` | `1000` | 觸發重新導向的行數門檻 |
+| `PROVISA_REDIRECT_THRESHOLD` | `100000` | 觸發重新導向的行數門檻 |
 | `PROVISA_REDIRECT_BUCKET` | `provisa-results` | S3 貯體 |
 | `PROVISA_REDIRECT_ENDPOINT` | | 相容 S3 的端點 URL |
 | `PROVISA_REDIRECT_TTL` | `3600` | 預簽署 URL 的 TTL（秒） |

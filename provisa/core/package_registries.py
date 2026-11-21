@@ -18,6 +18,12 @@ of the organisation, for a source's own code and for its dependencies:
 - PyPI indexes, each with an address (its simple-index URL) and a credential. Python packages
   have no scope. One may be the default index every Python install goes through, in place of
   the public PyPI.
+- Go module proxies (REQ-2200), each with an address (its GOPROXY URL) and a credential, the
+  ``user:password`` the go command logs in with. Go modules have no scope. One may be the default
+  proxy every Go install goes through, in place of the public one.
+- Cargo registries (REQ-2227), each with an address (its index URL as cargo names it,
+  ``sparse+https://...``) and a credential, the token cargo sends. Crates have no scope. One may
+  be the default registry every Rust install goes through, in place of crates.io.
 - Git hosts, each with a host -- with its port and a path prefix where the server has them
   (``bitbucket.acme.com:7990/bitbucket``) -- and a credential: a token, or ``user:token``.
 
@@ -34,7 +40,7 @@ npm registry needs no entry.
 An organisation reads and writes only its own: every call names the organisation.
 """
 
-# Requirements: REQ-1984, REQ-1993, REQ-2088
+# Requirements: REQ-1984, REQ-1993, REQ-2088, REQ-2200, REQ-2227
 from __future__ import annotations
 
 import uuid
@@ -51,8 +57,10 @@ if TYPE_CHECKING:
 
 NPM = "npm"
 PYPI = "pypi"
+GOPROXY = "goproxy"
+CARGO = "cargo"
 GIT = "git"
-KINDS = (NPM, PYPI, GIT)
+KINDS = (NPM, PYPI, GOPROXY, CARGO, GIT)
 
 
 class PackageRegistryRefused(ValueError):
@@ -134,8 +142,9 @@ async def put(
 
     ``ca_bundle`` is kept as entered too; None or empty holds none.
 
-    Refused by name: an unknown kind; an empty address or credential; a scope on a PyPI index or
-    a Git host; the mirror on a Git host; a certificate authority entered as a value that holds no
+    Refused by name: an unknown kind; an empty address or credential; a scope on a PyPI index, a
+    Go module proxy, a Cargo registry or a Git host; a Go module proxy's credential entered as a value that is not
+    ``user:password``; the mirror on a Git host; a certificate authority entered as a value that holds no
     PEM certificate; a second mirror of the same kind; a scope another npm
     registry has; a host another Git host entry has."""
     if kind not in KINDS:
@@ -157,6 +166,14 @@ async def put(
     if kind == PYPI and scope is not None:
         raise PackageRegistryRefused(
             "pypi_scope", "A PyPI index has no scope: Python packages have none", address=address
+        )
+    if kind == GOPROXY and scope is not None:
+        raise PackageRegistryRefused(
+            "goproxy_scope", "A Go module proxy has no scope: Go modules have none", address=address
+        )
+    if kind == CARGO and scope is not None:
+        raise PackageRegistryRefused(
+            "cargo_scope", "A Cargo registry has no scope: crates have none", address=address
         )
     if kind == GIT and mirror:
         raise PackageRegistryRefused(
@@ -185,6 +202,13 @@ async def put(
     if missing:
         raise PackageRegistryRefused(
             "incomplete", f"A {kind} entry needs {', '.join(missing)}", missing=", ".join(missing)
+        )
+    login, colon, _ = (credential or "").partition(":")
+    if kind == GOPROXY and not _is_reference(credential or "") and not (colon and login):
+        raise PackageRegistryRefused(
+            "goproxy_credential",
+            "A Go module proxy's credential is user:password, the login the go command sends",
+            address=address,
         )
     others = [e for e in await entries(admin_db, org_id) if e.id != registry_id]
     if mirror and any(e.mirror and e.kind == kind for e in others):

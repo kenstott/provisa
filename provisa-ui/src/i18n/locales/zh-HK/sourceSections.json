@@ -8,7 +8,7 @@
     "operations": "操作",
     "tableName": "資料表",
     "tableDomain": "網域",
-    "draft": "草稿",
+    "withdrawn": "已撤回",
     "commands": "命令",
     "commandName": "命令",
     "commandKind": "類型"

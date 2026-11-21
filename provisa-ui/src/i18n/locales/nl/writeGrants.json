@@ -2,6 +2,7 @@
   "writeGrants": {
     "notShown": "Wie naar deze tabel mag schrijven, zien beheerders die de governance zien.",
     "empty": "Geen rol mag naar deze tabel schrijven.",
+    "sourceAcceptsNone": "De bron accepteert geen schrijfacties (zie het tabblad API), dus aan geen enkele rol kunnen schrijfrechten worden verleend.",
     "role": "Rol",
     "operation": "Bewerking",
     "op_insert": "Invoegen",

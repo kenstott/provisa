@@ -24,9 +24,11 @@ from collections.abc import Iterable
 from fastapi import Request
 
 from provisa.api.errors import ApiError
+from provisa.security.inheritance import right_not_in_parents
 from provisa.security.rights import (
     DEPLOYMENT_GRANTER,
     Capability,
+    OrgAdminGrantError,
     PlatformRoleGrantError,
     check_role_grant,
     platform_rights_in,
@@ -198,6 +200,48 @@ def require_role_grantable(  # REQ-1337
             role=role_id,
             rights=exc.missing,
         ) from exc
+    except OrgAdminGrantError as exc:
+        raise org_admin_refusal(exc.missing) from exc
+
+
+def require_roles_removable(request: Request, role_ids: Iterable[str]) -> None:  # REQ-1337
+    """Raise 403 unless the caller may remove every role in ``role_ids``: each read against its
+    resolved capabilities in the org the request acts in, so no role name is tested."""
+    from provisa.api.app import state
+
+    for role_id in role_ids:
+        require_role_grantable(
+            request, role_id, (state.roles.get(role_id) or {}).get("capabilities")
+        )
+
+
+async def require_held_roles_removable(request: Request, model_db, user_id: str) -> None:
+    """Raise 403 unless the caller may remove every role ``user_id`` holds in force in the org
+    whose model database is ``model_db``.
+
+    REQ-1327 (amended 2026-11-16): removing a person from an organization removes every role they
+    hold there, so it asks what removing each would ask; a holder of user_management alone cannot
+    remove an organization's administrators that way either.
+    """
+    from sqlalchemy import select
+
+    from provisa.auth.role_grants import in_force
+    from provisa.core.schema_org import user_role_assignments as t
+
+    async with model_db.acquire() as conn:
+        rows = (
+            await conn.execute_core(
+                select(t.c.role_id).where(t.c.user_id == user_id, in_force()).distinct()
+            )
+        ).fetchall()
+    require_roles_removable(request, [r[0] for r in rows])
+
+
+def org_admin_refusal(missing: Iterable[str]) -> ApiError:  # REQ-1327
+    """The 403 for an act that is an org_admin's (deleting the org, granting org_admin) asked by
+    a caller lacking ``missing`` of org_admin's rights: user_management alone allows neither."""
+    right = ", ".join(sorted(missing))
+    return ApiError(403, "platform.right_required", f"{right} capability required", right=right)
 
 
 def role_definition_problem(  # REQ-042, REQ-1337, REQ-1530
@@ -230,11 +274,7 @@ def role_definition_problem(  # REQ-042, REQ-1337, REQ-1530
             "Unknown capability: " + ", ".join(repr(c) for c in unknown),
             capabilities=unknown,
         )
-    domain_problem = role_domain_problem(
-        role_id,
-        [*(capabilities or ()), *(inherited or ())],
-        list(domain_access or ()),
-    )
+    domain_problem = role_domain_problem(role_id, capabilities, list(domain_access or ()))
     if domain_problem is not None:
         return ApiError(422, "roles.domain_required", domain_problem, role=role_id)
     platform = sorted(platform_rights_in(capabilities) | platform_rights_in(inherited))
@@ -246,3 +286,30 @@ def role_definition_problem(  # REQ-042, REQ-1337, REQ-1530
             rights=platform,
         )
     return None
+
+
+def role_narrowing_problem(  # REQ-2155
+    role_id: str,
+    parents: list[str],
+    capabilities: list[str],
+    domain_access: list[str],
+    residency_values: list[str],
+    roles: list[dict],
+    domain_parents: dict[str, str | None],
+) -> ApiError | None:
+    """A right given that no parent holds, refused by name, or None: a role is always a subset of
+    the union of its parents. ``roles`` are the stored rows, the standard roles among them."""
+    refused = right_not_in_parents(
+        role_id, parents, capabilities, domain_access, residency_values, roles, domain_parents
+    )
+    if refused is None:
+        return None
+    kind, right, why = refused
+    return ApiError(
+        422,
+        "roles.right_not_in_parents",
+        f"Role {role_id!r} cannot hold {kind} {right!r}: {why}",
+        role=role_id,
+        kind=kind,
+        right=right,
+    )

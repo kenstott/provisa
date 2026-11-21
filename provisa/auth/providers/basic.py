@@ -47,6 +47,7 @@ class BasicAuthProvider(AuthProvider):  # REQ-124
     """Validates HTTP Basic credentials against the local_users DB table."""
 
     provider_name: str = "basic"
+    rereads = True  # REQ-812: the account is a row of local_users
 
     @property
     def auth_scheme(self) -> str:
@@ -97,6 +98,9 @@ class BasicAuthProvider(AuthProvider):  # REQ-124
         return AuthIdentity(
             user_id=row["id"],
             email=row["email"],
+            # REQ-1261: a local account's address is whatever was typed when it was made; nothing
+            # verified it, so it matches no invitation, email rule or waiting grant.
+            email_verified=False,
             display_name=row["display_name"],
             roles=[],
             raw_claims={"username": row["username"], **dict(row["attributes"] or {})},
@@ -148,6 +152,13 @@ class BasicAuthProvider(AuthProvider):  # REQ-124
         makes a deactivated user refused after a valid proof exactly as after a valid password.
         """
         return self._identity(await self._lookup(username))
+
+    async def reread(self, identity: AuthIdentity) -> AuthIdentity:  # REQ-812
+        """The account behind ``identity``, read again from local_users."""
+        now = await self.identity_for(identity.raw_claims["username"])
+        if now.user_id != identity.user_id:
+            raise ValueError("Invalid credentials")  # the login name is another account now
+        return now
 
     async def validate_token(self, token: str) -> AuthIdentity:  # REQ-124
         """Validate an ``Authorization: Basic`` credential — b64(username:password)."""

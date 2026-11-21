@@ -195,9 +195,8 @@ async def test_rest_creates_a_role_in_the_callers_domain_and_refuses_one_outside
     assert await _role_row(plane, "r2") is None
 
 
-async def test_rest_a_child_of_a_role_elsewhere_reaches_only_its_own_domains(plane):
-    """REQ-2155: reach is never inherited, so a child of the finance auditor listing sales reaches
-    sales alone, and a sales administrator may define it."""
+async def test_rest_a_domain_no_parent_reaches_is_refused_by_name(plane):
+    """REQ-2155: a role narrows its parents, so a child of the finance auditor cannot list sales."""
     body = roles_router.CreateRoleBody(
         id="r3",
         description="Test role.",
@@ -205,9 +204,11 @@ async def test_rest_a_child_of_a_role_elsewhere_reaches_only_its_own_domains(pla
         domain_access=["sales"],
         parents=["auditor"],
     )
-    await roles_router.create_role(body, _request("sales_admin"))
-    row = await _role_row(plane, "r3")
-    assert row is not None and row["domain_access"] == ["sales"]
+    with pytest.raises(ApiError) as err:
+        await roles_router.create_role(body, _request("sales_admin"))
+    assert err.value.code == "roles.right_not_in_parents"
+    assert err.value.params["right"] == "sales"
+    assert await _role_row(plane, "r3") is None
 
 
 async def test_rest_update_needs_every_domain_the_role_reaches_before_and_after(plane):
@@ -270,8 +271,9 @@ async def test_graphql_creates_a_role_in_the_callers_domain_and_refuses_one_outs
         with pytest.raises(PermissionError, match="No access to domain"):
             await _create_role("sales_admin", "g2", listed)
     assert await _role_row(plane, "g2") is None
-    # REQ-2155: a parent elsewhere hands down capabilities, never reach.
-    assert (await _create_role("sales_admin", "g3", ["sales"], "auditor")).success is True
+    # REQ-2155: a parent elsewhere holds no such domain.
+    refused = await _create_role("sales_admin", "g3", ["sales"], "auditor")
+    assert (refused.success, refused.code) == (False, "roles.right_not_in_parents")
     assert (await _create_role("everywhere", "g2", ["*"])).success is True
 
 

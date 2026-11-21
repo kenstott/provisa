@@ -1558,10 +1558,7 @@ Vorrang: `PROVISA_ENGINE`-Umgebungsvariable → persistiertes Admin-UI-Konfigura
 | `singlestore` | SingleStore | Pro Dialekt | Nein | Keiner (nur Landing) | Anmeldedaten pro Dialekt |
 | `vertica` | Vertica | Pro Dialekt | Nein | Keiner (nur Landing) | Anmeldedaten pro Dialekt |
 | `exasol` | Exasol | Pro Dialekt | Nein | Keiner (nur Landing) | Anmeldedaten pro Dialekt |
-| `teradata` | Teradata Vantage | Pro Dialekt | Nein | Keiner (nur Landing) | Anmeldedaten pro Dialekt |
 | `saphana` | SAP HANA | Pro Dialekt | Nein | Keiner (nur Landing) | Anmeldedaten pro Dialekt |
-| `sapase` | SAP ASE (Sybase) | Pro Dialekt | Nein | Keiner (nur Landing) | Anmeldedaten pro Dialekt |
-| `sqlanywhere` | SAP SQL Anywhere | Pro Dialekt | Nein | Keiner (nur Landing) | Anmeldedaten pro Dialekt |
 | `monetdb` | MonetDB | Pro Dialekt | Nein | Keiner (nur Landing) | Anmeldedaten pro Dialekt |
 | `firebird` | Firebird | Pro Dialekt | Nein | Keiner (nur Landing) | Anmeldedaten pro Dialekt |
 | `sqlalchemy` | Andere relationale Datenbank (per Connection-URL) | Pro Dialekt | Nein | Keiner (nur Landing) | Anmeldedaten pro Dialekt |
@@ -1662,7 +1659,7 @@ PROVISA_ENGINE=synapse
 
 Der Materialisierungs-Store ist standardmäßig `TENANT_DATABASE_URL`.
 
-#### Relationale-Datenbank-Engines (mysql, mariadb, oracle, mssql, db2, redshift, greenplum, cockroachdb, yugabytedb, opengauss, tidb, singlestore, vertica, exasol, teradata, saphana, sapase, sqlanywhere, monetdb, firebird) und `sqlalchemy` {: #relational-database-engines-mysql-mariadb-oracle-mssql-db2-redshift-greenplum-cockroachdb-yugabytedb-opengauss-tidb-singlestore-vertica-exasol-teradata-saphana-sapase-sqlanywhere-monetdb-firebird-and-sqlalchemy }
+#### Relationale-Datenbank-Engines (mysql, mariadb, oracle, mssql, db2, redshift, greenplum, cockroachdb, yugabytedb, opengauss, tidb, singlestore, vertica, exasol, saphana, monetdb, firebird) und `sqlalchemy` {: #relational-database-engines-mysql-mariadb-oracle-mssql-db2-redshift-greenplum-cockroachdb-yugabytedb-opengauss-tidb-singlestore-vertica-exasol-saphana-monetdb-firebird-and-sqlalchemy }
 
 Ein Schlüssel pro netzwerkadressierbarer relationaler Datenbank, alle auf derselben Nur-Landing-Laufzeit (keine Föderation zu externen Quellen): Jede Quelle landet im Store und wird dort abgefragt. Der Schlüssel wählt die Datenbank; `PROVISA_ENGINE_URL` trägt den DSN, den ihr Dialekt erwartet. `sqlalchemy` ist der Catch-all für eine Datenbank ohne eigenen Schlüssel. Dateibasierte Stores (SQLite, Access) werden nicht angeboten, denn der Server muss über das Netzwerk erreichbar sein.
 
@@ -1757,7 +1754,7 @@ Für Google-Cloud-Quellen setzen Sie `GOOGLE_APPLICATION_CREDENTIALS` auf den Pf
 | `FLIGHT_PORT` | `8815` | Port des Provisa-Arrow-Flight-Servers |
 | `GRPC_PORT` | `50051` | Port des Provisa-Protobuf-gRPC-Servers |
 | `PROVISA_REDIRECT_ENABLED` | `false` | Serverseitigen Schwellenwert-Redirect aktivieren |
-| `PROVISA_REDIRECT_THRESHOLD` | `1000` | Standard-Zeilenanzahl-Schwellenwert |
+| `PROVISA_REDIRECT_THRESHOLD` | `100000` | Standard-Zeilenanzahl-Schwellenwert |
 | `PROVISA_REDIRECT_FORMAT` | `parquet` | Standard-Redirect-Format |
 | `PROVISA_REDIRECT_BUCKET` | `provisa-results` | S3-Bucket für weitergeleitete Ergebnisse |
 | `PROVISA_REDIRECT_ENDPOINT` | — | S3-kompatible Endpunkt-URL |

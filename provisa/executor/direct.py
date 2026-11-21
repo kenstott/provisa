@@ -52,6 +52,8 @@ async def execute_direct(  # REQ-027, REQ-031
     sql: str,
     params: list | None = None,
     span_attrs: dict[str, str] | None = None,
+    *,
+    reports_generated: bool = False,
 ) -> QueryResult:
     """Execute SQL directly against a source via its driver.
 
@@ -65,6 +67,8 @@ async def execute_direct(  # REQ-027, REQ-031
             DIRECT terminal names its span that way for exactly the statements the ENGINE terminal
             would — otherwise every single-source (pushed-down) user query is missing from the
             report while the identical federated query appears.
+        reports_generated: the write is run so its connection reports the value it made the
+            source generate (REQ-2167, ``DirectDriver.execute_reporting_generated``).
 
     Returns:
         QueryResult with rows and column names.
@@ -104,7 +108,8 @@ async def execute_direct(  # REQ-027, REQ-031
 
             try:
                 log.info("[EXEC DIRECT] source=%s | sql=%s", source_id, sql[:200])
-                result = await pool.execute(source_id, sql, effective_params)
+                run = pool.execute_reporting_generated if reports_generated else pool.execute
+                result = await run(source_id, sql, effective_params)
                 span.set_attribute("db.row_count", len(result.rows))
                 log.info("[EXEC DIRECT] source=%s | rows=%d", source_id, len(result.rows))
                 return result

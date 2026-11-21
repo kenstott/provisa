@@ -40,12 +40,14 @@ from provisa.compiler.stage2 import GovernanceContext, build_governance_context
 from provisa.core import domain_policy
 from provisa.security.rights import (
     META_DOMAIN_ID,
+    SYSTEM_DOMAINS,
     UnknownRoleError,
     compute_meta_row_scope,
     effective_domain_access_role,
     require_role,
 )
 from provisa.security.visibility import visible_tables
+from tests.rules import rule_of
 
 SALES, FINANCE, META, OPS = 1, 2, 3, 4
 DOMAIN_OF = {SALES: "sales", FINANCE: "finance", META: META_DOMAIN_ID, OPS: "ops"}
@@ -79,6 +81,7 @@ def _role(domain_access: list[str], *capabilities: str) -> dict:
         "description": "Test role.",
         "capabilities": list(capabilities),
         "domain_access": domain_access,
+        "acting_chain": ["r"],  # REQ-2188: as the build records it
     }
 
 
@@ -238,8 +241,9 @@ def test_v001_is_not_a_gate_in_single_domain_mode(single_domain):
     "held,scope",
     [
         pytest.param([], set(), id="empty-sees-no-catalog-rows"),
-        pytest.param(["*"], None, id="wildcard-sees-the-whole-catalog"),
-        pytest.param(["*", META_DOMAIN_ID], None, id="wildcard-holding-catalog-read"),
+        pytest.param(["*"], {SALES, FINANCE}, id="wildcard-sees-every-data-table"),
+        pytest.param(["*", META_DOMAIN_ID], {SALES, FINANCE, META}, id="wildcard-holding-meta"),
+        pytest.param(["*", *SYSTEM_DOMAINS], None, id="every-domain-sees-the-whole-catalog"),
         pytest.param(["sales", META_DOMAIN_ID], {SALES, META}, id="catalog-read-opens-no-rows"),
         pytest.param(["sales"], {SALES}, id="listed-sees-its-own-tables"),
     ],
@@ -261,11 +265,12 @@ def test_an_empty_list_gets_a_match_nothing_row_filter(multi_domain):
         domain_id=META_DOMAIN_ID,
     )
     gov = build_governance_context("r", RLSContext.empty(), {}, ctx, _tables(), _role([]))
-    assert gov.rls_rules[100] == "id IN (-1)"
+    # REQ-1921: nor a withdrawn table's row, which only its domain's stewards read.
+    assert gov.rls_rules[100] == rule_of("(id IN (-1)) AND (NOT withdrawn)")
 
 
-def test_single_domain_mode_sees_the_whole_catalog(single_domain):
-    assert compute_meta_row_scope(_role([]), _tables(), []) is None
+def test_single_domain_mode_sees_every_data_table(single_domain):
+    assert compute_meta_row_scope(_role([]), _tables(), []) == {SALES, FINANCE}
 
 
 # --- security.visibility.visible_tables ----------------------------------------------------------
@@ -329,8 +334,8 @@ def test_the_catalog_is_a_match_root_only_for_a_role_that_reaches_it(
 
     lm = CypherLabelMap.from_schema(_ctx(), domain_access=held)
     meta_nodes = [n for n in lm.nodes.values() if n.domain_id == META_DOMAIN_ID]
-    assert meta_nodes, "the fixture has a meta table"
-    assert all(n.traversal_only != meta_is_a_match_root for n in meta_nodes)
+    assert bool(meta_nodes) == meta_is_a_match_root
+    assert not any(n.traversal_only for n in meta_nodes)
 
 
 def test_a_label_map_is_never_built_without_the_acting_roles_list():
@@ -356,7 +361,12 @@ def test_role_all_is_the_union_and_an_all_empty_union_is_none(multi_domain, list
     from provisa.security import meta_role
 
     roles = {
-        f"r{i}": {"id": f"r{i}", "description": "Test role.", "domain_access": lst}
+        f"r{i}": {
+            "id": f"r{i}",
+            "description": "Test role.",
+            "domain_access": lst,
+            "own_domain_access": lst,  # REQ-2153: a built role carries it
+        }
         for i, lst in enumerate(lists)
     }
     # "Role: All" acts as the set's meta-role: its domain_access is the union.
@@ -440,7 +450,8 @@ def _built_roles(monkeypatch, roles: list[dict]) -> Any:
         gql_object_cols={},
         rls_rules=[],
         metrics=[],
-        draft_tables=[],  # REQ-1921: none out of service
+        withdrawn_tables=[],
+        withdrawn_relationships=[],
     )
     return state
 
@@ -560,7 +571,8 @@ def test_the_build_itself_drops_a_stale_surface(multi_domain, monkeypatch):
         gql_object_cols={},
         rls_rules=[],
         metrics=[],
-        draft_tables=[],  # REQ-1921: none out of service
+        withdrawn_tables=[],
+        withdrawn_relationships=[],
     )
     assert appmod.state.roles["r"]["domain_access"] == []
     for surface in (state.schemas, state.contexts, state.rls_contexts, state.proto_files):

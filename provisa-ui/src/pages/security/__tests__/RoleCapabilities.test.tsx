@@ -11,12 +11,14 @@
 // REQ-2161, as its scenario sets it: dq_lead inherits Data quality steward and Data product
 // owner; its panel lists each capability with the standard role it comes from.
 
+import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
-import { render, screen, within } from "../../../test-utils/render";
+import { render, screen, waitFor, within } from "../../../test-utils/render";
 import { RoleCapabilities } from "../RoleCapabilities";
 import type { RoleEffective } from "../../../api/roleRights";
 
 const VIEW: RoleEffective = {
+  regions: [],
   role: "dq_lead",
   standard: false,
   chain: ["dq_lead", "dq_steward", "viewer", "dp_owner"],
@@ -52,13 +54,39 @@ vi.mock("../../../api/roleRights", () => ({
 }));
 // The diagram is the lineage page's own component, held by its own tests.
 vi.mock("../../../components/lineage/LineageDag", () => ({
-  LineageDag: ({ graph }: { graph: { nodes: unknown[] } }) => (
-    <div data-testid="lineage-dag" data-nodes={graph.nodes.length} />
-  ),
+  LineageDag: (props: { graph: { nodes: unknown[] }; readable?: boolean; minZoom?: number }) => {
+    // One diagram instance: a new one is laid out and fitted from scratch.
+    const [instance] = useState(() => ++instances);
+    return (
+      <div
+        data-testid="lineage-dag"
+        data-nodes={props.graph.nodes.length}
+        data-instance={instance}
+        data-holds-a-zoom={String(Boolean(props.readable) || props.minZoom !== undefined)}
+      />
+    );
+  },
 }));
 
+let instances = 0;
+
 describe("a role's Capabilities tab (REQ-2161)", () => {
+  it("fits the whole lineage, holding no zoom that could cut it off", async () => {
+    render(<RoleCapabilities roleId="dq_lead" />);
+    expect(await screen.findByTestId("lineage-dag")).toHaveAttribute("data-holds-a-zoom", "false");
+  });
+
+  it("starts from the fit again for every role", async () => {
+    const { rerender } = render(<RoleCapabilities roleId="dq_lead" />);
+    const first = (await screen.findByTestId("lineage-dag")).getAttribute("data-instance");
+    rerender(<RoleCapabilities roleId="other" />);
+    await waitFor(() =>
+      expect(screen.getByTestId("lineage-dag").getAttribute("data-instance")).not.toBe(first),
+    );
+  });
+
   it("lists each capability with the role it comes from, standard roles marked", async () => {
+    asked.roles.length = 0;
     render(<RoleCapabilities roleId="dq_lead" />);
     const list = await screen.findByTestId("role-capabilities-list");
     expect(asked.roles).toEqual(["dq_lead"]);

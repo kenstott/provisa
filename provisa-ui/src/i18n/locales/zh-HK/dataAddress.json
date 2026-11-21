@@ -1,0 +1,13 @@
+{
+  "dataAddress": {
+    "label": "數據節點",
+    "heading": "將數據請求傳送到",
+    "none": "沒有數據節點",
+    "noneOffered": "此區域未列出數據節點。請在下方輸入地址。",
+    "typedLabel": "數據節點地址",
+    "typedPlaceholder": "https://data.example.com",
+    "typedInvalid": "請輸入 http 或 https 地址",
+    "use": "使用",
+    "loadError": "無法載入數據節點"
+  }
+}

@@ -10,16 +10,18 @@
 
 """Source repository — CRUD for data sources, via SQLAlchemy Core (dialect-portable)."""
 
-# Requirements: REQ-012, REQ-013, REQ-014, REQ-250, REQ-1695
+# Requirements: REQ-012, REQ-013, REQ-014, REQ-250, REQ-1695, REQ-2248
 
-from provisa.core import model_change
+from provisa.core import model_change, model_uri
 from typing import TYPE_CHECKING
 
 from sqlalchemy import delete as _delete, insert, select, update
 
 from provisa.core.engine_shard import EngineShardRefused, bound_org_shard
+from provisa.core.host_code import refuse_producer_command
 from provisa.core.models import BUILT_IN_SOURCE_IDS, Source
-from provisa.core.repositories.integrity import Dependent, ObjectRef, guard, remove_parts
+from provisa.core.repositories import retirement
+from provisa.core.repositories.integrity import Dependent, ObjectRef, guard, rekey, remove_parts
 from provisa.core.schema_org import registered_tables, sources
 
 if TYPE_CHECKING:
@@ -38,8 +40,10 @@ KEPT_ON_FORM_EDIT: tuple[str, ...] = (
     "cache_catalog",
     "cache_schema",
     "approval_hook",
+    "is_system",
     "allowed_domains",
     "gql_naming_convention",
+    "brand_setup",  # REQ-1923: set by the brand's own add (graphql_remote_router)
 )
 
 
@@ -57,6 +61,7 @@ def _source_values(source: Source) -> dict:
         # JSON columns take Python objects directly — SQLAlchemy serializes per dialect.
         "mapping": source.mapping or {},
         "federation_hints": source.federation_hints or {},
+        "brand_setup": source.brand_setup,  # REQ-1923
         "cdc": source.cdc.model_dump() if source.cdc else None,  # REQ-824
         "change_signal": getattr(source, "change_signal", "ttl"),  # REQ-929
         "load_protected": getattr(source, "load_protected", False),  # REQ-1141
@@ -80,6 +85,7 @@ def _source_values(source: Source) -> dict:
         "cache_catalog": source.cache_catalog,
         "cache_schema": source.cache_schema,
         "approval_hook": source.approval_hook,
+        "is_system": source.is_system,
         "allowed_domains": list(source.allowed_domains),
         "gql_naming_convention": source.gql_naming_convention,
         # REQ-1695: the REFERENCE, never the credential. ``Source.password`` is documented as a
@@ -99,6 +105,16 @@ def source_from_row(row: dict) -> Source:  # REQ-1695
     """
     fields = {k: v for k, v in row.items() if k in Source.model_fields and v is not None}
     fields["password"] = row["password_ref"]
+    # Rows saved between d7daab1f6 and REQ-1923's column hold a brand's setup as a dict in
+    # federation_hints (a map of strings), which fails every read. Read it as brand_setup; the
+    # next save writes the new shape, so no row is rewritten here.
+    hints = fields.get("federation_hints")
+    if isinstance(hints, dict) and isinstance(hints.get("brand_setup"), dict):
+        hints = dict(hints)
+        legacy_setup = hints.pop("brand_setup")
+        fields["federation_hints"] = hints
+        if not fields.get("brand_setup"):
+            fields["brand_setup"] = legacy_setup
     return Source.model_validate(fields)
 
 
@@ -130,10 +146,17 @@ def refuse_on_engine_shard(source: Source) -> None:  # REQ-2073
 
 
 async def upsert(  # REQ-012, REQ-250, REQ-1919
-    conn: "Connection", source: Source
+    conn: "Connection", source: Source, *, withdrawn: bool | None = None
 ) -> None:
-    """Create the source, or replace its definition."""
-    model_change.name("upsert", "source", source.id)  # REQ-1524
+    """Create the source, or replace its definition.
+
+    REQ-1921: ``withdrawn`` is written only when given -- by a configuration, which carries it as
+    the store holds it. Every other save keeps what is held (a new source is live): a source is
+    withdrawn and put back only by ``withdrawSource`` / ``putBackSource``."""
+    # REQ-2134: a producer command is host code; config load, a config import and the admin API
+    # all save through here and ``create``.
+    refuse_producer_command(source.id, source.producer_command)
+    model_change.name("upsert", model_change.uri(model_uri.source_uri, source.id))  # REQ-1524
     from provisa.core.repositories.region import require_selected
     from provisa.security.sandbox_egress import pinned_source
 
@@ -143,6 +166,8 @@ async def upsert(  # REQ-012, REQ-250, REQ-1919
 
     await require_selected(conn, f"source {source.id}", source.region)  # REQ-1921
     values = await owned_if_reconnected(conn, _source_values(source))
+    if withdrawn is not None:
+        values["withdrawn"] = withdrawn
     await conn.upsert(
         sources,
         values,
@@ -156,7 +181,8 @@ async def create(conn: "Connection", source: Source) -> None:  # REQ-012, REQ-20
     database, and the second is refused (:class:`SourceIdTaken`) instead of overwriting the first."""
     from sqlalchemy.exc import IntegrityError
 
-    model_change.name("create", "source", source.id)  # REQ-1524
+    refuse_producer_command(source.id, source.producer_command)  # REQ-2134, as upsert
+    model_change.name("create", model_change.uri(model_uri.source_uri, source.id))  # REQ-1524
     from provisa.core.repositories.region import require_selected
     from provisa.security.sandbox_egress import pinned_source
 
@@ -196,6 +222,7 @@ async def count_billable(conn: "Connection") -> int:  # REQ-1513
 
     The built-in rows are excluded: they are seeded by Provisa into every org, so counting them
     would spend part of the allowance the customer bought before the customer registered anything.
+    A retired source is not counted (REQ-2248).
     """
     from sqlalchemy import func
 
@@ -204,7 +231,7 @@ async def count_billable(conn: "Connection") -> int:  # REQ-1513
     result = await conn.execute_core(
         select(func.count())
         .select_from(sources)
-        .where(sources.c.id.notin_(sorted(BUILT_IN_SOURCE_IDS)))
+        .where(sources.c.id.notin_(sorted(BUILT_IN_SOURCE_IDS)), sources.c.retired.is_(False))
     )
     row = result.fetchone()
     assert row is not None  # COUNT over an empty table is a row holding 0, never no row
@@ -212,14 +239,54 @@ async def count_billable(conn: "Connection") -> int:  # REQ-1513
 
 
 async def get(conn: "Connection", source_id: str) -> dict | None:  # REQ-012
+    """The source at ``source_id``. A retired source is under a key of its own (REQ-2248:
+    :func:`provisa.core.repositories.retirement.retired_key`), so a live id never finds one."""
     result = await conn.execute_core(select(sources).where(sources.c.id == source_id))
     row = result.fetchone()
     return dict(row._mapping) if row is not None else None
 
 
-async def list_all(conn: "Connection") -> list[dict]:  # REQ-012
-    result = await conn.execute_core(select(sources).order_by(sources.c.id))
+async def list_all(conn: "Connection", *, retired: bool = False) -> list[dict]:  # REQ-012
+    """Every source in service; ``retired`` lists the retired ones instead (REQ-2248), each with
+    who retired it, when and why, and the id it had (``retired_id``)."""
+    result = await conn.execute_core(
+        select(sources).where(sources.c.retired.is_(retired)).order_by(sources.c.id)
+    )
     return [dict(r._mapping) for r in result.fetchall()]
+
+
+async def list_in_production(conn: "Connection") -> list[dict]:  # REQ-1921
+    """Every source in service that is not withdrawn: the ones an engine attaches, a pool
+    connects to and a schema build reads. A withdrawn source is still listed by
+    :func:`list_all` -- its definition and grants stay -- but nothing reaches it."""
+    result = await conn.execute_core(
+        select(sources)
+        .where(sources.c.retired.is_(False), sources.c.withdrawn.is_(False))
+        .order_by(sources.c.id)
+    )
+    return [dict(r._mapping) for r in result.fetchall()]
+
+
+async def withdrawn_ids(conn: "Connection") -> frozenset[str]:  # REQ-1921
+    """The ids of the withdrawn sources in service: attached by no engine, given no pool."""
+    result = await conn.execute_core(
+        select(sources.c.id).where(sources.c.retired.is_(False), sources.c.withdrawn.is_(True))
+    )
+    return frozenset(r.id for r in result.fetchall())
+
+
+async def set_withdrawn(conn: "Connection", source_id: str, withdrawn: bool) -> bool:  # REQ-1921
+    """Withdraw the source in service at ``source_id`` (True) or put it back (False). False when
+    there is no such source."""
+    model_change.name(  # REQ-1524
+        "withdraw" if withdrawn else "put back", model_change.uri(model_uri.source_uri, source_id)
+    )
+    done = await conn.execute_core(
+        update(sources)
+        .where(sources.c.id == source_id, sources.c.retired.is_(False))
+        .values(withdrawn=withdrawn)
+    )
+    return (done.rowcount or 0) > 0
 
 
 class SourceDeleteRefused(Exception):
@@ -243,17 +310,22 @@ class SourceDeleteRefused(Exception):
         super().__init__(message)
 
 
-async def delete(conn: "Connection", source_id: str) -> bool:  # REQ-014, REQ-1918
-    """Delete one source: THE delete, for every surface. False when there is no such source.
+async def delete(  # REQ-014, REQ-1918, REQ-2248
+    conn: "Connection", source_id: str, *, reason: str | None = None
+) -> bool:
+    """Delete one source: THE delete, for every surface. It RETIRES the source (REQ-2248): the
+    row and everything attached to it are kept, marked retired with ``reason``, the acting person
+    and the time, together with the retired tables it holds. False when there is no such source.
 
-    Refused (:class:`SourceDeleteRefused`), naming each dependent, while a table is registered
-    against it or a command is bound to it: the operator removes those first, each through its
-    own action. (It used to delete the source's registered tables with it.) A source the
-    deployment keeps is refused. Its parts go with it: its tag assignments and its remote
-    registration rows — an API or Kafka registration with its endpoints or topics. One
-    transaction; no database cascade is relied on.
+    Refused (:class:`SourceDeleteRefused`), naming each dependent, while a live table is
+    registered against it or a live command is bound to it: the operator removes those first,
+    each through its own action. A source the deployment keeps is refused.
+
+    A retired source is hidden and leaves its id free: its row, its parts and its retired tables
+    move to a key of its own (:func:`retirement.retired_key`), and ``retired_id`` keeps the id it
+    had, for :func:`restore`. One transaction; nothing is removed.
     """
-    model_change.name("delete", "source", source_id)  # REQ-1524
+    model_change.name("retire", model_change.uri(model_uri.source_uri, source_id))  # REQ-1524
     ref = ObjectRef("source", source_id)
     async with conn.transaction():
         if await get(conn, source_id) is None:
@@ -263,7 +335,39 @@ async def delete(conn: "Connection", source_id: str) -> bool:  # REQ-014, REQ-19
         blocking = await guard(conn, ref)
         if blocking:
             raise SourceDeleteRefused(source_id, "dependents", blocking)
-        await discard(conn, source_id)
+        key = retirement.retired_key(source_id)
+        await rekey(conn, "source", source_id, key)
+        await conn.execute_core(
+            update(sources)
+            .where(sources.c.id == key)
+            .values(**retirement.values(reason), retired_id=source_id)
+        )
+    return True
+
+
+async def restore(conn: "Connection", key: str) -> bool:  # REQ-2248
+    """Restore the retired source kept at ``key``: back at the id it had, its retirement cleared,
+    with the tables it holds restored. Refused (:class:`retirement.NameHeld`) while a live source
+    holds that id. False when there is no retired source at ``key``."""
+    async with conn.transaction():
+        row = await get(conn, key)
+        if row is None or not row["retired"]:
+            return False
+        live_id = row["retired_id"]
+        model_change.name("restore", model_change.uri(model_uri.source_uri, live_id))  # REQ-1524
+        if await get(conn, live_id) is not None:
+            raise retirement.NameHeld("source", live_id, f"source {live_id!r}")
+        await rekey(conn, "source", key, live_id)
+        await conn.execute_core(
+            update(sources)
+            .where(sources.c.id == live_id)
+            .values(**retirement.cleared(), retired_id=None)
+        )
+        await conn.execute_core(
+            update(registered_tables)
+            .where(registered_tables.c.source_id == live_id, registered_tables.c.retired.is_(True))
+            .values(**retirement.cleared())
+        )
     return True
 
 
@@ -275,9 +379,10 @@ async def discard(conn: "Connection", source_id: str) -> None:
 
 
 async def remove_where(conn: "Connection", *where) -> None:
-    """Remove every source matching ``where`` (clauses on ``sources``) — for the code that
-    declares sources as a set: the config loader's full replace, and the seed retiring a row it
-    wrote. It is not a deletion of one object and does not ask the dependency guard."""
+    """Remove every source matching ``where`` (clauses on ``sources``) — for the startup seed
+    removing a built-in row it wrote (REQ-2248, amended 2026-11-15: a startup seed may delete Provisa's own
+    built-in rows that it no longer declares). It is not a deletion of one object and does not
+    ask the dependency guard."""
     await conn.execute_core(_delete(sources).where(*where))
 
 

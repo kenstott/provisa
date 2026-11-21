@@ -37,6 +37,7 @@ from provisa.api.metadata_export.openmetadata import (
     to_lineage_requests,
 )
 from provisa.api.metadata_export.registry import registered_providers
+from tests.unit.product_members import all_members_of
 from provisa.core.models import (
     Cardinality,
     Column,
@@ -51,6 +52,7 @@ from provisa.core.models import (
     SourceType,
     Table,
 )
+from tests.unit.openmetadata_product_mock import product_assets_response
 
 EVENT_TIME = datetime(2026, 8, 4, 12, 0, tzinfo=UTC)
 MASK_PATTERN = r"(\d{3})-(\d{2})-(\d{4})"
@@ -66,8 +68,6 @@ def _table(name: str, columns: list[Column], view_sql: str | None = None) -> Tab
         columns=columns,
         view_sql=view_sql,
         materialize=view_sql is not None,
-        # Marked so the table publishes: only Data Product tables enter the snapshot.
-        product_id="prod",
     )
 
 
@@ -137,8 +137,10 @@ def snapshot():
             )
         ],
         roles=[
-            Role(id="analyst", description="Test role.", capabilities=[], domain_access=["*"]),
-            Role(id="admin", description="Test role.", capabilities=[], domain_access=["*"]),
+            Role(
+                id="analyst", description="Test role.", capabilities=["usage"], domain_access=["*"]
+            ),
+            Role(id="admin", description="Test role.", capabilities=["usage"], domain_access=["*"]),
         ],
         rls_rules=[
             RLSRule(
@@ -146,7 +148,9 @@ def snapshot():
             )
         ],
     )
-    return build_snapshot(config, org_id="acme", dialect="postgres", contexts={})
+    return build_snapshot(
+        all_members_of(config, "prod"), org_id="acme", dialect="postgres", contexts={}
+    )
 
 
 def _export_config(provider: str) -> MetadataExportTarget:
@@ -207,7 +211,7 @@ def test_openlineage_dataset_event_carries_schema_ownership_and_description(snap
     assert facets["provisa_domain"]["domainId"] == "sales"
 
 
-def test_openlineage_dataset_facet_names_its_data_product():  # REQ-1634
+def test_openlineage_dataset_facet_names_its_data_products():  # REQ-1634
     # OpenLineage has no persistent entity for a data product — only per-event dataset/run
     # facets — so membership rides the member table's own facets, alongside provisa_domain.
     config = ProvisaConfig(
@@ -225,15 +229,18 @@ def test_openlineage_dataset_facet_names_its_data_product():  # REQ-1634
             )
         ],
     )
-    snap = build_snapshot(config, org_id="acme", dialect="postgres", contexts={})
+    snap = build_snapshot(
+        all_members_of(config, "prod"), org_id="acme", dialect="postgres", contexts={}
+    )
     events = to_events(snap, event_time=EVENT_TIME)
     orders = next(
         e for e in events if e.payload.get("dataset", {}).get("name") == "wh.public.orders"
     )
-    facet = orders.payload["dataset"]["facets"]["provisa_data_product"]
-    assert facet["productId"] == "prod"
-    assert facet["name"] == "Sales 360"
-    assert facet["owner"] == "alice"
+    # Membership is many-to-many: the facet lists every product the table belongs to.
+    (product,) = orders.payload["dataset"]["facets"]["provisa_data_products"]["products"]
+    assert product["productId"] == "prod"
+    assert product["name"] == "Sales 360"
+    assert product["owner"] == "alice"
 
 
 def test_openlineage_column_lineage_facet_names_input_field_and_transform(snapshot):
@@ -436,6 +443,8 @@ def _entity_response(url: str, body: dict) -> dict:
     """
     if url.endswith("/users"):
         return {"id": str(uuid.uuid5(uuid.NAMESPACE_URL, body["name"]))}
+    if (member_call := product_assets_response("PUT", url)) is not None:
+        return member_call.json()  # REQ-1634: the product's member assets, added
     if not url.endswith("/tables"):
         return {}
     fqn = f"{body['databaseSchema']}.{body['name']}"
@@ -444,6 +453,8 @@ def _entity_response(url: str, body: dict) -> dict:
 
 async def _type_get(self, url, params=None, headers=None):
     """The metadata-type lookups the relationship custom property is registered against."""
+    if (member_call := product_assets_response("GET", url)) is not None:
+        return member_call
     name = url.rsplit("/", 1)[-1]
     return httpx.Response(
         200,
@@ -470,9 +481,13 @@ async def test_openmetadata_publish_upserts_every_entity(snapshot, monkeypatch):
     assert result.published["domain"] == 2
     assert result.published["user"] == 1
     assert all(url.startswith("https://catalog.example/api/v1/") for url in seen)
+    assert result.published["data_product"] == 1  # REQ-1634: the product the tables publish through
     # The custom-property registration is a schema change on the target, not an asset, so it
-    # is sent but never counted as something published.
-    assert result.total_published() == len([url for url in seen if "/metadata/types/" not in url])
+    # is sent but never counted as something published; nor is a product's member-asset call,
+    # part of publishing the product (REQ-1634).
+    assert result.total_published() == len(
+        [url for url in seen if "/metadata/types/" not in url and "/assets/" not in url]
+    )
 
 
 @pytest.mark.asyncio
@@ -489,11 +504,15 @@ async def test_openmetadata_publish_reports_the_rejected_entity(snapshot, monkey
     # Two failures, not one: the rejected table, and the lineage edge into it — which is
     # reported rather than sent, because an edge whose endpoint the catalog never accepted has
     # no id to address and would come back as a confusing second table-level error.
+    # The product holding the rejected table is reported too (REQ-1634): it cannot address that
+    # member, as the edge cannot.
     assert [e.asset.fqn() for e in result.errors] == [
         "wh.public.order_totals",
+        "prod",
         "wh.public.order_totals.net",
     ]
-    assert "was not upserted" in result.errors[1].message
+    assert "member 'wh.default.public.order_totals' was not upserted" in result.errors[1].message
+    assert "was not upserted" in result.errors[2].message
     assert result.published["table"] == 2
     assert "lineage" not in result.published
 
@@ -541,3 +560,38 @@ async def test_openmetadata_publish_reports_relationships_it_could_not_declare(
     assert "were not published" in result.errors[0].message
     assert result.published["table"] == 3
     assert not any("extension" in body for body in sent)
+
+
+async def test_an_openmetadata_table_carries_the_environment_and_its_stage(snapshot, monkeypatch):
+    """REQ-2261: each table's extension names the environment and its stage, under custom
+    properties declared on the table type before the first table carries them."""
+    import dataclasses
+
+    from provisa.api.metadata_export.model import EnvironmentStage
+    from provisa.api.metadata_export.openmetadata import ENVIRONMENT_PROPERTY, STAGE_PROPERTY
+
+    staged = dataclasses.replace(snapshot, environment=EnvironmentStage("eu", "preprod"))
+    declared: list[str] = []
+    tables: list[dict] = []
+
+    async def _put(self, url, json=None, headers=None, params=None):
+        if "/metadata/types/" in url:
+            declared.append(json["name"])
+        elif url.endswith("/tables"):
+            tables.append(json)
+        return httpx.Response(
+            200, json=_entity_response(url, json), request=httpx.Request("PUT", url)
+        )
+
+    monkeypatch.setattr(httpx.AsyncClient, "put", _put)
+    monkeypatch.setattr(httpx.AsyncClient, "get", _type_get)
+    result = await OpenMetadataExport(_export_config("openmetadata")).publish(staged)
+    assert result.ok, result.errors
+    assert {ENVIRONMENT_PROPERTY, STAGE_PROPERTY} <= set(declared)
+    assert len(tables) == 3
+    for body in tables:
+        assert body["extension"][ENVIRONMENT_PROPERTY] == "eu"
+        assert body["extension"][STAGE_PROPERTY] == "preprod"
+    # Without an environment registry no stage is claimed.
+    bare = [e for e in to_entities(snapshot) if e.kind == "table"]
+    assert not any(STAGE_PROPERTY in e.body.get("extension", {}) for e in bare)

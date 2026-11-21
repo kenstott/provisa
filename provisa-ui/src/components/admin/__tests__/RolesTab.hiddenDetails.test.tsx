@@ -94,7 +94,7 @@ describe("RolesTab", () => {
     expect(within(dialog).getByText('Delete role "shop_analyst"?')).toBeTruthy();
     expect(api.deleteOrgRole).not.toHaveBeenCalled();
 
-    fireEvent.click(within(dialog).getByRole("button", { name: "Confirm" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Delete" }));
     await waitFor(() => expect(api.deleteOrgRole).toHaveBeenCalledWith("acme", "shop_analyst"));
   });
 });

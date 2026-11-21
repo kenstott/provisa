@@ -398,3 +398,23 @@ def test_a_response_still_streaming_when_the_deadline_passes_ends_there():
     with pytest.raises(RequestTimedOut):
         _serve(app, "jsonapi")
     assert 1 <= len(sent) < 5
+
+
+def test_a_subscription_outlives_the_request_deadline():
+    """REQ-258, REQ-1882, REQ-1905: a subscription runs until its subscriber leaves. It has no
+    answer to finish; ended at the request timeout, a live view stopped updating after a minute."""
+    from provisa.api.request_timeout import outlive_deadline
+
+    sent = []
+
+    async def app(scope, receive, send):
+        outlive_deadline()
+        await send({"type": "http.response.start", "status": 200, "headers": []})
+        for i in range(10):
+            await send({"type": "http.response.body", "body": b"frame", "more_body": True})
+            sent.append(i)
+            time.sleep(0.1)
+        await send({"type": "http.response.body", "body": b""})
+
+    _serve(app, "jsonapi")
+    assert len(sent) == 10

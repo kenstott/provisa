@@ -5,7 +5,7 @@ embedded local platform, so the region-specific admin UX is visible end to end. 
 embedded Postgres (the model store and both regions' stores), each runs its own DuckDB engine, and a
 single fakeredis TCP server is the cache.
 
-Two regions share one Postgres here. Every schema and cache name a region keeps carries the
+Two regions share one Postgres here. Every schema and cache key a region keeps carries the
 region, so the two do not collide. `scripts/launch-demo-regions.sh --check` validates the layout
 without starting anything.
 
@@ -42,14 +42,15 @@ Open the **eu** UI at http://127.0.0.1:8310 and the **us** UI at http://127.0.0.
   reads it from eu's replica store. The data is processed and kept in eu and read from us under one model.
 - **The 503 refusal when a home region is stopped.** Stop just the eu node (leave us up), then on the
   us node read `intake_eu` again. The read is refused by name, because eu's store is not reachable.
-- **A data_residency refusal, by name.** data_residency is the right to SET an object's region, not
-  a read filter. The launcher seeds two basic-auth logins (printed on start): `operator` (the seed
-  `org_admin`, plus `residency_steward` whose grant covers every region, so it can register and move
-  anything) and `resident` (`eu_resident`, which owns objects but whose grant covers only `eu` and
-  no-region). Log in as `resident`, then on **Tables** change a us-homed table's region → the edit is
-  refused and the message names `us` (not covered by the grant); set the no-region `breeds` table's
-  region to `eu` → it succeeds. The design point is that the org_admin alone cannot move data; it needs the separate data_residency grant. Reads are unaffected: what a reader sees across regions
-  is governed by RLS, not by data_residency. (The break-glass `admin` superuser is control-plane only
-  and holds no data capabilities, so it is not used for this.)
-- **A draft table.** Pending replica-layout-2's draft work; the demo's draft table and this step are
-  added when draft lands on regions-3c.
+- **A data_residency refusal, by name.** `data_residency` is the right to set an object's region.
+  The launcher seeds two basic-auth logins, printed on start. `operator` holds the `org_admin` role
+  plus `residency_steward`. `residency_steward` has a grant covering every region, so it can register
+  and move anything. `resident` holds `eu_resident`. Its grant covers only `eu` and no-region.
+  Log in as `resident`, then on **Tables** change a us-homed table's region. The edit is refused and
+  the message names `us`. Set the no-region `breeds` table's region to `eu` and it succeeds. What a
+  reader sees is governed by RLS; the `data_residency` right governs movement, and the org admin needs
+  it in addition to ownership. The break-glass `admin` superuser is control-plane only and holds no
+  data capabilities, so this demo does not use it.
+- **A draft table.** On **Tables**, find the `intake_draft` table. Its status shows as *draft*. It
+  appears in no data surface and no query can name it. Set its region and release it; the eu node
+  builds its replica and it becomes queryable. Setting it back to draft removes it from service again.

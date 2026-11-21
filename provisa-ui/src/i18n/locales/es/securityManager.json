@@ -5,7 +5,8 @@
       "encryption": "Cifrado",
       "authentication": "Autenticación",
       "localUsers": "Usuarios locales",
-      "secrets": "Secretos"
+      "secrets": "Secretos",
+      "secretsService": "Servicio de secretos"
     }
   }
 }

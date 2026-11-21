@@ -1,0 +1,36 @@
+{
+  "wikidataTable": {
+    "modeClass": "טבלה של מחלקה",
+    "starters": {
+      "countries": "מדינות (קודי ISO, בירה, אוכלוסייה)",
+      "currencies": "מטבעות (ISO 4217)",
+      "languages": "שפות (ISO 639)",
+      "admin_regions": "יחידות מנהליות מדרג ראשון",
+      "organizations": "ארגונים נסחרים (LEI, סימול, ISIN)"
+    },
+    "class": "מחלקה",
+    "classHint": "חפשו מחלקות לפי שם, או התחילו מאחת המחלקות הנפוצות ביותר למטה; הטבלה מכילה את המופעים של המחלקה.",
+    "nothingFound": "לא נמצא דבר",
+    "instances": "מופעים: {{value}}",
+    "broader": "מחלקת-על",
+    "narrower": "תת-מחלקה",
+    "columns": "עמודות",
+    "columnsHint": "המאפיינים שמופעי המחלקה משתמשים בהם הכי הרבה.",
+    "filterRequired": "יותר מ-{{limit}} מופעים: בחרו מסנן.",
+    "filterProperty": "סינון לפי",
+    "filterValue": "ערך",
+    "useClass": "שימוש במחלקה זו",
+    "browseTitle": "המחלקות הנפוצות ביותר",
+    "browseLoading": "סופרים את המחלקות הנפוצות ביותר…",
+    "members": "חברים",
+    "starterDescriptions": {
+      "countries": "שורה אחת לכל מדינה.",
+      "currencies": "שורה אחת לכל מטבע עם קוד ISO 4217.",
+      "languages": "שורה אחת לכל שפה עם קוד ISO 639-3.",
+      "admin_regions": "מדינות, מחוזות ויחידות משנה אחרות מהדרג הראשון, עם המדינה שלהן.",
+      "organizations": "שורה אחת לכל רישום נוכחי בבורסה."
+    },
+    "searching": "מחפשים…",
+    "loadingClass": "בונים את השאילתה של המחלקה…"
+  }
+}

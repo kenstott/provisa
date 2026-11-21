@@ -27,6 +27,16 @@ from provisa.core.models import Column, Source, Table
 from provisa.core.paging import PaginationConfig
 from provisa.core.schema_org import api_endpoints, api_sources, domains, registered_tables, sources
 
+
+@pytest.fixture(autouse=True)
+def _one_organisation(monkeypatch):
+    """A deployment of one organization (REQ-2006). The API layer says it at import; these
+    tests import no API layer, so they say it themselves."""
+    from provisa.core import secrets_providers
+
+    monkeypatch.setattr(secrets_providers, "_many_organisations", lambda: False)
+
+
 BASE = "https://pets.test"
 SPEC = {
     "openapi": "3.0.0",
@@ -214,9 +224,9 @@ async def test_a_table_with_no_operation_of_its_name_is_refused(org_db):
     assert (refused.success, refused.code) == (False, "schema.openapi_no_operation")
 
 
-async def test_the_endpoint_goes_with_its_table(org_db):
-    """An endpoint is derived from a registration: deleting the table removes it, so nothing is
-    left that could be read without a registered table."""
+async def test_the_endpoint_stays_with_its_retired_table(org_db):
+    """An endpoint is derived from a registration: deleting the table retires the registration
+    (REQ-2248), which keeps it, so the endpoint stays with it -- restoring the table needs it."""
     from provisa.core.repositories import table as table_repo
 
     state = _state()
@@ -224,7 +234,7 @@ async def test_the_endpoint_goes_with_its_table(org_db):
     async with org_db.acquire() as conn:
         table_id = (await conn.execute_core(select(registered_tables.c.id))).scalar_one()
         assert await table_repo.delete(conn, table_id) is True
-        assert (await conn.execute_core(select(api_endpoints.c.id))).fetchall() == []
+        assert len((await conn.execute_core(select(api_endpoints.c.id))).fetchall()) == 1
 
 
 async def test_the_sources_auth_is_stored_and_reaches_the_caller_and_a_refresh_keeps_it(
@@ -566,8 +576,8 @@ async def test_the_source_list_reports_the_stored_auth_and_never_the_credential(
         app.state,
         "openapi_specs",
         {
-            "pay": {"spec_path": "brand:stripe", "spec": {}, "base_url": BASE},
-            "practice": {"spec_path": "x.json", "spec": {}, "base_url": BASE},
+            "pay": {"spec_path": "brand:stripe", "spec": {}, "base_url": BASE, "setup": {}},
+            "practice": {"spec_path": "x.json", "spec": {}, "base_url": BASE, "setup": {}},
         },
         raising=False,
     )

@@ -1,22 +1,22 @@
 {
   "observabilityTab": {
-    "noSpansYet": "אין spans עדיין — יש לבצע בקשה כדי לראות traces.",
+    "noSpansYet": "אין עדיין spans. יש לשלוח בקשה כדי לראות עקבות.",
     "noSpansMatch": "אין spans התואמים לסינון.",
     "traces": "Traces",
     "filterPlaceholder": "סינון…",
     "pause": "השהיה",
     "resume": "המשך",
     "collapse": "כיווץ",
-    "expand": "הרחבה",
+    "expand": "הגדלה",
     "traceLabel": "Trace:",
     "spanLabel": "Span:",
     "timeLabel": "זמן:",
     "otelTitle": "OpenTelemetry Tracing",
     "statusLabel": "סטטוס:",
     "statusExporting": "מייצא → {{endpoint}}",
-    "statusActiveNoCollector": "פעיל (spans נזרקים — לא הוגדר collector)",
+    "statusActiveNoCollector": "פעיל (העקבות נשמרים עבור הדף הזה ואינם מיוצאים)",
     "endpointLabel": "נקודת קצה של OTLP Collector",
-    "endpointHelp": "יש להשאיר ריק כדי להפיק traces ללא ייצוא. ניתן לעקוף עם משתנה הסביבה OTEL_EXPORTER_OTLP_ENDPOINT.",
+    "endpointHelp": "יש לכוון את זה לאוסף העקבות של Provisa עצמה, ולהוסיף ספק חיצוני כמייצא באוסף, כדי שטבלאות העקבות ימשיכו להתמלא. השארה ריקה שומרת את העקבות בדף הזה בלבד. ניתן לעקוף באמצעות OTEL_EXPORTER_OTLP_ENDPOINT.",
     "serviceNameLabel": "שם שירות",
     "serviceNameHelp": "ניתן לעקוף עם משתנה הסביבה OTEL_SERVICE_NAME.",
     "sampleRateLabel": "קצב דגימה",
@@ -83,6 +83,10 @@
       "document_sources": "שאילתות למאגרי מסמכים.",
       "search_sources": "שאילתות לאינדקסי חיפוש.",
       "grpc_services": "ממשק השאילתות gRPC, נכנס ויוצא."
-    }
+    },
+    "tracesTableCheckFailed": "לא ניתן היה לבדוק את טבלאות ה-traces של Provisa ({{reason}}). לא ידוע אם הן מקבלות שורות; הבדיקה חוזרת כל 30 שניות.",
+    "tracesTableEmpty": "הוגדרה נקודת קצה, אך בטבלאות ה-traces של Provisa עדיין אין שורות. אם נקודת הקצה היא ספק חיצוני ולא ה-collector של Provisa, יש להעביר אותה אל ה-exporters של ה-collector.",
+    "tracesTableStale": "הוגדרה נקודת קצה, אך טבלאות ה-traces של Provisa לא קיבלו שורות ב-{{minutes}} הדקות האחרונות. אם Provisa לא פעלה, זה צפוי. אחרת, יש לוודא שנקודת הקצה היא ה-collector של Provisa ולא ספק חיצוני.",
+    "schemaClustersTitle": "אשכולות סכמה"
   }
 }

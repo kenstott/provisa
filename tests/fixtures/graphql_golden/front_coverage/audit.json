@@ -1,0 +1,17 @@
+[
+ {
+  "lowered": "reads other sources",
+  "origin": "demo:audit/1-open-items.graphql",
+  "root_field": "a__viewReadiness"
+ },
+ {
+  "lowered": "reads other sources",
+  "origin": "demo:audit/2-findings-by-client.graphql",
+  "root_field": "a__viewReadinessGroupBy"
+ },
+ {
+  "lowered": "reads other sources",
+  "origin": "demo:audit/3-public-unmatched.graphql",
+  "root_field": "a__viewPublicMatch"
+ }
+]

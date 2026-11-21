@@ -18,6 +18,7 @@ from provisa.transpiler.transpile import (
     transpile,
     transpile_to_trino,
     rewrite_correlated_subqueries_for_trino,
+    direct_physical,
     rewrite_json_object_to_build_object,
     rewrite_prometheus_labels_for_trino,
 )
@@ -41,6 +42,23 @@ class TestTranspileToTrino:
             'ARRAY[to_json("b"."id")]))]) AS x FROM "public"."users" "b"'
         )
         assert "to_json" not in transpile_to_trino(pg).lower()
+
+    def test_to_json_in_a_json_object_is_its_json_text_marked_format_json(self):
+        # REQ-2176: Trino's JSON_OBJECT takes a JSON value only as text marked FORMAT JSON; a
+        # value of type JSON it casts to varchar, which no array or object survives ("Cannot
+        # cast '["Small"]' to varchar"). A session node's labels are such a list.
+        pg = "SELECT JSON_OBJECT('labels': to_json(\"__labels\"), 'k': \"k\") AS n FROM t"
+        assert transpile_to_trino(pg) == (
+            "SELECT JSON_OBJECT('labels': JSON_FORMAT(CAST(\"__labels\" AS JSON)) FORMAT JSON, "
+            "'k': \"k\") AS n FROM t"
+        )
+
+    def test_to_json_in_a_built_object_is_its_json_text_marked_format_json(self):
+        pg = "SELECT json_build_object('labels', to_json(\"__labels\")) AS n FROM t"
+        assert transpile_to_trino(pg) == (
+            "SELECT JSON_OBJECT('labels': JSON_FORMAT(CAST(\"__labels\" AS JSON)) FORMAT JSON) "
+            "AS n FROM t"
+        )
 
     def test_nested_json_build_object_is_rewritten(self):
         pg = (
@@ -206,6 +224,24 @@ class TestPgDuckdbJsonEmission:
     def test_no_json_object_unchanged(self):
         pg = transpile('SELECT "id", "name" FROM "public"."orders"', "postgres")
         assert rewrite_json_object_to_build_object(pg) == pg
+
+    def test_overlaps_reaches_postgresql_as_its_own_call(self):
+        """REQ-2167: the pg engine sends pg_catalog."overlaps", never the routine's name, which
+        PostgreSQL has no function of."""
+        pg = (
+            'SELECT pg_catalog."overlaps"(NULL::time, NULL::interval, NULL::time, NULL::interval)'
+            " AS v"
+        )
+        for wrapped in (pg, f"SELECT json_object(KEY 'v' VALUE ({pg}))"):
+            out = rewrite_json_object_to_build_object(transpile(wrapped, "postgres"))
+            assert 'pg_catalog."overlaps"(' in out
+            assert "overlaps_timestamp" not in out.lower()
+
+    def test_a_quoted_table_function_keeps_its_name(self):
+        """REQ-2167: PostgreSQL resolves a quoted name as written; "JSON_TO_RECORD" is no
+        function there."""
+        pg = 'SELECT t.a FROM pg_catalog."json_to_record"(\'{"a": 1}\'::json) AS t(a integer)'
+        assert 'pg_catalog."json_to_record"(' in transpile(pg, "postgres")
 
     def test_pg_backend_transpile_physical_emits_build_object(self):
         from provisa.federation.engine import build_pg_engine
@@ -492,17 +528,102 @@ def test_trino_reads_the_epoch_of_a_timestamp_at_utc_as_postgres_does():
             'SELECT "id" AS "id" FROM (SELECT "ID" AS "id" FROM "S"."T") AS "q"',
         ),
         ('SELECT "Mixed" FROM "S"."T"', 'SELECT "Mixed" FROM "S"."T"'),
+        # A statement written without quotes over the governed relation: its references name the
+        # relation's quoted lowercase outputs, which Exasol would otherwise read as ID and NAME.
+        (
+            'SELECT id, name FROM (SELECT "widgets"."ID" AS "id", "widgets"."NAME" AS "name" '
+            'FROM "PROVISA"."WIDGETS" AS "widgets") AS widgets ORDER BY id',
+            'SELECT "id" AS "id", "name" AS "name" FROM (SELECT "widgets"."ID" AS "id", '
+            '"widgets"."NAME" AS "name" FROM "PROVISA"."WIDGETS" AS "widgets") AS widgets '
+            'ORDER BY "id"',
+        ),
+        (
+            'SELECT q.id FROM (SELECT "ID" AS "id" FROM "S"."T") AS q',
+            'SELECT q."id" AS "id" FROM (SELECT "ID" AS "id" FROM "S"."T") AS q',
+        ),
+        (
+            'WITH c AS (SELECT "ID" AS "id" FROM "S"."T") SELECT id FROM c',
+            'WITH c AS (SELECT "ID" AS "id" FROM "S"."T") SELECT "id" AS "id" FROM c',
+        ),
+        # An output the derived relation names without quotes folds the same way on both sides.
+        (
+            'SELECT foo FROM (SELECT "A" AS foo FROM "S"."T") AS q',
+            'SELECT foo AS "foo" FROM (SELECT "A" AS foo FROM "S"."T") AS q',
+        ),
     ],
 )
 def test_an_exasol_source_is_addressed_as_exasol_stores_it(pg_sql, exasol_sql):
     assert transpile(pg_sql, "exasol") == exasol_sql
 
 
+def test_every_identifier_can_be_quoted_for_a_source_without_its_own_dialect():
+    """REQ-1671: SAP HANA has no SQLGlot dialect, so its statements are written as PostgreSQL, and
+    it folds an unquoted name to upper case: ``id`` never met the governed relation's ``"id"``."""
+    assert transpile(
+        'SELECT id FROM (SELECT "w"."ID" AS "id" FROM "SYSTEM"."W" AS "w") AS w ORDER BY id',
+        "postgres",
+        quote_identifiers=True,
+    ) == (
+        'SELECT "id" FROM (SELECT "w"."ID" AS "id" FROM "SYSTEM"."W" AS "w") AS "w" ORDER BY "id"'
+    )
+
+
 def test_a_captured_group_in_a_replacement_is_written_as_trino_names_it():
-    # PostgreSQL's \1 in regexp_replace's replacement is Trino's $1 (a duration's ISO text read
-    # by its groups, temporal.duration_of_computed_text).
+    # PostgreSQL's \1 in regexp_replace's replacement is Trino's $1. The 'g' flag is every match,
+    # which is what Trino's own replaces.
+    pg = r"SELECT REGEXP_REPLACE(x, 'a(b)(c)', '\2-\1', 'g') FROM t"
+    assert (
+        transpile_to_trino(pg)
+        == "SELECT REGEXP_REPLACE(x, 'a(b)(c)', '$2-$1') AS regexp_replace FROM t"
+    )
+
+
+def test_a_captured_group_of_the_first_match_counts_past_the_text_before_it():
+    # With no flag the first match only (function_macros._first_match): the text before the match
+    # is group 1 of the form written, so PostgreSQL's \1 is Trino's $2.
     pg = r"SELECT REGEXP_REPLACE(x, 'a(b)(c)', '\2-\1') FROM t"
-    assert transpile_to_trino(pg) == "SELECT REGEXP_REPLACE(x, 'a(b)(c)', '$2-$1') FROM t"
+    assert transpile_to_trino(pg) == (
+        "SELECT REGEXP_REPLACE(x, '(?s)^(?<before>.*?)(?:a(b)(c))(?<after>.*)$', "
+        "'${before}$3-$2${after}') AS regexp_replace FROM t"
+    )
+
+
+def test_a_group_the_pattern_does_not_have_is_empty_in_the_first_match():
+    # PostgreSQL's \2 of a pattern of one group is nothing, not the text after the match.
+    pg = r"SELECT REGEXP_REPLACE(x, 'a(b)[(]\(', '[\2]') FROM t"
+    assert transpile_to_trino(pg) == (
+        r"SELECT REGEXP_REPLACE(x, '(?s)^(?<before>.*?)(?:a(b)[(]\()(?<after>.*)$', "
+        "'${before}[]${after}') AS regexp_replace FROM t"
+    )
+
+
+def test_a_replacement_s_literal_text_stays_literal_beside_a_group():
+    # \\ is a backslash and the 1 after it a digit; a $ is a dollar sign.
+    pg = r"SELECT REGEXP_REPLACE(x, 'a(b)', '\1$\\1') FROM t"
+    assert transpile_to_trino(pg) == (
+        "SELECT REGEXP_REPLACE(x, '(?s)^(?<before>.*?)(?:a(b))(?<after>.*)$', "
+        r"'${before}$2\$\\1${after}') AS regexp_replace FROM t"
+    )
+
+
+def test_a_backslash_and_a_digit_are_literal_when_every_match_is_replaced():
+    pg = r"SELECT REGEXP_REPLACE(x, 'a(b)', '\\1\1', 'g') FROM t"
+    assert (
+        transpile_to_trino(pg)
+        == r"SELECT REGEXP_REPLACE(x, 'a(b)', '\\1$1') AS regexp_replace FROM t"
+    )
+
+
+@pytest.mark.parametrize(
+    "pg",
+    [
+        r"SELECT REGEXP_REPLACE(x, '(a)\1', '\1') FROM t",  # the pattern's \1 would be the text before
+        r"SELECT REGEXP_REPLACE(x, 'a', '\0') FROM t",  # PostgreSQL's \0 names no group
+    ],
+)
+def test_a_first_match_with_no_group_form_is_refused(pg: str):
+    with pytest.raises(FunctionRefused, match="regexp_replace"):
+        transpile_to_trino(pg)
 
 
 def test_an_empty_array_a_coalesce_falls_back_to_is_typed_by_postgres():
@@ -547,3 +668,26 @@ def test_a_range_s_computed_step_fails_on_trino_at_zero():
         "SELECT SEQUENCE(2, 8, CASE WHEN s = 0 THEN FAIL('range() takes a step other than 0')"
         " ELSE s END) FROM t"
     )
+
+
+class TestDirectPostgresJson:
+    """A statement sent DIRECT to a PostgreSQL source (the meta domain's control plane among them)
+    builds its JSON values as json. PostgreSQL types JSON_OBJECT(...) as jsonb when any argument is
+    jsonb and as json otherwise, so a Cypher node union whose arms read jsonb columns in some
+    labels and none in others was refused: "UNION could not convert type jsonb to json"."""
+
+    UNION = (
+        "SELECT JSON_OBJECT('id': d.id, 'properties': JSON_OBJECT('name': d.name)) AS __node "
+        "FROM domains AS d UNION ALL "
+        "SELECT JSON_OBJECT('id': r.id, 'properties': JSON_OBJECT('capabilities': r.capabilities)) "
+        "AS __node FROM roles AS r"
+    )
+
+    def test_postgres_arms_are_built_as_json(self):
+        out = direct_physical(transpile(self.UNION, "postgres"), "postgres")
+        assert out.upper().count("JSON_BUILD_OBJECT") == 4
+        assert "JSON_OBJECT(" not in out.upper()
+
+    def test_another_dialect_is_unchanged(self):
+        mysql = transpile('SELECT "id" FROM "orders"', "mysql")
+        assert direct_physical(mysql, "mysql") == mysql

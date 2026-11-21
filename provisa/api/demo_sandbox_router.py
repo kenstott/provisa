@@ -20,6 +20,7 @@ path there, ui_server.DEMO_OPEN_PREFIXES); every other process refuses it by nam
 
 from __future__ import annotations
 
+import asyncio
 import logging
 
 from fastapi import APIRouter, Request
@@ -27,6 +28,9 @@ from fastapi import APIRouter, Request
 from provisa.api.errors import ApiError
 
 log = logging.getLogger(__name__)
+
+#: How long an open asks whether its visitor is still there. A client gone is answered at once.
+_LEFT_WAIT_S = 0.25
 
 router = APIRouter(prefix="/public/demos", tags=["demo sandboxes"])
 #: A named ("Try it Out") sandbox, opened by a signed-in person (REQ-2006).
@@ -44,6 +48,20 @@ def _require_tier() -> None:
         )
 
 
+async def _visitor_left(request: Request) -> bool:
+    """Whether the visitor's connection has ended. Not ``request.is_disconnected()``: its first
+    receive is handed the unread request, and it cancels its receive before it can be answered,
+    while a request thread's receive is a relay to the accepting loop (core/request_thread.py), so
+    on the tier it answered False whoever had gone."""
+    await request.body()
+    try:
+        async with asyncio.timeout(_LEFT_WAIT_S):
+            message = await request.receive()
+    except TimeoutError:
+        return False
+    return message["type"] == "http.disconnect"
+
+
 @router.post("/{name}")
 async def open_demo(name: str, request: Request) -> dict:
     from provisa.api.demo_sandbox import VISITOR, mark_closing, open_sandbox
@@ -52,7 +70,7 @@ async def open_demo(name: str, request: Request) -> dict:
     _require_tier()
     opened = await open_sandbox(name, kind=VISITOR)
     assert opened.token is not None  # a visitor's sandbox is always opened with its token
-    if await request.is_disconnected():
+    if await _visitor_left(request):
         # The visitor is gone before the sandbox could be handed over, and its token with them:
         # nobody can reach it or close it. It is closing as a closed tab's is (REQ-2065), so the
         # grace passes with no request and its place is freed, rather than held to the idle expiry.

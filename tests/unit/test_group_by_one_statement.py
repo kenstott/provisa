@@ -28,7 +28,7 @@ from provisa.compiler.sql_validator import validate_sql
 from provisa.compiler.stage2 import GovernanceContext
 from provisa.cypher.parser import parse_cypher
 from provisa.cypher.printer import print_cypher
-from provisa.executor.serialize import serialize_rows
+from tests.unit.json_encoder.rows import serialize_rows
 from provisa.gql.assembler import assemble_rows
 from provisa.gql.graph_rewriter import apply_graph_rewrites
 from provisa.gql.label_map import CypherLabelMap

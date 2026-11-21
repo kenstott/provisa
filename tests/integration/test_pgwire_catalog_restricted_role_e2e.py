@@ -13,29 +13,46 @@ statement is addressed to the meta domain, governed as any read of it, and run o
 as the client role. Nothing here is stubbed: it is the row scope, the column rules and the settings
 of the real statement that are under test, against a role reaching all of it."""
 
-# Requirements: REQ-2190
+# Requirements: REQ-2190, REQ-1132
 
 from __future__ import annotations
 
 import asyncio
+import json
+import urllib.error
+import urllib.request
 from pathlib import Path
 
 import psycopg2
 import pytest
+import sqlalchemy
 import yaml
 
 from sqlalchemy.engine import make_url
 
+from provisa.core.environments import org_schema
+from provisa.api._meta_views import _OPS_LOG_TABLE_ALIAS
+from provisa.api._ontology_views import ONTOLOGY_TABLE_ALIAS
+from provisa.api.app_loaders import _META_TABLE_ALIAS
+from provisa.transpiler.metadata_settings import CLIENT_ROLE
 from tests.integration.isolated_server import IsolatedServer, drop_org_schema
 
 pytestmark = [pytest.mark.integration, pytest.mark.local_platform]
 
 _ORG = "catalog_restricted_role"
 _REPO_ROOT = Path(__file__).parents[2]
-_CAPABILITIES = ["query_development", "full_results", "usage"]
+_CAPABILITIES = [
+    "catalog_read",
+    "data_product_read",
+    "glossary_read",
+    "query_development",
+    "usage",
+    "full_results",
+]
 _RESTRICTED = "catalog_restricted"
+_NO_META = "catalog_no_meta"
 _EVERYTHING = "catalog_everything"
-_CATALOG_READER = "viewer"  # REQ-2154: the catalog is read by every role built on Viewer
+_CATALOG_READER = "developer"  # REQ-2155: a parent holding what the role is given
 _ITS_DOMAIN = "sales-analytics"
 _WITHHELD_COLUMN = ("customers", "email")
 
@@ -60,6 +77,14 @@ def _config(tmp_dir: Path) -> str:
             "capabilities": list(_CAPABILITIES),
             "domain_access": ["*"],
         },
+        {
+            # REQ-1132: no catalog_read: the catalog is still its.
+            "id": _NO_META,
+            "parents": [],
+            "description": "Test role.",
+            "capabilities": ["usage", "query_development"],
+            "domain_access": [_ITS_DOMAIN],
+        },
     ]
     for table in cfg["tables"]:
         for column in table["columns"]:
@@ -68,7 +93,7 @@ def _config(tmp_dir: Path) -> str:
                 table["domain_id"] == _ITS_DOMAIN
                 and (table["table"], column["name"]) != _WITHHELD_COLUMN
             ):
-                column["visible_to"].append(_RESTRICTED)
+                column["visible_to"] += [_RESTRICTED, _NO_META]
     path = tmp_dir / "catalog-restricted-role.yaml"
     path.write_text(yaml.safe_dump(cfg, sort_keys=False))
     return str(path)
@@ -156,6 +181,22 @@ def test_a_column_the_role_is_not_served_is_refused_on_read(server):
     assert refused.value.pgcode == "42501"
 
 
+@pytest.mark.parametrize("role", [_RESTRICTED, _EVERYTHING])
+def test_a_sqlalchemy_psycopg2_engine_connects(server, role):
+    # SQLAlchemy's psycopg2 dialect, at its default use_native_hstore=True, looks hstore up on
+    # every new connection: SELECT t.oid, typarray FROM pg_type t JOIN pg_namespace ns ... --
+    # typarray unqualified beside a relation that has no such column. Every SQLAlchemy client
+    # (pandas, Superset, great_expectations) connects through it (UI e2e run 42233953096).
+    engine = sqlalchemy.create_engine(
+        f"postgresql+psycopg2://{role}:provisa@127.0.0.1:{server.pgwire_port}/provisa"
+    )
+    try:
+        with engine.connect() as conn:
+            assert conn.execute(sqlalchemy.text("SELECT 1")).scalar() == 1
+    finally:
+        engine.dispose()
+
+
 def test_every_system_row_is_every_roles(server):
     assert _read(server, _RESTRICTED, "SELECT typname::text FROM pg_type WHERE oid = 23") == [
         ("int4",)
@@ -232,18 +273,20 @@ def test_a_statement_learns_nothing_of_the_control_plane(server, sql):
 
 
 def test_a_statement_with_no_table_runs_on_the_engine(server):
-    """PostgreSQL's current_query() is the statement as it reached it: POINT is a type the plane has
-    and the engine holds as text, so the engine's statement does not name it."""
-    answered = _answer_or_refusal(server, "SELECT current_query(), NULL::point")
-    assert "POINT" not in answered.upper(), answered
+    """current_query() is the statement the client wrote (pgwire.server._current_query_said,
+    REQ-2171), and the NULL of a type only the plane has comes back from the engine as a NULL."""
+    sql = "SELECT current_query(), NULL::point"
+    assert _answer_or_refusal(server, sql) == repr([(sql, None)])
 
 
 def test_a_function_only_the_plane_has_is_not_answered_for_a_statement_with_no_table(server):
-    """The plane answered box(point, point) as '(1,1),(0,0)'; the engine has no such function."""
-    sql = "SELECT pg_database_size(1::oid), box('(0,0)'::point, '(1,1)'::point)"
+    """The plane would answer pg_notify('c', 'p'); no engine has a form of it (REQ-2167,
+    pg_forms_enum.NOT_SUPPORTED), so the statement is refused by name. box(point, point) was this
+    test's function until the geometric forms (J455) gave every engine one."""
+    sql = "SELECT pg_database_size(1::oid), pg_notify('c', 'p')"
     with pytest.raises(psycopg2.Error) as refused:
         _read(server, _RESTRICTED, sql)
-    assert "box" in str(refused.value)
+    assert "pg_notify" in str(refused.value)
 
 
 def test_a_server_function_beside_a_view_is_refused_by_name(server):
@@ -254,9 +297,215 @@ def test_a_server_function_beside_a_view_is_refused_by_name(server):
 
 
 def test_privilege_and_visibility_functions_are_the_catalogs(server):
+    # As PostgreSQL answers: oid 1 is no function, and the visibility of an object no catalog
+    # holds is NULL (metadata_functions._VISIBLE_IN); oid 23 is int4, on the search path.
     assert _read(
         server,
         _RESTRICTED,
         "SELECT has_schema_privilege('public', 'usage'), pg_type_is_visible(23), "
         "pg_function_is_visible(1), pg_has_role('x', 'member')",
-    ) == [(True, True, True, True)]
+    ) == [(True, True, None, True)]
+
+
+#: A table of meta of each kind: a catalog view, told who asks, and a table of the plane, which is
+#: told nothing and whose statement ran as the pool role.
+_META_TABLES = ("meta.table_keys", "meta.domains")
+#: A function no list names: made on the plane, and held from PUBLIC as a server read is.
+_ON_NO_LIST = "held_from_public"
+
+
+def _http_sql(srv: IsolatedServer, role: str, sql: str) -> tuple[bool, str]:
+    req = urllib.request.Request(
+        f"{srv.base_url}/data/sql",
+        data=json.dumps({"sql": sql}).encode(),
+        headers={"Content-Type": "application/json", "x-provisa-role": role},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=120) as resp:
+            return resp.status == 200, resp.read().decode()
+    except urllib.error.HTTPError as refused:
+        return False, f"{refused.code} {refused.read().decode()}"
+
+
+def _on_the_plane(srv: IsolatedServer, sql: str) -> list[tuple]:
+    """What the control plane itself holds, read with the server's own credentials."""
+    assert srv.plane is not None
+    url = make_url(srv.plane.url)
+    conn = psycopg2.connect(
+        host=url.host,
+        port=url.port,
+        dbname=url.database,
+        user=url.username,
+        password=url.password,
+        options=f"-csearch_path={org_schema(_ORG)}",
+    )
+    try:
+        conn.autocommit = True
+        cur = conn.cursor()
+        cur.execute(sql)
+        return cur.fetchall()
+    finally:
+        conn.close()
+
+
+@pytest.fixture(scope="module")
+def function_on_no_list(server):
+    _on_the_plane(
+        server,
+        f"CREATE FUNCTION {_ON_NO_LIST}() RETURNS TEXT LANGUAGE SQL AS $$ SELECT 'answered' $$; "
+        f"REVOKE ALL ON FUNCTION {_ON_NO_LIST}() FROM PUBLIC; SELECT 1",
+    )
+    return _ON_NO_LIST
+
+
+@pytest.mark.parametrize("table", _META_TABLES)
+def test_a_client_statement_runs_as_the_client_role_over_http(server, table):
+    for asked in ("current_user", "current_setting('role')"):
+        ok, body = _http_sql(server, _EVERYTHING, f"SELECT {asked} FROM {table} LIMIT 1")
+        assert ok, body
+        assert CLIENT_ROLE in body, body
+
+
+@pytest.mark.parametrize("table", _META_TABLES)
+def test_pgwire_answers_current_user_as_the_connection_that_asks(server, table):
+    """PostgreSQL's answer to a client, written by the rewrite: it says nothing of the database's
+    role, which the tests below hold."""
+    sql = f"SELECT current_user FROM {table} LIMIT 1"
+    assert _read(server, _EVERYTHING, sql) == [(_EVERYTHING,)]
+
+
+@pytest.mark.parametrize("table", _META_TABLES)
+def test_a_server_file_is_not_read_over_pgwire(server, table):
+    sql = f"SELECT pg_read_file('postgresql.conf') FROM {table} LIMIT 1"
+    with pytest.raises(psycopg2.Error) as refused:
+        _read(server, _EVERYTHING, sql)
+    assert refused.value.pgcode == "58P01", refused.value  # the form: every file is missing
+
+
+@pytest.mark.parametrize("table", _META_TABLES)
+def test_a_server_file_is_not_read_over_http(server, table):
+    sql = f"SELECT pg_read_file('postgresql.conf') FROM {table} LIMIT 1"
+    ok, body = _http_sql(server, _EVERYTHING, sql)
+    assert not ok, body
+    assert "pg_read_file" in body and "max_connections" not in body
+
+
+@pytest.mark.parametrize("table", _META_TABLES)
+def test_a_function_on_no_list_fails_at_the_database_over_pgwire(
+    server, function_on_no_list, table
+):
+    sql = f"SELECT {function_on_no_list}() FROM {table} LIMIT 1"
+    with pytest.raises(psycopg2.Error) as refused:
+        _read(server, _EVERYTHING, sql)
+    assert refused.value.pgcode == "42501", refused.value
+    assert function_on_no_list in str(refused.value)
+
+
+@pytest.mark.parametrize("table", _META_TABLES)
+def test_a_function_on_no_list_fails_at_the_database_over_http(server, function_on_no_list, table):
+    sql = f"SELECT {function_on_no_list}() FROM {table} LIMIT 1"
+    ok, body = _http_sql(server, _EVERYTHING, sql)
+    assert not ok, body
+    assert f"permission denied for function {function_on_no_list}" in body
+
+
+def _terminal_relations(srv: IsolatedServer) -> set[tuple[str, str]]:
+    """Every (schema, relation) the admin terminal can be asked to read: what is registered under
+    its source, by its physical name."""
+    physical = {**_META_TABLE_ALIAS, **ONTOLOGY_TABLE_ALIAS, **_OPS_LOG_TABLE_ALIAS}
+    rows = _on_the_plane(
+        srv,
+        "SELECT schema_name, table_name FROM registered_tables WHERE source_id = 'provisa-admin'",
+    )
+    return {(schema, physical.get(table, table)) for schema, table in rows}
+
+
+def test_the_client_role_reads_every_table_of_the_terminal(server):
+    relations = _terminal_relations(server)
+    assert len(relations) > 200
+    missing = [
+        (schema, relation)
+        for schema, relation in sorted(relations)
+        if _on_the_plane(
+            server,
+            f"SELECT has_table_privilege('{CLIENT_ROLE}', '\"{schema}\".\"{relation}\"', 'SELECT')",
+        )
+        != [(True,)]
+    ]
+    assert not missing
+
+
+def test_the_client_role_holds_no_table_but_the_terminals(server):
+    """A view reads as its owner, so its base tables are no grant of this role's."""
+    relations = {relation for _schema, relation in _terminal_relations(server)}
+    granted = _on_the_plane(
+        server,
+        "SELECT DISTINCT table_name::text, privilege_type::text "
+        f"FROM information_schema.role_table_grants WHERE grantee = '{CLIENT_ROLE}'",
+    )
+    assert {privilege for _table, privilege in granted} == {"SELECT"}
+    assert {table for table, _privilege in granted} <= relations
+
+
+def test_the_client_role_holds_no_base_table_a_meta_view_restates(server):
+    held = _on_the_plane(
+        server,
+        f"SELECT has_table_privilege('{CLIENT_ROLE}', 'sources', 'SELECT'), "
+        f"has_table_privilege('{CLIENT_ROLE}', 'roles', 'SELECT')",
+    )
+    assert held == [(False, False)]
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "SELECT id FROM meta.sources",  # a view named apart from its table
+        "SELECT id FROM meta.domains",  # a table of the plane itself
+        "SELECT id FROM ontology._terms",
+    ],
+)
+def test_the_meta_and_ontology_tables_answer_a_client(server, sql):
+    assert isinstance(_read(server, _EVERYTHING, sql), list)
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "SELECT id FROM ops.query_audit_log",  # a log's view
+        "SELECT id FROM ops.queries",  # a report
+    ],
+)
+def test_the_ops_tables_answer_their_steward(server, sql):
+    assert isinstance(_read(server, "org_admin", sql), list)
+
+
+def test_the_org_registry_is_a_table_of_the_terminal(server):
+    """REQ-1301: the root org's, in its own schema, rebuilt with no grant unless the seed gives it."""
+    assert ("org_" + _ORG, "org_registry") in _terminal_relations(server)
+
+
+def test_a_write_to_meta_is_refused_and_writes_nothing(server):
+    before = _on_the_plane(server, "SELECT id, description FROM domains ORDER BY id")
+    for write in (
+        "UPDATE meta.domains SET description = 'written'",
+        "DELETE FROM meta.domains",
+    ):
+        with pytest.raises(psycopg2.Error):
+            _read(server, _EVERYTHING, write)
+    assert _on_the_plane(server, "SELECT id, description FROM domains ORDER BY id") == before
+
+
+def test_a_role_with_no_meta_reads_pg_catalog(server):
+    """REQ-1132: the catalog passes metadata along; it is not gated by meta."""
+    assert "orders" in _names(_read(server, _NO_META, _TABLES))
+    assert _read(server, _NO_META, "SELECT typname::text FROM pg_type WHERE oid = 23") == [
+        ("int4",)
+    ]
+
+
+def test_a_role_with_no_meta_reads_information_schema(server):
+    """REQ-1132: the catalog passes metadata along; it is not gated by meta."""
+    listed = _read(server, _NO_META, "SELECT table_name::text FROM information_schema.tables")
+    assert "orders" in _names(listed)
+    assert "products" not in _names(listed)

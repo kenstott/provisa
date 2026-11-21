@@ -29,6 +29,7 @@ from provisa.compiler.sql_rewrite import semantic_table_name
 from provisa.core import schema_org
 from provisa.core.naming_rule_check import NamingRuleRefused, refuse_divergent_rule
 from provisa.pgwire.catalog_pg17 import RELATIONS
+from provisa.pgwire.catalog_pg17_procs import SYSTEM_INDEXES
 from provisa.security.rights import compute_meta_row_scope
 from provisa.transpiler.metadata_names import camel_case_sql, snake_case_sql
 from provisa.transpiler.metadata_oids import metric_oid, table_oid
@@ -83,8 +84,8 @@ def _model(conn) -> None:
         source_id="src",
         domain_id="sales",
         schema_name="public",
-        table_name="drafted",
-        draft=True,
+        table_name="withdrawn_one",
+        withdrawn=True,
     )
     for table_id, name, data_type, extras in (
         (1, "orderId", "integer", {"is_primary_key": True, "not_null": True}),
@@ -150,9 +151,9 @@ def plane(embedded_postgres, control_plane_template):
     held.close()
 
 
-def _told(conn, role="reader_role", can_write=True, **session) -> None:
+def _told(conn, role="reader_role", can_write=True, masked=(), **session) -> None:
     sql, values = set_statement(
-        statement_settings(role, can_write, "provisa", False, session=session)
+        statement_settings(role, can_write, "provisa", False, masked=masked, session=session)
     )
     for n, value in reversed(list(enumerate(values, 1))):
         sql = sql.replace(f"${n}", "'" + value.replace("'", "''") + "'")
@@ -208,7 +209,7 @@ def test_the_catalog_lists_the_model_and_not_itself(plane):
         ("salaries", "hr"),
     ]
     held = {n for (n,) in names}
-    assert "drafted" not in held
+    assert "withdrawn_one" not in held
     assert "table_keys" not in held and "is_tables" not in held
     assert "pg_class" in held and "columns" in held  # the system relations list themselves
 
@@ -229,6 +230,30 @@ def test_a_column_is_what_the_catalog_says_of_it(plane):
         ("_name_", 5, 1043, -1, False, -1),
         ("_domain_", 6, 1043, -1, False, -1),
     ]
+
+
+def test_a_column_the_role_reads_masked_is_nullable_to_it(plane):
+    """REQ-2131 (amended 8fa0d1c262): a column a reader sees under a mask is reported nullable to
+    that reader, though it is declared NOT NULL; every other reader is told what it declares."""
+    attributes = (
+        "SELECT attname, attnotnull FROM meta.catalog_pg_attribute "
+        f"WHERE attrelid = {table_oid(1)} AND attnum <= 3 ORDER BY attnum"
+    )
+    columns = (
+        "SELECT column_name, is_nullable FROM meta.is_columns "
+        f"WHERE {SCOPE_COLUMN} = 1 AND ordinal_position <= 3 ORDER BY ordinal_position"
+    )
+    with plane.begin() as conn:
+        _told(conn, masked=((1, "code"),))
+        assert _read(conn, attributes) == [
+            ("order_id", True),
+            ("total", False),
+            ("code", False),
+        ]
+        assert _read(conn, columns) == [("order_id", "NO"), ("total", "YES"), ("code", "YES")]
+    with plane.begin() as conn:
+        _told(conn)
+        assert _read(conn, attributes) == [("order_id", True), ("total", False), ("code", True)]
 
 
 def test_a_metric_is_a_relation_of_one_value_with_its_description(plane):
@@ -380,7 +405,8 @@ def test_a_role_reads_what_it_lists_and_every_system_row(plane):
             "SELECT DISTINCT attrelid::bigint FROM meta.catalog_pg_attribute "
             f"WHERE attrelid >= 16384 AND {_scoped('catalog_pg_attribute', {1})} ORDER BY 1",
         )
-    assert unscoped == system and unscoped[0][0] == len(RELATIONS)
+    # PostgreSQL's relations, and the indexes on its catalogs.
+    assert unscoped == system and unscoped[0][0] == len(RELATIONS) + len(SYSTEM_INDEXES)
     assert model == [("customer_orders",), ("revenue",)]  # a metric belongs to no table
     assert attributes[0] == (table_oid(1),)
     assert (table_oid(3),) not in attributes
@@ -668,7 +694,8 @@ async def test_the_admin_terminal_tells_a_statement_and_no_later_one(control_pla
     state = SimpleNamespace(model_db=control_plane.org(), federation_engine=None)
     read = "SELECT current_setting('provisa.catalog.role', true) AS role"
     told = await _run_plan_terminal(
-        _admin_plan(read, statement_settings("reader_role", False, "provisa", False)), state
+        _admin_plan(read, statement_settings("reader_role", False, "provisa", False, masked=())),
+        state,
     )
     assert told.rows == [("reader_role",)]
     after = await _run_plan_terminal(_admin_plan(read, None), state)

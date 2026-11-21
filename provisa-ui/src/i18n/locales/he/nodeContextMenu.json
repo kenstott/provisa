@@ -1,7 +1,7 @@
 {
   "nodeContextMenu": {
     "excludeTooltip": "החרגת צומת זה מהשאילתה",
-    "excludeDisabledTooltip": "לא הוגדר מפתח ראשי — לא ניתן להחריג",
+    "excludeDisabledTooltip": "לא ניתן להחריג: לא הוגדר מפתח ראשי",
     "excludeFromQuery": "החרגה מהשאילתה",
     "excludeCount": "החרגת {{count}} צמתים",
     "unfixPosition": "שחרור קיבוע מיקום",

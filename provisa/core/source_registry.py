@@ -18,6 +18,7 @@ it was a hand-maintained duplicate of those objects' names. REACH, likewise, is 
 engine's OWN connector registry (``reachable_source_types``), never a parallel map here."""
 
 # Requirements: REQ-229, REQ-250, REQ-251, REQ-372, REQ-950, REQ-947
+from provisa.codesource.languages import CODE_SOURCE_TYPES
 
 # Wire-protocol families (REQ-950): a wire-compatible RDB reuses its base wire's JDBC driver,
 # native async driver, and SQLGlot dialect — it only needs registry entries, no new code.
@@ -75,8 +76,7 @@ SOURCE_TO_DIALECT: dict[str, str] = {
     "microsoft_365": "postgres",
     "exasol": "exasol",
     # REQ-2100: a code table's rows are read in DuckDB when its host answers the engine.
-    "node": "duckdb",
-    "python": "duckdb",
+    **{t: "duckdb" for t in CODE_SOURCE_TYPES},
 }
 
 # Source types that are CONNECTOR_ONLY — no direct driver, no SQLGlot dialect (REQ-229)
@@ -97,6 +97,87 @@ LIVE_ONLY_TYPES: frozenset[str] = frozenset({"qdrant"})
 def is_live_only(source_type: str | None) -> bool:
     """Whether ``source_type`` is live-only (``LIVE_ONLY_TYPES``)."""
     return source_type in LIVE_ONLY_TYPES
+
+
+# REQ-151, REQ-152: each source type's declaration of how a column registered at a path in a
+# document is served. ``PATHS_RESOLVED``: its connector reads the path itself, so the relation an
+# engine reads holds the column under its own name (a MongoDB table on Trino's live catalog holds
+# the document instead, sql_rewrite.read_document_paths). ``PATHS_EXTRACTED``: the relation holds
+# the table as its source stores it, the document in a JSON column, and the governed relation
+# extracts the path from it (compiler/stage2._read_stored). A type with no entry serves no path
+# column -- its connector is never given a column's path and its rows are read by column name (a
+# Calcite adapter behind the pgwire bridge: ServiceNow, Salesforce, Splunk, SharePoint, ...) -- and
+# a table of it that registers one is refused (compiler/sql_types.extracts_paths).
+PATHS_RESOLVED = "resolved"
+PATHS_EXTRACTED = "extracted"
+# A connector reading each column at its path: the document stores' own clients, the API caller's
+# sources and the inbound receiver (each column's field), Jira's adapter (the field a column reads,
+# federation/jira.py) and a code source's function rows (codesource.table's OutputColumn path).
+_PATH_RESOLVING: frozenset[str] = frozenset(
+    {
+        "mongodb",
+        "elasticsearch",
+        "qdrant",
+        "cosmosdb",
+        "jira",
+        "quickbooks",
+        "openapi",
+        "graphql_remote",
+        "grpc_remote",
+        "ingest",
+        *CODE_SOURCE_TYPES,
+    }
+)
+# A SQL database, lake or file the engine or the source's own driver reads as it is stored.
+_PATH_EXTRACTING: frozenset[str] = frozenset(
+    {
+        "athena",
+        "bigquery",
+        "clickhouse",
+        "cockroachdb",
+        "csv",
+        "databricks",
+        "delta_lake",
+        "druid",
+        "duckdb",
+        "exasol",
+        "fabric",
+        "firebird",
+        "greenplum",
+        "hive",
+        "hive_s3",
+        "hiveserver2",
+        "iceberg",
+        "jdbc",
+        "mariadb",
+        "motherduck",
+        "mysql",
+        "oracle",
+        "parquet",
+        "pinot",
+        "postgresql",
+        "redshift",
+        "saphana",
+        "singlestore",
+        "snowflake",
+        "sqlite",
+        "sqlserver",
+        "synapse",
+        "tidb",
+        "trino",
+        "yugabytedb",
+    }
+)
+PATH_COLUMNS: dict[str, str] = {
+    **{t: PATHS_RESOLVED for t in _PATH_RESOLVING},
+    **{t: PATHS_EXTRACTED for t in _PATH_EXTRACTING},
+}
+
+
+def path_columns(source_type: str) -> str | None:
+    """How ``source_type`` serves a path column (``PATH_COLUMNS``): ``PATHS_RESOLVED``,
+    ``PATHS_EXTRACTED``, or None for a type that declares neither and serves none."""
+    return PATH_COLUMNS.get(source_type)
 
 
 # REQ-1865: row fetch by keys -- each source type's declaration of how the full rows of a list of
@@ -223,3 +304,6 @@ def row_materialize_refusal(
 # REQ-2000: the ``qdrant`` dialect named above is registered with SQLGlot wherever this mapping is
 # read, so a Qdrant source's statements transpile and its writes find their dialect.
 import provisa.qdrant.dialect  # noqa: E402, F401
+
+# REQ-2191: the ``ansi`` dialect a JDBC source may be written in, registered likewise.
+import provisa.jdbc_source.dialect  # noqa: E402, F401

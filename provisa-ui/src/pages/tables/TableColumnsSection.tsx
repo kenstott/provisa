@@ -8,7 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import { Fragment, useEffect, useState } from "react";
+import { Fragment, useEffect, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { Button, Checkbox, Select, Table, Text, TextInput } from "@mantine/core";
 import { Tip } from "../../components/Tip";
@@ -25,8 +25,8 @@ import { ColumnNameCell } from "./ColumnNameCell";
 import { ColumnTabs } from "./ColumnTabs";
 import { COLUMN_TABS, useColumnTab, type ColumnTab } from "./columnTopics";
 import type { ColumnDefinitionLine } from "./ColumnGlossaryHover";
-import { VectorModelCell } from "./VectorModelCell";
-import { useVectorModels } from "./useVectorModels";
+import { QdrantVectorColumns } from "./QdrantVectorColumns";
+import { FormLayout } from "../../components/form/FormLayout";
 import {
   governanceWithheld,
   masksSummary,
@@ -35,6 +35,8 @@ import {
   shownMasks,
 } from "./helpers";
 import type { UpdateEditCol } from "./tableEditTypes";
+import { SensitiveHintText, SensitiveScanBar } from "./SensitiveScan";
+import { useSensitiveScan } from "./useSensitiveScan";
 
 /** The Columns section of a table's form: the same when it is created and when it is edited. */
 export function TableColumnsSection({
@@ -43,15 +45,25 @@ export function TableColumnsSection({
   editSource,
   roles,
   hidingOnly,
+  writeGrants,
+  discover,
   describeColumn,
+  scanTableId,
 }: {
   editingTable: RegisteredTable;
   updateEditCol: UpdateEditCol;
   editSource: Source | undefined;
   roles: Role[];
   hidingOnly: boolean;
+  /** The Write grants tab's editor. */
+  writeGrants: ReactNode;
+  /** REQ-252: reading the columns from the live source, where the table's columns can be. */
+  discover?: ReactNode;
   /** Writes a column's description from the saved table; absent while it is being created. */
   describeColumn?: (column: string) => Promise<string>;
+  /** REQ-2147: the saved table a scan for sensitive values reads; absent while it is being
+   * created, when there is nothing saved to read yet. */
+  scanTableId?: number;
 }) {
   const { t } = useTranslation();
   const roleOptions = roles.map((r) => ({ id: r.id, label: r.id }));
@@ -75,12 +87,6 @@ export function TableColumnsSection({
       })
       .catch(() => setIrTypes(IR_TYPES_FALLBACK));
   }, []);
-  // REQ-2000: a Qdrant collection's vectors, with the registered models each may name.
-  const vectorModels = useVectorModels(
-    editingTable.sourceId,
-    editingTable.tableName,
-    editSource?.type === "qdrant" && !editingTable.queryTemplate,
-  );
   const governanceHidden = governanceWithheld(editingTable);
   // The column editor shows a topic at a time. A caller not shown grants is not offered Access;
   // one who may change only how columns are hidden is not offered Testing (their Save writes
@@ -89,6 +95,8 @@ export function TableColumnsSection({
     (topic) => !(topic === "access" && governanceHidden) && !(topic === "testing" && hidingOnly),
   );
   const [tab, setTab] = useColumnTab(shownTabs);
+  const scan = useSensitiveScan(scanTableId);
+  const hinted = (scan.state?.hints.length ?? 0) > 0;
   // A column's full definition for the hover on its name: every attribute, whichever tab edits it.
   const definitionOf = (c: TableColumn): ColumnDefinitionLine[] => [
     { label: t("tableEditForm.columnHeader"), value: c.columnName },
@@ -109,9 +117,29 @@ export function TableColumnsSection({
   ];
   return (
     <div data-testid="table-section-columns-panel">
+      {discover}
+      {/* REQ-2000: a Qdrant collection's vectors each name their model here, one editor for the
+          table opened unsaved through Register and for a saved one. */}
+      {editSource?.type === "qdrant" && !editingTable.queryTemplate && (
+        <FormLayout style={{ marginBottom: "0.75rem" }}>
+          <QdrantVectorColumns
+            sourceId={editingTable.sourceId}
+            collection={editingTable.tableName}
+            columns={editingTable.columns.map((c) => ({
+              name: c.columnName,
+              path: c.path,
+              embeddingModel: c.embeddingModel,
+            }))}
+            onModel={(i, m) => updateEditCol(i, "embeddingModel", m)}
+          />
+        </FormLayout>
+      )}
       {/* One tab bar for everything of a column: its own attributes, and its test data. */}
       <ColumnTabs value={tab} onChange={setTab} shown={shownTabs} nested />
-      {tab === "testing" ? (
+      {tab === "access" && <SensitiveScanBar scan={scan} />}
+      {tab === "writeGrants" ? (
+        writeGrants
+      ) : tab === "testing" ? (
         <TestDataColumns table={editingTable} updateEditCol={updateEditCol} />
       ) : (
         <Table.ScrollContainer minWidth={640}>
@@ -133,9 +161,6 @@ export function TableColumnsSection({
                     <Table.Th>{t("tableEditForm.dataTypeHeader")}</Table.Th>
                     <Table.Th>{t("tableEditForm.pkHeader")}</Table.Th>
                     <Table.Th>{t("tableEditForm.scopeHeader")}</Table.Th>
-                    {editSource?.type === "qdrant" && (
-                      <Table.Th>{t("vectorModelCell.header")}</Table.Th>
-                    )}
                   </>
                 )}
                 {/* REQ-1958: a caller who is not shown a column's grant lists and mask edits
@@ -145,6 +170,7 @@ export function TableColumnsSection({
                   <>
                     <Table.Th>{t("tableEditForm.visibleToHeader")}</Table.Th>
                     <Table.Th>{t("tableEditForm.maskingHeader")}</Table.Th>
+                    {hinted && <Table.Th>{t("sensitiveScan.header")}</Table.Th>}
                   </>
                 )}
               </Table.Tr>
@@ -260,10 +286,11 @@ export function TableColumnsSection({
                             title={t("tableEditForm.scopeHelp")}
                             data={[
                               { value: "domain", label: t("tableEditForm.scopeDomain") },
+                              { value: "listed", label: t("tableEditForm.scopeListed") },
                               { value: "public", label: t("tableEditForm.scopePublic") },
                               {
-                                value: "restricted",
-                                label: t("tableEditForm.scopeRestricted"),
+                                value: "own-domain",
+                                label: t("tableEditForm.scopeOwnDomain"),
                               },
                             ]}
                             value={c.scope || "domain"}
@@ -273,17 +300,6 @@ export function TableColumnsSection({
                             allowDeselect={false}
                           />
                         </Table.Td>
-                        {editSource?.type === "qdrant" && (
-                          <Table.Td>
-                            <VectorModelCell
-                              column={c.columnName}
-                              path={c.path}
-                              value={c.embeddingModel}
-                              models={vectorModels}
-                              onChange={(m) => updateEditCol(i, "embeddingModel", m ?? "")}
-                            />
-                          </Table.Td>
-                        )}
                       </>
                     )}
                     {tab === "access" && (
@@ -307,16 +323,25 @@ export function TableColumnsSection({
                             {masksSummary(c.masks, t)}
                           </Button>
                         </Table.Td>
+                        {hinted && (
+                          <Table.Td>
+                            <SensitiveHintText
+                              column={c.columnName}
+                              hints={scan.hintsOf(c.columnName)}
+                            />
+                          </Table.Td>
+                        )}
                       </>
                     )}
                   </Table.Tr>
                   {tab === "access" && masksOpen.has(c.columnName) && (
                     <Table.Tr>
-                      <Table.Td colSpan={4} style={{ paddingInlineStart: "1.5rem" }}>
+                      <Table.Td colSpan={hinted ? 5 : 4} style={{ paddingInlineStart: "1.5rem" }}>
                         <MaskListEditor
                           value={shownMasks(c.masks)}
                           onChange={(next) => updateEditCol(i, "masks", next)}
                           roleOptions={roleOptions}
+                          dataType={c.dataType || null}
                           testId={`mask-list-${c.columnName}`}
                         />
                       </Table.Td>

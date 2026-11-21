@@ -8,14 +8,14 @@
 # permission from the copyright holder.
 #
 # REQ-2155: Provisa's standard roles -- named collections of capabilities that organisations extend
-# with roles of their own. A role inherits from its parents, and what it holds is the deduplicated
-# union of its own capabilities and every ancestor's (provisa/security/inheritance.py), so each right
-# is listed once, on the role it first enters through. Standard roles are LOCKED: Provisa maintains
-# them, init_schema writes every one as this file defines it on each run
-# (provisa.core.db.assert_standard_roles), and the admin surfaces refuse to edit or delete one; an
-# organisation extends a standard role only with a child role, so a right Provisa adds here reaches
-# every role built on it. Each states its own reach (domain_access, never inherited, data domains
-# only: a system domain is held as a capability, REQ-1132): every domain,
+# with roles of their own. A standard role is the palette: what it holds is the deduplicated union
+# of its own capabilities and every ancestor's (provisa/security/inheritance.py), so each right is
+# listed once, on the role it first enters through. A role of an organisation's narrows its parents:
+# it holds what it is given of what they hold, so a right Provisa adds here reaches a child only when
+# it is given. Standard roles are LOCKED: Provisa maintains them, init_schema writes every one as this
+# file defines it on each run (provisa.core.db.assert_standard_roles), and the admin surfaces refuse
+# to edit or delete one; an organisation extends a standard role only with a child role. Each states
+# its own reach (domain_access, data domains only: a system domain is held as a capability, REQ-1132): every domain,
 # but platform_admin, which belongs to the control plane alone (REQ-1327/REQ-1337), reaches none
 # and holds its two platform rights and nothing else.
 # platform_settings is not org_admin's here: tenancy decides it (db.apply_tenancy_role_grants).
@@ -23,24 +23,40 @@
 # Read by provisa/core/db.py and by the UI's DEFAULT_ADMIN_ROLE test; this file is the one source.
 
 viewer:
-  description: "The base every role builds on: reads the catalog it is granted, the glossary and the data products."
+  description: "The base every role builds on: reads the glossary and the data products."
   parents: []
   domain_access: ["*"]
-  capabilities: [catalog_read, glossary_read, data_product_read]  # REQ-1132, REQ-1590, REQ-1634
+  # REQ-1132: no catalog_read: every role has the default tier, core metadata for the tables it can
+  # read, write or list. The meta grant is held by a role that names it.
+  # REQ-2155 (amended 2026-11-20): environment_switch is the floor, since which environments a
+  # person sees is decided by the roles assigned in each (REQ-1539).
+  capabilities: [glossary_read, data_product_read, environment_switch]  # REQ-1590, REQ-1634
 
 analyst:
   description: "Reads and queries the governed data it is granted. What an invitation gives when it names no role."
   parents: [viewer]
   domain_access: ["*"]
-  capabilities: [usage, query_development]
+  # REQ-870: command_execution, with what a command assigned to it needs: developer, data_steward,
+  # org_admin and the sandbox hold it through this role.
+  # dq_read: REQ-2155 (amended 2026-11-20), reading quality results is reading data.
+  capabilities: [usage, query_development, command_execution, dq_read]
 
-developer:
-  description: "Builds queries, views and relationships, writes data and works in the org's environments."
+data_writer:
+  description: "Writes governed data: what applications, pipelines and the people who must write data are given."
   parents: [analyst]
   domain_access: ["*"]
-  # REQ-1573 (amended by REQ-2155): a developer works in the org's environments and manages the
-  # ones it owns; managing any environment is org_admin's.
-  capabilities: [create_view, create_relationship, full_results, write, environment_switch, environment_owned_management]
+  # REQ-2155 (amended 2026-11-20): one job per role; writing data is not developer's.
+  capabilities: [write, full_results]
+
+developer:
+  description: "Builds queries, views and relationships and works in the org's environments."
+  parents: [analyst]
+  domain_access: ["*"]
+  # REQ-1573 (amended by REQ-2155): a developer manages the environments it owns; managing any
+  # environment is org_admin's. REQ-2155 (amended 2026-11-20): it authors the model and holds no
+  # write or full_results; those are data_writer's.
+  # catalog_read: views and relationships are built across the model, not only what it reads.
+  capabilities: [catalog_read, create_view, create_relationship, environment_owned_management]
 
 modeler:
   description: "Works out the model: a developer that may join across relations no approved relationship covers yet. Every other rule still applies to it."
@@ -62,7 +78,8 @@ security_admin:
   description: "Configures access: row rules, column grants, masks and sensitive columns."
   parents: [viewer]
   domain_access: ["*"]
-  capabilities: [access_config, column_grant, masking_config, sensitive_data, view_governance]
+  # catalog_read: grants and masks are configured on tables the role does not read.
+  capabilities: [catalog_read, access_config, column_grant, masking_config, sensitive_data, view_governance]
 
 data_steward:
   description: "Governs a domain's meaning and access: the glossary, relationships, row rules, grants, masks and sensitive columns. Nothing operational."
@@ -74,12 +91,6 @@ data_steward:
   domain_access: ["*"]
   capabilities: [glossary_rw, create_relationship, full_results]
 
-dq_reader:
-  description: "Reads data quality check definitions and results."
-  parents: [viewer]
-  domain_access: ["*"]
-  capabilities: [dq_read]
-
 dq_steward:
   description: "Manages data quality: checks, expectations and promises."
   parents: [viewer]
@@ -90,7 +101,17 @@ source_admin:
   description: "Registers sources and tables."
   parents: [viewer]
   domain_access: ["*"]
-  capabilities: [source_registration, table_registration]
+  # catalog_read: it registers into the whole catalog, and must see what is already there.
+  # lineage_report: REQ-2229, the tools that move data between the sources it registers report here.
+  capabilities: [catalog_read, source_registration, table_registration, lineage_report]
+
+member_admin:
+  description: "Adds and removes members and assigns their roles and entitlements. No model or settings rights."
+  parents: [viewer]
+  domain_access: ["*"]
+  # REQ-2155 (amended 2026-11-20). REQ-2219: assign_entitlements sets a member's lists within what
+  # user_management confers.
+  capabilities: [user_management, assign_entitlements]
 
 org_operator:
   description: "Operates the organization: its settings, observability, and approving views and relationships."
@@ -98,16 +119,19 @@ org_operator:
   domain_access: ["*"]
   # REQ-1349: org_settings gates nearly every org-scoped admin page; observability its read-only
   # performance views.
-  capabilities: [org_settings, observability, approve_view, approve_relationship]
+  # catalog_read: approving a view or a relationship reads the tables it joins, whoever reads them.
+  capabilities: [catalog_read, org_settings, observability, approve_view, approve_relationship]
 
 org_admin:
   description: "Administers the organization: its sources, model, governance, members and settings."
-  parents: [developer, data_product_owner, data_steward, dq_steward, source_admin, org_operator]
+  parents: [developer, data_writer, data_product_owner, data_steward, dq_steward, source_admin, member_admin, org_operator]
   domain_access: ["*"]
   # REQ-1573: creating or deleting an environment spends the plan ceiling and drops a schema;
   # REQ-1942: an environment's data choices; REQ-1592: the override over any term, whoever authored it;
   # REQ-2188: every data product, with no U or D rule.
-  capabilities: [environment_management, environment_data, user_management, org_glossary_rw, data_product_rw]
+  # REQ-2219: the five owner capabilities are held with no list, so an org admin owns every object
+  # of those kinds.
+  capabilities: [environment_management, environment_data, org_glossary_rw, data_product_rw, data_product_owner, relationship_owner, domain_steward, term_owner, judgment_basis_owner]
 
 sandbox:
   description: "A Try it Out visitor: what the product does, inside an environment that expires, but not members, environments or the organization glossary."
@@ -115,12 +139,13 @@ sandbox:
   # holds what reaches past the environment it was minted in: managing environments or their data,
   # conferring roles, or the org glossary's override.
   # Not developer's child: developer manages the environments it owns, and the sandbox never
-  # manages an environment (REQ-2053). It holds developer's other rights: create_relationship and
-  # full_results through data_steward, the rest as its own. REQ-2188: data_product_rw is its own too,
+  # manages an environment (REQ-2053). It holds developer's other rights: create_relationship
+  # through data_steward, the rest as its own; write and full_results through data_writer.
+  # Not member_admin's child: it never confers roles. REQ-2188: data_product_rw is its own too,
   # so a visitor can try products.
-  parents: [analyst, data_product_owner, dq_steward, source_admin, security_admin, data_steward, org_operator]
+  parents: [analyst, data_writer, data_product_owner, dq_steward, source_admin, security_admin, data_steward, org_operator]
   domain_access: ["*"]
-  capabilities: [create_view, write, environment_switch, data_product_rw]
+  capabilities: [create_view, data_product_rw]
 
 platform_admin:
   description: "Runs the platform: organizations, infrastructure and deployment settings. Holds no right to any organization's data."

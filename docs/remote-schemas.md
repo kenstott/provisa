@@ -108,8 +108,9 @@ Two responses make the executor retry:
 
 - **Page too heavy.** When the remote answers 502 or 504, the same page is asked again at half the size, down to one row.
 - **Rate limit with a wait time.** When the remote answers 403 or 429 with a `Retry-After` of 120 seconds or less, the executor waits that long and sends the request again, up to three attempts. A refusal with no `Retry-After`, or one asking for a longer wait, is raised as an error. This applies to every read, connection or not.
+- **Throttled by query cost.** A source type may declare the error codes its remote returns when its rate limit has too little left for a query (Shopify's `THROTTLED`, see below). The executor then waits until the limit has restored what the query costs, as the answer's `extensions.cost` states it: the requested cost less what is available, over the restore rate. The same 120-second and three-attempt bounds apply; an answer that states no cost, or is still throttled after the last attempt, fails the read by name.
 
-Any other error in the response fails the read, unless the source type declares otherwise (see GitHub below). A connection whose parent came back null has no rows.
+An error's code is read from its `type` (GitHub) or from `extensions.code`, where the GraphQL specification places it (Shopify). Any other error in the response fails the read, unless the source type declares otherwise (see GitHub below). A connection whose parent came back null has no rows.
 
 ---
 
@@ -155,6 +156,30 @@ GitLab is an ordinary source type and is added and registered the same way as Gi
 - The page size is part of the price. It is `graphql_remote.max_list_items`.
 
 **Token check.** GitLab answers an unrecognized token with an empty result instead of an error. Provisa treats that as a rejected token and doesn't add the source.
+
+---
+
+### Shopify
+
+Shopify is an ordinary source type over a store's Admin GraphQL API, added and registered the same way as GitHub: add a source of type **Shopify**, then register the tables you want from schema `graphql`. The default table-name prefix is `shopify`.
+
+**Add the source.**
+
+1. Open Sources and add a source of type **Shopify**.
+2. Enter the store name: the part of the store's admin address before `.myshopify.com`, such as `my-store`. Only lower-case letters, digits and hyphens are taken; anything else is refused before Provisa sends anything.
+3. Keep the API version, or enter another in the form `YYYY-MM`. It starts filled in with `2026-10`, the newest stable version when Provisa's copy of the schema was taken. The tables on offer are those of that copy whatever version you enter.
+4. Enter an Admin API access token for the store (a custom app's token, `shpat_…`). It is sent bare in the `X-Shopify-Access-Token` header, not as a bearer token.
+5. Save. Provisa sends one query for the shop's name to `https://<store>.myshopify.com/admin/api/<version>/graphql.json`. A token the store rejects fails the add with Shopify's message.
+
+Adding the source registers no tables. Its tables are Relay connections such as `shopify__products` and `shopify__orders`, read by cursor a page at a time.
+
+**Query cost.** Shopify prices every query and refuses one priced over 1,000 points. When you register a table, Provisa sends its query with the columns you chose to the store once, at the page size reads use (`graphql_remote.max_list_items`, 100 by default). If Shopify prices it over the limit, the table is not registered and the result carries Shopify's numbers: `Table 'shopify__orders' was not registered with the columns selected: Query cost is 1850, which exceeds the single query max cost limit (1000). Choose fewer columns.` Nested-object columns cost the most. A page Shopify still prices over the limit during a read is asked for again at half the size.
+
+**Access scopes.** A field outside the app's access scopes (`ACCESS_DENIED`, such as an order's customer without `read_customers`) is left out of the table when it is registered, and the result names it.
+
+**Throttling.** Each store has a bucket of query points that refills at a fixed rate. When the bucket has too little left, Shopify answers `THROTTLED` with what the query costs and how fast the bucket refills; Provisa waits that long and asks again, as described under the executor's retries above. A registration the store keeps throttling is refused with `schema.remote_throttled`; try again later.
+
+**How it works (operators).** The schema ships with Provisa. It is taken, without a store or token, from shopify.dev's public copy of the Admin API for the pinned version, by `scripts/bake_graphql_brand_schema.py shopify`; moving to a newer version is a new bake and a change to `SHOPIFY_API_VERSION` in `provisa/graphql_remote/brands.py`.
 
 ---
 

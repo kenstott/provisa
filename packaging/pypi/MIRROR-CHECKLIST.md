@@ -19,8 +19,13 @@ therefore have **platform-specific** wheels (not pure-Python `-any`).
 
   ```bash
   uv pip compile pyproject.toml --extra embedded --python-version 3.12 \
-      --generate-hashes -o packaging/pypi/requirements-embedded.lock
+      --universal --generate-hashes -o packaging/pypi/requirements-embedded.lock
   ```
+
+- **torch:** the embedded extra includes the vector extra (sentence-transformers, which the default
+  embedding model runs on). On Linux the lock pins the CPU-only `torch==<version>+cpu` from
+  PyTorch's index (`https://download.pytorch.org/whl/cpu`), because PyPI's Linux torch is the CUDA
+  build. Seed that wheel from that index; macOS and Windows take torch from PyPI.
 
 - **provisa-notebook:** provisa depends on `provisa-notebook` at its own version (the
   Data Science area's in-browser Python, REQ-2071). It is published to PyPI with each
@@ -32,6 +37,17 @@ therefore have **platform-specific** wheels (not pure-Python `-any`).
   pip download --no-deps "provisa-notebook==<provisa version>" -d ./mirror-seed
   ```
 
+- **provisa itself:** provisa carries its Rust encoders compiled in (`provisa._encoders`,
+  REQ-2194), so each release publishes one `cp312` wheel per platform —
+  `manylinux_2_28_x86_64`, `manylinux_2_28_aarch64`, `macosx_*_arm64` and `win_amd64`
+  (there is no Intel Mac wheel) — plus an sdist that builds only where a Rust toolchain (cargo) is
+  present. Seed the wheel of every operator platform:
+
+  ```bash
+  pip download --no-deps "provisa==<provisa version>" --only-binary=:all: \
+      --python-version 3.12 --platform manylinux_2_28_x86_64 -d ./mirror-seed
+  ```
+
 ## One-pass mirror seed
 
 Download every wheel named in the lock, for each target platform, then upload
@@ -40,6 +56,7 @@ to the private mirror:
 ```bash
 # Run once per (platform, cp312) target you support.
 pip download --require-hashes -r packaging/pypi/requirements-embedded.lock \
+    --extra-index-url https://download.pytorch.org/whl/cpu \
     --python-version 3.12 --only-binary=:all: \
     --platform manylinux_2_28_x86_64 -d ./mirror-seed
 # → upload ./mirror-seed/*.whl to Artifactory/Nexus, then verify install:

@@ -40,6 +40,7 @@ async def _run(
     metrics=None,
     data_products=None,
     sources=None,
+    member_ids=None,
 ):
     from provisa.api.admin import config_export
 
@@ -87,6 +88,26 @@ async def _run(
                 AsyncMock(return_value=data_products or []),
             )
         )
+        # REQ-1634: the stored membership relation — the fake connection holds none, so the test
+        # names a product's members here (empty unless given).
+        stack.enter_context(
+            patch(
+                "provisa.core.repositories.data_product.member_table_ids",
+                AsyncMock(return_value=member_ids or []),
+            )
+        )
+        stack.enter_context(
+            patch(
+                "provisa.core.repositories.data_product.member_command_names",
+                AsyncMock(return_value=[]),
+            )
+        )
+        stack.enter_context(
+            patch(
+                "provisa.core.repositories.data_product_offer.list_offers",
+                AsyncMock(return_value=[]),
+            )
+        )
         # REQ-1919: every other section the store holds — none, unless a test gives some.
         stack.enter_context(
             patch(
@@ -130,6 +151,10 @@ async def _run(
         )
         stack.enter_context(
             patch("provisa.core.repositories.kafka_source.list_specs", AsyncMock(return_value=[]))
+        )
+        # REQ-2221
+        stack.enter_context(
+            patch("provisa.core.repositories.connector.list_all", AsyncMock(return_value=[]))
         )
         return await config_export.build_live_config()
 
@@ -284,9 +309,10 @@ async def test_table_id_resolves_to_alias_when_set():
     assert cfg["relationships"][0]["source_table_id"] == "pet_by_status"  # alias, not table_name
 
 
-async def test_internal_tables_and_their_relationships_excluded():
-    # meta/ops (and provisa-internal-schema) tables are internal-only; neither they nor relationships
-    # referencing them may appear in the external config.
+async def test_seeded_tables_are_not_exported_but_the_relationships_to_them_are():
+    # meta/ops (and provisa-internal-schema) tables are seeded in every store, so the file does
+    # not hold them; a relationship to one is the model's and is exported (REQ-1634): applied,
+    # its name resolves to the seeded table.
     tables = [
         {
             "id": 1,
@@ -315,9 +341,9 @@ async def test_internal_tables_and_their_relationships_excluded():
             "cardinality": "many-to-one",
         },
         {
-            "id": "internal",
-            "source_table_id": 9,
-            "target_table_id": 1,
+            "id": "to-seeded",
+            "source_table_id": 1,
+            "target_table_id": 9,
             "source_column": "id",
             "target_column": "id",
             "cardinality": "many-to-one",
@@ -325,7 +351,38 @@ async def test_internal_tables_and_their_relationships_excluded():
     ]
     cfg = await _run(base={"tables": []}, tables=tables, rels=rels)
     assert [t["table"] for t in cfg["tables"]] == ["pets"]
-    assert [r["id"] for r in cfg["relationships"]] == ["ok"]
+    assert [r["id"] for r in cfg["relationships"]] == ["ok", "to-seeded"]
+    assert cfg["relationships"][1]["target_table_id"] == "meta_v"
+
+
+async def test_a_data_product_keeps_its_seeded_members():  # REQ-1634
+    tables = [
+        {
+            "id": 1,
+            "source_id": "pg",
+            "schema_name": "public",
+            "table_name": "pets",
+            "domain_id": "pet-store",
+            "columns": [],
+        },
+        {
+            "id": 5,
+            "source_id": "graphql-demo",
+            "schema_name": "graphql",
+            "table_name": "assignments",
+            "domain_id": "shelter",
+            "columns": [],
+        },
+    ]
+    stored = {
+        "id": "workforce_ops",
+        "domain_id": "shelter",
+        "name": "Workforce Ops",
+        "successor_id": None,
+    }
+    cfg = await _run(base={"tables": []}, tables=tables, data_products=[stored], member_ids=[5, 1])
+    assert cfg["data_products"][0]["tables"] == ["assignments", "pets"]
+    assert [t["table"] for t in cfg["tables"]] == ["pets"]
 
 
 async def test_internal_meta_ops_excluded():
@@ -571,3 +628,61 @@ async def test_a_role_with_empty_lists_exports_a_config_the_loader_accepts():
     ]
     for role in cfg["roles"]:
         Role.model_validate(role)
+
+
+async def test_a_syncing_entry_round_trips_through_config_export_and_import():  # REQ-2247
+    """An entry's type, direction and export settings are written to the exported configuration
+    and read back by the loader unchanged."""
+    from provisa.core.models import CatalogConnection, MetadataExportConfig
+
+    entries = [
+        {
+            "id": "dz",
+            "type": "data_catalog",
+            "direction": "export",
+            "provider": "datazone",
+            "aws_region": "us-east-1",
+            "datazone_domain_id": "dzd_1",
+            "aws_access_key_id": "${env:DZ_KEY}",
+            "domains": ["sales"],
+            "role": "steward",
+            "datazone_project_id": "prj_1",
+        },
+        {
+            "id": "uc",
+            "type": "data_catalog",
+            "direction": "both",
+            "provider": "unity_catalog",
+            "domains": ["sales"],
+            "delta_share": True,
+        },
+        {"id": "terms", "type": "ontology", "direction": "import"},
+        {"id": "own", "type": "custom", "direction": "both"},
+    ]
+    base = {"catalogs": entries, "metadata_export": {"reconcile_cron": "*/15 * * * *"}}
+    cfg = await _run(base=base, tables=[])
+    loaded = yaml.safe_load(yaml.safe_dump(cfg))
+
+    def _held(entry: CatalogConnection) -> dict:
+        dumped = entry.model_dump()
+        return {
+            k: v.get_secret_value() if hasattr(v, "get_secret_value") else v
+            for k, v in dumped.items()
+        }
+
+    back = [_held(CatalogConnection.model_validate(e)) for e in loaded["catalogs"]]
+    assert back == [_held(CatalogConnection.model_validate(e)) for e in entries]
+    assert [(e["type"], e["direction"]) for e in back] == [
+        ("data_catalog", "export"),
+        ("data_catalog", "both"),
+        ("ontology", "import"),
+        ("custom", "both"),
+    ]
+    assert (back[0]["role"], back[0]["datazone_project_id"], back[1]["delta_share"]) == (
+        "steward",
+        "prj_1",
+        True,
+    )
+    assert MetadataExportConfig.model_validate(loaded["metadata_export"]).reconcile_cron == (
+        "*/15 * * * *"
+    )

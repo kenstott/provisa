@@ -40,19 +40,17 @@ from provisa.api.json_response import OrjsonResponse
 from provisa.api.jsonapi.errors import error_response, jsonapi_error
 from provisa.api.jsonapi.pagination import (
     PAGE_TOTAL_PARAM,
-    build_pagination_links,
     page_to_limit_offset,
     parse_page_params,
     parse_page_total,
 )
+from provisa.api.jsonapi.resource_id import resource_id_columns, split_resource_id
 from provisa.api.jsonapi.naming import (
     physical_rel_name,
     relationship_name_maps,
     relationship_scalar_maps,
-    rename_row_keys,
     scalar_name_maps,
 )
-from provisa.api.jsonapi.serializer import rows_to_jsonapi
 from provisa.api._query_helpers import (
     RequestRefused,
     RequestVariables,
@@ -207,55 +205,96 @@ def _get_relationship_fields(
     return rels
 
 
-def _extract_included(
-    rows: list[dict[str, Any]], include_names: list[str], id_columns: dict[str, list[str]]
-) -> tuple[dict[str, list[dict[str, Any]]], list[dict[str, Any]]]:
-    """REQ-257: move nested included entities out of the primary rows into a deduplicated set.
-
-    The nested object/array under each included relationship is popped from the primary
-    resource and collected, keyed by relationship name (the JSON:API included type) and
-    deduplicated by its id -- made of its table's key columns (``id_columns``, by included type;
-    serializer.resource_id), so a composite-keyed resource is one of its own. Returns them with,
-    per primary row, the identifiers of what it includes, by relationship: a list for a to-many
-    relationship, one identifier (or None) for a to-one.
-    """
-    from provisa.api.jsonapi.serializer import resource_id
-
-    included_rows: dict[str, list[dict[str, Any]]] = {}
-    seen: dict[str, set[str]] = {}
-    links: list[dict[str, Any]] = []
-    for row in rows:
-        row_links: dict[str, Any] = {}
-        for inc in include_names:
-            nested = row.pop(inc, None)
-            items = nested if isinstance(nested, list) else [nested] if nested else []
-            bucket = included_rows.setdefault(inc, [])
-            ids = seen.setdefault(inc, set())
-            identifiers = []
-            for item in items:
-                rid = resource_id(item, id_columns[inc])
-                identifiers.append({"type": inc, "id": rid})
-                if rid not in ids:
-                    bucket.append(item)
-                    ids.add(rid)
-            if isinstance(nested, list):
-                row_links[inc] = {"data": identifiers}
-            else:
-                row_links[inc] = {"data": identifiers[0] if identifiers else None}
-        links.append(row_links)
-    return {k: v for k, v in included_rows.items() if v}, links
+def _included_id_columns(ctx: Any, join: Any, to_gql: dict[str, str]) -> list[str] | None:
+    """REQ-1929: an included resource's id columns, physical. Reached by a many-to-one (or
+    one-to-one) relationship: the column it points at, or None when the role cannot read it.
+    Reached by a one-to-many relationship: its declared primary key; otherwise none, and its id
+    is its position among its parent's included resources, so no child row collapses into
+    another that shares its foreign key."""
+    if join.cardinality == "one-to-many":
+        keys = ctx.pk_columns.get(join.target.table_id) or []
+        return list(keys) if keys and all(k in to_gql for k in keys) else []
+    if join.target_expr is not None or join.target_column not in to_gql:
+        return None
+    return [join.target_column]
 
 
-def _key_columns(
-    ctx: Any, table_id: int, gql_scalars: list[str], physical_to_gql: dict[str, str]
-) -> list[str]:
-    """The table's key columns, physical, in key order: its declared primary key, else its ``id``
-    column (what JSON:API ids were made of before keys were read). Empty when it has neither: its
-    resources have no id, and the caller refuses the read by name."""
-    keys = ctx.pk_columns.get(table_id) or []
-    if keys and all(k in physical_to_gql for k in keys):
-        return list(keys)
-    return ["id"] if "id" in gql_scalars else []
+class _IncludePlan:
+    """REQ-257, REQ-1929: a row read's ``?include=`` paths, each a relationship path at any depth
+    (``a`` or ``a.b``), as the GraphQL selection that reads them and what the encoder needs to
+    write them: each path's id columns (see ``_included_id_columns``; none means a position),
+    each path's
+    GraphQL names past the first relationship, and ``fields[<type>]`` per included type."""
+
+    def __init__(self) -> None:
+        self.tree: dict[str, Any] = {}
+        self.keys: dict[str, list[str]] = {}
+        self.names: dict[str, tuple[str, dict[str, str]]] = {}
+        self.fields: dict[str, list[str]] = {}
+
+
+def _plan_includes(  # REQ-257, REQ-1929
+    ctx: Any,
+    gql_type_name: str,
+    obj_type: GraphQLObjectType,
+    paths: list[str],
+    sparse: dict[str, list[str]],
+) -> _IncludePlan | OrjsonResponse:
+    """The include plan for ``paths`` (physical, REQ-1417) from the base type, or the 400 for a
+    segment that names no approved relationship or a ``fields[<type>]`` naming no column."""
+    plan = _IncludePlan()
+    for inc in paths:
+        segments = [seg for seg in inc.split(".") if seg]
+        tree, type_name, here = plan.tree, gql_type_name, obj_type
+        path = ""
+        for depth, seg in enumerate(segments):
+            path = f"{path}.{seg}" if path else seg
+            _, rel_types = _split_scalar_and_relationship_fields(here)
+            gql_rel = {physical_rel_name(r): r for r in rel_types}.get(seg)
+            join = ctx.joins.get((type_name, gql_rel)) if gql_rel is not None else None
+            if gql_rel is None or join is None:
+                return _jsonapi_error_response(
+                    400,
+                    "Invalid Include",
+                    f"Unknown relationship {seg!r}",
+                    source_parameter="include",
+                )
+            target_type = rel_types[gql_rel]
+            if path not in plan.keys:
+                target_scalars, _ = _split_scalar_and_relationship_fields(target_type)
+                to_physical, to_gql = scalar_name_maps(ctx, join.target.table_id, target_scalars)
+                keys = _included_id_columns(ctx, join, to_gql)
+                if keys is None:
+                    return _jsonapi_error_response(
+                        400,
+                        "Invalid Include",
+                        f"Relationship {seg!r} points at no column its role can read",
+                        source_parameter="include",
+                    )
+                wanted = sparse.get(seg)
+                if wanted is not None:
+                    unknown = [f for f in wanted if f not in to_gql]
+                    if unknown:
+                        return _jsonapi_error_response(
+                            400,
+                            "Invalid Fieldset",
+                            f"Unknown field {unknown[0]!r}",
+                            source_parameter=f"fields[{seg}]",
+                        )
+                    plan.fields[seg] = list(wanted)
+                    selected = [to_gql[f] for f in wanted]
+                    selected += [to_gql[k] for k in keys if to_gql[k] not in selected]
+                else:
+                    selected = list(target_scalars)
+                child = tree.setdefault(gql_rel, {})
+                for name in selected:
+                    child.setdefault(name, None)
+                plan.keys[path] = keys
+                if depth > 0:
+                    plan.names[path] = (gql_rel, to_physical)
+            tree = tree[gql_rel]
+            type_name, here = join.target.type_name, target_type
+    return plan
 
 
 def _relationship_scalars(schema: GraphQLSchema, table: str, rel_field: str) -> list[str]:
@@ -571,6 +610,47 @@ def _next_page_probe_rows(page_size: int, role_id: str) -> int:  # REQ-257, REQ-
     return 1
 
 
+_COLLECTION_PARAMS = ("sort", "aggregate", "groupBy", "includeNodes")
+
+
+def _lookup_filters(  # REQ-1929
+    domain_id: str,
+    table_name: str,
+    resource_id: str,
+    id_columns: list[str],
+    physical_to_gql: dict[str, str],
+    raw_params: dict[str, str],
+) -> dict[str, dict[str, Any]] | OrjsonResponse:
+    """The filters (GraphQL names) that select the resource ``resource_id`` names, or the refusal:
+    404 for a type identified only by position, which offers no lookup; 400 for a collection
+    parameter (page, filter, sort, aggregate, groupBy), which a single resource does not take, or
+    an id that does not name one value per id column."""
+    if not id_columns:
+        return _jsonapi_error_response(
+            404,
+            "Not Found",
+            f"Resource type {domain_id!r}/{table_name!r} offers no single-resource lookup: its "
+            "resources are identified only by their position in a response",
+        )
+    for key in raw_params:
+        if key in _COLLECTION_PARAMS or key.startswith(("page[", "filter[")):
+            return _jsonapi_error_response(
+                400,
+                "Invalid Query Parameter",
+                f"{key!r} applies to a collection, not a single resource",
+                source_parameter=key,
+            )
+    values = split_resource_id(resource_id, len(id_columns))
+    if values is None:
+        return _jsonapi_error_response(
+            404,
+            "Not Found",
+            f"{resource_id!r} is not an id of {table_name}: it names "
+            f"{len(id_columns)} values ({', '.join(id_columns)}) joined by ':'",
+        )
+    return {physical_to_gql[c]: {"eq": v} for c, v in zip(id_columns, values, strict=True)}
+
+
 def _jsonapi_error_response(status: int, title: str, detail: str | None = None, **kwargs):
     """Return a JSONResponse with JSON:API error format."""
     body = error_response([jsonapi_error(status, title, detail, **kwargs)])
@@ -618,6 +698,19 @@ def create_jsonapi_router(state: Any) -> APIRouter:  # REQ-256, REQ-257, REQ-266
     async def _jsonapi_table_endpoint(  # pyright: ignore[reportUnusedFunction]
         request: Request, domain_id: str, table_name: str
     ):
+        return await _serve(request, domain_id, table_name, None)
+
+    @jsonapi_router.get("/{domain_id}/{table_name}/{resource_id:path}")
+    async def _jsonapi_resource_endpoint(  # pyright: ignore[reportUnusedFunction]
+        request: Request, domain_id: str, table_name: str, resource_id: str
+    ):
+        # REQ-1929: GET /<type>/<id>, offered only for a type whose id is a real identifier.
+        return await _serve(request, domain_id, table_name, resource_id)
+
+    async def _serve(  # REQ-256, REQ-257, REQ-1929
+        request: Request, domain_id: str, table_name: str, resource_id: str | None
+    ):
+        """A collection read, or with ``resource_id`` the single-resource lookup."""
         # Content negotiation
         accept = request.headers.get("accept", "")
         if accept and JSONAPI_CONTENT_TYPE not in accept and "*/*" not in accept:
@@ -719,16 +812,17 @@ def create_jsonapi_router(state: Any) -> APIRouter:  # REQ-256, REQ-257, REQ-266
                 f"No selectable fields for resource type {domain_id!r}/{table_name!r}",
             )
 
-        # A resource's id is made of its table's key columns (serializer.resource_id): every one
-        # is selected, whatever the sparse fieldset asks for.
-        base_keys = _key_columns(ctx, table_meta.table_id, all_scalars, physical_to_gql)
-        if not base_keys:
-            return _jsonapi_error_response(
-                400,
-                "Bad Request",
-                f"Resource type {domain_id!r}/{table_name!r} has no primary key, so its "
-                "resources have no id",
+        # A resource's id is made of its key columns (serializer.resource_id): every one is
+        # selected, whatever the sparse fieldset asks for. None: its id is its position (REQ-1929).
+        base_keys = resource_id_columns(ctx, table_meta.table_id, physical_to_gql)
+        lookup_filters: dict[str, dict[str, Any]] = {}
+        if resource_id is not None:
+            lookup = _lookup_filters(
+                domain_id, table_name, resource_id, base_keys, physical_to_gql, raw_params
             )
+            if not isinstance(lookup, dict):
+                return lookup
+            lookup_filters = lookup
         selected_fields = [
             *[physical_to_gql[k] for k in base_keys if physical_to_gql[k] not in selected_fields],
             *selected_fields,
@@ -736,7 +830,10 @@ def create_jsonapi_router(state: Any) -> APIRouter:  # REQ-256, REQ-257, REQ-266
 
         physical_filters = _parse_filters(raw_params)
         physical_sort = _parse_sort(raw_params.get("sort"))
-        page = parse_page_params(raw_params)
+        # A lookup reads its one resource: one row, no page (_lookup_filters refused page[...]).
+        page = (
+            {"number": 1, "size": 1} if resource_id is not None else parse_page_params(raw_params)
+        )
         page_number, page_size = page["number"], page["size"]
         limit, pg_offset = page_to_limit_offset(page)
         # REQ-1197: the total is counted only for a request that asks for it.
@@ -765,6 +862,7 @@ def create_jsonapi_router(state: Any) -> APIRouter:  # REQ-256, REQ-257, REQ-266
                     source_parameter=f"filter[{col}]",
                 )
         filters = {physical_to_gql[col]: ops for col, ops in physical_filters.items()}
+        filters.update(lookup_filters)  # a lookup takes no filter[...] (_lookup_filters)
 
         # Validate + translate sort columns
         for s in physical_sort:
@@ -933,93 +1031,54 @@ def create_jsonapi_router(state: Any) -> APIRouter:  # REQ-256, REQ-257, REQ-266
                 log.exception("JSON:API aggregate query execution failed for %s", gql_table)
                 return _jsonapi_error_response(500, "Internal Server Error", str(e))
 
-            from provisa.executor.serialize import serialize_aggregate, serialize_rows
+            from fastapi.responses import Response
 
+            from provisa.executor.json_encoders import (
+                jsonapi_aggregate,
+                jsonapi_group_by,
+                result_batches,
+            )
+
+            # REQ-2194: the Rust encoder writes the document from the result's Arrow batches.
+            agg_batches = result_batches(agg_result)
             if is_group_by:
                 # A group's nodes, when ?include= selected them, are a column of its own row.
-                shaped = serialize_rows(
-                    agg_result.rows, agg_compiled.columns, agg_compiled.root_field
-                )
-                group_rows = shaped.get("data", {}).get(agg_compiled.root_field, [])
                 # REQ-1417: both groupKey and nodes are keyed by the GraphQL text this handler
                 # synthesized — groupKey's field names are the `by:` argument's, which
                 # _build_group_by_graphql_query put through apply_gql_name — so both are renamed
                 # back to the physical spelling the caller's ?groupBy= and ?include= used.
-                for row in group_rows:
-                    if "groupKey" in row:
-                        row["groupKey"] = {
-                            gql_to_physical.get(k, k): v for k, v in row["groupKey"].items()
-                        }
-                    if "nodes" in row:
-                        row["nodes"] = [
-                            rename_row_keys(
-                                node,
-                                gql_to_physical,
-                                rel_gql_to_physical,
-                                rel_scalar_gql_to_physical,
-                            )
-                            for node in row["nodes"]
-                        ]
-                data = [
-                    {"type": f"{table_name}GroupBy", "id": str(idx), "attributes": row}
-                    for idx, row in enumerate(group_rows)
-                ]
-                return OrjsonResponse(
-                    content={"data": data},
-                    media_type=JSONAPI_CONTENT_TYPE,
-                    headers=build_cache_headers(agg_result.cache_entry),  # REQ-536
+                body = jsonapi_group_by(
+                    agg_batches,
+                    agg_compiled.columns,
+                    resource_type=table_name,
+                    scalar_names=gql_to_physical,
+                    rel_names=list(rel_gql_to_physical.items()),
+                    rel_scalar_names=rel_scalar_gql_to_physical,
                 )
-
-            shaped = serialize_aggregate(
-                agg_result.rows,
-                agg_compiled.columns,
-                agg_compiled.root_field,
-                agg_alias=agg_compiled.agg_alias,
-            )
-            agg_payload = (
-                shaped.get("data", {})
-                .get(agg_compiled.root_field, {})
-                .get(agg_compiled.agg_alias, {})
-            )
-            return OrjsonResponse(
-                content={"data": None, "meta": {"aggregate": agg_payload}},
+            else:
+                body = jsonapi_aggregate(agg_batches, agg_compiled.columns, agg_compiled.agg_alias)
+            return Response(
+                content=body,
                 media_type=JSONAPI_CONTENT_TYPE,
                 headers=build_cache_headers(agg_result.cache_entry),  # REQ-536
             )
 
-        # REQ-257: ?include=rel1,rel2 — sideload related resources as a compound document.
+        # REQ-257: ?include=rel1,rel2.rel3 — sideload related resources as a compound document,
+        # following each approved relationship to any depth (REQ-1929).
         # REQ-1417: the names are physical; they are translated to the schema's field names here.
         include_param = raw_params.get("include")
         physical_include_names = (
             [n.strip() for n in include_param.split(",") if n.strip()] if include_param else []
         )
-        for inc in physical_include_names:
-            if inc not in rel_physical_to_gql:
-                return _jsonapi_error_response(
-                    400,
-                    "Invalid Include",
-                    f"Unknown relationship {inc!r}",
-                    source_parameter="include",
-                )
-        include_names = [rel_physical_to_gql[inc] for inc in physical_include_names]
-        query_fields = list(selected_fields)
-        # Each included type's key columns, physical: its resources' ids (serializer.resource_id).
-        include_keys: dict[str, list[str]] = {}
-        for inc in include_names:
-            inc_scalars = list(rel_scalars_by_rel[inc])
-            target = ctx.joins[(table_meta.type_name, inc)].target
-            _, inc_physical_to_gql = scalar_name_maps(ctx, target.table_id, inc_scalars)
-            inc_keys = _key_columns(ctx, target.table_id, inc_scalars, inc_physical_to_gql)
-            if not inc_keys:
-                return _jsonapi_error_response(
-                    400,
-                    "Invalid Include",
-                    f"Relationship {rel_gql_to_physical[inc]!r} reaches a table with no primary "
-                    "key, so its resources have no id",
-                    source_parameter="include",
-                )
-            include_keys[rel_gql_to_physical[inc]] = inc_keys
-            query_fields.append(f"{inc} {{ {' '.join(inc_scalars)} }}")
+        all_sparse = _parse_sparse_fieldsets(raw_params)
+        base_type = _unwrap_type(query_type.fields[gql_table].type)
+        includes = _plan_includes(
+            ctx, table_meta.type_name, base_type, physical_include_names, all_sparse
+        )
+        if not isinstance(includes, _IncludePlan):
+            return includes
+        query_fields = list(selected_fields) + _render_jsonapi_include_tree(includes.tree)
+        for inc in includes.tree:
             # the FK column must be selected so the resource's relationship linkage resolves.
             # It is named from the *physical* convention (``pet`` → ``pet_id``) and translated to
             # the schema's spelling, rather than assuming one — under apollo the exposed column is
@@ -1030,7 +1089,11 @@ def create_jsonapi_router(state: Any) -> APIRouter:  # REQ-256, REQ-257, REQ-266
 
         # Without a total, whether another page follows is read from the page itself: one row past
         # it is fetched and dropped below.
-        probe_rows = 0 if want_total else _next_page_probe_rows(page_size, role_id)
+        probe_rows = (
+            0
+            if want_total or resource_id is not None
+            else _next_page_probe_rows(page_size, role_id)
+        )
         variables = _variables(schema, gql_table, filters, params)
         if not isinstance(variables, RequestVariables):
             return variables
@@ -1155,79 +1218,68 @@ def create_jsonapi_router(state: Any) -> APIRouter:  # REQ-256, REQ-257, REQ-266
             # COUNT(*) yields exactly one scalar row by SQL semantics — no empty-result fallback.
             total_count = int(next(iter(count_result.rows))[0])
 
-        # Serialize to flat rows first
-        from provisa.executor.serialize import serialize_rows
-
-        response_data = serialize_rows(result.rows, compiled.columns, gql_table)
-        rows = response_data.get("data", {}).get(gql_table, [])
-        # With no total, a full page is followed by another when the probe row came back; where no
-        # probe row could be asked for, a full page is all that is known.
-        has_next = len(rows) > page_size if probe_rows else len(rows) == page_size
-        rows = rows[:page_size]
-
-        # REQ-1417: back to physical names before anything downstream keys off them, so the
-        # relationship map, the included buckets, and the emitted attributes all speak one
-        # convention.
-        rows = [
-            rename_row_keys(row, gql_to_physical, rel_gql_to_physical, rel_scalar_gql_to_physical)
-            for row in rows
-        ]
-        physical_rel_fields = {f"{p}_id": p for p in rel_physical_to_gql}
-
-        # REQ-257: pull nested included entities out of the rows into a deduplicated set.
-        included_rows, row_links = _extract_included(rows, physical_include_names, include_keys)
-
-        # Build JSON:API document (compound when includes were requested)
-        doc = rows_to_jsonapi(
-            rows,
-            table_name,
-            id_field="id",
-            relationship_fields=physical_rel_fields,
-            included_rows=included_rows or None,
-            id_columns=base_keys,
-            included_id_columns=include_keys,
-            row_links=row_links if physical_include_names else None,
-        )
-        # The serializer's own ``meta.total`` is the length of the rows it was handed — a page, here.
-        # It is replaced by the counted total or removed: a page length is never reported as one.
-        if total_count is not None:
-            doc["meta"]["total"] = total_count
-        else:
-            del doc["meta"]["total"]
-        # REQ-1350: what the request's answer says about itself (an API answer cut short).
-        from provisa.core.statement_warnings import as_entries
-
-        if warnings := as_entries():
-            doc["meta"]["warnings"] = warnings
-        if not doc["meta"]:
-            del doc["meta"]
-
         # Pagination links — preserve role, sort, sparse fieldset, filters, include and parameters
         base_path = f"/data/jsonapi/{domain_id}/{table_name}"
+        if resource_id is not None:
+            base_path = f"{base_path}/{resource_id}"
         extra = {}
         for k in ("role", "sort", "include", "params"):
             if raw_params.get(k):
                 extra[k] = raw_params[k]
         if sparse:
             extra[f"fields[{table_name}]"] = ",".join(sparse)
+        for inc_type, inc_fields in includes.fields.items():
+            extra[f"fields[{inc_type}]"] = ",".join(inc_fields)
         for k, v in raw_params.items():
             if k.startswith("filter["):
                 extra[k] = v
         if want_total:
             extra[PAGE_TOTAL_PARAM] = "true"  # following a link counts again, as the request did
 
-        doc["links"] = build_pagination_links(
-            base_url=base_path,
-            page_number=page_number,
+        from fastapi.responses import Response
+
+        from provisa.core.statement_warnings import as_entries, warn
+        from provisa.executor.json_encoders import jsonapi, result_batches, warnings_json
+        from provisa.executor.serialize import to_one_truncated
+
+        # REQ-2194: the Rust encoder writes the compound document from the result's Arrow
+        # batches: the page (with no total, a full page is followed by another when the probe
+        # row came back; where no probe row could be asked for, a full page is all that is
+        # known), REQ-1417's physical names, REQ-257's included resources and linkage, the
+        # counted total (never a page's length), REQ-1350's warnings and the pagination links.
+        body, truncated = jsonapi(
+            result_batches(result),
+            compiled.columns,
+            resource_type=table_name,
             page_size=page_size,
+            page_number=page_number,
+            probe=bool(probe_rows),
             total=total_count,
-            query_params=extra or None,
-            has_next=has_next,
+            id_columns=list(base_keys),
+            scalar_names=gql_to_physical,
+            rel_names=list(rel_gql_to_physical.items()),
+            rel_scalar_names=rel_scalar_gql_to_physical,
+            includes=physical_include_names,
+            include_keys=includes.keys,
+            include_fields=includes.fields,
+            include_names=includes.names,
+            base_path=base_path,
+            link_params=list(extra.items()),
+            warnings=warnings_json(as_entries()),
+            single=resource_id is not None,
         )
+        if resource_id is not None and body.startswith(b'{"data":null'):
+            return _jsonapi_error_response(
+                404, "Not Found", f"No {table_name} resource has id {resource_id!r}"
+            )
+        # A to-one that matched several rows for one resource: in meta.warnings (the encoder's)
+        # and the response's X-Provisa-Warnings header.
+        for path in truncated:
+            warn(to_one_truncated(path))
 
         # REQ-536: HIT (with the entry's age) when the resource rows came from the response cache.
-        return OrjsonResponse(
-            content=doc,
+        return Response(
+            content=body,
             media_type=JSONAPI_CONTENT_TYPE,
             headers=build_cache_headers(result.cache_entry),
         )

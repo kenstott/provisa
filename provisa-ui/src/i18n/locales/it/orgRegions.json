@@ -1,0 +1,57 @@
+{
+  "orgRegions": {
+    "loading": "Caricamento delle regioni...",
+    "noPlatformRegions": "La piattaforma non dichiara regioni.",
+    "regionsHeading": "Regioni",
+    "storesHeading": "Store",
+    "addRegion": "Aggiungi regione",
+    "addStore": "Aggiungi store",
+    "editRegion": "Modifica regione {{id}}",
+    "editStore": "Modifica store {{id}}",
+    "detailPanel": "Dettagli della regione o dello store",
+    "colRegion": "Regione",
+    "colStore": "Store",
+    "colUrl": "URL",
+    "colKind": "Tipo di motore",
+    "usedBy": "Usato dalle regioni",
+    "unused": "Nessuna regione lo usa",
+    "noKind": "Nessuno",
+    "noRegions": "Nessuna regione ancora concessa.",
+    "noStores": "Ancora nessuno store.",
+    "notSaved": "Non salvato",
+    "heldStores_one": "{{count}} store non è ancora salvato. Viene salvato con la prima regione.",
+    "heldStores_other": "{{count}} store non sono ancora salvati. Vengono salvati con la prima regione.",
+    "edit": "Modifica",
+    "remove": "Rimuovi",
+    "storeTaken": "Esiste già uno store di nome {{id}}.",
+    "regionHelp": "Una delle regioni della piattaforma. I dati dell'organizzazione in essa sono conservati negli store qui sotto.",
+    "storeIdHelp": "Il nome con cui le regioni fanno riferimento a questo store.",
+    "urlHelp": "L'URL di connessione dello store, o un riferimento come ${env:NAME}. Viene conservato esattamente come inserito. Una password al suo interno non viene più mostrata; lascia l'URL invariato per mantenerla.",
+    "kindHelp": "Il motore eseguito da questo store. Obbligatorio per uno store che una regione usa come motore.",
+    "role": {
+      "engine": "Motore",
+      "replicas": "Repliche",
+      "views": "Viste materializzate",
+      "cache": "Cache",
+      "state": "Stato",
+      "record": "Registro delle richieste"
+    },
+    "roleHelp": {
+      "engine": "Lo store il cui motore esegue le query di questa regione. Richiede un tipo di motore.",
+      "replicas": "Dove sono conservate le copie delle tabelle in questa regione. Lo stesso store delle viste materializzate.",
+      "views": "Dove sono conservate le viste materializzate in questa regione. Lo stesso store delle repliche.",
+      "cache": "Dove i risultati delle query sono memorizzati nella cache in questa regione.",
+      "state": "Dove questa regione conserva il suo stato di lavoro.",
+      "record": "Dove questa regione conserva il registro delle richieste."
+    },
+    "delete": {
+      "regionTitle": "Rimuovere la regione {{id}}?",
+      "regionConsequence": "All'organizzazione non è più concessa la regione {{id}}; i suoi nodi lì smettono di servirla al riavvio. I suoi store vengono mantenuti. Un'origine o una tabella che nomina la regione ne impedisce la rimozione.",
+      "storeTitle": "Rimuovere lo store {{id}}?",
+      "storeConsequence": "Lo store {{id}} viene rimosso. Una regione che lo usa ne impedisce la rimozione."
+    },
+    "grantedIntro": "Le regioni che la piattaforma ha concesso a questa organizzazione e lo store in cui conserva ogni tipo di dati in ciascuna. Si impostano nella pagina Piattaforma. Al loro interno, l'organizzazione decide dove risiedono tabelle e origini e quali regioni possono leggere i suoi ruoli.",
+    "colPurposes": "Scopi",
+    "description": "Descrizione"
+  }
+}

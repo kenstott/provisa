@@ -32,10 +32,27 @@ export function hasCapability(capabilities: string[], cap: Capability): boolean 
  * says and neither lets one right answer for another.
  */
 export interface CapabilityRequirement {
-  capability: Capability;
+  /** `null`: the surface asks no right, and every member of the org opens it (REQ-1327). */
+  capability: Capability | null;
   orCapability?: Capability;
   /** REQ-1944: further rights, any one of which also opens the surface. */
   anyOf?: Capability[];
+  /** REQ-1327: a right needed besides whichever of the above opened the surface. */
+  andCapability?: Capability;
+  /** REQ-1327: rights that, held together, also open the surface: a page with an org half beside
+   * a half on the deployment check, which is two rights. */
+  orAllOf?: Capability[];
+}
+
+/**
+ * REQ-1327: the requirement of a row of the admin route table. A platform route asks the deployment
+ * check -- `platform_settings` and `cross_org`, as require_deployment_settings does -- so a
+ * single-tenant org admin, who holds `platform_settings` alone, is never shown a page it cannot use.
+ */
+export function routeRequirement(capability: Capability | null): CapabilityRequirement {
+  return capability === "platform_settings"
+    ? { capability, andCapability: "cross_org" }
+    : { capability };
 }
 
 /**
@@ -54,6 +71,26 @@ export const HIDING_RIGHTS: Capability[] = [
 export const TABLES_SURFACE: CapabilityRequirement = {
   capability: "table_registration",
   anyOf: HIDING_RIGHTS,
+};
+
+/**
+ * REQ-1327: the rights that open the Import page -- any one of the rights an imported object's own
+ * admin edit asks (import_router.IMPORT_RIGHTS). Applying checks each declared object's right.
+ */
+export const IMPORT_RIGHTS: Capability[] = [
+  "create_relationship",
+  "data_product_rw",
+  "glossary_rw",
+  "masking_config",
+  "org_settings",
+  "source_registration",
+  "table_registration",
+  "user_management",
+];
+
+export const IMPORT_SURFACE: CapabilityRequirement = {
+  capability: "table_registration",
+  anyOf: IMPORT_RIGHTS,
 };
 
 /**
@@ -79,8 +116,9 @@ export function hidingDomains(
  * an `orCapability` pair being demonstrated is enough: the surface is the same surface.
  */
 export function isDemonstrated(demonstrated: string[], req: CapabilityRequirement): boolean {
-  if (demonstrated.includes(req.capability)) return true;
+  if (req.capability !== null && demonstrated.includes(req.capability)) return true;
   if ((req.anyOf ?? []).some((c) => demonstrated.includes(c))) return true;
+  if (req.orAllOf !== undefined && req.orAllOf.every((c) => demonstrated.includes(c))) return true;
   return req.orCapability !== undefined && demonstrated.includes(req.orCapability);
 }
 
@@ -104,7 +142,13 @@ export function unionDemonstrated(
 
 /** Does this capability set open a surface described by `req`? */
 export function meetsRequirement(capabilities: string[], req: CapabilityRequirement): boolean {
-  if (hasCapability(capabilities, req.capability)) return true;
+  if (req.andCapability !== undefined && !hasCapability(capabilities, req.andCapability)) {
+    return false;
+  }
+  if (req.capability === null || hasCapability(capabilities, req.capability)) return true;
   if ((req.anyOf ?? []).some((c) => hasCapability(capabilities, c))) return true;
+  if (req.orAllOf !== undefined && req.orAllOf.every((c) => hasCapability(capabilities, c))) {
+    return true;
+  }
   return req.orCapability !== undefined && hasCapability(capabilities, req.orCapability);
 }

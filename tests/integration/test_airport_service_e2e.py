@@ -12,9 +12,12 @@
 
 Provisa SERVES the airport Flight protocol (provisa/api/airport). This test boots a real
 Provisa app (uvicorn, sample_config, isolated PG) with PROVISA_AIRPORT_PORT set, then from an
-in-process DuckDB with the community `airport` extension:
+in-process DuckDB with Query.Farm's `airport` extension:
 
-    INSTALL airport FROM community; LOAD airport;
+    SET allow_extension_repositories = 'allowed';
+    CREATE EXTENSION REPOSITORY IF NOT EXISTS query_farm
+        WITH PREFIX 'https://duckdb-extensions.query.farm';
+    INSTALL airport FROM query_farm; LOAD airport FROM query_farm;
     CREATE SECRET (TYPE airport, auth_token '<role>', scope 'grpc://localhost:<port>');
     ATTACH 'grpc://localhost:<port>' AS provisa (TYPE AIRPORT);
     SELECT ... FROM provisa."sales_analytics"."customers";
@@ -188,8 +191,14 @@ schema = sys.argv[3]
 table = sys.argv[4]
 
 conn = duckdb.connect()
-conn.execute("INSTALL airport FROM community")
-conn.execute("LOAD airport")
+# DuckDB 2.0's airport is Query.Farm's, from its own extension repository.
+conn.execute("SET allow_extension_repositories = 'allowed'")
+conn.execute(
+    "CREATE EXTENSION REPOSITORY IF NOT EXISTS query_farm "
+    "WITH PREFIX 'https://duckdb-extensions.query.farm'"
+)
+conn.execute("INSTALL airport FROM query_farm")
+conn.execute("LOAD airport FROM query_farm")
 loc = f"grpc://localhost:{port}"
 conn.execute(
     "CREATE SECRET airport_sec (TYPE airport, auth_token ?, scope ?)", [role, loc]
@@ -231,8 +240,14 @@ fetch = sys.argv[3] == "1"
 stmts = json.loads(sys.argv[4])
 
 conn = duckdb.connect()
-conn.execute("INSTALL airport FROM community")
-conn.execute("LOAD airport")
+# DuckDB 2.0's airport is Query.Farm's, from its own extension repository.
+conn.execute("SET allow_extension_repositories = 'allowed'")
+conn.execute(
+    "CREATE EXTENSION REPOSITORY IF NOT EXISTS query_farm "
+    "WITH PREFIX 'https://duckdb-extensions.query.farm'"
+)
+conn.execute("INSTALL airport FROM query_farm")
+conn.execute("LOAD airport FROM query_farm")
 loc = f"grpc://localhost:{port}"
 conn.execute("CREATE SECRET airport_sec (TYPE airport, auth_token ?, scope ?)", [role, loc])
 conn.execute(f"ATTACH '{loc}' AS provisa (TYPE AIRPORT)")

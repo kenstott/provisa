@@ -43,7 +43,6 @@ import pytest
 import sqlalchemy as sa
 import yaml
 
-from tests.helpers import registered_id, release_field
 from tests.integration.test_code_sources_e2e import _archive
 
 pytestmark = [pytest.mark.integration]
@@ -125,8 +124,13 @@ def _config() -> dict:
             {
                 "id": _OUTSIDER,
                 "description": "Reads the data and the catalog, not the checks.",
-                "parents": ["viewer"],
-                "capabilities": ["query_development"],
+                "parents": ["developer"],
+                "capabilities": [
+                    "catalog_read",
+                    "data_product_read",
+                    "glossary_read",
+                    "query_development",
+                ],
                 "domain_access": ["hold", "fx"],
             }
         ],
@@ -392,13 +396,6 @@ def quality(server):
         "{ success message } }",
     )["registerTable"]
     assert registered["success"], registered
-    released = _graphql(
-        server,
-        "mutation { "
-        + release_field(registered_id(registered["message"]))
-        + " { success message } }",
-    )
-    assert all(r["success"] for r in released.values()), released
     return "quality"
 
 

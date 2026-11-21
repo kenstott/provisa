@@ -1042,8 +1042,8 @@ class TestConvertMetadata:
         md = _build_full_metadata()
         config = convert_metadata(md)
         superadmin = next(r for r in config.roles if r.id == "superadmin")
-        # Two roles inherited: written out as their union; it builds on viewer (REQ-2155).
-        assert superadmin.parents == ["viewer"]
+        # Two roles inherited: written out as their union; it holds what it is given (REQ-2155).
+        assert superadmin.parents == []
 
     def test_admin_has_write_capability(self):
         md = _build_full_metadata()

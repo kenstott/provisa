@@ -2,9 +2,13 @@
   "parametersPanel": {
     "title": "參數",
     "summary": "{{count}} 個中有 {{required}} 個必填",
+    "limits": "此資料表需要 {{parameters}}。未為每個參數提供值時，它不提供列數、概要或樣本。",
     "name": "參數",
     "type": "類型",
     "reaches": "傳給來源的方式",
+    "meaning": "含義",
+    "opaque": "傳給來源的不透明輸入",
+    "realColumn": "資料表的真實欄位",
     "required": "必填",
     "requiredBySource": "來源要求必填",
     "requiredAria": "{{name}} 為必填",
@@ -13,7 +17,9 @@
       "query_param": "查詢參數",
       "graphql_arg": "GraphQL 參數",
       "grpc_input": "gRPC 請求欄位",
-      "query_arg": "原生查詢參數"
+      "query_arg": "原生查詢參數",
+      "partition_key": "分割區索引鍵",
+      "column_value": "欄位值"
     }
   }
 }

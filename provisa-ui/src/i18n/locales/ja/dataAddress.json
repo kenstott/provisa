@@ -1,0 +1,13 @@
+{
+  "dataAddress": {
+    "label": "データノード",
+    "heading": "データ要求の送信先",
+    "none": "データノードなし",
+    "noneOffered": "このリージョンにはデータノードが登録されていません。下にアドレスを入力してください。",
+    "typedLabel": "データノードのアドレス",
+    "typedPlaceholder": "https://data.example.com",
+    "typedInvalid": "http または https のアドレスを入力してください",
+    "use": "使用",
+    "loadError": "データノードを読み込めませんでした"
+  }
+}

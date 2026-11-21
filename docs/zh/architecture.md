@@ -417,7 +417,7 @@ Attach 会在挂载时自动预配所有前置条件：
 | 环境变量 | 默认值 | 用途 |
 | --------- | --------- | --------- |
 | `PROVISA_REDIRECT_ENABLED` | `false` | 启用服务端阈值重定向 |
-| `PROVISA_REDIRECT_THRESHOLD` | `1000` | 默认行数阈值 |
+| `PROVISA_REDIRECT_THRESHOLD` | `100000` | 默认行数阈值 |
 | `PROVISA_REDIRECT_FORMAT` | `parquet` | 默认重定向格式 |
 | `PROVISA_REDIRECT_BUCKET` | `provisa-results` | S3 存储桶名称 |
 | `PROVISA_REDIRECT_ENDPOINT` | | 兼容 S3 的端点 URL |
@@ -825,7 +825,7 @@ Provisa 是一个很薄的编译与路由层，只给查询延迟增加个位数
 | Provisa gRPC | (host process) | 50051 | Protobuf gRPC 服务器 |
 | Federation Engine | `trinodb/trino`（默认）或外部仓库 | 8080 / 视情况而定 | 查询联邦引擎——内嵌技术栈用 Trino；仓库目标用 Snowflake/Databricks/BigQuery/Fabric/Synapse/DuckDB |
 | Zaychik | `provisa-zaychik`（从源码构建） | 8480 | 面向 Trino 的 Arrow Flight SQL 代理；仓库引擎不需要 |
-| PostgreSQL | `postgres:16` | 5432 | 配置元数据 + Iceberg 目录 |
+| PostgreSQL | `pgvector/pgvector:pg16-trixie` | 5432 | 配置元数据 + Iceberg 目录 |
 | MongoDB | `mongo:7` | 27017 | 演示用 NoSQL 数据源 |
 | MinIO | `minio/minio` | 9000/9001 | 兼容 S3 的对象存储 |
 | Redis | `redis:7-alpine` | 6379 | 查询结果缓存 |

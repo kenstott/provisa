@@ -20,7 +20,7 @@ from fastapi import APIRouter, Request
 from pydantic import BaseModel
 from sqlalchemy import insert, or_, select, update
 
-from provisa.api.admin._platform_guard import role_definition_problem
+from provisa.api.admin._platform_guard import role_definition_problem, role_narrowing_problem
 from provisa.api.admin.capabilities import (
     require_capability_request,
     require_reach_of_added_domains_request,
@@ -32,6 +32,7 @@ from provisa.core.schema_org import roles
 
 if TYPE_CHECKING:
     from provisa.core.database import Database
+    from provisa.core.models import ProvisaConfig
 
 router = APIRouter(prefix="/admin/roles", tags=["admin"])
 
@@ -100,6 +101,8 @@ class UpdateRoleBody(BaseModel):
 @router.get("/")
 async def list_roles(request: Request):  # REQ-042, REQ-059, REQ-060
     from provisa.core.repositories import data_product as data_product_repo
+    from provisa.core.repositories import domain as domain_repo
+    from provisa.security import domain_tree
 
     org_id = _active_org(request)
     pool = _pool(request)
@@ -121,22 +124,25 @@ async def list_roles(request: Request):  # REQ-042, REQ-059, REQ-060
             .order_by(roles.c.id)
         )
         rows = result.fetchall()
+        tree = domain_tree.parent_map(await domain_repo.list_all(conn))
         owners = await data_product_repo.owner_roles(conn)
     identity = getattr(request.state, "identity", None)
     full = role_definitions_visible(request, getattr(identity, "roles", []))
     from provisa.core.db import STANDARD_ROLES
-    from provisa.security.inheritance import effective_capabilities
+    from provisa.security.inheritance import held_by_role
     from provisa.security.row_filters import with_owner_grant
 
     # REQ-2188: what it holds includes what an Owner field gives it, which it does not store.
-    listed = with_owner_grant([dict(r._mapping) for r in rows], owners)
+    held = held_by_role(with_owner_grant([dict(r._mapping) for r in rows], owners), tree)
     # REQ-2155: a standard role is Provisa's and locked; the client offers no edit for one. A shown
-    # role carries what it holds with its ancestors folded in (``effectiveCapabilities``).
+    # role carries what it holds, by the one rule (``effective*``).
     return [
         {
             **dict(r._mapping),
             "standard": r.id in STANDARD_ROLES,
-            "effectiveCapabilities": effective_capabilities(r.id, listed),
+            "effectiveCapabilities": held[r.id]["capabilities"],
+            "effectiveDomains": held[r.id]["domains"],
+            "effectiveResidencyValues": held[r.id]["regions"],
         }
         if full(r.id)
         else {"id": r.id, "description": r.description, "standard": r.id in STANDARD_ROLES}
@@ -166,7 +172,13 @@ async def create_role(body: CreateRoleBody, request: Request):  # REQ-042, REQ-0
         _refuse_standard(body.id)  # REQ-2155
         await _check_parents(conn, body.id, body.parents)  # REQ-2155
         await _check_definition(
-            conn, request, body.id, body.capabilities, body.domain_access, body.parents
+            conn,
+            request,
+            body.id,
+            body.capabilities,
+            body.domain_access,
+            body.parents,
+            body.residency_values,
         )
         # REQ-1531: a role hands out reach; its creator must hold every domain it lists.
         require_reach_of_added_domains_request(request, None, body.domain_access)
@@ -212,29 +224,121 @@ async def _check_definition(  # REQ-042, REQ-1337, REQ-1530
     capabilities: list[str],
     domain_access: list[str],
     parents: list[str],
+    residency_values: list[str],
 ) -> None:
-    """Refuse a definition that lists no domain, names an unknown capability, or carries a
-    platform right the caller may not define -- its own values or the ones its ancestors hand down
-    (REQ-2155 folds every ancestor's capabilities into the role; its reach is its own). See
-    ``role_definition_problem``."""
-    from provisa.security.inheritance import effective_capabilities
+    """Refuse a definition that lists no domain, names an unknown capability, carries a platform
+    right the caller may not define, or gives a right no parent holds (REQ-2155). See
+    ``role_definition_problem`` and ``role_narrowing_problem``."""
+    from provisa.core.repositories import domain as domain_repo
+    from provisa.security import domain_tree
 
-    rows = await role_repo.list_all(conn)
-    inherited = sorted({c for p in parents for c in effective_capabilities(p, rows)})
-    problem = role_definition_problem(
-        request, capabilities, inherited, role_id=role_id, domain_access=domain_access
+    problem = _definition_problem(
+        request,
+        role_id,
+        capabilities,
+        domain_access,
+        parents,
+        residency_values,
+        await role_repo.list_all(conn),
+        domain_tree.parent_map(await domain_repo.list_all(conn)),
     )
     if problem is not None:
         raise problem
 
 
+def _definition_problem(  # REQ-042, REQ-1337, REQ-1530, REQ-2155
+    request: Request,
+    role_id: str,
+    capabilities: list[str],
+    domain_access: list[str],
+    parents: list[str],
+    residency_values: list[str],
+    rows: list[dict],
+    domain_parents: dict[str, str | None],
+) -> ApiError | None:
+    """The refusal of :func:`_check_definition`, judged against ``rows`` (the roles as they will
+    stand) and ``domain_parents`` (the domain tree)."""
+    from provisa.security.inheritance import effective_capabilities
+
+    inherited = sorted({c for p in parents for c in effective_capabilities(p, rows)})
+    return role_definition_problem(
+        request, capabilities, inherited, role_id=role_id, domain_access=domain_access
+    ) or role_narrowing_problem(
+        role_id, parents, capabilities, domain_access, residency_values, rows, domain_parents
+    )
+
+
 async def _check_parents(conn, role_id: str, parents: list[str]) -> None:  # REQ-2155
     """Refuse parents that are missing, the role itself, named twice, or would close a cycle."""
+    _require_parents(role_id, parents, await role_repo.list_all(conn))
+
+
+def _require_parents(role_id: str, parents: list[str], rows: list[dict]) -> None:  # REQ-2155
     from provisa.security.inheritance import parent_map, parents_problem
 
-    problem = parents_problem(role_id, parents, parent_map(await role_repo.list_all(conn)))
+    problem = parents_problem(role_id, parents, parent_map(rows))
     if problem is not None:
         raise ApiError(400, "roles.parent_invalid", problem)
+
+
+async def require_roles_definable(  # REQ-1327, REQ-1337, REQ-1531, REQ-2155
+    conn, request: Request, config: "ProvisaConfig"
+) -> None:
+    """Refuse a config whose ``roles`` a caller could not write through the role forms: each role
+    declared is asked what ``create_role`` (a new id) or ``update_role`` (a held one) asks, judged
+    against the roles and domains as they will stand once the config is loaded. And, as granting
+    it would (``rights.check_role_grant``), a role is defined only with rights the caller holds: a
+    platform right, or an org administrator's role, is not handed out by rewriting a definition."""
+    from provisa.api.admin._platform_guard import granter_capabilities
+    from provisa.api.admin.capabilities import require_right_in_domains_request
+    from provisa.core.repositories import domain as domain_repo
+    from provisa.security import domain_tree
+    from provisa.security.inheritance import effective_capabilities
+    from provisa.security.rights import (
+        OrgAdminGrantError,
+        PlatformRoleGrantError,
+        check_role_grant,
+    )
+
+    if not config.roles:
+        return
+    held = {r["id"]: r for r in await role_repo.list_all(conn)}
+    rows = list({**held, **{r.id: r.model_dump() for r in config.roles}}.values())
+    stored_domains = {d["id"]: d for d in await domain_repo.list_all(conn)}
+    domain_parents = domain_tree.parent_map(
+        {**stored_domains, **{d.id: d.model_dump() for d in config.domains}}.values()
+    )
+    granter = granter_capabilities(request)
+    for role in config.roles:
+        _refuse_standard(role.id)
+        _require_parents(role.id, role.parents, rows)
+        before = held[role.id]["domain_access"] if role.id in held else None
+        if before is not None:  # REQ-1531: changing a role is an act in every domain it reaches
+            require_right_in_domains_request(request, "user_management", before)
+        problem = _definition_problem(
+            request,
+            role.id,
+            role.capabilities,
+            role.domain_access,
+            role.parents,
+            role.residency_values,
+            rows,
+            domain_parents,
+        )
+        if problem is not None:
+            raise problem
+        require_reach_of_added_domains_request(request, before, role.domain_access)
+        try:
+            check_role_grant(role.id, effective_capabilities(role.id, rows), granter)
+        except (PlatformRoleGrantError, OrgAdminGrantError) as exc:
+            rights = ", ".join(sorted(exc.missing))
+            raise ApiError(
+                403,
+                "roles.rights_not_held",
+                f"Role {role.id!r} carries {rights}, which you do not hold",
+                role=role.id,
+                rights=rights,
+            ) from exc
 
 
 def _refuse_standard(role_id: str) -> None:  # REQ-2155
@@ -296,7 +400,9 @@ async def update_role(
         await role_repo.require_residency_grant_saved(conn, role_id, new_caps, new_values)
         if new_parents != existing["parents"]:
             await _check_parents(conn, role_id, new_parents)  # REQ-2155
-        await _check_definition(conn, request, role_id, new_caps, new_domains, new_parents)
+        await _check_definition(
+            conn, request, role_id, new_caps, new_domains, new_parents, new_values
+        )
         require_reach_of_added_domains_request(  # REQ-1531
             request, existing["domain_access"], new_domains
         )
@@ -380,9 +486,9 @@ async def effective_rights(role_id: str, request: Request):  # REQ-2161
     pool = _pool(request)
     async with pool.acquire() as conn:
         result = await conn.execute_core(
-            select(roles.c.id, roles.c.capabilities, roles.c.parents).where(
-                or_(roles.c.org_id.is_(None), roles.c.org_id == org_id)
-            )
+            select(
+                roles.c.id, roles.c.capabilities, roles.c.parents, roles.c.residency_values
+            ).where(or_(roles.c.org_id.is_(None), roles.c.org_id == org_id))
         )
         rows = [dict(r._mapping) for r in result.fetchall()]
     known = {r["id"] for r in rows}

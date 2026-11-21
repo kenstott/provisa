@@ -1,7 +1,7 @@
 {
   "nlPage": {
     "guideTitle": "如何寫出好問題",
-    "guideDesc": "此工具直接根據你的結構描述產生查詢 — 它不會對自由文字或一般知識進行推理。請以你數據中實際存在的數據表、欄位及關係來組織問題。",
+    "guideDesc": "此工具根據你的結構描述產生查詢。它不會以自由文字或常識進行推理，因此請以數據中的資料表、欄位和關係來表述問題。",
     "guideRuleNames": "使用實體的實際名稱而非同義詞（{{entity}}，而非 {{synonym}}）",
     "guideRuleFilters": "像撰寫查詢一樣指明篩選、分組及彙總",
     "guideRuleSchema": "結構描述中不存在的欄位或關係無法查詢",
@@ -24,8 +24,8 @@
     "strictModeTooltip": "所有產生皆嚴格依據 GraphQL 運算式：先產生 GraphQL 並對結構描述驗證，再編譯為 SQL，然後編譯為 Cypher。關閉時：SQL、GraphQL 與 Cypher 各自獨立產生，作為最貼近問題的查詢。",
     "strictLocked": "此角色只能使用已核准的關係",
     "questionTooltip": "使用您自己的表名、欄名與關聯名稱，以日常語言提問。Enter 送出，Shift+Enter 換行。",
-    "generateTooltip": "使用目前角色可見的結構描述，依此問題為每個介面（GraphQL、SQL 與 Cypher）產生查詢。",
-    "mcpChatTooltip": "把這個問題交給 MCP 助理，它會探索數據目錄並代您執行查詢，而不只是產生查詢。",
+    "generateTooltip": "使用目前角色可見的結構描述，根據此問題產生 GraphQL、SQL 和 Cypher 查詢。",
+    "mcpChatTooltip": "將此問題傳送給 MCP 助理，由它瀏覽目錄並為你執行查詢。",
     "questionHelpTitle": "如何提問",
     "strictHelpTitle": "嚴格生成",
     "generateHelpTitle": "「生成」會產出什麼",

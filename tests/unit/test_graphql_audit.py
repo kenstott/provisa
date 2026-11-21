@@ -280,6 +280,21 @@ def test_a_response_cache_hit_records_the_cache_route(audited, monkeypatch):
     async def _execute(plan, state):
         return QueryResult(rows=[(1,), (2,)], column_names=["order_id"])
 
+    from provisa.compiler.sql_types import ColumnRef, CompiledQuery
+    from tests.unit import test_graphql_plan_cache
+
+    # The field's one column, which the cached rows hold (the encoder writes each by its column).
+    monkeypatch.setattr(
+        test_graphql_plan_cache,
+        "_cq",
+        lambda: CompiledQuery(
+            sql='SELECT "order_id" FROM "sales"."orders"',
+            params=[1],
+            root_field="orders",
+            columns=[ColumnRef(None, "order_id", "orderId", None)],
+            sources={"sales-pg"},
+        ),
+    )
     monkeypatch.setattr(endpoint, "_execute_one_field", _real_execute_one_field)
     monkeypatch.setattr(_pipeline, "_govern_and_route_compiled", _govern)
     monkeypatch.setattr(_pipeline, "_execute_plan", _execute)

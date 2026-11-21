@@ -43,7 +43,8 @@ from pydantic import BaseModel
 from provisa.api.role_surface import role_surface
 from provisa.core import request_deadline
 from provisa.core.read_refusal import ReadRefused
-from provisa.core.statement_warnings import collecting
+from provisa.core.parameter_binding import ParameterBindingRefused
+from provisa.core.statement_warnings import collecting, warn
 from provisa.api.errors import ApiError
 from provisa.cache.middleware import build_cache_headers
 from provisa.federation.replica_state import ReplicaBuilding
@@ -51,6 +52,7 @@ from provisa.compiler.hints import extract_graphql_hints
 from provisa.compiler.parser import GraphQLValidationError, coerce_variable_defaults, parse_query
 from provisa.compiler.sql_gen import compile_query
 from provisa.executor import stats as _qs_mod
+from provisa.observability.request_facts import DocumentResponse
 from provisa.observability.request_facts import TimedJSONResponse as JSONResponse  # REQ-1910
 from provisa.audit.context import note_request_route, note_request_rows
 from provisa.security.rights import Capability
@@ -60,7 +62,7 @@ from provisa.api.data.mutations import (
     _handle_mutation,
     _split_action_fields,
 )
-from provisa.executor.serialize import serialize_aggregate
+from provisa.executor.serialize import to_one_truncated
 from graphql.language.ast import OperationDefinitionNode
 from provisa.api.data.graphql_http import (
     GraphQLDocumentError,
@@ -423,11 +425,9 @@ async def graphql_endpoint(  # REQ-001, REQ-002, REQ-043, REQ-047, REQ-049, REQ-
             if result.errors and result.data is None:
                 # Variables that do not coerce, or no operation to run: nothing was executed.
                 raise GraphQLDocumentError([err.message for err in result.errors])
-            if result.errors:
-                return JSONResponse(
-                    {"data": result.data, "errors": [err.formatted for err in result.errors]}
-                )
-            return JSONResponse({"data": result.data})
+            from provisa.api.graphql_answer import graphql_body
+
+            return JSONResponse(graphql_body(result))
 
     steward_hint = directives.steward_hint
 
@@ -634,10 +634,13 @@ async def graphql_endpoint(  # REQ-001, REQ-002, REQ-043, REQ-047, REQ-049, REQ-
 def _forbidden(exc: PermissionError) -> Exception:
     """The 403 a pipeline refusal answers: the approval hook's denial keeps its own code and
     reason (REQ-203); any other refusal is named by its message."""
+    from provisa.compiler.sql_validator import GovernanceRefused
     from provisa.pgwire._pipeline import ApprovalDenied
 
     if isinstance(exc, ApprovalDenied):
         return ApiError(403, exc.code, str(exc), reason=exc.reason)
+    if isinstance(exc, GovernanceRefused):  # REQ-2222: the rule that refused, by its code
+        return ApiError(403, exc.code, str(exc), violations=exc.params["violations"])
     return HTTPException(status_code=403, detail=str(exc))
 
 
@@ -667,6 +670,8 @@ async def _executed(plan, state, root_field: str):
         ) from failed
     except (HTTPException, PermissionError, ReplicaBuilding, ReadRefused):
         raise  # ReadRefused (REQ-1922, REQ-1661): refused by name; the app answers it (503)
+    except ParameterBindingRefused:
+        raise  # REQ-1986: a condition that binds no parameter; the app answers it (400)
     except (MemoryError, ConnectionError) as exc:
         log.error("Query resource error for %s: %s", root_field, exc)
         raise HTTPException(status_code=503, detail=str(exc)) from exc
@@ -695,8 +700,12 @@ async def _execute_one_field(  # REQ-027, REQ-028, REQ-029, REQ-137, REQ-140, RE
     API-table hydration, residency and the materialize stage are the pipeline's. This only shapes
     the rows it gets back into the field's answer.
 
-    Returns (root_field, field_rows, redirect_or_None, cache_hit_record_or_None).
+    Returns (root_field, answer, redirect_or_None, cache_hit_record_or_None): the answer is the
+    Rust encoder's (a FieldAnswer, its JSON written from the result's Arrow batches, REQ-2194), or
+    a Response for a file format.
     """
+    from provisa.executor.json_encoders import FieldAnswer, graphql_aggregate, result_batches
+
     from provisa.pgwire._pipeline import _govern_and_route_compiled
 
     root_field = compiled.root_field
@@ -728,22 +737,24 @@ async def _execute_one_field(  # REQ-027, REQ-028, REQ-029, REQ-137, REQ-140, RE
         return root_field, None, result.redirect, hit
 
     if compiled.has_nodes and not compiled.is_group_by:
-        response = serialize_aggregate(
-            result.rows, compiled.columns, root_field, agg_alias=compiled.agg_alias
-        )
+        # An aggregate's answer is a map ({aggregate, nodes}), not rows.
+        body = graphql_aggregate(result_batches(result), compiled.columns, compiled.agg_alias)
+        answer = FieldAnswer(body, None, {}, [])
     else:
-        response = _format_response(
-            result.rows,
+        answer = _format_response(
+            result,
             compiled.columns,
             root_field,
             output_format,
             result_limit=compiled.result_limit,
         )
-    field_rows = (
-        response.get("data", {}).get(root_field, []) if isinstance(response, dict) else response
-    )
+    if isinstance(answer, FieldAnswer):
+        # What the encoder found about the answer (a to-one that matched several rows) goes to
+        # the request's warnings, which reach the client's extensions.warnings (REQ-1350).
+        for path in answer.truncated:
+            warn(to_one_truncated(path))
     _elapsed_ms = (_time.perf_counter() - _t0) * 1000
-    _n_rows = len(field_rows) if isinstance(field_rows, list) else 0
+    _n_rows = answer.rows or 0 if isinstance(answer, FieldAnswer) else 0
     _record_per_source_stats(
         root_field,
         set(plan.sources or ()),
@@ -758,20 +769,29 @@ async def _execute_one_field(  # REQ-027, REQ-028, REQ-029, REQ-137, REQ-140, RE
             dialect=plan.dialect,
             reason=plan.route_reason or "",
         ),
-        field_rows=field_rows if isinstance(field_rows, list) else None,
+        joined=answer.joined if isinstance(answer, FieldAnswer) else None,
         physical_sql=plan.sql,
     )
     qs = _qs_mod.current()
     if qs is not None and compiled.sources:
         _append_mermaid(qs, compiled, ctx, root_field, None, _elapsed_ms, _n_rows, None)
-    return root_field, field_rows, None, hit
+    return root_field, answer, None, hit
 
 
-def _note_field_outcome(field_rows: Any) -> None:
+def _note_field_outcome(answer: Any) -> None:  # noqa: ANN401 — a FieldAnswer, a Response or None
     """Note one executed root field's rows on the request's audit outcome (REQ-074); its route,
     the cache's included, is noted where the pipeline decides it, in ``_execute_one_field``."""
-    if isinstance(field_rows, list):
-        note_request_rows(len(field_rows))
+    from provisa.executor.json_encoders import FieldAnswer
+
+    if isinstance(answer, FieldAnswer) and answer.rows is not None:
+        note_request_rows(answer.rows)
+
+
+def _field_value(answer: Any) -> Any:  # noqa: ANN401 — a FieldAnswer, or None for a landed field
+    """A root field's value in the response document: the encoder's JSON, embedded as its bytes."""
+    import orjson
+
+    return None if answer is None else orjson.Fragment(answer.body)
 
 
 async def _handle_query(
@@ -925,13 +945,11 @@ async def _handle_query(
         try:
             # The deadline is bound for the work, as on the multi-field path below: without it
             # nothing under this call knows how long the request may wait (REQ-1882).
-            with request_deadline.within(_role_timeout):
-                root_field, field_rows, redirect_info, cached_entry = await asyncio.wait_for(
-                    _execute_one_field(
+            with request_deadline.within(_role_timeout) as deadline:
+                async with request_deadline.timing_out(deadline):
+                    root_field, field_rows, redirect_info, cached_entry = await _execute_one_field(
                         prepared[0], ctx, state, role_id, output_format, **_field_args
-                    ),
-                    timeout=_role_timeout,
-                )
+                    )
         except ReplicaBuilding as exc:
             # Not a slow query: the table's replica is still being built, and the message says so.
             raise ApiError(504, "data.replica_building", str(exc), replica=exc.replica)
@@ -945,22 +963,15 @@ async def _handle_query(
                 setting=_timeout_setting,
             )
         _note_field_outcome(field_rows)  # REQ-074: the request's audit row
-        if cached_entry is not None:
-            headers = build_cache_headers(cached_entry)
-            return JSONResponse(
-                content={"data": {root_field: field_rows}},
-                headers=headers,
-            )
         if redirect_info is not None:
             return JSONResponse(content={"data": {root_field: None}, "redirect": redirect_info})
         # Binary format passthrough (parquet/arrow/csv single-field). An aggregate's answer is a
         # map ({aggregate, nodes}), not rows, and is answered in the envelope as rows are.
         if isinstance(field_rows, Response):
             return field_rows
-        headers = build_cache_headers(None)
-        return JSONResponse(
-            content={"data": {root_field: field_rows}},
-            headers=headers,
+        return DocumentResponse(
+            {"data": {root_field: _field_value(field_rows)}},
+            headers=build_cache_headers(cached_entry),
         )
 
     # --- Multiple root fields: execute one after another on this request's thread, merge ---
@@ -981,8 +992,9 @@ async def _handle_query(
     try:
         # The deadline watchdog cancels an in-flight blocking statement; wait_for alone cannot
         # fire while inline driver work holds the request thread (REQ-1882).
-        with request_deadline.within(_role_timeout):
-            results = await asyncio.wait_for(_execute_fields(), timeout=_role_timeout)
+        with request_deadline.within(_role_timeout) as deadline:
+            async with request_deadline.timing_out(deadline):
+                results = await _execute_fields()
     except ReplicaBuilding as exc:
         # Not a slow query: the table's replica is still being built, and the message says so.
         raise ApiError(504, "data.replica_building", str(exc), replica=exc.replica)
@@ -1002,14 +1014,13 @@ async def _handle_query(
             merged_data[root_field] = None
             merged_redirects[root_field] = redirect_info
         else:
-            merged_data[root_field] = field_rows
+            merged_data[root_field] = _field_value(field_rows)
 
     response = {"data": merged_data}
     if merged_redirects:
         response["redirects"] = merged_redirects
 
-    headers = build_cache_headers(None)
-    return JSONResponse(content=response, headers=headers)
+    return DocumentResponse(response, headers=build_cache_headers(None))
 
 
 @router.post("/touch/{table}", status_code=204)

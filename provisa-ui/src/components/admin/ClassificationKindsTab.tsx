@@ -21,28 +21,46 @@ import {
   setEnabledClassificationKinds,
   type ClassificationKind,
 } from "../../api/profiler";
+import { fetchContextClassification, type ContextPlace } from "../../api/contextViews";
+import { ContextPlaces } from "../ContextPlaces";
+
+/** A kind as either read answers it: the Admin list, or the Context page's, which adds where the
+ * kind was detected (REQ-2259). */
+type KindRow = Pick<
+  ClassificationKind,
+  "id" | "sensitive" | "threshold" | "maskPreset" | "enabled"
+> & {
+  detections?: ContextPlace[];
+  hiddenDetections?: number;
+};
+
+/** The Context read answers every kind with where it was detected; one without is a defect. */
+function detectedOn(k: KindRow): { places: ContextPlace[]; hidden: number } {
+  if (k.detections === undefined || k.hiddenDetections === undefined) {
+    throw new Error(`classification kind ${k.id} came without where it was detected`);
+  }
+  return { places: k.detections, hidden: k.hiddenDetections };
+}
 
 function message(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
 }
 
-export function ClassificationKindsTab() {
+/** REQ-2259: ``readOnly`` is the Context group's Classification page -- the kinds and where each
+ * was detected, with no switch; enabling a kind stays in Admin. */
+export function ClassificationKindsTab({ readOnly = false }: { readOnly?: boolean }) {
   const { t } = useTranslation();
-  const [kinds, setKinds] = useState<ClassificationKind[] | null>(null);
-  const [canEdit, setCanEdit] = useState(false);
+  const [kinds, setKinds] = useState<KindRow[] | null>(null);
   const [saving, setSaving] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetchClassificationKinds()
-      .then((r) => {
-        setKinds(r.kinds);
-        setCanEdit(r.canEdit);
-      })
+    (readOnly ? fetchContextClassification() : fetchClassificationKinds())
+      .then((r) => setKinds(r.kinds))
       .catch((e: unknown) => setError(message(e)));
-  }, []);
+  }, [readOnly]);
 
-  const toggle = async (kind: ClassificationKind, enabled: boolean) => {
+  const toggle = async (kind: KindRow, enabled: boolean) => {
     if (kinds == null) return;
     const wanted = kinds.filter((k) => (k.id === kind.id ? enabled : k.enabled)).map((k) => k.id);
     setSaving(kind.id);
@@ -77,6 +95,7 @@ export function ClassificationKindsTab() {
               <Table.Th>{t("classificationKinds.thresholdHeader")}</Table.Th>
               <Table.Th>{t("classificationKinds.maskHeader")}</Table.Th>
               <Table.Th>{t("classificationKinds.enabledHeader")}</Table.Th>
+              {readOnly && <Table.Th>{t("contextViews.detectedHeader")}</Table.Th>}
             </Table.Tr>
           </Table.Thead>
           <Table.Tbody>
@@ -100,16 +119,34 @@ export function ClassificationKindsTab() {
                     : t("classificationKinds.noMask")}
                 </Table.Td>
                 <Table.Td>
-                  <Switch
-                    checked={k.enabled}
-                    disabled={!canEdit || saving != null}
-                    onChange={(e) => void toggle(k, e.currentTarget.checked)}
-                    aria-label={t("classificationKinds.enabledAria", {
-                      kind: t(`classificationKinds.kind.${k.id}`),
-                    })}
-                    data-testid={`classification-kind-enabled-${k.id}`}
-                  />
+                  {readOnly ? (
+                    <Text
+                      size="sm"
+                      c={k.enabled ? undefined : "dimmed"}
+                      data-testid={`classification-kind-state-${k.id}`}
+                    >
+                      {t(k.enabled ? "contextViews.enabled" : "contextViews.disabled")}
+                    </Text>
+                  ) : (
+                    <Switch
+                      checked={k.enabled}
+                      disabled={saving != null}
+                      onChange={(e) => void toggle(k, e.currentTarget.checked)}
+                      aria-label={t("classificationKinds.enabledAria", {
+                        kind: t(`classificationKinds.kind.${k.id}`),
+                      })}
+                      data-testid={`classification-kind-enabled-${k.id}`}
+                    />
+                  )}
                 </Table.Td>
+                {readOnly && (
+                  <Table.Td style={{ maxWidth: 420 }}>
+                    <ContextPlaces
+                      {...detectedOn(k)}
+                      testId={`classification-kind-detected-${k.id}`}
+                    />
+                  </Table.Td>
+                )}
               </Table.Tr>
             ))}
           </Table.Tbody>

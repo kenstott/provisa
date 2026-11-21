@@ -41,9 +41,11 @@ import {
   siOpenapiinitiative,
   siPostgresql,
   siPrometheus,
+  siQuickbooks,
   siRedis,
   siRss,
   siSap,
+  siShopify,
   siSinglestore,
   siSnowflake,
   siSplunk,
@@ -52,6 +54,7 @@ import {
   siJira,
   siTidb,
   siTrino,
+  siWikidata,
 } from "simple-icons";
 import askamerica from "../assets/source-logos/askamerica.svg";
 
@@ -91,13 +94,16 @@ export const MARKS: Record<string, Icon> = {
   graphql: siGraphql,
   github: siGithub,
   gitlab: siGitlab,
+  shopify: siShopify,
   stripe: siStripe,
   jira: siJira,
+  quickbooks: siQuickbooks, // REQ-2197
   kafka: siApachekafka,
   rss: siRss,
   splunk: siSplunk,
   kaggle: siKaggle,
   airtable: siAirtable,
+  wikidata: siWikidata, // REQ-1923
 };
 
 /** Logos drawn from a bundled file, by source type. */

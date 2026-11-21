@@ -8,7 +8,7 @@
     "operations": "Operazioni",
     "tableName": "Tabella",
     "tableDomain": "Dominio",
-    "draft": "Bozza",
+    "withdrawn": "Ritirata",
     "commands": "Comandi",
     "commandName": "Comando",
     "commandKind": "Tipo"

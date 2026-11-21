@@ -61,9 +61,8 @@ _TABLE = {
 }
 
 
-def _manifest(*, preview: bool = False) -> dict:
+def _manifest() -> dict:
     from provisa.codesource.manifest import (
-        LOOSE,
         Anonymous,
         Export,
         Field,
@@ -72,8 +71,8 @@ def _manifest(*, preview: bool = False) -> dict:
         manifest_json,
     )
 
-    rows = LOOSE if preview else Anonymous((Field("id", Scalar("bigint"), False),))
-    return manifest_json(Manifest((Export("scores", "table", "", (), rows, preview),), {}))
+    rows = Anonymous((Field("id", Scalar("bigint"), False),))
+    return manifest_json(Manifest((Export("scores", "table", "", (), rows),), {}))
 
 
 _BUILT = {
@@ -117,14 +116,28 @@ def test_a_code_table_is_landed_otherwise(state, table):
     assert not attach.attached(state, table)
 
 
-def test_a_function_typed_by_a_preview_is_landed():
-    # Its columns are not declared, so its host serves it over no pgwire catalog.
-    state = _state()
-    state.runtime_sources["scores-src"]["mapping"] = {
-        **_BUILT,
-        "remote": {**_BUILT["remote"], "manifest": _manifest(preview=True)},
+def test_a_loose_row_type_is_refused_so_no_built_source_keeps_one():
+    # A built source keeps the manifest it was read with: a loose row type never reaches one.
+    from provisa.codesource.manifest import ManifestRefused, read_manifest
+
+    export = {
+        "name": "scores",
+        "tags": ["table"],
+        "description": "",
+        "signatures": [
+            {"parameters": [], "returns": {"kind": "array", "element": {"kind": "any"}}}
+        ],
     }
-    assert not attach.attached(state, _TABLE)
+    with pytest.raises(ManifestRefused) as refused:
+        read_manifest({"exports": [export], "types": {}, "diagnostics": []})
+    assert refused.value.problems == [
+        "scores: its row type is loose (any, unknown, a Record or a dict); declare a typed row "
+        "whose fields are its columns"
+    ]
+
+
+def test_a_table_whose_function_its_kept_manifest_does_not_have_is_landed():
+    assert not attach.attached(_state(), {**_TABLE, "table_name": "gone"})
 
 
 def test_the_response_caches_default_ttl_lands_no_code_table():

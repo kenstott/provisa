@@ -33,15 +33,17 @@ vi.mock("../data-products/useProductCore", () => ({
   }),
   useMetaReader: () => null,
 }));
-vi.mock("../../components/graph3d/GraphPanel", () => ({
+vi.mock("../../components/graph3d/OntologyGraph", () => ({
   ProductMapButton: () => null,
-  GraphPanel: () => null,
+  OntologySnippet: () => null,
 }));
 // The caller acts as vet_lead, which inherits care_owner: it owns pet_health, not workforce_ops.
 vi.mock("../../context/AuthContext", () => ({
   useAuth: () => ({
     role: { id: "vet_lead", capabilities: [] },
-    selectedRoles: [{ id: "vet_lead", parents: ["care_owner"] }],
+    selectedRoles: [
+      { id: "vet_lead", parents: ["care_owner"], effectiveCapabilities: [], domain_access: [] },
+    ],
     availableRoles: [{ id: "vet_lead", parents: ["care_owner"] }],
   }),
 }));
@@ -124,7 +126,8 @@ vi.mock("../../hooks/useDataProductMutations", () => ({
   useCreateDataProduct: () => ({ createDataProduct: saves.create, loading: false }),
   useUpdateDataProduct: () => ({ updateDataProduct: saves.update, loading: false }),
   useDeleteDataProduct: () => ({ deleteDataProduct: vi.fn(), loading: false }),
-  useSaveDataContract: () => ({ saveDataContract: vi.fn(), loading: false }),
+  useDeleteDataProducts: () => vi.fn(),
+  useSetDataProductMembers: () => ({ setDataProductMembers: vi.fn(), loading: false }),
   useDataProductFindings: () => ({ findings: new Map(), refetch: vi.fn(), error: undefined }),
   useDataProductStatus: () => ({
     publish: vi.fn(),

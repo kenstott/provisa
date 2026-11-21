@@ -31,11 +31,10 @@ steps:
   image: grant.png
 - key: dataroomSignedIn
   image: signed-in.png
-- key: dataroomBidder
+- key: dataroomProfile
   route: /sql
   capability: query_development
   role: bidder_a
-- key: dataroomProfile
   sql: >-
     SELECT column_name, row_count, null_share, distinct_count, min_value, max_value
     FROM "dataroom"."invoice_profile" ORDER BY column_name

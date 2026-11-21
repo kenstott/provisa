@@ -22,6 +22,8 @@ export type Capability =
   | "create_view"
   | "column_grant"
   | "user_management"
+  // REQ-2219: set a member's allow-list and deny-list entries within what user_management confers.
+  | "assign_entitlements"
   | "masking_config"
   // REQ-1134: see the meta domain's GOVERNANCE columns (visible_to, unmasked_to, writable_by, the
   // mask definitions, view SQL) — the security posture rather than the structure.
@@ -68,10 +70,24 @@ export type Capability =
   // comes with being named in a product's Owner field, held to that product by a row rule.
   | "data_product_read"
   | "data_product_rw"
+  // REQ-2219: owning is a capability of its own, each scoped by the kind it owns: a data product, a
+  // relationship, a domain (its steward), a glossary term (domain.term) and a judgment basis.
+  | "data_product_owner"
+  | "relationship_owner"
+  | "domain_steward"
+  | "term_owner"
+  | "judgment_basis_owner"
   // REQ-2155: data quality's own rights -- reading check definitions and results, and managing
   // checks, expectations and promises -- so managing checks needs no table registration.
+  // REQ-2229: send OpenLineage run events to the receiver.
+  | "lineage_report"
   | "dq_read"
-  | "dq_rw";
+  | "dq_rw"
+  | "ignore_relationships"
+  | "write"
+  // Run the commands the role is assigned, in the domains it lists.
+  | "command_execution"
+  | "no_aggregations";
 
 /** REQ-1174: an LLM spend limit, in tokens or in USD at the model price list. */
 export interface LlmLimit {
@@ -105,9 +121,12 @@ export interface Role {
    *  definition is withheld: it explains, it grants nothing. */
   description: string;
   capabilities: Capability[];
-  /** REQ-2155: what the role holds -- its own capabilities and every ancestor's. A caller's rights
+  /** REQ-2155: what the role holds: what it is given of what its parents hold. A caller's rights
    *  are the union of this over the roles it acts as. */
   effectiveCapabilities: Capability[];
+  /** REQ-2155: the data domains and regions it holds, what its children may be given. */
+  effectiveDomains?: string[];
+  effectiveResidencyValues?: string[];
   /**
    * REQ-1602: rights the role does NOT hold, whose surfaces it is shown anyway -- disabled and
    * badged as belonging to the production system. A role defined by subtraction (the sandbox,
@@ -117,7 +136,8 @@ export interface Role {
   demonstrated: Capability[];
   domain_access: string[];
   rateLimit?: RoleRateLimit | null; // REQ-1174: per-role rate + query-complexity limits
-  /** REQ-2155: the roles this one inherits from, in order; its capabilities are their union. */
+  /** REQ-2155: the roles this one inherits from, in order; it holds what it is given of what they
+   *  hold. */
   parents?: string[];
   /** REQ-2155: a standard role is Provisa's and locked -- extended with child roles, never edited. */
   standard?: boolean;

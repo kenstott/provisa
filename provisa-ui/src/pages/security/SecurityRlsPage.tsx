@@ -17,8 +17,7 @@ import { RULE_RIGHTS, RULE_RIGHT_LABEL } from "./ruleRights";
 import React, { useState, useEffect, useCallback } from "react";
 import { useNavPayload } from "../../hooks/useNavPayload";
 import { useTranslation } from "react-i18next";
-import { ConfirmDialog } from "../../components/ConfirmDialog";
-import { Trash2, Pencil } from "lucide-react";
+import { Pencil } from "lucide-react";
 import {
   Alert,
   Button,
@@ -51,6 +50,9 @@ import {
 } from "../../components/list/ListTable";
 import { useListSortGroup, type ListColumn } from "../../components/list/useListSortGroup";
 import { PanelActions, SplitPane } from "../../components/list/SplitPane";
+import { useRememberedDetail } from "../../components/list/useDetailParam";
+import { PanelDelete } from "../../components/list/PanelDelete";
+import { PanelDuplicate } from "../../components/list/PanelDuplicate";
 import { relationName } from "../../naming";
 import { serverMessage } from "../../i18n/serverMessage";
 import { FormField, FormFooter, FormLayout } from "../../components/form/FormLayout";
@@ -107,7 +109,12 @@ export function SecurityRlsPage() {
   const [ruleForm, setRuleForm] = useState(EMPTY_RULE);
   // REQ-1679: the tracked functions and webhooks a rule may target, with their domains.
   const [actions, setActions] = useState<{ name: string; domainId: string }[]>([]);
-  const [expandedRule, setExpandedRule] = useState<number | null>(null);
+  // REQ-2241: `?rule=<id>` is the open rule's panel.
+  // REQ-2260: and the one left open is open again on coming back.
+  const detail = useRememberedDetail("rls", loading ? null : rules.map((r) => String(r.id)));
+  const expandedRule = detail.id === null ? null : Number(detail.id);
+  const setExpandedRule = (id: number | null) =>
+    id === null ? detail.close() : detail.open(String(id));
   const [editingRuleInRow, setEditingRuleInRow] = useState<number | null>(null);
   const [ruleSearch, setRuleSearch] = useState("");
   // A table handed to the page ("rules for this table") filters the rules list, whether the page
@@ -213,25 +220,19 @@ export function SecurityRlsPage() {
     }
   };
 
+  // REQ-2198: the panel's Delete (PanelDelete) shows the delete's progress and says why one
+  // failed; it resolves once the list is read again without the rule.
   const handleDeleteRule = async (rule: RLSRule) => {
-    setSaving(true);
     setError("");
-    try {
-      await deleteRlsRule(
-        rule.roleId,
-        rule.tableId,
-        rule.domainId,
-        rule.actionName ?? null,
-        rule.tagId ?? null,
-        rule.id,
-      );
-      if (expandedRule === rule.id) setExpandedRule(null);
-      await reload();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setSaving(false);
-    }
+    await deleteRlsRule(
+      rule.roleId,
+      rule.tableId,
+      rule.domainId,
+      rule.actionName ?? null,
+      rule.tagId ?? null,
+      rule.id,
+    );
+    await reload();
   };
 
   const startEditingRule = (rule: RLSRule) => {
@@ -286,6 +287,16 @@ export function SecurityRlsPage() {
     }
     setEditingRuleInRow(rule.id);
     setError("");
+  };
+
+  // Duplicate, from a rule's panel head: the new-rule form filled with the rule's target, role,
+  // rights, filter and description. A rule has no name of its own (the server numbers it): the
+  // copy is told apart by what the form lets the caller change, and a rule that already exists
+  // is refused on save by the create.
+  const handleDuplicateRule = (rule: RLSRule) => {
+    startEditingRule(rule);
+    setEditingRuleInRow(null);
+    setShowRuleForm(true);
   };
 
   const filtered = rules.filter((r) => {
@@ -575,29 +586,21 @@ export function SecurityRlsPage() {
                     <Pencil size={14} />
                   </ActionIcon>
                 </Tip>
-                <ConfirmDialog
+                <PanelDuplicate
+                  name={t("securityPage.panelRule", { id: r.id })}
+                  onDuplicate={() => handleDuplicateRule(r)}
+                  testId={`duplicate-rule-${r.id}`}
+                />
+                <PanelDelete
+                  itemKey={r.id}
                   title={t("securityPage.deleteRuleTitle")}
                   consequence={t("securityPage.deleteRuleConsequence", {
                     role: r.roleId,
                   })}
-                  onConfirm={() => handleDeleteRule(r)}
-                >
-                  {(open) => (
-                    <Tip text={t("securityPage.delete")} named>
-                      <ActionIcon
-                        color="red"
-                        aria-label={t("securityPage.delete")}
-                        data-testid={`delete-rule-${r.id}`}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          open();
-                        }}
-                      >
-                        <Trash2 size={14} />
-                      </ActionIcon>
-                    </Tip>
-                  )}
-                </ConfirmDialog>
+                  ariaLabel={t("securityPage.delete")}
+                  testId={`delete-rule-${r.id}`}
+                  onDelete={() => handleDeleteRule(r)}
+                />
               </Group>
             </fieldset>
           </PanelActions>
@@ -753,9 +756,7 @@ export function SecurityRlsPage() {
                         )}
                       </Table.Td>
                       <Table.Td>{r.roleId}</Table.Td>
-                      <Table.Td data-testid={`rule-right-${r.id}`}>
-                        {rightsLabel(r)}
-                      </Table.Td>
+                      <Table.Td data-testid={`rule-right-${r.id}`}>{rightsLabel(r)}</Table.Td>
                       <Table.Td>
                         <Text component="code">{r.filterExpr}</Text>
                       </Table.Td>

@@ -49,7 +49,7 @@ import {
   setSourceCacheTtl,
   submitSourceAndExpectListed,
   FORM_FIELD,
-  removeTestSources,
+  retireTestSourcesTables,
 } from "./source-to-query-helpers";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
@@ -98,10 +98,11 @@ test.afterAll(() => {
 });
 
 test.describe("source to query through the UI (REQ-1671)", () => {
-  // Each test's source goes when the test ends, also after a failure: left to the next
-  // describe's afterAll, every source of this block was deleted inside that one hook's budget.
+  // Each test's tables are retired when the test ends, also after a failure, and its source is
+  // kept (REQ-2248): left to the next describe's afterAll, all of this block's were handled
+  // inside that one hook's budget.
   test.afterEach(async () => {
-    await removeTestSources();
+    await retireTestSourcesTables();
   });
 
   test("neo4j: add the source, register a Cypher table, query it on the SQL page", async ({
@@ -794,8 +795,11 @@ test.describe("source to query through the UI, extra RDBMS coverage (REQ-1732)",
   });
 
   test.afterAll(async () => {
-    await removeTestSources();
-    provisionExtraSources("down");
+    try {
+      await retireTestSourcesTables();
+    } finally {
+      provisionExtraSources("down");
+    }
   });
 
   // mysql itself had zero coverage — mariadb/tidb (MySQL wire-compatible siblings) were already

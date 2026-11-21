@@ -39,6 +39,7 @@ from provisa.security.rights import (
 )
 from provisa.security.visibility import visible_tables
 from tests.role_state import RoleState
+from tests.rules import rule_of
 
 
 def _field(t: dict) -> str:
@@ -263,9 +264,10 @@ def test_the_shared_helper_and_the_schema_build_agree():
 
 def test_the_catalog_describes_a_published_table_to_a_role_outside_its_domain():
     """REQ-1132's row scope: a role's own tables, now including those published to it."""
-    assert compute_meta_row_scope(_role("seller", SALES), TABLES, []) == {1, 3, 5}
+    # REQ-1132: a role lists what is listed, whatever it reaches.
+    assert compute_meta_row_scope(_role("seller", SALES), TABLES, []) == {1, 3, 5, 6}
     assert compute_meta_row_scope(_role("hr_reader", HR), TABLES, []) == {1, 2, 4, 6}
-    assert compute_meta_row_scope(_role("anyone", "*"), TABLES, []) is None
+    assert compute_meta_row_scope(_role("anyone", "*"), TABLES, []) == {1, 2, 3, 4, 6}
 
 
 # --- scope is one of three values, on every path --------------------------------------------------
@@ -381,7 +383,7 @@ def test_a_row_rule_and_a_mask_on_a_published_table_still_apply():
     gov, _ = _sql_context(
         _role("seller", SALES), row_rule="id < 100", mask={"name": (rule, "varchar")}
     )
-    assert gov.rls_rules[1] == "id < 100"
+    assert gov.rls_rules[1] == rule_of("id < 100")
     assert gov.masking_rules[(1, "name")] == (rule, "varchar")
     unfiltered, _ = _sql_context(_role("seller", SALES))
     assert 1 not in unfiltered.rls_rules

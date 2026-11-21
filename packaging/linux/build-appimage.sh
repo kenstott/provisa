@@ -65,8 +65,15 @@ build_provisa_image() {
   info "Building provisa/provisa:local for linux/amd64 (source stays on build host)..."
   local retries=3
   local attempt=0
+  # Pyodide from the directory a release leg downloaded it into (.github/actions/pyodide-downloads),
+  # when the environment names one; a build on a packaging host that names none downloads it.
+  local pyodide=()
+  if [ -n "${PROVISA_NOTEBOOK_DOWNLOADS:-}" ]; then
+    pyodide=(--build-context "pyodide-downloads=${PROVISA_NOTEBOOK_DOWNLOADS}")
+  fi
   until docker build \
     --platform linux/amd64 \
+    ${pyodide[@]+"${pyodide[@]}"} \
     --tag provisa/provisa:local \
     "${REPO_ROOT}"; do
     attempt=$((attempt + 1))
@@ -150,13 +157,14 @@ save_images() {
   # provisa-obs-images-<version>.tar.gz add-on.
   info "Saving service images (core)..."
   local images=(
-    "postgres:16"
+    "pgvector/pgvector:pg16-trixie"
     "edoburu/pgbouncer:latest"
     "redis:7-alpine"
     "trinodb/trino:480"
   )
   for img in "${images[@]}"; do
-    local tag="${img##*/}"
+    local tag="${img%@*}"  # a digest-pinned image is named by its tag
+    tag="${tag##*/}"
     tag="${tag//:/-}"
     tag="${tag//\//-}"
     local out="${IMAGES_DIR}/${tag}.tar.gz"
@@ -245,7 +253,8 @@ build_appdir() {
 # inside the AppDir (no hidden DMG content on Linux — first-launch reads
 # ${APPDIR}/{python-base,wheels,ui-dist}):
 #   python-base/  bare python-build-standalone CPython (NOT pip-installed)
-#   wheels/       Linux x86_64 wheelhouse (provisa[embedded] + uvicorn + mcp-proxy + deps)
+#   wheels/       Linux x86_64 wheelhouse (provisa[embedded] + uvicorn + mcp-proxy + deps;
+#                 torch is the CPU-only +cpu wheel)
 #   ui-dist/      built provisa-ui/dist (ui_server resolves STATIC_DIR from it)
 # Downloads/builds are cached in NATIVE_PAYLOAD_DIR so re-runs skip network work,
 # then copied into the (freshly-wiped) AppDir. Must run AFTER build_appdir.
@@ -277,8 +286,8 @@ bundle_native_payload() {
 
   # ── 2. Linux x86_64 wheelhouse ──
   info "Building the provisa wheel (Linux)..."
-  # Build with the bundled python-base (the runner's default python may lack `build`;
-  # the provisa wheel is pure-python so the interpreter version doesn't matter).
+  # Build with the bundled python-base (the runner's default python may lack `build`). REQ-2194:
+  # the wheel is a manylinux_2_28 cp312 wheel built by the Dockerfile's provisa-wheel stage.
   "${base}/bin/python3" -m pip install --quiet build
   if [ -x "${REPO_ROOT}/scripts/build-wheel.sh" ]; then
     PROVISA_SKIP_UI_BUILD=1 PYTHON="${base}/bin/python3" "${REPO_ROOT}/scripts/build-wheel.sh" --wheel
@@ -299,8 +308,33 @@ bundle_native_payload() {
   local notebook_dir="${REPO_ROOT}/dist/notebook"
   rm -rf "$notebook_dir"
   "${REPO_ROOT}/scripts/build-notebook-wheel.sh" "${base}/bin/python3" "$notebook_dir"
-  "${base}/bin/python3" -m pip download --dest "$wheels" --find-links "$notebook_dir" \
-    "${built_wheel}[embedded]" uvicorn mcp-proxy
+  # The embedded extra carries the vector extra (the default config's embedding model). PyPI's
+  # Linux torch is the CUDA build, so torch is fetched first from PyPI's CPU-only index at the
+  # version uv.lock pins; the wheelhouse's +cpu wheel then satisfies the extra's torch.
+  local torch_cpu
+  torch_cpu="$(sed -n '/^name = "torch"$/{n;s/^version = "\(.*+cpu\)"$/\1/p;}' "${REPO_ROOT}/uv.lock")"
+  if [ -z "$torch_cpu" ]; then
+    err "uv.lock pins no +cpu torch for Linux ([tool.uv.sources] torch)."
+    exit 1
+  fi
+  "${base}/bin/python3" -m pip download --dest "$wheels" --no-deps \
+    --index-url https://download.pytorch.org/whl/cpu "torch==${torch_cpu}"
+  "${base}/bin/python3" -m pip download --dest "$wheels" --find-links "$wheels" \
+    --find-links "$notebook_dir" "${built_wheel}[embedded]" "torch==${torch_cpu}" uvicorn mcp-proxy
+  # Never a CUDA build in the wheelhouse: no GPU runtime wheel, and torch only as the +cpu wheel.
+  if ls "$wheels" | grep -qE '^(nvidia_|triton-|cuda_)'; then
+    err "the wheelhouse holds CUDA wheels: $(ls "$wheels" | grep -E '^(nvidia_|triton-|cuda_)' | tr '\n' ' ')"
+    exit 1
+  fi
+  if ! ls "$wheels" | grep -qF -e "torch-${torch_cpu}-" -e "torch-${torch_cpu/+/%2B}-" \
+      || ! ls "$wheels" | grep -qE '^sentence_transformers-'; then
+    err "the wheelhouse lacks the vector extra (torch ${torch_cpu}, sentence-transformers)."
+    exit 1
+  fi
+  # REQ-2194: the wheelhouse's provisa is the platform wheel build-wheel.sh built and checked
+  # (manylinux_2_28, with provisa._encoders and its notices); first-launch imports the module.
+  "${base}/bin/python3" "${REPO_ROOT}/scripts/check-provisa-wheel.py" "$wheels"/provisa-*.whl \
+    --tag manylinux_2_28_x86_64 --import
   ok "Wheelhouse staged ($(ls "$wheels" | wc -l | tr -d ' ') wheels)."
 
   # ── 3. Built UI (build provisa-ui/dist if not already present) ──

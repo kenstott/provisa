@@ -52,7 +52,7 @@ def server():
             "id": _LIMITED,
             "description": "Test role.",
             "parents": ["analyst"],
-            "capabilities": [],
+            "capabilities": ["data_product_read", "glossary_read", "query_development", "usage"],
             "domain_access": ["*"],
             "rate_limit": {"max_query_complexity": _LIMIT},
         }
@@ -194,6 +194,17 @@ def test_graphql_one_field_over_the_limit_is_refused(server):
     )
     assert status == 413, body
     assert "query complexity" in body["detail"] and f"role limit of {_LIMIT}" in body["detail"]
+
+
+def test_graphql_introspection_and_typename_are_never_refused_for_the_limited_role(server):
+    """Schema introspection is deep by nature and reads no relation; limiting it would break
+    GraphQL tooling, so a role at the limit still gets the whole schema, and __typename."""
+    deep = "{ __schema { types { name fields { name type { name ofType { name } } } } } }"
+    status, body = _http(server, "/data/graphql", {"query": deep}, _LIMITED)
+    assert status == 200 and "errors" not in body, body
+    assert body["data"]["__schema"]["types"], body
+    status, body = _http(server, "/data/graphql", {"query": "{ __typename }"}, _LIMITED)
+    assert status == 200 and "errors" not in body, body
 
 
 # --- pgwire -------------------------------------------------------------------------------------

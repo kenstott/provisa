@@ -12,6 +12,9 @@
          set window.__PROVISA_FIREBASE__ before the module below imports lib/firebase, so the
          relay reads the session from the same Firebase project the user signed into. -->
     <script src="/firebase-config.js"></script>
+    <!-- The deployment's declared base domain (REQ-1276): the relay answers only org subdomains
+         under it, and no one at all where the deployment declares none. -->
+    <script src="/deployment-config.js"></script>
   </head>
   <body>
     <script type="module" src="/src/authRelay.ts"></script>

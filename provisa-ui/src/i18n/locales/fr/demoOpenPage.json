@@ -1,6 +1,10 @@
 {
   "demoOpenPage": {
     "title": "Ouverture de votre bac à sable de démo",
+    "titleMaking": "Création de votre bac à sable de démo",
+    "titleCooking": "Votre bac à sable de démo mijote",
+    "titleGrowing": "Votre bac à sable de démo pousse",
+    "titleComposing": "Composition de votre bac à sable de démo",
     "opening": "Nous préparons une copie de la démo pour vous. Cela prend quelques secondes.",
     "starting": "Démarrage de cette démo…",
     "retry": "Réessayer",

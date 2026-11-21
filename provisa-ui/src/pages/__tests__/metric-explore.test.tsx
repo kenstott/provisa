@@ -57,6 +57,7 @@ function makeTable(overrides: Partial<RegisteredTable> = {}): RegisteredTable {
     tableName: "orders",
     alias: null,
     description: null,
+    registeredAt: "2026-11-01T00:00:00+00:00",
     cacheTtl: null,
     roleTtl: [],
     pagingKind: null,
@@ -64,7 +65,8 @@ function makeTable(overrides: Partial<RegisteredTable> = {}): RegisteredTable {
     pagingCeilingRows: null,
     replicate: null,
     region: null,
-    draft: false,
+    withdrawn: false,
+    sourceWithdrawn: false,
     rowMaterialize: false,
     loadProtected: null,
     offPeakWindow: null,
@@ -97,12 +99,14 @@ function makeTable(overrides: Partial<RegisteredTable> = {}): RegisteredTable {
     mvPersist: "replace",
     mvPrimaryKey: [],
     mvIncremental: false,
+    mvRebuildEvery: null,
+    incrementalOption: { available: true, code: null, reason: null },
     mvCalendar: null,
     mvGrain: null,
     mvAllowedLateness: 0,
     mvExpectedEvents: null,
     mvBusinessDayGrain: false,
-    productId: null, // REQ-1634
+    productIds: [], // REQ-1634
     enableAggregates: false,
     enableGroupBy: false,
     canDeployToDb: false,
@@ -141,6 +145,7 @@ function makeRel(overrides: Partial<Relationship> = {}): Relationship {
     autoSuggested: false,
     disableCypher: false,
     sameEntity: false,
+    withdrawn: false,
     // REQ-1586: an FK/PK relationship declares no junction.
     viaTableId: null,
     viaTableName: null,
@@ -177,6 +182,7 @@ const revenueMetric: Metric = {
   aiContext: null,
   visibleTo: ["admin"],
   fromFact: "orders",
+  term: null,
 };
 
 describe("groupModelingTables", () => {

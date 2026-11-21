@@ -9,15 +9,16 @@
 // permission from the copyright holder.
 
 // REQ-2135: a pill dropped on a SPARQL frame edits the frame's query, which is then run, so the query
-// always says what is on screen. A class or a domain is reached by the shortest paths through the
-// role's relationships from the classes the query holds, a relationship or a property from the
-// variables whose class has it. What is added sits in OPTIONAL groups, one per path, so what the
-// frame held stays. A drop that cannot join the result says so and changes nothing, and a
+// always says what is on screen. A class or a domain is reached by the one path the shared path
+// finder (dropPath.ts) gives, within the selected domains, from a class the query holds; a
+// relationship or a property from the variables whose class has it. What is added sits in OPTIONAL
+// groups, one per hop of a one-hop path, so what the frame held stays. A drop that cannot join the result says so and changes nothing, and a
 // parameterized table, which only arguments read, is never what a path adds. ?s ?p ?o names no
 // class to start from, so a drop on it is refused until a variable has one.
 
 import type { DropNotice } from "./graph-model";
-import { MAX_SCHEMA_HOPS, MAX_SCHEMA_PATHS, shortestSchemaPaths } from "./schemaPath";
+import { MAX_SCHEMA_PATHS } from "./schemaPath";
+import { dropPath, noDropPath, type PathScope } from "./dropPath";
 import {
   QUERY_TOKEN,
   RDF_TYPE,
@@ -241,6 +242,8 @@ function withAttachments(
  * ``query`` with ``drop`` added (REQ-2135), or why it can't be. ``on`` is the node of a drawing it
  * was dropped on, which what is added then starts from and only there; ``rows`` the frame's rows,
  * which say the variable holding that node. ``vocabulary.prefixes`` are the prefixes in use.
+ * ``scope`` is where a class's path may go: the selected domains, in the vocabulary's labels
+ * (``vocabularyScope``).
  */
 export function droppedQuery(
   query: string,
@@ -248,6 +251,7 @@ export function droppedQuery(
   vocabulary: SparqlVocabulary,
   on: DropNode | null,
   rows: Record<string, unknown>[],
+  scope: PathScope,
 ): SparqlDropped {
   const refusal = shapeRefusal(tokensOf(query));
   if (refusal) return { refused: refusal };
@@ -393,29 +397,43 @@ export function droppedQuery(
     return {
       refused: { key: "graphFrame.sparqlDropParameterized", values: { name: target.name } },
     };
-  const { paths, hops } = shortestSchemaPaths(
-    vocabulary.edges,
-    heldLabels,
-    target.labels,
-    parameterized,
-  );
-  if (paths.length === 0) {
+  const found = dropPath(vocabulary.edges, heldLabels, target.labels, parameterized, scope);
+  if ("hops" in found) {
     const classes = [...new Set(heldLabels.map((l) => shown(classOf(l))))].join(", ");
-    return {
-      refused:
-        hops === null
-          ? { key: "graphFrame.sparqlDropNoPath", values: { name: target.name, classes } }
-          : {
-              key: "graphFrame.sparqlDropTooFar",
-              values: { name: target.name, classes, hops, most: MAX_SCHEMA_HOPS },
-            },
-    };
+    return { refused: noDropPath(target.name, classes, found.hops) };
   }
-  return added(
-    paths.flatMap((steps) =>
-      holding(steps[0].from).map((v) => () => pathFrom(v, steps, target.ending)),
-    ),
-  );
+  // One path from one variable; a one-hop path's relationships are each its own OPTIONAL, all kept.
+  const anchor = holding(found.start)[0];
+  const attachments = found.paths.map((steps) => pathFrom(anchor, steps, target.ending));
+  return { ...withAttachments(query, attachments, namespaces), notices: [] };
+}
+
+/**
+ * ``scope`` in the vocabulary's own labels (REQ-2135): a vocabulary labels a class by its label-map
+ * key, not by the ``Domain:Table`` label /data/graph-schema gives, so each table class's labels are
+ * placed in the domain its IRI's namespace names (one prefix per domain), and that domain is a
+ * system domain where the graph schema says so. Both are built from the role's one label map: a
+ * class of a domain the graph schema does not list is a fault, not a class to leave out.
+ */
+export function vocabularyScope(vocabulary: SparqlVocabulary, scope: PathScope): PathScope {
+  const system = new Map(scope.nodeLabels.map((n) => [n.domainId, n.systemDomain]));
+  const domains = Object.entries(vocabulary.prefixes).filter(([prefix]) => system.has(prefix));
+  const nodeLabels = vocabulary.classes
+    .filter((c) => c.kind === "table")
+    .flatMap((c) => {
+      const found = domains.find(
+        ([, ns]) => c.iri.startsWith(ns) && !/[/#]/.test(c.iri.slice(ns.length)),
+      );
+      if (!found) throw new Error(`the class ${c.iri} is of no domain the graph schema lists`);
+      const [domainId] = found;
+      return c.labels.map((tableLabel) => ({
+        domainLabel: null,
+        domainId,
+        tableLabel,
+        systemDomain: system.get(domainId) as boolean,
+      }));
+    });
+  return { nodeLabels, checkedDomains: scope.checkedDomains };
 }
 
 function classLabels(vocabulary: SparqlVocabulary, iri: string): string[] {

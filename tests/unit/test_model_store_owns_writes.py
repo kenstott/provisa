@@ -26,7 +26,7 @@ How a write is found, in every ``.py`` under ``provisa/`` outside the model stor
   schema prefix — a docstring excepted.
 """
 
-# Requirements: REQ-1919
+# Requirements: REQ-1919, REQ-2248
 
 from __future__ import annotations
 
@@ -195,15 +195,28 @@ def _modules_outside_the_model_store() -> list[Path]:
     return sorted(p for p in ROOT.rglob("*.py") if MODEL_STORE not in p.parents)
 
 
+#: REQ-2248: kinds whose delete retires the row (an update) and that no path removes: no delete
+#: of them is anywhere, the model store included.
+NEVER_REMOVED = {"tags", "metrics"}  # metrics: metric.remove_where became retire_where
+
+
+def _inside(table: str) -> list[tuple[str, int]]:
+    return [
+        (p.name, line)
+        for p in sorted(MODEL_STORE.glob("*.py"))
+        for line, operation in writes_in(p.read_text(), table)
+        if operation in CONVERTED[table]
+    ]
+
+
 def test_the_model_store_is_where_the_converted_deletes_live():
-    for table in CONVERTED:
-        inside = [
-            (p.name, line)
-            for p in sorted(MODEL_STORE.glob("*.py"))
-            for line, operation in writes_in(p.read_text(), table)
-            if operation in CONVERTED[table]
-        ]
-        assert inside, f"no {sorted(CONVERTED[table])} of {table} found in the model store"
+    for table in CONVERTED.keys() - NEVER_REMOVED:
+        assert _inside(table), f"no {sorted(CONVERTED[table])} of {table} found in the model store"
+
+
+def test_a_kind_that_is_retired_and_never_removed_is_deleted_nowhere():
+    for table in NEVER_REMOVED:
+        assert _inside(table) == [], f"{table} is retired, never removed (REQ-2248)"
 
 
 @pytest.mark.parametrize("table", sorted(CONVERTED))

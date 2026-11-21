@@ -40,17 +40,15 @@ naming:
   rules: []
 roles:
 - id: auditor
-  parents: [viewer]
+  parents: [analyst]
   description: "The security lead: reads every account's resources and incidents, and the policy."
-  capabilities:
-  - query_development
+  capabilities: [data_product_read, glossary_read, query_development]
   domain_access:
   - cloudpolicy
 - id: app_payments
-  parents: [viewer]
+  parents: [analyst]
   description: "The payments team: reads its own resources and incidents only, and the policy."
-  capabilities:
-  - query_development
+  capabilities: [data_product_read, glossary_read, query_development]
   domain_access:
   - cloudpolicy
 server:

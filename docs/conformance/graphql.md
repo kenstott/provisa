@@ -66,6 +66,6 @@ No standard GraphQL add-ins apply here. Custom directives are part of the model,
 
 | Tool | Version | Date | Method |
 | --- | --- | --- | --- |
-| Apollo Studio | TBD | TBD | TBD: replay or manual |
-| Insomnia | TBD | TBD | TBD: replay or manual |
-| Postman | TBD | TBD | TBD: replay or manual |
+| Apollo Studio | — | — | Not yet verified |
+| Insomnia | — | — | Not yet verified |
+| Postman | — | — | Not yet verified |

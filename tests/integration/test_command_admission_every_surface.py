@@ -11,16 +11,16 @@
 """One admission for every command call, on every surface that calls commands.
 
 One real server over a PostgreSQL source holding ``orders(id, region)`` and two SQL functions
-registered as commands. A call is admitted when the role is assigned the command (its one role
-list), reaches its domain, and — for a mutation — holds the ``write`` right. A command the role
-may not use answers exactly as a name never registered does. Writes are asserted on the rows AT
-THE SOURCE.
+registered as commands. A call is admitted when the role holds ``command_execution``, is
+assigned the command (its one role list) and reaches its domain (REQ-870). The assignment is
+the grant: whether the command writes asks nothing more. A command the role may not use answers
+exactly as a name never registered does. Writes are asserted on the rows AT THE SOURCE.
 
 Roles:
 
-* ``org_admin`` — assigned every command; holds ``write``.
-* ``writer``    — assigned both commands; holds ``write``.
-* ``reader``    — assigned both commands; no ``write`` right.
+* ``org_admin`` — assigned every command; holds ``command_execution`` (through developer→analyst).
+* ``writer``    — assigned both commands; holds ``command_execution`` and ``write``.
+* ``reader``    — assigned both commands; holds ``command_execution``; no ``write`` right.
 * ``outsider``  — holds ``write``; assigned neither command.
 """
 
@@ -96,13 +96,15 @@ def server():
                 {
                     "id": "writer",
                     "description": "Test role.",
-                    "capabilities": [*reads, "write"],
+                    # REQ-870: command_execution is the gate; write is kept for mutation tests.
+                    "capabilities": [*reads, "write", "command_execution"],
                     "domain_access": ["*"],
                 },
                 {
                     "id": "reader",
                     "description": "Test role.",
-                    "capabilities": reads,
+                    # REQ-870: command_execution allows running commands; no write right.
+                    "capabilities": [*reads, "command_execution"],
                     "domain_access": ["*"],
                 },
                 {
@@ -357,10 +359,16 @@ _CALLS = {
 
 
 @pytest.mark.parametrize("surface", sorted(_CALLS))
-def test_a_mutation_command_needs_the_write_right(server, source, surface):
+def test_a_mutation_command_does_not_need_the_write_right(server, source, surface):
+    """REQ-870 (THE ASSIGNMENT IS THE GRANT): command_execution + assignment admits mutations.
+
+    A role holding command_execution that is assigned a command and reaches its domain runs
+    it, whether the command writes or not; it needs no write capability for it.  ``reader``
+    holds command_execution and is in the command's visible_to — it may run relabel.
+    """
     ok, text = _CALLS[surface](server, "reader", 1, "north")
-    assert not ok and "WRITE" in text, text
-    assert source() == _SEED
+    assert ok, text
+    assert source() == [(1, "north"), (2, "west"), (3, "east")]
 
 
 @pytest.mark.parametrize("surface", sorted(_CALLS))

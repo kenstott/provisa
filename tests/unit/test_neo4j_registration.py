@@ -100,7 +100,7 @@ async def test_preview_reports_a_cypher_error_and_an_unreachable_source():
             side_effect=httpx.ConnectError("refused")
         )
         out = await reg.preview_neo4j(_Conn(_SRC), "graph", "RETURN 1")  # type: ignore[arg-type]
-    assert out.error is not None and "ConnectError" in out.error
+    assert out.error is not None and out.error.startswith("could not connect to POST ")
 
 
 @pytest.mark.asyncio

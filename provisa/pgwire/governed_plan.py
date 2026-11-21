@@ -53,6 +53,7 @@ deployment) is that stage's own rule, applied before it calls :meth:`PlanSlot.ke
 
 from __future__ import annotations
 
+import contextvars
 import dataclasses
 import hashlib
 import json
@@ -63,9 +64,9 @@ from typing import Any
 
 
 def _rebuild_in_progress() -> bool:
-    from provisa.api.app import _rebuild_schemas_lock
+    from provisa.api.app import rebuild_in_progress
 
-    return _rebuild_schemas_lock.locked()
+    return rebuild_in_progress()
 
 
 def governance_anchors(state: Any, role_id: str) -> tuple[Any, ...]:
@@ -125,6 +126,18 @@ class _Kept:
     settings: tuple[int, bool]
 
 
+def mask_scoped_body(state: Any, stage: str, role_id: str, body: list[Any]) -> list[Any]:
+    """``body`` with the reader's entitlement mask in it (REQ-2219), so a plan governed for one
+    mask is never read for another. A mask that narrows nothing leaves the body as it was. The
+    governance context is built once per role and narrowed per read, so it holds no mask."""
+    if stage == "governance":
+        return body
+    from provisa.entitlements import runtime  # noqa: PLC0415
+
+    mask_hash = runtime.current_mask_hash(state, role_id)
+    return [*body, ("provisa.entitlement_mask", mask_hash)] if mask_hash else body
+
+
 class PlanSlot:
     """One request's place in the plan store: look the plan up, or keep the one it builds."""
 
@@ -137,7 +150,9 @@ class PlanSlot:
         extra_anchors: tuple[Any, ...] = (),
     ) -> None:
         self._state = state
-        self._key = plan_key(state, stage, role_id, *body)
+        self._key = plan_key(
+            state, stage, role_id, *mask_scoped_body(state, stage, role_id, list(body))
+        )
         self._anchors = (*governance_anchors(state, role_id), *extra_anchors)
         self._settings = governance_settings(state)
         self._generation = (state.schema_boot_id, state.schema_version)
@@ -192,7 +207,7 @@ def governance_reader(state: Any, surface: Any, role_id: str) -> Callable[[], An
     it would otherwise change the rights of every later request."""
     from provisa.compiler.stage2 import build_governance_context
     from provisa.fakes.measurement import MEASURING
-    from provisa.security.rights import effective_domain_access_role
+    from provisa.security.rights import effective_domain_access_role, withdrawn_reach
 
     # What the model build's measurement reads differs: no fakes (stage2._bind_fakes).
     slot = PlanSlot(
@@ -207,9 +222,14 @@ def governance_reader(state: Any, surface: Any, role_id: str) -> Callable[[], An
     role = effective_domain_access_role(role_id, state.roles)
     relationships = getattr(state, "relationships", None)
     source_types = state.source_types
+    source_hints = getattr(state, "source_federation_hints", {})
     engine = getattr(state, "federation_engine", None)
 
-    def read() -> Any:
+    # The plan store is per org and a later read may come on the audit writer's thread, where no
+    # org is bound: it reads in this thread's org and environment, or the row is never written.
+    bound = contextvars.copy_context()
+
+    def build() -> Any:
         governance = slot.cached()
         if governance is None:
             governance = _shared(
@@ -223,10 +243,19 @@ def governance_reader(state: Any, surface: Any, role_id: str) -> Callable[[], An
                     relationships=relationships,
                     source_types=source_types,
                     engine=engine,
+                    source_hints=source_hints,
+                    # REQ-1921: the withdrawn rows of the model table it reads, asked only of a
+                    # statement reading that table.
+                    withdrawn_reach=lambda: withdrawn_reach(role, state.roles),
                 )
             )
             slot.keep(governance)
-        return dataclasses.replace(governance)
+        from provisa.entitlements.runtime import govern_for_request  # noqa: PLC0415
+
+        return govern_for_request(dataclasses.replace(governance), state, role_id)
+
+    def read() -> Any:
+        return bound.run(build)
 
     return read
 

@@ -58,6 +58,7 @@ def _rtbl(sid, schema, tname, cols):
         "schema_name": schema,
         "table_name": tname,
         "landing_filter": None,
+        "read_wait": None,
         "columns": cols,
         # the per-table overrides every registry row carries (None = inherit the source's)
         "replicate": None,
@@ -112,7 +113,7 @@ def _state(cfg, registered, monkeypatch):
             for src in cfg.sources
         ]
 
-    monkeypatch.setattr("provisa.core.repositories.source.list_all", _source_rows)
+    monkeypatch.setattr("provisa.core.repositories.source.list_in_production", _source_rows)
     return SimpleNamespace(
         config=cfg,
         model_db=(_one_db := SimpleNamespace(acquire=lambda: _FakeConn())),

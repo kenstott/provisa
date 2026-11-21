@@ -1,0 +1,17 @@
+# The ryu crate 1.0.23 (Apache-2.0 OR BSL-1.0, see LICENSE-*), with acceptBounds false as
+# PostgreSQL builds it (STRICTLY_SHORTEST 0): the digits float8out and float4out write.
+[package]
+name = "ryu-pg"
+version = "1.0.23"
+edition = "2021"
+license = "Apache-2.0 OR BSL-1.0"
+# Not publish = false: that marks Provisa's own crates, which the licence notices leave out
+# (rust/encoders/about.toml); this one is ryu's, and its notice ships with the module.
+
+[lib]
+name = "ryu_pg"
+path = "src/lib.rs"
+
+[features]
+small = []
+no-panic = []

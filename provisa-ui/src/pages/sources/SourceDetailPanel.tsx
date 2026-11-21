@@ -9,11 +9,14 @@
 // permission from the copyright holder.
 
 import { PanelActions } from "../../components/list/SplitPane";
+import { PanelDelete } from "../../components/list/PanelDelete";
+import { PanelDuplicate } from "../../components/list/PanelDuplicate";
+import { PanelWithdraw } from "../../components/list/PanelWithdraw";
+import type { PutBackRegions } from "../../hooks/useWithdrawal";
 import { useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { ActionIcon, Alert, Button, Group, Modal, Stack, Text } from "@mantine/core";
-import { Pencil, Trash2, ArrowRight, RefreshCw, Play } from "lucide-react";
-import { ConfirmDialog } from "../../components/ConfirmDialog";
+import { Pencil, ArrowRight, RefreshCw, Play } from "lucide-react";
 import type { Source } from "../../types/admin";
 import { useRefreshKaggleSource } from "../../hooks/useAdminQueries";
 import { runProfiler, type SourceRunOutcome } from "../../api/profiler";
@@ -25,16 +28,28 @@ interface SourceDetailPanelProps {
   /** The source's settings read: its edit form drawn read-only; null until they are read. */
   fields: ReactNode;
   onEdit: () => void;
+  /** Opens the create form prefilled from the source, under a new id. */
+  onDuplicate: () => void;
   onNavigate: () => void;
-  onDelete: () => void;
+  /** REQ-2198: resolves once the source is deleted and the list read again (PanelDelete). */
+  onDelete: () => Promise<boolean | void>;
+  /** REQ-1921: take the source out of production, and return it; each rejects with the refusal. */
+  onWithdraw: () => Promise<void>;
+  onPutBack: (region: string | null) => Promise<void>;
+  /** Where a withdrawn source may be put back; null where the platform declares no regions. */
+  putBackRegions: PutBackRegions | null;
 }
 
 export function SourceDetailPanel({
   s,
   fields,
   onEdit,
+  onDuplicate,
   onNavigate,
   onDelete,
+  onWithdraw,
+  onPutBack,
+  putBackRegions,
 }: SourceDetailPanelProps) {
   const { t } = useTranslation();
   const { refreshKaggleSource, loading: refreshing } = useRefreshKaggleSource();
@@ -85,6 +100,12 @@ export function SourceDetailPanel({
 
   return (
     <Stack gap="sm">
+      {/* REQ-1921: out of production; none of its tables serves any role until it is put back. */}
+      {s.withdrawn && (
+        <Text size="xs" c="dimmed" data-testid="source-detail-withdrawn-note">
+          {t("sourceDetailPanel.withdrawnNote")}
+        </Text>
+      )}
       {fields}
       {/* In a panel these sit in its pinned head, beside the source's name. */}
       <PanelActions>
@@ -101,6 +122,7 @@ export function SourceDetailPanel({
               <Pencil size={14} />
             </ActionIcon>
           </Tip>
+          <PanelDuplicate name={s.id} onDuplicate={onDuplicate} testId="source-detail-duplicate" />
           {s.id !== "provisa-otel" && (
             <Tip text={t("sourceDetailPanel.navigateTitle")} named>
               <ActionIcon
@@ -146,27 +168,25 @@ export function SourceDetailPanel({
               </ActionIcon>
             </Tip>
           )}
-          <ConfirmDialog
+          <PanelWithdraw
+            name={s.id}
+            withdrawn={s.withdrawn}
+            consequence={t("sourceDetailPanel.withdrawConsequence")}
+            region={s.region}
+            putBackRegions={putBackRegions}
+            scope="source"
+            onWithdraw={onWithdraw}
+            onPutBack={onPutBack}
+            testId="source-detail"
+          />
+          <PanelDelete
+            itemKey={s.id}
             title={t("sourceDetailPanel.deleteTitle", { id: s.id })}
             consequence={t("sourceDetailPanel.deleteConsequence", { id: s.id })}
-            onConfirm={onDelete}
-          >
-            {(open) => (
-              <Tip text={t("sourceDetailPanel.deleteTitleShort")} named>
-                <ActionIcon
-                  color="red"
-                  aria-label={t("sourceDetailPanel.deleteTitleShort")}
-                  data-testid="source-detail-delete"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    open();
-                  }}
-                >
-                  <Trash2 size={14} />
-                </ActionIcon>
-              </Tip>
-            )}
-          </ConfirmDialog>
+            ariaLabel={t("sourceDetailPanel.deleteTitleShort")}
+            testId="source-detail-delete"
+            onDelete={onDelete}
+          />
         </Group>
       </PanelActions>
       {kaggleOrigin && (
@@ -221,9 +241,14 @@ export function SourceDetailPanel({
             ? t("sourceDetailPanel.profilerNoMembers")
             : profileOutcomes.map((o) => (
                 <Text key={o.table} size="sm">
-                  {o.error == null
-                    ? t("sourceDetailPanel.profilerRan", { table: o.table })
-                    : t("sourceDetailPanel.profilerFailed", { table: o.table, error: o.error })}
+                  {o.not_read != null
+                    ? t("sourceDetailPanel.profilerNotRead", {
+                        table: o.table,
+                        parameters: (o.requires ?? []).join(", "),
+                      })
+                    : o.error == null
+                      ? t("sourceDetailPanel.profilerRan", { table: o.table })
+                      : t("sourceDetailPanel.profilerFailed", { table: o.table, error: o.error })}
                 </Text>
               ))}
         </Alert>

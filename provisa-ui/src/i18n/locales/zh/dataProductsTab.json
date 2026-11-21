@@ -87,7 +87,6 @@
     "graphqlQueriesEmpty": "没有可查询的表或关系",
     "graphqlQueryAria": "运行 {{table}} 的 GraphQL 示例查询",
     "sqlQueryAria": "运行 {{table}} 的 SQL 示例查询",
-    "cypherQueryAria": "运行 {{type}} 的 Cypher 示例查询",
     "grpcQueryAria": "运行 {{table}} 的 gRPC 示例调用",
     "jsonapiQueryAria": "运行 {{table}} 的 JSON:API 示例请求",
     "openApiQueryAria": "运行 {{table}} 的 REST 示例请求",
@@ -97,7 +96,6 @@
         "customProperties": "自定义属性",
         "relatedTables": "相关表",
         "relationships": "关系",
-        "lineage": "血缘",
         "inputPorts": "输入端口",
         "dataQuality": "数据质量"
       },
@@ -107,18 +105,21 @@
       "dqRulesTitle": "质量规则 — {{table}}",
       "dqRulesEmpty": "该契约未定义任何检查",
       "relatedTablesEmpty": "没有相关表",
-      "relatedTablesHint": "可通过已批准的关系从此产品的表到达，但（尚）不属于该产品。",
+      "relatedTablesHint": "可通过已批准的关系从此产品的表访问，但尚未包含在产品中。",
       "relationshipsEmpty": "此产品的表之间没有关系",
       "lineageEmpty": "没有血缘",
       "lineageLoading": "正在加载血缘…",
-      "lineageHint": "列血缘图，以此产品的表作为发布终结点，并包含用于派生它们的所有上游表。仅供参考，需要 view_governance 能力。",
+      "lineageTitle": "列血缘：此产品的来源",
+      "lineageHint": "此产品发布的每一列及其来源输入列，以及两者之间的每个步骤。需要 view_governance 能力。",
       "outputPortsHint": "此产品可查询的范围：其成员表和命令。每个的示例查询见“访问模式”。",
       "customPropertiesEmpty": "没有自定义属性",
-      "lineageLaneUpstream": "上游，第 {{n}} 跳",
-      "lineageLaneDownstream": "下游，第 {{n}} 跳"
+      "lineageLaneTables": "此产品的表",
+      "lineageLaneInputs": "输入",
+      "lineageLaneUpstream": "上游，距输入 {{n}} 跳",
+      "inputsLineageLink": "查看列血缘"
     },
     "readOnly": "只读",
-    "readOnlyHint": "您仅拥有 data_product_read——org_admin 可授予 data_product_rw 以进行编辑。",
+    "readOnlyHint": "您只有 data_product_read 权限。org_admin 可以授予 data_product_rw 以进行编辑。",
     "relatedTermsConcept": "概念",
     "status_draft": "草稿",
     "status_live": "生效",
@@ -131,15 +132,15 @@
     "successorHint": "其表、视图和命令移交给继任产品，即同一域中的产品。",
     "reasonLabel": "原因",
     "publish": "发布",
-    "publishHint": "让此草稿生效：向使用方和目录提供。",
+    "publishHint": "将此草稿上线，并提供给使用者和目录。",
     "deprecate": "弃用",
-    "deprecateHint": "将此生效产品标记为即将退出：它仍在使用，并附带原因和可选的计划停用日期。",
+    "deprecateHint": "将此已上线的产品标记为即将退役。它仍保持服务，并附带原因和可选的计划退役时间。",
     "deprecateTitle": "弃用“{{product}}”",
     "retire": "停用",
-    "retireHint": "停用此产品：其表、视图和命令移交给其域中的继任产品。",
+    "retireHint": "让此产品停止服务。其表、视图和命令将转移到所在域中的后继产品。",
     "retireTitle": "停用“{{product}}”",
     "retireMoves": "移交的成员：{{members}}",
-    "retireNoMembers": "它没有成员：继任产品可选。",
+    "retireNoMembers": "它没有成员，因此后继项为可选。",
     "restore": "恢复",
     "restoreHint": "撤销弃用（恢复为生效）或停用（恢复为草稿）。",
     "toReview": "待审核",
@@ -177,9 +178,6 @@
       "versionLabel": "契约版本",
       "statusLabel": "契约状态",
       "descriptionLabel": "用途说明",
-      "columnsLabel": "列",
-      "columnsHelp": "删除某列或更改其类型，需要新版本。",
-      "requiredLabel": "从不为空",
       "slaLabel": "服务级别",
       "slaProperty": "属性",
       "slaValue": "值",
@@ -211,7 +209,56 @@
         "check_removed": "已移除质量检查 {{subject}}",
         "check_changed": "质量检查 {{subject}} 已更改",
         "description_changed": "描述已更改",
-        "terms_changed": "条款已更改：{{subject}}"
+        "terms_changed": "条款已更改：{{subject}}",
+        "field_masked": "字段 {{subject}} 已脱敏（{{after}}）",
+        "field_unmasked": "字段 {{subject}} 不再脱敏",
+        "row_rule_added": "已添加行规则：{{subject}}",
+        "row_rule_removed": "已移除行规则：{{subject}}",
+        "data_level_changed": "数据级别从 {{before}} 改为 {{after}}",
+        "dq_results_changed": "质量结果从 {{before}} 改为 {{after}}",
+        "profiles_changed": "画像从 {{before}} 改为 {{after}}",
+        "duration_changed": "期限从 {{before}} 改为 {{after}}",
+        "terms_of_use_changed": "使用条款已更改：{{subject}}"
+      },
+      "howToUse": {
+        "column": {
+          "surface": "接口",
+          "address": "地址",
+          "how": "使用方式",
+          "link": "示例"
+        },
+        "surface": {
+          "pgwire": "PostgreSQL",
+          "flight-sql": "Arrow Flight SQL",
+          "grpc": "gRPC",
+          "graphql": "GraphQL",
+          "rest": "REST",
+          "openapi": "OpenAPI",
+          "jsonapi": "JSON:API",
+          "sparql": "SPARQL"
+        },
+        "how": {
+          "pgwire": "任意 PostgreSQL 客户端，例如 psql 或 DBeaver。数据库 {{database}}，模式 {{schema}}。",
+          "flight-sql": "任意 Arrow Flight SQL 客户端，例如 ADBC 驱动。数据库 {{database}}，模式 {{schema}}。",
+          "grpc": "任意 gRPC 客户端，调用服务 {{service}}，并带上元数据 authorization: Bearer <token>。",
+          "graphql": "任意 GraphQL 客户端：对此表 POST 一个查询，并带上请求头 Authorization: Bearer <token>。",
+          "rest": "任意 HTTP 客户端：GET 此地址，并带上请求头 Authorization: Bearer <token>。",
+          "openapi": "仅包含此表的描述：可加载到 Swagger UI、Postman 或客户端生成器中。",
+          "jsonapi": "任意 JSON:API 客户端：GET 此地址，并带上请求头 Authorization: Bearer <token>。",
+          "sparql": "任意 SPARQL 1.1 客户端：对此表的类 POST 一个查询，并带上请求头 Authorization: Bearer <token>。"
+        },
+        "access": {
+          "granted": "须由 {{approvers}} 授予访问权限后才能使用。",
+          "noApprover": "须由 {{roles}} 的持有者授予访问权限后才能使用。此合约未指定审批人。",
+          "undeclared": "须授予访问权限后才能使用。此合约未指定角色或审批人。"
+        },
+        "ask": {
+          "approvers": "向 {{approvers}} 申请访问权限",
+          "roles": "向 {{roles}} 的持有者申请访问权限",
+          "nobody": "此合约未指定可联系的人"
+        },
+        "open": "打开示例",
+        "openAria": "打开 {{table}} 的 {{surface}} 示例"
       },
       "loadError": "无法读取契约：{{error}}",
       "notExported": "{{member}} 没有已导出的契约",
@@ -221,7 +268,7 @@
         "quality": "质量",
         "sla": "SLA",
         "support": "支持与团队",
-        "servers": "服务器",
+        "howToUse": "使用方式",
         "pricing": "定价",
         "custom": "自定义属性和标签"
       },
@@ -260,6 +307,12 @@
         "roles": "角色",
         "history": "版本历史"
       }
-    }
+    },
+    "detailPanel": "数据产品详情",
+    "tagFacetLabel": "标签",
+    "tagFacetPlaceholder": "按标签筛选",
+    "noMatch": "没有符合筛选条件的数据产品",
+    "domainFacetLabel": "域",
+    "domainFacetPlaceholder": "按域筛选"
   }
 }

@@ -25,6 +25,8 @@ import {
 } from "../../api/glossary";
 import { RelatedToDialog, ShapeTermForm, type PairTerm } from "./RelatedToDialog";
 import { GroundingGuideLink, RelTypeOptionView } from "./relTypeGuide";
+import { detailHref } from "../list/useDetailParam";
+import { termLabel, type TermOption } from "./termLabel";
 
 // REQ-1387: each option reads its label, then the type's test.
 const renderRelTypeOption = ({ option }: { option: { value: string; label: string } }) => (
@@ -41,7 +43,7 @@ interface GlossaryRelationshipsProps {
   canEdit: boolean;
   relEditMode: boolean;
   relTypeOptions: RelTypeOption[];
-  otherTermOptions: { value: string; label: string }[];
+  otherTermOptions: TermOption[];
   edgeTermId: string | null;
   setEdgeTermId: (v: string | null) => void;
   edgeRelType: string | null;
@@ -103,9 +105,20 @@ export function GlossaryRelationships({
   const [asked, setAsked] = useState<Asked | null>(null);
   const [started, setStarted] = useState<Started | null>(null);
   const self: PairTerm = { id: detail.id, name: detail.name };
+  // REQ-1591: the terms a row shows together; a name two of them share carries its domains.
+  const shownTerms = [
+    detail,
+    ...[...detail.edges_out, ...detail.edges_in].map((e) => ({
+      id: e.term_id,
+      name: e.name,
+      domains: e.domains,
+    })),
+  ];
+  const labelOf = (id: number, name: string, domains: string[]) =>
+    termLabel({ id, name, domains }, shownTerms);
   const termOf = (id: string): PairTerm => ({
     id: Number(id),
-    name: otherTermOptions.find((o) => o.value === id)?.label ?? id,
+    name: otherTermOptions.find((o) => o.value === id)?.name ?? id,
   });
   // The edge being added, once its type is Related to and its other term is picked: ask first.
   const askAdding = (termId: string | null, relType: string | null) => {
@@ -177,7 +190,7 @@ export function GlossaryRelationships({
                   name is fixed width and non-wrapping so the relationship and target columns stay
                   aligned across rows. */}
               <Table.Td style={{ width: 180, whiteSpace: "nowrap" }}>
-                <Text size="sm">{detail.name}</Text>
+                <Text size="sm">{labelOf(detail.id, detail.name, detail.domains)}</Text>
               </Table.Td>
               {/* The type is part of the edge's identity, so correcting it is a retype, not a
                   delete plus an add — the curator is fixing one statement about one pair of
@@ -213,7 +226,7 @@ export function GlossaryRelationships({
               <Table.Td>
                 <Anchor
                   component="a"
-                  href={`?term=${edge.term_id}`}
+                  href={detailHref("ontology", edge.term_id)}
                   size="sm"
                   onClick={(e) => {
                     if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
@@ -222,7 +235,7 @@ export function GlossaryRelationships({
                   }}
                   data-testid={`glossary-edge-out-link-${edge.term_id}`}
                 >
-                  {edge.name}
+                  {labelOf(edge.term_id, edge.name, edge.domains)}
                 </Anchor>
               </Table.Td>
               <Table.Td>
@@ -253,7 +266,7 @@ export function GlossaryRelationships({
               <Table.Td style={{ width: 180, whiteSpace: "nowrap" }}>
                 <Anchor
                   component="a"
-                  href={`?term=${edge.term_id}`}
+                  href={detailHref("ontology", edge.term_id)}
                   size="sm"
                   onClick={(e) => {
                     if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
@@ -262,7 +275,7 @@ export function GlossaryRelationships({
                   }}
                   data-testid={`glossary-edge-in-link-${edge.term_id}`}
                 >
-                  {edge.name}
+                  {labelOf(edge.term_id, edge.name, edge.domains)}
                 </Anchor>
               </Table.Td>
               <Table.Td>
@@ -294,7 +307,7 @@ export function GlossaryRelationships({
                 )}
               </Table.Td>
               <Table.Td>
-                <Text size="sm">{detail.name}</Text>
+                <Text size="sm">{labelOf(detail.id, detail.name, detail.domains)}</Text>
               </Table.Td>
               <Table.Td>
                 {canEdit && relEditMode && (

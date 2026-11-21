@@ -21,7 +21,7 @@ from provisa.federation.duckdb_pg_functions import register as register_pg_funct
 from provisa.pgwire.catalog_pg17_overloads import PG_KEYWORDS, TS_TOKEN_TYPES
 from provisa.pgwire.catalog_rewrite import _CATALOG_CLASS_OIDS, _PG_TYPE_DISPLAY_NAMES, next_txid
 from provisa.pgwire.catalog_server_answers import PG_ONLY_TYPES, macros as server_macros
-from provisa.transpiler.function_macros import quoted_identifier
+from provisa.transpiler.rows.base import quoted_identifier
 
 # The schemas on the search path (catalog_data's search_path, and pg_catalog): an object in one is
 # named unqualified, as PostgreSQL names a visible object.

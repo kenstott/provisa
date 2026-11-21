@@ -255,7 +255,7 @@ def test_a_source_connected_the_earlier_way_still_reads_with_nothing_done_to_it(
     state = signed_in.state
     seen: list[str] = []
 
-    def resolve(value: str) -> str:
+    def resolve(value: str, **_marked: object) -> str:
         seen.append(value)
         return "rt-the-vault-held"
 

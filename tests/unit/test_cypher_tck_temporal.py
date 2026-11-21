@@ -17,10 +17,9 @@ duration() of an ISO-8601 string the query computes reads a negative or fraction
 
 from __future__ import annotations
 
-import time
-
 import duckdb
 import pytest
+import sqlglot
 
 from provisa.cypher.parser import parse_cypher
 from provisa.gql.label_map import CypherLabelMap
@@ -94,15 +93,18 @@ def test_a_duration_read_back_from_its_text_is_itself(components, text):
 
 def test_a_duration_read_back_from_its_text_is_translated_small_and_fast():
     # Each computed value is computed once (temporal._let), not copied per use: the round trip
-    # was 287 KB of SQL and nine seconds to translate when each part was copied in.
+    # was 287 KB of SQL, 43,474 translated nodes and seconds to translate when each part was
+    # copied in; computed once it is 8 KB and 1,083 nodes. The work is measured by the nodes the
+    # translator builds, not by a clock: a clock also counts the process's one-time warm-up
+    # (keyword list, polyfill grid, settings catalog) and the runner's load.
     query = (
         "WITH duration({years: 12, months: 5, days: -14, hours: 16, minutes: 12, seconds: 70,"
         " nanoseconds: 1}) AS d RETURN toString(d) AS ts, duration(toString(d)) = d AS b"
     )
-    started = time.perf_counter()
     sql_ast, _, _ = cypher_to_sql(parse_cypher(query), _EMPTY, {})
     sql = transpile_to_duckdb(sql_ast.sql(dialect="postgres"))
-    assert time.perf_counter() - started < 2.0
+    assert sum(1 for _ in sql_ast.walk()) < 2_000
+    assert sum(1 for _ in sqlglot.parse_one(sql, read="duckdb").walk()) < 2_000
     assert len(sql) < 20_000
 
 
@@ -193,3 +195,33 @@ def test_a_session_time_with_its_offset_has_its_accessors(monkeypatch):
         }
     ]
     assert s.run("MATCH (v:Val) RETURN v.date.hour AS h") == [{"h": 12}]
+
+
+@pytest.mark.parametrize(
+    ("query", "text"),
+    [
+        # Temporal1 [8] #8: a date time with the default time zone
+        ("RETURN datetime({year: 1984, month: 10, day: 11}) AS d", "1984-10-11T00:00Z"),
+        # Temporal9 [2] #66: truncated to the week, in the default time zone
+        (
+            "RETURN datetime.truncate('week', localdatetime({year: 1984, month: 10, day: 11,"
+            " hour: 12, minute: 31, second: 14})) AS d",
+            "1984-10-08T00:00Z",
+        ),
+        # Temporal2 [5] #2: parsed with an offset of zero
+        ("RETURN datetime('2015-07-21T21:40:32.142Z') AS d", "2015-07-21T21:40:32.142Z"),
+    ],
+)
+def test_a_date_time_read_in_utc_is_written_without_a_region(query, text):
+    """The engine reads a timestamptz through Arrow in its session zone, UTC (arrow_rows), and
+    openCypher writes a date time in UTC as ``Z``, naming no region, as it does a fixed offset."""
+    from provisa.executor.drivers.duckdb_arrow import LOSSLESS_ARROW, arrow_rows
+    from provisa.gql.temporal import cypher_text
+
+    sql_ast, _, _ = cypher_to_sql(parse_cypher(query), _EMPTY, {})
+    con = duckdb.connect()
+    con.execute("SET TimeZone = 'UTC'")  # as the engine runs (federation/duckdb_runtime.py)
+    con.execute(LOSSLESS_ARROW)
+    con.execute(transpile_to_duckdb(sql_ast.sql(dialect="postgres")))
+    ((value,),) = arrow_rows(con.to_arrow_table())
+    assert cypher_text(value) == text

@@ -638,6 +638,28 @@ services:
       retries: 24
       start_period: 10s
 
+  # REQ-2219, REQ-122: a real Keycloak for tests that need one (requires_keycloak), on an isolated
+  # port. The realm (test users, roles, groups, the nested and flat entitlement claim mappers) is in
+  # the repo; the management port answers the healthcheck, and the image ships no curl.
+  keycloak:
+    restart: unless-stopped
+    image: quay.io/keycloak/keycloak:26.0.7
+    command: ["start-dev", "--import-realm"]
+    ports:
+      - "${KEYCLOAK_PORT:-8880}:8080"
+    environment:
+      KC_HEALTH_ENABLED: "true"
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: admin-password
+    volumes:
+      - ./tests/fixtures/keycloak/provisa-test-realm.json:/opt/keycloak/data/import/provisa-test-realm.json:ro
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/localhost/9000 && printf 'GET /health/ready HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n' >&3 && grep -q UP <&3"]
+      interval: 5s
+      timeout: 5s
+      retries: 36
+      start_period: 20s
+
   # An operator's own Postgres, into which `provisa pg-ext install` stages the bundled extensions
   # (REQ-1873). linux/amd64 because the bundle is built for linux-x64; 15 because no bundle is
   # built for it, so it must be refused with nothing written. Unpublished: the test reaches them

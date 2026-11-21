@@ -38,8 +38,8 @@ naming:
   rules: []
 platform:
   regions:
-  - {id: eu, address: '${env:PROVISA_DEMO_EU_ADDRESS}'}
-  - {id: us, address: '${env:PROVISA_DEMO_US_ADDRESS}'}
+  - {id: eu, description: 'Customer data that must stay in the European Union', purposes: [residency]}
+  - {id: us, description: 'The United States, near the readers and sources there', purposes: [latency]}
 # Each region keeps its replicas, views, build state and record in its own PostgreSQL store; each
 # runs its own DuckDB engine.
 stores:
@@ -64,27 +64,27 @@ domains:
 roles:
 # The group's analysts, in the US: they read group reporting, where EU customers are pseudonymised.
 - id: group_analyst
-  parents: [viewer]
+  parents: [analyst]
   description: "The group's analysts, in the US: group reporting, where EU customers are pseudonymised."
-  capabilities: [query_development]
+  capabilities: [data_product_read, glossary_read, query_development]
   domain_access: [retail]
 # EU marketing: reads only the EU customers who agreed to marketing.
 - id: marketing_eu
-  parents: [viewer]
+  parents: [analyst]
   description: "EU marketing: only the EU customers who agreed to marketing."
-  capabilities: [query_development]
+  capabilities: [data_product_read, glossary_read, query_development]
   domain_access: [retail]
 # The data protection officer: answers data subject requests across both subsidiaries.
 - id: dpo
-  parents: [viewer]
+  parents: [analyst]
   description: "The data protection officer: answers data subject requests across both subsidiaries."
-  capabilities: [query_development]
+  capabilities: [data_product_read, glossary_read, query_development]
   domain_access: [retail]
 # The group's insider reviewers: the review queue, the sender revealed only to an EU reviewer.
 - id: reviewer
-  parents: [viewer]
+  parents: [analyst]
   description: "The group's insider reviewers: the review queue, the sender shown only to an EU reviewer."
-  capabilities: [query_development]
+  capabilities: [data_product_read, glossary_read, query_development]
   domain_access: [retail]
 server:
   limits:

@@ -2,7 +2,7 @@
   "sourcesPage": {
     "detailPanel": "資料來源詳情",
     "resizeDetail": "調整詳情面板大小",
-    "expandDetail": "展開面板",
+    "expandDetail": "放大面板",
     "restoreDetail": "還原面板",
     "closeDetail": "關閉詳情面板",
     "backToList": "返回清單",
@@ -41,9 +41,12 @@
     "nextPage": "下一頁",
     "lastPage": "最後一頁",
     "purposeTitle": "資料來源的用途",
-    "purposeBody": "來源是指向持有資料的系統（資料庫、倉儲、檔案儲存、API）的一條已註冊連線。註冊後，Provisa 便可讀取其結構描述，並以與其他所有來源相同的語言查詢它，毋須把資料複製到任何地方。",
+    "purposeBody": "數據來源是連接至存放數據之系統的一個已註冊連線，例如數據庫、數據倉庫、檔案存放區或 API。之後 Provisa 便可讀取該系統的結構描述，並以與其他所有數據來源相同的語言查詢它，毋須複製數據。",
     "purposeAdd": "只加入來源並不會註冊任何資料表。請在該列使用 Discover 瀏覽其結構描述，並註冊你想納入治理的資料表。",
     "purposeAria": "關於資料來源",
-    "registrationMissing": "{{list}} 中沒有資料來源 {{source}} 的註冊。"
+    "registrationMissing": "{{list}} 中沒有資料來源 {{source}} 的註冊。",
+    "duplicateCredentialsNote": "{{source}} 的憑證不會被複製：請在此輸入，或輸入對密鑰的引用。",
+    "withdrawn": "已撤回",
+    "withdrawnTitle": "已停止生產使用：在恢復之前，其任何數據表都不為任何角色提供服務"
   }
 }

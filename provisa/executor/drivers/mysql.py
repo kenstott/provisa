@@ -53,9 +53,20 @@ def _timestamp_in_utc(raw: Any) -> Any:
 CONVERSIONS = {**pymysql.converters.conversions, FIELD_TYPE.TIMESTAMP: _timestamp_in_utc}
 
 
+#: REQ-2167: a table's AUTO_INCREMENT column, with its place among the table's columns. A table
+#: named without its database is the connection's.
+_GENERATED_COLUMNS = """
+SELECT column_name, ordinal_position FROM information_schema.columns
+WHERE table_schema = coalesce($1, database()) AND table_name = $2
+  AND extra LIKE '%auto_increment%'
+ORDER BY ordinal_position
+"""
+
+
 class MySQLDriver(DirectDriver):  # REQ-052, REQ-068, REQ-229, REQ-550
     # Bounded wait for a pooled connection when all are checked out (request deadline permitting).
     _ACQUIRE_TIMEOUT = 10.0
+    generated_keys = "last_insert_id"  # REQ-2167
 
     def __init__(self, require_ssl: bool = False) -> None:
         self._pool: BlockingPool[Any] | None = None
@@ -138,7 +149,48 @@ class MySQLDriver(DirectDriver):  # REQ-052, REQ-068, REQ-229, REQ-550
                     cur.execute(exec_sql, bound or None)
                     rows = fetch_chunked(cur) if cur.description else []
                 columns = [desc[0] for desc in cur.description] if cur.description else []
-        return QueryResult(rows=rows, column_names=columns)
+                # A statement with no result set (a data write) reports how many rows it changed:
+                # the count pgwire's command tag answers.
+                affected = cur.rowcount if cur.description is None and cur.rowcount >= 0 else None
+        return QueryResult(rows=rows, column_names=columns, rowcount=affected)
+
+    async def generated_columns(self, schema: str | None, table: str):  # REQ-2167
+        from provisa.executor.drivers.base import GeneratedColumn
+
+        found = await self.execute(_GENERATED_COLUMNS, [schema, table])
+        return tuple(GeneratedColumn(name, int(position)) for name, position in found.rows)
+
+    # Async only for the DirectDriver awaitable contract; executes synchronously in-thread.
+    async def execute_reporting_generated(
+        self, sql: str, params: list | None = None
+    ) -> QueryResult:  # REQ-2167
+        """The write, and LAST_INSERT_ID() as its own connection reports it. That value outlives
+        the statement on a pooled connection, so it is set to 0 first -- a value no AUTO_INCREMENT
+        column generates -- and a write that generated none leaves it there. For a statement
+        that inserts several rows it is the first row's value, as MySQL's own LAST_INSERT_ID()."""
+        from provisa.compiler.params import bind_positionally
+
+        exec_sql, bound = sql, []
+        if params:
+            exec_sql, bound = bind_positionally(sql.replace("%", "%%"), params, "%s")
+
+        with self._require_pool().connection(is_broken=_is_broken) as conn:
+            thread_id = conn.thread_id()
+            with conn.cursor() as cur:
+                with request_deadline.cancel_on_deadline(lambda: self._kill_query(thread_id)):
+                    cur.execute("SELECT LAST_INSERT_ID(0)")
+                    cur.execute(exec_sql, bound or None)
+                    rows = fetch_chunked(cur) if cur.description else []
+                    columns = [desc[0] for desc in cur.description] if cur.description else []
+                    affected = cur.rowcount if cur.description is None else None
+                    cur.execute("SELECT LAST_INSERT_ID()")
+                    (generated,) = cur.fetchone()
+        return QueryResult(
+            rows=rows,
+            column_names=columns,
+            rowcount=affected,
+            generated_key=int(generated) or None,
+        )
 
     @property
     def supports_streaming(self) -> bool:  # REQ-1190

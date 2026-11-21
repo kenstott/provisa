@@ -90,6 +90,9 @@
       "saveEdit": "Enregistrer {{name}}",
       "cancelEdit": "Annuler la modification",
       "remove": "Supprimer {{name}}"
-    }
+    },
+    "localUsersHeading": "Utilisateurs locaux",
+    "attributesTab": "Attributs",
+    "accessTab": "Accès"
   }
 }

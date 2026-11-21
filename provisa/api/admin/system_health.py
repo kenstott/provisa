@@ -51,6 +51,7 @@ HTTP_SURFACES = {
     "Cypher over HTTP": "/data/cypher",
     "REST": "/data/rest",
     "JSON:API": "/data/jsonapi",
+    "OData": "/data/odata",  # REQ-2193
 }
 
 
@@ -117,6 +118,7 @@ async def collect_system_health(app: Any) -> SystemHealthType:
         "gRPC": _port("server.grpc_port") if state._grpc_server is not None else None,
         "Arrow Flight": _port("server.flight_port") if state._flight_server is not None else None,
         "pgwire": _port("server.pgwire_port"),
+        "pgwire minted tokens": _port("server.minted_pgwire_port"),  # REQ-2226
         "bolt": _port("server.bolt_port"),
         # REQ-1008: MCP server binds a port only for the streamable-http transport.
         "MCP": _port("mcp.port"),

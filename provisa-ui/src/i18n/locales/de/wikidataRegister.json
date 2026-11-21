@@ -1,0 +1,14 @@
+{
+  "wikidataRegister": {
+    "starters": "Starter-Tabellen",
+    "startersHint": "Referenztabellen zum Verknüpfen, jeweils mit ihren Spalten. Beschreibungen, Typen und Aliase werden danach an jeder Tabelle verfeinert.",
+    "startersPlaceholder": "Starter-Tabellen auswählen",
+    "customLabel": "Eigene Tabelle",
+    "customNone": "Keine eigene Tabelle",
+    "customSparql": "SPARQL-Abfrage",
+    "classNotUsed": "Wählen Sie eine Klasse und klicken Sie auf „Diese Klasse verwenden“, oder wählen Sie „Keine eigene Tabelle“.",
+    "columnsReading": "Die Spalten werden aus dem SELECT der Abfrage gelesen…",
+    "nothingChosen": "Wählen Sie eine Starter-Tabelle oder eine eigene Tabelle zum Registrieren.",
+    "columns": "Spalten: {{columns}}"
+  }
+}

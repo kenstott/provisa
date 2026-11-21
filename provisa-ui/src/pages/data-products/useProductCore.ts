@@ -11,11 +11,10 @@
 // REQ-2127: the product list and one product's panel core, read from the meta domain as the role
 // the app acts as.
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useAuth } from "../../context/AuthContext";
-import { metaReader } from "../../components/graph3d/useProductGraph";
 import type { DataProduct } from "../../types/admin";
-import type { MetaReader } from "../../api/metaGraph";
+import { metaReader, type MetaReader } from "../../api/metaGraph";
 import { loadProductCore, loadProducts, type ProductCore } from "./productCore";
 
 interface Read<T> {
@@ -31,31 +30,54 @@ const START = { data: null, unreadable: false, error: null, loading: true };
 function useMetaRead<T>(
   load: (role: string) => Promise<T | null>,
   key: unknown,
-): Read<T> & { reload: () => void } {
+): Read<T> & { reload: () => Promise<void> } {
   const { actingRoles } = useAuth();
   const [state, setState] = useState<Read<T>>(START);
   const [seq, setSeq] = useState(0);
+  // Each reload's caller, told once the read it asked for has landed (REQ-2198: a deleted
+  // product's panel closes on a list read again without it).
+  const waiting = useRef<Array<() => void>>([]);
   useEffect(() => {
-    if (actingRoles === null || key === null) return;
+    const landed = () => {
+      const told = waiting.current;
+      waiting.current = [];
+      told.forEach((tell) => tell());
+    };
+    if (actingRoles === null || key === null) {
+      landed();
+      return;
+    }
     let cancelled = false;
     load(actingRoles).then(
-      (data) =>
-        !cancelled && setState({ data, unreadable: data === null, error: null, loading: false }),
-      (e: unknown) =>
-        !cancelled &&
+      (data) => {
+        if (cancelled) return;
+        setState({ data, unreadable: data === null, error: null, loading: false });
+        landed();
+      },
+      (e: unknown) => {
+        if (cancelled) return;
         setState({
           data: null,
           unreadable: false,
           error: e instanceof Error ? e.message : String(e),
           loading: false,
-        }),
+        });
+        landed();
+      },
     );
     return () => {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- load is rebuilt each render from key; key and the role decide what is read
   }, [actingRoles, key, seq]);
-  const reload = useCallback(() => setSeq((n) => n + 1), []);
+  const reload = useCallback(
+    () =>
+      new Promise<void>((resolve) => {
+        waiting.current.push(resolve);
+        setSeq((n) => n + 1);
+      }),
+    [],
+  );
   return { ...state, reload };
 }
 

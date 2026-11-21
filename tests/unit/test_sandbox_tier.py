@@ -27,6 +27,7 @@ from provisa.api.sandbox_tier import (
     template_org_id,
 )
 from provisa.core.org_ids import is_org_id
+from provisa.core.regions import DEFAULT_REGION
 
 
 def test_a_sandbox_and_a_template_are_org_ids_of_the_sandbox_tier_and_never_each_other():
@@ -330,7 +331,26 @@ async def test_every_carried_setting_is_written_and_an_undeclared_one_cleared(mo
     updates = await _declared_settings(monkeypatch, "retail")
     assert set(updates) == _carried_settings()
     assert updates["vector_models"] is None
-    assert updates["naming"] is None  # retail declares no naming key an org owns
+    # REQ-1327: naming conventions are the org's, so the one key retail declares (domain_prefix)
+    # is carried to its sandboxes; the rest of the naming block is not written.
+    assert updates["naming"] == {"domain_prefix": True}
+
+
+async def test_an_undeclared_naming_block_is_cleared(monkeypatch):
+    """REQ-1327: a configuration that declares no naming key leaves the template org with none."""
+    from provisa.api.demo_templates import write_declared_settings
+    from provisa.core import org_settings
+    from provisa.core.models import ProvisaConfig
+
+    written = []
+
+    async def write(model_db, updates, *, updated_by):
+        written.append(updates)
+        return list(updates)
+
+    monkeypatch.setattr(org_settings, "write_org_overrides", write)
+    await write_declared_settings(object(), ProvisaConfig.model_construct())
+    assert written[0]["naming"] is None
 
 
 def test_the_demos_connector_bundles_are_fetched_outside_any_request(monkeypatch, tmp_path):
@@ -511,3 +531,43 @@ def test_a_cloud_deploy_reaches_the_sandbox_vm_too():
     arms = re.findall(r"^  (api|cfg|all|patch)\)\n(?:\s*#.*\n)*\s*(.*);;$", deploy, re.M)
     for arm, steps in arms:
         assert steps.strip().split("; ")[-1] == "deploy_sandbox_vm", arm
+
+
+def _on_the_tier(monkeypatch, region: str | None) -> None:
+    from provisa.core import process_region
+
+    monkeypatch.setenv("PROVISA_SANDBOX_TIER", "true")
+    monkeypatch.setattr(process_region, "region", lambda: region or DEFAULT_REGION)
+
+
+def test_a_regions_sandbox_is_refused_by_name_on_the_ordinary_tier(monkeypatch):
+    """REQ-2006, REQ-2068: a retail sandbox's token at cloud.provisa.dev with no org named reached
+    the ordinary tier, which holds no bundle of retail: building its runtime answered GET
+    /sandboxes/limits 500 "No published demo named 'retail'". It is misdirected, and said so."""
+    _on_the_tier(monkeypatch, None)
+    with pytest.raises(ApiError) as refused:
+        require_this_tier("sbxrus2bb95f6779fa")
+    assert (refused.value.status_code, refused.value.code) == (421, "sandbox.wrong_tier")
+
+
+def test_a_sandbox_of_another_region_is_refused_on_a_regions_node(monkeypatch):
+    _on_the_tier(monkeypatch, "us")
+    with pytest.raises(ApiError) as refused:
+        require_this_tier("sbxrwarehouse2bb95f6779fa")
+    assert refused.value.code == "sandbox.wrong_tier"
+
+
+def test_each_node_serves_its_own_sandboxes_its_templates_and_its_deployment_org(monkeypatch):
+    """A regions node's own org (sbxrtier) begins as a regions sandbox does and is none."""
+    _on_the_tier(monkeypatch, "us")
+    for org in ("sbxrus2bb95f6779fa", "sbxtplretail", "sbxrtier"):
+        require_this_tier(org)
+    _on_the_tier(monkeypatch, None)
+    for org in ("sbx0aef6d8dbe7d", "sbxtplweblogs", "sbxtier"):
+        require_this_tier(org)
+
+
+@pytest.fixture(autouse=True)
+def _declared_org_base_domain(monkeypatch):
+    """REQ-1276: a host names an org only under the deployment's declared base domain."""
+    monkeypatch.setenv("VITE_ORG_BASE_DOMAIN", "provisa.dev")

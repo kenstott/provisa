@@ -2,7 +2,7 @@
   "jsonApiPage": {
     "title": "JSON:API-verkenner",
     "specLink": "Specificatie",
-    "description": "Beperkte veldensets, filteren, sorteren en paginering. Governance geldt uniform, ongeacht het wire-protocol.",
+    "description": "Sparse fieldsets, filteren, sorteren en paginering. Op elk wire-protocol geldt dezelfde governance.",
     "tableLabel": "Tabel",
     "loadingOption": "Laden…",
     "selectTablePlaceholder": "Selecteer een tabel",

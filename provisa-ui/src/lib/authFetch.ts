@@ -19,6 +19,7 @@ import { isEngineProbePath, noteRequestEnd, noteRequestStart } from "./engineWak
 import { noteOrgSelectionRefusal } from "./orgSelection";
 import { getStored, removeStored, visitorActive } from "./browserStorage";
 import { currentActingRoles, ROLE_HEADER } from "./actingRole";
+import { dataCallUrl } from "./dataAddress";
 
 // REQ-1267: on an auth-enforced deploy (firebase/basic) the bearer token lives in
 // localStorage and must ride on EVERY same-origin request. The Apollo link already adds it
@@ -191,9 +192,18 @@ export function installAuthFetch(): void {
     return sampled(input, init, isSameOrigin(url), url, true);
   };
 
-  window.fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
-    const url = urlOf(input);
-    const sameOrigin = isSameOrigin(url);
+  window.fetch = async (given: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+    // REQ-1916 (amended 2026-11-02): a coordinator-served UI's data calls go to the data node the
+    // browser chose (lib/dataAddress), with the same identity a request to this origin carries.
+    const givenUrl = urlOf(given);
+    const url = isSameOrigin(givenUrl) ? await dataCallUrl(givenUrl) : givenUrl;
+    const moved = url !== givenUrl;
+    const input: RequestInfo | URL = !moved
+      ? given
+      : given instanceof Request
+        ? new Request(url, given)
+        : url;
+    const sameOrigin = moved || isSameOrigin(url);
 
     const { bearer: token, org: orgId, env, roles } = await requestIdentity();
     if (!sameOrigin || (!token && env === null && roles === null))

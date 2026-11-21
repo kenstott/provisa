@@ -23,10 +23,11 @@ every Trino reference inside the Trino engine's own instance and out of the gene
 from __future__ import annotations
 
 from provisa.core.read_refusal import ReadRefused
+from provisa.core.session_time_zone import carrying_zone
 import asyncio
 import logging
 from contextlib import contextmanager
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -84,7 +85,7 @@ class EngineBackend:
     # keeps naming the actual storage backend. Only mssql is mapped here (the one mismatch actually
     # reproduced); the other generic `_RDB_KINDS` entries whose SQLAlchemy scheme differs from any
     # SQLGlot dialect name (mariadb/greenplum/cockroachdb/yugabytedb/opengauss/tidb/vertica/
-    # saphana/sapase/sqlanywhere/monetdb/db2/firebird) are tracked, not guessed at, in a filed
+    # saphana/monetdb/db2/firebird) are tracked, not guessed at, in a filed
     # issue — SQLGlot compatibility per product needs verifying, not assuming.
     _SQLGLOT_DIALECT_ALIASES: dict[str, str] = {"mssql": "tsql"}
 
@@ -443,15 +444,14 @@ class EngineBackend:
         whose store is embedded and shares a single connection (DuckDB, REQ-989) overrides this to
         write through that connection instead, mirroring ``land_source_table``'s own dispatch."""
         del state
-        from sqlalchemy.schema import CreateSchema
-
+        from provisa.core.schema_create import create_schema
         from provisa.federation.materialize_exec import apply_cdc, build_table
         from provisa.federation.store_writer import store_connection
 
         tbl = build_table(schema, table, columns, tuple(pk_columns))
         async with store_connection(self.engine.materialize_store()) as conn:
-            if schema and conn.capabilities.schemas:
-                await conn.execute_core(CreateSchema(schema, if_not_exists=True))
+            if schema:
+                await create_schema(conn, schema)
             return await apply_cdc(conn, tbl, pk_columns, events, report_unchanged=True)
 
     async def apply_change_group(self, state: Any, group: list[Any]) -> None:
@@ -462,16 +462,17 @@ class EngineBackend:
         connection (DuckDB) overrides this, as it does ``apply_cdc_events``."""
         del state
         from sqlalchemy import and_
-        from sqlalchemy.schema import CreateSchema, CreateTable
+        from sqlalchemy.schema import CreateTable
 
+        from provisa.core.schema_create import create_schema
         from provisa.federation.materialize_exec import apply_cdc, build_table
         from provisa.federation.store_writer import store_connection
 
         async with store_connection(self.engine.materialize_store()) as conn:
             async with conn.transaction():
                 for changes in group:
-                    if changes.schema and conn.capabilities.schemas:
-                        await conn.execute_core(CreateSchema(changes.schema, if_not_exists=True))
+                    if changes.schema:
+                        await create_schema(conn, changes.schema)
                     table = build_table(
                         changes.schema, changes.table, changes.columns, tuple(changes.pk_columns)
                     )
@@ -641,6 +642,11 @@ class EngineBackend:
         """Lifecycle (REQ-1043/REQ-1244): resolve and store the terminal's connection parameters
         WITHOUT connecting, so a sleeping cluster (idle-stopped between sessions) is only woken by
         the first real query. In-process engines have no remote terminal to defer — no-op."""
+
+    def open(self, state: Any) -> None:
+        """Lifecycle: the start of a lifespan that serves on this engine. An engine with no
+        terminal of its own has nothing to open; a native engine closed by an earlier lifespan in
+        this process builds its runtime again from here on (``NativeEngineBackend.open``)."""
 
     def close(self, state: Any) -> None:
         """Lifecycle: tear down the engine terminal. An engine with none has nothing to close; a
@@ -1046,16 +1052,19 @@ class TrinoBackend(EngineBackend):
             transpile_to_trino,
         )
 
-        sql = transpile_to_trino(pg_sql)
         from provisa.api.app import state
+        from provisa.transpiler.pg_forms_geometric import around
 
-        # REQ-2050: an instant Trino reads as a plain TIMESTAMP is an output at UTC with its zone.
-        sql = rewrite_instants_for_trino(sql, trino_utc_wall_columns(state))
+        def rewritten(sql: str) -> str:
+            # REQ-2050: an instant Trino reads as a plain TIMESTAMP is an output at UTC with its zone.
+            sql = rewrite_instants_for_trino(sql, trino_utc_wall_columns(state))
+            label_columns = getattr(state, "prometheus_label_columns", None)
+            if label_columns:
+                sql = rewrite_prometheus_labels_for_trino(sql, label_columns)
+            return sql
 
-        label_columns = getattr(state, "prometheus_label_columns", None)
-        if label_columns:
-            sql = rewrite_prometheus_labels_for_trino(sql, label_columns)
-        return sql
+        # REQ-2171: a geometric form's routines are kept as written, ahead of the statement.
+        return around(transpile_to_trino(pg_sql), rewritten)
 
     def _store_catalog_named(self, state: Any, name: str, dsn: str) -> str:
         """Register (once per process) and return the catalog Trino reads the store ``dsn`` under
@@ -1238,13 +1247,13 @@ class TrinoBackend(EngineBackend):
         try:
             from provisa.core.environments import active_org_schema
             from provisa.core.request_context import require_current_org
+            from provisa.core.schema_create import create_schema
             from provisa.federation.store_writer import store_connection
-            from sqlalchemy.schema import CreateSchema
 
             org_id = require_current_org()
             cache_schema = active_org_schema(org_id, "_api_cache")
             async with store_connection(self.engine.materialize_store()) as store_conn:
-                await store_conn.execute_core(CreateSchema(cache_schema, if_not_exists=True))
+                await create_schema(store_conn, cache_schema)
         except Exception:
             _log.warning("ensuring the API-result cache schema failed (non-fatal)", exc_info=True)
 
@@ -1446,9 +1455,11 @@ class TrinoBackend(EngineBackend):
         """Register the source's catalog — its live attach. A source the operator floors
         (REQ-030/826/1141) is read only from its replica, so it has no catalog at all (REQ-1912):
         one left from before the setting was turned on is dropped. Nothing can then read the
-        source through the engine, whatever a statement names."""
+        source through the engine, whatever a statement names. A JDBC source attached live here
+        is registered as the built-in type its URL names (REQ-2191)."""
         from provisa.core import catalog
         from provisa.core.operator_floor import floor_setting
+        from provisa.jdbc_source.attach import attach_type, attach_view
 
         with self._provisioning_conn(state) as conn:
             if conn is None:
@@ -1456,6 +1467,9 @@ class TrinoBackend(EngineBackend):
             if floor_setting(source) is not None:
                 catalog.drop_catalog(conn, source.id, catalog_name=catalog_name)
                 return
+            named = attach_type(source, self.engine)
+            if named is not None:
+                source = attach_view(source, named)
             catalog.create_catalog(conn, source, resolved_password, catalog_name=catalog_name)
 
     def drop_source(self, state: Any, source_id: str, catalog_name: str | None = None) -> None:
@@ -1567,28 +1581,27 @@ class TrinoBackend(EngineBackend):
         span_attrs: dict[str, str] | None = None,
         extra_table_attrs: list[dict[str, str]] | None = None,
     ) -> QueryResult:
-        from provisa.executor.trino import execute_trino
+        """REQ-2194: the read reaches Provisa as Arrow through the Zaychik Flight SQL proxy; the
+        rows are built from it on the executor thread. Every Flight statement is its own Trino
+        session, so ``fresh`` is what every read already is; ``conn_kwargs`` name the session
+        (source, catalog, schema) when a caller passes its own."""
+        from provisa.executor.trino_flight import execute_trino_flight
 
-        if fresh and conn_kwargs is None:
-            conn_kwargs = state.engine_conn_kwargs
-        conn = state.engine_conn
-        # REQ-1043/REQ-1244: a bound-but-unconnected terminal (bind_terminal — sleeping cluster,
-        # wake-on-traffic) has kwargs and no conn; execute_trino's liveness path connects from
-        # state.engine_conn_kwargs on this first query. Only a terminal with NEITHER is an error.
-        if conn is None and conn_kwargs is None and not state.engine_conn_kwargs:
-            raise RuntimeError(f"engine {self.engine.name!r} connection not available")
-        _conn = cast("Any", conn)
+        del fresh  # every statement through the proxy runs in a session of its own
+        transport = self._flight_transport(state)
+        context = self._flight_context(state, session_hints, conn_kwargs)
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(
             None,
-            lambda: execute_trino(
-                _conn,
-                sql,
-                params=params,
-                session_hints=session_hints,
-                conn_kwargs=conn_kwargs,
-                span_attrs=span_attrs,
-                extra_table_attrs=extra_table_attrs,
+            carrying_zone(
+                lambda: execute_trino_flight(
+                    transport,
+                    sql,
+                    params,
+                    context=context,
+                    span_attrs=span_attrs,
+                    extra_table_attrs=extra_table_attrs,
+                )
             ),
         )
 
@@ -1599,14 +1612,55 @@ class TrinoBackend(EngineBackend):
         params: list | None = None,
         *,
         session_hints: dict[str, str] | None = None,
-    ) -> QueryResult:
-        from provisa.executor.trino import execute_trino
+    ) -> ResultStream:
+        """REQ-2194: the engine's Arrow batches as they arrive from the proxy; a consumer that
+        reads rows has each batch turned into them as it pulls it."""
+        from provisa.executor.trino_flight import execute_trino_flight_sync
 
-        conn = state.engine_conn
-        # Same wake-on-traffic contract as execute(): kwargs-only means execute_trino connects.
-        if conn is None and not state.engine_conn_kwargs:
+        return execute_trino_flight_sync(
+            self._flight_transport(state),
+            sql,
+            params,
+            context=self._flight_context(state, session_hints, None),
+        )
+
+    def _flight_context(
+        self, state: Any, session_hints: dict[str, str] | None, conn_kwargs: dict | None
+    ) -> Any:
+        """The Trino session a statement runs in: the terminal's source (the org, REQ-056),
+        catalog and schema (REQ-1623), and its session properties -- the deployment's FTE hints
+        (REQ-302), the caller's hints over them, and the query timeout every read carries
+        (REQ-1913) unless a hint sets one."""
+        from provisa.executor.trino import _trino_query_timeout
+        from provisa.executor.trino_flight import TrinoContext
+
+        kwargs = conn_kwargs if conn_kwargs is not None else state.engine_conn_kwargs
+        if not kwargs:
             raise RuntimeError(f"engine {self.engine.name!r} connection not available")
-        return execute_trino(cast("Any", conn), sql, params=params, session_hints=session_hints)
+        hints = dict(session_hints or {})
+        hints.setdefault("query_max_execution_time", f"{_trino_query_timeout()}s")
+        return TrinoContext(
+            source=kwargs["source"],
+            catalog=kwargs.get("catalog"),
+            schema=kwargs.get("schema"),
+            properties={**state.engine_session_hints, **hints},
+            server=self._own_coordinator(state, kwargs),
+        )
+
+    @staticmethod
+    def _own_coordinator(state: Any, kwargs: dict) -> str | None:
+        """The coordinator the statement names when the active org's terminal is not the one the
+        proxy is configured with: its own engine (REQ-1412) or its isolated host (REQ-1043). The
+        proxy dials it only if the deployment declared it, else refuses by name. On a
+        provisioning deployment each shard's proxy is a sidecar in front of that shard's own
+        coordinator (REQ-1518), so a statement never names one."""
+        from provisa.federation import k8s_provisioner as k8s
+
+        if k8s.provisioning_available():
+            return None
+        if state.active_engine_endpoint is None and state.active_isolated_org is None:
+            return None
+        return f"{kwargs['http_scheme']}://{kwargs['host']}:{kwargs['port']}"
 
     # -- engine-specific transports (Arrow via Zaychik Flight SQL proxy) --------
 
@@ -1665,9 +1719,19 @@ class TrinoBackend(EngineBackend):
     def execute_arrow(self, state: Any, sql: str, params: list | None = None):
         from provisa.executor.trino_flight import execute_trino_flight_arrow
 
-        return execute_trino_flight_arrow(self._flight_transport(state), sql, params)
+        return execute_trino_flight_arrow(
+            self._flight_transport(state),
+            sql,
+            params,
+            context=self._flight_context(state, None, None),
+        )
 
     def execute_stream(self, state: Any, sql: str, params: list | None = None):
         from provisa.executor.trino_flight import execute_trino_flight_stream
 
-        return execute_trino_flight_stream(self._flight_transport(state), sql, params)
+        return execute_trino_flight_stream(
+            self._flight_transport(state),
+            sql,
+            params,
+            context=self._flight_context(state, None, None),
+        )

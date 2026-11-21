@@ -31,6 +31,15 @@ grep -q '[[:space:]]host\.docker\.internal$' /etc/hosts \
   || echo "127.0.0.1 host.docker.internal" | sudo tee -a /etc/hosts >/dev/null
 getent hosts host.docker.internal
 
+# The demo sources these lanes provision publish fixed host ports (the specs' own 33xxx-369xx)
+# inside Linux's ephemeral range (32768-60999): an outbound connection held 36920 when the druid
+# coordinator was to bind it, and the druid source-to-query spec failed both attempts (run
+# 44446383071). The band is reserved before any server starts, so none is handed out -- the same
+# reservation ui-core-prepare.sh makes for the core lane.
+if [ "$(uname -s)" = Linux ]; then
+  sudo sysctl -w net.ipv4.ip_local_reserved_ports=33000-39999
+fi
+
 # A skip caused by the wrong arch would be a green run that executed nothing.
 arch="$(uname -m)"
 echo "runner arch: $arch"
@@ -52,9 +61,14 @@ case "$cert" in
     # 600 the plugin could not open the file at all, and Calcite reported only "Error
     # instantiating JsonCustomSchema(name=sharepoint)" — the schema list for the catalog
     # then failed forever and the spec's wait for the `sharepoint` schema could never
-    # succeed. Hand the file to Trino's uid instead of widening the mode.
+    # succeed. Hand the file to Trino's uid instead of widening the mode to everyone.
+    # Provisa itself reads it too: the source's pgwire server runs on the runner, as the runner's
+    # uid, for the source's writes and declared keys (REQ-1946, REQ-2170), and at mode 600 it died
+    # with the same "Error instantiating JsonCustomSchema(name=e2e_sharepoint)" (run 42409743565).
+    # The lane runs under Trino's group 1000 (lane.yml "Join Trino's group", REQ-2073), so the
+    # group bit, and only it, lets that server read the file.
     sudo chown 1000:1000 sharepoint.pfx
-    sudo chmod 600 sharepoint.pfx
+    sudo chmod 640 sharepoint.pfx
     ls -l sharepoint.pfx
     ;;
   placeholder-cert)
@@ -66,36 +80,20 @@ case "$cert" in
 esac
 
 # The Calcite-derived connector plugins are gitignored (they exist only where built), and
-# Trino aborts with "No service providers of type io.trino.spi.Plugin" without them — a
-# failure that surfaces only as an unhealthy container two minutes in. Version pinned to
-# the same coordinates tests/conftest.py::_TRINO_PLUGIN_VERSION and build-dmg.yml use; all
-# three must move together or a connector behaves differently here than in the shipped
-# image. They track the engine release the pgwire bundles pin
-# (provisa/runtime_deps/pgwire_bundles.py RELEASE_TAG): trino-splunk before engine-v0.93.0
-# rejects the `schema` catalog property TrinoSplunkConnector passes ("Configuration
-# property 'schema' was not used"), so the splunk catalog was never created. Source is Maven Central rather than a kenstott/calcite GitHub release: that
-# release was deleted mid-run and every download began 404ing, while Central is immutable
-# once published and serves anonymously (GitHub Packages 401s even for public artifacts).
-# Each jar is shaded and carries its own META-INF/services/io.trino.spi.Plugin, so one jar
-# per directory is a complete plugin.
-MAVEN="https://repo1.maven.org/maven2/io/simpleishard"
-VERSION="0.106.3"
-# name:version. trino-file (REQ-1960) is at 0.109.0; trino-salesforce (REQ-1946) and
-# trino-cloudops (REQ-1947) are at 0.108.0, the
-# first release with what Provisa needs of them; see tests/conftest.py _TRINO_PLUGIN_VERSIONS.
-for spec in trino-sharepoint:$VERSION trino-splunk:$VERSION trino-file:0.109.0 \
-    trino-salesforce:0.108.0 trino-cloudops:0.108.0; do
-  plugin="${spec%%:*}"
-  version="${spec##*:}"
-  mkdir -p "trino/plugins/$plugin"
-  curl -fsSL "$MAVEN/$plugin/$version/$plugin-$version.jar" \
-    -o "trino/plugins/$plugin/$plugin-$version.jar"
-  ls "trino/plugins/$plugin"/*.jar >/dev/null
-done
+# Trino aborts with "No service providers of type io.trino.spi.Plugin" without them -- a failure
+# that surfaces only as an unhealthy container two minutes in. This script fetches none: the
+# caller has restored the pinned jars (tests/trino_plugins.py) from the cache one job per workflow
+# run primed from Maven Central (.github/actions/trino-plugins). A lane that fetched its own went
+# to Central once per job and run, beside every other lane. Here they are only checked, by name,
+# before the stack mounts them.
+python3 tests/trino_plugins.py verify
 
-# REQ-1494: Provisa's own function plugin (provisa_digest, provisa_fake_method), built from
-# trino-functions/ in a Maven container; the engine's compose mounts it beside the others.
-scripts/build_trino_functions.sh
+# REQ-1494: Provisa's own function plugin (provisa_digest, provisa_fake_method), which the engine's
+# compose mounts beside the others. The caller restored it with the jars above: the priming job
+# built it once from trino-functions/ (.github/actions/trino-plugins). Built here, every lane ran
+# Maven against Maven Central at once (run 44216356740: HTTP 429).
+functions=trino/plugins/provisa-functions/provisa-functions-1.jar
+[ -s "$functions" ] || { echo "$functions is missing: restore it with .github/actions/trino-plugins" >&2; exit 1; }
 
 # Pull before `up` so the compose wait below spends its budget on Trino's JVM boot rather
 # than on a 1 GB image download racing the healthcheck's start_period.

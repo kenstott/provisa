@@ -494,7 +494,7 @@ ssh ubuntu@<primary-public-ip> cat ~/.provisa/config.yaml | grep admin_token
    | ------- | ---------- |
    | `provisa/provisa:<version>` | Provisa API |
    | `trinodb/trino:480` | 联邦查询引擎协调节点 + worker |
-   | `postgres:16` | 集群内 PostgreSQL（如启用 `postgresql.enabled`） |
+   | `pgvector/pgvector:pg16-trixie` | 集群内 PostgreSQL（如启用 `postgresql.enabled`） |
    | `edoburu/pgbouncer:latest` | 集群内 PgBouncer（如启用 `pgbouncer.enabled`） |
    | `redis:7.2` | 集群内 Redis（如启用 `redis.enabled` 且未设置 `redis.host`） |
    | `minio/minio:latest` | 集群内 MinIO（如启用 `minio.enabled`） |
@@ -806,7 +806,7 @@ Databricks 连接器从 `requests` 继承这一设置，所以无需 Databricks 
 | `PG_PASSWORD` | | PostgreSQL 密码 |
 | `PROVISA_CONFIG` | `config/provisa.yaml` | 配置文件路径 |
 | `PROVISA_REDIRECT_ENABLED` | `false` | 启用大结果集向 S3 重定向 |
-| `PROVISA_REDIRECT_THRESHOLD` | `1000` | 触发重定向的行数阈值 |
+| `PROVISA_REDIRECT_THRESHOLD` | `100000` | 触发重定向的行数阈值 |
 | `PROVISA_REDIRECT_BUCKET` | `provisa-results` | S3 存储桶 |
 | `PROVISA_REDIRECT_ENDPOINT` | | 兼容 S3 的终结点 URL |
 | `PROVISA_REDIRECT_TTL` | `3600` | 预签名 URL TTL（秒） |

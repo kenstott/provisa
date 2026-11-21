@@ -30,6 +30,9 @@ from provisa.core import request_deadline
 #: How often a wait looks for a cancel.
 _POLL_SECONDS = 0.05
 
+#: An oid's bits: pg_locks shows a key's parts as unsigned 32-bit numbers.
+_OID = 0xFFFFFFFF
+
 EXCLUSIVE = "ExclusiveLock"
 SHARED = "ShareLock"
 
@@ -119,6 +122,33 @@ class AdvisoryLocks:
 
     def end_session(self, holder: object) -> None:
         self._release_level(holder, (_SESSION, _TRANSACTION))
+
+    def held(self, org: object) -> list[dict[str, object]]:
+        """What pg_locks lists of an org's advisory locks: a row per key, holder and mode, the key
+        split as PostgreSQL splits it (a bigint into its high and low halves, objsubid 1; two
+        integers as they are, objsubid 2), each granted."""
+        rows: list[dict[str, object]] = []
+        with self._changed:
+            for key, holders in self._held.items():
+                if not isinstance(key, tuple) or key[0] != org:
+                    continue
+                parts = key[1:]
+                if len(parts) == 1:
+                    classid, objid, objsubid = (parts[0] >> 32) & _OID, parts[0] & _OID, 1
+                else:
+                    classid, objid, objsubid = parts[0] & _OID, parts[1] & _OID, 2
+                for holder, counts in holders.items():
+                    for mode in sorted({m for m, _ in counts}):
+                        rows.append(
+                            {
+                                "classid": classid,
+                                "objid": objid,
+                                "objsubid": objsubid,
+                                "pid": getattr(holder, "process_id", None),
+                                "mode": mode,
+                            }
+                        )
+        return rows
 
 
 #: The server process's locks.

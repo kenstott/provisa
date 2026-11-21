@@ -50,8 +50,10 @@ from provisa.grpc.query_ir import (
 from provisa.grpc.proto_gen import _to_proto_field_name
 from provisa.compiler.directives import cache_hint_from_grpc_metadata
 from provisa.pgwire._pipeline import _execute_plan, _govern_and_route_compiled
+from provisa.core.parameter_binding import ParameterBindingRefused
 from provisa.core.read_refusal import ReadRefused
 from provisa.compiler.complexity import ComplexityLimitExceeded
+from provisa.compiler.sql_validator import GovernanceRefused
 
 log = logging.getLogger(__name__)
 
@@ -60,7 +62,7 @@ router = APIRouter(prefix="/data", tags=["data"])
 
 def _read_mask_paths(body: dict) -> list[str]:
     """The request body's ``read_mask.paths`` (proto field names, dot-notation into JSON-valued
-    fields). An absent ``read_mask`` or ``paths`` is the empty mask — every field."""
+    fields and through relation fields, REQ-1929). An absent ``read_mask`` or ``paths`` is the empty mask — every field."""
     read_mask = body.get("read_mask")
     if read_mask is None:
         return []
@@ -94,6 +96,123 @@ def _params_object(body: dict) -> dict | None:  # REQ-1986
             400, "data.invalid_params", "params must be an object {<parameter>: <value>, ...}"
         )
     return params
+
+
+def aggregate_graphql_text(ctx: Any, type_name: str, body: dict, role_id: str) -> str:
+    """The GraphQL an ``{Type}Aggregate`` or ``{Type}GroupBy`` read becomes (REQ-1359). Its one
+    lowering: the route compiles and runs it, and an EXPLAIN stops here (REQ-2222)."""
+    is_group_by = type_name.endswith("GroupBy")
+    # grpc_table_to_*_graphql_text match against the bare table type name (mirrors
+    # server.py's __getattr__, which strips both the "Query" prefix and the
+    # "Aggregate"/"GroupBy" suffix before dispatching) — this endpoint's {type_name} path
+    # param only ever carries the suffix, never the "Query" prefix.
+    base_type_name = type_name[: -len("GroupBy")] if is_group_by else type_name[: -len("Aggregate")]
+
+    # REQ-1361: optional "funcs" body param restricts which aggregate functions are
+    # computed (parity with JSON:API/REST's ?aggregate=count,sum), instead of always
+    # returning every function the schema exposes for the table.
+    funcs = body.get("funcs") or None
+    if funcs is not None:
+        if not isinstance(funcs, list) or any(f not in AGG_FUNCS for f in funcs):
+            raise ApiError(
+                400,
+                "data.invalid_aggregate_functions",
+                f"funcs must be a subset of {list(AGG_FUNCS)!r}",
+                funcs=funcs,
+            )
+
+    # REQ-1401/REQ-1408: include_nodes/include widen the group-by result with a nodes
+    # sub-selection. The Explorer sends the same body the native RPC takes, so the proxy has
+    # to honour both here or the two surfaces answer the same request differently.
+    include_nodes = bool(body.get("include_nodes"))
+    include = list(body.get("include") or [])
+    if is_group_by:
+        by_columns = list(body.get("by") or [])
+        # REQ-803: the body's filter is the native request's {Type}GroupByRequest.filter — the
+        # same lowering (a GraphQL where argument), so both surfaces group the same rows.
+        try:
+            gql_text = grpc_table_to_group_by_graphql_text(
+                ctx,
+                base_type_name,
+                by_columns,
+                funcs,
+                include_nodes=include_nodes,
+                include=include,
+                filter_msg=_filter_object(body),
+                # REQ-2007: the native request's order_by entries, limit and offset.
+                order_by=[
+                    SimpleNamespace(
+                        func=o.get("func", ""),
+                        column=o.get("column", ""),
+                        direction=o.get("direction", ""),
+                    )
+                    for o in body.get("order_by") or []
+                ],
+                limit=body.get("limit"),
+                offset=body.get("offset"),
+            )
+        except GroupByOrderError as exc:
+            raise ApiError(400, "data.invalid_order_by", str(exc), error=str(exc)) from exc
+        except FilterError as exc:
+            raise ApiError(
+                400,
+                "data.invalid_filter_field",
+                str(exc),
+                field=exc.field,
+                type_name=base_type_name,
+            ) from exc
+    else:
+        gql_text = grpc_table_to_aggregate_graphql_text(ctx, base_type_name, funcs)
+
+    if gql_text is None:
+        raise ApiError(
+            404,
+            "data.no_query_field_for_proto_type",
+            f"No query field for proto type {type_name!r} under role {role_id!r}",
+            type_name=type_name,
+            role_id=role_id,
+        )
+    return gql_text
+
+
+def row_read_graphql(
+    ctx: Any, schema: Any, type_name: str, limit: int, body: dict, role_id: str
+) -> tuple[str, dict, Any]:
+    """The GraphQL text, its values and the read mask a row read of ``type_name`` becomes (REQ-803). Its one lowering:
+    the route compiles and runs it, and an EXPLAIN stops here (REQ-2222)."""
+    try:
+        read_mask = resolve_read_mask(ctx, type_name, _read_mask_paths(body))
+        lowered = grpc_table_to_graphql(
+            ctx,
+            schema,
+            type_name,
+            limit,
+            _filter_object(body),
+            read_mask,
+            _params_object(body),
+            offset=body.get("offset"),
+        )
+    except ReadMaskError as exc:
+        raise ApiError(
+            400, "data.invalid_read_mask_path", str(exc), path=exc.path, type_name=type_name
+        ) from exc
+    except FilterError as exc:
+        raise ApiError(
+            400, "data.invalid_filter_field", str(exc), field=exc.field, type_name=type_name
+        ) from exc
+    except ParameterError as exc:
+        raise ApiError(
+            400, "data.invalid_parameter", str(exc), field=exc.field, type_name=type_name
+        ) from exc
+    if lowered is None:
+        raise ApiError(
+            404,
+            "data.no_query_field_for_proto_type",
+            f"No query field for proto type {type_name!r} under role {role_id!r}",
+            type_name=type_name,
+            role_id=role_id,
+        )
+    return (*lowered, read_mask)
 
 
 @router.get("/grpc-commands/{role_id}")
@@ -284,78 +403,8 @@ async def grpc_proxy(type_name: str, request: Request):  # REQ-045, REQ-266
 
         schema = surface.schema
         is_group_by = type_name.endswith("GroupBy")
-        # grpc_table_to_*_graphql_text match against the bare table type name (mirrors
-        # server.py's __getattr__, which strips both the "Query" prefix and the
-        # "Aggregate"/"GroupBy" suffix before dispatching) — this endpoint's {type_name} path
-        # param only ever carries the suffix, never the "Query" prefix.
-        base_type_name = (
-            type_name[: -len("GroupBy")] if is_group_by else type_name[: -len("Aggregate")]
-        )
-
-        # REQ-1361: optional "funcs" body param restricts which aggregate functions are
-        # computed (parity with JSON:API/REST's ?aggregate=count,sum), instead of always
-        # returning every function the schema exposes for the table.
-        funcs = body.get("funcs") or None
-        if funcs is not None:
-            if not isinstance(funcs, list) or any(f not in AGG_FUNCS for f in funcs):
-                raise ApiError(
-                    400,
-                    "data.invalid_aggregate_functions",
-                    f"funcs must be a subset of {list(AGG_FUNCS)!r}",
-                    funcs=funcs,
-                )
-
-        # REQ-1401/REQ-1408: include_nodes/include widen the group-by result with a nodes
-        # sub-selection. The Explorer sends the same body the native RPC takes, so the proxy has
-        # to honour both here or the two surfaces answer the same request differently.
         include_nodes = bool(body.get("include_nodes"))
-        include = list(body.get("include") or [])
-        if is_group_by:
-            by_columns = list(body.get("by") or [])
-            # REQ-803: the body's filter is the native request's {Type}GroupByRequest.filter — the
-            # same lowering (a GraphQL where argument), so both surfaces group the same rows.
-            try:
-                gql_text = grpc_table_to_group_by_graphql_text(
-                    ctx,
-                    base_type_name,
-                    by_columns,
-                    funcs,
-                    include_nodes=include_nodes,
-                    include=include,
-                    filter_msg=_filter_object(body),
-                    # REQ-2007: the native request's order_by entries, limit and offset.
-                    order_by=[
-                        SimpleNamespace(
-                            func=o.get("func", ""),
-                            column=o.get("column", ""),
-                            direction=o.get("direction", ""),
-                        )
-                        for o in body.get("order_by") or []
-                    ],
-                    limit=body.get("limit"),
-                    offset=body.get("offset"),
-                )
-            except GroupByOrderError as exc:
-                raise ApiError(400, "data.invalid_order_by", str(exc), error=str(exc)) from exc
-            except FilterError as exc:
-                raise ApiError(
-                    400,
-                    "data.invalid_filter_field",
-                    str(exc),
-                    field=exc.field,
-                    type_name=base_type_name,
-                ) from exc
-        else:
-            gql_text = grpc_table_to_aggregate_graphql_text(ctx, base_type_name, funcs)
-
-        if gql_text is None:
-            raise ApiError(
-                404,
-                "data.no_query_field_for_proto_type",
-                f"No query field for proto type {type_name!r} under role {role_id!r}",
-                type_name=type_name,
-                role_id=role_id,
-            )
+        gql_text = aggregate_graphql_text(ctx, type_name, body, role_id)
 
         try:
             document = parse_query(schema, gql_text, ctx=ctx)
@@ -381,6 +430,10 @@ async def grpc_proxy(type_name: str, request: Request):  # REQ-045, REQ-266
             raise  # REQ-1174: answered as 413 by the app's handler
         except ReadRefused:
             raise  # refused by name; the app answers it (core/read_refusal.py)
+        except ParameterBindingRefused:
+            raise  # REQ-1986: the app answers it under its code (400)
+        except GovernanceRefused:
+            raise  # REQ-2222: the app answers it under its code
         except PermissionError as exc:
             raise HTTPException(status_code=403, detail=str(exc))
         except Exception as exc:
@@ -393,7 +446,7 @@ async def grpc_proxy(type_name: str, request: Request):  # REQ-045, REQ-266
 
             # Each group's nodes are a column of its own row (aggregates._nodes_column), as the
             # native servicer reads them (provisa/grpc/server.py::_handle_query_group_by_bound).
-            from provisa.executor.serialize import _convert_value
+            from provisa.executor.serialize import column_value
             from provisa.grpc.query_ir import nodes_index
 
             at = nodes_index(compiled.columns)
@@ -405,7 +458,7 @@ async def grpc_proxy(type_name: str, request: Request):  # REQ-045, REQ-266
                 top, nested = split_agg_columns(agg_cols, agg_row)
                 out_row: dict[str, Any] = {"group_key": group_key, "aggregate": {**top, **nested}}
                 if include_nodes and at is not None:
-                    out_row["nodes"] = _convert_value(row[at])
+                    out_row["nodes"] = column_value(row[at], compiled.columns[at])
                 out_rows.append(out_row)
             return OrjsonResponse(out_rows)
 
@@ -420,42 +473,12 @@ async def grpc_proxy(type_name: str, request: Request):  # REQ-045, REQ-266
     # dropped.
     from provisa.api.generated_plan import compile_generated_graphql
 
-    try:
-        read_mask = resolve_read_mask(ctx, type_name, _read_mask_paths(body))
-        lowered = grpc_table_to_graphql(
-            ctx,
-            surface.schema,
-            type_name,
-            limit,
-            _filter_object(body),
-            read_mask,
-            _params_object(body),
-            offset=body.get("offset"),
-        )
-    except ReadMaskError as exc:
-        raise ApiError(
-            400, "data.invalid_read_mask_path", str(exc), path=exc.path, type_name=type_name
-        ) from exc
-    except FilterError as exc:
-        raise ApiError(
-            400, "data.invalid_filter_field", str(exc), field=exc.field, type_name=type_name
-        ) from exc
-    except ParameterError as exc:
-        raise ApiError(
-            400, "data.invalid_parameter", str(exc), field=exc.field, type_name=type_name
-        ) from exc
-    if lowered is None:
-        raise ApiError(
-            404,
-            "data.no_query_field_for_proto_type",
-            f"No query field for proto type {type_name!r} under role {role_id!r}",
-            type_name=type_name,
-            role_id=role_id,
-        )
+    gql_text, variables, read_mask = row_read_graphql(
+        ctx, surface.schema, type_name, limit, body, role_id
+    )
     # REQ-1877: one plan is kept per request shape; the filter values and the limit are bound
     # into it.
     # The text is built from fields already checked, so the schema accepts it.
-    gql_text, variables = lowered
     (compiled,) = compile_generated_graphql(
         state, role_id, surface.schema, ctx, gql_text, variables
     )
@@ -477,10 +500,24 @@ async def grpc_proxy(type_name: str, request: Request):  # REQ-045, REQ-266
         raise  # REQ-1174: answered as 413 by the app's handler
     except ReadRefused:
         raise  # refused by name; the app answers it (core/read_refusal.py)
+    except ParameterBindingRefused:
+        raise  # REQ-1986: the app answers it under its code (400)
+    except GovernanceRefused:
+        raise  # REQ-2222: the app answers it under its code
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc))
     except Exception as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+    if read_mask is not None and read_mask.relations:
+        # REQ-1929: a mask naming relations reads each row with them nested, as the GraphQL it
+        # lowered to answers it, keyed by proto field (the lowering's aliases).
+        import json
+
+        from provisa.executor.json_encoders import graphql_field, result_batches
+
+        answer = graphql_field(result_batches(result), compiled.columns)
+        return OrjsonResponse([read_mask.restrict_row(r) for r in json.loads(answer.body)])
 
     # Key each row by the proto field name (the physical column → proto name authority). The query
     # already selected only the masked columns; a JSON sub-path selection is applied to its value.

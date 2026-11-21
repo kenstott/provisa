@@ -14,8 +14,6 @@
 
 from __future__ import annotations
 
-from urllib.parse import urlencode
-
 
 DEFAULT_PAGE_SIZE = 25
 MAX_PAGE_SIZE = 1000
@@ -64,39 +62,3 @@ def parse_page_total(params: dict[str, str]) -> bool:  # REQ-1197
     if raw == "true":
         return True
     raise ValueError(f"{PAGE_TOTAL_PARAM} accepts only 'true' or 'false', got {raw!r}")
-
-
-def build_pagination_links(  # REQ-257
-    base_url: str,
-    page_number: int,
-    page_size: int,
-    total: int | None,
-    query_params: dict[str, str] | None = None,
-    *,
-    has_next: bool | None = None,
-) -> dict[str, str | None]:
-    """Build JSON:API pagination links.
-
-    With a ``total`` (the request asked for one, REQ-1197): self, first, prev, next, last — next
-    is None on the last page. Without one the last page is not known, so ``last`` is omitted
-    (JSON:API: an unavailable link is omitted or null) and ``next`` follows ``has_next``, which
-    the caller knows from the page it fetched.
-    """
-    extra = query_params or {}
-
-    def _url(pn: int) -> str:
-        p = {"page[number]": str(pn), "page[size]": str(page_size)}
-        p.update(extra)
-        return f"{base_url}?{urlencode(p)}"
-
-    links: dict[str, str | None] = {"self": _url(page_number), "first": _url(1)}
-    if total is not None:
-        last_page = max(1, (total + page_size - 1) // page_size)
-        links["last"] = _url(last_page)
-        has_next = page_number < last_page
-    elif has_next is None:
-        raise ValueError("pagination links need a total or has_next")
-
-    links["prev"] = _url(page_number - 1) if page_number > 1 else None
-    links["next"] = _url(page_number + 1) if has_next else None
-    return links

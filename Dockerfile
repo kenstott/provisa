@@ -1,7 +1,63 @@
 # syntax=docker/dockerfile:1
-# Stage 1: install Python deps from pre-built wheels (stays on builder layer only)
+# Stage 1: provisa's wheel (REQ-2194), a platform wheel because it carries provisa._encoders,
+# Provisa's Rust encoders compiled by setuptools-rust. The stage runs on the BUILD machine and
+# cross-compiles for the target with zig (scripts/cargo-zigbuild-manylinux), so an arm64 image
+# built on an amd64 runner compiles natively, not under QEMU, and the wheel links against glibc
+# 2.28, the manylinux_2_28 tag it carries. The provisa-wheel stage is that wheel alone:
+# scripts/build-wheel.sh builds every Linux provisa wheel with it (the release's, the AppImage's)
+# (docker build --target provisa-wheel --output type=local,dest=DIR). It carries whatever UI and
+# config build-wheel.sh staged into provisa/_ui and provisa/_config; the image serves static/.
+FROM --platform=$BUILDPLATFORM rust:1.95.0-slim-trixie AS rust-toolchain
+
+FROM --platform=$BUILDPLATFORM python:3.12-slim AS provisa-wheel-build
+ARG TARGETARCH
+# A host C compiler for the build scripts of the crates' dependencies.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends gcc libc6-dev \
+ && rm -rf /var/lib/apt/lists/*
+COPY --from=rust-toolchain /usr/local/cargo /usr/local/cargo
+COPY --from=rust-toolchain /usr/local/rustup /usr/local/rustup
+ENV CARGO_HOME=/usr/local/cargo RUSTUP_HOME=/usr/local/rustup PATH=/usr/local/cargo/bin:$PATH
+ENV PIP_DEFAULT_TIMEOUT=120 PIP_RETRIES=10
+# zig on PATH: the build runs in an isolated environment whose python has no ziglang.
+RUN pip install --no-cache-dir "build==1.6.1" "cargo-zigbuild==0.24.0" "ziglang==0.17.0" \
+ && ln -s "$(python -c 'import os, ziglang; print(os.path.dirname(ziglang.__file__))')/zig" /usr/local/bin/zig \
+ && zig version
+COPY scripts/cargo-zigbuild-manylinux /usr/local/bin/
+WORKDIR /src
+COPY pyproject.toml MANIFEST.in README.md ./
+COPY rust/encoders/ ./rust/encoders/
+COPY rust/pgwire/ ./rust/pgwire/
+COPY vendor/buenavista/ ./vendor/buenavista/
+COPY provisa/ ./provisa/
+# --plat-name names the wheel's platform; a cross-compiled module is named _encoders.so, which
+# CPython imports on either architecture (the wheel's tag says which one it is for).
+RUN case "$TARGETARCH" in \
+      amd64) arch=x86_64 ;; \
+      arm64) arch=aarch64 ;; \
+      *) echo "provisa wheel: no Rust target for $TARGETARCH" >&2; exit 1 ;; \
+    esac \
+ && rustup target add "$arch-unknown-linux-gnu" \
+ && CARGO=cargo-zigbuild-manylinux CARGO_BUILD_TARGET="$arch-unknown-linux-gnu" \
+    PYO3_CROSS_PYTHON_VERSION=3.12 \
+    python -m build --wheel --outdir /wheels "-C--build-option=--plat-name=manylinux_2_28_$arch"
+
+FROM scratch AS provisa-wheel
+COPY --from=provisa-wheel-build /wheels/ /
+
+# The files provisa_notebook.build downloads (Pyodide and its packages, each checked against a
+# recorded sha256). Empty here, so a plain `docker build` downloads them from Pyodide's CDN. A build
+# given `--build-context pyodide-downloads=DIR` has DIR in this stage's place, and the build takes
+# from it every file `python -m provisa_notebook.build --download-only` put there: CI fills DIR
+# once per pin (.github/actions/pyodide-downloads) and no image build asks the CDN again.
+FROM scratch AS pyodide-downloads
+
+# Stage 2: install Python deps from pre-built wheels (stays on builder layer only)
 FROM python:3.12-slim AS installer
 WORKDIR /app
+# pip's 15 s default read timeout ended release 510's ninth image build mid-download (run
+# 44446333901, TimeoutError in ssl read); a read that times out partway is not retried.
+ENV PIP_DEFAULT_TIMEOUT=120 PIP_RETRIES=10
 COPY pyproject.toml .
 COPY vendor/ ./vendor/
 # [firebase] pulls firebase-admin — the container is the single artifact for cloud deploys where
@@ -18,7 +74,8 @@ COPY vendor/ ./vendor/
 #   docker build --build-arg PROVISA_EXTRAS=firebase,vector,soda .
 # Every package at the version uv.lock pins — the versions the tests ran on — never pip's newest
 # (an unpinned install shipped sqlglot 30.23 while the suite ran 30.9). torch comes from the CPU
-# index at the locked version; its CUDA-only dependencies (triton, nvidia-*, cuda-*) are left out.
+# index at the locked version: the lock takes Linux's torch from that index ([tool.uv.sources]), so
+# its line is the `+cpu` one; the export names no index, so it is installed on its own.
 ARG PROVISA_EXTRAS=firebase,vector
 COPY uv.lock .
 # REQ-2071: provisa-notebook (the Data Science area's Pyodide) is a dependency that lives beside
@@ -28,33 +85,46 @@ COPY uv.lock .
 COPY provisa-notebook/ ./provisa-notebook/
 COPY provisa-client/ ./provisa-client/
 COPY --from=ghcr.io/astral-sh/uv:0.11.19 /uv /usr/local/bin/uv
-RUN uv export --frozen --no-dev --no-emit-project --no-hashes --no-annotate --no-header \
+RUN --mount=type=bind,from=pyodide-downloads,target=/pyodide-downloads,rw \
+    uv export --frozen --no-dev --no-emit-project --no-hashes --no-annotate --no-header \
       $(echo "${PROVISA_EXTRAS}" | tr ',' '\n' | sed 's/^/--extra /') -o /tmp/locked.txt \
  && grep -vE '^(torch|triton|nvidia-|cuda-|-e )' /tmp/locked.txt > /tmp/requirements.txt \
- && pip install --no-cache-dir "$(grep '^torch==' /tmp/locked.txt | cut -d' ' -f1)" \
+ && pip install --no-cache-dir "$(grep -E '^torch==[^ ]+\+cpu ' /tmp/locked.txt | cut -d' ' -f1)" \
       --index-url https://download.pytorch.org/whl/cpu \
  && pip install --no-cache-dir --no-deps -r /tmp/requirements.txt \
- && PYTHONPATH=provisa-notebook python -m provisa_notebook.build > /dev/null \
+ && PROVISA_NOTEBOOK_DOWNLOADS=/pyodide-downloads PYTHONPATH=provisa-notebook \
+      python -m provisa_notebook.build > /dev/null \
  && pip install --no-cache-dir --no-deps ./provisa-notebook \
- && pip install --no-cache-dir --no-deps . \
  && rm -rf /usr/local/bin/uv /tmp/locked.txt /tmp/requirements.txt provisa-notebook provisa-client
+# REQ-2194: provisa itself, from stage 1's wheel: buenavista, provisa's metadata and its compiled
+# encoders. The runtime runs the source tree it copies to /app/provisa, so the wheel's provisa
+# package is set aside here, its compiled module kept for that tree (and imported first, so an
+# image without it is never built).
+COPY --from=provisa-wheel-build /wheels/ /tmp/provisa-wheel/
+RUN pip install --no-cache-dir --no-deps /tmp/provisa-wheel/provisa-*.whl \
+ && python -c "import provisa._encoders.pgwire" \
+ && mkdir -p /encoders \
+ && mv /usr/local/lib/python3.12/site-packages/provisa/_encoders.* /encoders/ \
+ && rm -rf /usr/local/lib/python3.12/site-packages/provisa /tmp/provisa-wheel
 
-# Stage 2: render_graph's renderer (REQ-1990) — the UI's own Cytoscape stylesheet and layouts,
+# Stage 3: render_graph's renderer (REQ-1990) — the UI's own Cytoscape stylesheet and layouts,
 # bundled with the packages provisa-ui/graph-render's lockfile pins, drawn by Node into a PNG.
 # npm and the build tools stay in this stage; the runtime takes node, the bundle and the two
 # packages the bundle loads at run time (jsdom, and canvas with its native build for this arch).
-FROM node:22.22.3-bookworm-slim@sha256:e21fc383b50d5347dc7a9f1cae45b8f4e2f0d39f7ade28e4eef7d2934522b752 AS graph-render
+FROM node:24.22.3-bookworm-slim@sha256:dc26ae92c9fb15cf6b1d63e20f0944b2efe0f115b20e00be48fb23fceb061c54 AS graph-render
 WORKDIR /build/provisa-ui
 COPY provisa-ui/graph-render/package.json provisa-ui/graph-render/package-lock.json ./graph-render/
 RUN cd graph-render && npm ci --no-audit --no-fund
 COPY provisa-ui/graph-render/src ./graph-render/src
 COPY provisa-ui/src/components/graph ./src/components/graph
-COPY provisa-ui/src/components/erd/erd-layout-options.ts ./src/components/erd/
+COPY provisa-ui/src/components/provisa-graph ./src/components/provisa-graph
+COPY provisa-ui/src/theme/palette.ts ./src/theme/palette.ts
 RUN cd graph-render && npm run build && npm prune --omit=dev
 
-# Stage 3: lean runtime image — no wheels, only app source + installed packages
+# Stage 4: lean runtime image — no wheels, only app source + installed packages
 FROM python:3.12-slim
 WORKDIR /app
+ENV PIP_DEFAULT_TIMEOUT=120 PIP_RETRIES=10
 # REQ-1992: an org may keep its file folder encrypted (gocryptfs over FUSE). The container needs
 # /dev/fuse and CAP_SYS_ADMIN for it (docker-compose.app.yml, the Helm chart); without them the
 # setting is refused by name and plain folders are unaffected.
@@ -84,12 +154,25 @@ COPY --from=installer /usr/local/lib/python3.12/site-packages /usr/local/lib/pyt
 COPY --from=installer /usr/local/bin /usr/local/bin
 COPY main.py pyproject.toml ./
 COPY provisa/ ./provisa/
+# REQ-2194: provisa's compiled encoders and their notices, from provisa's wheel (stage 2).
+COPY --from=installer /encoders/ ./provisa/
+RUN python -c "import provisa._encoders.pgwire"
+# REQ-2194: the wheel itself, kept for the code images this server builds: their PostgreSQL
+# front end writes its rows with the encoders the wheel carries (codesource/image_build.py takes
+# them from the wheel for the image's architecture, and refuses a build it has no wheel for).
+COPY --from=provisa-wheel-build /wheels/ /opt/provisa-wheels/
+ENV PROVISA_WHEELHOUSE=/opt/provisa-wheels
 # render_graph draws with Node (maintainer, 2026-10-12: "add node to the image and render PNG").
 # Labels need a font: fontconfig's sans-serif is DejaVu Sans.
 COPY --from=graph-render /usr/local/bin/node /usr/local/bin/node
 COPY --from=graph-render /build/provisa-ui/graph-render/dist ./provisa/_graph_render/dist
 COPY --from=graph-render /build/provisa-ui/graph-render/node_modules ./provisa/_graph_render/node_modules
 RUN apt-get update && apt-get install -y --no-install-recommends fonts-dejavu-core \
+ && rm -rf /var/lib/apt/lists/*
+# REQ-2227: a Rust source is prepared on this server like any other code source. Its host links
+# self-contained (musl, rust-lld), but build scripts and procedural macros (serde's derive among
+# them) are compiled and linked for this machine by its C compiler, `cc` (rustlang/toolchain.py).
+RUN apt-get update && apt-get install -y --no-install-recommends gcc libc6-dev \
  && rm -rf /var/lib/apt/lists/*
 # A files source is served by the Calcite pgwire connector server, which runs in a JVM (JPype
 # finds it by JAVA_HOME). The connector is built for Java 21 (askamerica-engine, release 21).

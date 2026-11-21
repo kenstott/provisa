@@ -26,6 +26,8 @@ import json
 
 from sqlalchemy import select
 
+from provisa.codesource.languages import CODE_SOURCE_TYPES
+from provisa.core.org_settings import graphql_remote_max_rows
 from provisa.core.schema_org import kafka_topics, sources
 
 if TYPE_CHECKING:
@@ -177,6 +179,16 @@ PROVISA_INTERNAL_SCHEMAS: frozenset[str] = frozenset(
 )
 
 
+def _jdbc_source_driver(pool: "SourcePool", source_id: str):  # REQ-2191
+    """A JDBC source's driver, which lists what its database holds through its dialect."""
+    from provisa.executor.drivers.jdbc_source import JdbcSourceDriver
+
+    driver = pool.get(source_id)
+    if not isinstance(driver, JdbcSourceDriver):
+        raise TypeError(f"source {source_id!r} is not served by the JDBC driver")
+    return driver
+
+
 def is_provisa_internal(schema: str) -> bool:
     """True for any provisa-managed schema that should be hidden from users."""
     return schema in PROVISA_INTERNAL_SCHEMAS or schema.startswith("org_")
@@ -261,10 +273,13 @@ async def native_schemas(  # REQ-012, REQ-250, REQ-252
     if t == "sparql":
         return ["sparql"]
 
+    if t == "quickbooks":
+        return ["default"]  # REQ-2197: one schema; an entity is the table
+
     if t == "elasticsearch":
         return ["default"]  # REQ-1672: one schema; the index is the table
 
-    if t in ("node", "python"):
+    if t in CODE_SOURCE_TYPES:
         return ["default"]  # REQ-1984, REQ-1993: one schema; a @table function is the table
 
     if t == "cosmosdb":  # REQ-1982: the source's database; a container is the table
@@ -307,6 +322,11 @@ async def native_schemas(  # REQ-012, REQ-250, REQ-252
 
     if t == "openapi":
         return ["openapi"]
+
+    if t == "dbt":  # REQ-2228: the schemas its models are built in
+        from provisa.api.admin._dbt_table_registration import offered_schemas
+
+        return await offered_schemas(source_id, config_conn)
 
     if t == "sqlite":
         return ["main"]
@@ -457,6 +477,12 @@ async def native_schemas(  # REQ-012, REQ-250, REQ-252
         )
         return [row[0] for row in result.rows]
 
+    if t == "jdbc":
+        # REQ-2191: listed by the source's own SQLAlchemy dialect, which knows its catalog.
+        if not pool.has(source_id):
+            return None
+        return await _jdbc_source_driver(pool, source_id).schema_names()
+
     if t == "saphana":
         # REQ-1753: saphana's direct driver is the generic SQLAlchemyDriver (registry.py's
         # _SQLALCHEMY_FALLBACK), same as trino's — $1, not ? or %s. SYS.SCHEMAS is HANA's own
@@ -590,6 +616,25 @@ def _openapi_is_table(query) -> bool:
     return query.response_schema is not None or query.columns_declared
 
 
+def openapi_parameter_columns(query) -> list[dict]:  # REQ-1986
+    """An OpenAPI operation's native-filter columns: one per path parameter, which the
+    operation always requires, then one per query parameter, required where the spec says."""
+    from provisa.openapi.register import _openapi_to_provisa_type
+
+    return [
+        {
+            "name": f"_nf_{p['name']}",
+            # A parameter's type is the spec's (array, object); a column's is one the engine
+            # has, as the response's columns are typed.
+            "type": _openapi_to_provisa_type(p.get("type")),
+            "native_filter_type": kind,
+            "native_filter_required": True if kind == "path_param" else p["required"],
+        }
+        for kind, params in (("path_param", query.path_params), ("query_param", query.query_params))
+        for p in params
+    ]
+
+
 def _unwrap_gql_type(type_node: dict) -> dict:
     """Unwrap NON_NULL wrappers to get the inner type node."""
     while type_node and type_node.get("kind") == "NON_NULL":
@@ -620,6 +665,7 @@ async def _native_tables_openapi(  # REQ-314, REQ-316
     queries, _ = parse_spec(spec_info["spec"])
     from provisa.api.admin._table_paging import paging_type
     from provisa.core.paging import ENDPOINT, paging_row
+    from provisa.core.parameters import required_parameters
 
     return [
         AvailableTableType(
@@ -628,6 +674,7 @@ async def _native_tables_openapi(  # REQ-314, REQ-316
             paging_kind=ENDPOINT,  # REQ-318: with the paging the operation suggests
             pagination=paging_type(paging_row(q.pagination)),
             columns_declared=q.columns_declared,  # REQ-1924
+            required_parameters=required_parameters(openapi_parameter_columns(q)),  # REQ-1986
         )
         for q in queries
         if _openapi_is_table(q)
@@ -656,7 +703,12 @@ async def _native_tables_graphql(  # REQ-307, REQ-308, REQ-1923
             comment=t["description"],
             # REQ-318: a connection table may set its own row bound when it is registered.
             paging_kind="connection" if t["connection"] else None,
-            paging_ceiling_rows=state.config.graphql_remote.max_rows if t["connection"] else None,
+            paging_ceiling_rows=(
+                graphql_remote_max_rows(state.config.graphql_remote.max_rows)
+                if t["connection"]
+                else None
+            ),
+            required_parameters=t["required_parameters"],  # REQ-1986
         )
         for t in offered_tables(*offered)
     ]
@@ -707,7 +759,7 @@ async def specification_columns(  # REQ-464
         return {
             q.operation_id: [
                 *(c["name"] for c in _schema_to_columns(q.response_schema)),
-                *(f"_nf_{p['name']}" for p in (*q.path_params, *q.query_params)),
+                *(c["name"] for c in openapi_parameter_columns(q)),
             ]
             for q in queries
             if _openapi_is_table(q)
@@ -732,8 +784,7 @@ async def specification_columns(  # REQ-464
         if not reg.get("brand") and reg.get("schema") is None:
             return None  # its schema has not been read from its endpoint yet: no call here
         from provisa.api.admin._graphql_table_registration import (
-            offered_columns,
-            offered_tables,
+            offered_columns_of_every_table,
             source_offer,
         )
 
@@ -741,10 +792,8 @@ async def specification_columns(  # REQ-464
         if offered is None:
             return None
         return {
-            table["name"]: [
-                name for name, _type, _comment in offered_columns(*offered, table["name"])
-            ]
-            for table in offered_tables(*offered)
+            table: [name for name, _type, _comment in columns]
+            for table, columns in offered_columns_of_every_table(*offered).items()
         }
     return None
 
@@ -812,7 +861,9 @@ def _es_connection_for(row: dict, state) -> "ESConnection":  # REQ-1672
         ),
         None,
     )
-    password = resolve_secrets(getattr(cfg_src, "password", "") or "") if cfg_src else ""
+    password = (
+        resolve_secrets(getattr(cfg_src, "password", "") or "", credential=True) if cfg_src else ""
+    )
     return ESConnection.build(
         resolve_secrets(row.get("host") or "localhost"),
         int(row.get("port") or 9200),
@@ -937,7 +988,9 @@ def _redis_connection_for(row: dict, state) -> "RedisConnection":  # REQ-1675
         ),
         None,
     )
-    password = resolve_secrets(getattr(cfg_src, "password", "") or "") if cfg_src else ""
+    password = (
+        resolve_secrets(getattr(cfg_src, "password", "") or "", credential=True) if cfg_src else ""
+    )
     return RedisConnection(
         host=resolve_secrets(row.get("host") or "localhost"),
         port=int(row.get("port") or 6379),
@@ -983,7 +1036,9 @@ def _cassandra_connection_for(row: dict, state) -> "CassandraConnection":  # REQ
         ),
         None,
     )
-    password = resolve_secrets(getattr(cfg_src, "password", "") or "") if cfg_src else ""
+    password = (
+        resolve_secrets(getattr(cfg_src, "password", "") or "", credential=True) if cfg_src else ""
+    )
     return CassandraConnection.build(
         resolve_secrets(row.get("host") or "localhost"),
         int(row.get("port") or 9042),
@@ -1039,7 +1094,9 @@ def _prometheus_connection_for(row: dict, state) -> "PrometheusConnection":  # R
         ),
         None,
     )
-    token = resolve_secrets(getattr(cfg_src, "password", "") or "") if cfg_src else ""
+    token = (
+        resolve_secrets(getattr(cfg_src, "password", "") or "", credential=True) if cfg_src else ""
+    )
     return PrometheusConnection.build(
         resolve_secrets(endpoint_url(row.get("host"), row.get("port"), mapping)),
         token=token or None,
@@ -1161,6 +1218,10 @@ async def _native_tables_rdbms(  # REQ-012, REQ-252
             [schema_name],
         )
         return [AvailableTableType(name=row[0], comment=None) for row in result.rows]
+
+    if t == "jdbc":  # REQ-2191: as its dialect lists them
+        listed = await _jdbc_source_driver(pool, source_id).table_names(schema_name)
+        return [AvailableTableType(name=name, comment=comment) for name, comment in listed]
 
     if t == "saphana":
         # SYS.TABLES is HANA's own catalog view; TABLE_TYPE excludes views (COLUMN/ROW covers
@@ -1301,6 +1362,23 @@ async def record_table_format(model: Any, source_type: str | None) -> None:
         model.table_format = await athena_table_format(
             model.source_id, model.schema_name, model.table_name
         )
+
+
+async def record_source_definition(model: Any, source_type: str | None) -> None:
+    """REQ-2230: record on ``model`` the statement that defines it, where its source reports one
+    (a Snowflake Dynamic Table's), which contributes its lineage. Read and none reported is "";
+    None is not read, which leaves what is held (``repositories.table``)."""
+    if source_type != "snowflake":
+        return
+    from provisa.api.app import state
+    from provisa.executor.snowflake_objects import dynamic_tables
+
+    if not state.source_pools.has(model.source_id):
+        return
+    found = await dynamic_tables(state.source_pools, model.source_id, model.schema_name)
+    model.source_definition = next(
+        (t.definition or "" for t in found if t.name == model.table_name), ""
+    )
 
 
 async def _native_columns_athena(
@@ -1596,6 +1674,8 @@ async def native_columns(  # REQ-1732
             [schema_name, table_name],
         )
         return [(row[0], _oracle_spelling(*row[1:4])) for row in result.rows]
+    if t == "jdbc":  # REQ-2191: as its dialect reads them
+        return await _jdbc_source_driver(pool, source_id).column_types(schema_name, table_name)
     if t == "saphana":
         # REQ-1753: same "no ATTACH-mechanism seam" gap as trino above — saphana has no DuckDB
         # ATTACH connector, so this is the only path. SYS.TABLE_COLUMNS is HANA's own catalog view.
@@ -1997,6 +2077,11 @@ async def native_tables(  # REQ-012, REQ-250, REQ-252, REQ-295, REQ-307, REQ-314
     if t == "openapi":
         return await _native_tables_openapi(source_id, schema_name, state)
 
+    if t == "dbt":  # REQ-2228: its models, none registered by being listed
+        from provisa.api.admin._dbt_table_registration import offered_tables
+
+        return await offered_tables(source_id, schema_name, config_conn)
+
     if t in ("graphql", "graphql_remote"):
         return await _native_tables_graphql(source_id, schema_name, config_conn, state)
 
@@ -2009,10 +2094,19 @@ async def native_tables(  # REQ-012, REQ-250, REQ-252, REQ-295, REQ-307, REQ-314
     if t in ("neo4j", "sparql"):
         return []
 
+    if t == "quickbooks":  # REQ-2197: the Accounting API's entities
+        from provisa.api.admin.types import AvailableTableType
+        from provisa.quickbooks.entities import ENTITIES, table_name as _qb_table
+
+        return [
+            AvailableTableType(name=_qb_table(e.name), comment=e.description)
+            for e in ENTITIES.values()
+        ]
+
     if t == "elasticsearch":
         return await _native_tables_elasticsearch(source_id, schema_name, config_conn, state)
 
-    if t in ("node", "python"):  # REQ-1984, REQ-1993: the code's @table functions
+    if t in CODE_SOURCE_TYPES:  # REQ-1984, REQ-1993, REQ-2200: the code's @table functions
         from provisa.api.admin.types import AvailableTableType
         from provisa.codesource import discovery as _code
 
@@ -2020,7 +2114,10 @@ async def native_tables(  # REQ-012, REQ-250, REQ-252, REQ-295, REQ-307, REQ-314
         return (
             None
             if found is None
-            else [AvailableTableType(name=n, comment=d or None) for n, d in found]
+            else [
+                AvailableTableType(name=n, comment=d or None, required_parameters=required)
+                for n, d, required in found
+            ]
         )
 
     if t == "cosmosdb":  # REQ-1982
@@ -2121,7 +2218,19 @@ async def native_tables(  # REQ-012, REQ-250, REQ-252, REQ-295, REQ-307, REQ-314
             f"WHERE table_schema = '{schema_name}' AND table_type = 'BASE TABLE' "
             "ORDER BY table_name",
         )
-        return [AvailableTableType(name=row[0], comment=None) for row in result.rows]
+        # REQ-2230: a Dynamic Table is offered as a table, and says what it is.
+        from provisa.executor.snowflake_objects import dynamic_tables
+
+        dynamic = {d.name: d for d in await dynamic_tables(pool, source_id, schema_name)}
+        return [
+            AvailableTableType(
+                name=name,
+                comment=" — ".join(p for p in ("DYNAMIC TABLE", dynamic[name].comment) if p)
+                if name in dynamic
+                else None,
+            )
+            for name in sorted({row[0] for row in result.rows} | dynamic.keys())
+        ]
 
     if t == "databricks":
         from provisa.api.admin.types import AvailableTableType

@@ -11,7 +11,8 @@ Parses the SQL to extract table -> {columns, primary key} and compares against
 the metadata: same tables per bucket, same column names, same PK columns, and
 type *family* parity (PG-specific types map to their portable substitutes:
 JSONB/TEXT[] -> JSON, SERIAL -> int, BIGSERIAL -> bigint, TIMESTAMPTZ ->
-timestamp, BYTEA -> binary, DOUBLE PRECISION -> float).
+timestamp, BYTEA -> binary, DOUBLE PRECISION -> float). pgvector's
+public.vector has no portable substitute and is its own family (REQ-2185).
 """
 
 from __future__ import annotations
@@ -35,6 +36,7 @@ from sqlalchemy import (
 
 from provisa.audit.query_log import AUDIT_SCHEMA_SQL
 from provisa.core import schema_admin, schema_org
+from provisa.core.pgvector import Vector
 
 SCHEMA_SQL = Path(__file__).parents[2] / "provisa" / "core" / "schema.sql"
 
@@ -45,6 +47,8 @@ SCHEMA_SQL = Path(__file__).parents[2] / "provisa" / "core" / "schema.sql"
 REGISTRY_ONLY_TABLES = {
     # REQ-1916: the platform state store's cluster node list. Portable metadata only.
     "cluster_nodes",
+    # REQ-812: the platform state store's running client-started Kafka sinks. Portable metadata only.
+    "running_sinks",
     # REQ-1429: the platform state store's record of each coordinator's system catalogs.
     "engine_system_catalogs",
     "orgs",
@@ -54,6 +58,8 @@ REGISTRY_ONLY_TABLES = {
     # The simple provider's stored user ids (a GUID per configured username). Portable metadata only.
     "simple_user_ids",
     "org_invites",
+    # REQ-1250: requests to join an org, the inverse of org_invites. Portable metadata only.
+    "org_join_requests",
     # REQ-1306: the auto-join opt-out written when a user deliberately leaves an org.
     "org_auto_join_optouts",
     # Billing tables are now portable metadata too (schema_admin), created via
@@ -63,9 +69,15 @@ REGISTRY_ONLY_TABLES = {
     # REQ-1263: personal access tokens, the cross-surface credential. Platform plane, so
     # portable metadata only.
     "personal_access_tokens",
+    # REQ-2226: the minted call-scoped token a code source's worker reads its table with; retired
+    # when the call ends. Platform plane (a connection reaches any node), portable metadata only.
+    "minted_call_tokens",
     # REQ-2006: the demo sandboxes, each an org of its own; beside ``orgs`` on the platform plane.
     # Portable metadata only.
     "demo_sandboxes",
+    # REQ-2006: each sandbox tier's last use, which every tier on the sandbox VM counts before
+    # stopping it. Portable metadata only.
+    "sandbox_tier_use",
     # REQ-2006: each demo template's readiness record, beside the template org's ``orgs`` row.
     # Portable metadata only.
     "demo_template_readiness",
@@ -197,6 +209,8 @@ def _sql_type_family(coldef: str) -> str:
             spec_u = spec_u[:idx]
     d = spec_u
     # order matters: check array and specific types first
+    if re.search(r"(?:^|\.)VECTOR\b", d.strip()):
+        return "vector"
     if "[]" in d:
         return "json"
     if "JSONB" in d or "JSON" in d:
@@ -228,6 +242,8 @@ def _sql_type_family(coldef: str) -> str:
 
 def _metadata_type_family(col) -> str:
     t = col.type
+    if isinstance(t, Vector):
+        return "vector"
     if isinstance(t, JSON):
         return "json"
     if isinstance(t, Uuid):

@@ -10,10 +10,12 @@
 """A role's effective rights, as the role panel shows them (REQ-2161).
 
 The capabilities half: the role's lineage from the standard roles down to it, by the same chains
-the registry resolves (security/inheritance.py), with what each role in it adds -- a right none of
-its ancestors holds -- and every capability with the roles it enters at. With several parents a
-right can enter in more than one branch; it comes from each. A meta-role (``meta:a+b``, security/meta_role.py)
-is an ephemeral child of its members, so its members are its parents and it adds nothing."""
+the registry resolves (security/inheritance.py), with what each role in it adds -- a right its
+parents do not hold -- and every capability the role holds with the roles it enters at. With
+several parents a right can enter in more than one branch; it comes from each. A role holds what
+inheritance.effective_rights says it does: a role that unselects a right holds it no longer, and
+nor does any role below it. A meta-role (``meta:a+b``, security/meta_role.py) is an ephemeral child
+of its members, so its members are its parents, it holds their union and it adds nothing."""
 
 # Requirements: REQ-2161, REQ-2155, REQ-1620
 
@@ -22,8 +24,16 @@ from __future__ import annotations
 from collections.abc import Callable, Collection, Iterable, Mapping
 from typing import Any
 
-from provisa.security.inheritance import parent_map, role_chain
+from provisa.security.inheritance import (
+    effective_rights,
+    held_capabilities,
+    parent_map,
+    role_chain,
+)
 from provisa.security.meta_role import META_PREFIX, is_meta_role_id
+from provisa.security.rights import Capability, reads_data
+
+DATA_RESIDENCY = Capability.DATA_RESIDENCY.value
 
 
 def capabilities_view(role_id: str, rows: Iterable[dict], *, standard: Collection[str]) -> dict:
@@ -31,20 +41,21 @@ def capabilities_view(role_id: str, rows: Iterable[dict], *, standard: Collectio
     and the standard roles. Raises KeyError for a role (or a parent) the rows do not contain."""
     by_id = {r["id"]: r for r in rows}
     parents = parent_map(by_id.values())
-    own: dict[str, set[str]] = {rid: set(r.get("capabilities") or []) for rid, r in by_id.items()}
+    additive = set(standard)
     if is_meta_role_id(role_id):
         parents[role_id] = role_id[len(META_PREFIX) :].split("+")
-        own[role_id] = set()
+        by_id[role_id] = {"id": role_id, "capabilities": [], "parents": parents[role_id]}
+        additive.add(role_id)
     chain = role_chain(role_id, parents)
-    for rid in chain:
-        if rid not in own:
-            raise KeyError(rid)
-    # A capability enters where no ancestor already holds it.
+    held = held_capabilities([role_id], by_id, additive)
+    # A capability enters where no parent holds it.
     adds = {
-        rid: sorted(own[rid] - {c for anc in role_chain(rid, parents)[1:] for c in own[anc]})
-        for rid in chain
+        rid: sorted(held[rid] - {c for p in parents.get(rid, []) for c in held[p]}) for rid in chain
     }
-    rights = sorted({right for rid in chain for right in own[rid]})
+    rights = sorted(held[role_id])
+    regions = effective_rights(
+        role_id, by_id, lambda r: r.get("residency_values") or [], adds=additive
+    )
     return {
         "role": role_id,
         "standard": role_id in standard,
@@ -56,6 +67,8 @@ def capabilities_view(role_id: str, rows: Iterable[dict], *, standard: Collectio
             {"right": right, "from": [rid for rid in chain if right in adds[rid]]}
             for right in rights
         ],
+        # REQ-1921: data_residency's value, shown with the capability.
+        "regions": sorted(regions) if DATA_RESIDENCY in held[role_id] else [],
     }
 
 
@@ -181,6 +194,8 @@ def data_view_from_state(
     from provisa.security.meta_role import ensure_meta_role, reader_chain
 
     parents = dict(parents)
+    if not is_meta_role_id(role_id) and not reads_data(state.roles[role_id].get("capabilities")):
+        return []  # REQ-2155, REQ-870: no capabilities, or only command_execution, reads nothing
     if is_meta_role_id(role_id):
         members = role_id[len(META_PREFIX) :].split("+")
         role_id = ensure_meta_role(state, members)
@@ -198,7 +213,7 @@ def data_view_from_state(
             for (tid, rid), columns in state.masking_rules.items()
             if rid == role_id
         },
-        row_rule=lambda tid, domain: (
+        row_rule=lambda tid, domain: _shown(
             None if rls is None else rls.rules.get(tid) or rls.domain_rules.get(domain)
         ),
         readable=readable,
@@ -220,12 +235,14 @@ def table_access(
     readable: Callable[[int, str], bool],
     governance: bool,
     standard: Collection[str],
+    withdrawn: dict | None = None,
 ) -> dict | None:
     """Who can read or write each column of table ``table_id`` (REQ-2162): the inverse of the
     role panel's data access, resolved by the same view per role of ``roles``. Only the columns
     ``readable`` admits -- the viewer's own read rights -- are listed; None when the build has no
-    such table."""
-    table = next((t for t in state.tables if t["id"] == table_id), None)
+    such table. ``withdrawn``: the table, withdrawn, when the viewer may preview it (REQ-1921:
+    table registration in its domain); it is answered marked ``withdrawn``."""
+    table = next((t for t in state.tables if t["id"] == table_id), None) or withdrawn
     if table is None:
         return None
     columns = {
@@ -261,4 +278,12 @@ def table_access(
         "name": f"{table['domain_id']}.{table.get('alias') or table['table_name']}",
         "table_name": table["table_name"],
         "columns": list(columns.values()),
+        "withdrawn": table is withdrawn,
     }
+
+
+def _shown(rule: Any) -> str | None:
+    """A row rule as the rights view shows it: written out, None for none (REQ-913)."""
+    from provisa.compiler.rls import rule_text
+
+    return None if rule is None else rule_text(rule)

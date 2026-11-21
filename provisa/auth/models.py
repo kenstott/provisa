@@ -32,6 +32,15 @@ class AuthIdentity:  # REQ-120
     display_name: str | None
     roles: list[str]
     raw_claims: dict = field(default_factory=dict)
+    # REQ-1261: whether the identity's provider vouches that ``email`` is this person's: an OIDC
+    # or Firebase token's ``email_verified`` claim, or an address a SAML or LDAP directory
+    # asserts. False for an address a person typed for themselves (the basic provider's accounts).
+    # Read through :func:`verified_email`; an unverified address matches no invitation, no
+    # organization's email rule and no grant waiting on an address.
+    email_verified: bool = False
+    # REQ-2219: the claim of ``raw_claims`` this identity's provider names, in its settings, for
+    # the nested entitlement lists; None when it names none, and it then sends no nested lists.
+    entitlements_claim: str | None = None
     active_org_id: str | None = None
     # REQ-1528: the rights held by OWNING the environment this request is bound to. Derived from
     # ``environments.created_by`` when the environment is bound (``env_routing``), never stored and
@@ -62,6 +71,14 @@ class AuthIdentity:  # REQ-120
     credential_id: str | None = None
 
 
+def verified_email(identity: AuthIdentity | None) -> str | None:  # REQ-1261
+    """The address ``identity`` may be matched by -- an invitation sent to it, an organization's
+    email rule, a grant waiting on it: its email when its provider verified it, else None."""
+    if identity is None or not identity.email_verified:
+        return None
+    return identity.email
+
+
 @dataclass
 class RoleAssignment:  # REQ-120
     """A resolved (role_id, domain_id) pair for a user.
@@ -85,9 +102,22 @@ class AuthProvider(ABC):  # REQ-120
     # PAT-shaped credential is simply not a PAT and goes to the provider like any other token.
     pat_store: Any = None
 
+    # REQ-812: whether this provider can say what a signed-in identity holds NOW, without the person
+    # signing in again (:meth:`reread`). One that cannot -- an external identity provider's signed
+    # token, a SAML assertion -- is trusted only until the sign-in's token expires.
+    rereads: bool = False
+
     @property
     def auth_scheme(self) -> str:
         return "bearer"
+
+    async def reread(self, identity: AuthIdentity) -> AuthIdentity:  # REQ-812
+        """``identity`` as the provider holds it now: its roles read again at the source. Raises
+        ValueError, as sign-in does, when the account no longer signs in. Only a provider whose
+        :attr:`rereads` is true answers."""
+        raise NotImplementedError(
+            f"auth provider {self.provider_name!r} cannot re-read a signed-in identity"
+        )
 
     @abstractmethod
     async def validate_token(self, token: str) -> AuthIdentity:  # REQ-486

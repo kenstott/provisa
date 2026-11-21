@@ -27,7 +27,7 @@ from provisa.compiler.introspect import ColumnMetadata
 from provisa.compiler.schema_gen import SchemaInput, generate_schema
 from provisa.compiler.sql_gen import compile_query
 from provisa.compiler.sql_rewrite import make_semantic_sql
-from provisa.executor.serialize import serialize_rows
+from tests.unit.json_encoder.rows import serialize_rows
 
 _COLUMNS = {
     "_terms": [("id", "integer"), ("name", "varchar")],

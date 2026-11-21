@@ -75,6 +75,10 @@ def test_the_body_matches_what_jsonable_encoder_would_produce():
     # Except an interval: its ISO 8601 duration, as on every surface, not jsonable_encoder's total
     # seconds (test_interval_bytea_types).
     expected["data"]["pets"][0]["wait"] = "PT1M30S"
+    # And a Decimal: the string of its exact digits (REQ-1867, amended 2026-11-02), not
+    # jsonable_encoder's float. A Pydantic model's fields are still jsonable_encoder's.
+    expected["data"]["pets"][0]["price"] = "12.50"
+    expected["data"]["pets"][0]["whole"] = "3"
     assert json.loads(OrjsonResponse(body).body) == expected
 
 

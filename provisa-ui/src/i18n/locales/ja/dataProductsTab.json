@@ -87,7 +87,6 @@
     "graphqlQueriesEmpty": "クエリ可能なテーブルまたはリレーションシップはありません",
     "graphqlQueryAria": "{{table}} の GraphQL クエリ例を実行",
     "sqlQueryAria": "{{table}} の SQL クエリ例を実行",
-    "cypherQueryAria": "{{type}} の Cypher クエリ例を実行",
     "grpcQueryAria": "{{table}} の gRPC 呼び出し例を実行",
     "jsonapiQueryAria": "{{table}} の JSON:API リクエスト例を実行",
     "openApiQueryAria": "{{table}} の REST リクエスト例を実行",
@@ -97,7 +96,6 @@
         "customProperties": "カスタムプロパティ",
         "relatedTables": "関連テーブル",
         "relationships": "リレーションシップ",
-        "lineage": "リネージ",
         "inputPorts": "入力ポート",
         "dataQuality": "データ品質"
       },
@@ -107,18 +105,21 @@
       "dqRulesTitle": "品質ルール — {{table}}",
       "dqRulesEmpty": "コントラクトにチェックが定義されていません",
       "relatedTablesEmpty": "関連テーブルはありません",
-      "relatedTablesHint": "承認済みのリレーションシップを通じてこのプロダクトのテーブルから到達できるものの、(まだ)このプロダクトには含まれていないテーブル。",
+      "relatedTablesHint": "承認済みのリレーションシップを通じてこの製品のテーブルから到達できますが、まだこの製品には含まれていません。",
       "relationshipsEmpty": "このプロダクトのテーブル間にリレーションシップはありません",
       "lineageEmpty": "リネージはありません",
       "lineageLoading": "リネージを読み込んでいます…",
-      "lineageHint": "このプロダクトのテーブルを公開エンドポイントとして示し、それらの導出に使われたすべての上流テーブルを含むカラムリネージグラフ。参考情報のみです。view_governance ケイパビリティが必要です。",
+      "lineageTitle": "列リネージ: このプロダクトの出どころ",
+      "lineageHint": "この製品が公開する各列と、その元になった入力列、およびその間のすべてのステップ。view_governance ケイパビリティが必要です。",
       "outputPortsHint": "このプロダクトのクエリ可能な範囲：メンバーテーブルとコマンド。それぞれのクエリ例は「アクセスパターン」にあります。",
       "customPropertiesEmpty": "カスタムプロパティはありません",
-      "lineageLaneUpstream": "上流、{{n}} ホップ",
-      "lineageLaneDownstream": "下流、{{n}} ホップ"
+      "lineageLaneTables": "このプロダクトのテーブル",
+      "lineageLaneInputs": "入力",
+      "lineageLaneUpstream": "上流、入力から {{n}} ホップ先",
+      "inputsLineageLink": "列リネージを表示"
     },
     "readOnly": "読み取り専用",
-    "readOnlyHint": "data_product_read のみを持っています。編集するには、org_admin が data_product_rw を付与できます。",
+    "readOnlyHint": "data_product_read のみ保有しています。編集するには org_admin が data_product_rw を付与できます。",
     "relatedTermsConcept": "概念",
     "status_draft": "下書き",
     "status_live": "有効",
@@ -131,15 +132,15 @@
     "successorHint": "テーブル、ビュー、コマンドは同じドメインの後継プロダクトに移ります。",
     "reasonLabel": "理由",
     "publish": "公開",
-    "publishHint": "この下書きを有効にします: コンシューマーとカタログに提供されます。",
+    "publishHint": "この下書きを公開し、コンシューマーとカタログに提供します。",
     "deprecate": "非推奨にする",
-    "deprecateHint": "この有効なプロダクトを廃止予定としてマークします: 理由と任意の廃止予定日とともに、有効なままです。",
+    "deprecateHint": "この公開中の製品を廃止予定としてマークします。理由と任意の廃止予定日とともに、引き続き提供されます。",
     "deprecateTitle": "「{{product}}」を非推奨にする",
     "retire": "廃止",
-    "retireHint": "このプロダクトを廃止します: テーブル、ビュー、コマンドはドメイン内の後継に移ります。",
+    "retireHint": "この製品の提供を終了します。テーブル、ビュー、コマンドはドメイン内の後継に移ります。",
     "retireTitle": "「{{product}}」を廃止",
     "retireMoves": "移るメンバー: {{members}}",
-    "retireNoMembers": "メンバーがありません: 後継は任意です。",
+    "retireNoMembers": "メンバーがいないため、後継は任意です。",
     "restore": "復元",
     "restoreHint": "非推奨 (有効に戻る) または廃止 (下書きに戻る) を取り消します。",
     "toReview": "要確認",
@@ -177,9 +178,6 @@
       "versionLabel": "コントラクトのバージョン",
       "statusLabel": "コントラクトのステータス",
       "descriptionLabel": "目的",
-      "columnsLabel": "列",
-      "columnsHelp": "列を削除する、または型を変えるには新しいバージョンが必要です。",
-      "requiredLabel": "NULL なし",
       "slaLabel": "サービスレベル",
       "slaProperty": "プロパティ",
       "slaValue": "値",
@@ -211,7 +209,56 @@
         "check_removed": "品質チェック {{subject}} を削除",
         "check_changed": "品質チェック {{subject}} を変更",
         "description_changed": "説明を変更",
-        "terms_changed": "条件を変更: {{subject}}"
+        "terms_changed": "条件を変更: {{subject}}",
+        "field_masked": "フィールド {{subject}} をマスク ({{after}})",
+        "field_unmasked": "フィールド {{subject}} のマスクを解除",
+        "row_rule_added": "行ルールを追加: {{subject}}",
+        "row_rule_removed": "行ルールを削除: {{subject}}",
+        "data_level_changed": "データレベルを {{before}} から {{after}} に変更",
+        "dq_results_changed": "品質の結果を {{before}} から {{after}} に変更",
+        "profiles_changed": "プロファイルを {{before}} から {{after}} に変更",
+        "duration_changed": "期間を {{before}} から {{after}} に変更",
+        "terms_of_use_changed": "利用条件を変更：{{subject}}"
+      },
+      "howToUse": {
+        "column": {
+          "surface": "インターフェース",
+          "address": "アドレス",
+          "how": "使い方",
+          "link": "例"
+        },
+        "surface": {
+          "pgwire": "PostgreSQL",
+          "flight-sql": "Arrow Flight SQL",
+          "grpc": "gRPC",
+          "graphql": "GraphQL",
+          "rest": "REST",
+          "openapi": "OpenAPI",
+          "jsonapi": "JSON:API",
+          "sparql": "SPARQL"
+        },
+        "how": {
+          "pgwire": "psql や DBeaver などの PostgreSQL クライアントなら何でも使えます。データベース {{database}}、スキーマ {{schema}}。",
+          "flight-sql": "ADBC ドライバーなどの Arrow Flight SQL クライアントなら何でも使えます。データベース {{database}}、スキーマ {{schema}}。",
+          "grpc": "gRPC クライアントなら何でも使えます。サービス {{service}} に対し、メタデータ authorization: Bearer <token> を付けます。",
+          "graphql": "GraphQL クライアントなら何でも使えます。このテーブルに対するクエリを POST し、ヘッダー Authorization: Bearer <token> を付けます。",
+          "rest": "HTTP クライアントなら何でも使えます。このアドレスに GET し、ヘッダー Authorization: Bearer <token> を付けます。",
+          "openapi": "このテーブルだけの記述です。Swagger UI、Postman、またはクライアントジェネレーターに読み込んでください。",
+          "jsonapi": "JSON:API クライアントなら何でも使えます。このアドレスに GET し、ヘッダー Authorization: Bearer <token> を付けます。",
+          "sparql": "SPARQL 1.1 クライアントなら何でも使えます。このテーブルのクラスに対するクエリを POST し、ヘッダー Authorization: Bearer <token> を付けます。"
+        },
+        "access": {
+          "granted": "{{approvers}} がアクセスを許可して初めて使用できます。",
+          "noApprover": "{{roles}} の保持者がアクセスを許可して初めて使用できます。この契約には承認者が指定されていません。",
+          "undeclared": "アクセスが許可されて初めて使用できます。この契約にはロールも承認者も指定されていません。"
+        },
+        "ask": {
+          "approvers": "{{approvers}} にアクセスを依頼",
+          "roles": "{{roles}} の保持者にアクセスを依頼",
+          "nobody": "この契約には依頼先が指定されていません"
+        },
+        "open": "例を開く",
+        "openAria": "{{table}} の {{surface}} の例を開く"
       },
       "loadError": "契約を読み込めませんでした: {{error}}",
       "notExported": "{{member}} にはエクスポートされた契約がありません",
@@ -221,7 +268,7 @@
         "quality": "品質",
         "sla": "SLA",
         "support": "サポートとチーム",
-        "servers": "サーバー",
+        "howToUse": "使い方",
         "pricing": "価格",
         "custom": "カスタムプロパティとタグ"
       },
@@ -260,6 +307,12 @@
         "roles": "ロール",
         "history": "バージョン履歴"
       }
-    }
+    },
+    "detailPanel": "データプロダクトの詳細",
+    "tagFacetLabel": "タグ",
+    "tagFacetPlaceholder": "タグで絞り込む",
+    "noMatch": "フィルターに一致するデータプロダクトはありません",
+    "domainFacetLabel": "ドメイン",
+    "domainFacetPlaceholder": "ドメインで絞り込む"
   }
 }

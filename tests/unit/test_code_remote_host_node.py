@@ -162,6 +162,43 @@ def test_once_paired_only_the_paired_provisa_is_served(started):
         )  # paired: it takes no pair message
 
 
+class _ResetConnection:
+    """A dialled TLS connection the host has dropped: a call on it raises what the kernel gave.
+    A paired host closes a certificateless connection with the pair message unread, so the kernel
+    resets it. Which call sees that, and which error, depends on when the reset lands."""
+
+    def __init__(self, failing: str, error: OSError) -> None:
+        self.failing = failing
+        self.error = error
+
+    def __enter__(self) -> "_ResetConnection":
+        return self
+
+    def __exit__(self, *_: object) -> None:
+        return None
+
+    def getpeercert(self, binary_form: bool) -> bytes:
+        return b"certificate"
+
+    def sendall(self, _data: bytes) -> None:
+        if self.failing == "sendall":
+            raise self.error
+
+    def recv(self, _size: int) -> bytes:
+        raise self.error
+
+
+@pytest.mark.parametrize("failing", ["sendall", "recv"])
+@pytest.mark.parametrize(
+    "error", [BrokenPipeError(32, "Broken pipe"), ConnectionResetError(54, "reset"), TimeoutError()]
+)
+def test_a_dropped_pairing_connection_is_refused_by_name(monkeypatch, failing, error):
+    """The router answers a PairingRefused by name; anything else is a server error."""
+    monkeypatch.setattr(remote, "_dial", lambda *_: _ResetConnection(failing, error))
+    with pytest.raises(remote.PairingRefused, match="remote host 127.0.0.1:5"):
+        remote.pair("127.0.0.1", 5, f"{'a' * 64}.secret", remote.new_identity(), BOUNDS)
+
+
 def test_a_host_running_other_code_is_refused_by_name(started):
     port, pairing, _state = started
     identity = remote.new_identity()

@@ -34,11 +34,10 @@ steps:
   capability: create_relationship
   relationship: OF_PRODUCT
 # The app: its order-history screen, one nested query as the signed-in customer, and the screen.
-- key: storefrontAsCustomer
+- key: storefrontScreen
   route: /query
   capability: query_development
   role: customer
-- key: storefrontScreen
   example: 1-order-history
 - key: storefrontApp
   image: sample-app.png
@@ -51,11 +50,10 @@ steps:
 # the analyst's SQL over the same tables, and the dashboard Superset builds over pgwire.
 - key: storefrontEveryRole
   role: all
-- key: storefrontAnalyst
+- key: storefrontAnalystSql
   route: /sql
   capability: query_development
   role: shop_analyst
-- key: storefrontAnalystSql
   sql: >-
     SELECT c.region, s.carrier, COUNT(*) AS shipments,
            SUM(CASE WHEN s.delivered_at > s.promised_at THEN 1 ELSE 0 END) AS late,

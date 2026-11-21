@@ -27,6 +27,7 @@ function makeTable(overrides: Partial<RegisteredTable> = {}): RegisteredTable {
     tableName: "orders",
     alias: null,
     description: null,
+    registeredAt: "2026-11-01T00:00:00+00:00",
     cacheTtl: null,
     roleTtl: [],
     pagingKind: null,
@@ -34,7 +35,8 @@ function makeTable(overrides: Partial<RegisteredTable> = {}): RegisteredTable {
     pagingCeilingRows: null,
     replicate: null,
     region: null,
-    draft: false,
+    withdrawn: false,
+    sourceWithdrawn: false,
     rowMaterialize: false,
     loadProtected: null,
     offPeakWindow: null,
@@ -67,12 +69,14 @@ function makeTable(overrides: Partial<RegisteredTable> = {}): RegisteredTable {
     mvPersist: "replace",
     mvPrimaryKey: [],
     mvIncremental: false,
+    mvRebuildEvery: null,
+    incrementalOption: { available: true, code: null, reason: null },
     mvCalendar: null,
     mvGrain: null,
     mvAllowedLateness: 0,
     mvExpectedEvents: null,
     mvBusinessDayGrain: false,
-    productId: null,
+    productIds: [],
     enableAggregates: false,
     enableGroupBy: false,
     canDeployToDb: false,
@@ -107,6 +111,7 @@ function renderView(table: RegisteredTable, startEditing = vi.fn()) {
     <TableReadView
       // What this file tests is on the columns section.
       relationships={[]}
+      actingRole={null}
       section="columns"
       onSectionChange={vi.fn()}
       t={table}
@@ -122,6 +127,9 @@ function renderView(table: RegisteredTable, startEditing = vi.fn()) {
       reload={vi.fn()}
       startEditing={startEditing}
       handleDelete={vi.fn()}
+      onWithdraw={vi.fn()}
+      onPutBack={vi.fn()}
+      putBackRegions={null}
       handleProfile={vi.fn()}
       onPreview={vi.fn()}
     />,

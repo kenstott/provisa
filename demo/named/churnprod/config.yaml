@@ -40,15 +40,13 @@ roles:
 - id: churn_analyst
   parents: [analyst]
   description: "The churn analyst: reads every customer's score, with email addresses masked."
-  capabilities:
-  - query_development
+  capabilities: [data_product_read, glossary_read, query_development, usage]
   domain_access:
   - churn
 - id: analyst_eu
-  parents: [viewer]
+  parents: [analyst]
   description: "The EU account team: reads the scores of customers billed in the EU only, email addresses masked."
-  capabilities:
-  - query_development
+  capabilities: [data_product_read, glossary_read, query_development]
   domain_access:
   - churn
 server:

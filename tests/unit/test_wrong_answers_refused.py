@@ -16,6 +16,8 @@ with, against postgres:17.11's answer."""
 
 from __future__ import annotations
 
+from contextlib import closing
+
 import duckdb
 import pytest
 import sqlglot
@@ -25,6 +27,7 @@ from provisa.federation.duckdb_pg_scalars import register
 from provisa.pgwire.cast_types import result_casts
 from provisa.pgwire.function_types import call_result_type
 from provisa.transpiler.function_macros import FunctionRefused
+from provisa.transpiler.pg_forms_geometric import routines_apart
 from provisa.transpiler.pg_literals import exact_inputs, values_cast
 from provisa.transpiler.transpile import transpile, transpile_to_duckdb
 
@@ -169,7 +172,9 @@ def test_a_row_replay_found_another_answer_of_is_refused_there():
     function = "pg_lsn_pli('0/1'::pg_lsn, 2.5::numeric)"
     with pytest.raises(FunctionRefused):
         transpile(f"SELECT {function} AS v", "clickhouse")
-    assert transpile(f"SELECT {function} AS v", "trino")
+    # Trino reads the form's 2^64 as no literal (run 43307392116): the grid refuses it by name.
+    with pytest.raises(FunctionRefused, match=r"pg_lsn_pli\(\) has no form on trino"):
+        transpile(f"SELECT {function} AS v", "trino")
 
 
 def test_a_clickhouse_timestamp_keeps_its_fraction():
@@ -179,7 +184,9 @@ def test_a_clickhouse_timestamp_keeps_its_fraction():
 
 
 def test_a_clickhouse_refusal_raises_where_a_nullable_cast_reads_null():
-    written = transpile("SELECT masklen('::1'::inet) AS v", "clickhouse")
+    # a literal PostgreSQL refuses as the statement is read (masklen of an inet literal is
+    # answered on ClickHouse since CONF-CH4)
+    written = transpile("SELECT numerictypmodin('{1001}'::cstring[]) AS v", "clickhouse")
     assert "accurateCast(materialize(" in written
 
 
@@ -189,8 +196,9 @@ def test_money_divided_by_an_integer_truncates():
 
 
 def test_a_null_shape_is_a_null_on_trino():
-    written = transpile("SELECT center(NULL::box) AS v", "trino")
-    assert written.startswith("SELECT CASE WHEN")
+    # The statement after its routine definitions (REQ-2171: Trino defines a shape's helpers).
+    _, written = routines_apart(transpile("SELECT center(NULL::box) AS v", "trino"))
+    assert written.startswith("SELECT CASE WHEN NULL IS NULL")
 
 
 def test_a_column_of_a_values_list_is_the_type_its_first_row_says():
@@ -227,27 +235,63 @@ def test_an_enum_is_not_every_type():
 def test_a_statement_after_a_failed_one_has_its_own_answer():
     from provisa.federation.clickhouse_runtime import ClickHouseFederationRuntime
 
-    runtime = ClickHouseFederationRuntime.embedded()
-    with pytest.raises(RuntimeError):
-        runtime.run_sync("SELECT throwIf(1, 'refused')")
-    assert runtime.run_sync("SELECT 'a' AS v").rows == [("a",)]
+    with closing(ClickHouseFederationRuntime.embedded()) as runtime:
+        with pytest.raises(RuntimeError):
+            runtime.run_sync("SELECT throwIf(1, 'refused')")
+        assert runtime.run_sync("SELECT 'a' AS v").rows == [("a",)]
 
 
 def test_a_clickhouse_time_is_read_as_its_text_says():
     from provisa.federation.clickhouse_runtime import ClickHouseFederationRuntime
 
-    runtime = ClickHouseFederationRuntime.embedded()
-    equal = "SELECT time_eq('23:59:59.5'::time, '23:59:59.5'::time) AS v"
-    assert runtime.run_sync(transpile(equal, "clickhouse")).rows == [(1,)]
-    missing = "SELECT time_eq(NULL::time, NULL::time) AS v"
-    assert runtime.run_sync(transpile(missing, "clickhouse")).rows == [(None,)]
+    with closing(ClickHouseFederationRuntime.embedded()) as runtime:
+        equal = "SELECT time_eq('23:59:59.5'::time, '23:59:59.5'::time) AS v"
+        assert runtime.run_sync(transpile(equal, "clickhouse")).rows == [(1,)]
+        missing = "SELECT time_eq(NULL::time, NULL::time) AS v"
+        assert runtime.run_sync(transpile(missing, "clickhouse")).rows == [(None,)]
 
 
 def test_a_null_scale_answers_null():
     assert _on_duckdb("SELECT round(NULL::numeric, NULL::integer) AS v") is None
 
 
+def test_a_null_scale_truncates_to_null():
+    assert _on_duckdb("SELECT trunc(1.25::numeric, NULL::integer) AS v") is None
+
+
+def test_a_scale_still_rounds_and_truncates():
+    assert str(_on_duckdb("SELECT round(1.255::numeric, 2) AS v")) == "1.26"
+    assert str(_on_duckdb("SELECT trunc(1.257::numeric, 2) AS v")) == "1.25"
+
+
 def test_a_clickhouse_time_is_a_time_on_the_wire():
     casts = result_casts("SELECT time_larger('12:30:45'::time, '12:30:45'::time) AS v")
     assert casts is not None and casts[0] is not None and casts[0].coerce is not None
     assert str(casts[0].coerce((45045500000).to_bytes(8, "little"))) == "12:30:45.500000"
+
+
+@pytest.mark.parametrize("dialect", ["trino", "clickhouse"])
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "SELECT hashoid(12345::oid) AS v",
+        "SELECT btoidcmp(1::oid, 7::oid) AS v",
+        "SELECT lo_get(1::oid) AS v",
+    ],
+)
+def test_an_oid_is_held_as_a_bigint_and_reaches_a_call(sql, dialect):
+    assert " oid" not in transpile(sql, dialect).lower()
+
+
+# ClickHouse answers both: the polyfill grid's rows (tests/unit/polyfill/test_polyfill_clickhouse_texts.py).
+@pytest.mark.parametrize("dialect", ["trino"])
+@pytest.mark.parametrize(
+    "sql",
+    [
+        'SELECT pg_catalog."int8"(12345::oid) AS v',
+        "SELECT pg_catalog.\"nameconcatoid\"('abc'::name, 12345::oid) AS v",
+    ],
+)
+def test_the_calls_of_an_oid_a_replay_refused_stay_refused(sql, dialect):
+    with pytest.raises(FunctionRefused):
+        transpile(sql, dialect)

@@ -76,33 +76,3 @@ def relationship_scalar_maps(
         target_id = ctx.joins[(type_name, rel)].target.table_id
         gql_to_physical[rel], physical_to_gql[rel] = scalar_name_maps(ctx, target_id, columns)
     return gql_to_physical, physical_to_gql
-
-
-def rename_row_keys(
-    row: dict[str, Any],
-    gql_to_physical: dict[str, str],
-    rel_gql_to_physical: dict[str, str],
-    rel_scalar_maps: dict[str, dict[str, str]],
-) -> dict[str, Any]:
-    """Rewrite one serialized row's GQL keys to their physical names, nested objects included.
-
-    ``rel_scalar_maps`` is the related table's gql → physical column map per relationship field,
-    so a sideloaded ``pet { breedName }`` comes back as ``pet: {"breed_name": ...}``.
-    """
-    out: dict[str, Any] = {}
-    for key, value in row.items():
-        if key in rel_gql_to_physical:
-            nested = rel_scalar_maps.get(key, {})
-            out[rel_gql_to_physical[key]] = _rename_nested(value, nested)
-        else:
-            out[gql_to_physical.get(key, key)] = value
-    return out
-
-
-def _rename_nested(value: Any, column_map: dict[str, str]) -> Any:
-    """Apply a column map to a relationship's value — an object, a list of them, or null."""
-    if isinstance(value, dict):
-        return {column_map.get(k, k): v for k, v in value.items()}
-    if isinstance(value, list):
-        return [_rename_nested(v, column_map) for v in value]
-    return value

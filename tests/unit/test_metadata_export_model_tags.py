@@ -22,6 +22,7 @@ from provisa.api.metadata_export.atlan import AtlanExport
 from provisa.api.metadata_export.atlas import classification_defs, to_entities
 from provisa.api.metadata_export.builder import build_snapshot
 from provisa.api.metadata_export.datahub import to_proposals
+from tests.unit.product_members import assigned, assigned_members, with_members
 from provisa.core.models import (
     Cardinality,
     Column,
@@ -39,16 +40,16 @@ from provisa.core.models import (
 def _table(
     table_name: str, *, product_id: str | None = "prod", columns: list[Column] | None = None
 ):
-    return Table(
+    table = Table(
         source_id="wh",
         domain_id="sales",
         schema_name="public",
         table_name=table_name,
-        product_id=product_id,
         columns=columns
         if columns is not None
         else [Column(name="id", data_type="integer", visible_to=["admin"])],
     )
+    return assigned(table, product_id)
 
 
 def _config(**kwargs) -> ProvisaConfig:
@@ -68,6 +69,10 @@ def _config(**kwargs) -> ProvisaConfig:
         ],
     }
     base.update(kwargs)
+    # REQ-1634: each table's product lists it.
+    base["data_products"] = with_members(
+        base.get("data_products", []), assigned_members(base["tables"])
+    )
     return ProvisaConfig(**base)
 
 

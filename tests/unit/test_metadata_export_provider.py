@@ -87,10 +87,10 @@ def test_unknown_provider_is_refused_at_construction(isolated_registry):
     assert "openlineage" in str(exc.value)
 
 
-def test_an_enabled_export_with_nowhere_to_publish_is_refused():
-    # REQ-1068: refused when saved, naming the setting, rather than publishing to nothing.
-    with pytest.raises(ValidationError, match="no target is configured"):
-        MetadataExportConfig(enabled=True)
+def test_the_export_settings_hold_only_the_organisation_wide_schedule():
+    # REQ-2247: what is published, and where, is on each Syncing entry; the export keeps the
+    # schedule of the reconcile alone (REQ-1072).
+    assert set(MetadataExportConfig.model_fields) == {"reconcile_cron"}
 
 
 def test_provider_without_a_name_fails_registration(isolated_registry):
@@ -141,64 +141,55 @@ def test_a_target_without_provider_or_endpoint_is_rejected():
 
 
 def test_several_targets_one_provider_among_them_each_named_once():  # REQ-2118, REQ-2122
-    catalogs = CatalogsConfig(
-        catalogs=[
-            {
-                "id": "om-prod",
-                "provider": "openmetadata",
-                "endpoint": "https://a.example",
-                "domains": ["sales"],
-            },
-            {
-                "id": "om-lab",
-                "provider": "openmetadata",
-                "endpoint": "https://b.example",
-                "domains": ["sales"],
-            },
-        ]
+    entry = {"type": "data_catalog", "direction": "export", "provider": "openmetadata"}
+    two = CatalogsConfig.model_validate(
+        {
+            "catalogs": [
+                {**entry, "id": "om-prod", "endpoint": "https://a.example", "domains": ["sales"]},
+                {**entry, "id": "om-lab", "endpoint": "https://b.example", "domains": ["sales"]},
+            ]
+        }
     )
-    two = MetadataExportConfig(
-        enabled=True, targets=[{"catalog": "om-prod"}, {"catalog": "om-lab"}]
-    )
-    assert [(t.id, t.endpoint) for t in two.export_targets(catalogs)] == [
+    assert [(t.id, t.endpoint) for t in two.export_targets()] == [
         ("om-prod", "https://a.example"),
         ("om-lab", "https://b.example"),
     ]
-    with pytest.raises(ValidationError, match="named twice: om"):
-        MetadataExportConfig(targets=[{"catalog": "om"}, {"catalog": "om"}])
-    with pytest.raises(ValidationError, match="catalogs named twice: om"):
-        CatalogsConfig(
-            catalogs=[
-                {
-                    "id": "om",
-                    "provider": "openmetadata",
-                    "endpoint": "https://a.example",
-                    "domains": ["a"],
-                },
-                {
-                    "id": "om",
-                    "provider": "datahub",
-                    "endpoint": "https://b.example",
-                    "domains": ["a"],
-                },
-            ]
+    with pytest.raises(ValidationError, match="entries named twice: om"):
+        CatalogsConfig.model_validate(
+            {
+                "catalogs": [
+                    {**entry, "id": "om", "endpoint": "https://a.example", "domains": ["a"]},
+                    {
+                        **entry,
+                        "id": "om",
+                        "provider": "datahub",
+                        "endpoint": "https://b.example",
+                        "domains": ["a"],
+                    },
+                ]
+            }
         )
 
 
-def test_a_target_names_a_catalog_of_the_org():  # REQ-2122
-    with pytest.raises(ValueError, match="name no catalog of the org: gone"):
-        MetadataExportConfig(targets=[{"catalog": "gone"}]).export_targets(CatalogsConfig())
+def test_a_publish_to_one_entry_names_an_entry_of_the_org():  # REQ-2122, REQ-2247
+    with pytest.raises(KeyError, match="gone"):
+        CatalogsConfig().export_targets(only="gone")
 
 
 def test_a_catalog_serves_at_least_one_domain():  # REQ-2122
     with pytest.raises(ValidationError, match="assigned to no domain"):
         CatalogConnection(
-            id="om", provider="openmetadata", endpoint="https://a.example", domains=[]
+            id="om",
+            type="data_catalog",
+            direction="both",
+            provider="openmetadata",
+            endpoint="https://a.example",
+            domains=[],
         )
 
 
-def test_disabled_config_needs_nothing_else():
-    assert MetadataExportConfig().enabled is False
+def test_an_org_with_no_entry_publishes_nowhere():
+    assert CatalogsConfig().export_targets() == []
 
 
 def test_credentials_are_redacted_in_repr_and_logs(caplog):

@@ -57,6 +57,7 @@ from provisa.mv.bitemporal import (
     InheritedInput,
     system_columns_ddl,
 )
+from provisa.mv.store_shape import shape_probe
 
 if TYPE_CHECKING:
     from provisa.federation.execution_auth import SystemAuth
@@ -97,6 +98,30 @@ def _identity_output(view_sql: str, valid_time: str) -> str | None:
         if isinstance(projection.unalias(), exp.Column) and sources == [valid_time]:
             return derivation.output
     return None
+
+
+def with_inherited_read_columns(row: dict, spec: BitemporalSpec) -> dict:
+    """The registered row ``row`` of a view inheriting its versions (``spec``), its columns given
+    the times every read of a bitemporal view answers (REQ-2064), granted as the first of its key
+    is. A view declaring its versions has them registered where it is declared
+    (``bitemporal.with_read_columns``); this one declared nothing, so its build adds them, and a
+    governed relation of the view exposes them like any column it holds (REQ-039). ``row`` is
+    changed in place and returned."""
+    from provisa.mv.bitemporal import describe_read_column, READ_COLUMNS
+
+    held = {c["column_name"] for c in row["columns"]}
+    clock = next(c for c in row["columns"] if c["column_name"] == spec.key[0])
+    row["columns"] = row["columns"] + [
+        {
+            "column_name": name,
+            "data_type": "timestamp",
+            "visible_to": list(clock.get("visible_to") or []),
+            "description": describe_read_column(name),
+        }
+        for name in READ_COLUMNS
+        if name not in held
+    ]
+    return row
 
 
 def inherited_spec(view_sql: str, tables: list[dict]) -> BitemporalSpec | None:
@@ -201,7 +226,8 @@ async def inherited_build(
     if build.scoped and build.select_sql is not None:
         assert existing is not None  # a scoped build reads a log that exists
         shape = await engine.execute_engine(
-            f"SELECT * FROM ({build.select_sql}) _shape LIMIT 0", authorization=authorization
+            shape_probe(build.select_sql),
+            authorization=authorization,
         )
         managed = {c for c, _ in system_columns_ddl(_spec(mv))}
         if list(shape.column_names) != [c for c in existing if c not in managed]:

@@ -1,0 +1,33 @@
+/* REQ-2239: the one stack of view controls in a graph's canvas, 2D (.pg-stage) and 3D (.p3d-stage):
+ * bottom-left, shown while the pointer is over the canvas or a control in it has the keyboard's
+ * focus, and while a recording it started is running (ExportMenu). */
+.pg-controls {
+  position: absolute;
+  z-index: 10;
+  bottom: 8px;
+  inset-inline-start: 8px;
+  padding: 2px;
+  border: 1px solid var(--mantine-color-default-border);
+  border-radius: var(--mantine-radius-sm);
+  background: var(--mantine-color-body);
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.pg-stage:hover .pg-controls,
+.p3d-stage:hover .pg-controls,
+.pg-controls:focus-within,
+.pg-controls:has(.pg-beside) {
+  opacity: 1;
+}
+/* What a control says beside the bar (a copy done, a recording's progress). */
+.pg-copied,
+.pg-beside {
+  position: absolute;
+  bottom: 4px;
+  inset-inline-start: calc(100% + 6px);
+  padding: 2px 6px;
+  border-radius: var(--mantine-radius-sm);
+  background: var(--mantine-color-body);
+  font-size: var(--mantine-font-size-xs);
+  white-space: nowrap;
+}

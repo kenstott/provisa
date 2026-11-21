@@ -8,6 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
+import { CapabilityNames } from "../../pages/security/CapabilityNames";
 import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { ConfirmDialog } from "../ConfirmDialog";
@@ -94,7 +95,12 @@ export function RolesTab({ orgId }: RolesTabProps) {
                   </Table.Td>
                 ) : (
                   <>
-                    <Table.Td>{role.capabilities.join(", ")}</Table.Td>
+                    <Table.Td>
+                      <CapabilityNames
+                        capabilities={role.capabilities}
+                        regions={role.residencyValues}
+                      />
+                    </Table.Td>
                     <Table.Td data-testid={`role-domains-${role.id}`}>
                       {/* A role reaches the domains it lists; an empty list is none, not all. */}
                       {role.domain_access.join(", ") || t("rolesTab.noDomains")}
@@ -105,6 +111,7 @@ export function RolesTab({ orgId }: RolesTabProps) {
                         <ConfirmDialog
                           title={t("rolesTab.deleteRoleTitle", { roleId: role.id })}
                           consequence={t("rolesTab.deleteRoleConsequence")}
+                          confirmLabel={t("common.delete")}
                           onConfirm={() => handleDeleteOrgRole(role.id)}
                         >
                           {(open) => (

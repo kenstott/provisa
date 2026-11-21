@@ -8,7 +8,7 @@
     "never": "En direct si possible",
     "always": "Toujours",
     "hot": "Hot-{{threshold}}",
-    "neverWithLoadProtection": "« En direct si possible » ne peut pas être combiné avec la protection de charge : une table protégée contre la charge n'est jamais lue en direct.",
+    "neverWithLoadProtection": "« En direct si possible » ne peut pas être combiné avec la protection de charge, car une table protégée en charge n'est jamais lue en direct.",
     "scheduled": "Toujours, source lue uniquement sur planification",
     "helpScheduled": "Toujours, source lue uniquement sur planification : les lectures viennent toujours du réplica et une requête ne provoque jamais la lecture de la source ; le planificateur actualise le réplica pendant la fenêtre creuse, selon le TTL du cache ou la sonde de changement, et au moins l’un des trois est requis."
   }

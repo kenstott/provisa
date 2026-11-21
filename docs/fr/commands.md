@@ -321,7 +321,7 @@ Chaque invocation émet une trace, quel que soit le résultat. La trace contient
 
 ## CLI : provisa metadata export
 
-`provisa metadata export` est une tâche du niveau shell, exécutée hors du chemin RPC gouverné. Elle déclenche la publication des métadonnées à la demande du serveur en cours d'exécution en envoyant à `/admin/metadata-export/publish`, le point de terminaison qu'appelle le bouton **Publier maintenant** de l'onglet Admin.
+`provisa metadata export` est une tâche du niveau shell, exécutée hors du chemin RPC gouverné. Elle déclenche la publication des métadonnées à la demande du serveur en cours d'exécution en envoyant à `/admin/syncing/publish`, le point de terminaison qu'appelle le bouton **Publier maintenant** de l'onglet Admin.
 
 Utilisez-la pour piloter des exports minutés depuis cron ou la CI lorsque la planification
 `reconcile_cron` configurée n'est pas assez fine :

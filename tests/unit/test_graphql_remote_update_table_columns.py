@@ -62,7 +62,7 @@ async def test_update_table_propagates_column_resolution_error() -> None:
         source_id="gql_ns_src",
         table_name="gql_ns__animal_breeds",
         schema_name="graphql",
-        domain_id="",
+        domain_id="animals",  # REQ-1531: every table sits in a domain
         columns=[
             ColumnInput(name="name", visible_to=["org_admin"]),
             ColumnInput(name="species", visible_to=["org_admin"]),

@@ -24,6 +24,9 @@ from provisa.executor.drivers.postgresql import PostgreSQLDriver
 
 
 class PgwireServerDriver(PostgreSQLDriver):
+    # REQ-2167: the server is no PostgreSQL database; it has no catalog to say what it generates.
+    generated_keys = None
+
     @property
     def supports_streaming(self) -> bool:
         return False

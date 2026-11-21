@@ -37,7 +37,7 @@ def _state(engine_name: str):
     return SimpleNamespace(
         federation_engine=SimpleNamespace(
             engine=SimpleNamespace(name=engine_name),
-            connector_pushdown=lambda source_type: caps[source_type],
+            connector_pushdown=lambda source: caps[source.type.value],
         )
     )
 

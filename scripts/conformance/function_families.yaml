@@ -2,9 +2,8 @@
 # time (REQ-2167, PG_CATALOG FUNCTIONS ARE GAPS). First match wins: a function is in a family by its
 # name (names, pattern), an argument type (argument) or its result type (returns), each matched
 # against format_type. Read by pgwire_function_probe.py; a family says what a function is, never
-# that it may go unserved, with one exception: "Index support" decides the Index functions group
-# (by_design.FUNCTION_GROUPS), so a name in it is a decision. btrim stays out of it, and so do the
-# hash functions: a client calls those directly (hashtext for an advisory lock key).
+# that it may go unserved. btrim stays out of "Index support", and so do the hash functions: a
+# client calls those directly (hashtext for an advisory lock key).
 
 - family: Trigger
   # called only by the trigger manager

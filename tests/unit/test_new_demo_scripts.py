@@ -332,14 +332,44 @@ def test_a_demo_using_role_parents_must_require_the_release_carrying_them(tmp_pa
     config = "roles:\n  - {id: reader, parents: [viewer]}\n"
     old = _demo_using(tmp_path, "0.1.0a495", config)
     assert [p for p in check_demo.check_bundle(old) if "REQ-2155" in p]
-    (old / "demo.yaml").write_text("requires_provisa: 0.1.0a496\n")
-    assert check_demo.check_features(old, "0.1.0a496") == []
+    (old / "demo.yaml").write_text("requires_provisa: 0.1.0a497\n")
+    assert check_demo.check_features(old, "0.1.0a497") == []
+
+
+def test_a_demo_with_role_parents_must_require_the_release_that_narrows_them(tmp_path):
+    """REQ-2155: a role holds what it lists of what its parents hold."""
+    config = "roles:\n  - {id: reader, parents: [viewer]}\n"
+    home = _demo_using(tmp_path, "0.1.0a496", config)
+    refused = check_demo.check_features(home, "0.1.0a496")
+    assert [p for p in refused if "what they hold of their parents" in p]
+    assert check_demo.check_features(home, "0.1.0a497") == []
+    assert check_demo.needed_release(home) == "0.1.0a497"
+
+
+def test_a_published_demo_requires_the_release_that_narrows_its_roles():
+    checked = 0
+    for demo in sorted(Path(check_demo.ROOT, "demo", "named").iterdir()):
+        card = demo / "demo.yaml"
+        required = card.is_file() and yaml.safe_load(card.read_text()).get("requires_provisa")
+        if required:  # the perf demo is no bundle: it names no release
+            checked += 1
+            assert check_demo.check_features(demo, required) == [], demo.name
+    assert checked >= 29
 
 
 def test_a_demo_with_a_code_export_taking_inputs_must_require_the_release_carrying_it(tmp_path):
     home = _demo_using(tmp_path, "0.1.0a495", code="def churn_risk(inputs, context): ...\n")
     assert [p for p in check_demo.check_features(home, "0.1.0a495") if "REQ-2100" in p]
     assert check_demo.check_features(home, "0.1.0a496") == []
+
+
+def test_a_demo_scanning_a_document_must_require_the_release_carrying_its_scans(tmp_path):
+    """REQ-2201: a demo whose setup scans a document for terms ships the scans in its bundle."""
+    home = _demo_using(tmp_path, "0.1.0a497")
+    (home / "setup.yaml").write_text("steps:\n- scan: https://www.ecfr.gov/api/x.xml\n")
+    assert [p for p in check_demo.check_features(home, "0.1.0a497") if "REQ-2201" in p]
+    assert check_demo.check_features(home, "0.1.0a499") == []
+    assert check_demo.needed_release(home) == "0.1.0a499"
 
 
 def test_a_demo_using_nothing_newer_is_not_reported(tmp_path):

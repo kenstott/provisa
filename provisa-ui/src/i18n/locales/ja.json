@@ -2,6 +2,9 @@
   "common": {
     "loading": "読み込み中...",
     "cancel": "キャンセル",
+    "stop": "停止",
+    "stopped": "停止済み",
+    "stopQuery": "クエリを停止",
     "save": "保存",
     "delete": "削除",
     "confirm": "確認",
@@ -9,7 +12,9 @@
     "identity": "識別",
     "discardTitle": "変更を破棄しますか?",
     "discardBody": "{{what}} への変更は保存されていません。",
-    "discard": "破棄"
+    "discard": "破棄",
+    "deleting": "削除中…",
+    "deleteFailed": "削除されませんでした: {{reason}}"
   },
   "app": {
     "apiUnreachable": "Provisa APIに接続できませんでした。",
@@ -42,12 +47,16 @@
     "yes": "はい",
     "no": "いいえ",
     "none": "—",
-    "expandUser": "{{username}} の割り当てを表示",
+    "expandUser": "{{username}} の割り当てを展開",
     "deleteUser": "{{username}} のアカウントを削除",
     "assignmentsHeading": "ロール:ドメイン割り当て",
     "noAssignments": "割り当てがありません",
     "removeAssignment": "割り当て {{role}}:{{domain}} を削除",
     "roleLabel": "ロール",
+    "rolesLabel": "ロール",
+    "rolesPlaceholder": "1 つ以上のロールを選択",
+    "addList": "リストを追加",
+    "removeList": "このリストを削除",
     "domainLabel": "ドメイン",
     "untilLabel": "期限",
     "untilPlaceholder": "終了日なし",
@@ -56,7 +65,6 @@
     "noExpiry": "終了日なし",
     "neverUsed": "なし",
     "allDomains": "*（すべてのドメイン）",
-    "add": "追加",
     "createHeading": "ユーザー作成",
     "username": "ユーザー名",
     "usernameRequired": "ユーザー名 *",
@@ -96,6 +104,6 @@
   },
   "pageError": {
     "title": "このページを表示できませんでした",
-    "body": "描画中にエラーが発生しました。アプリの他の部分は引き続き使えます。別のページに移動するか、このページを再読み込みしてください。"
+    "body": "レンダリング中に失敗しました。アプリの他の部分は引き続き動作するため、別のページに移動するか、このページを再読み込みしてください。"
   }
 }

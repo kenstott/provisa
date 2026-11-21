@@ -29,7 +29,7 @@ def _schema_input(convention: str, *, kind: str = "mutation") -> SchemaInput:
         relationships=[],
         column_types={},
         naming_rules=[],
-        role={"id": "admin", "domain_access": ["*"]},
+        role={"id": "admin", "domain_access": ["*"], "capabilities": ["command_execution"]},
         domains=[],
         domain_prefix=False,
         functions=[
@@ -96,7 +96,7 @@ def test_a_source_operation_command_named_with_a_trailing_number_is_a_mutation_f
         relationships=[],
         column_types={},
         naming_rules=[],
-        role={"id": "org_admin", "domain_access": ["*"]},
+        role={"id": "org_admin", "domain_access": ["*"], "capabilities": ["command_execution"]},
         domains=[{"id": "pet-store"}],
         domain_prefix=True,
         functions=[

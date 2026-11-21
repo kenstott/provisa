@@ -1,6 +1,6 @@
 # gRPC Conformance
 
-TBD: suite to be chosen.
+No public gRPC conformance suite runs in CI today.
 
 ## Deliberate differences
 
@@ -20,5 +20,5 @@ No standard gRPC add-ins apply here.
 
 | Tool | Version | Date | Method |
 | --- | --- | --- | --- |
-| grpcurl | TBD | TBD | TBD: replay or manual |
-| Postman (gRPC) | TBD | TBD | TBD: replay or manual |
+| grpcurl | — | — | Not yet verified |
+| Postman (gRPC) | — | — | Not yet verified |

@@ -94,6 +94,7 @@ export function KaggleFormSection({ sourceIdHint, onSourcesRegistered }: KaggleF
     if (searchDebounce.current) clearTimeout(searchDebounce.current);
     searchDebounce.current = setTimeout(async () => {
       const results = await searchDatasets(token, query);
+      if (results === null) return;
       setDatasets(results);
       combobox.resetSelectedOption();
     }, 300);

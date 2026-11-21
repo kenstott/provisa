@@ -298,16 +298,32 @@ class TestRLSAppliedPerRootField:
         assert "us-east" not in customers_final
 
     def test_no_rls_rules_sql_unchanged(self):
-        """Empty RLS context leaves SQL unchanged for all root fields."""
+        """Empty RLS context leaves each root field's answer unchanged. Every table read is the
+        role's governed relation (REQ-039), so the text differs; with no rule it holds every row."""
+        import duckdb
+        import sqlglot
+
         doc = parse("{ orders { id } customers { name } }")
         ctx = _two_table_ctx()
         results = compile_query(doc, ctx)
 
         rls = RLSContext.empty()
+        db = duckdb.connect()
+        db.execute("CREATE SCHEMA public")
+        db.execute("CREATE TABLE public.orders (id INTEGER, region VARCHAR)")
+        db.execute("INSERT INTO public.orders VALUES (1, 'us-east'), (2, 'eu-west')")
+        db.execute("CREATE TABLE public.customers (name VARCHAR, region VARCHAR)")
+        db.execute("INSERT INTO public.customers VALUES ('ann', 'us-east'), ('bo', 'eu-west')")
+
+        def answer(sql: str) -> list[tuple]:
+            duck = sqlglot.transpile(sql, read="postgres", write="duckdb")[0]
+            return sorted(db.execute(duck).fetchall())
 
         for r in results:
             after = governed_for_role(r.sql, ctx, "analyst", rls=rls)
-            assert after == r.sql
+            assert after != r.sql  # read through the governed relation
+            assert answer(after) == answer(r.sql)
+            assert len(answer(after)) == 2
 
 
 # ---------------------------------------------------------------------------

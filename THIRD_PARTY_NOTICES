@@ -34,3 +34,23 @@ codes and cities) are derived from the GeoNames geographical database (https://w
 used under the Creative Commons Attribution 4.0 International License
 (https://creativecommons.org/licenses/by/4.0/). The values were normalised, sorted and
 deduplicated; see provisa/profiler/reference/THIRD_PARTY_NOTICES.
+
+provisa/core/data/noun_plurals.tsv.gz, provisa/core/data/plural_frequencies.tsv
+--------------------------------------------------------------------------------
+The English noun singular/plural table is extracted from the English Speller Database (ESDB,
+previously SCOWLv2) by Kevin Atkinson (https://github.com/en-wl/wordlist, branch v2, commit
+1e5b7d3a72f47a71da5d28686c1dd4b397178485), used under its permissive notice (copy, modify,
+distribute and sell, with the notice kept). The frequencies that break ties between its plural
+forms are derived from the Google Books Ngram Viewer English 1-grams, version 20200217
+(http://books.google.com/ngrams), used under the Creative Commons Attribution 3.0 Unported
+License (https://creativecommons.org/licenses/by/3.0/); only the summed noun-tagged counts of the
+competing forms are bundled. Both notices and the changes made are in
+provisa/core/data/THIRD_PARTY_NOTICES.
+
+provisa/_encoders (compiled module)
+-----------------------------------
+provisa._encoders, Provisa's encoders compiled from Rust (rust/encoders and the encoder crates it
+links), statically links third-party Rust crates used under the Apache License 2.0, the MIT
+License and the Unicode License v3; each crate, its licence and the licence text are listed in
+provisa/_encoders.THIRD_PARTY_NOTICES, which ships beside the module in every wheel and installer
+(scripts/rust-third-party-notices.sh writes it).

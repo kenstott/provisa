@@ -379,7 +379,13 @@ def test_a_statement_holds_fetched_rows_under_the_table_it_reads(acting):
             {"id": OTHER_CUSTOMERS, "table_name": "customers"},
         ]
     )
-    kw = {"catalog": "c", "schema": "s", "pk_column": "id", "column_names": ["id"]}
+    kw = {
+        "catalog": "c",
+        "schema": "s",
+        "pk_column": "id",
+        "column_names": ["id"],
+        "column_types": {"id": "integer"},
+    }
 
     one = _StatementHot(manager, state, [OTHER_CUSTOMERS])
     one.hold("customers", rows=GLOBEX_ROWS, whole=True, **kw)
@@ -429,7 +435,13 @@ def test_rows_fetched_with_arguments_are_never_held(acting):
     )
     state = SimpleNamespace(tables=[{"id": CUSTOMERS, "table_name": "customers"}])
     hot = _StatementHot(manager, state, [CUSTOMERS])
-    kw = {"catalog": "c", "schema": "s", "pk_column": "id", "column_names": ["id"]}
+    kw = {
+        "catalog": "c",
+        "schema": "s",
+        "pk_column": "id",
+        "column_names": ["id"],
+        "column_types": {"id": "integer"},
+    }
     assert isinstance(hot.hold("customers", rows=ACME_ROWS, whole=False, **kw), InlineRows)
     assert held == {}
     hot.hold("customers", rows=ACME_ROWS, whole=True, **kw)
@@ -479,9 +491,13 @@ async def test_boot_loads_an_openapi_table_through_its_endpoint_and_its_sources_
     import respx
 
     from provisa.api_source.models import ApiColumn, ApiColumnType, ApiEndpoint, ApiSource
+    from provisa.core import secrets_providers
     from provisa.core.auth_models import ApiAuthBearer
     from provisa.core.paging import PaginationConfig
 
+    # The source's credential is read as a deployment of one organisation reads it; the API
+    # layer says which at import, and this test does not import it.
+    monkeypatch.setattr(secrets_providers, "_many_organisations", lambda: False)
     _hot_settings(monkeypatch)
     endpoint = ApiEndpoint(
         source_id="pay",

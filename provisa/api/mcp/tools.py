@@ -28,6 +28,7 @@ from typing import Any
 
 from provisa.api.flight.catalog import CatalogTable, _build_catalog_tables_async
 from provisa.kaggle.downloader import api_token as kaggle_api_token  # the operator's setting
+from provisa.api.engine_error_names import client_text, client_value
 
 
 # Row ceiling for run_sql. An agent context must never absorb an unbounded
@@ -131,7 +132,10 @@ async def _catalog(state: Any, role: str | None) -> list[CatalogTable]:
     failing on that mismatch."""
     if not state.model_db:
         return []
-    raw = await _build_catalog_tables_async(state, role)
+    from provisa.security.selected_domains import admits
+
+    # REQ-2253: an AI-assisted call lists only the domains selected in the domain filter.
+    raw = [t for t in await _build_catalog_tables_async(state, role) if admits(t.domain_id)]
     return _semantic_catalog(raw, _meta_index(state))
 
 
@@ -144,9 +148,12 @@ def _find_role_table(ctx: Any, schema: str, table: str) -> Any:
     """
     from provisa.compiler.naming import domain_to_sql_name
     from provisa.compiler.sql_rewrite import semantic_table_name
+    from provisa.security.selected_domains import admits
 
     for meta in getattr(ctx, "tables", {}).values():
         if domain_to_sql_name(getattr(meta, "domain_id", "")) != schema:
+            continue
+        if not admits(meta.domain_id):  # REQ-2253: outside the selected domains
             continue
         if semantic_table_name(meta) == table:
             return meta
@@ -194,6 +201,7 @@ def _foreign_keys(state: Any, role: str, schema: str, table: str) -> list[dict]:
     """
     from provisa.compiler.naming import domain_to_sql_name
     from provisa.compiler.sql_rewrite import semantic_table_name
+    from provisa.security.selected_domains import admits
 
     ctx = state.contexts[role]
     tmeta = _find_role_table(ctx, schema, table)
@@ -208,6 +216,8 @@ def _foreign_keys(state: Any, role: str, schema: str, table: str) -> list[dict]:
         ):
             continue
         target = jm.target
+        if not admits(target.domain_id):  # REQ-2253: a key into a domain outside the selection
+            continue
         fks.append(
             {
                 "column": jm.source_column,
@@ -236,8 +246,22 @@ def _unique_constraints(state: Any, role: str, schema: str, table: str) -> list[
     ]
 
 
+def _role_governance(state: Any, role: str) -> Any:
+    """``role``'s governance context: the one the query pipeline checks its statements against."""
+    from provisa.api.role_surface import built_surface
+    from provisa.pgwire.governed_plan import role_governance
+
+    return role_governance(state, built_surface(state.surfaces[role]), role)
+
+
 async def describe_table(state: Any, role: str, schema: str, table: str) -> dict:
-    """columns (name, type, description) + foreign keys + unique constraints for one table."""
+    """columns (name, type, description, state) + foreign keys + unique constraints for one table.
+
+    A column's ``state`` is how the caller's role reads it (:mod:`provisa.api.mcp.column_state`):
+    plain, masked, faked or hidden. Only the columns the role is served are listed, so a listed
+    column is hidden only where its governance refuses it."""
+    from provisa.api.mcp.column_state import column_state
+
     require_role(role, state)
     tables = await _catalog(state, role)
     match = next(
@@ -246,12 +270,21 @@ async def describe_table(state: Any, role: str, schema: str, table: str) -> dict
     )
     if match is None:
         raise ValueError(f"Table not found: {schema}.{table}")
+    meta = _find_role_table(state.contexts[role], schema, table)
+    if meta is None:
+        raise ValueError(f"Table not found: {schema}.{table}")
+    gov = _role_governance(state, role)
     return {
         "schema": schema,
         "table": table,
         "description": match.description,
         "columns": [
-            {"name": c.name, "type": c.data_type, "description": c.description}
+            {
+                "name": c.name,
+                "type": c.data_type,
+                "description": c.description,
+                "state": column_state(gov, meta.table_id, c.name),
+            }
             for c in match.columns
         ],
         "foreign_keys": _foreign_keys(state, role, schema, table),
@@ -354,7 +387,11 @@ async def cypher_field_names(state: Any, role: str, schema: str, table: str) -> 
     meta = _find_role_table(ctx, schema, table)
     if meta is None:
         raise ValueError(f"Table not found: {schema}.{table}")
-    label_map = _build_label_map(ctx, role, state)
+    from provisa.nl.scope import label_map_within
+    from provisa.security.selected_domains import current
+
+    # REQ-2253: no relationship into a domain outside the selection is named.
+    label_map = label_map_within(_build_label_map(ctx, role, state), current())
     node = label_map.nodes.get(meta.type_name)
     if node is None:
         raise ValueError(
@@ -390,7 +427,9 @@ async def cypher_field_names(state: Any, role: str, schema: str, table: str) -> 
     }
 
 
-async def generate_explore_queries(state: Any, role: str, question: str) -> dict:  # REQ-1852
+async def generate_explore_queries(  # REQ-1852
+    state: Any, role: str, question: str, domains: list[str] | None = None
+) -> dict:
     """Generate ready-to-run queries for EVERY Explore query surface from one natural-language
     question, using the SAME pipeline the NL Explore page runs (REQ-355..359) — an LLM call of
     its own that resolves table selection, joins, and aggregation shape, not a guess. Use this
@@ -409,7 +448,10 @@ async def generate_explore_queries(state: Any, role: str, question: str) -> dict
     already the exact, complete value to navigate with: for jsonapi/openapi it IS the full
     deep-link path/method (do not reassemble it from schema/table names — see REQ-1851), for grpc
     it IS the exact rpc call signature, for sql/graphql/cypher it IS the query text. Use it
-    verbatim; never rewrite, simplify, or re-derive it yourself."""
+    verbatim; never rewrite, simplify, or re-derive it yourself.
+
+    ``domains`` (REQ-2253): the domains to work within, intersected with the role's; ``None`` is
+    every domain the role reaches."""
     require_role(role, state)
     from provisa.core.org_secrets import read_org_api_keys
     from provisa.core.org_settings import resolve_org_config
@@ -441,13 +483,19 @@ async def generate_explore_queries(state: Any, role: str, question: str) -> dict
     # untyped `llm` param relies on) rather than subclassing it.
     llm: Any = ProvisaLLMClient("sql_generation", config=cfg, api_keys=api_keys)
 
-    await run_nl_job(job_id, question, role, state, job_store, llm, strict=strict, deliver=None)
+    from provisa.nl.scope import selected_scope
+    from provisa.security.rights import require_role as _role_of
+
+    scope = selected_scope(_role_of(state.roles, role), domains)
+    await run_nl_job(
+        job_id, question, role, state, job_store, llm, strict=strict, deliver=None, scope=scope
+    )
 
     job = await job_store.get(job_id)
     if job is None:
         raise ValueError("NL job vanished from its own job store")
     queries: dict[str, dict] = {
-        target: {"query": branch.query, "error": branch.error}
+        target: {"query": branch.query, "error": client_value(branch.error)}
         for target, branch in job.branches.items()
     }
     return {**queries, **science_surfaces(question, queries.get("sql"))}
@@ -460,8 +508,8 @@ def science_surfaces(question: str, sql: dict | None) -> dict[str, dict]:
     statement = (sql or {}).get("query")
     error = (sql or {}).get("error") or (None if statement else "no SQL was built for it")
     if error:
-        surfaces["python"] = {"query": None, "error": error}
-        surfaces["notebook"] = {"cells": None, "error": error}
+        surfaces["python"] = {"query": None, "error": client_value(error)}
+        surfaces["notebook"] = {"cells": None, "error": client_value(error)}
         return surfaces
     surfaces["python"] = {
         "query": (
@@ -482,6 +530,50 @@ def science_surfaces(question: str, sql: dict | None) -> dict[str, dict]:
     return surfaces
 
 
+async def _refuse_source_outside_selection(state: Any, source_id: str) -> None:
+    """REQ-2253: under a selection in the domain filter, a source open to none of its domains is
+    not read. A source naming no domains is open to every one (domain_guard)."""
+    from provisa.security.selected_domains import admits_any, current
+
+    if current() is None:
+        return
+    from provisa.core.repositories import source as source_repo
+
+    pool = state.model_db
+    assert pool is not None
+    async with pool.acquire() as conn:
+        row = await source_repo.get(conn, source_id)
+    if row is None:
+        raise ValueError(f"Source not found: {source_id}")
+    if not admits_any(row["allowed_domains"] or ["*"]):
+        raise PermissionError(
+            f"Source {source_id!r} is open to none of the domains selected in the domain filter"
+        )
+
+
+async def _refuse_term_outside_selection(conn: Any, term_id: int) -> None:
+    """REQ-2253: under a selection in the domain filter, a term of a domain outside it is not
+    changed. A term absent from ``term_domains`` is unscoped: it holds no domain."""
+    from provisa.security.selected_domains import current, refuse_object
+
+    if current() is None:
+        return
+    from provisa.core.repositories import glossary as glossary_repo
+
+    refuse_object(f"Term {term_id}", (await glossary_repo.term_domains(conn)).get(term_id, set()))
+
+
+async def _refuse_table_outside_selection(conn: Any, table_id: int) -> None:
+    """REQ-2253: under a selection in the domain filter, a table outside it is not changed."""
+    from provisa.security.selected_domains import current, refuse_object
+
+    if current() is None:
+        return
+    from provisa.api.admin.domain_guard import table_domain
+
+    refuse_object(f"Table {table_id}", {await table_domain(conn, table_id)})
+
+
 async def list_native_tables(
     state: Any, role: str, source_id: str, schema_name: str = "public"
 ) -> list[dict]:  # REQ-1833
@@ -496,6 +588,7 @@ async def list_native_tables(
     This is the SAME native-introspection path (native_tables/the engine-attach fallback) the
     admin UI's Register Table form calls before ever showing a table picker."""
     require_role(role, state)
+    await _refuse_source_outside_selection(state, source_id)
     from provisa.api.admin.schema_query import Query
 
     tables = await Query().available_tables(source_id, schema_name)  # pyright: ignore[reportCallIssue]
@@ -511,6 +604,7 @@ async def describe_native_table(
     always be accepted, unlike a guessed one. Call list_native_tables first if the exact
     table_name isn't already known."""
     require_role(role, state)
+    await _refuse_source_outside_selection(state, source_id)
     from provisa.api.admin.schema_query import resolve_available_columns_metadata
 
     cols = await resolve_available_columns_metadata(source_id, schema_name, table_name)
@@ -554,7 +648,12 @@ async def create_glossary_term(
     (add_glossary_term_edge) and bindings. If the deployment is multi-domain, at least one domain
     is required."""
     require_role(role, state)
-    from provisa.api.admin.glossary_router import _declared_domains, _notify, _require_glossary_rw
+    from provisa.api.admin.glossary_router import (
+        _declared_domains,
+        _notify,
+        _require_glossary_rw,
+        embed_terms,
+    )
     from provisa.core.repositories import glossary as glossary_repo
     from provisa.api.admin._guards import require_active_org_id
 
@@ -564,6 +663,9 @@ async def create_glossary_term(
     assert pool is not None
     async with pool.acquire() as conn:
         declared = _declared_domains(request, domains, current=set())
+        from provisa.security.selected_domains import refuse_object
+
+        refuse_object(f"Term {name!r}", declared)  # REQ-2253
         try:
             term_id = await glossary_repo.create_abstract_term(
                 conn, name, definition=definition, domains=declared
@@ -571,6 +673,7 @@ async def create_glossary_term(
         except ValueError as exc:
             raise ValueError(str(exc)) from exc
     await _notify(org_id, "ontology term created")
+    await embed_terms(org_id)
     return {"id": term_id}
 
 
@@ -590,6 +693,7 @@ async def update_glossary_term(
         _notify,
         _require_glossary_rw,
         _require_term_curatable,
+        embed_terms,
     )
     from provisa.core.repositories import glossary as glossary_repo
     from provisa.api.admin._guards import require_active_org_id
@@ -601,6 +705,7 @@ async def update_glossary_term(
     found = False
     async with pool.acquire() as conn:
         await _require_term_curatable(conn, term_id, request)
+        await _refuse_term_outside_selection(conn, term_id)
         try:
             if name is not None:
                 found = await glossary_repo.rename_term(conn, term_id, name)
@@ -613,6 +718,8 @@ async def update_glossary_term(
     if not found:
         raise ValueError(f"ontology term {term_id} not found")
     await _notify(org_id, "ontology term updated")
+    if name is not None or definition is not None:
+        await embed_terms(org_id)
     return {"ok": True}
 
 
@@ -623,7 +730,12 @@ async def change_glossary_term_status(
     too."""
     require_role(role, state)
     from provisa.api.admin._guards import require_active_org_id
-    from provisa.api.admin.glossary_router import _notify, _require_glossary_rw, change_status
+    from provisa.api.admin.glossary_router import (
+        _notify,
+        _require_glossary_rw,
+        change_status,
+        embed_terms,
+    )
     from provisa.api.errors import ApiError
     from provisa.core.repositories import glossary as glossary_repo
 
@@ -632,6 +744,7 @@ async def change_glossary_term_status(
     pool = state.model_db
     assert pool is not None
     async with pool.acquire() as conn:
+        await _refuse_term_outside_selection(conn, term_id)
         try:
             changes = await change_status(conn, term_id, action, body, request)
         except ApiError as exc:
@@ -642,6 +755,7 @@ async def change_glossary_term_status(
     from provisa.api.admin.glossary_router import _DONE
 
     await _notify(org_id, f"ontology term {_DONE[action]}")
+    await embed_terms(org_id)
     return {"ok": True, "term_id": term_id, "status": status, "tag_changes": changes}
 
 
@@ -674,6 +788,7 @@ async def delete_glossary_term(
         _notify,
         _require_glossary_rw,
         _require_term_curatable,
+        embed_terms,
     )
     from provisa.core.repositories import glossary as glossary_repo
     from provisa.api.admin._guards import require_active_org_id
@@ -684,6 +799,7 @@ async def delete_glossary_term(
     assert pool is not None
     async with pool.acquire() as conn:
         await _require_term_curatable(conn, term_id, request)
+        await _refuse_term_outside_selection(conn, term_id)
         try:
             deleted = await glossary_repo.delete_term(conn, term_id)
         except ValueError as exc:
@@ -691,6 +807,7 @@ async def delete_glossary_term(
     if not deleted:
         raise ValueError(f"ontology term {term_id} not found")
     await _notify(org_id, "ontology term deleted")
+    await embed_terms(org_id)
     return {"ok": True}
 
 
@@ -718,6 +835,8 @@ async def add_glossary_term_edge(
     async with pool.acquire() as conn:
         await _require_term_curatable(conn, term_id, request)
         await _require_term_curatable(conn, to_term_id, request)
+        await _refuse_term_outside_selection(conn, term_id)
+        await _refuse_term_outside_selection(conn, to_term_id)
         try:
             await glossary_repo.add_edge(conn, term_id, to_term_id, rel_type)
         except ValueError as exc:
@@ -745,6 +864,8 @@ async def remove_glossary_term_edge(
     assert pool is not None
     async with pool.acquire() as conn:
         await _require_term_curatable(conn, term_id, request)
+        await _refuse_term_outside_selection(conn, term_id)
+        await _refuse_term_outside_selection(conn, to_term_id)
         removed = await glossary_repo.remove_edge(conn, term_id, to_term_id, rel_type)
     if not removed:
         raise ValueError("edge not found")
@@ -768,6 +889,8 @@ async def ground_glossary_term_to_table(
     pool = state.model_db
     assert pool is not None
     async with pool.acquire() as conn:
+        await _refuse_term_outside_selection(conn, term_id)
+        await _refuse_table_outside_selection(conn, table_id)
         try:
             await ground_term_table(conn, term_id, table_id, request)
         except ApiError as exc:
@@ -792,6 +915,8 @@ async def unground_glossary_term_from_table(
     pool = state.model_db
     assert pool is not None
     async with pool.acquire() as conn:
+        await _refuse_term_outside_selection(conn, term_id)
+        await _refuse_table_outside_selection(conn, table_id)
         try:
             await unground_term_table(conn, term_id, table_id, request)
         except ApiError as exc:
@@ -818,6 +943,7 @@ async def tag_glossary_term(
     pool = state.model_db
     assert pool is not None
     async with pool.acquire() as conn:
+        await _refuse_term_outside_selection(conn, term_id)
         try:
             covers = await tag_term(conn, request, term_id, tag_id, reason)
         except ApiError as exc:
@@ -843,6 +969,7 @@ async def untag_glossary_term(
     pool = state.model_db
     assert pool is not None
     async with pool.acquire() as conn:
+        await _refuse_term_outside_selection(conn, term_id)
         removed = await untag_term(conn, request, term_id, tag_id)
     if not removed:
         raise ValueError(f"tag {tag_id!r} is not on term {term_id}")
@@ -852,7 +979,8 @@ async def untag_glossary_term(
 
 
 async def list_data_products(state: Any, role: str, request: Any) -> list[dict]:  # REQ-1855
-    """The org's data products (id, domain, name, purpose, owner/team role, status, etc.)."""
+    """The org's data products (id, domain, name, purpose, owner/team role, status, etc.), each
+    with its members: ``table_ids`` and ``command_names`` (REQ-1634)."""
     require_role(role, state)
     from provisa.api.admin.capabilities import require_capability_request
     from provisa.core.repositories import data_product as data_product_repo
@@ -860,8 +988,55 @@ async def list_data_products(state: Any, role: str, request: Any) -> list[dict]:
     require_capability_request(request, "data_product_read")
     pool = state.model_db
     assert pool is not None
+    from provisa.security.selected_domains import admits
+
     async with pool.acquire() as conn:
-        return await data_product_repo.list_all(conn)
+        return [
+            {
+                **row,
+                "table_ids": await data_product_repo.member_table_ids(conn, row["id"]),
+                "command_names": await data_product_repo.member_command_names(conn, row["id"]),
+            }
+            for row in await data_product_repo.list_all(conn)
+            if admits(row["domain_id"])  # REQ-2253: only the selected domains' products
+        ]
+
+
+async def set_data_product_members(  # REQ-1634
+    state: Any,
+    role: str,
+    request: Any,
+    id: str,
+    table_ids: list[int],
+    command_names: list[str],
+) -> dict:
+    """Make a data product's members exactly these tables (by id) and commands (by name). A table
+    or command may be a member of any number of products, but only of products of its own domain;
+    one of another domain is refused by name and nothing changes."""
+    require_role(role, state)
+    from provisa.api.admin.capabilities import (
+        require_capability_request,
+        require_right_in_domains_request,
+    )
+    from provisa.api.admin.schema_helpers import _rebuild_schemas
+    from provisa.core.repositories import data_product as data_product_repo
+
+    require_capability_request(request, "data_product_rw")
+    pool = state.model_db
+    assert pool is not None
+    async with pool.acquire() as conn:
+        stored = await data_product_repo.get(conn, id)
+        if stored is None:
+            raise ValueError(f"Data product not found: {id}")
+        require_right_in_domains_request(request, "data_product_rw", {stored["domain_id"]})
+        from provisa.security.selected_domains import refuse_object
+
+        refuse_object(f"Data product {id!r}", {stored["domain_id"]})  # REQ-2253
+        for table_id in table_ids:
+            await _refuse_table_outside_selection(conn, table_id)
+        await data_product_repo.set_members(conn, id, table_ids=table_ids, commands=command_names)
+    await _rebuild_schemas()
+    return {"ok": True}
 
 
 async def create_data_product(  # REQ-1855
@@ -881,8 +1056,9 @@ async def create_data_product(  # REQ-1855
 ) -> dict:
     """Create or replace a data product by id (an id that already exists is overwritten in
     full — fetch it first with list_data_products if you mean to change only some fields).
-    `domain_id` must be a real, existing domain. Its status is kept: a new product is a draft,
-    and change_data_product_status changes it."""
+    `domain_id` must be a real, existing domain; a product is not moved to another domain while it
+    has members (take them out with set_data_product_members first). Its status is kept: a new
+    product is a draft, and change_data_product_status changes it."""
     require_role(role, state)
     from provisa.core.models import DataProduct as DataProductModel
     from provisa.core.repositories import data_product as data_product_repo
@@ -891,6 +1067,9 @@ async def create_data_product(  # REQ-1855
     from provisa.api.admin.capabilities import require_right_in_domains_request
     from provisa.api.admin.schema_helpers import _rebuild_schemas
 
+    from provisa.api.admin.glossary_router import _caller_id
+
+    creator = _caller_id(request)
     pool = state.model_db
     assert pool is not None
     async with pool.acquire() as conn:
@@ -902,8 +1081,19 @@ async def create_data_product(  # REQ-1855
             "data_product_rw",
             {domain_id} | ({stored["domain_id"]} if stored is not None else set()),
         )
+        from provisa.security.selected_domains import refuse_object
+
+        # REQ-2253: neither the domain it is saved in nor one it is moved out of is outside the
+        # selection.
+        refuse_object(
+            f"Data product {id!r}",
+            {domain_id} | ({stored["domain_id"]} if stored is not None else set()),
+        )
         if await domain_repo.get(conn, domain_id) is None:
             raise ValueError(f"Domain not found: {domain_id}")
+        if stored is not None and stored["domain_id"] != domain_id:
+            # REQ-1634: a member joins only products of its own domain.
+            await data_product_repo.require_members_in_domain(conn, id, domain_id)
         model = DataProductModel(
             id=id,
             domain_id=domain_id,
@@ -926,8 +1116,14 @@ async def create_data_product(  # REQ-1855
                 else {}
             ),
             support=support,
+            created_by=creator if stored is None else None,  # REQ-2219: set on insert only
         )
         await data_product_repo.upsert(conn, model)
+        if stored is None and creator is not None:
+            # REQ-2219: creating a product grants its creator read-write on it, as an entitlement.
+            from provisa.entitlements.store import record_product_creator
+
+            await record_product_creator(conn, creator, role, domain_id, id)
     if (None if stored is None else stored["owner_role"]) != owner_role:
         await _rebuild_schemas()  # REQ-2188: the Owner field decides who holds RW
     return {"id": id}
@@ -964,6 +1160,9 @@ async def change_data_product_status(
         if stored is None:
             raise ValueError(f"Data product not found: {id}")
         require_right_in_domains_request(request, "data_product_rw", {stored["domain_id"]})
+        from provisa.security.selected_domains import refuse_object
+
+        refuse_object(f"Data product {id!r}", {stored["domain_id"]})  # REQ-2253
         try:
             async with conn.transaction():
                 if action == "publish":
@@ -1004,11 +1203,19 @@ async def list_data_product_findings(state: Any, role: str, request: Any) -> lis
     require_capability_request(request, "data_product_read")
     pool = state.model_db
     assert pool is not None
+    from provisa.core.repositories import data_product as data_product_repo
+    from provisa.security.selected_domains import admits
+
     async with pool.acquire() as conn:
         found = await product_findings.findings(
             conn, await product_findings.context(datetime.date.today())
         )
-    return [{"product_id": pid, "findings": items} for pid, items in sorted(found.items())]
+        domain_of = {row["id"]: row["domain_id"] for row in await data_product_repo.list_all(conn)}
+    return [
+        {"product_id": pid, "findings": items}
+        for pid, items in sorted(found.items())
+        if admits(domain_of[pid])  # REQ-2253: only the selected domains' products
+    ]
 
 
 async def delete_data_product(state: Any, role: str, request: Any, id: str) -> dict:  # REQ-1855
@@ -1027,6 +1234,9 @@ async def delete_data_product(state: Any, role: str, request: Any, id: str) -> d
         stored = await data_product_repo.get(conn, id)
         if stored is not None:  # REQ-1944: an absent product is the not-found below
             require_right_in_domains_request(request, "data_product_rw", {stored["domain_id"]})
+            from provisa.security.selected_domains import refuse_object
+
+            refuse_object(f"Data product {id!r}", {stored["domain_id"]})  # REQ-2253
         deleted = await data_product_repo.delete(conn, id)
     if not deleted:
         raise ValueError(f"Data product not found: {id}")
@@ -1035,6 +1245,21 @@ async def delete_data_product(state: Any, role: str, request: Any, id: str) -> d
 
         await _rebuild_schemas()  # REQ-2188: the Owner field decides who holds RW
     return {"ok": True}
+
+
+async def _refuse_metric_outside_selection(conn: Any, name: str, expression: str | None) -> None:
+    """REQ-2253: under a selection in the domain filter, a metric reading a table of a domain
+    outside it -- as stored, or as ``expression`` would save it -- is not changed."""
+    from provisa.security.selected_domains import current, refuse_object
+
+    if current() is None:
+        return
+    from provisa.api.admin.domain_guard import expression_domains, metric_domains
+
+    # A metric not stored reads nothing yet: the save creates it, the delete is its not-found.
+    stored = await metric_domains(conn, name) or set()
+    saved = set() if expression is None else await expression_domains(conn, name, expression)
+    refuse_object(f"Metric {name!r}", stored | saved)
 
 
 async def upsert_metric(  # REQ-1856
@@ -1075,6 +1300,7 @@ async def upsert_metric(  # REQ-1856
     pool = state.model_db
     assert pool is not None
     async with pool.acquire() as conn:
+        await _refuse_metric_outside_selection(conn, name, expression)
         await metric_repo.upsert(conn, model)
         from provisa.api.admin._metric_views import regenerate_metric_views
 
@@ -1096,6 +1322,7 @@ async def delete_metric(state: Any, role: str, request: Any, name: str) -> dict:
     pool = state.model_db
     assert pool is not None
     async with pool.acquire() as conn:
+        await _refuse_metric_outside_selection(conn, name, None)
         deleted = await metric_repo.delete(conn, name)
     if not deleted:
         raise ValueError(f"Metric not found: {name}")
@@ -1174,12 +1401,18 @@ async def run_sql(
             "redirect": result.redirect,
         }
 
+    from provisa.executor.result import QueryResult
+    from provisa.executor.serialize import result_records
+
     total = len(result.rows)
     window = result.rows[offset : offset + page]
     cols = list(result.column_names)
     return {
         "columns": cols,
-        "rows": [_row_to_json(cols, r) for r in window],
+        # Each value as every JSON surface writes it (REQ-1867).
+        "rows": result_records(
+            QueryResult(rows=window, column_names=cols, column_types=result.column_types)
+        ),
         "row_count": len(window),
         "offset": offset,
         "total_rows": total,
@@ -1394,9 +1627,15 @@ def _visible_metrics(state: Any, role: str) -> list[Any]:
     Sourced from the loaded config (``state.config.metrics``) — the same reachable
     config object _domain_descriptions reads domains from.
     """
+    from provisa.nl.scope import metrics_within
+    from provisa.security.selected_domains import current
+
     config = getattr(state, "config", None)
     metrics = getattr(config, "metrics", None) or []
-    return [m for m in metrics if role in m.visible_to]
+    visible = [m for m in metrics if role in m.visible_to]
+    scope = current()
+    # REQ-2253: an AI-assisted call sees only the metrics whose every table is in the selection.
+    return visible if scope is None else metrics_within(visible, state.contexts[role], scope)
 
 
 def list_metrics(state: Any, role: str) -> list[dict]:
@@ -1441,26 +1680,27 @@ async def query_metric(
     require_role(role, state)
     if metric not in {m.name for m in _visible_metrics(state, role)}:
         raise ValueError(f"Unknown metric {metric!r}")
+    from provisa.executor.serialize import result_records
+
     result = await execute_sql_batch(_metric_sql(metric, dimensions, filters), role, state)
-    cols = list(result.column_names)
-    return [_row_to_json(cols, r) for r in result.rows]
+    return result_records(result)
 
 
 def _role_domains(state: Any, role: str) -> set[str]:
     """The schema ids ``role`` may access, or ``{"*"}`` for full access.
 
-    Sourced from the loaded config roles' ``domain_access`` — the same list the SQL
-    pipeline enforces. A search hit outside these domains is dropped, so the agent
-    never sees an entity it could not query.
+    Sourced from the bound org's roles' ``domain_access`` — the same list the SQL pipeline
+    enforces — and not ``state.config``, which holds the deployment org's: another org's role
+    of that name is a different role, and one of no such name would reach nothing. A search
+    hit outside these domains is dropped, so the agent never sees an entity it could not query.
     """
-    config = getattr(state, "config", None)
-    for r in getattr(config, "roles", None) or []:
-        if getattr(r, "id", None) == role:
-            from provisa.security.rights import reaches_all_domains
+    stored = state.roles.get(role)
+    if stored is None:
+        return set()  # an unknown role reaches no domains (domain_access_for_claims)
+    from provisa.security.rights import reaches_all_domains
 
-            access = list(r.domain_access)
-            return {"*"} if reaches_all_domains(access) else set(access)
-    return set()
+    access = stored.get("domain_access")
+    return {"*"} if reaches_all_domains(access) else set(access)
 
 
 async def effective_config(state: Any) -> dict:
@@ -1517,10 +1757,11 @@ async def resolve_embedding_model(state: Any, *, purpose: str = "catalog search"
 
 
 async def build_catalog_index(state: Any, provider: Any = None) -> int:
-    """(Re)build the server-lifetime catalog search index over the full catalog.
+    """(Re)build the bound org's catalog search index over its full catalog.
 
-    Cached on ``state.mcp_catalog_index``. Called at startup / on catalog refresh; a
-    cold build is just the full case. ``provider`` is injectable for tests.
+    Cached on ``state.mcp_catalog_index``, which resolves to the org's runtime: orgs share a
+    process, never an index. Built on the org's first search after a reload; a cold build is
+    just the full case. ``provider`` is injectable for tests.
     """
     from provisa.api.mcp.search import CatalogSearchIndex
 
@@ -1533,7 +1774,7 @@ async def build_catalog_index(state: Any, provider: Any = None) -> int:
 
 
 async def _get_index(state: Any) -> Any:
-    """The catalog index, built lazily on first use if startup did not build it."""
+    """The bound org's catalog index, built lazily on first use."""
     index = getattr(state, "mcp_catalog_index", None)
     if index is None or not getattr(index, "built", False):
         await build_catalog_index(state)
@@ -1611,6 +1852,7 @@ async def search_terms(state: Any, role: str, query: str, *, limit: int = 25) ->
     from provisa.core.env_authority import domains_within
     from provisa.core.repositories import glossary as glossary_repo
     from provisa.security.rights import domain_access_for_claims
+    from provisa.security.selected_domains import narrowed
 
     # REQ-1591: an agent reaches the vocabulary of the domains its ROLE reaches, by the same ANY
     # rule the admin list uses. The role name is the whole identity on this surface, so its
@@ -1624,14 +1866,16 @@ async def search_terms(state: Any, role: str, query: str, *, limit: int = 25) ->
             conn,
             query.strip(),
             limit=limit,
-            domains=None if allowed is None else frozenset(allowed),
+            # REQ-2253: an AI-assisted call searches only the selected domains' vocabulary.
+            domains=narrowed(None if allowed is None else frozenset(allowed)),
         )
 
 
 async def search_reference_library(state: Any, role: str, question: str, k: int = 5) -> list[dict]:
     """The reference library's passages that best answer ``question`` (REQ-2185), from the kept
-    documents ``role`` may read: those whose domains it reads, and every ``*`` document. Each
-    carries what citing it takes -- the document, its section or page, the quoted text."""
+    documents ``role`` may read: those whose domains it reads, and every ``*`` document, with
+    their neighbours (retrieve.retrieve_with_neighbours). Each carries what citing it takes -- the
+    document, its section or page, the quoted text -- and how it was reached."""
     role = require_role(role, state)
     from provisa.reference_library.retrieve import search_for_role
 
@@ -1639,14 +1883,9 @@ async def search_reference_library(state: Any, role: str, question: str, k: int 
 
 
 async def _jev_api_key(state: Any) -> str:
-    from provisa.core.org_secrets import resolve_jev_api_key
+    from provisa.core.org_secrets import JEV, org_ai_key
 
-    key = await resolve_jev_api_key(getattr(state, "model_db", None))
-    if not key:
-        raise ValueError(
-            "Jev is not configured — set TYPESAFEAI_API_KEY or an org Jev key in Admin > AI Models"
-        )
-    return key
+    return await org_ai_key(getattr(state, "model_db", None), JEV)
 
 
 async def jev_evaluate(state: Any, role: str, jev_state: Any, questions: list[dict]) -> dict:
@@ -1657,8 +1896,8 @@ async def jev_evaluate(state: Any, role: str, jev_state: Any, questions: list[di
     confidence score the caller can branch on (see docs.typesafe.ai/confidence for
     confidence-routing: escalate low-confidence answers instead of trusting them blind).
     role is required for audit attribution (REQ-074) even though this call touches no
-    governed data — consistent with every other MCP tool. The acting org's own Jev key
-    (Admin > AI Models) is preferred over the deployment's TYPESAFEAI_API_KEY.
+    governed data — consistent with every other MCP tool. The key is the acting org's own Jev key
+    (Admin, AI Models), as provisa.core.org_secrets resolves every AI key.
     """
     from provisa.jev.client import evaluate
 
@@ -1696,7 +1935,7 @@ async def _queue_mcp_proposal(
     GraphQL caller falls back to, so a rights-holder must execute or reject it via the admin UI
     (Requests page) regardless of what capability the MCP credential itself carries."""
 
-    from provisa.core.repositories import creation_request as cr_repo
+    from provisa.api.admin.request_queue import raise_request
 
     if not reason or not reason.strip():
         raise ValueError("reason is required — say why this was discovered/proposed")
@@ -1712,13 +1951,17 @@ async def _queue_mcp_proposal(
     pool = state.model_db
     assert pool is not None
     async with pool.acquire() as conn:
-        request_id = await cr_repo.create(conn, request_type, capability, payload, proposer)
+        request_id = await raise_request(
+            conn, request_type, capability, payload, proposer, state=state
+        )
     return {
         "request_id": request_id,
         "status": "pending",
         "message": (
-            f"Queued as creation request #{request_id} — awaiting a user holding "
-            f"{capability!r} to review and approve on the Requests page."
+            client_text(
+                f"Queued as creation request #{request_id} — awaiting a user holding "
+                f"{capability!r} to review and approve on the Requests page."
+            )
         ),
     }
 
@@ -1883,7 +2126,7 @@ async def create_source_now(
     # pyright mistypes strawberry.mutation-decorated methods' call signature (confirmed correct at
     # runtime via inspect.signature: (self, info, input) -> MutationResult).
     result = await Mutation().create_source(info, source_input)  # pyright: ignore[reportCallIssue]
-    return {"success": result.success, "message": result.message, "code": result.code}
+    return {"success": result.success, "message": client_value(result.message), "code": result.code}
 
 
 async def register_table_now(
@@ -1908,7 +2151,7 @@ async def register_table_now(
     info = types.SimpleNamespace(context={"request": request})
     # pyright mistypes strawberry.mutation-decorated methods' call signature — see create_source_now.
     result = await Mutation().register_table(info, table_input)  # pyright: ignore[reportCallIssue]
-    return {"success": result.success, "message": result.message, "code": result.code}
+    return {"success": result.success, "message": client_value(result.message), "code": result.code}
 
 
 async def search_govdata_subjects(state: Any, role: str, query: str) -> list[dict]:  # REQ-1798
@@ -1974,29 +2217,6 @@ async def search_kaggle_datasets(state: Any, role: str, query: str) -> list[dict
         }
         for d in results[:10]
     ]
-
-
-def _row_to_json(cols: list[str], row: Any) -> dict:
-    """Map a result tuple to a JSON-safe {column: value} dict."""
-    out: dict[str, Any] = {}
-    for name, val in zip(cols, row, strict=False):
-        out[name] = _json_safe(val)
-    return out
-
-
-def _json_safe(val: Any) -> Any:
-    import datetime as _dt
-    from decimal import Decimal
-
-    if val is None or isinstance(val, (bool, int, float, str)):
-        return val
-    if isinstance(val, Decimal):
-        return float(val)
-    if isinstance(val, (bytes, bytearray)):
-        return val.hex()
-    if isinstance(val, (_dt.date, _dt.datetime, _dt.time)):
-        return val.isoformat()
-    return str(val)
 
 
 def _described_role(state: Any, role_id: str) -> dict:  # REQ-2082

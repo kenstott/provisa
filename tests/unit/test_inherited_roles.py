@@ -12,6 +12,7 @@
 
 from __future__ import annotations
 
+import pytest
 
 from provisa.compiler.rls import RLSContext, build_rls_context
 from provisa.compiler.sql_gen import CompilationContext, TableMeta
@@ -20,6 +21,7 @@ from provisa.core.models import Role, flatten_roles
 from provisa.security.inheritance import materialize_rls
 from provisa.security.masking import MaskType, MaskingRule
 from provisa.security.row_filters import resolve_table_rules
+from tests.governed_pg import assert_same_rows, governed_database
 from tests.helpers import governed_for_role
 
 
@@ -78,6 +80,21 @@ def _inherited_rls(rules: list[dict], chains: dict[str, list[str]], role_id: str
     return build_rls_context(resolved, role_id)
 
 
+#: What each governed read is answered over, on PostgreSQL (tests/governed_pg.py).
+_ROWS = {
+    "public.orders": [
+        {"id": 1, "amount": 50, "region": "us-east"},
+        {"id": 2, "amount": 150, "region": "us-east"},
+        {"id": 3, "amount": 150, "region": "eu-west"},
+    ]
+}
+
+
+@pytest.fixture(scope="module")
+def pg(embedded_postgres):
+    return governed_database(embedded_postgres, "test_inherited_roles")
+
+
 def _orders_ctx() -> CompilationContext:
     ctx = CompilationContext()
     ctx.tables["orders"] = TableMeta(
@@ -99,27 +116,25 @@ def _orders_ctx() -> CompilationContext:
 
 class TestFlattenRoles:
     def test_flatten_roles_produces_merged_context(self):
-        """flatten_roles() merges the parent's capabilities; reach is the role's own (REQ-2155)."""
-        parent = _role("parent", caps=["read"], domains=["sales"])
-        child = _role("child", caps=["export"], domains=["support"], parent="parent")
+        """flatten_roles() narrows a role to what its parents hold (REQ-2155)."""
+        parent = _role("parent", caps=["read", "export"], domains=["sales", "support"])
+        child = _role("child", caps=["export", "other"], domains=["support", "hr"], parent="parent")
 
         result = flatten_roles([parent, child])
         by_id = {r.id: r for r in result}
 
-        assert "read" in by_id["child"].capabilities
-        assert "export" in by_id["child"].capabilities
+        assert by_id["child"].capabilities == ["export"]
         assert by_id["child"].domain_access == ["support"]
 
     def test_child_retains_own_capabilities(self):
-        """Child-only capabilities are preserved after flattening."""
-        parent = _role("base", caps=["read"], domains=["*"])
-        child = _role("analyst", caps=["aggregate"], domains=["finance"], parent="base")
+        """A capability its parent holds and it was given is held after flattening."""
+        parent = _role("base", caps=["read", "aggregate"], domains=["*"])
+        child = _role("reporter", caps=["aggregate"], domains=["finance"], parent="base")
 
         result = flatten_roles([parent, child])
         by_id = {r.id: r for r in result}
 
-        assert "aggregate" in by_id["analyst"].capabilities
-        assert "read" in by_id["analyst"].capabilities
+        assert by_id["reporter"].capabilities == ["aggregate"]
 
     def test_parent_unchanged_after_flatten(self):
         """Parent role must not gain child's capabilities after flatten."""
@@ -132,8 +147,8 @@ class TestFlattenRoles:
         assert "aggregate" not in by_id["base"].capabilities
 
     def test_wildcard_domain_does_not_propagate(self):
-        """REQ-2155: a parent reaching every domain gives its child no reach; the child's own list
-        stands."""
+        """REQ-2155: a parent reaching every domain holds whatever its child is given; the child
+        holds its own list."""
         parent = _role("super", caps=["read"], domains=["*"])
         child = _role("sub", caps=["read"], domains=["finance"], parent="super")
 
@@ -157,7 +172,7 @@ class TestFlattenRoles:
 
 
 class TestInheritedRolesRLS:
-    def test_child_inherits_parent_rls(self):
+    def test_child_inherits_parent_rls(self, pg):
         """A child role with no rule of its own for a table reads under its parent's rule."""
         parent_rule = {
             "description": "Test rule.",
@@ -170,11 +185,12 @@ class TestInheritedRolesRLS:
             [parent_rule], {"parent": ["parent"], "child": ["child", "parent"]}, "child"
         )
         result = governed_for_role(_ORDERS_SQL, _orders_ctx(), "child", rls=rls)
-        assert result == f'{_ORDERS_SQL} WHERE ("orders"."region" = \'us-east\')'
+        assert assert_same_rows(
+            pg, result, f"{_ORDERS_SQL} WHERE \"region\" = 'us-east'", _ROWS
+        ) == [(1, 50, "us-east"), (2, 150, "us-east")]
 
-    def test_child_s_own_rule_replaces_its_parent_s(self):
-        """Child-first (REQ-1677): a child's own rule for a table replaces its parent's; the two
-        are never ANDed."""
+    def test_child_s_own_rule_is_anded_with_its_parent_s(self, pg):
+        """REQ-1677: a role reads no row its parent could not."""
         rules = [
             {
                 "description": "Test rule.",
@@ -193,26 +209,24 @@ class TestInheritedRolesRLS:
         ]
         rls = _inherited_rls(rules, {"parent": ["parent"], "child": ["child", "parent"]}, "child")
         result = governed_for_role(_ORDERS_SQL, _orders_ctx(), "child", rls=rls)
-        assert result == f'{_ORDERS_SQL} WHERE ("orders"."amount" > 100)'
+        expected = f'{_ORDERS_SQL} WHERE "amount" > 100 AND "region" = \'us-east\''
+        assert assert_same_rows(pg, result, expected, _ROWS) == [(2, 150, "us-east")]
 
     def test_grandchild_inherits_two_levels(self):
-        """Three-level chain: grandchild receives grandparent + parent + own rules."""
-        grandparent = _role("gp", caps=["read"], domains=["sales"])
+        """Three-level chain: a role narrowing its parent narrows every role below it."""
+        grandparent = _role("gp", caps=["read", "aggregate"], domains=["sales", "support"])
         parent = _role("parent", caps=["aggregate"], domains=["support"], parent="gp")
-        child = _role("child", caps=["export"], domains=["finance"], parent="parent")
+        child = _role(
+            "child", caps=["read", "aggregate"], domains=["sales", "support"], parent="parent"
+        )
 
         result = flatten_roles([grandparent, parent, child])
         by_id = {r.id: r for r in result}
 
-        # Child should have all three capability sets
-        assert "read" in by_id["child"].capabilities
-        assert "aggregate" in by_id["child"].capabilities
-        assert "export" in by_id["child"].capabilities
+        assert by_id["child"].capabilities == ["aggregate"]
+        assert by_id["child"].domain_access == ["support"]
 
-        # REQ-2155: reach is the child's own
-        assert by_id["child"].domain_access == ["finance"]
-
-    def test_child_rls_sql_where_injected_correctly(self):
+    def test_child_rls_sql_where_injected_correctly(self, pg):
         """The row filter is placed before ORDER BY, on the table's alias."""
         result = governed_for_role(
             f'{_ORDERS_T0_SQL} ORDER BY "t0"."id"',
@@ -220,10 +234,13 @@ class TestInheritedRolesRLS:
             "child",
             rls={ORDERS_TABLE_ID: "\"region\" = 'us-east'"},
         )
-        assert result == (
-            'SELECT "t0"."id", "t0"."amount" FROM "public"."orders" AS "t0" '
-            'WHERE ("t0"."region" = \'us-east\') ORDER BY "t0"."id"'
-        )
+        expected = f'{_ORDERS_T0_SQL} WHERE "t0"."region" = \'us-east\' ORDER BY "t0"."id"'
+        # Stored out of key order, so only the statement's own ORDER BY orders the answer.
+        unordered = {"public.orders": list(reversed(_ROWS["public.orders"]))}
+        assert assert_same_rows(pg, result, expected, unordered, ordered=True) == [
+            (1, 50),
+            (2, 150),
+        ]
 
 
 # ---------------------------------------------------------------------------
@@ -232,26 +249,31 @@ class TestInheritedRolesRLS:
 
 
 class TestInheritedRolesMasking:
-    def test_child_overrides_parent_mask(self):
-        """The mask the child role is given for a column is the one its reads carry."""
-        child_rule = MaskingRule(mask_type=MaskType.constant, value=999)
+    def test_child_overrides_parent_mask(self, pg):
+        """The mask the child role is given for a column is the one its reads carry. A text
+        column, so each constant reads as itself (a non-text one reads as NULL, REQ-2131)."""
+        child_rule = MaskingRule(mask_type=MaskType.constant, value="child")
         child_masking: MaskingRules = {
-            (ORDERS_TABLE_ID, "child"): {"amount": (child_rule, "integer")},
+            (ORDERS_TABLE_ID, "child"): {"region": (child_rule, "varchar")},
             (ORDERS_TABLE_ID, "parent"): {
-                "amount": (MaskingRule(mask_type=MaskType.constant, value=0), "integer")
+                "region": (MaskingRule(mask_type=MaskType.constant, value="parent"), "varchar")
             },
         }
-        result = governed_for_role(
-            _ORDERS_T0_SQL, _orders_ctx(), "child", masking_rules=child_masking
-        )
-        assert result == ('SELECT "t0"."id", 999 AS "amount" FROM "public"."orders" AS "t0"')
+        sql = 'SELECT "t0"."id", "t0"."region" FROM "public"."orders" "t0"'
+        result = governed_for_role(sql, _orders_ctx(), "child", masking_rules=child_masking)
+        expected = 'SELECT "t0"."id", \'child\' AS "region" FROM "public"."orders" AS "t0"'
+        assert assert_same_rows(pg, result, expected, _ROWS) == [
+            (1, "child"),
+            (2, "child"),
+            (3, "child"),
+        ]
 
-    def test_no_masking_rules_for_role_leaves_sql_unchanged(self):
+    def test_no_masking_rules_for_role_leaves_sql_unchanged(self, pg):
         """A role with no masking rules must not alter the compiled SQL."""
         result = governed_for_role(_ORDERS_T0_SQL, _orders_ctx(), "some-role", masking_rules={})
-        assert result == 'SELECT "t0"."id", "t0"."amount" FROM "public"."orders" AS "t0"'
+        assert assert_same_rows(pg, result, _ORDERS_T0_SQL, _ROWS) == [(1, 50), (2, 150), (3, 150)]
 
-    def test_parent_mask_applied_when_child_has_none(self):
+    def test_parent_mask_applied_when_child_has_none(self, pg):
         """The parent's mask, held by the child (it is not in the column's ``unmasked_to``),
         is applied to the child's read."""
         parent_rule = MaskingRule(mask_type=MaskType.constant, value=0)
@@ -261,4 +283,5 @@ class TestInheritedRolesMasking:
         result = governed_for_role(
             _ORDERS_T0_SQL, _orders_ctx(), "child", masking_rules=inherited_masking
         )
-        assert result == 'SELECT "t0"."id", 0 AS "amount" FROM "public"."orders" AS "t0"'
+        expected = 'SELECT "t0"."id", NULL AS "amount" FROM "public"."orders" AS "t0"'
+        assert assert_same_rows(pg, result, expected, _ROWS) == [(1, None), (2, None), (3, None)]

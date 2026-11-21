@@ -137,8 +137,12 @@ def test_the_built_lock_and_wheels_carry_networkx_and_its_dependencies(tmp_path,
         },
     }
     fetched: list[str] = []
-    monkeypatch.setattr(build, "_download", lambda url: json.dumps(lock).encode())
-    monkeypatch.setattr(build, "_fetch", lambda name, dest, sha256=None: fetched.append(name))
+
+    def fetch(name, sha256):  # each file's bytes, as build._fetch returns them once checked
+        fetched.append(name)
+        return json.dumps(lock).encode() if name == build.LOCK else b"file"
+
+    monkeypatch.setattr(build, "_fetch", fetch)
     monkeypatch.setattr(build, "build_lite", lambda target: None)
     monkeypatch.setattr(build, "fingerprint", lambda: "fp")
 
@@ -156,3 +160,194 @@ def test_the_built_lock_and_wheels_carry_networkx_and_its_dependencies(tmp_path,
         assert name in written
         assert f"{name}.whl" in fetched
     assert "unshipped" not in written
+
+
+def _windows_default_text_encoding(monkeypatch):
+    """Makes an unnamed text encoding mean cp1252, as it does on a Windows build runner."""
+    import pathlib
+
+    read_text, write_text = pathlib.Path.read_text, pathlib.Path.write_text
+
+    def read(self, encoding=None, errors=None, **kw):
+        return read_text(self, encoding or "cp1252", errors, **kw)
+
+    def write(self, data, encoding=None, errors=None, newline=None):
+        return write_text(self, data, encoding or "cp1252", errors, newline)
+
+    monkeypatch.setattr(pathlib.Path, "read_text", read)
+    monkeypatch.setattr(pathlib.Path, "write_text", write)
+
+
+def test_the_core_bundle_is_patched_as_utf8_whatever_the_os_default(tmp_path, monkeypatch):
+    from provisa_notebook.build import _patch_splash
+
+    _windows_default_text_encoding(monkeypatch)
+    (tmp_path / "build").mkdir()
+    bundle = tmp_path / "build" / "jlab_core.abc123.js"
+    # U+03CF encodes as CF 8F; 0x8f has no cp1252 mapping, as in the failing Windows build.
+    bundle.write_bytes(("const k='Ϗ';" + _SPLASH_JS).encode("utf-8"))
+    _patch_splash(tmp_path)
+    out = bundle.read_bytes().decode("utf-8")
+    assert out.startswith("const k='Ϗ';")
+    assert "s.remove()" in out
+
+
+def test_every_text_read_and_write_in_the_build_names_its_encoding():
+    import ast
+    import inspect
+
+    from provisa_notebook import build
+
+    calls = [
+        node
+        for node in ast.walk(ast.parse(inspect.getsource(build)))
+        if isinstance(node, ast.Call)
+        and (
+            (isinstance(node.func, ast.Attribute) and node.func.attr in ("read_text", "write_text"))
+            or (isinstance(node.func, ast.Name) and node.func.id == "open")
+        )
+    ]
+    assert calls
+    unnamed = [node.lineno for node in calls if not any(k.arg == "encoding" for k in node.keywords)]
+    assert unnamed == []
+
+
+# ── what a build downloads: every file pinned, and kept so it is downloaded once ──────────────
+#
+# An image build that asked Pyodide's CDN for each of its files was failed by one refused request
+# (run 43879947072: "HTTP Error 503: No healthy backends" inside `docker build`).
+
+
+def _sha(data: bytes) -> str:
+    import hashlib
+
+    return hashlib.sha256(data).hexdigest()
+
+
+def _no_network(monkeypatch):
+    from provisa_notebook import build
+
+    def refuse(url):
+        raise AssertionError(f"asked the network for {url}")
+
+    monkeypatch.setattr(build, "_download", refuse)
+
+
+def test_the_lock_and_every_core_file_have_a_recorded_sha256():
+    from provisa_notebook import build
+
+    assert set(provisa_notebook.PYODIDE_SHA256) == {build.LOCK, *build.CORE}
+    for name, digest in provisa_notebook.PYODIDE_SHA256.items():
+        assert len(digest) == 64 and set(digest) <= set("0123456789abcdef"), name
+
+
+def test_a_build_with_no_downloads_directory_downloads_and_keeps_nothing(tmp_path, monkeypatch):
+    from provisa_notebook import build
+
+    monkeypatch.delenv(build.DOWNLOADS_ENV, raising=False)
+    monkeypatch.setattr(build, "_download", lambda url: b"core")
+    assert build.downloads_dir() is None
+    assert build._fetch("pyodide.js", _sha(b"core")) == b"core"
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_a_downloaded_file_is_kept_under_the_pyodide_version_and_not_downloaded_again(
+    tmp_path, monkeypatch
+):
+    from provisa_notebook import build
+
+    monkeypatch.setenv(build.DOWNLOADS_ENV, str(tmp_path))
+    asked = []
+
+    def download(url):
+        asked.append(url)
+        return b"wheel"
+
+    monkeypatch.setattr(build, "_download", download)
+    assert build._fetch("numpy.whl", _sha(b"wheel")) == b"wheel"
+    kept = tmp_path / provisa_notebook.PYODIDE_VERSION
+    assert [p.name for p in kept.iterdir()] == ["numpy.whl"]
+    assert asked == [build.CDN + "numpy.whl"]
+    _no_network(monkeypatch)
+    assert build._fetch("numpy.whl", _sha(b"wheel")) == b"wheel"
+
+
+def test_a_download_that_is_not_the_pinned_file_is_refused_and_not_kept(tmp_path, monkeypatch):
+    from provisa_notebook import build
+
+    monkeypatch.setenv(build.DOWNLOADS_ENV, str(tmp_path))
+    monkeypatch.setattr(build, "_download", lambda url: b"something else")
+    with pytest.raises(ValueError, match="numpy.whl: sha256 does not match"):
+        build._fetch("numpy.whl", _sha(b"wheel"))
+    assert not (tmp_path / provisa_notebook.PYODIDE_VERSION).exists()
+
+
+def test_a_kept_file_that_is_not_the_pinned_one_is_refused_by_path(tmp_path, monkeypatch):
+    from provisa_notebook import build
+
+    monkeypatch.setenv(build.DOWNLOADS_ENV, str(tmp_path))
+    kept = tmp_path / provisa_notebook.PYODIDE_VERSION
+    kept.mkdir()
+    (kept / "numpy.whl").write_bytes(b"cut short")
+    _no_network(monkeypatch)
+    with pytest.raises(ValueError, match=r"numpy\.whl: sha256 is not Pyodide"):
+        build._fetch("numpy.whl", _sha(b"wheel"))
+
+
+def _a_pyodide(monkeypatch):
+    """A stand-in release: a lock of two packages (one depending on the other) and the core
+    files, with the sums a build checks them against. Returns {url: bytes}."""
+    import json
+
+    from provisa_notebook import build
+
+    files = {name: f"core {name}".encode() for name in build.CORE}
+    files["a.whl"] = b"package a"
+    files["b.whl"] = b"package b"
+    lock = {
+        "packages": {
+            "a": {"file_name": "a.whl", "sha256": _sha(files["a.whl"]), "depends": ["b"]},
+            "b": {"file_name": "b.whl", "sha256": _sha(files["b.whl"]), "depends": []},
+            "unshipped": {"file_name": "c.whl", "sha256": _sha(b"c"), "depends": []},
+        }
+    }
+    files[build.LOCK] = json.dumps(lock).encode()
+    monkeypatch.setattr(build, "PACKAGES", ("a",))
+    monkeypatch.setattr(
+        build,
+        "PYODIDE_SHA256",
+        {name: _sha(files[name]) for name in (build.LOCK, *build.CORE)},
+    )
+    return {build.CDN + name: data for name, data in files.items()}
+
+
+def test_download_only_keeps_every_file_a_build_fetches_and_a_second_asks_for_nothing(
+    tmp_path, monkeypatch
+):
+    from provisa_notebook import build
+
+    served = _a_pyodide(monkeypatch)
+    monkeypatch.setenv(build.DOWNLOADS_ENV, str(tmp_path))
+    asked = []
+
+    def download(url):
+        asked.append(url)
+        return served[url]
+
+    monkeypatch.setattr(build, "_download", download)
+    names = build.download_only()
+    assert sorted(names) == sorted([build.LOCK, *build.CORE, "a.whl", "b.whl"])
+    kept = tmp_path / provisa_notebook.PYODIDE_VERSION
+    assert sorted(p.name for p in kept.iterdir()) == sorted(names)
+    assert sorted(asked) == sorted(build.CDN + name for name in names)
+    _no_network(monkeypatch)
+    assert sorted(build.download_only()) == sorted(names)
+
+
+def test_download_only_without_a_directory_says_which_variable_names_it(monkeypatch):
+    from provisa_notebook import build
+
+    monkeypatch.delenv(build.DOWNLOADS_ENV, raising=False)
+    _no_network(monkeypatch)
+    with pytest.raises(RuntimeError, match="PROVISA_NOTEBOOK_DOWNLOADS"):
+        build.download_only()

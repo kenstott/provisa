@@ -242,9 +242,9 @@ def test_a_profiled_column_is_seen_by_the_roles_column_served_serves_it():
     from provisa.security.rights import served_roles
 
     roles = {
-        "seller": {"domain_access": ["sales"]},
-        "hr": {"domain_access": ["hr"]},
-        "everywhere": {"domain_access": ["*"]},
+        "seller": {"domain_access": ["sales"], "capabilities": ["usage"]},
+        "hr": {"domain_access": ["hr"], "capabilities": ["usage"]},
+        "everywhere": {"domain_access": ["*"], "capabilities": ["usage"]},
     }
     open_column = {"column_name": "id", "visible_to": [], "scope": "domain"}
     assert served_roles(roles, {}, "sales", open_column) == set()
@@ -260,5 +260,22 @@ def test_a_profiled_column_is_seen_by_the_roles_column_served_serves_it():
     assert served_roles(roles, {}, "sales", published) == {"seller", "hr", "everywhere"}
     # A grant to a parent serves the roles inheriting it, as the schema build expands it.
     chains = {"junior": ["junior", "seller"]}
-    roles["junior"] = {"domain_access": ["sales"]}
+    roles["junior"] = {"domain_access": ["sales"], "capabilities": ["usage"]}
     assert "junior" in served_roles(roles, chains, "sales", named)
+
+
+def test_a_masked_and_a_pii_column_show_the_classification_state_and_count():
+    # REQ-2147: the state (a name) and the count of values tested hold no value of the column.
+    results = _results()
+    for row in results["columns"]:
+        row["classification"] = "too_few_values"
+        row["classification_values"] = 3
+    shown = safe_run(results, RULES, frozenset({"analyst"}))
+    cols = {r["column_name"]: r for r in shown["columns"]}
+    for c in ("email", "ssn"):
+        assert cols[c]["classification"] == "too_few_values"
+        assert cols[c]["classification_values"] == 3
+        # no value-bearing field passes
+        for f in ("min_value", "max_value", "mean", "row_count"):
+            assert cols[c].get(f) is None
+    assert cols["id"]["classification"] == "too_few_values"

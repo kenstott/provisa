@@ -33,6 +33,7 @@ function makeTable(overrides: Partial<RegisteredTable> = {}): RegisteredTable {
     tableName: "orders",
     alias: null,
     description: null,
+    registeredAt: "2026-11-01T00:00:00+00:00",
     cacheTtl: null,
     roleTtl: [],
     pagingKind: null,
@@ -40,7 +41,8 @@ function makeTable(overrides: Partial<RegisteredTable> = {}): RegisteredTable {
     pagingCeilingRows: null,
     replicate: null,
     region: null,
-    draft: false,
+    withdrawn: false,
+    sourceWithdrawn: false,
     rowMaterialize: false,
     loadProtected: null,
     offPeakWindow: null,
@@ -73,12 +75,14 @@ function makeTable(overrides: Partial<RegisteredTable> = {}): RegisteredTable {
     mvPersist: "replace",
     mvPrimaryKey: [],
     mvIncremental: false,
+    mvRebuildEvery: null,
+    incrementalOption: { available: true, code: null, reason: null },
     mvCalendar: null,
     mvGrain: null,
     mvAllowedLateness: 0,
     mvExpectedEvents: null,
     mvBusinessDayGrain: false,
-    productId: null,
+    productIds: [],
     enableAggregates: false,
     enableGroupBy: false,
     canDeployToDb: false,
@@ -120,6 +124,7 @@ function renderForm(hidingOnly: boolean) {
     <TableEditForm
       hidingOnly={hidingOnly}
       savedProfilerId={null}
+      domainChoices={[]}
       editingTable={makeTable({ columns: [EMAIL] })}
       savedTable={makeTable({ columns: [EMAIL] })}
       setEditingTable={vi.fn()}
@@ -177,7 +182,7 @@ describe("TableEditForm for a governance-only editor (REQ-1944)", () => {
     // REQ-2059: the column's mask list opens under its row, and can be started there.
     fireEvent.click(screen.getByTestId("mask-toggle-email"));
     expect(screen.getByTestId("mask-list-email-start")).not.toBeDisabled();
-    expect(control(row(), "Visible To (Read)")).not.toBeDisabled();
+    expect(control(row(), "Read grants")).not.toBeDisabled();
   });
 
   it("is the whole editor for a table editor", () => {

@@ -34,7 +34,9 @@ table twice (a self-join) scans its rows twice, so that table's rows are held fo
 BOUNDED (REQ-2100). Every statement runs on one DuckDB instance per process (:func:`configure`):
 its memory, its threads and its spill to disk are the operator's settings. A statement that
 spills past the cap -- DuckDB's own limit, or the end of the spill volume a built image is given
-at the cap's size -- is refused naming ``codesource.duckdb_spill_cap_mb`` (:class:`SpillCapped`). Without an ORDER BY a statement's rows come in no particular order, as
+at the cap's size -- is refused naming ``codesource.duckdb_spill_cap_mb`` (:class:`SpillCapped`).
+A statement past what DuckDB can spill from at all is refused naming
+``codesource.duckdb_memory_mb`` and ``codesource.duckdb_threads`` (:class:`MemoryCapped`). Without an ORDER BY a statement's rows come in no particular order, as
 SQL has it, which leaves DuckDB free to answer without holding them in order.
 
 This module is carried, as it is, by the front end of every built image and used by Provisa for a
@@ -93,10 +95,17 @@ NUMERIC = pa.decimal128(38, 9)
 ANSWER_ROWS = 65_536
 #: The operator setting that caps a statement's spill to disk, named when a statement reaches it.
 SPILL_CAP_SETTING = "codesource.duckdb_spill_cap_mb"
+#: The operator settings a statement's memory is, named when a statement runs out of it.
+MEMORY_SETTING = "codesource.duckdb_memory_mb"
+THREADS_SETTING = "codesource.duckdb_threads"
 
 
 class SpillCapped(ValueError):
     """A statement needed more disk to spill to than the operator's cap allows."""
+
+
+class MemoryCapped(ValueError):
+    """A statement needed more memory than DuckDB could answer it in, even spilling to disk."""
 
 
 class Unbounded(RuntimeError):
@@ -166,17 +175,26 @@ _NO_SPACE = "No space left on device"
 
 
 def _named(exc: duckdb.Error) -> Exception:
-    """DuckDB's error, or the refusal naming the spill cap when that is what it hit: its own
-    temporary-directory limit, or the end of the volume it spills to."""
+    """DuckDB's error, or the refusal naming the bound it hit: the spill cap (its own
+    temporary-directory limit, or the end of the volume it spills to), or the memory and threads
+    (past what it can spill from, each thread holding blocks it cannot give up). More threads
+    take more of the memory, so the way out is more memory or fewer threads."""
     said = str(exc)
-    if _NO_SPACE in said or (
-        isinstance(exc, duckdb.OutOfMemoryException) and "max_temp_directory_size" in said
-    ):
+    out_of_memory = isinstance(exc, duckdb.OutOfMemoryException)
+    if _NO_SPACE in said or (out_of_memory and "max_temp_directory_size" in said):
         assert _bounds is not None  # the statement ran on the configured instance
         cap = _bounds[2]
         return SpillCapped(
             f"the statement needs more disk to spill to than {SPILL_CAP_SETTING} allows "
             f"({cap} MiB): raise it, or narrow the statement"
+        )
+    if out_of_memory:
+        assert _bounds is not None  # the statement ran on the configured instance
+        memory_mb, threads = _bounds[0], _bounds[1]
+        return MemoryCapped(
+            "the statement needs more memory than DuckDB can answer it in, even spilling to "
+            f"disk: {MEMORY_SETTING} is {memory_mb} MiB and {THREADS_SETTING} is {threads}. "
+            f"Raise {MEMORY_SETTING}, lower {THREADS_SETTING}, or narrow the statement"
         )
     return exc
 
@@ -389,19 +407,54 @@ def read_context(sql: str, dialect: str, table: str, columns: list[str]) -> dict
     return {"filters": filters, "order_by": order_by, "limit": limit, "columns": read_columns}
 
 
+def _argument_levels(read: exp.Table) -> Iterator[tuple[exp.Select, set[str], list[exp.Select]]]:
+    """Each SELECT whose WHERE can hold an argument of ``read``: the one reading the table, then
+    each that reads it through a derived table, as a governed relation is (REQ-039). With the
+    names that qualify ``read``'s columns there, and the SELECTs a column passes through to it."""
+    select = read.parent_select
+    if select is None:
+        return
+    names = {read.alias_or_name.lower(), read.name.lower()}
+    below: list[exp.Select] = []
+    while True:
+        yield select, names, below
+        relation = select.parent
+        holder = relation.parent if isinstance(relation, exp.Subquery) else None
+        outer = holder.parent if isinstance(holder, (exp.From, exp.Join)) else None
+        if relation is None or not isinstance(outer, exp.Select):
+            return
+        names = {relation.alias_or_name.lower()}
+        below = [*below, select]
+        select = outer
+
+
+def _passes(select: exp.Select, name: str) -> bool:
+    """Whether ``select`` gives the level above a column ``name``."""
+    return any(p.is_star or p.alias_or_name.lower() == name.lower() for p in select.expressions)
+
+
 def nf_given(sql: str, dialect: str, table: str) -> dict[str, Any]:
-    """The values a statement's top-level ``_nf_{name} = literal`` conjuncts on ``table`` give
-    its parameters, by name: what an engine that attached the host hands it."""
+    """The values a statement's ``_nf_{name} = literal`` conjuncts give the parameters of ``table``,
+    by name: what an engine that attached the host hands it. A conjunct is the top-level one of the
+    SELECT reading the table, or of one reading it through a derived table that passes the column
+    up (a governed relation, whose statement's WHERE stands outside it, REQ-039); a column qualified
+    by another relation's name is that relation's."""
     tree = sqlglot.parse_one(sql, read=dialect)
     given: dict[str, Any] = {}
     for read in _reading(tree, table):
-        select = read.parent_select
-        where = select.args.get("where") if select is not None else None
-        for conjunct in conjuncts(where.this if where is not None else None):
-            if not isinstance(conjunct, exp.EQ):
-                continue
-            for column, value in ((conjunct.left, conjunct.right), (conjunct.right, conjunct.left)):
-                if isinstance(column, exp.Column) and column.name.startswith("_nf_"):
+        for select, names, below in _argument_levels(read):
+            where = select.args.get("where")
+            for conjunct in conjuncts(where.this if where is not None else None):
+                if not isinstance(conjunct, exp.EQ):
+                    continue
+                sides = ((conjunct.left, conjunct.right), (conjunct.right, conjunct.left))
+                for column, value in sides:
+                    if not isinstance(column, exp.Column) or not column.name.startswith("_nf_"):
+                        continue
+                    if column.table and column.table.lower() not in names:
+                        continue
+                    if not all(_passes(level, column.name) for level in below):
+                        continue
                     try:
                         given.setdefault(column.name[len("_nf_") :], _value(value))
                     except _NotLiteral:
@@ -476,10 +529,10 @@ class _Kept:
     """``rows`` as DuckDB reads them, what fails as they are read kept in ``failed``: DuckDB,
     reading them, reports it inside an error of its own, and the answer raises it as it was.
 
-    DuckDB scans a reader through Arrow's read-ahead, which goes on pulling the rows on Arrow's
-    threads after the statement has failed: :meth:`stop` ends that -- the function is read no
-    further -- and returns once no pull is in progress, so no Arrow thread is left in Python (a
-    host exiting with one hung, or in a built image crashed)."""
+    A table read once is DuckDB's as the reader's Arrow C stream, pulled on the statement's own
+    threads, never through Arrow's read-ahead pool (:func:`answer_reads`). A table read twice is
+    held whole first. :meth:`stop` ends the reading when the answer ends -- the function is read
+    no further -- and returns once no pull is in progress."""
 
     def __init__(self, rows: pa.RecordBatchReader, failed: list[BaseException]) -> None:
         self._rows = rows
@@ -532,7 +585,7 @@ def answer_reads(
     to a table reads its rows, under the name the statement gives it. The answer, a batch at a
     time as DuckDB makes it."""
     tree = sqlglot.parse_one(sql, read=dialect)
-    relations: dict[str, pa.RecordBatchReader | pa.Table] = {}
+    relations: dict[str, pa.Table | object] = {}  # a table, or a reader's Arrow C stream
     failed: list[BaseException] = []
     kept: list[_Kept] = []
     for i, (table, held) in enumerate(rows.items()):
@@ -541,7 +594,16 @@ def answer_reads(
         typed_rows = _Kept(typed(_reader(held)), failed)
         kept.append(typed_rows)
         # A reader is scanned once: a table the statement reads twice has its rows held for it.
-        relations[relation] = typed_rows.reader.read_all() if len(reads) > 1 else typed_rows.reader
+        # One read once is DuckDB's as an Arrow C stream, not a pyarrow reader: DuckDB scans a
+        # reader through pyarrow's dataset Scanner, whose read-ahead pulls the rows on Arrow's
+        # thread pool, a thread the statement does not end -- one coming back into Python as the
+        # interpreter finalizes is ended there mid-task, and Arrow's pool then waits at exit for
+        # it forever. A stream DuckDB pulls on the statement's own threads.
+        relations[relation] = (
+            typed_rows.reader.read_all()
+            if len(reads) > 1
+            else typed_rows.reader.__arrow_c_stream__()
+        )
         for read in reads:
             alias = read.alias_or_name
             read.replace(exp.alias_(exp.to_table(relation), alias, table=True))
@@ -559,7 +621,9 @@ def answer_reads(
     try:
         for relation, held in relations.items():
             con.register(relation, held)
-        answered = con.execute(duckdb_sql.as_duckdb(tree)).to_arrow_reader(ANSWER_ROWS)
+        # The statement as a relation: DuckDB 2.0's DB-API result hands its Arrow reader over
+        # only once it has computed and held the whole answer.
+        answered = con.sql(duckdb_sql.as_duckdb(tree)).to_arrow_reader(ANSWER_ROWS)
     except duckdb.Error as exc:
         done()
         if failed:
@@ -582,6 +646,15 @@ def answer_reads(
             if named is exc:
                 raise
             raise named from None
+        except OSError as streamed:
+            # DuckDB's error met in a later batch, as its Arrow reader raises it: carrying only
+            # DuckDB's message, raised as the exception DuckDB raises for it.
+            if failed:
+                raise failed[0] from None
+            engine = duckdb_sql.engine_error(streamed)
+            if not isinstance(engine, duckdb.Error):
+                raise
+            raise _named(engine) from None
         except pa.ArrowException:
             if failed:
                 raise failed[0] from None

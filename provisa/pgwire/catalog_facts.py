@@ -16,12 +16,19 @@ role lists and is not served holds no privilege, so those functions answer false
 
 from __future__ import annotations
 
+import dataclasses
 import logging
 import time
 from typing import Any
 
 from provisa.compiler.naming import apply_sql_name
-from provisa.security.rights import SQL_CATALOG_TABLES, Capability, has_capability
+from provisa.security.rights import (
+    SQL_CATALOG_TABLES,
+    SYSTEM_DOMAINS,
+    Capability,
+    has_capability,
+    reaches_domain,
+)
 from provisa.transpiler.metadata_facts import CatalogFacts, catalog_facts, role_privileges
 from provisa.transpiler.metadata_oids import metric_oid, table_oid
 
@@ -47,15 +54,44 @@ def _unserved(ctx: Any, raw_tables: list[dict]) -> list[tuple[int, str]]:
 
 
 def role_facts(role_id: str, state: Any) -> CatalogFacts:
-    """``role_id``'s facts, of the model as it stands."""
+    """``role_id``'s facts, of the model as it stands, beside every model role's privileges by
+    its name: a privilege function asked about another role answers from them (REQ-2167, amended
+    2026-11-03, Privileges, visibility and notifications)."""
+    names = sorted(r for r in (getattr(state, "roles", None) or {}) if isinstance(r, str))
+    metrics = getattr(getattr(state, "config", None), "metrics", None)
+    # A metric's grant names the roles that read it (REQ-2153); a column's visibility is not
+    # decided here.
+    reads = {
+        name: [metric_oid(m.name) for m in metrics if name in m.visible_to]
+        if isinstance(metrics, list)
+        else []
+        for name in {role_id, *names}
+    }
+    own = _own_facts(role_id, state, reads[role_id])
+    others = [(name, _own_facts(name, state, reads[name])) for name in names]
+    return dataclasses.replace(
+        own,
+        role_privileges=tuple((name, *row) for name, facts in others for row in facts.privileges),
+        role_unserved=tuple((name, *row) for name, facts in others for row in facts.unserved),
+    )
+
+
+def _own_facts(role_id: str, state: Any, metric_oids: list[int]) -> CatalogFacts:
     ctx = state.contexts.get(role_id)
     if ctx is None:
         return catalog_facts(role_id, {})
     raw_tables: list[dict] = state.schema_build_cache.get("tables") or []
+    role = state.roles.get(role_id)
+    # REQ-1132: a catalog function answers for a role's non-system grants, and for a system domain
+    # only where the role holds it: meta's default tier is read, and is not among its tables.
     served = {
         tm.table_id
         for tm in ctx.tables.values()
         if (tm.domain_id, tm.original_table_name or tm.table_name) not in SQL_CATALOG_TABLES
+        and (
+            tm.domain_id not in SYSTEM_DOMAINS
+            or reaches_domain(role["domain_access"], tm.domain_id)
+        )
     }
     write_grants = {
         table["id"]: {
@@ -66,18 +102,12 @@ def role_facts(role_id: str, state: Any) -> CatalogFacts:
         for table in raw_tables
     }
     write_ops = {table["id"]: frozenset(table.get("write_ops") or ()) for table in raw_tables}
-    role = state.roles.get(role_id)
     can_write = role is not None and has_capability(role, Capability.WRITE)
-    config = getattr(state, "config", None)
-    metrics = getattr(config, "metrics", None)
-    readable_metrics = sorted(
-        m.name for m in (metrics if isinstance(metrics, list) else ()) if role_id in m.visible_to
-    )
     return catalog_facts(
         role_id,
         role_privileges(served, write_grants, write_ops, can_write),
         _unserved(ctx, raw_tables),
-        [metric_oid(name) for name in readable_metrics],
+        metric_oids,
     )
 
 

@@ -23,6 +23,7 @@ compiled join keeps its key though the role cannot select it.
 
 from __future__ import annotations
 
+import pytest
 import sqlglot
 import sqlglot.expressions as exp
 
@@ -136,13 +137,38 @@ def _violations(model, sql: str) -> list[str]:
     return [f"{v.code} {v.message}" for v in validate_sql(sql, ctx, gov, ROLE, tables)]
 
 
-def _projection(governed: str) -> dict[str, str]:
-    """Output name → the SQL of what the governed statement's answer holds for it."""
+def _served(governed: str) -> dict[str, str]:
+    """Each column the governed relation the statement reads exposes -> the SQL it reads it
+    as (REQ-039: the relation is the only place a column is served, masked)."""
     tree = sqlglot.parse_one(governed, read="postgres")
     assert isinstance(tree, exp.Select)
+    relation = tree.args["from_"].this
+    assert isinstance(relation, exp.Subquery), governed
     return {
-        e.alias_or_name: (e.this if isinstance(e, exp.Alias) else e).sql() for e in tree.expressions
+        e.alias_or_name: (e.this if isinstance(e, exp.Alias) else e).sql()
+        for e in relation.this.expressions
     }
+
+
+def _projection(governed: str) -> dict[str, str]:
+    """Output name -> the SQL of what the governed statement's answer holds for it, read through
+    the governed relation; a name the relation does not expose holds nothing (PostgreSQL refuses
+    it as an unknown column)."""
+    tree = sqlglot.parse_one(governed, read="postgres")
+    assert isinstance(tree, exp.Select)
+    served = _served(governed)
+    out: dict[str, str] = {}
+    for e in tree.expressions:
+        if isinstance(e, exp.Star):
+            out.update(served)
+            continue
+        target = e.this if isinstance(e, exp.Alias) else e
+        if isinstance(target, exp.Column):
+            if target.name in served:
+                out[e.alias_or_name] = served[target.name]
+        else:
+            out[e.alias_or_name] = target.sql()
+    return out
 
 
 # --- a published name is governed as the column it names ---------------------------------------
@@ -161,7 +187,8 @@ def test_a_hidden_aliased_column_is_refused_by_either_name():
     for name in ("mail", "email"):
         sql = f'SELECT "id", "{name}" FROM "shop"."customers"'
         assert any(v.startswith("V003") for v in _violations(model, sql)), name
-        assert name not in _projection(apply_governance(sql, model[2]))
+        with pytest.raises(PermissionError, match=rf"\[V003\] Column '{name}' is not visible"):
+            apply_governance(sql, model[2])
 
 
 def test_a_masked_aliased_column_is_masked_when_every_column_is_visible():
@@ -224,8 +251,9 @@ def test_the_join_column_itself_is_still_not_selectable():
     model = _model(email_to=EVERY)
     sql = 'SELECT "o"."customer_id" FROM "shop"."orders" "o"'
     assert any(v.startswith("V003") for v in _violations(model, sql))
-    # Outside an approved join condition, a reference to it reads nothing.
-    governed = apply_governance(
-        'SELECT "o"."id" FROM "shop"."orders" "o" WHERE "o"."customer_id" = 7', model[2]
-    )
-    assert "customer_id" not in governed
+    # Outside an approved join condition, a reference to it is refused in any clause, naming
+    # it, before anything is sent: the relation does not expose it (REQ-039).
+    with pytest.raises(PermissionError, match=r"\[V003\] Column o\.customer_id is not visible"):
+        apply_governance(
+            'SELECT "o"."id" FROM "shop"."orders" "o" WHERE "o"."customer_id" = 7', model[2]
+        )

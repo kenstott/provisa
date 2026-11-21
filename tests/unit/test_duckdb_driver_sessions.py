@@ -88,7 +88,9 @@ def test_every_connection_sees_the_same_database():
 
 def test_a_statement_is_interrupted_at_the_request_deadline():
     driver = _driver()
-    slow = "SELECT count(*) FROM t a, t b, t c WHERE a.n + b.n + c.n = -1"
+    # A predicate the optimizer cannot prove empty: DuckDB 2.0 answers a.n + b.n + c.n = -1 from
+    # the columns' statistics (every n >= 0) without running the join.
+    slow = "SELECT count(*) FROM t a, t b, t c WHERE hash(a.n, b.n, c.n) = 0"
     started = time.monotonic()
     with request_deadline.within(0.5), pytest.raises(TimeoutError):
         asyncio.run(driver.execute(slow))

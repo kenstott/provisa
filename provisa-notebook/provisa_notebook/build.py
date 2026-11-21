@@ -10,11 +10,18 @@
 
 """Fill ``assets/pyodide`` for a build of provisa-notebook: ``python -m provisa_notebook.build``.
 
-Pyodide's core files and the packages in :data:`PACKAGES` with their dependencies are downloaded
-from Pyodide's release CDN and checked against the lock file's sha256. The lock written beside
-them lists only what is shipped, so an import of anything else fails here, by name, rather than
-reaching for a network the deployment may not have. The provisa-client wheel is built from this
-repository's ``provisa-client`` and recorded in ``manifest.json``.
+Pyodide's lock file, its core files and the packages in :data:`PACKAGES` with their dependencies
+are downloaded from Pyodide's release CDN. Each is checked before it is used: the lock and the core
+files against the sha256 recorded in :data:`PYODIDE_SHA256`, each package against the lock's. The
+lock written beside them lists only what is shipped, so an import of anything else fails here, by
+name, rather than reaching for a network the deployment may not have. The provisa-client wheel is
+built from this repository's ``provisa-client`` and recorded in ``manifest.json``.
+
+A build whose environment names a directory in ``PROVISA_NOTEBOOK_DOWNLOADS`` keeps each
+downloaded file there, under the Pyodide version, and a later build takes it from there: a file
+already kept is never downloaded again. ``python -m provisa_notebook.build --download-only`` fills
+that directory and builds nothing, so one download serves every build that is given the directory
+(CI keeps it in a cache keyed by the pins; the image builds mount it).
 """
 
 from __future__ import annotations
@@ -30,7 +37,7 @@ import tempfile
 import urllib.request
 from pathlib import Path
 
-from provisa_notebook import ASSETS, PACKAGES, PYODIDE_VERSION
+from provisa_notebook import ASSETS, PACKAGES, PYODIDE_SHA256, PYODIDE_VERSION
 
 CDN = f"https://cdn.jsdelivr.net/pyodide/v{PYODIDE_VERSION}/full/"
 #: The JupyterLite the Jupyter Notebook tab embeds, built in a virtualenv of its own: nothing of it
@@ -57,7 +64,10 @@ LITE_CONFIG = {
     },
 }
 NOTEBOOKS = Path(__file__).resolve().parent / "notebooks"
+LOCK = "pyodide-lock.json"
 CORE = ("pyodide.js", "pyodide.mjs", "pyodide.asm.js", "pyodide.asm.wasm", "python_stdlib.zip")
+#: The environment variable naming the directory downloaded files are kept in.
+DOWNLOADS_ENV = "PROVISA_NOTEBOOK_DOWNLOADS"
 REPO = Path(__file__).resolve().parents[2]
 
 
@@ -99,11 +109,56 @@ def _download(url: str) -> bytes:
     raise AssertionError("unreachable")
 
 
-def _fetch(name: str, dest: Path, sha256: str | None = None) -> None:
+def downloads_dir() -> Path | None:
+    """Where downloaded files are kept: the directory DOWNLOADS_ENV names, under the Pyodide
+    version (a bump keeps its files beside the last one's). None when the environment names no
+    directory: nothing is kept, and every file is downloaded."""
+    root = os.environ.get(DOWNLOADS_ENV)
+    return Path(root) / PYODIDE_VERSION if root else None
+
+
+def _fetch(name: str, sha256: str) -> bytes:
+    """Pyodide's file ``name``, its sha256 the one given: the kept copy when the downloads
+    directory has one, else downloaded and, with a downloads directory, kept there. A kept or
+    downloaded file with another sha256 is refused; nothing unchecked is returned or kept."""
+    kept = downloads_dir()
+    if kept is not None and (kept / name).is_file():
+        data = (kept / name).read_bytes()
+        if hashlib.sha256(data).hexdigest() != sha256:
+            raise ValueError(
+                f"{kept / name}: sha256 is not Pyodide {PYODIDE_VERSION}'s; delete the file"
+            )
+        return data
     data = _download(CDN + name)
-    if sha256 is not None and hashlib.sha256(data).hexdigest() != sha256:
-        raise ValueError(f"{name}: sha256 does not match Pyodide {PYODIDE_VERSION}'s lock")
-    dest.write_bytes(data)
+    if hashlib.sha256(data).hexdigest() != sha256:
+        raise ValueError(f"{name}: sha256 does not match Pyodide {PYODIDE_VERSION}'s")
+    if kept is not None:
+        kept.mkdir(parents=True, exist_ok=True)
+        # Written whole or not at all: a build stopped mid-write leaves no kept file.
+        partial = kept / f"{name}.{os.getpid()}.partial"
+        partial.write_bytes(data)
+        os.replace(partial, kept / name)
+    return data
+
+
+def _fetch_lock() -> dict:
+    return json.loads(_fetch(LOCK, PYODIDE_SHA256[LOCK]))
+
+
+def download_only() -> list[str]:
+    """Every file a build fetches, into the downloads directory; the names fetched. Raises when
+    the environment names no directory: there would be nowhere to keep them."""
+    if downloads_dir() is None:
+        raise RuntimeError(f"--download-only needs {DOWNLOADS_ENV} to name a directory")
+    lock = _fetch_lock()
+    names = [LOCK, *CORE]
+    for name in CORE:
+        _fetch(name, PYODIDE_SHA256[name])
+    for package in closure(lock, PACKAGES):
+        entry = lock["packages"][package]
+        _fetch(entry["file_name"], entry["sha256"])
+        names.append(entry["file_name"])
+    return names
 
 
 def build(out: Path = ASSETS) -> dict:
@@ -111,13 +166,13 @@ def build(out: Path = ASSETS) -> dict:
     if target.exists():
         shutil.rmtree(target)
     target.mkdir(parents=True)
-    lock = json.loads(_download(CDN + "pyodide-lock.json"))
+    lock = _fetch_lock()
     for name in CORE:
-        _fetch(name, target / name)
+        (target / name).write_bytes(_fetch(name, PYODIDE_SHA256[name]))
     shipped = closure(lock, PACKAGES)
     for name in shipped:
         entry = lock["packages"][name]
-        _fetch(entry["file_name"], target / entry["file_name"], entry["sha256"])
+        (target / entry["file_name"]).write_bytes(_fetch(entry["file_name"], entry["sha256"]))
     lock["packages"] = {name: lock["packages"][name] for name in shipped}
     wheels = target / "wheels"
     subprocess.run(
@@ -149,7 +204,7 @@ def build(out: Path = ASSETS) -> dict:
         "depends": ["pandas", "pyarrow"],
         "unvendored_tests": False,
     }
-    (target / "pyodide-lock.json").write_text(json.dumps(lock))
+    (target / "pyodide-lock.json").write_text(json.dumps(lock), encoding="utf-8")
     build_lite(out / "lite")
     manifest = {
         "build": fingerprint(),
@@ -157,7 +212,7 @@ def build(out: Path = ASSETS) -> dict:
         "packages": shipped,
         "client_wheel": f"wheels/{client.name}",
     }
-    (target / "manifest.json").write_text(json.dumps(manifest, indent=2))
+    (target / "manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
     return manifest
 
 
@@ -196,7 +251,9 @@ def _patch_splash(target: Path) -> None:
     if len(bundles) != 1:
         raise RuntimeError(f"expected one jlab_core bundle in {target / 'build'}, found {bundles}")
     bundle = bundles[0]
-    bundle.write_text(detach_splash_safely(bundle.read_text(), bundle.name))
+    bundle.write_text(
+        detach_splash_safely(bundle.read_text(encoding="utf-8"), bundle.name), encoding="utf-8"
+    )
 
 
 def build_lite(target: Path) -> None:
@@ -231,7 +288,7 @@ def build_lite(target: Path) -> None:
         )
         src = Path(tmp) / "src"
         shutil.copytree(NOTEBOOKS, src / "files")
-        (src / "jupyter-lite.json").write_text(json.dumps(LITE_CONFIG, indent=2))
+        (src / "jupyter-lite.json").write_text(json.dumps(LITE_CONFIG, indent=2), encoding="utf-8")
         built = subprocess.run(
             [
                 str(python),
@@ -282,10 +339,14 @@ def is_current(out: Path = ASSETS) -> bool:
     manifest = out / "pyodide" / "manifest.json"
     if not manifest.is_file() or not (out / "lite" / "jupyter-lite.json").is_file():
         return False
-    return json.loads(manifest.read_text()).get("build") == fingerprint()
+    return json.loads(manifest.read_text(encoding="utf-8")).get("build") == fingerprint()
 
 
 if __name__ == "__main__":
+    # --download-only: fill the downloads directory and build nothing.
+    if "--download-only" in sys.argv[1:]:
+        json.dump(download_only(), sys.stdout, indent=2)
+        sys.exit(0)
     # --if-stale: build only when the assets are missing or no longer match their sources.
     if "--if-stale" in sys.argv[1:] and is_current():
         sys.exit(0)

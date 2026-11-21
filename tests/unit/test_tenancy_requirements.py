@@ -60,7 +60,7 @@ class TestAuthMiddlewareSkipPaths:
     These assertions used to target ``TenantMiddleware._SKIP_PATHS``. That middleware was
     registered behind ``if state.multitenancy:`` inside ``create_app``, where the flag is still
     its ``False`` default (it is assigned in ``_load_and_build``, which lifespan runs later), so
-    it never installed and the skip set it owned protected nothing — the Lemon Squeezy webhook
+    it never installed and the skip set it owned protected nothing — the Stripe webhook
     401'd on the bearer gate. The guarantee now lives in the one middleware that does run.
     """
 
@@ -71,7 +71,7 @@ class TestAuthMiddlewareSkipPaths:
         assert "/billing/signup" in _SKIP_PATHS
 
     def test_skip_paths_set_contains_billing_webhook(self):
-        # REQ-594 — Lemon Squeezy authenticates with the HMAC X-Signature header, not a bearer.
+        # REQ-594 — Stripe authenticates with the HMAC Stripe-Signature header, not a bearer.
         from provisa.auth.middleware import _SKIP_PATHS
 
         assert "/billing/webhook" in _SKIP_PATHS
@@ -127,6 +127,9 @@ class TestAuthMiddlewareSkipPaths:
             # asks here for the operator settings it runs on. The answer is its proxy timeout and
             # the source it resolved from — a number, no data and no secret.
             "/internal/ui-server-settings",
+            # REQ-2006: the limits every demo sandbox runs under, the same on every node of the
+            # tier. It reveals only what the hosted-sandbox page states.
+            "/sandboxes/limits",
         }
         assert _SKIP_PATHS == expected
 

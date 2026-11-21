@@ -39,19 +39,17 @@ naming:
   rules: []
 roles:
 - id: bidder_a
-  parents: [viewer]
+  parents: [analyst]
   description: 'Bidder A''s clean team: reads the data room''s aggregate views, profiles, quality scores
     and masked samples, never a customer''s identity. Granted until the deal date.'
-  capabilities:
-  - query_development
+  capabilities: [data_product_read, glossary_read, query_development]
   domain_access:
   - dataroom
 - id: bidder_b
-  parents: [viewer]
+  parents: [analyst]
   description: 'Bidder B''s clean team: reads the data room''s aggregate views, profiles, quality scores
     and masked samples, never a customer''s identity. Granted until the deal date.'
-  capabilities:
-  - query_development
+  capabilities: [data_product_read, glossary_read, query_development]
   domain_access:
   - dataroom
 server:

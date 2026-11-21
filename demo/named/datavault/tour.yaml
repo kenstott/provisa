@@ -86,11 +86,10 @@ steps:
   capability: view_governance
   lineage: >-
     SELECT company_name, address, contact_email FROM "vault"."view_dim_customer"
-- key: datavaultAnalyst
+- key: datavaultMasked
   route: /sql
   capability: query_development
   role: analyst_eu
-- key: datavaultMasked
   sql: >-
     SELECT country, account_name, contact_name, contact_email, phone
     FROM "vault"."view_sat_customer_crm" ORDER BY country, account_name LIMIT 20

@@ -28,6 +28,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from provisa.kafka.security import KafkaSecurity
+
 #: The prefix of the consumer group a landing's offsets are committed under.
 LANDED_GROUP_PREFIX = "provisa-landed"
 
@@ -36,19 +38,31 @@ def landed_group(source_id: str) -> str:
     """The group the bound org's (and environment's) landings of ``source_id``'s tables commit
     where they stopped under: each org lands a topic into its own table, at its own time. Named
     where the org is bound, and handed to what reads the topic onward."""
-    from provisa.core.environments import PROD
     from provisa.core.request_context import active_env, require_current_org
 
-    org, env = require_current_org(), active_env()
-    if env == PROD:
+    return landed_group_of(require_current_org(), active_env(), source_id)
+
+
+def landed_group_of(org: str, env: str | None, source_id: str) -> str:
+    """:func:`landed_group` of org ``org``'s environment ``env`` (None or prod: the org's own),
+    named where that org is not the one bound: a demo sandbox's, recorded as its open copies its
+    template's landed rows (REQ-2049)."""
+    from provisa.core.environments import PROD
+
+    if env is None or env == PROD:
         return f"{LANDED_GROUP_PREFIX}-{org}-{source_id}"
     return f"{LANDED_GROUP_PREFIX}-{org}-{env}-{source_id}"
 
 
-def _consumer(bootstrap: str, group: str | None) -> Any:
+def _consumer(bootstrap: str, group: str | None, security: KafkaSecurity) -> Any:
     from aiokafka import AIOKafkaConsumer  # type: ignore[import-untyped]
 
-    return AIOKafkaConsumer(bootstrap_servers=bootstrap, group_id=group, enable_auto_commit=False)
+    return AIOKafkaConsumer(
+        bootstrap_servers=bootstrap,
+        group_id=group,
+        enable_auto_commit=False,
+        **security.client_kwargs(),
+    )
 
 
 async def _partitions(consumer: Any, topic: str) -> list[Any]:
@@ -73,9 +87,9 @@ async def drained_to(consumer: Any) -> dict[Any, int]:
     return {tp: await consumer.position(tp) for tp in consumer.assignment()}
 
 
-async def end_offsets(bootstrap: str, topic: str) -> dict[Any, int]:
+async def end_offsets(bootstrap: str, topic: str, *, security: KafkaSecurity) -> dict[Any, int]:
     """The offset each of ``topic``'s partitions publishes its next message at."""
-    consumer = _consumer(bootstrap, None)
+    consumer = _consumer(bootstrap, None, security)
     await consumer.start()
     try:
         partitions = await _partitions(consumer, topic)
@@ -84,12 +98,18 @@ async def end_offsets(bootstrap: str, topic: str) -> dict[Any, int]:
         await consumer.stop()
 
 
-async def record(bootstrap: str, landed: str, offsets: dict[Any, int]) -> None:
+async def record(
+    bootstrap: str,
+    landed: str,
+    offsets: dict[Any, int],
+    *,
+    security: KafkaSecurity,
+) -> None:
     """Record, under the landing group ``landed`` (:func:`landed_group`), that a landing stopped
     at ``offsets``."""
     if not offsets:
         return
-    consumer = _consumer(bootstrap, landed)
+    consumer = _consumer(bootstrap, landed, security)
     await consumer.start()
     try:
         consumer.assign(list(offsets))
@@ -98,10 +118,12 @@ async def record(bootstrap: str, landed: str, offsets: dict[Any, int]) -> None:
         await consumer.stop()
 
 
-async def recorded(bootstrap: str, landed: str, topic: str) -> dict[int, int]:
+async def recorded(
+    bootstrap: str, landed: str, topic: str, *, security: KafkaSecurity
+) -> dict[int, int]:
     """Where the last landing recorded under ``landed`` stopped on ``topic``, by partition;
     empty when none recorded any."""
-    consumer = _consumer(bootstrap, landed)
+    consumer = _consumer(bootstrap, landed, security)
     await consumer.start()
     try:
         partitions = await _partitions(consumer, topic)
@@ -111,13 +133,32 @@ async def recorded(bootstrap: str, landed: str, topic: str) -> dict[int, int]:
         await consumer.stop()
 
 
-async def start_where_landed(bootstrap: str, group: str, topic: str, landed: str) -> None:
+async def carry(
+    bootstrap: str, read_by: str, landed: str, topic: str, *, security: KafkaSecurity
+) -> None:
+    """Record, under the landing group ``landed``, that a landing stopped on ``topic`` where the
+    group ``read_by`` has read to: a copy of the table ``read_by``'s reader keeps, made after this,
+    continues from there (a demo sandbox's of its template's, REQ-2049)."""
+    from aiokafka import TopicPartition  # type: ignore[import-untyped]
+
+    read = await recorded(bootstrap, read_by, topic, security=security)
+    await record(
+        bootstrap,
+        landed,
+        {TopicPartition(topic, p): o for p, o in read.items()},
+        security=security,
+    )
+
+
+async def start_where_landed(
+    bootstrap: str, group: str, topic: str, landed: str, *, security: KafkaSecurity
+) -> None:
     """Commit for ``group``, on each partition of ``topic`` it has committed nothing on, where the
     landing stopped: its first start reads from there, neither missing what was published since
     nor reading again what the landing applied. A partition the group has committed on resumes
     where it did."""
-    stopped = await recorded(bootstrap, landed, topic)
-    consumer = _consumer(bootstrap, group)
+    stopped = await recorded(bootstrap, landed, topic, security=security)
+    consumer = _consumer(bootstrap, group, security)
     await consumer.start()
     try:
         partitions = await _partitions(consumer, topic)

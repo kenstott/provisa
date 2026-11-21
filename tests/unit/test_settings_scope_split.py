@@ -82,14 +82,14 @@ def app_state(monkeypatch):
 
 
 class TestOrgOverrideDoor:
-    async def test_naming_conventions_are_not_org_overridable(self):
-        """The org door owns the DOMAIN MODE alone — the conventions configure a process-global
-        module, so reaching them through an org write would rename every other org's schema."""
+    async def test_a_naming_field_the_org_does_not_own_is_not_overridable(self):
+        """REQ-1327: the org owns its domain mode and its conventions; the door names any other
+        field it is handed rather than storing it."""
         from provisa.core.org_settings import write_org_overrides
 
-        with pytest.raises(ValueError, match="naming.convention"):
+        with pytest.raises(ValueError, match="naming.something_else"):
             await write_org_overrides(
-                object(), {"naming": {"convention": "camel"}}, updated_by="alice"
+                object(), {"naming": {"something_else": 1}}, updated_by="alice"
             )
 
     async def test_domain_mode_is_org_overridable(self, monkeypatch):
@@ -140,9 +140,33 @@ class TestGetSettingsScope:
         for block in _PLATFORM_BLOCKS:
             assert block not in body
         assert body["features"]["platform_settings"] is False
-        # The domain mode stays — ordinary pages read it to decide whether domain UI exists.
-        assert set(body["naming"]) == {"use_domains", "default_domain"}
+        # REQ-1327: the whole naming block is the org's to read: its domain mode, its conventions.
+        assert set(body["naming"]) == {
+            "use_domains",
+            "default_domain",
+            "convention",
+            "sql_convention",
+            "domain_prefix",
+        }
         assert "redirect" in body and "cache" in body
+        # The processing settings it owns, and of remote GraphQL only the row limit.
+        assert set(body["graphql_remote"]) == {"max_rows"}
+        assert "sampling" in body and "replication" in body and "hot_tables" in body
+
+    @pytest.mark.parametrize("rights", [("org_settings",), ("platform_settings", "org_settings")])
+    async def test_an_org_administrator_reads_the_graphql_convention(
+        self, caller, app_state, monkeypatch, rights
+    ):
+        """REQ-194, REQ-416: the GraphQL naming convention shapes every name the org's schema
+        serves, and the relationships page suggests an alias by it. With no convention of its
+        own, the org administrator reads the deployment's (REQ-1327)."""
+        from provisa.api.admin import settings_router
+
+        monkeypatch.setattr(
+            settings_router, "read_config", lambda: {"naming": {"convention": "hasura_graphql"}}
+        )
+        body = await settings_router.get_settings(caller(*rights))
+        assert body["naming"]["convention"] == "hasura_graphql"
 
     async def test_org_overrides_resolve_on_the_read(self, caller, app_state):
         from provisa.api.admin.settings_router import get_settings
@@ -183,7 +207,7 @@ class TestPutSettingsScope:
         import provisa.api.admin.settings_router as router
 
         request = caller("org_settings")
-        request.json = lambda: _coro({"sampling": {"default_sample_size": 5}})
+        request.json = lambda: _coro({"limits": {"default_row_limit": 5}})
         with pytest.raises(ApiError) as exc:
             await router.update_settings(request)
         assert exc.value.status_code == 403
@@ -208,7 +232,7 @@ class TestPutSettingsScope:
 
         request = caller("org_settings")
         request.json = lambda: _coro(
-            {"cache": {"default_ttl": 60}, "sampling": {"default_sample_size": 5}}
+            {"cache": {"default_ttl": 60}, "limits": {"default_row_limit": 5}}
         )
         with pytest.raises(ApiError) as exc:
             await router.update_settings(request)
@@ -238,7 +262,7 @@ class TestDeploymentSettingsArePlatformAdminsEverywhere:
         assert body["features"]["deployment_settings"] is False
         # The right itself is unchanged: it still opens the other platform surfaces.
         assert body["features"]["platform_settings"] is True
-        assert set(body["naming"]) == {"use_domains", "default_domain"}
+        assert "convention" in body["naming"] and "use_domains" in body["naming"]
         assert "redirect" in body and "cache" in body
 
     async def test_platform_admin_reads_every_block(self, caller, app_state):
@@ -301,7 +325,7 @@ class TestDeploymentSettingsArePlatformAdminsEverywhere:
         monkeypatch.setattr("provisa.core.org_settings.write_org_overrides", _write)
         request = caller(*SINGLE_TENANT_ORG_ADMIN)
         request.json = lambda: _coro(
-            {"cache": {"default_ttl": 60}, "sampling": {"default_sample_size": 5}}
+            {"cache": {"default_ttl": 60}, "limits": {"default_row_limit": 5}}
         )
         with pytest.raises(ApiError) as exc:
             await router.update_settings(request)

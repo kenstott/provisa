@@ -131,7 +131,7 @@ def served(monkeypatch, bundle):
 def test_an_open_of_a_demo_whose_store_is_red_fails_by_name_at_once(served, stores, caplog):
     stores.status = "red"
     with pytest.raises(ApiError) as refused:
-        asyncio.run(demo_sandbox._ready_demo("reviews"))
+        asyncio.run(demo_sandbox._ready_demo("reviews", "sbxtest"))
     assert refused.value.status_code == 503
     assert refused.value.code == "sandbox.demo_failed"
     assert refused.value.detail == "Reviews could not be prepared; try again in a few minutes"
@@ -140,14 +140,14 @@ def test_an_open_of_a_demo_whose_store_is_red_fails_by_name_at_once(served, stor
 
 
 def test_an_open_of_a_healthy_demo_goes_on(served, stores):
-    assert asyncio.run(demo_sandbox._ready_demo("reviews")) is served
+    assert asyncio.run(demo_sandbox._ready_demo("reviews", "sbxtest")) is served
 
 
 def test_a_demo_served_from_its_directory_is_not_asked(served, stores, monkeypatch):
     """It runs its stores itself."""
     monkeypatch.delenv("PROVISA_DEMO_BUNDLES")
     stores.status = "red"
-    assert asyncio.run(demo_sandbox._ready_demo("reviews")) is served
+    assert asyncio.run(demo_sandbox._ready_demo("reviews", "sbxtest")) is served
 
 
 # -- the runtime-deps cache --------------------------------------------------------------------

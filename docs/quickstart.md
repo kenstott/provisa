@@ -10,8 +10,9 @@ This guide is for running Provisa **from the repository**, when you're developin
 
 - **Docker Desktop** (running)
 - **Python 3.12+**
-- **Node.js 20+**
+- **Node.js 24.12+**
 - **Git**
+- **Rust** (`cargo`, from [rustup](https://rustup.rs) or `brew install rust`). `start-ui.sh` and `start-ui-install.sh` build `provisa._encoders`, the Rust encoders pgwire, gRPC and JSON use, with `rust/build-local.sh` when `provisa/_encoders.so` is missing or older than its sources under `rust/`, and stop if `cargo` is missing or the build fails.
 
 ---
 
@@ -32,6 +33,15 @@ cd provisa
 ```bash
 ./start-ui.sh
 ```
+
+Before the Docker services start, the script checks whether `.venv` is in step with `uv.lock`. If it is not — after a `git pull` that added or changed a dependency, for example — it exits immediately and prints the fix command:
+
+```
+.venv is out of step with uv.lock. Run:
+  UV_PROJECT_ENVIRONMENT=.venv uv sync --locked --inexact
+```
+
+Run that command, then re-run `./start-ui.sh`.
 
 When it finishes starting up you'll see:
 

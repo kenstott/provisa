@@ -78,7 +78,9 @@ def test_destroying_an_org_stops_its_connector_servers_and_no_other(monkeypatch)
     assert list(pgwire_replica._ENDPOINTS) == [("sbxkept", "drop")]
 
 
-def _destroy_recording(monkeypatch, purge) -> tuple[list[str], BaseException | None]:
+def _destroy_recording(
+    monkeypatch, purge, *, record_eviction: bool = False
+) -> tuple[list[str], BaseException | None]:
     """Destroy org ``sbxgone`` with ``purge`` standing in for the region purge: the steps taken,
     and what the destroy raised (None when it completed)."""
     from provisa.api import app
@@ -108,7 +110,11 @@ def _destroy_recording(monkeypatch, purge) -> tuple[list[str], BaseException | N
     monkeypatch.setattr(org_provisioning, "deprovision_org", _deprovision)
     monkeypatch.setattr(jobs, "unschedule_org", lambda scheduler, org_id: order.append("jobs"))
     monkeypatch.setattr(
-        app.state, "org_registry", SimpleNamespace(invalidate_org=lambda org_id: None)
+        app.state,
+        "org_registry",
+        SimpleNamespace(
+            invalidate_org=lambda org_id: order.append("evicted") if record_eviction else None
+        ),
     )
     monkeypatch.setattr(pgwire_replica, "_ENDPOINTS", {})
     try:
@@ -146,3 +152,15 @@ def test_a_refused_destroy_leaves_the_org_running_with_its_jobs(monkeypatch):
     order, refused = _destroy_recording(monkeypatch, _purge)
     assert refused is not None and refused.status_code == 409
     assert order == ["check"]  # nothing dropped, no job unscheduled
+
+
+def test_its_runtime_goes_before_its_schemas_do(monkeypatch):
+    """REQ-2006: the runtime evicted last was still listed when the schema went: the config watcher
+    and the org's background reads met 'relation "config_stamp" does not exist' at every reap."""
+
+    async def _purge(order, before_drop):
+        before_drop()
+
+    order, raised = _destroy_recording(monkeypatch, _purge, record_eviction=True)
+    assert raised is None
+    assert order.index("evicted") < order.index("deprovision")

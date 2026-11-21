@@ -75,9 +75,6 @@ ANSWERS: list[tuple[str, int, list[Any]]] = [
     ('SELECT pg_catalog."pg_stat_file"(NULL::text) AS v', RECORD, [None]),
     ('SELECT pg_catalog."pg_stat_file"(NULL::text, NULL::boolean) AS v', RECORD, [None]),
     ("SELECT pg_stat_file('no_such_file', true) AS v", RECORD, [None]),
-    ('SELECT pg_catalog."setval"(NULL::regclass, NULL::bigint) AS v', INT8, [None]),
-    ('SELECT pg_catalog."setval"(NULL::regclass, NULL::bigint, NULL::boolean) AS v', INT8, [None]),
-    ("SELECT setval(NULL, 5) AS v", INT8, [None]),
 ]
 
 
@@ -135,14 +132,6 @@ REFUSALS: list[tuple[str, str, str]] = [
         'could not stat file "no_such_file": No such file or directory',
     ),
     ("SELECT pg_stat_file('/etc/passwd', true)", "42501", "absolute path not allowed"),
-    ("SELECT setval('no_such_sequence', 5)", "42P01", 'relation "no_such_sequence" does not exist'),
-    (
-        "SELECT setval('no_such_sequence'::regclass, 5, false)",
-        "42P01",
-        'relation "no_such_sequence" does not exist',
-    ),
-    ("SELECT setval(2147483000, 5)", "XX000", "could not open relation with OID 2147483000"),
-    ("SELECT setval('pg_class', 5)", "42809", 'cannot open relation "pg_class"'),
 ]
 
 

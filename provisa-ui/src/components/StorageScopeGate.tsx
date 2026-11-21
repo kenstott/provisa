@@ -11,11 +11,20 @@
 import { Fragment, useEffect, useState, type ReactNode } from "react";
 import { useAuth } from "../context/AuthContext";
 import { adoptCacheScope } from "../apolloClient";
-import { bindStorageScope, storageKey, type StorageScope } from "../lib/browserStorage";
+import { bindStorageScope, bindViewer, storageKey, type StorageScope } from "../lib/browserStorage";
+import { requestDataAddresses } from "../lib/dataAddress";
 import { PageLoading } from "./PageLoading";
 
-function same(a: StorageScope | null, b: StorageScope | null): boolean {
-  return a?.controlPlaneId === b?.controlPlaneId && a?.orgId === b?.orgId;
+// REQ-2260: the viewer is bound with the scope; another viewer remounts the pages as another
+// scope does, so what each remembers is read for the viewer it is shown to.
+interface Shown extends StorageScope {
+  viewer: string;
+}
+
+function same(a: Shown | null, b: Shown | null): boolean {
+  return (
+    a?.controlPlaneId === b?.controlPlaneId && a?.orgId === b?.orgId && a?.viewer === b?.viewer
+  );
 }
 
 /**
@@ -25,12 +34,16 @@ function same(a: StorageScope | null, b: StorageScope | null): boolean {
  * so what they save on the way out is saved in that scope; only then is the next one bound.
  */
 export function StorageScopeGate({ children }: { children: ReactNode }) {
-  const { controlPlaneId, activeOrgId, loading } = useAuth();
-  const [shown, setShown] = useState<StorageScope | null>(null);
+  const { controlPlaneId, activeOrgId, userId, loading } = useAuth();
+  const [shown, setShown] = useState<Shown | null>(null);
   // An identity refresh in flight is not a change of scope: the pages stay as they are meanwhile.
-  const wanted: StorageScope | null =
-    !loading && controlPlaneId !== null ? { controlPlaneId, orgId: activeOrgId } : null;
-  const wantedKey = wanted === null ? null : `${wanted.controlPlaneId}:${wanted.orgId ?? ""}`;
+  // `/auth/me` answers the control plane and the user together: one is known only with the other.
+  const wanted: Shown | null =
+    !loading && controlPlaneId !== null && userId !== null
+      ? { controlPlaneId, orgId: activeOrgId, viewer: userId }
+      : null;
+  const wantedKey =
+    wanted === null ? null : `${wanted.controlPlaneId}:${wanted.orgId ?? ""}:${wanted.viewer}`;
 
   useEffect(() => {
     if (wanted === null || same(wanted, shown)) return;
@@ -39,13 +52,16 @@ export function StorageScopeGate({ children }: { children: ReactNode }) {
       setShown(null); // unmount the scope being left first
       return;
     }
-    bindStorageScope(wanted);
+    bindStorageScope({ controlPlaneId: wanted.controlPlaneId, orgId: wanted.orgId });
+    bindViewer(wanted.viewer);
     void adoptCacheScope(storageKey(""));
+    // REQ-1916: where this scope's data calls go is asked before its pages mount and make any.
+    requestDataAddresses();
     setShown(wanted);
     /* eslint-enable react-hooks/set-state-in-effect */
     // eslint-disable-next-line react-hooks/exhaustive-deps -- wantedKey is `wanted` by value
   }, [wantedKey, shown]);
 
   if (shown === null) return <PageLoading />;
-  return <Fragment key={`${shown.controlPlaneId}:${shown.orgId ?? ""}`}>{children}</Fragment>;
+  return <Fragment key={`${shown.controlPlaneId}:${shown.orgId ?? ""}:${shown.viewer}`}>{children}</Fragment>;
 }

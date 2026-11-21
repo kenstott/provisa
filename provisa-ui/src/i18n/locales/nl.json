@@ -2,6 +2,9 @@
   "common": {
     "loading": "Laden...",
     "cancel": "Annuleren",
+    "stop": "Stoppen",
+    "stopped": "Gestopt",
+    "stopQuery": "Query stoppen",
     "save": "Opslaan",
     "delete": "Verwijderen",
     "confirm": "Bevestigen",
@@ -9,7 +12,9 @@
     "identity": "Identiteit",
     "discardTitle": "Wijzigingen verwerpen?",
     "discardBody": "Uw wijzigingen in {{what}} zijn niet opgeslagen.",
-    "discard": "Verwerpen"
+    "discard": "Verwerpen",
+    "deleting": "Verwijderen…",
+    "deleteFailed": "Niet verwijderd: {{reason}}"
   },
   "app": {
     "apiUnreachable": "Kan de Provisa API niet bereiken.",
@@ -42,12 +47,16 @@
     "yes": "Ja",
     "no": "Nee",
     "none": "—",
-    "expandUser": "Toewijzingen voor {{username}} tonen",
+    "expandUser": "Toewijzingen voor {{username}} uitklappen",
     "deleteUser": "Account van {{username}} verwijderen",
     "assignmentsHeading": "Rol:domein-toewijzingen",
     "noAssignments": "Geen toewijzingen",
     "removeAssignment": "Toewijzing {{role}}:{{domain}} verwijderen",
     "roleLabel": "Rol",
+    "rolesLabel": "Rollen",
+    "rolesPlaceholder": "Kies een of meer rollen",
+    "addList": "Lijst toevoegen",
+    "removeList": "Deze lijst verwijderen",
     "domainLabel": "Domein",
     "untilLabel": "Tot",
     "untilPlaceholder": "Geen einddatum",
@@ -56,7 +65,6 @@
     "noExpiry": "Geen einddatum",
     "neverUsed": "Nooit",
     "allDomains": "* (alle domeinen)",
-    "add": "Toevoegen",
     "createHeading": "Gebruiker aanmaken",
     "username": "Gebruikersnaam",
     "usernameRequired": "Gebruikersnaam *",
@@ -96,6 +104,6 @@
   },
   "pageError": {
     "title": "Deze pagina kon niet worden weergegeven",
-    "body": "Er ging iets mis bij het renderen. De rest van de app werkt nog: ga naar een andere pagina of laad deze opnieuw."
+    "body": "Er ging iets mis bij het renderen. De rest van de app werkt nog, dus ga naar een andere pagina of laad deze opnieuw."
   }
 }

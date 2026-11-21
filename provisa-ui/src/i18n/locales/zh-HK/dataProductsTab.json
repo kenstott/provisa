@@ -87,7 +87,6 @@
     "graphqlQueriesEmpty": "沒有可查詢的數據表或關係",
     "graphqlQueryAria": "執行 {{table}} 的 GraphQL 查詢範例",
     "sqlQueryAria": "執行 {{table}} 的 SQL 查詢範例",
-    "cypherQueryAria": "執行 {{type}} 的 Cypher 查詢範例",
     "grpcQueryAria": "執行 {{table}} 的 gRPC 呼叫範例",
     "jsonapiQueryAria": "執行 {{table}} 的 JSON:API 要求範例",
     "openApiQueryAria": "執行 {{table}} 的 REST 要求範例",
@@ -97,7 +96,6 @@
         "customProperties": "自訂屬性",
         "relatedTables": "相關數據表",
         "relationships": "關係",
-        "lineage": "血緣",
         "inputPorts": "輸入埠",
         "dataQuality": "數據質素"
       },
@@ -107,18 +105,21 @@
       "dqRulesTitle": "質素規則 — {{table}}",
       "dqRulesEmpty": "合約未定義任何檢查",
       "relatedTablesEmpty": "沒有相關數據表",
-      "relatedTablesHint": "可透過已核准的關係從此產品的數據表到達，但（尚）不屬於此產品。",
+      "relatedTablesHint": "可透過已核准的關係從此產品的資料表存取，但尚未納入此產品。",
       "relationshipsEmpty": "此產品的數據表之間沒有關係",
       "lineageEmpty": "沒有血緣",
       "lineageLoading": "正在載入血緣…",
-      "lineageHint": "欄位血緣圖，以此產品的數據表作為發佈端點，並列出用於衍生它們的所有上游數據表。僅供參考，需要 view_governance 能力。",
+      "lineageTitle": "欄位血緣：此產品的來源",
+      "lineageHint": "此產品發佈的每個欄位及其來源輸入欄位，以及兩者之間的每個步驟。需要 view_governance 能力。",
       "outputPortsHint": "此產品可查詢的範圍：其成員資料表和指令。每個的範例查詢見「存取模式」。",
       "customPropertiesEmpty": "沒有自訂屬性",
-      "lineageLaneUpstream": "上游，第 {{n}} 跳",
-      "lineageLaneDownstream": "下游，第 {{n}} 跳"
+      "lineageLaneTables": "此產品的數據表",
+      "lineageLaneInputs": "輸入",
+      "lineageLaneUpstream": "上游，距輸入 {{n}} 躍點",
+      "inputsLineageLink": "查看欄位血緣"
     },
     "readOnly": "唯讀",
-    "readOnlyHint": "你只有 data_product_read 權限 — org_admin 可授予 data_product_rw 以進行編輯。",
+    "readOnlyHint": "你只有 data_product_read 權限。org_admin 可授予 data_product_rw 以進行編輯。",
     "relatedTermsConcept": "概念",
     "status_draft": "草稿",
     "status_live": "生效",
@@ -131,15 +132,15 @@
     "successorHint": "其資料表、檢視和命令移交給繼任產品，即同一域中的產品。",
     "reasonLabel": "原因",
     "publish": "發佈",
-    "publishHint": "讓此草稿生效：向使用方和目錄提供。",
+    "publishHint": "將此草稿上線，並提供給使用者和目錄。",
     "deprecate": "棄用",
-    "deprecateHint": "將此生效產品標記為即將退出：它仍在使用，並附帶原因和可選的計劃停用日期。",
+    "deprecateHint": "將此已上線的產品標示為即將停用。它仍會繼續提供服務，並附有原因及可選的計劃停用時間。",
     "deprecateTitle": "棄用「{{product}}」",
     "retire": "停用",
-    "retireHint": "停用此產品：其資料表、檢視和命令移交給其域中的繼任產品。",
+    "retireHint": "將此產品停止服務。其資料表、檢視和命令會轉移至其網域內的後繼產品。",
     "retireTitle": "停用「{{product}}」",
     "retireMoves": "移交的成員：{{members}}",
-    "retireNoMembers": "它沒有成員：繼任產品可選。",
+    "retireNoMembers": "它沒有成員，因此後繼項目為選用。",
     "restore": "還原",
     "restoreHint": "撤銷棄用（還原為生效）或停用（還原為草稿）。",
     "toReview": "待審核",
@@ -177,9 +178,6 @@
       "versionLabel": "契約版本",
       "statusLabel": "契約狀態",
       "descriptionLabel": "用途說明",
-      "columnsLabel": "欄",
-      "columnsHelp": "移除某欄或更改其類型，需要新版本。",
-      "requiredLabel": "從不為空",
       "slaLabel": "服務級別",
       "slaProperty": "屬性",
       "slaValue": "值",
@@ -211,7 +209,56 @@
         "check_removed": "已移除質素檢查 {{subject}}",
         "check_changed": "質素檢查 {{subject}} 已更改",
         "description_changed": "描述已更改",
-        "terms_changed": "條款已更改：{{subject}}"
+        "terms_changed": "條款已更改：{{subject}}",
+        "field_masked": "欄位 {{subject}} 已遮罩（{{after}}）",
+        "field_unmasked": "欄位 {{subject}} 不再遮罩",
+        "row_rule_added": "已新增行規則：{{subject}}",
+        "row_rule_removed": "已移除行規則：{{subject}}",
+        "data_level_changed": "數據級別由 {{before}} 改為 {{after}}",
+        "dq_results_changed": "質素結果由 {{before}} 改為 {{after}}",
+        "profiles_changed": "剖析由 {{before}} 改為 {{after}}",
+        "duration_changed": "期限由 {{before}} 改為 {{after}}",
+        "terms_of_use_changed": "使用條款已更改：{{subject}}"
+      },
+      "howToUse": {
+        "column": {
+          "surface": "介面",
+          "address": "位址",
+          "how": "使用方式",
+          "link": "範例"
+        },
+        "surface": {
+          "pgwire": "PostgreSQL",
+          "flight-sql": "Arrow Flight SQL",
+          "grpc": "gRPC",
+          "graphql": "GraphQL",
+          "rest": "REST",
+          "openapi": "OpenAPI",
+          "jsonapi": "JSON:API",
+          "sparql": "SPARQL"
+        },
+        "how": {
+          "pgwire": "任何 PostgreSQL 用戶端，例如 psql 或 DBeaver。資料庫 {{database}}，結構描述 {{schema}}。",
+          "flight-sql": "任何 Arrow Flight SQL 用戶端，例如 ADBC 驅動程式。資料庫 {{database}}，結構描述 {{schema}}。",
+          "grpc": "任何 gRPC 用戶端，呼叫服務 {{service}}，並附上中繼資料 authorization: Bearer <token>。",
+          "graphql": "任何 GraphQL 用戶端：對此資料表 POST 一個查詢，並附上標頭 Authorization: Bearer <token>。",
+          "rest": "任何 HTTP 用戶端：GET 此位址，並附上標頭 Authorization: Bearer <token>。",
+          "openapi": "僅包含此資料表的描述：可載入 Swagger UI、Postman 或用戶端產生器。",
+          "jsonapi": "任何 JSON:API 用戶端：GET 此位址，並附上標頭 Authorization: Bearer <token>。",
+          "sparql": "任何 SPARQL 1.1 用戶端：對此資料表的類別 POST 一個查詢，並附上標頭 Authorization: Bearer <token>。"
+        },
+        "access": {
+          "granted": "須由 {{approvers}} 授予存取權後才能使用。",
+          "noApprover": "須由 {{roles}} 的持有人授予存取權後才能使用。此合約沒有指定審批人。",
+          "undeclared": "須授予存取權後才能使用。此合約沒有指定角色或審批人。"
+        },
+        "ask": {
+          "approvers": "向 {{approvers}} 申請存取權",
+          "roles": "向 {{roles}} 的持有人申請存取權",
+          "nobody": "此合約沒有指定可聯絡的人"
+        },
+        "open": "開啟範例",
+        "openAria": "開啟 {{table}} 的 {{surface}} 範例"
       },
       "loadError": "無法讀取契約：{{error}}",
       "notExported": "{{member}} 沒有已匯出的契約",
@@ -221,7 +268,7 @@
         "quality": "質素",
         "sla": "SLA",
         "support": "支援與團隊",
-        "servers": "伺服器",
+        "howToUse": "使用方式",
         "pricing": "定價",
         "custom": "自訂屬性和標籤"
       },
@@ -260,6 +307,12 @@
         "roles": "角色",
         "history": "版本歷史"
       }
-    }
+    },
+    "detailPanel": "數據產品詳情",
+    "tagFacetLabel": "標籤",
+    "tagFacetPlaceholder": "按標籤篩選",
+    "noMatch": "沒有符合篩選條件的數據產品",
+    "domainFacetLabel": "域",
+    "domainFacetPlaceholder": "按域篩選"
   }
 }

@@ -86,7 +86,10 @@ def client(monkeypatch):
     asked: list[tuple[str, str]] = []
     monkeypatch.setattr(
         "provisa.api.rest.openapi_spec.generate_rest_openapi_spec",
-        lambda state, role_id, domains=None: asked.append(("rest", role_id)) or {"for": role_id},
+        lambda state, role_id, domains=None, tables=None: (
+            asked.append(("rest", role_id))
+            or {"for": role_id, "domains": domains, "tables": tables}
+        ),
     )
     monkeypatch.setattr(
         "provisa.api.jsonapi.spec.generate_jsonapi_openapi_spec",
@@ -113,10 +116,28 @@ def client(monkeypatch):
 @pytest.mark.parametrize("path", ["/data/rest/openapi.json", "/data/jsonapi/openapi.json"])
 def test_the_spec_is_the_named_role_sets_or_the_acting_roles(client, path):
     held = {"x-held": f"{A},{B}"}
-    assert client.get(path, headers=held).json() == {"for": A}
-    assert client.get(f"{path}?role={B}", headers=held).json() == {"for": B}
-    assert client.get(f"{path}?role={A},{B}", headers=held).json() == {"for": META}
-    assert client.get(f"{path}?role={B}&download=1", headers=held).json() == {"for": B}
+    assert client.get(path, headers=held).json()["for"] == A
+    assert client.get(f"{path}?role={B}", headers=held).json()["for"] == B
+    assert client.get(f"{path}?role={A},{B}", headers=held).json()["for"] == META
+    assert client.get(f"{path}?role={B}&download=1", headers=held).json()["for"] == B
+
+
+def test_the_rest_description_takes_a_table_filter_beside_role_and_domains(client):  # REQ-2158
+    held = {"x-held": f"{A},{B}"}
+    url = f"/data/rest/openapi.json?role={B}&domains=sales&tables=orders"
+    assert client.get(url, headers=held).json() == {
+        "for": B,
+        "domains": ["sales"],
+        "tables": ["orders"],
+    }
+    whole = client.get("/data/rest/openapi.json", headers=held).json()
+    assert (whole["domains"], whole["tables"]) == (None, None)
+
+
+def test_a_table_filter_does_not_loosen_a_refused_role(client):  # REQ-2158
+    resp = client.get(f"/data/rest/openapi.json?role={B}&tables=orders", headers={"x-held": A})
+    assert resp.status_code == 403, resp.text
+    assert client.asked == []
 
 
 @pytest.mark.parametrize("path", ["/data/rest/openapi.json", "/data/jsonapi/openapi.json"])

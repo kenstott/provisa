@@ -15,11 +15,9 @@ from provisa.api.jsonapi.errors import error_response, jsonapi_error
 from provisa.api.jsonapi.pagination import (
     DEFAULT_PAGE_SIZE,
     MAX_PAGE_SIZE,
-    build_pagination_links,
     page_to_limit_offset,
     parse_page_params,
 )
-from provisa.api.jsonapi.serializer import row_to_resource, rows_to_jsonapi
 from provisa.api.jsonapi.generator import (
     _build_graphql_query,
     _get_scalar_fields,
@@ -175,77 +173,110 @@ class TestPagination:
         assert offset == 20
 
     def test_pagination_links_first_page(self):
-        links = build_pagination_links("/data/jsonapi/orders", 1, 10, 25)
+        links = _document({}, [], page_number=1, page_size=10, total=25)["links"]
         assert links["prev"] is None
         assert links["next"] is not None
         assert "page%5Bnumber%5D=2" in links["next"]
 
     def test_pagination_links_middle_page(self):
-        links = build_pagination_links("/data/jsonapi/orders", 3, 10, 50)
+        links = _document({}, [], page_number=3, page_size=10, total=50)["links"]
         assert links["prev"] is not None
         assert links["next"] is not None
 
     def test_pagination_links_last_page(self):
-        links = build_pagination_links("/data/jsonapi/orders", 5, 10, 3)
+        links = _document({}, [], page_number=5, page_size=10, total=3)["links"]
         assert links["prev"] is not None
         assert links["next"] is None  # result_count < page_size
 
 
-# ── Serializer ──
+# ── The document (the Rust JSON:API encoder, REQ-2194) ──
+
+
+def _document(table, columns, *, rels=(), includes=(), include_keys=None, **page):
+    """The JSON:API document the encoder writes for ``table``'s rows."""
+    import json
+
+    import pyarrow as pa
+
+    from provisa.executor import json_encoders as je
+
+    document = {"page_number": 1, "page_size": 10, "total": None, **page}
+    body, _ = je.jsonapi(
+        [pa.record_batch(table)] if table else [],
+        columns,
+        resource_type="orders",
+        probe=True,
+        id_columns=["id"],
+        scalar_names={},
+        rel_names=[(r, r) for r in rels],
+        rel_scalar_names={},
+        includes=list(includes),
+        include_keys=include_keys or {},
+        base_path="/data/jsonapi/orders",
+        link_params=[],
+        **document,
+    )
+    return json.loads(body)
+
+
+def _c(field, nested_in=None, cardinality=None):
+    from provisa.compiler.sql_types import ColumnRef
+
+    column = field if nested_in is None else f"{nested_in}_{field}"
+    return ColumnRef(None, column, field, nested_in, cardinality)
 
 
 class TestSerializer:
     def test_basic_resource(self):
-        row = {"id": 42, "amount": 99.5, "region": "US"}
-        resource = row_to_resource(row, "orders")
+        doc = _document(
+            {"id": [42], "amount": [99.5], "region": ["US"]}, [_c("id"), _c("amount"), _c("region")]
+        )
+        (resource,) = doc["data"]
         assert resource["type"] == "orders"
         assert resource["id"] == "42"
         assert resource["attributes"] == {"amount": 99.5, "region": "US"}
         assert "relationships" not in resource
 
     def test_resource_with_relationship(self):
-        row = {"id": 1, "amount": 50, "customer_id": 7}
-        resource = row_to_resource(
-            row,
-            "orders",
-            relationship_fields={"customer_id": "customers"},
+        doc = _document(
+            {"id": [1], "amount": [50], "customer_id": [7]},
+            [_c("id"), _c("amount"), _c("customer_id")],
+            rels=["customer"],
         )
+        (resource,) = doc["data"]
         assert resource["attributes"] == {"amount": 50}
-        assert resource["relationships"]["customer"]["data"]["type"] == "customers"
+        assert resource["relationships"]["customer"]["data"]["type"] == "customer"
         assert resource["relationships"]["customer"]["data"]["id"] == "7"
 
     def test_null_relationship(self):
-        row = {"id": 1, "customer_id": None}
-        resource = row_to_resource(
-            row,
-            "orders",
-            relationship_fields={"customer_id": "customers"},
+        import pyarrow as pa
+
+        doc = _document(
+            {"id": [1], "customer_id": pa.array([None], pa.int64())},
+            [_c("id"), _c("customer_id")],
+            rels=["customer"],
         )
-        assert resource["relationships"]["customer"]["data"] is None
+        assert doc["data"][0]["relationships"]["customer"]["data"] is None
 
     def test_rows_to_jsonapi_document(self):
-        rows = [
-            {"id": 1, "amount": 10},
-            {"id": 2, "amount": 20},
-        ]
-        doc = rows_to_jsonapi(rows, "orders")
+        doc = _document({"id": [1, 2], "amount": [10, 20]}, [_c("id"), _c("amount")], total=2)
         assert len(doc["data"]) == 2
         assert doc["meta"]["total"] == 2
         assert doc["data"][0]["type"] == "orders"
         assert doc["data"][0]["id"] == "1"
 
     def test_rows_to_jsonapi_with_included(self):
-        rows = [{"id": 1, "customer_id": 7}]
-        included = {"customers": [{"id": 7, "name": "Alice"}]}
-        doc = rows_to_jsonapi(
-            rows,
-            "orders",
-            relationship_fields={"customer_id": "customers"},
-            included_rows=included,
+        doc = _document(
+            {"id": [1], "customer_id": [7], "customer_name": ["Alice"]},
+            [_c("id"), _c("id", "customer", "many-to-one"), _c("name", "customer", "many-to-one")],
+            rels=["customer"],
+            includes=["customer"],
+            include_keys={"customer": ["id"]},
         )
         assert "included" in doc
-        assert doc["included"][0]["type"] == "customers"
+        assert doc["included"][0]["type"] == "customer"
         assert doc["included"][0]["id"] == "7"
+        assert doc["included"][0]["attributes"] == {"name": "Alice"}
 
 
 # ── Filter parsing ──

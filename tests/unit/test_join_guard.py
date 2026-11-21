@@ -67,6 +67,10 @@ def _model() -> tuple[CompilationContext, GovernanceContext]:
     gov = GovernanceContext()
     gov.table_map = {"orders": 1, "customers": 2, "visits": 3}
     gov.all_columns = {tid: [(c, "integer") for c in cols] for tid, cols in _COLUMNS.items()}
+    # As the build states every table it serves (stage2): each served whole (None means "all
+    # columns visible"). A table with no entry is refused by the column check (fail closed,
+    # REQ-039): V003 for every column reference.
+    gov.visible_columns = {tid: None for tid in _COLUMNS}
     return ctx, gov
 
 
@@ -154,6 +158,18 @@ _OUTSIDE = {
 def test_two_tables_combined_outside_a_relationship_are_refused(shape):
     said = _v002(_OUTSIDE[shape])
     assert said, shape
+
+
+def test_a_trail_check_a_client_writes_is_held_to_the_rule():
+    """Only a walk's trail check the graph compiler wrote is exempt (provisa.compiler.walk_checks):
+    the same shape written by a client relates its rows by a non-equality and is refused."""
+    said = _v002(
+        "WITH RECURSIVE w AS (SELECT c.id, '|' || CAST(c.id AS TEXT) || '|' AS trail "
+        "FROM customers c UNION ALL SELECT v.id, w.trail || CAST(v.id AS TEXT) || '|' "
+        "FROM w JOIN visits v ON v.customer_id = w.id "
+        "WHERE POSITION('|' || CAST(v.id AS TEXT) || '|' IN w.trail) = 0) SELECT * FROM w"
+    )
+    assert said
 
 
 @pytest.mark.parametrize("shape", list(_OUTSIDE))
@@ -261,6 +277,70 @@ _ALONG = {
 @pytest.mark.parametrize("shape", list(_ALONG))
 def test_tables_combined_along_a_relationship_pass(shape):
     assert _v002(_ALONG[shape]) == [], shape
+
+
+# A filter on a window function's result over rows already joined by a registered relationship
+# is not a match between those tables (REQ-603, amended 2026-11-07): the latest row per group.
+_WINDOW_RESULTS = {
+    "row_number_latest": (
+        "SELECT e.name FROM (SELECT c.name, ROW_NUMBER() OVER (PARTITION BY c.id "
+        "ORDER BY v.id DESC) AS n FROM customers c JOIN visits v ON c.id = v.customer_id) e "
+        "WHERE e.n = 1"
+    ),
+    "rank": (
+        "SELECT e.name FROM (SELECT c.name, RANK() OVER (PARTITION BY v.customer_id "
+        "ORDER BY c.region, v.id) AS r FROM customers c JOIN visits v ON c.id = v.customer_id) e "
+        "WHERE e.r <= 3"
+    ),
+    "dense_rank_in_a_cte": (
+        "WITH e AS (SELECT c.name, DENSE_RANK() OVER (PARTITION BY c.id ORDER BY v.id) AS d "
+        "FROM customers c JOIN visits v ON c.id = v.customer_id) SELECT name FROM e WHERE d = 1"
+    ),
+    "one_table": (
+        "SELECT e.id FROM (SELECT o.id, ROW_NUMBER() OVER (PARTITION BY o.customer_id "
+        "ORDER BY o.id DESC) AS n FROM orders o) e WHERE e.n = 1"
+    ),
+}
+
+
+@pytest.mark.parametrize("sql", _WINDOW_RESULTS.values(), ids=list(_WINDOW_RESULTS))
+def test_a_filter_on_a_window_result_over_joined_rows_passes(sql):
+    assert _v002(sql) == [], sql
+
+
+# A window does not lift the rule from the join it is computed over, nor from a comparison of the
+# two tables' columns that is not a registered equality.
+_STILL_REFUSED_BESIDE_A_WINDOW = {
+    "unregistered_join_under_the_window": (
+        "SELECT e.id FROM (SELECT o.id, ROW_NUMBER() OVER (PARTITION BY c.id ORDER BY o.id) AS n "
+        "FROM orders o JOIN customers c ON o.region = c.region) e WHERE e.n = 1"
+    ),
+    "not_equal": (
+        "SELECT e.name FROM (SELECT c.name, c.id AS cid, v.id AS vid, ROW_NUMBER() OVER "
+        "(PARTITION BY c.id ORDER BY v.id) AS n FROM customers c JOIN visits v "
+        "ON c.id = v.customer_id) e WHERE e.n = 1 AND e.cid <> e.vid"
+    ),
+    "less_than": (
+        "SELECT e.name FROM (SELECT c.name, c.id AS cid, v.id AS vid, ROW_NUMBER() OVER "
+        "(PARTITION BY c.id ORDER BY v.id) AS n FROM customers c JOIN visits v "
+        "ON c.id = v.customer_id) e WHERE e.n = 1 AND e.cid < e.vid"
+    ),
+    "case_comparing_two_tables": (
+        "SELECT e.name FROM (SELECT c.name, CASE WHEN c.id > v.id THEN 1 ELSE 0 END AS n "
+        "FROM customers c JOIN visits v ON c.id = v.customer_id) e WHERE e.n = 1"
+    ),
+    "window_beside_an_inequality": (
+        "SELECT c.name, ROW_NUMBER() OVER (PARTITION BY c.id ORDER BY v.id) AS n "
+        "FROM customers c JOIN visits v ON c.id = v.customer_id WHERE c.id <> v.id"
+    ),
+}
+
+
+@pytest.mark.parametrize(
+    "sql", _STILL_REFUSED_BESIDE_A_WINDOW.values(), ids=list(_STILL_REFUSED_BESIDE_A_WINDOW)
+)
+def test_two_tables_compared_beside_a_window_are_still_refused(sql):
+    assert _v002(sql), sql
 
 
 @pytest.mark.parametrize(
@@ -803,9 +883,10 @@ def test_the_profilers_statement_is_the_products_and_runs_outside_the_guard():
         assert validate_sql(sql, ctx, gov, _ROLE, _KEYS, bypass_relationship_guard=True) == []
 
 
-def test_only_the_profiler_states_a_product_statement():
-    """A role's own SQL cannot reach the product's path: no surface passes the flag, and the
-    one call that does is the profiler's, with the statement it built itself."""
+def test_only_the_profiler_and_the_discovery_measure_state_a_product_statement():
+    """A role's own SQL cannot reach the product's path: no surface passes the flag. The calls
+    that do are the profiler's and discovery's key value overlap join count (REQ-413, amended
+    2026-11-18), each with the statement it built itself."""
     import pathlib
     import re
 
@@ -817,14 +898,14 @@ def test_only_the_profiler_states_a_product_statement():
         for path in root.rglob("*.py")
         if re.search(r"product_statement\s*=\s*True", path.read_text())
     )
-    assert stating == ["profiler/run.py"], stating
+    assert stating == ["discovery/gather.py", "profiler/run.py"], stating
     passing = sorted(
         str(path.relative_to(root))
         for path in root.rglob("*.py")
         if "product_statement=" in path.read_text()
     )
     # The pipeline hands it down; nothing else names it.
-    assert passing == ["pgwire/_pipeline.py", "profiler/run.py"], passing
+    assert passing == ["discovery/gather.py", "pgwire/_pipeline.py", "profiler/run.py"], passing
 
 
 def test_a_recursive_statement_relates_its_rows_along_relationships_only():
@@ -996,3 +1077,264 @@ def test_branches_of_registered_tables_stay_alternatives():
         "SELECT u.id FROM (SELECT id FROM orders UNION ALL SELECT id FROM visits) u "
         "JOIN customers c ON TRUE"
     )
+
+
+# --- a model reading the same views of a union again and again (#329) ---------------------------
+
+_RECORDS = "(SELECT k, n FROM a UNION ALL SELECT k, n FROM b UNION ALL SELECT k, n FROM c " + (
+    "UNION ALL SELECT k, n FROM d)"
+)
+_IDS = {"a": 1, "b": 2, "c": 3, "d": 4}
+
+
+def _crosswalks(reads: int, crosswalks: int) -> str:
+    """customer360's ``master``: ``crosswalks`` reads of a crosswalk view, each reading a view of a
+    4-branch UNION ``reads`` times, every view read inlined as its own copy as governance does."""
+
+    def crosswalk() -> str:
+        joins = [f"FROM {_RECORDS} AS r0"] + [
+            f"LEFT JOIN {_RECORDS} AS r{i} ON r{i}.k = r0.k" for i in range(1, reads)
+        ]
+        return "(SELECT r0.k, r0.n " + " ".join(joins) + ")"
+
+    joins = [f"FROM {crosswalk()} AS c0"] + [
+        f"LEFT JOIN {crosswalk()} AS c{i} ON c{i}.k = c0.k" for i in range(1, crosswalks)
+    ]
+    return "SELECT c0.k " + " ".join(joins)
+
+
+def _crosswalk_check(sql: str, registered: set[tuple[int, int, str, str]]) -> list:
+    import sqlglot
+
+    from provisa.compiler import join_guard
+
+    return join_guard.unrelated_tables(
+        sqlglot.parse_one(sql),
+        resolve_table_id=lambda t: _IDS.get(t.name),
+        columns_of=lambda _table_id: {"k", "n"},
+        registered=registered,
+        exempt_table=lambda _table_id: False,
+        same_remote_source=lambda a, b: False,
+    )
+
+
+@pytest.mark.timeout(5)
+def test_views_of_a_union_read_again_and_again_are_checked_without_listing_their_product():
+    """#329: customer360's ``master`` reads a crosswalk view 3 times, which reads a 4-branch
+    UNION view 4 times: 4 ** 12 (16.7M) choices of branch. The guard listed every one before
+    making them distinct -- 14 GB, the CI runner killed. Each choice is now its connected pieces
+    as seen from beyond it, combined as built: the same check in a fraction of a second."""
+    import time
+    import tracemalloc
+
+    every_pair = {(x, y, "k", "k") for x in range(1, 5) for y in range(1, 5)}
+    tracemalloc.start()
+    started = time.perf_counter()
+    try:
+        found = _crosswalk_check(_crosswalks(4, 3), every_pair)
+        took = time.perf_counter() - started
+        _, peak = tracemalloc.get_traced_memory()
+    finally:
+        tracemalloc.stop()
+    assert found == []
+    # Measured: 0.13 s and ~66 MB RSS for the whole process; before, >120 s and 4.2 GB.
+    assert took < 2, took
+    assert peak < 100_000_000, peak
+
+
+@pytest.mark.timeout(5)
+def test_views_of_a_union_read_again_and_again_are_refused_as_before():
+    """The same shape with d related to nothing is refused, each pairing with d named, as the
+    guard listing every choice refused it at the sizes it could list (checked on the same tree
+    for 4x2 and 3x3) -- and at this size it now answers instead of exhausting memory."""
+    import time
+
+    from provisa.compiler.join_guard import UNREGISTERED
+
+    without_d = {(x, y, "k", "k") for x in range(1, 4) for y in range(1, 4)}
+    started = time.perf_counter()
+    found = _crosswalk_check(_crosswalks(4, 3), without_d)
+    took = time.perf_counter() - started
+    # Which tables a piece combined with nothing is named by follows the instances' order in
+    # memory, as it always has; the pairings refused for their condition do not.
+    assert sorted({(f.left_table, f.right_table) for f in found if f.reason == UNREGISTERED}) == [
+        (1, 4),
+        (2, 4),
+        (3, 4),
+        (4, 4),
+    ]
+    assert {f.written for f in found if f.reason == UNREGISTERED} == {
+        *(f"r{i}.k = r0.k" for i in range(1, 4)),
+        *(f"c{i}.k = c0.k" for i in range(1, 3)),
+    }
+    assert took < 2, took
+
+
+_MARKED_IDS = {**_IDS, "records": 10, "crosswalk": 11, "master": 12}
+
+
+def _marked(view: str, body: str) -> str:
+    """``body`` as governance expands the view ``view`` for the guard (view_expand.VIEW_MARK)."""
+    from provisa.compiler.view_expand import VIEW_MARK
+
+    return f'(SELECT * FROM ({body}) AS "{VIEW_MARK}{view}")'
+
+
+def _marked_crosswalk(reads: int) -> str:
+    records = _RECORDS[1:-1]
+    joins = [f"FROM {_marked('records', records)} AS r0"] + [
+        f"LEFT JOIN {_marked('records', records)} AS r{i} ON r{i}.k = r0.k" for i in range(1, reads)
+    ]
+    return _marked("crosswalk", "SELECT r0.k, r0.n " + " ".join(joins))
+
+
+def _crosswalk_beside_its_master(reads: int, crosswalks: int) -> str:
+    """customer360's tour: the crosswalk view joined to the golden record built from it."""
+    joins = [f"FROM {_marked_crosswalk(reads)} AS c0"] + [
+        f"LEFT JOIN {_marked_crosswalk(reads)} AS c{i} ON c{i}.k = c0.k"
+        for i in range(1, crosswalks)
+    ]
+    master = _marked("master", "SELECT c0.k, c0.n " + " ".join(joins))
+    return f"SELECT x.k FROM {_marked_crosswalk(reads)} AS x LEFT JOIN {master} AS m ON m.k = x.k"
+
+
+def _marked_check(sql: str, registered: set[tuple[int, int, str, str]]) -> list:
+    import sqlglot
+
+    from provisa.compiler import join_guard
+
+    return join_guard.unrelated_tables(
+        sqlglot.parse_one(sql),
+        resolve_table_id=lambda t: _MARKED_IDS.get(t.name),
+        columns_of=lambda _table_id: {"k", "n"},
+        registered=registered,
+        exempt_table=lambda _table_id: False,
+        same_remote_source=lambda a, b: False,
+    )
+
+
+@pytest.mark.timeout(10)
+def test_a_view_of_unions_beside_a_view_of_it_is_checked_without_telling_branches_apart():
+    """Each branch of a marked view's union is one connected piece, named by a different
+    instance, and the guard told the pieces apart by that name, so views read side by side
+    multiplied: customer360's crosswalk beside its golden record ran past the 60 s request
+    timeout. Whether a set is connected does not depend on what a refusal would call its pieces."""
+    import time
+
+    ids = _MARKED_IDS.values()
+    every_pair = {(x, y, "k", "k") for x in ids for y in ids}
+    started = time.perf_counter()
+    found = _marked_check(_crosswalk_beside_its_master(4, 3), every_pair)
+    took = time.perf_counter() - started
+    assert found == []
+    # Measured before: 24 s at (3, 3), past 30 s at this size.
+    assert took < 2, took
+
+
+@pytest.mark.timeout(10)
+def test_a_view_of_unions_beside_a_view_of_it_with_a_branch_unrelated_is_refused():
+    """The same statement with d related to nothing is refused for every pairing with d, named
+    as the guard always named it: the check that settles a connected set decides nothing else."""
+    from provisa.compiler.join_guard import UNREGISTERED
+
+    without_d = {(x, y, "k", "k") for x in range(1, 4) for y in range(1, 4)}
+    found = _marked_check(_crosswalk_beside_its_master(2, 2), without_d)
+    assert sorted({(f.left_table, f.right_table) for f in found if f.reason == UNREGISTERED}) == [
+        (1, 4),
+        (2, 4),
+        (3, 4),
+        (4, 4),
+    ]
+
+
+def _brute_connected(choice, related: set[frozenset[int]], members: set[int]) -> bool:
+    """Every set ``choice`` may be, listed and connected one by one: the check by its definition."""
+    from provisa.compiler.join_guard import project
+
+    for instances in project(choice, None):
+        held = instances & members
+        if not held:
+            continue
+        reached, frontier = set(), [next(iter(held))]
+        while frontier:
+            at = frontier.pop()
+            if at not in reached:
+                reached.add(at)
+                frontier += [o for o in held - reached if frozenset({at, o}) in related]
+        if reached != held:
+            return False
+    return True
+
+
+@pytest.mark.parametrize("seed", range(4))
+def test_the_connection_check_agrees_with_listing_every_set(seed):
+    """What the guard lets through without listing a set: on random choices of random unions, with
+    instances read twice and views among them, a group is connected exactly when every set of it,
+    listed, is. A statement let through here that a listing would refuse is a hole in REQ-603."""
+    import random
+
+    from provisa.compiler.join_guard import _Choice, _Pieces, _Resolver
+
+    rng = random.Random(seed)
+    disconnected = 0
+    for _ in range(1500):
+        resolver = _Resolver(lambda _t: None, lambda _i: set())
+        instances = list(range(1, rng.randint(3, 10)))
+        views = frozenset(i for i in instances if rng.random() < 0.3)
+
+        def build(depth: int) -> _Choice:
+            if depth == 0 or rng.random() < 0.3:
+                return resolver.one(frozenset(rng.sample(instances, rng.randint(1, 2))))
+            parts = [build(depth - 1) for _ in range(rng.randint(2, 3))]
+            return resolver.any_of(parts) if rng.random() < 0.5 else resolver.all_of(parts)
+
+        choice = build(rng.randint(1, 3))
+        members = set(instances)
+        edges = {
+            frozenset({a, b})
+            for a in instances
+            for b in instances
+            if a < b and rng.random() < rng.choice([0.15, 0.4, 0.8])
+        }
+        shared = set(resolver.shared)
+        expected = _brute_connected(choice, edges, members)
+        disconnected += not expected
+        assert _Pieces(members, edges, set(), shared, views=views).connected(choice) is expected, (
+            seed,
+            sorted(map(sorted, edges)),
+            views,
+        )
+        # The listing the guard names a refusal from agrees too.
+        exact = _Pieces(members, edges, set(), shared).whole(choice)
+        assert all(len(parts) < 2 for parts in exact) is expected
+    assert disconnected > 100  # the draw exercised refusals as well as passes
+
+
+#: A shared dimension (REQ-413): the view ``dim`` of each value a, b and c hold, which each of them
+#: joins many-to-one on k; ``records`` stands for a fourth table with no relationship to it.
+_DIMENSION = _marked("records", "SELECT k FROM a UNION SELECT k FROM b UNION SELECT k FROM c")
+_TO_DIMENSION = {
+    pair for side in (1, 2, 3) for pair in ((side, 10, "k", "k"), (10, side, "k", "k"))
+}
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        f"SELECT m.k FROM {_DIMENSION} AS m WHERE EXISTS (SELECT 1 FROM b WHERE b.k = m.k)",
+        f"SELECT a.k FROM a LEFT JOIN {_DIMENSION} AS m ON a.k = m.k "
+        "AND EXISTS (SELECT 1 FROM b WHERE b.k = m.k)",
+        f"SELECT m.k FROM {_DIMENSION} AS m WHERE m.k IN (SELECT b.k FROM b)",
+    ],
+    ids=["exists", "exists_in_on", "in"],
+)
+def test_a_subquery_related_to_a_view_along_its_relationship_is_no_product(sql):
+    """A subquery's table compared with a view's column is related to the view along the
+    relationship between them, as a join on it is: never a product of the view's branches."""
+    assert _marked_check(sql, _TO_DIMENSION) == []
+
+
+def test_a_subquery_related_to_a_view_with_no_relationship_is_refused():
+    """The same subquery of d, which no relationship joins to the view, is refused."""
+    sql = f"SELECT m.k FROM {_DIMENSION} AS m WHERE EXISTS (SELECT 1 FROM d WHERE d.k = m.k)"
+    assert _marked_check(sql, _TO_DIMENSION)

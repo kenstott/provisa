@@ -28,6 +28,7 @@ export function RegionSelect({
   regions,
   scope,
   testId,
+  noRegion = true,
 }: {
   /** The region chosen: null = no region. */
   value: string | null;
@@ -37,6 +38,9 @@ export function RegionSelect({
   /** Which form this is in. */
   scope: "table" | "view" | "source";
   testId: string;
+  /** Whether "no region" is offered (a put back offers it only when the caller's grant covers
+   *  it, REQ-1921). */
+  noRegion?: boolean;
 }) {
   const { t } = useTranslation();
   const helpKey = { table: "helpTable", view: "helpView", source: "helpSource" }[scope];
@@ -59,7 +63,7 @@ export function RegionSelect({
       }
       data={[
         ...regions.map((region) => ({ value: region, label: region })),
-        { value: NO_REGION, label: t("regionSelect.none") },
+        ...(noRegion ? [{ value: NO_REGION, label: t("regionSelect.none") }] : []),
       ]}
       value={value ?? NO_REGION}
       onChange={(option) => {

@@ -51,7 +51,8 @@ CREATE TABLE IF NOT EXISTS query_audit_log (
     region TEXT NOT NULL,
     as_of TEXT,
     as_recorded TEXT,
-    logged_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    logged_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    stage TEXT
 );
 
 DO $$ BEGIN
@@ -59,10 +60,19 @@ DO $$ BEGIN
 EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
 
-DO $$ BEGIN
-    CREATE RULE no_update_audit AS ON UPDATE TO query_audit_log DO INSTEAD NOTHING;
-EXCEPTION WHEN duplicate_object THEN NULL;
-END $$;
+-- An UPDATE does nothing, except the one an account's erasure makes: user_id, and only
+-- user_id, goes from a person's id to that id's tombstone (org_membership.tombstone_id, computed
+-- here the same way), so the entry stays and stops naming anyone. A tombstone is never rewritten.
+-- CREATE OR REPLACE, never only on create: a database made under the unconditional rule gets this
+-- one the next time its schema is initialized.
+CREATE OR REPLACE RULE no_update_audit AS ON UPDATE TO query_audit_log
+    WHERE NOT (
+        OLD.user_id NOT LIKE 'deleted-user-%'
+        AND NEW.user_id = 'deleted-user-'
+            || left(encode(sha256(convert_to(OLD.user_id, 'UTF8')), 'hex'), 16)
+        AND (to_jsonb(NEW) - 'user_id') = (to_jsonb(OLD) - 'user_id')
+    )
+    DO INSTEAD NOTHING;
 
 CREATE INDEX IF NOT EXISTS idx_audit_tenant_time ON query_audit_log (tenant_id, logged_at DESC);
 CREATE INDEX IF NOT EXISTS idx_audit_user_time ON query_audit_log (user_id, logged_at DESC);
@@ -76,7 +86,7 @@ async def init_audit_schema(
     *,
     region: str | None = None,  # REQ-1922: the record a region keeps, in its own schema
 ) -> None:  # REQ-074, REQ-1488
-    from provisa.core.db import SCHEMA_LOCK_KEY, _validate_org_id
+    from provisa.core.db import _validate_org_id, schema_lock_key
     from provisa.core.environments import org_schema
 
     _validate_org_id(org_id)
@@ -89,7 +99,7 @@ async def init_audit_schema(
         # outside the org registry's per-org lock, so a request that lazily builds the same org's
         # runtime overlaps it). CREATE TABLE IF NOT EXISTS is NOT race-safe in PostgreSQL: two
         # transactions both pass the catalog check and the loser raises DuplicateTable. Serialize.
-        async with conn.advisory_lock(SCHEMA_LOCK_KEY):
+        async with conn.advisory_lock(schema_lock_key(schema_name)):
             await conn.execute(f"CREATE SCHEMA IF NOT EXISTS {schema_name}")
             await conn.execute(f"SET search_path TO {schema_name}")
             # multi-statement script (CREATE TABLE + DO $$ RULEs + indexes); raw

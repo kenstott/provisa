@@ -304,7 +304,7 @@ export default defineConfig((config) => ({
         codeSplitting: true,
         manualChunks(id) {
           if (id.includes("node_modules/mermaid")) return "vendor-mermaid";
-          if (id.includes("node_modules/firebase")) return "vendor-firebase";
+          if (id.includes("node_modules/@firebase")) return "vendor-firebase";
           if (id.includes("node_modules/@mui") || id.includes("node_modules/@emotion"))
             return "vendor-mui";
           if (id.includes("node_modules/cytoscape")) return "vendor-cytoscape";

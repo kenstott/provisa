@@ -17,6 +17,7 @@ import { roleLineageGraph } from "../roleLineage";
 import type { RoleEffective } from "../../../api/roleRights";
 
 const VIEW: RoleEffective = {
+  regions: [],
   role: "dq_lead",
   standard: false,
   chain: ["dq_lead", "dq_steward", "viewer", "dp_owner"],

@@ -20,6 +20,7 @@ from sqlalchemy import or_, select
 
 from provisa.core.column_scope import COLUMN_SCOPES, SCOPE_DOMAIN, ColumnScopeInvalid
 from provisa.core.schema_org import registered_tables, roles, sources, table_columns
+from provisa.api.engine_error_names import client_text
 
 if TYPE_CHECKING:
     from provisa.api.admin.types import MutationResult
@@ -268,16 +269,19 @@ async def _graphql_columns_for_input(
 
     from provisa.api.admin._graphql_table_registration import (
         columns_to_register,
+        drop_pending,
+        hold_pending,
         registered_column_names,
-        remember_table,
         source_offer,
     )
     from provisa.api.admin.types import MutationResult
     from provisa.api.app import state
+    from provisa.graphql_remote.executor import Throttled
     from provisa.graphql_remote.probe import QueryTooComplex
 
     if input.source_id not in getattr(state, "graphql_remote_sources", {}):
         return None
+    drop_pending(input.source_id, input.table_name)
     picked = {c.name for c in chosen if c.native_filter_type is None}
     if picked:
         stored = await registered_column_names(
@@ -292,7 +296,7 @@ async def _graphql_columns_for_input(
             success=False,
             message=f"The schema of source {input.source_id!r} could not be read: {unreadable}",
             code="schema.discovery_failed",
-            params={"error": str(unreadable)},
+            params={"error": client_text(str(unreadable))},
         )
     assert offered is not None
     offer, reg = offered
@@ -317,6 +321,16 @@ async def _graphql_columns_for_input(
             code="schema.table_too_complex",
             params={"table": input.table_name, "reason": costly.reason},
         )
+    except Throttled as throttled:
+        return [], MutationResult(
+            success=False,
+            message=(
+                f"{offer.label}'s rate limit did not let {input.table_name} be checked: "
+                f"{throttled.reason}. Try again later"
+            ),
+            code="schema.remote_throttled",
+            params={"table": input.table_name, "reason": throttled.reason},
+        )
     if not any(c.native_filter_type is None for c in columns):
         reasons = sorted({o["reason"] for o in omitted})
         return [], MutationResult(
@@ -328,7 +342,8 @@ async def _graphql_columns_for_input(
             code="schema.table_not_readable",
             params={"table": input.table_name, "reason": "; ".join(reasons)},
         )
-    await remember_table(state, reg, input.table_name, fitted)
+    # REQ-1929: stored, and held by this process, with the registration's transaction.
+    hold_pending(reg, input.table_name, fitted)
     _OMITTED_FIELDS[(input.source_id, input.table_name)] = omitted
     return columns, None
 
@@ -557,7 +572,7 @@ async def _build_columns_for_input(pool, input) -> "tuple[list, MutationResult |
                 success=False,
                 message=f"Schema discovery failed: {e}",
                 code="schema.discovery_failed",
-                params={"error": str(e)},
+                params={"error": client_text(str(e))},
             )
         discovered_models = _build_column_models(
             [_ColInput(name=d["name"], data_type=d.get("type"), visible_to=[]) for d in discovered]

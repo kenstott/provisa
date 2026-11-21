@@ -22,6 +22,9 @@ name: Conformance (SPARQL)
 run-name: ${{ inputs.groups && format('Conformance (SPARQL) [{0}]', inputs.groups) || 'Conformance (SPARQL)' }}
 
 on:
+  # Every push to a release branch runs this: it gates the release (REQ-1989). main never does.
+  push:
+    branches: ['release/**']
   workflow_dispatch:
     inputs:
       ref:
@@ -32,8 +35,6 @@ on:
         description: "Test group globs, comma-separated (e.g. bind,property-path); empty runs all"
         required: false
         default: ""
-  # verification calls it (verify-surface.yml), on the run's own commit.
-  workflow_call:
 
 permissions:
   contents: read
@@ -113,7 +114,7 @@ jobs:
       # create; the seed makes it first and the instance's seeds leave what they do not own.
       - name: Seed the datasets
         run: |
-          .venv/bin/python scripts/conformance/sparql_w3c_fixtures.py seed \
+          .venv/bin/python scripts/conformance/sparql_w3c_fixtures.py seed --user "$CONFORMANCE_USER" \
             --suite "$RUNNER_TEMP/rdf-tests/sparql/sparql11" \
             --tables "$RUNNER_TEMP/sparql-tables.yaml" --relationships "$RUNNER_TEMP/sparql-relationships.yaml" \
             --access "$RUNNER_TEMP/sparql-access.yaml" \

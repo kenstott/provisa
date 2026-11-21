@@ -16,9 +16,12 @@ JSON, BigInt, and one per subtype a native GraphQL type does not fit (REQ-2171).
 
 # Requirements: REQ-010, REQ-306
 
+import functools
 from collections.abc import Mapping
 from typing import cast
 
+from provisa.compiler.naming import to_pascal_case
+from provisa.core.ir_arrays import ArrayType, column_array_type
 from provisa.core.ir_types import SUBTYPES, element_subtype
 
 from graphql import (
@@ -195,8 +198,7 @@ _SCALAR_NAMES: dict[str, str] = {
 def _scalar_name(subtype: str) -> str:
     if subtype in _SCALAR_NAMES:
         return _SCALAR_NAMES[subtype]
-    words = subtype.replace("multirange", "_multi_range").replace("range", "_range").split("_")
-    return "".join(word[:1].upper() + word[1:] for word in words)
+    return to_pascal_case(subtype.replace("multirange", "_multi_range").replace("range", "_range"))
 
 
 #: One named scalar per subtype native GraphQL does not fit (REQ-2171).
@@ -295,20 +297,26 @@ def nested_column_graphql_type(column: Mapping) -> GraphQLScalarType | GraphQLLi
 
     if not natively_nested(column.get("native_type")):
         return None
-    depth = column.get("array_depth") or 0
-    element = column.get("element_type")
-    if depth == 0 or not element:
+    typed = column_array_type(column.get("array_depth"), column.get("element_type"))
+    if typed is None:
         return JSONScalar
-    # A decimal element with a declared precision travels as a JSON string, exact on every
-    # engine, and is declared as what is served.
-    sized_decimal = element.startswith("numeric(")
     # REQ-2171: an array of a subtype is a list of its scalar; its element type is the base.
     subtype = element_subtype(column["native_type"], column.get("native_platform"))
+    return typed_array_graphql_type(typed, subtype)
+
+
+def typed_array_graphql_type(typed: ArrayType, subtype: str | None = None) -> GraphQLList:
+    """The GraphQL type of a typed array (REQ-1965, amended 2026-11-11): a list, nested to its
+    depth, of the GraphQL type of its element (``subtype``'s where the element is one). An
+    element may be null. A decimal element with a declared precision travels as a JSON string,
+    exact on every engine, and is declared as what is served."""
+    sized_decimal = typed.element.startswith("numeric(")
     declared: GraphQLScalarType | GraphQLList = (
-        GraphQLString if sized_decimal else column_type_to_graphql(subtype or element)
+        GraphQLString if sized_decimal else column_type_to_graphql(subtype or typed.element)
     )
-    for _ in range(depth):
+    for _ in range(typed.depth):
         declared = GraphQLList(declared)
+    assert isinstance(declared, GraphQLList)  # depth >= 1
     return declared
 
 
@@ -328,6 +336,9 @@ def array_graphql_type(data_type: str) -> GraphQLScalarType | GraphQLList:  # RE
     return column_type_to_graphql(data_type)
 
 
+# Pure: a spelling always maps to the same shared type, and every column of every role's schema
+# asks (a role's compile, a rebuild's warm-up): a repeated spelling is answered from the memo.
+@functools.lru_cache(maxsize=4096)
 def column_type_to_graphql(column_type: str) -> GraphQLScalarType | GraphQLList:  # REQ-010, REQ-306
     """Map the engine column type to a GraphQL scalar.
 

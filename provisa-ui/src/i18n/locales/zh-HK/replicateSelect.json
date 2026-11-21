@@ -8,7 +8,7 @@
     "never": "盡可能即時",
     "always": "一律",
     "hot": "Hot-{{threshold}}",
-    "neverWithLoadProtection": "「盡可能即時」不能與負載保護同時使用：受負載保護的數據表永不被即時讀取。",
+    "neverWithLoadProtection": "「盡可能即時」不能與負載保護同時使用，因為受負載保護的資料表從不即時讀取。",
     "scheduled": "一律，來源僅按排程讀取",
     "helpScheduled": "一律，來源僅按排程讀取：讀取始終來自複本，查詢絕不會導致讀取來源；排程器按離峰時段、快取 TTL 或變更探測重新整理複本，三者至少需要其一。"
   }

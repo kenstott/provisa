@@ -28,6 +28,7 @@
     "port": "पोर्ट {{port}}",
     "cypherOverHttp": "HTTP पर Cypher",
     "mvRefreshLoop": "MV रिफ़्रेश लूप",
-    "stopped": "रुका हुआ"
+    "stopped": "रुका हुआ",
+    "copyUrl": "URL कॉपी करें"
   }
 }

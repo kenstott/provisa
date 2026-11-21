@@ -11,7 +11,7 @@
 // The System health table: a socket listener's row names its port, an HTTP surface's its path.
 
 import { describe, it, expect, vi } from "vitest";
-import { render, screen, within } from "../test-utils/render";
+import { fireEvent, render, screen, within } from "../test-utils/render";
 import i18n from "../i18n";
 import { SystemHealth } from "../components/admin/SystemHealth";
 import type { ProtocolHealth } from "../api/admin";
@@ -25,6 +25,7 @@ const protocols: ProtocolHealth[] = [
   { name: "Cypher over HTTP", status: "running", port: null, path: "/data/cypher" },
   { name: "REST", status: "disabled", port: null, path: "/data/rest" },
   { name: "JSON:API", status: "running", port: null, path: "/data/jsonapi" },
+  { name: "OData", status: "running", port: null, path: "/data/odata" },
 ];
 
 vi.mock("../hooks/useAdminOpsQueries", () => ({
@@ -53,15 +54,30 @@ describe("SystemHealth", () => {
     ["GraphQL", "/data/graphql"],
     ["REST", "/data/rest"],
     ["JSON:API", "/data/jsonapi"],
+    ["OData", "/data/odata"],
   ])("shows %s with its path", (name, path) => {
     render(<SystemHealth />);
-    expect(row(name).getByRole("cell", { name: path })).toBeInTheDocument();
+    expect(row(name).getByText(path)).toBeInTheDocument();
+  });
+
+  it("copies the whole URL of a surface", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+    render(<SystemHealth />);
+    fireEvent.click(row("OData").getByRole("button", { name: t("systemHealth.copyUrl") }));
+    expect(writeText).toHaveBeenCalledWith(`${window.location.origin}/data/odata`);
+    await screen.findByRole("button", { name: t("copyButton.copied") });
+  });
+
+  it("offers no copy on a listener, which has a port and no URL", () => {
+    render(<SystemHealth />);
+    expect(row("pgwire").queryByTestId("copy-button")).toBeNull();
   });
 
   it("names Cypher over HTTP in the viewer's language, with its path", () => {
     render(<SystemHealth />);
     const cypher = row(t("systemHealth.cypherOverHttp"));
-    expect(cypher.getByRole("cell", { name: "/data/cypher" })).toBeInTheDocument();
+    expect(cypher.getByText("/data/cypher")).toBeInTheDocument();
   });
 
   it("says whether each surface is serving", () => {

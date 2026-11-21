@@ -2,7 +2,7 @@
   "cacheTtl": {
     "neverExpires": "не истекает",
     "inputHint": "-1: не истекает",
-    "neverExpiresHint": "Не истекает: загружается один раз.",
+    "neverExpiresHint": "Никогда не истекает и загружается один раз.",
     "asOf": "{{ttl}}, по состоянию на {{when}}",
     "roleTtlUnlisted": "TTL кеша не истекает ни для одной роли.",
     "roleTtlNoEffect": "TTL кеша не истекает, поэтому эта запись ни на что не влияет."

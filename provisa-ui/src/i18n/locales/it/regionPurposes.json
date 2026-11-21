@@ -1,0 +1,20 @@
+{
+  "regionPurposes": {
+    "legendTitle": "Perché esiste una regione",
+    "explainOnly": "Gli scopi spiegano una regione. Non cambiano dove vengono eseguite le query, cosa consente una regola o cosa viene accettato.",
+    "name": {
+      "residency": "Residenza",
+      "workload": "Carico di lavoro",
+      "latency": "Latenza",
+      "resilience": "Resilienza",
+      "dedicated": "Dedicata"
+    },
+    "explain": {
+      "residency": "I dati devono restare in una giurisdizione.",
+      "workload": "Separa un carico di lavoro dagli altri.",
+      "latency": "Collocata vicino ai suoi utenti o alle sue origini.",
+      "resilience": "Un luogo per il failover o il ripristino.",
+      "dedicated": "Infrastruttura riservata a un'organizzazione, per la sua sovranità su di essa."
+    }
+  }
+}

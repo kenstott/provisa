@@ -27,9 +27,10 @@ Design contracts (REQ-1008):
   - One formatter serves both the initial build and any rebuild, so indexed and
     re-indexed text cannot drift.
 
-The index is a server-lifetime artifact: DuckDB VSS's HNSW is memory-resident, so
-it is (re)built from the catalog at build time — a cold build is just the full
-case. Sizing scales with schema cardinality, not row volume.
+Each org's runtime holds its own index, which lives as long as that runtime: DuckDB
+VSS's HNSW is memory-resident, so it is (re)built from the org's catalog at build
+time — a cold build is just the full case. Sizing scales with schema cardinality,
+not row volume.
 """
 
 from __future__ import annotations

@@ -25,6 +25,7 @@
  * i18n namespace (src/i18n/locales/<lng>/tour.json), keyed by `key`, so the
  * narration is translatable. This file only carries the layout/navigation data.
  */
+import type { ClearOf } from "./clearOfGraph";
 import type { Capability } from "../types/auth";
 import type { OrgHas, TourPrerequisites } from "./tourPrerequisites";
 import type { UiAction } from "../mcp/uiActions";
@@ -61,6 +62,8 @@ export interface TourStep {
    * torn down on leaving the step, so no restore is needed.
    */
   expandSelect?: boolean;
+  /** A graph on the page the step's text must not cover (clearOfGraph). */
+  clearOf?: ClearOf;
   /**
    * Carry the NL-generated query for this branch into the explorer on navigate
    * and auto-run it — mirrors the NL page's "Open in X" buttons. The runner maps
@@ -115,6 +118,12 @@ export interface TourStep {
    * and close leave the picker as it was.
    */
   chooseOnNext?: { open: string; option: string };
+  /**
+   * On entering the step, once per visit: open the picker `open` on the step's page and choose its
+   * option `option`, then run the step's statement. A role picked on the step that explains it, so
+   * that what the step opens runs as that role and no step announces a role over an empty editor.
+   */
+  chooseFirst?: { open: string; option: string };
   /**
    * Named warm-up for *this* step's backend work, resolved by the runner's prefetch registry and
    * fired one step early (while the previous popover is on screen). The start-up prefetch only
@@ -192,7 +201,8 @@ export interface TourStep {
 }
 
 const SOURCES_ADD = '[data-tour="sources-add"]';
-// REQ-2115: the Parquet file Provisa publishes (REQ-2113), the core tour's live-built source.
+// REQ-2115: the Parquet file Provisa publishes (REQ-2113), the address the core tour's source form
+// is filled in with.
 export const SUPPLIES_PARQUET_URL = "https://provisa.dev/demo-data/supplies.parquet";
 /** REQ-2101 (amended): the copy a demo ships into its org's own folder (starthere's org_files/). */
 export const SUPPLIES_ORG_FILE = "supplies.parquet";
@@ -203,9 +213,9 @@ export interface TourContext {
   orgFiles: string[];
 }
 
-/** Where the live-built source reads supplies.parquet: the org's own copy where its demo ships
- * one, read in place with no network (a sandbox may reach no address its demo does not declare);
- * else the copy Provisa publishes. */
+/** Where the core tour's source form says supplies.parquet is: the org's own copy where its demo
+ * ships one, read in place with no network (a sandbox may reach no address its demo does not
+ * declare); else the copy Provisa publishes. */
 export function suppliesAddress(orgFiles: string[]): string {
   return orgFiles.includes(SUPPLIES_ORG_FILE)
     ? `{files}/${SUPPLIES_ORG_FILE}`
@@ -319,20 +329,19 @@ export const TOUR_STEPS: TourStep[] = [
     clickAfterNext: '[data-testid="source-type-picker-close"]',
   },
   {
-    // REQ-2115: a source built live, as the visitor would build it: the picker opened and its
-    // whole list shown, Parquet File chosen, the file given as its address, and saved. A static
-    // known address, so very unlikely to fail; the popover then explains the row.
+    // REQ-2115 (amended 2026-10-29, THE TOUR FILLS THE FORM AND CANCELS): the picker opened and its
+    // whole list shown, Parquet File chosen and the form filled in, as the visitor would. The
+    // popover explains the filled form; Next (or Back, or closing) presses Cancel, so nothing is
+    // saved, no row appears and a saved source can't refuse the visitor's own later on.
     actions: ({ orgFiles }) => [
       { do: "press", target: { testId: "sources-add-toggle" } },
       { do: "show", target: { testId: "source-type-picker-body" } },
       { do: "press", target: { testId: "source-type-option-parquet" } },
       { do: "fill", target: { testId: "sources-id-input" }, value: SUPPLIES_SOURCE_ID },
       { do: "fill", target: { testId: "source-file-location" }, value: suppliesAddress(orgFiles) },
-      { do: "press", target: { role: "button", name: "Save" } },
     ],
-    // The new row's first cell, its ID: the row runs on under the source's detail, which Save
-    // opens beside the list, and a spotlight on the whole row lit that panel too.
-    element: `[data-testid="sources-row-${SUPPLIES_SOURCE_ID}"] td:first-child`,
+    element: '[data-tour="sources-form"]',
+    clickAfterNext: '[data-testid="sources-cancel"]',
     key: "stepBuildSource",
   },
   {
@@ -540,13 +549,15 @@ export const TOUR_STEPS: TourStep[] = [
   },
   {
     route: "/admin/tags",
-    capability: "org_settings",
+    capability: "table_registration",
     element: '[data-testid="tags-scope-bar"]',
     key: "stepTags",
   },
   {
     route: "/admin/requests",
-    capability: "org_settings",
+    // The route opens to every member (REQ-1327); the tour keeps the step to a holder of `usage`,
+    // so a role with no other page is not offered a tour of one step.
+    capability: "usage",
     element: '[data-testid="requests-tab-pending"]',
     key: "stepRequests",
   },
@@ -696,8 +707,8 @@ export const TOUR_STEPS: TourStep[] = [
   },
   {
     // REQ-1387: the business glossary — curation plus AI-assisted definitions/relationships.
-    route: "/admin/ontology",
-    // REQ-1590: stricter than the route's own gate. /admin/ontology opens to `glossary_read`, but
+    route: "/context/ontology",
+    // REQ-1590: stricter than the route's own gate. /context/ontology opens to `glossary_read`, but
     // what this step points at is the AI-generation menu, which only a curator is shown — so a
     // read-only viewer skips the step rather than waiting out an anchor that never mounts.
     capability: "glossary_rw",
@@ -705,17 +716,17 @@ export const TOUR_STEPS: TourStep[] = [
     key: "stepGlossary",
   },
   {
-    route: "/admin/ontology",
+    route: "/context/ontology",
     capability: "glossary_rw",
     element: '[data-testid="glossary-new-btn"]',
     key: "stepGlossaryTerm",
   },
   {
     // REQ-1945: publishing the model, its data products and lineage out to a catalog. The anchor is
-    // the Metadata Export page root, which paints in both the entitled and not-entitled states.
-    route: "/admin/metadata-export",
+    // the Context Sync page root (REQ-2247, REQ-2259), which paints in both the entitled and not-entitled states.
+    route: "/context/sync",
     capability: "org_settings",
-    element: '[data-tour="metadata-export"]',
+    element: '[data-tour="syncing"]',
     key: "stepPublish",
   },
   {
@@ -768,7 +779,10 @@ export const TOUR_STEPS: TourStep[] = [
   {
     route: "/admin/observability",
     capability: "observability",
-    element: '[data-testid="observability-debug-trace-tab"]',
+    // The caller's own trace feed renders for every role holding the capability; the debug tab
+    // beside it needs the deployment-wide otel block, which a caller without platform_settings
+    // never receives (REQ-1349).
+    element: '[data-testid="trace-feed"]',
     key: "stepObservability",
   },
   {
@@ -786,7 +800,8 @@ export const TOUR_STEPS: TourStep[] = [
   {
     route: "/admin/overview",
     capability: "observability",
-    element: '[data-tour="nav-admin"]',
+    // Admin is in the user menu, closed on every page, so the step points at the page it opens.
+    element: '[data-tour="admin-content"]',
     readySelector: '[data-tour="admin-content"]',
     key: "step23",
   },
@@ -914,6 +929,26 @@ export function stepRoute(
 }
 
 /**
+ * The page a step's `route` names is the one shown at `pathname` and `search`: the same path, with
+ * each parameter the route names holding the route's value. A parameter the route does not name is
+ * the page's own -- REQ-2241 puts an open panel and its tab in the URL -- so a page with a panel
+ * open is still the route's page, and a step on it does not navigate to the bare route, which
+ * would close the panel the step explains.
+ */
+export function showsRoute(route: string, pathname: string, search: string): boolean {
+  const at = route.indexOf("?");
+  const path = at < 0 ? route : route.slice(0, at);
+  if (path !== pathname) return false;
+  const named = new URLSearchParams(at < 0 ? "" : route.slice(at + 1));
+  const shown = new URLSearchParams(search);
+  return [...named.keys()].every((key) => {
+    const want = named.getAll(key);
+    const have = shown.getAll(key);
+    return want.length === have.length && want.every((v, i) => v === have[i]);
+  });
+}
+
+/**
  * The steps of `itinerary` (indices into `steps`) this org can show. A step that opens Polly
  * (`pollyOpen`) to ask it live needs a model: without one Polly's launcher shows its
  * "not configured" notice instead of the panel, and the step's anchor never mounts. A step showing
@@ -943,10 +978,11 @@ export function stepsTheOrgCanShow(
  * opened, which is the same hang by a different path.
  *
  * `meets` is passed in rather than imported so this stays pure data logic; the runner supplies
- * `meetsRequirement` bound to the signed-in capabilities.
+ * `meetsRequirement` bound to the signed-in capabilities, and given each owner's route, so a page
+ * a demo sandbox's visitor may read without its capability (the Platform page) is kept for them.
  */
 export function tourItinerary(
-  meets: (capability: Capability) => boolean,
+  meets: (capability: Capability, route: string) => boolean,
   scope?: RunScope,
   steps: readonly TourStep[] = TOUR_STEPS,
 ): number[] {
@@ -965,7 +1001,7 @@ export function tourItinerary(
       if (step.capability === undefined) {
         throw new Error(`Tour: step ${i} declares a route with no capability`);
       }
-      ownerAllowed = meets(step.capability);
+      ownerAllowed = meets(step.capability, step.route);
     }
     // The owner walk covers every step, so a scoped run whose first step is routeless still
     // resolves its owner's rights; the scope only filters what is kept.

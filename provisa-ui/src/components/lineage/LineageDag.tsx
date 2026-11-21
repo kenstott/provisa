@@ -14,33 +14,31 @@
 
 import { useEffect, useRef, useState } from "react";
 import cytoscape, { type NodeSingular } from "cytoscape";
-import elkRaw from "cytoscape-elk";
+import { useTranslation } from "react-i18next";
 import { ActionIcon, Text } from "@mantine/core";
 import { Download, Expand, ChevronsDownUp, ChevronsUpDown } from "lucide-react";
 import { FitScreenIcon } from "../graph/GraphIcons";
 import type { LineageGraphData } from "../../api/lineage";
 import type { CyLayoutOptions } from "../graph/cytoscape-types";
+import { cyCanvas } from "../provisa-graph/cyCanvas";
+// Registers Provisa's ELK layout (elkLayout), once, as the graph component does.
+import "../provisa-graph/core";
+import { PROVISA_ELK } from "../provisa-graph/elkLayout";
 import { LineageLegend } from "./LineageLegend";
 import type { DescribeColumn } from "./column-descriptions";
 import {
   FOOTER_H,
+  REPORTED_EDGE_COLOR,
   ROLE_STYLE,
   ROW_H,
   buildLineageModel,
+  edgeText,
   nativeHeadHeight,
   rowWidth,
 } from "./lineage-layout";
 import type { LineageLinks } from "./lineage-links";
 import type { Role } from "./lineage-layout";
 import { Tip, TipSurface } from "../Tip";
-
-// ELK lays the relation boxes out in layers (REQ-1665); the ERD registers it the same way.
-type CyExt = Parameters<typeof cytoscape.use>[0];
-try {
-  cytoscape.use((elkRaw as { default?: CyExt }).default ?? (elkRaw as CyExt));
-} catch {
-  /* already registered */
-}
 
 // The named `Core` export resolves to the package's own bundler-broken type (no fit/png);
 // the factory return carries the ambient shim's full instance API, so derive it from there.
@@ -72,9 +70,14 @@ interface LineageDagProps {
   // REQ-1665: draw every column as a row. Complete Lineage is read from a role's vantage point and
   // every column that role can see is in use, so none is folded into "+N unused".
   allColumns?: boolean;
-  // REQ-1667: swimlanes by distance from `members` (lane 0), separated by dotted rules and titled
-  // by `title(lane)`. Every box is laid out in its lane; nothing is shelf-packed.
-  lanes?: { members: ReadonlySet<string>; title: (lane: number) => string };
+  // REQ-1667, REQ-2174: swimlanes around `members` (lane 0) and their `inputs` (lane -1)
+  // (lanesFrom), separated by dotted rules and titled by `title(lane)` (null: no title). Every box
+  // is laid out in its lane; nothing is shelf-packed.
+  lanes?: {
+    members: ReadonlySet<string>;
+    inputs: ReadonlySet<string>;
+    title: (lane: number) => string | null;
+  };
   // The role key, floated over the canvas's bottom-left corner.
   legend?: boolean;
   // Column and edge counts, floated over the bottom-right corner.
@@ -119,6 +122,7 @@ export function LineageDag({
   links,
   onOpenLink,
 }: LineageDagProps): React.ReactElement {
+  const { t } = useTranslation();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const cyRef = useRef<CyCore | null>(null);
   const [hovered, setHovered] = useState(false);
@@ -133,6 +137,9 @@ export function LineageDag({
 
   // `readable`: the canvas's height once the graph is laid out, so it is no taller than the graph.
   const [canvasHeight, setCanvasHeight] = useState<number | string>(height);
+  /** A layout that failed after it started (ELK's rejected answer): thrown while rendering, to
+   * the page's error boundary, as the graph component does -- never a graph left unplaced. */
+  const [failed, setFailed] = useState<Error | null>(null);
   const fitToScreen = () => cyRef.current?.fit(undefined, FIT_PAD);
   const downloadPng = () => {
     const cy = cyRef.current;
@@ -163,8 +170,13 @@ export function LineageDag({
     const model = buildLineageModel(graph, collapsedRelations, {
       resultLabel,
       allColumns,
-      lanesAround: lanes?.members,
+      lanesAround: lanes,
       relationLabel,
+      reportedWords: {
+        job: t("lineageDag.job"),
+        outside: t("lineageDag.outsideModel"),
+        reported: t("lineageDag.reportedEdge"),
+      },
     });
 
     // A relation is a compound node whose children are its rows (and the "+N unused" footer).
@@ -237,7 +249,8 @@ export function LineageDag({
           id: e.id,
           source: e.source,
           target: e.target,
-          label: e.count > 1 ? `${e.count} columns` : e.label,
+          label: edgeText(e, t("lineageDag.reportedEdge")),
+          reported: e.reported ? "yes" : "no",
           command: e.command ? "yes" : "no",
           commandName: e.commandName ?? "",
         },
@@ -245,8 +258,11 @@ export function LineageDag({
     ];
 
     const boxById = new Map(model.boxes.map((b) => [b.id, b]));
+    // ELK answers after this DAG may have been redrawn (a new graph, a relation collapsed): the
+    // core draws into a canvas of its own, which outlives the DAG while a layout is pending.
+    const canvas = cyCanvas(containerRef.current);
     const cy = cytoscape({
-      container: containerRef.current,
+      container: canvas.container,
       elements,
       // No initial layout: cytoscape's default grid would scatter the rows of every box the ELK
       // pass does not touch (the isolated ones) — those are stacked by hand below.
@@ -467,6 +483,15 @@ export function LineageDag({
             "line-style": "dashed",
           },
         },
+        {
+          // REQ-2229: an OpenLineage event reported this edge; the model did not derive it.
+          selector: 'edge[reported = "yes"]',
+          style: {
+            "line-color": REPORTED_EDGE_COLOR,
+            "target-arrow-color": REPORTED_EDGE_COLOR,
+            "line-style": "dashed",
+          },
+        },
       ],
       wheelSensitivity: 0.2,
     }) as CyCore;
@@ -552,7 +577,10 @@ export function LineageDag({
     const connected = laned ? boxNodes : boxNodes.filter((n) => connectedIds.has(n.id()));
     const isolated = laned ? cy.collection() : boxNodes.filter((n) => !connectedIds.has(n.id()));
     const laneOf = (n: NodeSingular): number => boxById.get(n.id())?.lane ?? 0;
-    const minLane = laned ? Math.min(0, ...model.boxes.map((b) => b.lane ?? 0)) : 0;
+    // ELK's partitions are whole numbers, left to right: a lane's is its place among the lanes.
+    const partitionOf = new Map(
+      [...new Set(model.boxes.map((b) => b.lane ?? 0))].sort((a, b) => a - b).map((l, i) => [l, i]),
+    );
 
     // Dotted rules between adjacent lanes and a title over each, as inert nodes: they pan, zoom
     // and export with the graph. Drawn once the boxes are placed, from their extents per lane.
@@ -574,12 +602,19 @@ export function LineageDag({
       const top = y1 - 44;
       const bottom = y2 + 16;
       cy.add(
-        ordered.map(([l, ex]) => ({
-          data: { id: `lane-title-${l}`, laneTitle: "yes", label: lanes.title(l) },
-          position: { x: (ex.x1 + ex.x2) / 2, y: top },
-          selectable: false,
-          grabbable: false,
-        })),
+        ordered.flatMap(([l, ex]) => {
+          const label = lanes.title(l);
+          return label === null
+            ? []
+            : [
+                {
+                  data: { id: `lane-title-${l}`, laneTitle: "yes", label },
+                  position: { x: (ex.x1 + ex.x2) / 2, y: top },
+                  selectable: false,
+                  grabbable: false,
+                },
+              ];
+        }),
       );
       // Each rule is a 1px dotted EDGE between two invisible anchors — a node's border would be
       // drawn on both sides of its width and come out 2-3px.
@@ -748,15 +783,16 @@ export function LineageDag({
       firstView();
     };
     if (connected.nonempty()) {
+      // ELK lays the relation boxes out in layers (REQ-1665), through Provisa's own adapter.
       const layout = cy.layout({
-        name: "elk",
+        name: PROVISA_ELK,
         eles: connected.union(connected.descendants()).union(cy.edges()),
         fit: false,
         nodeLayoutOptions: (n: NodeSingular) => {
           // A box's lane is its ELK partition: partitions are placed strictly left to right.
           const partition =
             laned && n.data("box") === "yes"
-              ? { "elk.partitioning.partition": String(laneOf(n) - minLane) }
+              ? { "elk.partitioning.partition": String(partitionOf.get(laneOf(n))) }
               : {};
           return n.isParent()
             ? {
@@ -782,8 +818,7 @@ export function LineageDag({
           "elk.layered.considerModelOrder.strategy": "NODES_AND_EDGES",
         },
       } as CyLayoutOptions);
-      layout.on("layoutstop", finish);
-      layout.run();
+      canvas.run(layout, finish, setFailed);
     } else {
       finish();
     }
@@ -807,11 +842,13 @@ export function LineageDag({
     observer.observe(containerRef.current);
     return () => {
       observer.disconnect();
-      cy.destroy();
+      canvas.end(cy);
       cyRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- onToggleRelation is read through toggleRef; only its presence decides whether hints are wired
-  }, [graph, collapsedRelations, resultLabel, allColumns, lanes, describeColumn, relationLabel]);
+  }, [graph, collapsedRelations, resultLabel, allColumns, lanes, describeColumn, relationLabel, t]);
+
+  if (failed) throw failed;
 
   return (
     <div
@@ -828,7 +865,10 @@ export function LineageDag({
         <div
           style={{ position: "absolute", insetInlineStart: 8, bottom: 8, pointerEvents: "none" }}
         >
-          <LineageLegend native={graph.nodes.some((n) => n.kind === "native")} />
+          <LineageLegend
+            native={graph.nodes.some((n) => n.kind === "native")}
+            reported={graph.edges.some((e) => e.origin === "openlineage")}
+          />
         </div>
       )}
       {stats && (
@@ -906,11 +946,11 @@ export function LineageDag({
           </Tip>
         )}
         {onOpenModal && (
-          <Tip text="Open full view" named>
+          <Tip text="Enlarge" named>
             <ActionIcon
               variant="subtle"
               onClick={onOpenModal}
-              aria-label="Open full view"
+              aria-label="Enlarge"
               data-testid="lineage-open-modal"
             >
               <Expand size={16} />

@@ -54,7 +54,14 @@ def _run_fixture_with_marker(marker_name: str, up_side_effect):
         else _heavy_db_service(request)
     )
 
-    with patch("tests.conftest.subprocess.run", side_effect=mock_run):
+    # `docker compose config` is not run: each service mounts one named volume, proj_<service>_data.
+    with (
+        patch("tests.conftest.subprocess.run", side_effect=mock_run),
+        patch(
+            "tests.conftest._named_volumes",
+            side_effect=lambda services: [f"proj_{s}_data" for s in services],
+        ),
+    ):
         try:
             next(gen)  # run setup up to yield
         except StopIteration:
@@ -100,3 +107,55 @@ class TestHeavyDbServiceTeardownOnSetupFailure:
         rm_calls = [c for c in calls if "rm" in c]
         assert up_calls, "expected docker compose up to be called"
         assert rm_calls, "expected docker compose rm to be called after successful test"
+
+
+class TestHeavyDbServiceTeardownRemovesNamedVolumes:
+    """A per-test service gets cold volumes: teardown drops the named volumes it mounted.
+
+    Root cause: teardown ran `docker compose rm -fsv`, which drops anonymous volumes only. The
+    next test bringing up the same service reused the named volume. Firebird keeps test.fdb on its
+    named volume and its security database on the container filesystem, so the second firebird
+    test in a session found test.fdb present, skipped the image's FIREBIRD_USER creation, and
+    every login as that user was refused.
+    """
+
+    def test_named_volumes_removed_after_the_test(self):
+        calls = _run_fixture_with_marker("requires_firebird", None)
+
+        volume_rm = [c for c in calls if c[:3] == ["docker", "volume", "rm"]]
+        assert volume_rm == [["docker", "volume", "rm", "-f", "proj_firebird_data"]], calls
+        rm_index = next(i for i, c in enumerate(calls) if "rm" in c and "compose" in c)
+        assert calls.index(volume_rm[0]) > rm_index, "volumes go after their containers"
+
+
+class TestNamedVolumesSharedWithOtherServices:
+    """A per-test service's teardown must not remove a volume another service also mounts.
+
+    Root cause: hive-metastore and hive-server2 mount hive_warehouse, which the session-wide Trino
+    also mounts. Teardown's ``docker volume rm -f`` of it failed with "volume is in use" while
+    Trino kept running, so every hive test errored at teardown.
+    """
+
+    def test_a_volume_shared_with_a_service_outside_the_set_is_kept(self):
+        import json
+
+        from tests.conftest import _named_volumes
+
+        def vol(source):
+            return {"type": "volume", "source": source, "target": "/data"}
+
+        config = {
+            "services": {
+                "trino": {"volumes": [vol("hive_warehouse")]},
+                "hive-metastore": {"volumes": [vol("hive_warehouse"), vol("metastore_db")]},
+                "hive-server2": {"volumes": [vol("hive_warehouse")]},
+            },
+            "volumes": {
+                "hive_warehouse": {"name": "proj_hive_warehouse"},
+                "metastore_db": {"name": "proj_metastore_db"},
+            },
+        }
+        result = MagicMock()
+        result.stdout = json.dumps(config)
+        with patch("tests.conftest.subprocess.run", return_value=result):
+            assert _named_volumes(["hive-metastore", "hive-server2"]) == ["proj_metastore_db"]

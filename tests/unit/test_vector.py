@@ -93,8 +93,8 @@ class TestProviders:
         encoding: list[int] = []  # how many encodes run at once, each time one starts
 
         class _Model:
-            def __init__(self, model_id):
-                loads.append(model_id)
+            def __init__(self, path, token):
+                loads.append(path)
                 time.sleep(0.2)  # long enough for the other thread to arrive meanwhile
 
             def encode(self, texts):
@@ -108,7 +108,13 @@ class TestProviders:
         monkeypatch.setitem(
             sys.modules, "sentence_transformers", types.SimpleNamespace(SentenceTransformer=_Model)
         )
+        monkeypatch.setitem(
+            sys.modules,
+            "huggingface_hub",
+            types.SimpleNamespace(snapshot_download=lambda model_id, **_: f"/hub/{model_id}/abc"),
+        )
         monkeypatch.setattr(HuggingFaceLocalProvider, "_cache", {})
+        monkeypatch.setattr(HuggingFaceLocalProvider, "_snapshots", {})
         model = VectorModel(id="mini", provider="huggingface", dimensions=2)
         got: list = []
 
@@ -120,7 +126,7 @@ class TestProviders:
             thread.start()
         for thread in threads:
             thread.join()
-        assert loads == ["mini"]
+        assert loads == ["/hub/mini/abc"]
         assert encoding == [1, 1]  # never two at once
         assert got == [[[1.0, 0.0]], [[1.0, 0.0]]]
 
@@ -135,16 +141,15 @@ class TestProviders:
 
         from provisa.vector.providers import HuggingFaceLocalProvider
 
-        cached: set[str] = set()
+        fetched: list[str] = []
 
         class _Model:
-            def __init__(self, model_id):
-                cached.add(model_id)  # loading fetches it into the hub cache
+            def __init__(self, path, token):
+                assert fetched, "the model is loaded from the snapshot fetched for it"
 
-        def _snapshot_download(model_id, local_files_only):
-            assert local_files_only
-            if model_id not in cached:
-                raise FileNotFoundError("outgoing traffic has been disabled")
+        def _snapshot_download(model_id, **kwargs):
+            assert not kwargs.get("local_files_only"), "a host that never had it fetches it"
+            fetched.append(model_id)
             return str(tmp_path / "snapshots" / "abc123")
 
         monkeypatch.setitem(
@@ -156,8 +161,10 @@ class TestProviders:
             types.SimpleNamespace(snapshot_download=_snapshot_download),
         )
         monkeypatch.setattr(HuggingFaceLocalProvider, "_cache", {})
+        monkeypatch.setattr(HuggingFaceLocalProvider, "_snapshots", {})
         model = VectorModel(id="mini", provider="huggingface", dimensions=2)
         assert await HuggingFaceLocalProvider().reported_version(model) == "abc123"
+        assert fetched == ["mini"]
 
     async def test_unknown_provider_raises(self):
         with pytest.raises(EmbeddingError, match="Unknown embedding provider"):
@@ -497,8 +504,15 @@ _ = types  # silence unused-import lints in some environments
 class TestCapabilityIsDetectedWhenASourceConnects:  # REQ-422
     async def test_the_pool_holds_each_sources_capability(self, monkeypatch):
         import provisa.executor.pool as P
+        from provisa.core import secrets_providers
+
+        # A deployment of one organization (REQ-2006): the API layer says it at import; none here.
+        monkeypatch.setattr(secrets_providers, "_many_organisations", lambda: False)
 
         class _Fake:
+            names_own_destination = False  # REQ-2191: the DirectDriver default
+            dialect = None  # REQ-2191: the type names its dialect
+
             def __init__(self, rows):
                 self.rows = rows
 

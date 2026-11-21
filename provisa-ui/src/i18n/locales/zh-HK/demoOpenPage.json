@@ -1,6 +1,10 @@
 {
   "demoOpenPage": {
     "title": "正在開啟您的示範沙盒",
+    "titleMaking": "正在製作您的示範沙盒",
+    "titleCooking": "正在烹調您的示範沙盒",
+    "titleGrowing": "正在培育您的示範沙盒",
+    "titleComposing": "正在譜寫您的示範沙盒",
     "opening": "正在為您準備示範的副本，需要幾秒鐘。",
     "starting": "正在啟動此示範…",
     "retry": "重試",

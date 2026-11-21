@@ -136,7 +136,7 @@ async def test_an_edit_through_update_table_keeps_the_store_only_settings(contro
             await conn.execute_core(
                 table_columns.insert().values(
                     table_id=table_id,
-                    domain_id="",
+                    domain_id="sales",
                     column_name="id",
                     data_type="integer",
                     visible_to=["analyst"],

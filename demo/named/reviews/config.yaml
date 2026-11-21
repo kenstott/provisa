@@ -45,8 +45,7 @@ roles:
 - id: store_analyst
   parents: [analyst]
   description: "Queries the store's reviews."
-  capabilities:
-  - query_development
+  capabilities: [data_product_read, glossary_read, query_development, usage]
   domain_access:
   - store
 server:

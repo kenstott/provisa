@@ -8,6 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
+import { DestructiveConfirmButton } from "../form/DestructiveConfirmButton";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActionIcon,
@@ -48,7 +49,7 @@ import {
   rebuildEnvironment,
   requestReview,
 } from "../../api/environments";
-import { EnvironmentInUse, isBase } from "../../api/environments";
+import { ENVIRONMENT_STAGES, EnvironmentInUse, isBase } from "../../api/environments";
 import { DependentsDialog } from "../DependentsDialog";
 import type { Dependent } from "../../lib/dependents";
 import type {
@@ -57,6 +58,7 @@ import type {
   CopyReport,
   DataMode,
   Environment,
+  EnvironmentStage,
 } from "../../api/environments";
 import type { NotificationData } from "@mantine/notifications";
 import { MergeRequestsPanel } from "./MergeRequestsPanel";
@@ -139,8 +141,16 @@ function ConflictNotice({ head, conflicts }: { head: string; conflicts: Conflict
  */
 export function EnvironmentsTab() {
   const { t } = useTranslation();
-  const { activeOrgId, capabilities } = useAuth();
-  const canAdminister = capabilities.includes("org_settings");
+  const { activeOrgId, capabilities, userId } = useAuth();
+  // REQ-1573, REQ-1327: what _guard asks of the org's environments.
+  const canAdminister = capabilities.includes("environment_management");
+  // REQ-2261, REQ-2155: what _guard_owned asks of one environment -- the org-wide right, or the
+  // owner's right over the environments it created.
+  const canManage = (env: Environment) =>
+    canAdminister ||
+    (capabilities.includes("environment_owned_management") &&
+      userId !== null &&
+      env.created_by === userId);
 
   const [envs, setEnvs] = useState<Environment[]>([]);
   const [name, setName] = useState("");
@@ -353,6 +363,16 @@ export function EnvironmentsTab() {
         ),
       };
     });
+
+  async function changeStage(env: Environment, stage: EnvironmentStage) {
+    if (stage === env.stage) return;
+    try {
+      await patchEnvironment(orgId, env.name, { stage });
+      reload();
+    } catch (err) {
+      fail(err as Error);
+    }
+  }
 
   async function toggleProtected(env: Environment) {
     try {
@@ -598,6 +618,12 @@ export function EnvironmentsTab() {
                   groupValue: (e) => e.parent ?? "",
                 },
                 {
+                  key: "stage",
+                  label: t("environmentsTab.colStage"),
+                  sortValue: (e) => ENVIRONMENT_STAGES.indexOf(e.stage),
+                  groupValue: (e) => t(`environmentStage.${e.stage}`),
+                },
+                {
                   key: "createdBy",
                   label: t("environmentsTab.colCreatedBy"),
                   sortValue: (e) => e.created_by ?? "",
@@ -612,6 +638,15 @@ export function EnvironmentsTab() {
               headers={[
                 { col: "name" },
                 { col: "kind" },
+                <Group gap={4} align="center" wrap="nowrap">
+                  {t("environmentsTab.colStage")}
+                  <HelpBubble
+                    title={t("environmentsTab.stageTitle")}
+                    paragraphs={[t("environmentsTab.stageHelp"), t("environmentsTab.stageHelp2")]}
+                    ariaLabel={t("environmentsTab.stageTitle")}
+                    testId="env-stage-help"
+                  />
+                </Group>,
                 t("environmentsTab.colRepo"),
                 { col: "createdBy" },
                 { col: "expires" },
@@ -629,7 +664,7 @@ export function EnvironmentsTab() {
                 </Group>,
                 t("environmentsTab.colActions"),
               ]}
-              colSpan={7}
+              colSpan={8}
               rowKey={(e) => e.name}
               render={(e) => (
                 <ListRow key={e.name} testId={`env-row-${e.name}`}>
@@ -666,6 +701,24 @@ export function EnvironmentsTab() {
                         {t("environmentsTab.branchOf", { env: e.parent })}
                       </Badge>
                     )}
+                  </Table.Td>
+                  <Table.Td>
+                    <Select
+                      size="xs"
+                      w={124}
+                      allowDeselect={false}
+                      disabled={!canManage(e)}
+                      value={e.stage}
+                      data={ENVIRONMENT_STAGES.map((stage) => ({
+                        value: stage,
+                        label: t(`environmentStage.${stage}`),
+                      }))}
+                      onChange={(value) =>
+                        value !== null && changeStage(e, value as EnvironmentStage)
+                      }
+                      aria-label={t("environmentsTab.colStage")}
+                      data-testid={`env-stage-select-${e.name}`}
+                    />
                   </Table.Td>
                   <Table.Td>
                     {(() => {
@@ -1043,14 +1096,13 @@ export function EnvironmentsTab() {
           <FormFooter
             onCancel={() => setDeleteTarget(null)}
             action={
-              <Button
-                color="red"
+              <DestructiveConfirmButton
                 onClick={runDelete}
                 loading={busy === deleteTarget?.name}
-                data-testid="env-delete-run"
+                testId="env-delete-run"
               >
                 {t("environmentsTab.deleteConfirm")}
-              </Button>
+              </DestructiveConfirmButton>
             }
           />
         </FormLayout>

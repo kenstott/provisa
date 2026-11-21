@@ -146,6 +146,12 @@ class _Engine:
         return dict(self.counts)
 
 
+def _crashed(message: str, *args: object) -> None:
+    """A listener never lets a crash escape: it logs it, and a listener that starts again after one
+    is never told to stop here. Left to the log, a crashed landing goes unseen or never ends."""
+    raise AssertionError(message % args)
+
+
 async def _land(counts: dict, batch: list) -> tuple[list, list, list]:
     """What the listener tells of one landed batch: the ripples posted, the subscriptions told,
     and the changes the table's triggers are given."""
@@ -181,7 +187,7 @@ async def _land(counts: dict, batch: list) -> tuple[list, list, list]:
             debounce_quiet=0.0,
             debounce_max_delay=5.0,
             node="shop_db/public.orders",
-            log=SimpleNamespace(exception=lambda *a, **k: None, error=lambda *a, **k: None),
+            log=SimpleNamespace(exception=_crashed, error=lambda *a, **k: None),
             key=("shop_db", "public", "orders"),
         )
     return rippled, told, triggered

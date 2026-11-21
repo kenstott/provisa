@@ -133,7 +133,13 @@ from provisa.security.effective_rights import data_view_from_state  # noqa: E402
 def _state():
     return SimpleNamespace(
         tables=TABLES,
-        roles={"clinical_reviewer": {"id": "clinical_reviewer", "domain_access": ["claims"]}},
+        roles={
+            "clinical_reviewer": {
+                "id": "clinical_reviewer",
+                "capabilities": ["usage"],
+                "domain_access": ["claims"],
+            }
+        },
         role_chains={"clinical_reviewer": CHAIN},
         meta_roles={},
         meta_qualifiers={},
@@ -186,9 +192,24 @@ from provisa.security.effective_rights import table_access  # noqa: E402
 def _two_role_state():
     state = _state()
     state.roles = {
-        "clinical_reviewer": {"id": "clinical_reviewer", "domain_access": ["claims"]},
-        "steward": {"id": "steward", "domain_access": ["claims"]},
-        "viewer": {"id": "viewer", "domain_access": []},
+        "clinical_reviewer": {
+            "id": "clinical_reviewer",
+            "capabilities": ["usage"],
+            "domain_access": ["claims"],
+            "own_domain_access": ["claims"],  # REQ-2153: a built role carries it
+        },
+        "steward": {
+            "id": "steward",
+            "capabilities": ["usage"],
+            "domain_access": ["claims"],
+            "own_domain_access": ["claims"],
+        },
+        "viewer": {
+            "id": "viewer",
+            "capabilities": ["usage"],
+            "domain_access": [],
+            "own_domain_access": [],
+        },
     }
     state.role_chains = {"clinical_reviewer": CHAIN, "steward": ["steward"], "viewer": ["viewer"]}
     state.rls_contexts = {}
@@ -315,6 +336,58 @@ async def test_a_table_the_caller_reads_nothing_of_is_not_found(wired):
     assert refused.value.code == "schema.table_not_found"
 
 
+def _withdrawn(monkeypatch, gate):
+    """Table 1 withdrawn (REQ-1921): in no role's catalog, and answered through the gate its
+    preview takes (admin/table_read.table_for_steward), stood in for by ``gate``."""
+    from provisa.api.admin import table_read
+
+    state = _two_role_state()
+    state.role_build_inputs = {"withdrawn_tables": [{**state.tables[0], "withdrawn": True}]}
+    state.tables = []
+    monkeypatch.setattr("provisa.api.app.state", state)
+    asked: list[int] = []
+
+    def _gate(_request, _state, table_id):
+        asked.append(table_id)
+        return gate(table_id)
+
+    monkeypatch.setattr(table_read, "table_for_steward", _gate)
+    return asked
+
+
+@pytest.mark.asyncio
+async def test_a_withdrawn_table_is_answered_marked_to_a_caller_holding_its_previews_right(
+    wired, monkeypatch
+):
+    wired({}, {"clinical_reviewer", "steward"})
+    asked = _withdrawn(monkeypatch, lambda tid: _state().tables[0] | {"withdrawn": True})
+    access = await table_access_router.table_access_endpoint(1, _request())
+    assert asked == [1]
+    assert access["withdrawn"] is True
+    # Every column of it: a withdrawn table is in no catalog scope, so its preview's right is
+    # what reads it.
+    assert {c["name"] for c in access["columns"]} == {"amount", "diagnosis", "ssn"}
+
+
+@pytest.mark.asyncio
+async def test_a_withdrawn_table_is_refused_to_a_caller_without_that_right(wired, monkeypatch):
+    def _refuse(_tid):
+        raise ApiError(403, "auth.missing_capability", "Missing capability: 'table_registration'")
+
+    wired({}, {"clinical_reviewer", "steward"})
+    _withdrawn(monkeypatch, _refuse)
+    with pytest.raises(ApiError) as refused:
+        await table_access_router.table_access_endpoint(1, _request())
+    assert refused.value.code == "auth.missing_capability"
+
+
+@pytest.mark.asyncio
+async def test_a_table_in_service_is_answered_unmarked(wired):
+    wired({1: {"diagnosis"}}, {"clinical_reviewer"})
+    access = await table_access_router.table_access_endpoint(1, _request())
+    assert access["withdrawn"] is False
+
+
 def test_a_write_grant_outside_the_role_s_reach_is_not_its_write():
     tables = [
         {
@@ -382,8 +455,9 @@ def test_a_meta_role_reads_the_union_with_each_member_s_mask_and_the_or_of_their
     role = lambda rid: {  # noqa: E731
         "id": rid,
         "description": rid,
-        "capabilities": [],
+        "capabilities": ["usage"],
         "domain_access": ["sales"],
+        "own_domain_access": ["sales"],  # REQ-2153: a built role carries it
         "max_rows": None,
         "rate_limit": None,
         "session_vars": {},
@@ -410,6 +484,7 @@ def test_a_meta_role_reads_the_union_with_each_member_s_mask_and_the_or_of_their
         role_build_inputs={
             "role_chains": {"east": ["east"], "west": ["west"]},
             "tables": tables,
+            "withdrawn_tables": [],
             "metrics": [],
             "functions": [],
             "webhooks": [],

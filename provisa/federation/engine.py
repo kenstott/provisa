@@ -29,9 +29,10 @@ from __future__ import annotations
 
 from enum import Enum
 from dataclasses import dataclass
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from typing import TYPE_CHECKING, Any
 
+from provisa.codesource.languages import CODE_SOURCE_TYPES
 from provisa.federation.connector_base import CatalogEntry, Connector
 
 if TYPE_CHECKING:
@@ -154,8 +155,14 @@ class FederationEngine:  # REQ-840
         capabilities: Any = None,
         default_materialize_store: Any = None,
         supported_materialize_stores: frozenset[str] | None = None,
+        unreachable: Mapping[str, str] | None = None,
     ) -> None:
         self.name = name
+        # The source types no reader in this deployment can read, with what is missing (REQ-1142,
+        # NOT ATTACHABLE MEANS REPLICA; REQ-1998): the engine cannot read them in place and nothing
+        # lands them. A type the engine cannot read in place but Provisa can land is not here: it
+        # is a replica. Shown when such a source is added, naming what is missing.
+        self.unreachable: dict[str, str] = dict(unreachable or {})
         # DECLARED (REQ-1730), defaults True (every engine already exercised through this harness
         # supports it): whether this engine's own SQL dialect can express a catalog-qualified
         # (catalog.schema.table, 3-part) physical reference at all. Trino/DuckDB genuinely need
@@ -309,17 +316,35 @@ class FederationEngine:  # REQ-840
             streaming=self.streaming,
         )
 
-    def connector_pushdown(self, source_type: str) -> Capability:
-        """The DECLARED connector-level pushdown capability (predicate/join/aggregate) for a source
-        type (REQ-897/842) — the planner's pushdown INPUT. Reconciles with promote.should_promote and
-        plan_mask_evaluation, which read the same connector ``Capability``; no duplicate trait is
-        introduced. Fails loud (UnreachableSource) when the engine cannot reach the type."""
-        return self.connector_for(source_type).capability()
+    def connector_pushdown(self, source: Any) -> Capability:
+        """The DECLARED connector-level pushdown capability (predicate/join/aggregate) for a
+        registered source (REQ-897/842) — the planner's pushdown INPUT. Reconciles with
+        promote.should_promote and plan_mask_evaluation, which read the same connector
+        ``Capability``; no duplicate trait is introduced. Fails loud (UnreachableSource) when the
+        engine cannot reach the source's type.
+
+        Taken from the source, not only its type (REQ-2191): a JDBC source attached live on
+        this engine can do what its settings for this engine turn on, and nothing else. One not
+        attached here lands, and its replica is read as every landed table is."""
+        from provisa.jdbc_source.attach import attach_type
+
+        if attach_type(source, self) is not None:
+            from provisa.jdbc_source.settings import capability
+
+            return capability(source.federation_hints, self.name)
+        return self.connector_for(source.type.value).capability()
 
     # -- reachability (REQ-840) ------------------------------------------------
 
     def reachable(self, source_type: str) -> bool:
+        if source_type in self.unreachable:
+            return False
         return source_type in self.connectors or self._is_landable(source_type)
+
+    def unreachable_reason(self, source_type: str) -> str | None:
+        """What is missing for any reader in this deployment to read ``source_type`` sources, or
+        None where one can (REQ-1142, REQ-1998)."""
+        return self.unreachable.get(source_type)
 
     def _is_landable(self, source_type: str) -> bool:
         """A non-attachable remote source (openapi/graphql_remote/grpc/NoSQL/stream) is reachable
@@ -353,6 +378,8 @@ class FederationEngine:  # REQ-840
         for source_type in sorted(direct | fetch):
             if source_type in self.connectors:
                 continue  # already reached live (ATTACH/SCAN) — attach wins over a landed replica
+            if source_type in self.unreachable:
+                continue  # no reader lands it either (REQ-1142)
             mechanism = Mechanism.DIRECT if source_type in direct else Mechanism.FETCH
             connector = WarehouseNativeConnector(self.name, source_type, mechanism)
             self.connectors[source_type] = connector
@@ -411,6 +438,8 @@ class FederationEngine:  # REQ-840
         connector = self.connectors.get(source_type)
         if connector is not None:
             return connector
+        if source_type in self.unreachable:
+            raise UnreachableSource(self.name, source_type, self.unreachable[source_type])
         # No attach/scan connector. A non-attachable remote source is not unreachable — it LANDs
         # into the materialization store (the user rule: "remote schemas are all required to be
         # landed"). Hand back a land-into-store connector so resolve() projects a LAND entry.
@@ -631,11 +660,63 @@ def build_trino_engine() -> FederationEngine:  # REQ-840 broad federator
     )
 
 
-def build_duckdb_engine(
-    name: str = "duckdb", default_store: Any = None
-) -> FederationEngine:  # REQ-840 partial federator
-    from provisa.federation.duckdb_backend import DuckDBBackend
-    from provisa.federation.runtime import EngineCapability
+def _lands_without_attach(source_type: str) -> bool:
+    """Whether a ``source_type`` source lands when the engine cannot attach it: Provisa reads it
+    itself (a direct driver, a source adapter, a materialize-only or pgwire-replica type), unless
+    that read goes through the same DuckDB extension (REQ-1730's firebird and airport loaders)."""
+    from provisa.executor.drivers.registry import available_drivers
+    from provisa.federation.duckdb_extensions import LANDS_THROUGH_ITS_EXTENSION
+    from provisa.federation.strategy import _CONNECTOR_PGWIRE_REPLICA, _MATERIALIZE_ONLY
+    from provisa.source_adapters.registry import _ADAPTER_MAP
+
+    if source_type in available_drivers():
+        return True  # Provisa's own driver lands it (firebird's, with provisa[firebird])
+    if source_type in LANDS_THROUGH_ITS_EXTENSION:
+        return False
+    return (
+        source_type in _ADAPTER_MAP
+        or source_type in _MATERIALIZE_ONLY
+        or source_type in _CONNECTOR_PGWIRE_REPLICA
+    )
+
+
+def _attachable(connectors: list[Connector]) -> tuple[list[Connector], dict[str, str]]:
+    """REQ-1142 (Amended 2026-11-06, ATTACHABLE MEANS STAGED; NOT ATTACHABLE MEANS REPLICA): of
+    the DuckDB engine's ``connectors``, those whose every needed extension is staged for the
+    running DuckDB version and platform (the staged directory's manifest), and, by source type,
+    what is missing for each type left with no connector that no reader lands either. A type
+    Provisa lands is a replica (complete_reach gives it its land reach), never unreachable. A
+    server with no staged directory counts what it installed when it started (THE SERVER TIER
+    STAGES AT START) and installs, once, what a connector declared since then needs (REQ-1177);
+    where neither is known DuckDB installs on first use and every connector stays, less any whose
+    extension has no build for the running DuckDB (REQ-1998: a sheet lands through the Sheets API
+    on DuckDB 2.0, whatever is staged)."""
+    from provisa.federation.duckdb_extensions import (
+        attachable_extensions,
+        unstaged_needs,
+        unstaged_reason,
+    )
+
+    staged = attachable_extensions(connectors)
+    kept: list[Connector] = []
+    missing: dict[str, tuple[str, ...]] = {}
+    for connector in connectors:
+        needs = unstaged_needs(connector, staged)
+        if not needs:
+            kept.append(connector)
+        elif not connector.opt_in_reach:  # an opt-in reach is asked for; its type has its own
+            missing.setdefault(connector.source_type, needs)
+    reached = {c.source_type for c in kept if not c.opt_in_reach}
+    unreachable = {
+        source_type: unstaged_reason(source_type, needs)
+        for source_type, needs in missing.items()
+        if source_type not in reached and not _lands_without_attach(source_type)
+    }
+    return kept, unreachable
+
+
+def duckdb_engine_connectors() -> list[Connector]:
+    """The connectors of the DuckDB engine, before what this deployment can attach is known."""
     from provisa.federation.connector_duckdb import (
         DuckDBAirportConnector,
         DuckDBBigQueryConnector,
@@ -651,7 +732,6 @@ def build_duckdb_engine(
         DuckDBGsheetsConnector,
         DuckDBIcebergConnector,
         DuckDBMongoConnector,
-        DuckDBMotherDuckConnector,
         DuckDBMssqlConnector,
         DuckDBParquetConnector,
         DuckDBPostgresConnector,
@@ -666,47 +746,65 @@ def build_duckdb_engine(
     from provisa.federation.codehost_connectors import DuckDBCodeHostConnector
     from provisa.federation.custom_connectors import load_custom_connectors
 
+    return [
+        DuckDBPostgresConnector(),
+        # REQ-2100: a built code host, attached as the Postgres server it speaks as.
+        *(DuckDBCodeHostConnector(t) for t in sorted(CODE_SOURCE_TYPES)),
+        DuckDBSqliteConnector(),
+        DuckDBDuckdbConnector(),  # DuckDB attaches another DuckDB database in place (core)
+        DuckDBCsvConnector(),
+        DuckDBParquetConnector(),
+        DuckDBFilesConnector(),
+        # REQ-899 community-extension connectors: external DB / warehouse / SaaS reach in place.
+        DuckDBMssqlConnector(),
+        # Fabric Warehouse and Synapse SQL: the same TDS, signed in with Microsoft Entra.
+        DuckDBMssqlConnector("fabric"),
+        DuckDBMssqlConnector("synapse"),
+        DuckDBMongoConnector(),
+        DuckDBSnowflakeConnector(),
+        # REQ-1998: md:<database>, where MotherDuck's extension loads on this DuckDB (below).
+        DuckDBBigQueryConnector(),
+        DuckDBFirebirdConnector(),
+        DuckDBGsheetsConnector(),
+        DuckDBAirportConnector(),
+        DuckDBIcebergConnector(),  # core `iceberg` extension — iceberg_scan (REQ-899)
+        # REQ-1867: a Databricks source read in place when its federation hints ask for it
+        DuckDBDatabricksIcebergConnector(),
+        DuckDBDeltaConnector(),  # core `delta` extension — delta_scan (REQ-899)
+        # core `httpfs` + read_parquet of ClickHouse's HTTP interface, rewritten per query (REQ-899)
+        DuckDBClickHouseConnector(),
+        # REQ-1690: the Calcite pgwire connectors attached live through the postgres extension.
+        DuckDBSharepointConnector(),
+        DuckDBSalesforceConnector(),  # REQ-1946
+        DuckDBServicenowConnector(),  # REQ-1954
+        DuckDBJiraConnector(),  # REQ-2069
+        DuckDBCloudopsConnector(),  # REQ-1947
+        DuckDBGovdataConnector(),  # REQ-540: AskAmerica
+        DuckDBSplunkConnector(),
+        # REQ-1177: operator-declared custom ATTACH/SCAN extensions (config/custom_connectors.yaml).
+        *load_custom_connectors("duckdb"),
+    ]
+
+
+def build_duckdb_engine(
+    name: str = "duckdb", default_store: Any = None
+) -> FederationEngine:  # REQ-840 partial federator
+    from provisa.federation.connector_duckdb import DuckDBMotherDuckConnector
+    from provisa.federation.duckdb_backend import DuckDBBackend
+    from provisa.federation.runtime import EngineCapability
+    from provisa.core.engine_memory import motherduck_extension_limit
+
+    connectors, unreachable = _attachable(duckdb_engine_connectors())
+    # REQ-1998 (Amended 2026-11-06, MOTHERDUCK IS A REPLICA WHERE IT CANNOT ATTACH; MOTHERDUCK
+    # LANDS THROUGH ITS POSTGRES ENDPOINT): attached where MotherDuck's extension loads on this
+    # DuckDB; where it does not, its replicas land through MotherDuck's Postgres endpoint
+    # (complete_reach gives it its land reach).
+    if motherduck_extension_limit() is None:
+        connectors.append(DuckDBMotherDuckConnector())
     return FederationEngine(
         name,
-        [
-            DuckDBPostgresConnector(),
-            # REQ-2100: a built code host, attached as the Postgres server it speaks as.
-            DuckDBCodeHostConnector("node"),
-            DuckDBCodeHostConnector("python"),
-            DuckDBSqliteConnector(),
-            DuckDBDuckdbConnector(),  # DuckDB attaches another DuckDB database in place (core)
-            DuckDBCsvConnector(),
-            DuckDBParquetConnector(),
-            DuckDBFilesConnector(),
-            # REQ-899 community-extension connectors: external DB / warehouse / SaaS reach in place.
-            DuckDBMssqlConnector(),
-            # Fabric Warehouse and Synapse SQL: the same TDS, signed in with Microsoft Entra.
-            DuckDBMssqlConnector("fabric"),
-            DuckDBMssqlConnector("synapse"),
-            DuckDBMongoConnector(),
-            DuckDBSnowflakeConnector(),
-            DuckDBMotherDuckConnector(),  # REQ-1998: core `motherduck` extension, md:<database>
-            DuckDBBigQueryConnector(),
-            DuckDBFirebirdConnector(),
-            DuckDBGsheetsConnector(),
-            DuckDBAirportConnector(),
-            DuckDBIcebergConnector(),  # core `iceberg` extension — iceberg_scan (REQ-899)
-            # REQ-1867: a Databricks source read in place when its federation hints ask for it
-            DuckDBDatabricksIcebergConnector(),
-            DuckDBDeltaConnector(),  # core `delta` extension — delta_scan (REQ-899)
-            # core `httpfs` + read_parquet of ClickHouse's HTTP interface, rewritten per query (REQ-899)
-            DuckDBClickHouseConnector(),
-            # REQ-1690: the Calcite pgwire connectors attached live through the postgres extension.
-            DuckDBSharepointConnector(),
-            DuckDBSalesforceConnector(),  # REQ-1946
-            DuckDBServicenowConnector(),  # REQ-1954
-            DuckDBJiraConnector(),  # REQ-2069
-            DuckDBCloudopsConnector(),  # REQ-1947
-            DuckDBGovdataConnector(),  # REQ-540: AskAmerica
-            DuckDBSplunkConnector(),
-            # REQ-1177: operator-declared custom ATTACH/SCAN extensions (config/custom_connectors.yaml).
-            *load_custom_connectors("duckdb"),
-        ],
+        connectors,
+        unreachable=unreachable,
         native_store="duckdb",
         driver_class=DriverClass.PARTIAL,
         mpp=False,  # single-node embedded engine (REQ-894)
@@ -850,8 +948,7 @@ def build_pg_engine(name: str = "postgres") -> FederationEngine:  # REQ-904
             PostgresFdwConnector(),  # postgresql
             # REQ-2100: a built code host, through postgres_fdw (probe: a directory shared for its
             # identity).
-            PgCodeHostConnector("node"),
-            PgCodeHostConnector("python"),
+            *(PgCodeHostConnector(t) for t in sorted(CODE_SOURCE_TYPES)),
             PgFilesConnector(),  # files (pgwire bridge, live attach — REQ-1730)
             PgSharepointConnector(),  # sharepoint (pgwire bridge, live attach — REQ-1730)
             PgSalesforceConnector(),  # salesforce (pgwire bridge, live attach — REQ-1946)
@@ -1016,6 +1113,7 @@ def build_sqlalchemy_engine(  # REQ-905: any SQLAlchemy-reachable store, zero co
     from provisa.federation.runtime import EngineCapability
     from provisa.federation.sqlalchemy_backend import SqlAlchemyBackend
 
+    require_engine_extra(name)
     dsn = url or configured_engine_url()
     if not dsn:
         raise ValueError("sqlalchemy engine requires a URL ($PROVISA_ENGINE_URL)")
@@ -1267,13 +1365,59 @@ _RDB_KINDS: list[tuple[str, str, str]] = [
     ("singlestore", "SingleStore", "singlestoredb://user:pass@host:3306/db"),
     ("vertica", "Vertica", "vertica+vertica_python://user:pass@host:5433/db"),
     ("exasol", "Exasol", "exa+websocket://user:pass@host:8563/schema"),
-    ("teradata", "Teradata Vantage", "teradatasql://user:pass@host/database"),
     ("saphana", "SAP HANA", "hana+hdbcli://user:pass@host:39015/db"),
-    ("sapase", "SAP ASE (Sybase)", "sybase+pyodbc://user:pass@dsn"),
-    ("sqlanywhere", "SAP SQL Anywhere", "sqlalchemy-sqlany://user:pass@host:2638/db"),
     ("monetdb", "MonetDB", "monetdb://user:pass@host:50000/db"),
-    ("firebird", "Firebird", "firebird+fdb://user:pass@host:3050/path/to/db.fdb"),
+    ("firebird", "Firebird", "firebird+firebird://user:pass@host:3050/path/to/db.fdb"),
 ]
+
+# The pyproject extra that ships each kind's SQLAlchemy dialect and DBAPI driver, and the modules
+# it installs. A kind absent here is served by the base install. Selecting a kind whose extra is not
+# installed is refused naming the extra (MissingEngineExtra), never left to fail at connect.
+#
+# kind -> (extra, modules the extra installs)
+RDB_EXTRAS: dict[str, tuple[str, tuple[str, ...]]] = {
+    "cockroachdb": ("cockroachdb", ("sqlalchemy_cockroachdb",)),
+    "db2": ("db2", ("ibm_db_sa", "ibm_db")),
+    "exasol": ("exasol", ("sqlalchemy_exasol", "pyexasol")),
+    "firebird": ("firebird", ("sqlalchemy_firebird", "firebird.driver")),
+    "monetdb": ("monetdb", ("sqlalchemy_monetdb", "pymonetdb")),
+    "opengauss": ("opengauss", ("opengauss_sqlalchemy",)),
+    "saphana": ("saphana", ("sqlalchemy_hana", "hdbcli")),
+    "vertica": ("vertica", ("sqla_vertica_python", "vertica_python")),
+}
+
+
+class MissingEngineExtra(ImportError):
+    """The engine kind's dialect ships in a pyproject extra that is not installed. An ImportError,
+    so ``engine_registry`` lists the kind ``unavailable`` naming the extra, as it does an engine
+    whose driver library is absent."""
+
+    def __init__(self, kind: str, extra: str, module: str) -> None:
+        super().__init__(
+            f"the {kind!r} federation engine needs the {extra!r} extra "
+            f"(module {module!r} is not installed): pip install 'provisa[{extra}]'",
+            name=module,
+        )
+        self.kind = kind
+        self.extra = extra
+        self.module = module
+
+
+def require_engine_extra(kind: str) -> None:
+    """Refuse ``kind`` naming its extra when a module the extra installs is absent."""
+    import importlib.util
+
+    if kind not in RDB_EXTRAS:
+        return
+    extra, modules = RDB_EXTRAS[kind]
+    for module in modules:
+        try:
+            found = importlib.util.find_spec(module) is not None
+        except ModuleNotFoundError:  # the parent package of a dotted module is absent
+            found = False
+        if not found:
+            raise MissingEngineExtra(kind, extra, module)
+
 
 for _rdb_key, _rdb_label, _rdb_dsn in _RDB_KINDS:
     # Bind the key as the engine's name so a running engine reports the database it is on, not the
@@ -1912,6 +2056,11 @@ def build_engine(name: str | None = None) -> FederationEngine:  # REQ-840/893/90
     key = (name or configured_engine_kind()).lower().replace("_", "-")
     if key not in _ENGINE_BUILDERS:
         raise ValueError(f"unknown federation engine {key!r}; valid: {sorted(_ENGINE_BUILDERS)}")
+    from provisa.core.engine_kinds import unavailable_engine_kind
+
+    unavailable = unavailable_engine_kind(key)
+    if unavailable is not None:
+        raise ValueError(unavailable)
     # Complete the reach so the runtime engine's connectors include every configurable type (REQ-947):
     # live-attach plus the Provisa-direct/adapter land connectors. connector_for/federate/reconcile then
     # resolve landable sources from the registry directly rather than synthesizing per call.

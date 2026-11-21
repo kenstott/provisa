@@ -20,12 +20,15 @@ from collections.abc import AsyncGenerator
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import httpx
 
 from provisa.api_source.models import ApiEndpoint
 from provisa.core.paging import PaginationConfig, PaginationType
+
+if TYPE_CHECKING:
+    from provisa.core.auth_models import ApiAuthOAuth2ClientCredentials
 
 # Requirements: REQ-295, REQ-297, REQ-298, REQ-316, REQ-320, REQ-322, REQ-325
 
@@ -427,7 +430,7 @@ def _apply_auth(auth, headers: dict, query_params: dict) -> None:  # REQ-320
         if "bearer" in auth:
             headers["Authorization"] = f"Bearer {resolve_secrets(auth['bearer'])}"
         if "api_key_header" in auth and "api_key" in auth:
-            headers[auth["api_key_header"]] = resolve_secrets(auth["api_key"])
+            headers[auth["api_key_header"]] = resolve_secrets(auth["api_key"], credential=True)
         if "headers" in auth:
             for k, v in auth["headers"].items():
                 headers[k] = resolve_secrets(v)
@@ -435,14 +438,14 @@ def _apply_auth(auth, headers: dict, query_params: dict) -> None:  # REQ-320
 
     match auth:
         case ApiAuthBearer(token=token):
-            headers["Authorization"] = f"Bearer {resolve_secrets(token)}"
+            headers["Authorization"] = f"Bearer {resolve_secrets(token, credential=True)}"
         case ApiAuthBasic(username=u, password=p):
             import base64
 
             cred = base64.b64encode(f"{resolve_secrets(u)}:{resolve_secrets(p)}".encode()).decode()
             headers["Authorization"] = f"Basic {cred}"
         case ApiAuthApiKey(key=key, name=name, location=loc):
-            resolved_key = resolve_secrets(key)
+            resolved_key = resolve_secrets(key, credential=True)
             if loc == ApiKeyLocation.header:
                 headers[name] = resolved_key
             else:
@@ -459,27 +462,25 @@ def _apply_auth(auth, headers: dict, query_params: dict) -> None:  # REQ-320
                 headers[k] = resolve_secrets(v)
 
 
-# Simple token cache for OAuth2 client credentials
-_oauth2_cache: dict[str, tuple[str, float]] = {}
-
-
-def _fetch_oauth2_token(oauth) -> str:  # REQ-320
-    """Fetch and cache an OAuth2 client credentials token."""
-    import time
+def _fetch_oauth2_token(oauth: ApiAuthOAuth2ClientCredentials) -> str:  # REQ-320
+    """An OAuth2 client credentials token, held as the delegated grants' are
+    (``oauth_grants.held_key``): per organization and per credential as it resolves now."""
     import httpx as _httpx
+
+    from provisa.api_source.oauth_grants import held_key, held_token, hold_token
     from provisa.core.secrets import resolve_secrets
 
-    cache_key = f"{oauth.client_id}:{oauth.token_url}"
-    cached = _oauth2_cache.get(cache_key)
-    if cached:
-        token, expires_at = cached
-        if time.time() < expires_at - 30:  # 30s buffer
-            return token
+    client_id = resolve_secrets(oauth.client_id)
+    client_secret = resolve_secrets(oauth.client_secret, credential=True)
+    key = held_key(oauth.type, oauth.token_url, client_id, client_secret, oauth.scope or "")
+    held = held_token(key)
+    if held is not None:
+        return held
 
     data = {
         "grant_type": "client_credentials",
-        "client_id": resolve_secrets(oauth.client_id),
-        "client_secret": resolve_secrets(oauth.client_secret),
+        "client_id": client_id,
+        "client_secret": client_secret,
     }
     if oauth.scope:
         data["scope"] = oauth.scope
@@ -490,8 +491,9 @@ def _fetch_oauth2_token(oauth) -> str:  # REQ-320
     resp.raise_for_status()
     body = resp.json()
     token = body["access_token"]
-    expires_in = body.get("expires_in", 3600)
-    _oauth2_cache[cache_key] = (token, time.time() + expires_in)
+    # An issuer that states no life gives nothing to hold the token by: it is used for this call
+    # and asked for again at the next (as ``oauth_grants.hold_token``).
+    hold_token(key, token, float(body["expires_in"]) if "expires_in" in body else None)
     return token
 
 
@@ -649,6 +651,37 @@ async def call_api(  # REQ-295, REQ-297, REQ-298, REQ-316
         from provisa.core.secrets import resolve_secrets
 
         return ApiAnswer(await _call_grpc(endpoint, resolved_params, resolve_secrets(base_url)))
+    if endpoint.response_normalizer == "quickbooks_query":
+        # REQ-2197: a QuickBooks entity's table. Its query pages by STARTPOSITION/MAXRESULTS in
+        # the query text itself and its token comes from the approval kept in the
+        # organisation's state store, so it is read by its own reader (provisa/quickbooks/read).
+        from provisa.quickbooks import read as qb_read
+
+        qb_token, qb_forget = qb_read.source_token(endpoint, base_url, auth)
+        qb = qb_read.Read()
+
+        async def _qb() -> ApiAnswer:
+            got = [
+                p
+                async for p in qb_read.pages(
+                    endpoint,
+                    resolved_params,
+                    base_url,
+                    qb_token,
+                    qb_forget,
+                    timeout=timeout,
+                    read=qb,
+                )
+            ]
+            return ApiAnswer(got, endpoint.pagination, qb.more)
+
+        try:
+            return await asyncio.wait_for(_qb(), timeout=total_timeout)
+        except asyncio.TimeoutError as exc:
+            raise ApiCallError(
+                f"QuickBooks read of {endpoint.table_name!r} exceeded "
+                f"total_timeout={total_timeout}s (source={endpoint.source_id!r})"
+            ) from exc
     call = prepare_call(endpoint, resolved_params, base_url, auth, source_headers)
     if endpoint.response_normalizer == "owl_inferred":
         # REQ-2138: an inferred table of a sparql source's reasoner. Its rows are the source's
@@ -702,6 +735,18 @@ async def iter_api_pages(  # REQ-1915
     time limit: a build is not under a request's deadline, and each page is under ``timeout``.
     It stops at the endpoint's ``max_pages`` like every call; ``paging`` tells the reader
     whether the endpoint had more."""
+    if endpoint.response_normalizer == "quickbooks_query":  # REQ-2197: see call_api
+        from provisa.quickbooks import read as qb_read
+
+        qb_token, qb_forget = qb_read.source_token(endpoint, base_url, auth)
+        qb = qb_read.Read()
+        async for page in qb_read.pages(
+            endpoint, resolved_params, base_url, qb_token, qb_forget, timeout=timeout, read=qb
+        ):
+            if paging is not None:
+                paging.more = qb.more
+            yield page
+        return
     call = prepare_call(endpoint, resolved_params, base_url, auth, source_headers)
     async with httpx.AsyncClient(event_hooks=sandbox_egress.http_event_hooks()) as client:
         async for page in _pages(

@@ -1,7 +1,7 @@
 # Provisa container-tier setup for Windows (REQ-889 / REQ-633). Provisions a WSL2
 # distro with containerd + nerdctl, loads the bundled core images, copies the
-# compose tree in, and starts the stack. The Windows equivalent of the macOS
-# Lima tier - no VirtualBox. Additive/reversible: the native base tier is left
+# compose tree in, and starts the stack. The macOS container tier uses the
+# user's own Docker instead - no VirtualBox. Additive/reversible: the native base tier is left
 # intact and can be switched back to with `provisa-native.ps1`.
 #Requires -Version 5.1
 Set-StrictMode -Version Latest

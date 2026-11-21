@@ -25,6 +25,7 @@ import pytest
 from provisa.compiler.stage2 import GovernanceContext, apply_governance
 from provisa.compiler.write_admission import WriteNotAdmitted, admit_rows
 from provisa.security.mutation_authz import ColumnNotWritable
+from tests.governed_pg import governed_database
 
 _ORDERS = 1
 _COLUMNS = [
@@ -84,6 +85,36 @@ def _govern(sql: str, gov: GovernanceContext, session=_ME, params=None) -> str:
     return apply_governance(sql, gov, session_vars=session, params=params)
 
 
+_ROWS = {
+    "public.orders": [
+        {"id": 1, "customer_id": 7, "status": "placed", "ship_to": "a"},
+        {"id": 2, "customer_id": 7, "status": "shipped", "ship_to": "b"},
+        {"id": 3, "customer_id": 3, "status": "placed", "ship_to": "c"},
+    ]
+}
+
+
+@pytest.fixture(scope="module")
+def pg(embedded_postgres):
+    return governed_database(embedded_postgres, "test_write_grants_admission")
+
+
+def _after(pg, governed: str, session=_ME, params=None) -> list[tuple]:
+    """Every order once ``governed`` runs over :data:`_ROWS` on embedded PostgreSQL."""
+    return pg.written(governed, _ROWS, session=session, params=params).after["public.orders"]
+
+
+def _order(after: list[tuple], key: int | None) -> tuple | None:
+    return next((row for row in after if row[0] == key), None)
+
+
+def _written_now(value: str) -> bool:
+    """Whether ``value`` is a time within a minute of now: the time of the write."""
+    from datetime import datetime, timezone
+
+    return abs((datetime.now(timezone.utc) - datetime.fromisoformat(value)).total_seconds()) < 60
+
+
 # --- no grant: every operation refused ---------------------------------------------------------
 
 
@@ -141,10 +172,9 @@ def test_a_preset_column_may_not_be_supplied():
 # --- presets -----------------------------------------------------------------------------------
 
 
-def test_an_insert_carries_its_presets():
+def test_an_insert_carries_its_presets(pg):
     governed = _govern("INSERT INTO public.orders (ship_to) VALUES ('1 Elm')", _gov(_INSERT))
-    assert "customer_id" in governed and "CAST('7' AS INT)" in governed
-    assert "'placed'" in governed
+    assert _order(_after(pg, governed), None) == (None, 7, "placed", "1 Elm")
 
 
 def test_a_session_preset_needs_its_session_variable():
@@ -152,7 +182,7 @@ def test_a_session_preset_needs_its_session_variable():
         _govern("INSERT INTO public.orders (ship_to) VALUES ('1 Elm')", _gov(_INSERT), session={})
 
 
-def test_an_update_carries_its_presets():
+def test_an_update_carries_its_presets(pg):
     stamped = _g(
         "update",
         ["status"],
@@ -161,10 +191,10 @@ def test_an_update_carries_its_presets():
         presets=[{"column": "ship_to", "source": "literal", "value": "held"}],
     )
     governed = _govern("UPDATE public.orders SET status = 'packed' WHERE id = 1", _gov(stamped))
-    assert "ship_to = CAST('held' AS VARCHAR)" in governed
+    assert _order(_after(pg, governed), 1) == (1, 7, "packed", "held")
 
 
-def test_a_now_preset_sets_the_time_of_the_write():
+def test_a_now_preset_sets_the_time_of_the_write(pg):
     stamped = _g(
         "update",
         ["status"],
@@ -172,9 +202,9 @@ def test_a_now_preset_sets_the_time_of_the_write():
         check="TRUE",
         presets=[{"column": "ship_to", "source": "now"}],
     )
-    assert "CURRENT_TIMESTAMP" in _govern(
-        "UPDATE public.orders SET status = 'packed' WHERE id = 1", _gov(stamped)
-    )
+    governed = _govern("UPDATE public.orders SET status = 'packed' WHERE id = 1", _gov(stamped))
+    _id, _customer, status, ship_to = _order(_after(pg, governed), 1)
+    assert status == "packed" and _written_now(ship_to)
 
 
 # --- check -------------------------------------------------------------------------------------
@@ -204,26 +234,37 @@ def test_a_check_that_cannot_be_decided_is_refused():
 # --- rows --------------------------------------------------------------------------------------
 
 
-def test_an_update_touches_only_its_grants_rows():
-    governed = _govern("UPDATE public.orders SET status = 'packed' WHERE id = 1", _gov(_UPDATE))
-    assert "'placed'" in governed and "'packed'" in governed and "IN" in governed
-
-
-def test_a_delete_touches_only_its_grants_rows():
-    governed = _govern("DELETE FROM public.orders WHERE id = 1", _gov(_DELETE))
-    assert "\"status\" = 'placed'" in governed
-
-
-def test_a_grant_stating_no_rows_takes_the_read_filter():
-    governed = _govern("DELETE FROM public.orders WHERE id = 1", _gov(_g("delete"), rls=_OWN))
-    assert "\"customer_id\" = CAST(CURRENT_SETTING('provisa.user_id') AS INT)" in governed
-
-
-def test_a_grant_whose_rows_are_true_ignores_the_read_filter():
+def test_an_update_touches_only_its_grants_rows(pg):
     governed = _govern(
-        "DELETE FROM public.orders WHERE id = 1", _gov(_g("delete", rows="TRUE"), rls=_OWN)
+        "UPDATE public.orders SET status = 'packed' WHERE id IN (1, 2)", _gov(_UPDATE)
     )
-    assert "customer_id" not in governed
+    after = _after(pg, governed)
+    assert _order(after, 1)[2] == "packed"
+    assert _order(after, 2)[2] == "shipped"  # outside the grant's rows
+
+
+def test_a_delete_touches_only_its_grants_rows(pg):
+    governed = _govern("DELETE FROM public.orders WHERE id IN (1, 2)", _gov(_DELETE))
+    assert [row[0] for row in _after(pg, governed)] == [2, 3]
+
+
+def test_a_grant_stating_no_rows_takes_the_read_filter(pg):
+    governed = _govern("DELETE FROM public.orders WHERE id IN (1, 3)", _gov(_g("delete"), rls=_OWN))
+    assert [row[0] for row in _after(pg, governed)] == [2, 3]  # 3 is customer 3's
+    assert [row[0] for row in _after(pg, governed, session={})] == [1, 2, 3]  # unbound: none
+
+
+def test_a_grant_whose_rows_are_true_still_reaches_only_the_rows_the_role_reads(pg):
+    """REQ-039 (amended 2026-11-04, A WRITE REACHES ONLY READABLE ROWS): a grant over every row
+    no longer lifts the read filter from a write; the write reaches rows both."""
+    governed = _govern(
+        "DELETE FROM public.orders WHERE id IN (1, 3)", _gov(_g("delete", rows="TRUE"), rls=_OWN)
+    )
+    assert [row[0] for row in _after(pg, governed)] == [2, 3]
+    unfiltered = _govern(
+        "DELETE FROM public.orders WHERE id IN (1, 3)", _gov(_g("delete", rows="TRUE"))
+    )
+    assert [row[0] for row in _after(pg, unfiltered)] == [2]
 
 
 def test_a_truncate_needs_a_delete_grant_over_every_row():
@@ -321,7 +362,7 @@ def _graphql(grant: dict):
     return generate_schema(si), build_context(si)
 
 
-def _mutate(grant: dict, mutation: str, session=_ME) -> str:
+def _mutate(grant: dict, mutation: str, session=_ME) -> tuple[str, list | None]:
     from graphql import parse, validate
 
     from provisa.compiler.mutation_gen import compile_mutation
@@ -332,15 +373,15 @@ def _mutate(grant: dict, mutation: str, session=_ME) -> str:
     if errors:
         raise AssertionError(errors[0].message)
     (compiled,) = compile_mutation(doc, ctx, {"shop": "postgresql"})
-    return _govern(compiled.sql, _gov(grant), session=session, params=compiled.params)
+    governed = _govern(compiled.sql, _gov(grant), session=session, params=compiled.params)
+    return governed, compiled.params
 
 
-def test_a_graphql_insert_carries_the_grants_session_and_literal_presets():
-    governed = _mutate(
+def test_a_graphql_insert_carries_the_grants_session_and_literal_presets(pg):
+    governed, params = _mutate(
         _INSERT, 'mutation { insertOrders(input: { shipTo: "1 Elm" }) { affected_rows } }'
     )
-    assert "customer_id" in governed and "CAST('7' AS INT)" in governed
-    assert "'placed'" in governed
+    assert _order(_after(pg, governed, params=params), None) == (None, 7, "placed", "1 Elm")
 
 
 def test_a_graphql_input_offers_no_field_for_a_preset_column():
@@ -360,7 +401,7 @@ def test_a_graphql_insert_without_the_session_variable_is_refused():
         )
 
 
-def test_a_graphql_update_carries_a_now_preset():
+def test_a_graphql_update_carries_a_now_preset(pg):
     stamped = _g(
         "update",
         ["status"],
@@ -368,15 +409,16 @@ def test_a_graphql_update_carries_a_now_preset():
         check="TRUE",
         presets=[{"column": "ship_to", "source": "now"}],
     )
-    governed = _mutate(
+    governed, params = _mutate(
         stamped,
         'mutation { updateOrders(set: { status: "packed" }, where: { id: { eq: 1 } }) '
         "{ affected_rows } }",
     )
-    assert "ship_to = CURRENT_TIMESTAMP" in governed
+    _id, _customer, status, ship_to = _order(_after(pg, governed, params=params), 1)
+    assert status == "packed" and _written_now(ship_to)
 
 
-def test_an_empty_literal_preset_sets_the_empty_string():
+def test_an_empty_literal_preset_sets_the_empty_string(pg):
     blank = _g(
         "insert",
         ["ship_to"],
@@ -384,13 +426,14 @@ def test_an_empty_literal_preset_sets_the_empty_string():
         presets=[{"column": "status", "source": "literal", "value": ""}],
     )
     governed = _govern("INSERT INTO public.orders (ship_to) VALUES ('x')", _gov(blank))
-    assert "CAST('' AS VARCHAR)" in governed
+    assert _order(_after(pg, governed), None) == (None, None, "", "x")  # not NULL
 
 
-def test_a_grant_without_presets_writes_the_statement_as_given():
+def test_a_grant_without_presets_writes_the_statement_as_given(pg):
     plain = _g("insert", ["ship_to"], check="TRUE")
     sql = "INSERT INTO public.orders (ship_to) VALUES ('x')"
-    assert _govern(sql, _gov(plain)) == sql
+    assert _after(pg, _govern(sql, _gov(plain))) == _after(pg, sql)
+    assert _order(_after(pg, sql), None) == (None, None, None, "x")
 
 
 def test_a_column_is_preset_at_most_once():

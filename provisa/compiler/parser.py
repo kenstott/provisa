@@ -113,7 +113,6 @@ def parse_query(  # REQ-007, REQ-011, REQ-039
     document = parse(query)
     errors = validate(schema, document)
     if errors:
-        _refuse_draft_fields(document, ctx)
         _refuse_missing_capability(document, ctx)
         _refuse_unoffered_writes(document, schema, ctx)
         raise GraphQLValidationError(errors)
@@ -125,28 +124,6 @@ _FIELD_SUFFIXES = ("_aggregate", "_by_pk", "_connection", "_stream")
 _FIELD_PREFIXES = ("insert_", "update_", "delete_", "upsert_")
 
 
-def _refuse_draft_fields(document: DocumentNode, ctx: "CompilationContext") -> None:  # REQ-1921
-    """A root field naming a draft table is refused naming it as draft (``TableIsDraft``); the
-    schema offers no draft table, so validation alone would answer an unnamed "Cannot query
-    field"."""
-    from graphql import OperationDefinitionNode
-
-    from provisa.compiler.definitions import TableIsDraft
-
-    if not ctx.draft_names:
-        return
-    for definition in document.definitions:
-        if not isinstance(definition, OperationDefinitionNode):
-            continue
-        for selection in definition.selection_set.selections:
-            name = getattr(getattr(selection, "name", None), "value", None)
-            if name is None:
-                continue
-            for candidate in _table_field_candidates(name):
-                if candidate in ctx.draft_names:
-                    raise TableIsDraft(ctx.draft_names[candidate])
-
-
 def _refuse_missing_capability(document: DocumentNode, ctx: "CompilationContext") -> None:
     """A field naming a system domain's table, or ``_meta``, the role holds no capability for is
     refused naming the capability (REQ-1132); the schema offers it no such field, so validation
@@ -154,24 +131,27 @@ def _refuse_missing_capability(document: DocumentNode, ctx: "CompilationContext"
     from graphql import FieldNode, OperationDefinitionNode, visit
     from graphql.language import Visitor
 
-    from provisa.security.rights import MissingDomainCapability
+    from provisa.security.rights import ListedOnly, MissingDomainCapability
 
-    if not ctx.missing_capability:
+    if not ctx.missing_capability and not ctx.listed_only:
         return
 
     class _Names(Visitor):
         def enter_field(self, node: FieldNode, *_args: object) -> None:
-            for candidate in _table_field_candidates(node.name.value):
+            for candidate in table_field_candidates(node.name.value):
                 domain = ctx.missing_capability.get(candidate)
                 if domain is not None:
                     raise MissingDomainCapability(ctx.role_id or "", domain)
+                listed = ctx.listed_only.get(candidate)
+                if listed is not None:
+                    raise ListedOnly(ctx.role_id or "", listed)
 
     for definition in document.definitions:
         if isinstance(definition, OperationDefinitionNode):
             visit(definition, _Names())
 
 
-def _table_field_candidates(name: str) -> list[str]:
+def table_field_candidates(name: str) -> list[str]:
     """The table field names a root field ``name`` could stand for."""
     out = [name]
     for prefix in _FIELD_PREFIXES:

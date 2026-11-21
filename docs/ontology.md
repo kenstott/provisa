@@ -345,7 +345,7 @@ What counts is whether the business uses the word. An ETL batch identifier has a
 
 ## Working with the ontology
 
-Open **Ontology** in the navigation bar. The left panel lists every term with its role, its status unless it is approved, and its grounding chip. The **Status** and **Grounding** filters narrow the list by each, the **Deprecated** box shows or hides deprecated terms, **To review** narrows it to terms with findings, and **Related to** narrows it to terms with a Related to link. Click a term to open its panel.
+Open **Context** in the navigation bar, then **Ontology**. The left panel lists every term with its role, its status unless it is approved, and its grounding chip. The **Status** and **Grounding** filters narrow the list by each, the **Deprecated** box shows or hides deprecated terms, **To review** narrows it to terms with findings, and **Related to** narrows it to terms with a Related to link. Click a term to open its panel.
 
 The panel shows the term's role, its status and its grounding side by side, and for a Property its PII mark with the number of columns it covers. A muted ⏚ term names the drafts whose approval would ground it. A deprecated or retired term shows who changed its status and why. A term with findings opens with a **To review** section: click a finding to see what was found and the action that fixes it.
 
@@ -372,6 +372,36 @@ Beside Edit, the panel offers the status actions the term allows: **Approve** a 
 From the ✨ menu, **Definitions** fills every blank definition in one pass and never overwrites a person's text. **Relationships** adds typed edges across the term list; proposals naming unknown terms, the same term twice or an unrecognized type are dropped. Each Related to it adds is listed for review, as [How the relationship assistant chooses](#how-the-relationship-assistant-chooses) describes.
 
 The **Draft** banner on a term tells you whether it still needs a definition (alias the column or add one) or only your approval. A separate banner says when a term reaches no data. Relate it to a term that has data.
+
+### Finding terms in documents and tables
+
+**Find terms**, on the ✨ menu, proposes new terms from a source your organization already writes its definitions in. Every proposal lands in a review queue as a draft, with the passages it came from. Nothing joins the ontology until you accept it. You need the right to curate the glossary.
+
+Pick where the terms come from, then the domains you are working in. The new terms are placed in those domains.
+
+| Source | What is read | AI model |
+| --- | --- | --- |
+| **A document**, from the reference library | A document already in the library | Yes |
+| **A document**, as a new file | PDF, Word (`.docx`), Markdown, HTML, plain text or eCFR XML. It joins the reference library as proposed | Yes |
+| **A document**, as a URL | A page or file served over `http` or `https`, fetched once. It joins the reference library as proposed | Yes |
+| **A table**, Terms and definitions | One row per term: a term column and a definition column | No |
+| **A table**, Text to read | One passage per row: an ID column and a text column | Yes |
+
+**Documents.** The AI model reads the document's passages for the concepts it defines and uses, such as business concepts, roles, policies and regulations. It never proposes a named person or company. Variants of one concept become synonyms of one candidate. A candidate's definition is badged **Defined in the document** when a passage defines it outright, or **Synthesized** when it is drawn from several passages. A regulation published on eCFR can be read straight from its XML API, cited by section and by each defined term:
+
+```text
+https://www.ecfr.gov/api/versioner/v1/full/2026-10-15/title-31.xml?part=1010&section=1010.311
+```
+
+**A table of terms and definitions.** Use this for a data dictionary, a business glossary kept as rows, or any registered table that already pairs a term with its definition. Pick its domain, the table, the term column and the definition column. No model is asked, so none needs to be set and nothing counts against your role's AI budget. Each row is offered as a term whose definition is badged **Defined in the table**. Rows naming the same term become one candidate: the first row's definition is its definition, and the others are kept as supporting passages. The scan finishes as soon as you start it.
+
+**A table of text.** Use this for documentation kept as rows, such as policy text or knowledge-base articles. Pick the domain, the table, an ID column and a text column. The model reads each row as one passage, and every proposal cites the rows it came from by their ID. Leave transactional text such as support tickets out. It rarely defines a term.
+
+Either way a table is read as your acting role reads it, so its row rules and masks apply, and no text you can't read reaches the model. A table scan adds nothing to the reference library. If a row limit cuts the read short, the scan is refused and names the limit, because a scan of part of a table would leave rows out without saying so.
+
+**The model and its budget.** A scan that reads text uses the AI model your organization chose for **Find terms** under **Admin → AI Models**. Until one is chosen, the scan is refused and the message says where to set it. A scan of text counts against your role's AI budget, and a table whose rows would not fit in the budget is refused before the scan starts. A running scan shows its model and its progress, and **Cancel scan** stops it.
+
+**Reviewing.** Each scan's review queue lists every candidate as a new term, a duplicate of an existing term, or another name for one. **Accept** adds a new term, **Merge** folds a candidate into the term it matches, and **Reject** drops it. **Accept selected** decides many at once, as each proposes. **Propose relationships** then runs the relationship assistant over the ontology, including the terms you just accepted. **Scan again** rereads the document or the table. Earlier decisions stand, and the new scan shows only what the ontology doesn't hold yet and what matches its terms.
 
 ## Querying the ontology
 

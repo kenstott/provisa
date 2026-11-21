@@ -1,6 +1,10 @@
 {
   "demoOpenPage": {
     "title": "Abriendo su sandbox de demostración",
+    "titleMaking": "Creando su sandbox de demostración",
+    "titleCooking": "Cocinando su sandbox de demostración",
+    "titleGrowing": "Cultivando su sandbox de demostración",
+    "titleComposing": "Componiendo su sandbox de demostración",
     "opening": "Estamos preparando una copia de la demostración para usted. Tarda unos segundos.",
     "starting": "Iniciando esta demostración…",
     "retry": "Intentar de nuevo",

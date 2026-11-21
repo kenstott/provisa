@@ -1,0 +1,13 @@
+{
+  "dataAddress": {
+    "label": "צומת נתונים",
+    "heading": "שליחת בקשות נתונים אל",
+    "none": "אין צומת נתונים",
+    "noneOffered": "לא רשום צומת נתונים עבור אזור זה. הקלידו כתובת למטה.",
+    "typedLabel": "כתובת צומת הנתונים",
+    "typedPlaceholder": "https://data.example.com",
+    "typedInvalid": "הזינו כתובת http או https",
+    "use": "שימוש",
+    "loadError": "לא ניתן היה לטעון את צומתי הנתונים"
+  }
+}

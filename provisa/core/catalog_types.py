@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import pyarrow as pa
 
+from provisa.core.ir_arrays import ArrayType, column_array_type
 from provisa.core.ir_types import is_ir_type, to_ir
 from provisa.core.numeric_type import numeric_arrow_type, numeric_size
 from provisa.core.temporal_type import time_precision, timestamp_precision, timestamp_unit
@@ -131,6 +132,27 @@ def _physical_type_to_arrow(column_type: str) -> pa.DataType:
     if is_ir_type(text) and to_ir(text) in _IR_ARROW:
         return _IR_ARROW[to_ir(text)]
     raise KeyError(f"Unmapped engine type: {column_type!r}")
+
+
+def typed_array_arrow_type(typed: ArrayType) -> pa.DataType:  # REQ-1965
+    """A typed array as an Arrow catalog lists it (REQ-1965, amended 2026-11-11): a list,
+    nested to its depth, of its element's Arrow type -- a decimal with a declared precision
+    exact at that size."""
+    listed = _physical_type_to_arrow(typed.element)
+    for _ in range(typed.depth):
+        listed = pa.list_(listed)
+    return listed
+
+
+def column_catalog_arrow_type(
+    data_type: str, array_depth: int | None, element_type: str | None
+) -> pa.DataType:  # REQ-1965
+    """The Arrow type a catalog lists a registered column as: its typed array where its hidden
+    attributes record one, else its registered type's (:func:`_physical_type_to_arrow`)."""
+    typed = column_array_type(array_depth, element_type)
+    if typed is not None:
+        return typed_array_arrow_type(typed)
+    return _physical_type_to_arrow(data_type)
 
 
 def is_undeclared_numeric(registered: str | None) -> bool:

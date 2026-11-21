@@ -18,7 +18,7 @@ persistence the boot wiring loads into the in-memory CalendarRegistry (``_load_c
 
 from __future__ import annotations
 
-from provisa.core import model_change
+from provisa.core import model_change, model_uri
 
 from typing import TYPE_CHECKING, Any
 
@@ -35,7 +35,9 @@ async def upsert(conn: "Connection", cal: dict[str, Any]) -> None:
     """Create or replace a calendar VERSION (REQ-962). Keyed by (name, version); a re-upsert of the
     same version overwrites its definition (a NEW version is the immutable-history mechanism, not an
     in-place edit of an existing one)."""
-    model_change.name("upsert", "calendar", cal["name"])  # REQ-1524
+    model_change.name(
+        "upsert", model_change.uri(model_uri.kind_uri, "calendars", cal["name"])
+    )  # REQ-1524
     row = {
         "name": cal["name"],
         "version": cal["version"],
@@ -120,7 +122,7 @@ async def delete(conn: "Connection", name: str) -> int:  # REQ-962, REQ-1918
     A calendar in use MUST NOT be removed — its snapshots would lose their boundary source — so
     this is refused (:class:`CalendarDeleteRefused`), naming each, while a view or a
     materialized view takes its snapshot schedule from it. One transaction."""
-    model_change.name("delete", "calendar", name)  # REQ-1524
+    model_change.name("delete", model_change.uri(model_uri.kind_uri, "calendars", name))  # REQ-1524
     async with conn.transaction():
         found = await conn.execute_core(select(calendars.c.name).where(calendars.c.name == name))
         if found.fetchone() is None:

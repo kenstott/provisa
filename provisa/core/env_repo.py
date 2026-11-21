@@ -45,14 +45,16 @@ needs libgit2 built.
 """
 
 # Requirements: REQ-294, REQ-1487, REQ-1488, REQ-1489, REQ-1496, REQ-1502, REQ-1505, REQ-1524,
-# REQ-1526, REQ-1543, REQ-1555
+# REQ-1526, REQ-1543, REQ-1555, REQ-2006
 
 from __future__ import annotations
 
 import os
 import shutil
 import tempfile
+import threading
 import time
+import zlib
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -61,8 +63,10 @@ from dulwich.objects import Blob, Commit, ObjectID, ShaFile, Tree
 from dulwich.refs import Ref
 from dulwich.repo import Repo
 
+from provisa.core import step_clock
 from provisa.core.env_files import Rendered, dump_reusing
 from provisa.core.env_project import project
+from provisa.core.environments import org_schema
 
 if TYPE_CHECKING:
     from provisa.core.database import Connection, Database
@@ -254,6 +258,31 @@ def commit_files(
     so the commit the two lines last shared advances to it: the next merge between them is
     measured from here, and does not re-report what this one already carried.
     """
+    with _commit_lock(repo):
+        return _commit_files(repo, env, files, message, actor, onto, merged_from)
+
+
+#: See :func:`_commit_lock`.
+_COMMIT_LOCKS = tuple(threading.Lock() for _ in range(64))
+
+
+def _commit_lock(repo: Repo) -> threading.Lock:
+    """The lock one repository's commits take in turn (REQ-1524, REQ-2006): two threads committing
+    an org at once write the same objects, and the second met the first's ``.lock`` file
+    (FileExistsError), which left the environment drifted. From a fixed set, so an org that is gone
+    leaves nothing behind."""
+    return _COMMIT_LOCKS[zlib.crc32(str(repo.path).encode()) % len(_COMMIT_LOCKS)]
+
+
+def _commit_files(
+    repo: Repo,
+    env: str,
+    files: dict[str, str],
+    message: str,
+    actor: str | None,
+    onto: str | None,
+    merged_from: str | None,
+) -> str | None:
     tree_id = _build_tree(repo, files)
     ref = _branch_ref(env)
     parents: list[ObjectID] = []
@@ -335,11 +364,18 @@ async def write_through(
     actor: str | None,
     onto: str | None = None,
     merged_from: str | None = None,
+    like: tuple[str, str] | None = None,
 ) -> str | None:
     """Project ``schema`` into ``env``'s branch and commit it. Never raises.
 
     ``onto``: the fetched commit the model was just made from; ``merged_from``: the commit of the
     line a whole merge just carried (see :func:`commit_files`).
+
+    ``like``: the ``(org, environment)`` this one's model was copied from a moment ago -- an
+    environment created from another, a demo sandbox cloned from its template (REQ-2006). Until
+    this environment has a rendering of its own, it starts from that one's: only an entity that
+    differs from what was rendered there is rendered again, so the files are the very text a full
+    rendering gives.
 
     THE RETURN IS THE SHA, and ``None`` means either nothing changed or the projection did not land
     -- the caller cannot act differently on those two anyway, because neither is a reason to undo the
@@ -356,17 +392,26 @@ async def write_through(
 
     from provisa.core.env_project import model_stamp
 
+    stepped = f"history of {env}"
     try:
         # The stamp is read before and after the tree: equal, nothing changed the model while it
         # was read, so the commit holds exactly the model at that stamp. Unequal, the commit is
         # recorded without a stamp and no statement's audit row will name it.
-        before = await model_stamp(conn, schema)
-        files, _rendered[(org_id, env)] = dump_reusing(
-            await project(conn, schema), _rendered.get((org_id, env), {})
-        )
+        with step_clock.step(f"{stepped}: its model read"):
+            before = await model_stamp(conn, schema)
+            tree = await project(conn, schema)
+        last = _rendered.get((org_id, env))
+        rebased: tuple[str, str] | None = None
+        if last is None and like is not None:
+            # The copy rebased what named its source's schema onto this one's (env_copy._rebase).
+            last = _rendered.get(like)
+            rebased = (org_schema(*like), schema)
+        with step_clock.step(f"{stepped}: its files rendered"):
+            files, _rendered[(org_id, env)] = dump_reusing(tree, last or {}, rebased)
         exact_stamp = before if await model_stamp(conn, schema) == before else None
-        repo = ensure_repo(org_id)
-        sha = commit_files(repo, env, files, message, actor, onto, merged_from)
+        with step_clock.step(f"{stepped}: its commit"):
+            repo = ensure_repo(org_id)
+            sha = commit_files(repo, env, files, message, actor, onto, merged_from)
     except Exception:  # noqa: BLE001 — REQ-1524: the projection never fails the change it observes
         import logging
 
@@ -376,6 +421,7 @@ async def write_through(
         await set_drifted(admin_db, org_id, env, True)
         await announce(admin_db, org_id, env, None, True)
         return None
+    recording = time.monotonic()
     await set_drifted(admin_db, org_id, env, False)
     if sha is not None:
         # REQ-1543: the model now equals THIS commit, so this is where an undo starts from. The
@@ -397,6 +443,7 @@ async def write_through(
         tip = repo.refs[_branch_ref(env)].decode() if has_branch(repo, env) else None
         if row is not None and tip is not None and row["deployed_sha"] == tip:
             await set_deployed_stamp(admin_db, org_id, env, exact_stamp)
+    step_clock.took(f"{stepped}: its position recorded", time.monotonic() - recording)
     return sha
 
 
@@ -529,6 +576,19 @@ def _resolve(repo: Repo, ref: str) -> ObjectID:
     if len(candidate) == 40 and candidate in repo.object_store:
         return candidate
     raise RepositoryError(f"{ref!r} is neither a branch nor a commit in this repository")
+
+
+def written_here(org_id: str, ref: str) -> bool:  # REQ-1557
+    """Whether ``ref`` names a commit on one of this repository's own branches: a model this
+    control plane stored, since a branch is written by the write-through and by nothing else
+    (REQ-1541). A commit only a fetch brought, and anything that is no commit here, is not."""
+    repo = ensure_repo(org_id)
+    try:
+        sha = _resolve(repo, ref)
+    except RepositoryError:
+        return False
+    heads = [repo.refs[name] for name in repo.refs.keys() if name.startswith(b"refs/heads/")]
+    return any(_is_ancestor(repo, sha, ObjectID(head)) for head in heads)
 
 
 def resolve_sha(org_id: str, ref: str) -> str:

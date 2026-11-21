@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from collections.abc import Mapping
 from typing import Any
 
 from provisa.mv.models import MVDefinition
@@ -113,11 +114,14 @@ def view_inputs(mv: MVDefinition) -> list[str]:
     return sorted(mv.source_tables)
 
 
-def read_table_names(sql: str) -> frozenset[str]:
-    """The bare names of the tables a view's semantic SQL reads (``domain.table`` → ``table``)."""
+def read_table_names(sql: str, commands: Mapping[str, dict]) -> frozenset[str]:
+    """The bare names of the tables a view's semantic SQL reads (``domain.table`` → ``table``):
+    those it names, and those its calls of ``commands`` are given (REQ-2249)."""
     from provisa.events.lineage import extract_inputs  # noqa: PLC0415
+    from provisa.mv.view_inputs import call_table_refs  # noqa: PLC0415
 
-    return frozenset(name.rsplit(".", 1)[-1] for name in extract_inputs(sql, "postgres"))
+    named = {name.rsplit(".", 1)[-1] for name in extract_inputs(sql, "postgres")}
+    return frozenset(named | {parts[-1] for parts in call_table_refs(sql, commands)})
 
 
 async def unreadable_inputs(inputs: list[str], state: Any) -> list[UnreadableInput]:
@@ -176,7 +180,7 @@ def unresolved_inputs(mv: MVDefinition, state: Any) -> list[UnreadableInput]:
 
     index = ModelIndex(state)
     found: list[UnreadableInput] = []
-    for parts in view_refs(mv):
+    for parts in view_refs(mv, state.tracked_functions):
         try:
             index.resolve(mv.id, parts)
         except InputUnresolved as unresolved:
@@ -234,8 +238,8 @@ def config_table_views(state: Any, raw_config: dict) -> list[MVDefinition]:
     for table in raw_config.get("tables") or []:
         if not (table.get("view_sql") and table.get("materialize")):
             continue
-        if table.get("draft"):
-            continue  # REQ-1921: out of service, registered for nothing (checked when released)
+        if table.get("withdrawn"):
+            continue  # REQ-1921: out of production, registered for nothing (checked when put back)
         name = table.get("table") or table["table_name"]
         mv = state.mv_registry.get(f"view-{name}")
         if mv is None:
@@ -302,6 +306,7 @@ async def require_row_level_switch_allowed(conn: Any, table: Any) -> None:
     from provisa.core.schema_org import registered_tables  # noqa: PLC0415
     from provisa.federation.registry_view import registered_sources  # noqa: PLC0415
     from provisa.federation.strategy import engine_attaches  # noqa: PLC0415
+    from provisa.jdbc_source.attach import reach_type
 
     stored = await conn.execute_core(
         select(registered_tables.c.row_materialize).where(
@@ -318,7 +323,8 @@ async def require_row_level_switch_allowed(conn: Any, table: Any) -> None:
     if not views:
         return
     sources = {s.id: s for s in await registered_sources(state, conn)}
-    if engine_attaches(state.federation_engine, sources[table.source_id].type.value):
+    engine = state.federation_engine
+    if engine_attaches(engine, reach_type(sources[table.source_id], engine)):
         return
     raise ViewsReadTable(
         table.table_name, _ROW_LEVEL, "it would hold only the rows requests have fetched", views

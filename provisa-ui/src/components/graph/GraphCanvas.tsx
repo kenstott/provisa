@@ -16,6 +16,7 @@
 
 import { useRef, useEffect, useLayoutEffect, useState, useCallback } from "react";
 import { useTranslation } from "react-i18next";
+import { useComputedColorScheme } from "@mantine/core";
 import { labelColor, darkenColor } from "./graph-model";
 import type { GNode, GEdge, GraphStats } from "./graph-model";
 import { LITERAL_LABEL } from "./sparql";
@@ -27,6 +28,7 @@ import {
   type ClusterLevel,
 } from "./graph-clusters";
 import { buildGraphStylesheet, nodeCaption } from "./graph-stylesheet";
+import { graphTokens } from "../provisa-graph/tokens";
 import { NodeContextMenu, type NodeCtxMenuState } from "./NodeContextMenu";
 import type {
   CyLayoutOptions,
@@ -106,6 +108,10 @@ export function GraphCanvas({
   sizeMultiplierRef.current = sizeMultiplier;
   const relLineOverridesRef = useRef(relLineOverrides);
   relLineOverridesRef.current = relLineOverrides;
+  // The theme the drawing's colours are taken from (graphTokens); a switch restyles it in place.
+  const isDark = useComputedColorScheme("light") === "dark";
+  const isDarkRef = useRef(isDark);
+  isDarkRef.current = isDark;
   const nodeDraggedRef = useRef(onNodeDragged);
   nodeDraggedRef.current = onNodeDragged;
   const nodeDroppedRef = useRef(onNodeDroppedOnNode);
@@ -114,6 +120,8 @@ export function GraphCanvas({
   keepPositionsRef.current = keepPositions;
   // Where the last drawing's nodes stood, for a drawing that keeps them (keepPositions).
   const heldDrawingRef = useRef<HeldDrawing | null>(null);
+  // Whether this drawing's nodes stand where a layout (or a held drawing) put them.
+  const laidOutRef = useRef(false);
   // Track nodes that the user has manually dragged; these stay anchored during re-layout
   const anchoredRef = useRef<Set<string>>(new Set());
   // Prevents concurrent layout runs from clobbering each other's unlock step
@@ -459,12 +467,10 @@ export function GraphCanvas({
     const cy = cytoscape({
       container: containerRef.current,
       elements: els,
-      style: buildGraphStylesheet({
-        colorOverridesRef,
-        sizeOverridesRef,
-        labelPropertyRef,
-        relLineOverridesRef,
-      }),
+      style: buildGraphStylesheet(
+        { colorOverridesRef, sizeOverridesRef, labelPropertyRef, relLineOverridesRef },
+        graphTokens(isDarkRef.current),
+      ),
       layout: { name: "null" } as CyLayoutOptions,
       minZoom: 0.05,
       maxZoom: 8,
@@ -570,6 +576,7 @@ export function GraphCanvas({
       if (el) el.title = "";
     });
     cy.on("layoutstop", () => {
+      laidOutRef.current = true;
       if (pendingNudgesRef.current === 0) computeHulls();
     });
     cy.on("viewport", computeHulls);
@@ -591,9 +598,12 @@ export function GraphCanvas({
       const under = nodeUnder(cy, evt.target);
       anchoredRef.current.add(id);
       evt.target.addClass("pinned");
-      pendingNudgesRef.current = 2;
-      pendingNudgeFreeNodesRef.current = undefined;
-      nudgeLayoutRef.current();
+      // A drawing that keeps its nodes leaves the rest where they stand.
+      if (!keepPositionsRef.current) {
+        pendingNudgesRef.current = 2;
+        pendingNudgeFreeNodesRef.current = undefined;
+        nudgeLayoutRef.current();
+      }
       nodeDraggedRef.current?.(id);
       if (dragged && under) nodeDroppedRef.current?.(dragged, under);
     });
@@ -608,15 +618,17 @@ export function GraphCanvas({
     );
     activeLayoutRef.current = null;
     layoutRunningRef.current = false;
+    laidOutRef.current = false;
     if (held && clusterLevel === "none") {
       // The nudge places what is new, and styles the rest as a layout does.
       const fresh = restoreDrawing(cy, held, edgeDistanceRef.current);
+      laidOutRef.current = true;
       nudgeLayout(fresh, fresh.size > 0);
     } else if (els.length > 0) runLayout();
     return () => {
-      // A drawing whose layout never finished has nowhere to keep.
+      // A drawing whose first layout never finished has nowhere to keep; one nudged since has.
       heldDrawingRef.current =
-        keepPositionsRef.current && !layoutRunningRef.current ? holdDrawing(cy) : null;
+        keepPositionsRef.current && laidOutRef.current ? holdDrawing(cy) : null;
       cyRef.current = null;
       activeLayoutRef.current = null;
       onCyReady?.(null);
@@ -789,6 +801,19 @@ export function GraphCanvas({
        re-apply overlay nodes/edges only when the overlay data or clustering changes; the imperative apply helpers are stable refs and intentionally excluded */
   }, [overlayNodes, overlayEdges, clusterLevel]);
 
+  // A theme switch restyles the drawing in place: the stylesheet for the new scheme, the same
+  // elements, positions and per-element overrides (cytoscape keeps bypass styles across a sheet).
+  useEffect(() => {
+    const cy = cyRef.current;
+    if (!cy) return;
+    cy.style(
+      buildGraphStylesheet(
+        { colorOverridesRef, sizeOverridesRef, labelPropertyRef, relLineOverridesRef },
+        graphTokens(isDark),
+      ),
+    );
+  }, [isDark]);
+
   // Update node colors when colorOverrides changes without rebuilding the graph
   useEffect(() => {
     const cy = cyRef.current;
@@ -861,6 +886,10 @@ export function GraphCanvas({
   return (
     <div
       className="gf-canvas-wrap"
+      // The canvas is the graph tokens' canvas, the colour the label boxes are drawn in, so a
+      // label box never shows as a patch on the canvas (and matches provisa-graph's canvas).
+      style={{ backgroundColor: graphTokens(isDark).canvas }}
+      data-testid="graph-canvas-wrap"
       tabIndex={0}
       onKeyDown={(e) => {
         if ((e.metaKey || e.ctrlKey) && e.key === "a") {

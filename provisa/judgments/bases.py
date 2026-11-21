@@ -23,7 +23,8 @@ from sqlalchemy import select, update
 
 from provisa.core.schema_org import judgment_bases as jb
 
-_ID = re.compile(r"^[a-z0-9][a-z0-9_.-]{0,63}$")
+# A basis id, and the identifier a judgment_bases entitlement list names a basis by (REQ-2219).
+BASIS_ID = re.compile(r"^[a-z0-9][a-z0-9_.-]{0,63}$")
 
 
 class BasisRefused(ValueError):
@@ -43,6 +44,12 @@ async def list_bases(conn: Any) -> list[dict[str, Any]]:
     return [_row(r) for r in rows]
 
 
+async def basis_ids(conn: Any) -> tuple[str, ...]:  # REQ-2219
+    """The id of every basis: what a judgment_basis_owner list can name."""
+    rows = (await conn.execute_core(select(jb.c.id).order_by(jb.c.id))).fetchall()
+    return tuple(r.id for r in rows)
+
+
 async def get_basis(conn: Any, basis_id: str) -> dict[str, Any] | None:
     row = (await conn.execute_core(select(jb).where(jb.c.id == basis_id))).fetchone()
     return None if row is None else _row(row)
@@ -53,7 +60,7 @@ async def put_basis(
 ) -> dict[str, Any]:
     """Create or edit a basis. Editing its words is not a change of the basis itself: only
     :func:`declare_changed` dates the judgments citing it."""
-    if not _ID.match(basis_id):
+    if not BASIS_ID.match(basis_id):
         raise BasisRefused(
             f"basis id {basis_id!r}: 1-64 lower-case letters, digits, '_', '.' or '-'"
         )

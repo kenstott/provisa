@@ -85,7 +85,10 @@ def org_overrides(monkeypatch):
     monkeypatch.setattr(org_secrets_mod, "write_org_secret", _write_secret)
     monkeypatch.setattr(
         "provisa.api.app.state",
-        types.SimpleNamespace(model_db=(_one_db := object()), tenant_db=_one_db),
+        # multitenancy: what a key variable's read asks of the deployment (REQ-1557).
+        types.SimpleNamespace(
+            model_db=(_one_db := object()), tenant_db=_one_db, multitenancy=False
+        ),
         raising=False,
     )
     return store
@@ -169,6 +172,96 @@ class TestAiModels:
         client.put("/admin/ai-models", json={"ai_models": {"sql_generation": ""}})
         assert "ai_models" not in org_overrides
 
+    def test_get_returns_each_assigned_models_limits_and_source(self, client, org_overrides):
+        # REQ-464: a known model's published figures, and the default pair for one not known.
+        org_overrides["ai_models"] = {
+            "sql_generation": {"vendor": "ollama", "model": "llama3:8b"},
+        }
+        limits = client.get("/admin/ai-models").json()["model_limits"]
+        haiku = limits["anthropic"]["claude-haiku-4-5-20251001"]
+        assert (haiku["input_tokens"], haiku["output_tokens"], haiku["source"]) == (
+            200_000,
+            64_000,
+            "known",
+        )
+        llama = limits["ollama"]["llama3:8b"]
+        assert (llama["input_tokens"], llama["output_tokens"], llama["source"]) == (
+            32_000,
+            4_096,
+            "default",
+        )
+
+    def test_put_stores_a_limits_override_and_null_clears_it(self, client, org_overrides):
+        # REQ-464: the override is the org's, beside its role assignments, and is read back.
+        r = client.put(
+            "/admin/ai-models",
+            json={
+                "model_limits": {
+                    "anthropic": {
+                        "claude-haiku-4-5-20251001": {
+                            "input_tokens": 100_000,
+                            "output_tokens": 8_000,
+                        }
+                    }
+                }
+            },
+        )
+        assert r.status_code == 200
+        assert org_overrides["ai_models"]["model_limits"] == {
+            "anthropic": {
+                "claude-haiku-4-5-20251001": {"input_tokens": 100_000, "output_tokens": 8_000}
+            }
+        }
+        haiku = client.get("/admin/ai-models").json()["model_limits"]["anthropic"][
+            "claude-haiku-4-5-20251001"
+        ]
+        assert (haiku["input_tokens"], haiku["output_tokens"], haiku["source"]) == (
+            100_000,
+            8_000,
+            "override",
+        )
+        client.put(
+            "/admin/ai-models",
+            json={"model_limits": {"anthropic": {"claude-haiku-4-5-20251001": None}}},
+        )
+        assert "ai_models" not in org_overrides
+        haiku = client.get("/admin/ai-models").json()["model_limits"]["anthropic"][
+            "claude-haiku-4-5-20251001"
+        ]
+        assert haiku["source"] == "known"
+
+    def test_put_of_limits_keeps_the_orgs_role_assignments(self, client, org_overrides):
+        client.put("/admin/ai-models", json={"ai_models": {"sql_generation": "claude-opus-4-8"}})
+        client.put(
+            "/admin/ai-models",
+            json={"model_limits": {"openai": {"gpt-4o": {"input_tokens": 9, "output_tokens": 3}}}},
+        )
+        assert org_overrides["ai_models"]["sql_generation"] == "claude-opus-4-8"
+        assert org_overrides["ai_models"]["model_limits"]["openai"]["gpt-4o"]["output_tokens"] == 3
+
+    @pytest.mark.parametrize("bad", [0, -1, "100", 1.5, True, None])
+    def test_put_refuses_a_limit_that_is_not_a_positive_whole_number(
+        self, client, org_overrides, bad
+    ):
+        r = client.put(
+            "/admin/ai-models",
+            json={
+                "model_limits": {"openai": {"gpt-4o": {"input_tokens": bad, "output_tokens": 3}}}
+            },
+        )
+        assert r.status_code == 400
+        assert "ai_models" not in org_overrides
+
+    def test_limits_lookup_answers_for_an_unassigned_model(self, client, org_overrides):
+        r = client.get("/admin/ai-models/limits", params={"vendor": "openai", "model": "gpt-4.1"})
+        assert r.status_code == 200
+        body = r.json()
+        assert (body["input_tokens"], body["output_tokens"], body["source"]) == (
+            1_047_576,
+            32_768,
+            "known",
+        )
+
     def test_invalid_vector_model_rejected(self, client, org_overrides):
         r = client.put("/admin/ai-models", json={"vector_models": [{"id": "x"}]})
         assert r.status_code == 400
@@ -219,33 +312,26 @@ class TestAiModels:
 
 
 class TestCacheStorageWarmAndMv:
-    def test_put_hot_replication_and_mv_default_persist(self, client, settings_store):
+    def test_put_mv_default_persists_and_replication_is_not_this_doors(
+        self, client, settings_store
+    ):
         r = client.put(
             "/admin/cache-storage",
             json={
-                "replication": {
-                    "hot_threshold": 250,
-                    "hot_interval": 120,
-                    "hot_max_rows": 5_000_000,
-                },
+                "replication": {"hot_threshold": 250},  # REQ-1327: the org's, saved elsewhere
                 "materialized_views": {"default_ttl": 900},
             },
         )
         assert r.status_code == 200
         # REQ-1913: stored in the control plane; the node's config file is not written.
         stored = settings_store.resolve
-        assert stored("replication.hot_threshold") == (250, "stored")
-        assert stored("replication.hot_interval") == (120, "stored")
-        assert stored("replication.hot_max_rows") == (5_000_000, "stored")
+        assert stored("replication.hot_threshold").source != "stored"
         assert stored("materialized_views.default_ttl") == (900, "stored")
         assert "replication" not in read_config()
-        # ...and the page reads them back
+        # ...and the page reads it back
         shown = client.get("/admin/cache-storage").json()
-        assert shown["replication"] == {
-            "hot_threshold": 250,
-            "hot_interval": 120,
-            "hot_max_rows": 5_000_000,
-        }
+        assert shown["materialized_views"]["default_ttl"] == 900
+        assert "replication" not in shown
         # the filesystem read-cache settings are gone (REQ-238): no block for them
         assert "warm_tables" not in shown
 
@@ -318,16 +404,13 @@ class TestSettingsGraphqlRemoteAndSampling:
         assert r.status_code == 200
         assert read_config()["graphql_remote"]["max_object_depth"] == 9
 
-    def test_put_sample_size_is_stored_in_the_control_plane(self, client):
-        """REQ-1900: a deployment-wide setting is a control-plane row every worker reads, not an
-        environment write in the worker that served the request."""
+    def test_put_sample_size_is_stored_in_the_orgs_rows(self, client, org_overrides):
+        """REQ-1327: the default sample size is the org's, a row of its own settings, not a
+        deployment-wide value and not an environment write in the worker that served it."""
         from provisa.api.admin import settings_router
-        from provisa.api.app import state
 
-        control_plane = object()
         with (
             patch.dict(os.environ, {}, clear=False),
-            patch.object(state, "admin_db", control_plane),
             patch.object(settings_router._deployment_settings, "write") as write,
         ):
             os.environ.pop("PROVISA_SAMPLE_SIZE", None)
@@ -335,9 +418,8 @@ class TestSettingsGraphqlRemoteAndSampling:
             assert r.status_code == 200
             assert r.json()["updated"] == ["sampling.default_sample_size"]
             assert "PROVISA_SAMPLE_SIZE" not in os.environ
-        write.assert_called_once_with(
-            control_plane, {"sampling.default_sample_size": 555}, updated_by="anonymous"
-        )
+        write.assert_not_called()
+        assert org_overrides["sampling"] == {"default_sample_size": 555}
 
 
 # --- Encryption provider registry (REQ-918) -------------------------------------
@@ -760,10 +842,13 @@ class TestVendorModelListing:
         assert "publishes no list-models API" in r.json()["detail"]
 
     def test_vendor_with_no_key_anywhere_is_rejected(self, client, org_overrides, monkeypatch):
-        monkeypatch.delenv("COHERE_API_KEY", raising=False)
-        r = client.get("/admin/ai-models/vendors/cohere/models")
-        assert r.status_code == 400
-        assert "set an API key for 'cohere'" in r.json()["detail"]
+        from provisa.core.org_secrets import AiKeyRequired
+
+        monkeypatch.delenv("CO_API_KEY", raising=False)
+        # This bare app registers no handler for the refusal (provisa.api.app answers it 409).
+        with pytest.raises(AiKeyRequired) as refused:
+            client.get("/admin/ai-models/vendors/cohere/models")
+        assert refused.value.code == "ai.key_required" and refused.value.vendor == "cohere"
 
     def test_a_vendor_rejecting_the_key_surfaces_as_502(self, client, org_overrides, monkeypatch):
         import httpx
@@ -852,9 +937,16 @@ class TestVendorModelListing:
             }
         ]
         monkeypatch.delenv("UNSET_GATEWAY_KEY_FOR_TEST", raising=False)
-        r = client.get("/admin/ai-models/vendors/my-gateway/models")
-        assert r.status_code == 400
-        assert "UNSET_GATEWAY_KEY_FOR_TEST" in r.json()["detail"]
+        from provisa.core.org_secrets import AiKeyRequired
+
+        # The router's refusal; the API answers it 409 (provisa.api.app).
+        with pytest.raises(AiKeyRequired) as refused:
+            client.get("/admin/ai-models/vendors/my-gateway/models")
+        assert refused.value.code == "ai.endpoint_key_unset"
+        assert refused.value.params == {
+            "vendor": "my-gateway",
+            "field": "UNSET_GATEWAY_KEY_FOR_TEST",
+        }
 
     def test_disabled_custom_endpoint_is_not_listable(self, client, org_overrides):
         org_overrides["ai_endpoints"] = [

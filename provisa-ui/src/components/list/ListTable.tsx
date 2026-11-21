@@ -23,7 +23,7 @@ import {
   type ReactElement,
   type ReactNode,
 } from "react";
-import { ActionIcon, Code, Group, Stack, Table, Text } from "@mantine/core";
+import { ActionIcon, Checkbox, Code, Group, Stack, Table, Text } from "@mantine/core";
 import { useTranslation } from "react-i18next";
 import { ArrowDown, ArrowUp, ArrowUpDown, Layers } from "lucide-react";
 import type { ListItem, ListSortGroup } from "./useListSortGroup";
@@ -36,6 +36,11 @@ import {
 } from "./listCellLimits";
 import { Tip } from "../Tip";
 import { useLeaveGuard } from "./panelLeave";
+import { DeletingKeysContext } from "./panelActions";
+import { ListSelectionContext, type ListSelection } from "./listSelection";
+
+/** The key of the item a row of `ListItems` shows: what a delete in progress marks it by. */
+const RowKeyContext = createContext<string | undefined>(undefined);
 
 /** The caps the list's columns stated for themselves, by position; told by the head, read by rows. */
 const ColumnCaps = createContext<{
@@ -59,15 +64,30 @@ export interface ListTableProps {
    */
   minWidth?: number;
   style?: CSSProperties;
+  /**
+   * REQ-2240: the list's rows can be selected (`useListSelection`): a checkbox column before the
+   * page's own, and the header's box selecting every row the current filter shows.
+   */
+  selection?: ListSelection;
 }
 
 /** A list is at least as wide as its container, and at least its own floor where it has one. */
 const listMinWidth = (floor: number | undefined) =>
   floor === undefined ? undefined : `max(100%, ${floor}px)`;
 
-export function ListTable({ children, testId, minWidth, style }: ListTableProps) {
+export function ListTable({ children, testId, minWidth, style, selection }: ListTableProps) {
   const [caps, tell] = useState<ReadonlyArray<number | undefined>>([]);
   const columnCaps = useMemo(() => ({ caps, tell }), [caps]);
+  // The rows a bulk delete is deleting are marked as a panel's delete marks its row.
+  const panelDeleting = useContext(DeletingKeysContext);
+  const bulkDeleting = selection?.deleting;
+  const deleting = useMemo(
+    () =>
+      bulkDeleting === undefined || bulkDeleting.size === 0
+        ? panelDeleting
+        : new Set([...panelDeleting, ...bulkDeleting]),
+    [panelDeleting, bulkDeleting],
+  );
   return (
     <div className="table-scroll">
       <Table
@@ -85,7 +105,11 @@ export function ListTable({ children, testId, minWidth, style }: ListTableProps)
           } as CSSProperties
         }
       >
-        <ColumnCaps.Provider value={columnCaps}>{children}</ColumnCaps.Provider>
+        <ColumnCaps.Provider value={columnCaps}>
+          <ListSelectionContext.Provider value={selection ?? null}>
+            <DeletingKeysContext.Provider value={deleting}>{children}</DeletingKeysContext.Provider>
+          </ListSelectionContext.Provider>
+        </ColumnCaps.Provider>
       </Table>
     </div>
   );
@@ -98,6 +122,8 @@ export interface ListSortCol {
   width?: string;
   /** The most width, in pixels, this column asks for, where the list's own cap does not suit it. */
   cap?: number;
+  /** The column's filter control (ColumnFilterMenu), drawn after its sort and group controls. */
+  filter?: ReactNode;
 }
 
 /** A static header cell that needs a width. */
@@ -216,15 +242,24 @@ export function ListHead<T = never>({
     told?.tell(stated.split(",").map((cap) => (cap === "" ? undefined : Number(cap))));
     // eslint-disable-next-line react-hooks/exhaustive-deps -- told once for each set of caps
   }, [stated]);
+  const selection = useContext(ListSelectionContext);
   return (
     <Table.Thead>
       <Table.Tr>
+        {selection && <SelectAllCell selection={selection} />}
         {columns.map((c, i) => {
           if (isSortCol(c)) {
             if (!sortGroup) throw new Error("ListHead: a { col } header needs sortGroup");
             return (
               <Table.Th key={i} style={{ whiteSpace: "nowrap", width: c.width }}>
-                <ListSortCell state={sortGroup} col={c.col} />
+                {c.filter ? (
+                  <Group gap={4} wrap="nowrap" component="span">
+                    <ListSortCell state={sortGroup} col={c.col} />
+                    {c.filter}
+                  </Group>
+                ) : (
+                  <ListSortCell state={sortGroup} col={c.col} />
+                )}
               </Table.Th>
             );
           }
@@ -265,10 +300,11 @@ export function ListGroupRow({
   onToggle: () => void;
 }) {
   const isL1 = level === 1;
+  const span = colSpan + useSelectColumns();
   return (
     <Table.Tr>
       <Table.Td
-        colSpan={colSpan}
+        colSpan={span}
         role="button"
         tabIndex={0}
         aria-expanded={!collapsed}
@@ -326,7 +362,11 @@ export function ListItems<T>({
             onToggle={() => state.toggleCollapsed(item.key)}
           />
         ) : (
-          <Fragment key={rowKey(item.row)}>{render(item.row)}</Fragment>
+          <Fragment key={rowKey(item.row)}>
+            <RowKeyContext.Provider value={String(rowKey(item.row))}>
+              {render(item.row)}
+            </RowKeyContext.Provider>
+          </Fragment>
         ),
       )}
     </>
@@ -342,6 +382,12 @@ export interface ListRowProps extends Omit<
   /** Click toggles the row's expansion (or whatever the page binds); adds the pointer/hover style. */
   onClick?: () => void;
   selected?: boolean;
+  /**
+   * REQ-2198: the key of the item the row shows, as the detail panel's delete names it
+   * (`PanelDelete` `itemKey`). A row of `ListItems` knows it already; a page that draws its rows
+   * itself passes it.
+   */
+  itemKey?: string | number;
 }
 
 /**
@@ -358,23 +404,90 @@ export function ListActionsHead({ children }: { children?: ReactNode }) {
   return <>{children}</>;
 }
 
-export function ListRow({ children, testId, onClick, selected, ...aria }: ListRowProps) {
+export function ListRow({ children, testId, onClick, selected, itemKey, ...aria }: ListRowProps) {
+  const { t } = useTranslation();
+  const listedKey = useContext(RowKeyContext);
+  const key = itemKey === undefined ? listedKey : String(itemKey);
+  // REQ-2198: while its item is being deleted the row is marked so and offers it for nothing:
+  // not clickable, and its own actions are out of reach.
+  const deletingKeys = useContext(DeletingKeysContext);
+  const deleting = key !== undefined && deletingKeys.has(key);
   // list-row: the item rows App.css stripes (every even item row, detail rows excluded).
-  const cls = ["list-row", onClick ? "clickable" : "", selected ? "row-selected" : ""]
+  const cls = [
+    "list-row",
+    onClick && !deleting ? "clickable" : "",
+    selected ? "row-selected" : "",
+    deleting ? "row-deleting" : "",
+  ]
     .filter(Boolean)
     .join(" ");
   // Beside a detail panel whose form has unsaved changes, choosing a row asks first.
   const guard = useLeaveGuard();
   const caps = useContext(ColumnCaps)?.caps ?? [];
+  const selection = useContext(ListSelectionContext);
   return (
     <Table.Tr
       {...aria}
       data-testid={testId}
       className={cls}
-      onClick={onClick ? () => guard(onClick) : undefined}
+      onClick={onClick && !deleting ? () => guard(onClick) : undefined}
+      data-deleting={deleting || undefined}
+      aria-disabled={deleting || undefined}
+      aria-busy={deleting || undefined}
+      inert={deleting}
+      title={deleting ? t("common.deleting") : aria.title}
     >
+      {selection && <SelectRowCell selection={selection} rowKey={key} />}
       {capCells(children, caps, { at: 0 })}
     </Table.Tr>
+  );
+}
+
+/** The columns the selection adds before the page's own: one where the list offers it. */
+function useSelectColumns(): number {
+  return useContext(ListSelectionContext) ? 1 : 0;
+}
+
+/** The header's box: every row the current filter shows, or none. */
+function SelectAllCell({ selection }: { selection: ListSelection }) {
+  const { t } = useTranslation();
+  const all = selection.shown.length > 0 && selection.selected.size === selection.shown.length;
+  return (
+    <Table.Th className="list-select">
+      <Checkbox
+        size="xs"
+        aria-label={t("list.selectAll")}
+        data-testid="list-select-all"
+        checked={all}
+        indeterminate={!all && selection.selected.size > 0}
+        disabled={selection.shown.length === 0}
+        onChange={selection.toggleAll}
+      />
+    </Table.Th>
+  );
+}
+
+/**
+ * A row's box. Pressing it selects the row without opening it; with shift held it sets every row
+ * from the last one pressed. A row with no key (one the page draws itself without `itemKey`)
+ * keeps the column, empty.
+ */
+function SelectRowCell({ selection, rowKey }: { selection: ListSelection; rowKey?: string }) {
+  const { t } = useTranslation();
+  return (
+    <Table.Td className="list-select" onClick={(e) => e.stopPropagation()}>
+      {rowKey !== undefined && (
+        <Checkbox
+          size="xs"
+          aria-label={t("list.selectRow")}
+          data-testid={`list-select-${rowKey}`}
+          checked={selection.selected.has(rowKey)}
+          // The press is read on click, where shift is known; the change itself is that press.
+          onChange={() => undefined}
+          onClick={(e) => selection.toggle(rowKey, e.shiftKey)}
+        />
+      )}
+    </Table.Td>
   );
 }
 
@@ -486,9 +599,10 @@ export function ListExpandRow({
    */
   contained?: boolean;
 }) {
+  const span = colSpan + useSelectColumns();
   return (
     <Table.Tr data-testid={testId} className="list-expand">
-      <Table.Td colSpan={colSpan} style={{ padding: 0, maxWidth: contained ? 0 : undefined }}>
+      <Table.Td colSpan={span} style={{ padding: 0, maxWidth: contained ? 0 : undefined }}>
         {children}
       </Table.Td>
     </Table.Tr>
@@ -505,9 +619,10 @@ export function ListEmpty({
   children: ReactNode;
   testId?: string;
 }) {
+  const span = colSpan + useSelectColumns();
   return (
     <Table.Tr data-testid={testId}>
-      <Table.Td colSpan={colSpan} ta="center" c="dimmed">
+      <Table.Td colSpan={span} ta="center" c="dimmed">
         {children}
       </Table.Td>
     </Table.Tr>

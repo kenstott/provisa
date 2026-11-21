@@ -154,3 +154,16 @@ def test_the_end_of_a_session_ends_its_graph(landed, monkeypatch):
     )
     asyncio.run(temp_exec.end(session, state))
     assert store.graph(session).empty and session.tables == {}
+
+
+def test_an_anchor_table_is_named_as_an_engine_that_folds_case_reads_it():
+    # Trino reads the session's store through a PostgreSQL catalog that folds every name to lower
+    # case: cypher__anchor__Big was read as cypher__anchor__big, no table there (TABLE_NOT_FOUND).
+    # An anchor is named in lower case, its label's capitals told apart by a mask, as a
+    # relationship type's table is (A and a are two labels, two tables).
+    graph = store.Graph()
+    names = {label: store.anchor_of(graph, label) for label in ("Big", "big", "A", "a", "a__1")}
+    assert all(name == name.lower() for name in names.values())
+    assert len(set(names.values())) == len(names)
+    assert names["big"] == "cypher__anchor__big"
+    assert store.anchor_table("Big") == names["Big"]

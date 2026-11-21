@@ -45,7 +45,6 @@ const { cy, cytoscape } = vi.hoisted(() => {
   return { cy, cytoscape: Object.assign(() => cy, { use: vi.fn() }) };
 });
 vi.mock("cytoscape", () => ({ default: cytoscape }));
-vi.mock("cytoscape-elk", () => ({ default: vi.fn() }));
 
 import { LineageDag } from "../LineageDag";
 
@@ -86,6 +85,19 @@ const GRAPH = {
 } as never;
 
 describe("LineageDag fit on first visibility", () => {
+  it("fits again each time a hidden container comes back, as a tab does", () => {
+    render(<LineageDag graph={GRAPH} />);
+    size = { w: 800, h: 320 };
+    observe!();
+    const opened = cy.fit.mock.calls.length;
+    size = { w: 0, h: 0 };
+    observe!(); // the tab is left: no area, nothing to fit
+    expect(cy.fit).toHaveBeenCalledTimes(opened);
+    size = { w: 800, h: 320 };
+    observe!(); // and opened again
+    expect(cy.fit).toHaveBeenCalledTimes(opened + 1);
+  });
+
   it("fits once the hidden container gains an area, and only resizes afterwards", () => {
     render(<LineageDag graph={GRAPH} />);
     expect(observe).not.toBeNull();

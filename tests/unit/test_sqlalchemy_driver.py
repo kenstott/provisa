@@ -8,7 +8,7 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""Generic SQLAlchemy fallback direct driver — write path breadth (REQ-229, REQ-550).
+"""JDBCAlchemy fallback direct driver — write path breadth (REQ-229, REQ-550).
 
 Exercised end-to-end against SQLite (a real engine, no extra dependency, and a source type with
 no native async driver today) to prove the fallback does genuine writes and reads through the

@@ -28,22 +28,27 @@ domains:
 - id: shop
   description: A retailer's customers, their orders and each order's lines
 federation_engine: duckdb
+vector_models:
+# A local sentence-transformers model: no key, no network once it is cached (provisa[vector],
+# which demo.yaml declares). The explorer's agent and Polly search the catalog with it.
+- id: sentence-transformers/all-MiniLM-L6-v2
+  provider: huggingface
+  dimensions: 384
+  enabled: true
 naming:
   domain_prefix: true
   rules: []
 roles:
 - id: support_west
-  parents: [viewer]
+  parents: [analyst]
   description: "A West support agent: the West's customers and their orders, email addresses masked, no prices."
-  capabilities:
-  - query_development
+  capabilities: [data_product_read, glossary_read, query_development]
   domain_access:
   - shop
 - id: shop_analyst
   parents: [analyst]
   description: "The BI analyst: every region's orders and what they came to, no customer's email."
-  capabilities:
-  - query_development
+  capabilities: [data_product_read, glossary_read, query_development, usage]
   domain_access:
   - shop
 server:

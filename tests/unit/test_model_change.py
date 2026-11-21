@@ -53,7 +53,12 @@ def commits() -> Iterator[list[dict]]:
         )
         return "sha"
 
-    model_change.attach(object(), commit=_write_through, projected=PROJECTED)  # type: ignore[arg-type]
+    model_change.attach(
+        object(),  # type: ignore[arg-type]
+        commit=_write_through,
+        projected=PROJECTED,
+        uri_org=lambda org_id: org_id,
+    )
     yield asked
     model_change.detach()
 
@@ -90,7 +95,7 @@ async def test_a_scope_with_several_named_writes_lists_them_under_its_label(mode
             async with model.acquire() as conn:
                 await write(conn)
     assert [c["message"] for c in commits] == [
-        "registerTables\n\n- upsert metric revenue\n- upsert tag finance"
+        "registerTables\n\n- upsert provisa://acme/metrics/revenue\n- upsert provisa://acme/tags/finance"
     ]
     assert commits[0]["actor"] is None  # no member signed it: the system author stands in
 

@@ -32,13 +32,14 @@ from datetime import date, datetime, timezone
 
 from provisa.federation.execution_auth import SystemAuth, mint_system_token
 from provisa.mv.bitemporal import append_sql, create_sql, system_columns_ddl, system_ts_literal
-from provisa.mv.store_shape import output_columns, view_key
+from provisa.mv.store_shape import output_columns, shape_probe, view_key
 from provisa.mv.bitemporal_inherit import InheritedBuild, inherited_build
 from provisa.mv.models import MVDefinition, MVStatus
 from provisa.mv.registry import MVRegistry
 from provisa.observability.ops_schema import MV_REFRESH_LINEAGE_SPAN
 from provisa.otel_compat import detached_trace_context
 from provisa.otel_compat import get_tracer as _get_tracer
+from provisa.transpiler.pg_forms_geometric import around
 
 log = logging.getLogger(__name__)
 _tracer = _get_tracer(__name__)
@@ -266,9 +267,7 @@ async def _refresh_bitemporal(
     existing_business = [c for c in existing_cols if c not in sys_names]
     new_cols = list(
         (
-            await engine.execute_engine(
-                f"SELECT * FROM ({select_sql}) _shape LIMIT 0", authorization=authorization
-            )
+            await engine.execute_engine(shape_probe(select_sql), authorization=authorization)
         ).column_names
     )
     if new_cols != existing_business:
@@ -400,6 +399,21 @@ def _emit_column_lineage_span(
                 ]
             ),
         )
+
+
+async def _landed_count(engine, mv: MVDefinition, target: str, authorization: SystemAuth) -> int:
+    """The rows the view's store table holds, read where its refresh writes it (REQ-2249)."""
+    broker = _mv_store_broker(engine)
+    if broker is not None:
+        from provisa.federation.materialize_broker import _MAT_STORE_ALIAS  # noqa: PLC0415
+
+        landed = f'{_MAT_STORE_ALIAS}."{mv.target_schema}"."{mv.target_table}"'
+        rows = await _in_executor(lambda: broker.execute(f"SELECT COUNT(*) FROM {landed}"))
+        return int(rows[0][0])
+    counted = await engine.execute_engine(
+        f"SELECT COUNT(*) FROM {target}", authorization=authorization
+    )
+    return int(counted.rows[0][0])
 
 
 def _mv_definition_version(mv: MVDefinition) -> str:  # REQ-862
@@ -550,7 +564,8 @@ async def _probe_source_count(
     """Run a COUNT(*) probe over the build's own statement (REQ-2108: a DIRECT build's is its
     staged rows, so the source is read once) to estimate result size."""
     res = await engine.execute_engine(
-        f"SELECT COUNT(*) FROM ({select_sql}) _probe", authorization=authorization
+        around(select_sql, lambda s: f"SELECT COUNT(*) FROM ({s}) _probe"),
+        authorization=authorization,
     )
     return res.rows[0][0]
 
@@ -582,7 +597,7 @@ async def _evaluate_preflight(engine, mv: MVDefinition, select_sql: str):
         source,
         inputs,
         ctx,
-        product_id=mv.product_id,
+        product_ids=mv.product_ids,
         hold=mv.hold_on_failing_checks,  # REQ-2133
         table_id=mv.table_id,
     )
@@ -821,6 +836,33 @@ async def refresh_mv(  # REQ-135, REQ-160, REQ-235, REQ-879, REQ-1760
                 log.warning("MV %s: %s", mv.id, quota_exc.detail)
                 return
 
+        # REQ-2249: a view kept by its code resolver's @change function is refreshed through it --
+        # whole, or by the cursor stored after its last successful run -- never recomputed here.
+        from provisa.mv.change_refresh import kept_by_change, refresh_by_change  # noqa: PLC0415
+
+        kept = await kept_by_change(state, mv)
+        if kept is not None:
+            await refresh_by_change(state, engine, mv, kept, full=full)
+            row_count = await _landed_count(engine, mv, target, authorization)
+            if coordinated:
+                assert ledger is not None and writer is not None
+                from provisa.mv.coordination import commit_refresh  # noqa: PLC0415
+
+                if not await commit_refresh(
+                    ledger,
+                    mv.id,
+                    writer,
+                    row_count=row_count,
+                    input_version=target_token,
+                    definition_version=_mv_definition_version(mv),
+                    snapshot_id=None,
+                ):
+                    log.warning("MV %s: lease lost during refresh — result discarded", mv.id)
+                    return
+            registry.mark_refreshed(mv.id, row_count)
+            mv.last_input_token = target_token  # REQ-881
+            return
+
         # REQ-2109: a view inheriting its versions rebuilds only the valid dates its input changed
         # since its watermark; with none changed nothing is appended.
         inherited = await _inherited(engine, mv, target, authorization, full)
@@ -961,7 +1003,7 @@ async def refresh_mv(  # REQ-135, REQ-160, REQ-235, REQ-879, REQ-1760
                 if table_exists:
                     new_cols = (
                         await engine.execute_engine(
-                            f"SELECT * FROM ({select_sql}) _shape LIMIT 0",
+                            shape_probe(select_sql),
                             authorization=authorization,
                         )
                     ).column_names

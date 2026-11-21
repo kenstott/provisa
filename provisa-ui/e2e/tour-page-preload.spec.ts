@@ -50,8 +50,8 @@ test("tour does not show a step's popover over a page still loading its data", a
   // has resolved and `highlight()` has actually run, so waiting on the label (not just "a popover
   // is visible") guarantees each click lands on the step it's meant to. The first label has the
   // larger budget: reaching it means the topic's prefetch and first route chunk have been paid.
-  // A step that acts before it shows (stepBuildSource saves a source live) pays a save round trip,
-  // and so has the first step's budget.
+  // A step that acts before it shows (stepBuildSource fills the source form) takes its paced
+  // actions, and so has the first step's budget.
   for (let n = 1; n < TABLES_POSITION; n++) {
     const acts = TOUR_STEPS.find((s) => s.key === TOUR_SCOPES.core[n - 1])!.actions !== undefined;
     await expect(nextBtn).toHaveText(`Next (${n}/${CORE_TOTAL})`, {

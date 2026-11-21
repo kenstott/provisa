@@ -98,6 +98,7 @@ def get_provider(
         return MongoNotificationProvider(database=config["database"])
 
     if source_type in _KAFKA_TYPES:
+        from provisa.kafka.security import PLAINTEXT
         from provisa.subscriptions.kafka_provider import KafkaNotificationProvider
 
         return KafkaNotificationProvider(
@@ -107,6 +108,7 @@ def get_provider(
             registry=config.get("registry"),
             field_mapping=config.get("field_mapping"),
             landed=config.get("landed"),
+            security=config.get("security", PLAINTEXT),  # REQ-147: a plain cluster names none
         )
 
     if source_type in _INGEST_TYPES:

@@ -538,7 +538,12 @@ def _patch_pipeline(monkeypatch, rows, redirect=None):
         return "fake-plan"
 
     async def fake_execute(plan, state):
-        return QueryResult(rows=rows, column_names=[], redirect=redirect)
+        # A column for each of a row's values, as an engine answers: the encoder reads the result
+        # as a batch of the plan's columns (REQ-2194).
+        width = len(rows[0]) if rows else 0
+        return QueryResult(
+            rows=rows, column_names=[f"c{i}" for i in range(width)], redirect=redirect
+        )
 
     monkeypatch.setattr("provisa.pgwire._pipeline._govern_and_route_compiled", fake_govern)
     monkeypatch.setattr("provisa.pgwire._pipeline._execute_plan", fake_execute)

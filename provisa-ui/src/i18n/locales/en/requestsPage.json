@@ -34,6 +34,11 @@
     "reasonGovernanceViolation": "Governance violation",
     "reasonOutOfScope": "Out of scope",
     "reasonEndpointUnreachable": "Endpoint unreachable",
-    "reasonSchemaMismatch": "Schema mismatch"
+    "reasonSchemaMismatch": "Schema mismatch",
+    "delivery": "Notify by",
+    "deliveryHelp": "How the members of the roles a request is addressed to are told of it. Email: Provisa sends each of them a notice. Events only: Provisa sends no notice; your workflow tool subscribes to ops.requests. Both: email and events.",
+    "deliveryEmail": "Email",
+    "deliveryEvents": "Events only",
+    "deliveryBoth": "Both"
   }
 }

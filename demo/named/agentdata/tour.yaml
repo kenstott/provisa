@@ -30,12 +30,11 @@ steps:
   capability: table_registration
   table: agentdata-db.customers
 # The header's role: the explorer's agent acts as it.
-- key: agentdataSupportRole
+- key: agentdataSupportAsks
   route: /explore
   capability: query_development
   role: support_west
-- key: agentdataSupportAsks
-  mcp: Which of my region's customers ordered in the last week of September 2026, and how do I reach them?
+  mcp: Which of our customers ordered more than once in the last two weeks of September 2026? List each with their name and email.
 - key: agentdataExplain
   mcp_explain: true
 - key: agentdataOutOfReach
@@ -43,6 +42,6 @@ steps:
 - key: agentdataAnalystRole
   role: shop_analyst
 - key: agentdataAnalystAsks
-  mcp: Which of my region's customers ordered in the last week of September 2026, and how do I reach them?
+  mcp: Which of our customers ordered more than once in the last two weeks of September 2026? List each with their name and email.
 - key: agentdataConnect
   mcp_connect: true

@@ -137,6 +137,10 @@ _AXIOM_OBJECTS = {
     f"{RDFS}range": _EITHER,
     f"{SKOS}prefLabel": _LITERAL,
     f"{SKOS}definition": _LITERAL,
+    # REQ-1385: a term's equivalence to the IRI an import gave it.
+    f"{OWL}equivalentClass": _EITHER,
+    f"{OWL}equivalentProperty": _EITHER,
+    f"{SKOS}exactMatch": _EITHER,
 }
 _OWL_CLASSES = frozenset({f"{OWL}Class", f"{OWL}ObjectProperty", f"{OWL}DatatypeProperty"})
 

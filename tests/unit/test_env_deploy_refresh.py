@@ -20,6 +20,7 @@ and that the router turns each answer into the right act against the registry.
 
 from __future__ import annotations
 
+from unittest.mock import AsyncMock
 import pytest
 
 from provisa.api.admin import environments_router as er
@@ -129,6 +130,9 @@ def registry(monkeypatch):
 
     monkeypatch.setattr(er, "_state", _State)
     monkeypatch.setattr(app_module, "_rebuild_schemas", _rebuild_schemas)
+    # REQ-2185: the refresh embeds the environment's terms in the background
+    # (test_reference_library_terms_embedded); not run here.
+    monkeypatch.setattr("provisa.api.admin.reference_library_router.embed_terms", AsyncMock())
     return reg, recompiled
 
 

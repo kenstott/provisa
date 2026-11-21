@@ -48,5 +48,5 @@ roles:
   - id: sales_analytics_analyst
     parents: [analyst]
     description: "Queries the sales analytics domain."
-    capabilities: [query_development]
+    capabilities: [data_product_read, glossary_read, query_development, usage]
     domain_access: [sales-analytics]

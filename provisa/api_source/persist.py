@@ -133,6 +133,12 @@ async def persist_api_endpoint(conn: "Connection", endpoint: ApiEndpoint) -> Non
             "body_encoding": endpoint.body_encoding,
             "query_template": endpoint.query_template,
             "response_normalizer": endpoint.response_normalizer,
+            # REQ-2197: a QuickBooks table pages; a neo4j or sparql one has none.
+            "pagination": (
+                None
+                if endpoint.pagination is None
+                else endpoint.pagination.model_dump(mode="json", exclude_none=True)
+            ),
         },
         index_elements=["source_id", "table_name"],
         update_columns=[
@@ -144,5 +150,6 @@ async def persist_api_endpoint(conn: "Connection", endpoint: ApiEndpoint) -> Non
             "body_encoding",
             "query_template",
             "response_normalizer",
+            "pagination",
         ],
     )

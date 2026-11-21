@@ -80,11 +80,12 @@ COLUMN_FIELDS = (
 TABLE_FIELDS = (
     "id sourceId domainId schemaName tableName alias description watermarkColumn changeSignal "
     "probeQuery probeType viewSql dqContract profilerSourceId queryTemplate fileGlob "
-    "sourceFileColumn importSet arguments landingFilter loadProtected offPeakWindow offPeakTz "
+    "sourceFileColumn importSet arguments landingFilter readWait loadProtected offPeakWindow "
+    "offPeakTz "
     "materialize mvRefreshInterval mvDebounceQuiet mvDebounceMaxDelay pushDebounceQuiet "
     "pushDebounceMaxDelay mvConsistency mvPreprocess mvHoldOnFailingChecks businessKey "
     "validTime recordedTime mvPersist mvIncremental mvCalendar mvGrain mvAllowedLateness "
-    "mvExpectedEvents mvBusinessDayGrain modelingRole modelingHistory productId enableAggregates "
+    "mvExpectedEvents mvBusinessDayGrain modelingRole modelingHistory productIds enableAggregates "
     "enableGroupBy uniqueConstraints { name columns } "
     "live { strategy watermarkColumn pollInterval queryId kafka { topic format keyColumn landingTimeColumn } "
     "outputs { type topic keyColumn bootstrapServers role } } "
@@ -117,6 +118,7 @@ _TABLE_AS_IS = (
     "domainId",
     "schemaName",
     "tableName",
+    "readWait",
     "loadProtected",
     "offPeakWindow",
     "offPeakTz",
@@ -197,8 +199,6 @@ def table_input(
             "businessKey": list(t["businessKey"] or []),
             # REQ-970: the MV row-identity key IS the table's primary key, as the editor derives it
             "mvPrimaryKey": [c["columnName"] for c in t["columns"] if c["isPrimaryKey"]],
-            # REQ-1443 clause 10: a checker table's product is derived and refused on the row
-            "productId": None if t["dqContract"] else t["productId"],
             "live": None
             if live is None
             else {
@@ -227,8 +227,9 @@ def table_input(
 
 def masked_columns(setup: cm.Setup, table: cm.Table, nullable: Mapping[str, bool], share: float):
     """The columns of ``table`` ``share`` of its columns masks, in the contract's order: nullable,
-    and not read by a filter, a join or the base request."""
-    wanted = round(share * len(nullable))
+    and not read by a filter, a join or the base request. The share is of the contract's columns:
+    the deployment's table has columns no request reads (``nullable`` names them all)."""
+    wanted = round(share * len(table.columns))
     if wanted == 0:
         return []
     joined = {
@@ -248,7 +249,7 @@ def masked_columns(setup: cm.Setup, table: cm.Table, nullable: Mapping[str, bool
     if len(eligible) < wanted:
         raise GovernanceError(
             f"table {table.name}: masked_column_share {share} masks {wanted} of its "
-            f"{len(nullable)} columns, but only {len(eligible)} are nullable and read by no "
+            f"{len(table.columns)} columns, but only {len(eligible)} are nullable and read by no "
             f"filter, join or base request ({', '.join(eligible) or 'none'})"
         )
     return eligible[:wanted]
@@ -305,7 +306,9 @@ class AdminGovernance:
 
     # ---- reads
     def _roles(self) -> dict[str, dict[str, Any]]:
-        data = self._graphql("{ roles { id capabilities domainAccess parents } }")
+        data = self._graphql(
+            "{ roles { id capabilities effectiveCapabilities domainAccess parents } }"
+        )
         return {r["id"]: r for r in data["roles"]}
 
     def _tables(self) -> dict[int, dict[str, Any]]:
@@ -342,7 +345,8 @@ class AdminGovernance:
                             "input": {
                                 "id": rid,
                                 "description": f"Benchmark governance: {level} below {r.role}",
-                                "capabilities": list(top["capabilities"]),
+                                # REQ-2155: a role holds what it lists of what its parents hold.
+                                "capabilities": list(top["effectiveCapabilities"]),
                                 "domainAccess": list(top["domainAccess"]),
                                 "parents": [cm.chain_role(r.role, level - 1)],
                             }
@@ -434,7 +438,7 @@ class AdminGovernance:
                                 "input": {
                                     "tagId": tag,
                                     "roleId": role,
-                                    "filterExpr": f"{table.base_column} IS NOT NULL",
+                                    "filterExpr": f"{table.base_column} IS NOT NULL OR {i} < 0",
                                     "description": f"Benchmark governance: row rule {i}, every row",
                                 }
                             },

@@ -48,6 +48,13 @@ vi.mock("../../../hooks/useAdminOpsQueries", async (orig) => ({
   useHotTables: () => ({ hotTables: rows, loading: false, error: undefined, refetch: vi.fn() }),
 }));
 
+vi.mock("../CacheStorageTab", () => ({
+  ResponseCacheSettingsPanel: () => null,
+  HotCacheStoreSettingsPanel: () => null,
+  HotTablesSettingsPanel: () => null,
+  MaterializedSettingsPanel: () => null,
+}));
+
 import { HotTablesTab } from "../CacheManager";
 
 function row(table: string): HTMLElement {
@@ -56,7 +63,7 @@ function row(table: string): HTMLElement {
 
 describe("HotTablesTab", () => {
   it("counts and labels the tables replicated because they are busy", () => {
-    render(<HotTablesTab platform={false} />);
+    render(<HotTablesTab />);
     const stat = screen.getByText("Replicated When Busy").parentElement as HTMLElement;
     expect(within(stat).getByText("2")).toBeInTheDocument();
     expect(within(row("orders")).getByText("replicated (busy)")).toBeInTheDocument();
@@ -65,7 +72,7 @@ describe("HotTablesTab", () => {
   });
 
   it("shows a replica still being built with no row count", () => {
-    render(<HotTablesTab platform={false} />);
+    render(<HotTablesTab />);
     const building = row("items");
     expect(within(building).getByText("replica being built")).toBeInTheDocument();
     expect(within(building).getByText("—")).toBeInTheDocument();
@@ -73,7 +80,7 @@ describe("HotTablesTab", () => {
   });
 
   it("explains when a table is replicated for being busy", () => {
-    render(<HotTablesTab platform={false} />);
+    render(<HotTablesTab />);
     expect(
       screen.getByText(/replicated once the statements that read it pass its threshold/),
     ).toBeInTheDocument();

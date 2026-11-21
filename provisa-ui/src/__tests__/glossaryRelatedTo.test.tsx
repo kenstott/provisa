@@ -21,10 +21,15 @@ import type { GlossaryTermDetail, GlossaryTermSummary } from "../api/glossary";
 
 const t = i18n.getFixedT("en");
 
-// jsdom draws no canvas: the term graph is tested on its own (TermDag.test.tsx).
-vi.mock("../components/admin/TermDag", () => ({ TermDag: () => null }));
+// jsdom draws no canvas: the term page's ontology snippet is tested on its own (TermDag.test.tsx).
+vi.mock("../components/graph3d/OntologyGraph", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../components/graph3d/OntologyGraph")>()),
+  OntologySnippet: () => null,
+}));
 vi.mock("../api/glossary", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../api/glossary")>()),
+  // REQ-1592: the author/expert picker's roster.
+  listAttributablePeople: vi.fn(async () => []),
   listGlossaryTerms: vi.fn(),
   fetchGlossaryTerm: vi.fn(),
   generateGlossaryRelationships: vi.fn(),
@@ -52,7 +57,6 @@ vi.mock("../context/AuthContext", () => ({
     actingRoles: "org_admin",
   }),
 }));
-vi.mock("../api/admin", () => ({ fetchOrgMembers: vi.fn(async () => []) }));
 // Single-domain mode: a new term declares no domains.
 const filter = {
   domains: [],
@@ -86,6 +90,7 @@ const REVENUE: GlossaryTermSummary = {
   id: 1,
   name: "Revenue",
   definition: "Money in.",
+  calculation_method: null,
   is_abstract: false,
   deprecated: false,
   ref_count: 1,
@@ -113,14 +118,15 @@ const detailOf = (term: GlossaryTermSummary): GlossaryTermDetail => ({
   experts: [],
   tags: [],
   pending_on: [],
+  iri: null,
 });
 const REVENUE_DETAIL: GlossaryTermDetail = {
   ...detailOf(REVENUE),
-  edges_out: [{ term_id: 2, rel_type: "RELATED_TO", name: "Churn" }],
+  edges_out: [{ term_id: 2, rel_type: "RELATED_TO", name: "Churn", domains: [] }],
 };
 const CHURN_DETAIL: GlossaryTermDetail = {
   ...detailOf(CHURN),
-  edges_in: [{ term_id: 1, rel_type: "RELATED_TO", name: "Revenue" }],
+  edges_in: [{ term_id: 1, rel_type: "RELATED_TO", name: "Revenue", domains: [] }],
 };
 
 // Mantine Select in jsdom: the options are found through the input's aria-controls listbox.
@@ -182,7 +188,7 @@ describe("Related to guidance", () => {
         ? {
             ...CHURN_DETAIL,
             grounding: "not_grounded",
-            edges_out: [{ term_id: 3, rel_type: "PART_OF", name: "Margin" }],
+            edges_out: [{ term_id: 3, rel_type: "PART_OF", name: "Margin", domains: [] }],
           }
         : REVENUE_DETAIL,
     );
@@ -276,6 +282,10 @@ describe("Related to guidance", () => {
     render(<GlossaryTab />);
     const dialog = await chooseRelatedTo();
     expect(dialog).toHaveTextContent(t("glossaryTab.relatedToDialogWhy"));
+    expect(within(dialog).getByTestId("glossary-related-to-example")).toHaveTextContent(
+      t("glossaryTab.relatedToDialogExample"),
+    );
+    expect(dialog).toHaveTextContent(t("glossaryTab.relatedToDialogShapes"));
     expect(mockSuggest).toHaveBeenCalledWith(1, 5);
     await within(dialog).findByText(/revenue line/);
     const shapes = within(dialog)

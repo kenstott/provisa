@@ -37,6 +37,7 @@ import sqlglot
 import sqlglot.expressions as exp
 from sqlglot.errors import SqlglotError
 
+from provisa.core.domain_policy import INTERNAL_DOMAIN_IDS
 from provisa.core.pg_error import MARK
 from provisa.federation.duckdb_pg_scalars import parse_ident
 from provisa.federation.duckdb_pg_xml import _escape, _float_out, xml_out
@@ -430,7 +431,9 @@ def _tables_of(reads: Reads, schema: str) -> list[str]:
 
 
 def _schemas(reads: Reads) -> list[str]:
-    return [row[0] for row in reads.catalog(_SCHEMAS, [])]
+    """The schemas database_to_xml maps: not Provisa's own domains, as PostgreSQL's leaves out
+    pg_catalog and information_schema (REQ-2167)."""
+    return [row[0] for row in reads.catalog(_SCHEMAS, []) if row[0] not in INTERNAL_DOMAIN_IDS]
 
 
 def _existing_schema(reads: Reads, schema: str) -> str:

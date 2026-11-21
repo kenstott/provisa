@@ -11,6 +11,7 @@
     "reachLiveOn": "חי רק ב-{{engines}}",
     "reachNone": "לא נגיש ממנוע זה",
     "categories": {
+      "Connectors": "המחברים של הארגון שלכם",
       "Subscriptions": "מינויים",
       "RDBMS": "RDBMS",
       "Cloud DW": "מחסן נתונים בענן",

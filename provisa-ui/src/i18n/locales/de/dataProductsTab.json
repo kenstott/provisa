@@ -87,7 +87,6 @@
     "graphqlQueriesEmpty": "Keine abfragbaren Tabellen oder Beziehungen",
     "graphqlQueryAria": "Beispiel-GraphQL-Abfrage für {{table}} ausführen",
     "sqlQueryAria": "Beispiel-SQL-Abfrage für {{table}} ausführen",
-    "cypherQueryAria": "Beispiel-Cypher-Abfrage für {{type}} ausführen",
     "grpcQueryAria": "Beispiel-gRPC-Aufruf für {{table}} ausführen",
     "jsonapiQueryAria": "Beispiel-JSON:API-Anfrage für {{table}} ausführen",
     "openApiQueryAria": "Beispiel-REST-Anfrage für {{table}} ausführen",
@@ -97,7 +96,6 @@
         "customProperties": "Benutzerdefinierte Eigenschaften",
         "relatedTables": "Verwandte Tabellen",
         "relationships": "Beziehungen",
-        "lineage": "Lineage",
         "inputPorts": "Input Ports",
         "dataQuality": "Datenqualität"
       },
@@ -107,18 +105,21 @@
       "dqRulesTitle": "Qualitätsregeln — {{table}}",
       "dqRulesEmpty": "Der Vertrag definiert keine Prüfungen",
       "relatedTablesEmpty": "Keine verwandten Tabellen",
-      "relatedTablesHint": "Von den Tabellen dieses Produkts über eine genehmigte Beziehung erreichbar, aber (noch) nicht Teil davon.",
+      "relatedTablesHint": "Über eine genehmigte Beziehung von den Tabellen dieses Produkts aus erreichbar, aber noch nicht Teil davon.",
       "relationshipsEmpty": "Keine Beziehungen zwischen den Tabellen dieses Produkts",
       "lineageEmpty": "Keine Lineage",
       "lineageLoading": "Lineage wird geladen…",
-      "lineageHint": "Spalten-Lineage-Graph, der die Tabellen dieses Produkts als veröffentlichten Endpunkt zeigt, dazu jede vorgelagerte Tabelle, aus der sie abgeleitet sind. Nur zur Information — erfordert die Capability view_governance.",
+      "lineageTitle": "Spalten-Lineage: woher dieses Produkt stammt",
+      "lineageHint": "Jede Spalte, die dieses Produkt veröffentlicht, und die Eingabespalte, aus der sie stammt, mit jedem Schritt dazwischen. Erfordert die Capability view_governance.",
       "outputPortsHint": "Die abfragbare Oberfläche dieses Produkts: seine Mitgliedstabellen und Befehle. Beispielabfragen für jede finden Sie unter Zugriffsmuster.",
       "customPropertiesEmpty": "Keine benutzerdefinierten Eigenschaften",
-      "lineageLaneUpstream": "Vorgelagert, Schritt {{n}}",
-      "lineageLaneDownstream": "Nachgelagert, Schritt {{n}}"
+      "lineageLaneTables": "Tabellen dieses Produkts",
+      "lineageLaneInputs": "Eingaben",
+      "lineageLaneUpstream": "Upstream, Schritt {{n}} jenseits der Eingaben",
+      "inputsLineageLink": "Spalten-Lineage anzeigen"
     },
     "readOnly": "Schreibgeschützt",
-    "readOnlyHint": "Sie haben nur data_product_read — ein org_admin kann data_product_rw zum Bearbeiten erteilen.",
+    "readOnlyHint": "Sie haben nur data_product_read. Ein org_admin kann data_product_rw zum Bearbeiten vergeben.",
     "relatedTermsConcept": "Konzept",
     "status_draft": "Entwurf",
     "status_live": "Aktiv",
@@ -131,15 +132,15 @@
     "successorHint": "Seine Tabellen, Views und Befehle gehen an den Nachfolger über, ein Produkt in derselben Domäne.",
     "reasonLabel": "Grund",
     "publish": "Veröffentlichen",
-    "publishHint": "Diesen Entwurf aktiv schalten: Er wird Konsumenten und Katalogen angeboten.",
+    "publishHint": "Diesen Entwurf live schalten und Konsumenten und Katalogen anbieten.",
     "deprecate": "Als veraltet markieren",
-    "deprecateHint": "Dieses aktive Produkt als auslaufend markieren: Es bleibt in Betrieb, mit einem Grund und einer optionalen geplanten Außerdienststellung.",
+    "deprecateHint": "Dieses Live-Produkt als auslaufend markieren. Es bleibt in Betrieb, mit einer Begründung und optional einer geplanten Stilllegung.",
     "deprecateTitle": "'{{product}}' als veraltet markieren",
     "retire": "Außer Dienst stellen",
-    "retireHint": "Dieses Produkt außer Dienst stellen: Seine Tabellen, Views und Befehle gehen an einen Nachfolger in seiner Domäne über.",
+    "retireHint": "Dieses Produkt außer Betrieb nehmen. Seine Tabellen, Sichten und Befehle gehen an einen Nachfolger in seiner Domäne über.",
     "retireTitle": "'{{product}}' außer Dienst stellen",
     "retireMoves": "Mitglieder, die übergehen: {{members}}",
-    "retireNoMembers": "Es hat keine Mitglieder: Ein Nachfolger ist optional.",
+    "retireNoMembers": "Es hat keine Mitglieder, daher ist ein Nachfolger optional.",
     "restore": "Wiederherstellen",
     "restoreHint": "Die Markierung als veraltet (zurück zu aktiv) oder die Außerdienststellung (zurück zum Entwurf) rückgängig machen.",
     "toReview": "Zu prüfen",
@@ -177,9 +178,6 @@
       "versionLabel": "Contract-Version",
       "statusLabel": "Contract-Status",
       "descriptionLabel": "Wofür er dient",
-      "columnsLabel": "Spalten",
-      "columnsHelp": "Eine Spalte zu entfernen oder ihren Typ zu ändern erfordert eine neue Version.",
-      "requiredLabel": "Nie null",
       "slaLabel": "Service-Level",
       "slaProperty": "Eigenschaft",
       "slaValue": "Wert",
@@ -211,7 +209,56 @@
         "check_removed": "Qualitätsprüfung {{subject}} entfernt",
         "check_changed": "Qualitätsprüfung {{subject}} geändert",
         "description_changed": "Beschreibung geändert",
-        "terms_changed": "Bedingungen geändert: {{subject}}"
+        "terms_changed": "Bedingungen geändert: {{subject}}",
+        "field_masked": "Feld {{subject}} maskiert ({{after}})",
+        "field_unmasked": "Feld {{subject}} nicht mehr maskiert",
+        "row_rule_added": "Zeilenregel hinzugefügt: {{subject}}",
+        "row_rule_removed": "Zeilenregel entfernt: {{subject}}",
+        "data_level_changed": "Datenebene geändert von {{before}} zu {{after}}",
+        "dq_results_changed": "Qualitätsergebnisse geändert von {{before}} zu {{after}}",
+        "profiles_changed": "Profile geändert von {{before}} zu {{after}}",
+        "duration_changed": "Dauer geändert von {{before}} zu {{after}}",
+        "terms_of_use_changed": "Nutzungsbedingungen geändert: {{subject}}"
+      },
+      "howToUse": {
+        "column": {
+          "surface": "Oberfläche",
+          "address": "Adresse",
+          "how": "Verwendung",
+          "link": "Beispiel"
+        },
+        "surface": {
+          "pgwire": "PostgreSQL",
+          "flight-sql": "Arrow Flight SQL",
+          "grpc": "gRPC",
+          "graphql": "GraphQL",
+          "rest": "REST",
+          "openapi": "OpenAPI",
+          "jsonapi": "JSON:API",
+          "sparql": "SPARQL"
+        },
+        "how": {
+          "pgwire": "Jeder PostgreSQL-Client, etwa psql oder DBeaver. Datenbank {{database}}, Schema {{schema}}.",
+          "flight-sql": "Jeder Arrow-Flight-SQL-Client, etwa der ADBC-Treiber. Datenbank {{database}}, Schema {{schema}}.",
+          "grpc": "Jeder gRPC-Client, auf dem Dienst {{service}}, mit den Metadaten authorization: Bearer <token>.",
+          "graphql": "Jeder GraphQL-Client: eine Abfrage zu dieser Tabelle per POST senden, mit dem Header Authorization: Bearer <token>.",
+          "rest": "Jeder HTTP-Client: GET auf diese Adresse, mit dem Header Authorization: Bearer <token>.",
+          "openapi": "Nur die Beschreibung dieser Tabelle: in Swagger UI, Postman oder einen Client-Generator laden.",
+          "jsonapi": "Jeder JSON:API-Client: GET auf diese Adresse, mit dem Header Authorization: Bearer <token>.",
+          "sparql": "Jeder SPARQL-1.1-Client: eine Abfrage zur Klasse dieser Tabelle per POST senden, mit dem Header Authorization: Bearer <token>."
+        },
+        "access": {
+          "granted": "Funktioniert erst nach Gewährung des Zugriffs durch {{approvers}}.",
+          "noApprover": "Funktioniert erst nach Gewährung des Zugriffs durch einen Inhaber von {{roles}}. Dieser Vertrag nennt keinen Genehmiger.",
+          "undeclared": "Funktioniert erst nach Gewährung des Zugriffs. Dieser Vertrag nennt weder Rolle noch Genehmiger."
+        },
+        "ask": {
+          "approvers": "{{approvers}} um Zugriff bitten",
+          "roles": "Einen Inhaber von {{roles}} um Zugriff bitten",
+          "nobody": "Dieser Vertrag nennt niemanden, den man fragen könnte"
+        },
+        "open": "Beispiel öffnen",
+        "openAria": "Das Beispiel {{surface}} für {{table}} öffnen"
       },
       "loadError": "Die Verträge konnten nicht gelesen werden: {{error}}",
       "notExported": "{{member}} hat keinen exportierten Vertrag",
@@ -221,7 +268,7 @@
         "quality": "Qualität",
         "sla": "SLA",
         "support": "Support und Team",
-        "servers": "Server",
+        "howToUse": "Verwendung",
         "pricing": "Preise",
         "custom": "Benutzerdefinierte Eigenschaften und Tags"
       },
@@ -260,6 +307,12 @@
         "roles": "Rollen",
         "history": "Versionsverlauf"
       }
-    }
+    },
+    "detailPanel": "Details des Datenprodukts",
+    "tagFacetLabel": "Tags",
+    "tagFacetPlaceholder": "Nach Tag filtern",
+    "noMatch": "Keine Datenprodukte entsprechen den Filtern",
+    "domainFacetLabel": "Domänen",
+    "domainFacetPlaceholder": "Nach Domäne filtern"
   }
 }

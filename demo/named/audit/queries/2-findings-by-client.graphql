@@ -1,0 +1,13 @@
+# Each client's schedule by what the auditor finds: how many awards and how many dollars matched,
+# were obligated earlier, are missing, were passed through or were left out.
+query FindingsByClient {
+  a__viewReadinessGroupBy(by: [clientName, finding], order_by: [{ groupKey: { clientName: asc } }]) {
+    groupKey
+    aggregate {
+      count
+      sum {
+        amountExpended
+      }
+    }
+  }
+}

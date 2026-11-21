@@ -22,6 +22,7 @@ import pytest
 
 from provisa.core.models import Source, SourceType
 from provisa.events.push_wiring import _build_provider
+from provisa.kafka.security import PLAINTEXT
 
 
 def _source(**kw) -> Source:
@@ -68,6 +69,8 @@ def test_kafka_builds_provider_with_topic_as_watch_target():
             "field_mapping": {},
             # REQ-1733: its first start reads from where the table's landing stopped.
             "landed": "provisa-landed-default-src",
+            # REQ-147: a source naming no TLS or SASL settings is a plain cluster.
+            "security": PLAINTEXT,
         },
     )
 

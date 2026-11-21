@@ -160,7 +160,8 @@ def test_router_engine_agnostic_without_an_engine():
 
 
 def test_connector_pushdown_is_the_declared_capability_input():
-    cap = build_trino_engine().connector_pushdown("postgresql")
+    source = Source(id="pg", type=SourceType.postgresql, host="h", port=5432, database="d")
+    cap = build_trino_engine().connector_pushdown(source)
     assert isinstance(cap, Capability)
     assert cap.predicate_pushdown is True  # Trino pushes predicates to a postgres catalog
 
@@ -201,3 +202,10 @@ def test_plan_scan_on_non_file_native_engine_fails_loud():
 
 if __name__ == "__main__":
     pytest.main([__file__, "-q"])
+
+
+def test_duckdbs_sqlite_extension_claims_no_filter_pushdown():
+    # REQ-863 (Amended 2026-11-06, SQLITE PUSHES PROJECTIONS ONLY): measured on DuckDB 2.0.
+    from provisa.federation.connector_duckdb import DuckDBSqliteConnector
+
+    assert DuckDBSqliteConnector().capability() == Capability(write=True)

@@ -11,14 +11,15 @@
 """PostgreSQL's functions DuckDB has no equivalent of, on the embedded DuckDB engine and the pgwire
 catalog DB (REQ-2167, PGWIRE'S CATALOG FUNCTIONS): ``provisa_size_pretty``, pg_size_pretty's text
 (DuckDB's of that name writes KiB), and the UDFs of provisa.federation.duckdb_pg_scalars, where a
-value needs PostgreSQL's own algorithm. A function a DuckDB expression carries is no function here:
+value needs PostgreSQL's own algorithm, and provisa.federation.duckdb_pg_json. A function a DuckDB expression carries is no function here:
 it is a rewrite in provisa.transpiler.function_macros, as money's, the shapes', tsvector's and
 abbrev are.
 
 sha224, sha384 and sha512 are the crypto extension's ``crypto_hash`` (REQ-2171, EXTENSIONS AND TOTAL
 LANDING). :func:`register` only loads it, from the extension directory: staging it is an install's
-step (provisa-duckdb-ext, or ``INSTALL crypto FROM community``), so a connection never reaches the
-network. Where it is not staged the call is refused by name."""
+step (provisa-duckdb-ext, which mirrors it from Query.Farm's repository, or
+``INSTALL crypto FROM query_farm``), so a connection never reaches the network. Where it is not
+staged the call is refused by name."""
 
 # Requirements: REQ-2167, REQ-2171
 
@@ -26,12 +27,16 @@ from __future__ import annotations
 
 from typing import Any
 
+from provisa.core.pg_error import END, MARK
 from provisa.transpiler.function_macros import FunctionRefused
 
 
 def _refuse_digest(algorithm: str, value: bytes) -> bytes:
-    """crypto_hash where the extension is not staged: the function the statement called, refused."""
-    raise FunctionRefused(algorithm.replace("sha2-", "sha"), "duckdb (no crypto extension)")
+    """crypto_hash where the extension is not staged: the function the statement called, refused
+    by name. Raised in a UDF, the engine wraps the message in its own; marked, pgwire reads it
+    back as the refusal it is (pg_error.from_engine)."""
+    refused = FunctionRefused(algorithm.replace("sha2-", "sha"), "duckdb (no crypto extension)")
+    raise ValueError(f"{MARK} 0A000: {refused}{END}")
 
 
 #: pg_size_pretty's units, as src/backend/utils/adt/dbsize.c lists them: (name, the size below
@@ -67,11 +72,13 @@ def size_pretty(size: int) -> str:
 def register(con: Any) -> None:
     """Create the functions on DuckDB connection ``con``."""
     from provisa.federation.duckdb_extensions import load_staged
+    from provisa.federation.duckdb_pg_json import register as register_json
     from provisa.federation.duckdb_pg_scalars import register as register_scalars
     from provisa.federation.duckdb_pg_xml import register as register_xml
 
     register_scalars(con)
     register_xml(con)
+    register_json(con)
     con.create_function(
         "provisa_size_pretty", size_pretty, ["HUGEINT"], "VARCHAR", side_effects=False
     )

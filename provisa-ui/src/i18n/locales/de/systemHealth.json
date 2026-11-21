@@ -28,6 +28,7 @@
     "port": "Port {{port}}",
     "cypherOverHttp": "Cypher über HTTP",
     "mvRefreshLoop": "MV-Aktualisierungsschleife",
-    "stopped": "Gestoppt"
+    "stopped": "Gestoppt",
+    "copyUrl": "URL kopieren"
   }
 }

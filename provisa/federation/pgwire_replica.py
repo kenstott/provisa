@@ -29,6 +29,7 @@ Every failure is LOUD: an unknown/creds-missing source, a port collision, or a m
 from __future__ import annotations
 
 import contextlib
+import contextvars
 import hashlib
 import json
 import os
@@ -188,6 +189,35 @@ class ServerCatalogFailed(ServerNotServing):
         self.source_id = source_id
 
 
+#: How long a read on a request that was refused the server (another read held it) keeps every
+#: background read from being sent: longer than the Register Table form takes to ask again
+#: (``STILL_STARTING_POLL_MS``, 3 s, and a request's round trip), so the form's next ask finds the
+#: server free. Bounded, so a request that is not asked again holds off the index no longer.
+REQUEST_READ_PRIORITY_SECONDS = 15.0
+
+#: A discovery read made off any request -- the catalog index's walk of a saved source, the
+#: search's column fill -- rather than for a caller waiting on it (the Register Table lists).
+_BACKGROUND_DISCOVERY: contextvars.ContextVar[bool] = contextvars.ContextVar(
+    "pgwire_background_discovery", default=False
+)
+
+
+@contextmanager
+def background_discovery() -> Iterator[None]:
+    """The discovery reads made in this block are background reads: they go after a read on a
+    request that is waiting for the same server (``ConnectorReplica.discovery_read``)."""
+    token = _BACKGROUND_DISCOVERY.set(True)
+    try:
+        yield
+    finally:
+        _BACKGROUND_DISCOVERY.reset(token)
+
+
+def in_background_discovery() -> bool:
+    """Whether a discovery read made here is a background read (:func:`background_discovery`)."""
+    return _BACKGROUND_DISCOVERY.get()
+
+
 #: How soon an unanswered first catalog query is sent again, while its caller still waits.
 _CATALOG_RESEND_SECONDS = 1.0
 
@@ -200,12 +230,28 @@ class SourceStillStartingError(ServerNotServing):  # REQ-1824
     surfacing it as a hard error."""
 
     def __init__(
-        self, source_id: str, *, preparing_catalog: bool = False, answering_read: bool = False
+        self,
+        source_id: str,
+        *,
+        preparing_catalog: bool = False,
+        answering_read: bool = False,
+        catalog_not_requested: bool = False,
     ) -> None:
-        # Three waits, told apart for whoever is waiting: the server has not opened its port
-        # yet, it is listening and preparing its catalog (``ConnectorReplica.await_catalog``), or
-        # it is listening and answering another discovery read (``ConnectorReplica.discovery_read``).
-        if preparing_catalog:
+        # Four states, told apart for whoever is waiting: the server has not opened its port
+        # yet, it is listening and preparing its catalog (``ConnectorReplica.await_catalog``), it
+        # is listening and answering another discovery read (``ConnectorReplica.discovery_read``),
+        # or it is listening and nothing has asked for its catalog, so none is being prepared
+        # (``ConnectorReplica.use_catalog``). Waiting alone does not end that last one, so it is
+        # not told to try again.
+        retry = " — try again shortly."
+        if catalog_not_requested:
+            doing = (
+                "is listening, and its tables can be registered now; its catalog has not been "
+                "requested, so none is being prepared. Registering its first table or running "
+                "a statement on it requests the catalog."
+            )
+            retry = ""
+        elif preparing_catalog:
             doing = (
                 "is listening, and its tables can be registered now; a query on them waits until "
                 "the engine can attach it, while the connector answers the engine's first catalog "
@@ -215,10 +261,11 @@ class SourceStillStartingError(ServerNotServing):  # REQ-1824
             doing = "is listening, and is answering another read of the tables it serves"
         else:
             doing = "is still starting up"
-        super().__init__(f"STARTING: {source_id!r}'s connector {doing} — try again shortly.")
+        super().__init__(f"STARTING: {source_id!r}'s connector {doing}{retry}")
         self.source_id = source_id
         self.preparing_catalog = preparing_catalog
         self.answering_read = answering_read
+        self.catalog_not_requested = catalog_not_requested
 
 
 class ServerRetired(ServerNotServing):  # REQ-1824
@@ -374,7 +421,9 @@ def _sharepoint_operand(source: Any) -> dict:
       ``authType`` and falls back to ``CLIENT_CREDENTIALS`` when it is absent, so a cert operand
       without it dies with "CLIENT_CREDENTIALS auth requires clientId, clientSecret, and tenantId".
     * ``certificatePath`` must be ABSOLUTE. The pgwire server runs with its bundle directory as cwd,
-      so a relative path resolves against the cache dir and the PFX is not found.
+      so a relative path resolves against the cache dir and the PFX is not found. It must also
+      EXIST on this host: the server is started here, even for a source an engine in a container
+      reads (writes and declared keys go through it, REQ-1946, REQ-2170).
     * ``certificatePassword`` must be PRESENT, even for a password-less PFX, where it is the empty
       string. ``createCertificateAuth`` rejects a null password and ``CertificateAuth`` calls
       ``certificatePassword.toCharArray()``. Absence of the mapping key is a config error, not an
@@ -400,6 +449,12 @@ def _sharepoint_operand(source: Any) -> dict:
             raise MissingConnectorConfig(
                 f"sharepoint source {source.id!r}: mapping.certificate_path must be an absolute "
                 f"path (the pgwire server's cwd is its bundle directory), got {cert_path!r}"
+            )
+        if not Path(cert_path).is_file():
+            raise MissingConnectorConfig(
+                f"sharepoint source {source.id!r}: mapping.certificate_path {cert_path} does "
+                "not exist on this host, where its pgwire server runs; a path that resolves only "
+                "inside an engine's container is not one this server can read"
             )
         cert_password = mapping.get("certificate_password")
         if not isinstance(cert_password, str):
@@ -915,9 +970,15 @@ class PgwireServer:  # REQ-955
         return self._proc.exit_code()
 
     def log_tail(self) -> str:
-        """The last lines of the server's own output (written next to its working directory)."""
+        """The last lines of the server's own output (written next to its working directory),
+        led by the log's innermost Java "Caused by:" line when the tail does not show it."""
         lines = (self._bundle_dir / SERVER_LOG_NAME).read_text(errors="replace").splitlines()
-        return "\n".join(lines[-_LOG_TAIL_LINES:])
+        tail = lines[-_LOG_TAIL_LINES:]
+        # A JVM failure's stack trace outruns the tail; the innermost "Caused by:" is its root cause.
+        causes = [line for line in lines if line.startswith("Caused by:")]
+        if causes and causes[-1] not in tail:
+            tail = [f"root cause: {causes[-1]}", *tail]
+        return "\n".join(tail)
 
     def stop(self) -> None:
         """Terminate the server and wait for it to exit, so its port is free for the next start
@@ -1078,9 +1139,13 @@ async def _read_information_schema(source: Any, statement: str) -> list[Any]:
             # preparation of its catalog (the engine's first catalog query): while that runs
             # the source is still starting (``ConnectorReplica.await_catalog``), and the read
             # is asked again once it has started. A cancel after the catalog is prepared, or
-            # after it failed, is the server's answer.
+            # after it failed, is the server's answer. One no use has requested is not being
+            # prepared, and is not reported so.
             if replica.catalog_pending():
-                raise SourceStillStartingError(source.id, preparing_catalog=True) from exc
+                requested = replica.catalog_requested()
+                raise SourceStillStartingError(
+                    source.id, preparing_catalog=requested, catalog_not_requested=not requested
+                ) from exc
             raise
         finally:
             await conn.close()
@@ -1319,6 +1384,9 @@ class ConnectorReplica:  # REQ-954/955/956
         # waits for the source's first use by the engine (:meth:`use_catalog`). Any other type's
         # catalog is prepared on the first request that needs it.
         self._catalog_wanted = _source_type(source) not in STARTED_WHEN_SAVED
+        # Until when a read on a request that was refused the server is waiting to ask again:
+        # a background read is not sent before it (:meth:`discovery_read`).
+        self._request_waiting_until = 0.0
         # Which server the preparation in flight belongs to: one outlived by its server (the
         # server was stopped under it) reports to no one.
         self._catalog_server = 0
@@ -1538,7 +1606,7 @@ class ConnectorReplica:  # REQ-954/955/956
                 if self._catalog_ready:
                     return
                 if not self._catalog_wanted:
-                    raise SourceStillStartingError(self._source.id, preparing_catalog=True)
+                    raise SourceStillStartingError(self._source.id, catalog_not_requested=True)
                 self._start_catalog_locked(ports)
                 thread = self._catalog_thread
             left = deadline - time.monotonic()
@@ -1571,6 +1639,12 @@ class ConnectorReplica:  # REQ-954/955/956
             self._catalog_error = error
             self._catalog_ready = error is None
 
+    def catalog_requested(self) -> bool:
+        """Whether the source's use has asked for its catalog (:meth:`use_catalog`; any type not
+        started when saved has from the start). Starts nothing and waits for nothing."""
+        with self._start_lock:
+            return self._catalog_wanted
+
     def catalog_pending(self) -> bool:
         """Whether the server's catalog is still being prepared: neither prepared nor failed.
         Starts nothing and waits for nothing."""
@@ -1586,14 +1660,27 @@ class ConnectorReplica:  # REQ-954/955/956
         while another is in flight waits behind it, and a fresh server's first reads of a schema
         take a minute and more (its catalog is fetched). So a second read is not sent: it is
         answered still starting, and asked again by its caller (REQ-1824). A retired replica
-        refuses (``ServerRetired``). Waits for nothing."""
+        refuses (``ServerRetired``). Waits for nothing.
+
+        A read on a request goes before a background read (:func:`background_discovery`): the
+        catalog index walks every schema of a saved source one read after another, and a
+        Register Table listing refused while one of them held the server found it taken again
+        by the next, for the whole walk. So a refused request read holds off every background
+        read for ``REQUEST_READ_PRIORITY_SECONDS``, or until it is asked again and sent; a
+        background read held off is answered still starting, and asked again by its caller."""
+        background = _BACKGROUND_DISCOVERY.get()
         with self._server_lock:
             if self._retired:
                 raise ServerRetired(self._source.id)
         with self._start_lock:
-            if self._discovery_reads:
+            now = time.monotonic()
+            if self._discovery_reads or (background and now < self._request_waiting_until):
+                if not background:
+                    self._request_waiting_until = now + REQUEST_READ_PRIORITY_SECONDS
                 raise SourceStillStartingError(self._source.id, answering_read=True)
             self._discovery_reads += 1
+            if not background:
+                self._request_waiting_until = 0.0  # sent: the background reads go on after it
         try:
             yield
         finally:
@@ -1701,7 +1788,7 @@ def _endpoint_replica(source: Any) -> ConnectorReplica:
     with _ENDPOINTS_LOCK:
         if source_key(source.id) in _DELETING:
             raise SourceBeingDeleted(source.id)
-        if key[0] != org_id:
+        if key != source_key(source.id):  # a server shared: its template is a user as a sandbox is
             _ENDPOINT_USERS.setdefault(key, set()).add(org_id)
         replica = _ENDPOINTS.get(key)
         if replica is None:
@@ -1928,14 +2015,14 @@ def stop_org_servers(org_id: str) -> None:
     """Stop and forget every server this process started for ``org_id``'s sources (REQ-1992:
     before the org's folder's files are encrypted or decrypted)."""
     with _ENDPOINTS_LOCK:
-        mine = [key for key in _ENDPOINTS if key[0] == org_id]
+        mine = [key for key in _ENDPOINTS if key[0] == org_id and key not in _ENDPOINT_USERS]
         # A server several orgs share goes when the last of them stops reading it.
         for key, users in list(_ENDPOINT_USERS.items()):
             users.discard(org_id)
-            if not users and key not in mine and key in _ENDPOINTS:
-                mine.append(key)
             if not users:
                 del _ENDPOINT_USERS[key]
+                if key in _ENDPOINTS:
+                    mine.append(key)
         replicas = [_ENDPOINTS.pop(key) for key in mine]
     for replica in replicas:
         replica.retire()

@@ -129,3 +129,56 @@ def sql_literal(value: Any, dialect: str) -> str:  # noqa: PLR0911 -- one return
     if isinstance(value, (dict, list)):
         return _string(json.dumps(value), dialect)
     raise UnencodableLiteral(value, dialect, "the type has no literal form")
+
+
+_NON_FINITE_TEXT = {"nan": "NaN", "inf": "Infinity", "-inf": "-Infinity"}
+
+
+def literal_expr(value: Any) -> Any:  # noqa: PLR0911 -- one return per value kind  # REQ-913
+    """``value`` as a PostgreSQL literal expression: what :func:`sql_literal` writes for
+    ``postgres``, as a node, so a statement takes it without a text step. A float is typed DOUBLE
+    PRECISION (a bare ``2.0`` is a numeric literal); non-finite ones are spelled as PostgreSQL
+    spells them.
+
+    Raises :class:`UnencodableLiteral` as :func:`sql_literal` does."""
+    import sqlglot.expressions as exp
+
+    def string(text: str) -> exp.Expression:
+        if "\x00" in text:
+            raise UnencodableLiteral(text, "postgres", "it holds a NUL character")
+        return exp.Literal.string(text)
+
+    def typed(text: str, sql_type: str) -> exp.Expression:
+        return exp.cast(string(text), sql_type)
+
+    if value is None:
+        return exp.Null()
+    if isinstance(value, bool):  # before int: a bool is an int
+        return exp.Boolean(this=value)
+    if isinstance(value, int):
+        return exp.Literal.number(value)
+    if isinstance(value, float):
+        if math.isfinite(value):
+            return exp.Literal.number(repr(value))
+        name = "nan" if math.isnan(value) else ("inf" if value > 0 else "-inf")
+        return typed(_NON_FINITE_TEXT[name], "DOUBLE PRECISION")
+    if isinstance(value, Decimal):
+        if not value.is_finite():
+            raise UnencodableLiteral(value, "postgres", "it is not a finite number")
+        return exp.Literal.number(str(value))
+    if isinstance(value, str):
+        return string(value)
+    if isinstance(value, _dt.datetime):  # before date: a datetime is a date
+        zoned = value.tzinfo is not None and value.utcoffset() is not None
+        return typed(value.isoformat(), "TIMESTAMPTZ" if zoned else "TIMESTAMP")
+    if isinstance(value, _dt.date):
+        return typed(value.isoformat(), "DATE")
+    if isinstance(value, _dt.time):
+        return typed(value.isoformat(), "TIME")
+    if isinstance(value, uuid.UUID):
+        return string(str(value))
+    if isinstance(value, (bytes, bytearray, memoryview)):
+        return exp.Literal.string(f"\\x{bytes(value).hex()}")  # bytea's hex input format
+    if isinstance(value, (dict, list)):
+        return string(json.dumps(value))
+    raise UnencodableLiteral(value, "postgres", "the type has no literal form")

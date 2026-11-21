@@ -21,7 +21,7 @@ means an unrecognized API path can never silently masquerade as an HTML 200, and
 SPA deep-link refreshes (e.g. /admin/overview) resolve correctly.
 """
 
-# Requirements: REQ-057, REQ-058, REQ-559
+# Requirements: REQ-057, REQ-058, REQ-559, REQ-1916
 
 import importlib.util
 import json
@@ -44,6 +44,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.background import BackgroundTask
 
 from provisa import sandbox_wake
+from provisa.api.query_gate import QueryUiGate
 
 # REQ-1127: the pip wheel embeds the precompiled React UI at provisa/_ui/ so the delivery is
 # self-contained (no npm/Node at runtime). Prefer that packaged directory; fall back to the
@@ -294,6 +295,19 @@ logging.getLogger("uvicorn.access").addFilter(_NoSignInQuery())
 # Swagger lives at /data/openapi/docs, reachable through the proxy).
 app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
 
+
+def _ui_address() -> str | None:
+    """The address the UI is served at (``mail.base_url``), for a query node's refusal. The UI
+    server runs in the API's process (``provisa run``), which holds the loaded config."""
+    from provisa.api.app import state
+
+    return state.config.mail.base_url if state.config is not None else None
+
+
+# REQ-1916 (amended 2026-11-02): only a coordinator or an every-mode node serves the UI; this whole
+# server is UI, so on a query node every path is refused, naming where the UI is.
+app.add_middleware(QueryUiGate, refuses=lambda _path: True, ui_address=_ui_address)
+
 assets_dir = STATIC_DIR / "assets"
 if assets_dir.is_dir():
     app.mount("/assets", StaticFiles(directory=assets_dir), name="assets")
@@ -367,6 +381,22 @@ async def firebase_config() -> Response:  # REQ-1266
         body = "window.__PROVISA_FIREBASE__ = null;"
     return Response(
         content=body,
+        media_type="application/javascript",
+        headers={"Cache-Control": "no-store"},
+    )
+
+
+@app.get("/deployment-config.js")
+async def deployment_config() -> Response:  # REQ-1276, REQ-1348
+    # The base domain this deployment addresses orgs under (cloud.provisa.dev declares
+    # provisa.dev), injected at runtime like the Firebase config above so one built image serves
+    # any deployment. index.html loads this before the app bundle, exposing
+    # window.__PROVISA_ORG_BASE_DOMAIN__ for lib/authHost.ts. Unset — a Codespace, localhost, a
+    # custom single host — emits null: the UI then reads no org from its host and runs as the
+    # deployment's one address, instead of guessing a zone from the host's shape.
+    base = os.environ.get("VITE_ORG_BASE_DOMAIN", "").strip()
+    return Response(
+        content=f"window.__PROVISA_ORG_BASE_DOMAIN__ = {json.dumps(base or None)};",
         media_type="application/javascript",
         headers={"Cache-Control": "no-store"},
     )
@@ -466,8 +496,17 @@ async def handler(request: Request, full_path: str) -> Response:  # REQ-057, REQ
             sandbox_wake.answered(base)
             if not upstream.headers.get("content-type", "").startswith("text/event-stream"):
                 await upstream.aread()
-        except httpx.ConnectError:
-            # Both sandbox tiers run on the sandbox VM (REQ-2068).
+        except (httpx.ConnectError, httpx.RemoteProtocolError, httpx.ReadError) as exc:
+            # Refused, or accepted and dropped unanswered: a deploy recreating the API's container
+            # drops the requests under way there, and left unhandled that escaped as a bare ASGI
+            # 500. Both sandbox tiers run on the sandbox VM (REQ-2068).
+            if not isinstance(exc, httpx.ConnectError):
+                _log.error(
+                    "upstream dropped the request (%s): %s %s",
+                    type(exc).__name__,
+                    request.method,
+                    target,
+                )
             sandbox = base == SANDBOX_API_URL or base in SANDBOX_REGIONS_NODES.values()
             if sandbox and sandbox_wake.SANDBOX_INSTANCE is not None:
                 return await _sandbox_starting(sandbox_wake.SANDBOX_INSTANCE, base)

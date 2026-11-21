@@ -20,9 +20,15 @@ for anything a streamed response wrote after it started.
 
 from __future__ import annotations
 
+import logging
+import time
 from typing import Any
 
 from provisa.core import model_change
+
+log = logging.getLogger(__name__)
+#: A commit past this is named in the log, at WARNING as a hosted tier logs (REQ-2006).
+_SLOW_COMMIT_S = 2.0
 
 
 def _actor(scope: dict) -> str | None:
@@ -46,7 +52,11 @@ class ModelChangeMiddleware:
 
             async def _send(message: dict) -> None:
                 if message["type"] == "http.response.start":
+                    started = time.monotonic()
                     await model_change.flush(change)
+                    took = time.monotonic() - started
+                    if took >= _SLOW_COMMIT_S:
+                        log.warning("model commit of %s took %.1fs", label, took)
                 await send(message)
 
             await self._inner(scope, receive, _send)

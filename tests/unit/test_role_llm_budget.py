@@ -363,7 +363,9 @@ def test_the_admin_api_reads_a_roles_llm_budget():
         "session_vars": {},
         "inactivity_days": None,
     }
-    limits = _role_from_row(row, detail=True, effective=[]).rate_limit
+    limits = _role_from_row(
+        row, detail=True, effective={"capabilities": [], "domains": [], "regions": []}
+    ).rate_limit
     assert (limits.llm_call_cap.amount, limits.llm_call_cap.unit) == (5000.0, "tokens")
     windows = limits.llm_windows
     assert (windows.hour, windows.week) == (None, None)

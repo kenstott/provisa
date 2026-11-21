@@ -23,7 +23,7 @@ It is a lightweight version of Provisa, the same product with these limits:
 | Inactivity | Deleted, with everything in it, after 1 hour without use | `sandbox.idle_ttl` |
 | Open at once | 10 sandboxes; past that, a visitor is asked to try again shortly | `sandbox.max_concurrent` |
 | Demos being prepared | 2 demos' templates are built at a time after the tier starts; a demo still waiting is built next when a visitor opens it, and the visitor is told it is still being prepared | `sandbox.template_builds_at_once` |
-| Demo databases | Kept running for 30 minutes after a demo's last sandbox closes, then stopped; the next visitor to open it waits while they start | `sandbox.demo_stores_linger` |
+| Demo databases | Kept running for 30 minutes after a demo's last sandbox closes, then the demo's own services are stopped; its data stays loaded, so the next visitor to open it waits only while they start again | `sandbox.demo_stores_linger` |
 
 The sandbox also holds back what reaches past it:
 
@@ -60,6 +60,9 @@ natural-language SQL, table selection) all use one OpenAI-wire endpoint the oper
 one model. A sandbox has no embedding model, so catalog search is unavailable there; Polly browses
 the catalog instead. The key is stored once, as a secret in the deployment organization, and
 resolved there for every sandbox; a sandbox's own secrets never hold it.
+On a server of many organizations this is the one AI endpoint whose key comes from the
+deployment. Every other organization's AI runs on keys that organization stored; see
+[Where an AI key comes from](secrets.md#where-an-ai-key-comes-from).
 
 | Setting | Value | Setting |
 |---|---|---|

@@ -25,7 +25,6 @@ import httpx
 import pytest
 import yaml
 
-from tests.helpers import registered_id, release_mutation
 
 pytestmark = [pytest.mark.integration, pytest.mark.requires_neo4j]
 
@@ -128,11 +127,7 @@ def _register_view(server, name: str, sql: str, columns: list[str]) -> dict:
         }}
         """,
     )
-    registered = (out.get("data") or {}).get("registerTable") or {}
-    if registered.get("success"):
-        # REQ-1921: registered through the admin, it starts as draft; released, it is built.
-        released = _admin(server, release_mutation(registered_id(registered["message"])))
-        assert released["data"]["setTableDraft"]["success"], released
+    # REQ-1921: registered, it is live and built: no step releases it.
     return out
 
 

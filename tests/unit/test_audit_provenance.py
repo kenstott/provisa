@@ -220,12 +220,12 @@ def test_a_row_names_the_commit_only_when_the_stamp_is_proven_and_then_drops_vis
         proven = _audit_record(5, enforced)
         unproven = _audit_record(6, enforced)
         rows = [
-            proven.row(await writer._model_commit(proven)),
-            unproven.row(await writer._model_commit(unproven)),
-            proven.row(await writer._model_commit(proven)),
+            proven.row(await writer._model_commit(proven), "production"),
+            unproven.row(await writer._model_commit(unproven), "production"),
+            proven.row(await writer._model_commit(proven), "production"),
         ]
         no_stamp = _audit_record(None, enforced)
-        rows.append(no_stamp.row(await writer._model_commit(no_stamp)))
+        rows.append(no_stamp.row(await writer._model_commit(no_stamp), "production"))
         return rows
 
     rows = asyncio.run(_rows())
@@ -258,7 +258,9 @@ def _write_through_harness(monkeypatch, tmp_path, stamps: list[int]):
     monkeypatch.setattr("provisa.core.env_project.model_stamp", _stamp)
     monkeypatch.setattr(env_repo, "project", _model)
     monkeypatch.setattr(
-        env_repo, "dump_reusing", lambda _m, _last: ({"sales/domain.yaml": "id: sales\n"}, {})
+        env_repo,
+        "dump_reusing",
+        lambda _m, _last, _rebased=None: ({"sales/domain.yaml": "id: sales\n"}, {}),
     )
     monkeypatch.setattr("provisa.core.env_store.set_position", _set_position)
     monkeypatch.setattr("provisa.core.env_store.set_drifted", _nothing)
@@ -279,3 +281,57 @@ def test_a_commit_records_its_stamp_only_when_the_model_did_not_move_while_it_wa
     sha = asyncio.run(env_repo.write_through(None, None, "acme", "prod", "org_acme", "one", None))
     # a change landed while the tree was read: the commit is recorded without a stamp
     assert positions == [{"deployed_sha": sha, "deployed_stamp": None, "redo_sha": None}]
+
+
+def test_a_summary_built_on_the_writers_thread_reads_the_requests_org():
+    """The audit writer's thread has no org bound, and the plan store is per org: what the summary
+    needs is taken on the request's thread, or the row is never written and holds every row behind
+    it."""
+    import threading
+
+    from provisa.core.request_context import current_org, require_current_org, set_current_org
+
+    class OrgBoundCache(dict):
+        def get(self, *a):
+            require_current_org()
+            return super().get(*a)
+
+        def put(self, key, value):
+            require_current_org()
+            self[key] = value
+
+    from tests.unit.test_mutation_sql import _build
+
+    _schema, ctx = _build()
+    tables = [
+        {
+            "id": 1,
+            "domain_id": "sales",
+            "schema_name": "public",
+            "table_name": "orders",
+            "columns": [{"column_name": c, "visible_to": ["admin"]} for c in ("id", "region")],
+        }
+    ]
+    state = RoleState(
+        rls_contexts={"admin": RLSContext(rules={1: "region = 'us'"})},
+        masking_rules={},
+        tables=tables,
+        relationships=[],
+        roles={"admin": {"id": "admin", "capabilities": ["full_results"], "domain_access": ["*"]}},
+    )
+    state.compiled_query_cache = OrgBoundCache()
+    token = set_current_org("acme")
+    try:
+        summary = enforced_for_request(state, "admin", ctx)
+    finally:
+        current_org.reset(token)
+    answered: list = []
+
+    def writer() -> None:
+        assert current_org.get() is None
+        answered.append(summary((1,)))
+
+    thread = threading.Thread(target=writer)
+    thread.start()
+    thread.join()
+    assert answered and "row_filters" in answered[0]
