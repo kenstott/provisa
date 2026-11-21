@@ -1,0 +1,15 @@
+{
+  "joinThrough": {
+    "action": "Joindre via {{table}}",
+    "title": "Joindre via {{table}}",
+    "junction": "{{table}} référence les deux tables. Ses autres colonnes deviennent les attributs de cette relation.",
+    "sharedDimension": "Les deux tables référencent {{table}}.",
+    "name": "Nom",
+    "cardinality": "Cardinalité",
+    "manyToMany": "Plusieurs à plusieurs",
+    "from": "De",
+    "to": "Vers",
+    "through": "Via",
+    "attributes": "Attributs"
+  }
+}

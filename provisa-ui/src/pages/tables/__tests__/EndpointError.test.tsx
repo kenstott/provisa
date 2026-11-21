@@ -75,6 +75,7 @@ describe("a table whose source's API document could not be read", () => {
         setEditingTable={vi.fn()}
         isView={false}
         relationships={[]}
+        domainChoices={[]}
       />,
     );
     const field = screen.getByTestId("table-api-endpoint-error") as HTMLInputElement;

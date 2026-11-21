@@ -285,6 +285,16 @@ export async function openListRow(row: Locator): Promise<void> {
   await row.locator("td:not(.list-select)").first().click();
 }
 
+/**
+ * Opens a list row's detail panel unless it is already open. REQ-2260: a list page reopens the
+ * detail its viewer left open (kept across reloads), and a click on the open item's row closes it.
+ * A row's `aria-selected` says whether its detail is the open one.
+ */
+export async function openListRowDetail(row: Locator): Promise<void> {
+  await row.waitFor();
+  if ((await row.getAttribute("aria-selected")) !== "true") await openListRow(row);
+}
+
 // The table the last pick named: Register goes on with it (picked, or registered on its own).
 let pickedTable: string | null = null;
 
@@ -582,7 +592,7 @@ export async function openTableEditor(page: Page, sourceId: string, table: strin
   const named = rows.filter({ hasText: new RegExp(table.replace(/_/g, "[_ ]?"), "i") });
   const row = (await named.count()) > 0 ? named.first() : rows.first();
   await row.waitFor({ timeout: 120000 });
-  await openListRow(row);
+  await openListRowDetail(row);
   const edit = page.getByTestId("table-read-view-edit").first();
   await edit.waitFor({ timeout: 15000 });
   await edit.click();
@@ -715,7 +725,8 @@ export async function registerOfferedTable(
       variables: {
         t: {
           sourceId,
-          domainId: "",
+          // REQ-1531: every table is registered in a domain (the demo's).
+          domainId: "pet-store",
           schemaName,
           tableName,
           columns: columns.map((name) => ({ name, visibleTo: ["org_admin"] })),

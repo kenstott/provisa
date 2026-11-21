@@ -918,7 +918,7 @@ A QuickBooks Online source reads the Accounting API of one company: its customer
 
 | Form field | Source field | Notes |
 | --- | --- | --- |
-| Company ID (realm ID) | `database` | The company's number. Intuit shows it when the app is connected, and in the company's account settings. |
+| Company ID (`realmId`) | `database` | The company's number. Intuit shows it when the app is connected, and in the company's account settings. |
 | Sandbox or production | `mapping.environment` | `sandbox` (default) reads `sandbox-quickbooks.api.intuit.com`; `production` reads `quickbooks.api.intuit.com`. |
 | Client ID | `username` | From the app's Keys and credentials page. |
 | Client secret | `password` | From the same page. |
@@ -926,7 +926,7 @@ A QuickBooks Online source reads the Accounting API of one company: its customer
 
 Any of them may be a `${secret:…}` or `${env:…}` reference. The source's Cache TTL is required, as for every source whose tables are landed.
 
-**The refresh token.** Intuit answers every refresh with the refresh token to send next time, and the one it replaces stops working. The token entered on the form is used once, at the first read. From then on the newest one is kept in the organisation's state store, under the company's realm ID, where a Microsoft 365 source's approval is kept. One refresh of a source runs at a time, across every process, and the replacement is stored before the access token is used. An entered token is never read again once one is kept, so a token entered after the first read does not replace the kept one. A token Intuit refuses (`invalid_grant`) fails the read and names Intuit's reason, never the token. QuickBooks refusing an access token drops it, and the read asks once more with a new one.
+**The refresh token.** Intuit answers every refresh with the refresh token to send next time, and the one it replaces stops working. The token entered on the form is used once, at the first read. From then on the newest one is kept in the organisation's state store, under the company's `realmId`, where a Microsoft 365 source's approval is kept. One refresh of a source runs at a time, across every process, and the replacement is stored before the access token is used. An entered token is never read again once one is kept, so a token entered after the first read does not replace the kept one. A token Intuit refuses (`invalid_grant`) fails the read and names Intuit's reason, never the token. QuickBooks refusing an access token drops it, and the read asks once more with a new one.
 
 **Columns.** Each field of an entity is a column, named in snake case (`TotalAmt` is `total_amt`). A reference is two columns, its id and its name: `CustomerRef` is `customer_ref_value` and `customer_ref_name`. `MetaData` is `meta_create_time` and `meta_last_updated_time`. Any other object or list is one JSON column: an address (`bill_addr`), and the line items of a transaction (`line`), as the generic API source keeps a nested value. `id` is the primary key.
 
@@ -1891,6 +1891,35 @@ When an inferred table is read, the reasoner:
 All of a source's inferred tables share one classification, and it is reused for the table's cache TTL. The source's freshness declaration is therefore how often it reasons: `cache_ttl` for a live table, the replica's refresh for a replica, and once for a TTL of `-1`. What an inferred table serves is governed for every reader like any other table.
 
 HermiT runs as a separate program, never inside the server. It runs on a pinned Eclipse Temurin JDK 21 with HermiT, the OWL API and their libraries on its class path. Each piece is fetched on first use, checked against the SHA-256 Provisa pins, and cached under the runtime-deps cache root (`$PROVISA_RUNTIME_DEPS_CACHE`, default `~/.cache/provisa/runtime_deps`). A download that fails, or a file whose sum differs from the pin, fails the read by name.
+
+### Wikidata
+
+Wikidata is a branded SPARQL source: its endpoint is preset to the Wikidata Query Service and needs no credential. Everything else is the generic SPARQL source—the same User-Agent header, result-format handling and pushdown rules apply. Tables are defined with SPARQL SELECT queries, as on any SPARQL source.
+
+**Starter tables.** The Wikidata source ships a set of reference tables your organization is likely to join to its own data:
+
+- Countries with their ISO codes, capital and population
+- Currencies
+- Languages
+- Administrative regions
+- Organizations with identifiers such as LEI, ticker and ISIN
+
+Each is a bounded query exposed as a typed table. Register the ones you need; none are registered automatically.
+
+**Tables from any class.** Beyond the starter tables, the Wikidata source lets you build a table from the instances of any class. Search for a class by name, or browse from a broad class down through its narrower ones (subclass of). Once you pick a class, the source offers its most-used properties as columns and shows the class's instance count. For large classes a filter is asked before the table is registered, so the query stays within the Wikidata endpoint's time limit.
+
+**Replication.** Wikidata tables replicate on a schedule by default rather than being read live, since the public endpoint has rate limits and the data changes slowly.
+
+**Glossary grounding.** Glossary terms can be grounded to Wikidata items, so a term binds to both a column in your data and to the concept that item represents.
+
+```yaml
+sources:
+- id: wikidata
+  type: wikidata
+```
+
+No `host` is required. The endpoint is preset.
+
 
 ## Connection Examples
 

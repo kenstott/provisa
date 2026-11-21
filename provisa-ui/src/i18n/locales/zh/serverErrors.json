@@ -195,14 +195,14 @@
       "source_domains_empty": "所选源域中没有发现会读取的表。",
       "source_not_found": "未找到数据源 '{{source_id}}'",
       "source_tables_not_read": "所选源表（{{count}} 个）都不会被读取：发现会略过系统域的表和已停用的表。",
-      "source_tables_outside_domains": "所选源表不在域筛选器中选定的域内：{{names}}。",
       "table_id_required": "表范围需要 table_id",
       "table_not_found": "表 {{table_id}} 未注册。",
       "target_domains_empty": "所选目标域中没有发现会读取的表。",
       "target_tables_not_read": "所选目标表（{{count}} 个）都不会被读取：发现会略过系统域的表和已停用的表。",
-      "target_tables_outside_domains": "所选目标表不在域筛选器中选定的域内：{{names}}。",
       "unknown_source_type": "未知数据源类型：{{type}}",
-      "vendor_unknown": "{{vendor}} 在此处不列出模型；请输入模型名称。"
+      "vendor_unknown": "{{vendor}} 在此处不列出模型；请输入模型名称。",
+      "source_tables_outside_domains": "所选源表不在域筛选器中选定的域内：{{names}}。",
+      "target_tables_outside_domains": "所选目标表不在域筛选器中选定的域内：{{names}}。"
     },
     "llm": {
       "request_failed": "对模型的请求失败：{{reason}}",
@@ -568,7 +568,8 @@
       "table_not_withdrawn": "表 {{table}} 未撤下：只有已撤下的表才能恢复。要将生产中的表移到另一个区域，请设置其区域。",
       "source_not_withdrawn": "源 {{source}} 未撤下：只有已撤下的源才能恢复。要更改其区域，请设置其区域。",
       "put_back_needs_region": "恢复 {{object}} 需指定一个区域：请给出一个区域，无区域则不给出。",
-      "mask_constant_not_text": "非文本列上的常量脱敏规则读取为 NULL；只能保存 NULL：{{column}} ({{type}})"
+      "mask_constant_not_text": "非文本列上的常量脱敏规则读取为 NULL；只能保存 NULL：{{column}} ({{type}})",
+      "table_domain_required": "表 '{{table}}' 未指定域：每个表都注册在一个域中"
     },
     "secrets": {
       "env_reference_object_locked": "此对象属于运营方：它读取服务器自身的环境，无法在此更改。请改为添加您自己的对象。",
@@ -930,7 +931,8 @@
       "filter_operator_refused": "{{operator}} 不是可用于转换权限过滤器的运算符。"
     },
     "relationship": {
-      "name_taken": "名称“{{name}}”已被关系“{{held_by}}”占用。请为此关系另取名称。"
+      "name_taken": "名称“{{name}}”已被关系“{{held_by}}”占用。请为此关系另取名称。",
+      "join_through_none": "关系 '{{first}}' 和 '{{second}}' 没有共同的中间表，或者它们的另一端已经通过该表连接。"
     },
     "wikidata": {
       "no_credential": "Wikidata 查询服务不需要凭据",

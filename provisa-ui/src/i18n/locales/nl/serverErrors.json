@@ -195,14 +195,14 @@
       "source_domains_empty": "De gekozen brondomeinen bevatten geen tabel die detectie leest.",
       "source_not_found": "Bron '{{source_id}}' niet gevonden",
       "source_tables_not_read": "Geen van de gekozen brontabellen ({{count}}) wordt gelezen: detectie laat tabellen van een systeemdomein en tabellen buiten gebruik weg.",
-      "source_tables_outside_domains": "De gekozen brontabellen vallen buiten de domeinen die in het domeinfilter zijn geselecteerd: {{names}}.",
       "table_id_required": "table_id vereist voor tabelbereik",
       "table_not_found": "Tabel {{table_id}} is niet geregistreerd.",
       "target_domains_empty": "De gekozen doeldomeinen bevatten geen tabel die detectie leest.",
       "target_tables_not_read": "Geen van de gekozen doeltabellen ({{count}}) wordt gelezen: detectie laat tabellen van een systeemdomein en tabellen buiten gebruik weg.",
-      "target_tables_outside_domains": "De gekozen doeltabellen vallen buiten de domeinen die in het domeinfilter zijn geselecteerd: {{names}}.",
       "unknown_source_type": "Onbekend brontype: {{type}}",
-      "vendor_unknown": "{{vendor}} toont hier geen modellen; voer de modelnaam in."
+      "vendor_unknown": "{{vendor}} toont hier geen modellen; voer de modelnaam in.",
+      "source_tables_outside_domains": "De gekozen brontabellen vallen buiten de domeinen die in het domeinfilter zijn geselecteerd: {{names}}.",
+      "target_tables_outside_domains": "De gekozen doeltabellen vallen buiten de domeinen die in het domeinfilter zijn geselecteerd: {{names}}."
     },
     "llm": {
       "request_failed": "Het verzoek aan het model is mislukt: {{reason}}",
@@ -568,7 +568,8 @@
       "table_not_withdrawn": "Tabel {{table}} is niet teruggetrokken: alleen een teruggetrokken tabel wordt teruggezet. Stel de regio in om een tabel in productie naar een andere regio te verplaatsen.",
       "source_not_withdrawn": "Bron {{source}} is niet teruggetrokken: alleen een teruggetrokken bron wordt teruggezet. Stel de regio in om die te wijzigen.",
       "put_back_needs_region": "Het terugzetten van {{object}} noemt een regio: geef er een, of geen voor geen regio.",
-      "mask_constant_not_text": "Een constant masker op een kolom die geen tekst is, wordt gelezen als NULL; alleen NULL kan worden opgeslagen: {{column}} ({{type}})"
+      "mask_constant_not_text": "Een constant masker op een kolom die geen tekst is, wordt gelezen als NULL; alleen NULL kan worden opgeslagen: {{column}} ({{type}})",
+      "table_domain_required": "Tabel '{{table}}' noemt geen domein: elke tabel wordt in een domein geregistreerd"
     },
     "secrets": {
       "env_reference_object_locked": "Dit object is van de beheerder: het leest de eigen omgeving van de server en kan hier niet worden gewijzigd. Voeg in plaats daarvan een eigen object toe.",
@@ -930,7 +931,8 @@
       "filter_operator_refused": "{{operator}} is geen operator waarmee een machtigingsfilter kan worden omgezet."
     },
     "relationship": {
-      "name_taken": "De naam '{{name}}' is al in gebruik door relatie '{{held_by}}'. Geef deze een andere naam."
+      "name_taken": "De naam '{{name}}' is al in gebruik door relatie '{{held_by}}'. Geef deze een andere naam.",
+      "join_through_none": "De relaties '{{first}}' en '{{second}}' delen geen tussentabel, of hun andere uiteinden zijn er al via gekoppeld."
     },
     "wikidata": {
       "no_credential": "De Wikidata-querydienst vraagt geen inloggegevens",

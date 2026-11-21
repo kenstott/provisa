@@ -2936,8 +2936,15 @@ CREATE TABLE IF NOT EXISTS discovery_run_proposals (
     answer          TEXT,
     decision        TEXT,
     accepted_as     TEXT,
+    -- REQ-1586: a junction suggestion's junction and its two referring columns; null otherwise.
+    via_table_id      INTEGER REFERENCES registered_tables(id),
+    via_source_column TEXT,
+    via_target_column TEXT,
     tenant_id       UUID
 );
+ALTER TABLE discovery_run_proposals ADD COLUMN IF NOT EXISTS via_table_id INTEGER REFERENCES registered_tables(id);
+ALTER TABLE discovery_run_proposals ADD COLUMN IF NOT EXISTS via_source_column TEXT;
+ALTER TABLE discovery_run_proposals ADD COLUMN IF NOT EXISTS via_target_column TEXT;
 
 CREATE TABLE IF NOT EXISTS glossary_term_drafts (
     id              SERIAL PRIMARY KEY,

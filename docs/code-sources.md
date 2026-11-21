@@ -528,6 +528,7 @@ The batched `churnScore` in TypeScript:
 
 ```typescript
 import type { ReadContext } from "@provisa/services";
+import { predict } from "./model.js"; // your model client
 
 export interface ScoreInputs {
   customer_id?: string;
@@ -545,16 +546,22 @@ export interface Score {
  * @loader
  */
 export async function churnScore(
-  { customer_id, plan = "basic", region = "US" }: ScoreInputs,
+  { customer_id = "", plan = "basic", region = "US" }: ScoreInputs,
   context: ReadContext,
 ): Promise<Score[]> {
   const keys = context.keys ?? { "": { customer_id, plan, region } };
-  const rows = Object.entries(keys).map(([h, key]) => [h, { plan: "basic", region: "US", ...key }] as const);
-  const scores = await model.predict(rows.map(([, row]) => row)); // one call for the whole batch
-  const out = Object.fromEntries(
-    rows.map(([h, row], i) => [h, [{ customer_id: row.customer_id, score: scores[i] }]]),
+  const rows = Object.entries(keys).map(([h, key]) => ({
+    h,
+    customer_id: String(key.customer_id),
+    plan: String(key.plan ?? "basic"),
+    region: String(key.region ?? "US"),
+  }));
+  const scores = await predict(rows); // one call for the whole batch
+  const out: Record<string, Score[]> = Object.fromEntries(
+    rows.map((row, i) => [row.h, [{ customer_id: row.customer_id, score: scores[i] }]]),
   );
-  return context.keys ? out : out[""]; // a loader call returns the hash of key to rows
+  // A loader call returns the hash of each key to its rows; the declared type is the rows.
+  return (context.keys ? out : out[""]) as Score[];
 }
 ```
 

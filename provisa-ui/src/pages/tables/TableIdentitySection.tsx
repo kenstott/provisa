@@ -30,6 +30,7 @@ export function TableIdentitySection({
   isView,
   source,
   describe,
+  domainChoices,
   relationships,
 }: {
   editingTable: RegisteredTable;
@@ -39,11 +40,17 @@ export function TableIdentitySection({
   source?: Source;
   /** Writes a description from the saved table; absent while the table is being created. */
   describe?: () => Promise<string>;
+  /** REQ-1531: the domains the member may change, the ones the table may be moved to. */
+  domainChoices: string[];
   /** The org's relationships: a query edit warns before dropping a column one joins on. */
   relationships: Relationship[];
 }) {
   const { t } = useTranslation();
   const conventions = useNamingConventions();
+  // The domains offered: those the member may change, with the one the table is in kept listed.
+  const domainData = [
+    ...new Set([...(editingTable.domainId ? [editingTable.domainId] : []), ...domainChoices]),
+  ];
   const [generatingDesc, setGeneratingDesc] = useState(false);
   // A view not yet registered (a new one, or a duplicate) is named by its own name: it is the
   // identity being chosen. A registered table or view keeps the name it was registered under.
@@ -99,12 +106,17 @@ export function TableIdentitySection({
             data-testid="table-edit-table"
           />
         </FormField>
-        <FormField size="medium">
-          <TextInput
+        <FormField help={t("tableEditForm.domainHelp")} size="medium">
+          {/* REQ-1531: a table's domain is changed here, among the domains the member may
+              change; the save needs the right on both the old and the new domain. */}
+          <Select
             label={t("tableSections.domain")}
-            value={editingTable.domainId}
-            readOnly
-            styles={{ input: { color: "var(--text-muted)", cursor: "default" } }}
+            required
+            searchable
+            data={domainData}
+            value={editingTable.domainId || null}
+            onChange={(v) => setEditingTable({ ...editingTable, domainId: v ?? "" })}
+            placeholder={t("tableEditForm.domainPlaceholder")}
             data-testid="table-edit-domain"
           />
         </FormField>

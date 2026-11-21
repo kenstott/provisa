@@ -94,4 +94,8 @@ FEATURE = Feature(
     ),
 )
 
+#: The family's place in the grid (polyfill.GRID), which tries the rules of one function in
+#: the order of their families.
+#: Order: an array of dimensions is read before any row of its call's name.
+ORDER = 10
 FEATURES: tuple[Feature, ...] = (FEATURE,)

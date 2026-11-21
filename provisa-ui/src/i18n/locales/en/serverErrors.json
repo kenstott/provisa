@@ -194,15 +194,15 @@
       "source_domains_empty": "The chosen source domains hold no table discovery reads.",
       "source_not_found": "Source '{{source_id}}' not found",
       "source_tables_not_read": "None of the chosen source tables ({{count}}) is read: discovery leaves out a table of a system domain or one out of service.",
-      "source_tables_outside_domains": "The chosen source tables are outside the domains selected in the domain filter: {{names}}.",
       "table_id_required": "table_id required for table scope",
       "table_not_found": "Table {{table_id}} is not registered.",
       "target_domains_empty": "The chosen target domains hold no table discovery reads.",
       "target_tables_not_read": "None of the chosen target tables ({{count}}) is read: discovery leaves out a table of a system domain or one out of service.",
-      "target_tables_outside_domains": "The chosen target tables are outside the domains selected in the domain filter: {{names}}.",
       "unknown_source_type": "Unknown source type: {{type}}",
       "vendor_unknown": "{{vendor}} lists no models here; enter the model name.",
-      "answer_unreadable": "The model's answer held no readable list."
+      "answer_unreadable": "The model's answer held no readable list.",
+      "source_tables_outside_domains": "The chosen source tables are outside the domains selected in the domain filter: {{names}}.",
+      "target_tables_outside_domains": "The chosen target tables are outside the domains selected in the domain filter: {{names}}."
     },
     "llm": {
       "request_failed": "The request to the model failed: {{reason}}",
@@ -568,7 +568,8 @@
       "table_not_withdrawn": "Table {{table}} is not withdrawn: only a withdrawn table is put back. To move a table in production to another region, set its region.",
       "source_not_withdrawn": "Source {{source}} is not withdrawn: only a withdrawn source is put back. To change its region, set its region.",
       "put_back_needs_region": "Putting back {{object}} names a region: give one, or none for no region.",
-      "mask_constant_not_text": "A constant mask on a non-text column reads as NULL; only NULL can be saved: {{column}} ({{type}})"
+      "mask_constant_not_text": "A constant mask on a non-text column reads as NULL; only NULL can be saved: {{column}} ({{type}})",
+      "table_domain_required": "Table '{{table}}' names no domain: every table is registered in a domain"
     },
     "secrets": {
       "env_reference_object_locked": "This object is the operator's: it reads the server's own environment and cannot be changed here. Add one of your own instead.",
@@ -930,7 +931,8 @@
       "filter_operator_refused": "{{operator}} is not an operator a permission filter can be converted with."
     },
     "relationship": {
-      "name_taken": "The name '{{name}}' is taken by relationship '{{held_by}}'. Name this one otherwise."
+      "name_taken": "The name '{{name}}' is taken by relationship '{{held_by}}'. Name this one otherwise.",
+      "join_through_none": "Relationships '{{first}}' and '{{second}}' share no middle table, or their other ends are already joined through it."
     },
     "wikidata": {
       "no_credential": "The Wikidata query service takes no credential",

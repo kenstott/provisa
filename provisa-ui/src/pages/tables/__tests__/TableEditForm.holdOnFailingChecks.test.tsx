@@ -114,6 +114,7 @@ function renderForm(table: RegisteredTable, setEditingTable = vi.fn()) {
       section="load"
       onSectionChange={vi.fn()}
       savedProfilerId={null}
+      domainChoices={[]}
       editingTable={table}
       savedTable={table}
       setEditingTable={setEditingTable}

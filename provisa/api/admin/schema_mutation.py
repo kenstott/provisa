@@ -92,8 +92,8 @@ from provisa.api.admin.types import (
 )
 
 from provisa.api.admin.schema_helpers import (
-    _dataset_ownership_conflict,
     _domain_table_conflict,
+    table_domain_refusal,
     _get_pool,
     _rebuild_schemas,
 )
@@ -4604,6 +4604,10 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
     async def register_table(
         self, info: StrawberryInfo, input: TableInput
     ) -> MutationResult:  # REQ-013, REQ-016, REQ-252, REQ-366, REQ-413, REQ-432, REQ-433, REQ-434
+        # REQ-1531: a registration naming no domain is refused by name, before its right is asked.
+        _no_domain = table_domain_refusal(input.domain_id, input.table_name)
+        if _no_domain is not None:
+            return _no_domain
         require_capability(info, "table_registration", domain_id=input.domain_id)
         return await _ops.register_table(info, input)
 
@@ -4748,6 +4752,10 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             require_table_save,
         )
 
+        # REQ-1531: a table stays in a domain; a save naming none is refused by name.
+        _no_domain = table_domain_refusal(input.domain_id, input.table_name)
+        if _no_domain is not None:
+            return _no_domain
         _governance_sets = governance_sets(info, input)  # REQ-1958: of the input as sent
         _editor, input = await require_table_save(info, input)  # REQ-1944
         from provisa.api.admin._table_ops import land_transform_view
@@ -4795,9 +4803,14 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             async with pool.acquire() as conn:
                 _conn = cast("Connection", conn)
                 async with _conn.transaction():
-                    from provisa.api.admin.domain_guard import require_current_domain
+                    from provisa.api.admin.domain_guard import (
+                        require_current_domain,
+                        require_move_rules,
+                    )
 
                     await require_current_domain(info, _conn, model)  # REQ-1531
+                    # REQ-1531: a move to another domain checks the table's row rules again.
+                    _moved_from = await require_move_rules(info, _conn, model)
                     from provisa.api.admin._parameter_guard import source_parameter_refusal
 
                     _param_refusal = await source_parameter_refusal(_conn, model)  # REQ-1986
@@ -4866,13 +4879,6 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     )
                     if _conflict:
                         raise TableSaveRefused(MutationResult(success=False, message=_conflict))
-                    _owner_conflict = await _dataset_ownership_conflict(
-                        _conn, model.source_id, model.table_name, model.domain_id
-                    )
-                    if _owner_conflict:
-                        raise TableSaveRefused(
-                            MutationResult(success=False, message=_owner_conflict)
-                        )
                     # REQ-1907/REQ-318: an update does not take cache_ttl / row_materialize / pagination
                     # -- they are saved through updateTableCache / updateTablePaging -- so the upsert
                     # keeps the stored values; role_ttl and replicate likewise unless the input
@@ -5033,6 +5039,13 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                         table_id = await table_repo.upsert(
                             _conn, model, declared=await registration_keys(model)
                         )
+                        if _moved_from is not None and table_id is not None:
+                            from provisa.api.admin.domain_guard import (
+                                review_moved_relationships,
+                            )
+
+                            # REQ-1531: and its relationships, once it sits in the new domain.
+                            await review_moved_relationships(_conn, table_id)
                     except glossary_repo.TermIsClass as _class:
                         # REQ-2141: a column named for a class term is not claimed by it; REQ-2152: only
                         # the tables the caller reads are named.
@@ -6031,6 +6044,38 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         self, info: StrawberryInfo, input: RelationshipInput
     ) -> MutationResult:
         return await _save_relationship_as_caller(info, input, creating=False)
+
+    @strawberry.mutation
+    async def join_through(  # REQ-1586
+        self, info: StrawberryInfo, first_id: str, second_id: str, id: str
+    ) -> MutationResult:
+        """One junction-backed relationship between the other ends of two relationships that share
+        a middle table, named ``id``; the two stay."""
+        from provisa.api.admin import join_through
+        from provisa.core.relationship_naming import RelationshipNameTaken
+
+        require_capability(info, "create_relationship")
+        pool = await _get_pool()
+        async with pool.acquire() as _conn:
+            conn = cast("Connection", _conn)
+            planned = await join_through.plan(conn, first_id, second_id)
+            if planned is None:
+                return MutationResult(
+                    success=False,
+                    message=(
+                        f"Relationships {first_id!r} and {second_id!r} share no middle table, "
+                        "or their other ends are joined through it already"
+                    ),
+                    code="relationship.join_through_none",
+                    params={"first": first_id, "second": second_id},
+                )
+            try:
+                result, _ = await join_through.create(info, conn, planned.through, id)
+            except RelationshipNameTaken as taken:
+                return MutationResult(
+                    success=False, message=str(taken), code=taken.code, params=taken.params
+                )
+        return result
 
     @strawberry.mutation
     async def create_code_resolver(  # REQ-2249

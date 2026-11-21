@@ -114,6 +114,7 @@ async def test_a_lone_read_lacking_a_required_parameter_is_refused_naming_it():
             "columns": [
                 {
                     "column_name": "_nf_name",
+                    "data_type": "text",
                     "native_filter_type": "graphql_arg",
                     "native_filter_required": True,
                     "required_by_steward": False,
@@ -200,6 +201,7 @@ def _openapi_state() -> SimpleNamespace:
                 "columns": [
                     {
                         "column_name": "_nf_petId",
+                        "data_type": "text",
                         "native_filter_type": "path_param",
                         "native_filter_required": True,
                         "required_by_steward": False,

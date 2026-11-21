@@ -195,14 +195,14 @@
       "source_domains_empty": "Los dominios de origen elegidos no contienen ninguna tabla que el descubrimiento lea.",
       "source_not_found": "No se encontró el origen '{{source_id}}'",
       "source_tables_not_read": "Ninguna de las tablas de origen elegidas ({{count}}) se lee: el descubrimiento deja fuera las tablas de un dominio del sistema y las que están fuera de servicio.",
-      "source_tables_outside_domains": "Las tablas de origen elegidas están fuera de los dominios seleccionados en el filtro de dominios: {{names}}.",
       "table_id_required": "table_id es obligatorio para el ámbito de tabla",
       "table_not_found": "La tabla {{table_id}} no está registrada.",
       "target_domains_empty": "Los dominios de destino elegidos no contienen ninguna tabla que el descubrimiento lea.",
       "target_tables_not_read": "Ninguna de las tablas de destino elegidas ({{count}}) se lee: el descubrimiento deja fuera las tablas de un dominio del sistema y las que están fuera de servicio.",
-      "target_tables_outside_domains": "Las tablas de destino elegidas están fuera de los dominios seleccionados en el filtro de dominios: {{names}}.",
       "unknown_source_type": "Tipo de origen desconocido: {{type}}",
-      "vendor_unknown": "{{vendor}} no lista modelos aquí; escriba el nombre del modelo."
+      "vendor_unknown": "{{vendor}} no lista modelos aquí; escriba el nombre del modelo.",
+      "source_tables_outside_domains": "Las tablas de origen elegidas están fuera de los dominios seleccionados en el filtro de dominios: {{names}}.",
+      "target_tables_outside_domains": "Las tablas de destino elegidas están fuera de los dominios seleccionados en el filtro de dominios: {{names}}."
     },
     "llm": {
       "request_failed": "La solicitud al modelo falló: {{reason}}",
@@ -568,7 +568,8 @@
       "table_not_withdrawn": "La tabla {{table}} no está retirada: solo se restablece una tabla retirada. Para mover a otra región una tabla en producción, establezca su región.",
       "source_not_withdrawn": "El origen {{source}} no está retirado: solo se restablece un origen retirado. Para cambiar su región, establezca su región.",
       "put_back_needs_region": "Restablecer {{object}} nombra una región: indique una, o ninguna para ninguna región.",
-      "mask_constant_not_text": "Una máscara constante en una columna que no es de texto se lee como NULL; solo se puede guardar NULL: {{column}} ({{type}})"
+      "mask_constant_not_text": "Una máscara constante en una columna que no es de texto se lee como NULL; solo se puede guardar NULL: {{column}} ({{type}})",
+      "table_domain_required": "La tabla '{{table}}' no indica ningún dominio: toda tabla se registra en un dominio"
     },
     "secrets": {
       "env_reference_object_locked": "Este objeto es del operador: lee el entorno propio del servidor y no puede cambiarse aquí. Añada uno propio en su lugar.",
@@ -930,7 +931,8 @@
       "filter_operator_refused": "{{operator}} no es un operador con el que se pueda convertir un filtro de permiso."
     },
     "relationship": {
-      "name_taken": "El nombre «{{name}}» lo ocupa la relación «{{held_by}}». Dé otro nombre a esta."
+      "name_taken": "El nombre «{{name}}» lo ocupa la relación «{{held_by}}». Dé otro nombre a esta.",
+      "join_through_none": "Las relaciones '{{first}}' y '{{second}}' no comparten una tabla intermedia, o sus otros extremos ya están unidos a través de ella."
     },
     "wikidata": {
       "no_credential": "El servicio de consultas de Wikidata no requiere credencial",

@@ -288,6 +288,8 @@
     "discoverHint": "Save reads the columns the live source has and adds those this table lacks; its columns stay as they are. An added column is seen by no role until it is granted.",
     "mvRebuildEveryLabel": "Whole rebuild every (seconds)",
     "mvRebuildEveryHelp": "How often the whole view is recomputed. Required for a view kept by a code source's @change function.",
+    "domainHelp": "Moving the table to another domain needs the right to change tables in both domains.",
+    "domainPlaceholder": "Choose a domain",
     "sparqlQueryLabel": "SPARQL query",
     "sparqlQueryHelp": "The query whose rows this table holds. Its columns are its SELECT variables: a change adds and drops columns to match, keeping the settings of the columns it keeps. The next replica load reads with the saved query.",
     "sparqlQueryDrops": "This query drops columns that are in use: {{columns}}. Saving it removes them with what uses them.",

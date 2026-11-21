@@ -2942,132 +2942,145 @@ async def _build_org_runtime(
         # organisation's runtime reads its model from its own store, and its sources are issued
         # under org-prefixed engine catalogs (source_catalogs), so identically-named sources across
         # orgs never collide in the shared coordinator.
-        if state.raw_config is not None:
-            assert state.model_db is not None and state.seed_config is not None
-            from provisa.core.secrets_store import bound_to_request_org
+        # REQ-1266, REQ-2006: the build's domain-policy window. The build sets the deployment's
+        # naming (a demo's, its seed's), reads its model under it, then sets the org's own and
+        # compiles its schemas under that. The policy is keyed by the org, which every runtime of
+        # its environments shares, so the window is the build's alone (domain_policy.staged): two
+        # builds of one org's environments at once (a sandbox's open) each read their own, the
+        # org's requests meanwhile read its settled one, and the org's is written once, at the end.
+        with domain_policy.staged():
+            if state.raw_config is not None:
+                assert state.model_db is not None and state.seed_config is not None
+                from provisa.core.secrets_store import bound_to_request_org
 
-            seed = state.seed_config
-            from provisa.core.demo_secrets import launched_directory
+                seed = state.seed_config
+                from provisa.core.demo_secrets import launched_directory
 
-            seed_directory = launched_directory(Path(config_path))
-            from provisa.api.sandbox_tier import is_template_org
+                seed_directory = launched_directory(Path(config_path))
+                from provisa.api.sandbox_tier import is_template_org
 
-            if is_template_org(org_id):
-                # REQ-2006: a demo's template org is the demo organisation of that demo, rebuilt
-                # from the named demo's own configuration rather than the deployment's file.
-                from provisa.api.demo_templates import demo_of_template, template_seed
+                if is_template_org(org_id):
+                    # REQ-2006: a demo's template org is the demo organisation of that demo, rebuilt
+                    # from the named demo's own configuration rather than the deployment's file.
+                    from provisa.api.demo_templates import demo_of_template, template_seed
 
-                seed = template_seed(org_id)
-                seed_directory = demo_of_template(org_id).directory
-            domain_policy.configure(seed.naming.use_domains, seed.naming.default_domain)
-            if include_demo:
-                # REQ-2095: the secrets the configuration names, in the org's vault before it loads.
-                from provisa.core.demo_secrets import seed as seed_secrets
-
-                assert state.admin_db is not None, "the platform plane is up before any org runtime"
-                await seed_secrets(state.admin_db, org_id, seed_directory)
-                await _bind_region_stores_before_reset(org_id, env)
-            async with state.model_db.acquire() as conn:
+                    seed = template_seed(org_id)
+                    seed_directory = demo_of_template(org_id).directory
+                domain_policy.configure(seed.naming.use_domains, seed.naming.default_domain)
                 if include_demo:
-                    # The org's catalog names the registrations resolve under (REQ-1266).
-                    _populate_source_catalog_names(seed)
-                    async with bound_to_request_org():
+                    # REQ-2095: the secrets the configuration names, in the org's vault before it loads.
+                    from provisa.core.demo_secrets import seed as seed_secrets
+
+                    assert state.admin_db is not None, (
+                        "the platform plane is up before any org runtime"
+                    )
+                    await seed_secrets(state.admin_db, org_id, seed_directory)
+                    await _bind_region_stores_before_reset(org_id, env)
+                async with state.model_db.acquire() as conn:
+                    if include_demo:
+                        # The org's catalog names the registrations resolve under (REQ-1266).
+                        _populate_source_catalog_names(seed)
+                        async with bound_to_request_org():
+                            if is_template_org(org_id):
+                                from provisa.api.demo_templates import rebuild_template
+
+                                await rebuild_template(
+                                    seed_directory, seed, conn, state.federation_engine
+                                )
+                            else:
+                                await rebuild_from_config(seed, conn, state.federation_engine)
                         if is_template_org(org_id):
-                            from provisa.api.demo_templates import rebuild_template
+                            from provisa.api.demo_templates import write_declared_settings
 
-                            await rebuild_template(
-                                seed_directory, seed, conn, state.federation_engine
-                            )
-                        else:
-                            await rebuild_from_config(seed, conn, state.federation_engine)
-                    if is_template_org(org_id):
-                        from provisa.api.demo_templates import write_declared_settings
+                            await write_declared_settings(state.model_db, seed)
+                    async with bound_to_request_org():
+                        org_config = await store_config(state.raw_config, conn)
+                    unbound: set[str] = set()
+                    if env != PROD:
+                        # REQ-1942: an unbound source is reached through no connection.
+                        unbound = await _unbound_sources(conn)
+                # Populate the org-prefixed catalog-name map FIRST so the physical registration
+                # attaches each source under the org's own catalog name (not the bare, default-org
+                # name) — the cross-org collision guard (REQ-1266).
+                _populate_source_catalog_names(org_config)
+                from provisa.federation.replica_routing import kept_sources
 
-                        await write_declared_settings(state.model_db, seed)
+                # REQ-2031: a source all of whose tables never expire and have landed is never
+                # contacted: no engine catalog, no pool, no credential.
+                # REQ-1921: nor a withdrawn source: no engine attaches it, it has no pool.
+                uncontacted = unbound | await kept_sources(state) | await _withdrawn_sources(state)
                 async with bound_to_request_org():
-                    org_config = await store_config(state.raw_config, conn)
-                unbound: set[str] = set()
-                if env != PROD:
-                    # REQ-1942: an unbound source is reached through no connection.
-                    unbound = await _unbound_sources(conn)
-            # Populate the org-prefixed catalog-name map FIRST so the physical registration
-            # attaches each source under the org's own catalog name (not the bare, default-org
-            # name) — the cross-org collision guard (REQ-1266).
-            _populate_source_catalog_names(org_config)
-            from provisa.federation.replica_routing import kept_sources
-
-            # REQ-2031: a source all of whose tables never expire and have landed is never
-            # contacted: no engine catalog, no pool, no credential.
-            # REQ-1921: nor a withdrawn source: no engine attaches it, it has no pool.
-            uncontacted = unbound | await kept_sources(state) | await _withdrawn_sources(state)
-            async with bound_to_request_org():
-                failed_catalogs = await attach_store_sources(
+                    failed_catalogs = await attach_store_sources(
+                        org_config.model_copy(
+                            update={
+                                "sources": [
+                                    s for s in org_config.sources if s.id not in uncontacted
+                                ]
+                            }
+                        ),
+                        state.federation_engine,
+                        catalog_names=rt.source_catalogs,
+                    )
+                # REQ-1448: this build IS the repair a wake performs — a source whose catalog did not
+                # come back leaves the org dispatching at a coordinator that has never heard of it, and
+                # the next query answers a raw CATALOG_NOT_FOUND naming the source rather than the wake.
+                # Fail the build so the caller sees the wake failure and the registry keeps no
+                # half-built runtime (the except below drops it).
+                if failed_catalogs:
+                    raise RuntimeError(
+                        f"org {org_id!r}: {len(failed_catalogs)} source catalog(s) could not be issued "
+                        f"on its engine: {', '.join(sorted(failed_catalogs))}"
+                    )
+                # REQ-1491: a source reached through no connection gets no pool (nor, REQ-2031, one
+                # that is never contacted).
+                await _build_source_pools_and_enums(
                     org_config.model_copy(
                         update={
                             "sources": [s for s in org_config.sources if s.id not in uncontacted]
                         }
-                    ),
-                    state.federation_engine,
-                    catalog_names=rt.source_catalogs,
+                    )
                 )
-            # REQ-1448: this build IS the repair a wake performs — a source whose catalog did not
-            # come back leaves the org dispatching at a coordinator that has never heard of it, and
-            # the next query answers a raw CATALOG_NOT_FOUND naming the source rather than the wake.
-            # Fail the build so the caller sees the wake failure and the registry keeps no
-            # half-built runtime (the except below drops it).
-            if failed_catalogs:
-                raise RuntimeError(
-                    f"org {org_id!r}: {len(failed_catalogs)} source catalog(s) could not be issued "
-                    f"on its engine: {', '.join(sorted(failed_catalogs))}"
+                await _resolve_pk_from_sources()
+            clock.mark("its sources")
+
+            await _require_org_serves_here(org_id)  # REQ-1922
+            await _bind_region_stores(org_id, env, initialise=True)
+            from provisa.api.model_reload import prune_region_state
+
+            await prune_region_state(rt)  # REQ-1922
+            if is_sandbox_tier_org(org_id):
+                rt.federation_engine.engine.pin_materialize_store(
+                    await _sandbox_store(org_id, env, storage_url)
                 )
-            # REQ-1491: a source reached through no connection gets no pool (nor, REQ-2031, one
-            # that is never contacted).
-            await _build_source_pools_and_enums(
-                org_config.model_copy(
-                    update={"sources": [s for s in org_config.sources if s.id not in uncontacted]}
+
+            # REQ-1266: the org's own domain mode, applied AFTER load_config — which configures the
+            # scope from the DEPLOYMENT's naming block — and BEFORE _rebuild_schemas, which reads the
+            # policy to decide whether the org's schema is domain-namespaced. configure() writes this
+            # build's window (above), which becomes this org's policy alone at the window's end.
+            naming_override = rt.settings_overrides.get("naming") or {}
+            if naming_override:
+                use, default = domain_policy.snapshot()
+                domain_policy.configure(
+                    naming_override.get("use_domains", use),
+                    naming_override.get("default_domain", default),
                 )
-            )
-            await _resolve_pk_from_sources()
-        clock.mark("its sources")
 
-        await _require_org_serves_here(org_id)  # REQ-1922
-        await _bind_region_stores(org_id, env, initialise=True)
-        from provisa.api.model_reload import prune_region_state
-
-        await prune_region_state(rt)  # REQ-1922
-        if is_sandbox_tier_org(org_id):
-            rt.federation_engine.engine.pin_materialize_store(
-                await _sandbox_store(org_id, env, storage_url)
-            )
-
-        # REQ-1266: the org's own domain mode, applied AFTER load_config — which configures the
-        # scope from the DEPLOYMENT's naming block — and BEFORE _rebuild_schemas, which reads the
-        # policy to decide whether the org's schema is domain-namespaced. current_org is bound, so
-        # configure() writes this org's scope alone and no other org's policy moves.
-        naming_override = rt.settings_overrides.get("naming") or {}
-        if naming_override:
-            use, default = domain_policy.snapshot()
-            domain_policy.configure(
-                naming_override.get("use_domains", use),
-                naming_override.get("default_domain", default),
-            )
-
-        # REQ-2006: for a cloned sandbox env, copy compiled schema from the sandbox's PROD runtime
-        # instead of running _rebuild_schemas (~6 s per env → ~0.5 s, J1157b).  PROD is always
-        # built before the env builds (_environments in demo_sandbox.py), so the registry holds it.
-        if model_cloned and env != PROD:
-            _prod_key = runtime_key(org_id, PROD)
-            _prod_rt = state.org_registry.get(_prod_key)
-            if _prod_rt is None:
-                raise RuntimeError(
-                    f"org {org_id!r}: cloned env {env!r} built before its PROD runtime — "
-                    "cannot copy compiled schema from PROD"
-                )
-            await _install_cloned_env_schema(_prod_rt)
-        else:
-            # REQ-2006: the replica convergence is started below, after a template's seed is adopted.
-            await _rebuild_schemas(converge=False, cause=rebuild_trace.ORG_BUILD)
-        clock.mark("its schemas")
+            # REQ-2006: for a cloned sandbox env, copy compiled schema from the sandbox's PROD runtime
+            # instead of running _rebuild_schemas (~6 s per env → ~0.5 s, J1157b).  PROD is always
+            # built before the env builds (_environments in demo_sandbox.py), so the registry holds it.
+            if model_cloned and env != PROD:
+                _prod_key = runtime_key(org_id, PROD)
+                _prod_rt = state.org_registry.get(_prod_key)
+                if _prod_rt is None:
+                    raise RuntimeError(
+                        f"org {org_id!r}: cloned env {env!r} built before its PROD runtime — "
+                        "cannot copy compiled schema from PROD"
+                    )
+                await _install_cloned_env_schema(_prod_rt)
+            else:
+                # REQ-2006: the replica convergence is started below, after a template's seed is adopted.
+                await _rebuild_schemas(converge=False, cause=rebuild_trace.ORG_BUILD)
+            clock.mark("its schemas")
         await _converge_after_seed(org_id, env)
 
         # REQ-1882 (amended 2026-09-29): the wiring below starts process-lifetime scheduler jobs and

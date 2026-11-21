@@ -195,14 +195,14 @@
       "source_domains_empty": "Os domínios de origem escolhidos não contêm nenhuma tabela que a descoberta lê.",
       "source_not_found": "Fonte '{{source_id}}' não encontrada",
       "source_tables_not_read": "Nenhuma das tabelas de origem escolhidas ({{count}}) é lida: a descoberta deixa de fora as tabelas de um domínio do sistema e as fora de serviço.",
-      "source_tables_outside_domains": "As tabelas de origem escolhidas estão fora dos domínios selecionados no filtro de domínios: {{names}}.",
       "table_id_required": "table_id obrigatório para escopo de tabela",
       "table_not_found": "A tabela {{table_id}} não está registrada.",
       "target_domains_empty": "Os domínios de destino escolhidos não contêm nenhuma tabela que a descoberta lê.",
       "target_tables_not_read": "Nenhuma das tabelas de destino escolhidas ({{count}}) é lida: a descoberta deixa de fora as tabelas de um domínio do sistema e as fora de serviço.",
-      "target_tables_outside_domains": "As tabelas de destino escolhidas estão fora dos domínios selecionados no filtro de domínios: {{names}}.",
       "unknown_source_type": "Tipo de fonte desconhecido: {{type}}",
-      "vendor_unknown": "{{vendor}} não lista modelos aqui; digite o nome do modelo."
+      "vendor_unknown": "{{vendor}} não lista modelos aqui; digite o nome do modelo.",
+      "source_tables_outside_domains": "As tabelas de origem escolhidas estão fora dos domínios selecionados no filtro de domínios: {{names}}.",
+      "target_tables_outside_domains": "As tabelas de destino escolhidas estão fora dos domínios selecionados no filtro de domínios: {{names}}."
     },
     "llm": {
       "request_failed": "A solicitação ao modelo falhou: {{reason}}",
@@ -568,7 +568,8 @@
       "table_not_withdrawn": "A tabela {{table}} não está retirada: só se repõe uma tabela retirada. Para mover para outra região uma tabela em produção, defina a sua região.",
       "source_not_withdrawn": "A fonte {{source}} não está retirada: só se repõe uma fonte retirada. Para mudar a sua região, defina a sua região.",
       "put_back_needs_region": "Repor {{object}} indica uma região: indique uma, ou nenhuma para nenhuma região.",
-      "mask_constant_not_text": "Uma máscara constante em uma coluna que não é de texto é lida como NULL; só é possível salvar NULL: {{column}} ({{type}})"
+      "mask_constant_not_text": "Uma máscara constante em uma coluna que não é de texto é lida como NULL; só é possível salvar NULL: {{column}} ({{type}})",
+      "table_domain_required": "A tabela '{{table}}' não indica nenhum domínio: toda tabela é registrada em um domínio"
     },
     "secrets": {
       "env_reference_object_locked": "Este objeto é do operador: ele lê o ambiente próprio do servidor e não pode ser alterado aqui. Adicione um seu em vez disso.",
@@ -930,7 +931,8 @@
       "filter_operator_refused": "{{operator}} não é um operador com o qual um filtro de permissão possa ser convertido."
     },
     "relationship": {
-      "name_taken": "O nome '{{name}}' já é usado pelo relacionamento '{{held_by}}'. Dê outro nome a este."
+      "name_taken": "O nome '{{name}}' já é usado pelo relacionamento '{{held_by}}'. Dê outro nome a este.",
+      "join_through_none": "Os relacionamentos '{{first}}' e '{{second}}' não compartilham uma tabela intermediária, ou suas outras extremidades já estão unidas através dela."
     },
     "wikidata": {
       "no_credential": "O serviço de consultas do Wikidata não exige credencial",

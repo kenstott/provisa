@@ -575,6 +575,10 @@ OF_CHARACTER = Feature(
     ),
 )
 
+#: The family's place in the grid (polyfill.GRID), which tries the rules of one function in
+#: the order of their families.
+#: Order: a text's rows are read before bytea's, whose rows of one name keep what is no bytea.
+ORDER = 330
 FEATURES: tuple[Feature, ...] = (
     *TRIMS,
     TRANSLATE,

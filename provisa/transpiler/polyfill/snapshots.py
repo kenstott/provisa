@@ -229,6 +229,9 @@ _BASE_READ = (
     "complement. A value ClickHouse holds as an Int64 is read as a bigint."
 )
 
+#: The family's place in the grid (polyfill.GRID), which tries the rules of one function in
+#: the order of their families.
+ORDER = 290
 FEATURES: tuple[Feature, ...] = (
     *(
         _feature(

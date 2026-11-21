@@ -38,16 +38,12 @@ granted these application permissions, with admin consent:
     Calendars.ReadWrite
     Tasks.ReadWrite.All
 
-  M365_TENANT_ID, M365_CLIENT_ID, M365_CLIENT_SECRET, M365_TEST_MAILBOXES (the licensed mailbox
-  written to; only the first address is used).
+  M365_TENANT_ID, M365_CLIENT_ID, M365_CLIENT_SECRET, M365_TEST_MAILBOXES (the first address is
+  the licensed mailbox written to, the organiser; the first other address is the meeting's
+  attendee, see below). The meeting test fails by name when there is no second address.
 
-  GWS_TEST_MAILBOXES (the first address is the meeting's attendee; see below). The meeting test
-  fails by name when it is not set.
-
-A meeting needs a second person, and the tenant has no second licensed mailbox: the attendee is
-an external mailbox, the Google Workspace test mailbox, the first address of GWS_TEST_MAILBOXES
-(maintainer 2026-11-10). It is not taken from M365_TEST_MAILBOXES, since every address there is
-read through Graph. Every assertion of the meeting test is on the organizer's side -- the refusal,
+A meeting needs a second person: the attendee is the first address of M365_TEST_MAILBOXES other
+than the organiser (maintainer 2026-11-21). Every assertion of the meeting test is on the organizer's side -- the refusal,
 the attendee row as written, which change is told -- so any address that receives mail serves;
 the invitation is sent to it.
 
@@ -103,11 +99,10 @@ ADA = _mailboxes()[0] if _HAVE_CREDS else ""
 
 
 def _attendee() -> str:
-    """The meeting's attendee: the first address of GWS_TEST_MAILBOXES, an external mailbox."""
-    named = [a.strip().lower() for a in os.environ.get("GWS_TEST_MAILBOXES", "").split(",")]
-    named = [a for a in named if a]
-    assert named, "not set: GWS_TEST_MAILBOXES (its first address is the meeting's attendee)"
-    return named[0]
+    """The meeting's attendee: the first address of M365_TEST_MAILBOXES other than the organiser."""
+    others = [a for a in _mailboxes() if a != ADA]
+    assert others, "M365_TEST_MAILBOXES has no address other than the organiser (the attendee)"
+    return others[0]
 
 
 ROOT = f"/users/{quote(ADA, safe='')}"

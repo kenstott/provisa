@@ -288,6 +288,8 @@
     "discoverHint": "Al guardar se leen las columnas que tiene el origen en vivo y se añaden las que le faltan a esta tabla; sus columnas se quedan como están. Ningún rol ve una columna añadida hasta que se le conceda.",
     "mvRebuildEveryLabel": "Recompilación completa cada (segundos)",
     "mvRebuildEveryHelp": "Con qué frecuencia se recalcula la vista completa. Obligatorio para una vista mantenida por la función @change de un origen de código.",
+    "domainHelp": "Mover la tabla a otro dominio requiere el derecho a cambiar tablas en ambos dominios.",
+    "domainPlaceholder": "Elija un dominio",
     "sparqlQueryLabel": "Consulta SPARQL",
     "sparqlQueryHelp": "La consulta cuyas filas contiene esta tabla. Sus columnas son sus variables SELECT: un cambio añade y quita columnas para que coincidan, conservando la configuración de las columnas que se mantienen. La próxima carga de la réplica lee con la consulta guardada.",
     "sparqlQueryDrops": "Esta consulta quita columnas que están en uso: {{columns}}. Al guardarla se eliminan junto con lo que las usa.",
