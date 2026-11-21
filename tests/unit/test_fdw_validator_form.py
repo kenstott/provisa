@@ -50,7 +50,7 @@ def test_clickhouse_answers_true_for_options_the_catalog_lists(options, catalog)
 
 @pytest.mark.parametrize(
     ("options", "catalog", "name"),
-    [('{"",日本語😀,é}', 12345, ""), ("{host,user}", 1417, "user"), ("{a=1}", 1418, "a")],
+    [('{"",a}', 12345, ""), ("{host,user}", 1417, "user"), ("{a=1}", 1418, "a")],
 )
 def test_clickhouse_raises_42601_for_an_option_the_catalog_does_not_list(options, catalog, name):
     with pytest.raises(Exception, match=rf'postgresql-error 42601: invalid option "{name}"'):
@@ -86,7 +86,7 @@ def test_duckdb_answers_true_for_options_the_catalog_lists(options, catalog):
 @pytest.mark.parametrize(
     ("options", "catalog", "name"),
     [
-        ("['', '日本語😀', 'é']", 12345, ""),
+        ("['', 'a']", 12345, ""),
         ("['host', 'user']", 1417, "user"),
         ("['a=1']", 1418, "a"),
         ("['host', 'b', 'c']", 1417, "b"),

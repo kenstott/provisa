@@ -1073,14 +1073,14 @@ def _catalog_objects(a: _Answers) -> None:
     server_options = ", ".join(f"'{n}'" for n in FDW_SERVER_OPTIONS)
     option = "split_part(_o, '=', 1)"
     refused = (
-        f"list_filter(options, _o -> NOT (({option} IN ({server_options}) AND catalog = 1417) "
+        f"list_filter(options, lambda _o: NOT (({option} IN ({server_options}) AND catalog = 1417) "
         f"OR ({option} IN ('user', 'password') AND catalog = 1418)))"
     )
     a.strict(
         "postgresql_fdw_validator",
         "options, catalog",
         "BOOLEAN",
-        "CASE WHEN len(list_filter(options, _o -> _o IS NULL)) > 0 THEN "
+        "CASE WHEN len(list_filter(options, lambda _o: _o IS NULL)) > 0 THEN "
         + raising("0A000", "'postgresql_fdw_validator of a NULL option has no form here'")
         + f" WHEN len({refused}) > 0 THEN "
         + raising("42601", f"'invalid option \"' || split_part({refused}[1], '=', 1) || '\"'")
