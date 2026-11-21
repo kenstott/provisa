@@ -1,0 +1,66 @@
+{
+  "proposalsTable": {
+    "intro": "Una fila marcada se acepta al aplicar. Las filas que puntúan al menos el umbral empiezan marcadas. Una fila sin ninguna casilla marcada queda sin decidir.",
+    "colScore": "Puntuación",
+    "colConfidence": "Confianza",
+    "colJev": "Jev",
+    "colKind": "Tipo",
+    "colMeasure": "Medido",
+    "colReasoning": "Razonamiento",
+    "colNote": "Nota",
+    "colNotAgain": "No volver a recomendar",
+    "notAgainAria": "No volver a recomendar {{name}}",
+    "kind": {
+      "foreign_keys": "Restricción",
+      "semantics": "Semántica"
+    },
+    "asWritten": "Tal como lo escribió el modelo: {{answer}}",
+    "apply": "Aplicar",
+    "applyAccept": "Aceptar {{count}}",
+    "applyNotAgain": "No volver a recomendar {{count}}",
+    "applyBoth": "Aceptar {{accept}}, no volver a recomendar {{notAgain}}",
+    "applied": "{{accepted}} aceptadas, {{notAgain}} que no se volverán a recomendar.",
+    "failed": "{{count}} no se pudo aplicar:",
+    "failed_other": "{{count}} no se pudieron aplicar:",
+    "none": "A esta ejecución no le queda ninguna propuesta por decidir.",
+    "reason": {
+      "invalid_shape": "No es una relación como la solicitada: falta un campo o tiene una forma incorrecta",
+      "unknown_column": "Nombra una tabla o columna que la solicitud no comparó",
+      "not_comparable": "Las dos columnas tienen clases distintas, así que no se comparan",
+      "below_threshold": "Puntuó por debajo del {{threshold}} % a partir del cual se conserva una sugerencia.",
+      "same_column": "De una columna a sí misma",
+      "existing": "Ya registrada",
+      "rejected": "Rechazada antes",
+      "out_of_scope": "Fuera de las tablas de origen y destino elegidas"
+    },
+    "threshold": "Marcar desde",
+    "thresholdHint": "Su propio umbral, guardado para sus próximas ejecuciones.",
+    "measure": {
+      "inTarget": "{{found}} de {{values}} valores del origen están en el destino.",
+      "inTargetFirst": "{{found}} de los primeros {{values}} valores del origen están en el destino.",
+      "inSource": "{{found}} de {{values}} valores del destino están en el origen.",
+      "inSourceFirst": "{{found}} de los primeros {{values}} valores del destino están en el origen.",
+      "both": "Ambas columnas son claves.",
+      "target": "El destino es una clave.",
+      "source": "El origen es una clave.",
+      "neither": "Ninguna de las dos columnas es una clave.",
+      "notRead": {
+        "source": "El origen no se leyó: su tabla requiere un parámetro.",
+        "target": "El destino no se leyó: su tabla requiere un parámetro."
+      },
+      "notReadable": {
+        "source": "No puede leer la columna de origen.",
+        "target": "No puede leer la columna de destino."
+      },
+      "noValues": "El origen no contiene valores.",
+      "modelScore": "Puntuado por el modelo: no se compararon valores."
+    },
+    "dimensionMade": "Al aceptarla se crea la dimensión compartida {{name}}, a la que se unen ambas columnas.",
+    "dimensionJoined": "Al aceptarla, ambas columnas se unen a la dimensión compartida {{name}}.",
+    "through": "A través de {{table}}.",
+    "twoDimensions": "Sus columnas ya se unen a dos dimensiones compartidas distintas, así que no se puede aceptar.",
+    "admittedOnKeyValues": "Admitido porque los valores clave coinciden en los datos; la medida se muestra junto a la confianza del modelo.",
+    "hiddenByFilter_one": "El filtro oculta {{count}} fila.",
+    "hiddenByFilter_other": "El filtro oculta {{count}} filas."
+  }
+}

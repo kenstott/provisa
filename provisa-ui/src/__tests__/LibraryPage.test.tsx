@@ -47,6 +47,7 @@ vi.mock("../hooks/useCapability", () => ({ useCapability: () => rights.canEdit }
 
 import { LibraryPage } from "../pages/library/LibraryPage";
 import { scopeChange } from "../components/admin/referenceScope";
+import { NAV_BAR } from "../components/navGroups";
 
 const URL_DOC = {
   id: 3,
@@ -105,18 +106,17 @@ describe("the Library in the app", () => {
   const SRC = resolve(__dirname, "..");
   const read = (path: string) => readFileSync(resolve(SRC, path), "utf-8");
 
-  it("sits beside the Ontology and before the Security group, on the glossary's read right", () => {
-    const nav = read("components/NavBar.tsx");
-    const ontology = nav.indexOf('to="/admin/ontology"');
-    const library = nav.indexOf('to="/library"');
-    const groups = nav.indexOf("NAV_GROUPS.filter(");
-    expect(ontology).toBeGreaterThan(-1);
-    expect(library).toBeGreaterThan(ontology);
-    expect(library).toBeLessThan(groups);
-    expect(nav.slice(ontology, library)).toContain('<CapabilityGate capability="glossary_read">');
+  it("is the Documents page of the Context group, on the glossary's read right", () => {
+    // REQ-2259: the library is the Context group's Documents page, at /context/documents.
+    const context = NAV_BAR.find((e) => e.kind === "group" && e.group.id === "context");
+    expect(context).toBeDefined();
+    const documents =
+      context!.kind === "group" ? context!.group.items.find((i) => i.to === "/context/documents") : undefined;
+    expect(documents).toMatchObject({ labelKey: "navBar.itemDocuments", capability: "glossary_read" });
     expect(read("App.tsx")).toMatch(
-      /path="\/library"\s+element=\{\s+<CapabilityGate\s+capability="glossary_read"/,
+      /path="\/context\/documents"\s+element=\{\s+<CapabilityGate capability="glossary_read"/,
     );
+    expect(read("App.tsx")).not.toContain('path="/library"');
   });
 
   it("is no longer an Admin page", () => {
@@ -132,7 +132,7 @@ describe("LibraryPage", () => {
     expect(await screen.findByTestId("reflib-why")).toHaveTextContent(
       "Why: the documents that give your data its meaning",
     );
-    expect(screen.getByTestId("page-title")).toHaveTextContent("Library");
+    expect(screen.getByTestId("page-title")).toHaveTextContent("Documents");
   });
 
   it("filters the list by title, source or reader", async () => {

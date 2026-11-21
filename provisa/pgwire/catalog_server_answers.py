@@ -28,13 +28,9 @@ from sqlglot.errors import SqlglotError
 from provisa.core.pg_error import PostgresError, raising
 from provisa.transpiler import pg_zones
 from provisa.transpiler.pg_held_types import HELD_AS
-from provisa.transpiler.function_macros import (
-    SERVER_VALUE_NAMES,
-    WAL_SEGMENT,
-    lsn_number,
-    strict,
-    wal_file,
-)
+from provisa.transpiler.function_macros import SERVER_VALUE_NAMES
+from provisa.transpiler.rows.base import strict
+from provisa.transpiler.rows.system import WAL_SEGMENT, lsn_number, wal_file
 
 #: The aliases that let a statement name them in a cast.
 PG_ONLY_TYPES = tuple(
@@ -964,8 +960,15 @@ def _catalog_objects(a: _Answers) -> None:
         "INTEGER",
         f"CASE WHEN coalesce({is_table}, false) THEN 28 ELSE 0 END",
     )
+    # A system column (attnum of zero or less) is never updatable; past attnum 32760 the bitmapset
+    # member (attnum + 7) wraps an int16 negative, and bms_make_singleton raises XX000.
     a.strict(
-        "pg_column_is_updatable", "rel, att, cascaded", "BOOLEAN", f"coalesce({is_table}, false)"
+        "pg_column_is_updatable",
+        "rel, att, cascaded",
+        "BOOLEAN",
+        "CASE WHEN att <= 0 THEN false WHEN att > 32760 THEN "
+        + raising("XX000", "'negative bitmapset member not allowed'")
+        + f" ELSE coalesce({is_table}, false) END",
     )
     a.strict(
         "pg_filenode_relation",

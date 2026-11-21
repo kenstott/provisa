@@ -14,6 +14,9 @@
     "runProfilerTitle": "Esegui ora per ogni tabella membro",
     "profilerNoMembers": "Nessuna tabella fa parte di questo profiler.",
     "profilerRan": "{{table}}: profilata",
-    "profilerFailed": "{{table}}: {{error}}"
+    "profilerFailed": "{{table}}: {{error}}",
+    "profilerNotRead": "{{table}}: non letta. Richiede {{parameters}}, quindi non può essere contata né profilata.",
+    "withdrawConsequence": "Nessun ruolo legge alcuna delle sue tabelle, nessun motore la collega e le repliche delle sue tabelle vengono rimosse. Definizione, tabelle e autorizzazioni restano, e Ripristina la riporta com'era.",
+    "withdrawnNote": "Ritirata: nessuna delle sue tabelle serve alcun ruolo finché non viene ripristinata."
   }
 }

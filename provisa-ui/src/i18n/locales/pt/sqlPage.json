@@ -9,6 +9,6 @@
     "detachToSemantic": "Desanexar para SQL semântico",
     "expansionTitle": "Expansão da métrica",
     "expansionLoading": "Buscando expansão...",
-    "expansionNoMetric": "Esta instrução não referencia nenhuma métrica — não há nada a expandir."
+    "expansionNoMetric": "Esta instrução não referencia nenhuma métrica, então não há nada para expandir."
   }
 }

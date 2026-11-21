@@ -39,7 +39,7 @@ import { OssieInterchangePanel } from "./metrics/OssieInterchangePanel";
 import { HelpBubble } from "../components/HelpBubble";
 import { MetricDetailPanel } from "./metrics/MetricDetailPanel";
 import { SplitPane } from "../components/list/SplitPane";
-import { useDetailParam } from "../components/list/useDetailParam";
+import { useRememberedDetail } from "../components/list/useDetailParam";
 import { useDependentsDialog } from "../hooks/useDependentsDialog";
 import { ListTable, ListHead, ListRow, ListEmpty, ListItems } from "../components/list/ListTable";
 import { useListSortGroup, type ListColumn } from "../components/list/useListSortGroup";
@@ -255,7 +255,9 @@ function MetricFormCard({
 // REQ-1317: registered-metrics management page (list / create / edit / delete).
 // REQ-1323: detail-then-edit — row click expands the detail panel; Edit/Delete
 // live inside it and edit swaps the panel for the inline form (no modals).
-export function MetricsPage() {
+/** REQ-2259: ``readOnly`` is the Context group's Metrics page -- the metrics as this page shows
+ * them, with no control that writes; editing stays here under Derived. */
+export function MetricsPage({ readOnly = false }: { readOnly?: boolean }) {
   // REQ-1918: a delete is refused while anything depends on the object; this lists them.
   const refusal = useDependentsDialog();
   const { t } = useTranslation();
@@ -268,22 +270,27 @@ export function MetricsPage() {
   const [form, setForm] = useState<MetricForm>({ ...EMPTY_FORM });
   const [builder, setBuilder] = useState<BuilderState>({ ...EMPTY_BUILDER });
   // REQ-2241: `?metric=<name>` is the open metric's panel.
-  const detail = useDetailParam("metrics");
+  // REQ-2260: and the one left open is open again on coming back.
+  const detail = useRememberedDetail("metrics", loading ? null : metrics.map((m) => m.name));
   const expanded = detail.id;
   const setExpanded = (name: string | null) => (name === null ? detail.close() : detail.open(name));
   const [msg, setMsg] = useState("");
   // REQ-2243: the glossary terms a metric may name, for the editor's term picker.
   const [termNames, setTermNames] = useState<string[]>([]);
   useEffect(() => {
+    // The terms are the editor's picker; the read-only page has no editor.
+    if (readOnly) return;
     let live = true;
     listGlossaryTerms("", false).then(
-      (terms) => live && setTermNames(terms.map((term) => term.name)),
+      // REQ-1591: a metric names its term by name; same-named terms of other domains are one
+      // option here, and the server refuses a name several terms share.
+      (terms) => live && setTermNames([...new Set(terms.map((term) => term.name))]),
       (e: Error) => live && setMsg(e.message),
     );
     return () => {
       live = false;
     };
-  }, []);
+  }, [readOnly]);
 
   // REQ-1320: facts are the metric sources — the builder's source picker.
   const factTables = tables.filter((tbl) => tbl.modelingRole === "fact");
@@ -457,6 +464,7 @@ export function MetricsPage() {
       formCard
     ) : (
       <MetricDetailPanel
+        readOnly={readOnly}
         m={selectedMetric}
         dependentViews={dependentViews(selectedMetric.name)}
         onEdit={() => openEdit(selectedMetric)}
@@ -475,7 +483,7 @@ export function MetricsPage() {
         </PageTitle>
         <Group gap="xs">
           {/* The opener is hidden while a metric form is open (the form ends in Save, Cancel). */}
-          {!creating && editingName === null && (
+          {!readOnly && !creating && editingName === null && (
             <Button size="xs" onClick={openCreate} data-testid="metrics-new-button">
               {t("metricsPage.newMetric")}
             </Button>
@@ -491,9 +499,11 @@ export function MetricsPage() {
 
       {/* REQ-1316: semantic interchange (Ossie) — export endpoint/download + import review. */}
       {/* An import under review can be long: it scrolls in its own box, the list keeps its place. */}
-      <div style={{ maxHeight: "50vh", overflow: "auto" }}>
-        <OssieInterchangePanel />
-      </div>
+      {!readOnly && (
+        <div style={{ maxHeight: "50vh", overflow: "auto" }}>
+          <OssieInterchangePanel />
+        </div>
+      )}
 
       {error && (
         <Alert color="red" mb="sm">
@@ -526,13 +536,15 @@ export function MetricsPage() {
           }}
           list={
             <>
-              <ListBulkBar
-                selection={selection}
-                nameOf={(name) => name}
-                onDelete={deleteMetrics}
-                testId="metrics-bulk"
-              />
-              <ListTable testId="metrics-table" selection={selection}>
+              {!readOnly && (
+                <ListBulkBar
+                  selection={selection}
+                  nameOf={(name) => name}
+                  onDelete={deleteMetrics}
+                  testId="metrics-bulk"
+                />
+              )}
+              <ListTable testId="metrics-table" selection={readOnly ? undefined : selection}>
                 <ListHead
                   sortGroup={sortGroup}
                   columns={[

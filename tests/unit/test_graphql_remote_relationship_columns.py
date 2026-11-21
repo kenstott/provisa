@@ -138,3 +138,102 @@ async def test_upsert_marks_is_foreign_key_on_the_registered_column(monkeypatch)
     # The FK flag must be set WHERE column_name = the registered column (breed_name), not breedName.
     assert any("breed_name" in u for u in fk_updates), fk_updates
     assert not any("breedName" in u for u in conn.updates), conn.updates
+
+
+def _schema_without_a_key_scalar():
+    """Schedule carries its employee as a nested object only (no employeeId), and Employee lists
+    its schedules: neither field names a column a join could use."""
+    employee = {
+        "kind": "OBJECT",
+        "name": "Employee",
+        "fields": [
+            {"name": "id", "type": _scalar("Int")},
+            {"name": "schedules", "type": _list_of("Schedule")},
+        ],
+    }
+    schedule = {
+        "kind": "OBJECT",
+        "name": "Schedule",
+        "fields": [
+            {"name": "id", "type": _scalar("Int")},
+            {"name": "employee", "type": _obj("Employee")},
+        ],
+    }
+    query = {
+        "kind": "OBJECT",
+        "name": "Query",
+        "fields": [
+            {"name": "employees", "type": _list_of("Employee"), "args": []},
+            {"name": "schedules", "type": _list_of("Schedule"), "args": []},
+        ],
+    }
+    return {
+        "queryType": {"name": "Query"},
+        "mutationType": None,
+        "types": [query, employee, schedule],
+    }
+
+
+def test_a_field_naming_no_join_column_is_not_offered_as_a_relationship():
+    """REQ-313: a relationship joins on columns. A nested object with no key scalar beside it
+    (Schedule.employee) and a list held on the other side (Employee.schedules) name none, so the
+    mapper offers no relationship for them rather than one with empty columns."""
+    _tables, _functions, rels = map_schema(_schema_without_a_key_scalar(), "", "src1")
+    assert rels == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("source_column", "target_column", "missing"),
+    [("", "id", "source"), ("employee_id", "", "target")],
+)
+async def test_a_relationship_without_its_columns_is_refused_by_name(
+    monkeypatch, source_column, target_column, missing
+):
+    async def _find(conn, name):
+        return {"id": 1, "domain_id": "src1", "table_name": name, "alias": None}
+
+    monkeypatch.setattr(rel_mod.table_repo, "find_by_table_name", _find)
+    monkeypatch.setattr(rel_mod.model_change, "name", lambda *a, **k: None)
+    with pytest.raises(rel_mod.RelationshipWithoutColumns) as refused:
+        await rel_mod.upsert(
+            _Conn(),
+            Relationship(
+                id="schedules-to-employees",
+                source_table_id="schedules",
+                target_table_id="employees",
+                source_column=source_column,
+                target_column=target_column,
+                cardinality=Cardinality.many_to_one,
+            ),
+        )
+    assert (refused.value.rel_id, refused.value.end) == ("schedules-to-employees", missing)
+    assert "schedules-to-employees" in str(refused.value)
+
+
+@pytest.mark.asyncio
+async def test_a_relationship_to_a_function_needs_no_target_column(monkeypatch):
+    async def _find(conn, name):
+        return {"id": 1, "domain_id": "src1", "table_name": name, "alias": None}
+
+    monkeypatch.setattr(rel_mod.table_repo, "find_by_table_name", _find)
+    monkeypatch.setattr(rel_mod.model_change, "name", lambda *a, **k: None)
+    await rel_mod.upsert(
+        _Conn(),
+        Relationship(
+            id="schedule-lookup",
+            source_table_id="schedules",
+            source_column="employee_id",
+            target_function_name="lookup",
+            cardinality=Cardinality.many_to_one,
+        ),
+    )
+
+
+def test_a_nested_object_offered_as_a_relationship_is_not_also_a_column():
+    """REQ-1929: Assignment.breed is offered as the relationship breed_name -> animal_breeds.name,
+    so it is not registered as a column too: a relationship never hides a column."""
+    tables, _functions, rels = map_schema(_schema(), "", "src1")
+    assert any(r["cardinality"] == "many-to-one" for r in rels)
+    assignments = next(t for t in tables if t["name"] == "assignmentsByEmployee")
+    assert [c["name"] for c in assignments["columns"]] == ["breedName"]

@@ -48,7 +48,7 @@
     "directoryHint": "營運方允許的目錄之一。它在原處被讀取，因此下一次查詢會讀取所作的修改。",
     "chooseFolder": "選擇資料夾",
     "folderKept": "儲存時會將此資料夾打包為 zip 並重新傳送。",
-    "folderAgain": "此瀏覽器無法保留該資料夾：請重新選擇以傳送較新的副本。",
+    "folderAgain": "此瀏覽器無法保留該資料夾，請重新選擇以傳送較新的副本。",
     "editor": "編輯器",
     "openInVscode": "在 VS Code 中開啟",
     "secrets": "密鑰",

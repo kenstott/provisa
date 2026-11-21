@@ -1,7 +1,7 @@
 {
   "nlPage": {
     "guideTitle": "如何写出一个好问题",
-    "guideDesc": "此工具直接根据您的架构生成查询——它不会对自由文本或通用知识进行推理。请将问题表述为您数据中已有的表、字段和关系的组合。",
+    "guideDesc": "此工具根据您的架构生成查询。它不会基于自由文本或常识进行推理，因此请用数据中的表、字段和关系来表述问题。",
     "guideRuleNames": "使用实体的实际名称，而非同义词（用 {{entity}}，而非 {{synonym}}）",
     "guideRuleFilters": "像编写查询那样指定筛选、分组和聚合",
     "guideRuleSchema": "如果某个字段或关系不在您的架构中，就无法被查询",
@@ -24,8 +24,8 @@
     "strictModeTooltip": "全部生成严格基于 GraphQL 表达：先生成 GraphQL 并针对架构校验，再编译为 SQL，然后编译为 Cypher。关闭时：SQL、GraphQL 和 Cypher 各自独立生成，作为最贴近问题的查询。",
     "strictLocked": "此角色只能使用已批准的关系",
     "questionTooltip": "用您自己的表名、列名和关系名以自然语言提问。Enter 提交，Shift+Enter 换行。",
-    "generateTooltip": "使用当前角色可见的架构，根据此问题为每个接口（GraphQL、SQL 和 Cypher）生成查询。",
-    "mcpChatTooltip": "把这个问题交给 MCP 助手，它会探索数据目录并替您执行查询，而不仅仅是生成查询。",
+    "generateTooltip": "使用当前角色可见的架构，根据此问题生成 GraphQL、SQL 和 Cypher 查询。",
+    "mcpChatTooltip": "将此问题发送给 MCP 助手，由它浏览目录并为您运行查询。",
     "questionHelpTitle": "如何提问",
     "strictHelpTitle": "严格生成",
     "generateHelpTitle": "「生成」会产出什么",

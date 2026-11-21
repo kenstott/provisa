@@ -37,6 +37,7 @@ from provisa.core.schema_org import (
 from provisa.entitlements import runtime, store
 from provisa.entitlements.mask import MaskCache
 from provisa.security.rights import Capability
+from tests.pg_control_plane import ORG
 from tests.unit.test_entitlement_lists import _ctx, _names
 
 pytestmark = pytest.mark.asyncio
@@ -73,9 +74,13 @@ def _state(model_db):
         idp_entitlements={},
         names_table=_names(),
         data_product_refs=(),
+        glossary_term_refs=(),
+        judgment_basis_ids=(),
         entitlement_masks=MaskCache(),
         schema_boot_id="boot",
         schema_version=1,
+        # AppState.auth_config: None, no auth section (the claims default).
+        auth_config=None,
     )
 
 
@@ -108,6 +113,8 @@ async def api(control_plane, monkeypatch):
     async def _bind(request, call_next):  # pyright: ignore[reportUnusedFunction]
         identity = caller["identity"]
         request.state.identity = identity
+        # The org the auth middleware binds; the routes write that org's trail (REQ-2087).
+        request.state.active_org_id = ORG
         with runtime.entitlements_scope(identity):
             return await call_next(request)
 

@@ -57,6 +57,8 @@ def _state(**over) -> RoleState:
         schema_boot_id="b",
         schema_version=1,
         data_product_refs=(),
+        glossary_term_refs=(),
+        judgment_basis_ids=(),
         idp_entitlements={},
         auth_config={"default_role": "viewer", "role_mapping": []},
         multitenancy=False,

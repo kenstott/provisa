@@ -677,6 +677,8 @@ Each function is answered in the catalog intercept layer alongside `pg_catalog` 
 
 Every overload of every `pg_catalog` function is called the way PostgreSQL requires it, with the `VARIADIC` form, `WITHIN GROUP`, `OVER`, or a real argument where PostgreSQL refuses a `NULL`. Each overload then has a result on each engine, because what an engine can answer is that engine's own: its native answer, or the answer of a polyfill. A function refused by name on an engine is that engine's result, and a wrong answer on any engine is a defect.
 
+Each overload with samples is also called with edge values of its argument types: NULL, an empty value, the least and greatest values the type holds, zero and negative values, multi-byte and combining text, and a value PostgreSQL itself raises an error for. A form that answers the samples but cannot answer some edge value is still served. It must raise an error for that value, never give a different answer, and its polyfill page must state the limitation. Such an overload counts as served within its bound, and the count is shown separately.
+
 One group is skipped by design and listed under the pass rate. Internal functions cannot be called by PostgreSQL itself: each takes an `internal` argument, or PostgreSQL refuses the call whatever the server's state. Index access method support and index maintenance functions a client can call, such as `brin_summarize_range`, are ordinary functions with a result on each engine.
 
 <!-- function-results:begin -->
@@ -4495,6 +4497,23 @@ The `@@` operator is served where the statement says its operands' types: a `tsv
 A PostgreSQL `numeric` column declared without a precision is registered as `numeric(38, s)`, where `s` is the largest scale found among its values (10 for a table with no rows). The DuckDB engine reads it exactly up to 38 significant digits. A value with more digits is rounded to 38.
 
 Workaround: declare the column with its precision and scale at the source, or read the table through the PostgreSQL engine.
+
+## BI tools' catalog statements
+
+The statements psql, DBeaver, Metabase and Grafana send when they connect and browse a schema are captured from each tool at a pinned version and replayed on every run, against the job's PostgreSQL and against Provisa serving the same tables. Each answer is compared as the catalog shape is: the columns it describes (name, order, type and typmod), or, where PostgreSQL refuses the statement, the refusal. Catalog content is not compared, because it is the role's governed view of the model.
+
+How each tool was captured:
+
+- **psql**: the `postgres:17.11` image's psql runs `\dn`, `\d`, `\dt`, `\dv`, `\di`, `\df` (each also over `conformance.*`) and `\d+` of each fixture table.
+- **Metabase**: the official image, driven through its HTTP API. It adds the database, which runs the first sync and analysis, then re-syncs and reads the database's and each table's metadata.
+- **Grafana**: the official image with the bundled PostgreSQL data source, added and checked through its HTTP API. The SQL its query editor sends to list tables and a table's columns then runs through `/api/ds/query`.
+- **DBeaver**: a desktop application with no headless schema browser, so it is captured once by hand. Run `scripts/conformance/bi_tools/capture.py serve --tool dbeaver --version <version>`. It starts a PostgreSQL with the fixture behind a recording proxy and lists the steps to follow in DBeaver. Pressing Enter writes `scripts/conformance/bi_tools/dbeaver.yaml`. Until that file exists, DBeaver is listed as not tested.
+
+To capture again at a new version, run `scripts/conformance/bi_tools/capture.py run` (Docker). Each tool's statements are stored in `scripts/conformance/bi_tools/<tool>.yaml` with the tool's version and the bind parameters it sent.
+
+<!-- bi-tools-results:begin -->
+No run has filled this section yet.
+<!-- bi-tools-results:end -->
 
 ## Tools
 

@@ -76,6 +76,11 @@ const PANELS: Readonly<Record<string, Panel>> = {
       "metricsPage.builderAgg": "a step of the builder that writes the expression: shown in it",
     },
   },
+  // REQ-2247: read as its edit form drawn read-only (FormRead): the same fields draw both.
+  Syncing: {
+    read: ["components/admin/syncing/EntryPanel.tsx", "components/admin/syncing/EntryFields.tsx"],
+    form: ["components/admin/syncing/EntryFields.tsx"],
+  },
   "Security › RLS Rules": {
     read: ["pages/security/RlsRuleRead.tsx"],
     form: ["pages/security/SecurityRlsPage.tsx"],
@@ -217,8 +222,6 @@ const PANELS: Readonly<Record<string, Panel>> = {
       "viewDefinitionForm.fieldDomain":
         "the view's name and domain: shown in Identity as Table and Domain",
       "registerTableForm.aliasLabel": "registration's SQL alias: shown in Identity as SQL Alias",
-      "registerTableForm.descriptionLabel":
-        "registration's description: shown in Identity as Description",
       "registerTableForm.checkReasonLabel":
         "a checker's claim, its registration's description: shown in Identity as Description",
       "registerTableForm.cacheTtlLabel":

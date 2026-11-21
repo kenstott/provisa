@@ -40,7 +40,7 @@ class _State:
             "tables": [],
             "metrics": [],
             "field_numbers": {},
-            "draft_tables": [],
+            "withdrawn_tables": [],
         }
 
     def _active_runtime(self) -> OrgRuntime:
@@ -234,29 +234,24 @@ def test_a_build_whose_runtime_is_gone_is_not_held_or_logged_as_a_failure(caplog
 async def test_the_warm_up_builds_every_role_and_stops_when_superseded(builds, monkeypatch) -> None:
     from provisa.api import app_loaders
 
-    scheduled: list = []
-    monkeypatch.setattr(
-        "provisa.core.connection_loop.spawn_after",
-        lambda _delay, coro, name: scheduled.append(coro),
-    )
     monkeypatch.setattr(app_loaders, "_WARM_PAUSE_S", 0)
     state = _State()
     _register(state, "analyst", "steward", "broken")
-    app_loaders.warm_role_surfaces(state)
-    await scheduled.pop()
+    runtime = state._runtime
+    await app_loaders.warm_role_surfaces(runtime, runtime.role_build_inputs, build=None)
     assert sorted(builds.counted) == ["analyst", "broken", "steward"]
 
     # A newer rebuild (new build inputs) before the warm-up runs: it builds nothing.
     builds.counted.clear()
     _register(state, "analyst", "steward")
-    app_loaders.warm_role_surfaces(state)
-    state._runtime.role_build_inputs = {
+    followed = runtime.role_build_inputs
+    runtime.role_build_inputs = {
         "tables": [],
         "metrics": [],
         "field_numbers": {},
-        "draft_tables": [],
+        "withdrawn_tables": [],
     }
-    await scheduled.pop()
+    await app_loaders.warm_role_surfaces(runtime, followed, build=None)
     assert builds.counted == []
 
 
@@ -268,7 +263,6 @@ _PROVISA = __import__("pathlib").Path(__file__).resolve().parents[2] / "provisa"
 # plan's ``schemas`` is database schemas, not a role's part.
 _ALLOWED = {
     "provisa/api/app_loaders.py::warm_role_surfaces",
-    "provisa/api/app_loaders.py::_warm",
     "provisa/api/role_surface.py",
     "provisa/core/region_purge.py::_drop_schemas",
 }
@@ -328,7 +322,7 @@ def test_a_contract_and_a_field_name_resolve_with_no_role_built(builds, monkeypa
         display_name="",
         field_name="sales__orders",
     )
-    state._runtime.view_context = SimpleNamespace(tables={"sales__orders": meta})
+    state._runtime.view_context = SimpleNamespace(tables={"sales__orders": meta}, parameters={})
     state._runtime.view_path_map = {
         "sales__orders": {"domain_id": "sales", "schema_name": "public", "table_name": "orders"}
     }
@@ -354,7 +348,6 @@ def test_a_lazily_built_role_serves_what_an_eager_build_served(monkeypatch) -> N
     from provisa.grpc.proto_gen import generate_proto
 
     monkeypatch.setattr(domain_policy, "single_domain", lambda: False)
-    monkeypatch.setattr(app_loaders, "warm_role_surfaces", lambda _state: None)
     state = appmod.state
     for name in ("roles", "schemas", "contexts", "rls_contexts", "table_path_maps", "proto_files"):
         monkeypatch.setattr(state, name, {}, raising=False)
@@ -406,7 +399,8 @@ def test_a_lazily_built_role_serves_what_an_eager_build_served(monkeypatch) -> N
         gql_object_cols={},
         rls_rules=[],
         metrics=[],
-        draft_tables=[],
+        withdrawn_tables=[],
+        withdrawn_relationships=[],
     )
     held = state.surfaces
     assert {"analyst", "steward"} <= set(held)
@@ -464,7 +458,12 @@ def test_a_surface_is_built_against_the_runtime_that_registered_it(monkeypatch) 
         raise _Stop
 
     monkeypatch.setattr(app_loaders, "schema_input_for", _schema_input)
-    inputs = {"tables": [], "metrics": [], "field_numbers": {}, "draft_tables": []}
+    inputs = {
+        "tables": [],
+        "metrics": [],
+        "field_numbers": {},
+        "withdrawn_tables": [],
+    }
     with pytest.raises(_Stop):
         app_loaders._RoleParts(appmod.state, runtime, inputs, {"id": "analyst"}, None).surface()
     assert seen == [runtime]

@@ -100,8 +100,9 @@ describe("What's new", () => {
     const items = (await screen.findAllByRole("menuitem", { hidden: true })).map(
       (el) => el.textContent,
     );
-    // Above the divider that sets off Docs, above Logout, the last of the menu.
-    expect(items.slice(-3)).toEqual(["What's new", "Docs", "Logout"]);
+    // Above the divider that sets off Admin and Docs, above Logout, the last of the menu. Every
+    // member is offered Admin: My Secrets and Requests ask no right (REQ-1327).
+    expect(items.slice(-4)).toEqual(["What's new", "Admin", "Docs", "Logout"]);
     const before = fetchSpy.mock.calls.length;
     await userEvent.click(screen.getByTestId("navbar-whats-new"));
 

@@ -39,6 +39,7 @@ under ``named_demos_dir()`` -- a source checkout's, for development, and the bun
 from __future__ import annotations
 
 import asyncio
+import contextvars
 import os
 import re
 import threading
@@ -986,17 +987,56 @@ class TemplateBuilds:
             self._starting = False
             self._workers += workers
 
+        tasks: set[asyncio.Task] = set()
+
+        def _start_worker() -> None:
+            tasks.add(asyncio.ensure_future(_work()))
+
         async def _work() -> None:
             while (waiting := self._next()) is not None:
                 demo, build = waiting
+                aside = False
+
+                def _step_aside() -> None:
+                    # This worker leaves the queue and a new one takes its place: the count
+                    # of workers (claim) is unchanged, and this one ends with its template.
+                    nonlocal aside
+                    if not aside:
+                        aside = True
+                        _start_worker()
+
+                token = _queue_place.set(_step_aside)
                 try:
                     ready = await prepare(demo, build)
                 except Exception:  # allow-ble: one template that cannot be built leaves the others to build; logged with its cause, and its demo is refused as not ready by name
                     log.exception("demo template %s could not be prepared", demo.name)
                     ready = False
+                finally:
+                    _queue_place.reset(token)
                 self._done(demo.name, "ready" if ready else "failed")
+                if aside:
+                    return
 
-        await asyncio.gather(*(_work() for _ in range(workers)))
+        for _ in range(workers):
+            _start_worker()
+        while tasks:
+            done, _pending = await asyncio.wait(set(tasks))
+            tasks.difference_update(done)
+            for task in done:
+                task.result()
+
+
+#: The place in the build queue of the template its worker is preparing (TemplateBuilds.run):
+#: :func:`step_aside` gives it up.
+_queue_place: contextvars.ContextVar[Callable[[], None]] = contextvars.ContextVar("queue_place")
+
+
+def step_aside() -> None:
+    """Give the template being prepared's place in the build queue to the next template, while it
+    only waits (a live landing, REQ-2049: about 35 minutes for the provisioning demo's Kafka
+    topics, which held every template behind it after a cloud patch). It keeps being prepared
+    beside the queue. Called only from a template's preparation, which the queue runs."""
+    _queue_place.get()()
 
 
 #: The tier's template builds (ensure_demo_templates); a visitor's open moves its demo forward.
@@ -1040,10 +1080,12 @@ async def record_ready(pool, demo: PublishedDemo) -> None:
 async def warm_ready(pool, demo: PublishedDemo) -> bool:
     """Whether ``demo``'s template can be served as it is, right after a start, with no build and
     no wait for its replicas: its org is ready, its readiness record is for this demo version and
-    this Provisa release, and its store on disk holds exactly the rows recorded."""
+    this Provisa release, its folder is on this node, and its store there holds exactly the rows
+    recorded."""
     from sqlalchemy import select
 
     from provisa.api.demo_replicas import store_counts
+    from provisa.core import org_files
     from provisa.core.schema_admin import demo_template_readiness, orgs
 
     async with pool.acquire() as conn:
@@ -1067,6 +1109,11 @@ async def warm_ready(pool, demo: PublishedDemo) -> bool:
         return False
     held = await asyncio.to_thread(store_counts, demo.template_org)
     if held != {"replicas": dict(record.replicas), "views": dict(record.views)}:
+        return False
+    if not org_files.folder(demo.template_org).is_dir():
+        # A node with a fresh disk under a shared control plane: the template's folder is not
+        # here, whatever its record holds -- an empty store's matches the none read here. Served
+        # as built, no runtime build here makes it ready, and an open reads it.
         return False
     # REQ-2052: and the profile runs its bundle carries, which every sandbox of it is cloned with.
     # A template served as built without them gave every sandbox an empty run history; one that
@@ -1425,6 +1472,8 @@ async def _prepare(demo: PublishedDemo, build: bool) -> bool:
     # its views count: a sandbox is opened holding what its template landed (carry_landed_data).
     said = None
     while live and (waiting := await live_landing_waits(org_id, template_seed(org_id), ends)):
+        # Waiting on a topic's landing builds nothing: the next template is built meanwhile.
+        step_aside()
         if waiting != said:
             said = waiting
             log.warning("demo template %s: waiting on its live landing: %s", demo.name, waiting)

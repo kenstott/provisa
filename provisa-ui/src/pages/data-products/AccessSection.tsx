@@ -10,16 +10,26 @@
 
 // REQ-2180 (THE PRODUCT PAGE IS SUMMARY ROWS): a product's Access section, its ways in -- a query
 // to copy or run now on its first dataset, and each dataset's other surfaces (GraphQL, SQL,
-// JSON:API, OpenAPI, gRPC) and the Cypher relationships among them.
+// JSON:API, OpenAPI, gRPC) and the relationships among them, each with its link on every surface
+// that reads it (REQ-2252), as the relationship's own detail panel links it.
 
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
-import { ActionIcon, Code, Group, List, Stack, Text } from "@mantine/core";
-import { Braces, Cable, FileJson, Globe, Share2, Table as TableIcon } from "lucide-react";
+import { Code, Group, List, Stack, Text } from "@mantine/core";
+import { Braces, Cable, FileJson, Globe, Table as TableIcon } from "lucide-react";
 import { CopyButton } from "../../components/CopyButton";
-import { Tip } from "../../components/Tip";
+import {
+  QueryLinkIcon,
+  RelationshipQueryLinks,
+} from "../../components/relationships/RelationshipQueryLinks";
+import {
+  relationshipQueryRef,
+  type RelationshipQueryRef,
+} from "../../components/relationships/relationshipQueries";
+import { useRelationshipSurfaces } from "../../components/relationships/useRelationshipSurfaces";
 import type { MetaReader } from "../../api/metaGraph";
+import type { ListedTable, Relationship } from "../../types/admin";
 import { tableSqlRef } from "../../naming";
 import { Empty, Muted } from "./DetailCard";
 import { modelName, type ProductCore } from "./productCore";
@@ -32,22 +42,49 @@ import {
   type ExampleLink,
 } from "./tableExamples";
 
-/** The Cypher relationship types among a product's tables that resolve to a type. */
-function cypherTypesOf(core: ProductCore): string[] {
+/** The relationships among a product's tables (both ends members), as the meta read serves them
+ * (REQ-351), each with the query reference its links are built from (REQ-2252). The reference is
+ * built from the model's relationship of the same id: the names a link needs that meta does not
+ * store (the SQL plane's physical name, a junction's columns) are the admin list's. Until the page
+ * has read that list, a relationship is listed without links, as it is until the role's surfaces
+ * are read. */
+function productRelationships(
+  core: ProductCore,
+  relationships: readonly Relationship[],
+  tables: readonly ListedTable[],
+): { id: string; ref: RelationshipQueryRef | null }[] {
   const memberIds = new Set((core.tables ?? []).map((tb) => tb.id));
-  return [
+  const ids = [
     ...new Set(
       (core.tables ?? []).flatMap((tb) =>
         (tb.sourceRelationships ?? [])
           .filter((r) => r.targetTable != null && memberIds.has(r.targetTable.id))
-          .filter((r) => !r.disableCypher && r.cypherType)
-          .map((r) => r.cypherType as string),
+          .map((r) => String(r.id)),
       ),
     ),
   ];
+  return ids.map((id) => {
+    const rel = relationships.find((r) => String(r.id) === id);
+    return { id, ref: rel ? relationshipQueryRef(rel, tables) : null };
+  });
 }
 
-export function AccessSection({ core, reader }: { core: ProductCore; reader: MetaReader | null }) {
+export function AccessSection({
+  core,
+  reader,
+  relationships,
+  tables,
+  actingRole,
+}: {
+  core: ProductCore;
+  reader: MetaReader | null;
+  /** The model's relationships: each listed relationship's links are built from its entry. */
+  relationships: readonly Relationship[];
+  /** Every registered table the reader lists: a relationship's tables are named from them. */
+  tables: readonly ListedTable[];
+  /** The acting roles, whose names a relationship's links use. */
+  actingRole: string | null;
+}) {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const product = core.product;
@@ -55,20 +92,13 @@ export function AccessSection({ core, reader }: { core: ProductCore; reader: Met
   const first = outputTables[0];
   const snippet = first ? `select * from ${tableSqlRef(first)} limit 10` : null;
   const open = (example: ExampleLink) => navigate(example.to, { state: example.state });
-  const cypherTypes = cypherTypesOf(core);
+  const productRels = productRelationships(core, relationships, tables);
+  const surfaces = useRelationshipSurfaces(actingRole);
 
   const icon = (label: string, testId: string, onClick: () => void, glyph: ReactNode) => (
-    <Tip text={label} named>
-      <ActionIcon
-        variant="subtle"
-        size="sm"
-        aria-label={label}
-        data-testid={testId}
-        onClick={onClick}
-      >
-        {glyph}
-      </ActionIcon>
-    </Tip>
+    <QueryLinkIcon label={label} testId={testId} onClick={onClick}>
+      {glyph}
+    </QueryLinkIcon>
   );
 
   return (
@@ -150,23 +180,19 @@ export function AccessSection({ core, reader }: { core: ProductCore; reader: Met
               </List.Item>
             );
           })}
-          {cypherTypes.map((type) => (
-            <List.Item key={`cy-${type}`} ff="monospace">
+          {productRels.map(({ id, ref }) => (
+            <List.Item key={`rel-${id}`} ff="monospace">
               <Group gap={4} wrap="nowrap">
                 <Text component="span" size="sm" ff="monospace">
-                  {type}
+                  {id}
                 </Text>
-                {icon(
-                  t("dataProductsTab.cypherQueryAria", { type }),
-                  `data-product-detail-cypher-query-${type}`,
-                  () =>
-                    navigate("/graph", {
-                      state: {
-                        query: `MATCH ()-[r:${type}]->() RETURN r LIMIT 25`,
-                        autoRun: true,
-                      },
-                    }),
-                  <Share2 size={14} />,
+                {ref && (
+                  <RelationshipQueryLinks
+                    rel={ref}
+                    name={id}
+                    surfaces={surfaces}
+                    testIdPrefix={`data-product-detail-relationship-${id}`}
+                  />
                 )}
               </Group>
             </List.Item>

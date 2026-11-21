@@ -66,6 +66,7 @@ def _ctx(table_id: int = 1) -> SimpleNamespace:
         # A TableMeta carries the names it is queried by (label_map reads its _name_ from them).
         field_name="orders",
         display_name="",
+        original_table_name="",
     )
     return SimpleNamespace(
         tables={"sales__orders": table},
@@ -73,6 +74,9 @@ def _ctx(table_id: int = 1) -> SimpleNamespace:
         aggregate_columns={table_id: [("id", "integer"), ("amount", "float")]},
         pk_columns={},
         native_filter_columns={},
+        # The per-table parameter facts of a compiled context (label_map reads them).
+        parameters={},
+        parameter_names={},
         physical_to_sql={},
         gql_governed_object_cols=set(),
         gql_json_columns=set(),

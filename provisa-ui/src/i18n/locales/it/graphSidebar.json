@@ -24,7 +24,7 @@
     "history": "Cronologia",
     "noHistory": "Nessuna cronologia",
     "favorites": "Preferiti",
-    "noFavorites": "Nessun preferito — fare clic su ★ in un riquadro dei risultati",
+    "noFavorites": "Ancora nessun preferito. Fare clic su ★ in un riquadro dei risultati.",
     "matchAllNodes": "MATCH (n) RETURN n LIMIT 25",
     "matchAllRels": "MATCH p=()-->() RETURN p LIMIT 25",
     "firstPage": "Prima pagina",

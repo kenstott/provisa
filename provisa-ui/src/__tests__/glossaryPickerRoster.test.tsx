@@ -31,7 +31,7 @@ vi.mock("../api/glossary", async (importOriginal) => ({
   fetchGlossaryTerm: vi.fn(),
   fetchGlossaryFindings: vi.fn(async () => []),
   listTermTables: vi.fn(async () => []),
-  fetchAppliedHistory: vi.fn(async () => null),
+  fetchAppliedHistory: vi.fn(async () => ({ retired_in: null, as_of: null, columns: [], tables: [] })),
   fetchStewardshipSummary: vi.fn(async () => ({
     agent_visible: [],
     waiting_on_one_approval: [],
@@ -112,7 +112,7 @@ describe("the term page of a curator without user_management", () => {
   });
 
   it("opens the term with no error banner", async () => {
-    render(<GlossaryTab />, { initialEntries: ["/admin/ontology?term=32"] });
+    render(<GlossaryTab />, { initialEntries: ["/context/ontology?term=32"] });
     await screen.findByText("What a group stands to lose.");
     await waitFor(() => expect(asked.length).toBeGreaterThan(0));
     await act(async () => {
@@ -124,7 +124,7 @@ describe("the term page of a curator without user_management", () => {
   });
 
   it("fills the expert picker from the glossary's roster, not the team page's", async () => {
-    render(<GlossaryTab />, { initialEntries: ["/admin/ontology?term=32"] });
+    render(<GlossaryTab />, { initialEntries: ["/context/ontology?term=32"] });
     fireEvent.click(await screen.findByTestId("glossary-edit-btn"));
     await screen.findByTestId("glossary-edit-form");
     act(() => answerRoster());

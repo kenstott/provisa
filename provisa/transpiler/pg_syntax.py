@@ -25,6 +25,8 @@ taught to its parser here:
 - a keyword after ``AS`` is a column label (``AS select``): sqlglot refuses the reserved ones; the
   label is read as a quoted identifier, so the statement writes back as PostgreSQL reads it.
 - pgvector's ``a <#> b`` is its negative inner product: it tokenizes as ``<`` and ``#>``.
+- ``interval '1 day 02:03'`` is the whole interval its text is (``'1 day 02:03'::interval``):
+  sqlglot keeps its first amount and unit and drops the rest.
 - to_date's and to_timestamp's template is read whole (``TEMPLATE``): sqlglot's own reading leaves
   a month's or a day's name (``Mon``, ``Month``, ``Dy``), ``HH`` and the meridiem as literal text."""
 
@@ -39,6 +41,8 @@ from sqlglot.dialects.postgres import Postgres
 from sqlglot.time import format_time
 from sqlglot.tokens import TokenType
 from sqlglot.trie import new_trie
+
+from provisa.transpiler import interval_input
 
 #: The routine pg_proc names for overlaps: what a call of it reads as (function_macros' form).
 OVERLAPS = "overlaps_timestamp"
@@ -87,6 +91,34 @@ def _reads_types(parser: type) -> None:
         return this
 
     parser._parse_types = _parse_types
+
+
+def _reads_interval_literals(parser: type) -> None:
+    """``interval 'text'`` is ``'text'::interval`` (REQ-2167): sqlglot keeps the first amount and
+    its unit of the text and drops the rest ('1 day 02:03' is read as 1 day, '1 day ago' as
+    1 day), and writes a unit word as it is ('3 mons' is no unit of an engine). The text is read
+    here as PostgreSQL's interval input reads it (interval_input): one whole amount of a unit every
+    engine reads alike stays sqlglot's INTERVAL 'n' UNIT; any other interval it reads is the cast
+    of its fields' text, which each engine reads exactly; a text it does not read (ISO 8601, the
+    SQL standard's) is the cast of the text, as the statement's ``::interval`` would be. A unit
+    written after the text (``interval '1' day``) is read by sqlglot, as before."""
+    parse_span = parser._parse_interval_span
+
+    def _parse_interval_span(self: Any, this: exp.Expr, parse_function_unit: bool = True) -> Any:
+        text = this.name if this is not None and this.is_string else None
+        span = parse_span(self, this, parse_function_unit=parse_function_unit)
+        if text is None or not isinstance(span, exp.Interval) or span.this is None:
+            return span
+        if span.args.get("unit") is not None and span.this.name == text:
+            return span  # the unit is written after the text
+        one = interval_input.one_amount(text)
+        if one is not None:
+            return exp.Interval(this=exp.Literal.string(one[0]), unit=exp.Var(this=one[1]))
+        read = interval_input.interval_read(text)
+        written = text if read is None else interval_input.canonical(*read)
+        return exp.Cast(this=exp.Literal.string(written), to=exp.DataType.build("interval"))
+
+    parser._parse_interval_span = _parse_interval_span
 
 
 def _overlaps(args: list[exp.Expr]) -> exp.Anonymous:
@@ -268,6 +300,7 @@ _reads_types(Postgres.Parser)
 _reads_qualified_calls(Postgres.Parser)
 _reads_negative_inner_product(Postgres.Parser)
 _reads_keyword_labels(Postgres.Parser)
+_reads_interval_literals(Postgres.Parser)
 Postgres.Parser.FUNC_TOKENS = Postgres.Parser.FUNC_TOKENS | {TokenType.OVERLAPS}
 Postgres.Parser.FUNCTIONS["OVERLAPS"] = _overlaps
 Postgres.Parser.FUNCTIONS["TO_DATE"] = _formatted(exp.StrToDate)

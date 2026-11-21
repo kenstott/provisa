@@ -29,8 +29,10 @@ from provisa.core.database import Database
 from provisa.core.env_merge import merged_tree
 from provisa.core.env_project import project
 from provisa.core.models import Cardinality, Column, Metric, Relationship, Table, Tag
+from provisa.core.repositories import domain as domain_repo
 from provisa.core.repositories import metric as metric_repo
 from provisa.core.repositories import relationship as rel_repo
+from provisa.core.repositories import source as source_repo
 from provisa.core.repositories import table as table_repo
 from provisa.core.repositories import tag as tag_repo
 from provisa.core.repositories.retirement import RetiredNameTaken
@@ -159,6 +161,47 @@ async def test_a_retired_tables_name_is_refused_to_a_second_registration(plane):
         assert (await _row(conn, registered_tables, registered_tables.c.table_name == "orders"))[
             "retired"
         ]
+
+
+async def _retired_in_own_domain(conn, *columns: str) -> int:
+    """A table in a domain and on a source of its own, nothing else in either, then deleted:
+    retired."""
+    await conn.execute_core(insert(domains).values(id="archive"))
+    await conn.execute_core(insert(sources).values(id="archive-pg", type="postgresql"))
+    table = _table("ledger", *columns).model_copy(
+        update={"domain_id": "archive", "source_id": "archive-pg"}
+    )
+    table_id = await table_repo.upsert(conn, table)
+    assert table_id is not None
+    assert await table_repo.delete(conn, table_id, reason=WHY) is True
+    return table_id
+
+
+@pytest.mark.parametrize("holder", ["domain", "source"])
+@pytest.mark.parametrize("columns", [("id", "amount"), ()], ids=["with columns", "no columns"])
+async def test_a_domain_or_source_holding_only_a_retired_table_is_retired_with_it(
+    plane, holder, columns
+):
+    """REQ-2248 (amended 2026-11-15, DELETING A SOURCE OR A DOMAIN RETIRES IT): a retired table
+    -- its columns included, which are not marked themselves -- blocks nothing, so the delete
+    retires the domain or source together with it, and nothing is removed: the table and its
+    columns are kept, retired, under the retired holder."""
+    repo = domain_repo if holder == "domain" else source_repo
+    held_by = "domain_id" if holder == "domain" else "source_id"
+    async with model_change.scope("delete", actor=lambda: "ada"), plane.acquire() as conn:
+        ledger = await _retired_in_own_domain(conn, *columns)
+        held_id = "archive" if holder == "domain" else "archive-pg"
+        assert await repo.delete(conn, held_id, reason=WHY) is True
+        [retired] = await repo.list_all(conn, retired=True)
+        _assert_retired(retired)
+        assert retired["retired_id"] == held_id
+        table = await _row(conn, registered_tables, registered_tables.c.id == ledger)
+        _assert_retired(table)
+        assert table[held_by] == retired["id"]
+        kept = await conn.execute_core(
+            select(table_columns.c.column_name).where(table_columns.c.table_id == ledger)
+        )
+        assert sorted(r[0] for r in kept) == sorted(columns)
 
 
 async def test_a_retired_tables_file_carries_the_retirement(plane):
@@ -411,6 +454,29 @@ def test_a_domain_a_merge_removes_still_goes():
     """Only the kinds REQ-2248 names are retired; a domain is not one of them."""
     merged = _merge({}, {"finance/domain.yaml": {"description": "ledgers"}}, removals=True)
     assert "finance/domain.yaml" not in merged
+
+
+def test_a_domain_a_merge_removes_stays_while_a_table_it_retires_sits_in_it():
+    """The retired table keeps its row, and its row its domain: removing the domain under it would
+    leave the merged tree naming a domain it does not hold, and the merge would be refused whole."""
+    domain = {"description": "revenue"}
+    merged = _merge({}, {"sales/domain.yaml": domain, ORDERS: _order()}, removals=True)
+    assert merged["sales/domain.yaml"] == domain
+    assert merged[ORDERS]["retired"] is True
+
+
+def test_a_term_a_merge_removes_stays_while_a_table_it_retires_names_it():
+    term = "terms/order.yaml"
+    merged = _merge(
+        {},
+        {
+            "sales/domain.yaml": {"description": "revenue"},
+            term: {"name": "order"},
+            ORDERS: _order(glossary=[{"column_name": "id", "term": term}]),
+        },
+        removals=True,
+    )
+    assert merged[term] == {"name": "order"}
 
 
 @pytest.mark.parametrize("removals", [False, True])

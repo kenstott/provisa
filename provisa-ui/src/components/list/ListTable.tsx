@@ -122,6 +122,8 @@ export interface ListSortCol {
   width?: string;
   /** The most width, in pixels, this column asks for, where the list's own cap does not suit it. */
   cap?: number;
+  /** The column's filter control (ColumnFilterMenu), drawn after its sort and group controls. */
+  filter?: ReactNode;
 }
 
 /** A static header cell that needs a width. */
@@ -250,7 +252,14 @@ export function ListHead<T = never>({
             if (!sortGroup) throw new Error("ListHead: a { col } header needs sortGroup");
             return (
               <Table.Th key={i} style={{ whiteSpace: "nowrap", width: c.width }}>
-                <ListSortCell state={sortGroup} col={c.col} />
+                {c.filter ? (
+                  <Group gap={4} wrap="nowrap" component="span">
+                    <ListSortCell state={sortGroup} col={c.col} />
+                    {c.filter}
+                  </Group>
+                ) : (
+                  <ListSortCell state={sortGroup} col={c.col} />
+                )}
               </Table.Th>
             );
           }

@@ -80,7 +80,8 @@ def test_a_rebuild_forgets_a_role_that_was_deleted(monkeypatch):
             gql_object_cols={},
             rls_rules=[],
             metrics=[],
-            draft_tables=[],  # REQ-1921: none out of service
+            withdrawn_tables=[],
+            withdrawn_relationships=[],
         )
 
     _build(["kept", "loose"])

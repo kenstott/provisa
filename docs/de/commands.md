@@ -317,7 +317,7 @@ Jeder Aufruf erzeugt einen Trace, unabhängig vom Ergebnis. Der Trace enthält B
 
 ## CLI: provisa metadata export
 
-`provisa metadata export` ist ein Job der Shell-Ebene und läuft außerhalb des geregelten RPC-Wegs. Er stößt die bedarfsgesteuerte Metadaten-Veröffentlichung des laufenden Servers an, indem er an `/admin/metadata-export/publish` sendet, den Endpunkt, den die Schaltfläche **Jetzt veröffentlichen** im Admin-Tab aufruft.
+`provisa metadata export` ist ein Job der Shell-Ebene und läuft außerhalb des geregelten RPC-Wegs. Er stößt die bedarfsgesteuerte Metadaten-Veröffentlichung des laufenden Servers an, indem er an `/admin/syncing/publish` sendet, den Endpunkt, den die Schaltfläche **Jetzt veröffentlichen** im Admin-Tab aufruft.
 
 Nutzen Sie ihn für zeitgesteuerte Exporte aus cron oder CI, wenn der konfigurierte Zeitplan
 `reconcile_cron` nicht feingranular genug ist:

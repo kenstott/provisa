@@ -14,6 +14,7 @@
 
 import { JSDOM } from "jsdom";
 import { buildGraphStylesheet } from "../../src/components/graph/graph-stylesheet";
+import { graphTokens } from "../../src/components/provisa-graph/tokens";
 import provisaElk, { LAYOUT_FAIL } from "../../src/components/provisa-graph/elkLayout";
 import { BACKGROUND, LAYOUTS, type LayoutName, type Theme } from "./look";
 
@@ -96,12 +97,15 @@ export async function drawPng(req: DrawRequest): Promise<Buffer> {
       ],
       // The page's stylesheet with nothing the user has set on it: no colour, size, label or
       // line overrides, as a graph page opened fresh.
-      style: buildGraphStylesheet({
-        colorOverridesRef: none,
-        sizeOverridesRef: none,
-        labelPropertyRef: none,
-        relLineOverridesRef: none,
-      }) as never,
+      style: buildGraphStylesheet(
+        {
+          colorOverridesRef: none,
+          sizeOverridesRef: none,
+          labelPropertyRef: none,
+          relLineOverridesRef: none,
+        },
+        graphTokens(req.theme === "dark"),
+      ) as never,
       layout: { name: "null" },
     });
     await new Promise<void>((done, failed) => {

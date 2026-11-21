@@ -52,6 +52,8 @@
     "colVisibleTo": "Visible to (roles, comma-separated; blank = everyone)",
     "colVisibleToPlaceholder": "analyst, org_admin",
     "colMask": "Mask",
+    "exposedAsTable": "Also a table",
+    "exposedAsTableHint": "Clients that read tables, such as BI tools, read this function as a table with its parameters as columns. Turned off, it returns the rows of the source's list of the same type, and the table is removed.",
     "requiresApproval": "Requires approval",
     "requiresApprovalHint": "Each call runs only once the approval hook approves it. With no hook configured, calls are refused.",
     "writesTable": "Writes table",

@@ -108,6 +108,7 @@ export function draftFromRegistration(r: Registration): RegisteredTable {
     tableName: i.tableName as string,
     alias: str(i.alias),
     description: str(i.description),
+    registeredAt: null, // not registered yet
     cacheTtl: typeof i.cacheTtl === "number" ? i.cacheTtl : null,
     roleTtl: [],
     pagingKind: r.pagingKind,
@@ -115,7 +116,8 @@ export function draftFromRegistration(r: Registration): RegisteredTable {
     pagingCeilingRows: r.pagingCeilingRows,
     replicate: null,
     region: str(i.region),
-    draft: true,
+    withdrawn: false,
+    sourceWithdrawn: false,
     rowMaterialize: false, // REQ-1865: chosen on the Load and timeliness tab
     loadProtected: null,
     offPeakWindow: null,
@@ -158,6 +160,8 @@ export function draftFromRegistration(r: Registration): RegisteredTable {
     mvPersist: "replace",
     mvPrimaryKey: [],
     mvIncremental: false,
+    mvRebuildEvery: null,
+    incrementalOption: { available: true, code: null, reason: null },
     mvCalendar: null,
     mvGrain: null,
     mvAllowedLateness: 0,
@@ -200,7 +204,8 @@ export function duplicateOfTable(table: RegisteredTable): TableDuplicate {
     id: UNREGISTERED_ID,
     productIds: [],
     writeGrants: [],
-    draft: true,
+    withdrawn: false,
+    sourceWithdrawn: false,
   };
   if (table.viewSql != null || table.viewMetrics != null) {
     draft.tableName = duplicateName(table.tableName);

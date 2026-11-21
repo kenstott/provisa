@@ -17,8 +17,7 @@ pinned to it WITH it, because a visitor's account exists only inside that enviro
 is in ``retire_environment`` itself, so the delete door, a merge that retires its source and the
 expiry sweep are the same act.
 
-The scenarios run here on a SQLite platform plane, and unchanged on PostgreSQL in
-``tests/integration/test_environment_retire_guarded_pg.py``.
+The scenarios run on a PostgreSQL platform plane.
 """
 
 # Requirements: REQ-1918, REQ-1596, REQ-1542, REQ-1523

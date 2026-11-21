@@ -48,6 +48,7 @@ from provisa.api.metadata_export.atlas import (
 )
 from provisa.api.metadata_export.provider import AssetError, AssetRefStub, PublishResult
 from provisa.api.metadata_export.registry import register_provider
+from provisa.security import sandbox_egress  # REQ-2006: held to public destinations
 
 if TYPE_CHECKING:
     from provisa.api.metadata_export.model import GlossaryTermAsset, MetadataSnapshot
@@ -401,7 +402,9 @@ class AtlanExport(AtlasExport):  # REQ-1069
         from the snapshot keeps its vendor copy and loses only Provisa's assignments. Each
         term carries its assignments in the same bulk request (REQ-1389).
         """
-        async with httpx.AsyncClient(timeout=self._config.timeout_seconds) as client:
+        async with httpx.AsyncClient(
+            timeout=self._config.timeout_seconds, event_hooks=sandbox_egress.endpoint_event_hooks()
+        ) as client:
             headers = await self._headers(client)
             glossary_qn = self._glossary_qn(snapshot.org_id)
             guid = _GuidCounter()

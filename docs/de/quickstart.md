@@ -10,7 +10,7 @@ Dieser Leitfaden beschreibt, wie Sie Provisa **aus dem Repository** ausführen, 
 
 - **Docker Desktop** (läuft)
 - **Python 3.12+**
-- **Node.js 20+**
+- **Node.js 24.12+**
 - **Git**
 
 ---

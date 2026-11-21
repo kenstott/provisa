@@ -188,6 +188,9 @@ class Grid:
                     self._by_root.setdefault(_root_key(root), []).append((feature, rule))
                     if not isinstance(root, exp.Anonymous):
                         self._typed_names.update(_called(root))
+                        # The name the pattern writes, where sqlglot reads it as a node of another
+                        # name (log10 as log of base 10): a quoted call of it is that node too.
+                        self._typed_names.add(_written_name(rule.pattern))
 
     @staticmethod
     def _check(feature: Feature, side: Side) -> None:
@@ -215,16 +218,37 @@ class Grid:
             for name in _called(notation.pattern(rule.pattern))
         )
 
-    @property
-    def mentions(self) -> tuple[str, ...]:
-        """What a statement a rule of no pattern may rewrite holds, where it names no function."""
+    def names_on(self, dialect: str) -> frozenset[str]:
+        """The names of the functions the read rules' patterns call that a rule writes on
+        ``dialect``: a form of its column, or, on a dialect with no column, every rule but one that
+        keeps the dialect's own (Rule.unlisted_keep). A rule with no form of a dialect's column
+        leaves the engine's own call there."""
+        column = column_of(dialect)
+        return frozenset(
+            name
+            for feature in self.features
+            for rule in feature.read.rules
+            if rule.pattern is not None
+            and (
+                rule.forms.get(column) is not None if column is not None else not rule.unlisted_keep
+            )
+            for name in _called(notation.pattern(rule.pattern))
+        )
+
+    def mentions_on(self, dialect: str) -> tuple[str, ...]:
+        """What a statement a rule of no pattern may rewrite on ``dialect`` holds, where it names no
+        function: the mentions of the rewrites in the dialect's column, or of every rewrite on a
+        dialect with no column. A rewrite of another column leaves the statement as it is here."""
+        column = column_of(dialect)
         return tuple(
             sorted(
                 {
                     form.mentions
-                    for _, rule in self._rewrites
-                    for form in rule.forms.values()
-                    if isinstance(form, Rewrite) and form.mentions
+                    for _, rule in (*self._first, *self._rewrites)
+                    for of, form in rule.forms.items()
+                    if isinstance(form, Rewrite)
+                    and form.mentions
+                    and (column is None or of == column)
                 }
             )
         )
@@ -308,6 +332,11 @@ def _called(node: exp.Expr) -> tuple[str, ...]:
     if isinstance(node, exp.Func):
         return tuple(name.lower() for name in type(node).sql_names())
     return ()
+
+
+def _written_name(pattern: str) -> str:
+    """The name of the function a pattern's text calls at its root."""
+    return pattern.split("(", 1)[0].strip().lower()
 
 
 def _root_key(node: exp.Expr) -> str:

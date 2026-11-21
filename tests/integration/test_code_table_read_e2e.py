@@ -25,7 +25,7 @@ import httpx
 import pytest
 import yaml
 
-from tests.helpers import registered_id, release_field
+from tests.helpers import registered_id
 from tests.integration.test_code_sources_e2e import _ROLE, _admin, _archive, _config
 from tests.port_lease import lease_ports
 
@@ -79,6 +79,13 @@ class Clip:
 class Outcome:
     status: str
     body: str
+
+
+@dataclass
+class Match:
+    order_id: int
+    clip_id: int
+    score: float
 
 
 def orders() -> list[Order]:
@@ -226,6 +233,23 @@ def read_clips(clips: TableRef[Clip]) -> list[Outcome]:
     return [_read(clips)]
 
 
+def match_region(orders: TableRef[Lean], clips: TableRef[Clip]) -> list[Match]:
+    """A code resolver: which clip each order relates to. It compares regions here; a real one
+    would match by distance, vector or a fuzzy rule. It reads both tables as its caller.
+
+    @query
+    """
+    read_orders, read_clips = _read(orders), _read(clips)
+    if read_orders.status != "ok" or read_clips.status != "ok":
+        raise RuntimeError(f"{read_orders.body} {read_clips.body}")
+    return [
+        Match(int(o["id"]), int(c["id"]), 1.0)
+        for o in json.loads(read_orders.body)
+        for c in json.loads(read_clips.body)
+        if o["region"] == c["region"]
+    ]
+
+
 def read_star(orders: TableRef[Lean]) -> list[Outcome]:
     """Sends SELECT * so the governed pipeline determines the visible columns.
 
@@ -278,8 +302,8 @@ def server(tmp_path_factory, minted_port):
             "description": "Test role.",
             # A child holds only what it is given of what its parents hold (REQ-2155). /data/sql
             # needs query_development, a command needs command_execution, and of the standard
-            # roles developer is the one holding those with full_results.
-            "parents": ["developer"],
+            # roles data_writer is the one holding those with full_results.
+            "parents": ["data_writer"],
             "capabilities": ["usage", "query_development", "command_execution", "full_results"],
             "domain_access": ["*"],
         }
@@ -364,19 +388,17 @@ def ledger(server):
             f'tableName: "{table}", cacheTtl: 300, columns: [{", ".join(columns)}]}})',
         )
         ids[table] = registered_id(registered["message"])
-        _admin(server, release_field(ids[table]))
     # "clips" carries a row-level security rule: analyst may only read the row whose id = 1,
     # so the governed pipeline's RLS enforcement is covered on the minted-token listener (REQ-2226).
     clips_cols = [
         _column("id", "bigint", _ROLE, _ANALYST),
         _column("region", "text", _ROLE, _ANALYST),
     ]
-    registered_clips = _admin(
+    _admin(
         server,
         'registerTable(input: {sourceId: "ledger", domainId: "fx", schemaName: "default", '
         f'tableName: "clips", cacheTtl: 300, columns: [{", ".join(clips_cols)}]}})',
     )
-    _admin(server, release_field(registered_id(registered_clips["message"])))
     _admin(
         server,
         f'upsertRlsRule(input: {{tableId: "clips", roleId: "{_ANALYST}", filterExpr: "id = 1", '
@@ -390,6 +412,7 @@ def ledger(server):
         "read_clips",
         "read_star",
         "read_qualified_secret",
+        "match_region",
     ):
         _command(server, function)
     return ids
@@ -400,13 +423,12 @@ def vault_digest(server, ledger):
     """A materialized view over a @query whose input is the governed table "vault", built."""
     sql = "SELECT r.status, r.body FROM read_whole('fx.vault') AS r"
     columns = [_column("status", "text", _ROLE, _ANALYST), _column("body", "text", _ROLE, _ANALYST)]
-    registered = _admin(
+    _admin(
         server,
         'registerTable(input: {sourceId: "__derived__", domainId: "fx", schemaName: "views", '
         f'tableName: "vault_digest", alias: "vault_digest", viewSql: {json.dumps(sql)}, '
         f"materialize: true, mvRefreshInterval: 3600, columns: [{', '.join(columns)}]}})",
     )
-    _admin(server, release_field(registered_id(registered["message"])))
     refreshed = _admin(server, 'refreshMv(mvId: "view-vault_digest")')
     assert refreshed["success"], refreshed
 
@@ -608,3 +630,141 @@ def test_the_served_grant_of_a_named_column_is_the_named_list(server, ledger):
         assert reader in readers, secret
         assert other not in readers, secret
         assert "viewer" not in readers, secret
+
+
+# REQ-2249: a code resolver set -- one resolver picked, kept as a bridge view over its call and two
+# ordinary relationships through it. Landed, the matches are built as the organisation's
+# administrator and served from the view; following the relationships applies the reader's row
+# rules on the target.
+
+_RESOLVER_SET = (
+    'id: "order_clips", resolver: "match_region", sourceTable: "orders", sourceColumn: "id", '
+    'sourceMatch: "order_id", targetTable: "clips", targetColumn: "id", targetMatch: "clip_id"'
+)
+
+
+def _try(srv, mutation: str) -> dict:
+    """An admin mutation's result, refused or not."""
+    response = httpx.post(
+        f"{srv.base_url}/admin/graphql",
+        json={"query": "mutation { " + mutation + " { success message code } }"},
+        headers={"X-Provisa-Role": _ROLE},
+        timeout=srv.request_timeout + 120,
+    )
+    assert response.status_code == 200, response.text
+    assert "errors" not in response.json(), response.text
+    (result,) = response.json()["data"].values()
+    return result
+
+
+def _graphql(srv, role: str, query: str) -> dict:
+    response = httpx.post(
+        f"{srv.base_url}/data/graphql",
+        json={"query": query},
+        headers={"X-Provisa-Role": role},
+        timeout=srv.request_timeout + 120,
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert not body.get("errors"), body
+    return body["data"]
+
+
+@pytest.fixture(scope="module")
+def order_clips(server, ledger):
+    """The set saved landed, and its matches built."""
+    _admin(server, f"createCodeResolver(input: {{{_RESOLVER_SET}}})")
+    refreshed = _admin(server, 'refreshMv(mvId: "view-order_clips")')
+    assert refreshed["success"], refreshed
+
+
+_FOLLOW = "{ orders(order_by: {id: asc}) { id order_clips { score clips { id region } } } }"
+
+
+def test_a_landed_code_resolver_is_followed_to_its_matches_and_the_target(server, order_clips):
+    deadline = time.monotonic() + 300
+    while True:
+        orders = _graphql(server, _ROLE, _FOLLOW)["orders"]
+        if all(o["order_clips"] for o in orders):
+            break
+        assert time.monotonic() < deadline, orders
+        time.sleep(2)
+    assert orders == [
+        {"id": 1, "order_clips": [{"score": 1.0, "clips": {"id": 1, "region": "emea"}}]},
+        {"id": 2, "order_clips": [{"score": 1.0, "clips": {"id": 2, "region": "amer"}}]},
+    ]
+
+
+def test_the_target_is_read_under_the_readers_row_rules(server, order_clips):
+    """The landed matches were built as the administrator, who reads both clips; the analyst's
+    row rule on clips (id = 1) holds at each hop (REQ-2249): the stored bridge rows are filtered
+    by the analyst's rule on each input through its relationship to the view, so order 2's match
+    (clip 2) is not served to the analyst at all (REQ-2131, amended 2026-11-16: a code-command
+    view's bridge rows are filtered by the reader's rule on each input, through its relationship).
+
+    The score is computed from the whole of each table the resolver is given (its call may read
+    any column of them), so it derives from orders.tag, which the analyst sees masked: the score
+    is masked for the analyst with that column's mask (REQ-2131, amended 2026-11-16: only an
+    output that is an input's relationship key escapes a mask elsewhere on the input). The score
+    is a Float, so the mask keeps its type and it reads as null (REQ-2131, amended 77da388aa6)."""
+    orders = _graphql(server, _ANALYST, _FOLLOW)["orders"]
+    assert orders[0]["order_clips"] == [{"score": None, "clips": {"id": 1, "region": "emea"}}]
+    assert orders[1]["order_clips"] == []
+
+
+def test_a_resolver_whose_rows_lack_a_key_is_refused_with_the_reason(server, ledger):
+    refused = _try(
+        server,
+        'createCodeResolver(input: {id: "order_regions", resolver: "match_region", '
+        'sourceTable: "orders", sourceColumn: "id", sourceMatch: "order_id", '
+        'targetTable: "clips", targetColumn: "id", targetMatch: "region_id"})',
+    )
+    assert not refused["success"]
+    assert refused["code"] == "schema.code_resolver_refused"
+    assert "its rows carry no 'region_id'" in refused["message"], refused
+
+
+def test_a_part_of_the_set_is_not_retired_apart_from_it(server, order_clips):
+    refused = _try(server, 'deleteRelationship(id: "order_clips_target")')
+    assert not refused["success"]
+    assert refused["code"] == "schema.code_resolver_part", refused
+
+
+def test_cypher_serves_the_set_as_one_edge_carrying_the_score(server, order_clips):
+    """The junction relationship is Cypher's edge from an order to its clip; the match's other
+    column is the edge's property. The bridge itself is no node."""
+    response = httpx.post(
+        f"{server.base_url}/data/cypher",
+        json={
+            "query": "MATCH (o)-[m:ORDER_CLIPS]->(c) "
+            "RETURN o.id AS order_id, m.score AS score, c.id AS clip_id ORDER BY order_id"
+        },
+        headers={"X-Provisa-Role": _ROLE},
+        timeout=server.request_timeout + 120,
+    )
+    assert response.status_code == 200, response.text
+    answer = response.json()
+    rows = [
+        tuple(r[c] for c in answer["columns"]) if isinstance(r, dict) else tuple(r)
+        for r in answer["rows"]
+    ]
+    assert rows == [(1, 1.0, 1), (2, 1.0, 2)], answer
+
+
+def test_retiring_the_set_retires_all_four_and_keeps_the_name(server, order_clips):
+    """Last in the module: it retires the set the tests above follow."""
+    retired = _admin(server, 'retireCodeResolver(id: "order_clips")')
+    assert retired["success"], retired
+    response = httpx.post(
+        f"{server.base_url}/admin/graphql",
+        json={"query": "{ relationships { id } codeResolvers { id } }"},
+        headers={"X-Provisa-Role": _ROLE},
+        timeout=server.request_timeout + 120,
+    )
+    listed = response.json()["data"]
+    assert not {"order_clips", "order_clips_matches", "order_clips_target"} & {
+        r["id"] for r in listed["relationships"]
+    }
+    assert listed["codeResolvers"] == []
+    again = _try(server, f"createCodeResolver(input: {{{_RESOLVER_SET}}})")
+    assert not again["success"], again

@@ -224,7 +224,10 @@ async def test_an_api_source_whose_document_cannot_be_read_lists_its_tables_sayi
     import provisa.openapi.exclusions as exclusions
 
     def _unreachable(path, mapping, source_id=None):
-        raise httpx.ConnectError("[Errno -3] Temporary failure in name resolution")
+        raise httpx.ConnectError(
+            "[Errno -3] Temporary failure in name resolution",
+            request=httpx.Request("GET", "https://api.example.test/openapi.json"),
+        )
 
     monkeypatch.setattr(exclusions, "load_source_spec", _unreachable)
     tables, _statements = await _listed(plane)
@@ -232,7 +235,33 @@ async def test_an_api_source_whose_document_cannot_be_read_lists_its_tables_sayi
     by_name = {t.table_name: t for t in tables}
     assert by_name["items3"].api_endpoint is None
     assert by_name["items3"].api_endpoint_error == (
-        "the API document of source 'api' could not be read: "
-        "[Errno -3] Temporary failure in name resolution"
+        "the API document of source 'api' could not be read: could not connect to GET "
+        "https://api.example.test/openapi.json ([Errno -3] Temporary failure in name resolution)"
     )
     assert by_name["t1"].api_endpoint_error is None
+
+
+@pytest.mark.asyncio
+async def test_each_table_says_when_it_was_registered(plane):
+    """REQ-413: the listing carries when each table was registered, so the discovery form can name
+    the tables registered since the run it starts from. A table registered later says so."""
+    from datetime import datetime, timedelta
+
+    from sqlalchemy import update
+
+    with plane.engine.begin() as c:
+        c.execute(
+            update(registered_tables)
+            .where(registered_tables.c.id == 2)
+            .values(created_at=registered_tables.c.created_at + timedelta(hours=1))
+        )
+        stored = {
+            r.id: r.created_at
+            for r in c.execute(select(registered_tables.c.id, registered_tables.c.created_at))
+        }
+    tables, _statements = await _listed(plane)
+    by_id = {t.id: t for t in tables}
+    assert all(datetime.fromisoformat(t.registered_at) == stored[t.id] for t in tables)
+    assert datetime.fromisoformat(by_id[2].registered_at) > datetime.fromisoformat(
+        by_id[1].registered_at
+    )

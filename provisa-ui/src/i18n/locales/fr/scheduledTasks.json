@@ -46,7 +46,7 @@
     "nextPage": "Page suivante",
     "lastPage": "Dernière page",
     "roleLabel": "S'exécute en tant que rôle",
-    "validationRoleRequired": "Un déclencheur SQL ou de commande s'exécute en tant que rôle : choisissez-en un.",
+    "validationRoleRequired": "Un déclencheur SQL ou de commande s'exécute sous un rôle : choisissez-en un.",
     "runsAs": "s'exécute en tant que {{role}}",
     "deleteTitle": "Supprimer le déclencheur « {{name}} » ?",
     "deleteConsequence": "Le déclencheur est supprimé et ne s'exécute plus.",

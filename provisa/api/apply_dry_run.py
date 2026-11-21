@@ -64,10 +64,8 @@ async def check_model_build(conn: "Connection", config: "ProvisaConfig") -> None
     columns, commands, the names table (REQ-194) and data-quality contracts. Raises what the
     build raises; publishes nothing."""
     from provisa.api.admin.db_queries import fetch_relationships, fetch_tables
-    from provisa.api._ontology_views import ONTOLOGY_TABLE_ALIAS
     from provisa.api.app import _load_build_domains, state
     from provisa.api.app_loaders import (
-        _META_TABLE_ALIAS,
         _check_fakes,
         catalog_name_for_source,
         checker_contract_targets,
@@ -75,6 +73,7 @@ async def check_model_build(conn: "Connection", config: "ProvisaConfig") -> None
         role_build_inputs,
         whole_model_context,
     )
+    from provisa.api.model_reload import registered_source_rows
     from provisa.api.app_schema_build import (
         _assert_domain_table_unique,
         _build_gql_object_columns,
@@ -90,13 +89,12 @@ async def check_model_build(conn: "Connection", config: "ProvisaConfig") -> None
     from provisa.core.repositories import metric as metric_repo
     from provisa.core.schema_org import domains as domains_t
     from provisa.core.schema_org import naming_rules as naming_rules_t
-    from provisa.core.schema_org import sources as sources_t
     from provisa.security import domain_tree
     from provisa.synthetic.datasets import as_generated, synthetic_sources
 
     await store_effective_names(conn)
     tables = as_generated(await fetch_tables(conn), await synthetic_sources(conn))
-    draft_tables = await fetch_tables(conn, draft=True)
+    withdrawn_tables = await fetch_tables(conn, withdrawn=True)
     try:
         _assert_domain_table_unique(tables)
     except RuntimeError as clash:  # the build's own type for it; a refusal of this model here
@@ -130,10 +128,7 @@ async def check_model_build(conn: "Connection", config: "ProvisaConfig") -> None
         ).fetchall()
     ]
     domains = await _load_build_domains(conn)
-    sources = {
-        r._mapping["id"]: dict(r._mapping)
-        for r in (await conn.execute_core(select(sources_t))).fetchall()
-    }
+    sources = await registered_source_rows(conn)
     source_types = {sid: row["type"] for sid, row in sources.items() if row.get("type")}
     source_catalogs = {
         **state.source_catalogs,
@@ -156,7 +151,7 @@ async def check_model_build(conn: "Connection", config: "ProvisaConfig") -> None
     )
 
     _merged_types = {**state.source_types, **source_types}
-    for _t in [*tables, *draft_tables]:
+    for _t in [*tables, *withdrawn_tables]:
         _stype = None if _t.get("view_sql") else _merged_types.get(_t["source_id"])
         _spath = None if _t.get("view_sql") else sources.get(_t["source_id"], {}).get("path")
         _t["write_ops"] = sorted(
@@ -172,9 +167,7 @@ async def check_model_build(conn: "Connection", config: "ProvisaConfig") -> None
         )
 
     physical = getattr(state, "kafka_table_physical", {})
-    column_types = introspect_tables(
-        None, tables, sources, {**_META_TABLE_ALIAS, **ONTOLOGY_TABLE_ALIAS, **(physical or {})}
-    )
+    column_types = introspect_tables(None, tables, sources)
     remote_sources = getattr(state, "graphql_remote_sources", {})
     _inject_gql_required_args(tables, remote_sources)
     object_columns = _build_gql_object_columns(remote_sources)
@@ -218,7 +211,8 @@ async def check_model_build(conn: "Connection", config: "ProvisaConfig") -> None
             rls_rules=[],
             metrics=metrics,
             field_numbers=None,
-            draft_tables=draft_tables,
+            withdrawn_tables=withdrawn_tables,  # REQ-1921
+            withdrawn_relationships=await fetch_relationships(conn, withdrawn=True),
             remote_sources=remote_sources,
         ),
     )

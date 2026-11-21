@@ -1,0 +1,491 @@
+tool: metabase
+version: v0.64.5
+captured: '2026-11-04'
+method: 'Automated: metabase/metabase:v0.64.5 through its HTTP API: setup, add the database (first sync,
+  analysis), sync_schema, then the database''s and each table''s metadata.'
+browse:
+- POST /api/database (first sync and analysis)
+- POST /api/database/:id/sync_schema
+- GET /api/database/:id/metadata
+- GET /api/table/:id/query_metadata for each table
+statements:
+- id: 1
+  protocol: simple
+  sql: SET application_name = 'Metabase v0.64.5 [48a1b74d-dd2e-42fc-8566-b124fbfad446]'
+- id: 2
+  protocol: extended
+  sql: SELECT 1
+- id: 3
+  protocol: extended
+  sql: SHOW TRANSACTION ISOLATION LEVEL
+- id: 4
+  protocol: extended
+  sql: select current_catalog
+- id: 5
+  protocol: simple
+  sql: ''
+- id: 6
+  protocol: extended
+  sql: SET SESSION CHARACTERISTICS AS TRANSACTION ISOLATION LEVEL READ UNCOMMITTED
+- id: 7
+  protocol: extended
+  sql: SET SESSION CHARACTERISTICS AS TRANSACTION ISOLATION LEVEL READ COMMITTED
+- id: 8
+  protocol: extended
+  sql: show timezone
+- id: 9
+  protocol: extended
+  sql: SELECT nspname AS "TABLE_SCHEM", current_database() AS "TABLE_CATALOG" FROM pg_catalog.pg_namespace  WHERE
+    nspname <> 'pg_toast' AND (nspname !~ '^pg_temp_'  OR nspname = (pg_catalog.current_schemas(true))[1])
+    AND (nspname !~ '^pg_toast_temp_'  OR nspname = replace((pg_catalog.current_schemas(true))[1], 'pg_temp_',
+    'pg_toast_temp_'))  ORDER BY "TABLE_SCHEM"
+- id: 10
+  protocol: extended
+  sql: |-
+    with table_privileges as (
+     select
+       NULL as role,
+       t.schemaname as schema,
+       t.objectname as table,
+       pg_catalog.has_any_column_privilege(current_user, '"' || replace(t.schemaname, '"', '""') || '"' || '.' || '"' || replace(t.objectname, '"', '""') || '"',  'update') as update,
+       pg_catalog.has_any_column_privilege(current_user, '"' || replace(t.schemaname, '"', '""') || '"' || '.' || '"' || replace(t.objectname, '"', '""') || '"',  'select') as select,
+       pg_catalog.has_any_column_privilege(current_user, '"' || replace(t.schemaname, '"', '""') || '"' || '.' || '"' || replace(t.objectname, '"', '""') || '"',  'insert') as insert,
+       pg_catalog.has_table_privilege(     current_user, '"' || replace(t.schemaname, '"', '""') || '"' || '.' || '"' || replace(t.objectname, '"', '""') || '"',  'delete') as delete
+     from (
+       select schemaname, tablename as objectname from pg_catalog.pg_tables
+       union
+       select schemaname, viewname as objectname from pg_catalog.pg_views
+       union
+       select schemaname, matviewname as objectname from pg_catalog.pg_matviews
+     ) t
+     where t.schemaname !~ '^pg_'
+       and t.schemaname <> 'information_schema'
+       and pg_catalog.has_schema_privilege(current_user, t.schemaname, 'usage')
+    )
+    select t.*
+    from table_privileges t
+- id: 11
+  protocol: extended
+  sql: SELECT "n"."nspname" AS "schema", "c"."relname" AS "name", CASE "c"."relkind" WHEN 'r' THEN 'TABLE'
+    WHEN 'p' THEN 'PARTITIONED TABLE' WHEN 'v' THEN 'VIEW' WHEN 'f' THEN 'FOREIGN TABLE' WHEN 'm' THEN
+    'MATERIALIZED VIEW' ELSE NULL END AS "type", "d"."description" AS "description", NULLIF("stat"."n_live_tup",
+    $1) AS "estimated_row_count" FROM "pg_catalog"."pg_class" AS "c" INNER JOIN "pg_catalog"."pg_namespace"
+    AS "n" ON "c"."relnamespace" = "n"."oid" LEFT JOIN "pg_catalog"."pg_description" AS "d" ON ("c"."oid"
+    = "d"."objoid") AND ("d"."objsubid" = $2) AND ("d"."classoid" = 'pg_class'::regclass) LEFT JOIN "pg_stat_user_tables"
+    AS "stat" ON ("n"."nspname" = "stat"."schemaname") AND ("c"."relname" = "stat"."relname") WHERE ("c"."relnamespace"
+    = "n"."oid") AND ("n"."nspname" !~ $3) AND ("n"."nspname" <> $4) AND c.relkind in ('r', 'p', 'v',
+    'f', 'm') AND ("n"."nspname" IN ($5, $6)) ORDER BY "type" ASC, "schema" ASC, "name" ASC
+  params:
+  - type: 20
+    value: '0'
+  - type: 20
+    value: '0'
+  - type: 1043
+    value: ^pg_
+  - type: 1043
+    value: information_schema
+  - type: 1043
+    value: conformance
+  - type: 1043
+    value: public
+- id: 12
+  protocol: extended
+  sql: SELECT nspname, typname FROM pg_type t JOIN pg_namespace n ON n.oid = t.typnamespace WHERE t.oid
+    IN (SELECT DISTINCT enumtypid FROM pg_enum e)
+- id: 13
+  protocol: simple
+  sql: BEGIN READ ONLY
+- id: 14
+  protocol: extended
+  sql: SELECT "c"."column_name" AS "name", CASE WHEN "c"."udt_schema" IN ('public', 'pg_catalog') THEN
+    FORMAT('%s', "c"."udt_name") ELSE FORMAT('"%s"."%s"', "c"."udt_schema", "c"."udt_name") END AS "database-type",
+    "c"."ordinal_position" - 1 AS "database-position", "c"."table_schema" AS "table-schema", "c"."table_name"
+    AS "table-name", "pk"."column_name" IS NOT NULL AS "pk?", COL_DESCRIPTION(CAST(CAST(FORMAT('%I.%I',
+    CAST("c"."table_schema" AS TEXT), CAST("c"."table_name" AS TEXT)) AS REGCLASS) AS OID), "c"."ordinal_position")
+    AS "field-comment", (("column_default" IS NULL) OR (LOWER("column_default") = 'null')) AND ("is_nullable"
+    = 'NO') AND NOT ((("column_default" IS NOT NULL) AND ("column_default" LIKE '%nextval(%')) OR ("is_identity"
+    <> 'NO')) AS "database-required", "column_default" AS "database-default", (("column_default" IS NOT
+    NULL) AND ("column_default" LIKE '%nextval(%')) OR ("is_identity" <> 'NO') AS "database-is-auto-increment",
+    "is_generated" = $1 AS "database-is-generated", "is_nullable" = 'YES' AS "database-is-nullable" FROM
+    "information_schema"."columns" AS "c" LEFT JOIN (SELECT "tc"."table_schema", "tc"."table_name", "kc"."column_name"
+    FROM "information_schema"."table_constraints" AS "tc" INNER JOIN "information_schema"."key_column_usage"
+    AS "kc" ON ("tc"."constraint_name" = "kc"."constraint_name") AND ("tc"."table_schema" = "kc"."table_schema")
+    AND ("tc"."table_name" = "kc"."table_name") WHERE "tc"."constraint_type" = 'PRIMARY KEY') AS "pk"
+    ON ("c"."table_schema" = "pk"."table_schema") AND ("c"."table_name" = "pk"."table_name") AND ("c"."column_name"
+    = "pk"."column_name") WHERE c.table_schema !~ '^information_schema|catalog_history|pg_' AND ("c"."table_schema"
+    IN ($2)) UNION ALL SELECT "pa"."attname" AS "name", CASE WHEN "ptn"."nspname" IN ('public', 'pg_catalog')
+    THEN FORMAT('%s', "pt"."typname") ELSE FORMAT('"%s"."%s"', "ptn"."nspname", "pt"."typname") END AS
+    "database-type", "pa"."attnum" - 1 AS "database-position", "pn"."nspname" AS "table-schema", "pc"."relname"
+    AS "table-name", FALSE AS "pk?", NULL AS "field-comment", FALSE AS "database-required", NULL AS "database-default",
+    FALSE AS "database-is-auto-increment", FALSE AS "database-is-generated", FALSE AS "database-is-nullable"
+    FROM "pg_catalog"."pg_class" AS "pc" INNER JOIN "pg_catalog"."pg_namespace" AS "pn" ON "pn"."oid"
+    = "pc"."relnamespace" INNER JOIN "pg_catalog"."pg_attribute" AS "pa" ON "pa"."attrelid" = "pc"."oid"
+    INNER JOIN "pg_catalog"."pg_type" AS "pt" ON "pt"."oid" = "pa"."atttypid" INNER JOIN "pg_catalog"."pg_namespace"
+    AS "ptn" ON "ptn"."oid" = "pt"."typnamespace" WHERE ("pc"."relkind" = 'm') AND ("pa"."attnum" >= 1)
+    AND ("pn"."nspname" IN ($3)) ORDER BY "table-schema" ASC, "table-name" ASC, "database-position" ASC
+  params:
+  - type: 1043
+    value: ALWAYS
+  - type: 1043
+    value: conformance
+  - type: 1043
+    value: conformance
+- id: 15
+  protocol: extended
+  sql: SELECT "c"."column_name" AS "name", CASE WHEN "c"."udt_schema" IN ('public', 'pg_catalog') THEN
+    FORMAT('%s', "c"."udt_name") ELSE FORMAT('"%s"."%s"', "c"."udt_schema", "c"."udt_name") END AS "database-type",
+    "c"."ordinal_position" - 1 AS "database-position", "c"."table_schema" AS "table-schema", "c"."table_name"
+    AS "table-name", "pk"."column_name" IS NOT NULL AS "pk?", COL_DESCRIPTION(CAST(CAST(FORMAT('%I.%I',
+    CAST("c"."table_schema" AS TEXT), CAST("c"."table_name" AS TEXT)) AS REGCLASS) AS OID), "c"."ordinal_position")
+    AS "field-comment", (("column_default" IS NULL) OR (LOWER("column_default") = 'null')) AND ("is_nullable"
+    = 'NO') AND NOT ((("column_default" IS NOT NULL) AND ("column_default" LIKE '%nextval(%')) OR ("is_identity"
+    <> 'NO')) AS "database-required", "column_default" AS "database-default", (("column_default" IS NOT
+    NULL) AND ("column_default" LIKE '%nextval(%')) OR ("is_identity" <> 'NO') AS "database-is-auto-increment",
+    "is_generated" = $1 AS "database-is-generated", "is_nullable" = 'YES' AS "database-is-nullable" FROM
+    "information_schema"."columns" AS "c" LEFT JOIN (SELECT "tc"."table_schema", "tc"."table_name", "kc"."column_name"
+    FROM "information_schema"."table_constraints" AS "tc" INNER JOIN "information_schema"."key_column_usage"
+    AS "kc" ON ("tc"."constraint_name" = "kc"."constraint_name") AND ("tc"."table_schema" = "kc"."table_schema")
+    AND ("tc"."table_name" = "kc"."table_name") WHERE "tc"."constraint_type" = 'PRIMARY KEY') AS "pk"
+    ON ("c"."table_schema" = "pk"."table_schema") AND ("c"."table_name" = "pk"."table_name") AND ("c"."column_name"
+    = "pk"."column_name") WHERE c.table_schema !~ '^information_schema|catalog_history|pg_' AND ("c"."table_schema"
+    IN ($2)) AND ("c"."table_name" IN ($3)) UNION ALL SELECT "pa"."attname" AS "name", CASE WHEN "ptn"."nspname"
+    IN ('public', 'pg_catalog') THEN FORMAT('%s', "pt"."typname") ELSE FORMAT('"%s"."%s"', "ptn"."nspname",
+    "pt"."typname") END AS "database-type", "pa"."attnum" - 1 AS "database-position", "pn"."nspname" AS
+    "table-schema", "pc"."relname" AS "table-name", FALSE AS "pk?", NULL AS "field-comment", FALSE AS
+    "database-required", NULL AS "database-default", FALSE AS "database-is-auto-increment", FALSE AS "database-is-generated",
+    FALSE AS "database-is-nullable" FROM "pg_catalog"."pg_class" AS "pc" INNER JOIN "pg_catalog"."pg_namespace"
+    AS "pn" ON "pn"."oid" = "pc"."relnamespace" INNER JOIN "pg_catalog"."pg_attribute" AS "pa" ON "pa"."attrelid"
+    = "pc"."oid" INNER JOIN "pg_catalog"."pg_type" AS "pt" ON "pt"."oid" = "pa"."atttypid" INNER JOIN
+    "pg_catalog"."pg_namespace" AS "ptn" ON "ptn"."oid" = "pt"."typnamespace" WHERE ("pc"."relkind" =
+    'm') AND ("pa"."attnum" >= 1) AND ("pn"."nspname" IN ($4)) AND ("pc"."relname" IN ($5)) ORDER BY "table-schema"
+    ASC, "table-name" ASC, "database-position" ASC
+  params:
+  - type: 1043
+    value: ALWAYS
+  - type: 1043
+    value: conformance
+  - type: 1043
+    value: bi_customer
+  - type: 1043
+    value: conformance
+  - type: 1043
+    value: bi_customer
+- id: 16
+  protocol: extended
+  sql: SELECT        result.TABLE_CAT AS "TABLE_CAT",        result.TABLE_SCHEM AS "TABLE_SCHEM",        result.TABLE_NAME
+    AS "TABLE_NAME",        result.COLUMN_NAME AS "COLUMN_NAME",        result.KEY_SEQ AS "KEY_SEQ",        result.PK_NAME
+    AS "PK_NAME"FROM      (SELECT current_database() AS TABLE_CAT, n.nspname AS TABLE_SCHEM,   ct.relname
+    AS TABLE_NAME, a.attname AS COLUMN_NAME,   (information_schema._pg_expandarray(con.conkey)).n AS KEY_SEQ,
+    con.conname AS PK_NAME,   information_schema._pg_expandarray(con.conkey) AS KEYS, a.attnum AS A_ATTNUM
+    FROM pg_catalog.pg_constraint con   JOIN pg_catalog.pg_class ct ON (con.conrelid = ct.oid)   JOIN
+    pg_catalog.pg_namespace n ON (ct.relnamespace = n.oid)   JOIN pg_catalog.pg_attribute a ON (a.attrelid
+    = ct.oid) WHERE con.contype = 'p'  AND n.nspname = $1 AND ct.relname = $2 ) result where  result.A_ATTNUM
+    = (result.KEYS).x  ORDER BY result.table_name, result.pk_name, result.key_seq
+  params:
+  - type: 1043
+    value: conformance
+  - type: 1043
+    value: bi_customer
+- id: 17
+  protocol: extended
+  sql: SELECT "c"."column_name" AS "name", CASE WHEN "c"."udt_schema" IN ('public', 'pg_catalog') THEN
+    FORMAT('%s', "c"."udt_name") ELSE FORMAT('"%s"."%s"', "c"."udt_schema", "c"."udt_name") END AS "database-type",
+    "c"."ordinal_position" - 1 AS "database-position", "c"."table_schema" AS "table-schema", "c"."table_name"
+    AS "table-name", "pk"."column_name" IS NOT NULL AS "pk?", COL_DESCRIPTION(CAST(CAST(FORMAT('%I.%I',
+    CAST("c"."table_schema" AS TEXT), CAST("c"."table_name" AS TEXT)) AS REGCLASS) AS OID), "c"."ordinal_position")
+    AS "field-comment", (("column_default" IS NULL) OR (LOWER("column_default") = 'null')) AND ("is_nullable"
+    = 'NO') AND NOT ((("column_default" IS NOT NULL) AND ("column_default" LIKE '%nextval(%')) OR ("is_identity"
+    <> 'NO')) AS "database-required", "column_default" AS "database-default", (("column_default" IS NOT
+    NULL) AND ("column_default" LIKE '%nextval(%')) OR ("is_identity" <> 'NO') AS "database-is-auto-increment",
+    "is_generated" = $1 AS "database-is-generated", "is_nullable" = 'YES' AS "database-is-nullable" FROM
+    "information_schema"."columns" AS "c" LEFT JOIN (SELECT "tc"."table_schema", "tc"."table_name", "kc"."column_name"
+    FROM "information_schema"."table_constraints" AS "tc" INNER JOIN "information_schema"."key_column_usage"
+    AS "kc" ON ("tc"."constraint_name" = "kc"."constraint_name") AND ("tc"."table_schema" = "kc"."table_schema")
+    AND ("tc"."table_name" = "kc"."table_name") WHERE "tc"."constraint_type" = 'PRIMARY KEY') AS "pk"
+    ON ("c"."table_schema" = "pk"."table_schema") AND ("c"."table_name" = "pk"."table_name") AND ("c"."column_name"
+    = "pk"."column_name") WHERE c.table_schema !~ '^information_schema|catalog_history|pg_' AND ("c"."table_schema"
+    IN ($2)) AND ("c"."table_name" IN ($3)) UNION ALL SELECT "pa"."attname" AS "name", CASE WHEN "ptn"."nspname"
+    IN ('public', 'pg_catalog') THEN FORMAT('%s', "pt"."typname") ELSE FORMAT('"%s"."%s"', "ptn"."nspname",
+    "pt"."typname") END AS "database-type", "pa"."attnum" - 1 AS "database-position", "pn"."nspname" AS
+    "table-schema", "pc"."relname" AS "table-name", FALSE AS "pk?", NULL AS "field-comment", FALSE AS
+    "database-required", NULL AS "database-default", FALSE AS "database-is-auto-increment", FALSE AS "database-is-generated",
+    FALSE AS "database-is-nullable" FROM "pg_catalog"."pg_class" AS "pc" INNER JOIN "pg_catalog"."pg_namespace"
+    AS "pn" ON "pn"."oid" = "pc"."relnamespace" INNER JOIN "pg_catalog"."pg_attribute" AS "pa" ON "pa"."attrelid"
+    = "pc"."oid" INNER JOIN "pg_catalog"."pg_type" AS "pt" ON "pt"."oid" = "pa"."atttypid" INNER JOIN
+    "pg_catalog"."pg_namespace" AS "ptn" ON "ptn"."oid" = "pt"."typnamespace" WHERE ("pc"."relkind" =
+    'm') AND ("pa"."attnum" >= 1) AND ("pn"."nspname" IN ($4)) AND ("pc"."relname" IN ($5)) ORDER BY "table-schema"
+    ASC, "table-name" ASC, "database-position" ASC
+  params:
+  - type: 1043
+    value: ALWAYS
+  - type: 1043
+    value: conformance
+  - type: 1043
+    value: bi_order
+  - type: 1043
+    value: conformance
+  - type: 1043
+    value: bi_order
+- id: 18
+  protocol: extended
+  sql: SELECT        result.TABLE_CAT AS "TABLE_CAT",        result.TABLE_SCHEM AS "TABLE_SCHEM",        result.TABLE_NAME
+    AS "TABLE_NAME",        result.COLUMN_NAME AS "COLUMN_NAME",        result.KEY_SEQ AS "KEY_SEQ",        result.PK_NAME
+    AS "PK_NAME"FROM      (SELECT current_database() AS TABLE_CAT, n.nspname AS TABLE_SCHEM,   ct.relname
+    AS TABLE_NAME, a.attname AS COLUMN_NAME,   (information_schema._pg_expandarray(con.conkey)).n AS KEY_SEQ,
+    con.conname AS PK_NAME,   information_schema._pg_expandarray(con.conkey) AS KEYS, a.attnum AS A_ATTNUM
+    FROM pg_catalog.pg_constraint con   JOIN pg_catalog.pg_class ct ON (con.conrelid = ct.oid)   JOIN
+    pg_catalog.pg_namespace n ON (ct.relnamespace = n.oid)   JOIN pg_catalog.pg_attribute a ON (a.attrelid
+    = ct.oid) WHERE con.contype = 'p'  AND n.nspname = $1 AND ct.relname = $2 ) result where  result.A_ATTNUM
+    = (result.KEYS).x  ORDER BY result.table_name, result.pk_name, result.key_seq
+  params:
+  - type: 1043
+    value: conformance
+  - type: 1043
+    value: bi_order
+- id: 19
+  protocol: extended
+  sql: SELECT "c"."column_name" AS "name", CASE WHEN "c"."udt_schema" IN ('public', 'pg_catalog') THEN
+    FORMAT('%s', "c"."udt_name") ELSE FORMAT('"%s"."%s"', "c"."udt_schema", "c"."udt_name") END AS "database-type",
+    "c"."ordinal_position" - 1 AS "database-position", "c"."table_schema" AS "table-schema", "c"."table_name"
+    AS "table-name", "pk"."column_name" IS NOT NULL AS "pk?", COL_DESCRIPTION(CAST(CAST(FORMAT('%I.%I',
+    CAST("c"."table_schema" AS TEXT), CAST("c"."table_name" AS TEXT)) AS REGCLASS) AS OID), "c"."ordinal_position")
+    AS "field-comment", (("column_default" IS NULL) OR (LOWER("column_default") = 'null')) AND ("is_nullable"
+    = 'NO') AND NOT ((("column_default" IS NOT NULL) AND ("column_default" LIKE '%nextval(%')) OR ("is_identity"
+    <> 'NO')) AS "database-required", "column_default" AS "database-default", (("column_default" IS NOT
+    NULL) AND ("column_default" LIKE '%nextval(%')) OR ("is_identity" <> 'NO') AS "database-is-auto-increment",
+    "is_generated" = $1 AS "database-is-generated", "is_nullable" = 'YES' AS "database-is-nullable" FROM
+    "information_schema"."columns" AS "c" LEFT JOIN (SELECT "tc"."table_schema", "tc"."table_name", "kc"."column_name"
+    FROM "information_schema"."table_constraints" AS "tc" INNER JOIN "information_schema"."key_column_usage"
+    AS "kc" ON ("tc"."constraint_name" = "kc"."constraint_name") AND ("tc"."table_schema" = "kc"."table_schema")
+    AND ("tc"."table_name" = "kc"."table_name") WHERE "tc"."constraint_type" = 'PRIMARY KEY') AS "pk"
+    ON ("c"."table_schema" = "pk"."table_schema") AND ("c"."table_name" = "pk"."table_name") AND ("c"."column_name"
+    = "pk"."column_name") WHERE c.table_schema !~ '^information_schema|catalog_history|pg_' AND ("c"."table_schema"
+    IN ($2)) AND ("c"."table_name" IN ($3)) UNION ALL SELECT "pa"."attname" AS "name", CASE WHEN "ptn"."nspname"
+    IN ('public', 'pg_catalog') THEN FORMAT('%s', "pt"."typname") ELSE FORMAT('"%s"."%s"', "ptn"."nspname",
+    "pt"."typname") END AS "database-type", "pa"."attnum" - 1 AS "database-position", "pn"."nspname" AS
+    "table-schema", "pc"."relname" AS "table-name", FALSE AS "pk?", NULL AS "field-comment", FALSE AS
+    "database-required", NULL AS "database-default", FALSE AS "database-is-auto-increment", FALSE AS "database-is-generated",
+    FALSE AS "database-is-nullable" FROM "pg_catalog"."pg_class" AS "pc" INNER JOIN "pg_catalog"."pg_namespace"
+    AS "pn" ON "pn"."oid" = "pc"."relnamespace" INNER JOIN "pg_catalog"."pg_attribute" AS "pa" ON "pa"."attrelid"
+    = "pc"."oid" INNER JOIN "pg_catalog"."pg_type" AS "pt" ON "pt"."oid" = "pa"."atttypid" INNER JOIN
+    "pg_catalog"."pg_namespace" AS "ptn" ON "ptn"."oid" = "pt"."typnamespace" WHERE ("pc"."relkind" =
+    'm') AND ("pa"."attnum" >= 1) AND ("pn"."nspname" IN ($4)) AND ("pc"."relname" IN ($5)) ORDER BY "table-schema"
+    ASC, "table-name" ASC, "database-position" ASC
+  params:
+  - type: 1043
+    value: ALWAYS
+  - type: 1043
+    value: conformance
+  - type: 1043
+    value: probe_identity
+  - type: 1043
+    value: conformance
+  - type: 1043
+    value: probe_identity
+- id: 20
+  protocol: extended
+  sql: SELECT        result.TABLE_CAT AS "TABLE_CAT",        result.TABLE_SCHEM AS "TABLE_SCHEM",        result.TABLE_NAME
+    AS "TABLE_NAME",        result.COLUMN_NAME AS "COLUMN_NAME",        result.KEY_SEQ AS "KEY_SEQ",        result.PK_NAME
+    AS "PK_NAME"FROM      (SELECT current_database() AS TABLE_CAT, n.nspname AS TABLE_SCHEM,   ct.relname
+    AS TABLE_NAME, a.attname AS COLUMN_NAME,   (information_schema._pg_expandarray(con.conkey)).n AS KEY_SEQ,
+    con.conname AS PK_NAME,   information_schema._pg_expandarray(con.conkey) AS KEYS, a.attnum AS A_ATTNUM
+    FROM pg_catalog.pg_constraint con   JOIN pg_catalog.pg_class ct ON (con.conrelid = ct.oid)   JOIN
+    pg_catalog.pg_namespace n ON (ct.relnamespace = n.oid)   JOIN pg_catalog.pg_attribute a ON (a.attrelid
+    = ct.oid) WHERE con.contype = 'p'  AND n.nspname = $1 AND ct.relname = $2 ) result where  result.A_ATTNUM
+    = (result.KEYS).x  ORDER BY result.table_name, result.pk_name, result.key_seq
+  params:
+  - type: 1043
+    value: conformance
+  - type: 1043
+    value: probe_identity
+- id: 21
+  protocol: extended
+  sql: ROLLBACK
+- id: 22
+  protocol: extended
+  sql: SELECT "c"."column_name" AS "name", CASE WHEN "c"."udt_schema" IN ('public', 'pg_catalog') THEN
+    FORMAT('%s', "c"."udt_name") ELSE FORMAT('"%s"."%s"', "c"."udt_schema", "c"."udt_name") END AS "database-type",
+    "c"."ordinal_position" - 1 AS "database-position", "c"."table_schema" AS "table-schema", "c"."table_name"
+    AS "table-name", "pk"."column_name" IS NOT NULL AS "pk?", COL_DESCRIPTION(CAST(CAST(FORMAT('%I.%I',
+    CAST("c"."table_schema" AS TEXT), CAST("c"."table_name" AS TEXT)) AS REGCLASS) AS OID), "c"."ordinal_position")
+    AS "field-comment", (("column_default" IS NULL) OR (LOWER("column_default") = 'null')) AND ("is_nullable"
+    = 'NO') AND NOT ((("column_default" IS NOT NULL) AND ("column_default" LIKE '%nextval(%')) OR ("is_identity"
+    <> 'NO')) AS "database-required", "column_default" AS "database-default", (("column_default" IS NOT
+    NULL) AND ("column_default" LIKE '%nextval(%')) OR ("is_identity" <> 'NO') AS "database-is-auto-increment",
+    "is_generated" = $1 AS "database-is-generated", "is_nullable" = 'YES' AS "database-is-nullable" FROM
+    "information_schema"."columns" AS "c" LEFT JOIN (SELECT "tc"."table_schema", "tc"."table_name", "kc"."column_name"
+    FROM "information_schema"."table_constraints" AS "tc" INNER JOIN "information_schema"."key_column_usage"
+    AS "kc" ON ("tc"."constraint_name" = "kc"."constraint_name") AND ("tc"."table_schema" = "kc"."table_schema")
+    AND ("tc"."table_name" = "kc"."table_name") WHERE "tc"."constraint_type" = 'PRIMARY KEY') AS "pk"
+    ON ("c"."table_schema" = "pk"."table_schema") AND ("c"."table_name" = "pk"."table_name") AND ("c"."column_name"
+    = "pk"."column_name") WHERE c.table_schema !~ '^information_schema|catalog_history|pg_' AND ("c"."table_schema"
+    IN ($2)) AND ("c"."table_name" IN ($3)) UNION ALL SELECT "pa"."attname" AS "name", CASE WHEN "ptn"."nspname"
+    IN ('public', 'pg_catalog') THEN FORMAT('%s', "pt"."typname") ELSE FORMAT('"%s"."%s"', "ptn"."nspname",
+    "pt"."typname") END AS "database-type", "pa"."attnum" - 1 AS "database-position", "pn"."nspname" AS
+    "table-schema", "pc"."relname" AS "table-name", FALSE AS "pk?", NULL AS "field-comment", FALSE AS
+    "database-required", NULL AS "database-default", FALSE AS "database-is-auto-increment", FALSE AS "database-is-generated",
+    FALSE AS "database-is-nullable" FROM "pg_catalog"."pg_class" AS "pc" INNER JOIN "pg_catalog"."pg_namespace"
+    AS "pn" ON "pn"."oid" = "pc"."relnamespace" INNER JOIN "pg_catalog"."pg_attribute" AS "pa" ON "pa"."attrelid"
+    = "pc"."oid" INNER JOIN "pg_catalog"."pg_type" AS "pt" ON "pt"."oid" = "pa"."atttypid" INNER JOIN
+    "pg_catalog"."pg_namespace" AS "ptn" ON "ptn"."oid" = "pt"."typnamespace" WHERE ("pc"."relkind" =
+    'm') AND ("pa"."attnum" >= 1) AND ("pn"."nspname" IN ($4)) AND ("pc"."relname" IN ($5)) ORDER BY "table-schema"
+    ASC, "table-name" ASC, "database-position" ASC
+  params:
+  - type: 1043
+    value: ALWAYS
+  - type: 1043
+    value: conformance
+  - type: 1043
+    value: types_fixture
+  - type: 1043
+    value: conformance
+  - type: 1043
+    value: types_fixture
+- id: 23
+  protocol: extended
+  sql: SELECT        result.TABLE_CAT AS "TABLE_CAT",        result.TABLE_SCHEM AS "TABLE_SCHEM",        result.TABLE_NAME
+    AS "TABLE_NAME",        result.COLUMN_NAME AS "COLUMN_NAME",        result.KEY_SEQ AS "KEY_SEQ",        result.PK_NAME
+    AS "PK_NAME"FROM      (SELECT current_database() AS TABLE_CAT, n.nspname AS TABLE_SCHEM,   ct.relname
+    AS TABLE_NAME, a.attname AS COLUMN_NAME,   (information_schema._pg_expandarray(con.conkey)).n AS KEY_SEQ,
+    con.conname AS PK_NAME,   information_schema._pg_expandarray(con.conkey) AS KEYS, a.attnum AS A_ATTNUM
+    FROM pg_catalog.pg_constraint con   JOIN pg_catalog.pg_class ct ON (con.conrelid = ct.oid)   JOIN
+    pg_catalog.pg_namespace n ON (ct.relnamespace = n.oid)   JOIN pg_catalog.pg_attribute a ON (a.attrelid
+    = ct.oid) WHERE con.contype = 'p'  AND n.nspname = $1 AND ct.relname = $2 ) result where  result.A_ATTNUM
+    = (result.KEYS).x  ORDER BY result.table_name, result.pk_name, result.key_seq
+  params:
+  - type: 1043
+    value: conformance
+  - type: 1043
+    value: types_fixture
+- id: 24
+  protocol: extended
+  sql: SELECT CASE WHEN 50000 < LENGTH(CAST("conformance"."types_fixture"."c_jsonb" AS TEXT)) THEN NULL
+    ELSE "conformance"."types_fixture"."c_jsonb" END AS "c_jsonb", CASE WHEN 50000 < LENGTH(CAST("conformance"."types_fixture"."c_json"
+    AS TEXT)) THEN NULL ELSE "conformance"."types_fixture"."c_json" END AS "c_json" FROM "conformance"."types_fixture"
+    LIMIT 500
+- id: 25
+  protocol: extended
+  sql: SELECT "fk_ns"."nspname" AS "fk-table-schema", "fk_table"."relname" AS "fk-table-name", "fk_column"."attname"
+    AS "fk-column-name", "pk_ns"."nspname" AS "pk-table-schema", "pk_table"."relname" AS "pk-table-name",
+    "pk_column"."attname" AS "pk-column-name" FROM "pg_constraint" AS "c" INNER JOIN "pg_class" AS "fk_table"
+    ON "c"."conrelid" = "fk_table"."oid" INNER JOIN "pg_namespace" AS "fk_ns" ON "c"."connamespace" =
+    "fk_ns"."oid" INNER JOIN "pg_attribute" AS "fk_column" ON "c"."conrelid" = "fk_column"."attrelid"
+    INNER JOIN "pg_class" AS "pk_table" ON "c"."confrelid" = "pk_table"."oid" INNER JOIN "pg_namespace"
+    AS "pk_ns" ON "pk_table"."relnamespace" = "pk_ns"."oid" INNER JOIN "pg_attribute" AS "pk_column" ON
+    "c"."confrelid" = "pk_column"."attrelid" WHERE fk_ns.nspname !~ '^information_schema|catalog_history|pg_'
+    AND ("c"."contype" = 'f'::char) AND ("fk_column"."attnum" = ANY(c.conkey)) AND ("pk_column"."attnum"
+    = ANY(c.confkey)) AND ("fk_ns"."nspname" IN ($1)) ORDER BY "fk-table-schema" ASC, "fk-table-name"
+    ASC
+  params:
+  - type: 1043
+    value: conformance
+- id: 26
+  protocol: extended
+  sql: |-
+    -- Metabase
+    SELECT "conformance"."bi_customer"."id" AS "id", SUBSTRING("conformance"."bi_customer"."name", 1, 1234) AS "substring1859", SUBSTRING("conformance"."bi_customer"."region", 1, 1234) AS "substring1860" FROM "conformance"."bi_customer" LIMIT 10000
+- id: 27
+  protocol: extended
+  sql: SELECT c.oid, a.attnum, a.attname, c.relname, n.nspname, a.attnotnull OR (t.typtype = 'd' AND t.typnotnull),
+    a.attidentity != '' OR pg_catalog.pg_get_expr(d.adbin, d.adrelid) LIKE '%nextval(%' FROM pg_catalog.pg_class
+    c JOIN pg_catalog.pg_namespace n ON (c.relnamespace = n.oid) JOIN pg_catalog.pg_attribute a ON (c.oid
+    = a.attrelid) JOIN pg_catalog.pg_type t ON (a.atttypid = t.oid) LEFT JOIN pg_catalog.pg_attrdef d
+    ON (d.adrelid = a.attrelid AND d.adnum = a.attnum) JOIN (SELECT {{oid:pg_class:conformance.bi_customer}}
+    AS oid , 1 AS attnum) vals ON (c.oid = vals.oid AND a.attnum = vals.attnum) where c.oid in ({{oid:pg_class:conformance.bi_customer}})
+- id: 28
+  protocol: extended
+  sql: |-
+    -- Metabase
+    SELECT "conformance"."bi_order"."id" AS "id", "conformance"."bi_order"."customer_id" AS "customer_id", "conformance"."bi_order"."total" AS "total", "conformance"."bi_order"."placed" AS "placed" FROM "conformance"."bi_order" LIMIT 10000
+- id: 29
+  protocol: extended
+  sql: SELECT c.oid, a.attnum, a.attname, c.relname, n.nspname, a.attnotnull OR (t.typtype = 'd' AND t.typnotnull),
+    a.attidentity != '' OR pg_catalog.pg_get_expr(d.adbin, d.adrelid) LIKE '%nextval(%' FROM pg_catalog.pg_class
+    c JOIN pg_catalog.pg_namespace n ON (c.relnamespace = n.oid) JOIN pg_catalog.pg_attribute a ON (c.oid
+    = a.attrelid) JOIN pg_catalog.pg_type t ON (a.atttypid = t.oid) LEFT JOIN pg_catalog.pg_attrdef d
+    ON (d.adrelid = a.attrelid AND d.adnum = a.attnum) JOIN (SELECT {{oid:pg_class:conformance.bi_order}}
+    AS oid , 1 AS attnum UNION ALL SELECT {{oid:pg_class:conformance.bi_order}}, 2 UNION ALL SELECT {{oid:pg_class:conformance.bi_order}},
+    3 UNION ALL SELECT {{oid:pg_class:conformance.bi_order}}, 4) vals ON (c.oid = vals.oid AND a.attnum
+    = vals.attnum) where c.oid in ({{oid:pg_class:conformance.bi_order}})
+- id: 30
+  protocol: extended
+  sql: |-
+    -- Metabase
+    SELECT "conformance"."probe_identity"."id" AS "id", SUBSTRING("conformance"."probe_identity"."note", 1, 1234) AS "substring1950" FROM "conformance"."probe_identity" LIMIT 10000
+- id: 31
+  protocol: extended
+  sql: SELECT c.oid, a.attnum, a.attname, c.relname, n.nspname, a.attnotnull OR (t.typtype = 'd' AND t.typnotnull),
+    a.attidentity != '' OR pg_catalog.pg_get_expr(d.adbin, d.adrelid) LIKE '%nextval(%' FROM pg_catalog.pg_class
+    c JOIN pg_catalog.pg_namespace n ON (c.relnamespace = n.oid) JOIN pg_catalog.pg_attribute a ON (c.oid
+    = a.attrelid) JOIN pg_catalog.pg_type t ON (a.atttypid = t.oid) LEFT JOIN pg_catalog.pg_attrdef d
+    ON (d.adrelid = a.attrelid AND d.adnum = a.attnum) JOIN (SELECT {{oid:pg_class:conformance.probe_identity}}
+    AS oid , 1 AS attnum) vals ON (c.oid = vals.oid AND a.attnum = vals.attnum) where c.oid in ({{oid:pg_class:conformance.probe_identity}})
+- id: 32
+  protocol: extended
+  sql: "-- Metabase\nSELECT \"conformance\".\"types_fixture\".\"c_bool\" AS \"c_bool\", SUBSTRING((\"\
+    conformance\".\"types_fixture\".\"c_jsonb\"#>> (array[$1]::text[]))::text, 1, 1234) AS \"substring1977\"\
+    , SUBSTRING((\"conformance\".\"types_fixture\".\"c_json\"#>> (array[$2]::text[]))::text, 1, 1234)\
+    \ AS \"substring1978\", (\"conformance\".\"types_fixture\".\"c_jsonb\"#>> (array[$3]::text[]))::decimal\
+    \ AS \"c_jsonb \u2192 n\", (\"conformance\".\"types_fixture\".\"c_json\"#>> (array[$4]::text[]))::decimal\
+    \ AS \"c_json \u2192 n\", \"conformance\".\"types_fixture\".\"c_int2\" AS \"c_int2\", \"conformance\"\
+    .\"types_fixture\".\"c_int4\" AS \"c_int4\", \"conformance\".\"types_fixture\".\"c_int8\" AS \"c_int8\"\
+    , \"conformance\".\"types_fixture\".\"c_float4\" AS \"c_float4\", \"conformance\".\"types_fixture\"\
+    .\"c_float8\" AS \"c_float8\", \"conformance\".\"types_fixture\".\"c_numeric\" AS \"c_numeric\", \"\
+    conformance\".\"types_fixture\".\"c_numeric_10_2\" AS \"c_numeric_10_2\", SUBSTRING(\"conformance\"\
+    .\"types_fixture\".\"c_text\", 1, 1234) AS \"substring1979\", SUBSTRING(\"conformance\".\"types_fixture\"\
+    .\"c_varchar\", 1, 1234) AS \"substring1980\", SUBSTRING(\"conformance\".\"types_fixture\".\"c_varchar_20\"\
+    , 1, 1234) AS \"substring1981\", SUBSTRING(\"conformance\".\"types_fixture\".\"c_bpchar_5\", 1, 1234)\
+    \ AS \"substring1982\", \"conformance\".\"types_fixture\".\"c_date\" AS \"c_date\", \"conformance\"\
+    .\"types_fixture\".\"c_time\" AS \"c_time\", \"conformance\".\"types_fixture\".\"c_timetz\" AS \"\
+    c_timetz\", \"conformance\".\"types_fixture\".\"c_timestamp\" AS \"c_timestamp\", \"conformance\"\
+    .\"types_fixture\".\"c_timestamptz\" AS \"c_timestamptz\", \"conformance\".\"types_fixture\".\"c_uuid\"\
+    \ AS \"c_uuid\", \"conformance\".\"types_fixture\".\"c_inet\" AS \"c_inet\", \"conformance\".\"types_fixture\"\
+    .\"c_money\"::numeric AS \"c_money\" FROM \"conformance\".\"types_fixture\" LIMIT 10000"
+  params:
+  - type: 1043
+    value: key
+  - type: 1043
+    value: key
+  - type: 1043
+    value: n
+  - type: 1043
+    value: n
+- id: 33
+  protocol: extended
+  sql: SELECT c.oid, a.attnum, a.attname, c.relname, n.nspname, a.attnotnull OR (t.typtype = 'd' AND t.typnotnull),
+    a.attidentity != '' OR pg_catalog.pg_get_expr(d.adbin, d.adrelid) LIKE '%nextval(%' FROM pg_catalog.pg_class
+    c JOIN pg_catalog.pg_namespace n ON (c.relnamespace = n.oid) JOIN pg_catalog.pg_attribute a ON (c.oid
+    = a.attrelid) JOIN pg_catalog.pg_type t ON (a.atttypid = t.oid) LEFT JOIN pg_catalog.pg_attrdef d
+    ON (d.adrelid = a.attrelid AND d.adnum = a.attnum) JOIN (SELECT {{oid:pg_class:conformance.types_fixture}}
+    AS oid , 1 AS attnum UNION ALL SELECT {{oid:pg_class:conformance.types_fixture}}, 2 UNION ALL SELECT
+    {{oid:pg_class:conformance.types_fixture}}, 3 UNION ALL SELECT {{oid:pg_class:conformance.types_fixture}},
+    4 UNION ALL SELECT {{oid:pg_class:conformance.types_fixture}}, 5 UNION ALL SELECT {{oid:pg_class:conformance.types_fixture}},
+    6 UNION ALL SELECT {{oid:pg_class:conformance.types_fixture}}, 7 UNION ALL SELECT {{oid:pg_class:conformance.types_fixture}},
+    8 UNION ALL SELECT {{oid:pg_class:conformance.types_fixture}}, 14 UNION ALL SELECT {{oid:pg_class:conformance.types_fixture}},
+    15 UNION ALL SELECT {{oid:pg_class:conformance.types_fixture}}, 16 UNION ALL SELECT {{oid:pg_class:conformance.types_fixture}},
+    17 UNION ALL SELECT {{oid:pg_class:conformance.types_fixture}}, 18 UNION ALL SELECT {{oid:pg_class:conformance.types_fixture}},
+    20 UNION ALL SELECT {{oid:pg_class:conformance.types_fixture}}, 23) vals ON (c.oid = vals.oid AND
+    a.attnum = vals.attnum) where c.oid in ({{oid:pg_class:conformance.types_fixture}})
+- id: 34
+  protocol: extended
+  sql: SELECT n.nspname = ANY(current_schemas(true)), n.nspname, t.typname FROM pg_catalog.pg_type t JOIN
+    pg_catalog.pg_namespace n ON t.typnamespace = n.oid WHERE t.oid = $1
+  params:
+  - type: 23
+    value: '869'
+- id: 35
+  protocol: extended
+  sql: SELECT typinput='pg_catalog.array_in'::regproc as is_array, typtype, typname, pg_type.oid   FROM
+    pg_catalog.pg_type   LEFT JOIN (select ns.oid as nspoid, ns.nspname, r.r           from pg_namespace
+    as ns           join ( select s.r, (current_schemas(false))[s.r] as nspname                    from
+    generate_series(1, array_upper(current_schemas(false), 1)) as s(r) ) as r          using ( nspname
+    )        ) as sp     ON sp.nspoid = typnamespace  WHERE pg_type.oid = $1  ORDER BY sp.r, pg_type.oid
+    DESC
+  params:
+  - type: 20
+    value: '869'
+- id: 36
+  protocol: extended
+  sql: |-
+    -- Metabase
+    SELECT SUBSTRING("conformance"."probe_identity"."note", 1, 1234) AS "substring2496" FROM "conformance"."probe_identity" LIMIT 10000

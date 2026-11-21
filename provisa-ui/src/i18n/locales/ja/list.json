@@ -19,6 +19,14 @@
     "bulkRefused_other": "{{count}} 件は削除されませんでした:",
     "dismiss": "閉じる",
     "duplicate": "複製",
-    "duplicateNamed": "{{name}} を複製"
+    "duplicateNamed": "{{name}} を複製",
+    "withdraw": "取り下げ",
+    "withdrawNamed": "{{name}} を取り下げ",
+    "withdrawTitle": "{{name}} を取り下げますか？",
+    "putBack": "戻す",
+    "putBackNamed": "{{name}} を戻す",
+    "putBackTitle": "{{name}} を戻す",
+    "putBackRegionHint": "戻す先のリージョン。あなたのデータレジデンシー権限が対象とするものです。",
+    "putBackNoRegion": "あなたのロールのデータレジデンシー権限は、戻す先となるリージョンを対象としていません。戻す先のリージョンのデータレジデンシーを持つ人が戻します。"
   }
 }

@@ -48,11 +48,11 @@ import {
   pickSchemaAndTable,
   submitRegister,
   runSqlOnPage,
-  releaseDraftTables,
+  expectRegisteredLive,
   setSourceCacheTtl,
   submitSourceAndExpectListed,
   FORM_FIELD,
-  removeTestSources,
+  retireTestSourcesTables,
 } from "./source-to-query-helpers";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
@@ -93,8 +93,11 @@ test.describe("source to query through the UI: hiveserver2 (REQ-1731)", () => {
   });
 
   test.afterAll(async () => {
-    await removeTestSources();
-    provision("down", ["hiveserver2"]);
+    try {
+      await retireTestSourcesTables();
+    } finally {
+      provision("down", ["hiveserver2"]);
+    }
   });
 
   test("hiveserver2: add the source, register a table, query it on the SQL page", async ({
@@ -137,7 +140,7 @@ test.describe("source to query through the UI: hiveserver2 (REQ-1731)", () => {
     const row = page.locator(".data-table tbody tr").filter({ hasText: sourceId }).first();
     await expect(row).toBeVisible({ timeout: 120000 });
     // REQ-1921: registered through the admin, it starts as draft; released, it is read.
-    await releaseDraftTables(page, { sourceId });
+    await expectRegisteredLive(page, { sourceId });
     const res = await page.request.post("/admin/graphql", {
       data: { query: "{ tables { sourceId dqDataset } }" },
     });

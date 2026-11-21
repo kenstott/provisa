@@ -63,6 +63,26 @@ def rows_of(batches: Iterable[pa.RecordBatch]) -> Iterator[dict]:
         yield from batch.to_pylist()
 
 
+class BatchRows:
+    """An engine's Arrow batches read as row dicts, lazily (:func:`rows_of`), which still hands
+    over the batches themselves: a check run in a process of its own (REQ-2133) is sent them as
+    they are, never through row dicts. One pass, as a generator is."""
+
+    def __init__(self, batches: Iterable[pa.RecordBatch]) -> None:
+        self._batches = iter(batches)
+        self._rows = rows_of(self._batches)
+
+    def __iter__(self) -> Iterator[dict]:
+        return self._rows
+
+    def __next__(self) -> dict:
+        return next(self._rows)
+
+    def batches(self) -> Iterator[pa.RecordBatch]:
+        """The batches no row has been read from yet."""
+        return self._batches
+
+
 def arrow_encode(
     rows: Iterable[dict],
     *,

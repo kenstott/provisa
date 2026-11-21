@@ -194,7 +194,7 @@
       },
       "hot_threshold": {
         "label": "Soglia di tabella attiva",
-        "help": "Quante istruzioni governate una tabella deve ricevere nella finestra di tabella attiva prima di essere replicata, perché le letture successive arrivino dalla sua replica."
+        "help": "Quante istruzioni governate una tabella deve ricevere nella finestra delle tabelle attive prima di essere replicata, così le letture successive provengono dalla sua replica."
       },
       "hot_interval": {
         "label": "Finestra di tabella attiva",
@@ -247,8 +247,8 @@
         }
       },
       "role_grant_notice_days": {
-        "label": "Avviso prima della fine di un'assegnazione di ruolo o delle sue voci",
-        "help": "Quanti giorni prima che termini un'assegnazione di ruolo, o una delle sue voci di autorizzazione, o che l'assegnazione venga rimossa per inutilizzo, il titolare e gli amministratori dell'organizzazione ricevono un'email."
+        "label": "Preavviso prima della scadenza di una concessione di ruolo o delle sue voci",
+        "help": "Quanti giorni prima che scada una concessione di ruolo, o una sua voce di diritto, o che la concessione venga rimossa per inutilizzo, il titolare e gli amministratori dell'organizzazione ricevono un'email."
       }
     },
     "server": {
@@ -598,7 +598,7 @@
       },
       "principal": {
         "label": "Principal locale MCP",
-        "help": "Il principal (id utente) per cui agiscono le chiamate MCP locali (stdio), accanto al ruolo locale; i diritti di quella persona restringono il ruolo. Finché non è impostato, quelle chiamate vengono rifiutate. Protetto perché chiunque possa avviare il client locale agisce con l'accesso di quella persona."
+        "help": "Il principal (ID utente) per cui agiscono le chiamate MCP locali (stdio), accanto al ruolo locale; i diritti di quella persona restringono il ruolo. Finché non è impostato, quelle chiamate vengono rifiutate. Protetto perché agisce con l'accesso di quella persona per chiunque possa avviare il client locale."
       },
       "tools": {
         "label": "Strumenti MCP elencati",
@@ -683,7 +683,7 @@
     "logs": {
       "allowed_roots": {
         "label": "Directory da cui si possono leggere i file di log",
-        "help": "Le directory in cui possono trovarsi i file di una sorgente Logs, una volta seguiti i loro collegamenti; per impostazione predefinita /var/log. Aggiungerne una, come ~/Library/Logs, per leggere in tabelle i file del server che contiene. Un server di molte organizzazioni non legge alcun file di log proprio, qualunque cosa dica questa impostazione."
+        "help": "Le directory in cui possono trovarsi i file di un'origine Logs, una volta seguiti i link; per impostazione predefinita /var/log. Aggiungerne una, come ~/Library/Logs, per leggere in tabelle i file propri del server al suo interno. Un'organizzazione sandbox, e su un server con molte organizzazioni ogni organizzazione tranne quella del deployment, non legge alcun file proprio del server fuori dalla propria cartella, tranne quelli nominati dalle origini della sua demo, indipendentemente da questa impostazione."
       },
       "preview_lines": {
         "label": "Righe lette per trovare le colonne di un log",
@@ -711,7 +711,7 @@
       },
       "download_roots": {
         "label": "Directory da cui si possono scaricare i file delle sorgenti",
-        "help": "Le directory da cui il file di una sorgente CSV o Parquet può essere scaricato tramite il suo percorso su questo server, dopo averne seguito i link; nessuna per impostazione predefinita. Aggiungine una per permettere a uno steward di copiare un file al suo interno nella cartella dell'organizzazione. Un server di molte organizzazioni non copia alcun file proprio, qualunque cosa dica questa impostazione."
+        "help": "Le directory da cui il file di un'origine CSV o Parquet può essere scaricato tramite il suo percorso su questo server, una volta seguiti i link; nessuna per impostazione predefinita. Aggiungerne una per consentire a uno steward di copiare un file al suo interno nella cartella dell'organizzazione. Un'organizzazione sandbox, e su un server con molte organizzazioni ogni organizzazione tranne quella del deployment, non copia alcun file proprio del server fuori dalla propria cartella, tranne quelli nominati dalle origini della sua demo, indipendentemente da questa impostazione."
       }
     },
     "polly": {
@@ -814,7 +814,7 @@
     "graph": {
       "depth_limit": {
         "label": "Percorso del grafo più profondo",
-        "help": "Il numero massimo di salti percorsi da un percorso Cypher a lunghezza variabile o da un percorso di proprietà SPARQL quando la query non fissa un proprio limite. Un risultato troncato a questa profondità lo segnala."
+        "help": "Il numero massimo di salti percorsi da un percorso Cypher a lunghezza variabile o da un property path SPARQL quando la query non imposta un proprio limite. Un percorso Cypher non ripete alcuna relazione e, se andasse oltre, fallisce con un errore esplicito; un risultato SPARQL troncato a questa profondità indica di essere stato troncato. Molto grande per impostazione predefinita (1000)."
       },
       "union_limit": {
         "label": "Numero massimo di predicati coperti da un predicato variabile",
@@ -837,6 +837,10 @@
       "health_poll_interval": {
         "label": "Intervallo di polling dello stato del connettore",
         "help": "Ogni quanto ogni processo Provisa chiede all'host di un connettore il suo stato e mostra il risultato sulla sorgente. Un host riavviato viene rilevato al polling successivo, che esegue di nuovo la sua funzione on-start."
+      },
+      "worker_idle_timeout": {
+        "label": "Timeout di inattività dei worker di codice",
+        "help": "Per quanto tempo il worker di una sorgente di codice, o il worker di preflight di un'organizzazione, può restare inutilizzato prima che Provisa ne termini il processo. La chiamata successiva ne avvia uno nuovo."
       }
     },
     "config": {
@@ -867,6 +871,30 @@
       "default_ttl": {
         "label": "Durata predefinita delle viste materializzate",
         "help": "Per quanto tempo una vista materializzata viene usata prima di essere aggiornata, quando non fissa una durata propria. Richiede un riavvio."
+      }
+    },
+    "parameters": {
+      "max_calls_per_statement": {
+        "label": "Chiamate per istruzione a una tabella parametrizzata",
+        "help": "Il numero massimo di chiamate che un'istruzione fa a una tabella parametrizzata. Ogni valore che un'istruzione dà a un parametro è una chiamata alla sorgente: ogni valore di una lista IN, ogni ramo di un OR, ogni chiave distinta di un join. Un'istruzione che ne richiede di più viene rifiutata."
+      }
+    },
+    "embedding": {
+      "hub_endpoint": {
+        "label": "Indirizzo dell'hub Hugging Face",
+        "help": "L'hub Hugging Face da cui viene scaricato un modello di embedding locale, ad esempio un mirror all'interno della tua rete. Si applica al prossimo download di un modello."
+      }
+    },
+    "subscriptions": {
+      "max_sinks_per_principal": {
+        "label": "Sink Kafka in esecuzione per persona",
+        "help": "Quanti sink Kafka una persona può avere in esecuzione contemporaneamente. Una richiesta di avviarne un altro viene rifiutata finché uno dei suoi non si ferma."
+      }
+    },
+    "sparql": {
+      "query_timeout": {
+        "label": "Timeout delle query SPARQL",
+        "help": "Per quanto tempo una query SPARQL può essere eseguita prima di essere abbandonata: un'anteprima, una ricerca di classi Wikidata e ogni caricamento della replica di una tabella SPARQL. Un endpoint pubblico può interrompere una query prima per un proprio limite (quello di Wikidata è 60 secondi)."
       }
     }
   }

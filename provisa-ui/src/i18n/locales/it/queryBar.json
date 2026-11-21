@@ -1,6 +1,6 @@
 {
   "queryBar": {
-    "autoImputeOn": "Imputazione automatica delle relazioni ATTIVA — fai clic per disabilitare",
+    "autoImputeOn": "L'inferenza automatica delle relazioni è attiva. Fare clic per disattivarla.",
     "autoImputeOff": "Imputa automaticamente le relazioni tra i nodi visibili",
     "run": "Esegui query (⌘↵)",
     "clear": "Cancella query"

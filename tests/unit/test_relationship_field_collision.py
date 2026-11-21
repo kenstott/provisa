@@ -82,3 +82,15 @@ def test_each_with_its_own_graphql_alias_is_a_field():
     ctx = build_context(_input(**{"to-referrer": "referrer", "to-referred": "referred"}))
     fields = {field for (_type, field) in ctx.joins}
     assert {"referrer", "referred"} <= fields
+
+
+def test_a_relationship_named_for_a_column_is_refused_naming_it():
+    """REQ-1929: a relationship never hides a column. An alias that is a column's field is
+    refused at schema build, naming the relationship, rather than replacing the column."""
+    from provisa.compiler.context import RelationshipHidesColumn
+
+    si = _input(**{"to-referrer": "referred_id", "to-referred": "referred"})
+    with pytest.raises(RelationshipHidesColumn) as err:
+        build_context(si)
+    assert (err.value.field, err.value.refused) == ("referred_id", "to-referrer")
+    assert "to-referrer" in str(err.value) and "referred_id" in str(err.value)

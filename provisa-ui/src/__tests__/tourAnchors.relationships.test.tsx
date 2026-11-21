@@ -52,6 +52,13 @@ const AUTH = { capabilities: ["create_relationship"] };
 const FILTER = { domainsEnabled: false, domains: [], checkedDomains: new Set<string>() };
 
 vi.mock("../hooks/useAdminQueries", () => ({
+  // REQ-2249: no code resolver set is in service here.
+  useCodeResolvers: () => ({
+    codeResolvers: [],
+    loading: false,
+    saveCodeResolver: vi.fn(),
+    retireCodeResolver: vi.fn(),
+  }),
   useRelationships: () => RELS,
   useAllRelationships: () => RELS,
   useTables: () => TABLES,
@@ -64,7 +71,6 @@ vi.mock("../context/AuthContext", () => ({ useAuth: () => AUTH }));
 vi.mock("../context/DomainFilterContext", () => ({ useDomainFilter: () => FILTER }));
 vi.mock("../api/admin", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../api/admin")>()),
-  fetchCandidates: vi.fn().mockResolvedValue([]),
   fetchRejectedCount: vi.fn().mockResolvedValue(0),
 }));
 vi.mock("../api/actions", () => ({

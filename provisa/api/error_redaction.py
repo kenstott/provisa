@@ -86,26 +86,13 @@ def _is_json(start: dict) -> bool:
     return False
 
 
-def _told(value: Any, org_id: str | None) -> Any:
-    """Each string in a decoded JSON value as a client is told it, the value's shape kept."""
-    from provisa.api.engine_error_names import client_text
-
-    if isinstance(value, str):
-        return client_text(value, org_id)
-    if isinstance(value, list):
-        return [_told(v, org_id) for v in value]
-    if isinstance(value, dict):
-        return {k: _told(v, org_id) for k, v in value.items()}
-    return value
-
-
 def _redacted(body: bytes, org_id: str | None, *, json_body: bool) -> bytes:
     """``body`` as a client is told it. A JSON body has each of its strings rewritten and is
     written again as JSON: rewritten as text, a name the model quotes would end the string it is
     written into, and the body would no longer be JSON."""
     import json
 
-    from provisa.api.engine_error_names import client_text
+    from provisa.api.engine_error_names import client_text, client_value
 
     try:
         text = body.decode("utf-8")
@@ -114,6 +101,6 @@ def _redacted(body: bytes, org_id: str | None, *, json_body: bool) -> bytes:
     if json_body:
         # As Starlette's JSONResponse writes a body.
         return json.dumps(
-            _told(json.loads(text), org_id), ensure_ascii=False, separators=(",", ":")
+            client_value(json.loads(text), org_id), ensure_ascii=False, separators=(",", ":")
         ).encode("utf-8")
     return client_text(text, org_id).encode("utf-8")

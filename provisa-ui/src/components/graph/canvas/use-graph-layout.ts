@@ -15,6 +15,7 @@ import { swapToLayoutMetaEdges } from "../graph-clusters";
 import type { ClusterLevel } from "../graph-clusters";
 import type { CyInstance, CyLayoutOptions } from "../cytoscape-types";
 import { LAYOUT_OPTIONS, type LayoutMode } from "./canvas-types";
+import { idealEdgeLength } from "./edge-length";
 import { anchoredPositions, computeLabelSizeRanges, applyNodeSize } from "./canvas-helpers";
 import { getStored } from "../../../lib/browserStorage";
 
@@ -119,7 +120,7 @@ export function useGraphLayout({
         const inCluster = clusterLevelRef.current !== "none";
         opts = {
           ...LAYOUT_OPTIONS.force,
-          idealEdgeLength: () => edgeDistanceRef.current,
+          idealEdgeLength: idealEdgeLength(edgeDistanceRef.current),
           // In cluster mode: higher nestingFactor shortens ideal edge length within compounds,
           // pulling cluster members together; higher repulsion spreads clusters apart.
           ...(inCluster ? { nestingFactor: 0.1, nodeRepulsion: () => 25000 } : {}),
@@ -249,7 +250,7 @@ export function useGraphLayout({
         });
         const opts = {
           ...LAYOUT_OPTIONS.force,
-          idealEdgeLength: () => edgeDistanceRef.current,
+          idealEdgeLength: idealEdgeLength(edgeDistanceRef.current),
           randomize: false,
           animate: true,
           animationDuration: aggressive ? 2000 : 600,

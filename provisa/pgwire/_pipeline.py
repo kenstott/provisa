@@ -211,10 +211,6 @@ class _Plan:
     # stream's thread (the ``run`` it gave the source stream itself) -- what the check at the
     # end of that stream is run with. None for a plan not streamed from a source.
     loop_run: Callable[[Coroutine[Any, Any, Any]], Any] | None = field(default=None, repr=False)
-    # REQ-1921: the view of the state a statement reading drafts was governed in, and so the one
-    # it runs in (admin/table_read.plan_reading_drafts): the drafts' routes and engine face are
-    # this view's alone. None for every other plan.
-    reads_in: Any = field(default=None, repr=False)
     # Guards against a second finalize for one statement: the streaming surfaces finalize at their
     # own terminal, and a plan that also passes through _execute_plan must still write one row.
     audit_written: bool = field(default=False)
@@ -777,16 +773,21 @@ def _kept_span_attrs(
     return dict(attrs) if attrs is not None else None
 
 
-def _kept_refs_view(memo: dict[str, Any], governed_sql: str, view_map: dict) -> bool:
-    """Whether the governed statement names a ``__derived__`` view of this view map."""
+def _kept_refs_view(memo: dict[str, Any], governed_sql: str, view_map: dict, gov: Any) -> bool:
+    """Whether the governed statement names a ``__derived__`` view of this view map, under any
+    name the reader's governance ``gov`` reads the view by."""
     kept = memo.get("refs_view")
     if kept is not None and kept[0] is view_map:
         return kept[1]
     import sqlglot
     import sqlglot.expressions as exp
 
+    from provisa.compiler.view_expand import view_of
+    from provisa.mv.view_read import view_names
+
+    names = view_names(view_map, gov.table_map)
     refs = any(
-        t.name in view_map
+        view_of(t, view_map, names) is not None
         for t in sqlglot.parse_one(governed_sql, read="postgres").find_all(exp.Table)
     )
     memo["refs_view"] = (view_map, refs)
@@ -840,10 +841,13 @@ def _catalog_settings(
     """REQ-2190: what a statement reading a catalog view of the meta domain is told of the
     request; None for any other, which pays no round trip for settings."""
     from provisa.pgwire.catalog_data import served_database_name
+    from provisa.security.masking import columns_masked_for
     from provisa.transpiler.metadata_settings import statement_settings
 
     if source_id != "provisa-admin":
         return None
+    # REQ-2131: the columns the role reads under a mask, which its catalog lists nullable.
+    masked = columns_masked_for(state.masking_rules, gov_ctx.role_id)
     request = current_catalog_request.get()
     if request is not None:
         return statement_settings(
@@ -851,6 +855,7 @@ def _catalog_settings(
             gov_ctx.can_write,
             request.database,
             bool(state.schema_build_cache.get("domain_prefix", False)),
+            masked=masked,
             session=request.session,
             scope=gov_ctx.meta_scope,
         )
@@ -861,6 +866,7 @@ def _catalog_settings(
         gov_ctx.can_write,
         served_database_name(state),
         bool(state.schema_build_cache.get("domain_prefix", False)),
+        masked=masked,
         scope=gov_ctx.meta_scope,
     )
 
@@ -1067,7 +1073,7 @@ def _reject_physical_source_refs(parsed: Any, state: Any) -> None:
             )
 
 
-def _reject_view_writes(parsed: Any, state: Any) -> None:
+def _reject_view_writes(parsed: Any, state: Any, gov: Any) -> None:
     """REQ-1157: a ``view_sql`` / MV-backed relation is DERIVED, not a base table, and is query-only.
 
     Reject any INSERT / UPSERT (INSERT ... ON CONFLICT) / UPDATE / DELETE / MERGE whose TARGET is such
@@ -1081,14 +1087,16 @@ def _reject_view_writes(parsed: Any, state: Any) -> None:
     view_map = getattr(state, "view_sql_map", None)
     if not view_map:
         return
+    from provisa.compiler.view_expand import view_of
     from provisa.compiler.write_admission import target_table, the_write
+    from provisa.mv.view_read import view_names
 
     # REQ-039: a write wherever it stands in the statement, a data-modifying CTE included.
     write = the_write(parsed)
     if write is None:
         return
     tbl = target_table(write)
-    if tbl is not None and tbl.name in view_map:
+    if tbl is not None and view_of(tbl, view_map, view_names(view_map, gov.table_map)) is not None:
         op = type(write).__name__.upper()
         raise PermissionError(
             f"{op} into {tbl.name!r} is not allowed: it is a view/MV-backed relation and is query-only"
@@ -1204,6 +1212,18 @@ def governed_table_functions(state: Any, role_id: str) -> frozenset[str]:  # REQ
 
     catalog = CLIENT_TABLE_FUNCTIONS if current_catalog_request.get() is not None else frozenset()
     return catalog | frozenset(usable_commands(state, role_id, webhooks=False))
+
+
+def view_commands(state: Any) -> dict[str, dict]:  # REQ-2249
+    """The registered code commands a view's definition may call, by the lower-cased name a
+    statement calls them by: such a view is read from its stored table, so the reader calls none
+    of them (``sql_validator.view_command``)."""
+    from provisa.codesource.commands import CODE_COMMAND
+    from provisa.core.command_bindings import bound
+
+    commands = (getattr(state, "tracked_functions", None) or {}).values()
+    code = {id(c): c for c in commands if c.get("impl_kind") == CODE_COMMAND}
+    return {name.lower(): c for name, c in bound(code.values(), "sql").items()}
 
 
 async def _localize_inline_commands(tree, role_id: str, state) -> bool:
@@ -1584,26 +1604,6 @@ async def _govern_and_route_planned(
     from provisa.mv.time_travel import bind_travel_params
 
     sql, params = bind_travel_params(sql, params)
-    from provisa.api.app import state
-    from provisa.api.admin.table_read import drafts_a_statement_names, plan_reading_drafts
-
-    # REQ-1921, A DRAFT IS SERVED TO ORG_ADMIN: a statement naming drafts served to its role
-    # (table registration in their domains) reads them as served tables, through the one path a draft is read by.
-    drafts = drafts_a_statement_names(state, sql, role_id)
-    if drafts:
-        plan, seen = await plan_reading_drafts(
-            state,
-            sql,
-            role_id,
-            drafts,
-            exec_params=params,
-            deliver=deliver,
-            buffered=buffered,
-            explain=explain,
-            as_of=as_of,
-        )
-        plan.reads_in = seen
-        return plan
     # REQ-2092: what governing costs a request (a kept plan's lookup included), beside the others
     with _stage(_tracer, "pipeline.governance", name="governance", request_only=True):
         governed = await govern_statement(
@@ -1803,7 +1803,7 @@ async def _entitlement_statement(sql: str, tree: Any, gov_ctx: Any, state: Any) 
         return tree
     from provisa.mv.view_read import statement_as_read
 
-    expanded = statement_as_read(sql, view_map, state)
+    expanded = statement_as_read(sql, view_map, state, gov_ctx)
     return await _off_loop(lambda: sqlglot.parse_one(expanded, read="postgres"))
 
 
@@ -1836,7 +1836,8 @@ async def govern_statement(
     """Stage one of the one pipeline: parse, validate and apply governance. Value-independent.
 
     ``product_statement`` (REQ-603): the statement is one the product wrote for its own work --
-    the profiler's read of a table, which pairs the table with itself -- not a role's query. The
+    the profiler's read of a table, which pairs the table with itself, or discovery's key value
+    overlap join count of a candidate pair, which has no relationship yet -- not a role's query. The
     relationship guard is about what a role's query may relate, so it is not held on it; every
     other check is. Stated by the product's own call site, as a GraphQL-built statement states
     ``sdl_joins``; no surface that carries a caller's SQL passes it."""
@@ -1846,7 +1847,13 @@ async def govern_statement(
     from provisa.api.app import state
     from provisa.compiler.params import extract_params_comment, extract_relationship_guard_comment
     from provisa.compiler.stage2 import apply_governance
-    from provisa.compiler.sql_validator import READ, client_table_function, validate_sql
+    from provisa.compiler.sql_validator import (
+        READ,
+        client_table_function,
+        validate_sql,
+        view_command,
+        view_command_inputs,
+    )
 
     from provisa.audit.pipeline import write_denial
 
@@ -1950,9 +1957,18 @@ async def govern_statement(
     normalized_sql = _front.normalized_sql
     _parsed_input = _front.parsed
     _metric_semantic_sql = _front.metric_semantic_sql
+    # REQ-1986: a parameter is bound under its own name and its alias alike; from here on the
+    # statement names each by its column, which governance and the binder read it by.
+    from provisa.compiler.nf_extractor import name_parameters_by_column
+
+    if name_parameters_by_column(_parsed_input, ctx):
+        normalized_sql = _parsed_input.sql(dialect="postgres")
+        if _metric_semantic_sql is not None:
+            _metric_semantic_sql = normalized_sql
 
     _reject_physical_source_refs(_parsed_input, state)
-    _reject_view_writes(_parsed_input, state)  # REQ-1157: view/MV-backed relations are query-only
+    # REQ-1157: view/MV-backed relations are query-only
+    _reject_view_writes(_parsed_input, state, _governance())
     # REQ-1529: and a branch writes only through a binding whose supplier admits it.
     await _reject_unbound_writes(_parsed_input, state)
 
@@ -2023,6 +2039,7 @@ async def govern_statement(
         _bypass_guard,
     )
     _table_functions = governed_table_functions(state, role_id)
+    _view_commands = view_commands(state)
     if state.compiled_query_cache.get(_cq_key) is None:
         violations = validate_sql(
             _validated_sql,
@@ -2033,6 +2050,7 @@ async def govern_statement(
             bypass_relationship_guard=_bypass_guard,
             bypass_uncovered_relationships=True,
             table_functions=_table_functions,
+            view_commands=_view_commands,
         )
 
         _role_domain_access = role["domain_access"]
@@ -2040,13 +2058,20 @@ async def govern_statement(
             try:
                 # REQ-1882: off-loaded, same rationale as prepare_front_end's parse.
                 # Read as validate_sql reads it: ``explode`` is no unnest (client_table_function).
-                parsed_tree = await _off_loop(lambda: sqlglot.parse_one(_validated_sql, read=READ))
+                from provisa.compiler.view_expand import parse_marked
+
+                parsed_tree = await _off_loop(lambda: parse_marked(_validated_sql, read=READ))
                 _statement_ctes = (
                     {c.alias for c in parsed_tree.find_all(exp.CTE)} if _table_functions else set()
                 )
-                for tbl in parsed_tree.find_all(exp.Table):
+                # REQ-2249: a code command a view's definition calls reads its table arguments.
+                _read = [*parsed_tree.find_all(exp.Table)]
+                _read += view_command_inputs(parsed_tree, _view_commands)
+                for tbl in _read:
                     if isinstance(tbl.this, exp.XMLTable):
                         continue  # REQ-2167: no relation; what it reads is the statement's own
+                    if view_command(tbl, _view_commands) is not None:
+                        continue  # REQ-2249: its table arguments are read in its place
                     if client_table_function(tbl, _table_functions) or (
                         not tbl.db and tbl.name in _statement_ctes
                     ):
@@ -2065,9 +2090,13 @@ async def govern_statement(
             except Exception as exc:
                 # SECURITY: never skip the domain-access check on a parse/lookup error — fail closed.
                 await write_denial(sql, role_id, _parsed_input, gov_ctx, state)
+                from provisa.compiler.view_expand import without_marks
+
+                # REQ-039: the statement checked is marked; the mark never leaves the server.
                 raise PermissionError(
-                    f"Domain-access check could not be evaluated for role {role_id!r}: {exc}"
-                ) from exc
+                    f"Domain-access check could not be evaluated for role {role_id!r}: "
+                    f"{without_marks(str(exc))}"
+                ) from None
 
         if violations:
             from provisa.compiler.sql_validator import GovernanceRefused
@@ -2080,6 +2109,11 @@ async def govern_statement(
     from provisa.audit.pipeline import resolve_table_ids
 
     _table_ids = tuple(resolve_table_ids(_parsed_input, gov_ctx))  # REQ-1897
+    # REQ-2253: an AI-assisted call reads only the domains selected in the domain filter. Asked
+    # per call, outside the governed-statement cache: the selection is not part of its key.
+    from provisa.security.selected_domains import refuse_outside
+
+    refuse_outside(state, _table_ids)
 
     # REQ-272: apply_governance enforces full Stage-2 governance on this SQL path — RLS,
     # masking, visibility, and the role row-cap ceiling (gov_ctx carries the role, so
@@ -2109,6 +2143,12 @@ async def govern_statement(
     from provisa.mv.bitemporal_tables import read_versions
 
     governed_semantic = read_versions(governed_semantic, state, gov_ctx, _travel)
+    # REQ-2131 (amended 2026-11-16), REQ-2249: a view applying a column transform or calling a code
+    # command is read from its stored rows under the reader's row rules and masks, applied to the
+    # governed statement as a row rule is (mv/view_read.py).
+    from provisa.mv.view_read import read_stored_views
+
+    governed_semantic = await read_stored_views(governed_semantic, state, gov_ctx)
     if _registry is not None:
         # REQ-430: a text the statement searches for is embedded once, with the statement.
         governed_semantic = await _similarity.embed_text_queries(governed_semantic, _registry)
@@ -2624,42 +2664,120 @@ _MERGE_READ = "provisa_read"
 
 
 def _by_source(merge: Any) -> Any:
-    """The MERGE's WHEN NOT MATCHED BY SOURCE clause, or None. Only one, and only a DELETE: one
-    written in two steps carries it as a WHEN MATCHED over the target rows no row read matches
-    (:func:`_merged_rows`), which an UPDATE of such a row, or several such clauses in order, are
-    refused by name."""
+    """The MERGE's WHEN NOT MATCHED BY SOURCE clause, or None. Only one, and only a DELETE: it is
+    carried as a WHEN MATCHED over the target rows no row of the USING matches
+    (:func:`_carry_by_source`), which an UPDATE of such a row, or several such clauses in order,
+    cannot be; those are refused by name."""
     whens = merge.args.get("whens")
     clauses = [w for w in (whens.expressions if whens is not None else []) if w.args.get("source")]
     if not clauses:
         return None
     if len(clauses) > 1:
         raise ValueError(
-            "a MERGE whose USING query reads another source may hold one WHEN NOT MATCHED BY "
-            f"SOURCE clause, a DELETE; it holds {len(clauses)}"
+            "a MERGE may hold one WHEN NOT MATCHED BY SOURCE clause, a DELETE; it holds "
+            f"{len(clauses)}"
         )
     (clause,) = clauses
     if clause.args["then"].sql(dialect="postgres").upper() != "DELETE":
-        raise ValueError(
-            "a MERGE whose USING query reads another source may hold WHEN NOT MATCHED BY SOURCE "
-            "THEN DELETE, not THEN UPDATE"
-        )
+        raise ValueError("a MERGE may hold WHEN NOT MATCHED BY SOURCE THEN DELETE, not THEN UPDATE")
     return clause
+
+
+def _quoted(name: str) -> str:
+    import sqlglot.expressions as exp
+
+    return exp.to_identifier(name, quoted=True).sql()
+
+
+def _carry_by_source(statement: Any, marked: str | None = None) -> Any:
+    """``statement``, a MERGE holding WHEN NOT MATCHED BY SOURCE [AND c] THEN DELETE, as one
+    MERGE PostgreSQL runs whatever its version (before 17 it has no such clause), in place.
+
+    Its USING is read FULL JOINed to the target on the MERGE's ON, each joined row carrying its
+    target row's id (``ctid``) and whether a USING row is in it; the MERGE matches by that id, so
+    a target row no USING row matches is matched with no USING row, and the clause becomes WHEN
+    MATCHED AND no USING row [AND c] THEN DELETE. Its count is the MERGE's, the rows deleted
+    included. ``marked`` is the USING relation already carrying the marker column under the
+    USING's alias (the rows a MERGE written in two steps read); else the USING is wrapped to
+    carry it."""
+    import sqlglot
+    import sqlglot.expressions as exp
+
+    using = statement.args["using"]
+    alias = _quoted(using.alias_or_name)
+    if marked is None:
+        marked = (
+            f"(SELECT *, TRUE AS {_quoted(_MERGE_READ)} FROM {using.sql(dialect='postgres')}) "
+            f"AS {alias}"
+        )
+    target = statement.this
+    own = {target.alias_or_name, target.name}
+    bare = target.copy()
+    bare.set("alias", None)
+    on = statement.args["on"].copy()
+    for column in on.find_all(exp.Column):
+        if column.table in own:
+            column.set("table", exp.to_identifier(_MERGE_TARGET, quoted=True))
+            column.set("db", None)  # an unaliased target is named schema-qualified
+            column.set("catalog", None)
+    source = (
+        f"(SELECT {alias}.*, {_quoted(_MERGE_TARGET)}.ctid AS {_quoted(_MERGE_ROW)} "
+        f"FROM {marked} FULL JOIN {bare.sql(dialect='postgres')} "
+        f"AS {_quoted(_MERGE_TARGET)} ON {on.sql(dialect='postgres')}) AS {alias}"
+    )
+    statement.set(
+        "on",
+        sqlglot.parse_one(
+            f"{_quoted(target.alias_or_name)}.ctid = {alias}.{_quoted(_MERGE_ROW)}",
+            read="postgres",
+        ),
+    )
+    read = sqlglot.parse_one(f"{alias}.{_quoted(_MERGE_READ)} IS NOT NULL", read="postgres")
+    for when in statement.args["whens"].expressions:
+        if when.args.get("source"):
+            when.set("source", False)
+            when.set("matched", True)
+            gone = sqlglot.parse_one(f"{alias}.{_quoted(_MERGE_READ)} IS NULL", read="postgres")
+            condition = when.args.get("condition")
+            when.set("condition", exp.and_(gone, condition) if condition else gone)
+        elif when.args.get("matched"):
+            condition = when.args.get("condition")
+            when.set("condition", exp.and_(read.copy(), condition) if condition else read.copy())
+    statement.set(
+        "using", sqlglot.parse_one(f"SELECT * FROM {source}", read="postgres").args["from_"].this
+    )
+    return statement
+
+
+def _carried_merge(governed: "_Governed", written_table_id: int | None, state: Any) -> "_Governed":
+    """``governed`` with its MERGE's WHEN NOT MATCHED BY SOURCE THEN DELETE carried inside the
+    one statement (:func:`_carry_by_source`) when its target is a PostgreSQL table; any other
+    statement as it is. The clause is refused by name where it cannot be carried."""
+    import dataclasses
+
+    import sqlglot
+    import sqlglot.expressions as exp
+
+    statement = sqlglot.parse_one(governed.governed_semantic, read="postgres")
+    if not isinstance(statement, exp.Merge) or _by_source(statement) is None:
+        return governed
+    sources = {m.table_id: m.source_id for m in governed.ctx.tables.values()}
+    if state.source_dialects.get(sources.get(written_table_id)) != "postgres":
+        return governed
+    return dataclasses.replace(
+        governed,
+        governed_semantic=_carry_by_source(statement).sql(dialect="postgres"),
+    )
 
 
 def _merged_rows(
     two: _TwoStepWrite, names: list[str], types: list[Any], rows: list[tuple]
 ) -> tuple[Any, list]:
     """The MERGE of ``two`` over ``rows``, the rows its USING read answered, and the values it
-    binds: its USING those rows, bound, under the USING's alias and the read's column names.
-
-    A WHEN NOT MATCHED BY SOURCE THEN DELETE is carried in the same statement, whatever the
-    target's version (PostgreSQL before 17 has no such clause): the USING is the rows read FULL
-    JOINed to the target on the MERGE's ON, each joined row carrying its target row's id
-    (``ctid``) and whether a row read is in it; the MERGE matches by that id, so a target row no
-    row read matches is matched with no row read, and the clause becomes WHEN MATCHED AND no row
-    read THEN DELETE. Its count is the MERGE's, the rows deleted included."""
+    binds: its USING those rows, bound, under the USING's alias and the read's column names. A
+    WHEN NOT MATCHED BY SOURCE THEN DELETE is carried in the same statement
+    (:func:`_carry_by_source`), the rows read marked as read."""
     import sqlglot
-    import sqlglot.expressions as exp
 
     width = len(names)
     if len(rows) * width > _MERGE_VALUES_CAP:
@@ -2670,14 +2788,10 @@ def _merged_rows(
         )
     statement = two.template.copy()
     by_source = _by_source(statement)
-
-    def quoted(name: str) -> str:
-        return exp.to_identifier(name, quoted=True).sql()
-
     cast = [t.sql(dialect="postgres") for t in types]
-    alias = quoted(statement.args["using"].alias_or_name)
+    alias = _quoted(statement.args["using"].alias_or_name)
     marked = [*names, _MERGE_READ] if by_source is not None else names
-    columns = ", ".join(quoted(n) for n in marked)
+    columns = ", ".join(_quoted(n) for n in marked)
     if rows:
         mark = ", TRUE" if by_source is not None else ""
         values = ", ".join(
@@ -2689,44 +2803,12 @@ def _merged_rows(
         )
         source = f"(VALUES {values}) AS {alias}({columns})"
     else:
-        nulls = [f"CAST(NULL AS {cast[j]}) AS {quoted(n)}" for j, n in enumerate(names)]
+        nulls = [f"CAST(NULL AS {cast[j]}) AS {_quoted(n)}" for j, n in enumerate(names)]
         if by_source is not None:
-            nulls.append(f"TRUE AS {quoted(_MERGE_READ)}")
+            nulls.append(f"TRUE AS {_quoted(_MERGE_READ)}")
         source = f"(SELECT {', '.join(nulls)} WHERE FALSE) AS {alias}"
     if by_source is not None:
-        target = statement.this
-        own = {target.alias_or_name, target.name}
-        bare = target.copy()
-        bare.set("alias", None)
-        on = statement.args["on"].copy()
-        for column in on.find_all(exp.Column):
-            if column.table in own:
-                column.set("table", exp.to_identifier(_MERGE_TARGET, quoted=True))
-        source = (
-            f"(SELECT {alias}.*, {quoted(_MERGE_TARGET)}.ctid AS {quoted(_MERGE_ROW)} "
-            f"FROM {source} FULL JOIN {bare.sql(dialect='postgres')} "
-            f"AS {quoted(_MERGE_TARGET)} ON {on.sql(dialect='postgres')}) AS {alias}"
-        )
-        statement.set(
-            "on",
-            sqlglot.parse_one(
-                f"{quoted(target.alias_or_name)}.ctid = {alias}.{quoted(_MERGE_ROW)}",
-                read="postgres",
-            ),
-        )
-        read = sqlglot.parse_one(f"{alias}.{quoted(_MERGE_READ)} IS NOT NULL", read="postgres")
-        for when in statement.args["whens"].expressions:
-            if when.args.get("source"):
-                when.set("source", False)
-                when.set("matched", True)
-                gone = sqlglot.parse_one(f"{alias}.{quoted(_MERGE_READ)} IS NULL", read="postgres")
-                condition = when.args.get("condition")
-                when.set("condition", exp.and_(gone, condition) if condition else gone)
-            elif when.args.get("matched"):
-                condition = when.args.get("condition")
-                when.set(
-                    "condition", exp.and_(read.copy(), condition) if condition else read.copy()
-                )
+        return _carry_by_source(statement, source), [v for r in rows for v in r]
     using = sqlglot.parse_one(f"SELECT * FROM {source}", read="postgres").args["from_"].this
     statement.set("using", using)
     return statement, [v for r in rows for v in r]
@@ -2909,6 +2991,11 @@ async def route_governed(
             return await _two_step_plan(
                 governed, _two, params=params, as_of=as_of, audit=_audit, state=state
             )
+    if _is_mutation and isinstance(_parsed_input, exp.Merge):
+        # REQ-2001: a MERGE sent whole carries its WHEN NOT MATCHED BY SOURCE THEN DELETE inside
+        # its one statement, as the second step of one written in two steps does.
+        governed = _carried_merge(governed, _written_table_id, state)
+        governed_semantic = governed.governed_semantic
     from provisa.codesource.writes import is_code_table
 
     async def _read_keys(read_tree: Any) -> _Plan:
@@ -3040,8 +3127,7 @@ async def route_governed(
     # same as the compiled path (_govern_and_route_compiled) — without this, an API table with a
     # required path param never resolves it, materialization skips, and the unmaterialized table
     # reaches the engine unchanged ("no such table").
-    from provisa.api.data.materialization import frozen_parameter_filters
-    from provisa.compiler.nf_extractor import extract_nf_args, separate_parameter_reads
+    from provisa.api.data.materialization import bind_statement
 
     # REQ-1882: both stages are sqlglot-parse-based regex/AST rewrite work; off-load the combined
     # call (see _off_loop's own docstring).
@@ -3049,23 +3135,21 @@ async def route_governed(
         governed.memo,
         lambda: lower_to_catalog_physical(governed_semantic, ctx),
     )
-    # Each read of a table under arguments of its own -- a union of views over one search table
-    # -- is read under its own (REQ-1983, REQ-1986); a single one is extract_nf_args' as ever.
+    # REQ-1986: the one step that binds the statement's parameters -- each read's calls, by
+    # equality, IN, OR or a join on the parameter; every other condition on one refused.
     # REQ-2031: a table kept for good is read from its landed rows, a parameter filtering them.
-    _frozen = frozen_parameter_filters(state, _table_ids)
-    _parameters = (
-        context_parameters(ctx)
-        - _frozen.keys()
-        - _code_parameters(state, _table_ids, _physical_sql)
+    _bound = await bind_statement(
+        _physical_sql,
+        embedded_params,
+        state,
+        ctx,
+        _table_ids,
+        role_id,
+        context_parameters(ctx) - _code_parameters(state, _table_ids, _physical_sql),
     )
-    _physical_sql, _read_args = separate_parameter_reads(_physical_sql, _parameters)
-    _physical_sql, _nf_clean_params, _extracted_nf = extract_nf_args(
-        _physical_sql, embedded_params or [], _parameters, _frozen
-    )
-    exec_params = (
-        _nf_clean_params if _nf_clean_params != (embedded_params or []) else embedded_params
-    )
-    _nf_args = _extracted_nf or None
+    _physical_sql, _read_args = _bound.sql, _bound.reads
+    exec_params = _bound.params if _bound.params != (embedded_params or []) else embedded_params
+    _nf_args = _bound.nf_args or None
 
     (
         _qualified,
@@ -3115,7 +3199,7 @@ async def route_governed(
     # goes to the engine, where its rows are put in (see _govern_and_route_compiled).
     _view_map = getattr(state, "view_sql_map", None)
     if _view_map and decision.route != Route.ENGINE:
-        if _kept_refs_view(governed.memo, governed_semantic, _view_map):
+        if _kept_refs_view(governed.memo, governed_semantic, _view_map, gov_ctx):
             from provisa.transpiler.router import RouteDecision
 
             decision = RouteDecision(
@@ -3314,7 +3398,11 @@ async def route_governed(
         # ref is source-less so it survives the rewrites unchanged and still matches its key.
         if _view_map:
             from provisa.compiler.view_expand import expand_view_refs
-            from provisa.mv.view_read import read_views_at, unnarrowed_view_bodies
+            from provisa.mv.view_read import (
+                lowered_view_catalog,
+                read_views_at,
+                unnarrowed_view_bodies,
+            )
 
             # REQ-1163: a bitemporal view reference that says its own time is read at it; the
             # rest at the request's.
@@ -3322,6 +3410,8 @@ async def route_governed(
             _qualified = expand_view_refs(
                 _qualified,
                 unnarrowed_view_bodies(_qualified, _view_map, state, as_of=_travel.default),
+                # Lowered: its views are named under the org's derived catalog (REQ-1266).
+                view_catalog=lowered_view_catalog(state),
             )
             # View bodies are stored in semantic form; after expansion, lower any
             # newly-introduced semantic refs to catalog-physical (same pass the outer SQL
@@ -4034,9 +4124,7 @@ async def _execute_plan(plan: _Plan, state: Any | None = None) -> QueryResult:  
     surface passes through, so no transport has to establish it for itself.
     """
     require_governed_plan(plan)  # SECURITY: refuse any plan the top of the pipeline did not mint
-    if plan.reads_in is not None:
-        state = plan.reads_in  # REQ-1921: a read of drafts runs in the view it was governed in
-    elif state is None:
+    if state is None:
         from provisa.api.app import state  # type: ignore[assignment]
     if plan.cache_hit is not None:
         # REQ-1897: answered before routing — nothing to wake, land or execute.
@@ -4208,8 +4296,6 @@ def streams_from_terminal(plan: _Plan, *, applies_columns: bool = False) -> bool
     are applied as its rows stream where the terminal serves them through
     :func:`serve_stream_through_cache` (``applies_columns``); anywhere else, by the pipeline
     terminal."""
-    if plan.reads_in is not None:
-        return False  # REQ-1921: a read of drafts runs in its own view, by the pipeline terminal
     if plan.two_step is not None:
         return False  # REQ-2001: its rows are read, then written, by the pipeline terminal
     if plan.code_write is not None:
@@ -5574,12 +5660,13 @@ async def _govern_and_route_compiled_planned(  # REQ-262, REQ-263, REQ-265, REQ-
     # REQ-1910: request entry on the compiled path (GraphQL over Flight, Cypher, gRPC, MCP, REST).
     await resolve_trace_scope(state, role_id, hint=cache_hint.debug_trace)
     _audit = begin_audit(sql, role_id, _compiled_tree, gov_ctx, state.model_stamp)
-    # REQ-1921: a read of a draft is recorded as a draft preview, naming the drafts it read. Only
-    # the view a draft preview reads through names any (admin/table_read.py).
-    _previewed = getattr(state, "previewed_draft_ids", None)
+    # REQ-1921: a steward's preview of a withdrawn table is recorded as a withdrawn preview,
+    # naming the tables it read. Only the view such a preview reads through names any
+    # (admin/table_read.py).
+    _previewed = getattr(state, "previewed_withdrawn_ids", None)
     if _audit is not None and _previewed is not None:
         _enforced = _audit.enforced() if callable(_audit.enforced) else _audit.enforced
-        _audit.enforced = {**_enforced, "draft_preview": sorted(_previewed)}
+        _audit.enforced = {**_enforced, "withdrawn_preview": sorted(_previewed)}
 
     # REQ-1897 (amended 2026-10-01): the cache before the route (see route_governed). A sink
     # delivery returns a handle, not rows, and is never answered from it.
@@ -5829,7 +5916,6 @@ async def _govern_compiled(
 
             trace_stage("metric.expand", sql)
 
-    _reject_view_writes(_compiled_tree, state)  # REQ-1157: views are query-only
     await _reject_unbound_writes(_compiled_tree, state)  # REQ-1491
 
     from provisa.security.rights import require_role
@@ -5842,6 +5928,8 @@ async def _govern_compiled(
     ctx = surface.context
 
     gov_ctx = role_governance(state, surface, role_id)
+    # REQ-1157: views are query-only, under any name the reader's governance reads one by.
+    _reject_view_writes(_compiled_tree, state, gov_ctx)
     # REQ-1163: a GraphQL field's as_of/as_recorded are compiled onto its relation's reference
     # (the SQL call form); lifted here, as on the raw-SQL stage, each reference is read at its
     # own time.
@@ -5877,7 +5965,9 @@ async def _govern_compiled(
 
         from provisa.compiler.stage2 import unmark_views
 
-        _views = views_read(sql, _view_map)
+        from provisa.mv.view_read import view_names
+
+        _views = views_read(sql, _view_map, view_names(_view_map, gov_ctx.table_map))
         # REQ-039: governance reads each view body as marked; every other use reads it unmarked.
         _marked_sql, _validated_sql = semantic_statement(sql, _view_map, state, gov_ctx)
         sql = unmark_views(_marked_sql)
@@ -5900,6 +5990,7 @@ async def _govern_compiled(
         getattr(state, "tables", []),
         bypass_relationship_guard=sdl_joins or _reader_bypass,
         bypass_uncovered_relationships=True,
+        view_commands=view_commands(state),
     )
     if sdl_joins and not _reader_bypass:
         # The SDL defined the statement's own joins; a view's joins are its author's, and the
@@ -5943,6 +6034,11 @@ async def _govern_compiled(
     from provisa.mv.bitemporal_tables import read_versions
 
     governed_sql = read_versions(governed_sql, state, gov_ctx, _travel)
+    # REQ-2131, REQ-2249: a stored view under the reader's row rules and masks, as on the raw-SQL
+    # stage.
+    from provisa.mv.view_read import read_stored_views
+
+    governed_sql = await read_stored_views(governed_sql, state, gov_ctx)
     # REQ-1682: session-variable predicates resolve to the request's literals on every route (see
     # the raw path above for why the direct Postgres route cannot keep native current_setting).
     governed_sql = _resolve_session_settings(governed_sql, session_vars, "postgres")
@@ -6024,6 +6120,10 @@ async def _route_compiled(
 
     _compiled_tree = compiled_tree
     _table_ids = table_ids
+    # REQ-2253: as on the raw-SQL path -- per call, since the governed half is kept and reused.
+    from provisa.security.selected_domains import refuse_outside
+
+    refuse_outside(state, _table_ids)
     _audit = audit
     _cache_hint = cache_hint
     # A write on a compiled surface (a GraphQL mutation, a Cypher write over HTTP or Bolt) ends
@@ -6140,7 +6240,11 @@ async def _route_compiled(
     _view_map = getattr(state, "view_sql_map", None)
     if _view_map:
         from provisa.compiler.view_expand import expand_view_refs
-        from provisa.mv.view_read import read_views_at, unnarrowed_view_bodies
+        from provisa.mv.view_read import (
+            lowered_view_catalog,
+            read_views_at,
+            unnarrowed_view_bodies,
+        )
 
         # Optimization, as on the raw-SQL stage: a view governance kept as its reference is
         # answered here (REQ-1163: a bitemporal view is read at its reference's time, else the
@@ -6149,6 +6253,8 @@ async def _route_compiled(
         _exec_sql = expand_view_refs(
             _exec_sql,
             unnarrowed_view_bodies(_exec_sql, _view_map, state, as_of=travel.default),
+            # Lowered: its views are named under the org's derived catalog (REQ-1266).
+            view_catalog=lowered_view_catalog(state),
         )
     # REQ-2109: a table updated in place is read from its version log at its reference's time.
     from provisa.mv.bitemporal_capture import read_logs
@@ -6157,8 +6263,7 @@ async def _route_compiled(
     _exec_sql = read_logs(_exec_sql, state, ctx, travel)
     # REQ-372: an Iceberg or Delta table read at a recorded time reads that snapshot.
     _exec_sql = read_snapshots(_exec_sql, ctx, travel)
-    from provisa.api.data.materialization import frozen_parameter_filters
-    from provisa.compiler.nf_extractor import extract_nf_args, separate_parameter_reads
+    from provisa.api.data.materialization import bind_statement
     from provisa.vector import similarity as _similarity
 
     if exec_params and _similarity.mentions(governed_sql):
@@ -6166,17 +6271,20 @@ async def _route_compiled(
         exec_params = await _similarity.bind_query_vectors(
             governed_sql, exec_params, await vector_registry(state)
         )
+    # REQ-1986: the one step that binds the statement's parameters, as on the raw-SQL stage.
     # REQ-2031: a table kept for good is read from its landed rows, a parameter filtering them.
-    _frozen = frozen_parameter_filters(state, _table_ids)
-    _parameters = (
-        context_parameters(ctx) - _frozen.keys() - _code_parameters(state, _table_ids, _exec_sql)
+    _bound = await bind_statement(
+        _exec_sql,
+        exec_params,
+        state,
+        ctx,
+        _table_ids,
+        role_id,
+        context_parameters(ctx) - _code_parameters(state, _table_ids, _exec_sql),
     )
-    _exec_sql, _read_args = separate_parameter_reads(_exec_sql, _parameters)
-    _exec_sql, _nf_clean_params, _extracted_nf = extract_nf_args(
-        _exec_sql, exec_params or [], _parameters, _frozen
-    )
-    exec_params = _nf_clean_params if _nf_clean_params != (exec_params or []) else exec_params
-    _nf_args = {**(api_args or {}), **(_extracted_nf or {})} or None
+    _exec_sql, _read_args = _bound.sql, _bound.reads
+    exec_params = _bound.params if _bound.params != (exec_params or []) else exec_params
+    _nf_args = {**(api_args or {}), **_bound.nf_args} or None
     if api_compiled is not None:
         from provisa.api.data.hydration import _hydrate_api_tables_before_engine
 
@@ -6233,7 +6341,7 @@ async def _route_compiled(
     # here; no source's driver knows it, and its rows are put in at optimization. It goes to the
     # engine, as on _govern_and_route (the raw-SQL/pgwire path).
     if _view_map and decision.route != Route.ENGINE:
-        if _kept_refs_view(memo, governed_sql, _view_map):
+        if _kept_refs_view(memo, governed_sql, _view_map, gov_ctx):
             from provisa.transpiler.router import RouteDecision
 
             decision = RouteDecision(

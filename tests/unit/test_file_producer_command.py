@@ -28,6 +28,13 @@ from provisa.freshness.producer import (
 from provisa.freshness.source_gate import gate_source, source_subject
 
 
+@pytest.fixture(autouse=True)
+def host_code_on(monkeypatch):
+    """REQ-2134: a producer command is host code, run only where the operator allows it. Off is
+    tests/unit/test_producer_command_host_gate.py's."""
+    monkeypatch.setenv("PROVISA_COMMANDS_ALLOW_HOST_CODE", "true")
+
+
 class _Engine:
     def __init__(self, result):
         self._result = result

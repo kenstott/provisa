@@ -17,7 +17,7 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
-import { Alert, Badge, Button, Code, Group, Stack, Tabs, Text } from "@mantine/core";
+import { Alert, Button, Code, Group, Stack, Tabs, Text } from "@mantine/core";
 import { GovernedTableViewer } from "../../components/GovernedTableViewer";
 import { CopyButton } from "../../components/CopyButton";
 import { useTableAccess, useTables } from "../../hooks/useAdminQueries";
@@ -66,18 +66,7 @@ function TableData({ table, role }: { table: ListedTable; role: string | null })
             <Text size="sm" fw={600}>
               {t("yourData.otherWays")}
             </Text>
-            {/* REQ-1921: a draft is reached these ways by a role holding org_admin alone. */}
-            {access.draft && (
-              <Badge size="xs" variant="light" color="gray" data-testid="your-data-draft">
-                {t("yourData.draft")}
-              </Badge>
-            )}
           </Group>
-          {access.draft && (
-            <Text size="sm" c="dimmed" data-testid="your-data-draft-note">
-              {t("yourData.draftNote")}
-            </Text>
-          )}
           <AccessMethod
             label={t("yourData.graphql")}
             text={access.graphql}

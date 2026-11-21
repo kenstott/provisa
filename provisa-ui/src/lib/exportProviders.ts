@@ -28,5 +28,5 @@ export function exportProviderName(
   t: TFunction,
   beta: ReadonlySet<string> = BETA,
 ): string {
-  return beta.has(id) ? t("metadataExportTab.betaProvider", { name }) : name;
+  return beta.has(id) ? t("syncingTab.betaProvider", { name }) : name;
 }

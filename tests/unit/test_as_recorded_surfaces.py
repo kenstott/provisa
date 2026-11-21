@@ -105,14 +105,14 @@ def _record(time_travel: str | None) -> AuditRecord:
 
 
 def test_the_audit_row_records_both_times():
-    row = _record(request_as_of("2026-09-30T12:00:00", "2026-10-02T00:00:00")).row(None)
+    row = _record(request_as_of("2026-09-30T12:00:00", "2026-10-02T00:00:00")).row(None, None)
     assert row["as_of"] == "2026-09-30T12:00:00.000000"
     assert row["as_recorded"] == "2026-10-02T00:00:00.000000"
 
 
 def test_the_audit_row_records_a_range_and_a_read_of_now():
-    ranged = _record(request_as_of("2026-09-01/2026-10-01", None)).row(None)
+    ranged = _record(request_as_of("2026-09-01/2026-10-01", None)).row(None, None)
     assert ranged["as_of"] == "2026-09-01T00:00:00.000000/2026-10-01T00:00:00.000000"
     assert ranged["as_recorded"] is None
-    now = dataclasses.replace(_record(None)).row(None)
+    now = dataclasses.replace(_record(None)).row(None, None)
     assert (now["as_of"], now["as_recorded"]) == (None, None)

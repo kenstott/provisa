@@ -101,7 +101,7 @@ class Held:
 
     async def __call__(self, prompt: str, max_tokens: int, answer: Answer) -> str:
         from provisa.security.llm_budget import BudgetRefused
-        from provisa.security.redaction import redact
+        from provisa.security.redaction import client_redact
 
         client, budget = self._client, self._budget
         try:
@@ -116,7 +116,7 @@ class Held:
                 self.limited_to = max_tokens = allowed
         try:
             answered = await client.complete_detailed(
-                redact(prompt, self._org_id),
+                client_redact(prompt, self._org_id),
                 system=SYSTEM,
                 max_tokens=max_tokens,
                 # Reasoning off: finding and resolving terms is reading, and a model that reasons
@@ -133,10 +133,10 @@ class Held:
             )
         except LLMEmptyResponseError as exc:
             if not exc.answer.cut_off:
-                raise ScanFailed(redact(_failure(exc, self.name), self._org_id)) from exc
+                raise ScanFailed(client_redact(_failure(exc, self.name), self._org_id)) from exc
             answered = exc.answer
         except Exception as exc:
-            raise ScanFailed(redact(_failure(exc, self.name), self._org_id)) from exc
+            raise ScanFailed(client_redact(_failure(exc, self.name), self._org_id)) from exc
         if answered.usage is None:
             if budget.admitted is not None and budget.admitted.budget is not None:
                 raise ScanFailed(

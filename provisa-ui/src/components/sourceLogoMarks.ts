@@ -54,6 +54,7 @@ import {
   siJira,
   siTidb,
   siTrino,
+  siWikidata,
 } from "simple-icons";
 import askamerica from "../assets/source-logos/askamerica.svg";
 
@@ -102,6 +103,7 @@ export const MARKS: Record<string, Icon> = {
   splunk: siSplunk,
   kaggle: siKaggle,
   airtable: siAirtable,
+  wikidata: siWikidata, // REQ-1923
 };
 
 /** Logos drawn from a bundled file, by source type. */

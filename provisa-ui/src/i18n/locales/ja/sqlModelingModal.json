@@ -1,11 +1,11 @@
 {
   "sqlModelingModal": {
     "title": "SQLモデリング",
-    "description": "JOIN条件を新しいリレーションシップ候補として抽出します — 既存のリレーションシップは除外されます",
+    "description": "JOIN 条件を新しいリレーションシップ候補として抽出します。既存のリレーションシップは除外されます。",
     "close": "閉じる",
     "tabSql": "SQL",
     "tabCanvas": "キャンバス",
-    "nlPlaceholder": "自然な言葉で質問してください — SQLを生成します…",
+    "nlPlaceholder": "自然な言葉で質問して SQL を生成…",
     "nlLoading": "読み込み中",
     "generateSql": "SQLを生成",
     "generating": "生成中…",

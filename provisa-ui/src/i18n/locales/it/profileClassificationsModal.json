@@ -19,6 +19,9 @@
     "linked": "Ora la colonna significa {{term}}.",
     "keyColumn": "La colonna mantiene il suo termine di classe: il significato di una colonna chiave è il suo termine di classe.",
     "markedPii": "È contrassegnata come PII.",
-    "maskOffered": "Maschera suggerita: {{mask}}. Aggiungila nelle maschere della colonna."
+    "maskOffered": "Maschera suggerita: {{mask}}. Aggiungila nelle maschere della colonna.",
+    "tooFewTitle": "Troppo pochi valori per classificare",
+    "tooFewNote": "Queste colonne avevano troppo pochi valori nel campione dell'esecuzione per dire che cosa contengono. Non è come non corrispondere ad alcun tipo.",
+    "tooFew": "{{column}}: {{count}} valori nel campione, troppo pochi per classificare."
   }
 }

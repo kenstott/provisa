@@ -4,9 +4,11 @@
 #
 # One leg of the release. Called by build-dmg.yml (the release orchestrator) on a tag, and by a
 # manual dry run of it. `version` is the release's tag; nothing here reads the pushed ref.
-# `publish` is false on a dry run: every artifact is built and uploaded to the RUN exactly as on
-# a tag, and every step that leaves the run -- the draft release, its attachments, PyPI, an image
-# push, a signed attestation -- is skipped. A failed job of this leg is re-run alone with
+# `publish` is false on a dry run: every artifact is built and uploaded to the RUN, and every
+# step that leaves the run -- the draft release, its attachments, PyPI, an image push, a signed
+# attestation -- is skipped. On a release each job attaches the assets it built straight to the
+# draft (.github/actions/attach-release-assets) instead of uploading them to the run, unless
+# another job of the run reads them. A failed job of this leg is re-run alone with
 # "Re-run failed jobs" on the release's run; the legs it reads from (their artifacts are the
 # run's) are not built again.
 name: "Release: Windows installers"
@@ -52,6 +54,8 @@ jobs:
   build-windows-core:
     name: Build Windows Core installer (${{ needs.metadata.outputs.channel }})
     runs-on: windows-latest
+    permissions:
+      contents: write   # attaches what it builds to the draft release
     needs: [metadata]
     steps:
       - name: Checkout
@@ -76,6 +80,12 @@ jobs:
         shell: bash
         run: rustup toolchain install 1.95.0 --profile minimal
 
+      # provisa-notebook's build takes Pyodide from this directory, not from its CDN.
+      - name: Pyodide downloads
+        uses: ./.github/actions/pyodide-downloads
+        with:
+          python: python
+
       - name: Build installer (native tier, Inno Setup)
         shell: pwsh
         env:
@@ -91,16 +101,29 @@ jobs:
           Move-Item packaging/windows/dist/Provisa-Setup.exe `
             "packaging/windows/dist/${{ needs.metadata.outputs.windows_name }}"
 
+      # A dry run keeps it in the run (its only home: nothing is attached); a release attaches it
+      # to the draft directly, never through an artifact.
       - name: Upload installer artifact
+        if: ${{ !inputs.publish }}
         uses: actions/upload-artifact@v4
         with:
           name: windows-core-dist
           path: "packaging/windows/dist/${{ needs.metadata.outputs.windows_name }}"
+          if-no-files-found: error
           retention-days: 1
+
+      - name: Attach the Windows installer to the draft release
+        if: inputs.publish
+        uses: ./.github/actions/attach-release-assets
+        with:
+          tag: ${{ inputs.version }}
+          files: "packaging/windows/dist/${{ needs.metadata.outputs.windows_name }}"
 
   build-windows-container:
     name: Build Windows Container-tier installer (${{ needs.metadata.outputs.channel }})
     runs-on: windows-latest
+    permissions:
+      contents: write   # attaches what it builds to the draft release
     needs: [metadata]
     steps:
       - name: Checkout
@@ -143,9 +166,20 @@ jobs:
           Move-Item packaging/windows/dist/Provisa-Container-Setup.exe `
             "packaging/windows/dist/${{ needs.metadata.outputs.windows_container_name }}"
 
+      # A dry run keeps it in the run (its only home: nothing is attached); a release attaches it
+      # to the draft directly, never through an artifact.
       - name: Upload installer artifact
+        if: ${{ !inputs.publish }}
         uses: actions/upload-artifact@v4
         with:
           name: windows-container-dist
           path: "packaging/windows/dist/${{ needs.metadata.outputs.windows_container_name }}"
+          if-no-files-found: error
           retention-days: 1
+
+      - name: Attach the Windows container-tier installer to the draft release
+        if: inputs.publish
+        uses: ./.github/actions/attach-release-assets
+        with:
+          tag: ${{ inputs.version }}
+          files: "packaging/windows/dist/${{ needs.metadata.outputs.windows_container_name }}"

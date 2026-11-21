@@ -91,7 +91,7 @@ from provisa.pgwire import advisory_locks
 from provisa.federation.duckdb_pg_xml import xml_out
 from provisa.pgwire.cast_types import XML_ARRAY
 from provisa.pgwire.constant_arguments import evaluable, is_constant
-from provisa.security.rights import can_act_cross_org, capabilities_for_claims
+from provisa.security.rights import capabilities_for_claims
 
 log = logging.getLogger(__name__)
 _tracer = _get_tracer(__name__)
@@ -223,13 +223,23 @@ _SQLSTATE_BY_CLASS: dict[str, str] = {
 }
 
 
-def _sqlstate_of(exception: object) -> str:
+def _coded(exc: BaseException) -> str | None:
+    """REQ-1986: a parameter-binding refusal's stable code and params, for the ErrorResponse's
+    Detail field -- the form a warning's are sent in. None for any other failure."""
+    from provisa.core.parameter_binding import ParameterBindingRefused
+
+    if not isinstance(exc, ParameterBindingRefused):
+        return None
+    return json.dumps({"code": exc.code, "params": exc.params}, ensure_ascii=True)
+
+
+def _sqlstate_of(exception: BaseException) -> str:
     """The SQLSTATE an error is reported with: the one a source reported (psycopg, asyncpg), else
     the one PostgreSQL's own error raised on the engine carries (pg_error.raising), else
     PostgreSQL's code for the engine error's class -- read through the chain of errors that
     carried it up (the pipeline re-raises a statement's failure from it) -- else XX000."""
     chain: list[BaseException] = []
-    seen = exception if isinstance(exception, BaseException) else None
+    seen: BaseException | None = exception
     while seen is not None and seen not in chain:
         chain.append(seen)
         seen = seen.__cause__ or seen.__context__
@@ -421,12 +431,14 @@ async def _resolve_and_build_org(
     # REQ-1235: the database name (psql -d acme, a BI tool's database field) names the org too.
     requested_org = org_named_by_host_or_database(requested_org, database)
 
-    # REQ-1337: resolve the claims to RIGHTS and test cross_org — never the role name.
-    caps = capabilities_for_claims(getattr(identity, "roles", []) or [], state_.platform_roles)
+    from provisa.auth.held_assignments import may_act_cross_org
+
+    # REQ-1337, REQ-802: the cross_org RIGHT of the roles the principal holds — never the role
+    # name, and never the role claims the credential carries.
     org_id = await resolve_session_org(
         state_,
         user_id=getattr(identity, "user_id", None),
-        can_act_any_org=can_act_cross_org(caps),
+        can_act_any_org=await may_act_cross_org(state_, identity),
         requested_org=requested_org,
         credential_org=getattr(identity, "active_org_id", None),  # REQ-1235
         named_by=(
@@ -586,15 +598,6 @@ def sign_in_validator(auth_provider, provider_name: str, username: str, password
 
     scheme, token = credential_presentation(provider_name, username, password)
     return scheme, token, validator_for_scheme(auth_provider, scheme)
-
-
-def _held_roles(state: Any, identity: Any, mapped: str, org_id: str | None, *, run) -> set[str]:
-    """The roles a pgwire sign-in may name: its mapped role and its assignments, as every
-    transport reads them (provisa.auth.held_assignments), read in the session's org. ``run`` runs
-    the read on the connection's loop."""
-    from provisa.auth.held_assignments import held_assignments
-
-    return {a.role_id for a in run(held_assignments(state, identity, org_id))} | {mapped}
 
 
 def _write_tag(sql: str, result: Any) -> str:
@@ -2978,6 +2981,37 @@ class _SourceFailed(Exception):
     them to the client's socket. The statement is answered with it; the connection goes on."""
 
 
+#: The encoder's errors of a value past what it writes, as PostgreSQL raises each (REQ-2236): its
+#: message -> the SQLSTATE and message. A year past 9999 is a timestamp's, which PostgreSQL holds
+#: to 294276 and pgwire sends of years 1 to 9999 only: raised by name.
+_UNSENDABLE = {
+    "money out of range": ("22003", "money out of range"),
+    "float too large to pack with f format": ("22003", "value out of range: overflow"),
+    "year is out of range": (
+        "22008",
+        "timestamp out of range for pgwire: a timestamp of years 1 to 9999 is sent",
+    ),
+    "days is out of range": ("22008", "interval out of range"),
+    # A date past PostgreSQL's (an engine's date32 holds more): date_in's error.
+    "date out of range": ("22008", "date out of range"),
+    "date value out of range": ("22008", "date out of range"),
+}
+
+
+def _unsendable(error: ValueError | OverflowError) -> PostgresError:
+    """The statement's error of a value the encoder cannot write (REQ-2236, amended 2026-11-15,
+    AN EDGE CASE RAISES): PostgreSQL's where it raises for the value; 22003 for any other overflow;
+    XX000 with the encoder's message for anything else. The encoder writes a batch only once it
+    is whole, so the client has every row before it and the connection goes on."""
+    said = str(error)
+    known = _UNSENDABLE.get(said)
+    if known is not None:
+        return PostgresError(*known)
+    if isinstance(error, OverflowError):
+        return PostgresError("22003", f"value out of range: {said}")
+    return PostgresError("XX000", f"a value pgwire cannot send: {said}")
+
+
 class _ReadData:
     """A result's ``ResultData``, each failure of its source as it is read a ``_SourceFailed``. A
     timeout is raised as it is: the request's deadline answers it (``ProvisaHandler._timed_out``)."""
@@ -3155,7 +3189,7 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
             # as PostgreSQL sends every error.
             org_id = cast(ProvisaSession, ctx.session).org_id if ctx is not None else None
             said = str(_Said(str(exception), org_id))
-            self._send_pg_error("ERROR", _sqlstate_of(exception), said)
+            self._send_pg_error("ERROR", _sqlstate_of(exception), said, _coded(exception))
         else:
             self._send_pg_error("ERROR", "0A000", str(refusal))
         if ctx:
@@ -3261,7 +3295,12 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
             read = query_result if session is None else in_session_zone(query_result, session.zone)
             # An error the source raises as its rows are read is the statement's, answered to the
             # client by the message handler (_SourceFailed); one writing them is the connection's.
-            sent = super().send_data_rows(cast(BVQueryResult, _ReadResult(read)), limit)
+            # A value the encoder cannot write is the statement's error too (_unsendable): the
+            # source's errors are _SourceFailed, so a ValueError here is the encoder's.
+            try:
+                sent = super().send_data_rows(cast(BVQueryResult, _ReadResult(read)), limit)
+            except (ValueError, OverflowError) as error:
+                raise _unsendable(error) from error
             _annotate_request(db__row_count=sent)
         # REQ-1949: what the rows themselves showed -- the answer was cut at a row limit -- is
         # known when the drain ends, and goes as a NOTICE after the last row, ahead of the
@@ -3308,18 +3347,25 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
         # end of the connection (the server closes the socket it accepted, not the TLS one).
         self.rfile = _FlushingReader(self.rfile, self._meter.flush)  # type: ignore[assignment]
 
-    def _send_pg_error(self, severity: str, sqlstate: str, message: str) -> None:
+    def _send_pg_error(
+        self, severity: str, sqlstate: str, message: str, detail: str | None = None
+    ) -> None:
+        """``detail`` goes in the Detail field: a coded refusal's code and params, as a
+        warning's are sent (``_send_warning``)."""
         from provisa.api.engine_error_names import client_text
 
         # REQ-2087, REQ-2152: every message a client is sent, redacted and in the model's names.
         message = client_text(message)
         buf = BVBuffer()
-        for field, value in (
+        fields = [
             (b"S", severity),
             (b"V", severity),
             (b"C", sqlstate),
             (b"M", message),
-        ):
+        ]
+        if detail is not None:
+            fields.append((b"D", detail))
+        for field, value in fields:
             buf.write_bytes(field)
             buf.write_string(value)
         buf.write_bytes(b"\x00")
@@ -3767,14 +3813,10 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
         self, ctx: BVContext, identity, auth_config: dict
     ) -> None:
         """Map the validated identity to a role, bind its org, and admit the connection."""
-        from provisa.auth.role_mapping import resolve_role
-
-        default_role = auth_config.get("default_role")
-        if not default_role:
+        if not auth_config.get("default_role"):
             # No admin default: an identity matching no mapping rule is refused, not escalated
             # onto whatever role the deployment happens to have named first.
             raise RuntimeError("pgwire auth requires auth.default_role to be configured")
-        role = resolve_role(identity, auth_config.get("role_mapping", []), default_role)
         # REQ-1266: bind the session to the identity's org (multitenant) so its queries route to that
         # org's data-plane runtime. Resolution + build run on this connection's loop (REQ-1882); an
         # unresolvable principal fails the connection rather than silently landing on the default.
@@ -3811,13 +3853,27 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
         ):
             self._send_pg_error("FATAL", "42501", role_probe.NOT_PERMITTED)
             return
-        members: tuple[str, ...] = (role,)
-        qualifiers: tuple[str, ...] = ()
         try:
             requested = requested_role(ctx.params)
         except PermissionError as exc:
             self._send_pg_error("FATAL", "28000", str(exc))
             return
+        from provisa.auth.held_assignments import default_request, sign_in_roles
+
+        try:
+            # The role the sign-in acts as and the roles it may name, as every transport reads
+            # them, in the session's org. REQ-1263: a personal access token's are its scopes its
+            # owner still holds; with none it is refused.
+            role, may_name = run_on_connection_loop(
+                sign_in_roles(_state, identity, getattr(ctx.session, "org_id", None))
+            )
+        except PermissionError as exc:
+            self._send_pg_error("FATAL", "42501", str(exc))
+            return
+        # REQ-2155: naming no role acts as the union of the roles held.
+        requested = requested or default_request(_state, identity, role, may_name)
+        members: tuple[str, ...] = (role,)
+        qualifiers: tuple[str, ...] = ()
         if requested:
             # REQ-1620: the connection may name any role, or set of roles, its identity holds; a
             # set acts as its meta-role, built in this session's org.
@@ -3829,7 +3885,7 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
 
             org_token = None
             org_id = getattr(ctx.session, "org_id", None)
-            permitted = _held_roles(_state, identity, role, org_id, run=run_on_connection_loop)
+            permitted = set(may_name)
             if org_id is not None:
                 from provisa.core.request_context import set_current_org
 
@@ -4300,7 +4356,7 @@ class ProvisaServer(BuenaVistaServer):  # REQ-001, REQ-266
 
 def _log_statement_failure(what: str, sql: str, exc: Exception) -> None:
     """Log a statement that did not complete. A REFUSAL is the answer the statement gets, not a
-    fault of the server: a 4xx ``ApiError`` (a role without the right, a draft table, an unbound
+    fault of the server: a 4xx ``ApiError`` (a role without the right, a withdrawn table, an unbound
     source) is one line at INFO, without a traceback, as a ``PermissionError`` refusal already
     was (not logged at all). Anything else is unexpected and keeps its traceback."""
     from provisa.api.errors import ApiError

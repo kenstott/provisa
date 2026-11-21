@@ -6,21 +6,18 @@
 // found in the LICENSE file in the root directory of this source tree.
 
 import { test, expect } from "./coverage";
-import type { Page } from "./coverage";
-import { schemasLoaded, tableOption, tablesField } from "./source-to-query-helpers";
+import {
+  openTablesAddForm,
+  schemasLoaded,
+  tableOption,
+  tablesField,
+} from "./source-to-query-helpers";
 
 // REQ-2234: Register Table holds Source, Domain, Schema where the source has more than one, and
 // one Tables field (the standard multi-select). A table already registered is not offered.
 
-async function openAddForm(page: Page) {
-  await page.goto("/tables");
-  await page.waitForSelector(".page-header", { timeout: 15000 });
-  await page.getByRole("button", { name: /\+ Table/i }).click();
-  await page.waitForSelector(".form-card", { timeout: 5000 });
-}
-
 test("sqlite lists its one physical schema, 'main', not PG internal schemas", async ({ page }) => {
-  await openAddForm(page);
+  await openTablesAddForm(page);
   await page.getByTestId("register-table-source-select").selectOption("inquiries-sqlite");
 
   // Regression: native_schemas returned None, and the Trino fallback returned internal PG schemas
@@ -36,7 +33,7 @@ test("sqlite lists its one physical schema, 'main', not PG internal schemas", as
 });
 
 test("sqlite tables are read from the physical file", async ({ page }) => {
-  await openAddForm(page);
+  await openTablesAddForm(page);
   await page.getByTestId("register-table-source-select").selectOption("inquiries-sqlite");
   await page.getByTestId("register-table-domain-select").selectOption("pet-store");
 
@@ -50,7 +47,7 @@ test("sqlite tables are read from the physical file", async ({ page }) => {
 });
 
 test("openapi tables already registered are not offered", async ({ page }) => {
-  await openAddForm(page);
+  await openTablesAddForm(page);
   await page.getByTestId("register-table-source-select").selectOption("petstore-api");
   await page.getByTestId("register-table-domain-select").selectOption("pet-store");
 

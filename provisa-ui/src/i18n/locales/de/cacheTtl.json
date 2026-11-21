@@ -2,7 +2,7 @@
   "cacheTtl": {
     "neverExpires": "läuft nie ab",
     "inputHint": "-1: läuft nie ab",
-    "neverExpiresHint": "Läuft nie ab: wird einmal geladen.",
+    "neverExpiresHint": "Läuft nie ab und wird einmal geladen.",
     "asOf": "{{ttl}}, Stand {{when}}",
     "roleTtlUnlisted": "Die Cache-TTL läuft für jede Rolle nie ab.",
     "roleTtlNoEffect": "Die Cache-TTL läuft nie ab, daher hat dieser Eintrag keine Wirkung."

@@ -173,6 +173,18 @@ class TestParseLlmResponse:
 
 
 class TestSearchTablesFuzzyOnly:
+    """The model gave no ranking (a failed call): the token ranking is answered. With no key the
+    refusal reaches the caller instead (REQ-1395; tests/unit/test_ai_clients_explicit.py)."""
+
+    @pytest.fixture(autouse=True)
+    def _no_ranking(self, monkeypatch):
+        from provisa.discovery import table_search
+
+        async def unranked(_query, _candidates, api_keys=None):
+            return []
+
+        monkeypatch.setattr(table_search, "llm_rank", unranked)
+
     @pytest.mark.asyncio
     async def test_returns_ranked_results(self):
         candidates = [

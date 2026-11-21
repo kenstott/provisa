@@ -58,10 +58,17 @@ export function TableAccessPanel({ tableId }: { tableId: number | null }) {
   const chosen = columns.find((c) => c.name === (column ?? columns[0]?.name));
   return (
     <div data-testid="table-access">
-      {/* REQ-1921: a draft's access is read by a caller holding the right its preview needs. */}
-      {read.access.draft && (
-        <Badge size="xs" variant="light" color="gray" mb="xs" data-testid="table-access-draft">
-          {t("roleRights.draft")}
+      {/* REQ-1921: a withdrawn table's access is read by a caller holding the right its preview
+          needs. */}
+      {read.access.withdrawn && (
+        <Badge
+          size="xs"
+          variant="outline"
+          color="gray"
+          mb="xs"
+          data-testid="table-access-withdrawn"
+        >
+          {t("roleRights.withdrawn")}
         </Badge>
       )}
       <FormLayout>

@@ -29,14 +29,16 @@ import { useAuth } from "../../context/AuthContext";
 import {
   BillingError,
   cancelTrial,
+  checkoutReturnUrl,
+  clearCheckoutReturn,
   fetchBillingSummary,
   fetchPortalUrl,
-  openCheckout,
-  startEgressSubscription,
+  readCheckoutReturn,
   startTrial,
   changePlan,
   fetchPlans,
   type BillingSummary,
+  type CheckoutSession,
   type PlanChanged,
   type PlanOffer,
   type PlanOffers,
@@ -44,6 +46,7 @@ import {
 import { useCheckoutAppearance } from "../../api/checkoutAppearance";
 import { formatMoney, formatRate, planName } from "../../lib/planDisplay";
 import { FormFooter } from "../form/FormLayout";
+import { CheckoutModal } from "../CheckoutModal";
 
 const GIB = 1024 ** 3;
 
@@ -74,9 +77,9 @@ function daysUntil(iso: string): number {
  * Every figure on a card is the server's: the price comes from the merchant of record's own price
  * object and the machine from the size table that provisions the engine (REQ-1449), because a rate
  * or a vCPU count written into the page drifts from the invoice and from the pod the organization
- * is actually given. What the page states for itself is only what the change will do — charged now
- * on the way up, credited on the next invoice on the way down (REQ-1509) — and that a plan change
- * moves the engine (REQ-1510).
+ * is actually given. What the page states for itself is only what the change will do — no
+ * proration: each plan's minimum is billed in full (REQ-1509) — and that a plan change moves the
+ * engine (REQ-1510).
  */
 function PlanCards({ orgId, onChanged }: { orgId: string; onChanged: () => void }) {
   const { t } = useTranslation();
@@ -106,12 +109,6 @@ function PlanCards({ orgId, onChanged }: { orgId: string; onChanged: () => void 
     return kind === "minimum" ? t("billingTab.priceMinimum", { amount }) : amount;
   };
 
-  // The direction is read from the order the server sends the plans in, not from a ranking of plan
-  // names held here — the money it decides the wording for is still the merchant of record's.
-  const rank = (plan: string) => offers.plans.findIndex((p) => p.plan === plan);
-  const currentRank = rank(offers.plan === "trial" ? "starter" : offers.plan);
-  const upgrade = target !== null && rank(target.plan) > currentRank;
-
   const confirm = async () => {
     if (target === null) return;
     setChanging(true);
@@ -119,12 +116,6 @@ function PlanCards({ orgId, onChanged }: { orgId: string; onChanged: () => void 
     setResult(null);
     try {
       const changed = await changePlan(orgId, target.plan);
-      if (changed.portal_url) {
-        // The provider would not take the change over the API. Sending the administrator there is
-        // the only way the change happens; reporting success here would report one that did not.
-        window.location.href = changed.portal_url;
-        return;
-      }
       setResult(changed);
       setTarget(null);
       loadPlans();
@@ -161,10 +152,8 @@ function PlanCards({ orgId, onChanged }: { orgId: string; onChanged: () => void 
             data-testid="billing-plan-changed"
           >
             <Stack gap="xs">
-              <Text size="sm">
-                {result.prorated === "charged_now"
-                  ? t("billingTab.proratedCharged")
-                  : t("billingTab.proratedCredit")}
+              <Text size="sm" data-testid="billing-plan-minimums">
+                {t("billingTab.minimumsCharged")}
               </Text>
               {result.engine_error ? (
                 <Text size="sm">
@@ -247,8 +236,8 @@ function PlanCards({ orgId, onChanged }: { orgId: string; onChanged: () => void 
       >
         {target && (
           <Stack gap="sm">
-            <Text size="sm">
-              {upgrade ? t("billingTab.confirmUpgrade") : t("billingTab.confirmDowngrade")}
+            <Text size="sm" data-testid="billing-plan-confirm-minimums">
+              {t("billingTab.confirmMinimums")}
             </Text>
             <Text size="sm">
               {target.engine
@@ -299,7 +288,8 @@ export function BillingTab() {
   const [summary, setSummary] = useState<BillingSummary | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
-  // REQ-1469: the rates the trial and transfer cards quote are the server's, from the merchant of
+  const [checkout, setCheckout] = useState<CheckoutSession | null>(null);
+  // REQ-1469: the rates the trial card quotes are the server's, from the merchant of
   // record's own prices. When they cannot be read the cards say so; they never quote a rate
   // written into this page.
   const [starter, setStarter] = useState<PlanOffer | null>(null);
@@ -325,6 +315,12 @@ export function BillingTab() {
 
   useEffect(load, [load]);
 
+  // REQ-1476: a completed checkout navigates back here with its session id. The summary load above
+  // is the refetch; the parameter is only taken off the address so a reload does not carry it.
+  useEffect(() => {
+    if (readCheckoutReturn() !== null) clearCheckoutReturn();
+  }, []);
+
   if (!activeOrgId) {
     return <Text c="dimmed">{t("billingTab.selectOrg")}</Text>;
   }
@@ -333,27 +329,10 @@ export function BillingTab() {
     setBusy(true);
     setError("");
     try {
-      // The checkout opens as an overlay on this page. Payment still happens entirely at the
-      // merchant of record, and the subscription is linked to the org by the webhook, so a closed
-      // overlay after payment still lands the plan (REQ-1469).
-      await openCheckout(await startTrial(activeOrgId, window.location.href, appearance), load);
-    } catch (e) {
-      setError(e instanceof BillingError ? e.message : String(e));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  // REQ-1482: data transfer is a second subscription — a Lemon Squeezy variant carries one
-  // usage-based price and the plan's is the active hour — so it is a second checkout.
-  const addTransfer = async () => {
-    setBusy(true);
-    setError("");
-    try {
-      await openCheckout(
-        await startEgressSubscription(activeOrgId, window.location.href, appearance),
-        load,
-      );
+      // The checkout is embedded in this page. Payment still happens entirely at the merchant of
+      // record, and the subscription is linked to the org by the webhook (REQ-1469); on completion
+      // Stripe returns to this page, which loads the summary afresh.
+      setCheckout(await startTrial(activeOrgId, checkoutReturnUrl(), appearance));
     } catch (e) {
       setError(e instanceof BillingError ? e.message : String(e));
     } finally {
@@ -366,7 +345,7 @@ export function BillingTab() {
     setError("");
     try {
       // The portal opens in place of this page; the button is free again either way.
-      window.location.href = await fetchPortalUrl(activeOrgId);
+      window.location.href = await fetchPortalUrl(activeOrgId, window.location.href);
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -489,7 +468,7 @@ export function BillingTab() {
               value={(trial.egress_bytes_used / trial.egress_bytes_included) * 100}
               aria-label={t("billingTab.egressAria")}
             />
-            {trialRunning && (
+            {trialRunning && !sub?.cancel_at_period_end && (
               <Group mt="sm">
                 <Button
                   variant="default"
@@ -522,21 +501,15 @@ export function BillingTab() {
             </Text>
             {sub?.fixed_cents != null && (
               <Text size="sm">
-                {t(
-                  `billingTab.${sub.fixed_kind === "minimum" ? "planMinimum" : "planFee"}${
-                    sub.variant_name ? "Variant" : ""
-                  }`,
-                  {
-                    // The label says whether it is a minimum; the price is the amount and interval.
-                    price: sub.fixed_interval
-                      ? t("billingTab.pricePer", {
-                          amount: formatMoney(sub.fixed_cents),
-                          interval: sub.fixed_interval,
-                        })
-                      : formatMoney(sub.fixed_cents),
-                    variant: sub.variant_name,
-                  },
-                )}
+                {t(sub.fixed_kind === "minimum" ? "billingTab.planMinimum" : "billingTab.planFee", {
+                  // The label says whether it is a minimum; the price is the amount and interval.
+                  price: sub.fixed_interval
+                    ? t("billingTab.pricePer", {
+                        amount: formatMoney(sub.fixed_cents),
+                        interval: sub.fixed_interval,
+                      })
+                    : formatMoney(sub.fixed_cents),
+                })}
               </Text>
             )}
             {/* Quantities, not money: the metered charge is the one the merchant of record
@@ -608,51 +581,22 @@ export function BillingTab() {
 
       {sub !== null && <PlanCards orgId={activeOrgId} onChanged={load} />}
 
-      {summary && sub !== null && !summary.has_egress_subscription && (
-        <Card withBorder padding="lg" data-testid="billing-add-transfer">
-          <Stack gap="sm">
-            <Title order={4}>{t("billingTab.transferTitle")}</Title>
-            <Text size="sm">
-              {t("billingTab.transferIntro")}
-              {starter !== null && (
-                <>
-                  {" "}
-                  {t("billingTab.transferRates", {
-                    includedGb: starter.egress.included_gb,
-                    perGb: formatRate(starter.egress.per_gb_cents),
-                  })}
-                </>
-              )}
-            </Text>
-            <Group>
-              <Button
-                onClick={addTransfer}
-                loading={busy}
-                data-testid="billing-add-transfer-button"
-              >
-                {t("billingTab.addTransfer")}
-              </Button>
-            </Group>
-          </Stack>
-        </Card>
-      )}
-
       {sub && (
         <Card withBorder padding="lg" data-testid="billing-next-charge">
           <Title order={4} mb="sm">
             {t("billingTab.nextChargeTitle")}
           </Title>
           <Stack gap="xs">
-            {sub.status === "cancelled" || sub.status === "expired" ? (
+            {sub.status === "canceled" || sub.status === "incomplete_expired" ? (
               <Text size="sm">
                 {t(
-                  `billingTab.${sub.status === "cancelled" ? "subCancelled" : "subExpired"}${
+                  `billingTab.${sub.status === "canceled" ? "subCancelled" : "subExpired"}${
                     sub.ends_at ? "Access" : ""
                   }`,
                   { date: sub.ends_at ? formatDate(sub.ends_at) : "" },
                 )}
               </Text>
-            ) : sub.status === "past_due" ? (
+            ) : sub.status === "past_due" || sub.status === "unpaid" ? (
               <Text size="sm">{t("billingTab.paymentFailed")}</Text>
             ) : summary?.next_charge ? (
               <Text size="sm" data-testid="billing-next-charge-amount">
@@ -682,6 +626,11 @@ export function BillingTab() {
             ) : (
               <Text size="sm">{t("billingTab.noRenewal")}</Text>
             )}
+            {sub.cancel_at_period_end && sub.ends_at && (
+              <Text size="sm" data-testid="billing-ends-at-period-end">
+                {t("billingTab.endsAtPeriodEnd", { date: formatDate(sub.ends_at) })}
+              </Text>
+            )}
             {sub.card_brand && sub.card_last_four && (
               <Text size="sm" c="dimmed">
                 {t("billingTab.cardEnding", { brand: sub.card_brand, last4: sub.card_last_four })}
@@ -702,6 +651,8 @@ export function BillingTab() {
           </Stack>
         </Card>
       )}
+
+      <CheckoutModal session={checkout} onClose={() => setCheckout(null)} />
     </Stack>
   );
 }

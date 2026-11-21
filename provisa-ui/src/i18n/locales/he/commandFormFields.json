@@ -52,6 +52,8 @@
     "colVisibleTo": "גלוי ל- (תפקידים, מופרדים בפסיקים; ריק = כולם)",
     "colVisibleToPlaceholder": "analyst, org_admin",
     "colMask": "מיסוך",
+    "exposedAsTable": "גם כטבלה",
+    "exposedAsTableHint": "לקוחות שקוראים טבלאות, כמו כלי BI, קוראים פונקציה זו כטבלה שהפרמטרים שלה הם עמודות. כשהיא כבויה, היא מחזירה את השורות של הרשימה של המקור מאותו סוג, והטבלה מוסרת.",
     "requiresApproval": "דורש אישור",
     "requiresApprovalHint": "כל קריאה מתבצעת רק לאחר שה-hook לאישור מאשר אותה. ללא hook מוגדר, קריאות נדחות.",
     "writesTable": "כותב לטבלה",

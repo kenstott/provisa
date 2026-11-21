@@ -18,6 +18,7 @@ from sqlalchemy import select
 
 from provisa.core.change_signal import is_poll, resolve_effective  # REQ-932
 from provisa.core.schema_org import registered_tables as _rt
+from provisa.core.schema_org import sources as _src
 from provisa.live.engine import LiveSpec
 
 if TYPE_CHECKING:
@@ -47,7 +48,8 @@ async def reconcile_live_engine(conn: "Connection", engine) -> None:  # REQ-565,
             _rt.c.watermark_column,
         ).where(
             _rt.c.live.isnot(None),
-            _rt.c.draft.is_(False),  # REQ-1921: no draft is polled
+            _rt.c.withdrawn.is_(False),  # REQ-1921: no withdrawn table is polled
+            _rt.c.source_id.notin_(select(_src.c.id).where(_src.c.withdrawn.is_(True))),
             _rt.c.retired.is_(False),  # REQ-2248: nor a retired table
         )
     )

@@ -64,7 +64,7 @@ async def plane(monkeypatch, control_plane) -> Database:
 
 
 async def seed(db: Database) -> None:
-    """The grants the scenarios take a role off; shared with the PostgreSQL module."""
+    """The grants the scenarios take a role off."""
     both = ["leaving", "staying"]
     async with db.acquire() as conn:
         for role_id in ("leaving", "staying"):

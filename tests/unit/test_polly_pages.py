@@ -31,9 +31,9 @@ OUTSIDE_THE_ROUTES = {"/demos/:name", "/login", "/register"}
 
 def _app_routes() -> set[str]:
     routes = set(re.findall(r'path="(/[^"]*)"', APP))
-    routes |= {
-        path for path, _cap in re.findall(r'\[\s*"(/[^"]*)"\s*,\s*"([a-z_]+)"\s*,?\s*\]', APP)
-    }
+    # The Admin table's `[path, gate]` rows: the gate is a capability or EVERY_MEMBER (a page that
+    # asks no right). A route is a route whatever its gate.
+    routes |= set(re.findall(r'\[\s*"(/[^"]*)"\s*,\s*(?:"[a-z_]+"|EVERY_MEMBER)\s*,?\s*\]', APP))
     for mapped in re.findall(r'\{\[("/[^\]]*)\]\.map', APP):
         routes |= set(re.findall(r'"(/[^"]*)"', mapped))
     return routes
@@ -47,7 +47,7 @@ def _published(name: str) -> set[str]:
 
 def test_the_routes_are_read_from_the_app():
     routes = _app_routes()
-    assert {"/tables", "/python", "/notebook", "/admin/ontology", "/sparql"} <= routes
+    assert {"/tables", "/python", "/notebook", "/context/ontology", "/sparql"} <= routes
     assert len(routes) > 50
 
 
@@ -127,7 +127,7 @@ def _reads(route: str) -> set[str]:
     [
         ("/tables", {"modeling", "wizardStep", "layout", "layoutUnsaved", "collapsed"}),
         ("/relationships", {"layout", "layoutUnsaved", "collapsed"}),
-        ("/admin/ontology", {"findTerms"}),
+        ("/context/ontology", {"findTerms"}),
     ],
 )
 def test_the_new_screens_inputs_are_named(route, keys):

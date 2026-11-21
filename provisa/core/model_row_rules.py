@@ -52,6 +52,18 @@ from provisa.core.session_terms import resolve_session_terms
 #: A statement's right: what an UPDATE or a DELETE does to a row that exists.
 _RIGHTS: tuple[tuple[type, str, str], ...] = ((Update, "U", "UPDATE"), (Delete, "D", "DELETE"))
 
+#: REQ-2248: deleting a model object retires it, an UPDATE of its row. The statement that does is
+#: marked with this execution option (:func:`as_delete`) and held to the D rule as the DELETE it
+#: stands for.
+_RETIRES_OPTION = "provisa_retires"
+
+
+def as_delete(stmt: Update) -> Update:
+    """``stmt``, an UPDATE that retires rows because a person deleted them (REQ-2248), marked so
+    the acting role's D rule holds it, as it held the DELETE it replaces (REQ-2188)."""
+    return stmt.execution_options(**{_RETIRES_OPTION: True})
+
+
 #: A backend's name in sqlglot, where it differs from the connection's.
 _SQLGLOT_DIALECT = {"postgresql": "postgres", "mssql": "tsql", "singlestoredb": "singlestore"}
 
@@ -152,12 +164,34 @@ def _predicate(
     return literal_column(f"({_rendered(tree, dialect)})")
 
 
+def _retires(stmt: Any) -> bool:
+    """Whether ``stmt`` is an UPDATE :func:`as_delete` marked."""
+    return isinstance(stmt, Update) and bool(stmt.get_execution_options().get(_RETIRES_OPTION))
+
+
+#: What a reader outside this module asks (REQ-1557: a retired row is a deleted one there too).
+retires = _retires
+
+
+def person_acting() -> bool:
+    """Whether a person is making this context's writes: a role is acting, and the path is not
+    one that writes the model with no person acting (:func:`unnarrowed`, a whole-model write).
+    The test :func:`narrowing_of` applies before it looks for a rule."""
+    return (
+        current_acting_role.get() is not None
+        and not _unnarrowed.get()
+        and not model_change.writes_whole_model()
+    )
+
+
 def narrowing_of(stmt: Any, dialect: str) -> Narrowing | None:
     """The rule ``stmt`` is held to, or None when it is held to none: not an UPDATE or DELETE, no
     acting person, or a role with no rule for the right on that table."""
     if _provider is None or _unnarrowed.get():
         return None
     match = next(((right, verb) for kind, right, verb in _RIGHTS if isinstance(stmt, kind)), None)
+    if match is not None and _retires(stmt):
+        match = ("D", "DELETE")
     role = current_acting_role.get()
     if match is None or role is None or model_change.writes_whole_model():
         return None

@@ -145,6 +145,9 @@ export function useOntology(preset: OntologyPreset, enabled: boolean) {
   const [read, setRead] = useState<Read>({ all: null, error: null, done: false });
   const [scope, setScope] = useState<QueryScope | null>(null);
   const [scoped, setScoped] = useState<Loaded | null>(null);
+  // The scope ``scoped`` answers. A new scope (a search typed) is read a hop at a time; until those
+  // reads are in, ``scoped`` is still the scope before's, drawn but no longer the view's query.
+  const [scopedFor, setScopedFor] = useState<QueryScope | null>(null);
   const [changes, setChanges] = useState(0);
   // The tables the view has expanded, and the columns read of each beyond those its graph read
   // (a term's graph reads only the columns its terms reach): read once on asking, kept while the
@@ -197,7 +200,11 @@ export function useOntology(preset: OntologyPreset, enabled: boolean) {
     if (!enabled || actingRoles === null || scope === null) return;
     let cancelled = false;
     loadOntology(actingRoles, scope).then(
-      (d) => !cancelled && setScoped(d),
+      (d) => {
+        if (cancelled) return;
+        setScoped(d);
+        setScopedFor(scope);
+      },
       (e: unknown) =>
         !cancelled && setRead((r) => ({ ...r, error: e instanceof Error ? e.message : String(e) })),
     );
@@ -271,8 +278,10 @@ export function useOntology(preset: OntologyPreset, enabled: boolean) {
     shownTables.length === 0 || columnsReader === null
       ? null
       : tableColumnsField(columnsReader, shownTables);
+  // REQ-2136: Open as query hands over the query of the scope now asked for, never the one before:
+  // none while that scope's read is in flight.
   const text =
-    scoped?.query === undefined
+    scoped?.query === undefined || scopedFor !== scope
       ? null
       : columnsField === null
         ? scoped.query

@@ -16,7 +16,7 @@
     "checkPassed": "{{capability}} : réussi",
     "checkFailed": "{{capability}} : échoué ({{reason}})",
     "jdbcDriverJar": "JAR du pilote JDBC",
-    "jdbcDriverJarHint": "Le fichier JAR du pilote, téléversé depuis votre machine. Installations auto-hébergées uniquement.",
+    "jdbcDriverJarHint": "Le fichier jar du pilote, téléversé depuis votre machine. Installations autohébergées uniquement.",
     "jdbcDriverClass": "Classe du pilote",
     "driver": "Pilote",
     "jarDriver": "Votre propre pilote JDBC (JAR)",

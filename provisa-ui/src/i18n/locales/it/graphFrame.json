@@ -11,7 +11,7 @@
     "error": "Errore",
     "expand": "Espandi",
     "enlarge": "Ingrandisci",
-    "exitFullScreen": "Esci dallo schermo intero",
+    "exitFullScreen": "Ripristina dimensione",
     "collapse": "Comprimi",
     "unpinHint": "Sblocca (sbloccare per consentire l'ordinamento)",
     "pinToTop": "Blocca in alto",
@@ -19,7 +19,7 @@
     "run": "Esegui",
     "removeFromFavorites": "Rimuovi dai preferiti",
     "addToFavorites": "Aggiungi ai preferiti",
-    "autoImputeOn": "Imputazione automatica delle relazioni ATTIVA — fare clic per disabilitare",
+    "autoImputeOn": "L'inferenza automatica delle relazioni è attiva. Fare clic per disattivarla.",
     "autoImputeOff": "Imputa automaticamente le relazioni tra i nodi visibili",
     "groupTooltip": "Raggruppa i nodi per attributo (doppio clic su un contorno per comprimere; doppio clic sul nodo compresso per espandere)",
     "groupPlaceholder": "⬡ gruppo",
@@ -50,7 +50,7 @@
     "sparqlDropSubquery": "Non si può rilasciare una pillola su una query con un sub-SELECT. Non è stato aggiunto nulla.",
     "sparqlDropNoClass": "Questo risultato non nomina alcuna classe a cui unirsi: assegna una classe a una variabile e rilascia di nuovo. Non è stato aggiunto nulla.",
     "sparqlDropNode": "Quel nodo non è una variabile di questa query, quindi non c’è nulla a cui unirlo. Non è stato aggiunto nulla.",
-    "sparqlDropNoPath": "{{name}} non ha alcuna relazione con {{classes}}. Non è stato aggiunto nulla.",
+    "sparqlDropNoPath": "{{name}} non ha alcuna relazione con {{classes}} all’interno dei domini selezionati. Non è stato aggiunto nulla.",
     "sparqlDropTooFar": "{{name}} dista {{hops}} relazioni da {{classes}}, oltre le {{most}} percorse da un rilascio: nessun percorso breve. Non è stato aggiunto nulla.",
     "sparqlDropNoEnd": "Nessuna estremità di {{name}} è in questo risultato. Non è stato aggiunto nulla.",
     "sparqlDropParameterized": "Un percorso non può passare per {{name}}: la sua lettura richiede argomenti. Non è stato aggiunto nulla.",
@@ -58,6 +58,9 @@
     "sparqlDropNoProperty": "Nessuna classe di questo risultato ha {{name}}. Non è stato aggiunto nulla.",
     "sparqlDropLeftOut": "Aggiunti {{shown}} percorsi su {{total}} ugualmente brevi; gli altri sono stati omessi.",
     "sparqlDropCut": "Il risultato ha raggiunto il suo LIMIT di {{limit}}: le righe successive sono omesse.",
-    "cypherPathNoKey": "I percorsi tra {{from}} e {{to}} richiedono la chiave di ogni nodo, e uno dei due non ne ha."
+    "cypherPathNoKey": "I percorsi tra {{from}} e {{to}} richiedono la chiave di ogni nodo, e uno dei due non ne ha.",
+    "cypherDropNoLabel": "I nodi di questo risultato non hanno un’etichetta e la sua query non ha alcuna relazione che gliene dia una: assegna un’etichetta a un nodo e rilascia di nuovo. Non è stato aggiunto nulla.",
+    "cypherDropNoPair": "Nessuna relazione nella query di questo risultato unisce etichette all’interno dei domini selezionati, quindi ai suoi nodi non si possono dare etichette. Non è stato aggiunto nulla.",
+    "cypherDropLabelled": "I nodi senza etichetta di questo risultato hanno ricevuto le etichette dallo schema, un MATCH per coppia di etichette."
   }
 }

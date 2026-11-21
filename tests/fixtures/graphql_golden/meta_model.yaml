@@ -2537,6 +2537,10 @@ tables:
     data_type: oid
     visible_to:
     - viewer
+  - name: provisa_table_id
+    data_type: integer
+    visible_to:
+    - viewer
   - name: provolatile
     data_type: varchar
     visible_to:
@@ -9033,6 +9037,10 @@ tables:
     data_type: domain
     visible_to:
     - viewer
+  - name: provisa_table_id
+    data_type: integer
+    visible_to:
+    - viewer
   - name: result_cast_as_locator
     data_type: domain
     visible_to:
@@ -10371,10 +10379,6 @@ tables:
     data_type: text
     visible_to:
     - viewer
-  - name: draft
-    data_type: boolean
-    visible_to:
-    - viewer
   - name: gql_naming_convention
     data_type: text
     visible_to:
@@ -10416,6 +10420,10 @@ tables:
     data_type: integer
     visible_to:
     - viewer
+  - name: requires_parameters
+    data_type: boolean
+    visible_to:
+    - viewer
   - name: schema_name
     data_type: text
     visible_to:
@@ -10438,6 +10446,10 @@ tables:
     - viewer
   - name: watermark_column
     data_type: text
+    visible_to:
+    - viewer
+  - name: withdrawn
+    data_type: boolean
     visible_to:
     - viewer
 - source_id: provisa-admin
@@ -10928,6 +10940,22 @@ tables:
     - viewer
   - name: object_fields
     data_type: text
+    visible_to:
+    - viewer
+  - name: parameter_opaque
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: parameter_required
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: parameter_required_by_source
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: parameter_required_by_steward
+    data_type: boolean
     visible_to:
     - viewer
   - name: path
@@ -11621,7 +11649,7 @@ relationships:
   cardinality: many-to-one
   materialize: false
   refresh_interval: 300
-  disable_cypher: false
+  disable_cypher: true
   hide_target_meta: false
   same_entity: false
   parameters: {}
@@ -11636,7 +11664,7 @@ relationships:
   cardinality: many-to-one
   materialize: false
   refresh_interval: 300
-  disable_cypher: false
+  disable_cypher: true
   hide_target_meta: false
   same_entity: false
   parameters: {}
@@ -11702,7 +11730,7 @@ relationships:
   cardinality: many-to-one
   materialize: false
   refresh_interval: 300
-  disable_cypher: false
+  disable_cypher: true
   hide_target_meta: false
   same_entity: false
   parameters: {}
@@ -11717,7 +11745,7 @@ relationships:
   cardinality: many-to-one
   materialize: false
   refresh_interval: 300
-  disable_cypher: false
+  disable_cypher: true
   hide_target_meta: false
   same_entity: false
   parameters: {}
@@ -11753,7 +11781,7 @@ relationships:
   cardinality: one-to-many
   materialize: false
   refresh_interval: 300
-  disable_cypher: false
+  disable_cypher: true
   hide_target_meta: false
   same_entity: false
   parameters: {}
@@ -11785,7 +11813,7 @@ relationships:
   cardinality: one-to-many
   materialize: false
   refresh_interval: 300
-  disable_cypher: false
+  disable_cypher: true
   hide_target_meta: false
   same_entity: false
   parameters: {}
@@ -12114,7 +12142,7 @@ relationships:
   materialize: false
   refresh_interval: 300
   graphql_alias: glossaryRefs
-  disable_cypher: false
+  disable_cypher: true
   hide_target_meta: false
   same_entity: false
   parameters: {}
@@ -12180,7 +12208,7 @@ relationships:
   cardinality: one-to-many
   materialize: false
   refresh_interval: 300
-  disable_cypher: false
+  disable_cypher: true
   hide_target_meta: false
   same_entity: false
   parameters: {}
@@ -12688,7 +12716,7 @@ relationships:
   materialize: false
   refresh_interval: 300
   graphql_alias: glossaryRef
-  disable_cypher: false
+  disable_cypher: true
   hide_target_meta: false
   same_entity: false
   parameters: {}
@@ -13039,7 +13067,7 @@ relationships:
   materialize: false
   refresh_interval: 300
   graphql_alias: term
-  disable_cypher: false
+  disable_cypher: true
   hide_target_meta: false
   same_entity: false
   parameters: {}
@@ -13055,7 +13083,7 @@ relationships:
   materialize: false
   refresh_interval: 300
   graphql_alias: sourceTerm
-  disable_cypher: false
+  disable_cypher: true
   hide_target_meta: false
   same_entity: false
   parameters: {}
@@ -13071,7 +13099,7 @@ relationships:
   materialize: false
   refresh_interval: 300
   graphql_alias: targetTerm
-  disable_cypher: false
+  disable_cypher: true
   hide_target_meta: false
   same_entity: false
   parameters: {}
@@ -13086,7 +13114,7 @@ relationships:
   cardinality: many-to-one
   materialize: false
   refresh_interval: 300
-  disable_cypher: false
+  disable_cypher: true
   hide_target_meta: false
   same_entity: false
   parameters: {}
@@ -13102,7 +13130,7 @@ relationships:
   materialize: false
   refresh_interval: 300
   graphql_alias: column
-  disable_cypher: false
+  disable_cypher: true
   hide_target_meta: false
   same_entity: false
   parameters: {}
@@ -13118,7 +13146,7 @@ relationships:
   materialize: false
   refresh_interval: 300
   graphql_alias: term
-  disable_cypher: false
+  disable_cypher: true
   hide_target_meta: false
   same_entity: false
   parameters: {}
@@ -13196,7 +13224,7 @@ relationships:
   materialize: false
   refresh_interval: 300
   graphql_alias: domains
-  disable_cypher: false
+  disable_cypher: true
   hide_target_meta: false
   same_entity: false
   parameters: {}
@@ -13212,7 +13240,7 @@ relationships:
   materialize: false
   refresh_interval: 300
   graphql_alias: edgesIn
-  disable_cypher: false
+  disable_cypher: true
   hide_target_meta: false
   same_entity: false
   parameters: {}
@@ -13228,7 +13256,7 @@ relationships:
   materialize: false
   refresh_interval: 300
   graphql_alias: edgesOut
-  disable_cypher: false
+  disable_cypher: true
   hide_target_meta: false
   same_entity: false
   parameters: {}
@@ -13324,7 +13352,7 @@ relationships:
   materialize: false
   refresh_interval: 300
   graphql_alias: refs
-  disable_cypher: false
+  disable_cypher: true
   hide_target_meta: false
   same_entity: false
   parameters: {}

@@ -15,12 +15,8 @@
 // domain's labels unless the node dropped or the node dropped on is of that domain.
 
 import { describe, it, expect } from "vitest";
-import {
-  buildDropExpansion,
-  nodePathQuery,
-  type DropExpansion,
-  type PathScope,
-} from "../pages/graph-drop";
+import { buildDropExpansion, nodePathQuery, type DropExpansion } from "../pages/graph-drop";
+import type { PathScope } from "../components/graph/dropPath";
 import type { GNode } from "../components/graph/graph-model";
 import type { SchemaRel } from "../components/graph/graph-schema-types";
 

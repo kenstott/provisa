@@ -57,6 +57,7 @@ export function buildTableUpdateInput(t: RegisteredTable): Record<string, unknow
     // PK checkboxes (single source of truth), not a separate field.
     mvPrimaryKey: t.columns.filter((c) => c.isPrimaryKey).map((c) => c.columnName),
     mvIncremental: t.mvIncremental, // REQ-969
+    mvRebuildEvery: t.mvRebuildEvery, // REQ-2249
     mvCalendar: t.mvCalendar || null, // REQ-962
     mvGrain: t.mvGrain || null, // REQ-962/1168
     mvAllowedLateness: t.mvAllowedLateness, // REQ-961
@@ -74,7 +75,6 @@ export function buildTableUpdateInput(t: RegisteredTable): Record<string, unknow
     roleTtl: t.roleTtl.map(({ role, ttl }) => ({ role, ttl })),
     replicate: t.replicate,
     rowMaterialize: t.rowMaterialize, // REQ-1865
-    draft: t.draft,
     live: t.live
       ? {
           queryId: t.live.queryId ?? undefined,

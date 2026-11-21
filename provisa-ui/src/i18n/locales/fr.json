@@ -53,6 +53,10 @@
     "noAssignments": "Aucune affectation",
     "removeAssignment": "Retirer l'affectation {{role}}:{{domain}}",
     "roleLabel": "Rôle",
+    "rolesLabel": "Rôles",
+    "rolesPlaceholder": "Choisissez un ou plusieurs rôles",
+    "addList": "Ajouter une liste",
+    "removeList": "Supprimer cette liste",
     "domainLabel": "Domaine",
     "untilLabel": "Jusqu'au",
     "untilPlaceholder": "Sans date de fin",
@@ -61,7 +65,6 @@
     "noExpiry": "Sans date de fin",
     "neverUsed": "Jamais",
     "allDomains": "* (tous les domaines)",
-    "add": "Ajouter",
     "createHeading": "Créer un utilisateur",
     "username": "Nom d'utilisateur",
     "usernameRequired": "Nom d'utilisateur *",
@@ -101,6 +104,6 @@
   },
   "pageError": {
     "title": "Cette page n’a pas pu être affichée",
-    "body": "Une erreur s’est produite lors du rendu. Le reste de l’application fonctionne : allez sur une autre page ou rechargez celle-ci."
+    "body": "Une erreur s'est produite pendant le rendu. Le reste de l'application fonctionne toujours : allez sur une autre page ou rechargez celle-ci."
   }
 }

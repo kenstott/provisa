@@ -232,7 +232,7 @@ class TestReq594AuthMiddlewareSkipPaths:
     Swagger/OpenAPI live under /data/openapi/ (not the default /docs) so the UI owns /docs.
 
     REQ-1355: the skip set used to live on TenantMiddleware, which never registered — so the
-    Lemon Squeezy webhook 401'd before its signature was ever checked.
+    Stripe webhook 401'd before its signature was ever checked.
     """
 
     def test_health_endpoint_needs_no_token(self, client):
@@ -253,7 +253,7 @@ class TestReq594AuthMiddlewareSkipPaths:
     def test_webhook_reaches_signature_check_without_a_token(self, client):
         """An unauthenticated POST /billing/webhook must never be rejected by the TOKEN gate.
 
-        A 401 here is the REQ-1355 regression: Lemon Squeezy has no bearer token to send, so a
+        A 401 here is the REQ-1355 regression: Stripe has no bearer token to send, so a
         token gate on this path drops every subscription event on the floor. What the request meets
         once it is past that gate depends on the deployment: REQ-1469 puts the /billing routes in
         the commercial plugin, so with the plugin installed the signature check rejects the unsigned
@@ -262,7 +262,10 @@ class TestReq594AuthMiddlewareSkipPaths:
         """
         from provisa.core.commerce import enabled as billing_enabled
 
-        resp = client.post("/billing/webhook", json={"meta": {"event_name": "ping"}})
+        resp = client.post(
+            "/billing/webhook",
+            json={"type": "customer.subscription.updated", "data": {"object": {}}},
+        )
         if billing_enabled():
             assert resp.status_code == 400, (
                 f"expected the signature check to reject this, got {resp.status_code}: {resp.text}"

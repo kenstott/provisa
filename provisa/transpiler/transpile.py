@@ -38,6 +38,7 @@ from provisa.transpiler.metadata_server_forms import SERVER_FORM_RAISE
 from provisa.transpiler.native_json import resolve_native_json
 from provisa.transpiler.native_subtype import resolve_reads
 from provisa.transpiler.pg_forms_json import json_member
+from provisa.transpiler.polyfill import ported as polyfill_ported
 from provisa.transpiler.pg_literals import array_inputs, exact_inputs, postgres_literals
 from provisa.transpiler.to_char import to_char_for_duckdb
 from provisa.transpiler.transpile_correlated import (
@@ -295,7 +296,9 @@ def _json_list_compare(
         body = pair(f"{p}[1]", f"{p}[2]", depth - 1)
         if duck:
             zipped = f"list_zip({arr_a}, {arr_b}, true)"
-            decided = f"list_filter(list_transform({zipped}, {p} -> {body}), {c} -> {c} <> 0)"
+            decided = (
+                f"list_filter(list_transform({zipped}, LAMBDA {p} : {body}), LAMBDA {c} : {c} <> 0)"
+            )
             return f"list_extract(list_append({decided}, {shorter}), 1)"
         zipped = (
             f"slice(zip({arr_a}, {arr_b}), 1, least(cardinality({arr_a}), cardinality({arr_b})))"
@@ -1972,6 +1975,8 @@ def transpile(
     Returns:
         SQL string in target dialect.
     """
+    # REQ-2167: a call ClickHouse answers in DuckDB's form, held out of what follows.
+    pg_sql, ported = polyfill_ported.held_out(pg_sql, target_dialect)
     pg_sql = pg_forms_type_io.readable(pg_sql, target_dialect)  # REQ-2171
     pg_sql = _within_group_unqualified(pg_sql)
     if target_dialect != "duckdb":  # DuckDB's form is pg_functions.typed_calls'
@@ -2136,6 +2141,7 @@ def transpile(
         )
     from provisa.observability.stage_trace import trace_stage
 
+    result = ported.restored(result)
     trace_stage(f"transpile.{target_dialect}", result)
     return result
 
@@ -2205,12 +2211,12 @@ _CLICKHOUSE_INSTANT = zoned_instants.CLICKHOUSE_INSTANT
 
 def clickhouse_semantics(tree: exp.Expr) -> exp.Expr:  # REQ-2171
     """``tree`` with what ClickHouse would read otherwise said for it. A timestamp keeps its
-    microseconds and reads as one, a time is read by toTime64 (its Time reads PostgreSQL's text as
-    NULL), and a hex has no leading zeros, as to_hex has none. A refusal (pg_forms_types.refused), the cast of a text that is no
+    microseconds and reads as one, a time of day is held as its microseconds (polyfill.clocks: the
+    server has no Time64) and shown as time_out's text, and a hex has no leading zeros, as to_hex has none. A refusal (pg_forms_types.refused), the cast of a text that is no
     number, raises: sqlglot writes a cast as Nullable, which reads such a text as NULL. Its argument
     is materialized so the refusal is not folded in a branch the statement does not take."""
 
-    from provisa.transpiler.polyfill import instants
+    from provisa.transpiler.polyfill import clickhouse, clocks, instants
 
     def said(node: exp.Expr) -> exp.Expr:
         outside = instants.outside_cast(node)
@@ -2227,12 +2233,12 @@ def clickhouse_semantics(tree: exp.Expr) -> exp.Expr:  # REQ-2171
         ):
             return exp.DataType.build(_CLICKHOUSE_INSTANT, dialect="clickhouse")
         if isinstance(node, exp.Cast) and node.to.is_type(exp.DataType.Type.TIME):
-            value = node.this
-            while isinstance(value, exp.Cast) and value.to.is_type(exp.DataType.Type.TIME):
-                value = value.this
-            # Its OrNull reads what the literal's own refuses, and a NULL it cannot.
-            reader = "toTime64" if isinstance(value, exp.Literal) else "toTime64OrNull"
-            return exp.Anonymous(this=reader, expressions=[value, exp.Literal.number(6)])
+            # REQ-2236: a time of day held as its microseconds (polyfill.clocks): the server has
+            # no Time64.
+            return clocks.cast(node, said, clickhouse.clock_micros)
+        clock = clocks.semantics(node, said)
+        if clock is not None:
+            return clock
         if isinstance(node, exp.Date) and not node.args.get("zone"):
             # REQ-2236: its DATE() is toDate, a Date of 1970 to 2149; PostgreSQL's day of a value
             # held as DateTime64(6, 'UTC') or Date32 is Date32's, exact from 1900 to 2299.
@@ -2257,7 +2263,8 @@ def clickhouse_semantics(tree: exp.Expr) -> exp.Expr:  # REQ-2171
             )
         return node
 
-    return tree.transform(said)
+    # A time in the select list reaches the client as time_out's text (polyfill.clocks).
+    return clocks.select_shown(tree, tree.transform(said))
 
 
 def _lower_universal_regex(pg_sql: str, target_dialect: str) -> exp.Expr | None:  # REQ-2142

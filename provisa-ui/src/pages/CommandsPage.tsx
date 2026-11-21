@@ -53,7 +53,11 @@ import type { Role } from "../types/auth";
 import { PanelDelete } from "../components/list/PanelDelete";
 import { PanelDuplicate } from "../components/list/PanelDuplicate";
 import { PanelActions, SplitPane } from "../components/list/SplitPane";
-import { commandId, readCommandId, useDetailParam } from "../components/list/useDetailParam";
+import {
+  commandId,
+  readCommandId,
+  useRememberedDetail,
+} from "../components/list/useDetailParam";
 import { PanelWorking } from "./sources/PanelWorking";
 import { TagControl } from "../components/TagControl";
 import type { ActionType, FormState } from "./commands/types";
@@ -106,7 +110,16 @@ export function CommandsPage() {
   // names: a function by its name, a webhook as `webhook:<name>` (a function and a webhook may
   // share a name; commandId).
   // REQ-2168: `?section=` is the open function's section, the same tab in its read view and form.
-  const detail = useDetailParam("commands");
+  // REQ-2260: and the one left open is open again on coming back.
+  const detail = useRememberedDetail(
+    "commands",
+    loading
+      ? null
+      : [
+          ...functions.map((f) => commandId("function", f.name)),
+          ...webhooks.map((w) => commandId("webhook", w.name)),
+        ],
+  );
   const fnSection = (detail.tab ?? "command") as CommandSection;
   const setFnSection = detail.setTab;
   const openCommand = (kind: ActionType, name: string | null) =>
@@ -199,6 +212,7 @@ export function CommandsPage() {
         writesTable: fn.writesTable ?? "", // REQ-1924, REQ-871
         outputColumns, // REQ-1159
         languageBindings: fn.languageBindings ?? {}, // REQ-2168
+        exposedAsTable: fn.exposedAsTable ?? null, // REQ-1986
       };
     }
     const wh = held.webhooks.find((w) => w.name === name);
@@ -227,6 +241,7 @@ export function CommandsPage() {
       writesTable: "",
       outputColumns: [],
       languageBindings: {},
+      exposedAsTable: null, // REQ-1986: a webhook has no table form
     };
   };
 
@@ -304,6 +319,7 @@ export function CommandsPage() {
             requiresApproval: form.requiresApproval, // REQ-1924
             writesTable: isStatement || isTemplate ? undefined : form.writesTable || null, // REQ-1924, REQ-871
             languageBindings: form.languageBindings, // REQ-2168
+            exposedAsTable: form.exposedAsTable ?? undefined, // REQ-1986
           },
           editingName, // the open command is updated; a new one is created
         );

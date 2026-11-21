@@ -9,7 +9,8 @@
 // permission from the copyright holder.
 
 import { ttlText } from "../../components/form/cacheTtl";
-import { Alert, Text } from "@mantine/core";
+import { Alert, Group, Text } from "@mantine/core";
+import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import type { RefreshPolicySummary, RegisteredTable, Source } from "../../types/admin";
@@ -37,6 +38,10 @@ import {
   snapshotFields,
 } from "./loadReadFields";
 import { viewMetricsFields } from "./queryReadFields";
+import { QueryLinkIcon } from "../../components/relationships/RelationshipQueryLinks";
+import { GLYPH } from "../../components/relationships/queryGlyphs";
+import { useRelationshipSurfaces } from "../../components/relationships/useRelationshipSurfaces";
+import { tableQueryLinks } from "../../components/relationships/tableQueries";
 import { checkersField, uniquesField, useContractFields } from "./qualityReadFields";
 
 // A table's sections read-only: the read view shows them, and so does the edit form to a caller
@@ -83,9 +88,33 @@ export function RefreshPolicyAlert({ policy }: { policy: RefreshPolicySummary })
   );
 }
 
-export function IdentityRead({ table, source }: { table: RegisteredTable; source?: Source }) {
+const SOURCE_QUERY_LABEL: Record<string, string> = {
+  sparql: "registerTableForm.sparqlQueryLabel",
+  neo4j: "registerTableForm.neo4jCypherLabel",
+  mongodb: "registerTableForm.pipelineQueryLabel",
+  cosmosdb: "registerTableForm.cosmosQueryLabel",
+  elasticsearch: "registerTableForm.esSearchLabel",
+  qdrant: "registerTableForm.qdrantSearchLabel",
+};
+
+export function IdentityRead({
+  table,
+  source,
+  actingRole,
+}: {
+  table: RegisteredTable;
+  source?: Source;
+  /** The acting roles, whose names the table's query links use; absent where none are shown. */
+  actingRole?: string | null;
+}) {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const regions = useRegionChoices().regions;
+  // REQ-2252: one link per surface the table is exposed on to the acting role, each opening that
+  // surface's Explore editor with a query that reads it, run at once; drawn as a data product's
+  // Access section draws a table's.
+  const surfaces = useRelationshipSurfaces(actingRole ?? null);
+  const queryLinks = actingRole ? tableQueryLinks(table, surfaces) : [];
   const naming = table.gqlNamingConvention
     ? namingConventionLabel(t, table.gqlNamingConvention)
     : t("tablesPage.inheritSource");
@@ -99,18 +128,50 @@ export function IdentityRead({ table, source }: { table: RegisteredTable; source
       value: table.alias ?? null,
     },
     { label: t("tableEditForm.namingConventionLabel"), value: naming },
+    ...(queryLinks.length > 0
+      ? [
+          {
+            label: t("relationshipRow.queryLinks.heading"),
+            value: (
+              <Group gap={4} wrap="wrap" data-testid="table-identity-query-links">
+                {queryLinks.map(({ surface, link }) => (
+                  <QueryLinkIcon
+                    key={surface}
+                    label={t(`relationshipRow.queryLinks.${surface}`, { name: table.tableName })}
+                    testId={`table-identity-query-${surface}`}
+                    onClick={() => navigate(link.to, { state: link.state })}
+                  >
+                    {GLYPH[surface]}
+                  </QueryLinkIcon>
+                ))}
+              </Group>
+            ),
+          },
+        ]
+      : []),
     {
       label: t("tableEditForm.descriptionLabel"),
       value: table.description || null,
       testId: "table-identity-description",
     },
-    { label: t("tableEditForm.draftLabel"), value: yesNo(t, table.draft) },
     ...(regions.length > 0
       ? [
           {
             label: t("regionSelect.label"),
             value: table.region ?? unset(t("regionSelect.none")),
             testId: "table-identity-region",
+          },
+        ]
+      : []),
+    // REQ-1923: a query-defined table's source query, in its source's own query language
+    // (SPARQL, Cypher, a native pipeline...), read-only here; edited with the table-edit right.
+    // It is never shown as the table's Cypher on the query tab.
+    ...(source && table.queryTemplate && SOURCE_QUERY_LABEL[source.type.toLowerCase()]
+      ? [
+          {
+            label: t(SOURCE_QUERY_LABEL[source.type.toLowerCase()]),
+            value: <code className="detail-code">{table.queryTemplate}</code>,
+            testId: "table-identity-sparql-query",
           },
         ]
       : []),
@@ -311,15 +372,6 @@ export function QueryRead({ table }: { table: RegisteredTable }) {
           {
             label: t("registerTableForm.watermarkLabel"),
             value: <code>{table.watermarkColumn}</code>,
-          },
-        ]
-      : []),
-    ...(table.queryTemplate
-      ? [
-          {
-            label: t("tableReadView.queryTemplate"),
-            testId: "table-read-view-query-template",
-            value: <code className="detail-code">{table.queryTemplate}</code>,
           },
         ]
       : []),

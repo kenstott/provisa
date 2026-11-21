@@ -122,7 +122,7 @@ def _construct_provider(auth_config: dict, admin_pool) -> AuthProvider:
 
         ldap = _provider_block(auth_config, "ldap")
         if "bind_password" in ldap:
-            ldap["bind_password"] = resolve_secrets(ldap["bind_password"])
+            ldap["bind_password"] = resolve_secrets(ldap["bind_password"], credential=True)
         return LdapAuthProvider(
             _settings(LdapSettings, ldap, "ldap"), session_secret=_session_secret(auth_config)
         )
@@ -163,7 +163,7 @@ def _session_secret(auth_config: dict) -> str | None:  # REQ-1265
     session exchange answers 503 instead of signing with a guessable key.
     """
     secret = auth_config.get("jwt_secret")
-    return resolve_secrets(secret) if secret else None
+    return resolve_secrets(secret, credential=True) if secret else None
 
 
 def bind_auth_config(state, raw_auth: dict | None) -> None:  # REQ-120, REQ-1267
@@ -255,7 +255,7 @@ def _resolve_auth_settings() -> dict:  # REQ-120, REQ-125
         "superuser": resolve_superuser_config(auth_config.get("superuser")),
         # REQ-1472: signs the break-glass browser session. Unset here is not a defect — the
         # exchange endpoint raises 503 rather than signing with a guessable key.
-        "superuser_session_secret": resolve_secrets(auth_config["jwt_secret"])
+        "superuser_session_secret": resolve_secrets(auth_config["jwt_secret"], credential=True)
         if auth_config.get("jwt_secret")
         else None,
         "bootstrap_superadmin": auth_config.get("bootstrap_superadmin", False),
@@ -316,7 +316,9 @@ def wire_auth(
         default_org_id=default_org_id,
         superuser=resolve_superuser_config(auth_config.get("superuser")),
         superuser_session_secret=(
-            resolve_secrets(auth_config["jwt_secret"]) if auth_config.get("jwt_secret") else None
+            resolve_secrets(auth_config["jwt_secret"], credential=True)
+            if auth_config.get("jwt_secret")
+            else None
         ),  # REQ-1472
         bootstrap_superadmin=auth_config.get("bootstrap_superadmin", False),
     )

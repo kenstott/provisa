@@ -123,7 +123,19 @@ def _sql(tier, sandbox: dict, sql: str, params: list[str]) -> list[dict[str, Any
     headers = {"Authorization": f"Bearer {sandbox['token']}", "x-org-provisa": sandbox["org_id"]}
     body = {"sql": sql, **({"params": params} if params else {})}
     resp = httpx.post(f"{tier.base_url}/data/sql", json=body, headers=headers, timeout=300)
-    assert resp.status_code == 200, f"{sql}: HTTP {resp.status_code}: {resp.text}"
+    if resp.status_code != 200:
+        # What the statement became, for the failure to name where the read went wrong.
+        plan = httpx.post(
+            f"{tier.base_url}/data/explain",
+            json={"language": "sql", "statement": sql},
+            headers=headers,
+            timeout=300,
+        )
+        raise AssertionError(
+            f"{sql}: HTTP {resp.status_code}: {resp.text}\n"
+            f"--- explain: HTTP {plan.status_code} ---\n{plan.text[-6000:]}\n"
+            f"--- server ---\n{tier.dump_stderr_debug()[-8000:]}"
+        )
     return resp.json()["data"]["sql"]
 
 

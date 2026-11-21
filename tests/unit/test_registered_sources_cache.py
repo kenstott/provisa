@@ -11,7 +11,7 @@
 """REQ-1892: `registered_sources`' per-instance, generation-keyed cache.
 
 Confirms `registered_sources` (provisa.federation.registry_view) no longer re-runs
-`source_repo.list_all` on every call for the same schema generation, does invalidate on a
+`source_repo.list_in_production` on every call for the same schema generation, does invalidate on a
 schema_version bump, and never lets one `state` instance's cache leak into another's -- mirrors
 tests/unit/test_registered_tables_cache.py, REQ-1882's equivalent suite for `registered_tables`.
 """
@@ -66,7 +66,7 @@ async def test_second_call_same_generation_is_a_cache_hit_and_skips_fetch(monkey
         calls["n"] += 1
         return [_ROW]
 
-    monkeypatch.setattr("provisa.core.repositories.source.list_all", _list_all)
+    monkeypatch.setattr("provisa.core.repositories.source.list_in_production", _list_all)
 
     first = await registry_view.registered_sources(state)
     second = await registry_view.registered_sources(state)
@@ -84,7 +84,7 @@ async def test_schema_version_bump_invalidates(monkeypatch):
         calls["n"] += 1
         return [_ROW]
 
-    monkeypatch.setattr("provisa.core.repositories.source.list_all", _list_all)
+    monkeypatch.setattr("provisa.core.repositories.source.list_in_production", _list_all)
 
     await registry_view.registered_sources(state)
     state.schema_version = 2
@@ -102,7 +102,7 @@ async def test_explicit_conn_bypasses_cache(monkeypatch):
         calls["n"] += 1
         return [_ROW]
 
-    monkeypatch.setattr("provisa.core.repositories.source.list_all", _list_all)
+    monkeypatch.setattr("provisa.core.repositories.source.list_in_production", _list_all)
 
     explicit_conn = object()
     await registry_view.registered_sources(state, conn=explicit_conn)
@@ -122,7 +122,7 @@ async def test_two_state_instances_never_share_a_cache(monkeypatch):
     async def _list_all(conn):
         return [_ROW]
 
-    monkeypatch.setattr("provisa.core.repositories.source.list_all", _list_all)
+    monkeypatch.setattr("provisa.core.repositories.source.list_in_production", _list_all)
 
     await registry_view.registered_sources(state_a)
     cache_a = registered_sources_cache.get_cache_for(state_a)
@@ -147,7 +147,7 @@ async def test_sources_cache_and_tables_cache_never_collide_on_same_state(monkey
     async def _fetch_tables(conn, **_kw):
         return []
 
-    monkeypatch.setattr("provisa.core.repositories.source.list_all", _list_all)
+    monkeypatch.setattr("provisa.core.repositories.source.list_in_production", _list_all)
     monkeypatch.setattr("provisa.api.admin.db_queries.fetch_tables", _fetch_tables)
 
     await registry_view.registered_sources(state)

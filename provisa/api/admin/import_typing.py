@@ -89,6 +89,11 @@ async def type_imported_columns(
     ``SourcePool``. The pool is private to this call and closed before it returns — nothing is
     registered until the administrator applies the design.
     """
+    # REQ-1557: an upload's sources (a converted export names a variable for each connection it
+    # read from one) are dialled below with what they resolve to; a held organization's are not.
+    from provisa.core.env_reference_guard import refuse_entered
+
+    refuse_entered([s.model_dump(mode="json") for s in config.sources])
     if pool_factory is None:
         from provisa.executor.pool import SourcePool
 
@@ -119,7 +124,7 @@ async def type_imported_columns(
                     int(src.port),
                     resolve_secrets(src.database),
                     resolve_secrets(src.username),
-                    resolve_secrets(src.password),
+                    resolve_secrets(src.password, credential=True),
                     1,
                     1,
                 )

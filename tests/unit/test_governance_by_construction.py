@@ -443,7 +443,7 @@ def test_a_statement_holds_one_write_at_its_root_or_in_a_returning_cte(sql):
 
 def test_a_view_body_reads_a_hidden_column_its_select_list_does_not_return(dsn):
     body = "SELECT id, name, ssn FROM bank.customer WHERE ssn LIKE '1%'"
-    sql = expand_view_refs("SELECT * FROM bank.v", {"v": body}, mark=True)
+    sql = expand_view_refs("SELECT * FROM bank.v", {"bank.v": body}, mark=True)
     governed = apply_governance(sql, _gov())
     assert VIEW_MARK not in governed
     assert _run(dsn, governed, _SSN_A)[1] == [(1, "ann", None)]
@@ -452,7 +452,7 @@ def test_a_view_body_reads_a_hidden_column_its_select_list_does_not_return(dsn):
 
 def test_the_readers_own_clauses_over_a_view_do_not_read_its_hidden_column(dsn):
     body = "SELECT id, name, ssn FROM bank.customer"
-    sql = expand_view_refs("SELECT id FROM bank.v WHERE ssn LIKE '1%'", {"v": body}, mark=True)
+    sql = expand_view_refs("SELECT id FROM bank.v WHERE ssn LIKE '1%'", {"bank.v": body}, mark=True)
     governed = apply_governance(sql, _gov())
     first, second = _run(dsn, governed, _SSN_A), _run(dsn, governed, _SSN_B)
     assert first == second and first[1] == []

@@ -1,10 +1,10 @@
 {
   "mailTab": {
     "loading": "Chargement…",
-    "intro": "Le serveur de messagerie par lequel ce déploiement envoie les messages de la plateforme : invitations et autres notifications. Tous les transports connus du build sont listés ; celui qui nécessite un paquet le nomme.",
+    "intro": "Le serveur de messagerie par lequel ce déploiement envoie les invitations et autres avis de la plateforme. Tous les transports connus de la build sont listés ; celui qui nécessite un paquet le nomme.",
     "providerLabel": "Transport",
-    "providerRequires": "{{label}} : installez {{library}}",
-    "secretOnFile": "Un identifiant est enregistré ; saisissez une valeur pour le remplacer",
+    "providerRequires": "{{label}} (installer {{library}})",
+    "secretOnFile": "Un identifiant est enregistré. Saisissez-en un pour le remplacer.",
     "secretNotSet": "Non défini",
     "fromAddressLabel": "Adresse d'expédition",
     "fromAddressHelp": "L'adresse que voient les destinataires. La plupart des transports exigent qu'il s'agisse d'un expéditeur vérifié.",
@@ -12,7 +12,7 @@
     "baseUrlHelp": "L'adresse vers laquelle pointent les liens d'un message, comme un lien d'invitation.",
     "timeoutLabel": "Délai d'expiration (secondes)",
     "save": "Enregistrer les paramètres de messagerie",
-    "saved": "Paramètres de messagerie enregistrés ; envoi via {{provider}}.",
+    "saved": "Paramètres de messagerie enregistrés. Envoi via {{provider}}.",
     "testTitle": "Envoyer un message de test",
     "testIntro": "Envoie via le transport configuré, avec les mêmes identifiants qu'une invitation, et consigne la tentative ci-dessous.",
     "testRecipient": "Envoyer à",

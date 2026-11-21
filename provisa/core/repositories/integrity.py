@@ -166,6 +166,7 @@ KINDS: dict[str, Kind] = {
     "synthetic_dataset": Kind("synthetic_datasets", "id"),  # REQ-1939
     "reference_document": Kind("reference_documents", "id"),  # REQ-2185
     "term_scan": Kind("glossary_term_scans", "id"),  # REQ-2179
+    "discovery_run": Kind("discovery_runs", "id"),  # REQ-413
     "ontology_import": Kind("glossary_ontology_imports", "id"),  # REQ-2237
     "ontology_item": Kind("glossary_ontology_items", "id"),  # REQ-2237
     "erd_layout": Kind("erd_layouts", "name"),  # REQ-2189
@@ -249,6 +250,12 @@ REFERENCES: tuple[Reference, ...] = (
     _part("tag_assignments", "table_id", "table"),
     _part("relationship_candidates", "source_table_id", "table"),
     _part("relationship_candidates", "target_table_id", "table"),
+    # REQ-413: what a discovery run read of a table goes with the table.
+    _part("discovery_run_proposals", "source_table_id", "table"),
+    _part("discovery_run_proposals", "target_table_id", "table"),
+    _part("discovery_run_proposals", "via_table_id", "table"),  # REQ-1586: a junction suggestion
+    # REQ-413: a run's proposals go with the run.
+    _part("discovery_run_proposals", "run_id", "discovery_run"),
     _part("materialized_views", "id", "table", by="view_mv_id", of="materialized_view", owner="id"),
     _part("rls_rules", "table_id", "table"),
     _part("table_write_grants", "table_id", "table"),  # REQ-2074
@@ -369,6 +376,7 @@ REFERENCES: tuple[Reference, ...] = (
     _part("glossary_term_domains", "term_id", "glossary_term"),
     _part("glossary_term_experts", "term_id", "glossary_term"),
     _part("glossary_term_statements", "term_id", "glossary_term"),  # REQ-2237
+    _part("glossary_term_sources", "term_id", "glossary_term"),  # REQ-2247
     _part("glossary_term_edges", "from_term_id", "glossary_term"),
     _part("glossary_term_edges", "to_term_id", "glossary_term"),
     # --- to a tag ------------------------------------------------------------------------------
@@ -592,6 +600,21 @@ async def _owner_of(conn: "Connection", ref: ObjectRef) -> tuple[tuple[str, Any]
     return () if found is None else ((column, found[0]),)
 
 
+async def _is_retired(conn: "Connection", ref: ObjectRef) -> bool:
+    """Whether ``ref`` is a retired object (REQ-2248): its kind keeps a retirement, and its row
+    is marked retired."""
+    kind = KINDS.get(ref.kind)
+    if kind is None:
+        return False
+    table = metadata.tables[kind.table]
+    if "retired" not in table.c:
+        return False
+    found = (
+        await conn.execute_core(select(table.c.retired).where(table.c[kind.key] == ref.id))
+    ).fetchone()
+    return bool(found is not None and found[0])
+
+
 async def _dependents(conn: "Connection", blocking: dict[ObjectRef, set[str]]) -> list[Dependent]:
     """``blocking`` (object → the columns it refers through) as the sorted, named list."""
     named = []
@@ -624,8 +647,25 @@ async def guard(conn: "Connection", ref: ObjectRef) -> list[Dependent]:
     ``LookupError`` when there is no such object.
     """
     attributes = await _attributes(conn, ref)
+    blocking = await _blocking(conn, ref, REFERENCES, attributes)
+    if ref.kind == "relationship":
+        for view_id in await _views_published_over(conn, ref.id):
+            blocking.setdefault(ObjectRef("table", view_id), set()).add(
+                "registered_tables.view_sql"
+            )
+    return await _dependents(conn, blocking)
+
+
+async def _blocking(
+    conn: "Connection",
+    ref: ObjectRef,
+    references: tuple[Reference, ...],
+    attributes: Mapping[str, Any],
+) -> dict[ObjectRef, set[str]]:
+    """Each object that refers to ``ref`` through one of the DEPENDENT ``references``, with the
+    columns it refers through; its references to itself and retired objects left out."""
     blocking: dict[ObjectRef, set[str]] = {}
-    for reference in REFERENCES:
+    for reference in references:
         if reference.to != ref.kind or reference.standing is not Standing.DEPENDENT:
             continue
         assert reference.of is not None and reference.owner is not None
@@ -633,12 +673,34 @@ async def guard(conn: "Connection", ref: ObjectRef) -> list[Dependent]:
             if _is_its_own(reference, row, ref):
                 continue
             referrer = ObjectRef(reference.of, row[reference.owner])
+            if await _is_retired(conn, referrer):
+                # REQ-2248: a retired object blocks nothing -- nor does a row of it that is not
+                # itself marked (a retired table's columns).
+                continue
             blocking.setdefault(referrer, set()).add(f"{reference.table}.{reference.column}")
-    if ref.kind == "relationship":
-        for view_id in await _views_published_over(conn, ref.id):
-            blocking.setdefault(ObjectRef("table", view_id), set()).add(
-                "registered_tables.view_sql"
-            )
+    return blocking
+
+
+# REQ-1986: a function's derived table is hidden by turning its attribute off, which is refused
+# while a live object refers to the table: its dependents, and these, which are parts of a table
+# (they go when it is deleted) but are made on it by a steward -- a row rule, a data product's
+# membership (what its offers offer), a write grant to a role. A glossary term's reference and a
+# tag are made by the product as well as by a steward, and are not among them.
+HIDING_BLOCKS: tuple[Reference, ...] = (
+    _dep("rls_rules", "table_id", "table", "row_filter", "id"),
+    _dep("data_product_tables", "table_id", "table", "data_product", "product_id"),
+    _dep("table_write_grants", "table_id", "table", "role", "role_id"),
+)
+
+
+async def hiding_guard(conn: "Connection", table_id: int, function_name: str) -> list[Dependent]:
+    """REQ-1986: the objects that block hiding the table ``table_id`` derived from the function
+    ``function_name`` -- empty when it may be hidden. The function's own reference to the table
+    it returns does not count."""
+    ref = ObjectRef("table", table_id)
+    attributes = await _attributes(conn, ref)
+    blocking = await _blocking(conn, ref, (*REFERENCES, *HIDING_BLOCKS), attributes)
+    blocking.pop(ObjectRef("command", function_name), None)
     return await _dependents(conn, blocking)
 
 
@@ -781,6 +843,48 @@ async def remove_parts(conn: "Connection", ref: ObjectRef) -> None:
         # the org's other regions remove theirs when they next reload the model (prune_state_parts).
         async with _reaching(conn, reference.table) as there:
             await there.execute_core(table.delete().where(where))
+
+
+async def rekey(conn: "Connection", kind: str, old: Any, new: Any) -> None:  # REQ-2248
+    """Move object ``old`` of ``kind`` to key ``new``, with every row that refers to it by its
+    key: its row is copied to ``new``, each referring column re-pointed (a part that is itself an
+    object, keyed by this one's key, moved the same way), and the row at ``old`` removed. Nothing
+    else changes, so ``old`` is free afterwards. The caller holds the transaction.
+
+    A retired source or domain is kept under a key of its own this way, which leaves its id free
+    for reuse; its restore moves it back."""
+    table = metadata.tables[KINDS[kind].table]
+    key = table.c[KINDS[kind].key]
+    row = (await conn.execute_core(select(table).where(key == old))).one()._mapping
+    await conn.execute_core(table.insert().values({**row, key.name: new}))
+    for reference in REFERENCES:
+        if reference.to != kind or reference.by != "key":
+            continue
+        referring = metadata.tables[reference.table]
+        column = referring.c[reference.column]
+        if reference.of is not None and reference.owner == reference.column:
+            # A part keyed by this object's own key (an API source's registration row).
+            held = await conn.execute_core(select(column).where(column == old))
+            if held.fetchone() is not None:
+                await rekey(conn, reference.of, old, new)
+            continue
+        async with _reaching(conn, reference.table) as there:
+            if reference.match is Match.EQUALS:
+                await there.execute_core(
+                    referring.update().where(column == old).values({column.name: new})
+                )
+                continue
+            assert reference.match is Match.MEMBER and reference.path is None, reference
+            pk = list(referring.primary_key.columns)
+            for found in (await there.execute_core(select(*pk, column))).fetchall():
+                members = found._mapping[column.name]
+                if members and old in members:
+                    await there.execute_core(
+                        referring.update()
+                        .where(*(c == found._mapping[c.name] for c in pk))
+                        .values({column.name: [new if m == old else m for m in members]})
+                    )
+    await conn.execute_core(table.delete().where(key == old))
 
 
 def _names_column(sql: str, table_name: str, column: str) -> bool:

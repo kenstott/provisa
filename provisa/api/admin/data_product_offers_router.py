@@ -46,7 +46,7 @@ from provisa.api.admin.capabilities import (
     require_right_in_domains_request,
 )
 from provisa.api.errors import ApiError
-from provisa.api.offer_derivation import derive, seen_columns
+from provisa.api.offer_derivation import derive, published, seen_columns
 from provisa.core import offer_grant, offer_hooks, offer_public
 from provisa.core.models import ConsumerKind, DataProductOffer
 from provisa.core.repositories import data_product as data_product_repo
@@ -60,9 +60,10 @@ router = APIRouter(prefix="/admin/data-products", tags=["admin"])
 _ANONYMOUS = "anonymous"
 #: The rights that let a person grant a role, within the roles their ``roles`` list reaches.
 GRANTING = frozenset({Capability.ASSIGN_ENTITLEMENTS.value, Capability.USER_MANAGEMENT.value})
-#: Why an offer is listed for review.
-REVIEW_PROFILER_GONE = "a dataset of this synthetic offer has no profiler"
-REVIEW_FAKE_GONE = "a column of a dataset of this synthetic offer has no fake"
+#: Why an offer is listed for review: each a reason the UI's catalog states
+#: (dataProductOffers.reviewReason).
+REVIEW_PROFILER_GONE = "profiler_gone"
+REVIEW_FAKE_GONE = "fake_gone"
 
 
 class BidBody(BaseModel):
@@ -107,7 +108,7 @@ def _role_grant_refusal(state: Any, role_id: str, granter: frozenset[str]) -> st
     """Why the bound person, granting with ``granter`` (their capabilities), may not grant
     ``role_id``, or None: the role is defined, their ``roles`` list reaches it through a role
     they act as that holds a granting right, and it carries no platform right they lack."""
-    from provisa.security.rights import PlatformRoleGrantError, check_role_grant
+    from provisa.security.rights import OrgAdminGrantError, PlatformRoleGrantError, check_role_grant
 
     role = state.roles.get(role_id)
     if role is None:
@@ -118,6 +119,8 @@ def _role_grant_refusal(state: Any, role_id: str, granter: frozenset[str]) -> st
         check_role_grant(role_id, role.get("capabilities"), granter)
     except PlatformRoleGrantError:
         return f"role {role_id!r} carries platform rights, which you do not hold"
+    except OrgAdminGrantError as exc:  # REQ-1327
+        return f"role {role_id!r} is granted by an org_admin; you lack " + ", ".join(exc.missing)
     return None
 
 
@@ -187,7 +190,7 @@ async def _not_public(conn: Any, state: Any, product_id: str, role_id: str) -> l
     """What keeps the product's data, read through ``role_id``, from being public; empty when
     it is public (provisa.core.offer_public)."""
     datasets = await offers.dataset_ids(conn, product_id)
-    names = await offers.sql_names(conn, datasets)
+    names = await offers.sql_names(conn, datasets, published(state))
     built = {t["id"]: t for t in state.tables}
     unread = [
         names[d]
@@ -302,7 +305,12 @@ async def _save(
         try:
             async with conn.transaction():
                 row = await offers.save(
-                    conn, product_id, body, offer_id=offer_id, by=_caller(request)
+                    conn,
+                    product_id,
+                    body,
+                    offer_id=offer_id,
+                    by=_caller(request),
+                    published=published(state),
                 )
                 await derive(conn, state, product_id, row)
         except OfferRefused as refused:
@@ -406,11 +414,14 @@ async def _fire(target: offer_hooks.HookTarget | None, body: dict) -> None:
         raise ApiError(502, "data_product.offer.hook_failed", str(failed)) from failed
 
 
-async def _reload_held(conn: Any, state: Any) -> None:
-    """What the runtime holds of the entitlement store, after a grant or removal wrote to it."""
-    from provisa.entitlements import store
+async def _reload_held(conn: Any, state: Any, principal: str) -> None:
+    """What the runtime holds of the entitlement store, after a grant or removal for
+    ``principal`` wrote to it, and their effective rows recomputed from it (REQ-2219): accepting
+    a bid grants a role and its entries, cancelling one removes them."""
+    from provisa.entitlements import effective_store, store
 
     state.held_entitlements = await store.load_held(conn)
+    await effective_store.write_person(conn, state, principal)
 
 
 @router.post("/{product_id}/offers/{offer_id}/bids")
@@ -443,6 +454,7 @@ async def bid(product_id: str, offer_id: int, body: BidBody, request: Request) -
                 offer_row=offer_row,
                 reason=body.reason.strip(),
                 consumer_kind=body.consumer_kind,
+                published=published(state),
             )
             async with conn.transaction():
                 held = await offers.bid(
@@ -490,7 +502,7 @@ async def _cancel(product_id: str, bid_id: int, reason: str, request: Request, s
                 await _fire(target, payload)
         except OfferRefused as refused:
             raise _refused(refused) from refused
-        await _reload_held(conn, state)
+        await _reload_held(conn, state, requester)
     return _bid_view(cancel)
 
 
@@ -530,7 +542,9 @@ def _grants(state: Any) -> Any:
             raise OfferRefused(
                 "role_not_found", f"role {role_id!r} is not defined", status=409, role=role_id
             )
-        return offer_hooks.Grants(product["domain_id"], role_defaults(state.roles[role_id]))
+        return offer_hooks.Grants(
+            product["domain_id"], role_defaults(state.roles[role_id]), published(state)
+        )
 
     return grants
 
@@ -554,7 +568,7 @@ async def _decide(conn: Any, state: Any, decision: offer_hooks.Decision, may: An
             if held["offer_id"] is not None:
                 await offers.set_review(conn, held["offer_id"], why)
         raise _refused(refused) from refused
-    await _reload_held(conn, state)
+    await _reload_held(conn, state, row["requester"])
     return _bid_view(row)
 
 

@@ -44,14 +44,16 @@ CREATE TABLE glossary_term_experts (
     id TEXT PRIMARY KEY, term_id TEXT, user_id TEXT, kind TEXT, tenant_id TEXT);
 CREATE TABLE registered_tables (
     id INTEGER PRIMARY KEY, source_id TEXT, schema_name TEXT, table_name TEXT,
-    domain_id TEXT, tenant_id TEXT, draft BOOLEAN NOT NULL DEFAULT 0, class_term_id TEXT,
-    retired BOOLEAN NOT NULL DEFAULT 0);
+    domain_id TEXT, tenant_id TEXT, class_term_id TEXT,
+    retired BOOLEAN NOT NULL DEFAULT 0, withdrawn BOOLEAN NOT NULL DEFAULT 0);
+CREATE TABLE sources (id TEXT PRIMARY KEY, withdrawn BOOLEAN NOT NULL DEFAULT 0);
 CREATE TABLE table_columns (
     id INTEGER PRIMARY KEY, table_id INTEGER, domain_id TEXT, column_name TEXT, data_type TEXT,
     is_primary_key BOOLEAN, alias TEXT, description TEXT, path TEXT, scope TEXT,
     masks TEXT, native_filter_type TEXT, is_foreign_key BOOLEAN,
     is_alternate_key BOOLEAN, object_fields TEXT, visible_to TEXT,
-    writable_by TEXT, tenant_id TEXT, retired BOOLEAN NOT NULL DEFAULT 0);
+    writable_by TEXT, tenant_id TEXT, retired BOOLEAN NOT NULL DEFAULT 0,
+    native_filter_required BOOLEAN, required_by_steward BOOLEAN NOT NULL DEFAULT 0);
 CREATE TABLE tag_assignments (
     id TEXT PRIMARY KEY, tag_id TEXT, base_tag_id TEXT, object_type TEXT, source_id TEXT,
     table_id INTEGER, column_name TEXT, relationship_id TEXT, command_name TEXT,
@@ -102,7 +104,7 @@ def db() -> sqlite3.Connection:
         )
 
     conn.execute(
-        "INSERT INTO registered_tables VALUES (7, 'crm', 'public', 'users', 'sales', 'org1', 0, NULL, 0)"
+        "INSERT INTO registered_tables VALUES (7, 'crm', 'public', 'users', 'sales', 'org1', NULL, 0, 0)"
     )
     conn.executemany(
         "INSERT INTO table_columns (id, table_id, column_name, alias, masks, domain_id,"
@@ -197,7 +199,7 @@ class TestGlossaryMetaViews:
         9 not yet -- a gap until a same-entity relationship reaches 9 too."""
         db.execute("UPDATE registered_tables SET class_term_id = 't-party' WHERE id = 7")
         db.executemany(
-            "INSERT INTO registered_tables VALUES (?, 'crm', 'public', ?, 'sales', 'org1', 0, ?, 0)",
+            "INSERT INTO registered_tables VALUES (?, 'crm', 'public', ?, 'sales', 'org1', ?, 0, 0)",
             [(8, "accounts", "t-party"), (9, "contacts", "t-party"), (6, "people", "t-user")],
         )
         db.execute("INSERT INTO relationships VALUES ('r78', 7, 8, 1, 'org1', 0)")

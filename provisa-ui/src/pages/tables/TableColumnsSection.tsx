@@ -341,6 +341,7 @@ export function TableColumnsSection({
                           value={shownMasks(c.masks)}
                           onChange={(next) => updateEditCol(i, "masks", next)}
                           roleOptions={roleOptions}
+                          dataType={c.dataType || null}
                           testId={`mask-list-${c.columnName}`}
                         />
                       </Table.Td>

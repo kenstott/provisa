@@ -11,7 +11,7 @@
     "error": "錯誤",
     "expand": "展開",
     "enlarge": "放大",
-    "exitFullScreen": "結束全螢幕",
+    "exitFullScreen": "還原大小",
     "collapse": "摺疊",
     "unpinHint": "取消釘選（取消釘選以允許排序）",
     "pinToTop": "釘選至頂端",
@@ -19,7 +19,7 @@
     "run": "執行",
     "removeFromFavorites": "從我的最愛移除",
     "addToFavorites": "加入我的最愛",
-    "autoImputeOn": "自動推算關係已開啟——按一下以停用",
+    "autoImputeOn": "自動推斷關係已開啟。按一下即可關閉。",
     "autoImputeOff": "自動推算可見節點之間的關係",
     "groupTooltip": "按屬性分組節點（連按兩下外框以摺疊；連按兩下已摺疊的節點以展開）",
     "groupPlaceholder": "⬡ 分組",
@@ -50,7 +50,7 @@
     "sparqlDropSubquery": "不能將標籤拖放到含子 SELECT 的查詢上。未有加入任何內容。",
     "sparqlDropNoClass": "此結果沒有可連接的類別：請先為變數指定類別，再重新拖放。未有加入任何內容。",
     "sparqlDropNode": "該節點不是此查詢的變數，因此沒有可連接的對象。未有加入任何內容。",
-    "sparqlDropNoPath": "{{name}} 與 {{classes}} 沒有關係。未有加入任何內容。",
+    "sparqlDropNoPath": "在所選領域內，{{name}} 與 {{classes}} 沒有關係。未有加入任何內容。",
     "sparqlDropTooFar": "{{name}} 距 {{classes}} 有 {{hops}} 個關係，超過拖放遍歷的 {{most}} 個：沒有短路徑。未有加入任何內容。",
     "sparqlDropNoEnd": "{{name}} 的兩端都不在此結果中。未有加入任何內容。",
     "sparqlDropParameterized": "路徑無法經過 {{name}}：讀取它需要參數。未有新增任何內容。",
@@ -58,6 +58,9 @@
     "sparqlDropNoProperty": "此結果中沒有類別具有 {{name}}。未有加入任何內容。",
     "sparqlDropLeftOut": "已加入 {{total}} 條等長路徑中的 {{shown}} 條；其餘已省略。",
     "sparqlDropCut": "結果已達到 LIMIT {{limit}}：之後的列已省略。",
-    "cypherPathNoKey": "{{from}} 與 {{to}} 之間的路徑需要每個節點的鍵，而其中一個沒有。"
+    "cypherPathNoKey": "{{from}} 與 {{to}} 之間的路徑需要每個節點的鍵，而其中一個沒有。",
+    "cypherDropNoLabel": "此結果的節點沒有標籤，其查詢中亦沒有可為其提供標籤的關係：請先為節點指定標籤，再重新拖放。未有加入任何內容。",
+    "cypherDropNoPair": "此結果的查詢中沒有關係連接所選領域內的標籤，因此無法為其節點指定標籤。未有加入任何內容。",
+    "cypherDropLabelled": "已根據結構描述為此結果中沒有標籤的節點指定標籤，每個標籤組合一個 MATCH。"
   }
 }

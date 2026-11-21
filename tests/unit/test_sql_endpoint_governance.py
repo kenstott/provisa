@@ -98,7 +98,9 @@ async def sql_client(monkeypatch):
     async def _no_registered_sources(_conn):
         return []
 
-    monkeypatch.setattr("provisa.core.repositories.source.list_all", _no_registered_sources)
+    monkeypatch.setattr(
+        "provisa.core.repositories.source.list_in_production", _no_registered_sources
+    )
     # The middleware reads the bound org's declared claim types (REQ-2057); the state here
     # carries no config, and no org declares any.
     monkeypatch.setattr("provisa.auth.middleware._loaded_derived_roles", lambda: [])
@@ -226,7 +228,7 @@ class TestSQLForbiddenTable:
             new=AsyncMock(return_value=fallback_result),
         ):
             with patch(
-                "provisa.executor.trino.execute_trino",
+                "provisa.executor.trino_flight.execute_trino_flight",
                 new=AsyncMock(return_value=fallback_result),
             ):
                 resp = await sql_client.post("/data/sql", json=payload)
@@ -289,7 +291,7 @@ class TestSQLGovernanceApplied:
             new=AsyncMock(return_value=fallback_result),
         ):
             with patch(
-                "provisa.executor.trino.execute_trino",
+                "provisa.executor.trino_flight.execute_trino_flight",
                 new=AsyncMock(return_value=fallback_result),
             ):
                 resp = await sql_client.post(
@@ -711,7 +713,7 @@ class TestRoleNamedByTheRequest:
         client, _plans = two_roles
         ran: list[str] = []
 
-        async def _run_job(job_id, nl_query, role, app_state, llm, strict, delivery):
+        async def _run_job(job_id, nl_query, role, app_state, llm, strict, delivery, scope):
             ran.append(role)
 
         async def _llm(state):
@@ -833,7 +835,10 @@ class TestSQLEachStatement:
         rows = _make_query_result(rows=[(1,)], column_names=["id"])
         with (
             patch("provisa.executor.direct.execute_direct", new=AsyncMock(return_value=rows)),
-            patch("provisa.executor.trino.execute_trino", new=AsyncMock(return_value=rows)),
+            patch(
+                "provisa.executor.trino_flight.execute_trino_flight",
+                new=AsyncMock(return_value=rows),
+            ),
         ):
             return await sql_client.post(
                 "/data/sql", json={"sql": sql, "role": "org_admin", "results": "each"}
@@ -864,7 +869,10 @@ class TestSQLEachStatement:
         rows = _make_query_result(rows=[(1, 2)], column_names=["id", "id"])
         with (
             patch("provisa.executor.direct.execute_direct", new=AsyncMock(return_value=rows)),
-            patch("provisa.executor.trino.execute_trino", new=AsyncMock(return_value=rows)),
+            patch(
+                "provisa.executor.trino_flight.execute_trino_flight",
+                new=AsyncMock(return_value=rows),
+            ),
         ):
             resp = await sql_client.post(
                 "/data/sql",
@@ -890,7 +898,10 @@ class TestSQLEachStatement:
         rows = _make_query_result(rows=[(1,)], column_names=["id"])
         with (
             patch("provisa.executor.direct.execute_direct", new=AsyncMock(return_value=rows)),
-            patch("provisa.executor.trino.execute_trino", new=AsyncMock(return_value=rows)),
+            patch(
+                "provisa.executor.trino_flight.execute_trino_flight",
+                new=AsyncMock(return_value=rows),
+            ),
         ):
             resp = await sql_client.post(
                 "/data/sql",

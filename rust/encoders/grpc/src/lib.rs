@@ -1554,11 +1554,38 @@ fn encode_nodes<'py>(
     Ok(PyBytes::new(py, &out))
 }
 
+/// ``encode_messages(service, message, rows)``: each object of ``rows`` (the JSON text of a list
+/// of objects) as one serialized ``message``, written as a group's node is: a Query{Type} row read
+/// whose read mask names relations (REQ-1929), each relation's message from its object or list.
+#[pyfunction]
+fn encode_messages<'py>(
+    py: Python<'py>,
+    service: &Service,
+    message: &str,
+    rows: &str,
+) -> PyResult<Bound<'py, PyList>> {
+    let msg = service.pool.message(message)?;
+    let J::Arr(items) = json::loads(rows)? else {
+        return Err(PyValueError::new_err("rows are a JSON list"));
+    };
+    let out = PyList::empty(py);
+    for item in &items {
+        let J::Obj(entries) = item else {
+            return Err(PyValueError::new_err("a row is a JSON object"));
+        };
+        let mut body = Vec::new();
+        node_message(&service.pool, msg, entries, &mut body)?;
+        out.append(PyBytes::new(py, &body))?;
+    }
+    Ok(out)
+}
+
 #[pymodule]
 pub fn grpc_encoder(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<Service>()?;
     m.add_class::<Encoder>()?;
     m.add_function(wrap_pyfunction!(encode_nodes, m)?)?;
+    m.add_function(wrap_pyfunction!(encode_messages, m)?)?;
     m.add("TZDB_VERSION", chrono_tz::IANA_TZDB_VERSION)?;
     Ok(())
 }

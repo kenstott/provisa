@@ -25,7 +25,7 @@
     "leaveOrg": "退出",
     "leaveHelp": "退出将移除您对该组织的访问权限。如果您是其唯一的组织管理员，请先提升其他人。",
     "patHeading": "个人访问令牌",
-    "patHelp": "个人访问令牌可让您从无法打开浏览器的工具中登录——psql、Neo4j 客户端、Arrow Flight 或 gRPC 客户端、MCP 客户端或脚本。它在本组织内以您的身份操作。",
+    "patHelp": "个人访问令牌可让您从无法打开浏览器的工具登录，例如 psql、Neo4j 客户端、Arrow Flight 或 gRPC 客户端、MCP 客户端或脚本。它在此组织中代表您执行操作。",
     "patName": "名称",
     "patExpiresInDays": "有效期（天）",
     "patIssue": "创建令牌",
@@ -44,6 +44,9 @@
     "deleteAccountConfirmLabel": "输入 {{userId}} 以确认",
     "deleteAccountButton": "删除我的账号",
     "patEnvironment": "环境",
-    "patEnvironmentHelp": "令牌仅在一个环境中有效：即签发时您正在查看的环境。新令牌将在 {{env}} 中有效。"
+    "patEnvironmentHelp": "令牌仅在一个环境中有效：即签发时您正在查看的环境。新令牌将在 {{env}} 中有效。",
+    "patRoles": "角色",
+    "patRolesHelp": "令牌只能以您在此选择的角色执行操作,且仅在您拥有这些角色期间有效。",
+    "patRolesPlaceholder": "选择角色"
   }
 }

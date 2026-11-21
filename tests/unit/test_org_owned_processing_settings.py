@@ -237,6 +237,7 @@ class _FakeState:
         self.model_db = self.tenant_db
         self.admin_db = object()
         self.response_cache_default_ttl = 300
+        self.org_registry: dict = {}
 
 
 @pytest.fixture

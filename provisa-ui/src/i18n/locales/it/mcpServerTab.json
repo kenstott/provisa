@@ -1,6 +1,6 @@
 {
   "mcpServerTab": {
-    "intro": "Il server Model Context Protocol (MCP) espone agli agenti AI esterni l'individuazione governata del catalogo e l'esecuzione SQL. Ogni chiamata è governata dal ruolo del chiamante — il server non usa mai admin come impostazione predefinita.",
+    "intro": "Il server Model Context Protocol (MCP) espone agli agenti IA esterni l'individuazione governata del catalogo e l'esecuzione SQL. Ogni chiamata è governata dal ruolo del chiamante, e il server non ricade mai su admin per impostazione predefinita.",
     "loading": "Caricamento…",
     "statusLabel": "Stato",
     "statusEnabled": "Abilitato",
@@ -8,7 +8,7 @@
     "endpointLabel": "Endpoint",
     "transportLabel": "Trasporto",
     "stdioRoleLabel": "Ruolo stdio associato",
-    "stdioRoleNone": "nessuno impostato — le chiamate stdio richiedono <code>{{envVar}}</code>",
+    "stdioRoleNone": "non impostato; le chiamate stdio richiedono <code>{{envVar}}</code>",
     "principalLabel": "Principal locale",
     "principalNone": "nessuno impostato — le chiamate locali vengono rifiutate finché <code>{{envVar}}</code> non ne indica uno",
     "maxRowsLabel": "Limite di righe (run_sql)",

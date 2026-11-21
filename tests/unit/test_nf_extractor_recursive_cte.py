@@ -31,13 +31,13 @@ from provisa.compiler.nf_extractor import (
     drop_union_branches_for_table,
     find_api_table_names,
 )
-from provisa.core.parameters import ParameterRequired, missing_reason
+from provisa.core.parameter_binding import ParameterRequired
 from provisa.cypher.parser import parse_cypher
 from provisa.gql.label_map import CypherLabelMap
 from provisa.gql.translator import cypher_to_sql
 from tests.unit.test_cypher_min_hops import _node, _rel
 
-_REASON = missing_reason(["q"])
+_REASON = ["q"]
 
 
 @pytest.fixture

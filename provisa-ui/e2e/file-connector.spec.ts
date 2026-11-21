@@ -6,7 +6,7 @@
 // found in the LICENSE file in the root directory of this source tree.
 
 import { test, expect, BACKEND_URL } from "./coverage";
-import { deleteSourceAndItsTables } from "./delete-source";
+import { retireSourceTables, testSourceId } from "./retire-source-tables";
 import { isAssignableDomain } from "../src/lib/internalDomains";
 import {
   addSourceOfType,
@@ -16,8 +16,12 @@ import {
   waitForSourceServing,
 } from "./source-to-query-helpers";
 
-const SOURCE_ID = "e2e-northwind";
-const SCHEMA_NAME = "e2e_northwind";
+// This attempt's own source, its stamp and schema, set in beforeEach (REQ-2248: the source is
+// kept after the test, with its table retired, and a retired table keeps its name and key, so a
+// retry or a later run registers under names no earlier attempt holds).
+let SOURCE_ID = "";
+let STAMP = "";
+let SCHEMA_NAME = ""; // pgwire_replica.schema_name()'s convention: the sql-normalized source id
 const GQL = `${BACKEND_URL}/admin/graphql`;
 const GLOB = "demo/files/northwind/**";
 
@@ -59,16 +63,15 @@ async function getDomainId(): Promise<string> {
   return d.id;
 }
 
-async function cleanupSource() {
-  await deleteSourceAndItsTables(gql, SOURCE_ID);
-}
-
-test.beforeEach(async () => {
-  await cleanupSource();
+test.beforeEach(() => {
+  SOURCE_ID = testSourceId("northwind");
+  STAMP = SOURCE_ID.split("_").pop()!;
+  SCHEMA_NAME = SOURCE_ID.replace(/-/g, "_");
 });
 
+// The test retires the table it registered and leaves its source (REQ-2248).
 test.afterEach(async () => {
-  await cleanupSource();
+  await retireSourceTables(gql, SOURCE_ID);
 });
 
 test("file connector: add northwind source and query customers", async ({ page }) => {
@@ -122,6 +125,9 @@ test("file connector: add northwind source and query customers", async ({ page }
         domainId,
         schemaName: SCHEMA_NAME,
         tableName: "customers",
+        // This attempt's own model name: an earlier attempt's retired customers keeps its name in
+        // the domain (REQ-2248).
+        alias: `e2e_${STAMP}_customers`,
         columns: CUSTOMERS_COLUMNS,
       },
     },
@@ -136,23 +142,12 @@ test("file connector: add northwind source and query customers", async ({ page }
     `registerTable: ${JSON.stringify(registerResult.data?.registerTable)}`,
   ).toBe(true);
 
-  // REQ-1921: registered through the admin, the table starts as draft; released, it is read.
-  const registeredId = Number(
-    /\(id=(\d+)\)/.exec(String(registerResult.data?.registerTable?.message))?.[1],
-  );
-  const releaseResult = await gql(
-    `mutation($id: Int!) { setTableDraft(tableId: $id, draft: false) { success message } }`,
-    { id: registeredId },
-  );
-  expect(
-    releaseResult.data?.setTableDraft?.success,
-    `setTableDraft: ${JSON.stringify(releaseResult)}`,
-  ).toBe(true);
-
   await page.goto("/tables");
   await page.waitForSelector(".page-header", { timeout: 15000 });
 
-  await expect(page.locator(".data-table").getByText("customers")).toBeVisible({ timeout: 15000 });
+  await expect(page.locator(".data-table").getByText(`e2e_${STAMP}_customers`)).toBeVisible({
+    timeout: 15000,
+  });
 
   // ── 4. Query customers via GQL data endpoint ──────────────────────────────
   // Domain prefix (e.g. "pet-store" → "ps__") is prepended to the field name.
@@ -165,7 +160,10 @@ test("file connector: add northwind source and query customers", async ({ page }
   const allFields: string[] =
     introData.data?.__schema?.queryType?.fields?.map((f: { name: string }) => f.name) ?? [];
   const customersField = allFields.find(
-    (f) => f.toLowerCase().endsWith("customers") && !f.toLowerCase().includes("aggregate"),
+    (f) =>
+      f.toLowerCase().includes(STAMP) &&
+      f.toLowerCase().endsWith("customers") &&
+      !f.toLowerCase().includes("aggregate"),
   );
   expect(
     customersField,

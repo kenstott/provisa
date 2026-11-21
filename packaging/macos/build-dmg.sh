@@ -36,8 +36,6 @@ RED='\033[0;31m'; GREEN='\033[0;32m'; CYAN='\033[0;36m'; BOLD='\033[1m'; NC='\03
 info() { printf "${CYAN}[build-dmg]${NC} %s\n" "$*"; }
 ok()   { printf "${GREEN}[build-dmg]${NC} %s\n" "$*"; }
 err()  { printf "${RED}[build-dmg]${NC} %s\n" "$*" >&2; }
-# shellcheck source=packaging/macos/notary-lib.sh
-source "${SCRIPT_DIR}/notary-lib.sh"
 
 curl_retry() {
   local url="$1" out="$2"
@@ -258,6 +256,12 @@ assert (pathlib.Path(provisa.__file__).parent / '_encoders.THIRD_PARTY_NOTICES')
     err "native runtime is missing provisa/sqlite3/mcp_proxy/provisa._encoders (or its notices) after install."
     exit 1
   }
+  # The embedded extra carries the vector extra: the default config's embedding model runs on
+  # sentence-transformers over torch (macOS arm64 wheels are CPU-only; no CUDA build exists).
+  "$py" -I -c "import sentence_transformers, torch; assert torch.version.cuda is None" || {
+    err "native runtime is missing the embedding library (sentence-transformers, CPU torch) after install."
+    exit 1
+  }
   # `build` is a build-host tool — it has no business in the shipped tree.
   "$py" -m pip uninstall --quiet --yes build
 
@@ -277,6 +281,34 @@ assert (pathlib.Path(provisa.__file__).parent / '_encoders.THIRD_PARTY_NOTICES')
 
   printf '%s' "${VERSION:-dev}" > "${runtime}/.runtime-version"
   ok "Native runtime staged ($(du -sh "$runtime" | cut -f1), provisa installed)."
+}
+
+# ── Take the DuckDB extensions out of the native runtime (core edition) ──────
+# DuckDB extensions are Mach-O with DuckDB's own signature appended after the image: codesign
+# refuses them, re-signing would break the signature DuckDB loads them under, and Apple rejects the
+# DMG that carries them unsigned ("The signature of the binary is invalid"). So the Core DMG ships
+# none (maintainer decision 2026-11-11, "Separate release asset"): every extension file of the
+# runtime (the blob, its .info, a repository's trust anchor) goes into DUCKDB_EXTENSIONS_ASSET at its
+# path under the runtime, a release asset of its own. Its sha256 is baked into the .app before it is
+# signed, and first-launch.sh restores the asset into the staged runtime only when it matches.
+DUCKDB_EXTENSIONS_ASSET="${DUCKDB_EXTENSIONS_ASSET:-provisa-duckdb-extensions-${VERSION:-dev}-macOS-arm64.tar.gz}"
+DUCKDB_EXTENSIONS_PIN="duckdb-extensions.sha256"   # in Contents/Resources: "<sha256>  <asset>"
+split_duckdb_extensions() {
+  local runtime="${NATIVE_PAYLOAD_DIR}/runtime" asset="${OUT_DIR}/${DUCKDB_EXTENSIONS_ASSET}"
+  local files=() f
+  while IFS= read -r f; do files+=("$f"); done \
+    < <(cd "$runtime" && find . -type f -name '*.duckdb_extension*' | LC_ALL=C sort)
+  if [ "${#files[@]}" -eq 0 ]; then
+    err "No DuckDB extension in the native runtime: provisa[embedded] did not install them."
+    exit 1
+  fi
+  mkdir -p "$OUT_DIR" "${APP_BUNDLE}/Contents/Resources"
+  # COPYFILE_DISABLE: macOS tar would add an AppleDouble ._<file> for each file's xattrs.
+  COPYFILE_DISABLE=1 tar -czf "$asset" -C "$runtime" "${files[@]}"
+  ( cd "$runtime" && rm -f "${files[@]}" )
+  ( cd "$OUT_DIR" && shasum -a 256 "$DUCKDB_EXTENSIONS_ASSET" > "${DUCKDB_EXTENSIONS_ASSET}.sha256" )
+  cp "${asset}.sha256" "${APP_BUNDLE}/Contents/Resources/${DUCKDB_EXTENSIONS_PIN}"
+  ok "${#files[@]} DuckDB extension files moved to ${DUCKDB_EXTENSIONS_ASSET}."
 }
 
 # ── Build SwiftUI launcher and embed binary ───────────────────────────────────
@@ -327,14 +359,42 @@ sign_jar_natives() {
 }
 
 # ── Code signing ──────────────────────────────────────────────────────────────
+# The one way this script signs code: Developer ID, hardened runtime, Apple's secure timestamp,
+# through codesign_retry. Arguments are extra codesign options, then the files to sign.
+sign_code() {
+  codesign_retry --force --sign "${APPLE_DEVELOPER_ID}" --options runtime --timestamp "$@"
+}
+
+# The Mach-O files under a directory, one per line, found by their magic number: the runtime's
+# executables carry no extension, and a .so is not always one. A fat header shares Java's class-file
+# magic (0xcafebabe); a fat binary's next word is its architecture count, a class file's its version
+# (45 and up). Symlinks are skipped: codesign signs the file a link points at.
+macho_files() {
+  python3 -I - "$1" <<'PY'
+import os, struct, sys
+THIN = {b"\xcf\xfa\xed\xfe", b"\xce\xfa\xed\xfe", b"\xfe\xed\xfa\xcf", b"\xfe\xed\xfa\xce"}
+for root, dirs, files in os.walk(sys.argv[1]):
+    dirs.sort()
+    for name in sorted(files):
+        path = os.path.join(root, name)
+        if os.path.islink(path):
+            continue
+        with open(path, "rb") as f:
+            head = f.read(8)
+        if head[:4] in THIN or (
+            head[:4] in (b"\xca\xfe\xba\xbe", b"\xbe\xba\xfe\xca")
+            and len(head) == 8
+            and 0 < struct.unpack(">I" if head[0] == 0xCA else "<I", head[4:])[0] < 45
+        ):
+            print(path)
+PY
+}
+
 sign_app() {
   if [ -z "${APPLE_DEVELOPER_ID:-}" ]; then
     info "APPLE_DEVELOPER_ID not set — skipping signing."
     return
   fi
-
-  local id="${APPLE_DEVELOPER_ID}"
-  local sign_flags=(--force --sign "$id" --options runtime --timestamp)
 
   # Apple requires every code object inside the bundle to be signed with
   # Developer ID + secure timestamp before the outer bundle is signed.
@@ -351,92 +411,73 @@ sign_app() {
   )
   for f in "${sign_targets[@]}"; do
     [ -f "$f" ] || continue
-    codesign_retry "${sign_flags[@]}" "$f"
+    sign_code "$f"
     info "  Signed: ${f#"${APP_BUNDLE}/"}"
   done
 
   info "Signing app bundle..."
-  codesign_retry "${sign_flags[@]}" --verbose \
-    --entitlements "${SCRIPT_DIR}/entitlements.plist" \
-    "${APP_BUNDLE}"
+  sign_code --verbose --entitlements "${SCRIPT_DIR}/entitlements.plist" "${APP_BUNDLE}"
 
   ok "App bundle signed."
 }
 
-# ── Notarization (targets the .app bundle, NOT the DMG) ──────────────────────
-# Images are kept outside the .app so the bundle is small and notarizes in
-# seconds rather than the 45-60 min needed to scan a 1.4 GB DMG.
-notarize_app() {
-  if [ -z "${APPLE_NOTARYTOOL_APPLE_ID:-}" ]; then
-    info "APPLE_NOTARYTOOL_APPLE_ID not set — skipping notarization."
+# ── Sign the native runtime payload (core edition) ───────────────────────────
+# The runtime ships in the DMG beside the .app, and the DMG is notarized, so Apple checks every
+# Mach-O in it: the interpreter, libpython, and each extension module pip installed. Each is signed
+# like the .app's own code (sign_code); executables also take the entitlements the .app is signed
+# with. Batches keep every codesign call under CODESIGN_TIMEOUT while not paying one process per file.
+SIGN_BATCH="${SIGN_BATCH:-25}"
+sign_native_payload() {
+  if [ -z "${APPLE_DEVELOPER_ID:-}" ]; then
+    info "APPLE_DEVELOPER_ID not set — skipping native runtime signing."
     return
   fi
-
-  local notary_args=(
-    --apple-id "${APPLE_NOTARYTOOL_APPLE_ID}"
-    --password "${APPLE_NOTARYTOOL_PASSWORD}"
-    --team-id  "${APPLE_NOTARYTOOL_TEAM_ID}"
-  )
-
-  # notarytool requires a zip, pkg, or dmg — zip the .app with ditto
-  local zip_path="${OUT_DIR}/Provisa-notarize.zip"
-  info "Zipping app bundle for notarization submission..."
-  ditto -c -k --keepParent "${APP_BUNDLE}" "$zip_path"
-
-  info "Submitting app bundle for notarization..."
-  local submit_out submit_err submit_rc
-  submit_out=$(xcrun notarytool submit "$zip_path" "${notary_args[@]}" --output-format json 2>/tmp/notary-submit-err) \
-    && submit_rc=0 || submit_rc=$?
-  submit_err=$(cat /tmp/notary-submit-err 2>/dev/null || true)
-  rm -f "$zip_path" /tmp/notary-submit-err
-  if [ $submit_rc -ne 0 ]; then
-    if printf '%s\n%s' "$submit_out" "$submit_err" | grep -qi "required agreement\|403"; then
-      info "WARNING: Notarization skipped — Apple Developer agreement missing or expired (HTTP 403). DMG will be unsigned."
-      return
-    fi
-    err "notarytool submit failed (exit $submit_rc): $submit_err"
-    exit 1
-  fi
-  local submission_id
-  submission_id=$(printf '%s' "$submit_out" | python3 -c "import sys,json; print(json.load(sys.stdin)['id'])")
-  ok "Submission ID: ${submission_id}"
-
-  # Poll with retry — notarytool --wait has no retry on transient network errors
-  local max_polls=45   # 45 × 40 s = 30 min ceiling (small app should be fast)
-  local poll=0
-  local status=""
-  while [ $poll -lt $max_polls ]; do
-    status=$(xcrun notarytool info "$submission_id" "${notary_args[@]}" \
-               --output-format json 2>/dev/null \
-             | python3 -c "import sys,json; print(json.load(sys.stdin).get('status',''))" \
-             2>/dev/null || echo "network-error")
-
-    case "$status" in
-      Accepted)
-        ok "Notarization accepted."
-        break ;;
-      Invalid|Rejected)
-        err "Notarization ${status}:"
-        notary_log_check "$submission_id" "${notary_args[@]}"
-        exit 1 ;;
-      network-error)
-        info "  Network error — retrying in 40 s (poll $((poll+1))/${max_polls})..." ;;
-      *)
-        info "  Status: ${status:-unknown} (poll $((poll+1))/${max_polls})" ;;
-    esac
-
-    sleep 40
-    poll=$((poll + 1))
+  local runtime="${NATIVE_PAYLOAD_DIR}/runtime"
+  local f kind libraries=() executables=() i
+  while IFS= read -r f; do
+    kind="$(file -b "$f")"
+    if [[ "$kind" == *executable* ]]; then executables+=("$f"); else libraries+=("$f"); fi
+  done < <(macho_files "$runtime")
+  info "Signing the native runtime (${#libraries[@]} libraries, ${#executables[@]} executables)..."
+  for ((i = 0; i < ${#libraries[@]}; i += SIGN_BATCH)); do
+    sign_code "${libraries[@]:i:SIGN_BATCH}"
   done
+  # Executables last: each loads the libraries above.
+  for ((i = 0; i < ${#executables[@]}; i += SIGN_BATCH)); do
+    sign_code --entitlements "${SCRIPT_DIR}/entitlements.plist" "${executables[@]:i:SIGN_BATCH}"
+  done
+  ok "Native runtime signed."
+}
 
-  if [ "$status" != "Accepted" ]; then
-    err "Notarization timed out after $((max_polls * 40 / 60)) minutes."
-    exit 1
+# ── Verify the handoff: the .app and every signed Mach-O of the payload ──────
+# Run by the notarize job right after it unpacks stage-<edition>.tar, before anything goes to
+# Apple: a signature the handoff broke, or a binary left unsigned, fails here and names the file.
+# Each must verify strictly, chain to Apple (Developer ID, not ad hoc), and carry a secure timestamp.
+verify_signed() {
+  local f details bad=0
+  if ! codesign --verify --deep --strict "${APP_BUNDLE}"; then
+    err "${APP_BUNDLE} does not verify after the handoff."
+    bad=1
   fi
-
-  notary_log_check "$submission_id" "${notary_args[@]}"
-  staple_retry "${APP_BUNDLE}"
-  ok "App bundle notarized and stapled."
+  if [ "$EDITION" = "core" ]; then
+    # The DuckDB extensions ship as their own release asset (split_duckdb_extensions), never here.
+    while IFS= read -r f; do
+      err "${f#"${SCRIPT_DIR}/"} is a DuckDB extension: it ships in ${DUCKDB_EXTENSIONS_ASSET}, not the DMG."
+      bad=1
+    done < <(find "${NATIVE_PAYLOAD_DIR}/runtime" -type f -name '*.duckdb_extension*')
+    while IFS= read -r f; do
+      [[ "$f" == *.duckdb_extension ]] && continue   # named above
+      # codesign -dv prints "Timestamp=" for a secure timestamp, "Signed Time=" for a local clock.
+      details="$(codesign -dv "$f" 2>&1)" || details=""
+      if ! codesign --verify --strict -R='anchor apple generic' "$f" \
+         || [[ "$details" != *$'\n'Timestamp=* ]]; then
+        err "${f#"${SCRIPT_DIR}/"} is not Developer ID signed with a secure timestamp after the handoff."
+        bad=1
+      fi
+    done < <(macho_files "${NATIVE_PAYLOAD_DIR}/runtime")
+  fi
+  if [ "$bad" -ne 0 ]; then exit 1; fi
+  ok "The .app$([ "$EDITION" = "core" ] && echo " and the native runtime") verify."
 }
 
 # ── Create DMG ────────────────────────────────────────────────────────────────
@@ -459,6 +500,12 @@ create_dmg() {
     # first-launch.sh copies it to ~/.provisa/venv — it neither builds a venv nor pips.
     if [ ! -x "${NATIVE_PAYLOAD_DIR}/runtime/bin/python3" ]; then
       err "Native runtime missing at ${NATIVE_PAYLOAD_DIR}/runtime — bundle_native_payload must run first."
+      exit 1
+    fi
+    local ext
+    ext="$(find "${NATIVE_PAYLOAD_DIR}/runtime" -type f -name '*.duckdb_extension*' | head -1)"
+    if [ -n "$ext" ]; then
+      err "${ext} is a DuckDB extension: it ships in ${DUCKDB_EXTENSIONS_ASSET}, not the DMG (split_duckdb_extensions)."
       exit 1
     fi
     cp -R "${NATIVE_PAYLOAD_DIR}/runtime" "${tmp_dmg}/runtime"
@@ -486,28 +533,66 @@ create_dmg() {
   ok "DMG created: ${DMG_PATH}"
 }
 
+# ── Stage: hand the signed .app (and the native payload) to the notarize job ──
+# The DMG is made from the .app AFTER notarize-dmg.sh --app has stapled it, so the .app carries
+# its own ticket and launches offline once copied out of the DMG. tar, not the artifact zip,
+# keeps the bundle's symlinks and modes, which its signature seals.
+STAGE_TAR="${OUT_DIR}/stage-${EDITION}.tar"
+stage_app() {
+  mkdir -p "$OUT_DIR"
+  rm -f "$STAGE_TAR"
+  local members=(Provisa.app)
+  if [ "$EDITION" = "core" ]; then members+=(native-payload/runtime); fi
+  tar -cf "$STAGE_TAR" -C "$SCRIPT_DIR" "${members[@]}"
+  ok "Staged signed app: ${STAGE_TAR}"
+}
+
 # ── Main ──────────────────────────────────────────────────────────────────────
+# Steps (argument):
+#   stage  build and sign Provisa.app, write dist/stage-<edition>.tar. CI's build job.
+#   dmg    create the DMG from an already built (and, in CI, notarized + stapled) Provisa.app
+#          unpacked beside this script. CI's notarize job.
+#   verify check the unpacked handoff: the .app and the native runtime are Developer ID signed.
+#          CI's notarize job, before it submits anything.
+#   (none) both, for a local build; nothing is notarized.
 main() {
+  local step="${1:-all}"
+  case "$step" in
+    stage|dmg|all) ;;
+    verify) verify_signed; return ;;
+    *) err "usage: build-dmg.sh [stage|dmg|verify]"; exit 2 ;;
+  esac
   printf '\n%bProvisa DMG Builder%b\n' "$BOLD" "$NC"
   printf "═══════════════════════════════════════════\n\n"
 
   check_prereqs
-
   generate_assets
-  build_ui             # provisa-ui/dist + provisa-cli (both editions)
-  if [ "$EDITION" = "container" ]; then
-    embed_compose        # compose YAMLs, config, db, trino, observability
-    download_otel_agent  # opentelemetry-javaagent.jar into Resources/observability/trino-otel/
-  else
-    bundle_native_payload # interpreter with provisa[embedded] + UI installed
+
+  if [ "$step" != "dmg" ]; then
+    build_ui             # provisa-ui/dist + provisa-cli (both editions)
+    if [ "$EDITION" = "container" ]; then
+      embed_compose        # compose YAMLs, config, db, trino, observability
+      download_otel_agent  # opentelemetry-javaagent.jar into Resources/observability/trino-otel/
+    else
+      bundle_native_payload # interpreter with provisa[embedded] + UI installed
+      split_duckdb_extensions # extensions -> their own release asset; its sha256 into Resources
+    fi
+    build_launcher       # compile SwiftUI launcher and embed binary
+    embed_scripts
+    bake_version         # write Contents/Resources/VERSION before signing seals the bundle
+    sign_jar_natives  # sign macOS natives inside Trino plugin JARs before outer bundle signing
+    sign_app
+    if [ "$EDITION" = "core" ]; then
+      sign_native_payload # every Mach-O of the hidden runtime, before the stage tar carries it
+    fi
   fi
-  build_launcher       # compile SwiftUI launcher and embed binary
-  embed_scripts
-  bake_version         # write Contents/Resources/VERSION before signing seals the bundle
-  sign_jar_natives  # sign macOS natives inside Trino plugin JARs before outer bundle signing
-  sign_app
-  notarize_app   # notarize the small .app before images are added
-  create_dmg     # DMG bundles Provisa.app (notarized) + hidden native payload
+  if [ "$step" = "stage" ]; then
+    stage_app
+    printf '\n%b%bBuild complete.%b\n' "$GREEN" "$BOLD" "$NC"
+    return
+  fi
+  # The DMG bundles Provisa.app + the hidden native payload; notarize-dmg.sh notarizes it.
+  create_dmg
 
   printf '\n%b%bBuild complete.%b\n' "$GREEN" "$BOLD" "$NC"
   printf "DMG: %s\n" "${DMG_PATH}"

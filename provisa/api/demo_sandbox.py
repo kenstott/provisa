@@ -502,6 +502,9 @@ async def _build(demo: PublishedDemo, org_id: str, person: str, kind: str) -> st
                     rt.user_attributes = await record_visitor_attributes(
                         conn, person, demo.directory
                     )
+        from provisa.api.effective_rows import record_people
+
+        await record_people(org_id, [person])
     async with _stage(org_id, demo.name, "its record, environments and ready mark"):
         async with _stage(org_id, demo.name, "its record"):
             await _record(rt.model_db, demo, org_id, person)
@@ -520,7 +523,9 @@ async def _build(demo: PublishedDemo, org_id: str, person: str, kind: str) -> st
         user_id=person,
         org_id=org_id,
         name=_TOKEN_NAME,
-        role_id=SANDBOX_ROLE,
+        # REQ-1263: the roles the token may act as -- every role its visitor was just granted, so
+        # the tour runs as each of them.
+        scopes=granted,
         env_name=PROD,  # REQ-1503: a sandbox is served from its one environment
     )
     return secret
@@ -567,17 +572,16 @@ async def _environments(demo: PublishedDemo, org_id: str, person: str) -> None:
         await ensure_org_runtime(org_id)
     synthetic = set(demo_synthetic.synthetic_envs(wanted))
     # The environments are made side by side, each its own line: created from prod, given its
-    # rows, its runtime built. What two lines share is the org's, and each piece of it is either
-    # keyed by the environment (its registry row, schema, branch, rows and runtime) or written by
-    # a runtime build alone: the domain policy (domain_policy, keyed by the org), which a build
-    # sets to the deployment's naming and then to the org's own, reading it between
-    # (app._build_org_runtime). So one runtime is built at a time: the builds' turn below.
+    # rows, its runtime built. What two lines share is the org's, and each piece of it is keyed by
+    # the environment (its registry row, schema, branch, rows and runtime) or, the domain policy
+    # (keyed by the org, which a build sets to the deployment's naming and then to the org's own,
+    # reading it between), held in each build's own window (app._build_org_runtime,
+    # domain_policy.staged). So the two runtimes are built at once too.
     # Each line runs on a thread and loop of its own (run_on_own_thread): the control plane blocks
     # the thread that calls it (core.database), so two lines on one loop would run one after
-    # another. The builds' turn is taken across those threads.
-    from provisa.core.connection_loop import CrossLoopLock, run_on_own_thread
+    # another.
+    from provisa.core.connection_loop import run_on_own_thread
 
-    building = CrossLoopLock()
     # The phase each line failed in (its creation, its rows, its runtime), so the failure raised is
     # the one an open making them one after another would have met first.
     failed_in: dict[str, int] = {}
@@ -598,12 +602,8 @@ async def _environments(demo: PublishedDemo, org_id: str, person: str) -> None:
         # is: its model was copied from prod a moment ago. Left to the first request, a tour step
         # waited 15-20 s on an ordinary build that seeded the whole model again.
         failed_in[name] = 2
-        waiting = time.monotonic()
-        async with building:
-            # The other line's build ahead of this one's: the time a line waits for its turn.
-            step_clock.took(f"environment {name}: its turn to build", time.monotonic() - waiting)
-            async with _stage(org_id, demo.name, f"its environment {name}'s runtime"):
-                await ensure_org_runtime(org_id, name, model_cloned=True)
+        async with _stage(org_id, demo.name, f"its environment {name}'s runtime"):
+            await ensure_org_runtime(org_id, name, model_cloned=True)
 
     async with _stage(org_id, demo.name, "its environments"):
         lines = [

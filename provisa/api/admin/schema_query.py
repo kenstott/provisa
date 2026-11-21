@@ -63,6 +63,7 @@ from provisa.api.admin.capabilities import (
 )
 from provisa.api.admin._retired_objects import RetiredObjectType
 from provisa.api.admin.types import (
+    JoinThroughType,
     JsonScalar,
     CombinedFileType,
     FileColumnsDifferType,
@@ -114,6 +115,8 @@ from provisa.api.admin.types import (
     RefreshPolicySummaryType,
     RegisteredTableType,
     RelationshipType,
+    CodeResolverType,
+    IncrementalOptionType,
     RLSRuleType,
     RoleType,
     ScheduledTaskType,
@@ -259,6 +262,37 @@ async def _listed_sources(conn: Any, scope: CatalogScope) -> set[str]:
     return {r.source_id for r in _res.fetchall() if scope.lists_table(r.id)}
 
 
+async def _with_withdrawn(
+    conn: Any, info: StrawberryInfo, include_withdrawn: bool, rows: list[dict]
+) -> list[RelationshipType]:  # REQ-1921
+    """``rows`` (relationships, each with its ends' ids) as the admin lists them: one with an end
+    (or its junction) withdrawn or retired is withdrawn -- derived, stored nowhere -- and left
+    out, unless ``include_withdrawn`` and the caller may preview each withdrawn end, when it is
+    listed marked withdrawn. A retired end is previewed by no one."""
+    from dataclasses import replace
+
+    from provisa.api.admin.withdrawn import (
+        edge_ends,
+        preview_reach,
+        previews,
+        retired_table_ids,
+        withdrawn_table_domains,
+    )
+
+    withdrawn = await withdrawn_table_domains(conn)
+    retired = await retired_table_ids(conn)
+    reach = preview_reach(info) if include_withdrawn else frozenset()
+    listed: list[RelationshipType] = []
+    for row in rows:
+        ends = edge_ends(row)
+        out = [t for t in ends if t in withdrawn or t in retired]
+        if not out:
+            listed.append(_rel_from_row(row))
+        elif not any(t in retired for t in out) and all(previews(reach, withdrawn[t]) for t in out):
+            listed.append(replace(_rel_from_row(row), withdrawn=True))
+    return listed
+
+
 async def _listed_relationships(
     conn: Any, scope: CatalogScope, rows: list[RelationshipType]
 ) -> list[RelationshipType]:
@@ -391,9 +425,11 @@ def _names_read(state: Any, scope: CatalogScope) -> Callable[[str], bool]:
     held by a table it is not served is not told) -- for the observability lists, which name
     tables rather than address them (REQ-2152, ruling Q3)."""
     ids: dict[str, list[int]] = {}
-    # The compiled tables and the drafts, which no context compiles: the scope serves a draft by
-    # its stored columns (catalog_scope), so its builds are its readers' as well.
-    for t in [*state.tables, *state.role_build_inputs["draft_tables"]]:
+    # The compiled tables and the withdrawn ones, which no context compiles: the scope serves a
+    # withdrawn table by its stored columns to its stewards (catalog_scope, REQ-1921), so its
+    # kept builds are theirs to see as well.
+    inputs = state.role_build_inputs
+    for t in [*state.tables, *inputs["withdrawn_tables"]]:
         ids.setdefault(t["table_name"], []).append(t["id"])
 
     def _reads(name: str) -> bool:
@@ -414,7 +450,7 @@ def _mvs_read(state: Any, scope: CatalogScope) -> list[Any]:
         over = [mv.id[len("view-") :]] if mv.id.startswith("view-") else mv.source_tables
         return all(reads(name) for name in over)
 
-    return [mv for mv in state.mv_registry._mvs.values() if _readable(mv)]
+    return [mv for mv in state.mv_registry.all() if _readable(mv)]
 
 
 async def _table_region_maps(
@@ -481,7 +517,11 @@ async def _assignments_in_scope(conn, rows: list[dict], scope: frozenset[str]) -
     source_domains = {
         r.id: list(r.allowed_domains or [])
         for r in (
-            await conn.execute_core(select(sources.c.id, sources.c.allowed_domains))
+            await conn.execute_core(
+                select(sources.c.id, sources.c.allowed_domains).where(
+                    sources.c.retired.is_(False)  # REQ-2248
+                )
+            )
         ).fetchall()
     }
     command_domain: dict[str, str] = {}
@@ -812,9 +852,9 @@ class Query:  # REQ-021, REQ-042
         pool = await _get_pool()
         async with pool.acquire() as conn:
             _dres = await conn.execute_core(
-                select(domains.c.id, domains.c.description, domains.c.graphql_alias).order_by(
-                    domains.c.id
-                )
+                select(domains.c.id, domains.c.description, domains.c.graphql_alias)
+                .where(domains.c.retired.is_(False))  # REQ-2248
+                .order_by(domains.c.id)
             )
             domain_rows = _dres.fetchall()
             _tres = await conn.execute_core(
@@ -844,7 +884,9 @@ class Query:  # REQ-021, REQ-042
         connection = has_capability(info, "source_registration")
         pool = await _get_pool()
         async with pool.acquire() as conn:
-            _res = await conn.execute_core(select(sources).order_by(sources.c.id))
+            _res = await conn.execute_core(
+                select(sources).where(sources.c.retired.is_(False)).order_by(sources.c.id)
+            )
             # REQ-1958: a source is named to its registrar, and to a caller answered a table
             # from it.
             named = None if connection else await _listed_sources(conn, catalog_scope(info))
@@ -861,7 +903,9 @@ class Query:  # REQ-021, REQ-042
         connection = has_capability(info, "source_registration")
         pool = await _get_pool()
         async with pool.acquire() as conn:
-            _res = await conn.execute_core(select(sources).where(sources.c.id == id))
+            _res = await conn.execute_core(
+                select(sources).where(sources.c.id == id, sources.c.retired.is_(False))
+            )
             row = _res.fetchone()
             if row is None:
                 return None
@@ -897,7 +941,9 @@ class Query:  # REQ-021, REQ-042
         pool = await _get_pool()
         async with pool.acquire() as conn:
             _res = await conn.execute_core(
-                select(domains).where(domains.c.id != "").order_by(domains.c.id)
+                select(domains)
+                .where(domains.c.id != "", domains.c.retired.is_(False))  # REQ-2248
+                .order_by(domains.c.id)
             )
             rows = [dict(r._mapping) for r in _res.fetchall()]
             # REQ-1958: the domains the caller's roles reach, and any holding a table it is
@@ -941,7 +987,7 @@ class Query:  # REQ-021, REQ-042
                     )
                     .where(
                         table_columns.c.scope == "listed",
-                        registered_tables.c.draft.is_(False),
+                        registered_tables.c.withdrawn.is_(False),  # REQ-1921
                         registered_tables.c.retired.is_(False),  # REQ-2248
                         table_columns.c.retired.is_(False),
                         registered_tables.c.domain_id.not_in(sorted(scope.reach)),
@@ -1221,8 +1267,11 @@ class Query:  # REQ-021, REQ-042
 
     @strawberry.field
     async def tables(
-        self, info: StrawberryInfo
+        self, info: StrawberryInfo, include_withdrawn: bool = False
     ) -> list[RegisteredTableType]:  # REQ-016, REQ-021, REQ-042
+        """The registered tables the caller is served. REQ-1921: a withdrawn one (itself or
+        through its source) is left out; ``include_withdrawn`` lists it, marked withdrawn, to a
+        caller who may preview it (table registration reaching its domain)."""
         with _stage(_tracer, "admin.schema_introspect"):
             from provisa.api.admin.capabilities import _identity_from_info, _resolved_capabilities
             from provisa.api.app import state as _state
@@ -1256,11 +1305,20 @@ class Query:  # REQ-021, REQ-042
                 # REQ-1958, REQ-2152: the caller is answered the tables it is served; one the last
                 # schema build did not compile (saved since) is judged by its stored columns.
                 scope = catalog_scope(info)
+                from provisa.api.admin.withdrawn import (
+                    preview_reach,
+                    previews,
+                    withdrawn_table_domains,
+                )
+
+                withdrawn = await withdrawn_table_domains(conn)
+                reach = preview_reach(info) if include_withdrawn else frozenset()
                 listed = [
                     r
                     for r in rows
                     if (scope.lists_table(r["id"]) or r["id"] not in scope.compiled)
                     and (r["domain_id"], r["table_name"]) not in SQL_CATALOG_TABLES  # REQ-2190
+                    and (r["id"] not in withdrawn or previews(reach, r["domain_id"]))
                 ]
                 # What every listed table reads beside its row, read once for all of them.
                 listing = await table_listing(conn, listed)
@@ -1276,9 +1334,39 @@ class Query:  # REQ-021, REQ-042
                 return [t for t in answered if scope.whole or t.columns]
 
     @strawberry.field
+    async def join_through(
+        self, info: StrawberryInfo, first_id: str, second_id: str
+    ) -> Optional["JoinThroughType"]:  # REQ-1586
+        """What joining the two relationships through the table they share makes, or null: they
+        share no middle table, or their other ends are joined through it already."""
+        from provisa.api.admin import join_through
+
+        require_capability(info, "create_relationship")
+        pool = await _get_pool()
+        async with pool.acquire() as conn:
+            planned = await join_through.plan(cast("Connection", conn), first_id, second_id)
+        if planned is None:
+            return None
+        t = planned.through
+        return JoinThroughType(
+            shape=t.shape,
+            name=planned.named.rel_id,
+            source_table=planned.source_table,
+            source_column=t.source_column,
+            target_table=planned.target_table,
+            target_column=t.target_column,
+            via_table=planned.via_table,
+            via_source_column=t.via_source_column,
+            via_target_column=t.via_target_column,
+            attributes=list(planned.attributes),
+        )
+
+    @strawberry.field
     async def relationships(
-        self, info: StrawberryInfo
+        self, info: StrawberryInfo, include_withdrawn: bool = False
     ) -> list[RelationshipType]:  # REQ-019, REQ-020, REQ-1958
+        """REQ-1921: a withdrawn relationship is left out; ``include_withdrawn`` lists it, marked
+        withdrawn, to a caller who may preview its withdrawn ends (:func:`_with_withdrawn`)."""
         pool = await _get_pool()
         _st = registered_tables.alias("st")
         _tt = registered_tables.alias("tt")
@@ -1306,14 +1394,54 @@ class Query:  # REQ-021, REQ-042
                 )
                 .order_by(relationships.c.id)
             )
-            rows = [_rel_from_row(dict(r._mapping)) for r in _res.fetchall()]
-            return await _listed_relationships(conn, catalog_scope(info), rows)
+            scope = catalog_scope(info)
+            rows = await _with_withdrawn(
+                conn, info, include_withdrawn, [dict(r._mapping) for r in _res.fetchall()]
+            )
+            return await _listed_relationships(conn, scope, rows)
+
+    @strawberry.field
+    async def code_resolvers(self, info: StrawberryInfo) -> list[CodeResolverType]:  # REQ-2249
+        """Every code resolver set in service whose two tables the caller is served."""
+        from provisa.api.admin import code_resolver
+        from provisa.api.admin.read_rights import served_columns_of
+        from provisa.core.repositories import table as table_repo
+
+        scope = catalog_scope(info)
+        pool = await _get_pool()
+        async with pool.acquire() as raw:
+            conn = cast("Connection", raw)
+            out: list[CodeResolverType] = []
+            for found in await code_resolver.listed(conn):
+                served = True
+                for name in (found["source_table"], found["target_table"]):
+                    row = await table_repo.find_by_table_name(conn, name)
+                    assert row is not None  # read back from the set's own relationships
+                    columns = await served_columns_of(conn, scope, row["id"])
+                    served = served and (columns is None or bool(columns))
+                if served:
+                    out.append(CodeResolverType(**found))
+            return out
+
+    @strawberry.field
+    async def code_resolver_incremental(
+        self, info: StrawberryInfo, resolver: str, id: str
+    ) -> IncrementalOptionType:  # REQ-2249
+        """Whether a code resolver set ``id`` over ``resolver`` may keep its matches incrementally
+        (its form disables the setting with the reason when not)."""
+        from provisa.api.admin import code_resolver
+
+        # Asked by the form that saves a set, which registers its bridge.
+        require_capability(info, "table_registration")
+        return await code_resolver.incremental_option(resolver, id)
 
     @strawberry.field
     async def all_relationships(
-        self, info: StrawberryInfo
+        self, info: StrawberryInfo, include_withdrawn: bool = False
     ) -> list[RelationshipType]:  # REQ-019, REQ-020, REQ-1958
-        """All relationships including system-generated meta:% entries (used by ERD)."""
+        """All relationships including system-generated meta:% entries (used by ERD). REQ-1921:
+        a withdrawn one is left out; ``include_withdrawn`` lists it, marked withdrawn, to a caller
+        who may preview its withdrawn ends (:func:`_with_withdrawn`)."""
         pool = await _get_pool()
         _st = registered_tables.alias("st")
         _tt = registered_tables.alias("tt")
@@ -1339,9 +1467,12 @@ class Query:  # REQ-021, REQ-042
                 )
                 .order_by(relationships.c.id)
             )
-            rows = [_rel_from_row(dict(r._mapping)) for r in _res.fetchall()]
+            scope = catalog_scope(info)
+            rows = await _with_withdrawn(
+                conn, info, include_withdrawn, [dict(r._mapping) for r in _res.fetchall()]
+            )
             rows.extend(await _has_table_synthetic_relationships(conn))
-            return await _listed_relationships(conn, catalog_scope(info), rows)
+            return await _listed_relationships(conn, scope, rows)
 
     @strawberry.field
     async def roles(
@@ -1605,7 +1736,7 @@ class Query:  # REQ-021, REQ-042
 
         # The token as typed: a value, or a reference resolved in the org's vault.
         async with _bound_to_request_org():
-            resolved = resolve_secrets(token)
+            resolved = resolve_secrets(token, credential=True)
         return await validate_token(resolved)
 
     @strawberry.field
@@ -1621,7 +1752,7 @@ class Query:  # REQ-021, REQ-042
         from provisa.kaggle.client import search_datasets
 
         async with _bound_to_request_org():
-            resolved = resolve_secrets(token)
+            resolved = resolve_secrets(token, credential=True)
         results = await search_datasets(resolved, query=query, page=page)
         return [
             KaggleDatasetType(
@@ -2491,56 +2622,39 @@ class Query:  # REQ-021, REQ-042
     # ── AI: Generate table description ──
 
     @strawberry.field
-    async def generate_table_description(self, info: StrawberryInfo, table_id: str) -> str:
-        """Use LLM to generate a description for a registered table."""
+    async def generate_table_description(
+        self,
+        info: StrawberryInfo,
+        table_id: Optional[str] = None,
+        source_id: Optional[str] = None,
+        schema_name: Optional[str] = None,
+        table_name: Optional[str] = None,
+        columns: Optional[list[str]] = None,
+    ) -> str:
+        """Use LLM to generate a description for a table: a registered one by ``table_id``, or one
+        the Register table form is about to register by its source, schema, name and columns."""
         require_capability(info, "table_registration")
-        import sys
-
-        print(
-            f"[DEBUG] generate_table_description called: table_id={table_id}",
-            file=sys.stderr,
-            flush=True,
+        subject = await _describe_subject(
+            info, table_id, source_id, schema_name, table_name, columns
+        )
+        if isinstance(subject, str):
+            return subject
+        prompt = (
+            f"You are a data catalog assistant. Write a concise one-to-two sentence description "
+            f"for a database table named '{subject.table_name}' in schema '{subject.schema_name}' "
+            f"from source '{subject.source_id}'. "
+            f"Columns: {', '.join(subject.columns)}. "
+            f"Respond with only the description text, no preamble."
         )
         try:
-            pool = await _get_pool()
-            tid = int(table_id)
-            async with pool.acquire() as conn:
-                _res = await conn.execute_core(
-                    select(registered_tables).where(registered_tables.c.id == tid)
-                )
-                row = _res.fetchone()
-                if row is None:
-                    print(
-                        f"[DEBUG] table {table_id} not found — save the view/table first",
-                        file=sys.stderr,
-                        flush=True,
-                    )
-                    return "Save the view first before generating descriptions"
-                _cres = await conn.execute_core(
-                    select(table_columns.c.column_name)
-                    .where(table_columns.c.table_id == tid)
-                    .order_by(table_columns.c.id)
-                )
-                col_rows = _cres.fetchall()
-            table_name = row.table_name
-            schema_name = row.schema_name
-            source_id = row.source_id
-            columns = [r.column_name for r in col_rows]
-            prompt = (
-                f"You are a data catalog assistant. Write a concise one-to-two sentence description "
-                f"for a database table named '{table_name}' in schema '{schema_name}' "
-                f"from source '{source_id}'. "
-                f"Columns: {', '.join(columns)}. "
-                f"Respond with only the description text, no preamble."
-            )
             result = await _call_llm(prompt, "table_description", max_tokens=256)
-            logging.getLogger(__name__).info(
-                "generateTableDescription result: %s", result[:100] if result else "(empty)"
-            )
-            return result
         except Exception as e:
             logging.getLogger(__name__).exception("generateTableDescription failed: %s", e)
             return ""
+        logging.getLogger(__name__).info(
+            "generateTableDescription result: %s", result[:100] if result else "(empty)"
+        )
+        return result
 
     @strawberry.field
     async def column_dependents(  # REQ-1484
@@ -2584,58 +2698,81 @@ class Query:  # REQ-021, REQ-042
 
     @strawberry.field
     async def generate_column_description(
-        self, info: StrawberryInfo, table_id: str, column_name: str
+        self,
+        info: StrawberryInfo,
+        column_name: str,
+        table_id: Optional[str] = None,
+        source_id: Optional[str] = None,
+        schema_name: Optional[str] = None,
+        table_name: Optional[str] = None,
+        columns: Optional[list[str]] = None,
     ) -> str:
-        """Use LLM to generate a description for a single column."""
+        """Use LLM to generate a description for a single column of a registered table
+        (``table_id``) or of one the Register table form is about to register."""
         require_capability(info, "table_registration")
-        import sys
-
-        print(
-            f"[DEBUG] generate_column_description called: table_id={table_id}, column_name={column_name}",
-            file=sys.stderr,
-            flush=True,
+        subject = await _describe_subject(
+            info, table_id, source_id, schema_name, table_name, columns
+        )
+        if isinstance(subject, str):
+            return subject
+        others = ", ".join(c for c in subject.columns if c != column_name)
+        prompt = (
+            f"You are a data catalog assistant. Write a concise one-sentence description "
+            f"for the column '{column_name}' in table '{subject.table_name}' "
+            f"(schema '{subject.schema_name}', source '{subject.source_id}'). "
+            f"Other columns in this table: {others}. "
+            f"Respond with only the description text, no preamble."
         )
         try:
-            pool = await _get_pool()
-            tid = int(table_id)
-            async with pool.acquire() as conn:
-                _res = await conn.execute_core(
+            return await _call_llm(prompt, "column_description", max_tokens=128)
+        except Exception as e:
+            logging.getLogger(__name__).exception("generateColumnDescription failed: %s", e)
+            return ""
+
+
+async def _describe_subject(
+    info: StrawberryInfo,
+    table_id: Optional[str],
+    source_id: Optional[str],
+    schema_name: Optional[str],
+    table_name: Optional[str],
+    columns: Optional[list[str]],
+):
+    """The table a description is written for, after the caller is checked to read its source;
+    a string is the answer to give in its place (the registered form's id is not a table)."""
+    from provisa.api.admin.describe_subject import (
+        DescribeSubject,
+        require_source_readable,
+        unregistered_subject,
+    )
+
+    subject = unregistered_subject(table_id, source_id, schema_name, table_name, columns)
+    if isinstance(subject, str):
+        try:
+            tid = int(subject)
+        except ValueError:
+            return ""
+        pool = await _get_pool()
+        async with pool.acquire() as conn:
+            row = (
+                await conn.execute_core(
                     select(registered_tables).where(registered_tables.c.id == tid)
                 )
-                row = _res.fetchone()
-                if row is None:
-                    print(
-                        f"[DEBUG] table {table_id} not found — save the view/table first",
-                        file=sys.stderr,
-                        flush=True,
-                    )
-                    return "Save the view first before generating descriptions"
-                _cres = await conn.execute_core(
+            ).fetchone()
+            if row is None:
+                return "Save the view first before generating descriptions"
+            col_rows = (
+                await conn.execute_core(
                     select(table_columns.c.column_name)
                     .where(table_columns.c.table_id == tid)
                     .order_by(table_columns.c.id)
                 )
-                col_rows = _cres.fetchall()
-            table_name = row.table_name
-            schema_name = row.schema_name
-            source_id = row.source_id
-            all_columns = [r.column_name for r in col_rows]
-            prompt = (
-                f"You are a data catalog assistant. Write a concise one-sentence description "
-                f"for the column '{column_name}' in table '{table_name}' (schema '{schema_name}', "
-                f"source '{source_id}'). Other columns in this table: {', '.join(c for c in all_columns if c != column_name)}. "
-                f"Respond with only the description text, no preamble."
-            )
-            result = await _call_llm(prompt, "column_description", max_tokens=128)
-            print(
-                f"[DEBUG] _call_llm result: {result[:100] if result else '(empty)'}",
-                file=sys.stderr,
-                flush=True,
-            )
-            return result
-        except Exception as e:
-            logging.getLogger(__name__).exception("generateColumnDescription failed: %s", e)
-            return ""
+            ).fetchall()
+        subject = DescribeSubject(
+            row.source_id, row.schema_name, row.table_name, [r.column_name for r in col_rows]
+        )
+    require_source_readable(info, subject.source_id)
+    return subject
 
 
 async def _require_live_attach(source_id: str, what: str) -> None:

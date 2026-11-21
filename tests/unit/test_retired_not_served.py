@@ -137,10 +137,10 @@ async def test_a_retired_table_and_column_are_absent_from_the_data_planes_load(p
     async with model_change.scope("save", actor=lambda: "ada"), plane.acquire() as conn:
         await _retire_customers_and_amount(conn)
         served = {t["table_name"]: t for t in await fetch_tables(conn)}
-        drafts = await fetch_tables(conn, draft=True)
+        withdrawn = await fetch_tables(conn, withdrawn=True)
     assert set(served) == {"orders"}
     assert [c["column_name"] for c in served["orders"]["columns"]] == ["id", "customer_id"]
-    assert drafts == []
+    assert withdrawn == []
 
 
 async def test_a_retired_relationship_and_one_reaching_a_retired_table_are_not_traversable(plane):
@@ -277,7 +277,8 @@ async def surfaces(plane, monkeypatch):
         gql_object_cols={},
         rls_rules=[],
         metrics=[],
-        draft_tables=[],
+        withdrawn_tables=[],
+        withdrawn_relationships=[],
     )
     return state
 
@@ -439,7 +440,9 @@ def test_the_sql_catalog_lists_no_retired_table_column_or_metric(catalog):
     from provisa.transpiler.metadata_settings import set_statement, statement_settings
 
     with catalog.begin() as conn:
-        sql, values = set_statement(statement_settings(ROLE, True, "provisa", False, session={}))
+        sql, values = set_statement(
+            statement_settings(ROLE, True, "provisa", False, masked=(), session={})
+        )
         for n, value in reversed(list(enumerate(values, 1))):
             sql = sql.replace(f"${n}", "'" + value.replace("'", "''") + "'")
         conn.exec_driver_sql(sql)

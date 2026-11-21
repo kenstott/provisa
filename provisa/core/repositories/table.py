@@ -41,6 +41,7 @@ from provisa.core.schema_org import (
     table_columns,
 )
 from provisa.core.repositories.mask_lists import refuse_unreachable_masks
+from provisa.security.masking import refuse_non_text_constant
 from provisa.fakes.portable import pinned_version
 from provisa.security.rights import Capability
 
@@ -335,7 +336,11 @@ class ViewLoopRefused(ValueError):
 
 
 async def upsert(
-    conn: "Connection", table: Table, *, declared: "DeclaredKeys | None" = None
+    conn: "Connection",
+    table: Table,
+    *,
+    declared: "DeclaredKeys | None" = None,
+    withdrawn: bool | None = None,
 ) -> int | None:  # REQ-013, REQ-016, REQ-133, REQ-155, REQ-156, REQ-260, REQ-334, REQ-393, REQ-399
     """Upsert a registered table and its columns. Returns the table row id.
 
@@ -353,7 +358,11 @@ async def upsert(
     read it; a column is a primary or alternate key when the source declares it one, when the
     registration's input does, or (an alternate key) when a relationship is keyed on it. None:
     this registration read no declaration (no driver for the source here), and the input's marks
-    are the table's."""
+    are the table's.
+
+    REQ-1921: ``withdrawn`` is written only when given -- by a configuration, which carries it as
+    the store holds it. Every other save keeps what is held (a new table is live): a table is
+    withdrawn and put back only by ``withdrawTable`` / ``putBackTable``."""
     model_change.name("upsert", model_change.uri(model_uri.table_uri, table))  # REQ-1524
     async with conn.transaction():
         view_sql = getattr(table, "view_sql", None)
@@ -361,7 +370,7 @@ async def upsert(
             loop = await view_loop(conn, table.table_name, view_sql)
             if loop:
                 raise ViewLoopRefused(loop)
-        table_id = await _upsert(conn, table, declared)
+        table_id = await _upsert(conn, table, declared, withdrawn)
         if table_id is not None:
             from provisa.dq.regulation import uncite_removed
 
@@ -425,7 +434,12 @@ async def _require_label_not_a_domain(conn: "Connection", table: Table) -> None:
     from provisa.compiler.naming import refuse_label_clash
     from provisa.core.schema_org import domains
 
-    domain_ids = [r.id for r in (await conn.execute_core(select(domains.c.id))).fetchall()]
+    domain_ids = [
+        r.id
+        for r in (
+            await conn.execute_core(select(domains.c.id).where(domains.c.retired.is_(False)))
+        ).fetchall()
+    ]
     candidate = {
         "source_id": table.source_id,
         "schema_name": table.schema_name,
@@ -503,8 +517,10 @@ async def _require_landed_if_member(  # REQ-1634
         )
 
 
-async def _upsert(conn: "Connection", table: Table, declared: "DeclaredKeys | None") -> int | None:
-    domain_id = domain_policy.resolve_domain_id(table.domain_id)
+async def _upsert(
+    conn: "Connection", table: Table, declared: "DeclaredKeys | None", withdrawn: bool | None
+) -> int | None:
+    domain_id = domain_policy.table_domain_id(table.domain_id, table.table_name)  # REQ-1531
     await _require_not_retired(conn, table)
     await _require_free_sql_address(conn, table, domain_id)
     await _require_label_not_a_domain(conn, table)
@@ -614,6 +630,7 @@ async def _upsert(conn: "Connection", table: Table, declared: "DeclaredKeys | No
         "mv_persist": getattr(table, "mv_persist", "replace"),  # REQ-965
         "mv_primary_key": getattr(table, "mv_primary_key", []),  # REQ-970
         "mv_incremental": getattr(table, "mv_incremental", False),  # REQ-969
+        "mv_rebuild_every": getattr(table, "mv_rebuild_every", None),  # REQ-2249
         "mv_calendar": getattr(table, "mv_calendar", None),  # REQ-962
         "mv_grain": getattr(table, "mv_grain", None),  # REQ-962/1168
         "mv_allowed_lateness": getattr(table, "mv_allowed_lateness", 0.0),  # REQ-961
@@ -630,7 +647,6 @@ async def _upsert(conn: "Connection", table: Table, declared: "DeclaredKeys | No
         "load_protected": getattr(table, "load_protected", None),  # REQ-1141
         "replicate": getattr(table, "replicate", None),  # REQ-826
         "region": getattr(table, "region", None),  # REQ-1921
-        "draft": table.draft,  # REQ-1921
         "off_peak_window": getattr(table, "off_peak_window", None),  # REQ-1141
         "off_peak_tz": getattr(table, "off_peak_tz", None),  # REQ-1141
         # REQ-1865: never written here despite fetch_tables() SELECTing both columns and
@@ -688,6 +704,7 @@ async def _upsert(conn: "Connection", table: Table, declared: "DeclaredKeys | No
         "mv_persist",  # REQ-965
         "mv_primary_key",  # REQ-970
         "mv_incremental",  # REQ-969
+        "mv_rebuild_every",  # REQ-2249
         "mv_calendar",  # REQ-962
         "mv_grain",  # REQ-962/1168
         "mv_allowed_lateness",  # REQ-961
@@ -704,7 +721,6 @@ async def _upsert(conn: "Connection", table: Table, declared: "DeclaredKeys | No
         "load_protected",  # REQ-1141
         "replicate",  # REQ-826
         "region",  # REQ-1921
-        "draft",  # REQ-1921
         "off_peak_window",  # REQ-1141
         "off_peak_tz",  # REQ-1141
         "row_materialize",  # REQ-1865
@@ -728,6 +744,9 @@ async def _upsert(conn: "Connection", table: Table, declared: "DeclaredKeys | No
         "query_template",
         "relay_pagination",
     ]
+    if withdrawn is not None:  # REQ-1921: a configuration's, as the store holds it
+        values["withdrawn"] = withdrawn
+        _update_columns.append("withdrawn")
     table_id = await conn.upsert_returning(
         registered_tables,
         values,
@@ -897,6 +916,8 @@ async def _upsert(conn: "Connection", table: Table, declared: "DeclaredKeys | No
         for name, (_, entries) in _whys.items()
     }
     await refuse_unreachable_masks(conn, _stored_masks)  # REQ-2059
+    for _name, _masks in _stored_masks.items():  # REQ-2131
+        refuse_non_text_constant(_name, _masks, _stored[_name][0])
     # Replace columns: delete existing, insert new
     await conn.execute_core(_delete(table_columns).where(table_columns.c.table_id == table_id))
     for col in table.columns:
@@ -983,6 +1004,8 @@ async def _upsert(conn: "Connection", table: Table, declared: "DeclaredKeys | No
             for c in table.columns
             if getattr(c, "native_filter_type", None) is None and not c.name.startswith("_nf_")
         ],
+        # REQ-1591: the domain this upsert writes, which tells same-named terms apart.
+        domain=domain_id,
         table_context=getattr(table, "alias", None) or table.table_name,
     )
     return table_id
@@ -1196,6 +1219,25 @@ async def restore(conn: "Connection", table_id: int) -> bool:  # REQ-2248
     return True
 
 
+async def restore_registered(conn: "Connection", table: Table) -> bool:  # REQ-433, REQ-2248
+    """Registering a source table that was removed restores it: the same table (its id, columns
+    and links), its retirement cleared, so the registration that follows saves it into the
+    domain it names. REQ-433 (amended 2026-11-20): removing a table frees it at once, a table
+    registered with no domain included. A different table at a retired table's name is still
+    refused (:func:`_require_not_retired`). False when no retired table is that source table."""
+    held = (
+        await conn.execute_core(
+            select(registered_tables.c.id).where(
+                registered_tables.c.source_id == table.source_id,
+                registered_tables.c.schema_name == table.schema_name,
+                registered_tables.c.table_name == table.table_name,
+                registered_tables.c.retired.is_(True),
+            )
+        )
+    ).fetchone()
+    return held is not None and await restore(conn, int(held.id))
+
+
 async def restore_column(conn: "Connection", table_id: int, column_name: str) -> bool:  # REQ-2248
     """Restore a retired column of a table: the same column, its retirement cleared, in its
     table again with the tags it kept. False when the table has no such retired column."""
@@ -1328,8 +1370,9 @@ async def retire_generated(  # REQ-1918
 
 async def remove_registrations(conn: "Connection", *where) -> None:
     """Remove every registered table matching ``where`` (clauses on ``registered_tables``) —
-    for the code that registers tables as a SET and replaces or retires that set: the seed
-    retiring rows it wrote, the config loader dropping what the config no longer declares.
+    for the startup seed removing built-in rows it wrote and no longer declares. The one
+    exception to retirement it serves (REQ-2248, amended 2026-11-15): a startup seed may delete
+    Provisa's own built-in rows that it no longer declares; they are not a person's objects.
 
     It declares a set; it is not a deletion of one object, so it does not ask the dependency
     guard, as a full replace does not. What referred to those tables is left to the database, as

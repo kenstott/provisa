@@ -91,13 +91,18 @@ def test_an_insert_takes_its_values_or_its_select(session):
 
 def test_an_update_and_a_delete_are_the_tables_rows_afterwards(session):
     update = action_of("UPDATE t SET region = 'venus' WHERE id = 1")
-    assert update.kind == "rewrite" and update.rewrite.endswith("FROM {table}")
-    assert (
-        "CASE WHEN COALESCE((id = 1), FALSE) THEN ('venus') ELSE \"region\" END" in update.rewrite
+    # The statement's own expressions are in the SELECT the pipeline governs as the role.
+    assert update.kind == "rewrite" and not update.marks_gone
+    assert update.select == (
+        'SELECT "id", CASE WHEN COALESCE((id = 1), FALSE) THEN (\'venus\') ELSE "region" END '
+        'AS "region" FROM t'
     )
     delete = action_of("DELETE FROM t WHERE id = 2")
-    assert delete.rewrite == "SELECT * FROM {table} WHERE NOT COALESCE((id = 2), FALSE)"
-    assert action_of("DELETE FROM t").rewrite.endswith("NOT COALESCE((TRUE), FALSE)")
+    assert delete.kind == "rewrite" and delete.marks_gone
+    assert delete.select == ('SELECT "id", "region", COALESCE((id = 2), FALSE) AS "__gone" FROM t')
+    assert 'COALESCE((TRUE), FALSE) AS "__gone"' in action_of("DELETE FROM t").select
+    aliased = action_of("UPDATE t AS x SET region = 'venus' WHERE x.id = 1")
+    assert aliased.select.endswith("FROM t AS x")
 
 
 def test_drop_of_the_sessions_table_and_reads_of_it(session):

@@ -2,7 +2,7 @@
   "cacheTtl": {
     "neverExpires": "nunca caduca",
     "inputHint": "-1: nunca caduca",
-    "neverExpiresHint": "Nunca caduca: se carga una vez.",
+    "neverExpiresHint": "Nunca caduca y se carga una vez.",
     "asOf": "{{ttl}}, a fecha de {{when}}",
     "roleTtlUnlisted": "El TTL de caché nunca caduca, para ningún rol.",
     "roleTtlNoEffect": "El TTL de caché nunca caduca, así que esta entrada no tiene efecto."

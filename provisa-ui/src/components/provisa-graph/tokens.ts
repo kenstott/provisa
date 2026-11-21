@@ -9,18 +9,16 @@
 // permission from the copyright holder.
 
 // REQ-2239: the graph's visual tokens (SPEC.md), taken from the detail cards and read from
-// Mantine's own scales, so the graph and the cards cannot drift apart. Cytoscape draws on a canvas
+// the palette Mantine's theme is built from, so the graph and the cards cannot drift apart. Cytoscape draws on a canvas
 // and cannot read CSS variables: the values are resolved here, per colour scheme.
 
-import { DEFAULT_THEME } from "@mantine/core";
-import { theme } from "../../theme/theme";
+import { BRAND, SCALES, type ScaleName } from "../../theme/palette";
 import { ICONS, type IconName } from "./icons";
 
-const gray = DEFAULT_THEME.colors.gray;
-const dark = DEFAULT_THEME.colors.dark;
-const brand = theme.colors!.brand!;
-const hue = (name: keyof typeof DEFAULT_THEME.colors, shade = 6) =>
-  DEFAULT_THEME.colors[name][shade];
+const gray = SCALES.gray;
+const dark = SCALES.dark;
+const brand = BRAND;
+const hue = (name: ScaleName, shade = 6) => SCALES[name][shade];
 
 export interface GraphTokens {
   canvas: string;

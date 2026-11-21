@@ -57,9 +57,12 @@ export function graphqlExample(reader: MetaReader | null, tb: TableRef): Example
 }
 
 export function restExample(reader: MetaReader | null, tb: TableRef): ExampleLink | null {
-  const field = rootOf(reader, tb);
-  return field
-    ? { to: "/openapi", state: { openApiUrl: `GET /data/rest/${field}`, autoRun: true } }
+  // The REST path is the table's domain and name, not its GraphQL root field.
+  return rootOf(reader, tb)
+    ? {
+        to: "/openapi",
+        state: { openApiUrl: `GET /data/rest/${tb.domainId}/${tb.tableName}`, autoRun: true },
+      }
     : null;
 }
 

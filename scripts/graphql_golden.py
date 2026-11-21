@@ -581,6 +581,18 @@ def _plain(value: Any) -> Any:
     return value
 
 
+def _views_expanded(semantic: str, view_sql: dict, ctx: Any) -> str:
+    """``semantic`` with each view it reads expanded, read by the names the server reads it by
+    (``mv.view_read.statement_as_read``): its key, ``schema.table``, and the names governance
+    gives its registered table -- a semantic statement names it by its domain."""
+    from provisa.compiler.stage2 import context_table_map
+    from provisa.compiler.view_expand import expand_view_refs
+    from provisa.mv.view_read import view_names
+
+    names = view_names(view_sql, context_table_map(ctx))
+    return expand_view_refs(semantic, view_sql, names=names)
+
+
 def physical_statements(schema: Any, ctx: Any, read: CorpusRead, view_sql: dict) -> list[dict]:
     """Each root of ``read`` as the statement the engine runs (its views expanded, physical), with
     its parameters, the catalogs it reads and whether it orders its rows."""
@@ -590,14 +602,13 @@ def physical_statements(schema: Any, ctx: Any, read: CorpusRead, view_sql: dict)
     from provisa.compiler.parser import coerce_variable_defaults
     from provisa.compiler.sql_gen import compile_query
     from provisa.compiler.sql_rewrite import lower_to_catalog_physical, make_semantic_sql
-    from provisa.compiler.view_expand import expand_view_refs
 
     document = parse(read.text)
     out = []
     for root in compile_query(document, ctx, coerce_variable_defaults(document, read.variables)):
         semantic = make_semantic_sql(root.sql, ctx)
         # Lowered the one way every surface lowers a governed statement (REQ-641).
-        physical = lower_to_catalog_physical(expand_view_refs(semantic, view_sql), ctx)
+        physical = lower_to_catalog_physical(_views_expanded(semantic, view_sql, ctx), ctx)
         tree = sqlglot.parse_one(physical, read="postgres")
         out.append(
             {
@@ -663,8 +674,15 @@ def answer_on_postgres(pg: Any, databases: dict[str, str], stmt: dict) -> dict:
 
 
 def _view_sql(config: Path) -> dict[str, str]:
+    from provisa.compiler.view_expand import view_key
+
     _schema_input, tables, _rels, _types = _cypher_golden().model_inputs(config, parameters=True)
-    return {t["table_name"]: t["view_sql"] for t in tables if "view_sql" in t}
+    # Keyed as the server keys its view map (``api.app_rebuild``): by schema and table name.
+    return {
+        view_key(t["schema_name"], t["table_name"]): t["view_sql"]
+        for t in tables
+        if "view_sql" in t
+    }
 
 
 def demo_answers(pg: Any, demo: Path, prefix: str) -> list[dict]:
@@ -794,7 +812,6 @@ def front_answers(pg: Any, demo: Path, prefix: str) -> list[dict]:
     from provisa.compiler.parser import coerce_variable_defaults
     from provisa.compiler.sql_gen import compile_query
     from provisa.compiler.sql_rewrite import lower_to_catalog_physical, make_semantic_sql
-    from provisa.compiler.view_expand import expand_view_refs
     from provisa.cypher.parser import parse_cypher
     from provisa.cypher.printer import print_cypher
     from provisa.core.ir_arrow import row_batch
@@ -838,7 +855,7 @@ def front_answers(pg: Any, demo: Path, prefix: str) -> list[dict]:
             sql_ast, _params, graph_vars = cypher_to_sql(parse_cypher(cypher), lm, {})
             sql_ast = apply_graph_rewrites(sql_ast, graph_vars, lm)
             semantic = make_semantic_sql(sql_ast.sql(dialect="postgres"), ctx)
-            physical = lower_to_catalog_physical(expand_view_refs(semantic, view_sql), ctx)
+            physical = lower_to_catalog_physical(_views_expanded(semantic, view_sql, ctx), ctx)
             import sqlglot
 
             tree = sqlglot.parse_one(physical, read="postgres")

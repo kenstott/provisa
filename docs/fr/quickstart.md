@@ -10,7 +10,7 @@ Ce guide explique comment exécuter Provisa **depuis le dépôt**, quand vous d�
 
 - **Docker Desktop** (en cours d'exécution)
 - **Python 3.12+**
-- **Node.js 20+**
+- **Node.js 24.12+**
 - **Git**
 
 ---

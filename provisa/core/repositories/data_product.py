@@ -13,7 +13,7 @@
 # Requirements: REQ-1634, REQ-2180
 
 import logging
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import delete as _delete, func, insert, select, update
@@ -22,7 +22,6 @@ from provisa.core import model_change, model_uri
 from provisa.core.models import ContractCheck, DataProduct
 from provisa.core.repositories.integrity import Dependent, ObjectRef, guard, remove_parts
 from provisa.core.schema_org import (
-    checker_targets,
     data_product_commands,
     data_product_tables,
     data_products,
@@ -178,12 +177,18 @@ async def delete(conn: "Connection", product_id: str) -> bool:  # REQ-1634, REQ-
 
 
 async def promised_checks(  # REQ-2158
-    conn: "Connection", table_id: int
+    conn: "Connection", table_id: int, checked: Mapping[int, int]
 ) -> list[ContractCheck]:
     """What the member's products promise of it: the checks of the checker tables that scan it
     (REQ-2157) and are members of a product it is a member of, each as a contract version keeps it.
-    A check only another product owns, or none does, is no promise of these."""
+    A check only another product owns, or none does, is no promise of these. ``checked`` is each
+    checker's checked table as the runtime's published build resolved it (REQ-2125), never the
+    stored checker targets, which are the meta domain's and written after the build answers."""
     from provisa.dq.contract import check_severity
+
+    checkers = sorted(c for c, t in checked.items() if t == table_id)
+    if not checkers:
+        return []
 
     its_products = select(data_product_tables.c.product_id).where(
         data_product_tables.c.table_id == table_id
@@ -195,9 +200,8 @@ async def promised_checks(  # REQ-2158
         await conn.execute_core(
             select(registered_tables.c.dq_rules, sources.c.type)
             .join(sources, sources.c.id == registered_tables.c.source_id)
-            .join(checker_targets, checker_targets.c.table_id == registered_tables.c.id)
             .where(
-                checker_targets.c.checked_table_id == table_id,
+                registered_tables.c.id.in_(checkers),
                 registered_tables.c.id.in_(owned),
                 registered_tables.c.dq_rules.is_not(None),
             )

@@ -54,6 +54,7 @@ _FULL_SUITES = (
     "conformance-functions.yml",
     "conformance-graphql.yml",
     "conformance-pgwire.yml",
+    "conformance-sparql.yml",
 )
 _PACKAGING = "build-dmg.yml"
 _GREEN = "completed success "

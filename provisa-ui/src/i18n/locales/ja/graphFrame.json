@@ -11,7 +11,7 @@
     "error": "エラー",
     "expand": "展開",
     "enlarge": "拡大",
-    "exitFullScreen": "全画面を終了",
+    "exitFullScreen": "元のサイズに戻す",
     "collapse": "折りたたむ",
     "unpinHint": "ピン解除（ソートを許可するにはピンを外してください）",
     "pinToTop": "先頭にピン留め",
@@ -19,7 +19,7 @@
     "run": "実行",
     "removeFromFavorites": "お気に入りから削除",
     "addToFavorites": "お気に入りに追加",
-    "autoImputeOn": "リレーションの自動補完 ON — クリックで無効化",
+    "autoImputeOn": "リレーションシップの自動推定がオンです。クリックで無効にします。",
     "autoImputeOff": "表示中のノード間のリレーションを自動補完",
     "groupTooltip": "属性でノードをグループ化（ハルをダブルクリックで折りたたみ、折りたたまれたノードをダブルクリックで展開）",
     "groupPlaceholder": "⬡ グループ",
@@ -50,7 +50,7 @@
     "sparqlDropSubquery": "サブ SELECT を含むクエリにはピルをドロップできません。何も追加されていません。",
     "sparqlDropNoClass": "この結果には結合先のクラスがありません。変数にクラスを指定してからもう一度ドロップしてください。何も追加されていません。",
     "sparqlDropNode": "そのノードはこのクエリの変数ではないため、結合先がありません。何も追加されていません。",
-    "sparqlDropNoPath": "{{name}} は {{classes}} とのリレーションシップがありません。何も追加されていません。",
+    "sparqlDropNoPath": "{{name}} は選択したドメイン内で {{classes}} とのリレーションシップがありません。何も追加されていません。",
     "sparqlDropTooFar": "{{name}} は {{classes}} から {{hops}} リレーションシップ離れており、ドロップがたどる {{most}} を超えています。短いパスはありません。何も追加されていません。",
     "sparqlDropNoEnd": "{{name}} のどちらの端もこの結果にありません。何も追加されていません。",
     "sparqlDropParameterized": "パスは {{name}} を通れません。読み取りに引数が必要です。何も追加されませんでした。",
@@ -58,6 +58,9 @@
     "sparqlDropNoProperty": "この結果のクラスに {{name}} を持つものはありません。何も追加されていません。",
     "sparqlDropLeftOut": "同じ長さのパス {{total}} 件のうち {{shown}} 件を追加し、残りは省略しました。",
     "sparqlDropCut": "結果が LIMIT {{limit}} に達しました。それ以降の行は省略されています。",
-    "cypherPathNoKey": "{{from}} と {{to}} の間のパスには各ノードのキーが必要ですが、一方にはありません。"
+    "cypherPathNoKey": "{{from}} と {{to}} の間のパスには各ノードのキーが必要ですが、一方にはありません。",
+    "cypherDropNoLabel": "この結果のノードにはラベルがなく、クエリにもラベルを与えるリレーションシップがありません。ノードにラベルを指定してからもう一度ドロップしてください。何も追加されていません。",
+    "cypherDropNoPair": "この結果のクエリには、選択したドメイン内のラベルを結ぶリレーションシップがないため、ノードにラベルを付けられません。何も追加されていません。",
+    "cypherDropLabelled": "この結果のラベルのないノードに、スキーマからラベルを付けました。ラベルの組ごとに MATCH が 1 つです。"
   }
 }

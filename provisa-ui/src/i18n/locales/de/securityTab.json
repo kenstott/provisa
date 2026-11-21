@@ -1,6 +1,6 @@
 {
   "securityTab": {
-    "intro": "Steuert die Sicherheitskonfiguration der Plattform. Der Modus Hoch (Zero-Trust) hat weitreichende Auswirkungen — lesen Sie die Warnung vor dem Aktivieren.",
+    "intro": "Steuert die Sicherheitsstufe der Plattform. Lesen Sie die Warnung, bevor Sie den Modus „Hoch“ (Zero Trust) aktivieren.",
     "modeLabel": "Sicherheitsmodus",
     "highWarningTitle": "Der Modus Hoch (Zero-Trust) hat weitreichende Auswirkungen",
     "highWarning": "Der pgwire-Server startet nicht, und die REST- und GraphQL-Datenendpunkte liefern 403. Nur Clients, die lokal entschlüsseln (kms_key_arn konfiguriert), können auf Daten zugreifen. Prüfen Sie vor dem Aktivieren, ob Ihre Clients konfiguriert sind.",

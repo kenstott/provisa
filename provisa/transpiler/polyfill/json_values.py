@@ -26,9 +26,7 @@ an odd count of arguments is refused as PostgreSQL refuses it.
 What a rule writes is not walked again (function_macros), so a call it would hold is refused by
 name: each value is a literal, a column or a cast of one.
 
-On ClickHouse (run 43410717058, which sent json_agg as written), json_agg of a number, a text or a
-truth value the statement says is toJSONString of its values, each in a tuple so a NULL is kept,
-and NULL of no rows; of any other value it is refused by name."""
+On ClickHouse, json_agg is json_built.aggregate_json's (run 43410717058 sent it as written)."""
 
 # Requirements: REQ-2236, REQ-2171
 
@@ -36,10 +34,9 @@ from __future__ import annotations
 
 import sqlglot.expressions as exp
 
-from provisa.transpiler.polyfill import trino
+from provisa.transpiler.polyfill import json_built, json_members, trino
 from provisa.transpiler.polyfill.grid import Feature, Limitation, Rule, Side
-from provisa.transpiler.polyfill.matching import graft
-from provisa.transpiler.polyfill.notation import Refusal, Refused, Rewrite, replacement
+from provisa.transpiler.polyfill.notation import Refusal, Refused, Rewrite
 from provisa.transpiler.polyfill.server import plain
 
 FAMILY = "JSON of values on Trino"
@@ -109,35 +106,6 @@ def object_keys_as_text(node: exp.Expr, dialect: str) -> exp.Expr | None:
     )
 
 
-#: The types whose values ClickHouse's toJSONString writes as json_agg does: a number, a text,
-#: a truth value.
-_JSON_SCALARS = frozenset({"smallint", "integer", "bigint", "text", "character varying", "boolean"})
-_JSON_AGG = "json_agg($a)"
-_JSON_ARRAY = "if(count() = 0, NULL, toJSONString(arrayMap(_t -> _t.1, groupArray(tuple($a)))))"
-
-
-def json_array(node: exp.Expr, dialect: str) -> exp.Expr | None:
-    """json_agg of a number, a text or a truth value the statement says: its values as a JSON
-    array, a NULL kept, NULL of no rows; of any other value, or of an order, DISTINCT, a FILTER
-    or a window, refused by name."""
-    if isinstance(node, exp.JSONArrayAgg):
-        value = node.this
-    elif isinstance(node, exp.Anonymous) and node.name.lower() == "json_agg":
-        if len(node.expressions) != 1:
-            return None
-        value = node.expressions[0]  # called by pg_catalog, quoted
-    else:
-        return None
-    outer = node.parent.parent if isinstance(node.parent, exp.Dot) else node.parent
-    if (
-        isinstance(value, (exp.Order, exp.Distinct))
-        or isinstance(outer, (exp.Filter, exp.Window))
-        or trino.said(value) not in _JSON_SCALARS
-    ):
-        raise Refused(trino.no_form("json_agg", dialect))
-    return graft(replacement(_JSON_ARRAY, dialect, _JSON_AGG), {"a": value})
-
-
 _PLAIN_ONLY = Limitation(
     "Where a rule writes the call, of a literal, a column or a cast of one only: any other value "
     "is refused by name."
@@ -153,7 +121,7 @@ JSON_AGG = Feature(
                 None,
                 {
                     **trino.on_trino(Rewrite(json_agg_of_integers)),
-                    "clickhouse": Rewrite(json_array),
+                    "clickhouse": json_built.for_name("json_agg", json_built.aggregate_json),
                 },
             ),
         ),
@@ -169,16 +137,14 @@ JSON_AGG = Feature(
                     ),
                 ),
             ),
-            "clickhouse": (
-                Limitation(
-                    "Of a number, a text or a truth value the statement says the type of: any "
-                    "other value, and an order, DISTINCT, a FILTER or a window, refused by name."
-                ),
-            ),
+            "clickhouse": (json_built.TYPES, json_built.AGGREGATE_LIMIT),
         },
     ),
 )
 
+#: The family's place in the grid (polyfill.GRID), which tries the rules of one function in
+#: the order of their families.
+ORDER = 250
 FEATURES: tuple[Feature, ...] = (
     JSON_AGG,
     *(
@@ -187,23 +153,34 @@ FEATURES: tuple[Feature, ...] = (
             FAMILY,
             "A JSON object of keys and values; each key is cast to its text.",
             read=Side(
-                rules=(Rule(None, trino.on_trino(Rewrite(object_keys_as_text))),),
-                limitations=dict.fromkeys(
-                    trino.TRINO,
-                    (
-                        _PLAIN_ONLY,
-                        Limitation(
-                            "A key of a type the statement says other than text, an integer or a "
-                            "boolean, or a NULL key: refused by name, as Trino's text of it may "
-                            "differ."
-                        ),
-                        Limitation(
-                            "An odd count of arguments is refused as the statement is read, not "
-                            "where it runs.",
-                            ODD,
-                        ),
+                rules=(
+                    Rule(
+                        None,
+                        {
+                            **trino.on_trino(Rewrite(object_keys_as_text)),
+                            "clickhouse": json_built.for_name(name, json_members.built_object),
+                        },
                     ),
                 ),
+                limitations={
+                    "clickhouse": (json_built.TYPES, json_members.ODD_COUNT),
+                    **dict.fromkeys(
+                        trino.TRINO,
+                        (
+                            _PLAIN_ONLY,
+                            Limitation(
+                                "A key of a type the statement says other than text, an integer or a "
+                                "boolean, or a NULL key: refused by name, as Trino's text of it may "
+                                "differ."
+                            ),
+                            Limitation(
+                                "An odd count of arguments is refused as the statement is read, not "
+                                "where it runs.",
+                                ODD,
+                            ),
+                        ),
+                    ),
+                },
             ),
         )
         for name in _OBJECTS

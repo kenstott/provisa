@@ -48,11 +48,12 @@ jobs:
           cache: "true"
           client: "true"
 
+      # The one job that mounts them: it primes the cache itself.
       - name: Restore Trino plugins
         id: trino-plugins
         uses: ./.github/actions/trino-plugins
         with:
-          phase: restore
+          phase: prime
 
       # A missing key fails the run by name rather than surfacing as a skipped test.
       - name: Credentials present
@@ -73,12 +74,6 @@ jobs:
           uv run python scripts/ci/run_lane.py polly_bakeoff \
             --junitxml results/polly-bakeoff/junit.xml
 
-      - name: Cache Trino plugins
-        if: always()
-        uses: ./.github/actions/trino-plugins
-        with:
-          phase: save
-          cache-hit: ${{ steps.trino-plugins.outputs.cache-hit }}
 
       - name: Report
         if: always()
