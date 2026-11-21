@@ -1546,7 +1546,7 @@ index 0000000..c867693
 +}
 diff --git a/src/test/java/ru/raiffeisen/trino/arrow/flight/sql/producer/TrinoArrowColumnTest.java b/src/test/java/ru/raiffeisen/trino/arrow/flight/sql/producer/TrinoArrowColumnTest.java
 new file mode 100644
-index 0000000..19f4a11
+index 0000000..e2d1eb2
 --- /dev/null
 +++ b/src/test/java/ru/raiffeisen/trino/arrow/flight/sql/producer/TrinoArrowColumnTest.java
 @@ -0,0 +1,343 @@
@@ -1874,7 +1874,7 @@ index 0000000..19f4a11
 +            type("map", ClientTypeSignatureParameter.ofType(type("varchar")), ClientTypeSignatureParameter.ofType(type("double"))),
 +            arrayOf(type("json")))) {
 +      TrinoArrowColumn column = TrinoArrowColumn.of(new Column("a", "array(x)", arrayOf(element)));
-+      assertEquals(ArrowType.Utf8.INSTANCE, column.field().getType(), element.toString());
++      assertEquals(ArrowType.Utf8.INSTANCE, column.field().getType(), element.getRawType());
 +      assertEquals("json", column.field().getMetadata().get(TrinoArrowColumn.ENCODING_KEY));
 +    }
 +  }
