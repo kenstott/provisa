@@ -13,8 +13,9 @@ RUN git apply /tmp/fix-decode-peer-identity.patch
 # JDBC, so Provisa's reads arrive as Arrow with what JDBC drops (docs/arch/fetch-paths.md §4):
 #  - TIME/TIMESTAMP in microseconds (half-even past six digits, as the Trino Python client rounds);
 #  - every field's Trino type ("trino.type"), type signature and encoding in its metadata; a type
-#    Arrow lacks (map, row, array, json, uuid, ipaddress, intervals, time with time zone) is Utf8
-#    holding the protocol's text/JSON instead of failing as an unmapped JDBC type;
+#    Arrow lacks (map, row, json, uuid, ipaddress, intervals, time with time zone, an array of one
+#    of them) is Utf8 holding the protocol's text/JSON instead of failing as an unmapped JDBC type;
+#  - an array of a type Arrow has is an Arrow list of it, nested as deep as the array;
 #  - source, catalog, schema, session properties and time zone from the x-provisa-trino-context
 #    call header;
 #  - Trino's error name/type/code and query id in the Flight error's trailers.

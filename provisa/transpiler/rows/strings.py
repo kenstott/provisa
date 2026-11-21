@@ -15,7 +15,7 @@
 
 from __future__ import annotations
 
-from provisa.transpiler import pg_forms_system
+from provisa.transpiler import pg_forms_system, pg_forms_types
 from provisa.transpiler.rows.base import (
     _CLICKHOUSE,
     _DUCKDB,
@@ -113,9 +113,17 @@ ROWS: tuple[Macro, ...] = (
         "substr",
         ("value", "start", "n"),
         {
+            # text_substring: a negative length is PostgreSQL's 22011, which the form below reads
+            # as none (run 44670380355 answered '' of substr('abc', 3, -2147483648) on Trino).
+            _TRINO: Pg(
+                "CASE WHEN n < 0 THEN "
+                f"{pg_forms_types.fails('22011', 'negative substring length not allowed', 'TEXT')} "
+                f"ELSE SUBSTRING(value, {_SUBSTR_START}, GREATEST(start + n - {_SUBSTR_START}, 0)) "
+                "END"
+            ),
             _EVERY: Pg(
                 f"SUBSTRING(value, {_SUBSTR_START}, GREATEST(start + n - {_SUBSTR_START}, 0))"
-            )
+            ),
         },
     ),
     # The session's collation, en_US.UTF-8 as pg_database says: DuckDB compares bytes.

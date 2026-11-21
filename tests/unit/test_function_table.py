@@ -491,3 +491,205 @@ async def test_a_relationship_on_a_parameter_is_named_to_a_reader_of_its_tables(
         assert not await relationship_readable(
             conn, reader(served - {(derived, None)}), "pets-to-pet"
         )
+
+
+# --- what blocks turning it off, kind by kind ------------------------------------------------------
+
+
+async def _view_over(plane, table: str) -> None:
+    async with plane.acquire() as conn:
+        await conn.execute_core(
+            insert(registered_tables).values(
+                source_id="api",
+                domain_id="pets",
+                schema_name="default",
+                table_name="pet_view",
+                view_sql=f"SELECT id FROM {table}",
+            )
+        )
+
+
+async def _metric_over(plane, table: str) -> None:
+    from provisa.core.schema_org import metrics
+
+    async with plane.acquire() as conn:
+        await conn.execute_core(
+            insert(metrics).values(name="pet_count", expression="COUNT(*)", from_fact=table)
+        )
+
+
+async def _product_over(plane, table_id: int) -> None:
+    from provisa.core.schema_org import data_product_tables, data_products
+
+    async with plane.acquire() as conn:
+        await conn.execute_core(
+            insert(data_products).values(id="pets-product", domain_id="pets", name="Pets")
+        )
+        await conn.execute_core(
+            insert(data_product_tables).values(product_id="pets-product", table_id=table_id)
+        )
+
+
+async def _write_grant_on(plane, table_id: int) -> None:
+    from provisa.core.schema_org import table_write_grants
+
+    async with plane.acquire() as conn:
+        await conn.execute_core(
+            insert(table_write_grants).values(
+                table_id=table_id, role_id="reader", operation="insert"
+            )
+        )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "refer, kind",
+    [
+        (lambda plane, derived: _view_over(plane, "getPetById"), "table"),
+        (lambda plane, derived: _metric_over(plane, "getPetById"), "metric"),
+        (_product_over, "data_product"),
+        (_write_grant_on, "role"),
+    ],
+    ids=["view", "metric", "data-product membership", "write grant"],
+)
+async def test_turning_it_off_is_refused_while_any_live_object_refers_to_the_table(
+    state, plane, refer, kind
+):
+    derived, stored = await _exposed_pet(plane)
+    await refer(plane, derived)
+    with pytest.raises(ApiError) as refused:
+        await _settle(_body("get_pet", "getPetById", exposed=False), stored)
+    assert refused.value.code == "functions.table_has_dependents"
+    assert [d["kind"] for d in refused.value.params["dependents"]] == [kind]
+
+
+@pytest.mark.asyncio
+async def test_a_glossary_reference_and_a_tag_do_not_block_turning_it_off(state, plane):
+    from provisa.core.models import TagAssignment
+    from provisa.core.schema_org import glossary_term_refs, glossary_terms, tag_assignments
+
+    derived, stored = await _exposed_pet(plane)
+    async with plane.acquire() as conn:
+        term = (
+            await conn.execute_core(
+                insert(glossary_terms).values(name="Pet").returning(glossary_terms.c.id)
+            )
+        ).scalar_one()
+        await conn.execute_core(
+            insert(glossary_term_refs).values(term_id=term, table_id=derived, column_name="id")
+        )
+        await conn.execute_core(
+            insert(tag_assignments).values(
+                tag_id="pii",
+                base_tag_id="pii",
+                object_type="table",
+                table_id=derived,
+                object_key=TagAssignment(
+                    tag_id="pii", object_type="table", table_id=derived
+                ).object_key(),
+            )
+        )
+    assert await _settle(_body("get_pet", "getPetById", exposed=False), stored) == derived
+
+
+# --- deleting the function -----------------------------------------------------------------------
+
+
+def _delete_request() -> Any:
+    return types.SimpleNamespace(
+        state=types.SimpleNamespace(identity=None, role="admin"), headers={}
+    )
+
+
+@pytest.mark.asyncio
+async def test_deleting_the_function_is_refused_while_its_table_is_referred_to(
+    state, plane, monkeypatch
+):
+    from provisa.api.admin import actions_router
+
+    derived, _ = await _exposed_pet(plane)
+    await _product_over(plane, derived)
+    monkeypatch.setattr(actions_router, "require_capability_request", lambda *a, **k: None)
+    monkeypatch.setattr(actions_router, "_require_its_domain", AsyncMock(return_value=None))
+    with pytest.raises(ApiError) as refused:
+        await actions_router.delete_function(_delete_request(), "get_pet")
+    assert refused.value.code == "functions.table_has_dependents"
+    assert [d["kind"] for d in refused.value.params["dependents"]] == ["data_product"]
+    async with plane.acquire() as conn:
+        kept = (
+            await conn.execute_core(
+                select(tracked_functions.c.name).where(tracked_functions.c.name == "get_pet")
+            )
+        ).fetchall()
+    assert kept, "the function is not deleted while its table is referred to"
+
+
+# --- the derived table's release state -----------------------------------------------------------
+
+
+@pytest.fixture
+def withdrawing(plane, monkeypatch):
+    """The withdraw / put back mutations on the plane, nothing rebuilt."""
+    from provisa.api.admin import schema_mutation
+
+    async def _pool():
+        return plane
+
+    monkeypatch.setattr(schema_mutation, "_get_pool", _pool)
+    monkeypatch.setattr(schema_mutation, "_rebuild_schemas", AsyncMock(return_value=None))
+    monkeypatch.setattr(schema_mutation, "_table_unread", AsyncMock(return_value=None))
+
+
+async def _withdrawn(plane, table_id: int) -> bool:
+    async with plane.acquire() as conn:
+        return bool(
+            (
+                await conn.execute_core(
+                    select(registered_tables.c.withdrawn).where(registered_tables.c.id == table_id)
+                )
+            ).scalar_one()
+        )
+
+
+@pytest.mark.asyncio
+async def test_a_derived_table_is_not_withdrawn_on_its_own(state, plane, withdrawing):
+    """The derived table has its function's release state: withdrawing it alone would leave a
+    released function unreadable."""
+    from provisa.api.admin.schema_mutation import _set_table_withdrawn
+
+    derived, _ = await _exposed_pet(plane)
+    info = types.SimpleNamespace(context={"request": _request()})
+    said = await _set_table_withdrawn(info, derived, True, None)
+    assert (said.success, said.code) == (False, "schema.table_state_from_function")
+    assert said.params == {"table": "getPetById", "name": "get_pet"}
+    assert not await _withdrawn(plane, derived)
+
+
+@pytest.mark.asyncio
+async def test_a_withdrawn_derived_table_is_not_put_back_on_its_own(state, plane, withdrawing):
+    from sqlalchemy import update
+
+    from provisa.api.admin.schema_mutation import _set_table_withdrawn
+
+    derived, _ = await _exposed_pet(plane)
+    async with plane.acquire() as conn:
+        await conn.execute_core(
+            update(registered_tables)
+            .where(registered_tables.c.id == derived)
+            .values(withdrawn=True)
+        )
+    info = types.SimpleNamespace(context={"request": _request()})
+    said = await _set_table_withdrawn(info, derived, False, None)
+    assert (said.success, said.code) == (False, "schema.table_state_from_function")
+
+
+@pytest.mark.asyncio
+async def test_a_table_no_function_derives_is_withdrawn_as_before(state, plane, withdrawing):
+    from provisa.api.admin.schema_mutation import _set_table_withdrawn
+
+    await _exposed_pet(plane)
+    plain = await _table(plane, "openapi", "findPetsByTags")
+    info = types.SimpleNamespace(context={"request": _request()})
+    said = await _set_table_withdrawn(info, plain, True, None)
+    assert (said.success, said.code) == (True, "schema.table_withdrawn")
+    assert await _withdrawn(plane, plain)

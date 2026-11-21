@@ -1,0 +1,51 @@
+{
+  "accessReview": {
+    "heading": "Toegangsreview",
+    "help": "Elke review toont de roltoewijzing van elk lid met de bijbehorende rechten en het laatste gebruik, gegroepeerd per domein. De eigenaar van elk domein bevestigt of trekt elke rij in en geeft een reden. Een intrekking verwijdert de toewijzing direct.",
+    "scheduleLabel": "Reviewschema",
+    "scheduleHint": "Cron in UTC: minuut uur dag maand weekdag. Leeg: geen geplande review.",
+    "scheduleSaved": "Reviewschema opgeslagen",
+    "reviewLabel": "Review",
+    "reviewOption": "{{when}} · {{by}} · {{decided}} van {{rows}} beslist",
+    "bySchedule": "volgens schema",
+    "noReviews": "Er is nog geen review uitgevoerd.",
+    "noRows": "Geen rijen in deze review voor de domeinen waarvan u eigenaar bent.",
+    "start": "Review starten",
+    "started_one": "Review gestart: {{count}} toewijzing om te beoordelen",
+    "started_other": "Review gestart: {{count}} toewijzingen om te beoordelen",
+    "export": "CSV exporteren",
+    "colDomain": "Domein",
+    "colMember": "Lid",
+    "colRole": "Rol",
+    "colEntitlements": "Rechten",
+    "colLastUsed": "Laatst gebruikt",
+    "colDecision": "Beslissing",
+    "colActions": "Acties",
+    "everyDomain": "Elk domein",
+    "wholeRole": "De hele rol",
+    "neverUsed": "Nooit",
+    "undecided": "Niet beslist",
+    "decision": {
+      "confirmed": "Bevestigd",
+      "revoked": "Ingetrokken"
+    },
+    "decidedBy": "{{who}}, {{when}}",
+    "confirm": "Bevestigen",
+    "revoke": "Intrekken",
+    "prompt": {
+      "confirmed": "De toewijzing van rol {{role}} van {{member}} in {{domain}} bevestigen.",
+      "revoked": "De toewijzing van rol {{role}} van {{member}} in {{domain}} intrekken. Deze wordt direct verwijderd."
+    },
+    "reasonLabel": "Reden",
+    "reasonHint": "Waarom u deze toegang bevestigt of intrekt. Dit wordt vastgelegd bij uw beslissing.",
+    "webhookUrlLabel": "Webhook-URL",
+    "webhookUrlHint": "Elke geplande review wordt hierheen gestuurd, ondertekend met het geheim. Leeg: geen webhook.",
+    "webhookSecretLabel": "Webhook-geheim",
+    "webhookSecretHint": "Alleen schrijven: het ondertekent elke verzending en wordt nooit meer getoond. Laat leeg om het huidige te behouden.",
+    "webhookSecretHeld": "Er is een geheim opgeslagen",
+    "webhookFailed": "De geplande review is niet naar de webhook gestuurd: {{error}}",
+    "webhookDelivered": "Deze geplande review is naar de webhook gestuurd.",
+    "sourceIdp": "Toegewezen via de identiteitsprovider",
+    "readOnly": "Alleen-lezen: Provisa bewaart geen toewijzing die kan worden ingetrokken"
+  }
+}

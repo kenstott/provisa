@@ -559,6 +559,7 @@
       "incremental_no_change": "La source de code n'a aucune fonction @change pour {{table}}. Déclarez-en une avec @change table={{table}}.",
       "incremental_needs_rebuild_every": "{{table}} est maintenue de façon incrémentale ; elle est donc reconstruite entièrement selon une horloge. Indiquez la fréquence, en secondes, dans « Reconstruction complète toutes les ».",
       "table_derived_from_function": "La table '{{name}}' est dérivée d'une fonction : elle est supprimée en désactivant la table de la fonction, et ses colonnes et paramètres se modifient sur la fonction",
+      "table_state_from_function": "La table '{{table}}' est dérivée de la fonction '{{name}}' et en a l'état de publication : elle n'est ni retirée ni remise en service seule",
       "table_withdrawn": "Table {{table}} retirée",
       "table_put_back": "Table {{table}} remise en service",
       "source_withdrawn": "Source {{source}} retirée",
@@ -569,7 +570,8 @@
       "source_not_withdrawn": "La source {{source}} n'est pas retirée : seule une source retirée est remise en service. Pour changer sa région, définissez sa région.",
       "put_back_needs_region": "Remettre en service {{object}} nomme une région : indiquez-en une, ou aucune pour aucune région.",
       "mask_constant_not_text": "Un masque constant sur une colonne non textuelle est lu comme NULL ; seul NULL peut être enregistré : {{column}} ({{type}})",
-      "table_domain_required": "La table '{{table}}' ne nomme aucun domaine : toute table est enregistrée dans un domaine"
+      "table_domain_required": "La table '{{table}}' ne nomme aucun domaine : toute table est enregistrée dans un domaine",
+      "table_name_reserved": "Le nom de table '{{table}}' est réservé : les commandes d'un domaine sont servies sous 'commands'. Enregistrez la table sous un autre nom ou alias."
     },
     "secrets": {
       "env_reference_object_locked": "Cet objet appartient à l'opérateur : il lit l'environnement propre du serveur et ne peut pas être modifié ici. Ajoutez plutôt le vôtre.",
@@ -835,7 +837,7 @@
       "impact_action": "Aucun aperçu n'existe pour cette action.",
       "impact_table_required": "Une liaison nomme une table, ou l'une de ses colonnes.",
       "name_taken": "Un terme nommé '{{name}}' existe déjà dans le domaine {{domain}}. Choisissez un autre nom ou placez le terme dans un autre domaine.",
-      "name_taken_unscoped": "Un terme nommé '{{name}}' existe déjà sans domaine : il s'applique donc à tous les domaines. Choisissez un autre nom."
+      "name_taken_unscoped": "Un terme nommé '{{name}}' existe déjà sans domaine et couvre donc tous les domaines. Choisissez un autre nom."
     },
     "table": {
       "requires_parameters": "La table {{table}} ne peut être ni comptée ni profilée : elle exige {{parameters}}. Donnez une valeur à chacun pour lire ses lignes."
@@ -942,6 +944,19 @@
       "filter_required": "Cette classe a {{count}} instances, plus de {{limit}} : choisissez un filtre",
       "filter_too_wide": "Le filtre laisse plus de {{limit}} instances",
       "unreachable": "Wikidata est inaccessible : {{reason}}"
+    },
+    "access_review": {
+      "not_found": "Cette revue des accès n'existe pas",
+      "row_not_found": "Cette ligne de revue n'existe pas",
+      "already_decided": "Cette ligne est déjà tranchée",
+      "reason_required": "Indiquez le motif",
+      "decision_invalid": "Une décision est confirmed ou revoked",
+      "cron_invalid": "Pas une expression cron à cinq champs : {{cron}}",
+      "not_owner": "Seul le propriétaire du domaine {{domain}} décide de cette ligne",
+      "own_access": "Vous ne pouvez pas examiner votre propre accès. Demandez à un autre propriétaire.",
+      "read_only": "Ce rôle est attribué via le fournisseur d'identité ; Provisa ne détient aucune attribution à confirmer ou révoquer",
+      "webhook_invalid": "L'URL du webhook n'est pas utilisable : {{url}}",
+      "webhook_secret_required": "Un webhook a besoin du secret avec lequel les revues planifiées sont signées"
     }
   }
 }

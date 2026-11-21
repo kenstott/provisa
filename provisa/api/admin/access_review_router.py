@@ -19,7 +19,10 @@
   platform rights is still its holder's act (``rights.check_role_grant``).
 - ``GET /admin/access-reviews/{id}/export`` is the review as CSV (``user_management``).
 - ``GET`` and ``PUT /admin/access-reviews/schedule`` read and set the org's schedule
-  (``org_settings``).
+  (``org_settings``), with the signed webhook a scheduled review is posted to: its URL, and its
+  secret, which is write-only (the read says only whether one is set).
+- A row of a role held through the identity provider is listed with its ``source`` and
+  ``can_decide`` false: Provisa holds no grant of it to confirm or revoke.
 """
 
 # Requirements: REQ-2266
@@ -55,6 +58,10 @@ class DecisionBody(BaseModel):
 class ScheduleBody(BaseModel):
     # A five-field cron expression in UTC; null or blank: no scheduled review.
     cron: str | None = None
+    # Where a scheduled review is posted. Blank: no webhook. The secret is write-only; omitted, the
+    # one held stays.
+    webhook_url: str | None = None
+    webhook_secret: str | None = None
 
 
 def _model_db() -> Database:
@@ -76,6 +83,8 @@ def _refused(exc: ar.ReviewRefused) -> ApiError:
         "access_review.reason_required",
         "access_review.decision_invalid",
         "access_review.cron_invalid",
+        "access_review.webhook_invalid",
+        "access_review.webhook_secret_required",
     ):
         status = 422
     return ApiError(status, exc.code, str(exc), **exc.params)
@@ -136,9 +145,20 @@ async def list_reviews(request: Request) -> list[dict[str, Any]]:
             "started_at": r.started_at,
             "rows": r.rows,
             "decided": r.decided,
+            "webhook_status": r.webhook_status,
+            "webhook_error": r.webhook_error,
         }
         for r in found
     ]
+
+
+def _schedule_view(overrides: dict[str, Any]) -> dict[str, Any]:
+    hook = (overrides.get(ar.SETTINGS_KEY) or {}).get(ar.WEBHOOK_FIELD) or {}
+    return {
+        "cron": ar.cron_of(overrides),
+        "webhook_url": hook.get("url"),
+        "webhook_secret_set": bool(hook.get("secret")),
+    }
 
 
 @router.get("/schedule")
@@ -146,25 +166,35 @@ async def get_schedule(request: Request) -> dict[str, Any]:
     from provisa.core.org_settings import read_org_overrides
 
     require_org_settings(request)
-    return {"cron": ar.cron_of(await read_org_overrides(_model_db()))}
+    return _schedule_view(await read_org_overrides(_model_db()))
 
 
 @router.put("/schedule")
 async def set_schedule(body: ScheduleBody, request: Request) -> dict[str, Any]:
-    from provisa.core.org_settings import write_org_overrides
+    from provisa.core.org_settings import read_org_overrides, write_org_overrides
 
     require_org_settings(request)
     given = (body.cron or "").strip()
+    url = (body.webhook_url or "").strip()
+    db = _model_db()
     try:
         cron = ar.check_cron(given) if given else None
+        block: dict[str, Any] = {} if cron is None else {ar.CRON_FIELD: cron}
+        if url:
+            kept = (await read_org_overrides(db)).get(ar.SETTINGS_KEY, {}).get(
+                ar.WEBHOOK_FIELD
+            ) or {}
+            hook = {"url": url, "secret": body.webhook_secret or kept.get("secret") or ""}
+            ar.check_webhook(hook)
+            block[ar.WEBHOOK_FIELD] = hook
     except ar.ReviewRefused as exc:
         raise _refused(exc) from None
     await write_org_overrides(
-        _model_db(),
-        {ar.SETTINGS_KEY: None if cron is None else {ar.CRON_FIELD: cron}},
+        db,
+        {ar.SETTINGS_KEY: block or None},
         updated_by=_caller(request) or _ANONYMOUS,
     )
-    return {"cron": cron}
+    return _schedule_view({ar.SETTINGS_KEY: block})
 
 
 async def _rows_for(request: Request, review_id: int) -> list[dict[str, Any]]:
@@ -188,6 +218,7 @@ async def _rows_for(request: Request, review_id: int) -> list[dict[str, Any]]:
         r["can_decide"] = (
             owned[domain]
             and r["decision"] is None
+            and r["source"] == ar.PROVISA
             and not is_self_role_change(caller, r["user_id"])
         )
         out.append(r)

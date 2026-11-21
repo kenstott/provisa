@@ -54,6 +54,10 @@ export const scored = table(
   { loader: 100, requires: ["API_KEY:secret", "REGION"] },
 );
 export const every = table((context: ReadContext): Rows<Risk> => [], { loader: true });
+export const keyed = table(
+  async (context: ReadContext): Promise<Risk[] | Record<string, Risk[]>> => (context.keys ? {} : []),
+  { loader: true },
+);
 export const later = table(async function* (inputs: RiskInputs): AsyncRows<Risk> {});
 export const feed = stream(async function* (inputs: RiskInputs): AsyncGenerator<Risk> {});
 export const rescore = command(async (account_id: string): Promise<void> => {});
@@ -91,6 +95,10 @@ export declare function scored(inputs: RiskInputs, context: ReadContext): Promis
  * @loader
  */
 export declare function every(context: ReadContext): Iterable<Risk>;
+/** @table
+ * @loader
+ */
+export declare function keyed(context: ReadContext): Promise<Risk[] | Record<string, Risk[]>>;
 /** @table */
 export declare function later(inputs: RiskInputs): AsyncIterable<Risk>;
 /** @stream */
@@ -180,6 +188,7 @@ def test_each_wrapper_reads_as_the_jsdoc_tags_of_its_twin(node, compiler, tmp_pa
     assert {e.name: e.kind for e in read.exports} == {
         "churnRisk": "table",
         "scored": "table",
+        "keyed": "table",
         "every": "table",
         "later": "table",
         "feed": "stream",
@@ -193,6 +202,9 @@ def test_each_wrapper_reads_as_the_jsdoc_tags_of_its_twin(node, compiler, tmp_pa
     scored = read.export("scored")
     assert (scored.loader, scored.loader_batch) == (True, 100)
     assert read.export("every").loader and read.export("every").loader_batch is None
+    assert (
+        read.export("keyed").loader and read.export("keyed").returns == read.export("every").returns
+    )
     assert [(r.name, r.secret) for r in read.requires] == [("API_KEY", True), ("REGION", False)]
     assert read.export("churnRisk").description == "Churn risk of one account."
 

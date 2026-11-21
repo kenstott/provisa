@@ -1,0 +1,51 @@
+{
+  "accessReview": {
+    "heading": "存取審查",
+    "help": "每次審查按網域分組，列出每位成員的角色授予及其權限和最近使用情況。每個網域的擁有者確認或撤銷每一列並說明原因。撤銷會即時移除該授予。",
+    "scheduleLabel": "審查排程",
+    "scheduleHint": "UTC 的 cron：分 時 日 月 星期。留空：不進行定期審查。",
+    "scheduleSaved": "審查排程已儲存",
+    "reviewLabel": "審查",
+    "reviewOption": "{{when}} · {{by}} · 已決定 {{decided}}/{{rows}}",
+    "bySchedule": "按排程",
+    "noReviews": "尚未進行任何審查。",
+    "noRows": "此審查中沒有您所擁有的網域的列。",
+    "start": "開始審查",
+    "started_one": "審查已開始：{{count}} 項授予待審查",
+    "started_other": "審查已開始：{{count}} 項授予待審查",
+    "export": "匯出 CSV",
+    "colDomain": "網域",
+    "colMember": "成員",
+    "colRole": "角色",
+    "colEntitlements": "權限",
+    "colLastUsed": "最近使用",
+    "colDecision": "決定",
+    "colActions": "操作",
+    "everyDomain": "所有網域",
+    "wholeRole": "整個角色",
+    "neverUsed": "從未",
+    "undecided": "未決定",
+    "decision": {
+      "confirmed": "已確認",
+      "revoked": "已撤銷"
+    },
+    "decidedBy": "{{who}}，{{when}}",
+    "confirm": "確認",
+    "revoke": "撤銷",
+    "prompt": {
+      "confirmed": "確認 {{member}} 在 {{domain}} 中的 {{role}} 授予。",
+      "revoked": "撤銷 {{member}} 在 {{domain}} 中的 {{role}} 授予。它將即時被移除。"
+    },
+    "reasonLabel": "原因",
+    "reasonHint": "您確認或撤銷此存取的原因。它會與您的決定一併記錄。",
+    "webhookUrlLabel": "Webhook URL",
+    "webhookUrlHint": "每次定期審查都會傳送到此處，並以密鑰簽署。留空：不使用 Webhook。",
+    "webhookSecretLabel": "Webhook 密鑰",
+    "webhookSecretHint": "只寫：用於為每次傳送簽署，之後不再顯示。留空則保留現有密鑰。",
+    "webhookSecretHeld": "已儲存密鑰",
+    "webhookFailed": "定期審查未能傳送到 Webhook：{{error}}",
+    "webhookDelivered": "此定期審查已傳送到 Webhook。",
+    "sourceIdp": "透過身分識別提供者授予",
+    "readOnly": "唯讀：Provisa 沒有可撤銷的授予"
+  }
+}

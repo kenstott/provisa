@@ -372,5 +372,11 @@ def test_each_day_row_states_its_bound_on_clickhouse(name):
     ],
 )
 def test_another_engine_is_unchanged(dialect, sql):
+    if dialect == "trino" and "2147483648::integer" in sql:
+        # Trino's own row reads the literal as int4in does (polyfill.trino_literals): 22003.
+        with pytest.raises(RowRefused) as refused:
+            transpile(sql, dialect)
+        assert refused.value.sqlstate == "22003"
+        return
     written = transpile(sql, dialect)
     assert "throwIf" not in written and "toTime64" not in written
