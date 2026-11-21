@@ -31,7 +31,7 @@ READER = REPO / "provisa" / "golang" / "reader" / "main.go"
 PAGE = REPO / "site" / "sdk" / "go.html"
 MODULE = "provisa.dev/sdk/go"
 
-_FUNC = re.compile(r"^func (?P<name>[A-Z]\w*)(?:\[[^\]]*\])?\((?P<rest>.*)$", re.M)
+_FUNC = re.compile(r"^func (?P<name>[A-Z]\w*)(?:\[(?:[^\[\]]|\[[^\]]*\])*\])?\((?P<rest>.*)$", re.M)
 
 
 def _reader_names(table: str) -> set[str]:
