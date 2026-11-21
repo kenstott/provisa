@@ -465,6 +465,7 @@ def _register_relationship_joins(
             disable_cypher=rel.get("disable_cypher", False),
             source_json_key=rel.get("source_json_key") or None,
             via=_build_junction_meta(si, rel, table_lookup, physical_map),
+            registered=True,
         )
 
 

@@ -282,14 +282,20 @@ def _nodes_column(
                 if join_meta.child_src_val is not None
                 else (src_expr if join_meta.source_column_type != "integer" else None)
             )
+            _from = f"{_table_ref(join_meta.target, use_catalog)} {_q(join_alias)}"
+            _where = f"{tgt_expr} = {src_expr}"
+            # REQ-1586: a junction-backed relationship reaches its rows through its junction.
+            hop = _sw.junction_hop(join_meta, root_alias, join_alias, use_catalog, sources)
+            if hop is not None:
+                _from, _where = hop.from_clause(_from), hop.to_source
             json_expr, alias_counter = _ssel._build_rel_json_expr(
                 node_sel.selection_set.selections,
                 ctx,
                 join_meta.target.type_name,
                 join_meta.target,
                 join_alias,
-                f"{_table_ref(join_meta.target, use_catalog)} {_q(join_alias)}",
-                f"{tgt_expr} = {src_expr}",
+                _from,
+                _where,
                 join_meta.cardinality,
                 _agg_limit,
                 use_catalog,

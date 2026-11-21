@@ -20,6 +20,7 @@ from __future__ import annotations
 import fnmatch as _fnmatch
 import re as _re
 from collections.abc import Mapping
+from dataclasses import dataclass
 
 from graphql import (
     BooleanValueNode,
@@ -39,6 +40,7 @@ from provisa.compiler.sql_types import (
     CompilationContext,
     JoinMeta,
     StatementSources,
+    key_list,
 )
 from provisa.compiler.sql_rewrite import (
     _join_column_expr,
@@ -338,6 +340,80 @@ def join_exprs(  # REQ-2136
     return src, tgt
 
 
+@dataclass(frozen=True)
+class JunctionHop:  # REQ-1586
+    """A junction-backed relationship's two hops, as a join emitter writes them: its target rows
+    read under ``target_alias`` are joined to the junction's rows (``via_ref``) on ``to_target``
+    (and the junction's type, where it carries several), and those junction rows are correlated
+    with the source's row on ``to_source``. Each target row is reached once per junction row
+    naming it, as Cypher reaches it once per edge. ``joined`` holds exactly when a target row
+    was reached: a target key column, never null where the junction's equality matched it."""
+
+    via_ref: str
+    to_target: str
+    to_source: str
+    joined: str
+    #: The junction's own rows of this relationship's type; None where it carries one type.
+    type_filter: str | None = None
+
+    def _on_via(self, condition: str) -> str:
+        return condition if self.type_filter is None else f"{condition} AND {self.type_filter}"
+
+    def from_clause(self, target_from: str) -> str:
+        """``target_from`` (the target under its alias) with the junction joined to it."""
+        return f"{target_from} JOIN {self.via_ref} ON {self._on_via(self.to_target)}"
+
+    def left_joins(self, target_from: str) -> str:
+        """The junction left-joined to the source's row, then ``target_from`` to the junction:
+        a source row with no junction row keeps its row, as a left join keeps one."""
+        return (
+            f"LEFT JOIN {self.via_ref} ON {self._on_via(self.to_source)}"
+            f" LEFT JOIN {target_from} ON {self.to_target}"
+        )
+
+
+def junction_hop(  # REQ-1586
+    join_meta: JoinMeta,
+    source_alias: str,
+    target_alias: str,
+    use_catalog: bool,
+    sources: StatementSources,
+) -> JunctionHop | None:
+    """``join_meta``'s two hops through its junction, the junction added to ``sources`` (so it
+    is governed and routed as every table the statement reads); None for a relationship with no
+    junction. The junction's keys pair positionally with the relationship's own (``key_list``);
+    keys of unequal length are a malformed declaration and are refused."""
+    via = join_meta.via
+    if via is None:
+        return None
+    sources.add_table(via.table)
+    via_alias = f"{target_alias}_via"
+    va, ta, sa = _q(via_alias), _q(target_alias), _q(source_alias)
+    to_target = [
+        f"{va}.{_q(v)} = {ta}.{_q(t)}"
+        for v, t in zip(via.target_columns, key_list(join_meta.target_column), strict=True)
+    ]
+    type_filter = None
+    if via.type_column:
+        if via.type_value is None:
+            raise ValueError(
+                f"junction {via.table.table_name!r} has type column {via.type_column!r} "
+                "but the relationship names no type value"
+            )
+        type_filter = f"{va}.{_q(via.type_column)} = {_sql_str_literal(via.type_value)}"
+    to_source = [
+        f"{va}.{_q(v)} = {sa}.{_q(s)}"
+        for v, s in zip(via.source_columns, key_list(join_meta.source_column), strict=True)
+    ]
+    return JunctionHop(
+        via_ref=f"{_table_ref(via.table, use_catalog)} {va}",
+        to_target=" AND ".join(to_target),
+        to_source=" AND ".join(to_source),
+        joined=f"{ta}.{_q(key_list(join_meta.target_column)[0])} IS NOT NULL",
+        type_filter=type_filter,
+    )
+
+
 class RelationshipConditions:  # REQ-2136
     """A where's relationship conditions, for a where over ``type_name``'s rows read as
     ``alias``: each a row with a related row matching its own where, compiled to EXISTS over the
@@ -388,10 +464,15 @@ class RelationshipConditions:  # REQ-2136
             deeper,
             self.ctx.aggregate_columns,
         )
-        return (
-            f"EXISTS (SELECT 1 FROM {_table_ref(target, self.use_catalog)} {_q(inner)}"
-            f" WHERE {tgt} = {src} AND ({cond}))"
-        )
+        target_from = f"{_table_ref(target, self.use_catalog)} {_q(inner)}"
+        # REQ-1586: a junction-backed relationship's related rows are those its junction names.
+        hop = junction_hop(join_meta, alias, inner, self.use_catalog, self.sources)
+        if hop is not None:
+            return (
+                f"EXISTS (SELECT 1 FROM {hop.from_clause(target_from)}"
+                f" WHERE {hop.to_source} AND ({cond}))"
+            )
+        return f"EXISTS (SELECT 1 FROM {target_from} WHERE {tgt} = {src} AND ({cond}))"
 
 
 def _compile_where(
@@ -551,7 +632,9 @@ def _compile_order_by(
 
 
 def where_names_relationship(  # REQ-2136
-    where: object, ctx: CompilationContext, type_name: str
+    where: object,
+    ctx: CompilationContext,
+    type_name: str,  # object-ok: truly-any payload — a where argument value of any shape, checked by isinstance inside
 ) -> bool:
     """Whether ``where`` (a where argument's value) states a relationship's condition, which
     reads the field's rows under an alias."""
