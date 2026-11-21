@@ -14,7 +14,8 @@
       "webhook_not_found": "Webhook '{{name}}' not found",
       "written_table_not_registered": "'{{table}}' is not a registered table of source '{{source_id}}'",
       "function_exists": "Function '{{name}}' already exists",
-      "webhook_exists": "Webhook '{{name}}' already exists"
+      "webhook_exists": "Webhook '{{name}}' already exists",
+      "mask_constant_not_text": "A constant mask on a non-text column reads as NULL; only NULL can be saved: {{column}} ({{type}})"
     },
     "ai_models": {
       "vector_model_fields_required": "each vector_models entry requires id, provider, and dimensions",
@@ -567,7 +568,8 @@
       "table_not_withdrawn": "Table {{table}} is not withdrawn: only a withdrawn table is put back. To move a table in production to another region, set its region.",
       "source_not_withdrawn": "Source {{source}} is not withdrawn: only a withdrawn source is put back. To change its region, set its region.",
       "put_back_needs_region": "Putting back {{object}} names a region: give one, or none for no region.",
-      "table_domain_required": "Table '{{table}}' names no domain: every table is registered in a domain"
+      "table_domain_required": "Table '{{table}}' names no domain: every table is registered in a domain",
+      "mask_constant_not_text": "A constant mask on a non-text column reads as NULL; only NULL can be saved: {{column}} ({{type}})"
     },
     "secrets": {
       "env_reference_object_locked": "This object is the operator's: it reads the server's own environment and cannot be changed here. Add one of your own instead.",
@@ -617,7 +619,8 @@
     "sparql": {
       "columns_not_inferred": "Could not infer columns: probe returned no rows and no SELECT variables found.",
       "probe_failed": "SPARQL endpoint probe failed: {{error}}",
-      "source_not_found": "SPARQL source '{{source_id}}' not found"
+      "source_not_found": "SPARQL source '{{source_id}}' not found",
+      "no_select_variables": "The query names no SELECT variables (SELECT * or not a SELECT query): its columns cannot be read from it"
     },
     "subscribe": {
       "avro_topic_without_registry": "Topic '{{topic}}' carries Avro messages, and its source names no schema registry to read them with: set the source's schema registry URL",

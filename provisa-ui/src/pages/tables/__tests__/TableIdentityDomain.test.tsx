@@ -36,6 +36,7 @@ function open(domainId: string, domainChoices: string[], setEditingTable = vi.fn
       setEditingTable={setEditingTable}
       isView={false}
       domainChoices={domainChoices}
+      relationships={[]}
     />,
   );
   const field = screen.getByRole("textbox", { name: t("tableSections.domain") });

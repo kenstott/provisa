@@ -14,7 +14,8 @@
       "webhook_not_found": "Webhook '{{name}}' niet gevonden",
       "written_table_not_registered": "'{{table}}' is geen geregistreerde tabel van bron '{{source_id}}'",
       "function_exists": "Functie '{{name}}' bestaat al",
-      "webhook_exists": "Webhook '{{name}}' bestaat al"
+      "webhook_exists": "Webhook '{{name}}' bestaat al",
+      "mask_constant_not_text": "Een constant masker op een kolom die geen tekst is, wordt gelezen als NULL; alleen NULL kan worden opgeslagen: {{column}} ({{type}})"
     },
     "ai_models": {
       "vector_model_fields_required": "elk vector_models-item vereist id, provider en dimensions",
@@ -567,7 +568,8 @@
       "table_not_withdrawn": "Tabel {{table}} is niet teruggetrokken: alleen een teruggetrokken tabel wordt teruggezet. Stel de regio in om een tabel in productie naar een andere regio te verplaatsen.",
       "source_not_withdrawn": "Bron {{source}} is niet teruggetrokken: alleen een teruggetrokken bron wordt teruggezet. Stel de regio in om die te wijzigen.",
       "put_back_needs_region": "Het terugzetten van {{object}} noemt een regio: geef er een, of geen voor geen regio.",
-      "table_domain_required": "Tabel '{{table}}' noemt geen domein: elke tabel wordt in een domein geregistreerd"
+      "table_domain_required": "Tabel '{{table}}' noemt geen domein: elke tabel wordt in een domein geregistreerd",
+      "mask_constant_not_text": "Een constant masker op een kolom die geen tekst is, wordt gelezen als NULL; alleen NULL kan worden opgeslagen: {{column}} ({{type}})"
     },
     "secrets": {
       "env_reference_object_locked": "Dit object is van de beheerder: het leest de eigen omgeving van de server en kan hier niet worden gewijzigd. Voeg in plaats daarvan een eigen object toe.",
@@ -617,7 +619,8 @@
     "sparql": {
       "columns_not_inferred": "Kon geen kolommen afleiden: probe retourneerde geen rijen en er zijn geen SELECT-variabelen gevonden.",
       "probe_failed": "SPARQL-endpointprobe mislukt: {{error}}",
-      "source_not_found": "SPARQL-bron '{{source_id}}' niet gevonden"
+      "source_not_found": "SPARQL-bron '{{source_id}}' niet gevonden",
+      "no_select_variables": "De query noemt geen SELECT-variabelen (SELECT * of geen SELECT-query): de kolommen zijn er niet uit te lezen"
     },
     "subscribe": {
       "avro_topic_without_registry": "Topic '{{topic}}' bevat Avro-berichten en de bron noemt geen schema-registry om ze mee te lezen: stel de schema-registry-URL van de bron in",

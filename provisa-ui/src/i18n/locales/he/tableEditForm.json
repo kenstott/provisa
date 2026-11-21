@@ -289,6 +289,14 @@
     "mvRebuildEveryLabel": "בנייה מחדש מלאה כל (שניות)",
     "mvRebuildEveryHelp": "באיזו תדירות התצוגה כולה מחושבת מחדש. נדרש לתצוגה שמתוחזקת על ידי פונקציית ‎@change‎ של מקור קוד.",
     "domainHelp": "העברת הטבלה לתחום אחר מחייבת הרשאה לשנות טבלאות בשני התחומים.",
-    "domainPlaceholder": "בחרו תחום"
+    "domainPlaceholder": "בחרו תחום",
+    "sparqlQueryLabel": "שאילתת SPARQL",
+    "sparqlQueryHelp": "השאילתה שאת שורותיה מכילה הטבלה. העמודות שלה הן משתני ה-SELECT שלה: שינוי מוסיף ומסיר עמודות בהתאם, ושומר את ההגדרות של העמודות שנשארות. הטעינה הבאה של הרפליקה קוראת עם השאילתה השמורה.",
+    "sparqlQueryDrops": "שאילתה זו מסירה עמודות שנמצאות בשימוש: {{columns}}. שמירתה מסירה אותן יחד עם מה שמשתמש בהן.",
+    "sparqlQueryDropUse": "{{column}} ({{uses}})",
+    "sparqlQueryUse_mask": "מיסוך",
+    "sparqlQueryUse_grant": "הרשאת כתיבה",
+    "sparqlQueryUse_relationship": "קשר",
+    "sparqlQueryDropAgree": "הסרת העמודות האלה"
   }
 }

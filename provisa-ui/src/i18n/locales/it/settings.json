@@ -41,6 +41,12 @@
         "help": "Il punteggio di complessità più alto che un'istruzione può avere, per ogni ruolo. Un ruolo può fissare un proprio limite più basso. Lasciare vuoto per nessun limite."
       }
     },
+    "sparql": {
+      "query_timeout": {
+        "label": "Timeout delle query SPARQL",
+        "help": "Per quanto tempo una query SPARQL può essere eseguita prima di essere abbandonata: un'anteprima, una ricerca di classi Wikidata e ogni caricamento della replica di una tabella SPARQL. Un endpoint pubblico può interrompere una query prima per un proprio limite (quello di Wikidata è 60 secondi)."
+      }
+    },
     "sampling": {
       "default_sample_size": {
         "label": "Dimensione del campione predefinita",

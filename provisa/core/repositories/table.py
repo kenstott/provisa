@@ -41,6 +41,7 @@ from provisa.core.schema_org import (
     table_columns,
 )
 from provisa.core.repositories.mask_lists import refuse_unreachable_masks
+from provisa.security.masking import refuse_non_text_constant
 from provisa.fakes.portable import pinned_version
 from provisa.security.rights import Capability
 
@@ -915,6 +916,8 @@ async def _upsert(
         for name, (_, entries) in _whys.items()
     }
     await refuse_unreachable_masks(conn, _stored_masks)  # REQ-2059
+    for _name, _masks in _stored_masks.items():  # REQ-2131
+        refuse_non_text_constant(_name, _masks, _stored[_name][0])
     # Replace columns: delete existing, insert new
     await conn.execute_core(_delete(table_columns).where(table_columns.c.table_id == table_id))
     for col in table.columns:

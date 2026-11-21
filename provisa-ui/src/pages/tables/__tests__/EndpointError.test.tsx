@@ -70,7 +70,13 @@ describe("a table whose source's API document could not be read", () => {
       apiEndpointError: WHY,
     };
     renderInForm(
-      <TableIdentitySection editingTable={table} setEditingTable={vi.fn()} isView={false} domainChoices={[]} />,
+      <TableIdentitySection
+        editingTable={table}
+        setEditingTable={vi.fn()}
+        isView={false}
+        relationships={[]}
+        domainChoices={[]}
+      />,
     );
     const field = screen.getByTestId("table-api-endpoint-error") as HTMLInputElement;
     expect(field.value).toBe("Its source's API document could not be read");

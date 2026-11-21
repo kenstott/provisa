@@ -289,6 +289,14 @@
     "mvRebuildEveryLabel": "Ricostruzione completa ogni (secondi)",
     "mvRebuildEveryHelp": "Ogni quanto viene ricalcolata l'intera vista. Obbligatorio per una vista mantenuta dalla funzione @change di un'origine di codice.",
     "domainHelp": "Spostare la tabella in un altro dominio richiede il diritto di modificare le tabelle in entrambi i domini.",
-    "domainPlaceholder": "Scegli un dominio"
+    "domainPlaceholder": "Scegli un dominio",
+    "sparqlQueryLabel": "Query SPARQL",
+    "sparqlQueryHelp": "La query di cui questa tabella contiene le righe. Le sue colonne sono le sue variabili SELECT: una modifica aggiunge e rimuove colonne di conseguenza, mantenendo le impostazioni delle colonne che restano. Il prossimo caricamento della replica legge con la query salvata.",
+    "sparqlQueryDrops": "Questa query rimuove colonne in uso: {{columns}}. Salvarla le elimina insieme a ciò che le usa.",
+    "sparqlQueryDropUse": "{{column}} ({{uses}})",
+    "sparqlQueryUse_mask": "un mascheramento",
+    "sparqlQueryUse_grant": "un permesso di scrittura",
+    "sparqlQueryUse_relationship": "una relazione",
+    "sparqlQueryDropAgree": "Rimuovi queste colonne"
   }
 }

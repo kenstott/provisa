@@ -289,6 +289,14 @@
     "mvRebuildEveryLabel": "完整重建间隔（秒）",
     "mvRebuildEveryHelp": "重新计算整个视图的频率。由代码源的 @change 函数维护的视图必填。",
     "domainHelp": "将表移到另一个域，需要在两个域中都有更改表的权限。",
-    "domainPlaceholder": "选择域"
+    "domainPlaceholder": "选择域",
+    "sparqlQueryLabel": "SPARQL 查询",
+    "sparqlQueryHelp": "此表所含各行来自的查询。其列即其 SELECT 变量：更改会相应地增删列，并保留保留下来的列的设置。副本的下次加载将使用保存的查询读取。",
+    "sparqlQueryDrops": "此查询会删除正在使用的列：{{columns}}。保存后，这些列将连同使用它们的内容一起删除。",
+    "sparqlQueryDropUse": "{{column}}（{{uses}}）",
+    "sparqlQueryUse_mask": "一项脱敏",
+    "sparqlQueryUse_grant": "一项写入授权",
+    "sparqlQueryUse_relationship": "一个关系",
+    "sparqlQueryDropAgree": "删除这些列"
   }
 }

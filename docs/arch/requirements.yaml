@@ -3897,7 +3897,7 @@
     tables cannot be read is left unmeasured and says why; it does not fail the run. (Amended 2026-11-18,
     EVERY COLUMN OF THE PROPOSED RELATIONSHIPS LIST HAS A FILTER:) Maintainer 2026-11-18 (''every column
     needs a filter'', on the proposed relationships dialog). Every column of the standard list in the discovery
-    dialog has a column filter, as the standard list gives its filterable columns. (Amended 2026-11-20 by the maintainer. Every same-name column pair in the same type group is measured deterministically whether or not the model lists it; the model may add pairs but can never drop one.)'
+    dialog has a column filter, as the standard list gives its filterable columns. (Amended 2026-11-20 by the maintainer. Every same-name column pair in the same type group is measured deterministically whether or not the model lists it; the model may add pairs but can never drop one.) (Amended 2026-11-20 by the maintainer. Same-name column pairs are measured by key-value overlap even when a run did not choose that method, so they are never listed unmeasured.)'
   use_case: Auto-generated FK relationships reduce manual relationship registration overhead while preserving
     steward control.
   code:
@@ -4139,7 +4139,7 @@
   type: behavioral
   description: A datasource may be associated with multiple domains. Any domain owner may register any
     unclaimed table from that source. Once a table is claimed by one domain, no other domain may register it (first-come ownership). Unique constraint enforced on (source_id, normalized_table_name).
-    The UI greys out claimed tables regardless of which domain claimed them. (Amended 2026-11-20 by the maintainer. First-come ownership is withdrawn. Every name in the model is unique within its domain, except the names that are unique across the organisation, which are source ids, environment names (REQ-1523) and secrets provider names. A source's table may be registered in more than one domain, once per domain, and the uniqueness checked is (domain, table name), not (source, table name). The UI no longer greys out a table another domain registered. Removing a table frees its name in its domain at once, including a table that was registered with no domain.) (Amended 2026-11-20 by the maintainer, the general rule. Operational objects are named per organisation (for example sources, environments, secrets providers, roles, settings, schedules), and model objects are named per domain (tables, relationships, commands, products, metrics and views). A model object's name is unique within its domain and the same name may exist in another domain; an operational object's name is unique within the organisation.)
+    The UI greys out claimed tables regardless of which domain claimed them. (Amended 2026-11-20 by the maintainer. First-come ownership is withdrawn. Every name in the model is unique within its domain, except the names that are unique across the organisation, which are source ids, environment names (REQ-1523) and secrets provider names. A source's table may be registered in more than one domain, once per domain, and the uniqueness checked is (domain, table name), not (source, table name). The UI no longer greys out a table another domain registered. Removing a table frees its name in its domain at once, including a table that was registered with no domain.) (Amended 2026-11-20 by the maintainer, the general rule. Operational objects are named per organisation (for example sources, environments, secrets providers, roles, settings, schedules), and model objects are named per domain (tables, relationships, commands, products, metrics and views). A model object's name is unique within its domain and the same name may exist in another domain; an operational object's name is unique within the organisation.) (Amended 2026-11-20, correcting the earlier amendment's wording. Removing a table retires it per REQ-2248; registering the same source table again in that domain restores it, and the retired row never blocks registration in another domain.)
   use_case: Multi-domain with first-claim ownership prevents the same physical table from being registered
     multiple times while allowing flexible domain-to-source associations.
   code:
@@ -22707,7 +22707,7 @@
   type: behavioral
   description: Masking respects column type constraints. NULL masks are allowed only on nullable columns;
     regex and truncate masks validated for applicable types (regex on text, truncate on temporal). Validation
-    enforced at config load time.
+    enforced at config load time. (Amended 2026-11-20 by the maintainer. A NULL constant mask is allowed on a NOT NULL column, since a masked column is reported nullable to the readers it masks (REQ-2131).)
   use_case: Type-aware masking validation at config time prevents runtime errors and ensures masks produce
     valid SQL.
   code:
@@ -91819,7 +91819,7 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     applied, through the one pipeline. Two forms: a file (Turtle, or N-Triples streamed for large exports)
     and a direct load into a running store over the SPARQL 1.1 Graph Store HTTP Protocol, reporting triples
     loaded and failures as the Neo4j export does. It accepts as_recorded (and as_of where a valid time
-    is mapped), so an export can be reproduced exactly later.'
+    is mapped), so an export can be reproduced exactly later. (Amended 2026-11-20 by the maintainer. A domain- or class-scoped export carries every ontology axiom the exporting role may read, not only the axioms about terms in the scope.)'
   scenario: 'Given a role that reads the Customer class with email masked
 
     When it exports class Customer as Turtle
@@ -97619,7 +97619,7 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     free for reuse. It is listed with the other retired objects and restored from there with its tables;
     a restore is refused while a live object holds its name. Nothing is removed. Reason: with the keep rule
     a source that had ever held a table could never be deleted, so a kind that allows one source could never
-    be added again.'
+    be added again. (Amended 2026-11-20 by the maintainer. Re-registering the same source table under the same name in the same domain restores its retired row, with the same id and its relationships and tags, and clears the retirement; a different object taking a retired name is still refused.)'
   scenario: 'Given a table with a grounded term and a tag
 
     When a steward deletes the table
@@ -97850,7 +97850,7 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     ships the runtime and every pack at the same engine version; a pack whose contents did not change is
     re-stamped with the new runtime pin. The full per-adapter bundles stop with the first pack release,
     and nothing is tagged at that version until the AskAmerica engine's installer reads the runtime and
-    the govdata pack. The govdata catalog cache is regenerated by the maintainer before any bundle release.
+    the govdata pack. The govdata catalog cache is regenerated by the maintainer before any bundle release. (Amended 2026-11-20 by the maintainer. A pack names a compatible runtime line (major.minor, or a runtime ABI number in runtime.json), not an exact runtime version; it starts the newest installed runtime on that line, so a runtime release ships with the packs unchanged. Homebrew and Scoop ship one runtime formula plus one formula per pack that depends on it. A jar present in both the runtime and a pack is refused at start and also at pack build time.) (Amended 2026-11-20 by the maintainer. A pack records the runtime jar names it was built against, and start refuses a runtime on its line that lacks any of them, naming the missing jar.) (Amended 2026-11-20 by the maintainer, superseding the 2026-11-19 rule that the maintainer regenerates the govdata catalog cache. Each engine release builds the govdata catalog cache by a live walk in CI, keyed by the engine release, inside the govdata pack's build; the walk fails the release on a gap; no committed cache file and no manual step remain.)
 - id: REQ-2255
   status: proposed
   target: 2026-Q3
@@ -98114,7 +98114,7 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     URL setup field for a per-instance host, a spec location that may point at the running instance (whose
     spec changes between versions), and the authentication type, including OAuth client credentials. The
     Marquez source (REQ-2264) uses the same mechanism. Until a brand exists, any of these catalogs can be
-    added as a plain OpenAPI source. (Amended 2026-11-20, maintainer: DataHub is read through its OpenAPI v3 spec ({base_url}/openapi/v3/api-docs) by the same OpenAPI passthrough brand mechanism as OpenMetadata, not the GraphQL source; a list answer whose next-page cursor is nested (paging.after, scrollId) is paged by the generic OpenAPI source, which takes a dotted cursor path and the required array as the rows.) (Amended 2026-11-20 by the maintainer. When a brand instance''s spec needs authentication to fetch, the spec request carries the same credential as the source''s data calls.)'
+    added as a plain OpenAPI source. (Amended 2026-11-20, maintainer: DataHub is read through its OpenAPI v3 spec ({base_url}/openapi/v3/api-docs) by the same OpenAPI passthrough brand mechanism as OpenMetadata, not the GraphQL source; a list answer whose next-page cursor is nested (paging.after, scrollId) is paged by the generic OpenAPI source, which takes a dotted cursor path and the required array as the rows.) (Amended 2026-11-20 by the maintainer. When a brand instance''s spec needs authentication to fetch, the spec request carries the same credential as the source''s data calls.) (Amended 2026-11-20, correcting the earlier amendment''s wording. DataHub''s entity endpoints are in the spec group at {base_url}/openapi/v3/api-docs/10-openapi-v3, not the bare /openapi/v3/api-docs address.)'
 
 - id: REQ-2266
   status: proposed

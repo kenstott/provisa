@@ -127,7 +127,7 @@ from provisa.api.admin._landing_ttl import (  # REQ-1907, REQ-826
     row_materialize_save_refusal,
 )
 from provisa.api.admin._table_ops import _build_columns_for_input, column_field_refusal
-from provisa.security.masking import MaskUnreachable
+from provisa.security.masking import MaskConstantNotText, MaskUnreachable
 from provisa.api.admin._fake_guard import FakeRefusedSave as _FakeRefusedSave
 from provisa.api.admin import schema_mutation_ops as _ops
 
@@ -5086,6 +5086,20 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                                 },
                             )
                         )
+                    except MaskConstantNotText as _const:
+                        # REQ-2131: a constant other than NULL on a non-text column reads as NULL; not saved.
+                        raise TableSaveRefused(
+                            MutationResult(
+                                success=False,
+                                message=str(_const),
+                                code="schema.mask_constant_not_text",
+                                params={
+                                    "table": model.table_name,
+                                    "column": _const.column,
+                                    "type": _const.data_type,
+                                },
+                            )
+                        )
                     except table_repo.SubtypeRefused as _sub:
                         # REQ-2171: a subtype is saved only with the base it is a subtype of.
                         raise TableSaveRefused(
@@ -5247,22 +5261,6 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         elif not input.materialize:
             _remove_view_mv(input.table_name)
         await _rebuild_schemas()
-        # REQ-1742: graphql_remote_router.py's/grpc_remote_router.py's own one-shot registration
-        # flows call reconcile_landed_tables() right after _rebuild_schemas() — the pass that
-        # actually creates a replicated table's replica in the store (REQ-846/932). update_table
-        # (this mutation) never did, so a replica that didn't converge for any reason at
-        # registration time (e.g. a transient failure, or state not yet fully committed) had no
-        # other path to ever catch up — every later grant/edit through this mutation left it
-        # permanently stuck. Idempotent (a matching replica is kept), so calling it
-        # unconditionally here is safe for every table type.
-        try:
-            from provisa.api.app import state as _state
-
-            await _state.federation_engine.reconcile_landed_tables()
-        except Exception:
-            logging.getLogger(__name__).warning(
-                "Landed-table reconcile failed after update_table", exc_info=True
-            )
         # Materialize + wire a (re)materialized view immediately — FRESH now, not STALE-until-restart.
         if input.view_sql and input.materialize and not _stored_withdrawn:
             from provisa.api.admin.schema_common import activate_view_mv

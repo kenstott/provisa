@@ -41,6 +41,12 @@
         "help": "单条语句可有的最高复杂度分数，适用于所有角色。角色可自行设置更低的上限。留空则不限制。"
       }
     },
+    "sparql": {
+      "query_timeout": {
+        "label": "SPARQL 查询超时",
+        "help": "单个 SPARQL 查询在放弃前可运行的时长：预览、Wikidata 类查找，以及 SPARQL 表副本的每次加载。公共端点可能按其自身限制更早停止查询（Wikidata 为 60 秒）。"
+      }
+    },
     "sampling": {
       "default_sample_size": {
         "label": "默认采样大小",

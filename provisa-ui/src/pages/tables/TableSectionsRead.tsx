@@ -154,6 +154,16 @@ export function IdentityRead({
           },
         ]
       : []),
+    // REQ-1923: a SPARQL-defined table's query, read-only here; edited with the table-edit right.
+    ...(source?.type.toLowerCase() === "sparql" && table.queryTemplate
+      ? [
+          {
+            label: t("tableEditForm.sparqlQueryLabel"),
+            value: <code className="detail-code">{table.queryTemplate}</code>,
+            testId: "table-identity-sparql-query",
+          },
+        ]
+      : []),
     ...(table.apiEndpoint
       ? [{ label: t("tableEditForm.apiEndpointLabel"), value: <code>{table.apiEndpoint}</code> }]
       : []),

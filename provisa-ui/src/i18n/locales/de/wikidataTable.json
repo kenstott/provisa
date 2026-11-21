@@ -1,10 +1,6 @@
 {
   "wikidataTable": {
-    "modeLabel": "Wie die Tabelle gewählt wird",
-    "modeStarter": "Starter-Tabelle",
     "modeClass": "Tabelle einer Klasse",
-    "starter": "Starter-Tabelle",
-    "starterHint": "Eine Referenztabelle zum Verknüpfen, aus Wikidata gelesen.",
     "starters": {
       "countries": "Länder (ISO-Codes, Hauptstadt, Bevölkerung)",
       "currencies": "Währungen (ISO 4217)",
@@ -13,7 +9,7 @@
       "organizations": "Börsennotierte Organisationen (LEI, Ticker, ISIN)"
     },
     "class": "Klasse",
-    "classHint": "Klassen nach Namen suchen; die Tabelle enthält die Instanzen der Klasse.",
+    "classHint": "Klassen nach Namen suchen oder unten mit einer der meistgenutzten Klassen beginnen; die Tabelle enthält die Instanzen der Klasse.",
     "nothingFound": "Nichts gefunden",
     "instances": "Instanzen: {{value}}",
     "broader": "Übergeordnete Klasse",
@@ -23,6 +19,18 @@
     "filterRequired": "Über {{limit}} Instanzen: Wählen Sie einen Filter.",
     "filterProperty": "Filtern nach",
     "filterValue": "Wert",
-    "useClass": "Diese Klasse verwenden"
+    "useClass": "Diese Klasse verwenden",
+    "browseTitle": "Meistgenutzte Klassen",
+    "browseLoading": "Die meistgenutzten Klassen werden gezählt…",
+    "members": "Mitglieder",
+    "starterDescriptions": {
+      "countries": "Eine Zeile pro Land.",
+      "currencies": "Eine Zeile pro Währung mit ISO-4217-Code.",
+      "languages": "Eine Zeile pro Sprache mit ISO-639-3-Code.",
+      "admin_regions": "Bundesländer, Provinzen und andere Untergliederungen der ersten Ebene, mit ihrem Land.",
+      "organizations": "Eine Zeile pro aktueller Börsennotierung."
+    },
+    "searching": "Suche läuft…",
+    "loadingClass": "Die Abfrage der Klasse wird erstellt…"
   }
 }

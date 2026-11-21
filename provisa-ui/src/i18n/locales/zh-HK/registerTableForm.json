@@ -127,6 +127,10 @@
     "continue": "繼續",
     "checkReasonLabel": "為甚麼需要這項檢查",
     "checkReasonHint": "以業務語言表述的質素承諾；它作為該檢查在每個產品中的標題。",
-    "checkReasonPlaceholder": "訂單完整且唯一，以便每日收入與財務對賬一致"
+    "checkReasonPlaceholder": "訂單完整且唯一，以便每日收入與財務對賬一致",
+    "errorSparqlQuery": "請輸入產生表格各行的 SPARQL 查詢。",
+    "errorQueryPreviewFirst": "請先預覽查詢，以便得知欄位及其類型。",
+    "previewFailed": "預覽失敗：{{error}}",
+    "previewNoRows": "預覽沒有傳回任何行。"
   }
 }

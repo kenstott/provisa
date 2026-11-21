@@ -75,6 +75,9 @@ class SchemaInput:
     columns_outside_relation: set[tuple[int, str]] = field(
         default_factory=set
     )  # (table_id, col_name): registered, but not held by the relation a statement reads
+    # REQ-2131: (table id, column) of each column the role reads under a mask, which its schema
+    # gives as nullable whatever the column declares.
+    masked_columns: frozenset[tuple[int, str]] = frozenset()
     metrics: list[dict] = field(
         default_factory=list
     )  # REQ-1319: config metric registry [{name, expression, datatype, description, ai_context, visible_to}]

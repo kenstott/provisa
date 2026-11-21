@@ -127,6 +127,10 @@
     "continue": "Continua",
     "checkReasonLabel": "Perché esiste questo controllo",
     "checkReasonHint": "La promessa di qualità in termini di business; fa da titolo al controllo in ogni prodotto.",
-    "checkReasonPlaceholder": "Gli ordini sono completi e univoci così che il fatturato giornaliero quadri con la finanza"
+    "checkReasonPlaceholder": "Gli ordini sono completi e univoci così che il fatturato giornaliero quadri con la finanza",
+    "errorSparqlQuery": "Inserisci la query SPARQL che produce le righe della tabella.",
+    "errorQueryPreviewFirst": "Visualizza prima un'anteprima della query, così le colonne e i loro tipi sono noti.",
+    "previewFailed": "L'anteprima non è riuscita: {{error}}",
+    "previewNoRows": "L'anteprima non ha restituito righe."
   }
 }

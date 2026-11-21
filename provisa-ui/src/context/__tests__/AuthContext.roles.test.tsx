@@ -15,7 +15,7 @@
 // org creator hit. Under enforced auth the role list must contain only assigned roles, or nothing.
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, act, waitFor } from "../../test-utils/render";
+import { render, screen, act, waitFor, fireEvent } from "../../test-utils/render";
 import { AuthProvider, useAuth } from "../AuthContext";
 
 const fetchMe = vi.fn();
@@ -34,7 +34,8 @@ vi.mock("../../hooks/useAdminQueries", async (importOriginal) => ({
 }));
 
 function Probe() {
-  const { role, availableRoles, error, devMode, selectRole, refresh, capabilities } = useAuth();
+  const { role, availableRoles, error, devMode, selectRole, refresh, capabilities, selectedRoles } =
+    useAuth();
   return (
     <div>
       <button onClick={() => selectRole(availableRoles.find((r) => r.id === "analyst")!)}>
@@ -46,6 +47,12 @@ function Probe() {
       <span data-testid="error">{error ?? "none"}</span>
       <span data-testid="dev">{String(devMode)}</span>
       <span data-testid="caps">{capabilities.join(",") || "none"}</span>
+      <span data-testid="acting">
+        {selectedRoles
+          .map((r) => r.id)
+          .sort()
+          .join(",") || "none"}
+      </span>
     </div>
   );
 }
@@ -97,6 +104,26 @@ describe("AuthProvider role resolution (REQ-1295)", () => {
     expect(screen.getByTestId("available")).not.toHaveTextContent("analyst");
     expect(screen.getByTestId("role")).toHaveTextContent("org_admin");
     expect(screen.getByTestId("error")).toHaveTextContent("none");
+  });
+
+  it("acts as the union of every held role by default, and narrows to one chosen", async () => {
+    // REQ-2155: a member holding several roles acts with their union unless they pick one.
+    fetchMe.mockResolvedValue({
+      ...ORG_ADMIN_IDENTITY,
+      assignments: [
+        { role_id: "org_admin", domain_id: "*" },
+        { role_id: "analyst", domain_id: "*" },
+      ],
+    });
+    refetchRoles.mockResolvedValue(ORG_ROLE_CATALOG);
+
+    renderAuth(true);
+
+    await waitFor(() =>
+      expect(screen.getByTestId("acting")).toHaveTextContent("analyst,org_admin"),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "act as analyst" }));
+    await waitFor(() => expect(screen.getByTestId("acting")).toHaveTextContent(/^analyst$/));
   });
 
   it("reports a failed roles query instead of inventing an admin role", async () => {

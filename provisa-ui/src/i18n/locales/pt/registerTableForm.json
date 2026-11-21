@@ -127,6 +127,10 @@
     "continue": "Continuar",
     "checkReasonLabel": "Por que esta verificação existe",
     "checkReasonHint": "A promessa de qualidade em termos de negócio; encabeça a verificação em cada produto.",
-    "checkReasonPlaceholder": "Os pedidos estão completos e são únicos para que a receita diária concilie com o financeiro"
+    "checkReasonPlaceholder": "Os pedidos estão completos e são únicos para que a receita diária concilie com o financeiro",
+    "errorSparqlQuery": "Insira a consulta SPARQL que produz as linhas da tabela.",
+    "errorQueryPreviewFirst": "Visualize primeiro uma prévia da consulta para que as colunas e seus tipos sejam conhecidos.",
+    "previewFailed": "A prévia falhou: {{error}}",
+    "previewNoRows": "A prévia não retornou linhas."
   }
 }

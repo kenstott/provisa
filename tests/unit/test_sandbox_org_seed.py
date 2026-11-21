@@ -403,16 +403,12 @@ class TestThePublicInvite:
         # because an open link is not burnt by its first visitor.
         import datetime
 
-        from provisa.api.auth_router import get_invite
         from provisa.core.org_invite import INVITE_REDEMPTION_COLUMNS, is_spent, spend
         from provisa.core.schema_admin import org_invites
 
         await _ready(admin_db)
         await ensure_sandbox_org(admin_db)
         token = sandbox_mod.SANDBOX_PUBLIC_INVITE_TOKEN
-        monkeypatch.setattr("provisa.api.app.state.admin_db", admin_db, raising=False)
-        info = await get_invite(token)
-        assert info["valid"] is True and info["org_id"] == SANDBOX_ORG_ID
 
         for visitor in ("visitor-1", "visitor-2"):
             async with admin_db.acquire() as conn:

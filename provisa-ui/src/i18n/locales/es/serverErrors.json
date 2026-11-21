@@ -14,7 +14,8 @@
       "webhook_not_found": "No se encontró el webhook '{{name}}'",
       "written_table_not_registered": "'{{table}}' no es una tabla registrada del origen '{{source_id}}'",
       "function_exists": "La función '{{name}}' ya existe",
-      "webhook_exists": "El webhook '{{name}}' ya existe"
+      "webhook_exists": "El webhook '{{name}}' ya existe",
+      "mask_constant_not_text": "Una máscara constante en una columna que no es de texto se lee como NULL; solo se puede guardar NULL: {{column}} ({{type}})"
     },
     "ai_models": {
       "vector_model_fields_required": "cada entrada de vector_models requiere id, provider y dimensions",
@@ -567,7 +568,8 @@
       "table_not_withdrawn": "La tabla {{table}} no está retirada: solo se restablece una tabla retirada. Para mover a otra región una tabla en producción, establezca su región.",
       "source_not_withdrawn": "El origen {{source}} no está retirado: solo se restablece un origen retirado. Para cambiar su región, establezca su región.",
       "put_back_needs_region": "Restablecer {{object}} nombra una región: indique una, o ninguna para ninguna región.",
-      "table_domain_required": "La tabla '{{table}}' no indica ningún dominio: toda tabla se registra en un dominio"
+      "table_domain_required": "La tabla '{{table}}' no indica ningún dominio: toda tabla se registra en un dominio",
+      "mask_constant_not_text": "Una máscara constante en una columna que no es de texto se lee como NULL; solo se puede guardar NULL: {{column}} ({{type}})"
     },
     "secrets": {
       "env_reference_object_locked": "Este objeto es del operador: lee el entorno propio del servidor y no puede cambiarse aquí. Añada uno propio en su lugar.",
@@ -617,7 +619,8 @@
     "sparql": {
       "columns_not_inferred": "No se pudieron inferir las columnas: el sondeo no devolvió filas y no se encontraron variables SELECT.",
       "probe_failed": "Error en el sondeo del endpoint SPARQL: {{error}}",
-      "source_not_found": "No se encontró el origen SPARQL '{{source_id}}'"
+      "source_not_found": "No se encontró el origen SPARQL '{{source_id}}'",
+      "no_select_variables": "La consulta no nombra variables SELECT (SELECT * o no es una consulta SELECT): no se pueden leer sus columnas a partir de ella"
     },
     "subscribe": {
       "avro_topic_without_registry": "El topic '{{topic}}' transporta mensajes Avro y su origen no indica ningún registro de esquemas para leerlos: defina la URL del registro de esquemas del origen",

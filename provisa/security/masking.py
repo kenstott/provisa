@@ -20,7 +20,7 @@ Type validation ensures invalid combinations are rejected at config load time.
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from typing import Any
 
 import sqlglot.expressions as exp
@@ -50,6 +50,8 @@ UNIVERSAL_REGEX_REPLACE = "provisa_regex_replace"
 FULL_MASK_TEXT = "****"
 # REQ-2059: what a save of a list holding an entry no reader reaches is refused with.
 UNREACHABLE_MASK = "You have defined a mask that is not reachable: "
+# REQ-2131: what a save of a constant mask other than NULL on a non-text column is refused with.
+NON_TEXT_CONSTANT = "A constant mask on a non-text column reads as NULL; only NULL can be saved: "
 _TEXT_TYPES = {
     "varchar",
     "char",
@@ -109,6 +111,27 @@ class MaskingValidationError(Exception):
     """Raised when masking config is invalid for the column type."""
 
 
+class MaskConstantNotText(MaskingValidationError):
+    """A constant mask with a value other than NULL on a non-text column, which is not saved: it
+    can only read as NULL (REQ-2131)."""
+
+    def __init__(self, column: str, data_type: str) -> None:
+        self.column, self.data_type = column, data_type
+        super().__init__(f"{NON_TEXT_CONSTANT}{column} ({data_type})")
+
+
+def refuse_non_text_constant(column: str, masks: Iterable[dict], data_type: str) -> None:
+    """Raise :class:`MaskConstantNotText` when an entry of ``column``'s mask list is a constant
+    other than NULL and the column, of ``data_type``, is not text (REQ-2131)."""
+    if is_text_type(data_type):
+        return
+    for entry in masks:
+        mask = entry.get("mask")
+        if mask is not None and mask["type"] == MaskType.constant.value:
+            if mask.get("value") is not None:
+                raise MaskConstantNotText(column, data_type)
+
+
 def validate_masking_rule(  # REQ-038, REQ-040, REQ-042
     rule: MaskingRule,
     column_name: str,
@@ -152,6 +175,8 @@ def validate_masking_rule(  # REQ-038, REQ-040, REQ-042
             )
 
     elif rule.mask_type == MaskType.constant:
+        if rule.value is not None and not is_text_type(data_type):
+            raise MaskConstantNotText(column_name, data_type)  # REQ-2131
         if rule.value is None and not is_nullable:
             raise MaskingValidationError(
                 f"Column {column_name!r} is NOT NULL: cannot use NULL as constant mask value"
@@ -369,6 +394,21 @@ def masked_for(masks: list[dict], chain: list[str]) -> bool:
         return False
     i = entry_for(masks, chain)
     return i is None or masks[i].get("mask") is not None
+
+
+def columns_masked_for(
+    masking_rules: Mapping[tuple[int, str], Mapping[str, tuple[MaskingRule, str]]], reader_id: str
+) -> frozenset[tuple[int, str]]:
+    """(table id, column) of each column ``reader_id`` reads under a mask, of
+    ``state.masking_rules``: what every catalog reports nullable to that reader, whatever the
+    column declares (REQ-2131). A fake is the column's own declaration, never a mask (REQ-1942)."""
+    return frozenset(
+        (table_id, column)
+        for (table_id, reader), columns in masking_rules.items()
+        if reader == reader_id
+        for column, (rule, _data_type) in columns.items()
+        if rule.mask_type != MaskType.fake
+    )
 
 
 def reader_masks(

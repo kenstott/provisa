@@ -210,6 +210,7 @@ export function TableEditForm({
             source={editSource}
             describe={describe}
             domainChoices={domainChoices}
+            relationships={relationships}
           />
         ))}
       {section === "associations" && (
