@@ -4140,8 +4140,8 @@
   description: A datasource may be associated with multiple domains. Any domain owner may register any
     unclaimed table from that source. Once a table is claimed by one domain, no other domain may register it (first-come ownership). Unique constraint enforced on (source_id, normalized_table_name).
     The UI greys out claimed tables regardless of which domain claimed them. (Amended 2026-11-20 by the maintainer. First-come ownership is withdrawn. Every name in the model is unique within its domain, except the names that are unique across the organisation, which are source ids, environment names (REQ-1523) and secrets provider names. A source's table may be registered in more than one domain, once per domain, and the uniqueness checked is (domain, table name), not (source, table name). The UI no longer greys out a table another domain registered. Removing a table frees its name in its domain at once, including a table that was registered with no domain.) (Amended 2026-11-20 by the maintainer, the general rule. Operational objects are named per organisation (for example sources, environments, secrets providers, roles, settings, schedules), and model objects are named per domain (tables, relationships, commands, products, metrics and views). A model object's name is unique within its domain and the same name may exist in another domain; an operational object's name is unique within the organisation.) (Amended 2026-11-20, correcting the earlier amendment's wording. Removing a table retires it per REQ-2248; registering the same source table again in that domain restores it, and the retired row never blocks registration in another domain.)
-  use_case: Multi-domain with first-claim ownership prevents the same physical table from being registered
-    multiple times while allowing flexible domain-to-source associations.
+  use_case: Model objects are named per domain, so two domains can each register their own orders table and
+    a deleted table comes back with its links when it is registered again.
   code:
   - provisa/api/admin/schema_helpers.py
   - provisa/api/admin/schema_mutation.py
@@ -4153,18 +4153,17 @@
   - tests/unit/test_dataset_uniqueness.py
   - provisa-ui/e2e/registration-admin.spec.ts
   since: 2026-01
-  scenario: 'Given a datasource shared across multiple domains
-
-    When a domain owner claims a table
-
-    Then no other domain may claim that same physical table; the UI greys it out for all other
-
-    domains
-
-    '
+  scenario: 'Given tables registered in domains A and B
+    When a table named orders is registered in domain A and a table named orders in domain B
+    Then both registrations succeed, each name being unique only within its own domain
+    When a second table named orders is registered in domain A
+    Then it is refused by name
+    When the table orders in domain A is deleted and the same source table is registered again in domain A
+    Then the retired table is restored with its id, relationships and tags
+    And the register form does not grey out a table another domain registered'
   integration_test: not_required
-  integration_test_reason: First-claim ownership model is state management; can be tested without real
-    data sources.
+  integration_test_reason: Per-domain naming and retired-table restore are state management; tested without real
+    external services.
   e2e: true
   e2e_reason: The UI greying-out of claimed tables across domains requires a browser- level E2E test —
     the visual behaviour and UI state cannot be verified by unit or integration tests alone.
