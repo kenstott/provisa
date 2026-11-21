@@ -6211,6 +6211,8 @@
   "hi/relationshipRow.json::relationshipRow.queryLinks.surfaces.rest": "REST",
   "hi/relationshipRow.json::relationshipRow.queryLinks.surfaces.sparql": "SPARQL",
   "hi/relationshipRow.json::relationshipRow.queryLinks.surfaces.sql": "SQL",
+  "hi/relationshipRow.json::relationshipRow.queryLinks.tableMissing": "Query links are unavailable: table {{ids}} this relationship names is not among the registered tables.",
+  "hi/relationshipRow.json::relationshipRow.queryLinks.tablesUnread": "Query links are unavailable: the registered tables could not be read ({{error}}).",
   "hi/relationshipRow.json::relationshipRow.refreshIntervalSeconds": "Refresh Interval (s)",
   "hi/relationshipRow.json::relationshipRow.resolverNote": "Part of code resolver {{resolver}}. Its matches view and its three relationships are changed and retired together.",
   "hi/relationshipRow.json::relationshipRow.retireResolver": "Retire code resolver",

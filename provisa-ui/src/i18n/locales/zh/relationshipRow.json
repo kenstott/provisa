@@ -51,6 +51,8 @@
     "retireResolverConsequence": "其匹配视图和三个关系会一起停用。它们的名称仍被占用。",
     "queryLinks": {
       "heading": "查询",
+      "tableMissing": "查询链接不可用：此关系所指的表 {{ids}} 不在已注册的表中。",
+      "tablesUnread": "查询链接不可用：无法读取已注册的表（{{error}}）。",
       "cypher": "用 Cypher 读取 {{name}}",
       "sql": "用 SQL 读取 {{name}}",
       "sparql": "用 SPARQL 读取 {{name}}",
