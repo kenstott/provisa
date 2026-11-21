@@ -88,6 +88,7 @@ ENGINE_DIALECT_ALIASES: dict[str, str] = {
     "exa": "exasol",
     "singlestoredb": "singlestore",
     "opengauss": "postgres",  # openGauss is a PostgreSQL fork on the pg wire
+    "ibm_db_sa": "db2",  # ibm_db_sa's own URL scheme for Db2 (provisa/db2/dialect.py)
 }
 
 
@@ -330,3 +331,6 @@ import provisa.qdrant.dialect  # noqa: E402, F401
 
 # REQ-2191: the ``ansi`` dialect a JDBC source may be written in, registered likewise.
 import provisa.jdbc_source.dialect  # noqa: E402, F401
+
+# REQ-2236: the ``db2`` dialect a Db2 federation engine is written in (``engine_dialect``).
+import provisa.db2.dialect  # noqa: E402, F401
