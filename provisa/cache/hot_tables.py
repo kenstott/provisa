@@ -82,6 +82,8 @@ class HotTableCandidate:  # REQ-236, REQ-237
     pk_column: str
     catalog: str
     schema: str
+    #: The registered table's column types (REQ-232), kept on the entry each load stores.
+    column_types: Mapping[str, str]
 
 
 def _scope_parts() -> tuple[str, int | None]:
@@ -189,6 +191,7 @@ class HotTableManager:  # REQ-230, REQ-231, REQ-232, REQ-233, REQ-236, REQ-237, 
         pk_column: str,
         catalog: str,
         schema: str,
+        column_types: Mapping[str, str],
     ) -> int:
         """Write rows into Redis and in-memory cache. Returns row count."""
         await self._connect()
@@ -227,6 +230,7 @@ class HotTableManager:  # REQ-230, REQ-231, REQ-232, REQ-233, REQ-236, REQ-237, 
             pk_column=pk_column,
             rows=rows,
             column_names=columns,
+            column_types=column_types,
         )
         log.info("Hot table %s loaded: %d rows, %d columns", table_name, len(rows), len(columns))
         return len(rows)
@@ -239,6 +243,7 @@ class HotTableManager:  # REQ-230, REQ-231, REQ-232, REQ-233, REQ-236, REQ-237, 
         schema: str,
         catalog: str,
         pk_column: str,
+        column_types: Mapping[str, str],
     ) -> int:
         """Load an engine-backed table into Redis through the engine terminal. Returns row count."""
         fqn = f'"{catalog}"."{schema}"."{table_name}"'
@@ -259,7 +264,9 @@ class HotTableManager:  # REQ-230, REQ-231, REQ-232, REQ-233, REQ-236, REQ-237, 
             return row_count
 
         rows = [dict(zip(columns, row)) for row in rows_raw]
-        return await self._store_rows(table_id, table_name, rows, pk_column, catalog, schema)
+        return await self._store_rows(
+            table_id, table_name, rows, pk_column, catalog, schema, column_types
+        )
 
     async def load_table_from_sqlite(  # REQ-544
         self,
@@ -267,6 +274,7 @@ class HotTableManager:  # REQ-230, REQ-231, REQ-232, REQ-233, REQ-236, REQ-237, 
         table_id: int,
         table_name: str,
         pk_column: str,
+        column_types: Mapping[str, str],
     ) -> int:
         """Load a SQLite table into Redis. Returns row count."""
         from provisa.file_source.source import FileSourceConfig, execute_query
@@ -285,7 +293,7 @@ class HotTableManager:  # REQ-230, REQ-231, REQ-232, REQ-233, REQ-236, REQ-237, 
             return len(rows)
 
         return await self._store_rows(
-            table_id, table_name, rows, pk_column, source_cfg["id"], "default"
+            table_id, table_name, rows, pk_column, source_cfg["id"], "default", column_types
         )
 
     async def load_table_from_openapi(  # REQ-544, REQ-316
@@ -295,6 +303,7 @@ class HotTableManager:  # REQ-230, REQ-231, REQ-232, REQ-233, REQ-236, REQ-237, 
         table_id: int,
         table_name: str,
         pk_column: str,
+        column_types: Mapping[str, str],
     ) -> int:
         """Load an OpenAPI table into Redis, read as every read of it is: through its endpoint
         and the one caller, with its source's stored address, credential and headers and its
@@ -316,7 +325,13 @@ class HotTableManager:  # REQ-230, REQ-231, REQ-232, REQ-233, REQ-236, REQ-237, 
             return len(rows)
 
         return await self._store_rows(
-            table_id, table_name, rows, pk_column, endpoint.source_id, "default"
+            table_id,
+            table_name,
+            rows,
+            pk_column,
+            endpoint.source_id,
+            "default",
+            column_types,
         )
 
     async def get_rows(self, table_id: int) -> list[dict]:  # REQ-544
@@ -355,7 +370,13 @@ class HotTableManager:  # REQ-230, REQ-231, REQ-232, REQ-233, REQ-236, REQ-237, 
         await self.invalidate(table_id)
         if not entry.is_api:
             await self.load_table(
-                engine, table_id, entry.table_name, entry.schema, entry.catalog, entry.pk_column
+                engine,
+                table_id,
+                entry.table_name,
+                entry.schema,
+                entry.catalog,
+                entry.pk_column,
+                entry.column_types,
             )
 
     def is_hot(self, table_id: int) -> bool:  # REQ-544
@@ -446,6 +467,7 @@ class HotTableManager:  # REQ-230, REQ-231, REQ-232, REQ-233, REQ-236, REQ-237, 
             candidate.schema,
             candidate.catalog,
             candidate.pk_column,
+            candidate.column_types,
         )
 
     async def maybe_promote_dicts(self, table_id: int, rows: list[dict]) -> None:  # REQ-236
@@ -471,6 +493,7 @@ class HotTableManager:  # REQ-230, REQ-231, REQ-232, REQ-233, REQ-236, REQ-237, 
             candidate.pk_column,
             candidate.catalog,
             candidate.schema,
+            candidate.column_types,
         )
         log.info("Auto-promoted %s to hot cache (%d rows)", candidate.table_name, len(rows))
 
@@ -636,7 +659,10 @@ async def init_hot_tables(  # REQ-230, REQ-231, REQ-236, REQ-237
         for row in registered
     }
 
+    from provisa.api.data.materialization import _registered_types
     from provisa.compiler.naming import apply_sql_name
+
+    registered_by_id = {int(row["id"]): row for row in registered}
 
     for tbl_cfg in raw_config.get("tables", []):
         declared = tbl_cfg.get("table") or tbl_cfg.get("table_name")
@@ -662,6 +688,7 @@ async def init_hot_tables(  # REQ-230, REQ-231, REQ-236, REQ-237
             tbl_cfg.get("columns", [{}])[0].get("name", "id") if tbl_cfg.get("columns") else "id"
         )
         catalog = source_to_catalog(source_id)
+        column_types = _registered_types(registered_by_id[table_id])
         override = tbl_cfg.get("hot")
         candidate = HotTableCandidate(
             table_id=table_id,
@@ -669,6 +696,7 @@ async def init_hot_tables(  # REQ-230, REQ-231, REQ-236, REQ-237
             pk_column=pk_col,
             catalog=catalog,
             schema=schema_name,
+            column_types=column_types,
         )
 
         if override is True:
@@ -676,7 +704,9 @@ async def init_hot_tables(  # REQ-230, REQ-231, REQ-236, REQ-237
             # loaded now, and a candidate is how the table becomes hot again after it changes.
             hot_mgr.register_candidate(candidate)
             if source_type == "sqlite":
-                await hot_mgr.load_table_from_sqlite(source_cfg, table_id, tbl_name, pk_col)
+                await hot_mgr.load_table_from_sqlite(
+                    source_cfg, table_id, tbl_name, pk_col, column_types
+                )
             elif source_type == "openapi":
                 await hot_mgr.load_table_from_openapi(
                     api_endpoints[(source_id, tbl_name)],
@@ -684,9 +714,12 @@ async def init_hot_tables(  # REQ-230, REQ-231, REQ-236, REQ-237
                     table_id,
                     tbl_name,
                     pk_col,
+                    column_types,
                 )
             elif source_type in _ENGINE_BACKED:
-                await hot_mgr.load_table(engine, table_id, tbl_name, schema_name, catalog, pk_col)
+                await hot_mgr.load_table(
+                    engine, table_id, tbl_name, schema_name, catalog, pk_col, column_types
+                )
             else:
                 log.debug(
                     "hot: true table %s: source type %r not supported for caching",

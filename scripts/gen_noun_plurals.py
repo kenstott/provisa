@@ -49,7 +49,7 @@ What is taken (the file's notation is documented in the source's README.md):
     ``percent <n>: (percent | ?: percents)`` -> ``percents``); a legacy ``~`` alternative (no
     level information) counts for neither rule;
   - then, in the accepted class, the regularly formed plural (the rule-based form
-    ``provisa.core.inflection.rule_plural`` gives a word the dictionary does not list) first:
+    ``provisa.core.inflection.regular_plural`` gives a word the dictionary does not list) first:
     ``schema`` -> ``schemas``, ``index`` -> ``indexes``, ``maximum`` -> ``maximums``,
     ``focus`` -> ``focuses``;
   - then its frequency within a tie (below), then its variant level (non-variant, ``.``, ``=``,
@@ -83,7 +83,7 @@ import re
 import sys
 from pathlib import Path
 
-from provisa.core.inflection import rule_plural
+from provisa.core.inflection import regular_plural
 
 _OUT = Path(__file__).resolve().parents[1] / "provisa" / "core" / "data"
 _MAX_SIZE = 80
@@ -212,7 +212,7 @@ def _counted(alt: Alternative) -> bool:
 
 def _regular(singular: str, alt: Alternative) -> bool:
     """True when ``alt`` is a counted alternative formed regularly from ``singular``."""
-    return _counted(alt) and alt[0] == rule_plural(singular)
+    return _counted(alt) and alt[0] == regular_plural(singular)
 
 
 def _zero(singular: str, alt: Alternative) -> bool:
@@ -386,7 +386,7 @@ def _nouns(
         star_zero = (
             bool(alternatives)
             and alternatives[0][0] == target
-            and any(w == rule_plural(target) and starred for w, _, starred in alternatives)
+            and any(w == regular_plural(target) and starred for w, _, starred in alternatives)
         )
         for i, (plural, alt_level, _) in enumerate(alternatives):
             order += 1

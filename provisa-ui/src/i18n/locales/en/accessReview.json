@@ -1,0 +1,42 @@
+{
+  "accessReview": {
+    "heading": "Access review",
+    "help": "Each review lists every member's role grant with its entitlements and last use, grouped by domain. The owner of each domain confirms or revokes each row and says why. A revocation removes the grant at once.",
+    "scheduleLabel": "Review schedule",
+    "scheduleHint": "Cron in UTC: minute hour day month weekday. Empty: no scheduled review.",
+    "scheduleSaved": "Review schedule saved",
+    "reviewLabel": "Review",
+    "reviewOption": "{{when}} · {{by}} · {{decided}} of {{rows}} decided",
+    "bySchedule": "on schedule",
+    "noReviews": "No review has been taken yet.",
+    "noRows": "No rows in this review for the domains you own.",
+    "start": "Start a review",
+    "started_one": "Review started: {{count}} grant to review",
+    "started_other": "Review started: {{count}} grants to review",
+    "export": "Export CSV",
+    "colDomain": "Domain",
+    "colMember": "Member",
+    "colRole": "Role",
+    "colEntitlements": "Entitlements",
+    "colLastUsed": "Last used",
+    "colDecision": "Decision",
+    "colActions": "Actions",
+    "everyDomain": "Every domain",
+    "wholeRole": "The whole role",
+    "neverUsed": "Never",
+    "undecided": "Not decided",
+    "decision": {
+      "confirmed": "Confirmed",
+      "revoked": "Revoked"
+    },
+    "decidedBy": "{{who}}, {{when}}",
+    "confirm": "Confirm",
+    "revoke": "Revoke",
+    "prompt": {
+      "confirmed": "Confirm {{member}}'s {{role}} grant in {{domain}}.",
+      "revoked": "Revoke {{member}}'s {{role}} grant in {{domain}}. It is removed at once."
+    },
+    "reasonLabel": "Reason",
+    "reasonHint": "Why you confirm or revoke this access. It is recorded with your decision."
+  }
+}

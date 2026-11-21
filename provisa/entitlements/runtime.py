@@ -45,6 +45,7 @@ from provisa.entitlements.index import (
 )
 from provisa.entitlements.lists import (
     IDP,
+    PROVISA,
     ExpiryRule,
     HeldEntitlements,
     IdpLists,
@@ -313,18 +314,17 @@ def list_reach(
     return ListReach(listed, tuple(dict.fromkeys(ended)))
 
 
-def reaches_role(state: Any, target_role: str, capabilities: Collection[str]) -> bool:
-    """Whether the bound person's ``roles`` lists reach ``target_role``, through a role they act as
-    that holds one of ``capabilities`` (REQ-2219). A list naming a role covers it and every role
-    with it as an ancestor; a role with no ``roles`` list reaches every role. An expiry rule passed
-    on the grant ends what it names of that reach. Raises when no
-    person is bound: this answers an authorization question, and no person cannot be read as
-    anyone."""
+def _reaches(
+    state: Any, kind: str, paths: tuple[tuple[str, ...], ...], capabilities: Collection[str]
+) -> bool:
+    """Whether the bound person's ``kind`` lists reach an object spelled ``paths``, through a role
+    they act as that holds one of ``capabilities`` (REQ-2219). A role with no ``kind`` list
+    reaches every one. An expiry rule passed on the grant ends what it names of that reach.
+    Raises when no person is bound: this answers an authorization question, and no person cannot
+    be read as anyone."""
     request = _current.get()
     if request is None:
-        raise RuntimeError("no person is bound to this call: who may reach a role cannot be read")
-    chain = state.role_chains.get(target_role, [target_role])
-    paths = tuple((role.lower(),) for role in chain)
+        raise RuntimeError(f"no person is bound to this call: who may reach {kind} cannot be read")
     held = state.held_entitlements.get(request.user_id, _NOTHING_HELD)
     wanted = set(capabilities)
     now = datetime.now(UTC)
@@ -333,20 +333,43 @@ def reaches_role(state: Any, target_role: str, capabilities: Collection[str]) ->
             role = state.roles.get(member)
             if role is None:
                 continue
-            listed = effective_lists(member, request.idp, held, role_defaults(role)).get("roles")
+            listed = effective_lists(member, request.idp, held, role_defaults(role)).get(kind)
             rules = tuple(r for r in held.expiries if r.role_id == member)
             for capability in wanted & set(role.get("capabilities") or ()):
-                reach = list_reach(
-                    None if listed is None else listed.identifiers,
-                    None if listed is None else listed.origin,
-                    rules,
-                    capability,
-                    "roles",
-                    now,
-                )
+                # The rows Provisa holds for the capability alone (a domain's steward, REQ-2219
+                # OWNER KINDS), else the kind's list, else every one (effective._listed).
+                own = [
+                    i
+                    for row in held.lists
+                    if row.role_id == member and row.capability == capability
+                    for i in row.identifiers
+                ]
+                if own:
+                    identifiers, origin = tuple(own), PROVISA
+                elif listed is not None:
+                    identifiers, origin = listed.identifiers, listed.origin
+                else:
+                    identifiers, origin = None, None
+                reach = list_reach(identifiers, origin, rules, capability, kind, now)
                 if reach.reaches(paths):
                     return True
     return False
+
+
+def reaches_role(state: Any, target_role: str, capabilities: Collection[str]) -> bool:
+    """Whether the bound person's ``roles`` lists reach ``target_role``, through a role they act as
+    that holds one of ``capabilities`` (REQ-2219). A list naming a role covers it and every role
+    with it as an ancestor; a role with no ``roles`` list reaches every role."""
+    chain = state.role_chains.get(target_role, [target_role])
+    return _reaches(state, "roles", tuple((role.lower(),) for role in chain), capabilities)
+
+
+def reaches_domain(state: Any, spellings: Collection[str], capabilities: Collection[str]) -> bool:
+    """Whether the bound person's ``domains`` lists reach a domain spelled any of ``spellings``
+    (its own id and name and its ancestors', REQ-1363: a list naming a parent covers the domains
+    under it), through a role they act as that holds one of ``capabilities`` (REQ-2219, REQ-2266:
+    a domain's owner is whoever ``domain_steward`` reaches it for)."""
+    return _reaches(state, "domains", tuple((s.lower(),) for s in spellings), capabilities)
 
 
 def warnings(state: Any, role_id: str) -> tuple[Finding, ...]:

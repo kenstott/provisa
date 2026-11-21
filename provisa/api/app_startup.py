@@ -246,6 +246,7 @@ async def _start_background_tasks(_log: logging.Logger) -> None:
                             entry.schema,
                             entry.catalog,
                             entry.pk_column,
+                            entry.column_types,
                         )
                     except Exception:
                         _log.exception("Hot table refresh failed: %s", entry.table_name)
