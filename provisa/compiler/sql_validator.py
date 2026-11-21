@@ -932,12 +932,26 @@ def _scope_columns(select: exp.Select) -> list[exp.Column]:  # REQ-039
     """The columns ``select`` itself names, in every clause -- the select list, FROM-item
     function arguments, JOIN ON, WHERE, GROUP BY, HAVING, WINDOW, ORDER BY, DISTINCT ON,
     aggregate FILTER and ORDER BY -- and not those of a SELECT nested in it, which is their own
-    scope. A star is judged apart (:func:`_star_violation`)."""
+    scope. A star standing as a select-list item is judged apart (:func:`_star_violation`); a
+    whole-row ``t.*`` inside an expression (``to_jsonb(c.*)``) is judged here, as a column. In an
+    administrator's view body only the select list is judged: its other clauses are the
+    administrator's (REQ-039, amended 2026-11-04)."""
+    list_items = {id(e) for e in select.expressions}
+    in_view = _in_view_body(select)
     return [
         col
         for col in select.find_all(exp.Column)
-        if not isinstance(col.this, exp.Star) and _nearest_scope(col) is select
+        if _nearest_scope(col) is select
+        and not (isinstance(col.this, exp.Star) and id(col) in list_items)
+        and (not in_view or _in_select_list(col, select))
     ]
+
+
+def _in_select_list(node: exp.Expr, select: exp.Select) -> bool:
+    """Whether ``node`` stands inside one of ``select``'s select-list items."""
+    while node.parent is not None and node.parent is not select:
+        node = node.parent
+    return node.parent is select and node.arg_key == "expressions"
 
 
 def _output_names(select: exp.Select) -> set[str]:
@@ -983,6 +997,7 @@ def _unqualified_refused(  # REQ-039
         return False
     scope: exp.Expr | None = select
     scope_am = am
+    in_scope: dict[str, int] = {}
     while isinstance(scope, exp.Select):
         held = _held_by_registered(name, scope_am, gov_ctx)
         if held is not None:
@@ -991,10 +1006,13 @@ def _unqualified_refused(  # REQ-039
             return False
         if scope is select and key == "group" and name in outputs:
             return False
+        in_scope.update({f"{id(scope)}.{alias}": tid for alias, tid in scope_am.items()})
         scope = _nearest_scope(scope)
         if isinstance(scope, exp.Select):
             scope_am = _alias_map(scope, gov_ctx, cte_names_set)
-    return _unqualified_column_refused(name, am, gov_ctx)
+    # Nothing resolves the name: refused when a governed relation is in this or an enclosing
+    # scope, as a physical column the model does not serve is never passed through.
+    return _unqualified_column_refused(name, in_scope, gov_ctx)
 
 
 def _held_by_registered(name: str, am: dict[str, int], gov_ctx: GovernanceContext) -> bool | None:
