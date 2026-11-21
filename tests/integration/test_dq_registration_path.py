@@ -170,13 +170,13 @@ async def test_a_checker_table_registered_without_a_contract_is_rejected(control
 
 async def test_a_checker_table_keeps_the_product_it_is_assigned_to(control_plane):
     """REQ-1443 PRODUCT ASSIGNMENT: the same rule the YAML loader applies -- a checker table is
-    assigned to a product as any member is."""
+    assigned to a product as any member is: the product lists it (REQ-1634), and registering its
+    contract leaves the table's products as they are."""
     async with _conn(control_plane) as conn:
         await _seed_estate(conn)
         model = _results_table()
-        model.product_id = "orders-product"
         await apply_dq_registration(conn, model)
-        assert model.product_id == "orders-product"
+        assert not hasattr(model, "product_id")
 
 
 async def test_a_contract_on_a_non_checker_source_is_rejected(control_plane):

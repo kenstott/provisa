@@ -54,7 +54,10 @@ def resolve_superuser_config(config: dict | None) -> dict | None:  # REQ-125
     password = config.get("password")
     if username is None or password is None:
         return None
-    return {"username": resolve_secrets(username), "password": resolve_secrets(password)}
+    return {
+        "username": resolve_secrets(username),
+        "password": resolve_secrets(password, credential=True),
+    }
 
 
 def check_superuser(  # REQ-125

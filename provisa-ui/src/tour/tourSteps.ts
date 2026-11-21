@@ -25,6 +25,7 @@
  * i18n namespace (src/i18n/locales/<lng>/tour.json), keyed by `key`, so the
  * narration is translatable. This file only carries the layout/navigation data.
  */
+import type { ClearOf } from "./clearOfGraph";
 import type { Capability } from "../types/auth";
 import type { OrgHas, TourPrerequisites } from "./tourPrerequisites";
 import type { UiAction } from "../mcp/uiActions";
@@ -61,6 +62,8 @@ export interface TourStep {
    * torn down on leaving the step, so no restore is needed.
    */
   expandSelect?: boolean;
+  /** A graph on the page the step's text must not cover (clearOfGraph). */
+  clearOf?: ClearOf;
   /**
    * Carry the NL-generated query for this branch into the explorer on navigate
    * and auto-run it — mirrors the NL page's "Open in X" buttons. The runner maps
@@ -546,13 +549,15 @@ export const TOUR_STEPS: TourStep[] = [
   },
   {
     route: "/admin/tags",
-    capability: "org_settings",
+    capability: "table_registration",
     element: '[data-testid="tags-scope-bar"]',
     key: "stepTags",
   },
   {
     route: "/admin/requests",
-    capability: "org_settings",
+    // The route opens to every member (REQ-1327); the tour keeps the step to a holder of `usage`,
+    // so a role with no other page is not offered a tour of one step.
+    capability: "usage",
     element: '[data-testid="requests-tab-pending"]',
     key: "stepRequests",
   },
@@ -702,8 +707,8 @@ export const TOUR_STEPS: TourStep[] = [
   },
   {
     // REQ-1387: the business glossary — curation plus AI-assisted definitions/relationships.
-    route: "/admin/ontology",
-    // REQ-1590: stricter than the route's own gate. /admin/ontology opens to `glossary_read`, but
+    route: "/context/ontology",
+    // REQ-1590: stricter than the route's own gate. /context/ontology opens to `glossary_read`, but
     // what this step points at is the AI-generation menu, which only a curator is shown — so a
     // read-only viewer skips the step rather than waiting out an anchor that never mounts.
     capability: "glossary_rw",
@@ -711,17 +716,17 @@ export const TOUR_STEPS: TourStep[] = [
     key: "stepGlossary",
   },
   {
-    route: "/admin/ontology",
+    route: "/context/ontology",
     capability: "glossary_rw",
     element: '[data-testid="glossary-new-btn"]',
     key: "stepGlossaryTerm",
   },
   {
     // REQ-1945: publishing the model, its data products and lineage out to a catalog. The anchor is
-    // the Metadata Export page root, which paints in both the entitled and not-entitled states.
-    route: "/admin/metadata-export",
+    // the Context Sync page root (REQ-2247, REQ-2259), which paints in both the entitled and not-entitled states.
+    route: "/context/sync",
     capability: "org_settings",
-    element: '[data-tour="metadata-export"]',
+    element: '[data-tour="syncing"]',
     key: "stepPublish",
   },
   {
@@ -774,7 +779,10 @@ export const TOUR_STEPS: TourStep[] = [
   {
     route: "/admin/observability",
     capability: "observability",
-    element: '[data-testid="observability-debug-trace-tab"]',
+    // The caller's own trace feed renders for every role holding the capability; the debug tab
+    // beside it needs the deployment-wide otel block, which a caller without platform_settings
+    // never receives (REQ-1349).
+    element: '[data-testid="trace-feed"]',
     key: "stepObservability",
   },
   {
@@ -792,7 +800,8 @@ export const TOUR_STEPS: TourStep[] = [
   {
     route: "/admin/overview",
     capability: "observability",
-    element: '[data-tour="nav-admin"]',
+    // Admin is in the user menu, closed on every page, so the step points at the page it opens.
+    element: '[data-tour="admin-content"]',
     readySelector: '[data-tour="admin-content"]',
     key: "step23",
   },
@@ -920,6 +929,26 @@ export function stepRoute(
 }
 
 /**
+ * The page a step's `route` names is the one shown at `pathname` and `search`: the same path, with
+ * each parameter the route names holding the route's value. A parameter the route does not name is
+ * the page's own -- REQ-2241 puts an open panel and its tab in the URL -- so a page with a panel
+ * open is still the route's page, and a step on it does not navigate to the bare route, which
+ * would close the panel the step explains.
+ */
+export function showsRoute(route: string, pathname: string, search: string): boolean {
+  const at = route.indexOf("?");
+  const path = at < 0 ? route : route.slice(0, at);
+  if (path !== pathname) return false;
+  const named = new URLSearchParams(at < 0 ? "" : route.slice(at + 1));
+  const shown = new URLSearchParams(search);
+  return [...named.keys()].every((key) => {
+    const want = named.getAll(key);
+    const have = shown.getAll(key);
+    return want.length === have.length && want.every((v, i) => v === have[i]);
+  });
+}
+
+/**
  * The steps of `itinerary` (indices into `steps`) this org can show. A step that opens Polly
  * (`pollyOpen`) to ask it live needs a model: without one Polly's launcher shows its
  * "not configured" notice instead of the panel, and the step's anchor never mounts. A step showing
@@ -949,10 +978,11 @@ export function stepsTheOrgCanShow(
  * opened, which is the same hang by a different path.
  *
  * `meets` is passed in rather than imported so this stays pure data logic; the runner supplies
- * `meetsRequirement` bound to the signed-in capabilities.
+ * `meetsRequirement` bound to the signed-in capabilities, and given each owner's route, so a page
+ * a demo sandbox's visitor may read without its capability (the Platform page) is kept for them.
  */
 export function tourItinerary(
-  meets: (capability: Capability) => boolean,
+  meets: (capability: Capability, route: string) => boolean,
   scope?: RunScope,
   steps: readonly TourStep[] = TOUR_STEPS,
 ): number[] {
@@ -971,7 +1001,7 @@ export function tourItinerary(
       if (step.capability === undefined) {
         throw new Error(`Tour: step ${i} declares a route with no capability`);
       }
-      ownerAllowed = meets(step.capability);
+      ownerAllowed = meets(step.capability, step.route);
     }
     // The owner walk covers every step, so a scoped run whose first step is routeless still
     // resolves its owner's rights; the scope only filters what is kept.

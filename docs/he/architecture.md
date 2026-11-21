@@ -417,7 +417,7 @@ ClickHouse, DuckDB, Snowflake, Databricks, BigQuery, Fabric ו-Synapse כולם 
 | משתנה סביבה | ברירת מחדל | מטרה |
 | --------- | --------- | --------- |
 | `PROVISA_REDIRECT_ENABLED` | `false` | הפעלת הפניית סף בצד השרת |
-| `PROVISA_REDIRECT_THRESHOLD` | `1000` | סף ספירת שורות ברירת מחדל |
+| `PROVISA_REDIRECT_THRESHOLD` | `100000` | סף ספירת שורות ברירת מחדל |
 | `PROVISA_REDIRECT_FORMAT` | `parquet` | פורמט הפניה ברירת מחדל |
 | `PROVISA_REDIRECT_BUCKET` | `provisa-results` | שם bucket ב-S3 |
 | `PROVISA_REDIRECT_ENDPOINT` | | כתובת נקודת קצה תואמת S3 |

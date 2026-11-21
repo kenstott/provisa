@@ -16,7 +16,7 @@
     "checkPassed": "{{capability}}：通过",
     "checkFailed": "{{capability}}：未通过（{{reason}}）",
     "jdbcDriverJar": "JDBC 驱动程序 JAR",
-    "jdbcDriverJarHint": "驱动程序的 JAR 文件，从您的计算机上传。仅限自托管安装。",
+    "jdbcDriverJarHint": "从您的计算机上传的驱动程序 jar 文件。仅限自托管安装。",
     "jdbcDriverClass": "驱动程序类",
     "driver": "驱动程序",
     "jarDriver": "您自己的 JDBC 驱动程序 (JAR)",

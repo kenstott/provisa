@@ -19,6 +19,9 @@ vi.mock("../../../api/admin", async (orig) => ({
 
 vi.mock("../settingsCards", () => ({ FederationSettingsCards: () => null }));
 
+// REQ-1922: no regions, so the page is the one engine, as before.
+vi.mock("../useRegionEngines", () => ({ useRegionEngines: () => ({ status: "none" }) }));
+
 const MISSING = "libodbc.so.2: cannot open shared object file: No such file or directory";
 
 const STATE: api.FederationEngineState = {

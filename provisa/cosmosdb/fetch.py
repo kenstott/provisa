@@ -67,7 +67,7 @@ class CosmosConnection:  # REQ-1982
         database = getattr(source, "database", "") or ""
         if not database:
             raise CosmosSourceInvalid(source.id, "the database is required")
-        secret = resolve_secrets(getattr(source, "password", "") or "")
+        secret = resolve_secrets(getattr(source, "password", "") or "", credential=True)
         if not secret:
             raise CosmosSourceInvalid(
                 source.id,

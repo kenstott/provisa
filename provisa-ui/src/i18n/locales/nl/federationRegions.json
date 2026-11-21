@@ -1,0 +1,19 @@
+{
+  "federationRegions": {
+    "intro": "Elke regio voert zijn query's uit op een eigen engine: de opslag die het platform deze organisatie als engine van de regio heeft toegewezen, met zijn enginetype en verbindings-URL.",
+    "readOnlyNote": "De platformbeheerder wijst de engine van elke regio toe. Hier wordt die alleen-lezen getoond.",
+    "sandboxNote": "Dit wordt getoond om regio's uit te leggen. Het kan in een demo niet worden gewijzigd.",
+    "restartNote": "Een wijziging gaat in wanneer de nodes van de regio opnieuw starten.",
+    "restartPending": "Opgeslagen. De wijziging gaat in wanneer de nodes van de regio opnieuw starten.",
+    "edit": "Bewerken",
+    "store": "Engine-opslag",
+    "kind": "Enginetype",
+    "url": "URL",
+    "sharedWith": "Ook de engine van",
+    "storeHelp": "De opslag die deze regio als engine noemt. Welke opslag dat is, stelt u in op de pagina Platform.",
+    "sharedHint": "Ook de engine van {{regions}}. Een wijziging hier geldt daar ook.",
+    "kindHelp": "De engine die deze opslag draait.",
+    "urlHelp": "De verbindings-URL van de engine, of een verwijzing zoals ${env:NAME}. Wordt precies zo bewaard als ingevoerd. Een wachtwoord erin wordt nooit meer getoond; laat de URL ongewijzigd om het te behouden.",
+    "storeMissing": "Regio {{region}} noemt {{store}} als engine, en de organisatie heeft geen opslag {{store}}."
+  }
+}

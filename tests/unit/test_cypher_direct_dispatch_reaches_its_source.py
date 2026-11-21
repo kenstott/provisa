@@ -49,7 +49,7 @@ class _ControlPlane:
             async def execute(self, sql):
                 pass
 
-            async def fetch_with_columns(self, sql, *args, bind_as_given=False):
+            async def fetch_with_columns(self, sql, *args, bind_as_given=False, prepared=True):
                 store.ran.append(sql)
                 return ["id"], [(1,)]
 

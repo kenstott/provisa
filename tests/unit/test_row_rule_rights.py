@@ -43,6 +43,7 @@ from provisa.core.request_context import (
     set_session_vars,
 )
 from provisa.core.schema_org import (
+    data_product_tables,
     data_products,
     domains,
     registered_tables,
@@ -416,7 +417,7 @@ def _model_state(rules, role_capabilities):
     return types.SimpleNamespace(
         role_build_inputs={
             "model_write_rules": rules,
-            "physical_table_map": {"data_products": "data_products_meta"},
+            "physical_table_map": {("provisa-admin", "data_products"): "data_products_meta"},
         },
         meta_roles={"meta:a+b": ("a", "b")},
         roles={
@@ -599,14 +600,16 @@ async def test_a_refused_retirement_moves_no_member(plane, rights):
                 status="live",
             )
         )
-        await conn.execute_core(
-            insert(registered_tables).values(
-                source_id="pg",
-                domain_id="pets",
-                schema_name="public",
-                table_name="m",
-                product_id="sales_p",
+        member = (
+            await conn.execute_core(
+                insert(registered_tables)
+                .values(source_id="pg", domain_id="pets", schema_name="public", table_name="m")
+                .returning(registered_tables.c.id)
             )
+        ).scalar_one()
+        # REQ-1634: membership is its own relation.
+        await conn.execute_core(
+            insert(data_product_tables).values(product_id="sales_p", table_id=member)
         )
     token = _acting("pets_team")
     try:

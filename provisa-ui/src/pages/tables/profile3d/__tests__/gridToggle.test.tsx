@@ -8,8 +8,9 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// Every 3D network graph's toolbar has one Grid checkbox, checked at first. Clearing it tells the
-// scene to leave the floor grid out, and the choice is kept across reloads, per graph.
+// Every 3D network graph's canvas controls have one Grid toggle (REQ-2239, amended 2026-11-13), released at first: no floor grid is drawn until the
+// reader turns Grid on. Pressing it tells the scene to draw the floor grid, and the choice, on or off,
+// is kept across reloads, per graph.
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "../../../../test-utils/render";
@@ -42,7 +43,7 @@ vi.mock("../../../../components/graph3d/graphScene", () => ({
 }));
 
 import { GraphExplorer } from "../../../../components/graph3d/GraphExplorer";
-import { GLOSSARY_SCOPE } from "../../../../components/graph3d/graphModel";
+import { ONTOLOGY_SCOPE } from "../../../../components/graph3d/graphModel";
 
 const g: GraphData = {
   nodes: [
@@ -52,67 +53,77 @@ const g: GraphData = {
   edges: [{ id: "e", a: "term:1", b: "term:2", kind: "term_edge", label: "KIND_OF" }],
 };
 
-describe("a 3D network graph's Grid checkbox", () => {
+describe("a 3D network graph's Grid toggle", () => {
   beforeEach(() => {
     made.scenes.length = 0;
   });
 
-  it("is checked at first, turns the scene's grid off, and keeps that across reloads", async () => {
-    const view = render(
-      <GraphExplorer
-        data={g}
-        scope={GLOSSARY_SCOPE}
-        preset="ontology"
-        settingsKey={{ kind: "test", subject: null }}
-        exportName="test"
-        testId="x"
-      />,
-    );
+  const open = (subject: string | null = null, testId = "x") => (
+    <GraphExplorer
+      data={g}
+      scope={ONTOLOGY_SCOPE}
+      preset="ontology"
+      depth={2}
+      settingsKey={{ kind: "test", subject }}
+      exportName="test"
+      testId={testId}
+    />
+  );
+  const grid = () => screen.getByRole("button", { name: "Grid", hidden: true });
+
+  it("is released at first and draws no grid", async () => {
+    render(open());
     await waitFor(() => expect(made.scenes).toHaveLength(1));
-    const scene = made.scenes[0];
-    await waitFor(() => expect(scene.setGrid).toHaveBeenLastCalledWith(true));
-    const box = screen.getByRole("checkbox", { name: "Grid" });
-    expect(box).toBeChecked();
-    fireEvent.click(box);
-    await waitFor(() => expect(scene.setGrid).toHaveBeenLastCalledWith(false));
-    view.unmount();
-    render(
-      <GraphExplorer
-        data={g}
-        scope={GLOSSARY_SCOPE}
-        preset="ontology"
-        settingsKey={{ kind: "test", subject: null }}
-        exportName="test"
-        testId="x"
-      />,
-    );
-    expect(screen.getByRole("checkbox", { name: "Grid" })).not.toBeChecked();
+    await waitFor(() => expect(made.scenes[0].setGrid).toHaveBeenLastCalledWith(false));
+    expect(grid()).toHaveAttribute("aria-pressed", "false");
+  });
+
+  it("is on after a remount once turned on, and off after a remount once turned off again", async () => {
+    const first = render(open());
+    await waitFor(() => expect(made.scenes).toHaveLength(1));
+    fireEvent.click(grid());
+    await waitFor(() => expect(made.scenes[0].setGrid).toHaveBeenLastCalledWith(true));
+    first.unmount();
+    const second = render(open());
+    expect(grid()).toHaveAttribute("aria-pressed", "true");
     await waitFor(() => expect(made.scenes).toHaveLength(2));
+    await waitFor(() => expect(made.scenes[1].setGrid).toHaveBeenLastCalledWith(true));
+    fireEvent.click(grid());
     await waitFor(() => expect(made.scenes[1].setGrid).toHaveBeenLastCalledWith(false));
+    second.unmount();
+    render(open());
+    expect(grid()).toHaveAttribute("aria-pressed", "false");
+    await waitFor(() => expect(made.scenes).toHaveLength(3));
+    await waitFor(() => expect(made.scenes[2].setGrid).toHaveBeenLastCalledWith(false));
   });
 
   it("is its own per graph", () => {
     render(
       <GraphExplorer
         data={g}
-        scope={GLOSSARY_SCOPE}
+        scope={ONTOLOGY_SCOPE}
         preset="ontology"
+        depth={2}
         settingsKey={{ kind: "test", subject: null }}
         exportName="test"
         testId="x"
       />,
     );
-    fireEvent.click(screen.getByRole("checkbox", { name: "Grid" }));
+    fireEvent.click(screen.getByRole("button", { name: "Grid", hidden: true }));
     render(
       <GraphExplorer
         data={g}
-        scope={GLOSSARY_SCOPE}
+        scope={ONTOLOGY_SCOPE}
         preset="ontology"
+        depth={2}
         settingsKey={{ kind: "test", subject: "another" }}
         exportName="test"
         testId="y"
       />,
     );
-    expect(screen.getAllByRole("checkbox", { name: "Grid" })[1]).toBeChecked();
+    expect(screen.getAllByRole("button", { name: "Grid", hidden: true })[1]).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    );
   });
 });

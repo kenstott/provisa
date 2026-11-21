@@ -81,6 +81,7 @@ def _role(domain_access: list[str], *capabilities: str) -> dict:
         "description": "Test role.",
         "capabilities": list(capabilities),
         "domain_access": domain_access,
+        "acting_chain": ["r"],  # REQ-2188: as the build records it
     }
 
 
@@ -264,7 +265,8 @@ def test_an_empty_list_gets_a_match_nothing_row_filter(multi_domain):
         domain_id=META_DOMAIN_ID,
     )
     gov = build_governance_context("r", RLSContext.empty(), {}, ctx, _tables(), _role([]))
-    assert gov.rls_rules[100] == rule_of("id IN (-1)")
+    # REQ-1921: nor a withdrawn table's row, which only its domain's stewards read.
+    assert gov.rls_rules[100] == rule_of("(id IN (-1)) AND (NOT withdrawn)")
 
 
 def test_single_domain_mode_sees_every_data_table(single_domain):
@@ -359,7 +361,12 @@ def test_role_all_is_the_union_and_an_all_empty_union_is_none(multi_domain, list
     from provisa.security import meta_role
 
     roles = {
-        f"r{i}": {"id": f"r{i}", "description": "Test role.", "domain_access": lst}
+        f"r{i}": {
+            "id": f"r{i}",
+            "description": "Test role.",
+            "domain_access": lst,
+            "own_domain_access": lst,  # REQ-2153: a built role carries it
+        }
         for i, lst in enumerate(lists)
     }
     # "Role: All" acts as the set's meta-role: its domain_access is the union.
@@ -443,7 +450,8 @@ def _built_roles(monkeypatch, roles: list[dict]) -> Any:
         gql_object_cols={},
         rls_rules=[],
         metrics=[],
-        draft_tables=[],  # REQ-1921: none out of service
+        withdrawn_tables=[],
+        withdrawn_relationships=[],
     )
     return state
 
@@ -563,7 +571,8 @@ def test_the_build_itself_drops_a_stale_surface(multi_domain, monkeypatch):
         gql_object_cols={},
         rls_rules=[],
         metrics=[],
-        draft_tables=[],  # REQ-1921: none out of service
+        withdrawn_tables=[],
+        withdrawn_relationships=[],
     )
     assert appmod.state.roles["r"]["domain_access"] == []
     for surface in (state.schemas, state.contexts, state.rls_contexts, state.proto_files):

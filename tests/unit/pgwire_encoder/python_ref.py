@@ -188,14 +188,23 @@ def rows_wired_encode(
     return sink.wfile.getvalue()
 
 
-def has_row_form(schema: pa.Schema) -> bool:
+def has_row_form(batch: pa.RecordBatch) -> bool:
     """Whether a row source can hold this batch's values as column_values gives them: not a map
     (a list of (key, value) tuples, where a row source holds a dict), nor a DuckDB opaque type
-    (DuckDB's own bytes, which only its Arrow carries)."""
-    return not any(
+    (DuckDB's own bytes, which only its Arrow carries), nor a value no Python object holds (a date
+    PostgreSQL holds past year 9999 or BC, REQ-2236), which column_values cannot give."""
+    if any(
         "map<" in str(f.type) or (f.metadata or {}).get(b"ARROW:extension:name") == b"arrow.opaque"
-        for f in schema
-    )
+        for f in batch.schema
+    ):
+        return False
+    try:
+        _rows_of(batch)
+    except OverflowError:  # CPython's "date value out of range": no row source holds it
+        return False
+    except Exception:  # noqa: BLE001 -- a value column_values refuses (NaT, an unknown zone):
+        return True  # the rows form exists and must refuse it as the Arrow form does
+    return True
 
 
 def wired_encode_count(

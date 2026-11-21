@@ -27,6 +27,7 @@
           "odata": "OData",
           "sql_http": "SQL over HTTP",
           "cypher_http": "Cypher over HTTP",
+          "sparql_http": "SPARQL over HTTP",
           "pgwire": "PostgreSQL wire",
           "flight": "Arrow Flight",
           "bolt": "Bolt",
@@ -246,8 +247,8 @@
         }
       },
       "role_grant_notice_days": {
-        "label": "Notice before a role grant ends",
-        "help": "How many days before a role grant expires, or is removed for going unused, its holder and the organization's administrators are emailed."
+        "label": "Notice before a role grant or its entries end",
+        "help": "How many days before a role grant, or one entitlement entry of it, ends, or the grant is removed for going unused, its holder and the organization's administrators are emailed."
       }
     },
     "server": {
@@ -271,6 +272,10 @@
         "label": "PostgreSQL wire port",
         "help": "The port the PostgreSQL-protocol server listens on; 0 leaves it off. Restart required; guarded because it opens or closes a listener."
       },
+      "minted_pgwire_port": {
+        "label": "Minted-token PostgreSQL wire port",
+        "help": "The port a code source's sandbox may reach to read the table it was given, and the address a remote host is told. It accepts only tokens minted for one call; 0 leaves it off, and a command given a table is then refused. Restart required; guarded because it opens or closes a listener."
+      },
       "bolt_port": {
         "label": "Bolt port",
         "help": "The port the Bolt (Neo4j) server listens on; 0 leaves it off. Restart required; guarded because it opens or closes a listener."
@@ -286,6 +291,12 @@
       "node_url": {
         "label": "This node's address",
         "help": "The address clients reach this node at. A coordinator's UI lists it as a data node when the region lists none. The launcher sets it for each node; unset, the node is not listed."
+      }
+    },
+    "embedding": {
+      "hub_endpoint": {
+        "label": "Hugging Face hub address",
+        "help": "The Hugging Face hub a local embedding model is downloaded from, such as a mirror inside your network. Applies to the next model download."
       }
     },
     "tls": {
@@ -591,6 +602,14 @@
         "label": "MCP local role",
         "help": "The role local (stdio) MCP calls run as; until it is set those calls are refused. Guarded because it grants that role's access to anyone who can start the local client."
       },
+      "principal": {
+        "label": "MCP local principal",
+        "help": "The principal (user id) local (stdio) MCP calls act for, beside the local role; that person's entitlements narrow the role. Until it is set those calls are refused. Guarded because it acts with that person's access for anyone who can start the local client."
+      },
+      "tools": {
+        "label": "MCP tools listed",
+        "help": "The tools listed to an MCP client whose address names none (tools=full or tools=sip on the address). full lists every tool; sip lists the tools for finding, describing, querying and reading metrics, plus one tool that adds the other groups when the client asks. Every tool can be called in either mode, as the caller's rights allow."
+      },
       "external_url": {
         "label": "MCP external address",
         "help": "The MCP address shown to users when the deployment sits behind a proxy."
@@ -670,7 +689,7 @@
     "logs": {
       "allowed_roots": {
         "label": "Directories log files may be read from",
-        "help": "The directories a Logs source's files may be in, once their links are followed; by default /var/log. Add one, such as ~/Library/Logs, to read the server's own files under it into tables. A server of many organizations reads no log file of its own whatever this says."
+        "help": "The directories a Logs source's files may be in, once their links are followed; by default /var/log. Add one, such as ~/Library/Logs, to read the server's own files under it into tables. A sandbox organization, and on a server of many organizations every organization but the deployment's own, reads no file of the server's own outside its own folder but those its demo's sources name, whatever this says."
       },
       "preview_lines": {
         "label": "Lines read to find a log's columns",
@@ -698,7 +717,7 @@
       },
       "download_roots": {
         "label": "Directories source files may be downloaded from",
-        "help": "The directories a CSV or Parquet source's file may be downloaded from by its path on this server, once its links are followed; none by default. Add one to let a steward copy a file under it into the organization's folder. A server of many organizations copies no file of its own whatever this says."
+        "help": "The directories a CSV or Parquet source's file may be downloaded from by its path on this server, once its links are followed; none by default. Add one to let a steward copy a file under it into the organization's folder. A sandbox organization, and on a server of many organizations every organization but the deployment's own, copies no file of the server's own outside its own folder but those its demo's sources name, whatever this says."
       }
     },
     "polly": {
@@ -820,6 +839,14 @@
       "duckdb_threads": {
         "label": "Code source DuckDB threads",
         "help": "The threads a code source's DuckDB answers its statements on."
+      },
+      "health_poll_interval": {
+        "label": "Connector health poll interval",
+        "help": "How often each Provisa process asks a connector's host for its health, and shows the result on the source. A host that restarted is noticed on the next poll, which runs its on-start function again."
+      },
+      "worker_idle_timeout": {
+        "label": "Code worker idle timeout",
+        "help": "How long a code source's worker, or an organization's preflight worker, may go unused before Provisa ends its process. The next call starts a new one."
       }
     },
     "config": {
@@ -850,6 +877,24 @@
       "default_ttl": {
         "label": "Default materialized view lifetime",
         "help": "How long a materialized view is used before it is refreshed, when it sets no lifetime of its own. Restart required."
+      }
+    },
+    "parameters": {
+      "max_calls_per_statement": {
+        "label": "Calls per statement to a parameterized table",
+        "help": "The most calls one statement makes to one parameterized table. Each value a statement gives a parameter is one call to the source: each value of an IN list, each branch of an OR, each distinct key of a join. A statement that needs more is refused."
+      }
+    },
+    "subscriptions": {
+      "max_sinks_per_principal": {
+        "label": "Running Kafka sinks per person",
+        "help": "How many Kafka sinks one person may have running at once. A request to start another is refused until one of theirs stops."
+      }
+    },
+    "sparql": {
+      "query_timeout": {
+        "label": "SPARQL query timeout",
+        "help": "How long one SPARQL query may run before it is given up: a preview, a Wikidata class lookup, and each replica load of a SPARQL table. A public endpoint may stop a query sooner by its own limit (Wikidata's is 60 seconds)."
       }
     }
   }

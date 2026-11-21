@@ -19,6 +19,9 @@
     "linked": "該欄位現在表示 {{term}}。",
     "keyColumn": "該欄位保留其類術語：鍵欄位的含義就是它的類術語。",
     "markedPii": "已標記為 PII。",
-    "maskOffered": "建議的遮罩：{{mask}}。請在該欄位的遮罩中加入。"
+    "maskOffered": "建議的遮罩：{{mask}}。請在該欄位的遮罩中加入。",
+    "tooFewTitle": "值太少，無法分類",
+    "tooFewNote": "這些欄在執行樣本中的值太少，無法判斷其內容。這與不符合任何類型不同。",
+    "tooFew": "{{column}}：樣本中有 {{count}} 個值，太少，無法分類。"
   }
 }

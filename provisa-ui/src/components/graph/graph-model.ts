@@ -87,6 +87,30 @@ export function labelColor(label: string): string {
   return PALETTE[h % PALETTE.length];
 }
 
+function luminance(hex: string): number {
+  const c = hex.replace("#", "");
+  const full = c.length === 3 ? [...c].map((x) => x + x).join("") : c;
+  const lin = [0, 2, 4].map((i) => {
+    const v = parseInt(full.slice(i, i + 2), 16) / 255;
+    return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+  });
+  return 0.2126 * lin[0] + 0.7152 * lin[1] + 0.0722 * lin[2];
+}
+
+/** WCAG contrast ratio of two hex colours. */
+export function contrastRatio(a: string, b: string): number {
+  const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x);
+  return (hi + 0.05) / (lo + 0.05);
+}
+
+/**
+ * The text colour a label-coloured pill draws: white or black, whichever contrasts more with the
+ * ground. One rule for every label colour, the same in either theme.
+ */
+export function labelTextColor(background: string): "#fff" | "#000" {
+  return contrastRatio(background, "#fff") >= contrastRatio(background, "#000") ? "#fff" : "#000";
+}
+
 export function darkenColor(hex: string, factor = 0.5): string {
   const c = hex.replace("#", "");
   const r = parseInt(c.slice(0, 2), 16);
@@ -393,7 +417,8 @@ export type SparqlForm = "graph" | "rows" | "boolean";
 export interface FrameData {
   id: string;
   query: string;
-  status: "loading" | "done" | "error";
+  /** "stopped": the viewer stopped its request before an answer came; nothing it held is shown. */
+  status: "loading" | "done" | "error" | "stopped";
   nodes: Map<string, GNode>;
   edges: Map<string, GEdge>;
   rows: Record<string, unknown>[];

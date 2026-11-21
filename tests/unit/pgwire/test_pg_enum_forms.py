@@ -121,12 +121,17 @@ def _duckdb_table(sql: str, held: list[str]) -> list[str | None]:
 
 def _clickhouse_table(sql: str, held: list[str]) -> list[str | None]:
     columns = ", ".join(f"c{i} Nullable(String)" for i in range(len(held)))
+    # chdb's in-memory engine is one per process and lasts while any session on it is open, so
+    # the database is this call's own and dropped here: closing the session does not remove it.
     with Session() as engine:
-        engine.query("CREATE DATABASE IF NOT EXISTS d ENGINE = Memory")
-        engine.query(f"CREATE TABLE d.t ({columns}) ENGINE = Memory")
-        engine.query(f"INSERT INTO d.t VALUES ({', '.join(held)})")
-        written = transpile(with_source_enums(sql, ENUMS, _native), "clickhouse")
-        cells = engine.query(written.replace(" FROM t", " FROM d.t"), "TabSeparated").bytes()
+        engine.query("CREATE DATABASE d ENGINE = Memory")
+        try:
+            engine.query(f"CREATE TABLE d.t ({columns}) ENGINE = Memory")
+            engine.query(f"INSERT INTO d.t VALUES ({', '.join(held)})")
+            written = transpile(with_source_enums(sql, ENUMS, _native), "clickhouse")
+            cells = engine.query(written.replace(" FROM t", " FROM d.t"), "TabSeparated").bytes()
+        finally:
+            engine.query("DROP DATABASE d")
     return [None if line == "\\N" else _array(line) for line in cells.decode().splitlines()]
 
 

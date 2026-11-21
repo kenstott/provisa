@@ -167,6 +167,32 @@ async def test_a_small_read_at_ttl_0_is_inlined_with_no_write(monkeypatch, engin
 
 
 @pytest.mark.asyncio
+async def test_an_empty_read_at_ttl_0_is_inlined_typed_as_its_source_declares(
+    monkeypatch, engine_cache
+):
+    """A live read with no rows (a search before its collection is loaded) is inlined as its
+    columns, each typed as its table declares: a view's store table is created from the engine's
+    probe of these columns, and an untyped NULL is DuckDB 2.0's NULL type, which lands as text
+    (``avg(VARCHAR)``) -- 1.4 called it INTEGER, which cut every score to a whole number."""
+    import duckdb
+    import sqlglot
+
+    from provisa.cache.values_cte import build_values_ctes_sql
+
+    _threshold(monkeypatch, 10)
+    read = SimpleNamespace(rows=[], columns=[("id", "bigint"), ("score", "double")])
+
+    async def answer():
+        return read
+
+    inline: dict = {}
+    await _land({**_TABLE, "cache_ttl": 0}, _state(), answer, {}, inline)
+    sql = build_values_ctes_sql('SELECT "id", "score" FROM movie_hits', inline)
+    probe = duckdb.connect().execute(sqlglot.transpile(sql, read="postgres", write="duckdb")[0])
+    assert [(d[0], str(d[1])) for d in probe.description] == [("id", "BIGINT"), ("score", "DOUBLE")]
+
+
+@pytest.mark.asyncio
 async def test_a_large_read_at_ttl_0_lands_in_a_scratch_table_of_the_statement(
     monkeypatch, engine_cache
 ):

@@ -6,7 +6,10 @@ name: Integration suite lanes
 #
 # Lanes are scripts/test-all's (scripts/ci/run_lane.py holds them): each groups the tests whose
 # session-provisioned services fit one Docker host together. The two largest lanes are cut into
-# file shards so each job fits a runner. One test session per runner, so the harness's stack slot
+# file shards so each job fits a runner: core's from each file's measured time
+# (scripts/ci/lane_file_seconds.json; run_lane.py plans them, lane_durations.py folds a run's junit
+# back in), so no shard holds more than 30 minutes of tests, and core_long runs the core files
+# that alone hold more. One test session per runner, so the harness's stack slot
 # (acquire_stack_slot) always admits it; the first step of every job prints the slot count.
 #
 # The salesforce lane uses a live Salesforce org with a daily API allowance: it runs only when a
@@ -287,9 +290,30 @@ jobs:
 
   # Every lane of the matrix is the one lane workflow (lane.yml), called with what a container-suite
   # lane needs.
+  # Maven Central is asked for the pinned Trino plugin jars once per pin, here: each job that
+  # mounts them needs this one and restores its cache (.github/actions/trino-plugins), so
+  # parallel jobs never fetch at once (release 510: HTTP 429 mid-collection, run 44081179966).
+  # The zaychik image the core services start is built here too, once per change to zaychik/, and
+  # every lane loads it (.github/actions/zaychik-image): a lane that built it asked Maven Central
+  # for its Maven plugins and the kafka lane's lookup failed (run 44379779451).
+  trino-plugins:
+    name: Trino plugins
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+      - uses: ./.github/actions/trino-plugins
+        with:
+          phase: prime
+      - uses: ./.github/actions/zaychik-image
+        with:
+          phase: prime
+
   suite:
     name: ${{ matrix.lane }}${{ matrix.shard && format(' {0}', matrix.shard) || '' }}
-    needs: plan
+    needs: [plan, trino-plugins]
     if: github.event_name != 'schedule' && needs.plan.outputs.suite == 'true'
     strategy:
       fail-fast: false
@@ -309,6 +333,9 @@ jobs:
       # with Maven against the server it starts; the driver is built for Java 21.
       java: ${{ matrix.lane == 'core' }}
       trino-plugins: true
+      zaychik-image: true
+      # tests/integration/test_master_key_survives_recreate_compose.py builds the app image.
+      pyodide-downloads: true
       image-cache: true
       splunk-cim-cache: true
       env: |
@@ -318,6 +345,9 @@ jobs:
         PROVISA_LANE_TESTS=${{ inputs.tests }}
       # The lane's name: the vector lane also installs the vector extra (REQ-2016).
       prepare: scripts/ci/lanes/suite-prepare.sh ${{ matrix.lane }}
+      # The session's live server (tests/conftest.py provisa_server) logs here, not to the lane's
+      # results: a test it answers with a 5xx is explained only by this file.
+      failure-logs: .pytest_cache/provisa_server.log
       run: >-
         uv run python scripts/ci/run_lane.py ${{ matrix.lane }}
         ${{ matrix.shard && format('--shard {0}', matrix.shard) || '' }}
@@ -336,7 +366,7 @@ jobs:
 
   cluster:
     name: cluster (helm on minikube)
-    needs: plan
+    needs: [plan, trino-plugins]
     if: github.event_name != 'schedule' && needs.plan.outputs.cluster == 'true'
     runs-on: ubuntu-latest
     # Past tests/e2e/test_helm_minikube.py's per-test bound (CLUSTER_TEST_BOUND_S, the sum of its
@@ -359,19 +389,24 @@ jobs:
         with:
           phase: restore
 
+      - name: Restore the zaychik image
+        uses: ./.github/actions/zaychik-image
+        with:
+          phase: restore
+
+      # The image the test builds takes Pyodide from this directory (tests/pyodide_downloads.py).
+      - name: Pyodide downloads
+        uses: ./.github/actions/pyodide-downloads
+
       - name: Install minikube and helm
         run: |
           curl -fsSLo minikube https://storage.googleapis.com/minikube/releases/latest/minikube-linux-amd64
           sudo install minikube /usr/local/bin/minikube
           curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
 
-      - name: Build the zaychik image the chart deploys
-        # core.yml interpolates the store credentials even to build: the test instance's.
-        run: |
-          set -a
-          eval "$(bash scripts/ci/test-store-env.sh)"
-          set +a
-          docker compose -f docker-compose.core.yml build zaychik && docker tag zaychik:latest provisa-zaychik:latest
+      # The chart deploys provisa-zaychik:latest: the zaychik image restored above, under that name.
+      - name: Tag the zaychik image the chart deploys
+        run: docker tag zaychik:latest provisa-zaychik:latest
 
       # tests/e2e/test_helm_minikube.py builds provisa:latest, starts a minikube profile of its own
       # under a kubeconfig of its own, installs the chart with auth.provider=local, and deletes the
@@ -380,12 +415,6 @@ jobs:
         run: |
           uv run python scripts/ci/run_lane.py cluster --junitxml results/cluster/junit.xml
 
-      - name: Cache Trino plugins
-        if: always()
-        uses: ./.github/actions/trino-plugins
-        with:
-          phase: save
-          cache-hit: ${{ steps.trino-plugins.outputs.cache-hit }}
 
       - name: Upload results
         if: always()
@@ -397,7 +426,7 @@ jobs:
 
   warehouse:
     name: warehouse (live cloud warehouses)
-    needs: plan
+    needs: [plan, trino-plugins]
     if: (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.include_warehouse)) && needs.plan.outputs.warehouse == 'true'
     # REQ-254: one run at a time on the live compute every run shares (the Databricks SQL
     # warehouse, the Snowflake warehouse, the Fabric capacity). This job wakes them and stops them
@@ -428,7 +457,6 @@ jobs:
       BIGQUERY_LOCATION: ${{ secrets.BIGQUERY_LOCATION }}
       BIGQUERY_TEST_GCS_BUCKET: ${{ secrets.BIGQUERY_TEST_GCS_BUCKET }}
       GSHEETS_TEST_SHEET_ID: ${{ secrets.GSHEETS_TEST_SHEET_ID }}
-      PROVISA_E2E_PURVIEW_ENDPOINT: ${{ secrets.PROVISA_E2E_PURVIEW_ENDPOINT }}
       PROVISA_E2E_DATAZONE_AWS_ACCESS_KEY_ID: ${{ secrets.PROVISA_E2E_DATAZONE_AWS_ACCESS_KEY_ID }}
       PROVISA_E2E_DATAZONE_AWS_SECRET_ACCESS_KEY: ${{ secrets.PROVISA_E2E_DATAZONE_AWS_SECRET_ACCESS_KEY }}
       PROVISA_E2E_DATAZONE_DOMAIN_ID: ${{ secrets.PROVISA_E2E_DATAZONE_DOMAIN_ID }}
@@ -480,11 +508,6 @@ jobs:
       CLOUDOPS_AWS_REGION: ${{ secrets.CLOUDOPS_AWS_REGION }}
       CLOUDOPS_AWS_ROLE_ARN: ""
       CLOUDOPS_GCP_PROJECT_IDS: ${{ secrets.CLOUDOPS_GCP_PROJECT_IDS }}
-      # The standing Synapse workspace the lane pins: a workspace the CI principal creates never
-      # admits it (tests/integration/synapse_provision.py says why, and its one-time setup).
-      SYNAPSE_SQL_SERVER: ${{ secrets.SYNAPSE_SQL_SERVER }}
-      SYNAPSE_DATABASE: ${{ secrets.SYNAPSE_DATABASE }}
-      SYNAPSE_ADLS_URL: ${{ secrets.SYNAPSE_ADLS_URL }}
       # The Google Sheets read reaches the live sheet only when asked to.
       PROVISA_GSHEETS_LIVE: "1"
       # Where a demo test writes the real answers its card is shot from (the agriculture
@@ -510,6 +533,11 @@ jobs:
       - name: Restore Trino plugins
         id: trino-plugins
         uses: ./.github/actions/trino-plugins
+        with:
+          phase: restore
+
+      - name: Restore the zaychik image
+        uses: ./.github/actions/zaychik-image
         with:
           phase: restore
 
@@ -581,22 +609,33 @@ jobs:
         run: az login --service-principal -u "$AZURE_CLIENT_ID" -p "$AZURE_CLIENT_SECRET" --tenant "$AZURE_TENANT_ID" --output none
 
       - name: Stack slots on this runner
-        run: bash scripts/ci/lanes/suite-prepare.sh
+        run: bash scripts/ci/lanes/suite-prepare.sh warehouse
+
+      # Maintainer 2026-11-10 ("Paid cloud resources"): the Fabric capacity is this run's own,
+      # created and tagged with the run, the lane's workspace assigned to it
+      # (tests/integration/fabric_capacity.py create_run_capacity). Maintainer 2026-11-11 ("skip
+      # fabric tests for now"): no lane selects a requires_fabric test (scripts/ci/run_lane.py), so
+      # this step never runs: assignToCapacity returns 403 until the CI service principal holds the
+      # Admin role on the Fabric workspace (run 42930869189). To lift: grant that role, drop
+      # "and not requires_fabric" from the warehouse lane, and restore the condition (git show 6838117e17).
+      - name: This run's Fabric capacity
+        id: fabric-capacity
+        if: false
+        run: uv run python scripts/fabric_e2e.py up
 
       - name: Run lane
         run: uv run python scripts/ci/run_lane.py warehouse --junitxml results/warehouse/junit.xml
 
-      # REQ-254: no run leaves the Fabric capacity (billable compute) running. Each Fabric test
-      # pauses what it resumed in its own teardown, which does not run when the lane dies or the
-      # job is cut short (timeout, cancel). Its state is READ here: paused is done, Active is
-      # suspended, a transition is waited out; only a capacity that does not end paused fails the
-      # step, and it says so. The same as the core UI lane's (scripts/ci/lanes/ui-core-after.sh).
-      - name: Leave the Fabric capacity paused
-        if: always()
+      # REQ-254 and maintainer 2026-11-10: this run's Fabric capacity is deleted whatever
+      # happened -- also when the lane died or the job was cut short -- the workspace unassigned
+      # first, and the capacity read back gone; one still there fails the step, and says so.
+      # It runs whenever the step that creates the capacity ran (whatever its outcome), and not
+      # when that step was skipped: then there is no capacity.
+      - name: Delete this run's Fabric capacity
+        if: always() && contains(fromJSON('["success", "failure", "cancelled"]'), steps.fabric-capacity.outcome)
         run: |
-          uv run python -c \
-            "from tests.integration.fabric_capacity import ensure_capacity_paused as p; print('the Fabric capacity is', p())" \
-            || { echo "::error::the Fabric capacity could not be confirmed paused: check it, it may be billing"; exit 1; }
+          uv run python scripts/fabric_e2e.py down \
+            || { echo "::error::this run's Fabric capacity could not be confirmed deleted: check it, it may be billing"; exit 1; }
 
       # The Databricks SQL warehouse and the Snowflake warehouse, likewise: each test stops what it
       # started (tests/integration/databricks_warehouse.py, snowflake_warehouse.py), which does not
@@ -618,12 +657,6 @@ jobs:
             "import os; from tests.integration.snowflake_warehouse import suspend_warehouse as s; print('the Snowflake warehouse is', s(os.environ['SNOWFLAKE_WAREHOUSE']))" \
             || { echo "::error::the Snowflake warehouse could not be confirmed suspended: check it, it may be billing"; exit 1; }
 
-      - name: Cache Trino plugins
-        if: always()
-        uses: ./.github/actions/trino-plugins
-        with:
-          phase: save
-          cache-hit: ${{ steps.trino-plugins.outputs.cache-hit }}
 
       - name: Upload results
         if: always()
@@ -640,7 +673,7 @@ jobs:
   # targeted run (inputs.tests names pytest tests) leaves them out.
   # It holds the live-cloud-warehouses group with the warehouse job: both wake and stop the same
   # shared compute, so one waits for the other and neither cancels the other. Its after-script
-  # (ui-core-after.sh) leaves the Fabric capacity paused, the Databricks warehouse stopped and
+  # (ui-core-after.sh) deletes this run's Fabric capacity, leaves the Databricks warehouse stopped and
   # the Snowflake warehouse suspended, whatever happened.
   warehouse-ui:
     name: warehouse UI (live cloud warehouses, Playwright)
@@ -661,10 +694,16 @@ jobs:
       python-extras: dev cassandra saphana gx soda
       ui: chromium
       ui-timeout: 12
+      # One worker, a backend and a browser, on the 4-vCPU runner, as each ui-e2e-core.yml shard
+      # runs: two held a core runner at a load of about 10 (run 43995449668's sampler), several
+      # times slower than the specs' bounds allow. Not sharded: its seven specs took 18.3 min at two
+      # workers (run 44112453390), inside the 50-minute global timeout at one; and two shards would
+      # each hold the live-cloud-warehouses group, and each one's after-script would stop the
+      # warehouses the other was still using.
       env: |
         CI=true
         PROVISA_E2E_LANE=core
-        PROVISA_E2E_WORKERS=2
+        PROVISA_E2E_WORKERS=1
       working-directory: provisa-ui
       # Playwright stops itself after 50 minutes, inside the job's bound, so it still writes its
       # reports.
@@ -693,6 +732,7 @@ jobs:
       FABRIC_DATABASE: ${{ secrets.FABRIC_DATABASE }}
       FABRIC_RESOURCE_GROUP: ${{ secrets.FABRIC_RESOURCE_GROUP }}
       FABRIC_CAPACITY_NAME: ${{ secrets.FABRIC_CAPACITY_NAME }}
+      FABRIC_WORKSPACE_ID: ${{ secrets.FABRIC_WORKSPACE_ID }}
       AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
       AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
       AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
@@ -703,7 +743,7 @@ jobs:
   # on the org, so a rerun within the cache's day costs the test's statements and no describe.
   salesforce:
     name: salesforce (live org)
-    needs: plan
+    needs: [plan, trino-plugins]
     if: (github.event_name == 'workflow_dispatch' && inputs.include_salesforce) && needs.plan.outputs.salesforce == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 90
@@ -731,6 +771,11 @@ jobs:
       - name: Restore Trino plugins
         id: trino-plugins
         uses: ./.github/actions/trino-plugins
+        with:
+          phase: restore
+
+      - name: Restore the zaychik image
+        uses: ./.github/actions/zaychik-image
         with:
           phase: restore
 
@@ -780,12 +825,6 @@ jobs:
           path: *salesforce-describe
           key: salesforce-describe-${{ steps.org.outputs.digest }}-${{ github.run_id }}
 
-      - name: Cache Trino plugins
-        if: always()
-        uses: ./.github/actions/trino-plugins
-        with:
-          phase: save
-          cache-hit: ${{ steps.trino-plugins.outputs.cache-hit }}
 
       - name: Upload results
         if: always()
@@ -799,7 +838,7 @@ jobs:
   # makes its own Glue database and S3 prefix and removes them.
   athena:
     name: athena (live account)
-    needs: plan
+    needs: [plan, trino-plugins]
     if: (github.event_name == 'workflow_dispatch' && inputs.include_athena) && needs.plan.outputs.athena == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 60
@@ -826,6 +865,11 @@ jobs:
         with:
           phase: restore
 
+      - name: Restore the zaychik image
+        uses: ./.github/actions/zaychik-image
+        with:
+          phase: restore
+
       # A missing credential fails the lane by name rather than surfacing as a skipped test.
       - name: Credentials present
         run: |
@@ -845,12 +889,6 @@ jobs:
       - name: Run lane
         run: uv run python scripts/ci/run_lane.py athena --junitxml results/athena/junit.xml
 
-      - name: Cache Trino plugins
-        if: always()
-        uses: ./.github/actions/trino-plugins
-        with:
-          phase: save
-          cache-hit: ${{ steps.trino-plugins.outputs.cache-hit }}
 
       - name: Upload results
         if: always()
@@ -864,7 +902,7 @@ jobs:
   # The live ServiceNow instance (REQ-1954): a dispatch asks for it, as for the Salesforce org.
   servicenow:
     name: servicenow (live instance)
-    needs: plan
+    needs: [plan, trino-plugins]
     if: (github.event_name == 'workflow_dispatch' && inputs.include_servicenow) && needs.plan.outputs.servicenow == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 90
@@ -890,6 +928,11 @@ jobs:
       - name: Restore Trino plugins
         id: trino-plugins
         uses: ./.github/actions/trino-plugins
+        with:
+          phase: restore
+
+      - name: Restore the zaychik image
+        uses: ./.github/actions/zaychik-image
         with:
           phase: restore
 
@@ -933,12 +976,6 @@ jobs:
       - name: Run lane
         run: uv run python scripts/ci/run_lane.py servicenow --junitxml results/servicenow/junit.xml
 
-      - name: Cache Trino plugins
-        if: always()
-        uses: ./.github/actions/trino-plugins
-        with:
-          phase: save
-          cache-hit: ${{ steps.trino-plugins.outputs.cache-hit }}
 
       - name: Upload results
         if: always()
@@ -950,7 +987,7 @@ jobs:
 
   report:
     name: results by lane
-    needs: [plan, suite, cluster, warehouse, salesforce, athena, servicenow]
+    needs: [plan, trino-plugins, suite, cluster, warehouse, salesforce, athena, servicenow]
     if: always()
     runs-on: ubuntu-latest
     steps:

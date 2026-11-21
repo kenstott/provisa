@@ -1,6 +1,6 @@
 {
   "mcpServerTab": {
-    "intro": "De Model Context Protocol (MCP)-server stelt governed catalogusdetectie en SQL-uitvoering beschikbaar aan externe AI-agents. Elke aanroep wordt gegoverned door de rol van de aanroeper — de server valt nooit terug op admin.",
+    "intro": "De Model Context Protocol-server (MCP) stelt beheerde catalogusverkenning en SQL-uitvoering beschikbaar aan externe AI-agents. Elke aanroep wordt bepaald door de rol van de aanroeper, en de server valt nooit terug op admin.",
     "loading": "Laden…",
     "statusLabel": "Status",
     "statusEnabled": "Ingeschakeld",
@@ -8,9 +8,11 @@
     "endpointLabel": "Endpoint",
     "transportLabel": "Transport",
     "stdioRoleLabel": "Gebonden stdio-rol",
-    "stdioRoleNone": "niet ingesteld — stdio-aanroepen vereisen <code>{{envVar}}</code>",
+    "stdioRoleNone": "niet ingesteld; stdio-aanroepen vereisen <code>{{envVar}}</code>",
+    "principalLabel": "Lokale principal",
+    "principalNone": "niet ingesteld — lokale aanroepen worden geweigerd totdat <code>{{envVar}}</code> er een noemt",
     "maxRowsLabel": "Rijenlimiet (run_sql)",
-    "enableHint": "De MCP-server is opt-in. Stel de omgevingsvariabele <code>{{enableEnvVar}}</code> in op een poort en start de service opnieuw om deze in te schakelen. Stel voor het lokale stdio-transport ook <code>{{roleEnvVar}}</code> in op een provisa-rol.",
+    "enableHint": "De MCP-server is opt-in. Stel de omgevingsvariabele <code>{{enableEnvVar}}</code> in op een poort en start de service opnieuw om deze in te schakelen. Stel voor het lokale stdio-transport ook <code>{{roleEnvVar}}</code> in op een provisa-rol en <code>{{principalEnvVar}}</code> op de principal (gebruikers-id) namens wie deze aanroepen handelen.",
     "toolsHeading": "Beschikbare tools",
     "colTool": "Tool",
     "colDescription": "Beschrijving"

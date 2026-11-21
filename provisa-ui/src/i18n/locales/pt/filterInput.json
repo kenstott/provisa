@@ -1,6 +1,7 @@
 {
   "filterInput": {
     "filter": "Filtrar",
-    "clear": "Limpar"
+    "clear": "Limpar",
+    "syntaxHint": "Usa a sintaxe de pesquisa do Google: cada palavra deve corresponder; digite or (a palavra inglesa, como está) entre alternativas; -palavra exclui; as \"aspas\" mantêm uma frase junta."
   }
 }

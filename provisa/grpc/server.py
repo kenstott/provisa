@@ -29,7 +29,6 @@ import functools
 import importlib.util
 import json
 import logging
-import re
 import sys
 from decimal import Decimal
 
@@ -202,11 +201,6 @@ def _status_for_exception(exc: BaseException) -> grpc.StatusCode:
     if isinstance(exc, ValueError):
         return grpc.StatusCode.INVALID_ARGUMENT
     return grpc.StatusCode.INTERNAL
-
-
-def _pascal_to_snake(name: str) -> str:
-    """Convert PascalCase to snake_case: CustomerSegments -> customer_segments."""
-    return re.sub(r"(?<=[a-z0-9])([A-Z])", r"_\1", name).lower()
 
 
 def _load_module(path: str, name: str):
@@ -616,13 +610,8 @@ class ProvisaServicer:  # REQ-045, REQ-143
             )
         if name.startswith("Query"):
             type_name = name[len("Query") :]
-            # Convert PascalCase type name to snake_case field name
-            field_name = _pascal_to_snake(type_name)
             return self._streaming_rpc(
-                name,
-                lambda request, context: self._handle_query(
-                    request, context, type_name, field_name
-                ),
+                name, lambda request, context: self._handle_query(request, context, type_name)
             )
         if name.startswith("Insert"):
             type_name = name[len("Insert") :]
@@ -920,7 +909,7 @@ class ProvisaServicer:  # REQ-045, REQ-143
         """Stub handler for insert RPCs."""
         await context.abort(grpc.StatusCode.UNIMPLEMENTED, f"Insert{type_name} not yet implemented")
 
-    async def _handle_query(self, request, context, type_name: str, field_name: str):
+    async def _handle_query(self, request, context, type_name: str):
         """Lower a proto query request to GraphQL text and compile it as every GraphQL-shaped
         surface does (``query_ir.grpc_table_to_graphql``), then run the compiled statement through
         the shared governance → routing → physical pipeline. gRPC composes no SQL of its own.
@@ -1009,6 +998,7 @@ class ProvisaServicer:  # REQ-045, REQ-143
             FilterError,
             ParameterError,
             ReadMaskError,
+            check_relation_fields,
             grpc_table_to_graphql,
             resolve_read_mask,
         )
@@ -1048,6 +1038,8 @@ class ProvisaServicer:  # REQ-045, REQ-143
         # name before anything is governed or run.
         try:
             read_mask = resolve_read_mask(ctx, type_name, list(request.read_mask.paths))
+            if read_mask is not None:
+                check_relation_fields(descriptor, read_mask, type_name)  # REQ-1929
             lowered = grpc_table_to_graphql(
                 ctx,
                 surface.schema,
@@ -1101,6 +1093,11 @@ class ProvisaServicer:  # REQ-045, REQ-143
             # streamed, and the handle rides the trailing metadata.
             delivered = await _execute_plan(plan, state)
             self._emit_trailing_metadata(context, plan.warnings, redirect=delivered.redirect)
+            return
+
+        if read_mask is not None and read_mask.relations:
+            async for m in self._nested_rows(context, plan, compiled, msg_cls, read_mask, batch):
+                yield m
             return
 
         restrictions = read_mask.restrictions if read_mask is not None else None
@@ -1366,6 +1363,56 @@ class ProvisaServicer:  # REQ-045, REQ-143
         except Exception as exc:
             # A value the encoder refuses (J502b) is the client's INVALID_ARGUMENT, as on the
             # streamed routes, not an opaque UNKNOWN.
+            await context.abort(_status_for_exception(exc), str(exc))
+
+    async def _nested_rows(self, context, plan, compiled, msg_cls, read_mask, batch):
+        """A row read whose read mask names relations (REQ-1929): each row with its relations
+        nested, as the GraphQL it lowered to answers it. The compiled statement's result is put
+        into that GraphQL field's rows by the encoder every GraphQL answer takes (a to-one an
+        object, a to-many a list), keyed by proto field (the lowering's aliases); each JSON
+        sub-path selection is applied; and the encoder writes each row as a ``{Type}`` message,
+        a relation field from its object or one message per object of its list — or, for
+        Query{Type}Batch (``batch``), ``{Type}Batch`` messages of ``batch_rows`` rows each."""
+        from provisa._encoders import grpc as grpc_encoder
+        from provisa.executor.json_encoders import graphql_field, result_batches
+        from provisa.executor.serialize import to_one_truncated
+        from provisa.pgwire._pipeline import _execute_plan, cached_result
+
+        state = self._state
+        if plan.cache_hit is not None:
+            result = await cached_result(plan, state)
+        else:
+            result = await _execute_plan(plan, state)
+        try:
+            answer = graphql_field(result_batches(result), compiled.columns)
+            rows = [read_mask.restrict_row(row) for row in json.loads(answer.body)]
+        except Exception as exc:
+            await context.abort(_status_for_exception(exc), str(exc))
+            return
+        # A to-one that matched several rows for one parent answers the first, and says so, as
+        # the GraphQL answer does.
+        warnings = [*plan.warnings, *(to_one_truncated(p) for p in answer.truncated)]
+        self._emit_trailing_metadata(context, warnings)  # REQ-1137
+        service = _encoder_service(msg_cls.DESCRIPTOR.file)
+        try:
+            if batch is None:
+                for m in grpc_encoder.encode_messages(
+                    service, msg_cls.DESCRIPTOR.full_name, json.dumps(rows)
+                ):
+                    yield m
+                return
+            batch_cls, batch_rows = batch
+            rows_field = batch_cls.DESCRIPTOR.fields_by_name["rows"].number
+            for at in range(0, len(rows), batch_rows):
+                # A {Type}Batch is its repeated rows field and nothing else.
+                yield grpc_encoder.encode_nodes(
+                    service,
+                    msg_cls.DESCRIPTOR.full_name,
+                    rows_field,
+                    json.dumps(rows[at : at + batch_rows]),
+                )
+        except Exception as exc:
+            # A value the encoder refuses is the client's INVALID_ARGUMENT, as on every route.
             await context.abort(_status_for_exception(exc), str(exc))
 
     # --- REQ-1359: aggregate / group-by protocol parity -----------------------------------------

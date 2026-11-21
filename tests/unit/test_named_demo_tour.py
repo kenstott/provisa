@@ -29,6 +29,8 @@ _TARGETS = (
     "source",
     "table",
     "relationship",
+    "region",
+    "purposes",
     "trigger",
     "example",
     "sql",
@@ -54,6 +56,7 @@ _TARGETS = (
     "find_terms",
     "scan",
     "library",
+    "report",
 )
 # What a step runs that a role may stand beside: the role is picked as the step opens (demoTour.ts).
 _RUN_AS_ITS_ROLE = {"example", "sql", "mcp"}
@@ -89,6 +92,19 @@ _COLUMN_TABS = set(
         ).group(1),
     )
 ) | {"testing"}
+# The fields of a table's Identity section a step may open on (the read view anchors each one).
+_IDENTITY_FIELDS = set(
+    re.findall(r'testId: "table-identity-([a-z]+)"', (_UI / "TableSectionsRead.tsx").read_text())
+)
+# REQ-1922: the pages that list a platform region (its row, or Federation's tab for it), and those
+# that show the legend of region purposes under that list (demoTour.ts).
+_REGION_PAGES = {
+    "/admin/platform",
+    "/admin/regions",
+    "/admin/federation-engine",
+    "/admin/org-engine",
+}
+_PURPOSES_PAGES = {"/admin/platform", "/admin/regions"}
 # The graphs of View Profile Runs a step may show (ProfileRunsModal's 3D views).
 _PROFILE_GRAPHS = set(
     re.findall(
@@ -99,8 +115,8 @@ _PROFILE_GRAPHS = set(
     )
 )
 # REQ-2201: the page the glossary's Find terms opens on, and the Reference library page.
-_GLOSSARY_PAGE = "/admin/ontology"
-_LIBRARY_PAGE = "/admin/reference-library"
+_GLOSSARY_PAGE = "/context/ontology"
+_LIBRARY_PAGE = "/context/documents"
 # The page each surface's step runs on.
 _SURFACE_PAGES = {"api": "/openapi", "jsonapi": "/jsonapi", "grpc": "/grpc", "cypher": "/graph"}
 
@@ -246,7 +262,7 @@ def _check_steps(home: Path, steps: list[dict]) -> None:
     from provisa.api.demo_templates import demo_scans
 
     scanned = set(demo_scans(home))
-    terms = {t["name"] for t in config.get("glossary_terms", [])}
+    terms = {t["name"].strip().lower() for t in config.get("glossary_terms", [])}  # as stored
     products = {p["id"] for p in config.get("data_products", [])}
     tables = {f"{t['source_id']}.{config_table_name(t)}" for t in config["tables"]}
     profiled = {
@@ -310,7 +326,18 @@ def _check_steps(home: Path, steps: list[dict]) -> None:
             assert "table" in step and page == "/tables", f"{step['key']}: open is a table's panel"
             section, _, tab = step["open"].partition(".")
             assert section in _TABLE_PANELS, f"{step['key']}: no anchored section {section!r}"
-            assert not tab or tab in _COLUMN_TABS, f"{step['key']}: no column tab {tab!r}"
+            if section == "identity":
+                assert not tab or tab in _IDENTITY_FIELDS, f"{step['key']}: no field {tab!r}"
+            else:
+                assert not tab or tab in _COLUMN_TABS, f"{step['key']}: no column tab {tab!r}"
+        if "region" in step:
+            # A region the demo's platform declares, on a page that lists regions.
+            declared = {r["id"] for r in (config.get("platform") or {}).get("regions") or []}
+            assert step["region"] in declared, f"{step['key']}: no platform region"
+            assert page in _REGION_PAGES, f"{step['key']}: a region shows on a regions page"
+        if "purposes" in step:
+            assert step["purposes"] is True, step
+            assert page in _PURPOSES_PAGES, f"{step['key']}: the legend is on a regions page"
         if "graph" in step:
             # One graph of a profiler member's latest run, in View Profile Runs, which the read
             # view offers in the table's quality section; the step's caption says what the tour
@@ -318,6 +345,14 @@ def _check_steps(home: Path, steps: list[dict]) -> None:
             assert step.get("open") == "quality", f"{step['key']}: a graph opens from quality"
             assert step["graph"] in _PROFILE_GRAPHS, f"{step['key']}: no graph {step['graph']!r}"
             assert step["table"] in profiled, f"{step['key']}: {step['table']} has no profiler"
+        if "report" in step:
+            # A seeded report, opened on the Reports page from its deep link (demoTour.ts).
+            from provisa.api._meta_views import _OPS_REPORT_VIEWS
+
+            assert page == "/admin/reports", f"{step['key']}: a report opens on the Reports page"
+            assert step["report"] in _OPS_REPORT_VIEWS, (
+                f"{step['key']}: no report {step['report']!r}"
+            )
         if "polly" in step:
             # Its answer is stored at the template build and graded by the bake-off.
             assert "route" not in step, f"{step['key']}: Polly opens over the page it is on"
@@ -829,6 +864,29 @@ def test_each_surface_s_call_on_the_demo_is_accepted():
 
 
 @pytest.mark.parametrize("path", TOURS, ids=[p.parent.name for p in TOURS])
+def test_a_demo_writes_its_term_names_in_lower_case_and_the_tour_names_one_it_has(path):
+    """REQ-1844: every term name in the catalog is lower case. The glossary list marks each row
+    data-glossary-term=<stored name>, and the tour clicks the row by that exact string, so a step
+    that spells its term other than as stored never finds the row and the page waits forever. The
+    demo's config and tour write the names as stored, so none is upper case, and each term step
+    names a term the config declares."""
+    config = yaml.safe_load((path.parent / "config.yaml").read_text())
+    declared = config.get("glossary_terms") or []
+    written = [t["name"] for t in declared]
+    written += [e["to"] for t in declared for e in t.get("edges") or []]
+    steps = yaml.safe_load(path.read_text())["steps"]
+    written += [s["term"] for s in steps if "term" in s]
+    upper = [n for n in written if n != n.strip().lower()]
+    assert not upper, f"{path.parent.name}: term names not in lower case: {upper}"
+    names = {t["name"] for t in declared}
+    for step in steps:
+        if "term" in step:
+            assert step["term"] in names, (
+                f"{path.parent.name}: step {step['key']}: {step['term']!r}"
+            )
+
+
+@pytest.mark.parametrize("path", TOURS, ids=[p.parent.name for p in TOURS])
 def test_every_tour_ends_on_a_landing_page_the_ui_has(path):
     """The last step's "Look around on my own" leaves the visitor on the page the demo names:
     one the app routes, with the right its gate needs."""
@@ -849,9 +907,9 @@ def test_the_setup_status_carries_the_demo_s_landing_page():
 
 @pytest.mark.parametrize("path", TOURS, ids=[p.parent.name for p in TOURS])
 def test_a_demo_names_its_fields_as_its_sandbox_does(path):
-    """domain_prefix is deployment-wide (org_settings: not org-overridable): a sandbox's schema is
-    built with the sandbox tier's naming, which prefixes each domain (config/provisa-install-base),
-    not the demo's own. A demo that turned it off had examples and Cypher its sandbox refused."""
+    """A sandbox's schema prefixes each domain as the sandbox tier's naming does
+    (config/provisa-install-base). A demo that turned it off had examples and Cypher its sandbox
+    refused, so a demo states the tier's value."""
     base = yaml.safe_load((_REPO / "config" / "provisa-install-base.yaml").read_text())
     config = yaml.safe_load((path.parent / "config.yaml").read_text())
     assert config["naming"]["domain_prefix"] == base["naming"]["domain_prefix"], path.parent.name
@@ -953,7 +1011,7 @@ _RULE = (
     "https://www.ecfr.gov/api/versioner/v1/full/2026-10-15/title-31.xml?part=1010&section=1010.311"
 )
 _GLOSSARY = {"route": _GLOSSARY_PAGE, "capability": "glossary_read"}
-_LIBRARY = {"route": _LIBRARY_PAGE, "capability": "org_settings"}
+_LIBRARY = {"route": _LIBRARY_PAGE, "capability": "glossary_read"}
 
 
 @pytest.fixture

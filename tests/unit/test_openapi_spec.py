@@ -54,6 +54,9 @@ def _make_state(role_id: str = "admin") -> SimpleNamespace:
         schemas={role_id: schema},
         table_path_maps={role_id: path_map},
     )
+    state.roles = {  # REQ-870: a command's path is offered by the one command rule
+        role_id: {"id": role_id, "capabilities": ["command_execution"], "domain_access": ["*"]}
+    }
     return state
 
 
@@ -420,6 +423,14 @@ def _two_table_state() -> RoleState:
         table_path_maps={
             "admin": {"orders": meta("orders"), "customers": meta("customers")},
             "analyst": {"orders": meta("orders")},
+        },
+        roles={  # As the real state: each role served a surface is a loaded role (REQ-042).
+            "admin": {
+                "id": "admin",
+                "capabilities": ["usage", "command_execution"],
+                "domain_access": ["*"],
+            },
+            "analyst": {"id": "analyst", "capabilities": ["usage"], "domain_access": ["sales"]},
         },
     )
 

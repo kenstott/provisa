@@ -62,6 +62,7 @@ def _src(source_id: str):
         federation_hints={},
         mapping={},
         max_live_concurrency=None,  # REQ-1909: a source always carries its cap
+        download_from=None,  # REQ-1997: a source always carries it
         cache_ttl=None,
     )
 
@@ -145,6 +146,8 @@ def test_each_environments_connection_to_a_source_has_its_own_attach():
         _sqlite_loaded=True,
         _pg_ext_loaded=True,
         _con=SimpleNamespace(execute=ran.append),
+        # The runtime's statements on the instance (each on a cursor of its own), recorded here.
+        _on_instance=lambda sql, params=None: ran.append(sql),
         _raw_attached=set(),
         _raw_attach_ddl={},
         _unreachable={},

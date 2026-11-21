@@ -25,6 +25,7 @@ import {
 import { useTranslation } from "react-i18next";
 import { labelColor, PALETTE } from "./graph-model";
 import type { RelLineOverride } from "./graph-model";
+import { CancelButton } from "../form/CancelButton";
 
 // ── Context menu state ──────────────────────────────────────────────────────────
 export interface ContextMenuState {
@@ -346,9 +347,7 @@ export function NativeFilterModal({
             />
           ))}
           <Group justify="flex-end" mt="md">
-            <Button variant="default" onClick={onCancel}>
-              {t("graphContextMenus.cancel")}
-            </Button>
+            <CancelButton onClick={onCancel} />
             <Button type="submit">{t("graphContextMenus.run")}</Button>
           </Group>
         </Stack>

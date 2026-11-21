@@ -24,7 +24,7 @@
 #   scripts/deploy-cloud.sh cfg    # shipped configs -> /app/config (restarts both)
 #   scripts/deploy-cloud.sh all    # all three, one restart at the end
 #   scripts/deploy-cloud.sh reset  # accounts/orgs -> none, demo data re-seeded
-#   scripts/deploy-cloud.sh patch  # like all, but KEEPS accounts and orgs
+#   scripts/deploy-cloud.sh patch  # the same steps as all
 #   scripts/deploy-cloud.sh sandbox-reset  # the sandbox tier alone: its orgs -> none, no build
 #
 # Every arm that pushes first ensures the observability and demo overlays are installed on the
@@ -32,10 +32,13 @@
 # without a collector, and the demo config's OpenAPI/GraphQL/gRPC sources are unresolvable without
 # the mock backends (REQ-1468). Both are content-compared; already-current is a no-op.
 #
-# api/all/reset also wipe the control plane back to the first-start state (no
-# claimed super-admin, no accounts, no tenant orgs) and let the restart re-seed
-# the bootstrap org's demo data set from the deployment config. Use `patch` when
-# a sign-in session or a hand-built org under test has to survive the deploy.
+# Only `reset` wipes the control plane back to the first-start state (no claimed
+# super-admin, no accounts, no tenant orgs, no invites) and lets the restart re-seed
+# the bootstrap org's demo data set from the deployment config, and the sandbox org
+# with its public invite (provisa/api/sandbox_org.py). Every arm that deploys code
+# (ui, api, cfg, all, patch) keeps accounts and orgs: deploying code and returning
+# the deployment to its first start are two acts, and an `all` that did both wiped
+# cloud-dev on 2026-11-16.
 #
 # Every arm that pushes the python package to a sandbox VM also resets the sandbox tier there
 # (reset_sandbox_state: its sandboxes and every demo template not built under the pushed code's
@@ -100,7 +103,7 @@ preflight_engine() {
     exit 1
   fi
   for k in $ENGINE_KEYS; do
-    printf '%s\n' "$env_dump" | grep -q "^$k=." || missing="$missing $k"
+    grep -q "^$k=." <<<"$env_dump" || missing="$missing $k"
   done
   if [ -n "$missing" ]; then
     echo "$API_CONTAINER is missing engine settings:$missing" >&2
@@ -112,25 +115,42 @@ preflight_engine() {
     | sed 's/^/   /'
 }
 
-# REQ-1455/REQ-1514: on a HOSTED node the plan catalog is the first thing the signup page asks for,
-# and variant_id_for_plan raises rather than inventing an id, so a node missing these answers
-# GET /billing/catalog with a 500 and "Get started" cannot create an organization at all. The
-# variant ids ARE the billing configuration -- there is no default to fall back to -- so the deploy
-# asserts them the way it asserts the engine pin, from the RUNNING container.
-COMMERCE_KEYS="LEMONSQUEEZY_VARIANT_STARTER LEMONSQUEEZY_VARIANT_PRO_S \
-LEMONSQUEEZY_VARIANT_PRO_M LEMONSQUEEZY_VARIANT_PRO_L \
-LEMONSQUEEZY_VARIANT_EGRESS_STARTER LEMONSQUEEZY_VARIANT_EGRESS_PRO_S \
-LEMONSQUEEZY_VARIANT_EGRESS_PRO_M LEMONSQUEEZY_VARIANT_EGRESS_PRO_L \
-LEMONSQUEEZY_API_KEY LEMONSQUEEZY_STORE_ID LEMONSQUEEZY_SIGNING_SECRET"
+# REQ-1455/REQ-1514, REQ-1562: on a HOSTED node the plan catalog is the first thing the signup page
+# asks for, and the plugin raises rather than inventing a Stripe price id, so a node missing these
+# answers GET /billing/catalog with a 500 and "Get started" cannot create an organization. The
+# price ids ARE the billing configuration -- there is no default to fall back to -- so the deploy
+# asserts them the way it asserts the engine pin, from the RUNNING container. Each plan has two
+# prices on its one subscription: its active hour and its data transfer.
+COMMERCE_KEYS="STRIPE_PRICE_STARTER STRIPE_PRICE_PRO_S STRIPE_PRICE_PRO_M STRIPE_PRICE_PRO_L \
+STRIPE_PRICE_EGRESS_STARTER STRIPE_PRICE_EGRESS_PRO_S \
+STRIPE_PRICE_EGRESS_PRO_M STRIPE_PRICE_EGRESS_PRO_L \
+STRIPE_WEBHOOK_SECRET"
+# REQ-1564: STRIPE_MODE picks the credentials. Every one of them is carried to the node; which pair
+# is asserted is the mode's (commerce_mode_keys).
+COMMERCE_CREDENTIAL_KEYS="STRIPE_MODE STRIPE_SECRET_KEY STRIPE_PUBLISHABLE_KEY \
+STRIPE_TEST_SECRET_KEY STRIPE_TEST_PUBLISHABLE_KEY"
+
+# REQ-1564: the secret and publishable key STRIPE_MODE selects, from a `printenv` dump. The plugin
+# reads "test" (any case, surrounding space ignored) as the sandbox and anything else, unset
+# included, as live; this reads the mode the same way.
+commerce_mode_keys() {
+  local mode
+  mode="$(printf '%s\n' "$1" | sed -n 's/^STRIPE_MODE=//p' | tr -d ' \r' | tr '[:upper:]' '[:lower:]')"
+  if [ "$mode" = "test" ]; then
+    echo "STRIPE_TEST_SECRET_KEY STRIPE_TEST_PUBLISHABLE_KEY"
+  else
+    echo "STRIPE_SECRET_KEY STRIPE_PUBLISHABLE_KEY"
+  fi
+}
 
 # REQ-1455/REQ-1514 continued: provisa.env is the systemd EnvironmentFile first-launch.sh writes
 # ONCE, at first boot (ENV_FILE's own comment) -- but the GCE instance metadata startup-script
 # re-runs that ENTIRE first-boot install on every instance START, not just true first boot (this
 # node scales to zero on idle and wakes on the next hit), and that startup-script's own exported
 # env only covers the engine/auth/mail keys it was written with. Any key added to this deploy
-# AFTER a node's first boot -- exactly what LEMONSQUEEZY_* was -- gets silently regenerated away
-# every time the node idle-stops and restarts, so a preflight that only ASSERTS (and tells a human
-# to SSH in and fix it) turns into repeat manual surgery on every cold start. Verified live
+# AFTER a node's first boot -- exactly what the billing settings are -- gets silently regenerated
+# away every time the node idle-stops and restarts, so a preflight that only ASSERTS (and tells a
+# human to SSH in and fix it) turns into repeat manual surgery on every cold start. Verified live
 # 2026-09-17: a value set by hand via set_node_env was gone after the very next idle-stop/restart
 # cycle, mid-deploy. Self-heal from the repo .env instead, the same shape push_mail_env already
 # uses for PROVISA_EMAIL_API_KEY -- this is the fix, not a workaround: preflight_commerce below
@@ -138,9 +158,9 @@ LEMONSQUEEZY_API_KEY LEMONSQUEEZY_STORE_ID LEMONSQUEEZY_SIGNING_SECRET"
 push_commerce_env() {
   echo "== commerce env"
   local env_dump changed=""
-  env_dump="$(ssh_node "sudo docker exec $API_CONTAINER printenv | grep -E '^(TEST_)?LEMONSQUEEZY' || true" | tr -d '\r')"
-  for k in $COMMERCE_KEYS LEMONSQUEEZY_MODE TEST_LEMONSQUEEZY_API_KEY; do
-    printf '%s\n' "$env_dump" | grep -q "^$k=." && continue
+  env_dump="$(ssh_node "sudo docker exec $API_CONTAINER printenv | grep -E '^STRIPE_' || true" | tr -d '\r')"
+  for k in $COMMERCE_KEYS $COMMERCE_CREDENTIAL_KEYS; do
+    grep -Eq "^$k=.*[^[:space:]]" <<<"$env_dump" && continue
     local want
     want="$(sed -n "s/^$k=//p" "$REPO/.env" 2>/dev/null | tail -1)"
     [ -n "$want" ] || continue
@@ -156,34 +176,66 @@ push_commerce_env() {
   fi
 }
 
+# REQ-1562, REQ-1564: the eight price ids, the webhook secret, and the secret and publishable key
+# the mode selects. Run AFTER push_cp_compose: the container's environment is what the compose file
+# names, and a node set up before a setting existed forwards nothing until its compose is current.
+# Still before any code is pushed, so a node that cannot bill is refused before it changes.
+# A blank value is a missing value: compose forwards every declared variable, so an unset key
+# reaches the container as "" and the plugin would refuse it on first use. The publishable key is
+# asserted with the secret one because the embedded checkout cannot mount without it. Names and
+# "<set>" are printed; values never are.
 preflight_commerce() {
   echo "== commerce preflight"
-  local env_dump missing=""
-  env_dump="$(ssh_node "sudo docker exec $API_CONTAINER printenv | grep -E '^(TEST_)?LEMONSQUEEZY' || true" | tr -d '\r')"
+  local env_dump missing="" k
+  env_dump="$(ssh_node "sudo docker exec $API_CONTAINER printenv | grep -E '^STRIPE_' || true" | tr -d '\r')"
   for k in $COMMERCE_KEYS; do
-    printf '%s\n' "$env_dump" | grep -q "^$k=." || missing="$missing $k"
+    grep -Eq "^$k=.*[^[:space:]]" <<<"$env_dump" || missing="$missing $k"
   done
-  # REQ-1564: LEMONSQUEEZY_MODE picks WHICH key signs the request, so the key to assert is not a
-  # constant. In test mode the sandbox key is the one read and LEMONSQUEEZY_API_KEY is inert --
-  # a node with the live key set and the test key blank passes a fixed-list check and still sends
-  # "Authorization: Bearer " on every call. Compose forwards every declared variable, so the blank
-  # key arrives as "" rather than absent, which is why "=." (at least one character) is the test.
-  case "$(printf '%s\n' "$env_dump" | sed -n 's/^LEMONSQUEEZY_MODE=//p' | tr -d " \r")" in
-    test) printf '%s\n' "$env_dump" | grep -q "^TEST_LEMONSQUEEZY_API_KEY=." \
-            || missing="$missing TEST_LEMONSQUEEZY_API_KEY(LEMONSQUEEZY_MODE=test)" ;;
-  esac
+  local mode
+  mode="$(printf '%s\n' "$env_dump" | sed -n 's/^STRIPE_MODE=//p' | tr -d ' \r')"
+  for k in $(commerce_mode_keys "$env_dump"); do
+    grep -Eq "^$k=.*[^[:space:]]" <<<"$env_dump" \
+      || missing="$missing $k(STRIPE_MODE=${mode:-<unset>})"
+  done
   if [ -n "$missing" ]; then
     echo "$API_CONTAINER is missing commerce settings:$missing" >&2
     echo "Without them /billing/catalog 500s and nobody can sign up." >&2
     echo "Add them to the node's /root/.provisa/provisa.env and recreate the containers." >&2
     exit 1
   fi
-  printf '%s\n' "$env_dump" | sed -n 's/^\(TEST_\)\{0,1\}\(LEMONSQUEEZY_[A-Z_]*\)=.*/   \1\2=<set>/p'
+  printf '%s\n' "$env_dump" | grep -E '^STRIPE_[A-Z_]*=.*[^[:space:]]' \
+    | sed -n 's/^\(STRIPE_[A-Z_]*\)=.*/   \1=<set>/p'
+}
+
+# REQ-1276/REQ-1348: the base domain org subdomains live under. The control plane is
+# cloud.<base>, so it is $SITE's host without its `cloud.` label: cloud.provisa.dev declares
+# provisa.dev. Every process that reads an org from a Host reads it under this value, as
+# VITE_ORG_BASE_DOMAIN: the UI's build and its /deployment-config.js, and the API containers
+# (provisa/security/sni.py org_from_host). Unset, no host names an org, so a deploy without it
+# would leave every org subdomain unaddressable.
+org_base_domain() {
+  local base="${SITE#https://cloud.}"
+  case "$base" in
+    ""|*/*|*:*) echo "SITE=$SITE is not https://cloud.<base domain>; cannot declare the base domain" >&2; exit 1 ;;
+  esac
+  printf '%s\n' "$base"
 }
 
 build_ui() {
-  echo "== building UI"
-  (cd "$REPO/provisa-ui" && npm run build)
+  local base
+  base="$(org_base_domain)" || exit 1
+  echo "== building UI (org base domain: $base)"
+  # The UI builds on the repository's Node pin (.nvmrc), as CI and the image do.
+  local want
+  want="v$(cat "$REPO/.nvmrc")"
+  export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
+  # shellcheck disable=SC1091
+  [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh" && nvm use "$want" >/dev/null
+  if [ "$(node --version)" != "$want" ]; then
+    echo "The UI builds on Node $want (.nvmrc); node on PATH is $(node --version). nvm install ${want#v}" >&2
+    exit 1
+  fi
+  (cd "$REPO/provisa-ui" && VITE_ORG_BASE_DOMAIN="$base" npm run build)
   # index.html carries the hashed bundle names, so it ships with the assets it references.
   # auth-relay.html is the second HTML entry (REQ-1348) and does the same for the relay bundle;
   # left behind, the control plane answers an org subdomain's token request with a stale page or
@@ -434,11 +486,17 @@ RUNTIME_DEPS_DIR="/root/.provisa/runtime-deps"
 REGIONS_NODES_OVERLAY=""
 
 push_overlay() {
+  local ORG_BASE
+  ORG_BASE="$(org_base_domain)" || exit 1
   cat > "$STAGE/docker-compose.overlay.yml" <<YAML
 # Installed by scripts/deploy-cloud.sh — the deployed app tree, on the host disk, so that a
 # container recreate (every idle-stop on this node) does not revert it.
 services:
   provisa:
+    # REQ-1276: the API reads an org from a Host only under this base domain. Literal here, not
+    # interpolated from the node's provisa.env, so the deploy is what puts it in the container.
+    environment:
+      VITE_ORG_BASE_DOMAIN: "${ORG_BASE}"
     volumes:
       - ${OVERLAY_DIR}/static:/app/static
       - ${OVERLAY_DIR}/provisa:/app/provisa
@@ -449,6 +507,8 @@ services:
       - ${HF_CACHE_DIR}:/root/.cache/huggingface
       - ${RUNTIME_DEPS_DIR}:/root/.cache/provisa/runtime_deps
   provisa-ui:
+    environment:
+      VITE_ORG_BASE_DOMAIN: "${ORG_BASE}"
     volumes:
       - ${OVERLAY_DIR}/static:/app/static
       - ${OVERLAY_DIR}/provisa:/app/provisa
@@ -470,6 +530,7 @@ services:
     ports:
       - "${SANDBOX_PUBLISH}:8000"
     environment:
+      VITE_ORG_BASE_DOMAIN: "${ORG_BASE}"
       # The demos cloud.provisa.dev offers (packaging/linux/demo-stores/sandbox-tier-bundles,
       # the list first-launch.sh and terraform's sandbox VM read).
       PROVISA_DEMO_BUNDLES: "$(tr -d '[:space:]' < "$REPO/packaging/linux/demo-stores/sandbox-tier-bundles")"
@@ -486,6 +547,8 @@ services:
   # (provisa-sandbox-regions.yaml, shipped in CONFIG_FILES); without the tree it ran the image's
   # code and the image's config directory.
   provisa-sandbox-regions:
+    environment:
+      VITE_ORG_BASE_DOMAIN: "${ORG_BASE}"
     volumes:
       - ${OVERLAY_DIR}/static:/app/static
       - ${OVERLAY_DIR}/provisa:/app/provisa
@@ -558,8 +621,13 @@ push_obs() {
   # OTEL_EXPORTER_OTLP_ENDPOINT is set from the resolved compose set at `provisa start`.
   echo "== observability: recreating stack"
   ssh_node "sudo systemctl restart provisa"
-  ssh_node "sudo docker exec $API_CONTAINER printenv OTEL_EXPORTER_OTLP_ENDPOINT" \
-    | grep -q . || { echo "observability installed but the app exports no OTLP endpoint" >&2; exit 1; }
+  local otlp
+  # printenv exits 1 for an unset variable: that, a failed ssh and an empty value are the same refusal.
+  if ! otlp="$(ssh_node "sudo docker exec $API_CONTAINER printenv OTEL_EXPORTER_OTLP_ENDPOINT")" \
+    || [ -z "$otlp" ]; then
+    echo "observability installed but the app exports no OTLP endpoint" >&2
+    exit 1
+  fi
 }
 
 # REQ-1428: the collector's own config, which the overlay bind-mounts from
@@ -709,6 +777,88 @@ push_app() {
   ssh_node "sudo systemctl restart provisa"
 }
 
+# The node's generated control-plane base, the same gap push_app closes for the app overlay.
+# first-launch.sh writes ${PROVISA_HOME}/compose-control-plane.yml once, at first boot, and nothing
+# here refreshed it: when provisa/ui_server.py came to read PROVISA_SANDBOX_REGIONS_DEMOS as
+# region pairs and PROVISA_SANDBOX_REGIONS_NODES as a map, the code reached the node and the
+# compose that sets them did not, and the UI container crash-looped on the old value.
+#
+# Generated, not shipped, like the demo overlay: write_control_plane_compose() holds the only
+# copy, so the expected file is that function's own output, run here rather than duplicated. It
+# holds none of the node's values: each one is a ${...} that `provisa start` resolves from the
+# node's provisa.env (and the launcher's store-credentials.env), so the regenerated file keeps
+# them. What it bakes in is the node's PROVISA_HOME and the certificate directory under it.
+CP_HOME="/root/.provisa"
+CP_YML="$CP_HOME/compose-control-plane.yml"
+STORE_CREDENTIALS="$CP_HOME/store-credentials.env"
+
+# Writes write_control_plane_compose's output for the node to $1.
+render_control_plane_compose() {
+  local fn home="$STAGE/cp-home"
+  fn="$(awk '/^write_control_plane_compose\(\) \{$/{f=1} f; f&&/^}$/{exit}' \
+    "$REPO/packaging/linux/first-launch.sh")"
+  # An empty extraction means the function was restructured and this awk no longer matches.
+  grep -q 'compose-control-plane.yml' <<<"$fn" \
+    || { echo "cannot extract write_control_plane_compose from first-launch.sh" >&2; exit 1; }
+  mkdir -p "$home"
+  # In a subshell: ROLE, PROVISA_HOME and CERT_DIR are first-launch's globals, not this script's.
+  # PROVISA_HOME is a staging directory (the function writes the file under it) and is put back to
+  # the node's in the output.
+  (
+    ok() { :; }
+    ROLE=control-plane PROVISA_HOME="$home" CERT_DIR="$CP_HOME/certs"
+    eval "$fn"
+    write_control_plane_compose
+  )
+  sed "s|$home|$CP_HOME|g" "$home/compose-control-plane.yml" > "$1"
+  grep -q '^services:' "$1" \
+    || { echo "write_control_plane_compose wrote no services" >&2; exit 1; }
+}
+
+# The variables a compose file requires (${NAME:?...}) that $2 did not already require and that
+# the node's environment ($3: one name per line, each set to a non-empty value) does not set.
+# What the installed file requires is already satisfied however the launcher satisfies it (the
+# stack resolves it at every start), so only what the shipped file adds is asked of the node.
+missing_compose_vars() {
+  required() { grep -o '\${[A-Za-z_][A-Za-z0-9_]*:?' "$1" | sed 's/^\${//; s/:?$//' | sort -u; }
+  comm -23 <(required "$1") <({ required "$2"; cat "$3"; } | sort -u)
+}
+
+push_cp_compose() {
+  render_control_plane_compose "$STAGE/compose-control-plane.yml"
+  local want have
+  want="$(shasum -a 256 "$STAGE/compose-control-plane.yml" | cut -d' ' -f1)"
+  have="$(ssh_node "sudo shasum -a 256 $CP_YML" | tr -d '\r' | cut -d' ' -f1)" || have=""
+  # Only a control-plane node has one, and every node this script deploys to is one: a missing
+  # file is a node that is not, which is an abort, as push_app's is.
+  [ -n "$have" ] || { echo "cannot read $CP_YML on $NODE" >&2; exit 1; }
+  if [ "$want" = "$have" ]; then
+    echo "== control-plane compose: up to date"
+    return
+  fi
+  # A required variable the node does not set stops `provisa start` with the stack down, so it
+  # is asked for here, by name, before anything changes. Names only: no value leaves the node.
+  ssh_node "sudo cat $CP_YML" | tr -d '\r' > "$STAGE/compose-control-plane.installed.yml"
+  ssh_node "sudo sh -c 'cat $ENV_FILE; cat $STORE_CREDENTIALS 2>/dev/null || true'" \
+    | tr -d '\r' | sed -n 's/^\([A-Za-z_][A-Za-z0-9_]*\)=..*/\1/p' > "$STAGE/node-env-keys"
+  local missing
+  missing="$(missing_compose_vars "$STAGE/compose-control-plane.yml" \
+    "$STAGE/compose-control-plane.installed.yml" "$STAGE/node-env-keys")"
+  if [ -n "$missing" ]; then
+    echo "the shipped control-plane compose requires what $NODE's $ENV_FILE does not set:" >&2
+    sed 's/^/  /' <<<"$missing" >&2
+    echo "Set each there and re-run; $CP_YML is unchanged." >&2
+    exit 1
+  fi
+  echo "== control-plane compose: updating"
+  diff -u "$STAGE/compose-control-plane.installed.yml" "$STAGE/compose-control-plane.yml" \
+    | sed -n 's/^\([-+]\)\([^-+]\)/   \1\2/p' || true
+  scp_node "$STAGE/compose-control-plane.yml" /tmp/compose-control-plane.yml
+  ssh_node "sudo cp $CP_YML $CP_YML.bak-\$(date +%s) && sudo cp /tmp/compose-control-plane.yml $CP_YML"
+  echo "== control-plane compose: recreating stack"
+  ssh_node "sudo systemctl restart provisa"
+}
+
 # REQ-1330: the origin invite links are built from. It is not a per-node knob an operator sets — it
 # is $SITE, the address this script already deploys to and verifies against, and terraform derives
 # the same value from the DNS zone it creates the record in. But first-launch writes provisa.env
@@ -849,7 +999,7 @@ push_demo() {
   # The mocks are what the demo config's sources resolve to, so their absence is a broken deploy,
   # not a cosmetic gap. Compose names them <project>-<service>-1; match on the service name.
   for svc in petstore-mock graphql-demo grpc-demo; do
-    ssh_node "sudo docker ps --filter name=$svc --format '{{.Names}} {{.Status}}'" | grep -q . \
+    [ -n "$(ssh_node "sudo docker ps --filter name=$svc --format '{{.Names}} {{.Status}}'")" ] \
       || { echo "demo overlay installed but $svc is not running" >&2; exit 1; }
   done
 }
@@ -889,6 +1039,37 @@ SQL
   run_sql "$STAGE/verify_demo.sql" verify-demo
 }
 
+# What a failed poll says about the node: every container's state, and the last log lines of each
+# one that is down. The front door answers 503 for any backend that is not answering, which names
+# no container; a UI server crash-looping on its environment looked exactly like a slow start.
+#
+# failing_containers reads one line per container -- name, state, exit code, restart count, health
+# ("-" when it has no check) -- and prints the names of those that are not up: not running (an
+# init container that exited 0 and was never restarted is done, not down), health-checked
+# unhealthy, or restarted by their policy since they were created. A crash loop is "running" at
+# the instant between two of its restarts, so the restart count is what gives it away.
+failing_containers() {
+  awk '{ down = ($2 != "running" && !($2 == "exited" && $3 == 0 && $4 == 0)) || $4 > 0 || $5 == "unhealthy" }
+       down { print $1 }'
+}
+
+diagnose_containers() {
+  local states c
+  # The node may be what is down; that is a finding too, not a reason to lose the poll's.
+  states="$(ssh_node "sudo docker inspect -f '{{.Name}} {{.State.Status}} {{.State.ExitCode}} {{.RestartCount}} {{if .State.Health}}{{.State.Health.Status}}{{else}}-{{end}}' \$(sudo docker ps -aq)" \
+    | tr -d '\r' | sed 's|^/||')" || states=""
+  if [ -z "$states" ]; then
+    echo "   $NODE: no container state (the node or its docker did not answer)" >&2
+    return
+  fi
+  echo "   containers on $NODE (name state exit restarts health):" >&2
+  sed 's/^/     /' <<<"$states" >&2
+  for c in $(failing_containers <<<"$states"); do
+    echo "   $c is down; its last 40 log lines:" >&2
+    ssh_node "sudo docker logs --tail 40 $c 2>&1" | sed 's/^/     | /' >&2 || true
+  done
+}
+
 verify() {
   echo "== verifying $SITE"
   # Accept: text/html with Sec-Fetch-Dest: document marks this a page load, which the front door and
@@ -907,6 +1088,7 @@ verify() {
     sleep 2
   done
   echo "$SITE/ -> $code (never reached 200)" >&2
+  diagnose_containers
   return 1
 }
 
@@ -923,6 +1105,7 @@ verify_api() {
     sleep 2
   done
   echo "$SITE/health -> $code (never reached 200)" >&2
+  diagnose_containers
   return 1
 }
 
@@ -953,6 +1136,22 @@ verify_commerce() {
        echo "Without it no /billing routes mount and nobody can sign up." >&2
        exit 1 ;;
   esac
+}
+
+# REQ-1276: the API container must carry the base domain after a deploy. Read from the RUNNING
+# container, like the engine's keys: that is what org_from_host sees. Without it every host names
+# no org, and the deploy would otherwise report success on a cloud nobody can sign in to.
+verify_org_base() {
+  echo "== org base domain"
+  local want have
+  want="$(org_base_domain)" || exit 1
+  have="$(ssh_node "sudo docker exec $API_CONTAINER printenv VITE_ORG_BASE_DOMAIN || true" | tr -d '\r')"
+  if [ "$have" != "$want" ]; then
+    echo "$API_CONTAINER has VITE_ORG_BASE_DOMAIN='${have:-<unset>}', expected '$want'." >&2
+    echo "The API reads an org from a Host only under it; without it no host names an org." >&2
+    exit 1
+  fi
+  echo "   VITE_ORG_BASE_DOMAIN=$have"
 }
 
 verify_engine() {
@@ -995,7 +1194,7 @@ SANDBOX_PUBLISH="127.0.0.1:18000"
 # node's compose did not (PROVISA_DEMO_LEDGER_ADDRESS) crash-looped the regions tier at startup.
 # Rendered by first-launch.sh's own function, as push_demo extracts its overlay, so the two cannot
 # drift. Recreates the stack when it changes, so it runs BEFORE the pushes, like the overlays. The
-# coordinator's is not touched: this deploy has no need of it, and nothing has read what it holds.
+# coordinator's is push_cp_compose's: the UI server reads what it holds (PROVISA_SANDBOX_REGIONS_*).
 CONTROL_PLANE_YML="/root/.provisa/compose-control-plane.yml"
 
 push_compose() {
@@ -1223,16 +1422,16 @@ deploy_sandbox_vm() {
 
 case "$TARGET" in
   ui)
-    { sandbox_on_own_vm || preflight_sandbox_ai; }; push_overlay; build_ui; push_ui; verify ;;
+    { sandbox_on_own_vm || preflight_sandbox_ai; }; push_overlay; build_ui; push_ui; verify; verify_org_base ;;
   api)
-    # reset before restart: the wipe drops the tenant schemas and the org_registry view, and it
-    # is the restart that re-seeds the bootstrap org and rebuilds that view.
-    { sandbox_on_own_vm || preflight_sandbox_ai; }; preflight_engine; push_commerce_env; preflight_commerce; build_api; push_store_env; push_app; push_mail_env; push_obs; push_obs_config; push_demo; push_demo_stores; push_overlay; push_api; push_plugins; reset_state; restart; verify; verify_api; verify_demo; verify_engine; verify_commerce; deploy_sandbox_vm ;;
+    # Keeps accounts and orgs: only 'reset' wipes them. verify_demo is a statement about a reset.
+    { sandbox_on_own_vm || preflight_sandbox_ai; }; preflight_engine; push_commerce_env; build_api; push_store_env; push_app; push_cp_compose; preflight_commerce; push_mail_env; push_obs; push_obs_config; push_demo; push_demo_stores; push_overlay; push_api; push_plugins; restart; verify; verify_api; verify_engine; verify_org_base; verify_commerce; deploy_sandbox_vm ;;
   cfg)
     # Restarts: the config is read once at startup, so a pushed file is inert until then.
-    { sandbox_on_own_vm || preflight_sandbox_ai; }; preflight_engine; push_commerce_env; preflight_commerce; build_cfg; clear_dead_engine_files; push_store_env; push_app; push_mail_env; push_obs; push_obs_config; push_demo; push_demo_stores; push_overlay; push_cfg; restart; verify; verify_api; verify_engine; verify_commerce; deploy_sandbox_vm ;;
+    { sandbox_on_own_vm || preflight_sandbox_ai; }; preflight_engine; push_commerce_env; build_cfg; clear_dead_engine_files; push_store_env; push_app; push_cp_compose; preflight_commerce; push_mail_env; push_obs; push_obs_config; push_demo; push_demo_stores; push_overlay; push_cfg; restart; verify; verify_api; verify_engine; verify_org_base; verify_commerce; deploy_sandbox_vm ;;
   all)
-    { sandbox_on_own_vm || preflight_sandbox_ai; }; preflight_engine; push_commerce_env; preflight_commerce; build_ui; build_api; build_cfg; clear_dead_engine_files; push_store_env; push_app; push_mail_env; push_obs; push_obs_config; push_demo; push_demo_stores; push_overlay; push_ui; push_api; push_plugins; push_cfg; reset_state; restart; verify; verify_api; verify_demo; verify_engine; verify_commerce; deploy_sandbox_vm ;;
+    # Keeps accounts and orgs: only 'reset' wipes them. verify_demo is a statement about a reset.
+    { sandbox_on_own_vm || preflight_sandbox_ai; }; preflight_engine; push_commerce_env; build_ui; build_api; build_cfg; clear_dead_engine_files; push_store_env; push_app; push_cp_compose; preflight_commerce; push_mail_env; push_obs; push_obs_config; push_demo; push_demo_stores; push_overlay; push_ui; push_api; push_plugins; push_cfg; restart; verify; verify_api; verify_engine; verify_org_base; verify_commerce; deploy_sandbox_vm ;;
   sandbox-reset)
     # No build and no push: the sandbox tier's orgs reset and the tier restarted (its VM's
     # overlay, demo stores and settings are synced as on every deploy that reaches it). It needs
@@ -1240,10 +1439,10 @@ case "$TARGET" in
     { sandbox_on_own_vm || preflight_sandbox_ai; }; sandbox_on_own_vm || { echo "no sandbox VM ($SANDBOX_NODE): the tier runs on $NODE, which 'reset' resets" >&2; exit 2; }; deploy_sandbox_vm ;;
   reset)
     # No build: 'ui' deliberately has no reset arm because it never restarts.
-    preflight_engine; push_commerce_env; preflight_commerce; reset_state; restart; verify; verify_api; verify_demo; verify_engine; verify_commerce ;;
+    preflight_engine; push_commerce_env; preflight_commerce; reset_state; restart; verify; verify_api; verify_demo; verify_engine; verify_org_base; verify_commerce ;;
   patch)
     # verify_demo is skipped, not weakened: it asserts zero accounts, which is a statement
     # about the reset, and 'patch' exists precisely to keep the accounts that are there.
-    { sandbox_on_own_vm || preflight_sandbox_ai; }; preflight_engine; push_commerce_env; preflight_commerce; build_ui; build_api; build_cfg; clear_dead_engine_files; push_store_env; push_app; push_mail_env; push_obs; push_obs_config; push_demo; push_demo_stores; push_overlay; push_ui; push_api; push_plugins; push_cfg; restart; verify; verify_api; verify_engine; verify_commerce; deploy_sandbox_vm ;;
+    { sandbox_on_own_vm || preflight_sandbox_ai; }; preflight_engine; push_commerce_env; build_ui; build_api; build_cfg; clear_dead_engine_files; push_store_env; push_app; push_cp_compose; preflight_commerce; push_mail_env; push_obs; push_obs_config; push_demo; push_demo_stores; push_overlay; push_ui; push_api; push_plugins; push_cfg; restart; verify; verify_api; verify_engine; verify_org_base; verify_commerce; deploy_sandbox_vm ;;
 esac
 echo "== deployed $TARGET"

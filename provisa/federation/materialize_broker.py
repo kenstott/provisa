@@ -278,6 +278,11 @@ class _SyncedStore:
         store file opened and closed for this one operation (``_with_store``)."""
         return _with_store(self._db_path, fn, read_only=read_only, canary=canary, unseen=unseen)
 
+    def _written(self) -> bool:
+        """Whether the store exists to be read: its file is created by the first write into it,
+        and a read-only open of a file that is not there fails."""
+        return self._db_path == _MEMORY_PATH or os.path.exists(self._db_path)
+
     def reconcile(self, schema: str, table: str, columns: list[tuple[str, str]]) -> str:
         from provisa.federation.store_connection import reconcile_duckdb_native
 
@@ -644,16 +649,36 @@ class _SyncedStore:
 
         def _do(con: Any) -> None:
             if primary:
-                held = con.execute(
-                    "SELECT 1 FROM duckdb_constraints() WHERE database_name = ? "
-                    "AND schema_name = ? AND table_name = ? AND constraint_type = 'PRIMARY KEY'",
-                    [_MAT_STORE_ALIAS, schema, table],
-                ).fetchone()
+                held = engine_memory.first_row(
+                    con.execute(
+                        "SELECT 1 FROM duckdb_constraints() WHERE database_name = ? "
+                        "AND schema_name = ? AND table_name = ? AND constraint_type = 'PRIMARY KEY'",
+                        [_MAT_STORE_ALIAS, schema, table],
+                    )
+                )
                 if held is None:
+                    # DuckDB refuses a key on a table any index depends on, so a join index built
+                    # before the key (a failed earlier attempt built it, and the key then failed
+                    # on every later one) comes off for the ALTER and goes back as it was.
+                    standing = con.execute(
+                        "SELECT index_name, sql FROM duckdb_indexes() WHERE database_name = ? "
+                        "AND schema_name = ? AND table_name = ?",
+                        [_MAT_STORE_ALIAS, schema, table],
+                    ).fetchall()
+                    for index, _sql in standing:
+                        escaped = index.replace('"', '""')
+                        schema_part = schema.replace('"', '""')
+                        con.execute(f'DROP INDEX {_MAT_STORE_ALIAS}."{schema_part}"."{escaped}"')
                     try:
                         con.execute(f"ALTER TABLE {replica} ADD PRIMARY KEY ({cols})")
                     except duckdb.ConstraintException as exc:
                         raise DuplicateKey(columns, str(exc).splitlines()[0]) from exc
+                    finally:
+                        if standing:
+                            # The catalog's own DDL names the table without its database.
+                            con.execute(f"USE {_MAT_STORE_ALIAS}")
+                            for _index, sql in standing:
+                                con.execute(sql)
                 return
             con.execute(f'CREATE INDEX IF NOT EXISTS "{name}" ON {replica} ({cols})')
 
@@ -674,6 +699,26 @@ class _SyncedStore:
         """The store table's column names in ordinal order, or ``None`` when it does not exist."""
         return self._run(lambda con: _table_columns(con, schema, table))
 
+    def column_lists(self) -> dict[tuple[str, str], list[str]]:
+        """Every store table's column names in ordinal order, by (schema, table), read in one
+        read-only open: a replica reconcile keeps a table whose columns already match without
+        opening the store for a write (which would advance its generation) once per table. A store
+        whose file has not been written yet holds no tables."""
+        if not self._written():
+            return {}
+        rows = self._run(
+            lambda con: con.execute(
+                "SELECT schema_name, table_name, column_name FROM duckdb_columns() "
+                "WHERE database_name = ? ORDER BY schema_name, table_name, column_index",
+                [_MAT_STORE_ALIAS],
+            ).fetchall(),
+            read_only=True,
+        )
+        held: dict[tuple[str, str], list[str]] = {}
+        for schema, table, column in rows:
+            held.setdefault((schema, table), []).append(column)
+        return held
+
     def tables(self, schema: str) -> list[str]:
         """The tables the store holds in ``schema``; none when the store has no such schema yet
         (a schema is created by the first write into it)."""
@@ -687,6 +732,35 @@ class _SyncedStore:
                 ).fetchall(),
             )
         ]
+
+    def row_counts(self, schema: str) -> dict[str, int]:
+        """The rows each table of ``schema`` holds, read in one operation on the store: a replica
+        build swapping in beside it (drop and rename, ``replica_swap``) lands before or after it,
+        never between the listing and a count. A build table (``BUILD_TABLE_PREFIX``) is a build
+        in progress, not a table anything reads, and is left out."""
+        from provisa.federation.replica_target import BUILD_TABLE_PREFIX
+        from provisa.federation.store_connection import _qualified
+
+        def _counts(con: Any) -> dict[str, int]:
+            names = [
+                row[0]
+                for row in con.execute(
+                    "SELECT table_name FROM duckdb_tables() "
+                    "WHERE database_name = ? AND schema_name = ?",
+                    [_MAT_STORE_ALIAS, schema],
+                ).fetchall()
+                if not row[0].startswith(BUILD_TABLE_PREFIX)
+            ]
+            return {
+                name: int(
+                    con.execute(
+                        f"SELECT count(*) FROM {_qualified(_MAT_STORE_ALIAS, schema, name)}"
+                    ).fetchone()[0]
+                )
+                for name in names
+            }
+
+        return self._run(_counts)
 
     def execute(self, sql: str, params: list | None = None) -> list[tuple]:
         """Run one statement against the store (``mat_store.*`` names resolve) and return its rows.
@@ -723,9 +797,9 @@ class _SyncedStore:
             con.execute(f'CREATE SCHEMA IF NOT EXISTS {_MAT_STORE_ALIAS}."{schema}"')
             for stmt in plan(_table_columns(con, schema, table)):
                 con.execute(stmt)
-            row = con.execute(
-                f'SELECT COUNT(*) FROM {_MAT_STORE_ALIAS}."{schema}"."{table}"'
-            ).fetchone()
+            row = engine_memory.first_row(
+                con.execute(f'SELECT COUNT(*) FROM {_MAT_STORE_ALIAS}."{schema}"."{table}"')
+            )
             assert row is not None  # COUNT(*) always yields a row
             return int(row[0])
 
@@ -765,7 +839,7 @@ def zoned_times_as_text(con: Any, relation: str) -> Any:
         if kind in ("TIME WITH TIME ZONE", "TIME WITH TIME ZONE[]")
     }
     if not zoned:
-        return con.execute(f"SELECT * FROM {relation}").fetch_arrow_table()
+        return con.sql(f"SELECT * FROM {relation}").to_arrow_table()
 
     def quoted(name: str) -> str:
         return '"' + name.replace('"', '""') + '"'
@@ -774,7 +848,7 @@ def zoned_times_as_text(con: Any, relation: str) -> Any:
         f"CAST({quoted(n)} AS {'VARCHAR[]' if k.endswith('[]') else 'VARCHAR'}) AS {quoted(n)}"
         for n, k in zoned.items()
     )
-    table = con.execute(f"SELECT * REPLACE ({as_text}) FROM {relation}").fetch_arrow_table()
+    table = con.sql(f"SELECT * REPLACE ({as_text}) FROM {relation}").to_arrow_table()
     fields = [
         f.with_metadata({ZONED_TIME_TYPE: zoned[f.name].encode()}) if f.name in zoned else f
         for f in table.schema
@@ -794,6 +868,9 @@ class EngineAttachedStore(_SyncedStore):
         # The engine's ``DuckDBRuntime._listing``: the store's catalog listings run on the engine
         # connection, which an unreachable source's attach would otherwise fail (#256).
         self._listing = listing
+
+    def _written(self) -> bool:
+        return True  # a database the engine holds attached exists
 
     def _run(
         self, fn: Any, *, read_only: bool = False, canary: bool = False, unseen: bool = False

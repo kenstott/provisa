@@ -49,31 +49,89 @@ export function domainToSqlName(domainId: string): string {
   return domainId.replace(/[^a-zA-Z0-9]/g, "_").replace(/^_+|_+$/g, "");
 }
 
-/** Mirror of Python apply_sql_name (snake convention): camelCase/PascalCase → snake_case. */
+/** Mirror of Python _to_snake_case: camelCase/PascalCase → snake_case. */
 export function toSnakeCase(name: string): string {
-  // camelCase / PascalCase → snake_case (intermediate normalization only — not for UI display)
   let s = name.replace(/([A-Z]+)([A-Z][a-z])/g, "$1_$2");
   s = s.replace(/([a-z0-9])([A-Z])/g, "$1_$2");
   return s.toLowerCase();
 }
 
-/** Mirror of Python apply_gql_name (camelCase convention). */
-export function toCamelCase(name: string): string {
-  return toSnakeCase(name).replace(/_([a-z])/g, (_, c: string) => c.toUpperCase());
-}
-
-/** Mirror of Python apply_cql_label (PascalCase convention). */
+/**
+ * Mirror of Python _to_pascal_case: snake_case or kebab-case → PascalCase. A word that starts with
+ * a digit keeps the underscore before it (case cannot mark that boundary); a word with an internal
+ * capital keeps its casing and only gains a capital first letter; any other word is capitalized.
+ */
 export function toPascalCase(name: string): string {
-  const cc = toCamelCase(name);
-  // Mirror of Python _to_pascal_case: capitalize first letter
-  return cc.charAt(0).toUpperCase() + cc.slice(1);
+  const result: string[] = [];
+  for (const part of name.split(/[_-]+/)) {
+    const chars = Array.from(part); // code points, as Python indexes a str
+    if (chars.length === 0) continue;
+    if (result.length > 0 && /^\p{Nd}$/u.test(chars[0])) result.push("_");
+    const head = chars[0].toUpperCase();
+    const tail = chars.slice(1).join("");
+    const hasInternalUpper = chars.slice(1).some((c) => /^\p{Uppercase}$/u.test(c));
+    result.push(head + (hasInternalUpper ? tail : tail.toLowerCase()));
+  }
+  return result.join("");
 }
 
-/** Mirror of Python apply_convention: apply a named convention to a name. */
-export function applyConvention(name: string, convention: string | null | undefined): string {
-  if (convention === "snake_case") return toSnakeCase(name);
-  if (convention === "camelCase") return toCamelCase(name);
-  if (convention === "PascalCase") return toPascalCase(name);
+/** Mirror of Python _to_camel_case: PascalCase with its first letter lowered. */
+export function toCamelCase(name: string): string {
+  const pascal = toPascalCase(name);
+  const chars = Array.from(pascal);
+  if (chars.length === 0) return pascal;
+  return chars[0].toLowerCase() + chars.slice(1).join("");
+}
+
+/** Mirror of Python PRESET_CONVENTIONS (REQ-416): the conventions the server stores. */
+export const PRESET_CONVENTIONS = ["snake", "hasura_graphql", "apollo_graphql"] as const;
+
+export type NamingPreset = (typeof PRESET_CONVENTIONS)[number];
+
+/** Mirror of Python _CONVENTION_ALIASES: the Hasura/DDN literals and the preset each names. */
+const CONVENTION_ALIASES: Readonly<Record<string, NamingPreset>> = {
+  "hasura-default": "hasura_graphql",
+  "graphql-default": "apollo_graphql",
+  graphql: "apollo_graphql",
+};
+
+/** Mirror of Python VALID_CONVENTIONS: the presets plus the literals that resolve to them. */
+export const VALID_CONVENTIONS: ReadonlySet<string> = new Set([
+  ...PRESET_CONVENTIONS,
+  ...Object.keys(CONVENTION_ALIASES),
+]);
+
+/** Mirror of Python normalize_convention: a Hasura/DDN literal → its preset; else unchanged. */
+export function normalizeConvention(convention: string): string {
+  return Object.hasOwn(CONVENTION_ALIASES, convention)
+    ? CONVENTION_ALIASES[convention]
+    : convention;
+}
+
+function unknownConvention(convention: string): Error {
+  return new Error(
+    `unknown naming convention ${JSON.stringify(convention)}; expected one of ` +
+      JSON.stringify([...VALID_CONVENTIONS].sort()),
+  );
+}
+
+/** Mirror of Python preset_convention: the preset a named convention is; throws for any other name. */
+export function presetConvention(convention: string): NamingPreset {
+  const preset = normalizeConvention(convention);
+  if (!(PRESET_CONVENTIONS as readonly string[]).includes(preset)) {
+    throw unknownConvention(convention);
+  }
+  return preset as NamingPreset;
+}
+
+/**
+ * Mirror of Python apply_convention: apply a naming convention preset (or a Hasura/DDN literal for
+ * one) to a name. snake and hasura_graphql name in snake_case, apollo_graphql in camelCase. Any
+ * other name throws: naming.py refuses it, and reading it as snake renamed in silence.
+ */
+export function applyConvention(name: string, convention: string): string {
+  const preset = presetConvention(convention);
+  if (preset === "apollo_graphql") return toCamelCase(name);
   return toSnakeCase(name);
 }
 

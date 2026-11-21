@@ -290,6 +290,8 @@ locals {
     export VITE_FIREBASE_AUTH_DOMAIN="${var.firebase_web_auth_domain}"
     export VITE_FIREBASE_PROJECT_ID="${var.firebase_project_id}"
     export VITE_AZURE_TENANT="${var.azure_tenant_id}"
+    # REQ-1276: org subdomains live under the zone the wildcard certificate covers.
+    export VITE_ORG_BASE_DOMAIN="${var.tls_domain}"
     ${local.protocol_exports}
     export UI_PORT=${local.protocols.ui.port}
     ${local.node_tls_sync}

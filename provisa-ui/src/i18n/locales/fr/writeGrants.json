@@ -2,6 +2,7 @@
   "writeGrants": {
     "notShown": "Qui peut écrire dans cette table est visible des administrateurs ayant accès à la gouvernance.",
     "empty": "Aucun rôle ne peut écrire dans cette table.",
+    "sourceAcceptsNone": "La source n’accepte aucune écriture (voir l’onglet API) : aucun rôle ne peut donc en recevoir.",
     "role": "Rôle",
     "operation": "Opération",
     "op_insert": "Insérer",

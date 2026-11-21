@@ -87,7 +87,6 @@
     "graphqlQueriesEmpty": "No queryable tables or relationships",
     "graphqlQueryAria": "Run example GraphQL query for {{table}}",
     "sqlQueryAria": "Run example SQL query for {{table}}",
-    "cypherQueryAria": "Run example Cypher query for {{type}}",
     "grpcQueryAria": "Run example gRPC call for {{table}}",
     "jsonapiQueryAria": "Run example JSON:API request for {{table}}",
     "openApiQueryAria": "Run example REST request for {{table}}",
@@ -97,7 +96,6 @@
         "customProperties": "Custom Properties",
         "relatedTables": "Related Tables",
         "relationships": "Relationships",
-        "lineage": "Lineage",
         "inputPorts": "Input Ports",
         "dataQuality": "Data Quality"
       },
@@ -111,11 +109,14 @@
       "relationshipsEmpty": "No relationships between this product's tables",
       "lineageEmpty": "No lineage",
       "lineageLoading": "Loading lineage…",
-      "lineageHint": "Column lineage graph showing this product's tables as the published endpoint, plus every upstream table used to derive them. Informational only. Requires the view_governance capability.",
+      "lineageTitle": "Column lineage: where this product comes from",
+      "lineageHint": "Each column this product publishes and the input column it comes from, with every step between them. Requires the view_governance capability.",
       "outputPortsHint": "This product's queryable surface: its member tables and commands. Example queries for each are under Access Patterns.",
       "customPropertiesEmpty": "No custom properties",
-      "lineageLaneUpstream": "Upstream, hop {{n}}",
-      "lineageLaneDownstream": "Downstream, hop {{n}}"
+      "lineageLaneTables": "This product's tables",
+      "lineageLaneInputs": "Inputs",
+      "lineageLaneUpstream": "Upstream, hop {{n}} beyond the inputs",
+      "inputsLineageLink": "See column lineage"
     },
     "readOnly": "Read-only",
     "readOnlyHint": "You have data_product_read only. An org_admin can grant data_product_rw to edit.",
@@ -177,9 +178,6 @@
       "versionLabel": "Contract version",
       "statusLabel": "Contract status",
       "descriptionLabel": "What it is for",
-      "columnsLabel": "Columns",
-      "columnsHelp": "Removing a column, or changing its type, needs a new version.",
-      "requiredLabel": "Never null",
       "slaLabel": "Service levels",
       "slaProperty": "Property",
       "slaValue": "Value",
@@ -211,7 +209,16 @@
         "check_removed": "Quality check {{subject}} removed",
         "check_changed": "Quality check {{subject}} changed",
         "description_changed": "Description changed",
-        "terms_changed": "Terms changed: {{subject}}"
+        "terms_changed": "Terms changed: {{subject}}",
+        "field_masked": "Field {{subject}} masked ({{after}})",
+        "field_unmasked": "Field {{subject}} no longer masked",
+        "row_rule_added": "Row rule added: {{subject}}",
+        "row_rule_removed": "Row rule removed: {{subject}}",
+        "data_level_changed": "Data level changed from {{before}} to {{after}}",
+        "dq_results_changed": "Quality results changed from {{before}} to {{after}}",
+        "profiles_changed": "Profiles changed from {{before}} to {{after}}",
+        "duration_changed": "Duration changed from {{before}} to {{after}}",
+        "terms_of_use_changed": "Terms of use changed: {{subject}}"
       },
       "howToUse": {
         "column": {
@@ -300,6 +307,12 @@
         "roles": "Roles",
         "history": "Version history"
       }
-    }
+    },
+    "detailPanel": "Data product detail",
+    "tagFacetLabel": "Tags",
+    "tagFacetPlaceholder": "Filter by tag",
+    "noMatch": "No data products match the filters",
+    "domainFacetLabel": "Domains",
+    "domainFacetPlaceholder": "Filter by domain"
   }
 }

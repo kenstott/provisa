@@ -5,10 +5,9 @@
     "identity": "Identiteit",
     "associations": "Koppelingen",
     "load": "Belastingbeheer en actualiteit",
-    "query": "Query",
+    "query": "API",
     "quality": "Kwaliteit",
     "columns": "Kolommen",
-    "writes": "Schrijfrechten",
     "source": "Bron",
     "schema": "Schema",
     "table": "Tabel",
@@ -18,6 +17,10 @@
     "noTerms": "Geen term benoemt een kolom van deze tabel",
     "relationships": "Relaties",
     "noRelationships": "Deze tabel neemt aan geen relatie deel",
+    "metrics": "Metrics",
+    "noMetrics": "Geen metric gebruikt deze tabel",
+    "metricTerm": "{{term}}:",
+    "metricMethod": "Berekend als: {{method}}",
     "fromSource": "{{value}} (van de bron)",
     "fromSourceAsIs": "Zoals bij de bron",
     "notScheduledLikeSource": "Niet alleen volgens schema gelezen, hoewel de bron dat wel is: een query kan de bron lezen.",
@@ -33,9 +36,11 @@
       "skipped": "Overgeslagen"
     },
     "classTerm": "Rijen zijn instanties van",
-    "classTermPlaceholder": "Kies een term",
     "noClassTerm": "Geen term",
     "classTermUnreadable": "De term kon niet worden gelezen: {{error}}",
+    "classTermNoModel": "De term kon niet worden gelezen: uw rollen kunnen de tabellen van het model niet lezen.",
+    "classTermNoEntry": "De term kon niet worden gelezen: uw rollen kunnen de eigen vermelding van deze tabel in het model niet lezen.",
+    "classTermNoField": "De term kon niet worden gelezen: uw rollen kunnen niet lezen van welke term de rijen van een tabel instanties zijn.",
     "access": "Toegang"
   }
 }

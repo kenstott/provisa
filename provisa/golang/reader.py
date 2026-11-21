@@ -20,7 +20,8 @@ say; :mod:`provisa.codesource.manifest` applies the rules.
 Reading types runs none of the code (Node's reader reads declarations the same way), so the
 reader is not sandboxed. The go command it calls is held to what is installed: no network
 (``GOPROXY=off``), no change to the code's ``go.mod`` (``-mod=readonly``), no other toolchain
-(``GOTOOLCHAIN=local``), no workspace and no cgo.
+(``GOTOOLCHAIN=local``), no workspace and no cgo. It reads a copy of the code's ``go.mod`` that adds
+Provisa's services module (:func:`services_go_mod`).
 """
 
 # Requirements: REQ-2200
@@ -43,6 +44,16 @@ from provisa.runtime_deps.code_runtimes import RUNTIMES
 READER = Path(__file__).with_name("reader")
 _READER_SOURCES = ("go.mod", "go.sum", "main.go")
 _GO_LINE = re.compile(r"^go\s+(\d+(?:\.\d+){0,2})\s*$", re.MULTILINE)
+
+#: Provisa's services to the code (REQ-2106): a module of the standard library alone, beside this
+#: one, present in every build of a Go source whatever the code's go.mod says.
+SERVICES = Path(__file__).with_name("services")
+SERVICES_MODULE = "provisa_services"
+#: The version a go.mod requires the module at; it is always replaced by :data:`SERVICES`.
+SERVICES_VERSION = "v0.0.0"
+_SERVICES_LINE = re.compile(
+    rf"^[ \t]*(?:(?:require|replace)[ \t]+)?{SERVICES_MODULE}(?:[ \t].*)?$\n?", re.MULTILINE
+)
 
 
 def _version(text: str) -> tuple[int, ...]:
@@ -87,6 +98,25 @@ def go_environment(go: Path, *, gocache: Path, gomodcache: Path, **extra: str) -
         "CGO_ENABLED": "0",
         **extra,
     }
+
+
+def services_go_mod(code: Path, scratch: Path) -> Path:
+    """The go.mod the go command reads for the code (with ``-modfile``), written in ``scratch``:
+    the code's own, which is never changed, with :data:`SERVICES` required and replaced, in place
+    of anything it says of that module (an author's stub, for use outside Provisa). Its go.sum is
+    the code's, copied beside it, where the go command looks for it."""
+    scratch.mkdir(parents=True, exist_ok=True)
+    made = scratch / "provisa-services.mod"
+    kept = _SERVICES_LINE.sub("", (code / "go.mod").read_text()).rstrip()
+    made.write_text(
+        f"{kept}\n\nrequire {SERVICES_MODULE} {SERVICES_VERSION}\n\n"
+        f"replace {SERVICES_MODULE} => {SERVICES}\n"
+    )
+    sums = made.with_suffix(".sum")
+    sums.unlink(missing_ok=True)
+    if (code / "go.sum").is_file():
+        shutil.copyfile(code / "go.sum", sums)
+    return made
 
 
 def reader_key(go_version: str) -> str:
@@ -168,6 +198,11 @@ def read_code(
     cache for this read."""
     code = code.resolve()  # the reader runs in it, and the go command it starts runs there too
     check_go_line(code)
-    env = go_environment(go, gocache=scratch / "gocache", gomodcache=gomodcache)
+    env = go_environment(
+        go,
+        gocache=scratch / "gocache",
+        gomodcache=gomodcache,
+        GOFLAGS=f"-mod=readonly -modfile={services_go_mod(code, scratch)}",
+    )
     out = run([str(reader), str(code), pattern(package)], env, code)
     return read_manifest(json.loads(out), GO_RULES)

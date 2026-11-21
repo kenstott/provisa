@@ -71,13 +71,17 @@ type ManyInputs struct {
 	Count int `json:"count"`
 }
 
-// Many is rows of no declared shape: typed by a preview.
+type Counted struct {
+	I int `json:"i"`
+}
+
+// Many is many rows, in batches.
 //
 // @table
-func Many(in ManyInputs) []map[string]any {
-	rows := make([]map[string]any, in.Count)
+func Many(in ManyInputs) []Counted {
+	rows := make([]Counted, in.Count)
 	for i := range rows {
-		rows[i] = map[string]any{"i": i}
+		rows[i] = Counted{i}
 	}
 	return rows
 }
@@ -105,11 +109,15 @@ func Placed(ctx context.Context, in PlacedInputs) iter.Seq2[Order, error] {
 	}
 }
 
+type Tick struct {
+	Tick int `json:"tick"`
+}
+
 // @stream
-func Ticks() iter.Seq2[map[string]any, error] {
-	return func(yield func(map[string]any, error) bool) {
+func Ticks() iter.Seq2[Tick, error] {
+	return func(yield func(Tick, error) bool) {
 		for n := 0; ; n++ {
-			if !yield(map[string]any{"tick": n}, nil) {
+			if !yield(Tick{n}, nil) {
 				return
 			}
 			time.Sleep(10 * time.Millisecond)
@@ -118,8 +126,8 @@ func Ticks() iter.Seq2[map[string]any, error] {
 }
 
 // @stream
-func Forever(ctx context.Context) iter.Seq2[map[string]any, error] {
-	return func(yield func(map[string]any, error) bool) {
+func Forever(ctx context.Context) iter.Seq2[Tick, error] {
+	return func(yield func(Tick, error) bool) {
 		<-ctx.Done()
 	}
 }
@@ -130,25 +138,34 @@ func CancelOrder(orderID int64) (map[string]any, error) {
 }
 
 // @table
-func Boom() ([]map[string]any, error) {
+func Boom() ([]Counted, error) {
 	return nil, errors.New("no such customer")
 }
 
+type Length struct {
+	Length int `json:"length"`
+}
+
 // @table
-func Outside() ([]map[string]any, error) {
+func Outside() ([]Length, error) {
 	hosts, err := os.ReadFile("/etc/hosts")
 	if err != nil {
 		return nil, err
 	}
-	return []map[string]any{{"length": len(hosts)}}, nil
+	return []Length{{len(hosts)}}, nil
 }
 
 type FetchedInputs struct {
 	URL string `json:"url"`
 }
 
+type Fetch struct {
+	Status int    `json:"status"`
+	Body   string `json:"body"`
+}
+
 // @table
-func Fetched(ctx context.Context, in FetchedInputs) ([]map[string]any, error) {
+func Fetched(ctx context.Context, in FetchedInputs) ([]Fetch, error) {
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, in.URL, nil)
 	if err != nil {
 		return nil, err
@@ -162,7 +179,7 @@ func Fetched(ctx context.Context, in FetchedInputs) ([]map[string]any, error) {
 	if err != nil {
 		return nil, err
 	}
-	return []map[string]any{{"status": response.StatusCode, "body": string(body)}}, nil
+	return []Fetch{{response.StatusCode, string(body)}}, nil
 }
 
 type DirectInputs struct {
@@ -170,14 +187,18 @@ type DirectInputs struct {
 	Port int    `json:"port"`
 }
 
+type Connected struct {
+	Connected bool `json:"connected"`
+}
+
 // @table
-func Direct(in DirectInputs) ([]map[string]any, error) {
+func Direct(in DirectInputs) ([]Connected, error) {
 	connection, err := net.DialTimeout("tcp", fmt.Sprintf("%s:%d", in.Host, in.Port), 5*time.Second)
 	if err != nil {
 		return nil, err
 	}
 	connection.Close()
-	return []map[string]any{{"connected": true}}, nil
+	return []Connected{{true}}, nil
 }
 
 type GreetInputs struct {
@@ -186,8 +207,12 @@ type GreetInputs struct {
 	Punctuation *string `json:"punctuation"`
 }
 
+type Greeting struct {
+	Text string `json:"text"`
+}
+
 // @table
-func Greet(in GreetInputs) []map[string]any {
+func Greet(in GreetInputs) []Greeting {
 	greeting, punctuation := "hello", "!"
 	if in.Greeting != nil {
 		greeting = *in.Greeting
@@ -195,7 +220,7 @@ func Greet(in GreetInputs) []map[string]any {
 	if in.Punctuation != nil {
 		punctuation = *in.Punctuation
 	}
-	return []map[string]any{{"text": greeting + " " + in.Name + punctuation}}
+	return []Greeting{{greeting + " " + in.Name + punctuation}}
 }
 
 type Address struct {

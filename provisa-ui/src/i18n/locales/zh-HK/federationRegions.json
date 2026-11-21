@@ -1,0 +1,19 @@
+{
+  "federationRegions": {
+    "intro": "每個區域在自己的引擎上執行查詢：即平台分配給本組織作為該區域引擎的儲存，包括其引擎類型和連線 URL。",
+    "readOnlyNote": "每個區域的引擎由平台管理員分配。此處以唯讀方式顯示。",
+    "sandboxNote": "此處顯示用於說明區域。在示範中無法更改。",
+    "restartNote": "更改在該區域的節點重新啟動後生效。",
+    "restartPending": "已儲存。更改在該區域的節點重新啟動後生效。",
+    "edit": "編輯",
+    "store": "引擎儲存",
+    "kind": "引擎類型",
+    "url": "URL",
+    "sharedWith": "也是以下區域的引擎",
+    "storeHelp": "此區域指定為其引擎的儲存。具體是哪個儲存在平台頁面上設定。",
+    "sharedHint": "也是 {{regions}} 的引擎。此處的更改同樣適用於那裡。",
+    "kindHelp": "此儲存執行的引擎。",
+    "urlHelp": "引擎的連線 URL，或 ${env:NAME} 這樣的參照。完全按輸入保存。其中的密碼不會再顯示；保持 URL 不變即可保留密碼。",
+    "storeMissing": "區域 {{region}} 將 {{store}} 指定為其引擎，但組織沒有儲存 {{store}}。"
+  }
+}

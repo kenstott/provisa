@@ -135,11 +135,13 @@ async def _pgwire(srv, sql: str) -> list[tuple]:
 
 def test_graphql_reads_every_temporal_as_iso_8601(server):
     rows = _graphql(server, "{ events(order_by: {id: asc}) { id happened logged seen } }")["events"]
+    # As PostgreSQL's json writes a timestamp: the T, and no trailing zeros in a fraction
+    # (serialize.temporal_text, REQ-2171).
     assert rows[0] == {
         "id": 1,
-        "happened": "2026-01-02T03:04:05.123000+00:00",
+        "happened": "2026-01-02T03:04:05.123+00:00",
         "logged": "2026-01-02T03:04:05",
-        "seen": "2026-01-02T03:04:05.123000+00:00",
+        "seen": "2026-01-02T03:04:05.123+00:00",
     }
     assert rows[1]["happened"] == "2026-03-04T05:06:07+00:00"
 

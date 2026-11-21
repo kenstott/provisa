@@ -1,0 +1,16 @@
+{
+  "contextViews": {
+    "colWhereApplied": "कहाँ लागू है",
+    "colDependents": "इस पर निर्भर",
+    "detectedHeader": "यहाँ पहचाना गया",
+    "nowhere": "कहीं नहीं",
+    "hiddenPlaces_one": "{{count}} और जिन्हें आप नहीं पढ़ सकते",
+    "hiddenPlaces_other": "{{count}} और जिन्हें आप नहीं पढ़ सकते",
+    "rowFilters_one": "{{count}} पंक्ति फ़िल्टर",
+    "rowFilters_other": "{{count}} पंक्ति फ़िल्टर",
+    "classifiedAs": "वर्गीकरण द्वारा निर्दिष्ट: {{kind}}",
+    "noDependents": "कुछ नहीं",
+    "enabled": "सक्षम",
+    "disabled": "अक्षम"
+  }
+}

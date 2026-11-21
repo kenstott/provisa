@@ -29,7 +29,7 @@
     "query": "Consulta",
     "domain": "Domínio",
     "selectDomain": "Selecionar domínio...",
-    "dataProduct": "Produto de dados (opcional)",
+    "dataProduct": "Produtos de dados",
     "dataProductPlaceholder": "Selecionar produto de dados...",
     "description": "Descrição",
     "descriptionPlaceholder": "opcional",
@@ -52,6 +52,8 @@
     "colVisibleTo": "Visível para (funções, separadas por vírgula; vazio = todos)",
     "colVisibleToPlaceholder": "analyst, org_admin",
     "colMask": "Máscara",
+    "exposedAsTable": "Também como tabela",
+    "exposedAsTableHint": "Os clientes que leem tabelas, como as ferramentas de BI, leem esta função como uma tabela com os parâmetros como colunas. Desativada, ela devolve as linhas da lista da fonte do mesmo tipo, e a tabela é removida.",
     "requiresApproval": "Requer aprovação",
     "requiresApprovalHint": "Cada chamada só é executada depois que o hook de aprovação a aprova. Sem um hook configurado, as chamadas são recusadas.",
     "writesTable": "Escreve na tabela",
@@ -68,6 +70,8 @@
     "bindingTemplate": "Expressão SQL",
     "bindingTemplateHint": "Uma expressão SQL. Escreva cada argumento como {{placeholder}}; ela é executada dentro da consulta que a chama.",
     "argDefault": "Valor padrão do argumento {{name}}",
-    "argDefaultPlaceholder": "Valor padrão (deixe vazio se obrigatório)"
+    "argDefaultPlaceholder": "Valor padrão (deixe vazio se obrigatório)",
+    "nativeSql": "SQL nativo",
+    "nativeSqlHint": "SQL no dialeto próprio da fonte, uma instrução ou várias, executadas na fonte numa única transação: todas são confirmadas ou nenhuma é. Escreva um argumento como {{placeholder}}; cada um é vinculado como valor. A resposta são as linhas da última instrução."
   }
 }

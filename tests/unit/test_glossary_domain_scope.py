@@ -137,9 +137,10 @@ async def test_the_departing_domains_are_stamped_when_the_last_ref_leaves(contro
         assert tid is not None
         customer = await _id(conn, "customer")
         await glossary_repo.set_definition(conn, customer, "The buyer.")
-        # The table departs: the term is deprecated rather than removed (it carries a definition),
-        # and its domains are no longer derivable — so they must have been recorded.
-        await table_repo.delete(conn, tid)
+        # The column departs: the term is deprecated rather than removed (it carries a
+        # definition), and its domains are no longer derivable — so they must have been recorded.
+        # (A deleted table is retired and keeps its refs, REQ-2248, so the column is what departs.)
+        await table_repo.upsert(conn, _tbl("sales", "orders", []))
         detail = await glossary_repo.get_term(conn, customer)
         assert detail is not None
         assert bool(detail["deprecated"]) is True

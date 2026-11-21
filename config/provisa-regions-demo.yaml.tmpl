@@ -5,7 +5,7 @@
 #
 # REQ-1922 two-region demo (eu + us). This is a TEMPLATE: scripts/launch-demo-regions.sh substitutes
 # the @@TOKENS@@ with the shared embedded-Postgres URL, the per-region DuckDB engine files, the shared
-# fakeredis URL, and the two node addresses, then deploys the result to BOTH nodes' shared model store.
+# fakeredis URL, then deploys the result to BOTH nodes' shared model store.
 #
 # The platform declares eu and us; the org selects both. Per the REQ-1922 amendment the two regions
 # share ONE embedded Postgres instance (region-qualified schema/cache names keep them from colliding —
@@ -16,8 +16,8 @@ federation_engine: duckdb
 
 platform:
   regions:
-    - { id: eu, address: "@@EU_ADDRESS@@" }
-    - { id: us, address: "@@US_ADDRESS@@" }
+    - { id: eu, description: "The European Union", purposes: [residency] }
+    - { id: us, description: "The United States", purposes: [latency] }
 
 # One embedded Postgres backs every pg store; each region keeps its DuckDB engine in its own file, and
 # the cache is the one shared fakeredis. replicas and views share a store (one materialize store per

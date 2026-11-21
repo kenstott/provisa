@@ -106,8 +106,9 @@ def test_a_stream_raises_postgresqls_error_met_in_a_later_batch(driver):
     raised as PostgreSQL's own error (duckdb_arrow.answered_batches), and the driver goes on."""
     from provisa.executor.drivers.cursor_stream import FETCH_CHUNK_ROWS
 
-    # Past what DuckDB computes when the statement is run (about 128K rows).
-    late = 400_000
+    # Far enough that the first batches are read before it: DuckDB's threads run ahead of the
+    # reader, so at 400,000 rows about one read in thirteen under load met it before the first.
+    late = 2_000_000
     sql = (
         f"SELECT CASE WHEN range = {late} THEN error('postgresql-error 22003: integer out of "
         f"range<end of postgresql-error>') ELSE range END AS id FROM range({late + 1})"

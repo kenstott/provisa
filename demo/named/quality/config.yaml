@@ -37,6 +37,7 @@ data_products:
 # What the chain's consumers are given: gold to read, silver for the row-level detail behind it, and
 # dq_results as the evidence each batch passed its checks. Bronze, the raw landing, stays out.
 - id: daily_sales
+  tables: [view_dq_results, view_gold, view_silver]
   domain_id: sales
   name: Daily Sales
   owner_role: org_admin
@@ -108,7 +109,6 @@ views:
 # check has none.
 - id: dq_results
   domain_id: sales
-  product_id: daily_sales
   materialize: true
   enable_aggregates: true
   enable_group_by: true
@@ -147,7 +147,6 @@ views:
 # Silver: bronze cleaned, from the batches whose checks all passed.
 - id: silver
   domain_id: sales
-  product_id: daily_sales
   materialize: true
   enable_aggregates: true
   enable_group_by: true
@@ -187,7 +186,6 @@ views:
 # Gold: totals by day and product, one GROUP BY over silver.
 - id: gold
   domain_id: sales
-  product_id: daily_sales
   materialize: true
   enable_aggregates: true
   enable_group_by: true

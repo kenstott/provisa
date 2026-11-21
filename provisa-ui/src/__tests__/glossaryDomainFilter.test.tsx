@@ -23,8 +23,11 @@ import type { GlossaryTermSummary } from "../api/glossary";
 
 const t = i18n.getFixedT("en");
 
-// jsdom draws no canvas: the term graph is tested on its own (TermDag.test.tsx).
-vi.mock("../components/admin/TermDag", () => ({ TermDag: () => null }));
+// jsdom draws no canvas: the term page's ontology snippet is tested on its own (TermDag.test.tsx).
+vi.mock("../components/graph3d/OntologyGraph", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../components/graph3d/OntologyGraph")>()),
+  OntologySnippet: () => null,
+}));
 vi.mock("../api/glossary", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../api/glossary")>()),
   // REQ-1592: the author/expert picker's roster.
@@ -66,6 +69,7 @@ const ORDER: GlossaryTermSummary = {
   id: 1,
   name: "Order",
   definition: "A customer's request to buy.",
+  calculation_method: null,
   is_abstract: false,
   deprecated: false,
   ref_count: 2,

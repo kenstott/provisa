@@ -34,6 +34,7 @@
     "focusDomains": "Домены: {{names}}",
     "focusTables": "Таблицы: {{names}}",
     "focusMissing": "Не найдено: {{names}}",
-    "showAll": "Показать все"
+    "showAll": "Показать все",
+    "showWithdrawn": "Показывать отозванные"
   }
 }

@@ -87,7 +87,9 @@ def trace_stage(stage: str, sql: str) -> None:
     dropping the event or propagating.
     """
     span = _current_span()
-    if span is None:
+    # A span that is not recording drops every event, so the trace settings (and the settings
+    # catalog they load) are not read for it: a translation outside a traced request reads none.
+    if span is None or not span.is_recording():
         return
     # REQ-1910: stage events are per-stage detail (and can carry SQL). In normal trace detail the
     # current span is the request span, which records neither.

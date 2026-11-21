@@ -22,7 +22,7 @@ from provisa.api.metadata_export.atlas import _data_product_entities, _GuidCount
 from provisa.api.metadata_export.datahub import _data_product_proposals
 from provisa.api.metadata_export.openmetadata import _data_product_entity
 from provisa.core.models import DataProduct
-from tests.integration.metadata_export_fixture import ORG_ID, governed_config
+from tests.integration.metadata_export_fixture import ORG_ID, PROD, governed_config
 
 FIELDS = {
     "purpose": "One view of each customer",
@@ -55,6 +55,7 @@ def _product():
             support=FIELDS["support"],
             support_contact=FIELDS["supportContact"],
             custom_properties={"cost_center": "CC-42"},
+            tables=list(PROD.tables),
         )
     ]
     snapshot = build_snapshot(config, org_id=ORG_ID, dialect="postgres", contexts={})

@@ -373,6 +373,17 @@ describe("a demo's steps, as the runner walks them", () => {
     expect(step.element).toBe('[data-testid="data-product-detail"]');
   });
 
+  it("opens a report on the Reports page, its rows shown", () => {
+    const [step] = demoTourSteps(
+      [{ key: "r", route: "/admin/reports", report: "sensitive_column_coverage" }],
+      EXAMPLES,
+    );
+    expect(step.route).toBe("/admin/reports?report=sensitive_column_coverage");
+    expect(step.element).toBe(
+      '[data-testid="report-pane"][data-report="sensitive_column_coverage"]',
+    );
+  });
+
   it("opens a statement's lineage on the Lineage page and waits for its graph", () => {
     const sql = 'SELECT address FROM "vault"."view_dim_customer"';
     const [step] = demoTourSteps([{ key: "l", route: "/lineage", lineage: sql }], EXAMPLES);

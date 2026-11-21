@@ -516,8 +516,12 @@ main {
 }
 
 /* Page layout */
+/* The page gutter: a page's padding, and the margin a dialog as wide as the window keeps. */
+:root {
+  --page-gutter: 1.5rem;
+}
 .page {
-  padding: 1.5rem;
+  padding: var(--page-gutter);
   width: 100%;
   box-sizing: border-box;
 }
@@ -767,33 +771,9 @@ main {
   flex: 1 1 auto;
   min-height: 0;
 }
-/* The diagram's image controls: a vertical bar at its top corner, shown while the pointer is over
-   the diagram or a control in it has the keyboard's focus. */
-.erd-stage__bar {
-  position: absolute;
-  top: 8px;
-  inset-inline-end: 8px;
-  z-index: 10;
-  padding: 2px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--surface);
-  opacity: 0;
-  transition: opacity 0.15s;
-}
-.erd-stage:hover .erd-stage__bar,
-.erd-stage__bar:focus-within {
-  opacity: 1;
-}
-/* REQ-2189: the tables new since the layout was saved, waiting to be placed. */
+/* REQ-2189: the tables new since the layout was saved, waiting to be placed.
+   The graph places it, top left (provisa-graph.css, .pg-corner). */
 .erd-stage__tray {
-  position: absolute;
-  bottom: 8px;
-  inset-inline-start: 8px;
-  z-index: 10;
-  max-width: 280px;
-  max-height: 40%;
-  overflow-y: auto;
   padding: 6px 8px;
   border: 1px solid var(--border);
   border-radius: 6px;
@@ -881,8 +861,10 @@ main {
 .split-pane__head .mantine-Group-root {
   gap: 0.25rem;
 }
-.split-pane__head :is(.mantine-Button-root, .mantine-ActionIcon-root):disabled,
-.split-pane__head :is(.mantine-Button-root, .mantine-ActionIcon-root)[data-disabled] {
+.split-pane__head
+  :is(.mantine-Button-root, .mantine-ActionIcon-root)[data-variant="subtle"]:disabled,
+.split-pane__head
+  :is(.mantine-Button-root, .mantine-ActionIcon-root)[data-variant="subtle"][data-disabled] {
   background: transparent;
   border-color: transparent;
   opacity: 0.45;
@@ -891,7 +873,8 @@ main {
   min-height: 1px;
 }
 /* A form's Save and Cancel in the head of the panel it is open in, in place of the view's
- * actions: borderless and compact, beside the name, so the form has the panel's whole height. */
+ * actions: borderless and compact like the head's other actions, beside the name, so the form has
+ * the panel's whole height. */
 .form-footer.form-footer--head {
   flex: 0 0 auto;
   flex-wrap: nowrap;
@@ -899,11 +882,6 @@ main {
 }
 .form-footer.form-footer--head .mantine-Button-root {
   min-width: 0;
-}
-/* Both are borderless here; Save is the primary and is tinted as one. */
-.form-footer.form-footer--head .mantine-Button-root[data-primary]:not(:disabled) {
-  --button-color: var(--primary-hover);
-  color: var(--primary-hover);
 }
 /* What a form in the panel says of a save that did not go through: one line under the head. */
 .split-pane__notice {
@@ -1006,6 +984,12 @@ main {
   flex: 0 0 auto;
   overflow: visible;
 }
+/* The same for a list with a detail panel (Relationships with its suggestions beneath): left to
+ * shrink, the split pane gave all of its height to the suggestions and a discovery result above it,
+ * and showed only its clipped header. It keeps its own height and the page scrolls. */
+.page-sticky-head:has(> .page-aux) > .split-pane {
+  flex: 0 0 auto;
+}
 .page-sticky-head .data-table {
   overflow: visible;
 }
@@ -1051,6 +1035,22 @@ main {
 .data-table tr.row-selected > .list-actions {
   background-color: var(--border);
   background-image: none;
+}
+/* REQ-2240: a list's selection column (ListTable `selection`): as narrow as its box. A press in
+ * the cell around the box is the box's, never the row's. */
+.data-table .list-select {
+  width: 1%;
+  white-space: nowrap;
+  padding-inline-end: 0;
+  cursor: default;
+}
+/* REQ-2240: the bar shown once rows are selected: the count, Delete and Clear. */
+.list-bulk-bar {
+  padding: 0.35rem 0.75rem;
+  margin-bottom: 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
 }
 /* REQ-1940: expanded-row content for lists whose detail is simple fields. */
 .list-detail {
@@ -2669,6 +2669,13 @@ main {
   min-height: 0;
   display: flex;
 }
+/* The shell's last row (components/LicenseBadge.tsx): #root is a flex column, so this row takes its
+   height from .app-body and every page ends above it. Absent when there is nothing to show. */
+.app-status-bar {
+  flex: none;
+  display: flex;
+  padding: 0.25rem 0.5rem;
+}
 /* The one vertical menu (components/VerticalNav.tsx; the Admin rail is the same over route links):
    items left-aligned down a column that scrolls on its own, the chosen one filled. */
 .vertical-nav {
@@ -2841,14 +2848,29 @@ main {
 .detail-fields > dd {
   overflow-wrap: anywhere;
 }
-/* A form read (FormRead): only its fields' label and value rows and its folds' headings are drawn;
+/* A form read (FormRead): the form's own flow (.form-layout), each field a cell of its size with its
+ * label above its value and its hint below. Only its fields and its folds' headings are drawn;
  * its notes, buttons and other furniture are not. */
-.form-read > :not(dt, dd, .form-read__heading) {
+.form-read {
+  margin: 0 0 0.75rem;
+  color: var(--text);
+}
+.form-read > :not(.form-field, .form-read__heading) {
   display: none;
+}
+.form-read > .form-field {
+  margin: 0;
+}
+.form-read > .form-field > dd {
+  overflow-wrap: anywhere;
+}
+.form-read__hint {
+  margin: 0.15rem 0 0;
+  color: var(--mantine-color-dimmed);
 }
 /* A group's heading, as the other read views head theirs (RoleRead, RelationshipRead). */
 .form-read__heading {
-  grid-column: 1 / -1;
+  flex: 1 1 100%;
   margin-top: 0.75rem;
   color: var(--mantine-color-dimmed);
   font-weight: 700;
@@ -2905,15 +2927,21 @@ main {
   outline-offset: 2px;
   border-radius: 50%;
 }
-/* Field labels stay on one line; a checkbox or switch sentence wraps. Below phone width the
+/* Field labels, read or edited, stay on one line; a checkbox or switch sentence wraps. Below phone width the
  * container can be narrower than a label, so there a label may wrap. */
 @media (min-width: 30em) {
   .form-field:not(.form-field--full) .mantine-InputWrapper-label,
-  .form-field:not(.form-field--full) > label {
+  .form-field:not(.form-field--full) > label,
+  .form-field:not(.form-field--full) > dt {
     white-space: nowrap;
   }
 }
 /* Grouped fields keep their class minimum (or their label) and move to the next line together. */
+.form-field-group,
+.form-identifiers {
+  /* the label's line, and the hairline the control's own border adds */
+  --form-label-offset: calc(var(--mantine-font-size-sm) * var(--mantine-line-height) + 3px);
+}
 .form-field-group {
   display: flex;
   flex-wrap: wrap;
@@ -2947,8 +2975,13 @@ main {
 .form-field-group > .mantine-Button-root,
 .form-field-group > .mantine-ActionIcon-root {
   flex: 0 0 auto;
-  /* the label's line, and the hairline the control's own border adds */
-  margin-top: calc(var(--mantine-font-size-sm) * var(--mantine-line-height) + 3px);
+  margin-top: var(--form-label-offset);
+}
+/* An unlabelled control (a switch, a segmented choice) beside a labelled input: it starts where
+ * the input's control starts, so the two share a centre line. */
+.form-field-group > .form-field--after-label,
+.form-identifiers > .form-field--after-label {
+  margin-top: var(--form-label-offset);
 }
 /* A row whose boxes carry no label above them (one entry of a list): its action sits level with
    the boxes, and the boxes share the row. */
@@ -2962,7 +2995,8 @@ main {
   min-width: 0;
 }
 .form-field-group--bare > .mantine-Button-root,
-.form-field-group--bare > .mantine-ActionIcon-root {
+.form-field-group--bare > .mantine-ActionIcon-root,
+.form-field-group--bare > .form-field--after-label {
   margin-top: 0;
 }
 .form-identifiers {
@@ -3125,4 +3159,13 @@ main {
 /* REQ-2078: a derived role's value roles sit under their parent in the Roles list. */
 .data-table tbody td.derived-value-cell {
   padding-inline-start: 1.75rem;
+}
+
+/* A multi-select option that cannot be picked but has an action beside it: the label is dimmed
+   as the list dims any such option, and the action stays at full strength. */
+[data-combobox-disabled]:has(.multi-select-option-held) {
+  opacity: 1;
+}
+.multi-select-option-held {
+  opacity: 0.35;
 }

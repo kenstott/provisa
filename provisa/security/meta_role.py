@@ -51,15 +51,31 @@ import time
 from collections.abc import Callable
 from typing import Any
 
+# A role id read without a runtime is pure and below the compiler (security/rights.py).
+from provisa.security.rights import META_PREFIX as META_PREFIX
+from provisa.security.rights import is_meta_role_id as is_meta_role_id
+from provisa.security.rights import members_of as members_of
+
 
 def _member_surface(held: Any) -> Any:
-    """A member role's surface, built on first read (api/role_surface.LazySurface)."""
-    from provisa.api.role_surface import built_surface
+    """A member role's context and row filters, built on first read: the parts a meta-role is
+    folded from. Its schema and proto are not built for it (api/role_surface.LazySurface)."""
+    from provisa.api.role_surface import reading_surface
 
-    return built_surface(held)
+    return reading_surface(held)
 
 
-META_PREFIX = "meta:"
+def _member_parts(state: Any, members: list[dict]) -> dict[str, tuple[Any, frozenset[int]]]:
+    """Each member's reading parts (:func:`_member_surface`) and the ids of the tables it reads,
+    by member id: one snapshot per member -- context and filters of one build -- taken once for
+    the whole fold. A scan of the member's context for every table was quadratic in the model."""
+    parts = {}
+    for m in members:
+        member = _member_surface(state.surfaces[m["id"]])
+        parts[m["id"]] = (member, frozenset(tm.table_id for tm in member.context.tables.values()))
+    return parts
+
+
 _LOCK = threading.Lock()
 
 
@@ -81,24 +97,12 @@ def meta_role_id(members: list[str] | tuple[str, ...]) -> str:
     return META_PREFIX + "+".join(sorted(set(members)))
 
 
-def is_meta_role_id(role_id: str | None) -> bool:
-    return bool(role_id) and str(role_id).startswith(META_PREFIX)
-
-
 def refuse_named_meta_role(requested: list[str]) -> None:
     for role_id in requested:
         if is_meta_role_id(role_id):
             raise MetaRoleNamed(
                 f"{role_id!r} is not a role: name the roles you hold, and the server acts as them"
             )
-
-
-def members_of(role_id: str) -> tuple[str, ...]:  # REQ-2188
-    """The roles ``role_id`` names: a meta-role's, from its id (:func:`meta_role_id`), else
-    itself. For a caller that holds no runtime: a session variable bound at a transport's edge."""
-    if not is_meta_role_id(role_id):
-        return (role_id,)
-    return tuple(role_id[len(META_PREFIX) :].split("+"))
 
 
 def acting_roles(state: Any, role_id: str) -> tuple[str, ...]:
@@ -119,18 +123,34 @@ def meta_description(members: list[dict]) -> str:  # REQ-2080
 
 
 def _role(members: list[dict], meta_id: str) -> dict:
-    from provisa.security.rights import normalized_reach
+    from provisa.security.inheritance import OWN_DOMAIN_ACCESS
+    from provisa.security.rights import (
+        COMMAND_DOMAIN_ACCESS,
+        Capability,
+        command_only,
+        normalized_reach,
+    )
 
     caps: set[str] = set()
     domains: set[str] = set()
+    own_domains: set[str] = set()
+    command_domains: set[str] = set()
     for m in members:
-        caps.update(m.get("capabilities") or [])
-        domains.update(m.get("domain_access") or [])
+        held = m.get("capabilities") or []
+        caps.update(held)
+        if Capability.COMMAND_EXECUTION.value in held:
+            command_domains.update(m.get("domain_access") or [])
+        # REQ-870, REQ-2152: a member holding only command_execution adds no read reach.
+        if not command_only(held):
+            domains.update(m.get("domain_access") or [])
+            own_domains.update(m[OWN_DOMAIN_ACCESS])  # REQ-2153: every built role carries it
     return {
         "id": meta_id,
         "description": meta_description(members),  # REQ-2080
         "capabilities": sorted(caps),
         "domain_access": normalized_reach(domains),
+        OWN_DOMAIN_ACCESS: normalized_reach(own_domains),
+        COMMAND_DOMAIN_ACCESS: normalized_reach(command_domains),
         "max_rows": _least_restrictive([m.get("max_rows") for m in members]),
         "rate_limit": _least_restrictive([m.get("rate_limit") for m in members]),
         # Each member's constants are inlined into its own filter term (_inlined), not merged here.
@@ -242,7 +262,11 @@ def _fold_write_grants(
 
 
 def _member_reads(
-    state: Any, members: list[dict], tables: list[dict], qualifiers: tuple[str, ...]
+    state: Any,
+    members: list[dict],
+    tables: list[dict],
+    qualifiers: tuple[str, ...],
+    parts: dict[str, tuple[Any, frozenset[int]]],
 ) -> dict[int, Any]:
     """Per table a member reads, how each member reads it (compiler.rls.MemberReads): a row is
     read as the member(s) whose own filter admitted it, each column masked or hidden as that
@@ -259,30 +283,24 @@ def _member_reads(
 
     chains = state.role_build_inputs["role_chains"]
     masked = {(tid, col): (masks, dtype) for tid, col, masks, dtype in state.masked_columns}
-    # REQ-1494: a fake is the column's own declaration, read by every role in a Test environment
-    # in place of any mask (app_loaders._load_masking_rules); each member holds it alike.
+    # REQ-1494: a fake is read in place of any mask by every role in a Test environment, and by
+    # a synthetic offer's role on its product's datasets (REQ-2180; app_loaders._load_masking_rules);
+    # each member reads it as its own published rules hold it.
     faked = {
-        (tid, col): entry
-        for (tid, _rid), cols in state.masking_rules.items()
+        (tid, rid, col): entry
+        for (tid, rid), cols in state.masking_rules.items()
         for col, entry in cols.items()
         if entry[0].mask_type == MaskType.fake
     }
     out: dict[int, Any] = {}
     for t in tables:
-        readers = [
-            m
-            for m in members
-            if any(
-                tm.table_id == t["id"]
-                for tm in _member_surface(state.surfaces[m["id"]]).context.tables.values()
-            )
-        ]
+        readers = [m for m in members if t["id"] in parts[m["id"]][1]]
         if not readers:
             continue
         domain = t.get("domain_id")
         flags: list[Any] = []
         for m in readers:
-            ctx = _member_surface(state.surfaces[m["id"]]).rls
+            ctx = parts[m["id"]][0].rls
             expr = ctx.rules.get(t["id"]) or ctx.domain_rules.get(domain or "")
             flags.append(
                 exp.true() if expr is None else _inlined(expr, m.get("session_vars") or {})
@@ -301,8 +319,8 @@ def _member_reads(
                 if not served:
                     treatments.append((HIDDEN, None, dtype))
                     continue
-                if (t["id"], name) in faked:
-                    rule, fake_type = faked[(t["id"], name)]
+                if (t["id"], m["id"], name) in faked:
+                    rule, fake_type = faked[(t["id"], m["id"], name)]
                     treatments.append((1, rule, fake_type))
                     continue
                 chain = [*chains[m["id"]], *qualifiers]
@@ -328,15 +346,13 @@ def _rls(
     from provisa.security.mutation_authz import command_reachable
 
     rules: dict[int, Any] = {}
+    parts = _member_parts(state, members)
     for t in tables:
         terms: list[Any] = []
         lifted = False
         for m in members:
-            member = _member_surface(
-                state.surfaces[m["id"]]
-            )  # one snapshot: context and filters of one build
-            reads = any(tm.table_id == t["id"] for tm in member.context.tables.values())
-            if not reads:
+            member, reads = parts[m["id"]]
+            if t["id"] not in reads:
                 continue
             ctx = member.rls
             expr = ctx.rules.get(t["id"]) or ctx.domain_rules.get(t.get("domain_id") or "")
@@ -358,7 +374,7 @@ def _rls(
         for m in members:
             if not command_reachable(c, m):
                 continue
-            ctx = state.rls_contexts[m["id"]]
+            ctx = parts[m["id"]][0].rls
             expr = ctx.action_rules.get(c["name"]) or ctx.domain_rules.get(c.get("domain_id") or "")
             if expr is None:
                 lifted = True
@@ -370,7 +386,7 @@ def _rls(
         rules=rules,
         domain_rules={},
         action_rules=actions,
-        member_reads=_member_reads(state, members, tables, qualifiers),
+        member_reads=_member_reads(state, members, tables, qualifiers, parts),
     )
 
 
@@ -443,7 +459,9 @@ def _build(
     inputs = state.role_build_inputs
     chains = {meta_id: meta_chain(meta_id, member_ids, inputs["role_chains"], qualifiers)}
     # Inheritance with several parents: every grant to a member reaches the child.
-    for t in inputs["tables"]:
+    # REQ-1921: and on a withdrawn table, so the child's steward preview reads it as its
+    # members' would.
+    for t in [*inputs["tables"], *inputs["withdrawn_tables"]]:
         expand_grants(t.get("columns") or [], chains)
     expand_grants(inputs["metrics"], chains)
     expand_grants(inputs["functions"], chains)
@@ -469,8 +487,8 @@ def _build(
 
 
 def fold_tables(state: Any, meta_id: str, tables: list[dict]) -> Any:  # REQ-1620, REQ-1921
-    """How the meta-role ``meta_id`` reads ``tables``, tables its build did not fold (a draft its
-    steward previews, admin/table_read.py): granted to it as :func:`_build` grants a table in
+    """How the meta-role ``meta_id`` reads ``tables``, tables its build did not fold (a withdrawn
+    table its steward previews, admin/table_read.py): granted to it as :func:`_build` grants a table in
     service -- every grant to a member reaches it, expanded on ``tables`` in place -- and its row
     filters and member reads folded from its members' as :func:`_build` folds them. ``state`` is
     a view whose members' surfaces read ``tables``. Returns the folded RLSContext."""

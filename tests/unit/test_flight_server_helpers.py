@@ -215,6 +215,7 @@ class TestFlightSqlDispatchHopCount:
             scratch=(),  # as _Plan: no scratch tables (REQ-1986)
             row_limit=None,  # as _Plan: no row limit bounds this read
             list_limit=None,  # nor any list it nests (REQ-005)
+            no_rows_yet=False,  # as _Plan: not read as empty (REQ-2224)
             route=Route.DIRECT,
             source_id="src1",
             sql="SELECT 1",

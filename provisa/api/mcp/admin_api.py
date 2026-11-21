@@ -22,8 +22,9 @@ capability checks the UI meets. Two general tools stand in for one tool per acti
 A UI action that is a REST route and not a mutation (a file upload, a settings change, the org
 folder's encryption, a code archive upload) is listed (:func:`rest_routes`) and reached the same
 way, through the ``admin_request`` client tool. "Create any relationships to <table>" runs the
-relationship discovery the Relationships page runs, for that table (:func:`discover_relationships`),
-and a candidate the user confirms is accepted through the page's own route.
+relationship discovery the Relationships page runs, as a run of that table's domain
+(:func:`discover_relationships`), and a candidate the user confirms is accepted through the page's
+own route.
 """
 
 # Requirements: REQ-2114
@@ -133,9 +134,16 @@ async def run_query(query: str, variables: dict | None, *, request: Any) -> dict
     result = await admin_schema.execute(
         query, variable_values=variables or {}, context_value={"request": request}
     )
+    return _query_answer(result)
+
+
+def _query_answer(result: Any) -> dict:
+    """An admin query's data, and each error's message told as a client is told it (REQ-2087)."""
+    from provisa.api.engine_error_names import client_value
+
     return {
         "data": result.data,
-        "errors": [e.message for e in result.errors] if result.errors else [],
+        "errors": client_value([e.message for e in result.errors] if result.errors else []),
     }
 
 
@@ -191,12 +199,18 @@ def rest_routes(app: Any, search: str | None = None) -> list[dict]:
 
 
 async def discover_relationships(state: Any, schema: str, table: str, *, request: Any) -> dict:
-    """Run the Relationships page's discovery for one table, as the user, and the candidates it
-    found: each with its id, the columns it would join and why. Accepting one is the page's own
-    route (``POST /admin/discover/candidates/{id}/accept``), sent once the user confirms."""
+    """Run the Relationships page's discovery for one table's domain, as the user: a run, its
+    proposals stored as the dialog's are (REQ-413), each semantic one scored by Jev beside the
+    model where a Jev key is set (REQ-1789). The answer is the candidates it suggested, each with
+    its id, the columns it would join and why, what each kind found, and the run's id with every
+    proposal it read (its model's and Jev's scores, and why it is not a suggestion where it is
+    not). Accepting one is the page's own route (``POST /admin/discover/candidates/{id}/accept``),
+    sent once the user confirms."""
     from provisa.api.admin.discovery import (
         DiscoverRequest,
         list_candidates,
+        list_proposals,
+        semantic_model,
         trigger_discovery,
     )
     from provisa.compiler.naming import apply_sql_name
@@ -212,9 +226,25 @@ async def discover_relationships(state: Any, schema: str, table: str, *, request
         raise ValueError(
             f"{schema}.{table} names {len(matches)} registered tables; name exactly one"
         )
+    from provisa.security.selected_domains import refuse_object
+
+    # REQ-2253: a table outside the domains selected in the domain filter is not discovered on.
+    refuse_object(f"Table {schema}.{table}", {matches[0]["domain_id"]})
+    # Semantics runs where the model assigned to relationship inference has its key; the answer
+    # says which kinds ran and what each found.
+    kinds: list = ["foreign_keys"]
+    if (await semantic_model(state.model_db)).problem is None:
+        kinds.append("semantics")
     found = await trigger_discovery(
-        request, DiscoverRequest(scope="table", table_id=matches[0]["id"])
+        request, DiscoverRequest(scope="table", kinds=kinds, table_id=matches[0]["id"])
     )
     stored = set(found["stored_ids"])
     candidates = [c for c in await list_candidates(request) if c.get("id") in stored]
-    return {"table": f"{schema}.{table}", "candidates": candidates}
+    run_id = found["run"]["id"]
+    return {
+        "table": f"{schema}.{table}",
+        "candidates": candidates,
+        **{kind: found[kind] for kind in ("foreign_keys", "semantics") if kind in found},
+        "run_id": run_id,
+        "proposals": (await list_proposals(request, run_id))["proposals"],
+    }

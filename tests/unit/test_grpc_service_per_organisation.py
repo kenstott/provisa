@@ -363,12 +363,14 @@ def built(monkeypatch):
                 "description": "Test role.",
                 "capabilities": ["usage"],
                 "domain_access": ["sales"],
+                "own_domain_access": ["sales"],  # REQ-2153: a built role carries it
             },
             {
                 "id": "finance_reader",
                 "description": "Test role.",
                 "capabilities": ["usage"],
                 "domain_access": ["finance"],
+                "own_domain_access": ["finance"],
             },
         ],
     )
@@ -565,12 +567,14 @@ def meta_reach(monkeypatch):
                 "description": "Test role.",
                 "capabilities": ["usage"],
                 "domain_access": ["sales"],
+                "own_domain_access": ["sales"],  # REQ-2153: a built role carries it
             },
             # REQ-1132: as flattening writes a role holding catalog_read.
             {
                 "id": "cataloguer",
                 "capabilities": ["usage", "catalog_read"],
                 "domain_access": ["sales", "meta"],
+                "own_domain_access": ["sales", "meta"],
             },
         ],
     )

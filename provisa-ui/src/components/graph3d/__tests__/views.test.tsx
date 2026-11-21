@@ -8,14 +8,17 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// REQ-2128: the Graph panel, the full graph it expands into and the Product map entry
-// point. jsdom has no WebGL, so the three.js scene is replaced by a recorder.
+// REQ-2174 (amended 2026-10-28, ONE ONTOLOGY GRAPH; EVERY OTHER GRAPH IS A SNIPPET OF IT): the one
+// graph's presets -- a product's panel, a term's page, the Ontology page and the Product map --
+// each reading the ontology with its focus and depth, and a snippet expanding to the whole
+// ontology with its focus selected. jsdom has no WebGL, so the three.js scene is a recorder.
 
 import { act } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor, within } from "../../../test-utils/render";
-import type { GraphData } from "../graphModel";
-import { DATA } from "./fixture";
+import type { GraphData, QueryScope } from "../graphModel";
+import { FACTS } from "./fixture";
+import { searchItems } from "../../../lib/searchItems";
 
 type Calls = Record<string, ReturnType<typeof vi.fn>>;
 // Each scene's calls, and what it reports to the view (a node picked on the canvas).
@@ -73,261 +76,496 @@ vi.stubGlobal("IntersectionObserver", FakeObserver);
 
 vi.mock("../../../context/AuthContext", () => ({ useAuth: () => ({ actingRoles: "analyst" }) }));
 
-// The meta-domain read: what each call asked for, answered with the fixture.
-const reads = vi.hoisted(() => ({
-  calls: [] as [string | null, boolean][],
-  data: null as unknown,
+const nav = vi.hoisted(() => ({ to: [] as string[] }));
+vi.mock("react-router-dom", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("react-router-dom")>()),
+  useNavigate: () => (to: string) => nav.to.push(to),
 }));
-// The view's scoped read (REQ-2136) answers with the same fixture: what its filters keep is
-// productGraphData's query, tested there.
-const scopes = vi.hoisted(() => ({ asked: [] as unknown[] }));
-vi.mock("../useProductGraph", () => ({
-  useProductGraph: (product: string | null, enabled: boolean) => {
-    reads.calls.push([product, enabled]);
-    return {
-      data: enabled ? reads.data : null,
-      error: null,
-      scoped: enabled ? { data: reads.data, query: "query DataProductGraph { x }" } : null,
-      onScope: (s: unknown) => scopes.asked.push(s),
-    };
+
+// The ontology's read: each scope asked for, answered with the fixture (what a scope reads is
+// ontologyData's query, held by ontologyQuery.test.ts and the GraphQL corpus).
+const reads = vi.hoisted(() => ({
+  scopes: [] as QueryScope[],
+  data: null as unknown,
+  // Where a test has a read answer by its scope, as the server does.
+  dataOf: null as ((s: { focus: string | null; layers: Set<string> }) => unknown) | null,
+}));
+vi.mock("../ontologyData", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../ontologyData")>()),
+  // The query stands for its scope; the server below answers it with the graph read.
+  ontologyQuery: (_m: unknown, s: { layers: Set<string> }) =>
+    JSON.stringify({ ...s, layers: [...s.layers] }),
+  ontologyCountQuery: () => "count",
+  ontologyGraph: (_rows: unknown, s: { focus: string | null; layers: Set<string> }) =>
+    reads.dataOf?.(s) ?? reads.data,
+}));
+vi.mock("../../../api/metaGraph", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../../api/metaGraph")>()),
+  metaReader: async () => ({ schema: null, roots: new Map() }),
+  dataGraphql: async (query: string) => {
+    if (query !== "count") reads.scopes.push(JSON.parse(query) as QueryScope);
+    return { _terms: [] };
   },
 }));
 
-import { GraphPanel, ProductMapButton } from "../GraphPanel";
+import { OntologySnippet, OntologyView, ProductMapButton } from "../OntologyGraph";
+import { productPreset, termPreset, type SnippetPreset } from "../ontologyPresets";
 import { setStored } from "../../../lib/browserStorage";
 
 const last = () => made.scenes[made.scenes.length - 1];
-/** Turns a layer on or off in the expanded graph's Layers menu. */
-const toggleLayer = (layer: string) => {
-  const id = `graph3d-layers-menu-option-${layer}`;
-  if (!screen.queryByTestId(id)) fireEvent.click(screen.getByTestId("graph3d-layers-menu"));
-  fireEvent.click(screen.getByTestId(id));
-};
-const drawn = (call: unknown[]) => call[0] as GraphData;
+const drawn = () => last().setData.mock.calls.at(-1)?.[0] as GraphData;
 const nodeIds = (g: GraphData) => g.nodes.map((n) => n.id).sort();
-const kinds = (g: GraphData) => [...new Set(g.edges.map((e) => e.kind))].sort();
+const focuses = () => reads.scopes.map((s) => [s.focus, s.depth]);
 
 beforeEach(() => {
   made.scenes.length = 0;
   made.callbacks.length = 0;
   observed.fire.length = 0;
-  reads.calls.length = 0;
-  reads.data = DATA;
+  reads.scopes.length = 0;
+  reads.data = FACTS;
+  reads.dataOf = null;
+  nav.to.length = 0;
+  window.localStorage.clear();
 });
 
-function panel() {
-  render(<GraphPanel productId="c360" productName="customer_360" graph={DATA} />);
-  // Scrolled into view: the product is read and three.js loads.
+/** A snippet, scrolled into view. */
+function snippet(preset: SnippetPreset, name: string) {
+  render(<OntologySnippet preset={preset} name={name} testId="snip" />);
   act(() => observed.fire.forEach((f) => f()));
 }
 
-describe("the Graph panel", () => {
-  it("loads three.js only once it scrolls into view, and draws the product's core", async () => {
-    render(<GraphPanel productId="c360" productName="customer_360" graph={DATA} />);
-    expect(made.scenes).toHaveLength(0);
+describe("a product's panel", () => {
+  it("reads the ontology focused on the product, at 1 hop, once in view", async () => {
+    render(<OntologySnippet preset={productPreset("c360")} name="customer_360" testId="snip" />);
+    expect(reads.scopes).toEqual([]);
     act(() => observed.fire.forEach((f) => f()));
     await waitFor(() => expect(made.scenes).toHaveLength(1));
-    const g = drawn(last().setData.mock.calls[0]);
-    expect(nodeIds(g)).toEqual(["f:refresh", "p:c360", "t:customers", "t:orders", "term:customer"]);
-  });
-
-  it("draws the card from the panel's meta read, and reads only once it is expanded", async () => {
-    panel();
-    await waitFor(() => expect(made.scenes).toHaveLength(1));
-    // The card is the product's core as the panel read it: no read of its own.
-    expect(reads.calls.every(([, enabled]) => !enabled)).toBe(true);
-    // Expanded, the full graph reads its own query (its filters and presets need the whole model).
-    fireEvent.click(screen.getByTestId("graph-panel-expand"));
-    await waitFor(() => expect(reads.calls.at(-1)).toEqual(["c360", true]));
-  });
-
-  it("is the compact view: its canvas at the panel's fixed height, no explorer in it", async () => {
-    panel();
-    await waitFor(() => expect(made.scenes).toHaveLength(1));
-    // The stage sits in the fixed-height view (graph3d.css: .g3d-panel-view, 320px).
-    expect(screen.getByTestId("graph-panel-stage").closest(".g3d-panel-view")).not.toBeNull();
-    // No layer controls, filters, presets or Open as query in place: those are the expanded
-    // explorer's.
-    for (const id of [
-      "graph-panel-layers-menu",
-      "graph-panel-layers",
-      "graph-panel-open-as-query",
-      "graph3d-layers",
-    ])
-      expect(screen.queryByTestId(id)).not.toBeInTheDocument();
-    expect(screen.queryByRole("radio", { name: "All" })).not.toBeInTheDocument();
-    // Expanded, the full graph offers every preset.
-    fireEvent.click(screen.getByTestId("graph-panel-expand"));
-    const full = await screen.findByTestId("graph3d");
-    for (const name of ["All", "Ontology", "Products"])
-      expect(within(full).getByRole("radio", { name })).toBeInTheDocument();
-    // Lineage is drawn by the panel's lineage DAG, not as a preset of its own.
-    expect(within(full).queryByRole("radio", { name: "Lineage" })).not.toBeInTheDocument();
-  });
-
-  it("is a glance: it turns and draws no grid, with no controls, hint or export of its own", async () => {
-    // A viewer's saved defaults for the product's graph say the opposite; the card does not read them.
-    setStored("graph3d.product-panel.c360", JSON.stringify({ rotate: false, grid: true }));
-    panel();
-    await waitFor(() => expect(made.scenes).toHaveLength(1));
-    expect(last().setRotate).toHaveBeenLastCalledWith(true);
-    expect(last().setGrid).toHaveBeenLastCalledWith(false);
-    for (const id of [
-      "graph-panel-rotate",
-      "graph-panel-grid",
-      "graph-panel-reset",
-      "graph-panel-reset-settings",
-      "graph-panel-stage-export",
-    ])
-      expect(screen.queryByTestId(id)).not.toBeInTheDocument();
-    expect(screen.getByTestId("graph-panel").querySelector(".p3d-hint")).toBeNull();
-    // The expand button stays, and the expanded view keeps its controls.
-    fireEvent.click(screen.getByTestId("graph-panel-expand"));
-    const full = await screen.findByTestId("graph3d");
-    expect(within(full).getByText("Rotate")).toBeInTheDocument();
-    expect(full.querySelector(".p3d-hint")).not.toBeNull();
-  });
-
-  it("lists in its legend only what it draws", async () => {
-    panel();
-    await waitFor(() => expect(made.scenes).toHaveLength(1));
-    const legend = screen
-      .getByTestId("graph-panel-stage")
-      .querySelector(".p3d-legend") as HTMLElement;
-    expect([...legend.querySelectorAll("span")].map((e) => e.textContent)).toEqual([
-      "data product",
-      "member table",
-      "command",
-      // A term's entry names its variant (nodeLook).
-      "term",
-    ]);
-    // Each entry keys its shape: a table is a cylinder here as in every graph.
-    expect(legend.querySelector('[data-testid="legend-table:plain"] i')).toHaveClass(
-      "g3d-shape-cylinder",
+    // REQ-2174 (amended 2026-11-07): it opens at 1 hop with Related tables on.
+    expect(new Set(focuses().map(String))).toEqual(new Set(["p:c360,1"]));
+    expect(reads.scopes.at(-1)?.layers).toContain("related");
+    // Its snippet draws the product, its tables, the columns tied to terms and those terms (at no
+    // hop), and the term a step from them (REQ-2174, amended 2026-11-12).
+    await waitFor(() =>
+      expect(nodeIds(drawn())).toEqual(
+        expect.arrayContaining([
+          "p:c360",
+          "t:customers",
+          "t:orders",
+          "c:customers.email",
+          "term:customer",
+          "term:party",
+        ]),
+      ),
     );
-    // A data product is drawn an icosahedron, seen as a hexagon: its glyph is clipped to one.
-    const product = legend.querySelector('[data-testid="legend-product:plain"] i') as HTMLElement;
-    expect(product).toHaveClass("g3d-shape-icosahedron");
-    expect(product.dataset.glyph?.split(" ")).toHaveLength(6);
   });
 
-  it("drops a layer's entry from the full graph's legend as the layer goes", async () => {
-    panel();
-    fireEvent.click(await screen.findByTestId("graph-panel-expand"));
-    await waitFor(() => expect(made.scenes).toHaveLength(2));
-    const legend = () =>
-      [
-        ...(
-          screen.getByTestId("graph3d-stage").querySelector(".p3d-legend") as HTMLElement
-        ).querySelectorAll("span"),
-      ].map((e) => e.textContent);
-    expect(legend()).toContain("tag");
-    toggleLayer("tags");
-    await waitFor(() => expect(legend()).not.toContain("tag"));
+  it("names its depth control by its focus: Hops from the product", async () => {
+    snippet(productPreset("c360"), "customer_360");
+    await waitFor(() => expect(made.scenes).toHaveLength(1));
+    expect(screen.getByTestId("snip-depth-label")).toHaveTextContent("Hops from customer_360");
   });
 
-  it("expands to the full graph on All, focused on the product", async () => {
-    panel();
-    fireEvent.click(await screen.findByTestId("graph-panel-expand"));
-    expect(await screen.findByTestId("graph3d")).toBeInTheDocument();
-    // The panel's scene, then the expanded graph's.
+  it("counts its hops between terms, from the terms its tables' columns are", async () => {
+    // Agent is a step past Party, which is a step from Customer, which customers.email is.
+    reads.data = {
+      nodes: [...FACTS.nodes, { id: "term:agent", type: "term", label: "Agent", domains: [] }],
+      edges: [
+        ...FACTS.edges,
+        { id: "ag", a: "term:party", b: "term:agent", kind: "term_edge", label: "PART_OF" },
+      ],
+    };
+    snippet(productPreset("c360"), "customer_360");
+    await waitFor(() => expect(nodeIds(drawn())).toContain("term:party"));
+    expect(nodeIds(drawn())).not.toContain("term:agent");
+    // A column tied to a term drawn is itself; orders' total is one node.
+    expect(nodeIds(drawn())).toEqual(
+      expect.arrayContaining(["c:customers.email", "fold:t:orders"]),
+    );
+    fireEvent.click(within(screen.getByTestId("snip-depth")).getByRole("radio", { name: "2" }));
+    await waitFor(() => expect(nodeIds(drawn())).toContain("term:agent"));
+  });
+
+  it("offers 1 2 3 4 and All, All following the connected part to its end", async () => {
+    // A chain of terms past 4 steps from Customer.
+    const chain = ["party", "a", "b", "c", "d"];
+    reads.data = {
+      nodes: [
+        ...FACTS.nodes,
+        ...chain.slice(1).map((c) => ({ id: `term:${c}`, type: "term" as const, label: c })),
+      ],
+      edges: [
+        ...FACTS.edges,
+        ...chain.slice(1).map((c, i) => ({
+          id: `ch${i}`,
+          a: `term:${chain[i]}`,
+          b: `term:${c}`,
+          kind: "term_edge" as const,
+          label: "PART_OF",
+        })),
+      ],
+    };
+    snippet(productPreset("c360"), "customer_360");
+    await waitFor(() => expect(made.scenes).toHaveLength(1));
+    const control = screen.getByTestId("snip-depth");
+    expect(
+      within(control)
+        .getAllByRole("radio")
+        .map((r) => r.getAttribute("value")),
+    ).toEqual(["1", "2", "3", "4", "all"]);
+    fireEvent.click(within(control).getByRole("radio", { name: "4" }));
+    await waitFor(() => expect(nodeIds(drawn())).toContain("term:c"));
+    expect(nodeIds(drawn())).not.toContain("term:d");
+    fireEvent.click(within(control).getByRole("radio", { name: "All" }));
+    await waitFor(() => expect(nodeIds(drawn())).toContain("term:d"));
+  });
+
+  it("offers Related tables in 3D, on", async () => {
+    snippet(productPreset("c360"), "customer_360");
+    await waitFor(() => expect(made.scenes).toHaveLength(1));
+    const related = screen.getByTestId("snip-related");
+    expect(related).toBeChecked();
+    // The relationship between its tables, named.
+    await waitFor(() => expect(drawn().edges.some((e) => e.kind === "relationship")).toBe(true));
+    fireEvent.click(related);
+    await waitFor(() => expect(drawn().edges.some((e) => e.kind === "relationship")).toBe(false));
+  });
+
+  it("is a glance: its stage at the card's height, its depth, 2D/3D and expand alone", async () => {
+    snippet(productPreset("c360"), "customer_360");
+    await waitFor(() => expect(made.scenes).toHaveLength(1));
+    expect(screen.getByTestId("snip-stage").closest(".g3d-panel-view")).not.toBeNull();
+    expect(screen.getByTestId("snip-depth")).toBeInTheDocument();
+    expect(screen.getByTestId("snip-expand")).toBeInTheDocument();
+    expect(
+      within(screen.getByTestId("snip")).getByRole("radio", { name: "2D" }),
+    ).toBeInTheDocument();
+    for (const id of [
+      "snip-preset",
+      "snip-filter-domain",
+      "snip-layers-menu",
+      "snip-open-as-query",
+      "snip-detail",
+      "snip-lateral",
+    ])
+      expect(screen.queryByTestId(id)).not.toBeInTheDocument();
+    // It turns and draws no grid, whatever the whole ontology's settings say: set on the scene by
+    // the stage's effects once the scene is made, so waited for.
+    await waitFor(() => expect(last().setRotate).toHaveBeenLastCalledWith(true));
+    await waitFor(() => expect(last().setGrid).toHaveBeenLastCalledWith(false));
+  });
+
+  it("reads the depth the reader picks", async () => {
+    snippet(productPreset("c360"), "customer_360");
+    await waitFor(() => expect(made.scenes).toHaveLength(1));
+    fireEvent.click(within(screen.getByTestId("snip-depth")).getByRole("radio", { name: "3" }));
+    await waitFor(() => expect(reads.scopes.at(-1)).toMatchObject({ focus: "p:c360", depth: 3 }));
+  });
+
+  it("opens a node clicked in it on that node's own page", async () => {
+    snippet(productPreset("c360"), "customer_360");
+    await waitFor(() => expect(made.callbacks).toHaveLength(1));
+    fireEvent.click(within(screen.getByTestId("snip-depth")).getByRole("radio", { name: "3" }));
+    await waitFor(() => expect(nodeIds(drawn())).toContain("term:customer"));
+    act(() => made.callbacks[0].onSelect({ kind: "node", id: "term:customer" }));
+    expect(nav.to).toEqual(["/context/ontology?term=customer"]);
+  });
+});
+
+describe("a product's graph, expanded from its panel", () => {
+  // The product, its member tables, the columns the terms are on, those terms, and the term a step
+  // from them; orders' column tied to no term stays folded into one node.
+  const OWN = [
+    "c:customers.email",
+    "fold:t:orders",
+    "p:c360",
+    "t:customers",
+    "t:orders",
+    "term:customer",
+    "term:party",
+  ];
+  const open = async () => {
+    snippet(productPreset("c360"), "customer_360");
+    fireEvent.click(await screen.findByTestId("snip-expand"));
+    await screen.findByTestId("graph3d");
     await waitFor(() => expect(made.scenes).toHaveLength(2));
-    expect(within(screen.getByTestId("graph3d")).getByRole("radio", { name: "All" })).toBeChecked();
-    const g = drawn(last().setData.mock.calls[0]);
-    expect(kinds(g)).not.toContain("relationship_outside");
-    expect(nodeIds(g)).toContain("g:gold");
-    // A linked product is drawn, but nothing is reached through it.
-    expect(nodeIds(g)).toContain("p:billing");
-    expect(nodeIds(g)).not.toContain("d:finance");
+  };
+
+  it("draws the product alone by default, read for that product", async () => {
+    await open();
+    await waitFor(() => expect(nodeIds(drawn())).toEqual(OWN));
+    expect(reads.scopes.at(-1)).toMatchObject({ focus: "p:c360", depth: 1 });
+    expect(screen.getByTestId("graph3d-rest")).not.toBeChecked();
+    // The focus is the Focus filter's, its hops the usual control, the product still selected.
+    expect(screen.getByTestId("graph3d-depth-label")).toHaveTextContent("Hops from customer_360");
     expect(screen.getByTestId("graph3d-detail")).toHaveTextContent("customer_360");
   });
 
-  it("links the detail's title and each connection to its own page", async () => {
-    panel();
-    fireEvent.click(await screen.findByTestId("graph-panel-expand"));
+  it("draws a table a class term of a member table also grounds, as that term's grounding", async () => {
+    // REQ-2174 (amended 2026-11-12): Account IS customers (a member) and elsewhere; every term drawn
+    // brings the tables it grounds, at no hop.
+    reads.data = {
+      nodes: [
+        ...FACTS.nodes,
+        { id: "term:account", type: "term", label: "Account", domains: ["sales"] },
+        {
+          id: "t:elsewhere",
+          type: "table",
+          label: "finance.elsewhere",
+          domains: ["finance"],
+          layers: ["ontology"],
+        },
+      ],
+      edges: [
+        ...FACTS.edges,
+        {
+          id: "a",
+          a: "term:account",
+          b: "t:customers",
+          kind: "term_binding",
+          layers: ["ontology"],
+        },
+        {
+          id: "b",
+          a: "term:account",
+          b: "t:elsewhere",
+          kind: "term_binding",
+          layers: ["ontology"],
+        },
+      ],
+    };
+    await open();
+    await waitFor(() => expect(nodeIds(drawn())).toContain("term:account"));
+    expect(nodeIds(drawn())).toContain("t:elsewhere");
+  });
+
+  it("shows the rest of the model on asking, and folds it away again", async () => {
+    await open();
+    await waitFor(() => expect(nodeIds(drawn())).toEqual(OWN));
+    fireEvent.click(screen.getByTestId("graph3d-rest"));
+    await waitFor(() => expect(nodeIds(drawn())).toContain("p:billing"));
+    expect(reads.scopes.at(-1)).toMatchObject({ focus: null });
+    expect(screen.getByTestId("graph3d-rest")).toBeChecked();
+    expect(screen.queryByTestId("graph3d-depth")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByTestId("graph3d-rest"));
+    await waitFor(() => expect(nodeIds(drawn())).toEqual(OWN));
+    expect(reads.scopes.at(-1)).toMatchObject({ focus: "p:c360", depth: 1 });
+  });
+
+  it("refits the camera to the graph the control brings in", async () => {
+    // The product's read holds no other product; the whole model's does.
+    reads.dataOf = (s) =>
+      s.focus === null
+        ? FACTS
+        : {
+            nodes: FACTS.nodes.filter((n) => n.id !== "p:billing"),
+            edges: FACTS.edges.filter((e) => e.a !== "p:billing" && e.b !== "p:billing"),
+          };
+    await open();
+    await waitFor(() => expect(nodeIds(drawn())).toEqual(OWN));
+    fireEvent.click(screen.getByTestId("graph3d-rest"));
+    await waitFor(() =>
+      expect(
+        last().setData.mock.calls.some(
+          (c) => c[2] === true && (c[0] as GraphData).nodes.some((n) => n.id === "p:billing"),
+        ),
+      ).toBe(true),
+    );
+  });
+
+  it("goes back to the product on Set Defaults", async () => {
+    await open();
+    await waitFor(() => expect(nodeIds(drawn())).toEqual(OWN));
+    fireEvent.click(screen.getByTestId("graph3d-rest"));
+    await waitFor(() => expect(nodeIds(drawn())).toContain("p:billing"));
+    fireEvent.click(screen.getByTestId("graph3d-reset-settings"));
+    await waitFor(() => expect(nodeIds(drawn())).toEqual(OWN));
+    expect(screen.getByTestId("graph3d-rest")).not.toBeChecked();
+  });
+
+  it("is the Focus filter's focus, cleared when the rest is shown", async () => {
+    await open();
+    await waitFor(() => expect(nodeIds(drawn())).toEqual(OWN));
+    expect(screen.getByTestId("graph3d-filter-focus")).toHaveTextContent("customer_360");
+    fireEvent.click(screen.getByTestId("graph3d-rest"));
+    await waitFor(() => expect(nodeIds(drawn())).toContain("p:billing"));
+    expect(screen.getByTestId("graph3d-filter-focus")).not.toHaveTextContent("customer_360");
+  });
+
+  it("counts no folded columns as columns in what it says it shows", async () => {
+    await open();
+    await waitFor(() => expect(nodeIds(drawn())).toEqual(OWN));
+    const shown = screen.getByText("Shown").closest("section") as HTMLElement;
+    const row = within(shown).getByText("column").closest(".p3d-row") as HTMLElement;
+    expect(row.querySelector(".p3d-num")).toHaveTextContent(/^1$/);
+  });
+});
+
+describe("expanding a snippet", () => {
+  it("opens the whole ontology with the snippet's focus selected, once the rest is shown", async () => {
+    snippet(productPreset("c360"), "customer_360");
+    fireEvent.click(await screen.findByTestId("snip-expand"));
+    const full = await screen.findByTestId("graph3d");
     await waitFor(() => expect(made.scenes).toHaveLength(2));
+    fireEvent.click(screen.getByTestId("graph3d-rest"));
+    // The whole ontology is read: no focus.
+    await waitFor(() => expect(focuses().map(String)).toContain(",2"));
+    // Its own controls, and the product selected in its detail panel.
+    expect(within(full).getByRole("radio", { name: "Ontology" })).toBeInTheDocument();
+    expect(within(full).getByRole("radio", { name: "Taxonomy" })).toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.getByTestId("graph3d-detail")).toHaveTextContent("customer_360"),
+    );
     expect(screen.getByTestId("graph3d-title-link")).toHaveAttribute(
       "href",
       "/data-products?product=c360",
     );
-    const rows = screen
-      .getByTestId("graph3d-detail")
-      .querySelectorAll<HTMLElement>('[data-testid^="graph3d-link-"]');
-    expect(rows.length).toBeGreaterThan(0);
-    for (const row of rows) expect(row.tagName).toBe("A");
-    // The product's command and its tag, each on its own page.
-    const hrefs = [...rows].map((r) => r.getAttribute("href"));
-    expect(hrefs).toContain("/commands?command=refresh");
-    expect(hrefs).toContain("/admin/tags?tag=gold");
+    // Selected, not a focus: nothing is pruned around it.
+    expect(screen.queryByTestId("graph3d-depth")).not.toBeInTheDocument();
   });
+});
 
-  it("opens as its query under its own product's focus, and not under one the reader picks", async () => {
-    panel();
-    fireEvent.click(await screen.findByTestId("graph-panel-expand"));
+describe("a term's page snippet", () => {
+  // REQ-2174 (amended 2026-11-12): every term drawn brings its grounding, so each hop's read asks
+  // for the columns and products whatever the term's own opening read found.
+  it("reads its terms' grounding at every depth, though the term itself grounds nothing", async () => {
+    reads.data = {
+      nodes: [
+        { id: "term:3", type: "term", label: "test3" },
+        { id: "term:2", type: "term", label: "test2" },
+      ],
+      edges: [{ id: "e", a: "term:3", b: "term:2", kind: "term_edge", label: "PART_OF" }],
+    };
+    setStored("graph3d.ontology-snippet.term:3", JSON.stringify({ flat: false }));
+    snippet(termPreset(3), "test3");
+    await waitFor(() => expect(made.scenes).toHaveLength(1));
+    fireEvent.click(within(screen.getByTestId("snip-depth")).getByRole("radio", { name: "3" }));
+    await waitFor(() => expect(reads.scopes.at(-1)).toMatchObject({ focus: "term:3", depth: 3 }));
+    expect(reads.scopes.at(-1)?.layers).toEqual(expect.arrayContaining(["columns", "data"]));
+  });
+});
+
+describe("a term's graph, expanded from its page", () => {
+  // REQ-2174 (amended 2026-11-11, A TERM OPENS ON ITSELF): the term's reach -- its ancestor, the
+  // column it binds, that column's table and the product holding it -- read for the term; the
+  // rest of the ontology (another product, its tables, another term) only on asking.
+  const REACH = new Set([
+    "term:customer",
+    "term:party",
+    "c:customers.email",
+    "t:customers",
+    "p:c360",
+  ]);
+  const reach: GraphData = {
+    nodes: FACTS.nodes.filter((n) => REACH.has(n.id)),
+    edges: FACTS.edges.filter((e) => REACH.has(e.a) && REACH.has(e.b)),
+  };
+  const whole: GraphData = {
+    nodes: [...FACTS.nodes, { id: "term:invoice", type: "term", label: "Invoice", domains: [] }],
+    edges: FACTS.edges,
+  };
+  const open = async () => {
+    reads.dataOf = (s) => (s.focus === "term:customer" ? reach : whole);
+    // A reader who chose 3D here: what matters is the expanded view.
+    setStored("graph3d.ontology-snippet.term:customer", JSON.stringify({ flat: false }));
+    snippet({ ...termPreset(0), focus: "term:customer" }, "Customer");
+    await waitFor(() => expect(made.scenes).toHaveLength(1));
+    reads.scopes.length = 0;
+    fireEvent.click(screen.getByTestId("snip-expand"));
+    await screen.findByTestId("graph3d");
     await waitFor(() => expect(made.scenes).toHaveLength(2));
-    // Its filters are its query's: the scope it reports, every filter open at first.
-    expect(scopes.asked.at(-1)).toMatchObject({ domains: [], tags: [], sensitivities: [] });
-    fireEvent.click(screen.getByTestId("graph3d-open-as-query"));
-    expect(await screen.findByTestId("graph3d-open-as-graphql")).not.toBeDisabled();
-    await act(async () => {
-      fireEvent.keyDown(document.activeElement ?? document.body, { key: "Escape" });
-    });
-    // A focus of the reader's own: a neighbourhood the query does not state.
-    fireEvent.click(screen.getByTestId("graph3d-filter-focus"));
-    fireEvent.click(await screen.findByTestId("graph3d-filter-focus-option-term:customer"));
-    fireEvent.click(screen.getByTestId("graph3d-open-as-query"));
-    await waitFor(() => expect(screen.getByTestId("graph3d-open-as-graphql")).toBeDisabled());
+  };
+  const typesOf = (g: GraphData) =>
+    g.nodes.reduce<Record<string, number>>(
+      (m, n) => ({ ...m, [n.type]: (m[n.type] ?? 0) + 1 }),
+      {},
+    );
+
+  it("reads the term at the product graph's depth, not the whole ontology", async () => {
+    await open();
+    await waitFor(() => expect(reads.scopes.length).toBeGreaterThan(0));
+    await waitFor(() => expect(nodeIds(drawn())).toContain("term:party"));
+    expect(new Set(focuses().map(String))).toEqual(new Set(["term:customer,1"]));
   });
 
-  it("removes only the tags when the tags layer goes, and a preset change redraws from the front", async () => {
-    panel();
-    fireEvent.click(await screen.findByTestId("graph-panel-expand"));
-    // The panel's scene, then the expanded graph's.
-    await waitFor(() => expect(made.scenes).toHaveLength(2));
-    const before = drawn(last().setData.mock.calls[0]);
-    // All draws the product's lineage among its other layers.
-    expect(kinds(before)).toContain("lineage");
-    toggleLayer("tags");
-    await waitFor(() => expect(last().setData).toHaveBeenCalledTimes(2));
-    const after = drawn(last().setData.mock.calls[1]);
-    expect(nodeIds(before).filter((id) => !nodeIds(after).includes(id))).toEqual(["g:gold"]);
-    // A layer change keeps the camera where it is.
-    expect(last().setData.mock.calls[1][2]).toBe(false);
-
-    fireEvent.click(within(screen.getByTestId("graph3d")).getByRole("radio", { name: "Products" }));
-    await waitFor(() => expect(last().setData).toHaveBeenCalledTimes(3));
-    const [products, , reset] = last().setData.mock.calls[2];
-    expect(kinds(products)).not.toContain("lineage");
-    expect(kinds(products)).not.toContain("member");
-    expect(reset).toBe(true);
+  it("draws the term's reach alone, and says only that it shows", async () => {
+    await open();
+    await waitFor(() => expect(nodeIds(drawn())).toEqual([...REACH].sort()));
+    expect(typesOf(drawn())).toEqual({ term: 2, column: 1, table: 1, product: 1 });
+    const shown = screen.getByText("Shown").closest("section") as HTMLElement;
+    const terms = within(shown).getByText("term").closest(".p3d-row") as HTMLElement;
+    expect(terms.querySelector(".p3d-num")).toHaveTextContent(/^2$/);
+    expect(within(shown).queryByText("domain")).toBeNull();
   });
 
-  it("offers no layer the data has nothing in", async () => {
-    reads.data = { ...DATA, edges: DATA.edges.filter((e) => e.kind !== "lineage") };
-    panel();
-    fireEvent.click(await screen.findByTestId("graph-panel-expand"));
-    fireEvent.click(await screen.findByTestId("graph3d-layers-menu"));
-    expect(await screen.findByTestId("graph3d-layers-menu-option-tags")).toBeInTheDocument();
-    expect(screen.queryByTestId("graph3d-layers-menu-option-lineage")).not.toBeInTheDocument();
+  it("offers its hops, from the term, and the rest of the model, off", async () => {
+    await open();
+    await waitFor(() => expect(nodeIds(drawn())).toEqual([...REACH].sort()));
+    expect(screen.getByTestId("graph3d-depth-label")).toHaveTextContent("Hops from Customer");
+    expect(screen.getByTestId("graph3d-rest")).not.toBeChecked();
+    expect(screen.getByTestId("graph3d-detail")).toHaveTextContent("Customer");
   });
 
-  it("shows a selected table's columns on asking", async () => {
-    panel();
-    fireEvent.click(await screen.findByTestId("graph-panel-expand"));
-    // The panel's scene, then the expanded graph's.
-    await waitFor(() => expect(made.scenes).toHaveLength(2));
-    // The table picked on the canvas (a connection row is a link to the table's page).
-    act(() => made.callbacks.at(-1)?.onSelect({ kind: "node", id: "t:customers" }));
-    fireEvent.click(screen.getByTestId("graph3d-columns"));
-    await waitFor(() => expect(last().setData).toHaveBeenCalledTimes(2));
-    expect(nodeIds(drawn(last().setData.mock.calls[1]))).toContain("c:customers.email");
+  it("reads and draws the whole ontology on asking, the term selected", async () => {
+    await open();
+    await waitFor(() => expect(nodeIds(drawn())).toEqual([...REACH].sort()));
+    fireEvent.click(screen.getByTestId("graph3d-rest"));
+    await waitFor(() => expect(nodeIds(drawn())).toContain("term:invoice"));
+    expect(nodeIds(drawn())).toContain("p:billing");
+    expect(reads.scopes.at(-1)).toMatchObject({ focus: null });
+    expect(screen.getByTestId("graph3d-rest")).toBeChecked();
+    expect(screen.queryByTestId("graph3d-depth")).not.toBeInTheDocument();
+    expect(screen.getByTestId("graph3d-detail")).toHaveTextContent("Customer");
+    fireEvent.click(screen.getByTestId("graph3d-rest"));
+    await waitFor(() => expect(nodeIds(drawn())).toEqual([...REACH].sort()));
+    expect(reads.scopes.at(-1)).toMatchObject({ focus: "term:customer", depth: 1 });
+  });
+});
+
+describe("the Ontology page", () => {
+  it("shows the ontology whole, focused by the page's search", async () => {
+    render(<OntologyView search="" />);
+    await waitFor(() => expect(made.scenes).toHaveLength(1));
+    expect(new Set(focuses().map(String))).toEqual(new Set([",2"]));
+    // No focus, no depth to choose, and no product whose rest it could show.
+    expect(screen.queryByTestId("ontology-depth")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("ontology-rest")).not.toBeInTheDocument();
+  });
+
+  it("chooses the depth of a search's neighbourhood", async () => {
+    render(<OntologyView search="customer" />);
+    fireEvent.click(
+      within(await screen.findByTestId("ontology-depth")).getByRole("radio", { name: "1" }),
+    );
+    await waitFor(() =>
+      expect(reads.scopes.at(-1)).toMatchObject({
+        focus: null,
+        depth: 1,
+        search: searchItems("customer"),
+      }),
+    );
+  });
+
+  it("draws lateral term edges on asking, in 3D", async () => {
+    reads.data = {
+      nodes: [...FACTS.nodes, { id: "term:client", type: "term", label: "Client" }],
+      edges: [
+        ...FACTS.edges,
+        { id: "rel", a: "term:client", b: "term:customer", kind: "term_edge", label: "SYNONYM_OF" },
+      ],
+    };
+    render(<OntologyView search="" />);
+    await waitFor(() => expect(drawn().edges.some((e) => e.label === "SYNONYM_OF")).toBe(true));
+    fireEvent.click(screen.getByTestId("ontology-lateral"));
+    await waitFor(() => expect(drawn().edges.some((e) => e.label === "SYNONYM_OF")).toBe(false));
+    // A rank edge stays.
+    expect(drawn().edges.some((e) => e.label === "KIND_OF")).toBe(true);
   });
 });
 
 describe("Open in ERD", () => {
   const open = async () => {
-    panel();
-    fireEvent.click(await screen.findByTestId("graph-panel-expand"));
+    snippet(productPreset("c360"), "customer_360");
+    fireEvent.click(await screen.findByTestId("snip-expand"));
     await waitFor(() => expect(made.scenes).toHaveLength(2));
   };
 
@@ -348,19 +586,110 @@ describe("Open in ERD", () => {
   });
 });
 
-describe("the Product map entry point", () => {
-  it("opens the full graph on the Products preset, every product shown", async () => {
+describe("Reset view", () => {
+  it("folds every table back as well as resetting the camera", async () => {
+    // The Product map with its columns and terms on, as a reader saved it.
+    setStored(
+      "graph3d.product-map.org",
+      JSON.stringify({ layers: ["ontology", "domains", "columns", "data"] }),
+    );
     render(<ProductMapButton />);
-    expect(reads.calls.every(([, enabled]) => !enabled)).toBe(true);
     fireEvent.click(screen.getByTestId("product-map-open"));
-    expect(reads.calls.at(-1)).toEqual([null, true]);
     await waitFor(() => expect(made.scenes).toHaveLength(1));
-    expect(screen.getByRole("radio", { name: "Products" })).toBeChecked();
-    expect(nodeIds(drawn(last().setData.mock.calls[0]))).toEqual([
-      "d:finance",
-      "d:sales",
-      "p:billing",
-      "p:c360",
-    ]);
+    // orders' total is tied to no term: one node, opened in place by a click.
+    await waitFor(() => expect(nodeIds(drawn())).toContain("fold:t:orders"));
+    act(() => made.callbacks[0].onSelect({ kind: "node", id: "fold:t:orders" }));
+    await waitFor(() => expect(nodeIds(drawn())).toContain("c:orders.total"));
+    expect(nodeIds(drawn())).not.toContain("fold:t:orders");
+    fireEvent.click(screen.getByTestId("graph3d-reset"));
+    await waitFor(() => expect(nodeIds(drawn())).toContain("fold:t:orders"));
+    expect(nodeIds(drawn())).not.toContain("c:orders.total");
+    await waitFor(() => expect(last().resetView).toHaveBeenCalled());
+  });
+});
+
+describe("the Product map entry point", () => {
+  /** Opens the Product map and waits for its scene. Its reads are answered as the server does:
+   * a column only once Columns is read, a term only once Ontology is. */
+  const openMap = async () => {
+    reads.dataOf = (s) => {
+      const kept = (n: GraphData["nodes"][number]) =>
+        (n.type !== "column" || s.layers.has("columns")) &&
+        (n.type !== "term" || s.layers.has("ontology"));
+      const nodes = FACTS.nodes.filter(kept);
+      const ids = new Set(nodes.map((n) => n.id));
+      return { nodes, edges: FACTS.edges.filter((e) => ids.has(e.a) && ids.has(e.b)) };
+    };
+    render(<ProductMapButton />);
+    expect(reads.scopes).toEqual([]);
+    fireEvent.click(screen.getByTestId("product-map-open"));
+    await screen.findByTestId("graph3d");
+    await waitFor(() => expect(made.scenes).toHaveLength(1));
+  };
+  const kinds = (g: GraphData) => [...new Set(g.nodes.map((n) => n.type))].sort();
+
+  it("opens on every product, its member tables and the links between products", async () => {
+    await openMap();
+    expect(new Set(focuses().map(String))).toEqual(new Set([",2"]));
+    // It belongs to no one product: it has no rest to show.
+    expect(screen.queryByTestId("graph3d-rest")).not.toBeInTheDocument();
+    // Its read asks for the products with their tables (Data) and their links, and no read asks
+    // for a column or a term: not what is drawn, nor what the controls choose from.
+    await waitFor(() => expect(reads.scopes.at(-1)?.layers).toEqual(["data", "productLinks"]));
+    for (const s of reads.scopes)
+      for (const l of ["ontology", "domains", "columns"]) expect(s.layers).not.toContain(l);
+    // Products and their tables are drawn, with the link between the products; nothing else.
+    await waitFor(() =>
+      expect(nodeIds(drawn())).toEqual(["p:billing", "p:c360", "t:customers", "t:orders"]),
+    );
+    expect(kinds(drawn())).toEqual(["product", "table"]);
+    expect(drawn().edges.some((e) => e.kind === "product_link")).toBe(true);
+  });
+
+  it("reads and draws columns, and terms, once the reader turns them on", async () => {
+    await openMap();
+    await waitFor(() => expect(kinds(drawn())).toEqual(["product", "table"]));
+    const pick = async (value: string) => {
+      fireEvent.click(screen.getByTestId("graph3d-layers-menu"));
+      fireEvent.click(await screen.findByTestId(`graph3d-layers-menu-option-${value}`));
+      fireEvent.click(screen.getByTestId("graph3d-layers-menu"));
+    };
+    await pick("columns");
+    await waitFor(() => expect(reads.scopes.at(-1)?.layers).toContain("columns"));
+    // A table's columns tied to no term drawn are one node (REQ-2174, amended 2026-11-07).
+    await waitFor(() => expect(nodeIds(drawn())).toContain("fold:t:orders"));
+    expect(reads.scopes.at(-1)?.layers).not.toContain("ontology");
+    await pick("ontology");
+    await waitFor(() => expect(reads.scopes.at(-1)?.layers).toContain("ontology"));
+    await waitFor(() =>
+      expect(nodeIds(drawn())).toEqual(
+        expect.arrayContaining(["term:customer", "c:customers.email"]),
+      ),
+    );
+  });
+
+  it("opens on a reader's saved settings, columns on where they had them", async () => {
+    setStored(
+      "graph3d.product-map.org",
+      JSON.stringify({ layers: ["ontology", "domains", "columns", "data"] }),
+    );
+    await openMap();
+    await waitFor(() =>
+      expect(reads.scopes.at(-1)?.layers).toEqual(["columns", "data", "domains", "ontology"]),
+    );
+    await waitFor(() =>
+      expect(nodeIds(drawn())).toEqual(
+        expect.arrayContaining(["term:customer", "c:customers.email", "p:c360"]),
+      ),
+    );
+  });
+
+  it("leaves the Ontology page opening on the whole ontology, its terms and columns", async () => {
+    render(<OntologyView search="" />);
+    await waitFor(() => expect(made.scenes).toHaveLength(1));
+    await waitFor(() =>
+      expect(reads.scopes.at(-1)?.layers).toEqual(["columns", "domains", "ontology"]),
+    );
+    expect(reads.scopes.at(-1)?.products).toBe(false);
   });
 });

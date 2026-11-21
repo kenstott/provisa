@@ -5,10 +5,9 @@
     "identity": "Identität",
     "associations": "Zuordnungen",
     "load": "Laststeuerung und Aktualität",
-    "query": "Abfrage",
+    "query": "API",
     "quality": "Qualität",
     "columns": "Spalten",
-    "writes": "Schreibrechte",
     "source": "Quelle",
     "schema": "Schema",
     "table": "Tabelle",
@@ -18,6 +17,10 @@
     "noTerms": "Kein Begriff benennt eine Spalte dieser Tabelle",
     "relationships": "Beziehungen",
     "noRelationships": "Diese Tabelle ist an keiner Beziehung beteiligt",
+    "metrics": "Metriken",
+    "noMetrics": "Keine Metrik verwendet diese Tabelle",
+    "metricTerm": "{{term}}:",
+    "metricMethod": "Berechnet als: {{method}}",
     "fromSource": "{{value}} (von der Quelle)",
     "fromSourceAsIs": "Wie bei der Quelle",
     "notScheduledLikeSource": "Nicht nur nach Zeitplan gelesen, obwohl ihre Quelle es wird: Eine Abfrage kann die Quelle lesen.",
@@ -33,9 +36,11 @@
       "skipped": "Übersprungen"
     },
     "classTerm": "Zeilen sind Instanzen von",
-    "classTermPlaceholder": "Begriff wählen",
     "noClassTerm": "Kein Begriff",
     "classTermUnreadable": "Der Begriff konnte nicht gelesen werden: {{error}}",
+    "classTermNoModel": "Der Begriff konnte nicht gelesen werden: Ihre Rollen können die Tabellen des Modells nicht lesen.",
+    "classTermNoEntry": "Der Begriff konnte nicht gelesen werden: Ihre Rollen können den eigenen Eintrag dieser Tabelle im Modell nicht lesen.",
+    "classTermNoField": "Der Begriff konnte nicht gelesen werden: Ihre Rollen können nicht lesen, von welchem Begriff die Zeilen einer Tabelle Instanzen sind.",
     "access": "Zugriff"
   }
 }

@@ -23,6 +23,7 @@ const auth = {
   // either held or absent; the demonstration path is covered in CapabilityGate.test.tsx.
   demonstrated: [] as string[],
   billing: false,
+  activeOrgId: null as string | null,
 };
 vi.mock("../context/AuthContext", () => ({ useAuth: () => auth }));
 
@@ -38,9 +39,9 @@ function renderAt(path: string) {
 
 describe("AdminRail", () => {
   it("stands on an admin route", () => {
-    renderAt("/admin/tags");
+    renderAt("/admin/domains");
     expect(screen.getByTestId("admin-rail")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Tags" })).toHaveAttribute("href", "/admin/tags");
+    expect(screen.getByRole("link", { name: "Domains" })).toHaveAttribute("href", "/admin/domains");
   });
 
   it("is absent everywhere else, so no other page loses its width to it", () => {
@@ -71,12 +72,19 @@ describe("AdminRail", () => {
   });
 
   it("offers a platform administrator the deployment-wide surfaces", () => {
-    auth.capabilities = ["platform_settings"];
+    auth.capabilities = ["platform_settings", "cross_org"];
     renderAt("/admin/security");
     expect(screen.getByRole("link", { name: "Security" })).toHaveAttribute(
       "href",
       "/admin/security",
     );
+  });
+
+  it("offers a single-tenant org administrator no page the deployment check refuses", () => {
+    // REQ-1327: it holds platform_settings, never cross_org, and every call on these pages asks both.
+    auth.capabilities = ["platform_settings", "org_settings"];
+    renderAt("/admin/domains");
+    expect(screen.queryByRole("link", { name: "Security" })).toBeNull();
   });
 
   it("carries no entry of its own for Secrets, which is a Security sub-tab", () => {

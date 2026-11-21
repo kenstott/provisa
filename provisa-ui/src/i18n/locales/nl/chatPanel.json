@@ -29,7 +29,7 @@
     "no": "Nee",
     "typeSomethingElse": "Iets anders typen",
     "confirm": "Bevestigen",
-    "confirmed": "Bevestigd — ga je gang.",
+    "confirmed": "Bevestigd. Ga je gang.",
     "cancelled": "Geannuleerd.",
     "chooseFile": "Te verzenden bestand",
     "graphCaption": "Knopen: {{nodes}} · Relaties: {{relationships}}",

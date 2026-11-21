@@ -182,7 +182,7 @@ def test_the_statement_governance_validates_reads_each_view_as_itself():
         "evokes": "SELECT line_id, theme_id FROM theme_time",
         "theme_time": "SELECT l.id AS line_id, 'time' AS theme_id FROM line l",
     }
-    state = SimpleNamespace(mv_registry=MVRegistry(), role_build_inputs={"draft_tables": []})
+    state = SimpleNamespace(mv_registry=MVRegistry(), role_build_inputs={"withdrawn_tables": []})
     _governed, validated = semantic_statement(_READ, views, state, gov)
     messages = [v.message for v in validate_sql(validated, ctx, gov, _ROLE, []) if v.code == "V002"]
     assert messages == []

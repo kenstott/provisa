@@ -19,6 +19,9 @@
     "linked": "La colonne signifie maintenant {{term}}.",
     "keyColumn": "La colonne garde son terme de classe : le sens d'une colonne clé est son terme de classe.",
     "markedPii": "Elle est marquée PII.",
-    "maskOffered": "Masque suggéré : {{mask}}. Ajoutez-le dans les masques de la colonne."
+    "maskOffered": "Masque suggéré : {{mask}}. Ajoutez-le dans les masques de la colonne.",
+    "tooFewTitle": "Trop peu de valeurs pour classer",
+    "tooFewNote": "Ces colonnes contenaient trop peu de valeurs dans l'échantillon de l'exécution pour dire ce qu'elles contiennent. Ce n'est pas la même chose que ne correspondre à aucun type.",
+    "tooFew": "{{column}} : {{count}} valeurs dans l'échantillon, trop peu pour classer."
   }
 }

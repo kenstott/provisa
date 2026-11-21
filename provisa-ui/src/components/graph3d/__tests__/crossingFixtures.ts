@@ -10,9 +10,13 @@
 
 // REQ-2174: graphs for the crossing-minimisation tests -- the pet-store Ontology graph (17 terms, 32
 // bound columns, 12 tables, one data product), the same shape as flows for the layered layout, and
-// a small three-level graph whose best order is found by trying every one.
+// a small three-level graph whose best order is found by trying every one -- and the lane diagram
+// placed as the lanes preset places it.
 
 import type { GraphData, GraphEdge, GraphNode } from "../graphModel";
+import { LANES, type At, type LaneDiagram } from "../laneDiagram";
+import { LANE_GAP, placeLanes, sortLanes, type LaneLine } from "../../provisa-graph/lanes";
+import { SIZE } from "../../provisa-graph/tokens";
 
 /** The pet-store tables and their columns, as a page reads them. */
 const TABLES: Record<string, string[]> = {
@@ -32,7 +36,13 @@ const TABLES: Record<string, string[]> = {
 
 /** Each term and the columns (``table.column``) bound to it. */
 const BINDINGS: Record<string, string[]> = {
-  pet: ["pets.id", "find_pets_by_status.id", "find_pets_by_tags.id", "pet_photos.pet_id", "store_order.pet_id"],
+  pet: [
+    "pets.id",
+    "find_pets_by_status.id",
+    "find_pets_by_tags.id",
+    "pet_photos.pet_id",
+    "store_order.pet_id",
+  ],
   dog: ["find_pets_by_tags.tags"],
   cat: ["find_pets_by_tags.name"],
   bird: ["find_pets_by_status.name"],
@@ -76,14 +86,24 @@ export function petStoreOntology(): GraphData {
   for (const [t, cols] of Object.entries(TABLES)) {
     nodes.push({ id: tableId(t), type: "table", label: t });
     for (const c of cols)
-      nodes.push({ id: columnId(`${t}.${c}`), type: "column", label: `${t}.${c}`, parent: tableId(t) });
+      nodes.push({
+        id: columnId(`${t}.${c}`),
+        type: "column",
+        label: `${t}.${c}`,
+        parent: tableId(t),
+      });
   }
   nodes.push({ id: "p:pet_store", type: "product", label: "pet_store" });
   for (const [a, b, label] of RANKS)
     edges.push({ id: `term_edge:${a}>${b}`, a: termId(a), b: termId(b), kind: "term_edge", label });
   for (const [t, cols] of Object.entries(BINDINGS))
     for (const c of cols)
-      edges.push({ id: `term_binding:${t}>${c}`, a: termId(t), b: columnId(c), kind: "term_binding" });
+      edges.push({
+        id: `term_binding:${t}>${c}`,
+        a: termId(t),
+        b: columnId(c),
+        kind: "term_binding",
+      });
   for (const t of PRODUCT_TABLES)
     edges.push({ id: `member:${t}`, a: "p:pet_store", b: tableId(t), kind: "member" });
   return { nodes, edges };
@@ -108,9 +128,21 @@ export function petStoreFlows(): GraphData {
 /** A three-level graph (4, 5 and 4 nodes) of flows: every order of it is tried in the tests. */
 export function threeLevels(): GraphData {
   const pairs: [string, string][] = [
-    ["a2", "b0"], ["a1", "b1"], ["a2", "b2"], ["a3", "b3"], ["a2", "b4"], ["b2", "c0"],
-    ["b4", "c1"], ["b4", "c2"], ["b0", "c3"], ["b1", "c0"], ["b0", "c1"], ["a0", "b3"],
-    ["a3", "b0"], ["b0", "c0"], ["a2", "c2"],
+    ["a2", "b0"],
+    ["a1", "b1"],
+    ["a2", "b2"],
+    ["a3", "b3"],
+    ["a2", "b4"],
+    ["b2", "c0"],
+    ["b4", "c1"],
+    ["b4", "c2"],
+    ["b0", "c3"],
+    ["b1", "c0"],
+    ["b0", "c1"],
+    ["a0", "b3"],
+    ["a3", "b0"],
+    ["b0", "c0"],
+    ["a2", "c2"],
   ];
   const ids = [...new Set(pairs.flat())].sort();
   return {
@@ -119,69 +151,138 @@ export function threeLevels(): GraphData {
   };
 }
 
-/** Where the 2D view drew the pet-store graph at 1280 wide: the term lane as ELK laid it out on its
- * own (rows of terms), the other lanes at their x. */
-export const PET_STORE_DRAWN: Record<string, { x: number; y: number }> = {
-  "c:api_response.code": { x: 491, y: 877 },
-  "c:api_response.message": { x: 482, y: 840 },
-  "c:categories.id": { x: 505, y: 100 },
-  "c:categories.name": { x: 498, y: 137 },
-  "c:customers.id": { x: 508, y: 507 },
-  "c:customers.username": { x: 488, y: 544 },
-  "c:find_pets_by_status.id": { x: 475, y: 1025 },
-  "c:find_pets_by_status.name": { x: 468, y: 1099 },
-  "c:find_pets_by_status.status": { x: 462, y: 1062 },
-  "c:find_pets_by_tags.id": { x: 482, y: 951 },
-  "c:find_pets_by_tags.name": { x: 475, y: 914 },
-  "c:find_pets_by_tags.tags": { x: 475, y: 988 },
-  "c:inventory.quantity": { x: 488, y: 1173 },
-  "c:inventory.status": { x: 495, y: 1136 },
-  "c:pet_photos.pet_id": { x: 491, y: 618 },
-  "c:pet_photos.photo_urls": { x: 478, y: 581 },
-  "c:pets.category_id": { x: 495, y: 211 },
-  "c:pets.id": { x: 524, y: 285 },
-  "c:pets.name": { x: 518, y: 174 },
-  "c:pets.photo_urls": { x: 498, y: 248 },
-  "c:pets.status": { x: 511, y: 322 },
-  "c:store_order.id": { x: 501, y: 655 },
-  "c:store_order.pet_id": { x: 488, y: 729 },
-  "c:store_order.quantity": { x: 482, y: 766 },
-  "c:store_order.ship_date": { x: 478, y: 692 },
-  "c:store_order.status": { x: 488, y: 803 },
-  "c:tags.id": { x: 524, y: 26 },
-  "c:tags.name": { x: 518, y: 63 },
-  "c:user_login.username": { x: 485, y: 470 },
-  "c:users.email": { x: 511, y: 359 },
-  "c:users.id": { x: 521, y: 396 },
-  "c:users.username": { x: 501, y: 433 },
-  "p:pet_store": { x: 969, y: 738 },
-  "t:api_response": { x: 720, y: 836 },
-  "t:categories": { x: 733, y: 133 },
-  "t:customers": { x: 710, y: 512 },
-  "t:find_pets_by_status": { x: 743, y: 1032 },
-  "t:find_pets_by_tags": { x: 737, y: 958 },
-  "t:inventory": { x: 732, y: 1141 },
-  "t:pet_photos": { x: 714, y: 577 },
-  "t:pets": { x: 710, y: 239 },
-  "t:store_order": { x: 726, y: 738 },
-  "t:tags": { x: 694, y: 59 },
-  "t:user_login": { x: 714, y: 470 },
-  "t:users": { x: 697, y: 403 },
-  "term:available": { x: 66, y: 462 },
-  "term:bird": { x: 53, y: 352 },
-  "term:cat": { x: 195, y: 352 },
-  "term:category": { x: 62, y: 132 },
-  "term:customer": { x: 62, y: 242 },
-  "term:dog": { x: 124, y: 352 },
-  "term:identifier": { x: 165, y: 132 },
-  "term:message": { x: 136, y: 85 },
-  "term:name": { x: 207, y: 38 },
-  "term:order": { x: 130, y: 38 },
-  "term:pending": { x: 156, y: 462 },
-  "term:pet": { x: 67, y: 289 },
-  "term:photo": { x: 53, y: 85 },
-  "term:sold": { x: 234, y: 462 },
-  "term:status": { x: 81, y: 399 },
-  "term:tag": { x: 53, y: 38 },
-  "term:user": { x: 62, y: 179 },
+/** Where the lanes preset draws ``d`` (sortLanes, then placeLanes), every node ``w`` wide and as tall
+ * as the graph draws a node: the lines of the term lane laid over it (its arcs) place nothing. */
+export function placedDiagram(d: LaneDiagram, w = 160): (id: string) => At {
+  const lines: LaneLine[] = [...d.links, ...d.arcs].map((k) => ({
+    id: k.id,
+    source: k.from,
+    target: k.to,
+  }));
+  const ids = [...d.graph.nodes.map((n) => n.id), ...d.more.map((m) => m.id)];
+  const laneOf = (id: string) => (d.more.some((m) => m.id === id) ? "column" : d.lane.get(id));
+  const lanes = LANES.map((l) => ({
+    id: l as string,
+    items: ids.filter((id) => laneOf(id) === l).map((id) => ({ id, w, h: SIZE.nodeHeight })),
+  }));
+  const overlay = new Set(d.arcs.map((k) => k.id));
+  const where = placeLanes(
+    sortLanes(lanes, lines, "term", LANE_GAP, overlay),
+    lines,
+    "term",
+    LANE_GAP,
+    overlay,
+  );
+  return (id: string) => where.get(id) as At;
+}
+
+/** J1206: a Pet Health ontology as the maintainer's 2026-11-11 screenshots drew it -- hub terms
+ * bound across many tables (Pet, Employee, Name), a table whose name has no space in it
+ * (shelter.assignments_by_employee), three products sharing tables. */
+const PH_TABLES: Record<string, string[]> = {
+  "shelter.animals": ["id", "species", "name", "shelter_id", "intake_date", "weight_kg"],
+  "shelter.assignments_by_employee": ["employee_id", "animal_id", "shelter_id", "assigned_on"],
+  "shelter.shelters": ["id", "name", "city", "capacity"],
+  "hr.employees": ["id", "name", "role", "hired_on"],
+  "clinic.visits": ["id", "animal_id", "vet_id", "visited_on", "diagnosis_code"],
+  "clinic.vaccinations": ["id", "animal_id", "vaccine", "given_on"],
+  "clinic.prescriptions": ["id", "visit_id", "medication", "dose"],
+  "clinic.diagnoses": ["code", "description"],
+  "adoption.adoptions": ["id", "animal_id", "owner_id", "adopted_on", "fee"],
+  "adoption.owners": ["id", "name", "email", "phone"],
 };
+
+const PH_BINDINGS: Record<string, string[]> = {
+  pet: [
+    "shelter.animals.id",
+    "shelter.assignments_by_employee.animal_id",
+    "clinic.visits.animal_id",
+    "clinic.vaccinations.animal_id",
+    "adoption.adoptions.animal_id",
+  ],
+  dog: ["shelter.animals.species"],
+  cat: ["shelter.animals.species"],
+  owner: ["adoption.owners.id", "adoption.adoptions.owner_id"],
+  employee: [
+    "hr.employees.id",
+    "shelter.assignments_by_employee.employee_id",
+    "clinic.visits.vet_id",
+  ],
+  veterinarian: ["clinic.visits.vet_id"],
+  shelter: [
+    "shelter.shelters.id",
+    "shelter.animals.shelter_id",
+    "shelter.assignments_by_employee.shelter_id",
+  ],
+  visit: ["clinic.visits.id", "clinic.prescriptions.visit_id"],
+  vaccination: ["clinic.vaccinations.id", "clinic.vaccinations.vaccine"],
+  diagnosis: ["clinic.diagnoses.code", "clinic.visits.diagnosis_code"],
+  medication: ["clinic.prescriptions.medication"],
+  adoption: ["adoption.adoptions.id", "adoption.adoptions.fee"],
+  assignment: ["shelter.assignments_by_employee.assigned_on"],
+  name: [
+    "shelter.animals.name",
+    "hr.employees.name",
+    "adoption.owners.name",
+    "shelter.shelters.name",
+  ],
+  contact: ["adoption.owners.email", "adoption.owners.phone"],
+};
+
+const PH_RANKS: [string, string, string][] = [
+  ["dog", "pet", "KIND_OF"],
+  ["cat", "pet", "KIND_OF"],
+  ["veterinarian", "employee", "KIND_OF"],
+  ["vaccination", "visit", "KIND_OF"],
+  ["diagnosis", "visit", "PART_OF"],
+  ["medication", "visit", "PART_OF"],
+];
+
+const PH_PRODUCTS: Record<string, string[]> = {
+  pet_health: [
+    "shelter.animals",
+    "clinic.visits",
+    "clinic.vaccinations",
+    "clinic.prescriptions",
+    "clinic.diagnoses",
+  ],
+  shelter_ops: [
+    "shelter.shelters",
+    "shelter.animals",
+    "shelter.assignments_by_employee",
+    "hr.employees",
+  ],
+  adoptions: ["adoption.adoptions", "adoption.owners", "shelter.animals"],
+};
+
+/** The Pet Health ontology, every term with its tables and columns (the term graph at 3 hops). */
+export function petHealthOntology(): GraphData {
+  const nodes: GraphNode[] = [];
+  const edges: GraphEdge[] = [];
+  for (const t of Object.keys(PH_BINDINGS)) nodes.push({ id: termId(t), type: "term", label: t });
+  for (const [t, cols] of Object.entries(PH_TABLES)) {
+    nodes.push({ id: tableId(t), type: "table", label: t });
+    for (const c of cols)
+      nodes.push({
+        id: columnId(`${t}.${c}`),
+        type: "column",
+        label: `${t}.${c}`,
+        parent: tableId(t),
+      });
+  }
+  for (const p of Object.keys(PH_PRODUCTS)) nodes.push({ id: `p:${p}`, type: "product", label: p });
+  for (const [a, b, label] of PH_RANKS)
+    edges.push({ id: `term_edge:${a}>${b}`, a: termId(a), b: termId(b), kind: "term_edge", label });
+  for (const [t, cols] of Object.entries(PH_BINDINGS))
+    for (const c of cols)
+      edges.push({
+        id: `term_binding:${t}>${c}`,
+        a: termId(t),
+        b: columnId(c),
+        kind: "term_binding",
+      });
+  for (const [p, tables] of Object.entries(PH_PRODUCTS))
+    for (const t of tables)
+      edges.push({ id: `member:${p}>${t}`, a: `p:${p}`, b: tableId(t), kind: "member" });
+  return { nodes, edges };
+}

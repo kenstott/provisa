@@ -69,10 +69,12 @@ from provisa.core import request_deadline
 from provisa.core.egress import CountingWriter
 from provisa.core.pg_error import MARK, PostgresError, from_engine
 from provisa.core.limits import request_timeout_for  # REQ-1905: pgwire's own request timeout
+from provisa.core.session_time_zone import bind_zone, reset_zone
 from provisa.pgwire.session_zone import (
     UNKNOWN_ZONE,
     SessionZone,
     in_session_zone,
+    on_utc,
     raw_row_formats,
     refuse_other_zone,
 )
@@ -89,7 +91,7 @@ from provisa.pgwire import advisory_locks
 from provisa.federation.duckdb_pg_xml import xml_out
 from provisa.pgwire.cast_types import XML_ARRAY
 from provisa.pgwire.constant_arguments import evaluable, is_constant
-from provisa.security.rights import can_act_cross_org, capabilities_for_claims
+from provisa.security.rights import capabilities_for_claims
 
 log = logging.getLogger(__name__)
 _tracer = _get_tracer(__name__)
@@ -221,13 +223,23 @@ _SQLSTATE_BY_CLASS: dict[str, str] = {
 }
 
 
-def _sqlstate_of(exception: object) -> str:
+def _coded(exc: BaseException) -> str | None:
+    """REQ-1986: a parameter-binding refusal's stable code and params, for the ErrorResponse's
+    Detail field -- the form a warning's are sent in. None for any other failure."""
+    from provisa.core.parameter_binding import ParameterBindingRefused
+
+    if not isinstance(exc, ParameterBindingRefused):
+        return None
+    return json.dumps({"code": exc.code, "params": exc.params}, ensure_ascii=True)
+
+
+def _sqlstate_of(exception: BaseException) -> str:
     """The SQLSTATE an error is reported with: the one a source reported (psycopg, asyncpg), else
     the one PostgreSQL's own error raised on the engine carries (pg_error.raising), else
     PostgreSQL's code for the engine error's class -- read through the chain of errors that
     carried it up (the pipeline re-raises a statement's failure from it) -- else XX000."""
     chain: list[BaseException] = []
-    seen = exception if isinstance(exception, BaseException) else None
+    seen: BaseException | None = exception
     while seen is not None and seen not in chain:
         chain.append(seen)
         seen = seen.__cause__ or seen.__context__
@@ -419,12 +431,14 @@ async def _resolve_and_build_org(
     # REQ-1235: the database name (psql -d acme, a BI tool's database field) names the org too.
     requested_org = org_named_by_host_or_database(requested_org, database)
 
-    # REQ-1337: resolve the claims to RIGHTS and test cross_org — never the role name.
-    caps = capabilities_for_claims(getattr(identity, "roles", []) or [], state_.platform_roles)
+    from provisa.auth.held_assignments import may_act_cross_org
+
+    # REQ-1337, REQ-802: the cross_org RIGHT of the roles the principal holds — never the role
+    # name, and never the role claims the credential carries.
     org_id = await resolve_session_org(
         state_,
         user_id=getattr(identity, "user_id", None),
-        can_act_any_org=can_act_cross_org(caps),
+        can_act_any_org=await may_act_cross_org(state_, identity),
         requested_org=requested_org,
         credential_org=getattr(identity, "active_org_id", None),  # REQ-1235
         named_by=(
@@ -518,13 +532,72 @@ def _substitute_params(sql: str, params: list | None) -> str:
     return sql if written == tree else written.sql(dialect="postgres")
 
 
-def _held_roles(state: Any, identity: Any, mapped: str, org_id: str | None, *, run) -> set[str]:
-    """The roles a pgwire sign-in may name: its mapped role and its assignments, as every
-    transport reads them (provisa.auth.held_assignments), read in the session's org. ``run`` runs
-    the read on the connection's loop."""
-    from provisa.auth.held_assignments import held_assignments
+def trust_mode(state: Any) -> bool:
+    """Explicit unsecured mode (provider: none / no auth section): a sign-in's user names the
+    roles it acts as, and there is no password to check."""
+    auth_config = state.auth_config
+    if auth_config is None:
+        if getattr(state, "auth_middleware_active", False):
+            # A real provider is active but its config is absent — misconfiguration.
+            # Fail closed: never silently degrade a secured server to no-auth/trust.
+            raise RuntimeError("pgwire auth_config not configured")
+        return True
+    return auth_config["provider"] == "none" or not state.auth_middleware_active
 
-    return {a.role_id for a in run(held_assignments(state, identity, org_id))} | {mapped}
+
+def trusted_roles(state: Any, username: str) -> tuple[str, tuple[str, ...], tuple[str, ...]]:
+    """What a trust-mode sign-in as ``username`` acts as: ``(acting role, member roles,
+    derived-role qualifiers)``. Raises :class:`PermissionError` for a named meta-role."""
+    from provisa.auth.derived_roles import declared_derived_roles, named_unsecured
+    from provisa.core.request_context import reset_current_org, set_current_org
+    from provisa.security.meta_role import meta_role_id, refuse_named_meta_role
+
+    # REQ-1620: a comma-separated user names a set of roles, which acts as their meta-role —
+    # the trust-mode counterpart of naming them in x-provisa-role.
+    named = sorted({r.strip() for r in username.split(",") if r.strip()})
+    refuse_named_meta_role(named)
+    # REQ-2057: a named declared derived role is held, as on the unsecured HTTP path
+    # (auth/middleware.py, named_unsecured); it qualifies the roles it is named with.
+    # REQ-1266: the declarations read are the deployment org's, the org this session serves.
+    token = set_current_org(state.org_id)
+    try:
+        declared = declared_derived_roles(state)
+    finally:
+        reset_current_org(token)
+    roles, held_derived, _attributes = named_unsecured(named, declared)
+    qualifiers = tuple(sorted(held_derived))
+    if qualifiers:
+        acting = meta_role_id([*roles, *qualifiers])
+    else:
+        acting = roles[0] if len(roles) == 1 else meta_role_id(roles)
+    return acting, tuple(roles), qualifiers
+
+
+def credential_presentation(provider_name: str, username: str, password: str) -> tuple[str, str]:
+    """``(scheme, token)``: how a sign-in's one secret is presented to the provider. A personal
+    access token names itself by prefix and is a bearer credential (REQ-1263); a bearer/JWT
+    provider expects a token in the password field (REQ-890); anything else is a password,
+    presented as ``basic``."""
+    import base64
+
+    from provisa.auth.pat import is_personal_access_token
+
+    if is_personal_access_token(password) or provider_name in _OIDC_PROVIDERS:
+        return "bearer", password
+    return "basic", base64.b64encode(f"{username}:{password}".encode()).decode()
+
+
+def sign_in_validator(auth_provider, provider_name: str, username: str, password: str):
+    """``(scheme, token, validator)`` for a pgwire sign-in: how the startup credential is presented
+    and the provider's validator for that presentation, None when the provider takes none.
+
+    The one place a pgwire credential's validator is chosen, for the connection handler and for
+    anything that must answer "who would this stored pgwire user sign in as" (a checker's scans).
+    """
+    from provisa.auth.models import validator_for_scheme
+
+    scheme, token = credential_presentation(provider_name, username, password)
+    return scheme, token, validator_for_scheme(auth_provider, scheme)
 
 
 def _write_tag(sql: str, result: Any) -> str:
@@ -618,6 +691,8 @@ _TYPE_TO_BVTYPE: dict[str, BVType] = {
     "MAP": BVType.JSON,
     "BLOB": BVType.BYTES,
     "BYTEA": BVType.BYTES,
+    # Trino's bytes: a send function's, byteain's and sha256's answer, which PostgreSQL types bytea.
+    "VARBINARY": BVType.BYTES,
     "INTERVAL": BVType.INTERVAL,
     # PostgreSQL's unsigned 4-byte integers, and information_schema's domains over integer and
     # timestamp with time zone
@@ -670,6 +745,9 @@ def _sql_type_to_bvtype(type_str: str) -> BVType:
     # default, and TEXT's own converter is just `str`, tolerant of any Python type — so this was
     # never visible until a binary-preferring client (asyncpg) exercised the DIRECT route.
     type_str = type_str.upper()
+    if type_str.startswith("ARRAY("):
+        # Trino's name of an array type, array(integer): PostgreSQL's array of its element.
+        return _trino_array_bvtype(type_str)
     # A parameterized type name (DuckDB's "DECIMAL(18,2)", "NUMERIC(10,2)", "VARCHAR(20)",
     # "TIMESTAMP(3)") names the same wire type as its bare base: an exact lookup missed it and fell
     # to TEXT, whose binary converter then crashed on a Decimal. Array suffixes ("[]") are kept.
@@ -690,6 +768,18 @@ def _sql_type_to_bvtype(type_str: str) -> BVType:
         array = _ARRAY_OF.get(_sql_type_to_bvtype(type_str.rstrip("[]")))
         return array or BVType.JSON  # any other list type: its Python list value encodes as JSON
     return BVType.TEXT
+
+
+def _trino_array_bvtype(type_str: str) -> BVType:
+    """The wire type of Trino's array type ``type_str`` (array(array(integer))): PostgreSQL has
+    one array type of an element, whatever its dimensions, and any other list is sent as JSON."""
+    import sqlglot.expressions as exp
+
+    element = exp.DataType.build(type_str, dialect="trino")
+    while element.is_type(exp.DataType.Type.ARRAY):
+        element = element.expressions[0]
+    array = _ARRAY_OF.get(_sql_type_to_bvtype(element.sql(dialect="postgres")))
+    return array or BVType.JSON  # any other list type: its Python list value encodes as JSON
 
 
 _WIRE_FAMILIES = (
@@ -1171,6 +1261,8 @@ def _describe_casts(
             if not untyped:
                 continue
             coerce.append((i, _null_alone))
+        if types[i] is BVType.TEXT and cast_type.of_text is not None:
+            coerce.append((i, cast_type.of_text))
         types[i], oids[i], typmods[i] = cast_type.bvtype, cast_type.oid, cast_type.typmod
         if cast_type.coerce is not None:
             coerce.append((i, cast_type.coerce))
@@ -1240,6 +1332,9 @@ def _coercer_names_by_function() -> dict[Any, str]:
         cast_types.record_text: "record",
         cast_types._clock_of: "clock",
         cast_types._of_no_zone: "no_zone",
+        cast_types.interval_of_text: "interval_text",
+        cast_types.bytes_of_text: "text_bytes",
+        cast_types.clock_of_text: "clock_text",
         enum_array_text: "enum_array",
     }
 
@@ -1951,6 +2046,9 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
         # REQ-1882: the connection thread that created this session and runs its loop.
         self._owner_thread: int | None = threading.get_ident()
         self._close_requested = False
+        # REQ-2226: the minted call this session was admitted for (None: an ordinary session). Set
+        # only by the minted-token listener; every statement then passes it.
+        self.call_scope: Any = None
         # Between BEGIN and COMMIT/ROLLBACK: ReadyForQuery reports 'T' (see _transaction_open).
         self.transaction_open = False
         # The deadline of the statement cycle in flight, for a CancelRequest from another
@@ -2066,10 +2164,20 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
         continues from it instead of governing again); ``shape`` is the result shape that Describe
         told the client, which the rows are encoded to. Both are None for a statement that was
         never described (the simple protocol, or a Bind with no Describe(Statement))."""
+        if self.call_scope is not None:  # REQ-2226
+            self.call_scope.admit(sql)
         self.queries += 1
-        return self._with_org(
-            lambda: self._execute_sql_bound(sql, params, result_fmt, prepared=prepared, shape=shape)
-        )
+        # REQ-2171: what runs the statement runs it in the session's zone. A SET in the statement
+        # itself changes nothing an engine answers.
+        zone = bind_zone(self.zone.statement_zone())
+        try:
+            return self._with_org(
+                lambda: self._execute_sql_bound(
+                    sql, params, result_fmt, prepared=prepared, shape=shape
+                )
+            )
+        finally:
+            reset_zone(zone)
 
     def describe_sql(self, sql: str, params=None) -> BVQueryResult:
         """Describe(Statement) (REQ-589, amended 2026-10-01): the statement is governed through
@@ -2081,6 +2189,8 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
 
         A catalog statement (INTERCEPT) is answered in-process from the catalog emulation, as its
         Execute is."""
+        if self.call_scope is not None:  # REQ-2226
+            self.call_scope.admit(sql)
         return self._with_org(lambda: self._describe_bound(sql, params))
 
     def _with_source_enums(self, sql: str) -> str:
@@ -2363,7 +2473,11 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
 
     def _as_principal(self, fn: Callable[[], Any]) -> Any:
         """Run ``fn`` with the session principal's session variables bound (REQ-1682, REQ-1382),
-        as on every transport. A trust-mode session has no validated principal: none are."""
+        as on every transport. A trust-mode session has no validated principal: none are. A
+        minted session binds what its caller had bound (REQ-2226)."""
+        if self.call_scope is not None:
+            with self.call_scope.bound():
+                return fn()
         if self.identity is None:
             return fn()
         from provisa.api.app import state
@@ -2465,7 +2579,7 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
             return ProvisaQueryResult(QueryResult(rows=[], column_names=[]), stripped)
         was_open = self.transaction_open
         self.transaction_open = _transaction_open(stripped, was_open)
-        self.zone.note(stripped, was_open, self.transaction_open)  # REQ-2171
+        self.zone.note(stripped, was_open, self.transaction_open, params)  # REQ-2171
         if was_open and not self.transaction_open:
             advisory_locks.LOCKS.end_transaction(self)  # REQ-2167
         disposition = classify(stripped)
@@ -2684,6 +2798,7 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
                                     ),
                                 )
                                 if result_fmt
+                                and on_utc(self.zone.current)  # REQ-2171: its own zone's bytes
                                 and state.federation_engine.dialect in ("postgres", "postgresql")
                                 else None
                             ),
@@ -2701,6 +2816,7 @@ class ProvisaSession(Session):  # REQ-001, REQ-002, REQ-266
                     and state.source_pools.has(governed.source_id)
                     and state.source_pools.supports_stream(governed.source_id)
                     and result_fmt
+                    and on_utc(self.zone.current)  # REQ-2171: a c::text is the source's zone's
                     and state.source_pools.dialect_for(governed.source_id)
                     in ("postgres", "postgresql")
                 ):
@@ -2865,6 +2981,37 @@ class _SourceFailed(Exception):
     them to the client's socket. The statement is answered with it; the connection goes on."""
 
 
+#: The encoder's errors of a value past what it writes, as PostgreSQL raises each (REQ-2236): its
+#: message -> the SQLSTATE and message. A year past 9999 is a timestamp's, which PostgreSQL holds
+#: to 294276 and pgwire sends of years 1 to 9999 only: raised by name.
+_UNSENDABLE = {
+    "money out of range": ("22003", "money out of range"),
+    "float too large to pack with f format": ("22003", "value out of range: overflow"),
+    "year is out of range": (
+        "22008",
+        "timestamp out of range for pgwire: a timestamp of years 1 to 9999 is sent",
+    ),
+    "days is out of range": ("22008", "interval out of range"),
+    # A date past PostgreSQL's (an engine's date32 holds more): date_in's error.
+    "date out of range": ("22008", "date out of range"),
+    "date value out of range": ("22008", "date out of range"),
+}
+
+
+def _unsendable(error: ValueError | OverflowError) -> PostgresError:
+    """The statement's error of a value the encoder cannot write (REQ-2236, amended 2026-11-15,
+    AN EDGE CASE RAISES): PostgreSQL's where it raises for the value; 22003 for any other overflow;
+    XX000 with the encoder's message for anything else. The encoder writes a batch only once it
+    is whole, so the client has every row before it and the connection goes on."""
+    said = str(error)
+    known = _UNSENDABLE.get(said)
+    if known is not None:
+        return PostgresError(*known)
+    if isinstance(error, OverflowError):
+        return PostgresError("22003", f"value out of range: {said}")
+    return PostgresError("XX000", f"a value pgwire cannot send: {said}")
+
+
 class _ReadData:
     """A result's ``ResultData``, each failure of its source as it is read a ``_SourceFailed``. A
     timeout is raised as it is: the request's deadline answers it (``ProvisaHandler._timed_out``)."""
@@ -2901,8 +3048,52 @@ class _ReadResult:
         return _ReadData(self._result.data())
 
 
+class _FlushingReader:  # REQ-2203
+    """The connection's reader over its unbuffered socket file, holding what it received: a read
+    the held bytes answer is answered from them; a read that must wait on the client first sends
+    what the server has buffered for it. So a reply leaves as PostgreSQL sends it, its messages
+    together, when the server is out of input to act on (pq_flush before the backend waits),
+    never one send per message, and never a wait on the client with an answer unsent. A driver
+    waiting on the socket wakes once per send it receives."""
+
+    #: The most one receive takes from the socket.
+    CHUNK = 65536
+
+    def __init__(self, raw: Any, flush: Callable[[], None]) -> None:
+        self._raw = raw
+        self._flush = flush
+        self._held = bytearray()
+
+    def read(self, size: int = -1, /) -> bytes:
+        """``size`` bytes, fewer only at the end of the stream; every byte to its end when
+        ``size`` is negative."""
+        while size < 0 or len(self._held) < size:
+            self._flush()
+            chunk = self._raw.read(self.CHUNK)
+            if not chunk:
+                break
+            self._held += chunk
+        taken = len(self._held) if size < 0 else size
+        out = bytes(self._held[:taken])
+        del self._held[:taken]
+        return out
+
+    def close(self) -> None:
+        self._raw.close()
+
+    @property
+    def closed(self) -> bool:
+        return self._raw.closed
+
+
 class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
     """Extends BuenaVistaHandler with TLS, cleartext auth, and catalog intercept."""
+
+    # REQ-2203: the writer buffers (socketserver's default is a send per write, and the socket is
+    # TCP_NODELAY); ``_FlushingReader``, reading the socket unbuffered and buffering itself, sends
+    # what the writer holds when the server must wait on its client.
+    wbufsize = -1
+    rbufsize = 0
 
     # REQ-1452: the metering writer, held apart from ``wfile`` because socketserver declares that
     # attribute as the plain stream it hands out. ``setup`` installs one before the first byte is
@@ -2998,7 +3189,7 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
             # as PostgreSQL sends every error.
             org_id = cast(ProvisaSession, ctx.session).org_id if ctx is not None else None
             said = str(_Said(str(exception), org_id))
-            self._send_pg_error("ERROR", _sqlstate_of(exception), said)
+            self._send_pg_error("ERROR", _sqlstate_of(exception), said, _coded(exception))
         else:
             self._send_pg_error("ERROR", "0A000", str(refusal))
         if ctx:
@@ -3104,7 +3295,12 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
             read = query_result if session is None else in_session_zone(query_result, session.zone)
             # An error the source raises as its rows are read is the statement's, answered to the
             # client by the message handler (_SourceFailed); one writing them is the connection's.
-            sent = super().send_data_rows(cast(BVQueryResult, _ReadResult(read)), limit)
+            # A value the encoder cannot write is the statement's error too (_unsendable): the
+            # source's errors are _SourceFailed, so a ValueError here is the encoder's.
+            try:
+                sent = super().send_data_rows(cast(BVQueryResult, _ReadResult(read)), limit)
+            except (ValueError, OverflowError) as error:
+                raise _unsendable(error) from error
             _annotate_request(db__row_count=sent)
         # REQ-1949: what the rows themselves showed -- the answer was cut at a row limit -- is
         # known when the drain ends, and goes as a NOTICE after the last row, ahead of the
@@ -3146,19 +3342,30 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
         self._shield = request_deadline.shielded()  # this connection thread's (REQ-1905)
         self._meter = CountingWriter(self.wfile, None)
         self.wfile = self._meter
+        # The reader flushes the writer itself, never through the handler: a reference back to
+        # the handler would keep it, and a TLS connection's socket only it holds, open past the
+        # end of the connection (the server closes the socket it accepted, not the TLS one).
+        self.rfile = _FlushingReader(self.rfile, self._meter.flush)  # type: ignore[assignment]
 
-    def _send_pg_error(self, severity: str, sqlstate: str, message: str) -> None:
+    def _send_pg_error(
+        self, severity: str, sqlstate: str, message: str, detail: str | None = None
+    ) -> None:
+        """``detail`` goes in the Detail field: a coded refusal's code and params, as a
+        warning's are sent (``_send_warning``)."""
         from provisa.api.engine_error_names import client_text
 
         # REQ-2087, REQ-2152: every message a client is sent, redacted and in the model's names.
         message = client_text(message)
         buf = BVBuffer()
-        for field, value in (
+        fields = [
             (b"S", severity),
             (b"V", severity),
             (b"C", sqlstate),
             (b"M", message),
-        ):
+        ]
+        if detail is not None:
+            fields.append((b"D", detail))
+        for field, value in fields:
             buf.write_bytes(field)
             buf.write_string(value)
         buf.write_bytes(b"\x00")
@@ -3227,12 +3434,15 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
                 self.wfile.write(b"S")
                 self.wfile.flush()
                 self.request = ssl_ctx.wrap_socket(self.request, server_side=True)
-                self.rfile = self.request.makefile("rb")
                 # Re-wrap: the TLS upgrade replaces the socket, and with it the writer setup()
                 # metered. Leaving it unwrapped would silently stop metering every TLS pgwire
-                # session, i.e. all of them on the hosted deployment.
-                self._meter = CountingWriter(self.request.makefile("wb", 0), None)
+                # session, i.e. all of them on the hosted deployment. Buffered, as setup()'s
+                # (REQ-2203): the reader flushes it.
+                self._meter = CountingWriter(self.request.makefile("wb", self.wbufsize), None)
                 self.wfile = self._meter
+                self.rfile = _FlushingReader(  # type: ignore[assignment]
+                    self.request.makefile("rb", self.rbufsize), self._meter.flush
+                )
                 self.r = BVBuffer(self.rfile)
             else:
                 self.wfile.write(b"N")
@@ -3276,53 +3486,23 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
     def _trust_mode(self) -> bool:
         """Explicit unsecured mode (provider: none / no auth section): the startup packet's user
         maps directly to role_id and there is no password to check."""
-        _state = self._app_state()
-        auth_config = _state.auth_config
-        if auth_config is None:
-            if getattr(_state, "auth_middleware_active", False):
-                # A real provider is active but its config is absent — misconfiguration.
-                # Fail closed: never silently degrade a secured server to no-auth/trust.
-                raise RuntimeError("pgwire auth_config not configured")
-            return True
-        return auth_config["provider"] == "none" or not _state.auth_middleware_active
+        return trust_mode(self._app_state())
 
     def _authenticate_trusted(self, ctx: BVContext, username: str) -> bool:
         """Trust mode's authentication: the startup packet's user is the only principal there is
         — it is what the audit row records. False when it was refused (and the client told)."""
-        from provisa.security.meta_role import meta_role_id, refuse_named_meta_role
-
         _state = self._app_state()
-        # REQ-1620: a comma-separated user names a set of roles, which acts as their meta-role —
-        # the trust-mode counterpart of naming them in x-provisa-role.
-        named = sorted({r.strip() for r in username.split(",") if r.strip()})
         try:
             if requested_role(ctx.params):
                 raise PermissionError(
                     "without authentication the connection's user names the roles to act "
                     "as; name them there, not in provisa.role"
                 )
-            refuse_named_meta_role(named)
+            acting, roles, qualifiers = trusted_roles(_state, username)
         except PermissionError as exc:
             self._send_pg_error("FATAL", "28000", str(exc))
             return False
-        # REQ-2057: a named declared derived role is held, as on the unsecured HTTP path
-        # (auth/middleware.py, named_unsecured); it qualifies the roles it is named with.
-        from provisa.auth.derived_roles import declared_derived_roles, named_unsecured
-        from provisa.core.request_context import reset_current_org, set_current_org
-
-        # REQ-1266: the declarations read are the deployment org's, the org this session serves.
-        token = set_current_org(_state.org_id)
-        try:
-            declared = declared_derived_roles(_state)
-        finally:
-            reset_current_org(token)
-        roles, held_derived, _attributes = named_unsecured(named, declared)
-        qualifiers = tuple(sorted(held_derived))
-        if qualifiers:
-            acting = meta_role_id([*roles, *qualifiers])
-        else:
-            acting = roles[0] if len(roles) == 1 else meta_role_id(roles)
-        ctx.session.act_as(acting, tuple(roles), qualifiers)  # type: ignore[attr-defined]
+        ctx.session.act_as(acting, roles, qualifiers)  # type: ignore[attr-defined]
         ctx.session.user_id = username  # type: ignore[attr-defined]
         # REQ-1266: an unsecured deployment serves its own org, as the unsecured HTTP path does.
         ctx.session.org_id = _state.org_id  # type: ignore[attr-defined]
@@ -3612,19 +3792,11 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
         Validators run on this connection's loop (REQ-1882); the PAT store and DB-backed providers
         resolve their loop-bound handles per loop.
         """
-        import base64
-
-        from provisa.auth.models import validator_for_scheme
-        from provisa.auth.pat import is_personal_access_token
         from provisa.auth.throttle import throttled
 
-        if is_personal_access_token(password) or provider_name in _OIDC_PROVIDERS:
-            scheme, token = "bearer", password
-        else:
-            scheme = "basic"
-            token = base64.b64encode(f"{username}:{password}".encode()).decode()
-
-        validator = validator_for_scheme(auth_provider, scheme)
+        scheme, token, validator = sign_in_validator(
+            auth_provider, provider_name, username, password
+        )
         if validator is None:
             return None
         # REQ-1393: the startup packet names the account, so failed guesses count against it here
@@ -3641,14 +3813,10 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
         self, ctx: BVContext, identity, auth_config: dict
     ) -> None:
         """Map the validated identity to a role, bind its org, and admit the connection."""
-        from provisa.auth.role_mapping import resolve_role
-
-        default_role = auth_config.get("default_role")
-        if not default_role:
+        if not auth_config.get("default_role"):
             # No admin default: an identity matching no mapping rule is refused, not escalated
             # onto whatever role the deployment happens to have named first.
             raise RuntimeError("pgwire auth requires auth.default_role to be configured")
-        role = resolve_role(identity, auth_config.get("role_mapping", []), default_role)
         # REQ-1266: bind the session to the identity's org (multitenant) so its queries route to that
         # org's data-plane runtime. Resolution + build run on this connection's loop (REQ-1882); an
         # unresolvable principal fails the connection rather than silently landing on the default.
@@ -3685,13 +3853,27 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
         ):
             self._send_pg_error("FATAL", "42501", role_probe.NOT_PERMITTED)
             return
-        members: tuple[str, ...] = (role,)
-        qualifiers: tuple[str, ...] = ()
         try:
             requested = requested_role(ctx.params)
         except PermissionError as exc:
             self._send_pg_error("FATAL", "28000", str(exc))
             return
+        from provisa.auth.held_assignments import default_request, sign_in_roles
+
+        try:
+            # The role the sign-in acts as and the roles it may name, as every transport reads
+            # them, in the session's org. REQ-1263: a personal access token's are its scopes its
+            # owner still holds; with none it is refused.
+            role, may_name = run_on_connection_loop(
+                sign_in_roles(_state, identity, getattr(ctx.session, "org_id", None))
+            )
+        except PermissionError as exc:
+            self._send_pg_error("FATAL", "42501", str(exc))
+            return
+        # REQ-2155: naming no role acts as the union of the roles held.
+        requested = requested or default_request(_state, identity, role, may_name)
+        members: tuple[str, ...] = (role,)
+        qualifiers: tuple[str, ...] = ()
         if requested:
             # REQ-1620: the connection may name any role, or set of roles, its identity holds; a
             # set acts as its meta-role, built in this session's org.
@@ -3703,7 +3885,7 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
 
             org_token = None
             org_id = getattr(ctx.session, "org_id", None)
-            permitted = _held_roles(_state, identity, role, org_id, run=run_on_connection_loop)
+            permitted = set(may_name)
             if org_id is not None:
                 from provisa.core.request_context import set_current_org
 
@@ -4157,8 +4339,9 @@ class ProvisaServer(BuenaVistaServer):  # REQ-001, REQ-266
         server_address: tuple[str, int],
         conn: ProvisaConnection,
         ssl_ctx: ssl.SSLContext | None = None,
+        handler: type["ProvisaHandler"] | None = None,
     ) -> None:
-        socketserver.ThreadingTCPServer.__init__(self, server_address, ProvisaHandler)  # type: ignore[arg-type]
+        socketserver.ThreadingTCPServer.__init__(self, server_address, handler or ProvisaHandler)  # type: ignore[arg-type]
         self.conn = conn
         self.rewriter = None
         self.extensions: dict = {}
@@ -4173,7 +4356,7 @@ class ProvisaServer(BuenaVistaServer):  # REQ-001, REQ-266
 
 def _log_statement_failure(what: str, sql: str, exc: Exception) -> None:
     """Log a statement that did not complete. A REFUSAL is the answer the statement gets, not a
-    fault of the server: a 4xx ``ApiError`` (a role without the right, a draft table, an unbound
+    fault of the server: a 4xx ``ApiError`` (a role without the right, a withdrawn table, an unbound
     source) is one line at INFO, without a traceback, as a ``PermissionError`` refusal already
     was (not logged at all). Anything else is unexpected and keeps its traceback."""
     from provisa.api.errors import ApiError

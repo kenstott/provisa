@@ -111,16 +111,34 @@ def _make_request(headers: dict[str, str]) -> MagicMock:
 
 class TestSinkBranchDecision:
     @pytest.mark.asyncio
-    async def test_header_present_returns_202_and_launches_sink(self, monkeypatch):
+    async def test_header_present_returns_202_and_launches_sink(self, monkeypatch, tmp_path):
         """X-Provisa-Sink header → 202 Accepted, the sink loop started as detached work.
 
         REQ-1882: started via spawn_long_lived — the sink outlives the request and runs until its
         source disconnects, so it gets its own thread (never the process loop or a pooled worker)."""
+        from types import SimpleNamespace
+
+        from provisa.auth.models import AuthIdentity
+        from provisa.core.database import Database, create_engine_from_url
+        from provisa.core.schema_admin import running_sinks
+
         document = _make_minimal_document("orders")
         state, ctx, _table_meta = _make_state()
+        # REQ-812: the sink is listed against its owner's cap in the platform state store.
+        engine = create_engine_from_url(
+            f"sqlite:///{tmp_path / 'ps.db'}", pool_size=5, max_overflow=0
+        )
+        running_sinks.create(engine)
+        state.platform_state_db = Database(engine, name="platform-state", holds="platform_state")
         # REQ-030: a sink writes only to the operator's cluster.
         monkeypatch.setenv("KAFKA_BOOTSTRAP_SERVERS", "broker1:9092")
         raw_request = _make_request({"x-provisa-sink": "kafka://broker1:9092/orders-topic"})
+        raw_request.state = SimpleNamespace(
+            identity=AuthIdentity(
+                user_id="alice", email=None, display_name="alice", roles=[], raw_claims={}
+            ),
+            active_org_id="org1",
+        )
 
         directives = MagicMock()
         directives.sink_topic = None
@@ -139,7 +157,7 @@ class TestSinkBranchDecision:
                 rls=MagicMock(),
                 state=state,
                 variables=None,
-                role="user",
+                role={"id": "role1", "capabilities": ["write"]},
                 role_id="role1",
                 raw_request=raw_request,
                 directives=directives,
@@ -182,7 +200,7 @@ class TestSinkBranchDecision:
                     rls=MagicMock(),
                     state=state,
                     variables=None,
-                    role="user",
+                    role={"id": "role1", "capabilities": ["write"]},
                     role_id="role1",
                     raw_request=raw_request,
                     directives=directives,
@@ -229,7 +247,7 @@ class TestSinkBranchDecision:
                 rls=MagicMock(),
                 state=state,
                 variables=None,
-                role="user",
+                role={"id": "role1", "capabilities": ["write"]},
                 role_id="role1",
                 raw_request=raw_request,
                 directives=directives,
@@ -276,7 +294,7 @@ class TestSinkBranchDecision:
                 rls=MagicMock(),
                 state=state,
                 variables=None,
-                role="user",
+                role={"id": "role1", "capabilities": ["write"]},
                 role_id="role1",
                 raw_request=raw_request,
                 directives=directives,

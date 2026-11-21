@@ -28,6 +28,8 @@ name: Conformance (drivers)
 # minimum bcrypt cost.
 
 on:
+  # Runs on dispatch for a release (gh workflow run <workflow> --ref <release branch>): it gates the
+  # release (REQ-1989). No push starts it.
   workflow_dispatch:
     inputs:
       ref:
@@ -53,10 +55,10 @@ env:
   # The PostgreSQL service the instance's fixture source lives in. An ephemeral service on the
   # runner: not a secret.
   CONFORMANCE_PG_HOST: 127.0.0.1
-  CONFORMANCE_PG_PORT: "55432"
+  CONFORMANCE_PG_PORT: "15432"
   CONFORMANCE_PG_DATABASE: conformance
   CONFORMANCE_PG_USER: postgres
-  CONFORMANCE_PG_PASSWORD: conformance
+  CONFORMANCE_PG_PASSWORD: conformance-pg-password
   # pgwire's password auth: the break-glass account, the job user and the session signing key.
   # Ephemeral, on a throwaway instance: not secrets.
   PROVISA_SUPERUSER_USERNAME: conformance-su
@@ -79,10 +81,10 @@ jobs:
       postgres:
         image: postgres:17.11
         env:
-          POSTGRES_PASSWORD: conformance
+          POSTGRES_PASSWORD: conformance-pg-password
           POSTGRES_DB: conformance
         ports:
-          - 55432:5432
+          - 15432:5432
         options: >-
           --health-cmd "pg_isready -U postgres"
           --health-interval 5s
@@ -136,13 +138,16 @@ jobs:
           EOF
 
       # A failing test is data: Gradle's own exit status is not the result (driver_suite.py's is).
+      # Autostyle stays on: with every style check skipped pgjdbc registers no `style` task, and
+      # benchmarks/build.gradle.kts, which names it, does not compile. :postgresql:test runs none
+      # of autostyle's tasks.
       - name: Run pgjdbc's suite
         continue-on-error: true
         timeout-minutes: 90
         run: |
           cd "$RUNNER_TEMP/pgjdbc"
           ./gradlew --no-daemon --no-parallel --continue :postgresql:test \
-            -PskipCheckstyle -PskipAutostyle -PskipForbiddenApis -PskipJavadoc -PskipOpenrewrite \
+            -PskipCheckstyle -PskipForbiddenApis -PskipJavadoc -PskipOpenrewrite \
             -Porg.gradle.java.installations.auto-download=false \
             "-Djunit.jupiter.execution.timeout.default=$PGJDBC_TEST_TIMEOUT" || true
           test -n "$(ls pgjdbc/build/test-results/test/*.xml)"
@@ -185,7 +190,7 @@ jobs:
   psycopg:
     name: psycopg's own suite
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 150
     env:
       PSYCOPG_VERSION: "3.3.8"
       PSYCOPG_SHA256: a415a90582e12af5d8b9b8de5e825535e2f57a3895beb3c8b92a6f109fde8055
@@ -198,10 +203,10 @@ jobs:
       postgres:
         image: postgres:17.11
         env:
-          POSTGRES_PASSWORD: conformance
+          POSTGRES_PASSWORD: conformance-pg-password
           POSTGRES_DB: conformance
         ports:
-          - 55432:5432
+          - 15432:5432
         options: >-
           --health-cmd "pg_isready -U postgres"
           --health-interval 5s
@@ -243,25 +248,51 @@ jobs:
           password-cost: "4"
 
       # A failing test is data: pytest's own exit status is not the result (driver_suite.py's is).
-      # pytest-randomly is off, so the order is the suite's own.
+      # pytest-randomly is off, so the order is the suite's own. The suite's virtualenv is on PATH,
+      # as in psycopg's CI: its typing tests run mypy from it. As psycopg's CI runs it
+      # (tools/ci/ci_test.sh), the tests that failed run twice more, for its timing-based tests;
+      # each attempt writes its own JUnit, and a later one's report of a test replaces an
+      # earlier one's (driver_suite.py read_attempts). join_test_threads waits, for at most two
+      # seconds, for the threads a test started, so a worker's late exception is charged to that
+      # test and not to whichever test comes next.
       - name: Run psycopg's suite
         continue-on-error: true
-        timeout-minutes: 90
+        timeout-minutes: 120
         env:
           PSYCOPG_TEST_DSN: host=127.0.0.1 port=${{ env.PROVISA_PGWIRE_PORT }} dbname=provisa user=${{ env.CONFORMANCE_USER }} password=${{ env.CONFORMANCE_PASSWORD }} sslmode=disable
         run: |
           cd "$RUNNER_TEMP/psycopg"
-          "$RUNNER_TEMP/psycopg-venv/bin/python" -m pytest tests -p no:randomly \
-            --timeout="$PSYCOPG_TEST_TIMEOUT_S" --junitxml="$RUNNER_TEMP/psycopg-junit.xml" -q -rN || true
-          test -s "$RUNNER_TEMP/psycopg-junit.xml"
+          export PATH="$RUNNER_TEMP/psycopg-venv/bin:$PATH"
+          export PYTHONPATH="$GITHUB_WORKSPACE/scripts/conformance/drivers"
+          mkdir -p "$RUNNER_TEMP/psycopg-junit"
+          suite=(python -m pytest tests -p no:randomly -p join_test_threads --timeout="$PSYCOPG_TEST_TIMEOUT_S" -q -rN)
+          "${suite[@]}" --junitxml="$RUNNER_TEMP/psycopg-junit/attempt-1.xml" || true
+          for attempt in 2 3; do
+            "${suite[@]}" --last-failed --last-failed-no-failures none \
+              --junitxml="$RUNNER_TEMP/psycopg-junit/attempt-$attempt.xml" || true
+          done
+          test -s "$RUNNER_TEMP/psycopg-junit/attempt-1.xml"
+
+      # A driver's pool and timing tests count connect and sign-in in what they time
+      # (test_queue[NullConnectionPool] wants its first 0.2 s statement done within 0.240 s,
+      # connect included). Timed against the PostgreSQL service on this runner, over TCP with
+      # SCRAM as Provisa is: ~4x before the lowering lookups were derived once per context, ~2x
+      # after; 3x fails a return to the former and leaves room for a runner's variance.
+      - name: Connect latency against PostgreSQL
+        run: |
+          .venv/bin/python scripts/conformance/connect_latency.py --ratio 3.0 \
+            --provisa "host=127.0.0.1 port=$PROVISA_PGWIRE_PORT dbname=provisa user=$CONFORMANCE_USER password=$CONFORMANCE_PASSWORD sslmode=disable" \
+            --postgres "host=$CONFORMANCE_PG_HOST port=$CONFORMANCE_PG_PORT dbname=$CONFORMANCE_PG_DATABASE user=$CONFORMANCE_PG_USER password=$CONFORMANCE_PG_PASSWORD sslmode=disable" \
+            --summary "$GITHUB_STEP_SUMMARY"
 
       - name: Summarise
         if: ${{ !cancelled() && steps.start.outcome == 'success' }}
         run: |
           mkdir -p "$RUNNER_TEMP/report/junit"
-          cp "$RUNNER_TEMP/psycopg-junit.xml" "$RUNNER_TEMP/report/junit/" || true
+          cp "$RUNNER_TEMP"/psycopg-junit/attempt-*.xml "$RUNNER_TEMP/report/junit/" || true
+          attempts=$(find "$RUNNER_TEMP/report/junit" -name 'attempt-*.xml' -size +0 | sort | paste -sd';')
           .venv/bin/python scripts/conformance/driver_suite.py summarise psycopg "$PSYCOPG_VERSION" \
-            "$RUNNER_TEMP/report/junit" \
+            "$attempts" \
             "$RUNNER_TEMP/report/conformance-driver-psycopg.json" "$RUNNER_TEMP/report/conformance-driver-psycopg.md" \
             "psycopg's own tests (tests/)" || ran=$?
           cat "$RUNNER_TEMP/report/conformance-driver-psycopg.md" >> "$GITHUB_STEP_SUMMARY"

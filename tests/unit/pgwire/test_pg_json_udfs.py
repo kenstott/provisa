@@ -24,7 +24,7 @@ from typing import Any
 import duckdb
 import pytest
 
-from provisa.core.pg_error import from_engine
+from provisa.core.pg_error import PostgresError, from_engine
 from provisa.federation.duckdb_pg_functions import register
 from provisa.federation.duckdb_pg_json import exists_all, exists_any
 from provisa.transpiler.function_macros import FunctionRefused
@@ -364,3 +364,44 @@ def test_a_deeply_nested_call_is_rewritten_once():
         nested = f"abs({nested})"
     written = transpile_to_duckdb(f"SELECT jsonb_typeof(a), {nested} FROM t")
     assert written.upper().count("ABS(") == 25
+
+
+@pytest.mark.parametrize(
+    "call",
+    [
+        """jsonb_set('{"a":{"b":1}}', '{a,NULL}', '2')""",
+        """jsonb_delete_path('{"a":{"b":1}}', '{a,NULL}')""",
+        """jsonb_set('{"a":1}', '{NULL}', '2')""",
+        """jsonb_insert('{"a":{"b":1}}', '{a,NULL}', '2')""",
+    ],
+)
+def test_a_null_path_step_into_an_object_is_postgresqls_error(db: Any, call: str):
+    """setPathObject: a NULL step is 22004, path element at position N is null."""
+    with pytest.raises(duckdb.Error) as refused:
+        db.execute(transpile_to_duckdb(f"SELECT {call}")).fetchall()
+    error = from_engine(refused.value)
+    assert error is not None and error.sqlstate == "22004"
+    assert "is null" in str(refused.value)
+
+
+def test_a_null_path_step_into_an_array_appends_as_postgresql_does(db: Any):
+    """setPathArray reads a NULL step as the end of the array."""
+    assert _one(db, """jsonb_set('{"a":[1]}', '{a,NULL}', '2')""") == '{"a": [1, 2]}'
+
+
+@pytest.mark.parametrize(
+    "call",
+    [
+        """jsonb_delete_path('{"a": 1, "b": [1, 2]}'::jsonb, '{{a,b},{c,d}}'::text[])""",
+        """jsonb_set('{"a": 1}'::jsonb, '{{a,b},{c,d}}'::text[], '2')""",
+        """jsonb_set_lax('{"a": 1}'::jsonb, '{{a,b},{c,d}}'::text[], '2')""",
+        """jsonb_insert('{"a": 1}'::jsonb, '{{a,b},{c,d}}'::text[], '2')""",
+    ],
+)
+def test_a_path_of_more_than_one_dimension_is_postgresqls_error(db: Any, call: str):
+    """jsonb_delete_path, jsonb_set, jsonb_set_lax, jsonb_insert: a path of more than one
+    dimension is 2202E, wrong number of array subscripts."""
+    with pytest.raises(PostgresError) as refused:
+        db.execute(transpile_to_duckdb(f"SELECT {call}")).fetchall()
+    assert refused.value.sqlstate == "2202E", refused.value
+    assert "wrong number of array subscripts" in str(refused.value)

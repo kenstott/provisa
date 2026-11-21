@@ -19,6 +19,8 @@ refused by name, and a list sent with a batch is refused: values belong to one s
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
 
 from provisa.compiler.params import (
@@ -111,7 +113,8 @@ async def test_a_statement_sent_without_values_is_governed_by_the_call_it_always
     from provisa.executor.result import QueryResult
     from provisa.pgwire import _pipeline
 
-    govern = AsyncMock(return_value=object())
+    # A governed plan always carries its result shape (REQ-1961), handed on with the result.
+    govern = AsyncMock(return_value=SimpleNamespace(result_shape=None))
     monkeypatch.setattr(_pipeline, "_govern_and_route", govern)
     monkeypatch.setattr(
         _pipeline, "_execute_plan", AsyncMock(return_value=QueryResult(rows=[], column_names=[]))

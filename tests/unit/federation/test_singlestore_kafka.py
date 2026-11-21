@@ -271,7 +271,7 @@ def test_a_kafka_table_on_a_singlestore_store_is_wired_to_a_pipeline_not_a_liste
     monkeypatch.setattr(sk, "ensure", _ensure_fake)
     landings: list[tuple] = []
 
-    async def _recorded(bootstrap, landed, topic):
+    async def _recorded(bootstrap, landed, topic, *, security):
         landings.append((bootstrap, landed, topic))
         return {0: 7}
 

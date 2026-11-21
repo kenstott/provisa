@@ -16,10 +16,14 @@ import io
 import logging
 import os
 import random
+import re
 import socket
 import socketserver
 import struct
 from typing import Any, Dict, List, Optional
+
+from provisa.pgwire.catalog_pg17 import TYPES as PG17_TYPES
+from provisa.transpiler.pg_literals import array_elements
 
 from .core import BVType, Connection, Extension, Session, QueryResult, wire_type_name
 from .rewrite import Rewriter
@@ -103,6 +107,35 @@ TEXT_PARAM_DECODERS = {
     1184: datetime.datetime.fromisoformat,
     2950: _uuid_mod.UUID,
 }
+
+# A text-format Bind value is array_in's text form only for a parameter of an array type: one
+# PostgreSQL files under the array category with its element type's ``_`` name (int2vector and
+# oidvector are filed there too, but their text is space-separated). Any other value starting with
+# "{" -- a brace-form uuid, a json object -- is the string it was sent as.
+_ARRAY_OIDS = frozenset(
+    oid for oid, row in PG17_TYPES.items() if row[4] == "A" and row[1].startswith("_")
+)
+
+# An unspecified (OID 0) parameter is the type the statement casts it to, as PostgreSQL resolves an
+# unknown-typed parameter: ``$1::text[]``, ``$1::_text``, ``CAST($1 AS int ARRAY)``.
+_SQL_STRING = re.compile(r"'(?:[^']|'')*'")
+_TYPE_NAME = (
+    r'(?:(?:"[^"]+"|\w+)\s*\.\s*)?'
+    r"(?:character\s+varying|double\s+precision|bit\s+varying"
+    r'|(?:timestamp|time)(?:\s*\(\s*\d+\s*\))?\s+with(?:out)?\s+time\s+zone|"[^"]+"|\w+)'
+    r"(?:\s*\(\s*\d+(?:\s*,\s*\d+)?\s*\))?"
+)
+
+
+def _cast_to_an_array(sql: str, index: int) -> bool:
+    """Whether the statement casts its placeholder ``$index`` to an array type."""
+    placeholder = rf"\${index}(?!\d)"
+    cast = re.compile(
+        rf"(?:{placeholder}\s*::\s*|\bCAST\s*\(\s*{placeholder}\s+AS\s+)"
+        rf'(?:(?:(?:"[^"]+"|\w+)\s*\.\s*)?"?_|{_TYPE_NAME}\s*(?:\[|\bARRAY\b))',
+        re.IGNORECASE,
+    )
+    return cast.search(_SQL_STRING.sub("''", sql)) is not None
 
 
 TYPE_OIDS = {
@@ -781,17 +814,12 @@ class BuenaVistaHandler(socketserver.StreamRequestHandler):
                 decoded = v.decode("utf-8")
                 if typeoid in TEXT_PARAM_DECODERS:
                     params.append(TEXT_PARAM_DECODERS[typeoid](decoded))
-                elif typeoid == 0:
-                    # Unspecified type — store raw string; do not date-parse
-                    if decoded.startswith("{") and decoded.endswith("}"):
-                        params.append(decoded[1:-1].split(","))
-                    else:
-                        params.append(decoded)
+                elif typeoid in _ARRAY_OIDS or (
+                    typeoid == 0 and _cast_to_an_array(ctx.stmts[stmt][0], i + 1)
+                ):
+                    params.append(array_elements(decoded))
                 else:
-                    if decoded.startswith("{") and decoded.endswith("}"):
-                        params.append(decoded[1:-1].split(","))
-                    else:
-                        params.append(decoded)
+                    params.append(decoded)
             else:
                 type = TYPE_OIDS.get(typeoid)
                 if type:

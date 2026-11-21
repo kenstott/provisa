@@ -11,7 +11,8 @@
 """Admin routes of the table editor's test-data mode (REQ-1494).
 
 * ``GET  /admin/fakes/catalog`` -- every kind of fake and fake method a column may declare, by
-  name and category, with its arguments.
+  name and category, with its arguments, the column families it can fill and whether it can be
+  stable; and, by each ``dataType`` asked for, the family a column of it holds.
 * ``POST /admin/fakes/check`` -- whether a column's fake, synthetic rule and stable flag would be
   saved: the table's other columns and the model's relationships as stored, this column as given.
   A refusal is answered 422 with the save's own message.
@@ -24,7 +25,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Query, Request
 from pydantic import BaseModel
 
 from provisa.api.admin.capabilities import require_capability_request
@@ -47,13 +48,18 @@ class ColumnFakeIn(BaseModel):
 
 
 @router.get("/catalog")
-async def fake_catalog(request: Request) -> dict[str, Any]:
+async def fake_catalog(
+    request: Request, dataType: list[str] = Query(default_factory=list)
+) -> dict[str, Any]:
     from provisa.api.admin._hiding_guard import require_hiding_editor_request
 
     require_hiding_editor_request(request)  # REQ-1944: the kinds a steward chooses a fake from
     from provisa.fakes.catalog import catalog
+    from provisa.fakes.checks import family
 
-    return catalog()
+    # The family of each column type asked for, as the save checks it: the editor offers a column
+    # the kinds and methods listing that family.
+    return {**catalog(), "typeFamilies": {t: family(t) for t in dataType}}
 
 
 @router.post("/check")
@@ -109,6 +115,9 @@ async def check_column_fake(request: Request, body: ColumnFakeIn) -> dict[str, A
 
 class ProposeIn(BaseModel):
     tableId: int
+    # REQ-2053: propose for these columns only, each from the profile even when it declares a
+    # fake or a rule already. None: every column that declares neither.
+    columns: list[str] | None = None
 
 
 @router.post("/propose")
@@ -147,13 +156,21 @@ async def propose_fakes(request: Request, body: ProposeIn) -> dict[str, Any]:
         c["column_name"] for c in reg["columns"] if c.get("fake") or c.get("synthetic_rule")
     }
     pii = {c for c, tagged in tags.items() if "pii" in tagged}
-    out = propose(run_id, facts, pii, declared)
     # REQ-2152: only the columns the caller is served (the profile names them as published).
     physical = {} if served is None else _physical_names(body.tableId)
 
     def _reads(name: str) -> bool:
         return served is None or physical.get(name) in served
 
+    named = None if body.columns is None else set(body.columns)
+    # A named column the caller is not served is refused as one the run does not profile.
+    unread = sorted(n for n in named or () if not _reads(n))
+    try:
+        if unread:
+            raise ValueError(f"run {run_id} profiles no column {', '.join(map(repr, unread))}")
+        out = propose(run_id, facts, pii, declared, named)
+    except ValueError as exc:
+        raise ApiError(422, "fakes.column_not_profiled", str(exc), table=reg["table_name"]) from exc
     return {
         "runId": out.run_id,
         "columns": {name: fake for name, fake in out.columns.items() if _reads(name)},

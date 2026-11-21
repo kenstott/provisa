@@ -18,7 +18,15 @@ import types
 from provisa.federation.pg_runtime import PgFederationRuntime
 
 
+class _AutocommitConnection:
+    """What a store cursor's ``connection`` says: schema creation asks it for autocommit."""
+
+    autocommit = True
+
+
 class _Cur:
+    connection = _AutocommitConnection()
+
     def __init__(self, log: list[str]) -> None:
         self._log = log
 

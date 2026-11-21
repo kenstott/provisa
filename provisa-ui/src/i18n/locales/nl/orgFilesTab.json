@@ -2,7 +2,7 @@
   "orgFilesTab": {
     "panelTitle": "Versleuteling van de bestandsmap",
     "loading": "Laden…",
-    "intro": "Bestanden die Provisa op elke server voor uw organisatie bewaart — caches, conversies, replica's en grote resultaten — staan in de eigen map van uw organisatie. Zet versleuteling aan om ze versleuteld te bewaren onder een sleutel die uw organisatie beheert.",
+    "intro": "Op elke server bewaart Provisa de caches, conversies, replica's en grote resultaten van de organisatie in de eigen map van de organisatie. Schakel versleuteling in om ze versleuteld te houden onder een sleutel die de organisatie bezit.",
     "encrypt": "De bestandsmap van de organisatie versleutelen",
     "referenceLabel": "Sleutelverwijzing",
     "referenceHelp": "De naam van de sleutel in de geheimenkluis van uw organisatie, geschreven als ${secret:NAME}. Provisa bewaart alleen deze verwijzing, nooit de sleutel.",

@@ -76,10 +76,12 @@ export interface FormState {
   writesTable: string;
   // REQ-1159: canonical IR-typed output dataset contract (returnSchema is its GraphQL projection).
   outputColumns: DatasetColumn[];
-  // REQ-1634: optional data-product membership.
-  productId: string;
   // REQ-2168: the command's name per language; a language left out offers its own name.
   languageBindings: Record<string, LanguageBinding>;
+  // REQ-1986: a registered source operation that reads rows is also exposed as a parameterized
+  // table while this is on; null for a function with no table form, or one not yet registered
+  // (registration sets it).
+  exposedAsTable: boolean | null;
 }
 
 // REQ-885: selectable implementation kinds for the function/command editor.
@@ -99,7 +101,18 @@ export const IMPL_KINDS = [
   // REQ-2131: a code source's @columns function, a batch column transform applied in a
   // projection. Chosen by picking a code source; its columns follow from the function.
   { value: "code_columns", label: "Column transform (code source)" },
+  // REQ-1988: native SQL in a relational source's own dialect, run on the source in one
+  // transaction. Offered with the relational sources it runs on (NATIVE_SQL_SOURCE_TYPES).
+  { value: "source_query", label: "Native SQL (relational source)" },
 ];
+
+// REQ-1988: the source types a native SQL command runs on (core/native_sql.DIALECTS).
+export const NATIVE_SQL_SOURCE_TYPES: readonly string[] = ["postgresql"];
+
+// A source_query command whose binding is a MongoDB pipeline is not native SQL.
+export function isNativeSql(implKind: string, binding: Record<string, unknown>): boolean {
+  return implKind === "source_query" && !("pipeline" in binding);
+}
 
 export const ARG_KINDS = [
   { value: "column_value", label: "column_value (scalar)" },
@@ -154,8 +167,8 @@ export const EMPTY_FORM: FormState = {
   requiresApproval: false,
   writesTable: "",
   outputColumns: [],
-  productId: "",
   languageBindings: {},
+  exposedAsTable: null,
 };
 
 // REQ-1159: IR type → JSON-schema scalar. return_schema is the GraphQL projection of the
@@ -224,7 +237,17 @@ export const OPERATION_SCHEMA: Record<string, string> = {
   openapi: "openapi",
   graphql_remote: "graphql",
   grpc_remote: "grpc_remote",
+  dbt: "dbt", // REQ-2228
 };
+
+// REQ-2230: a Snowflake source also offers operations on its schema's Dynamic Tables and Tasks,
+// among its routines. One picked is called as it is, so like any operation it declares no shape.
+const SNOWFLAKE_OPERATION =
+  /^(refresh_dynamic_table|suspend_dynamic_table|resume_dynamic_table|execute_task|suspend_task|resume_task)\./;
+
+export function isSnowflakeOperation(sourceType: string | undefined, functionName: string) {
+  return sourceType === "snowflake" && SNOWFLAKE_OPERATION.test(functionName);
+}
 
 // REQ-2131: the schema a code source's @columns functions are offered and registered under.
 // A code source offers functions to pick, registered as column transforms.

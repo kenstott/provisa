@@ -23,12 +23,13 @@ from typing import TYPE_CHECKING
 
 from sqlalchemy import select
 
-from provisa.core import model_change
-from provisa.core.regions import OrgRegion, StoreConfig
+from provisa.core import model_change, model_uri
+from provisa.core.regions import OrgRegion, RegionGrant, StoreConfig
 from provisa.core.schema_org import org_regions, stores
 
 if TYPE_CHECKING:
     from provisa.core.database import Connection
+    from provisa.core.repositories.integrity import Dependent
 
 
 class RegionNotSelected(ValueError):
@@ -56,7 +57,9 @@ class OrgNotInRegion(LookupError):
 
 async def upsert_store(conn: "Connection", store: StoreConfig) -> None:
     """Create a store, or replace its URL."""
-    model_change.name("upsert", "store", store.id)  # REQ-1524
+    model_change.name(
+        "upsert", model_change.uri(model_uri.kind_uri, "stores", store.id)
+    )  # REQ-1524
     # The save refuses what the load refuses: the data the org keeps in a region stays readable
     # by its other regions with this store as it now is.
     declared = {s.id: s for s in await list_stores(conn)}
@@ -71,7 +74,9 @@ async def upsert_store(conn: "Connection", store: StoreConfig) -> None:
 
 async def upsert_region(conn: "Connection", region: OrgRegion) -> None:
     """Select a platform region for the org, or replace the stores it names there."""
-    model_change.name("upsert", "region", region.id)  # REQ-1524
+    model_change.name(
+        "upsert", model_change.uri(model_uri.kind_uri, "regions", region.id)
+    )  # REQ-1524
     # The save refuses what the load refuses (provisa/core/regions.py): every store the region
     # names is declared, and its engine store names an engine kind.
     from provisa.core.regions import (
@@ -103,6 +108,19 @@ async def upsert_region(conn: "Connection", region: OrgRegion) -> None:
         index_elements=["id"],
         update_columns=[k for k in values if k != "id"],
     )
+
+
+async def apply_default_grant(conn: "Connection", grant: "RegionGrant") -> bool:
+    """Give a new org the platform's default grant (REQ-1922: "every new organization receives
+    it"): its stores, then its regions. An org whose model already names regions -- a demo's
+    configuration declares its own -- keeps them. Returns whether the grant was written."""
+    if not grant.regions or await list_regions(conn):
+        return False
+    for store in grant.stores:
+        await upsert_store(conn, store)
+    for region in grant.regions:
+        await upsert_region(conn, region)
+    return True
 
 
 async def list_regions(conn: "Connection") -> list[OrgRegion]:
@@ -190,12 +208,17 @@ async def set_table_region(conn: "Connection", table_id: int, region: str | None
 
     row = (
         await conn.execute_core(
-            select(t.c.source_id, t.c.schema_name, t.c.table_name).where(t.c.id == table_id)
+            select(t.c.source_id, t.c.schema_name, t.c.table_name, t.c.domain_id, t.c.alias).where(
+                t.c.id == table_id
+            )
         )
     ).fetchone()
     if row is None:
         raise LookupError(f"table {table_id} is not registered")
-    model_change.name("update", "table region", row.table_name)  # REQ-1524
+    model_change.name(  # REQ-1524
+        "update region of",
+        model_change.uri(model_uri.named_table_uri, row.domain_id, row.alias or row.table_name),
+    )
     await require_table_region(
         conn, f"table {row.source_id}/{row.schema_name}.{row.table_name}", region
     )
@@ -210,10 +233,52 @@ async def set_source_region(conn: "Connection", source_id: str, region: str | No
 
     from provisa.core.schema_org import sources
 
-    model_change.name("update", "source region", source_id)  # REQ-1524
+    model_change.name(
+        "update region of", model_change.uri(model_uri.source_uri, source_id)
+    )  # REQ-1524
     await require_selected(conn, f"source {source_id}", region)
     done = await conn.execute_core(
         update(sources).where(sources.c.id == source_id).values(region=region)
     )
     if done.rowcount == 0:
         raise LookupError(f"source {source_id!r} is not registered")
+
+
+class RegionDeleteRefused(ValueError):
+    """A store or a region is still named by something that would be left pointing at nothing
+    (REQ-1918): a store by a region, a region by a source or table."""
+
+    def __init__(self, kind: str, key: str, blocking: "list[Dependent]") -> None:
+        self.kind, self.key, self.blocking = kind, key, blocking
+        named = ", ".join(f"{d.ref.kind} {d.name or d.ref.id}" for d in blocking)
+        super().__init__(f"{kind} {key!r} is still named by: {named}")
+
+
+async def delete_store(conn: "Connection", store_id: str) -> bool:
+    """Remove one of the org's stores. False when there is no such store; refused
+    (:class:`RegionDeleteRefused`) while a region names it."""
+    return await _delete(conn, "store", stores, store_id)
+
+
+async def delete_region(conn: "Connection", region_id: str) -> bool:
+    """Stop selecting one platform region for the org. False when it is not selected; refused
+    (:class:`RegionDeleteRefused`) while a source or table names it."""
+    return await _delete(conn, "region", org_regions, region_id)
+
+
+async def _delete(conn: "Connection", kind: str, table, key: str) -> bool:
+    from sqlalchemy import delete
+
+    from provisa.core.repositories.integrity import ObjectRef, guard, remove_parts
+
+    model_change.name("delete", model_change.uri(model_uri.kind_uri, f"{kind}s", key))  # REQ-1524
+    exists = await conn.execute_core(select(table.c.id).where(table.c.id == key))
+    if exists.fetchone() is None:
+        return False
+    ref = ObjectRef(kind, key)
+    blocking = await guard(conn, ref)
+    if blocking:
+        raise RegionDeleteRefused(kind, key, blocking)
+    await remove_parts(conn, ref)
+    await conn.execute_core(delete(table).where(table.c.id == key))
+    return True

@@ -52,7 +52,7 @@ def test_an_aliased_and_an_unqualified_read_are_both_marked():
 def test_a_decimal_array_is_read_with_its_elements_as_strings():
     sql = 'SELECT "o"."amounts" FROM "shop"."orders" AS "o"'
     assert _on("duckdb", sql) == (
-        'SELECT TO_JSON(LIST_TRANSFORM("o"."amounts", x1 -> CAST(x1 AS TEXT))) AS "amounts" '
+        'SELECT TO_JSON(LIST_TRANSFORM("o"."amounts", LAMBDA x1 : CAST(x1 AS TEXT))) AS "amounts" '
         'FROM "shop"."orders" AS "o"'
     )
 

@@ -211,16 +211,55 @@ def values_cast(column: exp.Column) -> exp.Cast | None:
     return value if isinstance(value, exp.Cast) else None
 
 
+def _depth(elements: list) -> int:
+    """An array's dimensions, as its text form nests them: '{{a,b}}' has two."""
+    inner = [_depth(e) for e in elements if isinstance(e, list)]
+    return 1 + (max(inner) if inner else 0)
+
+
+def _of_depth(to: exp.DataType, depth: int) -> exp.DataType:
+    """``to``, an array type, of ``depth`` dimensions: PostgreSQL's text[] holds any number of
+    them, an engine's list type one per nesting (a cast of a nested list to TEXT[] writes each
+    sublist as a text). The dimensions ``to`` declares are dropped, as PostgreSQL ignores them:
+    '{{1,2}}'::int[] and '{{1,2}}'::int[][] are both of two."""
+    element = to
+    while element.is_type(exp.DataType.Type.ARRAY) and element.expressions:
+        element = element.expressions[0]
+    typed = element.copy()
+    for _ in range(depth):
+        typed = exp.DataType(this=exp.DataType.Type.ARRAY, expressions=[typed], nested=True)
+    return typed
+
+
+def array_input(node: exp.Expression) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]
+    """An array's text form cast to an array type, ``'{1,2}'::int4[]``, as the array of its
+    elements' strings cast to that type: no engine's cast reads array_in's text. Any other node
+    is returned as it is."""
+    if not isinstance(node, exp.Cast) or not isinstance(node.this, exp.Literal):
+        return node
+    literal, to = node.this, node.to
+    if not literal.is_string or not to.is_type(exp.DataType.Type.ARRAY):
+        return node
+    try:
+        elements = array_elements(literal.this)
+    except _NotAnArrayLiteral:
+        return node  # not an array's text form: the engine's cast reports it
+    return exp.Cast(this=_as_array(elements), to=_of_depth(to, _depth(elements)))
+
+
+def array_inputs(tree: exp.Expr) -> exp.Expr:
+    """``tree`` with each array's text form cast to an array type written as its elements
+    (``array_input``), in place."""
+    return tree.transform(array_input, copy=False)
+
+
 def literal_input(node: exp.Expression) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]
     if not isinstance(node, exp.Cast) or not isinstance(node.this, exp.Literal):
         return node
     literal, to = node.this, node.to
-    if literal.is_string and to.is_type(exp.DataType.Type.ARRAY):
-        try:
-            elements = array_elements(literal.this)
-        except _NotAnArrayLiteral:
-            return node  # not an array's text form: the engine's cast reports it
-        return exp.Cast(this=_as_array(elements), to=to)
+    written = array_input(node)
+    if written is not node:
+        return written
     if (
         literal.is_string
         and to.is_type(exp.DataType.Type.VARBINARY)
@@ -244,10 +283,36 @@ def postgres_literals(pg_sql: str) -> str:
     if "::" not in pg_sql and "cast" not in lowered and "null" not in lowered:
         return pg_sql
     tree = sqlglot.parse_one(pg_sql, read="postgres")
-    tree = tree.transform(literal_input)
+    tree = tree.transform(literal_input, copy=False)
     if isinstance(tree, exp.Select):
         for select in tree.selects:
             target = select.this if isinstance(select, exp.Alias) else select
             if isinstance(target, exp.Null):
                 target.replace(exp.cast(exp.null(), exp.DataType.Type.TEXT))
-    return tree.sql(dialect="postgres")
+    return tree.sql(dialect="postgres", copy=False)
+
+
+#: An edit of a statement's text: the characters ``start`` to ``end`` (exclusive) and their
+#: replacement.
+TextEdit = tuple[int, int, str]
+
+
+def literal_span(literal: exp.Literal) -> tuple[int, int]:
+    """Where a parsed string literal is in the statement's text: its first character and the one
+    after its last."""
+    return literal.meta["start"], literal.meta["end"] + 1
+
+
+def pg_string(text: str) -> str:
+    """``text`` as a PostgreSQL string literal (standard_conforming_strings: a backslash is
+    itself)."""
+    return "'" + text.replace("'", "''") + "'"
+
+
+def spliced(sql: str, edits: list[TextEdit]) -> str:
+    """``sql`` with each edit made. A step that changes a few literals edits the statement's text
+    rather than write the parsed statement again, which would lose what a parse keeps in a node's
+    meta (to_char's template, pg_syntax)."""
+    for start, end, text in sorted(edits, reverse=True):
+        sql = sql[:start] + text + sql[end:]
+    return sql

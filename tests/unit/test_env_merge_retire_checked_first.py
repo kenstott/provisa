@@ -33,6 +33,9 @@ _FEATURE_2 = EnvDependent("environment", "feature-2", "feature-2", "branched_fro
 
 
 class _Request:
+    # REQ-2216: a decision reads its Idempotency-Key header; these calls send none.
+    headers: dict[str, str] = {}
+
     class state:  # noqa: N801 -- mirrors starlette's attribute name
         identity = None
 

@@ -35,6 +35,7 @@ _LISTENER_PORTS = (
     "server.grpc_port",
     "server.flight_port",
     "server.pgwire_port",
+    "server.minted_pgwire_port",
     "server.bolt_port",
     "server.airport_port",
     "mcp.port",

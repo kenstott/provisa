@@ -122,11 +122,12 @@ export const SOURCE_TYPES = [
   { value: "qdrant", label: "Qdrant", category: "NoSQL", defaultPort: 0 },
   { value: "cassandra", label: "Cassandra", category: "NoSQL", defaultPort: 9042 },
   { value: "redis", label: "Redis", category: "NoSQL", defaultPort: 6379 },
-  // Code (REQ-1984, REQ-1993, REQ-2200): the organisation's own functions, run in a sandboxed
+  // Code (REQ-1984, REQ-1993, REQ-2200, REQ-2227): the organisation's own functions, run in a sandboxed
   // worker.
   { value: "node", label: "Node.js", category: "Code", defaultPort: 0 },
   { value: "python", label: "Python", category: "Code", defaultPort: 0 },
   { value: "go", label: "Go", category: "Code", defaultPort: 0 },
+  { value: "rust", label: "Rust", category: "Code", defaultPort: 0 },
   // Graph
   { value: "neo4j", label: "Neo4j", category: "Graph", defaultPort: 7474 },
   { value: "sparql", label: "SPARQL", category: "Graph", defaultPort: 443 },
@@ -152,6 +153,7 @@ export const SOURCE_TYPES = [
   { value: "airport", label: "Airport (Arrow Flight)", category: "Other", defaultPort: 50051 },
   // API
   { value: "openapi", label: "REST API (OpenAPI)", category: "API", defaultPort: 443 },
+  { value: "dbt", label: "dbt", category: "API", defaultPort: 0 }, // REQ-2228
   { value: "graphql", label: "GraphQL", category: "API", defaultPort: 443 },
   { value: "grpc", label: "gRPC", category: "API", defaultPort: 50051 },
   // Streaming
@@ -204,6 +206,8 @@ export const SOURCE_TYPES = [
   { value: "stripe", label: "Stripe", category: "Enterprise", defaultPort: 443 },
   // REQ-1960: carried by the File Crawler's HTML crawl, with the site's page layout supplied.
   { value: "wikipedia", label: "Wikipedia", category: "File", defaultPort: 0 },
+  // REQ-1923: carried by the SPARQL source, with the Wikidata query service as its endpoint.
+  { value: "wikidata", label: "Wikidata", category: "Graph", defaultPort: 443 },
   { value: "splunk", label: "Splunk", category: "Enterprise", defaultPort: 8089 },
   // Data Quality (REQ-1443) — a checker scans a governed table through a Provisa pgwire endpoint,
   // whose host, port, database and account its steward enters like any database's (#276). soda is Elastic
@@ -229,13 +233,6 @@ export const API_AUTH_TYPES = [
   { value: "api_key", label: "API Key" },
   { value: "oauth2_client_credentials", label: "OAuth2 Client Credentials" },
   { value: "custom_headers", label: "Custom Headers" },
-];
-
-export const KAFKA_AUTH_TYPES = [
-  { value: "none", label: "No Auth" },
-  { value: "sasl_plain", label: "SASL/PLAIN" },
-  { value: "sasl_scram_256", label: "SASL/SCRAM-SHA-256" },
-  { value: "sasl_scram_512", label: "SASL/SCRAM-SHA-512" },
 ];
 
 export const CATEGORIES = [...new Set(SOURCE_TYPES.map((s) => s.category))];
@@ -307,10 +304,12 @@ export const HOST_PORT_ONLY = new Set(["airport", "websocket", "rss", "pinot", "
 // pure push receiver.
 export const NO_CONNECTION_TYPES = new Set([
   "ingest",
+  "dbt", // REQ-2228: its spec is its manifest (DbtFormSection)
   "data_profiler", // REQ-1934
   "node", // REQ-1984: its code, not a connection (CodeSourceFields)
   "python", // REQ-1993: the same
   "go", // REQ-2200: the same
+  "rust", // REQ-2227: the same
 ]);
 
 // REQ-1923: branded source types → the UI type that carries them. A brand is registered and
@@ -321,23 +320,28 @@ export const BRAND_CARRIER: Record<string, string> = {
   shopify: "graphql",
   stripe: "openapi",
   wikipedia: "files", // REQ-1960
+  wikidata: "sparql",
 };
 
 // REQ-1923/REQ-1960: the credential each brand asks for, stated by the brand. None is given
 // by default: a brand asks for what its own service takes, and one read without a credential
-// asks for nothing. "token" is a token the brand's API is called with.
-export type BrandAuth = "token" | "none";
+// asks for nothing. "token" is a token the brand's API is called with; "client_credentials" is
+// an OAuth client ID and secret exchanged for a token at the brand's token endpoint (REQ-2265,
+// the OpenAPI source's oauth2_client_credentials auth).
+export type BrandAuth = "token" | "client_credentials" | "none";
 export const BRAND_AUTH: Record<string, BrandAuth> = {
   github: "token",
   gitlab: "token",
   shopify: "token",
   stripe: "token",
   wikipedia: "none",
+  wikidata: "none",
 };
 
 // REQ-1923: what a brand reached at a per-customer address asks for besides its credential,
 // sent as the registration's `setup` under each field's `name` (the brand's setup fields,
-// provisa/graphql_remote/brands.py). A field with a `defaultValue` starts filled with it.
+// provisa/graphql_remote/brands.py and provisa/openapi/brands.py). A field with a
+// `defaultValue` starts filled with it.
 export interface BrandSetupField {
   name: string;
   labelKey: string;
@@ -366,6 +370,16 @@ export const BRAND_SETUP: Record<string, BrandSetupField[]> = {
       required: true,
     },
   ],
+};
+
+// REQ-2265: the setup field of an OpenAPI brand each customer runs at its own host: the base URL
+// its calls go to, and its spec is read from when the brand reads it from the instance.
+export const BRAND_BASE_URL_FIELD: BrandSetupField = {
+  name: "base_url",
+  labelKey: "sourceFormFieldsExtended.brandBaseUrl",
+  hintKey: "sourceFormFieldsExtended.brandBaseUrlHint",
+  placeholder: "https://catalog.example.com",
+  required: true,
 };
 
 /** The setup values a brand's form starts with: each field's default, or empty. */

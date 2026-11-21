@@ -213,6 +213,7 @@ def _build_provider(src: Any, tbl: dict, *, node: str) -> tuple[Any, str] | None
     from provisa.core.secrets import resolve_secrets
     from provisa.kafka.avro_registry import RegistrySettings
     from provisa.kafka.landed_offsets import landed_group
+    from provisa.kafka.security import KafkaSecurity
     from provisa.subscriptions.registry import get_provider
 
     source_type = src.type.value if hasattr(src.type, "value") else str(src.type)
@@ -253,6 +254,7 @@ def _build_provider(src: Any, tbl: dict, *, node: str) -> tuple[Any, str] | None
                 "field_mapping": kafka_cfg.get("field_mapping") or {},
                 # REQ-1733: its first start reads from where the table's landing stopped.
                 "landed": landed_group(src.id),
+                "security": KafkaSecurity.of_source(src),  # REQ-147
             },
         )
         return provider, topic
@@ -297,9 +299,9 @@ async def wire_push_listeners(*, state: Any, log: Any) -> list[LongLived]:
     starts listeners for tables that don't have one yet. Returns the tasks started THIS call
     (empty on a pure re-wire where every push table already has a listener).
 
-    REQ-1921: a listener whose table is no longer wired is stopped. That covers a table set
-    as draft (it leaves ``fetch_tables``), a deleted one, and a change stream whose signal no
-    longer opts in. Every schema rebuild re-runs this, so a table that goes draft stops landing
+    REQ-1921: a listener whose table is no longer wired is stopped. That covers a table
+    withdrawn (it leaves ``fetch_tables``), a deleted one, and a change stream whose signal no
+    longer opts in. Every schema rebuild re-runs this, so a table that is withdrawn stops landing
     there."""
     db = getattr(state, "model_db", None)
     engine = getattr(state, "federation_engine", None)
@@ -700,6 +702,7 @@ async def _wire_pipeline(
     import asyncio
 
     from provisa.federation import singlestore_kafka, singlestore_pipeline as sp
+    from provisa.kafka.security import KafkaSecurity
 
     kafka = (
         ((tbl.get("live") or {}).get("kafka") or {}) if isinstance(tbl.get("live"), dict) else {}
@@ -709,12 +712,15 @@ async def _wire_pipeline(
         source_id=src.id, schema_name=tbl["schema_name"], table_name=tbl["table_name"]
     )
     bootstrap = f"{src.host}:{src.port}" if src.port else src.host
+    security = KafkaSecurity.of_source(src)  # REQ-147
     registry = src.cdc.schema_registry_url if getattr(src, "cdc", None) else None
     field_mapping = kafka.get("field_mapping") or None
     expected = sp.kafka_pipeline_name(
         address.schema,
         address.table,
-        sp.kafka_definition(origin, columns, pk_columns, field_mapping, registry, bootstrap),
+        sp.kafka_definition(
+            origin, columns, pk_columns, field_mapping, registry, bootstrap, security
+        ),
     )
     if not hasattr(state, "kafka_pipelines"):
         state.kafka_pipelines = {}
@@ -731,7 +737,7 @@ async def _wire_pipeline(
 
     try:
         # REQ-1733: a new pipeline starts where the table's landing stopped on the topic.
-        landed = await recorded(bootstrap, landed_group(src.id), origin.location)
+        landed = await recorded(bootstrap, landed_group(src.id), origin.location, security=security)
         name = await asyncio.to_thread(
             singlestore_kafka.ensure,
             _pipeline_store(state, engine),
@@ -744,6 +750,7 @@ async def _wire_pipeline(
             field_mapping=field_mapping,
             schema_registry=registry,
             landed=landed,
+            security=security,
         )
     except Exception:
         log.exception(
@@ -760,7 +767,7 @@ async def _wire_pipeline(
 
 async def _settle_pipelines(state: Any, engine: Any, wired: set[str], *, log: Any) -> None:
     """After a wiring pass on a SingleStore store: forget and drop the pipelines of tables no
-    longer wired (draft, deleted, retired), only in this org and region's replicas schema, and keep
+    longer wired (withdrawn, deleted, retired), only in this org and region's replicas schema, and keep
     the region's batch poll scheduled while any pipeline lands (REQ-990, REQ-1922)."""
     import asyncio
 
@@ -848,8 +855,8 @@ def _schedule_batch_poll(state: Any, store: Any, schema: str, delays: dict, *, o
 
 
 async def _stop_unwired(state: Any, wired: set[str], *, log: Any, timeout: float = 10.0) -> None:
-    """Stop every running listener whose node is not in ``wired`` (REQ-1921): its table went
-    draft, was deleted, or no longer opts into its change feed. The disconnect flag lets a
+    """Stop every running listener whose node is not in ``wired`` (REQ-1921): its table was
+    withdrawn, was deleted, or no longer opts into its change feed. The disconnect flag lets a
     listener between events flush its partial batch and exit; the cancel ends one blocked
     waiting for the next event. A later wire starts it again if its table comes back."""
     handles = state.push_listener_handles
@@ -872,7 +879,7 @@ async def _stop_unwired(state: Any, wired: set[str], *, log: Any, timeout: float
         if not await handle.wait(timeout):
             log.warning("push listener %s did not stop within %.0fs", node, timeout)
         log.info(
-            "push listener stopped for %s: its table is no longer wired (draft, deleted, or "
+            "push listener stopped for %s: its table is no longer wired (withdrawn, deleted, or "
             "its change feed is off)",
             node,
         )

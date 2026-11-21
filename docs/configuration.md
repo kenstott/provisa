@@ -634,6 +634,10 @@ tables:
     naming_convention: snake  # overrides source for this table
 ```
 
+### Per-org override
+
+The  block above sets deployment-wide defaults. Each organisation can override ,  and  individually in Admin > Settings. The org's value layers over the deployment default: set  for one org and all other orgs inherit the deployment value unchanged.
+
 ### Domain Prefix
 
 When `domain_prefix: true`, all GraphQL field and type names are prefixed with the domain ID using a double underscore separator:
@@ -648,6 +652,19 @@ This prevents name collisions when different domains have tables with the same n
 ### Naming Rules
 
 Regex rules applied to table names when generating GraphQL field names. Applied in order before uniqueness resolution.
+
+### Names table
+
+After every model build, Provisa materialises a  meta table: every model object's client-facing name on every surface — SQL, GraphQL, Cypher, proto and PostgreSQL constraint names — alongside any naming problems the convention produced (collisions, reserved words, truncations). Query it like any other meta table:
+
+```sql
+SELECT object_kind, object_id, surface, name, problem
+FROM model_names
+WHERE problem IS NOT NULL
+ORDER BY object_kind, object_id;
+```
+
+The table covers only the last build. Use it to audit naming before cutting a release, or to confirm that a convention change had the effect you expected.
 
 ## Tables
 
@@ -811,7 +828,7 @@ roles:
 
 A role with `parents` holds what it lists of what they hold: its capabilities, its `domain_access` and its `residency_values` are each intersected with the union of what its parents hold. So list everything the role should hold, not only what it adds. A right no parent holds fails the load, naming the role and the right, as saving one in the role form does. Column and object grants still pass to the child. See [Inherited Roles](#inherited-roles).
 
-A role with no capabilities can do nothing, reads included. It may carry a name or session values for row rules, run a command that names it in `visible_to`, or be a parent that holds only grants.
+A role with no capabilities can do nothing, reads included, and runs no command. It may carry a name or session values for row rules, or be a parent that holds only grants.
 
 ### Capabilities
 
@@ -824,6 +841,7 @@ A role with no capabilities can do nothing, reads included. It may carry a name 
 | `query_development` | Use the query development features. Reading data does not need it. |
 | `full_results` | Get full results instead of a sample. |
 | `write` | Write data, where the role has a write grant. |
+| `command_execution` | Run the commands the role is assigned, in the domains it lists. Alone, it reads no data. The read-only catalog commands of the meta domain need `catalog_read` instead. |
 | `no_aggregations` | Take aggregate queries away from the role. |
 | `create_view` | Create views. |
 | `approve_view` | Approve views. |
@@ -838,6 +856,7 @@ A role with no capabilities can do nothing, reads included. It may carry a name 
 | `sensitive_data` | Mark columns as sensitive and change how they are hidden, in every environment. |
 | `view_governance` | See the catalog's governance columns: who can read a column, its masks and view SQL. |
 | `user_management` | Manage the organization's users and their roles. |
+| `assign_entitlements` | Set a member's entitlement lists, within what `user_management` confers. |
 | `glossary_rw` | Edit the glossary within the role's domains. |
 | `org_glossary_rw` | Edit any glossary term in the organization. |
 | `data_product_rw` | Create, edit and delete data products. |
@@ -1360,7 +1379,7 @@ The `distinct_on` argument selects the first row for each distinct value of the 
 }
 ```
 
-Compiles to `SELECT DISTINCT ON (region) ...` in PostgreSQL. For non-PG dialects, a window-function fallback is used.
+Compiles to `SELECT DISTINCT ON (region) ...` in PostgreSQL. On a dialect with no `DISTINCT ON`, Provisa writes the same result with a window function, a polyfill of PostgreSQL's behaviour. The [polyfill pages](conformance/polyfill/index.md) list each engine's polyfills.
 
 ## Write Grant Presets
 
@@ -1401,7 +1420,7 @@ A role names the roles it inherits from in `parents`, in order. What it holds is
 
 Row rules narrow too. A role's rows are its own rule AND the rules of its parents combined with OR. A parent with no rule stands for every row, and a role with no rule of its own reads under its parents' rules. So a role reads no row its parents could not, and it stays one plain predicate for each right, role and table.
 
-Provisa ships standard roles (`viewer`, `analyst`, `developer`, `modeler`, `data_steward`, `security_admin`, `data_product_owner`, `dq_reader`, `dq_steward`, `source_admin`, `org_operator`, `org_admin`, `sandbox`, `platform_admin`). They are Provisa's and cannot be edited or declared in a config file; extend one with a role of your own that names it in `parents`.
+Provisa ships standard roles (`viewer`, `analyst`, `data_writer`, `developer`, `modeler`, `data_product_owner`, `data_steward`, `security_admin`, `dq_steward`, `source_admin`, `member_admin`, `org_operator`, `org_admin`, `platform_admin`, and `sandbox` for Try it Out visitors). [Access Model](access-model.md#capabilities) lists what each one adds. They are Provisa's and cannot be edited or declared in a config file; extend one with a role of your own that names it in `parents`.
 
 ```yaml
 roles:
@@ -1550,6 +1569,39 @@ db.statement: SELECT * FROM orders WHERE region = ? AND amount > ?
 ### Endpoint Protocol Detection
 
 Provisa selects OTLP/HTTP or OTLP/gRPC from the endpoint URL scheme. URLs starting with `http://` or `https://` use OTLP/HTTP, with `/v1/traces`, `/v1/metrics`, and `/v1/logs` appended automatically. Any other scheme uses OTLP/gRPC with `insecure=True`.
+
+### Sending Telemetry to Your Own Provider
+
+You can send Provisa's telemetry to Datadog, Honeycomb, Grafana Cloud or any other OTLP-capable provider and keep Provisa's own trace tables. Which setup works depends on how your federation engine gets its trace rows.
+
+Every span also goes to an in-process buffer that doesn't depend on any exporter. The recent-traces list on Admin > Observability reads that buffer, so it works with any `endpoint`, or none.
+
+The ops `traces` table is the record the `queries` report joins on `trace_id` for stage timings, route, engine and cache result. Two paths fill it:
+
+- **Engines with the `otel` catalog (Trino).** Rows arrive only through Provisa's OpenTelemetry collector. Its `otlphttp/parquet` exporter writes Parquet, and the compaction job loads it into Iceberg. Keep `observability.endpoint` on that collector and add your provider as another exporter in the collector's pipelines. If you point `endpoint` straight at the provider, the collector never sees the spans. The `traces` table stops filling and the `queries` report loses its trace join.
+- **Native engines (DuckDB).** Provisa writes the `traces` rows itself, whatever `endpoint` is. You can point `endpoint` at your provider. If you run the `otlp2sql` receiver instead (see [Deployment](deployment.md#telemetry-backend-otlp2sql)), `endpoint` must stay on that receiver.
+
+To add a provider to the collector, define one more exporter in `observability/otel-collector-config.yaml` and list it in the `traces` pipeline next to `otlphttp/parquet`:
+
+```yaml
+exporters:
+  otlphttp/provider:
+    endpoint: https://YOUR_PROVIDER_OTLP_ENDPOINT
+    headers:
+      # The header name and value format are your provider's.
+      Authorization: ${env:YOUR_PROVIDER_API_KEY}
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [filter/parquet_traces, batch]
+      exporters: [otlphttp/parquet, otlphttp/provider, debug]
+```
+
+Set `YOUR_PROVIDER_API_KEY` in the collector's environment and restart the collector. The `traces` pipeline runs the `filter/parquet_traces` processor, so your provider receives the same spans as the `traces` table: Provisa's own, without the control plane's database statement spans. To send everything the collector receives, add a second pipeline, for example `traces/provider`, that has the `otlp` receiver, the `batch` processor and only the provider exporter.
+
+Admin > Observability warns when an endpoint is set and the `traces` table has received no rows for ten minutes. If Provisa has been idle that is expected. Otherwise, check that the endpoint is Provisa's collector.
 
 ## Federation Engine
 
@@ -1797,7 +1849,7 @@ For Google Cloud sources, set `GOOGLE_APPLICATION_CREDENTIALS` to the path of yo
 | `FLIGHT_PORT` | `8815` | Provisa Arrow Flight server port |
 | `GRPC_PORT` | `50051` | Provisa Protobuf gRPC server port |
 | `PROVISA_REDIRECT_ENABLED` | `false` | Enable server-side threshold redirect |
-| `PROVISA_REDIRECT_THRESHOLD` | `1000` | Default row count threshold |
+| `PROVISA_REDIRECT_THRESHOLD` | `100000` | Default row count threshold |
 | `PROVISA_REDIRECT_FORMAT` | `parquet` | Default redirect format |
 | `PROVISA_REDIRECT_BUCKET` | `provisa-results` | S3 bucket for redirected results |
 | `PROVISA_REDIRECT_ENDPOINT` | — | S3-compatible endpoint URL |
@@ -1809,8 +1861,10 @@ For Google Cloud sources, set `GOOGLE_APPLICATION_CREDENTIALS` to the path of yo
 | `PROVISA_MTLS_BIND_PRINCIPAL` | `false` | Require the certificate's common name to equal the authenticating username |
 | `PROVISA_BOLT_ALLOWED_ORIGINS` | — | Comma-separated sites permitted to open a Bolt WebSocket from a browser; unset refuses every browser origin |
 | `PROVISA_EXTRAS` | `firebase,vector` | Pyproject extras baked into the app image; `scripts/provisa` derives it from `dq_checker` in `~/.provisa/config.yaml` |
+| `HF_ENDPOINT` | `https://huggingface.co` | Hugging Face hub a local embedding model is downloaded from; sets `embedding.hub_endpoint` when no value is stored. See [Runtime Settings](admin.md#runtime-settings) |
 | `PROVISA_DQ_CHECKER` | `none` | Installer-only: `none`/`soda`/`gx`, read by `first-launch.sh` in non-interactive mode and written to `config.yaml` as `dq_checker` |
-| `ANTHROPIC_API_KEY` | — | Claude API key (discovery) |
+| `ANTHROPIC_API_KEY` | — | Anthropic key used when the organization stored none, on an install of one organization only. Other vendors' variables: [Where an AI key comes from](secrets.md#where-an-ai-key-comes-from) |
+| `ANTHROPIC_CUSTOM_HEADERS`, `OPENAI_CUSTOM_HEADERS` | — | Leave unset with `multitenancy: true`. The vendor's SDK sends these headers on every call, so while either is set, every call through that SDK is refused with `ai.server_environment_sets` |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | — | Overrides `observability.endpoint` |
 | `OTEL_SERVICE_NAME` | `provisa` | Overrides `observability.service_name` |
 | `OTEL_LOG_LEVEL` | `WARNING` | Overrides `observability.log_level` |

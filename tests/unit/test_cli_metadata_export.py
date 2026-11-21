@@ -10,7 +10,7 @@
 
 """`provisa metadata export` CLI job (REQ-1072, REQ-1074).
 
-The command is a thin client for POST /admin/metadata-export/publish — the server's single
+The command is a thin client for POST /admin/syncing/publish — the server's single
 publish path — so these tests pin the request it sends and how it renders/exits on each
 outcome, with the HTTP layer stubbed.
 """
@@ -57,7 +57,7 @@ def _capture(monkeypatch, payload: dict) -> dict:
 
 _OK = {
     "ok": True,
-    "targets": [
+    "entries": [
         {"id": "dh", "provider": "datahub", "ok": True, "total_published": 12, "errors": []}
     ],
 }
@@ -67,7 +67,7 @@ def test_posts_to_the_single_publish_path(monkeypatch, capsys):
     seen = _capture(monkeypatch, _OK)
     rc = cli.main(["metadata", "export", "--api", "http://127.0.0.1:8000"])
     assert rc == 0
-    assert seen["url"] == "http://127.0.0.1:8000/admin/metadata-export/publish"
+    assert seen["url"] == "http://127.0.0.1:8000/admin/syncing/publish"
     assert seen["method"] == "POST"
     assert seen["auth"] is None
     assert seen["timeout"] == 300
@@ -87,7 +87,7 @@ def test_env_supplies_api_and_token(monkeypatch):
     monkeypatch.setenv("PROVISA_API_TOKEN", "envtok")
     seen = _capture(monkeypatch, _OK)
     assert cli.main(["metadata", "export"]) == 0
-    assert seen["url"] == "http://envhost:8000/admin/metadata-export/publish"
+    assert seen["url"] == "http://envhost:8000/admin/syncing/publish"
     assert seen["auth"] == "Bearer envtok"
 
 
@@ -96,7 +96,7 @@ def test_partial_publish_exits_nonzero_and_names_assets(monkeypatch, capsys):
         monkeypatch,
         {
             "ok": False,
-            "targets": [
+            "entries": [
                 {"id": "dh", "provider": "datahub", "ok": True, "total_published": 5, "errors": []},
                 {
                     "id": "atlas",

@@ -28,6 +28,7 @@ def _table_input(**overrides):
         off_peak_tz=None,
         arguments=None,  # REQ-2061
         landing_filter=None,  # REQ-2062
+        read_wait=None,  # REQ-2224
         view_sql=None,
         dq_contract=None,  # REQ-1443
         profiler_source_id=None,  # REQ-1934
@@ -46,12 +47,12 @@ def _table_input(**overrides):
         mv_persist="replace",
         mv_primary_key=[],
         mv_incremental=False,
+        mv_rebuild_every=None,  # REQ-2249
         mv_calendar=None,
         mv_grain=None,
         mv_allowed_lateness=0.0,
         mv_expected_events=None,
         mv_business_day_grain=False,
-        product_id=None,
         enable_aggregates=False,
         enable_group_by=False,
         modeling_role=None,  # REQ-1320

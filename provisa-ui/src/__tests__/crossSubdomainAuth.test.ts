@@ -25,6 +25,7 @@ import {
   orgOrigin,
 } from "../lib/authHost";
 import { redirectToControlPlaneLogin } from "../lib/crossSubdomainAuth";
+import { declareBaseDomain, onDeclaredBaseDomain } from "./declaredBaseDomain";
 
 /** A stand-in for `window.location` — only the fields authHost reads. */
 function loc(href: string): Location {
@@ -38,6 +39,9 @@ function loc(href: string): Location {
     search: u.search,
   } as unknown as Location;
 }
+
+// Every block below describes the cloud deployment unless it says otherwise.
+onDeclaredBaseDomain("provisa.dev");
 
 describe("authHost host classification", () => {
   it("treats the leftmost label as the org, matching the server's rule", () => {
@@ -60,10 +64,26 @@ describe("authHost host classification", () => {
     }
   });
 
+  it("reads no org from a host outside the declared base domain", () => {
+    // A Codespace's forwarded port has three labels, but it is not a subdomain of provisa.dev.
+    const codespace = "fluffy-space-umbrella-5g4r9x-3000.app.github.dev";
+    expect(isOrgSubdomainHost(codespace)).toBe(false);
+    expect(isControlPlaneHost("cloud.app.github.dev")).toBe(false);
+    expect(baseDomain(codespace)).toBe("");
+    // Nor one label too many: the org is the single label in front of the base domain.
+    expect(isOrgSubdomainHost("deep.kstott.provisa.dev")).toBe(false);
+  });
+
+  it("names the declared base domain on its apex too", () => {
+    expect(baseDomain("provisa.dev")).toBe("provisa.dev");
+    expect(orgOrigin("acme", loc("https://provisa.dev/"))).toBe("https://acme.provisa.dev");
+  });
+
   it("derives the control-plane origin by replacing the org label", () => {
     expect(controlPlaneOrigin(loc("https://kstott.provisa.dev/query"))).toBe(
       "https://cloud.provisa.dev",
     );
+    declareBaseDomain("provisa.test");
     expect(controlPlaneOrigin(loc("http://acme.provisa.test:5173/"))).toBe(
       "http://cloud.provisa.test:5173",
     );
@@ -74,6 +94,7 @@ describe("authHost host classification", () => {
     expect(orgOrigin("acme", loc("https://cloud.provisa.dev/onboard"))).toBe(
       "https://acme.provisa.dev",
     );
+    declareBaseDomain("provisa.test");
     expect(orgOrigin("acme", loc("http://cloud.provisa.test:5173/"))).toBe(
       "http://acme.provisa.test:5173",
     );
@@ -95,6 +116,39 @@ describe("authHost host classification", () => {
   it("refuses to guess an origin for a host with no base domain", () => {
     // Guessing here would point sign-in at a host we may not own; there is no safe default.
     expect(() => controlPlaneOrigin(loc("http://localhost:5173/"))).toThrow();
+  });
+});
+
+describe("authHost on a deployment that declares no base domain", () => {
+  // A GitHub Codespace, localhost, a custom single host: the deployment has one address.
+  const codespace = "https://fluffy-space-umbrella-5g4r9x-3000.app.github.dev";
+
+  beforeEach(() => declareBaseDomain(null));
+
+  it("treats no host as an org or a control plane, whatever its shape", () => {
+    for (const host of [new URL(codespace).hostname, "kstott.provisa.dev", "localhost"]) {
+      expect(isOrgSubdomainHost(host), host).toBe(false);
+      expect(baseDomain(host), host).toBe("");
+    }
+    expect(isControlPlaneHost("cloud.provisa.dev")).toBe(false);
+  });
+
+  it("addresses no org by name and points sign-in nowhere else", () => {
+    expect(orgOrigin("acme", loc(`${codespace}/onboard`))).toBeNull();
+    expect(inviteUrl("acme", "tok", loc(`${codespace}/team`))).toBe(
+      `${codespace}/register?invite=tok`,
+    );
+    expect(() => controlPlaneOrigin(loc(`${codespace}/query`))).toThrow();
+  });
+
+  it("accepts no sibling origin", () => {
+    const self = loc(`${codespace}/auth-relay.html`);
+    expect(isSiblingOrigin("https://other-3000.app.github.dev", self)).toBe(false);
+  });
+
+  it("takes a declaration in any case and with stray dots", () => {
+    declareBaseDomain(" .Provisa.Dev. ");
+    expect(isOrgSubdomainHost("kstott.provisa.dev")).toBe(true);
   });
 });
 

@@ -17,8 +17,11 @@ import { render, screen, fireEvent, within } from "../test-utils/render";
 import { GlossaryTab } from "../components/admin/GlossaryTab";
 import type { GlossaryTermSummary } from "../api/glossary";
 
-// jsdom draws no canvas: the term graph is tested on its own (TermDag.test.tsx).
-vi.mock("../components/admin/TermDag", () => ({ TermDag: () => null }));
+// jsdom draws no canvas: the term page's ontology snippet is tested on its own (TermDag.test.tsx).
+vi.mock("../components/graph3d/OntologyGraph", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../components/graph3d/OntologyGraph")>()),
+  OntologySnippet: () => null,
+}));
 vi.mock("../api/glossary", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../api/glossary")>()),
   // REQ-1592: the author/expert picker's roster.
@@ -55,6 +58,7 @@ const APPROVED: GlossaryTermSummary = {
   id: 1,
   name: "Revenue",
   definition: "Money in.",
+  calculation_method: null,
   is_abstract: false,
   deprecated: false,
   ref_count: 1,
@@ -213,7 +217,7 @@ describe("glossary status and grounding filters", () => {
   it("narrows the list by grounding, in the words findings use", async () => {
     render(<GlossaryTab />);
     await screen.findByTestId("glossary-item-1");
-    await pick("glossary-grounding-filter", "Grounded · path pending approval");
+    await pick("glossary-grounding-filter", "Grounded · via a draft");
     const list = screen.getByTestId("glossary-list");
     expect(within(list).queryByTestId("glossary-item-1")).not.toBeInTheDocument();
     expect(within(list).getByTestId("glossary-item-2")).toBeInTheDocument();

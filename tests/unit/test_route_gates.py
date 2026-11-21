@@ -170,6 +170,18 @@ async def test_v1_every_other_connector_declares_no_capability():
     assert contract_for("postgresql") is None  # a SQL database is read through its driver
 
 
+def test_every_api_source_lands_for_want_of_a_capability_not_a_driver():
+    from provisa.transpiler.router import API_SOURCES
+
+    for source_type in sorted(API_SOURCES):
+        decision = decide_route(
+            {"s"}, {"s": source_type}, {"s": ""}, statement="SELECT a FROM t", operator_floor={}
+        )
+        assert decision.reason == "landed: trusted_to_answer: incomplete dataset from s", (
+            source_type
+        )
+
+
 def test_no_source_is_not_one_source():
     decision = _route(set())
     assert decision.route == Route.ENGINE

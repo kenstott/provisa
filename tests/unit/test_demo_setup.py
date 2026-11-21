@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import tomllib
 from pathlib import Path
 
 import httpx
@@ -291,7 +292,12 @@ def test_the_sonnets_setup_names_its_own_commands_and_views():
 
 
 def test_a_demo_s_extras_are_the_packages_of_the_groups_it_names(tmp_path):
-    assert extras.requirements(_REPO / "demo" / "named" / "sonnets") == ["sentence-transformers"]
+    groups = tomllib.loads((_REPO / "pyproject.toml").read_text())["project"][
+        "optional-dependencies"
+    ]
+    # sonnets names the vector group (its local sentence-transformers embedding model).
+    assert groups["vector"]
+    assert extras.requirements(_REPO / "demo" / "named" / "sonnets") == groups["vector"]
     assert extras.requirements(_REPO / "demo" / "named" / "weblogs") == []
     (tmp_path / "demo.yaml").write_text("extras: [nosuch]\n")
     with pytest.raises(SystemExit, match="'nosuch'"):
@@ -469,6 +475,7 @@ class _ScanServer(_Server):
         self.polls = polls
         self.ending = ending
         self.started: list[dict] = []
+        self.kept: list[tuple[str, dict]] = []
 
     def __call__(self, request: httpx.Request) -> httpx.Response:
         path = request.url.path
@@ -482,8 +489,15 @@ class _ScanServer(_Server):
             drafts = [{"name": "transaction in currency"}, {"name": "business day"}]
             error = "cancelled by alice" if self.ending == "failed" else None
             return httpx.Response(
-                200, json={"scan": {"status": self.ending, "error": error}, "drafts": drafts}
+                200,
+                json={
+                    "scan": {"status": self.ending, "error": error, "document_id": 4},
+                    "drafts": drafts,
+                },
             )
+        if path.startswith(setup.DOCUMENTS) and request.method == "PATCH":
+            self.kept.append((path, json.loads(request.content)))
+            return httpx.Response(200, json={"id": 4, "status": "kept"})
         if path == setup.CARRIED_SCANS:
             self.calls.append(path)
             return httpx.Response(200, json={"loaded": [_RULE]})
@@ -552,8 +566,56 @@ def test_a_scan_step_names_the_domains_its_terms_are_curated_in(monkeypatch, tmp
     assert server.started == [{"url": _RULE, "domains": ["bank"]}]
 
 
+def test_a_scan_step_that_says_keep_keeps_the_scanned_document_as_a_steward_does(
+    monkeypatch, tmp_path, capsys
+):
+    """REQ-2185: the build keeps the document through the library's own keep, so the bundle
+    carries it kept and an assistant in every sandbox finds its passages."""
+    server = _ScanServer()
+    _serve(monkeypatch, server)
+    home = _scanning(tmp_path, scan={"url": _RULE, "domains": ["bank"], "keep": True})
+    assert setup.run(home, "http://provisa.test") == 0
+    assert server.started == [{"url": _RULE, "domains": ["bank"]}]
+    assert server.kept == [(f"{setup.DOCUMENTS}/4", {"status": "kept"})]
+    assert f"scan {_RULE}: done, 2 candidate terms; document 4 kept" in capsys.readouterr().out
+
+
+def test_a_scan_step_without_keep_leaves_the_document_proposed(monkeypatch, tmp_path):
+    server = _ScanServer()
+    _serve(monkeypatch, server)
+    assert (
+        setup.run(
+            _scanning(tmp_path, scan={"url": _RULE, "domains": ["bank"]}), "http://provisa.test"
+        )
+        == 0
+    )
+    assert server.kept == []
+
+
+def test_a_keep_the_library_refuses_fails_the_setup_naming_why(monkeypatch, tmp_path, capsys):
+    class Refusing(_ScanServer):
+        def __call__(self, request: httpx.Request) -> httpx.Response:
+            if request.method == "PATCH":
+                return httpx.Response(409, json={"message": "document 4 is already kept"})
+            return super().__call__(request)
+
+    server = Refusing()
+    _serve(monkeypatch, server)
+    home = _scanning(tmp_path, scan={"url": _RULE, "domains": ["bank"], "keep": True})
+    assert setup.run(home, "http://provisa.test") == 1
+    assert "HTTP 409" in capsys.readouterr().err
+    assert server.stored is None
+
+
 @pytest.mark.parametrize(
-    "scan", [{"url": _RULE}, {"url": _RULE, "domains": []}, {"url": _RULE, "domains": "bank"}]
+    "scan",
+    [
+        {"url": _RULE},
+        {"url": _RULE, "domains": []},
+        {"url": _RULE, "domains": "bank"},
+        {"url": _RULE, "domains": ["bank"], "keep": False},
+        {"url": _RULE, "domains": ["bank"], "keep": "yes"},
+    ],
 )
 def test_a_scan_step_s_domains_are_a_list_of_some(tmp_path, scan):
     with pytest.raises(SystemExit, match="domains: \\[<domain>"):

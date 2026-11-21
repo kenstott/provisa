@@ -2,6 +2,7 @@
   "writeGrants": {
     "notShown": "誰可以寫入此表，只會向可查看治理資訊的管理員顯示。",
     "empty": "沒有角色可以寫入此表。",
+    "sourceAcceptsNone": "資料來源不接受任何寫入（見 API 分頁），因此無法向任何角色授予寫入權限。",
     "role": "角色",
     "operation": "操作",
     "op_insert": "插入",

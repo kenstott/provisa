@@ -14,6 +14,7 @@ import { useNavigate } from "react-router-dom";
 import { Box, Button, Divider, Group, List, Stack, Text, ThemeIcon, Title } from "@mantine/core";
 import { PartyPopper, ShieldCheck, UserPlus } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
+import { landingPath } from "../components/navGroups";
 import { OrgAddressModal } from "../components/OrgAddressModal";
 import { isOrgSubdomainHost, orgFromHost, orgOrigin } from "../lib/authHost";
 
@@ -24,7 +25,7 @@ import { isOrgSubdomainHost, orgFromHost, orgOrigin } from "../lib/authHost";
 // welcoming you to, and the links off it are ordinary in-app navigation from there.
 export function OrgWelcomePage() {
   const { t } = useTranslation();
-  const { activeOrgId, orgMemberships } = useAuth();
+  const { activeOrgId, orgMemberships, capabilities, billing } = useAuth();
   const navigate = useNavigate();
 
   // The org this document is bound to. On an org host the Host IS the binding; a deployment whose
@@ -117,7 +118,7 @@ export function OrgWelcomePage() {
           <Button
             variant="subtle"
             data-testid="onboard-welcome-continue"
-            onClick={() => enter("/query")}
+            onClick={() => enter(landingPath(capabilities, billing))}
           >
             {t("onboardOrg.welcomeContinueButton")}
           </Button>

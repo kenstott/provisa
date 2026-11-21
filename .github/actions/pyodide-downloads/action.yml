@@ -1,0 +1,59 @@
+name: Pyodide downloads
+description: >-
+  provisa_notebook.build fills provisa-notebook's assets with Pyodide and its packages, about
+  seventy files from Pyodide's CDN (cdn.jsdelivr.net), on every build of the package: each app
+  image, each installer, each wheel. One refused request there ended the cluster lane before any
+  test ran (run 43879947072: "HTTP Error 503: No healthy backends" inside the image build).
+
+  This action puts those files in a directory of the runner, from the cache keyed by the pins
+  (the Pyodide version, its sums and the packages, all in provisa_notebook/__init__.py), and on a
+  miss downloads them once (`python -m provisa_notebook.build --download-only`, every file checked
+  against its recorded sha256) and saves them. It names the directory in PROVISA_NOTEBOOK_DOWNLOADS
+  for the job's later steps: a build run on the runner takes the files from there, and an image
+  build is given it as `--build-context pyodide-downloads="$PROVISA_NOTEBOOK_DOWNLOADS"`. The CDN
+  is asked once per pin, in a step that says so, never from inside a build.
+inputs:
+  python:
+    description: The Python that runs the download (standard library only).
+    default: python3
+outputs:
+  dir:
+    description: The directory (also in PROVISA_NOTEBOOK_DOWNLOADS).
+    value: ${{ steps.dir.outputs.dir }}
+  cache-hit:
+    description: Whether the files came from the cache.
+    value: ${{ steps.restore.outputs.cache-hit }}
+runs:
+  using: composite
+  steps:
+    # Outside the checkout, so no image build's context carries it; the path as this runner's
+    # Python spells it, which is the one every later step (bash or PowerShell) can use.
+    - name: Pyodide downloads directory
+      id: dir
+      shell: bash
+      run: |
+        dir="$(${{ inputs.python }} -c "import pathlib; print(pathlib.Path.home() / '.cache' / 'provisa-notebook-downloads')")"
+        echo "dir=$dir" >> "$GITHUB_OUTPUT"
+        echo "PROVISA_NOTEBOOK_DOWNLOADS=$dir" >> "$GITHUB_ENV"
+
+    - name: Restore Pyodide downloads
+      id: restore
+      uses: actions/cache/restore@v4
+      with:
+        path: ~/.cache/provisa-notebook-downloads
+        key: pyodide-downloads-${{ hashFiles('provisa-notebook/provisa_notebook/__init__.py') }}
+
+    - name: Download Pyodide
+      if: steps.restore.outputs.cache-hit != 'true'
+      shell: bash
+      env:
+        PROVISA_NOTEBOOK_DOWNLOADS: ${{ steps.dir.outputs.dir }}
+        PYTHONPATH: provisa-notebook
+      run: ${{ inputs.python }} -m provisa_notebook.build --download-only > /dev/null
+
+    - name: Cache Pyodide downloads
+      if: steps.restore.outputs.cache-hit != 'true'
+      uses: actions/cache/save@v4
+      with:
+        path: ~/.cache/provisa-notebook-downloads
+        key: pyodide-downloads-${{ hashFiles('provisa-notebook/provisa_notebook/__init__.py') }}

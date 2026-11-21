@@ -31,9 +31,17 @@ import { oneDark } from "@codemirror/theme-one-dark";
 import { EditorView } from "@codemirror/view";
 import type { Extension } from "@codemirror/state";
 import { nlToSql } from "../../api/admin";
+import { useViewDomains } from "../../lib/viewDomains";
 import type { SqlTab } from "./types";
 import type { RegisteredTable } from "../../types/admin";
 import { Tip } from "../../components/Tip";
+import { StopButton } from "../../components/StopButton";
+import {
+  CanvasControls,
+  CanvasButton,
+  CONTROL_ICON,
+} from "../../components/provisa-graph/CanvasControls";
+import "../../components/editor-hover-controls.css";
 import { EditorTabStrip } from "../../components/EditorTabStrip";
 import { statementHasOwnLimit } from "./sqlHelpers";
 
@@ -63,6 +71,8 @@ interface SqlEditorPanelProps {
   // Toolbar
   running: boolean;
   handleRun: () => void;
+  /** Stop the statement running: Stop stands where Run is while it runs. */
+  handleStop: () => void;
   handleAnalyze: () => void;
   analyzing: boolean;
   sampleMode: "first" | "last" | "random";
@@ -109,6 +119,7 @@ export function SqlEditorPanel({
   handleCopy,
   running,
   handleRun,
+  handleStop,
   handleAnalyze,
   analyzing,
   sampleMode,
@@ -134,6 +145,8 @@ export function SqlEditorPanel({
   // Follows the app colour scheme; undefined = CodeMirror's own light theme.
   const cmTheme = useComputedColorScheme("light") === "dark" ? oneDark : undefined;
   const [nlStrict, setNlStrict] = React.useState(true);
+  // REQ-2253: NL-to-SQL works only within the navbar's selected domains.
+  const viewDomains = useViewDomains();
   // Why the last "Update view" was not saved: the server's refusal, or the error it raised.
   const [viewSaveError, setViewSaveError] = React.useState("");
 
@@ -142,7 +155,7 @@ export function SqlEditorPanel({
     setNlLoading(true);
     setNlError("");
     try {
-      const result = await nlToSql(nlText.trim(), role, nlStrict);
+      const result = await nlToSql(nlText.trim(), role, nlStrict, viewDomains);
       if (result.error) {
         setNlError(result.error);
       } else {
@@ -276,16 +289,7 @@ export function SqlEditorPanel({
           borderBottom: "1px solid var(--border)",
           position: "relative",
         }}
-        onMouseEnter={(e) => {
-          e.currentTarget
-            .querySelectorAll<HTMLElement>(".hover-sql-btn")
-            .forEach((btn) => (btn.style.opacity = "1"));
-        }}
-        onMouseLeave={(e) => {
-          e.currentTarget
-            .querySelectorAll<HTMLElement>(".hover-sql-btn")
-            .forEach((btn) => (btn.style.opacity = "0"));
-        }}
+        className="editor-hover-host"
       >
         {nlLoading && (
           <div
@@ -294,7 +298,7 @@ export function SqlEditorPanel({
               position: "absolute",
               inset: 0,
               zIndex: 10,
-              background: "rgba(0,0,0,0.45)",
+              background: "color-mix(in srgb, var(--mantine-color-body) 55%, transparent)",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
@@ -331,9 +335,10 @@ export function SqlEditorPanel({
           }}
           style={{ fontSize: "0.8rem" }}
         />
-        <Tip text={t("sqlEditorPanel.prettify")} named>
-          <button
-            className="hover-sql-btn"
+        <CanvasControls testId="sql-editor">
+          <CanvasButton
+            label={t("sqlEditorPanel.prettify")}
+            icon={<Sparkles size={CONTROL_ICON} />}
             onClick={() => {
               try {
                 setSqlText(formatSql(sqlText, { language: "postgresql" }));
@@ -341,59 +346,17 @@ export function SqlEditorPanel({
                 /* leave SQL unchanged if it can't be parsed */
               }
             }}
-            aria-label={t("sqlEditorPanel.prettify")}
             disabled={!sqlText.trim()}
-            data-testid="sql-prettify"
-            style={{
-              position: "absolute",
-              top: "0.4rem",
-              insetInlineEnd: "4.2rem",
-              opacity: 0,
-              transition: "opacity 0.15s",
-              background: "rgba(30,30,40,0.85)",
-              border: "1px solid var(--border)",
-              borderRadius: "4px",
-              color: "var(--text-muted)",
-              cursor: "pointer",
-              padding: "0.2rem 0.35rem",
-              display: "flex",
-              alignItems: "center",
-              gap: "0.25rem",
-              fontSize: "0.72rem",
-            }}
-          >
-            <Sparkles size={11} />
-            {t("sqlEditorPanel.prettify")}
-          </button>
-        </Tip>
-        <Tip text={t("sqlEditorPanel.copySql")} named>
-          <button
-            className="hover-sql-btn"
+            testId="sql-prettify"
+          />
+          <CanvasButton
+            label={t("sqlEditorPanel.copySql")}
+            icon={copied ? <Check size={CONTROL_ICON} /> : <Copy size={CONTROL_ICON} />}
+            pressed={copied}
             onClick={handleCopy}
-            aria-label={t("sqlEditorPanel.copySql")}
-            data-testid="sql-copy"
-            style={{
-              position: "absolute",
-              top: "0.4rem",
-              insetInlineEnd: "0.4rem",
-              opacity: 0,
-              transition: "opacity 0.15s",
-              background: "rgba(30,30,40,0.85)",
-              border: "1px solid var(--border)",
-              borderRadius: "4px",
-              color: "var(--text-muted)",
-              cursor: "pointer",
-              padding: "0.2rem 0.35rem",
-              display: "flex",
-              alignItems: "center",
-              gap: "0.25rem",
-              fontSize: "0.72rem",
-            }}
-          >
-            {copied ? <Check size={11} style={{ color: "var(--approve)" }} /> : <Copy size={11} />}
-            {copied ? t("sqlEditorPanel.copied") : t("sqlEditorPanel.copy")}
-          </button>
-        </Tip>
+            testId="sql-copy"
+          />
+        </CanvasControls>
       </div>
 
       {/* Toolbar */}
@@ -408,16 +371,20 @@ export function SqlEditorPanel({
           background: "var(--surface)",
         }}
       >
-        <Button
-          size="xs"
-          leftSection={<Play size={11} />}
-          onClick={handleRun}
-          disabled={running || !sqlText.trim()}
-          data-testid="sql-run"
-          style={{ flexShrink: 0 }}
-        >
-          {running ? t("sqlEditorPanel.running") : t("sqlEditorPanel.run")}
-        </Button>
+        {running ? (
+          <StopButton onClick={handleStop} tip={t("common.stopQuery")} testId="sql-stop" />
+        ) : (
+          <Button
+            size="xs"
+            leftSection={<Play size={11} />}
+            onClick={handleRun}
+            disabled={!sqlText.trim()}
+            data-testid="sql-run"
+            style={{ flexShrink: 0 }}
+          >
+            {t("sqlEditorPanel.run")}
+          </Button>
+        )}
         {/* REQ-1519: describe the statement instead of running it — the engine's plan for the
             routed SQL, with the Provisa rewrites that produced it called out. */}
         <Tip text={t("sqlEditorPanel.analyzeTitle")}>
@@ -547,7 +514,6 @@ export function SqlEditorPanel({
                     description: viewTable.description ?? undefined,
                     watermarkColumn: viewTable.watermarkColumn ?? null,
                     viewSql: sqlText.trim(),
-                    productId: viewTable.productId ?? null, // REQ-1634
                     columns: viewTable.columns.map((c) => ({
                       name: c.columnName,
                       visibleTo: c.visibleTo ?? [],

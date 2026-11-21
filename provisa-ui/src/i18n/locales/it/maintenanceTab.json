@@ -1,20 +1,21 @@
 {
   "maintenanceTab": {
     "title": "Manutenzione programmata",
-    "intro": "Mostra un banner a tutti gli utenti connessi, in ogni pagina, finché non lo disattivi. Attivalo prima di un intervento pianificato che interrompe le query — sostituzione del cluster del motore, cambio della sua topologia o aggiornamento del piano di controllo — così l'interruzione appare programmata e non un guasto.",
+    "intro": "Mostra un banner a ogni utente connesso, su ogni pagina, finché non lo si disattiva. Attivarlo prima di interventi pianificati che interrompono le query, come la sostituzione del cluster del motore, il cambio della sua topologia o l'aggiornamento del control plane, così tutti sanno che l'interruzione è programmata.",
     "live": "Il banner è attivo.",
     "liveSince": "Il banner è attivo dal {{time}}.",
     "messageLabel": "Messaggio",
     "messagePlaceholder": "Provisa è in manutenzione programmata…",
     "messageHint": "Lascia vuoto per il testo standard.",
     "endsAtLabel": "Ritorno previsto",
-    "endsAtHint": "Lascia vuoto per indicare che non viene fornita alcuna stima, anziché lasciarne intendere una.",
+    "endsAtHint": "Lasciare vuoto se non si dispone di una stima.",
     "showBanner": "Mostra banner",
     "updateBanner": "Aggiorna banner",
     "clearBanner": "Rimuovi banner",
     "dangerTitle": "Zona pericolosa",
-    "dangerIntro": "Arresta il backend e il server di sviluppo dell'interfaccia su questa macchina. Funziona solo con un avvio desktop --demo/--native: rifiutato in ogni altro caso.",
+    "dangerIntro": "Arresta il backend e il server di sviluppo dell'interfaccia su questa macchina. Funziona solo con un avvio desktop --demo/--native e viene rifiutato altrove.",
     "stopAll": "Arresta tutti i servizi",
-    "stopConfirm": "Arrestare il backend e il server di sviluppo dell'interfaccia su questa macchina? La sessione termina subito."
+    "stopTitle": "Arrestare tutti i servizi?",
+    "stopConsequence": "Questa azione arresta il backend e il server di sviluppo dell'interfaccia su questa macchina. Finché sono arrestati, questa pagina, ogni query e le sessioni di tutti gli altri utenti smettono di funzionare e la tua sessione termina. Nulla torna disponibile finché i servizi non vengono riavviati su questa macchina."
   }
 }

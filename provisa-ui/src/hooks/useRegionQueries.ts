@@ -13,7 +13,7 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@apollo/client/react";
 import type { MutationResult } from "../types/admin";
-import { RegionChoices, SetTableRegion, SetSourceRegion, SetTableDraft } from "./admin.graphql";
+import { RegionChoices, SetTableRegion, SetSourceRegion } from "./admin.graphql";
 
 /** REQ-1921: the org's regions and the connected one; no regions = the admin shows none. */
 export interface RegionChoicesData {
@@ -23,11 +23,14 @@ export interface RegionChoicesData {
    * the selector surfaces it as an error rather than silently hiding, so a 503 never reads as
    * "this deployment has no regions". */
   error?: boolean;
+  /** The answer has not arrived, which says nothing yet about the org's regions. */
+  loading?: boolean;
 }
 
 export function useRegionChoices(): RegionChoicesData {
-  const { data, error } = useQuery<{ regionChoices: RegionChoicesData }>(RegionChoices);
+  const { data, error, loading } = useQuery<{ regionChoices: RegionChoicesData }>(RegionChoices);
   if (error) return { ...NO_REGIONS, error: true };
+  if (loading) return { ...NO_REGIONS, loading: true };
   // Until the answer arrives no region field is shown: the same as a platform with none.
   return data?.regionChoices ?? NO_REGIONS;
 }
@@ -59,13 +62,4 @@ export function useRegionChoice(
   const [chosen, setChosen] = useState<{ key: unknown; region: string | null } | null>(null);
   const region = chosen !== null && chosen.key === key ? chosen.region : start;
   return [region, (picked) => setChosen({ key, region: picked })];
-}
-
-/** REQ-1921: put a table or view out of service (draft: true) or release it (false). */
-export function useSetTableDraft() {
-  const [setTableDraft] = useMutation<{ setTableDraft: MutationResult }>(SetTableDraft);
-  return async (tableId: number, draft: boolean) => {
-    const result = await setTableDraft({ variables: { tableId, draft } });
-    return (result.data?.setTableDraft ?? { success: false, message: "" }) as MutationResult;
-  };
 }

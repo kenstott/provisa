@@ -25,7 +25,7 @@
     "leaveOrg": "Sair",
     "leaveHelp": "Sair remove seu acesso a essa organização. Se você for o único administrador da organização, promova outra pessoa primeiro.",
     "patHeading": "Tokens de acesso pessoal",
-    "patHelp": "Um token de acesso pessoal autentica você a partir de ferramentas que não conseguem abrir um navegador — psql, um cliente Neo4j, um cliente Arrow Flight ou gRPC, um cliente MCP ou um script. Ele age como você, nesta organização.",
+    "patHelp": "Um token de acesso pessoal faz seu login em ferramentas que não podem abrir um navegador, como psql, um cliente Neo4j, um cliente Arrow Flight ou gRPC, um cliente MCP ou um script. Ele age como você, nesta organização.",
     "patName": "Nome",
     "patExpiresInDays": "Expira em (dias)",
     "patIssue": "Criar token",
@@ -44,6 +44,9 @@
     "deleteAccountConfirmLabel": "Digite {{userId}} para confirmar",
     "deleteAccountButton": "Excluir minha conta",
     "patEnvironment": "Ambiente",
-    "patEnvironmentHelp": "Um token funciona em um único ambiente: aquele que você estava consultando ao emiti-lo. Um novo token funcionará em {{env}}."
+    "patEnvironmentHelp": "Um token funciona em um único ambiente: aquele que você estava consultando ao emiti-lo. Um novo token funcionará em {{env}}.",
+    "patRoles": "Funções",
+    "patRolesHelp": "O token só pode agir com as funções que você escolher aqui, e somente enquanto você as tiver.",
+    "patRolesPlaceholder": "Escolha funções"
   }
 }

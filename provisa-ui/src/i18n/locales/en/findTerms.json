@@ -67,7 +67,7 @@
     "progressMerging": "Merging what was found into candidate terms...",
     "progressModel": "Model: {{model}}",
     "budgetLimited": "The role's AI budget held a call to {{tokens}} output tokens, so an answer may be cut short.",
-    "cancel": "Cancel scan",
+    "stopTip": "Stop the scan",
     "failed": "The scan stopped: {{error}}",
     "summary": "{{passages}} passages read, {{mentions}} mentions, {{candidates}} candidate terms.",
     "leftOut": "Left out: {{count}} not ontology concepts (such as named people or companies), {{misquoted}} not quoted from their passage, {{unresolved}} not resolved into a term.",

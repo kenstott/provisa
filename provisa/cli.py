@@ -27,6 +27,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import importlib.util
+import json
 import os
 import platform
 import sys
@@ -261,7 +262,9 @@ async def _serve(host: str, api_port: int, ui_port: int, *, demo: bool, open_bro
             ui_server.app,
             host=host,
             port=ui_port,
-            log_level="warning",
+            # The api server above configured the uvicorn loggers; this one must not reset them.
+            log_config=None,
+            log_level=None,
             timeout_keep_alive=KEEP_ALIVE_SECONDS,
         )
     )
@@ -272,11 +275,18 @@ async def _serve(host: str, api_port: int, ui_port: int, *, demo: bool, open_bro
     )
 
 
+def _wants_json(args: argparse.Namespace) -> bool:
+    return bool(getattr(args, "json", False))
+
+
 def _cmd_license_apply(args: argparse.Namespace) -> int:
     """`provisa license apply <file>` — verify + install a license offline (REQ-1139)."""
     from provisa.licensing import apply_license
 
     result = apply_license(Path(args.file).expanduser())
+    if _wants_json(args):
+        print(json.dumps({"applied": bool(result.valid), "reason": result.reason}))
+        return 0 if result.valid else 1
     if result.valid:
         print("License applied. The trial nag is now silenced on all surfaces.")
         return 0
@@ -284,7 +294,7 @@ def _cmd_license_apply(args: argparse.Namespace) -> int:
     return 1
 
 
-def _cmd_license_status(args: argparse.Namespace) -> int:  # noqa: ARG001
+def _cmd_license_status(args: argparse.Namespace) -> int:
     """`provisa license status` — show machine id, trial state, and license validity (REQ-1139)."""
     import datetime
 
@@ -295,6 +305,20 @@ def _cmd_license_status(args: argparse.Namespace) -> int:  # noqa: ARG001
         now_epoch=today.toordinal() * 86400,
         today_iso=today.isoformat(),
     )
+    if _wants_json(args):
+        print(
+            json.dumps(
+                {
+                    "machine_id": st.machine_id,
+                    "first_seen": st.first_seen,
+                    "elapsed_days": st.elapsed_days,
+                    "trial_expired": st.trial_expired,
+                    "licensed": st.licensed,
+                    "license_reason": st.license_reason,
+                }
+            )
+        )
+        return 0
     print(f"Machine ID:   {st.machine_id}")
     print(f"First seen:   {st.first_seen}")
     print(f"Elapsed:      {st.elapsed_days:.1f} days")
@@ -306,19 +330,18 @@ def _cmd_license_status(args: argparse.Namespace) -> int:  # noqa: ARG001
 def _cmd_metadata_export(args: argparse.Namespace) -> int:
     """`provisa metadata export` — trigger the running server's on-demand metadata publish.
 
-    A thin client for POST /admin/metadata-export/publish (REQ-1072/REQ-1074): the server owns
+    A thin client for POST /admin/syncing/publish (REQ-1072/REQ-1074, REQ-2247): the server owns
     the single publish path (entitlement gate, org runtime, snapshot build), so a cron-driven
-    export sends exactly what the admin tab's Publish now sends. Under multitenancy the org is
+    export sends exactly what the Syncing page's Publish now sends, to every entry that exports. Under multitenancy the org is
     named by the API host (acme.provisa.org), the same way every other client names it.
     """
-    import json
     import urllib.error
     import urllib.request
 
     api = args.api or os.environ.get("PROVISA_API_URL", "http://127.0.0.1:8000")
     token = args.token or os.environ.get("PROVISA_API_TOKEN", "")
     req = urllib.request.Request(
-        f"{api.rstrip('/')}/admin/metadata-export/publish", method="POST", data=b""
+        f"{api.rstrip('/')}/admin/syncing/publish", method="POST", data=b""
     )
     if token:
         req.add_header("Authorization", f"Bearer {token}")
@@ -336,8 +359,11 @@ def _cmd_metadata_export(args: argparse.Namespace) -> int:
     except urllib.error.URLError as exc:
         print(f"cannot reach the Provisa API at {api}: {exc.reason}", file=sys.stderr)
         return 1
-    # REQ-2118: one publish reaches every target the org has, each reported on its own line.
-    for target in payload["targets"]:
+    if _wants_json(args):
+        print(json.dumps(payload))
+        return 0 if payload["ok"] else 1
+    # REQ-2118: one publish reaches every entry that exports, each reported on its own line.
+    for target in payload["entries"]:
         print(
             f"{'ok' if target['ok'] else 'PARTIAL'}: {target['id']} ({target['provider']}) "
             f"published {target['total_published']} assets"
@@ -365,8 +391,11 @@ def _api_call(args: argparse.Namespace, method: str, path: str, body: dict | Non
     capability check, same report. A deployment pipeline holding a credential that passes that
     check is the organization delegating its own standing, which is the org's decision to make and
     revocable as any other credential is.
+
+    Its callers are the ``provisa env`` commands, each of which takes a required ``--org``. The
+    org goes in the X-Org-Provisa header, as the UI sends it: an environment route acts in the org
+    its path names only on a request bound to that org (REQ-1327), and a session token names none.
     """
-    import json
     import urllib.error
     import urllib.request
 
@@ -375,6 +404,7 @@ def _api_call(args: argparse.Namespace, method: str, path: str, body: dict | Non
     url = f"{api.rstrip('/')}{path}"
     data = None if body is None else json.dumps(body).encode()
     req = urllib.request.Request(url, method=method, data=data)
+    req.add_header("X-Org-Provisa", args.org)
     if data is not None:
         req.add_header("Content-Type", "application/json")
     if token:
@@ -397,7 +427,6 @@ def _maintenance_request(args: argparse.Namespace, body: dict | None) -> dict:
     and the ``platform_settings`` gate, so the CLI and the admin tab produce the same notice
     (REQ-1466).
     """
-    import json
     import urllib.error
     import urllib.request
 
@@ -428,7 +457,10 @@ def _maintenance_request(args: argparse.Namespace, body: dict | None) -> dict:
         raise SystemExit(f"cannot reach the Provisa API at {api}: {exc.reason}") from exc
 
 
-def _print_notice(notice: dict) -> None:
+def _print_notice(args: argparse.Namespace, notice: dict) -> None:
+    if _wants_json(args):
+        print(json.dumps(notice))
+        return
     if not notice["active"]:
         print("Maintenance notice: OFF")
         return
@@ -446,22 +478,25 @@ def _cmd_maintenance_on(args: argparse.Namespace) -> int:
     queries fail for the duration and the failure has to read as scheduled.
     """
     _print_notice(
+        args,
         _maintenance_request(
             args, {"active": True, "message": args.message, "ends_at": args.ends_at}
-        )
+        ),
     )
     return 0
 
 
 def _cmd_maintenance_off(args: argparse.Namespace) -> int:
     """`provisa maintenance off` — clear the banner once the work is done (REQ-1466)."""
-    _print_notice(_maintenance_request(args, {"active": False, "message": None, "ends_at": None}))
+    _print_notice(
+        args, _maintenance_request(args, {"active": False, "message": None, "ends_at": None})
+    )
     return 0
 
 
 def _cmd_maintenance_status(args: argparse.Namespace) -> int:
     """`provisa maintenance status` — what the banner is currently saying (REQ-1466)."""
-    _print_notice(_maintenance_request(args, None))
+    _print_notice(args, _maintenance_request(args, None))
     return 0
 
 
@@ -522,9 +557,23 @@ def _cmd_pg_ext_install(args: argparse.Namespace) -> int:  # REQ-1873
     except BundleUnavailable as exc:
         print(f"Nothing installed: {exc}", file=sys.stderr)
         return 2
-    print(f"Installed {', '.join(installed.extensions)} into {target.label}.")
+    as_json = _wants_json(args)
+    if not as_json:
+        print(f"Installed {', '.join(installed.extensions)} into {target.label}.")
     if not args.create:
-        if apply_preload(target, args.user, args.database, installed.needs_preload):
+        preloaded = apply_preload(target, args.user, args.database, installed.needs_preload)
+        if as_json:
+            print(
+                json.dumps(
+                    {
+                        "installed": list(installed.extensions),
+                        "target": target.label,
+                        "preload_extended": bool(preloaded),
+                        "needs_restart_for": list(installed.needs_preload) if preloaded else [],
+                    }
+                )
+            )
+        elif preloaded:
             print(
                 f"{', '.join(installed.needs_preload)} must be preloaded: shared_preload_libraries "
                 "was extended. Restart the server, then run again with --create."
@@ -533,6 +582,18 @@ def _cmd_pg_ext_install(args: argparse.Namespace) -> int:  # REQ-1873
             print("Run again with --create to create the extensions.")
         return 0
     outcome = create_extensions(target, args.user, args.database, installed.extensions)
+    if as_json:
+        print(
+            json.dumps(
+                {
+                    "installed": list(installed.extensions),
+                    "target": target.label,
+                    "created": {n: e is None for n, e in outcome.items()},
+                    "errors": {n: e for n, e in outcome.items() if e is not None},
+                }
+            )
+        )
+        return 0 if all(e is None for e in outcome.values()) else 1
     for name, error in outcome.items():
         print(f"  {name}: {'created' if error is None else 'NOT created: ' + error}")
     return 0 if all(e is None for e in outcome.values()) else 1
@@ -594,10 +655,13 @@ def _cmd_run(args: argparse.Namespace) -> int:
     return 0
 
 
-def main(argv: list[str] | None = None) -> int:
-    # Importing provisa has already pointed zoneinfo at the pinned tzdata package (PYTHONTZPATH
-    # empty, inherited by the servers started here; provisa/__init__.py).
-    parser = argparse.ArgumentParser(prog="provisa", description="Provisa embedded runtime")
+def build_parser() -> argparse.ArgumentParser:
+    """Every command, each with the options all of them share (REQ-2222)."""
+    parser = argparse.ArgumentParser(
+        prog="provisa",
+        description="Provisa embedded runtime",
+        epilog="`provisa exit-codes` documents what each command's exit codes mean.",
+    )
     sub = parser.add_subparsers(dest="command", required=True)
 
     run = sub.add_parser("run", help="Start the embedded Provisa system (API + UI)")
@@ -705,6 +769,26 @@ def main(argv: list[str] | None = None) -> int:
 
     register_env(sub)
 
+    # REQ-2222: drive and explain a query in any language against a running instance.
+    from provisa.cli_query import register as register_query
+
+    register_query(sub)
+
+    # REQ-2222: one generic call to anything else the API offers.
+    from provisa.cli_api import register as register_api
+
+    register_api(sub)
+
+    # REQ-2221: an organization's own code connectors, built wherever the operator runs this.
+    from provisa.cli_connector import register as register_connector
+
+    register_connector(sub)
+
+    # REQ-2222: the commands that move the config: validate, diff, apply, export, promote.
+    from provisa.cli_config import register as register_config
+
+    register_config(sub)
+
     # REQ-1466: the same on/off control the platform admin has in the UI, runnable from a deploy
     # script — the banner goes up before the engine-cluster switch (REQ-1465) and down after it,
     # and neither step should need a browser.
@@ -745,7 +829,21 @@ def main(argv: list[str] | None = None) -> int:
             "--timeout", type=int, default=30, help="Request timeout in seconds (default: 30)"
         )
 
-    args = parser.parse_args(argv)
+    # REQ-2222: contexts; can-i, wait, schema, completion and exit-codes; then what every command
+    # shares, added last so that it reaches every command registered above.
+    from provisa.cli_context import register as register_context
+    from provisa.cli_operate import register as register_operate, share_options
+
+    register_context(sub)
+    register_operate(sub, parser)
+    share_options(parser)
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    # Importing provisa has already pointed zoneinfo at the pinned tzdata package (PYTHONTZPATH
+    # empty, inherited by the servers started here; provisa/__init__.py).
+    args = build_parser().parse_args(argv)
     if args.command == "run":
         # REQ-1916/1922: the mode and region reach the process the command starts (and any worker
         # it spawns) the same way a launch that bypasses the command gives them: the environment.
@@ -753,7 +851,9 @@ def main(argv: list[str] | None = None) -> int:
             os.environ["PROVISA_MODE"] = args.mode
         if args.region is not None:
             os.environ["PROVISA_REGION"] = args.region
-    return args.func(args)
+    from provisa.cli_operate import dispatch
+
+    return dispatch(args)
 
 
 if __name__ == "__main__":

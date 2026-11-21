@@ -296,7 +296,7 @@ PROVISA_COMMANDS_ALLOW_HOST_CODE=true
 
 ## CLI：provisa metadata export {: #cli-provisa-metadata-export }
 
-`provisa metadata export` 是 shell 層的作業，執行於受治理的 RPC 路徑之外。它向 `/admin/metadata-export/publish` 傳送請求，觸發正在執行的伺服器按需發佈中繼資料，也就是 Admin 分頁中 **立即發佈** 按鈕呼叫的端點。
+`provisa metadata export` 是 shell 層的作業，執行於受治理的 RPC 路徑之外。它向 `/admin/syncing/publish` 傳送請求，觸發正在執行的伺服器按需發佈中繼資料，也就是 Admin 分頁中 **立即發佈** 按鈕呼叫的端點。
 
 當設定的 `reconcile_cron` 排程粒度不夠細時，可用它從 cron 或 CI 驅動定時匯出：
 

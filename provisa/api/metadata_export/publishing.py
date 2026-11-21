@@ -31,7 +31,7 @@ config and the credential resolve from that org's settings, and the org id is bo
 publish — so a reconcile for one org cannot read another's target, let alone publish to it.
 """
 
-# Requirements: REQ-1072, REQ-1073
+# Requirements: REQ-1072, REQ-1073, REQ-2247
 
 from __future__ import annotations
 
@@ -61,10 +61,10 @@ from provisa.events import queue
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from provisa.api.metadata_export.model import ServingEndpoints, TableAsset
+    from provisa.api.metadata_export.model import OfferExport, ServingEndpoints, TableAsset
     from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
-    from provisa.api.metadata_export.model import MetadataSnapshot
+    from provisa.api.metadata_export.model import EnvironmentStage, MetadataSnapshot
 
     from provisa.core.models import ProvisaConfig
 
@@ -134,14 +134,16 @@ async def notify_model_changed(org_id: str, *, reason: str) -> int | None:
 
 
 async def _export_config(
-    org_id: str,
+    org_id: str, *, only: str | None = None
 ) -> tuple[MetadataExportConfig, list[MetadataExportTarget]]:
-    """The org's export settings and its targets, each built from the catalog it names
-    (REQ-2122), refused unless the org may publish.
+    """The org's reconcile schedule and what a publish reaches: every data catalog entry whose
+    direction includes Export, or the one entry ``only`` (REQ-2247), refused unless the org may
+    publish.
 
     Entitlement is checked here rather than only at the admin endpoint (REQ-1073): a scheduled
-    reconcile has no request behind it, so a config staged while the org was entitled would
-    otherwise keep publishing after the plan lapsed.
+    reconcile has no request behind it, so an entry saved while the org was entitled would
+    otherwise keep publishing after the plan lapsed. A direction that is off never runs: ``only``
+    naming an entry that does not export raises :class:`SyncDirectionOff`.
     """
     from provisa.api.app import state
     from provisa.core.org_settings import resolve_org_config
@@ -158,10 +160,13 @@ async def _export_config(
         raise ExportNotAllowed(f"org {org_id!r} has no tenant database bound")
     resolved = await resolve_org_config(model_db)
     config = MetadataExportConfig(**dict(resolved.get("metadata_export") or {}))
-    if not config.enabled:
-        raise ExportNotAllowed(f"org {org_id!r} has metadata export disabled")
     catalogs = CatalogsConfig(catalogs=list(resolved.get("catalogs") or []))
-    return config, config.export_targets(catalogs)
+    if only is not None and only not in catalogs.by_id():
+        raise ExportNotAllowed(f"org {org_id!r} has no entry {only!r}")
+    targets = catalogs.export_targets(only)
+    if not targets:
+        raise ExportNotAllowed(f"org {org_id!r} has no entry whose direction includes Export")
+    return config, targets
 
 
 async def _model_for_export() -> "ProvisaConfig":
@@ -179,11 +184,13 @@ async def _model_for_export() -> "ProvisaConfig":
     from provisa.api.app import state
     from provisa.core.config_loader import parse_config_dict
     from provisa.core.repositories import source as source_repo
+    from provisa.core.store_config import seeded_table_names
 
     raw = await build_live_config()
     pool = await _get_pool()
     async with pool.acquire() as conn:
         source_rows = await source_repo.list_all(conn)
+        seeded_names = await seeded_table_names(conn)
     # The snapshot needs each source's identity, type and description — never credentials —
     # so the DB rows project onto minimal Source models rather than the credentialed file ones.
     # The __derived__ sentinel is not a source: a derived relation's provenance is the lineage
@@ -199,11 +206,14 @@ async def _model_for_export() -> "ProvisaConfig":
             "database": r["database"],
             # REQ-2118: a member's freshness inherits its source's when it declares none.
             "cache_ttl": r.get("cache_ttl"),
+            # REQ-1921: a withdrawn source's tables are in no catalog publish.
+            "withdrawn": r["withdrawn"],
         }
         for r in source_rows
         if r["id"] != DERIVED_SOURCE_ID
     ]
     config = parse_config_dict(raw)
+    config._seeded_table_names = seeded_names
     if state.config is not None:
         config.tags = state.config.tags
         config.tag_assignments = state.config.tag_assignments
@@ -236,6 +246,24 @@ def _snapshot_uris(snapshot: Any) -> set[str]:
     uris.update(product.semantic_uri for product in snapshot.data_products)
     uris.discard("")
     return uris
+
+
+async def environment_stage(org_id: str) -> "EnvironmentStage | None":  # REQ-2261
+    """The environment this context is served by and the stage it declares, which every catalog
+    and lineage export carries. None for a deployment without a control plane: it keeps no
+    environment registry, so there is no stage to state."""
+    from provisa.api.app import state
+    from provisa.api.metadata_export.model import EnvironmentStage
+    from provisa.core.env_store import get_env
+    from provisa.core.request_context import active_env
+
+    if state.admin_db is None:
+        return None
+    env = active_env()
+    row = await get_env(state.admin_db, org_id, env)
+    if row is None:
+        raise ExportNotAllowed(f"org {org_id!r} has no environment {env!r} to export from")
+    return EnvironmentStage(name=env, stage=row["stage"])
 
 
 async def org_snapshot(org_id: str, *, product_id: str | None = None) -> "MetadataSnapshot":
@@ -271,11 +299,15 @@ async def org_snapshot(org_id: str, *, product_id: str | None = None) -> "Metada
             product_row = await data_product_repo.get(conn, product_id)
             created_rows = [] if product_row is None else [product_row]
         product_created = {row["id"]: row["created_at"] for row in created_rows}
+        # REQ-2180: every product's offers and their contracts: a product's own are its output
+        # ports, another's default offer is what its input ports name.
+        offers = await offer_exports(conn)
     # REQ-1443: a check's last verdict lives in its results table, which is data rather than
     # config, so it is read here and handed to the builder exactly as the term graph is.
     dq_outcomes = await read_latest_outcomes(model, product_id=product_id)
     base_url = state.config.mail.base_url if state.config else None
-    return build_snapshot(
+    environment = await environment_stage(org_id)
+    snapshot = build_snapshot(
         model,
         org_id=org_id,
         uri_org_id=org_id if state.multitenancy else None,
@@ -290,7 +322,52 @@ async def org_snapshot(org_id: str, *, product_id: str | None = None) -> "Metada
         owner_emails=owner_emails,
         product_created=product_created,
         endpoints=serving_endpoints(state, org_id, base_url),
+        offers=offers,
     )
+    return dataclasses.replace(snapshot, environment=environment)
+
+
+async def offer_exports(conn: Any) -> dict[str, tuple["OfferExport", ...]]:
+    """Each product's offers as the exports write them (REQ-2180), by product id, each with its
+    stored contract on each dataset keyed by the dataset's address (source.schema.table) and the
+    freshness its product promises."""
+    from sqlalchemy import select
+
+    from provisa.api.metadata_export.model import OfferExport
+    from provisa.core.repositories import data_product as data_product_repo
+    from provisa.core.repositories import data_product_offer as offers
+    from provisa.core.schema_org import registered_tables as rt
+
+    addresses = {
+        int(r.id): f"{r.source_id}.{r.schema_name}.{r.table_name}"
+        for r in (
+            await conn.execute_core(
+                select(rt.c.id, rt.c.source_id, rt.c.schema_name, rt.c.table_name)
+            )
+        ).fetchall()
+    }
+    out: dict[str, tuple[OfferExport, ...]] = {}
+    for product in await data_product_repo.list_all(conn):
+        out[product["id"]] = tuple(
+            [
+                OfferExport(
+                    name=row["name"],
+                    role_id=row["role_id"],
+                    data_level=row["data_level"],
+                    dq_results=row["dq_results"],
+                    profiles=row["profiles"],
+                    open=row["open"],
+                    duration_days=row["duration_days"],
+                    contracts={
+                        addresses[tid]: c
+                        for tid, c in (await offers.contracts(conn, row["id"])).items()
+                    },
+                    freshness=product["freshness"],
+                )
+                for row in await offers.list_offers(conn, product["id"])
+            ]
+        )
+    return out
 
 
 def serving_endpoints(
@@ -368,9 +445,9 @@ async def snapshot_reader(
     return _columns
 
 
-async def publish_snapshot(org_id: str) -> dict[str, PublishResult]:
-    """Publish the org's full metadata snapshot to every catalog it is configured to, by target id
-    (REQ-2118: one snapshot, each target in turn).
+async def publish_snapshot(org_id: str, *, only: str | None = None) -> dict[str, PublishResult]:
+    """Publish the org's full metadata snapshot to every data catalog entry that exports, by entry
+    id (REQ-2118: one snapshot, each entry in turn), or to the one entry ``only`` (REQ-2247).
 
     The single publish path: the admin's **Publish now**, the event drain and the scheduled
     reconcile all arrive here, so what a reconcile sends is what the admin saw it send —
@@ -383,7 +460,7 @@ async def publish_snapshot(org_id: str) -> dict[str, PublishResult]:
 
     token = set_current_org(org_id)
     try:
-        _, targets = await _export_config(org_id)
+        _, targets = await _export_config(org_id, only=only)
         snapshot = await org_snapshot(org_id)
         model_db = state.model_db
         assert model_db is not None  # _export_config refuses without one

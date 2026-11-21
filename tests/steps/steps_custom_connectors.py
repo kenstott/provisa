@@ -103,7 +103,7 @@ def _duckdb_attach(cc_ctx, tmp_path, monkeypatch):
             install_from_community: false
             probe_symbol: ducklake_snapshots
             mechanism: attach_rw
-            attach_template: "ATTACH 'ducklake:{path}' AS \\"{alias}\\" (DATA_PATH '{data_path}')"
+            attach_template: "ATTACH 'ducklake:' || {path} AS {alias:ident} (DATA_PATH {data_path})"
             remote_schema: main
         """,
     )
@@ -152,7 +152,7 @@ def _duckdb_scan(cc_ctx, tmp_path, monkeypatch):
             extension: excel
             install_from_community: false
             probe_symbol: read_xlsx
-            scan_template: "read_xlsx('{path}', sheet='{sheet}', header=true)"
+            scan_template: "read_xlsx({path}, sheet={sheet}, header=true)"
         """,
     )
     monkeypatch.setenv("PROVISA_CUSTOM_CONNECTORS", str(cfg))
@@ -303,7 +303,7 @@ def _ch_config_driven(cc_ctx, tmp_path, monkeypatch):
             source_type: sqlite_custom
             kind: clickhouse_database
             ch_engine: SQLite
-            engine_template: "SQLite('{path}')"
+            engine_template: "SQLite({path})"
         """,
     )
     monkeypatch.setenv("PROVISA_CUSTOM_CONNECTORS", str(cfg))

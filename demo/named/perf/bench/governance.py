@@ -80,11 +80,12 @@ COLUMN_FIELDS = (
 TABLE_FIELDS = (
     "id sourceId domainId schemaName tableName alias description watermarkColumn changeSignal "
     "probeQuery probeType viewSql dqContract profilerSourceId queryTemplate fileGlob "
-    "sourceFileColumn importSet arguments landingFilter loadProtected offPeakWindow offPeakTz "
+    "sourceFileColumn importSet arguments landingFilter readWait loadProtected offPeakWindow "
+    "offPeakTz "
     "materialize mvRefreshInterval mvDebounceQuiet mvDebounceMaxDelay pushDebounceQuiet "
     "pushDebounceMaxDelay mvConsistency mvPreprocess mvHoldOnFailingChecks businessKey "
     "validTime recordedTime mvPersist mvIncremental mvCalendar mvGrain mvAllowedLateness "
-    "mvExpectedEvents mvBusinessDayGrain modelingRole modelingHistory productId enableAggregates "
+    "mvExpectedEvents mvBusinessDayGrain modelingRole modelingHistory productIds enableAggregates "
     "enableGroupBy uniqueConstraints { name columns } "
     "live { strategy watermarkColumn pollInterval queryId kafka { topic format keyColumn landingTimeColumn } "
     "outputs { type topic keyColumn bootstrapServers role } } "
@@ -117,6 +118,7 @@ _TABLE_AS_IS = (
     "domainId",
     "schemaName",
     "tableName",
+    "readWait",
     "loadProtected",
     "offPeakWindow",
     "offPeakTz",
@@ -197,8 +199,6 @@ def table_input(
             "businessKey": list(t["businessKey"] or []),
             # REQ-970: the MV row-identity key IS the table's primary key, as the editor derives it
             "mvPrimaryKey": [c["columnName"] for c in t["columns"] if c["isPrimaryKey"]],
-            # REQ-1443 clause 10: a checker table's product is derived and refused on the row
-            "productId": None if t["dqContract"] else t["productId"],
             "live": None
             if live is None
             else {
@@ -438,7 +438,7 @@ class AdminGovernance:
                                 "input": {
                                     "tagId": tag,
                                     "roleId": role,
-                                    "filterExpr": f"{table.base_column} IS NOT NULL",
+                                    "filterExpr": f"{table.base_column} IS NOT NULL OR {i} < 0",
                                     "description": f"Benchmark governance: row rule {i}, every row",
                                 }
                             },

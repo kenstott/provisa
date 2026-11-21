@@ -14,6 +14,7 @@ import * as fs from "fs";
 import * as path from "path";
 import { fileURLToPath } from "url";
 import { LIVE_MODEL_YAML } from "./e2e/liveModel";
+import { E2E_PUBLIC_URL } from "./e2e/publicUrl";
 
 // Load root .env so live-backend tests receive AWS credentials
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -215,6 +216,21 @@ const PROVISIONING_SPECS = [
   "**/source-to-query-olap-lake.spec.ts",
   "**/source-to-query-streaming.spec.ts",
 ];
+// The specs that add an AskAmerica (govdata) source. Its connector, a process of the backend's
+// (pgwire-govdata), held 57-108% of a core for about four minutes of run 43781680787 while the
+// govdata case and its retry ran; on the other worker a Great Expectations registration and the
+// grpc_remote case, both passing step by step, reached their 120 s limits waiting for CPU (the same
+// steps were two to three times faster in run 43775788692, where they did not run beside it). They
+// run in "core-provisioning" too: one worker, so no other spec runs beside the connector.
+const ASKAMERICA_SPECS = ["**/askamerica-*.spec.ts"];
+// The same, for a case that shares its file with others: matched by title (govdata, in
+// source-to-query-special-cases.spec.ts, whose other cases stay in "core").
+const ASKAMERICA_TITLE_SPECS = ["**/source-to-query-special-cases.spec.ts"];
+const ASKAMERICA_TITLES = /\bgovdata: source to query through the UI\b/;
+// What "core-provisioning" leaves out of that file: every case but the govdata one. A project's
+// grep reads "<project> <file> <describe ...> <test>", so the file's name is in it.
+const ASKAMERICA_TITLE_SPECS_OTHER_CASES =
+  /\bsource-to-query-special-cases\.spec\.ts (?!govdata: source to query through the UI\b)/;
 // The same, for a case that shares its file with others: matched by title (druid, in
 // source-to-query-olap-lake-trino.spec.ts).
 const AMD64_ONLY_TITLES = /\bdruid: /;
@@ -441,9 +457,6 @@ function wipeStaleMaterializeStore(dataDir: string): void {
 // (provisa/licensing/home.py), still reading the real trial clock; and the encryption master key
 // is read from the keyring BEFORE PROVISA_ENCRYPTION_KEY (REQ-684, REQ-1802), so the OS keychain
 // is swapped for the test key store, a file under PROVISA_DATA_DIR (tests/_memory_keyring.py).
-// REQ-2135: each backend's public address (server.public_url), where its SPARQL vocabulary's and its
-// subjects' IRIs start. Unset, the SPARQL tab's vocabulary is refused.
-const E2E_PUBLIC_URL = "https://e2e.provisa.example";
 
 function homeEnvFor(dataDir: string): Record<string, string> {
   return {
@@ -502,9 +515,21 @@ const controlPlaneEnvFor = (dataDir: string) => {
   return env;
 };
 const controlPlaneEnv = controlPlaneEnvFor(E2E_DATA_DIR);
-// global-teardown stops the embedded servers it finds here (none on the compose Postgres).
-process.env.PROVISA_E2E_EMBEDDED_CONTROL_PLANES =
-  pgPort === null ? CORE_BACKENDS.map((b) => embeddedControlPlaneDir(b.dataDir)).join(",") : "";
+// Each embedded control plane is stopped after the backend on it. Playwright tears its webServers
+// down after globalTeardown, in the reverse of their order: stopped by globalTeardown, a control
+// plane went while its backend still ran, whose replica housekeeping then failed on the gone socket
+// (run 43995449668). These entries come first in the webServer list, so they go last: each waits,
+// and on the SIGTERM of its graceful shutdown stops its control plane and exits. None on the compose
+// Postgres, which is not the run's to stop.
+const embeddedControlPlaneStops =
+  pgPort === null
+    ? CORE_BACKENDS.map((b) => ({
+        command:
+          `cd .. && trap '.venv/bin/python -m provisa.core.control_plane_pg stop ` +
+          `"${embeddedControlPlaneDir(b.dataDir)}"; exit' TERM; while :; do sleep 60 & wait $!; done`,
+        gracefulShutdown: { signal: "SIGTERM" as const, timeout: 60000 },
+      }))
+    : [];
 
 export default defineConfig({
   globalSetup: "./e2e/global-setup.ts",
@@ -532,11 +557,19 @@ export default defineConfig({
     trace: process.env.CI ? "retain-on-failure" : "off",
     // The 3D views (three.js) need a WebGL context. CI runners have no GPU, and Chromium no longer
     // falls back to its software renderer unasked, so SwiftShader is requested by name.
-    launchOptions: { args: ["--use-angle=swiftshader", "--enable-unsafe-swiftshader"] },
+    // The page itself is composited in software (--disable-gpu-compositing): composited through
+    // SwiftShader GL, every frame the trace's screencast reads back cost the GPU process 89% of a
+    // runner core on average across the core lane, static pages included (run 42187604573). The
+    // same animating page, traced, measured 634% (SwiftShader GL) against 23% (software) of the GPU
+    // process on a 10-core laptop; WebGL canvases are still drawn by SwiftShader and reach the page.
+    launchOptions: {
+      args: ["--use-angle=swiftshader", "--enable-unsafe-swiftshader", "--disable-gpu-compositing"],
+    },
   },
   webServer: ONLY_REGIONS_DEMO
     ? []
     : [
+        ...embeddedControlPlaneStops,
         {
           command: "npm run dev",
           port: E2E_UI_PORT,
@@ -577,6 +610,9 @@ export default defineConfig({
             PROVISA_MCP_PORT: String(b.port + 4),
             PROVISA_PGWIRE_PORT: String(b.port + 5),
             PROVISA_PGWIRE_PORTS: pgwirePorts(b.worker),
+            // REQ-2226: the minted-token listener a code command's tables are read over, the last
+            // port of the backend's own block (code-resolver-incremental.spec.ts builds a set).
+            PROVISA_MINTED_PGWIRE_PORT: String(b.port + 9),
             PROVISA_DATA_DIR: b.dataDir,
             // Its own trace folder, not ~/.provisa/telemetry (local-dev's): every backend compacts
             // its folder each minute, and four sharing one compacted each other's files.
@@ -690,21 +726,23 @@ export default defineConfig({
               ...SWAP_SPECS,
               ...REGIONS_SPECS,
               ...PROVISIONING_SPECS,
+              ...ASKAMERICA_SPECS,
               ...WAREHOUSE_SPECS,
               ...(IS_AMD64 ? [] : AMD64_ONLY_SPECS),
             ],
-            grepInvert: WAREHOUSE_TITLES,
+            grepInvert: [WAREHOUSE_TITLES, ASKAMERICA_TITLES],
             // Reduced motion: no 3D stage turns while a spec reads its page, and a camera jumps
             // where it would fly (profile3d/baseScene.ts). CI draws WebGL in software, and a stage
             // turning for a whole test held SwiftShader's GPU process at most of a core.
-            use: { reducedMotion: "reduce" },
+            use: { contextOptions: { reducedMotion: "reduce" as const } },
           },
           {
-            // Run with --workers=1, after "core" (see PROVISIONING_SPECS).
+            // Run with --workers=1 (see PROVISIONING_SPECS and ASKAMERICA_SPECS).
             name: "core-provisioning",
-            testMatch: PROVISIONING_SPECS,
+            testMatch: [...PROVISIONING_SPECS, ...ASKAMERICA_SPECS, ...ASKAMERICA_TITLE_SPECS],
             testIgnore: IS_AMD64 ? [] : AMD64_ONLY_SPECS,
-            use: { reducedMotion: "reduce" },
+            grepInvert: ASKAMERICA_TITLE_SPECS_OTHER_CASES,
+            use: { contextOptions: { reducedMotion: "reduce" as const } },
           },
           {
             // Maintainer 2026-10-29: the live warehouses, nightly only (see WAREHOUSE_SPECS).
@@ -714,7 +752,7 @@ export default defineConfig({
             grep: new RegExp(
               `\\bcloud warehouse sources through the UI\\b|${WAREHOUSE_TITLES.source}`,
             ),
-            use: { reducedMotion: "reduce" },
+            use: { contextOptions: { reducedMotion: "reduce" as const } },
           },
         ]
       : []),

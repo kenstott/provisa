@@ -2,7 +2,7 @@
   "orgFilesTab": {
     "panelTitle": "Cifrado de la carpeta de archivos",
     "loading": "Cargando…",
-    "intro": "Los archivos que Provisa guarda para su organización en cada servidor —cachés, conversiones, réplicas y resultados grandes— se guardan en la carpeta propia de su organización. Active el cifrado para guardarlos cifrados con una clave que custodia su organización.",
+    "intro": "En cada servidor, Provisa guarda las cachés, conversiones, réplicas y resultados grandes de su organización en la carpeta propia de su organización. Active el cifrado para mantenerlos cifrados con una clave que posee su organización.",
     "encrypt": "Cifrar la carpeta de archivos de la organización",
     "referenceLabel": "Referencia de la clave",
     "referenceHelp": "El nombre de la clave en el almacén de secretos de su organización, escrito ${secret:NAME}. Provisa guarda solo esta referencia, nunca la clave.",

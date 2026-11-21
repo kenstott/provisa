@@ -1,0 +1,27 @@
+{
+  "provisaGraph": {
+    "legend": "圖例",
+    "hint": "拖曳以平移 · 捲動以移動 · Ctrl/⌘ + 捲動以縮放",
+    "layingOut": "正在佈局…",
+    "type": {
+      "product": "數據產品",
+      "source": "來源",
+      "domain": "網域",
+      "group": "組",
+      "table": "表",
+      "view": "檢視",
+      "relation": "外部表",
+      "junction": "聯結資料表",
+      "column": "欄",
+      "term": "詞彙",
+      "concept": "概念",
+      "class": "類別",
+      "property": "屬性",
+      "command": "命令",
+      "checker": "品質檢查",
+      "profile": "設定檔",
+      "tag": "標籤",
+      "more": "更多"
+    }
+  }
+}

@@ -2,7 +2,7 @@
   "tablesPage": {
     "loading": "Cargando tablas...",
     "titleViews": "Vistas",
-    "titleTables": "Tablas registradas",
+    "titleTables": "Tablas",
     "filterPlaceholderViews": "Filtrar vistas…",
     "filterPlaceholderTables": "Filtrar por origen, dominio o tabla…",
     "addTable": "+ Tabla",
@@ -16,7 +16,7 @@
     "modelStarSchema": "Esquema en estrella",
     "modelDataVault": "Data Vault",
     "reportXlsx": "Libro de Excel",
-    "reportXlsxTitle": "Descargar el modelo como hoja de cálculo para su revisión: orígenes, tablas, columnas, relaciones, vistas, métricas, vistas materializadas, ontología, productos de datos, contratos de datos, calidad de datos y perfiles de datos, una hoja por cada uno",
+    "reportXlsxTitle": "Descargar el modelo como hoja de cálculo para revisarlo, con una hoja para orígenes, tablas, columnas, relaciones, vistas, métricas, vistas materializadas, ontología, productos de datos, contratos de datos, calidad de datos y perfilado de datos",
     "viewErd": "Ver ERD",
     "colSource": "Origen",
     "colDomain": "Dominio",
@@ -58,8 +58,8 @@
     "modelingRole": {
       "fact": "hecho",
       "dimension": "dimensión",
-      "impliedFactTitle": "Hecho implícito — «Habilitar agregados» está activado para esta tabla",
-      "impliedDimensionTitle": "Dimensión implícita — «Habilitar Group By» está activado para esta tabla"
+      "impliedFactTitle": "Hecho implícito: «Habilitar agregados» está activado para esta tabla",
+      "impliedDimensionTitle": "Dimensión implícita: «Habilitar Group By» está activado para esta tabla"
     },
     "derived": "derivada",
     "endpointUnread": "No se pudo leer el documento de API de su origen",
@@ -69,14 +69,14 @@
       "title": "Verificador de calidad de datos: las filas de esta tabla son los resultados de ejecutar su contrato"
     },
     "dataProduct": "producto",
-    "dataProductTitle": "Producto de datos — incluido en provisa metadata export",
+    "dataProductTitle": "Producto de datos: incluido en la exportación de metadatos de Provisa",
     "purposeTitle": "Qué hace registrar una tabla",
-    "purposeBody": "El registro es lo que incorpora una tabla al modelo gobernado: fija las columnas, los nombres con los que se exponen y qué roles pueden verlas. Solo las tablas registradas se pueden consultar, y todo lo que viene después — relaciones, métricas, vistas, términos de la ontología — nombra columnas registradas.",
-    "purposeAdd": "+ Vista registra una relación definida por SQL o por métricas en lugar de por una tabla física, y al registrarla deja de ser una consulta guardada. La definición decide además cómo se sirve: en vivo, o materializada según una cadencia o una ventana de calendario, con una actualización que reemplaza, hace upsert o añade. Si activas el viaje en el tiempo, la vista conserva su propio historial y los consumidores pueden leerla tal como estaba en un momento pasado; sus entradas se registran como linaje, así que una actualización espera a aquello de lo que depende.",
+    "purposeBody": "Registrar una tabla la incorpora al modelo gobernado y fija sus columnas, los nombres con los que se exponen y qué roles pueden verlas. Solo se pueden consultar tablas registradas, y las relaciones, métricas, vistas y términos de ontología nombran columnas registradas.",
+    "purposeAdd": "+ Vista registra una relación definida por SQL o por métricas. La definición también decide cómo se sirve: en vivo o materializada según una cadencia o una ventana de calendario, con una actualización que reemplaza, hace upsert o añade. Active Time Travel y la vista guarda su propio historial, para que los consumidores puedan leerla tal como era en un momento pasado. Sus entradas se rastrean como linaje, así que una actualización espera a aquello de lo que depende.",
     "purposeAria": "Acerca de las tablas registradas",
     "erdHelpTitle": "Diagrama entidad-relación",
-    "erdHelpBody": "Dibuja las tablas registradas y las relaciones declaradas entre ellas, de modo que los joins que ya existen se ven antes de escribir una consulta. Lee el modelo en lugar de editarlo: filtra por dominio y exporta el diagrama como PNG o SVG.",
-    "purposeModel": "+ Modelo declara una entidad o un hecho —las dos piezas con las que se construyen tanto un esquema en estrella como un Data Vault— y lo baja a esas mismas primitivas, registrando la vista materializada, su viaje en el tiempo y las relaciones con las entidades cuyas claves usa.",
+    "erdHelpBody": "Dibuja las tablas registradas y las relaciones declaradas entre ellas, para que vea qué uniones existen antes de escribir una consulta. Es de solo lectura: filtre por dominio y exporte el diagrama como PNG o SVG.",
+    "purposeModel": "+ Modelo declara una entidad o un hecho, los componentes de un esquema en estrella y de un Data Vault. Registra la vista materializada, su Time Travel y las relaciones con las entidades sobre las que se indexa.",
     "empty": "Aún no hay tablas registradas.",
     "resizeDetail": "Cambiar el tamaño del panel de detalles",
     "detailPanel": "Detalles de la tabla",
@@ -93,6 +93,9 @@
     "history": {
       "badge": "historial",
       "title": "Guarda historial: consúltelo a una fecha o tal como se registró (Viaje en el tiempo)"
-    }
+    },
+    "withdrawn": "Retirada",
+    "withdrawnTitle": "Fuera de producción: ningún rol la lee hasta que se restituya",
+    "sourceWithdrawnTitle": "Su origen {{source}} está retirado: ningún rol la lee hasta que se restituya el origen"
   }
 }

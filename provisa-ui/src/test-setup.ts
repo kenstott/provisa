@@ -21,7 +21,7 @@ import "fake-indexeddb/auto";
 import { afterEach, vi } from "vitest";
 import { cleanup } from "@testing-library/react";
 import { warmupSettled } from "./pageChunks";
-import { bindStorageScope, removeStored, storedKeys } from "./lib/browserStorage";
+import { bindStorageScope, bindViewer, removeStored, storedKeys } from "./lib/browserStorage";
 
 // @testing-library/react auto-cleanup doesn't reliably fire between tests in
 // vitest's vmThreads pool.  Register it explicitly so DOM state never leaks.
@@ -41,6 +41,10 @@ afterEach(async () => {
 export const TEST_STORAGE_SCOPE = { controlPlaneId: "test-cp", orgId: "test-org" } as const;
 bindStorageScope(TEST_STORAGE_SCOPE);
 afterEach(() => bindStorageScope(TEST_STORAGE_SCOPE));
+// REQ-2260: the scope gate binds the viewer with the scope; a component test is shown to this one.
+export const TEST_VIEWER = "test-viewer";
+bindViewer(TEST_VIEWER);
+afterEach(() => bindViewer(TEST_VIEWER));
 // A 3D graph remembers its view settings in the browser (graphSettings.ts), and a list its filters
 // (FilterInput, useRememberedChoice) and the Glossary its main panel; a test that changes one leaves
 // it saved, and the next test's page would open with it. Each test starts from defaults.
@@ -49,7 +53,7 @@ afterEach(() => {
   if (typeof window === "undefined") return;
   bindStorageScope(TEST_STORAGE_SCOPE);
   for (const key of storedKeys())
-    if (/^(graph3d|filter|glossary)\./.test(key)) removeStored(key);
+    if (/^(graph3d|filter|glossary|detail)\./.test(key)) removeStored(key);
 });
 
 // Mantine components (ScrollArea, Select, transitions) depend on browser APIs

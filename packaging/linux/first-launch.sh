@@ -449,7 +449,7 @@ write_protocol_overlay() {
     # MCP must bind 0.0.0.0 to be reachable from outside the container; role picks
     # the query identity (defaults set by the deploy env).
     env="${env}      PROVISA_MCP_HOST: \"0.0.0.0\""$'\n'
-    env="${env}      PROVISA_MCP_ROLE: \"${PROVISA_MCP_ROLE:-admin}\""$'\n'
+    env="${env}      PROVISA_MCP_ROLE: \"${PROVISA_MCP_ROLE:-org_admin}\""$'\n'
   fi
 
   if [ -z "$ports" ]; then
@@ -633,6 +633,9 @@ services:
       # bootstrap to invite-based multi-org. Absent/empty (enterprise default) keeps the
       # single-administrator REQ-1266 mode. Interpolated from the 600 systemd env_file.
       PROVISA_MULTITENANCY: "\${PROVISA_MULTITENANCY:-}"
+      # REQ-1276: the base domain org subdomains live under. The API reads an org from a Host
+      # only under it (provisa/security/sni.py); unset, no host names an org.
+      VITE_ORG_BASE_DOMAIN: "\${VITE_ORG_BASE_DOMAIN:-}"
       # REQ-972..979: the deployment's federation-engine selection. resolve_deployment writes
       # it to config.yaml (\`engine:\`) for the node tier, but the API process selects its engine
       # from \$PROVISA_ENGINE / \$PROVISA_ENGINE_URL / \$PROVISA_MATERIALIZE_URL
@@ -701,6 +704,9 @@ services:
       - ${CERT_DIR}:/app/certs:ro
     environment:
       PROVISA_ROLE: "secondary"
+      # REQ-1276: the base domain org subdomains live under. The API reads an org from a Host
+      # only under it (provisa/security/sni.py); unset, no host names an org.
+      VITE_ORG_BASE_DOMAIN: "\${VITE_ORG_BASE_DOMAIN:-}"
       PROVISA_TLS_CERT: "/app/certs/provisa.crt"
       PROVISA_TLS_KEY: "/app/certs/provisa.key"
       PROVISA_MCP_TLS: "1"
@@ -816,6 +822,9 @@ services:
       PROVISA_TLS_KEY: "/app/certs/provisa.key"
       PROVISA_MCP_TLS: "1"
       PROVISA_MULTITENANCY: "\${PROVISA_MULTITENANCY:?the SaaS control plane is multitenant}"
+      # REQ-1276: the base domain org subdomains live under. The API reads an org from a Host
+      # only under it (provisa/security/sni.py); unset, no host names an org.
+      VITE_ORG_BASE_DOMAIN: "\${VITE_ORG_BASE_DOMAIN:-}"
       # Cloud SQL over the PSA-peered VPC.
       PG_HOST: "\${CONFIG_DB_HOST:?Cloud SQL private IP}"
       PG_PORT: "\${CONFIG_DB_PORT:-5432}"
@@ -891,25 +900,27 @@ services:
       PROVISA_EMAIL_API_KEY: "\${PROVISA_EMAIL_API_KEY:-}"
       PROVISA_MAIL_FROM: "\${PROVISA_MAIL_FROM:-}"
       PROVISA_MAIL_BASE_URL: "\${PROVISA_MAIL_BASE_URL:-}"
-      # REQ-1455/REQ-1474: the merchant of record. This base REPLACES docker-compose.app.yml
-      # and forwards no variable it does not name, so the commercial plugin's credentials have
-      # to be listed here or they never enter the container — provisa.env holding them is not
-      # enough. LEMONSQUEEZY_MODE selects the store: "test" reads TEST_LEMONSQUEEZY_API_KEY,
-      # anything else the live key, so both are forwarded and the mode decides which is read.
-      LEMONSQUEEZY_MODE: "\${LEMONSQUEEZY_MODE:-}"
-      LEMONSQUEEZY_API_KEY: "\${LEMONSQUEEZY_API_KEY:-}"
-      TEST_LEMONSQUEEZY_API_KEY: "\${TEST_LEMONSQUEEZY_API_KEY:-}"
-      LEMONSQUEEZY_STORE_ID: "\${LEMONSQUEEZY_STORE_ID:-}"
-      LEMONSQUEEZY_VARIANT_STARTER: "\${LEMONSQUEEZY_VARIANT_STARTER:-}"
-      LEMONSQUEEZY_VARIANT_PRO_S: "\${LEMONSQUEEZY_VARIANT_PRO_S:-}"
-      LEMONSQUEEZY_VARIANT_PRO_M: "\${LEMONSQUEEZY_VARIANT_PRO_M:-}"
-      LEMONSQUEEZY_VARIANT_PRO_L: "\${LEMONSQUEEZY_VARIANT_PRO_L:-}"
-      # REQ-1482: egress rides a second subscription, so each plan names a second variant too.
-      LEMONSQUEEZY_VARIANT_EGRESS_STARTER: "\${LEMONSQUEEZY_VARIANT_EGRESS_STARTER:-}"
-      LEMONSQUEEZY_VARIANT_EGRESS_PRO_S: "\${LEMONSQUEEZY_VARIANT_EGRESS_PRO_S:-}"
-      LEMONSQUEEZY_VARIANT_EGRESS_PRO_M: "\${LEMONSQUEEZY_VARIANT_EGRESS_PRO_M:-}"
-      LEMONSQUEEZY_VARIANT_EGRESS_PRO_L: "\${LEMONSQUEEZY_VARIANT_EGRESS_PRO_L:-}"
-      LEMONSQUEEZY_SIGNING_SECRET: "\${LEMONSQUEEZY_SIGNING_SECRET:-}"
+      # REQ-1455/REQ-1474: the merchant of record, Stripe. This base REPLACES docker-compose.app.yml
+      # and forwards no variable it does not name, so the commercial plugin's settings have to be
+      # listed here or they never enter the container — provisa.env holding them is not enough.
+      # STRIPE_MODE selects the credentials: "test" reads the STRIPE_TEST_ pair, anything else the
+      # live pair, so both are forwarded and the mode decides which is read. STRIPE_BASE_URL is
+      # not forwarded: it points the plugin at a stub in tests and has no production value.
+      STRIPE_MODE: "\${STRIPE_MODE:-}"
+      STRIPE_SECRET_KEY: "\${STRIPE_SECRET_KEY:-}"
+      STRIPE_PUBLISHABLE_KEY: "\${STRIPE_PUBLISHABLE_KEY:-}"
+      STRIPE_TEST_SECRET_KEY: "\${STRIPE_TEST_SECRET_KEY:-}"
+      STRIPE_TEST_PUBLISHABLE_KEY: "\${STRIPE_TEST_PUBLISHABLE_KEY:-}"
+      STRIPE_WEBHOOK_SECRET: "\${STRIPE_WEBHOOK_SECRET:-}"
+      STRIPE_PRICE_STARTER: "\${STRIPE_PRICE_STARTER:-}"
+      STRIPE_PRICE_PRO_S: "\${STRIPE_PRICE_PRO_S:-}"
+      STRIPE_PRICE_PRO_M: "\${STRIPE_PRICE_PRO_M:-}"
+      STRIPE_PRICE_PRO_L: "\${STRIPE_PRICE_PRO_L:-}"
+      # REQ-1482: each plan's one subscription carries a second, data transfer price.
+      STRIPE_PRICE_EGRESS_STARTER: "\${STRIPE_PRICE_EGRESS_STARTER:-}"
+      STRIPE_PRICE_EGRESS_PRO_S: "\${STRIPE_PRICE_EGRESS_PRO_S:-}"
+      STRIPE_PRICE_EGRESS_PRO_M: "\${STRIPE_PRICE_EGRESS_PRO_M:-}"
+      STRIPE_PRICE_EGRESS_PRO_L: "\${STRIPE_PRICE_EGRESS_PRO_L:-}"
     depends_on: &provisa_depends
       redis:
         condition: service_healthy
@@ -949,7 +960,7 @@ services:
       # one's bundle into demo-bundles/ and runs its stores; the tier serves the ready version
       # and, at each sandbox opened, asks for a newer published one -- no redeploy. A demo's
       # logs are read live from its bundle there.
-      PROVISA_DEMO_BUNDLES: "starthere,weblogs,files,sonnets,reviews,quality,insider,testdata,datavault,profiling,vulnerabilities,agriculture,streaming,storefront,churn,provisioning,hasuramigration,insurance,worldcup,cloudpolicy,churnprod,dataroom,reproduce,opioids,pharma,groupexposure,agentdata,banksecrecy"
+      PROVISA_DEMO_BUNDLES: "starthere,weblogs,files,sonnets,reviews,quality,insider,testdata,datavault,profiling,vulnerabilities,agriculture,streaming,storefront,churn,provisioning,hasuramigration,insurance,worldcup,cloudpolicy,churnprod,dataroom,reproduce,opioids,pharma,groupexposure,agentdata,banksecrecy,audit"
       PROVISA_DEMO_REGISTRY: "https://ghcr.io/kenstott"
       PROVISA_LOGS_ALLOWED_ROOTS: /var/lib/provisa/demo-bundles
       # This tier builds the deployment's org at startup too, from the control plane, and the
@@ -999,14 +1010,6 @@ services:
       ORG_ID: "sbxrtier"
       PROVISA_CONFIG: "/app/config/provisa-sandbox-regions.yaml"
       PROVISA_REGION: "us"
-      # The platform names an address per region. No node of a headless region (eu, ledger) runs,
-      # and nothing asks one: a visitor region's node reads its store in place. Its address is one
-      # nothing listens at, so a call to it fails as unreachable, by name, rather than reaching
-      # another node.
-      PROVISA_DEMO_EU_ADDRESS: "https://provisa-sandbox-regions-eu.invalid:8100"
-      PROVISA_DEMO_US_ADDRESS: "https://provisa-sandbox-regions:8100"
-      PROVISA_DEMO_LEDGER_ADDRESS: "https://provisa-sandbox-regions-ledger.invalid:8100"
-      PROVISA_DEMO_WAREHOUSE_ADDRESS: "https://provisa-sandbox-regions-warehouse:8100"
       # Unpublished, on this compose network only, as minio's credentials above.
       PROVISA_DEMO_EU_PG_URL: "postgresql+psycopg://provisa:\${PROVISA_PG_PASSWORD:?the deployment database password}@region-pg-eu:5432/provisa"
       PROVISA_DEMO_US_PG_URL: "postgresql+psycopg://provisa:\${PROVISA_PG_PASSWORD:?the deployment database password}@region-pg-us:5432/provisa"
@@ -1104,6 +1107,9 @@ services:
       # Its Compute Engine instance, which the UI server starts when it finds the tier down
       # (provisa/sandbox_wake.py); empty for a tier on this node.
       PROVISA_SANDBOX_INSTANCE: "\${PROVISA_SANDBOX_INSTANCE:-}"
+      # REQ-1276: the base domain org subdomains live under, served to the UI at
+      # /deployment-config.js. Unset, the UI reads no org from its host.
+      VITE_ORG_BASE_DOMAIN: "\${VITE_ORG_BASE_DOMAIN:-}"
       VITE_FIREBASE_API_KEY: "\${VITE_FIREBASE_API_KEY:-}"
       VITE_FIREBASE_AUTH_DOMAIN: "\${VITE_FIREBASE_AUTH_DOMAIN:-}"
       VITE_FIREBASE_PROJECT_ID: "\${VITE_FIREBASE_PROJECT_ID:-}"
@@ -1252,6 +1258,7 @@ write_env_file() {
   for var in PROVISA_IDP FIREBASE_PROJECT_ID FIREBASE_SERVICE_ACCOUNT_KEY \
              PROVISA_SUPERUSER_USERNAME PROVISA_SUPERUSER_PASSWORD \
              VITE_FIREBASE_API_KEY VITE_FIREBASE_AUTH_DOMAIN VITE_FIREBASE_PROJECT_ID \
+             VITE_ORG_BASE_DOMAIN \
              KEYCLOAK_URL KEYCLOAK_REALM KEYCLOAK_CLIENT_ID \
              OAUTH_ISSUER OAUTH_CLIENT_ID OAUTH_CLIENT_SECRET \
              PROVISA_PGWIRE_PORT PROVISA_BOLT_PORT PROVISA_MCP_PORT \
@@ -1297,10 +1304,11 @@ write_env_file() {
 # ── Install systemd service (non-interactive / cloud deployments) ─────────────
 install_systemd() {
   local unit="/etc/systemd/system/provisa.service"
+  local env_file="${PROVISA_HOME}/provisa.env"
   # Persist auth env (PROVISA_IDP + provider secrets) so the server, running
   # under systemd rather than this first-launch process, auto-configures the IdP
   # and can resolve ${env:...} secret placeholders at runtime.
-  write_env_file "${PROVISA_HOME}/provisa.env"
+  write_env_file "$env_file"
   # $USER is not exported under the GCE metadata runner / systemd-run; resolve it.
   local run_user; run_user="$(id -un)"
   # System Docker runs as its own systemd service — order after it and skip the
@@ -1312,7 +1320,9 @@ install_systemd() {
   else
     xdg_line="Environment=XDG_RUNTIME_DIR=${PROVISA_HOME}/run"
   fi
-  cat > "$unit" <<UNIT
+  # Rendered beside the unit and moved into place, so a failure never leaves it empty.
+  local unit_tmp; unit_tmp="$(mktemp "${unit}.XXXXXX")"
+  cat > "$unit_tmp" <<UNIT
 [Unit]
 Description=Provisa Data Platform
 After=${after}
@@ -1337,6 +1347,8 @@ TimeoutStartSec=300
 [Install]
 WantedBy=multi-user.target
 UNIT
+  chmod 644 "$unit_tmp"
+  mv -f "$unit_tmp" "$unit"
   systemctl daemon-reload
   systemctl enable provisa
   # restart, not `enable --now`: on a version-change re-provision the stack is already
@@ -1498,6 +1510,10 @@ setup_native_venv() {
 
   if _online; then
     info "Installing Provisa from PyPI..."
+    # The embedded extra carries the vector extra (the default config's embedding model). PyPI's
+    # Linux torch is the CUDA build, so torch comes first from PyTorch's CPU-only index; the extra's
+    # torch requirement is then already met.
+    "$pip" install --quiet --index-url https://download.pytorch.org/whl/cpu torch
     "$pip" install --quiet "provisa[${extras}]${pin}" uvicorn mcp-proxy
   elif [ -n "$wheels" ]; then
     info "Installing Provisa from bundled wheels (offline)..."
@@ -1509,6 +1525,11 @@ setup_native_venv() {
   # REQ-2194: provisa's encoders are compiled into it; an install without them is a broken install.
   "${venv}/bin/python3" -c "import provisa._encoders.pgwire" || {
     err "Provisa's compiled encoders (provisa._encoders) did not install — reinstall Provisa."
+    exit 1
+  }
+  # The default config's embedding model runs on sentence-transformers over CPU-only torch.
+  "${venv}/bin/python3" -c "import sentence_transformers, torch; assert torch.version.cuda is None" || {
+    err "The embedding library (sentence-transformers on CPU-only torch) did not install — reinstall Provisa."
     exit 1
   }
 

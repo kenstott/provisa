@@ -9,7 +9,9 @@
 Edits four config keys: ``ai_models`` (per-role model assignments,
 :class:`AIModelsConfig`), ``vector_models`` (embedding-model registry, a list of
 :class:`VectorModelConfig`), ``ai_endpoints`` (custom OpenAI/Anthropic-style endpoints, a list of
-:class:`AiEndpointConfig`, REQ-1790), and ``nl.rate_limit`` (:class:`NlConfig`).
+:class:`AiEndpointConfig`, REQ-1790), and ``nl.rate_limit`` (:class:`NlConfig`). It also reads and
+stores each model's input and output limits (``ai_models.model_limits``, REQ-464,
+:mod:`provisa.llm.limits`).
 
 REQ-1349: these three are ORG-scoped. A write lands in the acting org's ``org_settings`` table,
 layered over the deployment config, and takes effect on the next request — an org administrator
@@ -22,6 +24,7 @@ server-side gate at all and wrote the deployment config file directly.
 
 from fastapi import APIRouter, Request
 
+from provisa.core.http_failure import describe_http_failure
 from provisa.api.admin._platform_guard import require_org_settings
 from provisa.api.errors import ApiError
 
@@ -69,6 +72,7 @@ async def get_ai_models(request: Request):  # REQ-464, REQ-419, REQ-500, REQ-370
         read_org_api_keys,
         read_org_secret,
     )
+    from provisa.core.secrets_providers import many_organisations
 
     assert state.model_db is not None
     cfg = await _effective_config()
@@ -87,14 +91,57 @@ async def get_ai_models(request: Request):  # REQ-464, REQ-419, REQ-500, REQ-370
     api_keys_set = {vendor: vendor in configured for vendor in sorted(LLM_VENDORS)}
     api_keys_set["jev"] = (await read_org_secret(state.model_db, JEV_SECRET_KEY)) is not None
 
+    assignments = {k: _assignment(k) for k in _AI_MODEL_ROLES}
     return {
-        "ai_models": {k: _assignment(k) for k in _AI_MODEL_ROLES},
+        "ai_models": assignments,
+        "model_limits": _assigned_limits(assignments, cfg),  # REQ-464
         "vector_models": list(cfg.get("vector_models", []) or []),
         "ai_endpoints": list(cfg.get("ai_endpoints", []) or []),  # REQ-1790
         "nl": {"rate_limit": nl.get("rate_limit")},
         "api_keys_set": api_keys_set,
+        # REQ-1395: whether a vendor with no key set is called with the deployment's own (an
+        # install of one organization); on a server of many organizations it is not called.
+        "deployment_keys": not many_organisations(),
         "restart_required_note": _RESTART_NOTE,
     }
+
+
+def _assigned_limits(assignments: dict, cfg: dict) -> dict[str, dict[str, dict]]:
+    """REQ-464: each assigned model's limits, by vendor and model id (provisa.llm.limits)."""
+    from provisa.llm.limits import assignment, describe
+
+    out: dict[str, dict[str, dict]] = {}
+    for choice in assignments.values():
+        named = assignment(choice)
+        if named is not None:
+            vendor, model = named
+            out.setdefault(vendor, {})[model] = describe(vendor, model, cfg)
+    return out
+
+
+@router.get("/admin/ai-models/limits")
+async def get_model_limits(request: Request, vendor: str, model: str):  # REQ-464
+    """One vendor/model's limits, assigned or not: what the AI models page shows when a task is
+    given a model it has not loaded the limits of."""
+    require_org_settings(request)
+    from provisa.llm.limits import describe
+
+    return describe(vendor, model, await _effective_config())
+
+
+def _limits_entry(vendor: str, model: str, entry) -> dict[str, int]:
+    """A ``model_limits`` entry from the PUT body, checked: two whole numbers above zero."""
+    values = {}
+    for field in ("input_tokens", "output_tokens"):
+        raw = entry.get(field) if isinstance(entry, dict) else None
+        if isinstance(raw, bool) or not isinstance(raw, int) or raw <= 0:
+            raise ApiError(
+                400,
+                "ai_models.model_limits_invalid",
+                f"model_limits {vendor}/{model}: {field} must be a whole number above zero",
+            )
+        values[field] = raw
+    return values
 
 
 async def _run_model_listing(vendor: str, fetch) -> list[str]:
@@ -113,7 +160,7 @@ async def _run_model_listing(vendor: str, fetch) -> list[str]:
         raise ApiError(
             502,
             "ai_models.vendor_unreachable",
-            f"{vendor} model listing is unreachable: {exc}",
+            f"{vendor} model listing is unreachable: {describe_http_failure(exc)}",
         ) from exc
 
 
@@ -128,12 +175,14 @@ async def get_vendor_models(
     the org's custom ``ai_endpoints`` (REQ-1790), listed the same way against its own base_url.
     """
     require_org_settings(request)
-    import os
-
     from provisa.api.app import state
-    from provisa.core.org_secrets import read_org_api_keys
+    from provisa.core.org_secrets import (
+        endpoint_address,
+        endpoint_key,
+        org_ai_key,
+        read_org_api_keys,
+    )
     from provisa.llm.vendor_models import (
-        VENDOR_API_KEY_ENV,
         VENDOR_MODEL_APIS,
         fetch_endpoint_models,
         fetch_vendor_models,
@@ -142,18 +191,9 @@ async def get_vendor_models(
     assert state.model_db is not None
 
     if vendor in VENDOR_MODEL_APIS:
-        # The org's key when it has set one; otherwise the deployment credential this vendor's
-        # calls already run on — the same resolution order the LLM client uses, so the picker
-        # lists exactly the models the org's queries would reach (REQ-1395, REQ-1398).
-        api_key = (await read_org_api_keys(state.model_db)).get(vendor)
-        if not api_key and vendor in VENDOR_API_KEY_ENV:
-            api_key = os.environ.get(VENDOR_API_KEY_ENV[vendor])
-        if not api_key:
-            raise ApiError(
-                400,
-                "ai_models.vendor_key_required",
-                f"set an API key for '{vendor}' to list its models",
-            )
+        # The key the vendor's calls are made with, so the picker lists exactly the models the
+        # org's queries would reach; refused when there is none (REQ-1395, REQ-1398).
+        api_key = await org_ai_key(state.model_db, vendor)
         models = await _run_model_listing(vendor, lambda: fetch_vendor_models(vendor, api_key))
         return {"vendor": vendor, "models": models}
 
@@ -167,18 +207,9 @@ async def get_vendor_models(
             f"'{vendor}' publishes no list-models API; enter the model name directly",
         )
 
-    api_key = None
-    key_env = endpoint.get("api_key_env")
-    if key_env:
-        api_key = os.environ.get(key_env)
-        if not api_key:
-            raise ApiError(
-                400,
-                "ai_models.vendor_key_required",
-                f"set the '{key_env}' environment variable to list '{vendor}' models",
-            )
-
-    style, base_url = endpoint["style"], endpoint["base_url"]
+    # The key and address the endpoint's calls are made with (REQ-1395, REQ-1557, REQ-1790).
+    api_key = await endpoint_key(await read_org_api_keys(state.model_db), endpoint)
+    style, base_url = endpoint["style"], endpoint_address(endpoint)
     models = await _run_model_listing(
         vendor, lambda: fetch_endpoint_models(style, base_url, api_key)
     )
@@ -203,8 +234,8 @@ async def set_ai_models(request: Request):  # REQ-464, REQ-419, REQ-500, REQ-370
     updates: dict = {}
     updated: list[str] = []
 
+    ai = dict(overrides.get("ai_models") or {})
     if "ai_models" in body:
-        ai = dict(overrides.get("ai_models") or {})
         for k, v in (body["ai_models"] or {}).items():
             if k not in _AI_MODEL_ROLES:
                 continue
@@ -214,6 +245,25 @@ async def set_ai_models(request: Request):  # REQ-464, REQ-419, REQ-500, REQ-370
             else:
                 ai[k] = v
             updated.append(f"ai_models.{k}")
+
+    if "model_limits" in body:  # REQ-464
+        # Per vendor and model: an entry sets the org's own limits, null clears them so the model
+        # returns to its published figure (or the default pair). Models not named keep theirs.
+        limits = {v: dict(m) for v, m in (ai.get("model_limits") or {}).items()}
+        for vendor, models in (body["model_limits"] or {}).items():
+            for model, entry in (models or {}).items():
+                if entry is None:
+                    limits.get(vendor, {}).pop(model, None)
+                else:
+                    limits.setdefault(vendor, {})[model] = _limits_entry(vendor, model, entry)
+                updated.append(f"model_limits.{vendor}.{model}")
+        limits = {v: m for v, m in limits.items() if m}
+        if limits:
+            ai["model_limits"] = limits
+        else:
+            ai.pop("model_limits", None)
+
+    if "ai_models" in body or "model_limits" in body:
         # An empty delta means "override nothing" — store None so the row is deleted outright.
         updates["ai_models"] = ai or None
 

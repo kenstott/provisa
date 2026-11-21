@@ -41,8 +41,8 @@ import (
 )
 
 var (
-	tagLine     = regexp.MustCompile(`^@([A-Za-z_][A-Za-z0-9_]*)$`)
-	tagArgument = regexp.MustCompile(`^@([A-Za-z_][A-Za-z0-9_]*)\s+(\S+)$`)
+	tagLine     = regexp.MustCompile(`^@([A-Za-z_][A-Za-z0-9_-]*)$`)
+	tagArgument = regexp.MustCompile(`^@([A-Za-z_][A-Za-z0-9_-]*)\s+(\S+)$`)
 )
 
 type node = map[string]any
@@ -192,6 +192,11 @@ func (r *reader) named(n *types.Named) node {
 			element = unsupported(types.TypeString(n, r.qualifier) + " (its second value is not an error)")
 		}
 		return node{"kind": "iterable", "async": false, "generator": true, "errors": true, "element": element}
+	}
+	// REQ-2226: a parameter taking a governed table: a struct the code declares as
+	// TableRef[Row], Row the columns it declares. A Go source has no Provisa module to import.
+	if n.Obj().Name() == "TableRef" && args.Len() == 1 {
+		return node{"kind": "table_ref", "row": r.tree(args.At(0))}
 	}
 	if args.Len() > 0 {
 		return unsupported(types.TypeString(n, r.qualifier))

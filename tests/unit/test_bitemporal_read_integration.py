@@ -25,7 +25,7 @@ from tests.helpers import hold_registered_tables, build_through_a_stand_in_pipel
 
 import provisa.mv.refresh as refresh_mod
 from provisa.compiler.sql_gen import CompiledQuery
-from provisa.compiler.view_expand import expand_views
+from provisa.compiler.view_expand import VIEW_CATALOG, expand_views
 from provisa.executor.result import QueryResult
 from provisa.mv.bitemporal import BitemporalSpec, as_of_view_map, parse_as_of, view_read_sql
 from provisa.mv.models import MVDefinition
@@ -33,7 +33,10 @@ from provisa.mv.refresh import _target_ref, refresh_mv
 from provisa.mv.registry import MVRegistry
 
 VIEW = "orders_v"
-VIEW_REF = f'"cat"."public"."{VIEW}"'  # how a query references the registered view
+# How a lowered query references the registered view: under the view's own catalog, the derived
+# source's (REQ-135, REQ-603); under any other catalog the name is that catalog's table.
+VIEW_REF = f'"{VIEW_CATALOG}"."public"."{VIEW}"'
+VIEW_KEY = f"public.{VIEW}"  # its key in the view map: schema and name
 BUSINESS = ["id", "region", "amount"]
 
 # Each row carries when it took effect (eff): the view's valid time, which a read travels on
@@ -80,7 +83,7 @@ def _query(view_sql_map: dict[str, str]) -> str:
         params=[],
         root_field=VIEW,
         columns=[],
-        sources={"cat"},
+        sources={VIEW_CATALOG},
     )
     return expand_views(compiled, view_sql_map).sql
 
@@ -89,15 +92,16 @@ async def _materialize(monkeypatch, mode: str):
     con = duckdb.connect(":memory:")
     con.execute("CREATE TABLE base (id INTEGER, region VARCHAR, amount INTEGER, eff TIMESTAMP)")
     engine, registry = DuckEngine(con), MVRegistry()
+    spec = BitemporalSpec(
+        key=("id",), mode=mode, valid_column="eff", columns=("id", "region", "amount", "eff")
+    )
     mv = MVDefinition(
         id=VIEW,
         source_tables=[],
         target_catalog="memory",
         target_schema="mvs",
         sql="SELECT id, region, amount, eff FROM base",
-        bitemporal=BitemporalSpec(
-            key=("id",), mode=mode, valid_column="eff", columns=("id", "region", "amount", "eff")
-        ),
+        bitemporal=spec,
     )
     registry.register(mv)
 
@@ -112,10 +116,9 @@ async def _materialize(monkeypatch, mode: str):
         await refresh_mv(engine, mv, registry)
 
     # app_rebuild wires the view's inline-expansion entry to the reconstruction over the append log.
-    spec = mv.bitemporal
     mv_ref = _target_ref(mv)
-    view_sql_map = {VIEW: view_read_sql(mv_ref, spec)}
-    bitemporal_reads = {VIEW: (mv_ref, spec)}
+    view_sql_map = {VIEW_KEY: view_read_sql(mv_ref, spec)}
+    bitemporal_reads = {VIEW_KEY: (mv_ref, spec)}
     return con, view_sql_map, bitemporal_reads, spec
 
 
@@ -171,6 +174,8 @@ async def test_two_references_read_the_view_at_two_times(monkeypatch, mode):
         f"JOIN {VIEW_REF}(as_of => '2026-02-01T00:00:00') b ON a.id = b.id",
         lambda table: "bitemporal" if table.name == VIEW else None,
     )
-    read = read_views_at(sql, SimpleNamespace(bitemporal_view_reads=reads), travel)
+    read = read_views_at(
+        sql, SimpleNamespace(bitemporal_view_reads=reads, source_catalogs={}), travel
+    )
     assert VIEW_REF not in read  # both references were read from the log at their own times
     assert set(con.execute(read).fetchall()) == {(1, 10, 15), (2, 20, 20)}

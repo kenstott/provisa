@@ -1,0 +1,12 @@
+{
+  "sensitiveScan": {
+    "scan": "Procurar valores sensíveis",
+    "help": "Lê em segundo plano uma amostra das colunas de texto da tabela e procura valores sensíveis dentro do texto, como um número de segurança social numa nota. Só é guardada a proporção de valores, nunca os valores. Uma sugestão não altera nada por si só: escolha uma concessão, um mascaramento ou um valor fictício para a coluna.",
+    "saveFirst": "Salve a tabela para procurar nos seus valores.",
+    "running": "Procurando numa amostra das colunas de texto…",
+    "succeeded": "Última procura: {{rows}} linhas da amostra, {{columns}} colunas de texto.",
+    "failed": "A procura falhou: {{error}}",
+    "header": "Encontrado nos valores",
+    "hint": "Contém {{kind}} em {{percent}}% dos valores da amostra"
+  }
+}

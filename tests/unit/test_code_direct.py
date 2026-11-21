@@ -119,6 +119,51 @@ def test_its_columns_are_the_ones_the_statement_names_every_one_for_a_star():
     assert _context("region = 'EU'", select="*")["columns"] == COLUMNS
 
 
+# -- a read's arguments ----------------------------------------------------------------------------
+
+
+def test_an_argument_is_the_statements_condition_on_the_tables_parameter():
+    sql = "SELECT id FROM s.scores AS t WHERE t._nf_as_of = '2026' AND _nf_top = 3 AND id > 1"
+    assert residual.nf_given(sql, "duckdb", "scores") == {"as_of": "2026", "top": 3}
+
+
+def test_an_argument_is_read_through_the_governed_relation_it_stands_outside():
+    """Governance reads a table through a relation and leaves the statement's WHERE outside it
+    (REQ-039): the function took no argument, and its code failed for want of one (run 42547702417,
+    AskInputs.__init__() missing 2 required positional arguments: 'model' and 'prompt')."""
+    sql = (
+        'SELECT status FROM (SELECT "ask"."status" AS "status", "ask"."_nf_model" AS "_nf_model", '
+        '"ask"."_nf_prompt" AS "_nf_prompt" FROM ask AS "ask") AS "ask" '
+        'WHERE "_nf_model" = \'m\' AND "ask"."_nf_prompt" = \'p\''
+    )
+    assert residual.nf_given(sql, "duckdb", "ask") == {"model": "m", "prompt": "p"}
+
+
+def test_an_argument_is_read_through_every_level_of_the_relation():
+    sql = (
+        'SELECT a FROM (SELECT "t"."a" AS "a", "t"."_nf_x" AS "_nf_x" FROM '
+        '(SELECT "t"."a" AS "a", "t"."_nf_x" AS "_nf_x" FROM t AS "t") AS "t") AS "t" '
+        "WHERE \"_nf_x\" = '1'"
+    )
+    assert residual.nf_given(sql, "duckdb", "t") == {"x": "1"}
+
+
+def test_each_table_of_a_join_is_given_only_its_own_arguments():
+    sql = (
+        'SELECT a.id FROM (SELECT "a"."id" AS "id", "a"."_nf_x" AS "_nf_x" FROM a AS "a") AS "a" '
+        'JOIN (SELECT "b"."id" AS "id", "b"."_nf_x" AS "_nf_x", "b"."_nf_y" AS "_nf_y" '
+        'FROM b AS "b") AS "b" ON "a"."id" = "b"."id" '
+        'WHERE "a"."_nf_x" = \'1\' AND "b"."_nf_x" = \'2\' AND "_nf_y" = \'3\''
+    )
+    assert residual.nf_given(sql, "duckdb", "a") == {"x": "1"}
+    assert residual.nf_given(sql, "duckdb", "b") == {"x": "2", "y": "3"}
+
+
+def test_a_condition_on_a_parameter_the_relation_does_not_expose_is_not_its_argument():
+    sql = 'SELECT a FROM (SELECT "t"."a" AS "a" FROM t AS "t") AS "t" WHERE "t"."_nf_x" = \'1\''
+    assert residual.nf_given(sql, "duckdb", "t") == {}
+
+
 # -- the residual ----------------------------------------------------------------------------------
 
 
@@ -550,9 +595,9 @@ def currencies() -> list[dict]:
 """
 
 
-async def test_a_table_typed_by_a_preview_is_read_into_its_registered_columns(
-    tmp_path, monkeypatch
-):
+def test_a_table_of_a_loose_row_type_is_refused_when_its_code_is_read(tmp_path):
+    from provisa.codesource.manifest import ManifestRefused
+
     code = tmp_path / "code"
     code.mkdir()
     (code / "fx.py").write_text(LOOSE_CODE)
@@ -560,42 +605,12 @@ async def test_a_table_typed_by_a_preview_is_read_into_its_registered_columns(
         [sys.executable, "-I", str(READER), str(code), "fx"], capture_output=True, text=True
     )
     assert done.returncode == 0, done.stderr
-    manifest = read_manifest(json.loads(done.stdout), PYTHON_RULES)
-    command = w.HostCommand(
-        argv=lambda address: [sys.executable, "-I", str(HOST), address, str(code), "fx"],
-        env=w.private_environment(PYTHONDONTWRITEBYTECODE="1"),
-        cwd=code,
-    )
-    ready = code_source.Prepared("fx-src", "h1", manifest, command, "acme")
-    source = SimpleNamespace(id="fx-src", type=SimpleNamespace(value="python"), mapping={})
-
-    async def _registered(_state):
-        return [source]
-
-    async def _prepare(*_args):
-        return ready
-
-    async def _context(_state):
-        return None
-
-    monkeypatch.setattr("provisa.federation.registry_view.registered_sources", _registered)
-    monkeypatch.setattr(code_source, "prepare", _prepare)
-    monkeypatch.setattr(code_source, "context_for", _context)
-    table = {
-        "table_name": "currencies",
-        "source_id": "fx-src",
-        "columns": [_column("code", "text"), _column("rate", "double")],
-    }
-    from provisa.codesource.table import read
-
-    try:
-        landed = await read(None, table, None)
-    finally:
-        w.pool.stop_source("fx-src")
-    answer = _engine_answer(
-        landed, "SELECT code FROM currencies WHERE rate < 1 ORDER BY code", "currencies"
-    )
-    assert answer.column("code").to_pylist() == ["EUR", "GBP"]
+    with pytest.raises(ManifestRefused) as refused:
+        read_manifest(json.loads(done.stdout), PYTHON_RULES)
+    assert refused.value.problems == [
+        "currencies: its row type is loose (any, unknown, a Record or a dict); declare a typed "
+        "row whose fields are its columns"
+    ]
 
 
 async def test_a_code_statement_is_complete_only_when_it_is_read_direct():

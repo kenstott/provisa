@@ -30,10 +30,11 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections.abc import Awaitable, Callable
+from concurrent.futures import Future
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
-from provisa.core import config_stamp
+from provisa.core import config_stamp, model_change
 
 if TYPE_CHECKING:
     from provisa.core.database import Database
@@ -63,17 +64,35 @@ class Target:
     # (``destroy_org`` evicts its runtime before dropping its schemas), and a check that listed
     # them before the reap reads none of their planes after it (REQ-2006).
     watched: Callable[[], bool] = lambda: True
+    # This process's saves of the copy whose model commit has not finished (REQ-1914). A stamp
+    # moved by one of them is reloaded only after that commit, so a save never competes with the
+    # rebuild it caused; a stamp moved from outside the process has none to wait for.
+    saves: Callable[[], list["Future[None]"]] = list
+
+
+async def _reload(target: Target, current: int, reloaded: list[str]) -> None:
+    try:
+        if await target.reload() is NOT_RELOADED:
+            log.info("config not reloaded: %s is gone; its replacement loads its own", target.name)
+            return
+    except Exception:  # allow-ble: a background check's boundary — logged, next check retries
+        log.exception("config reload of %s failed; retrying on the next check", target.name)
+        return
+    log.info("config reloaded: %s (stamp %s)", target.name, current)
+    reloaded.append(target.name)
 
 
 async def check(targets: list[Target]) -> list[str]:
     """Reload every target whose stored stamp differs from the one it was loaded at; the names of
     those reloaded. One read per distinct control plane. A target no longer watched when its turn
-    comes is passed over: its plane is not read.
+    comes is passed over: its plane is not read. A target with a save of this process in flight
+    is reloaded last, once that save has committed, so nothing else this check does waits for it.
 
     A target whose plane cannot be read, or whose reload fails, is logged and left as it was: its
     loaded stamp still differs, so the next check tries it again."""
     stored: dict[int, dict[str, int]] = {}
     reloaded: list[str] = []
+    behind_a_save: list[tuple[Target, int, list["Future[None]"]]] = []
     for target in targets:
         if not target.watched():
             continue
@@ -86,16 +105,18 @@ async def check(targets: list[Target]) -> list[str]:
             # loads it records the stamp it loaded at. There is nothing here to reload.
             if loaded is None or loaded == current:
                 continue
-            if await target.reload() is NOT_RELOADED:
-                log.info(
-                    "config not reloaded: %s is gone; its replacement loads its own", target.name
-                )
-                continue
+            saves = target.saves()
         except Exception:  # allow-ble: a background check's boundary — logged, next check retries
             log.exception("config reload of %s failed; retrying on the next check", target.name)
             continue
-        log.info("config reloaded: %s (stamp %s)", target.name, current)
-        reloaded.append(target.name)
+        if saves:
+            behind_a_save.append((target, current, saves))
+            continue
+        await _reload(target, current, reloaded)
+    for target, current, saves in behind_a_save:
+        await model_change.until_committed(saves)
+        if target.watched():
+            await _reload(target, current, reloaded)
     return reloaded
 
 

@@ -11,8 +11,8 @@
 """E2E: demo sandboxes on the sandbox tier (REQ-2006).
 
 Everything here is the ``test`` instance on the local test platform (tests/local_platform.py):
-an isolated server started as the sandbox tier (``PROVISA_SANDBOX_TIER=true``), on the embedded
-Postgres control plane, with a data directory of its own and two published named demos of its own,
+an isolated server started as the sandbox tier (``PROVISA_SANDBOX_TIER=true``), on a Postgres
+control plane of its own, with a data directory of its own and two published named demos of its own,
 ``alpha`` and ``beta``, each a SQLite file of a few rows. At startup the tier builds each demo's
 template org and lands its replicas; a visitor then opens sandboxes of them through
 ``POST /public/demos/{name}``, with no sign-in, and is answered a token:
@@ -160,6 +160,10 @@ def tier(tmp_path_factory):
         _ORG,
         engine="duckdb",
         config=str(config),
+        # Its own control plane: a demo's template org (sbxtpl<demo>) is global, so on the
+        # session's shared plane every module serving a demo of the same name shares one template,
+        # and one module's record of it was served to the next as theirs (release 510).
+        control_plane="own",
         auth={"provider": "basic", "jwt_secret": _JWT_SECRET, "assignments_source": "provisa"},
         env={
             "PROVISA_SANDBOX_TIER": "true",
@@ -369,7 +373,7 @@ def test_an_upload_past_the_disk_cap_is_refused_by_name(tier, alpha):
 def test_an_idle_sandbox_is_deleted_whole(tier, beta):
     """Its last request is moved past the idle limit; within the reaper's minute its org, its
     folder and its token are gone."""
-    _age(beta["org_id"])
+    _age(tier, beta["org_id"])
     folder = tier.data_dir / "orgs" / beta["org_id"]
     deadline = time.monotonic() + 120
     while folder.exists():
@@ -379,19 +383,17 @@ def test_an_idle_sandbox_is_deleted_whole(tier, beta):
     assert gone.status_code == 401, gone.text
 
 
-def _age(org_id: str) -> None:
-    import os
-
+def _age(tier, *org_ids: str) -> None:
     from sqlalchemy import create_engine, update
 
     from provisa.core.schema_admin import demo_sandboxes
 
-    engine = create_engine(os.environ["PLATFORM_DATABASE_URL"])
+    engine = create_engine(tier.plane.url)
     try:
         with engine.begin() as conn:
             conn.execute(
                 update(demo_sandboxes)
-                .where(demo_sandboxes.c.org_id == org_id)
+                .where(demo_sandboxes.c.org_id.in_(org_ids))
                 .values(last_active_at="2000-01-01T00:00:00+00:00")
             )
     finally:
@@ -459,15 +461,13 @@ def test_a_sandbox_source_on_a_private_address_is_refused_and_never_reached(tier
 _NAMED_USER, _NAMED_PASSWORD = "trier", "trier-password-0123"
 
 
-def _seat_named_user() -> None:
-    import os
-
+def _seat_named_user(tier) -> None:
     import bcrypt
     from sqlalchemy import create_engine, insert, select
 
     from provisa.core.schema_admin import local_users
 
-    engine = create_engine(os.environ["PLATFORM_DATABASE_URL"])
+    engine = create_engine(tier.plane.url)
     try:
         with engine.begin() as conn:
             if conn.execute(
@@ -507,7 +507,7 @@ def _open_named(tier, name: str) -> dict:
 def test_a_named_sandbox_is_the_persons_own_from_every_device(tier):
     """A signed-in person opens a sandbox of a demo; asked again -- from another device -- they
     get the same one."""
-    _seat_named_user()
+    _seat_named_user(tier)
     auth = (_NAMED_USER, _NAMED_PASSWORD)
     first = _open_named(tier, "alpha")
     again = _open_named(tier, "alpha")
@@ -530,7 +530,7 @@ def test_two_devices_writing_at_once_one_succeeds_and_the_other_is_refused_by_na
     tests/unit/test_duckdb_write_conflict.py.)"""
     import concurrent.futures
 
-    _seat_named_user()
+    _seat_named_user(tier)
     auth = (_NAMED_USER, _NAMED_PASSWORD)
     org = _open_named(tier, "alpha")["org_id"]
     uploaded = httpx.put(
@@ -587,6 +587,7 @@ def test_the_deployments_own_api_refuses_a_sandbox_by_name(tier, alpha, tmp_path
         _ORG,
         engine="duckdb",
         config=str(config),
+        control_plane=tier.plane,  # the same deployment: the sandbox tier's control plane
         auth={"provider": "basic", "jwt_secret": _JWT_SECRET, "assignments_source": "provisa"},
         env={"PROVISA_DATA_DIR": str(work / "data")},
     )
@@ -643,15 +644,6 @@ def test_a_visitor_lands_a_source_of_their_own_within_the_caps(tier, alpha):
     )
     assert (registered.json().get("data") or {}).get("registerTable", {}).get("success"), (
         registered.text
-    )
-    from tests.helpers import registered_id, release_field
-
-    _admin_graphql(
-        tier,
-        alpha,
-        "mutation { "
-        + release_field(registered_id(registered.json()["data"]["registerTable"]["message"]))
-        + " { success message } }",
     )
     # Registered, the source is read from its replica from now on: always (REQ-826).
     replicated = _admin_graphql(

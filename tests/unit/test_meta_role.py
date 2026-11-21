@@ -67,6 +67,7 @@ def _state(*, rls: dict[str, RLSContext], reads: dict[str, list[int]], roles: di
             # Each stored role's chain, as the build keeps it: these roles have no parent.
             "role_chains": {r: [r] for r in roles},
             "tables": tables,
+            "withdrawn_tables": [],
             "metrics": [],
             "functions": [],
             "webhooks": [],
@@ -95,6 +96,7 @@ def _role(rid: str, *, caps=(), domains=("sales",), max_rows=None, session_vars=
         "description": f"What {rid} is for.",
         "capabilities": list(caps),
         "domain_access": list(domains),
+        "own_domain_access": list(domains),  # REQ-2153: a built role carries it
         "max_rows": max_rows,
         "rate_limit": None,
         "session_vars": session_vars or {},

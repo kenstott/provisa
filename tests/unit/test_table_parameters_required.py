@@ -24,6 +24,8 @@ import pytest
 
 from provisa.api.data.materialization import _materialize_api_to_engine_cache
 from provisa.api_source.models import ApiColumn, ApiColumnType, ApiEndpoint, ParamType
+from provisa.core.parameter_binding import ParameterRequired
+from provisa.federation.replica_address import ReplicaRoutes
 
 TABLE = 7
 
@@ -67,6 +69,7 @@ def _openapi_state(*params: dict) -> SimpleNamespace:
     return SimpleNamespace(
         hot_manager=None,
         api_endpoints={("src", "orders"): endpoint},
+        replica_routes=ReplicaRoutes(),
         graphql_remote_sources={},
         tables=[_table("orders", *params)],
     )
@@ -90,6 +93,7 @@ def _graphql_state(*params: dict) -> SimpleNamespace:
     return SimpleNamespace(
         hot_manager=None,
         api_endpoints={},
+        replica_routes=ReplicaRoutes(),
         graphql_remote_sources={"src": reg},
         tables=[_table("pets", *params)],
     )
@@ -100,6 +104,7 @@ def _grpc_state(*params: dict) -> SimpleNamespace:
     return SimpleNamespace(
         hot_manager=None,
         api_endpoints={},
+        replica_routes=ReplicaRoutes(),
         graphql_remote_sources={},
         grpc_remote_sources={"src": {"namespace": "", "queries": [query]}},
         tables=[_table("Accounts__List", *params)],
@@ -231,7 +236,10 @@ async def test_a_table_only_in_a_union_branch_has_the_branch_dropped_instead():
     step.assert_not_awaited()
 
 
-async def test_a_parameter_a_model_join_feeds_is_given_by_the_join():
+async def test_a_model_join_the_statement_does_not_make_gives_a_parameter_nothing():
+    """REQ-1986: a parameter is bound by the statement -- an equality, or a join on the
+    parameter that the statement itself makes (``bind_statement`` then gives each key its own
+    read). A join the model declares and the statement does not make once counted as giving it."""
     state = _openapi_state(_param("region", "query_param", True))
     joined = SimpleNamespace(type_name="Customer")
     ctx = SimpleNamespace(
@@ -246,8 +254,18 @@ async def test_a_parameter_a_model_join_feeds_is_given_by_the_join():
     )
     step = AsyncMock()
     with patch(_STEPS["openapi"], new=step):
+        with pytest.raises(ParameterRequired, match="region"):
+            await _materialize_api_to_engine_cache(
+                "SELECT * FROM orders", state, nf_args={}, table_ids=[TABLE], ctx=ctx
+            )
+        step.assert_not_awaited()
+        # The statement's binding of a join on the parameter: one read per key, each given.
         await _materialize_api_to_engine_cache(
-            "SELECT * FROM orders", state, nf_args={}, table_ids=[TABLE], ctx=ctx
+            "SELECT * FROM orders__nf1 AS orders",
+            state,
+            table_ids=[TABLE],
+            ctx=ctx,
+            read_args={"orders__nf1": ("orders", {"region": "emea"})},
         )
     step.assert_awaited_once()
 
@@ -345,3 +363,13 @@ async def test_a_save_cannot_change_how_a_parameter_reaches_the_source():
     )
     refusal = await source_parameter_refusal(_Conn(True), _save(moved))
     assert refusal is not None and "reaches the source as query_param" in refusal
+
+
+def test_a_grpc_table_is_found_by_its_registered_name_and_by_its_sql_name():  # REQ-325, REQ-194
+    from provisa.api.data.materialization import _lookup_grpc_remote_table
+
+    state = _grpc_state()
+    for name in ("Accounts__List", "accounts__list"):
+        source_id, _reg, query = _lookup_grpc_remote_table(state, name)
+        assert (source_id, query.method) == ("src", "List")
+    assert _lookup_grpc_remote_table(state, "accounts__other") == (None, None, None)

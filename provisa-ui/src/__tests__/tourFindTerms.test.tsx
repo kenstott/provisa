@@ -33,6 +33,7 @@ vi.mock("../api/glossary", () => ({ generateGlossaryRelationships: vi.fn() }));
 const library = vi.hoisted(() => ({
   fetchLibrary: vi.fn(),
   fetchLibraryDocument: vi.fn(),
+  fetchCitedBy: vi.fn(),
   addLibraryDocument: vi.fn(),
   setLibraryDomains: vi.fn(),
   keepLibraryDocument: vi.fn(),
@@ -43,12 +44,16 @@ const library = vi.hoisted(() => ({
   removeLibraryDocument: vi.fn(),
 }));
 vi.mock("../api/referenceLibrary", () => library);
+vi.mock("../hooks/useCapability", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../hooks/useCapability")>()),
+  useCapability: () => false,
+}));
 vi.mock("../hooks/useAdminQueries", () => ({
   useDomains: () => ({ domains: [{ id: "bank" }] }),
 }));
 
 import { FindTermsDialog } from "../components/admin/FindTermsDialog";
-import { ReferenceLibraryTab } from "../components/admin/ReferenceLibraryTab";
+import { LibraryPage } from "../pages/library/LibraryPage";
 import { runUiActions, type UiAction } from "../mcp/uiActions";
 import { demoTourSteps } from "../tour/demoTour";
 
@@ -122,9 +127,9 @@ const DRAFT = {
 
 const STEPS = demoTourSteps(
   [
-    { key: "find", route: "/admin/ontology", capability: "glossary_read", find_terms: RULE },
+    { key: "find", route: "/context/ontology", capability: "glossary_read", find_terms: RULE },
     { key: "scan", scan: RULE },
-    { key: "lib", route: "/admin/reference-library", capability: "org_settings", library: RULE },
+    { key: "lib", route: "/context/documents", capability: "glossary_read", library: RULE },
   ],
   [],
 );
@@ -153,7 +158,7 @@ beforeEach(() => {
 describe("a find_terms step", () => {
   it("opens Find terms from the glossary's menu, then types the address, starts and cancels", () => {
     const [find] = STEPS;
-    expect(find.route).toBe("/admin/ontology");
+    expect(find.route).toBe("/context/ontology");
     // Opened as a scan step opens it, each click waiting for what it opens: a menu pressed as an
     // action inside a running tour closed again before its item was pressed.
     expect(find.ensureOpen).toEqual(STEPS[1].ensureOpen);
@@ -181,7 +186,7 @@ describe("a find_terms step", () => {
     const acted = await runUiActions(inDialog, RUN);
     expect(acted.steps).toHaveLength(4);
     expect(acted.success).toBe(true);
-    expect(api.startScan).toHaveBeenCalledWith({ url: RULE }, ["bank"]);
+    expect(api.startScan).toHaveBeenCalledWith({ url: RULE }, ["bank"], null);
     expect(api.cancelScan).toHaveBeenCalledWith(8);
     await waitFor(() => expect(document.querySelector(find.element)).not.toBeNull());
   });
@@ -193,7 +198,7 @@ describe("a find_terms step", () => {
       [
         {
           key: "find",
-          route: "/admin/ontology",
+          route: "/context/ontology",
           capability: "glossary_read",
           find_terms: { url: RULE, domains: ["bank"] },
         },
@@ -216,7 +221,7 @@ describe("a find_terms step", () => {
     const acted = await runUiActions(find.actions as UiAction[], RUN);
     expect(acted.steps.at(-1)).toMatch(/^Pressed/);
     expect(acted.success).toBe(true);
-    expect(api.startScan).toHaveBeenCalledWith({ url: RULE }, ["bank"]);
+    expect(api.startScan).toHaveBeenCalledWith({ url: RULE }, ["bank"], null);
     await waitFor(() => expect(document.querySelector(find.element)).not.toBeNull());
   });
 });
@@ -264,6 +269,12 @@ describe("a library step", () => {
         source: RULE,
         media_type: "application/xml",
         status: "proposed",
+        index_status: "ready",
+        index_error: null,
+        index_step: null,
+        index_done: null,
+        index_total: null,
+        terms_note: null,
         domains: ["bank"],
         embedding_model: "sentence-transformers/all-MiniLM-L6-v2",
         needs_reembedding: false,
@@ -274,9 +285,9 @@ describe("a library step", () => {
         replaced_at: null,
       },
     ]);
-    render(<ReferenceLibraryTab />);
+    render(<LibraryPage />);
     const row = await screen.findByTestId("reflib-row-4");
-    expect(lib.route).toBe("/admin/reference-library");
+    expect(lib.route).toBe("/context/documents");
     expect(document.querySelector(lib.element)).toBe(row);
   });
 });

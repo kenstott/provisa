@@ -32,6 +32,8 @@
     "statusUnknown": "Comprobando el host remoto...",
     "answering": "El host remoto responde.",
     "notAnswering": "El host remoto no responde: {{error}}",
+    "health_healthy": "En buen estado",
+    "health_unhealthy": "En mal estado",
     "otherCode": "El host remoto ejecuta otro código ({{reported}}) distinto del que tiene fijado esta fuente ({{pinned}}). Sus lecturas se rechazan hasta que revise el código y lo vuelva a fijar.",
     "repin": "Volver a fijar al código del host",
     "refresh": "Comprobar de nuevo",

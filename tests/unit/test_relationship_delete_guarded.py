@@ -107,11 +107,19 @@ async def _relate(db: Database, rel_id: str, source: str, column: str, target: s
 
 
 async def _relationship_ids(db: Database) -> set[str]:
+    """The relationships in service: a deleted one is kept retired (REQ-2248)."""
     async with db.acquire() as conn:
-        return {r[0] for r in (await conn.execute_core(select(relationships.c.id))).fetchall()}
+        return {
+            r[0]
+            for r in (
+                await conn.execute_core(
+                    select(relationships.c.id).where(relationships.c.retired.is_(False))
+                )
+            ).fetchall()
+        }
 
 
-async def test_a_relationship_nothing_is_published_over_goes_with_its_tags(plane):
+async def test_a_relationship_nothing_is_published_over_is_retired_with_its_tags_kept(plane):
     async with plane.acquire() as conn:
         await conn.execute_core(
             insert(tag_assignments).values(
@@ -127,7 +135,7 @@ async def test_a_relationship_nothing_is_published_over_goes_with_its_tags(plane
         left = (
             await conn.execute_core(select(func.count()).select_from(tag_assignments))
         ).scalar_one()
-    assert left == 0 and await _relationship_ids(plane) == set()
+    assert left == 1 and await _relationship_ids(plane) == set()  # REQ-2248
 
 
 async def test_a_view_that_is_not_materialized_does_not_block(plane):
@@ -211,6 +219,7 @@ async def test_the_mutation_refuses_with_the_view_and_removes_nothing(plane, ser
                 "kind": "table",
                 "id": view,
                 "name": "order_names",
+                "label": "order_names",
                 "via": ["registered_tables.view_sql"],
             }
         ],

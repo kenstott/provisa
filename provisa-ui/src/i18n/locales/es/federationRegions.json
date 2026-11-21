@@ -1,0 +1,19 @@
+{
+  "federationRegions": {
+    "intro": "Cada región ejecuta sus consultas en su propio motor: el almacén que la plataforma asignó a esta organización como motor de la región, con su tipo de motor y su URL de conexión.",
+    "readOnlyNote": "El administrador de la plataforma asigna el motor de cada región. Aquí se muestra en solo lectura.",
+    "sandboxNote": "Se muestra para explicar las regiones. No se puede cambiar en una demo.",
+    "restartNote": "Un cambio se aplica cuando se reinician los nodos de la región.",
+    "restartPending": "Guardado. El cambio se aplica cuando se reinician los nodos de la región.",
+    "edit": "Editar",
+    "store": "Almacén del motor",
+    "kind": "Tipo de motor",
+    "url": "URL",
+    "sharedWith": "También es el motor de",
+    "storeHelp": "El almacén que esta región nombra como su motor. Qué almacén es se define en la página Plataforma.",
+    "sharedHint": "También es el motor de {{regions}}. Un cambio aquí se aplica también allí.",
+    "kindHelp": "El motor que ejecuta este almacén.",
+    "urlHelp": "La URL de conexión del motor, o una referencia como ${env:NAME}. Se guarda exactamente como se escribió. Una contraseña incluida no se vuelve a mostrar; deje la URL sin cambios para conservarla.",
+    "storeMissing": "La región {{region}} nombra {{store}} como su motor, y la organización no tiene ningún almacén {{store}}."
+  }
+}

@@ -15,8 +15,8 @@
 
 import { describe, expect, it } from "vitest";
 import { forceLayout } from "../../../pages/tables/profile3d/forceLayout";
-import { GLOSSARY_SCOPE, layoutGraph, visibleGraph, NO_FILTERS, type LayerId } from "../graphModel";
-import { glossaryGraph, type TermRow } from "../glossaryGraphData";
+import { ONTOLOGY_SCOPE, layoutGraph, visibleGraph, NO_FILTERS, type LayerId } from "../graphModel";
+import { glossaryGraph, type TermRow } from "../ontologyData";
 
 type At = Map<string, [number, number, number]>;
 
@@ -49,7 +49,7 @@ const TERMS: TermRow[] = ["pet-store", "shelter"].flatMap((domain, d) =>
         tableId: table,
         tableName: `t${table}`,
         domainId: domain,
-        registeredTable: { id: table, product: productOf(table) },
+        registeredTable: { id: table, dataProductTables: [{ dataProduct: productOf(table) }] },
       })),
     };
   }),
@@ -57,7 +57,7 @@ const TERMS: TermRow[] = ["pet-store", "shelter"].flatMap((domain, d) =>
 
 const G = glossaryGraph(TERMS, []);
 const view = (layers: LayerId[]) =>
-  visibleGraph(G, new Set(layers), NO_FILTERS, new Set(), GLOSSARY_SCOPE);
+  visibleGraph(G, new Set(layers), NO_FILTERS, new Set(), ONTOLOGY_SCOPE);
 
 /** The median distance of ``ids`` from their centre. */
 function spread(at: At, ids: string[]): number {
@@ -73,10 +73,12 @@ const core = (ids: string[]) =>
 describe("the Ontology View's layout with Data on", () => {
   it("joins a data product to its tables alone: no domain edge, no domain of its own", () => {
     const g = view(["ontology", "domains", "columns", "data"]);
-    expect(g.edges.filter((e) => e.a === "p:workforce_ops").map((e) => e.b).sort()).toEqual([
-      "t:100",
-      "t:101",
-    ]);
+    expect(
+      g.edges
+        .filter((e) => e.a === "p:workforce_ops")
+        .map((e) => e.b)
+        .sort(),
+    ).toEqual(["t:100", "t:101"]);
     expect(g.edges.some((e) => e.kind === "in_domain" && e.a.startsWith("p:"))).toBe(false);
     expect(g.nodes.map((n) => n.id)).not.toContain("d:hr");
   });

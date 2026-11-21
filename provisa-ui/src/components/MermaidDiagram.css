@@ -7,12 +7,50 @@
 .stats-mermaid {
   padding: 12px 16px;
   border-bottom: 1px solid var(--surface);
-  overflow-x: auto;
 }
 
-/* Width and max-width are set per chart by fitSvgToWidth (MermaidDiagram.tsx). */
-.stats-mermaid svg {
+/* A canvas given its height (the plan panes) fills it: the stage takes the room the error leaves. */
+.stats-mermaid--sized {
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  border-bottom: none;
+}
+
+/* The plan diagram's canvas: the one graph's stage (provisa-graph.css), its colours the graph's
+   tokens (--pg-canvas, --plan-accent, set per colour scheme). The drawing is moved and scaled by
+   its view (mermaidFit.ts); the canvas clips it. */
+.plan-stage {
+  border: 1px solid var(--mantine-color-default-border);
+  border-radius: var(--mantine-radius-sm);
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+.plan-stage:active {
+  cursor: grabbing;
+}
+.plan-stage:fullscreen {
+  border: none;
+  border-radius: 0;
+}
+.plan-drawing {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform-origin: 0 0;
+}
+.plan-drawing > svg {
   display: block;
+}
+.plan-stage g.node.plan-node-pickable {
+  cursor: pointer;
+}
+/* The node picked: the graph's accent, as a selected node of the one graph is drawn. Mermaid's own
+   stylesheet names the diagram by id, so only !important outranks it. */
+.plan-stage g.node.plan-node-selected :is(rect, polygon, path, circle, ellipse) {
+  stroke: var(--plan-accent) !important;
+  stroke-width: 2.5px !important;
 }
 
 .stats-mermaid-error {

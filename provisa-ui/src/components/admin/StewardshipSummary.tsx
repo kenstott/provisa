@@ -9,7 +9,7 @@
 // permission from the copyright holder.
 
 // REQ-2144 (A STEWARD SEES THE IMPACT OF EACH ACTION): the stewardship summary -- the terms agents
-// can see, the ~grounded terms each waiting on one approval, and the approved terms that reach no
+// can see, the terms one approval from reaching data, and the approved terms that reach no
 // data -- and the defined, grounded drafts a steward approves together.
 
 import { useCallback, useEffect, useState } from "react";

@@ -135,12 +135,15 @@ async def _collect_events(
     that has landed everything so far stands; with nothing committed it reads the topic from its
     earliest offset (REQ-1733), and the table's snapshot would fill *count*."""
     from provisa.kafka import landed_offsets
+    from provisa.kafka.security import PLAINTEXT
 
     topic = provider._build_topic(table)  # noqa: SLF001
+    # The compose stack's Kafka is a plain cluster (REQ-147).
     await landed_offsets.record(
         KAFKA_BOOTSTRAP,
         provider._consumer_group_id,  # noqa: SLF001
-        await landed_offsets.end_offsets(KAFKA_BOOTSTRAP, topic),
+        await landed_offsets.end_offsets(KAFKA_BOOTSTRAP, topic, security=PLAINTEXT),
+        security=PLAINTEXT,
     )
     events = []
     try:
@@ -214,13 +217,8 @@ def debezium_connector(tenant_db):
     debezium_pg_host = os.environ.get("DEBEZIUM_PG_HOST", "postgres")
     debezium_pg_port = int(os.environ.get("DEBEZIUM_PG_PORT", "5432"))
 
-    # Reachability probe only: skip if the Connect REST API is genuinely down.
-    # Any other failure (registration error, connector not RUNNING) must fail loudly.
-    try:
-        httpx.get(f"{DEBEZIUM_URL}/connectors", timeout=5)
-    except httpx.HTTPError as exc:
-        pytest.skip(f"Debezium Connect not reachable at {DEBEZIUM_URL}: {exc}")
-
+    # Debezium Connect's readiness is the debezium_server fixture's wait (injected by the
+    # requires_debezium marker); an unreachable API fails the registration below.
     _register_connector(
         pg_host=debezium_pg_host,
         pg_port=debezium_pg_port,

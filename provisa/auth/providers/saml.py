@@ -585,11 +585,16 @@ class SamlAuthProvider(AuthProvider):  # REQ-1265
         return AuthIdentity(
             user_id=claims["sub"],
             email=claims.get("email"),
+            # REQ-1261: the address is the directory's assertion, not the person's own entry.
+            email_verified=bool(claims.get("email")),
             display_name=claims.get("name"),
             roles=list(claims.get("groups", [])),
             raw_claims={
                 "name_id": claims.get("name_id"),
                 "email": claims.get("email"),
                 "groups": list(claims.get("groups", [])),
+                # REQ-812: an assertion cannot be asked again what it holds, so what it grants is
+                # trusted until the session it was exchanged for expires.
+                "exp": claims["exp"],
             },
         )

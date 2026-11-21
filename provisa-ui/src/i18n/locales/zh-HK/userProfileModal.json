@@ -25,7 +25,7 @@
     "leaveOrg": "退出",
     "leaveHelp": "退出後您將失去該機構的存取權。若您是其唯一的機構管理員，請先提升其他人為管理員。",
     "patHeading": "個人存取權杖",
-    "patHelp": "個人存取權杖可讓您從無法開啟瀏覽器的工具登入——psql、Neo4j 用戶端、Arrow Flight 或 gRPC 用戶端、MCP 用戶端或指令碼。它在本組織內以您的身分運作。",
+    "patHelp": "個人存取權杖讓你從無法開啟瀏覽器的工具登入，例如 psql、Neo4j 用戶端、Arrow Flight 或 gRPC 用戶端、MCP 用戶端或指令碼。它在此組織中代表你執行操作。",
     "patName": "名稱",
     "patExpiresInDays": "有效期（天）",
     "patIssue": "建立權杖",
@@ -44,6 +44,9 @@
     "deleteAccountConfirmLabel": "輸入 {{userId}} 以確認",
     "deleteAccountButton": "刪除我的帳戶",
     "patEnvironment": "環境",
-    "patEnvironmentHelp": "權杖只在一個環境中有效：即簽發時您正在檢視的環境。新權杖將在 {{env}} 中有效。"
+    "patEnvironmentHelp": "權杖只在一個環境中有效：即簽發時您正在檢視的環境。新權杖將在 {{env}} 中有效。",
+    "patRoles": "角色",
+    "patRolesHelp": "權杖只能以您在此選擇的角色執行操作,且僅在您擁有這些角色期間有效。",
+    "patRolesPlaceholder": "選擇角色"
   }
 }

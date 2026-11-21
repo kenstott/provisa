@@ -417,7 +417,7 @@ Attach автоматически подготавливает все предп
 | Переменная окружения | По умолчанию | Назначение |
 | --------- | --------- | --------- |
 | `PROVISA_REDIRECT_ENABLED` | `false` | Включить перенаправление по порогу на стороне сервера |
-| `PROVISA_REDIRECT_THRESHOLD` | `1000` | Порог по количеству строк по умолчанию |
+| `PROVISA_REDIRECT_THRESHOLD` | `100000` | Порог по количеству строк по умолчанию |
 | `PROVISA_REDIRECT_FORMAT` | `parquet` | Формат перенаправления по умолчанию |
 | `PROVISA_REDIRECT_BUCKET` | `provisa-results` | Имя бакета S3 |
 | `PROVISA_REDIRECT_ENDPOINT` | | URL S3-совместимой конечной точки |

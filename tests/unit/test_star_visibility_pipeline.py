@@ -48,7 +48,9 @@ async def _raw(monkeypatch, sql: str, *, tables: list[dict], views: dict | None 
     state = _fake_pipeline_state(tables=tables)
     if views:
         state.view_sql_map = views
-        state.role_build_inputs = {"draft_tables": []}  # every input of the view in service
+        state.role_build_inputs = {
+            "withdrawn_tables": [],
+        }  # every input of the view in service
     monkeypatch.setattr(app_mod, "state", state, raising=False)
     decision = RouteDecision(
         route=Route.DIRECT, source_id=SOURCE_ID, dialect="postgres", reason="t"

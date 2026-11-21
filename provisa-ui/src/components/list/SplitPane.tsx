@@ -101,7 +101,7 @@ export function SplitPane({
   const { t } = useTranslation();
   const ownLeave = usePanelLeave();
   const leaving = leave ?? ownLeave;
-  // The panel's own ways out ask first when its form has changes. Escape keeps its own rule.
+  // The panel's own ways out -- its close, its back, Escape -- ask first when its form has changes.
   const close = () => leaving.guard(onClose);
   const open = children !== null;
   const rowRef = useRef<HTMLDivElement>(null);
@@ -164,7 +164,8 @@ export function SplitPane({
     if (e.key !== "Escape" || e.defaultPrevented || !closeOnEscape) return;
     if (!e.currentTarget.contains(e.target as Node)) return;
     e.stopPropagation();
-    onClose();
+    // The same way out as the panel's close: a form with unsaved changes asks first.
+    close();
   };
   const provided = (node: ReactNode) => (
     <PanelLeaveContext.Provider value={leaving}>

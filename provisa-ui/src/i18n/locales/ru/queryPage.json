@@ -7,7 +7,7 @@
     "redirectHint": "Все результаты перенаправляются в S3",
     "queryStats": "Статистика запроса",
     "schemaError": "Ошибка схемы: {{message}}",
-    "redirectReady": "Перенаправление готово — строк: {{rowCount}} ({{contentType}})",
+    "redirectReady": "Перенаправление готово: строк — {{rowCount}} ({{contentType}})",
     "download": "Скачать",
     "dismissRedirect": "Скрыть уведомление о перенаправлении",
     "formatNone": "Нет",

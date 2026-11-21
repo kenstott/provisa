@@ -80,8 +80,7 @@ function useVersionsTable(versions: ContractVersion[], tableId: number): PanelTa
     testId: `data-contract-history-${tableId}`,
     rowTestId: (row) => rowId(row.version),
     rows: [...versions].reverse().map((v) => ({
-      version: v.contract.version,
-      status: v.contract.status,
+      version: v.version,
       saved_at: v.saved_at,
       saved_by: v.saved_by,
       changes: v.changes,
@@ -106,14 +105,6 @@ function useVersionsTable(versions: ContractVersion[], tableId: number): PanelTa
               </Badge>
             )}
           </Stack>
-        ),
-      },
-      {
-        name: "status",
-        cell: (row) => (
-          <span data-testid={`${rowId(row.version)}-status`}>
-            {t(`dataProductsTab.contract.status.${String(row.status)}`)}
-          </span>
         ),
       },
       {
@@ -309,7 +300,11 @@ function VersionChanges({ id, row }: { id: string; row: OdcsRecord }) {
         <Group key={n} gap={6} wrap="nowrap" align="baseline" justify="space-between">
           <Text size="sm" style={{ minWidth: 0, overflowWrap: "anywhere" }}>
             {t(`dataProductsTab.contract.change.${c.kind}`, {
-              subject: c.subject,
+              // A term of use is named in the reader's words; every other subject is a name.
+              subject:
+                c.kind === "terms_of_use_changed"
+                  ? t(`dataProductOffers.term_${c.subject}`)
+                  : c.subject,
               before: c.before,
               after: c.after,
             })}

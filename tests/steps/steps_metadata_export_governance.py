@@ -15,6 +15,7 @@ from pytest_bdd import given, scenarios, then, when
 from provisa.api.metadata_export import build_snapshot
 from provisa.api.metadata_export.model import GovernanceSignal
 from provisa.core.models import (
+    DataProduct,
     Column,
     Domain,
     ProvisaConfig,
@@ -47,8 +48,6 @@ def _governed_config(shared_data):
                 domain_id="sales",
                 schema_name="public",
                 table_name="customers",
-                # Marked so the table publishes: only Data Product tables enter the snapshot.
-                product_id="prod",
                 columns=[
                     Column(
                         name="ssn",
@@ -71,13 +70,18 @@ def _governed_config(shared_data):
         ],
         relationships=[],
         roles=[
-            Role(id="analyst", description="Test role.", capabilities=[], domain_access=["*"]),
-            Role(id="admin", description="Test role.", capabilities=[], domain_access=["*"]),
+            Role(
+                id="analyst", description="Test role.", capabilities=["usage"], domain_access=["*"]
+            ),
+            Role(id="admin", description="Test role.", capabilities=["usage"], domain_access=["*"]),
         ],
         rls_rules=[
             RLSRule(
                 table_id="customers", role_id="analyst", filter=RLS_FILTER, description="Test rule."
             )
+        ],
+        data_products=[
+            DataProduct(id="prod", domain_id="sales", name="prod", tables=["wh.public.customers"])
         ],
     )
 

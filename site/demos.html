@@ -31,13 +31,9 @@
         <span class="brand-tag">Preview</span>
       </a>
       <nav class="nav-links" aria-label="Primary">
-        <a href="/#interfaces">Interfaces</a>
-        <a href="/#governance">Governance</a>
-        <a href="/#sources">Sources</a>
-        <a href="/compare">Compare</a>
-        <a href="/#deploy">Deploy</a>
-        <a href="/how-it-works">How</a>
-        <a href="/demos" aria-current="page">Demos</a>
+        <a href="/#use-cases">Use cases</a>
+        <a href="/demos">Demos</a>
+        <a href="/works-with">Works with</a>
         <a href="/docs">Docs</a>
         <a class="nav-cta" href="/#download">Download</a>
       </nav>
@@ -56,7 +52,7 @@
       </div>
 
       <!-- demos:start -->
-<div data-count="29">
+<div data-count="31">
 <nav class="demo-filters" aria-label="Filter by problem">
   <a class="demo-chip" href="#backend">App backends</a>
   <a class="demo-chip" href="#bi">BI across sources</a>
@@ -106,6 +102,14 @@
 <section class="demo-group" id="bi">
 <h2 class="demo-group-head">BI across sources</h2>
 <div class="demo-grid">
+<article class="demo-card" data-demo="affirmation">
+  <img class="demo-shot" src="/assets/demo-affirmation.4f38d01b33.png" alt="Trade affirmation: the demo in Provisa" loading="lazy" />
+  <div class="demo-body">
+    <h2>Trade affirmation</h2>
+    <p>An asset manager's trades split across its order system, its execution system, the brokers' confirmations and the custodian's instructions, matched by a Python code table that names each break. Each break shows the time left to its market's affirmation cutoff and the penalty a failed settlement would accrue, and the trades that matched are affirmed by a command.</p>
+    <a class="btn btn-primary" href="https://cloud.provisa.dev/demos/affirmation" target="_blank" rel="noopener">Open live demo</a>
+  </div>
+</article>
 <article class="demo-card" data-demo="cloudpolicy">
   <img class="demo-shot" src="/assets/demo-cloudpolicy.20225d7a17.png" alt="Cloud policy review: the demo in Provisa" loading="lazy" />
   <div class="demo-body">
@@ -246,6 +250,14 @@
     <a class="btn btn-primary" href="https://cloud.provisa.dev/demos/agriculture" target="_blank" rel="noopener">Open live demo</a>
   </div>
 </article>
+<article class="demo-card" data-demo="audit">
+  <img class="demo-shot" src="/assets/demo-audit.9dadf6d393.png" alt="Single Audit readiness: the demo in Provisa" loading="lazy" />
+  <div class="demo-body">
+    <h2>Single Audit readiness</h2>
+    <p>An audit firm's nonprofit clients, their schedules of federal awards and their award records, in its own database, beside the Federal Audit Clearinghouse's filings and USAspending's obligations from government data. Do a client's recorded federal awards match what the government's records show paying it?</p>
+    <a class="btn btn-primary" href="https://cloud.provisa.dev/demos/audit" target="_blank" rel="noopener">Open live demo</a>
+  </div>
+</article>
 <article class="demo-card" data-demo="groupexposure">
   <img class="demo-shot" src="/assets/demo-groupexposure.2bdabd6da4.png" alt="Group exposure through Wikidata: the demo in Provisa" loading="lazy" />
   <div class="demo-body">
@@ -316,9 +328,9 @@
   </div>
 </article>
 <article class="demo-card" data-demo="retail">
-  <img class="demo-shot" src="/assets/demo-retail.3308c82a39.png" alt="One retail group, two regions: the demo in Provisa" loading="lazy" />
+  <img class="demo-shot" src="/assets/demo-retail.3308c82a39.png" alt="A Tale of Two Regions: the demo in Provisa" loading="lazy" />
   <div class="demo-body">
-    <h2>One retail group, two regions</h2>
+    <h2>A Tale of Two Regions</h2>
     <p>A retail group with an EU and a US subsidiary, run as one business in two regions under one model: can it do that without breaking GDPR? EU customer data stays in the EU, group reporting reads EU customers pseudonymised, and access and erasure requests, the insider review and the audit are each one query.</p>
     <a class="btn btn-primary" href="https://cloud.provisa.dev/demos/retail" target="_blank" rel="noopener">Open live demo</a>
   </div>
@@ -360,7 +372,7 @@
         </svg>
         <span class="brand-word">Provisa</span>
       </div>
-      <p class="footer-note">Provisa is a data kernel: a compiler and runtime for building your data control plane. Federation, metrics, ontology and governance from a single model. Nothing to keep in sync. Business Source License 1.1. Non-production use (including evaluation) is free forever, for any size organization. Production use is also free for organizations that, together with their affiliates, have under 100 employees and contractors and under $1M in annual revenue, budget, or expenditures; others need a <a href="mailto:license@provisa.dev">commercial license</a> for production use.</p>
+      <p class="footer-note">Provisa is a compiler and runtime for building your data control plane. Federation, metrics, ontology and governance from a single model. Nothing to keep in sync. Business Source License 1.1. Non-production use (including evaluation) is free forever, for any size organization. Production use is also free for organizations that, together with their affiliates, have under 100 employees and contractors and under $1M in annual revenue, budget, or expenditures; others need a <a href="mailto:license@provisa.dev">commercial license</a> for production use.</p>
       <nav class="footer-links" aria-label="Footer">
         <a href="/why/one-model">One model</a>
         <a href="/why/interfaces">Interfaces</a>
@@ -369,12 +381,15 @@
         <a href="/why/materialized-views">Materialized views</a>
         <a href="/why/catalog">Catalog</a>
         <a href="/why/no-lock-in">No lock-in</a>
+        <a href="/why/environments">Environments</a>
+        <a href="/how-it-works">How it works</a>
+        <a href="/architecture-faq">Architecture FAQ</a>
         <a href="/why/data-mesh">Data mesh</a>
         <a href="/why/ai">Data for AI</a>
         <a href="/why/ontology">Ontology</a>
         <a href="/why/glossary-that-grounds">Glossary that grounds</a>
-        <a href="/vs/starburst">vs Starburst</a>
-        <a href="/vs/denodo">vs Denodo</a>
+        <a href="/vs/starburst">With Starburst</a>
+        <a href="/vs/denodo">With Denodo</a>
         <a href="/vs/hasura">Coming from Hasura</a>
         <a href="/docs">Docs</a>
         <a href="/register">Register (free license)</a>

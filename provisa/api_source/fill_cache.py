@@ -19,8 +19,8 @@ the hash of the arguments that produced them and when they were fetched.
 
 Nothing fetched from a remote is written into the control plane. The table is written and read
 through the connection the API cache uses on every engine (``EngineRuntime.isolated_sync``), and
-the remote is called the one way every path calls it (``caller.call_api``: the source's auth,
-the endpoint's paging, retries).
+the remote is called the one way every path calls it, its source's contract
+(``api_source.contract.call_endpoint``: the source's auth, the endpoint's paging, retries).
 """
 
 # Requirements: REQ-318, REQ-544, REQ-859, REQ-1661, REQ-1915
@@ -47,9 +47,9 @@ from provisa.api_source.caller import (
     ApiNotFoundError,
     answer_cut_warning,
     answer_rows,
-    call_api,
 )
 from provisa.api_source import engine_cache
+from provisa.api_source.contract import call_endpoint
 from provisa.api_source.engine_cache import (
     CacheLocation,
     _string_literal,
@@ -140,38 +140,6 @@ def endpoint_args(endpoint: ApiEndpoint, given: dict | None) -> dict:
                     args[c.param_name or c.name] = value
                 break
     return args
-
-
-def read_by_parent_keys(endpoint: ApiEndpoint, args: dict, ctx: Any) -> bool:
-    """Whether a statement that gives ``args`` reads ``endpoint`` by its parent's keys and not
-    by argument: a parameter a join feeds (a path parameter, or the query parameter a join
-    targets) is one the statement does not give. Its fills are then one argument set per
-    parent key, and together they are what the statement joins to."""
-    for c in endpoint.columns:
-        if c.param_type is None or (c.param_name or c.name) in args:
-            continue
-        if c.param_type.value == "path":
-            return True
-        if c.param_type.value == "query" and joined_from(endpoint, c.name, ctx) is not None:
-            return True
-    return False
-
-
-def joined_from(endpoint: ApiEndpoint, column: str | None, ctx: Any) -> tuple[Any, str] | None:
-    """The parent table and its column a model join feeds ``endpoint`` from -- through
-    ``column`` when one is named, else through any -- or None when no join does."""
-    if ctx is None:  # no model in hand: no join is known to feed it
-        return None
-    for (src_type, _), join in ctx.joins.items():
-        if join.target.table_name != endpoint.table_name:
-            continue
-        if column is not None and join.target_column != column:
-            continue
-        for parent in ctx.tables.values():
-            if parent.type_name == src_type:
-                return parent, join.source_column
-        return None
-    return None
 
 
 def source_cache_location(state: Any, source_id: str, api_source: Any) -> CacheLocation:
@@ -479,14 +447,12 @@ async def fetch(
     An answer that reports an error at the endpoint's ``error_path``, or a call that fails,
     fails the request (REQ-1661): it is never logged and answered with whatever the cache held."""
     try:
-        answer = await call_api(
+        answer = await call_endpoint(
             endpoint,
+            api_source,
             # REQ-318: the endpoint's default parameters under what the statement gives, as every
             # other read of it calls (router_integration.handle_api_query, replica_read).
             {**endpoint.default_params, **params},
-            base_url=api_source.base_url,
-            auth=api_source.auth,
-            source_headers=api_source.headers,
         )
     except ApiNotFoundError:
         return [], None

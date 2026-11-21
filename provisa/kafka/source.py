@@ -19,6 +19,8 @@ import logging
 from dataclasses import dataclass, field
 from enum import Enum
 
+from provisa.kafka.security import PLAINTEXT, KafkaSecurity
+
 # Requirements: REQ-147, REQ-148, REQ-149, REQ-150, REQ-250
 
 log = logging.getLogger(__name__)
@@ -79,7 +81,7 @@ class KafkaSourceConfig:  # REQ-147
     id: str
     bootstrap_servers: str
     schema_registry_url: str | None = None
-    auth: object = None  # object-ok: KafkaAuth union from core.auth_models; avoids import cycle
+    security: KafkaSecurity = PLAINTEXT
     topics: list[KafkaTopicConfig] = field(default_factory=list)
 
 
@@ -110,40 +112,8 @@ def generate_kafka_table_definitions(
 
 
 def generate_kafka_client_properties(source: KafkaSourceConfig) -> str | None:
-    """Generate JAAS config for Kafka SASL auth. Returns None if no auth."""
-    from provisa.core.auth_models import (
-        KafkaAuthSaslPlain,
-        KafkaAuthSaslScram256,
-        KafkaAuthSaslScram512,
-    )
-    from provisa.core.secrets import resolve_secrets
-
-    auth = source.auth
-    if auth is None:
-        return None
-
-    if isinstance(auth, KafkaAuthSaslPlain):
-        mechanism = "PLAIN"
-        module = "org.apache.kafka.common.security.plain.PlainLoginModule"
-    elif isinstance(auth, KafkaAuthSaslScram256):
-        mechanism = "SCRAM-SHA-256"
-        module = "org.apache.kafka.common.security.scram.ScramLoginModule"
-    elif isinstance(auth, KafkaAuthSaslScram512):
-        mechanism = "SCRAM-SHA-512"
-        module = "org.apache.kafka.common.security.scram.ScramLoginModule"
-    else:
-        return None
-
-    username = resolve_secrets(auth.username)
-    password = resolve_secrets(auth.password)
-
-    return "\n".join(
-        [
-            "security.protocol=SASL_PLAINTEXT",
-            f"sasl.mechanism={mechanism}",
-            f'sasl.jaas.config={module} required username="{username}" password="{password}";',
-        ]
-    )
+    """The client properties of a Kafka source's Trino catalog; None for a plain cluster."""
+    return source.security.client_properties()
 
 
 def generate_topic_table_names(source: KafkaSourceConfig) -> list[str]:
@@ -267,7 +237,12 @@ def infer_columns_from_records(records: list[dict]) -> list[KafkaColumn]:  # REQ
 
 
 async def sample_topic_records(  # REQ-150
-    bootstrap_servers: str, topic: str, max_records: int = 50, timeout_ms: int = 4000
+    bootstrap_servers: str,
+    topic: str,
+    max_records: int = 50,
+    timeout_ms: int = 4000,
+    *,
+    security: KafkaSecurity = PLAINTEXT,
 ) -> list[dict]:
     """Consume up to ``max_records`` JSON messages from ``topic`` (SchemaSource.SAMPLE).
 
@@ -290,6 +265,7 @@ async def sample_topic_records(  # REQ-150
         auto_offset_reset="earliest",
         enable_auto_commit=False,
         group_id=None,
+        **security.client_kwargs(),
     )
     await consumer.start()
     records: list[dict] = []

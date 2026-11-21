@@ -1,6 +1,6 @@
 {
   "storageNotice": {
-    "settings": "Il browser non ha potuto salvare alcune impostazioni. L'app continua con i valori predefiniti.",
-    "session": "Il browser non ha conservato la sessione. L'accesso non durerà finché l'archiviazione del browser non sarà disponibile."
+    "settings": "Il browser non è riuscito a salvare alcune impostazioni. L'app prosegue con i valori predefiniti.",
+    "session": "Il browser non ha conservato la sessione. L'accesso non può durare finché lo storage del browser non è disponibile."
   }
 }

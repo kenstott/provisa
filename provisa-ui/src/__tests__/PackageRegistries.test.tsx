@@ -183,6 +183,44 @@ describe("Admin › Package registries", () => {
     );
   });
 
+  it("adds a Cargo registry by its sparse index and token, as the default", async () => {
+    // REQ-2227: crates have no scope; the credential is the token cargo sends.
+    list.mockResolvedValue([]);
+    render(<PackageRegistriesTab />);
+    expect(await screen.findByTestId("package-registries-cargo-none")).toHaveTextContent(
+      en.packageRegistries.cargoNone,
+    );
+    fireEvent.click(screen.getByTestId("package-registries-add-cargo"));
+    const card = await screen.findByTestId(/^package-registry-new-cargo-\d+$/);
+    const id = card.getAttribute("data-testid") as string;
+    expect(screen.queryByTestId(`${id}-scope`)).toBeNull();
+    expect(card).toHaveTextContent(en.packageRegistries.cargoAddress);
+    expect(card).toHaveTextContent(en.packageRegistries.cargoCredential);
+    expect(card).toHaveTextContent(en.packageRegistries.cargoMirror);
+    expect(screen.getByTestId(`${id}-address`)).toHaveAttribute(
+      "placeholder",
+      "sparse+https://cargo.example.com/index/",
+    );
+    fireEvent.change(screen.getByTestId(`${id}-address`), {
+      target: { value: "sparse+https://cargo.acme.test/index/" },
+    });
+    fireEvent.change(screen.getByTestId(`${id}-credential`), {
+      target: { value: "made-up-cargo-token" },
+    });
+    fireEvent.click(screen.getByTestId(`${id}-mirror`));
+    fireEvent.click(screen.getByTestId(`${id}-save`));
+    await waitFor(() =>
+      expect(add).toHaveBeenCalledWith("acme", {
+        kind: "cargo",
+        address: "sparse+https://cargo.acme.test/index/",
+        scope: null,
+        credential: "made-up-cargo-token",
+        mirror: true,
+        ca_bundle: null,
+      }),
+    );
+  });
+
   it("replaces a kept entry by its id", async () => {
     render(<PackageRegistriesTab />);
     fireEvent.change(await screen.findByTestId("package-registry-r1-address"), {

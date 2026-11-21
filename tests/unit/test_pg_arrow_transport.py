@@ -70,8 +70,9 @@ class _FakeCursor:
 
 
 class _FakeConnection:
-    def __init__(self, dsn, reader, table):
+    def __init__(self, dsn, reader, table, autocommit=False):
         self.dsn = dsn
+        self.autocommit = autocommit
         self.closed = 0
         self.cursor_obj = _FakeCursor(self, reader, table)
 
@@ -90,8 +91,8 @@ def adbc(monkeypatch):
         opened=opened, reader=_FakeReader(["b1", "b2", "b3"]), table="arrow-table"
     )
 
-    def _connect(dsn):
-        con = _FakeConnection(dsn, state.reader, state.table)
+    def _connect(dsn, *_, autocommit=False, **__):
+        con = _FakeConnection(dsn, state.reader, state.table, autocommit)
         opened.append(con)
         return con
 
@@ -145,6 +146,8 @@ def test_run_arrow_opens_its_own_connection_and_returns_it_to_the_pool(adbc):
 
     assert len(adbc.opened) == 1
     assert adbc.opened[0].dsn == "postgresql://provisa@localhost:5432/warehouse"
+    # a pooled read must not leave its connection idle inside a transaction
+    assert adbc.opened[0].autocommit is True
     assert adbc.opened[0].closed == 0
     assert adbc.opened[0] in runtime._get_adbc_pool()._pool  # pyright: ignore[reportAttributeAccessIssue]
 

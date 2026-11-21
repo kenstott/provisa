@@ -1,0 +1,12 @@
+{
+  "sensitiveScan": {
+    "scan": "Scannen op gevoelige waarden",
+    "help": "Leest op de achtergrond een steekproef van de tekstkolommen van de tabel en zoekt naar gevoelige waarden in de tekst, zoals een burgerservicenummer in een notitie. Alleen het aandeel waarden wordt bewaard, nooit de waarden zelf. Een hint verandert op zichzelf niets: kies een toekenning, maskering of nepwaarde voor de kolom.",
+    "saveFirst": "Sla de tabel op om de waarden te scannen.",
+    "running": "Een steekproef van de tekstkolommen wordt gescand…",
+    "succeeded": "Laatste scan: {{rows}} rijen in de steekproef, {{columns}} tekstkolommen.",
+    "failed": "De scan is mislukt: {{error}}",
+    "header": "Gevonden in waarden",
+    "hint": "Bevat {{kind}} in {{percent}}% van de steekproefwaarden"
+  }
+}

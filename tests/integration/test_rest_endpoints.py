@@ -285,8 +285,9 @@ class TestRestEndpointsHTTP:
     schema pre-loaded (same stack as the other integration tests).
     """
 
-    async def _make_client(self, rest_tenant_db):
-        """Construct a minimal AppState and return an AsyncClient."""
+    async def _make_client(self, rest_tenant_db, with_customers: bool = False):
+        """Construct a minimal AppState and return an AsyncClient. ``with_customers`` adds the
+        customers table and its relationships with orders in both directions (REQ-1929)."""
         httpx = pytest.importorskip("httpx")
         from provisa.api.rest.generator import create_rest_router
         from provisa.api.app import AppState
@@ -328,6 +329,53 @@ class TestRestEndpointsHTTP:
                     _col("amount", "decimal(10,2)"),
                 ]
             }
+            relationships: list[dict] = []
+            if with_customers:
+                tables[0]["columns"].append(
+                    {"column_name": "customer_id", "visible_to": ["org_admin"]}
+                )
+                column_types[1].append(_col("customer_id", "integer", nullable=False))
+                tables.append(
+                    {
+                        "id": 2,
+                        "source_id": "test-pg",
+                        "domain_id": "default",
+                        "schema_name": "public",
+                        "table_name": "customers",
+                        "write_ops": [],
+                        "write_returns_rows": False,
+                        "write_refused_forms": [],
+                        "columns": [
+                            {"column_name": "id", "visible_to": ["org_admin"]},
+                            {"column_name": "name", "visible_to": ["org_admin"]},
+                            {"column_name": "email", "visible_to": ["auditor"]},
+                        ],
+                    }
+                )
+                column_types[2] = [
+                    _col("id", "integer", nullable=False),
+                    _col("name", "varchar(100)"),
+                    _col("email", "varchar(200)"),
+                ]
+                relationships = [
+                    {
+                        "id": "ord-cust",
+                        "source_table_id": 1,
+                        "target_table_id": 2,
+                        "source_column": "customer_id",
+                        "target_column": "id",
+                        "cardinality": "many-to-one",
+                    },
+                    {
+                        "id": "cust-ord",
+                        "source_table_id": 2,
+                        "target_table_id": 1,
+                        "source_column": "id",
+                        "target_column": "customer_id",
+                        "cardinality": "one-to-many",
+                        "alias": "orders",
+                    },
+                ]
             # REQ-1297: an org's data-plane administrator, without the platform-bypass 'admin'
             # capability. Every column above grants org_admin explicitly, so the schema it sees comes
             # from real grants rather than from a wildcard.
@@ -339,7 +387,7 @@ class TestRestEndpointsHTTP:
             }
             si = SchemaInput(
                 tables=tables,
-                relationships=[],
+                relationships=relationships,
                 column_types=column_types,
                 naming_rules=[],
                 role=role,
@@ -369,6 +417,8 @@ class TestRestEndpointsHTTP:
         app_state.schemas = {"org_admin": schema}
         app_state.contexts = {"org_admin": ctx}
         app_state.rls_contexts = {"org_admin": RLSContext.empty()}
+        # Governance serves a role the columns of the registry a server loads (visible_to).
+        app_state.tables = tables
         # Governance takes the acting role's record (38b902192: a role reaches the domains it
         # lists), so the role the request runs as must be loaded, as it is on a real server.
         app_state.roles = {
@@ -388,9 +438,10 @@ class TestRestEndpointsHTTP:
         app_state.model_db = app_state.tenant_db
         # REST routes are domain-scoped (/data/rest/{domain_id}/{table_name}); the handler resolves
         # the GraphQL field via this path map (REQ-256).
-        app_state.table_path_maps = {
-            "org_admin": {"orders": {"domain_id": "default", "table_name": "orders"}}
-        }
+        path_map = {"orders": {"domain_id": "default", "table_name": "orders"}}
+        if with_customers:
+            path_map["customers"] = {"domain_id": "default", "table_name": "customers"}
+        app_state.table_path_maps = {"org_admin": path_map}
 
         app = FastAPI()
         rest_router = create_rest_router(app_state)
@@ -421,6 +472,44 @@ class TestRestEndpointsHTTP:
             body = response.json()
             assert "data" in body
             assert isinstance(body["data"], list)
+        finally:
+            await pool.close_all()
+
+    async def test_fields_dot_paths_return_relationships_nested(self, rest_tenant_db):
+        """REQ-1929: ?fields= dot-paths through relationships return the related row nested --
+        a many-to-one as an object, a one-to-many as a list -- read from the live database."""
+        client, pool = await self._make_client(rest_tenant_db, with_customers=True)
+
+        try:
+            async with client:
+                orders = await client.get(
+                    "/data/rest/default/orders",
+                    params={"fields": "id,customer.name", "limit": "5"},
+                )
+                customers = await client.get(
+                    "/data/rest/default/customers",
+                    params={"fields": "id,orders.amount", "limit": "5"},
+                )
+                hidden = await client.get(
+                    "/data/rest/default/orders", params={"fields": "id,customer.email"}
+                )
+            assert orders.status_code == 200, orders.text
+            order_rows = orders.json()["data"]
+            assert order_rows
+            for row in order_rows:
+                assert set(row) == {"id", "customer"}
+                assert set(row["customer"]) == {"name"}
+                assert isinstance(row["customer"]["name"], str)
+            assert customers.status_code == 200, customers.text
+            customer_rows = customers.json()["data"]
+            assert customer_rows
+            assert any(row["orders"] for row in customer_rows)
+            for row in customer_rows:
+                assert isinstance(row["orders"], list)
+                for order in row["orders"]:
+                    assert set(order) == {"amount"}
+            assert hidden.status_code == 400
+            assert "'customer.email'" in hidden.text
         finally:
             await pool.close_all()
 

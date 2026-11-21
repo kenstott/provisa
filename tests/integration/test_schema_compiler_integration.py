@@ -50,7 +50,7 @@ def _make_role(role_id: str = "admin", domain_access: list[str] | None = None) -
         "description": "Test role.",
         "id": role_id,
         "domain_access": domain_access if domain_access is not None else ["*"],
-        "capabilities": [],
+        "capabilities": ["usage"],
     }
 
 
@@ -222,7 +222,7 @@ class TestViewRLSEnforcement:
                 "description": "Test role.",
                 "id": "admin",
                 "domain_access": ["*"],
-                "capabilities": [],
+                "capabilities": ["usage"],
             },
             domains=[{"id": "sales", "graphql_alias": None}],
         )
@@ -235,7 +235,7 @@ class TestViewRLSEnforcement:
                 "description": "Test role.",
                 "id": "analyst",
                 "domain_access": ["*"],
-                "capabilities": [],
+                "capabilities": ["usage"],
             },
             domains=[{"id": "sales", "graphql_alias": None}],
         )
@@ -298,7 +298,7 @@ class TestViewRLSEnforcement:
                 "description": "Test role.",
                 "id": "analyst",
                 "domain_access": ["*"],
-                "capabilities": [],
+                "capabilities": ["usage"],
             },
             domains=[{"id": "sales", "graphql_alias": None}],
         )

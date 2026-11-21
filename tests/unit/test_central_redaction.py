@@ -134,14 +134,14 @@ def test_a_reference_that_does_not_resolve_is_named_unresolved(caplog):
     assert redaction.described("acme")["unresolved"] == ["ops"]
 
 
-def test_an_orgs_rules_apply_to_that_org_and_to_what_leaves_the_process():
+def test_an_orgs_rules_apply_to_that_orgs_text_only():
     acme = redaction.parse_rules([{"name": "badge", "pattern": r"B-\d{4}"}], "org")
     redaction.set_org("acme", acme, {}, _resolve({}))
     redaction.set_org("other", [], {}, _resolve({}))
     assert redaction.redact("B-1234", "acme") == "[REDACTED:badge]"
     assert redaction.redact("B-1234", "other") == "B-1234"
-    # Telemetry and errors carry no org: every org's rules apply together.
-    assert redaction.redact("B-1234") == "[REDACTED:badge]"
+    # A record no org produced: the deployment's rules, not any org's.
+    assert redaction.redact("B-1234") == "B-1234"
 
 
 # --- the automatic rule -------------------------------------------------------------------------
@@ -163,8 +163,14 @@ def test_a_value_shorter_than_the_minimum_is_not_matched():
 
 
 def test_a_user_value_is_matched_from_its_first_resolution():
+    from provisa.core.request_context import reset_current_org, set_current_org
+
     assert redaction.redact("personal-token-99") == "personal-token-99"
-    redaction.note_user_value("gh_token", "personal-token-99")
+    token = set_current_org("acme")  # resolved in a request of acme
+    try:
+        redaction.note_user_value("gh_token", "personal-token-99")
+    finally:
+        reset_current_org(token)
     assert redaction.redact("x personal-token-99 y") == "x [REDACTED:auto:user:gh_token] y"
     assert redaction.described("acme")["resolved_at_use"] == 1
 
@@ -339,7 +345,7 @@ def test_audit_text_is_redacted_before_it_is_hashed_and_encrypted():
         time_travel=None,
         tables=[],
     )
-    row = record.row(None)
+    row = record.row(None, None)
     text = "SELECT '[REDACTED:auto:pw]'"
     assert row["query_text_enc"] == text.encode()
     assert row["query_hash"] == hashlib.sha256(text.encode()).hexdigest()
@@ -370,7 +376,7 @@ def test_an_http_error_body_is_redacted():
     client = TestClient(app)
     bad_resp = client.get("/bad")
     assert bad_resp.status_code == 400
-    assert bad_resp.json() == {"detail": "auth failed: [REDACTED:auto:pw]"}
+    assert bad_resp.json() == {"detail": "auth failed: [REDACTED]"}
     assert int(bad_resp.headers["content-length"]) == len(bad_resp.content)
     # A success body is the data asked for; the middleware leaves it alone.
     assert client.get("/ok").text == SECRET
@@ -393,7 +399,7 @@ def test_a_pgwire_error_message_is_redacted():
     handler.wfile = _W()
     handler._send_pg_error("ERROR", "XX000", f"source said {SECRET}")
     blob = b"".join(written)
-    assert SECRET.encode() not in blob and b"[REDACTED:auto:pw]" in blob
+    assert SECRET.encode() not in blob and b"source said [REDACTED]\x00" in blob
 
 
 def test_a_grpc_handler_error_is_redacted():
@@ -421,8 +427,8 @@ def test_a_grpc_handler_error_is_redacted():
     with pytest.raises(_Abort):
         _unary(_aborts)(None, _Ctx())
     assert aborted == [
-        (grpc.StatusCode.UNKNOWN, "Exception calling application: upstream [REDACTED:auto:pw]"),
-        (grpc.StatusCode.INVALID_ARGUMENT, "bad [REDACTED:auto:pw]"),
+        (grpc.StatusCode.UNKNOWN, "Exception calling application: upstream [REDACTED]"),
+        (grpc.StatusCode.INVALID_ARGUMENT, "bad [REDACTED]"),
     ]
 
 
@@ -446,7 +452,7 @@ def test_a_flight_error_is_redacted_and_keeps_its_type():
 
     with pytest.raises(flight.FlightUnauthenticatedError) as unauth:
         _Server().do_action(None, None)
-    assert SECRET not in str(unauth.value) and "[REDACTED:auto:pw]" in str(unauth.value)
+    assert SECRET not in str(unauth.value) and "token [REDACTED]" in str(unauth.value)
     with pytest.raises(flight.FlightServerError) as other:
         _Server().get_schema(None, None)
     assert SECRET not in str(other.value)
@@ -480,12 +486,19 @@ def test_the_admin_trail_detail_is_redacted(monkeypatch):
             return False
 
     class _Db:
+        model = None
+
         def acquire(self):
             return _Acquire()
 
     asyncio.run(
         org_membership.record_admin_action(
-            _Db(), action="x", actor_id="a", subject_id="s", detail={"why": SECRET}
+            _Db(),
+            org_id="acme",
+            action="x",
+            actor_id="a",
+            subject_id="s",
+            detail={"why": SECRET},
         )
     )
     assert written[0]["detail"] == {"why": "[REDACTED:auto:pw]"}
@@ -496,7 +509,7 @@ def test_an_mcp_tool_error_is_redacted():
 
     redaction.set_org("acme", [], {"pw": SECRET}, _resolve({}))
     said = _redacted_error(ValueError(f"source said {SECRET}"))
-    assert said is not None and str(said) == "source said [REDACTED:auto:pw]"
+    assert said is not None and str(said) == "source said [REDACTED]"
     assert _redacted_error(ValueError("nothing to hide")) is None
 
 

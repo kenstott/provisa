@@ -1,6 +1,6 @@
 # Releasing
 
-Releases are triggered by pushing a git tag. The tag name determines the channel.
+Releases are triggered by pushing a git tag. The tag name determines the channel. For how a change reaches a release, and which stages are in use today, see [Release process](release-process.md).
 
 ## Tag Conventions
 
@@ -32,13 +32,23 @@ The CI workflow (`build-dmg.yml`, named "Build Provisa Packages") triggers on an
 1. **Resolve release metadata.** Detects channel from tag suffix, derives PEP 440 version and asset names.
 2. **Download / package Trino plugins.** Pulls Calcite Trino connectors and packages a tarball.
 3. **Pull core / obs / demo Docker images.** Saves service image tarballs (arm64, plus amd64 core for the Windows container tier)
-4. **Build macOS Core / Obs / Demo DMGs.** Run on `macos-14` (Apple Silicon), airgapped.
+4. **Build macOS Core / Obs / Demo DMGs.** Run on `macos-15` (Apple Silicon), airgapped.
 5. **Build Linux AppImage.** Core, airgapped.
 6. **Build Windows Core installer.** Native, embedded Python, no Docker.
 7. **Build Windows Container-tier installer.** WSL2 + Trino, fetches images on demand (no VirtualBox/OVA)
 8. **Build JDBC driver.** Maven shaded JAR.
 9. **Build and test Python client**, then **Publish to PyPI**
-10. **Publish GitHub Release.** Uploads all assets, sets pre-release flag for alpha/beta/rc.
+10. **Publish GitHub Release.** Checks that the draft release carries every asset, then undrafts it and sets the pre-release flag for beta/rc.
+
+## How Assets Reach the Release
+
+Each job that builds a release asset attaches it to the draft release itself, right after building it, with the `attach-release-assets` action (`.github/actions/attach-release-assets`). The action creates the draft for the tag when it does not exist yet (through `ensure-release`, which never undrafts) and runs `gh release upload <tag> <files> --clobber`. Every file is uploaded once. GitHub has no server-side copy from a workflow artifact to a release asset, and the earlier design, which downloaded every artifact in the publish job and uploaded it again, took more than 30 minutes for v0.1.0-alpha.510.
+
+The attach step runs only on a real release: its `if: inputs.publish` is true only when the run was started on the tag it names with `publish` checked. A dry run attaches nothing. It uploads each asset to the run as a workflow artifact instead, and that upload fails when the file is missing, so a green dry run shows every asset was built. On a release, a job keeps a workflow artifact only when another job of the same run reads it: the PyPI jobs read the client and notebook wheels, and the installers read the UI build, the image tarballs and the Trino plugins.
+
+The publish job ("Release: attach and publish", `release-publish.yml`) downloads nothing and attaches nothing. It reads the draft's asset list and refuses to undraft if any expected installer, image tarball, JAR or wheel (one `provisa` wheel per platform, the client and the notebook) is missing. Then it undrafts the release and regenerates the wheel index on GitHub Pages. The JDBC JAR's Sigstore attestation is made in the job that builds the JAR.
+
+To publish a release whose publish job did not run, dispatch "Release: attach and publish" by hand with the release's `version` and `publish` checked. The assets are already on the draft, so the dispatch verifies them, undrafts the release, writes the index and pushes the engine and Flight proxy images.
 
 ## Release Assets
 
@@ -74,14 +84,15 @@ What each release artifact carries, as the release workflows build it:
 
 | Artifact | Signature |
 | -------- | --------- |
-| `provisa` and `provisa-client` on PyPI | Sigstore-signed PEP 740 attestation per file (`attestations: true`), verifiable on pypi.org |
+| `provisa-client` and `provisa-notebook` on PyPI | Sigstore-signed PEP 740 attestation per file (`attestations: true`), verifiable on pypi.org |
+| `provisa` wheels, attached to the GitHub release | Not signed; the index at `https://kenstott.github.io/provisa/simple/` carries each wheel's sha256, which pip checks |
 | `provisa-pg-ext`, `provisa-duckdb-ext` on PyPI | Sigstore-signed PEP 740 attestation per file |
 | JDBC driver `.jar` | Sigstore build-provenance attestation (`actions/attest-build-provenance`) |
 | macOS `.dmg` installers | Developer ID code signature and Apple notarization |
 | Windows `.exe` installers | Not signed |
 | Linux `.AppImage` | Not signed |
 
-The signed install on any OS is `pip install provisa`, the Sigstore-attested PyPI package. A reviewer who needs a signed artifact on Linux or Windows installs with pip. The Windows build signs with Authenticode when a code-signing certificate is configured (`WINDOWS_CERT_PFX_BASE64`, `WINDOWS_CERT_PFX_PASSWORD`, `WINDOWS_CERT_TIMESTAMP_URL`, read by `packaging/windows/build-sfx.ps1`); none is configured, so it ships unsigned.
+The `provisa` server wheel left PyPI at v0.1.0-alpha.510, when the project reached PyPI's 10 GB size limit. Each platform's wheel job attaches its wheel to the release, and the "Release: attach and publish" workflow rebuilds a PEP 503 index of every published release's wheels on GitHub Pages; install with `pip install provisa --extra-index-url https://kenstott.github.io/provisa/simple/`. No signed install of the server exists on Linux or Windows now. The Windows build signs with Authenticode when a code-signing certificate is configured (`WINDOWS_CERT_PFX_BASE64`, `WINDOWS_CERT_PFX_PASSWORD`, `WINDOWS_CERT_TIMESTAMP_URL`, read by `packaging/windows/build-sfx.ps1`); none is configured, so it ships unsigned.
 
 Dependencies and CVE gates:
 

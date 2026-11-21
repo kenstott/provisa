@@ -5,10 +5,9 @@
     "identity": "Identidade",
     "associations": "Associações",
     "load": "Gestão de carga e atualidade",
-    "query": "Consulta",
+    "query": "API",
     "quality": "Qualidade",
     "columns": "Colunas",
-    "writes": "Gravações",
     "source": "Fonte",
     "schema": "Esquema",
     "table": "Tabela",
@@ -18,6 +17,10 @@
     "noTerms": "Nenhum termo nomeia uma coluna desta tabela",
     "relationships": "Relacionamentos",
     "noRelationships": "Esta tabela não participa de nenhum relacionamento",
+    "metrics": "Métricas",
+    "noMetrics": "Nenhuma métrica usa esta tabela",
+    "metricTerm": "{{term}}:",
+    "metricMethod": "Calculado como: {{method}}",
     "fromSource": "{{value}} (da fonte)",
     "fromSourceAsIs": "Como na fonte",
     "notScheduledLikeSource": "Não é lida apenas por agendamento, embora a sua fonte seja: uma consulta pode ler a fonte.",
@@ -33,9 +36,11 @@
       "skipped": "Ignorado"
     },
     "classTerm": "As linhas são instâncias de",
-    "classTermPlaceholder": "Escolha um termo",
     "noClassTerm": "Nenhum termo",
     "classTermUnreadable": "Não foi possível ler seu termo: {{error}}",
+    "classTermNoModel": "Não foi possível ler o termo: suas funções não podem ler as tabelas do modelo.",
+    "classTermNoEntry": "Não foi possível ler o termo: suas funções não podem ler a entrada desta tabela no modelo.",
+    "classTermNoField": "Não foi possível ler o termo: suas funções não podem ler de qual termo as linhas de uma tabela são instâncias.",
     "access": "Acesso"
   }
 }

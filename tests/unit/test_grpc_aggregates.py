@@ -450,7 +450,7 @@ class TestServicerAggregateDispatch:
             calls.append(("aggregate", type_name))
             return "AGG_RESULT"
 
-        async def fake_plain_query(request, context, type_name, field_name):
+        async def fake_plain_query(request, context, type_name):
             calls.append(("plain", type_name))
             if False:
                 yield None  # pragma: no cover - keep this an async generator
@@ -476,7 +476,7 @@ class TestServicerAggregateDispatch:
             yield "ROW1"
             yield "ROW2"
 
-        async def fake_plain_query(request, context, type_name, field_name):
+        async def fake_plain_query(request, context, type_name):
             calls.append(("plain", type_name))
             if False:
                 yield None  # pragma: no cover
@@ -496,8 +496,8 @@ class TestServicerAggregateDispatch:
 
         calls = []
 
-        async def fake_plain_query(request, context, type_name, field_name):
-            calls.append(("plain", type_name, field_name))
+        async def fake_plain_query(request, context, type_name):
+            calls.append(("plain", type_name))
             yield "ROW"
 
         async def fake_aggregate(request, context, type_name):
@@ -511,7 +511,7 @@ class TestServicerAggregateDispatch:
         results = list(handler(MagicMock(), MagicMock()))
 
         assert results == ["ROW"]
-        assert calls == [("plain", "Inquiries", "inquiries")]
+        assert calls == [("plain", "Inquiries")]
 
     def test_type_name_stripped_correctly_for_aggregate(self):
         pb2 = _make_pb2_module_with_aggregates("Orders")

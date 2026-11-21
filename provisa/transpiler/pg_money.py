@@ -43,10 +43,12 @@ from sqlglot.errors import OptimizeError, ParseError
 from sqlglot.optimizer.scope import Scope, traverse_scope
 
 from provisa.core.ir_types import SUBTYPES
-from provisa.core.pg_error import MARK, PostgresError
+from provisa.core.pg_error import END, MARK, PostgresError
 from provisa.core.pg_money import cash_in
 from provisa.transpiler.function_macros import outcome
 from provisa.transpiler.native_subtype import COMPARISONS, SubtypeOperationRefused, marked
+from provisa.transpiler.polyfill import Refusal
+from provisa.transpiler.polyfill.money import MONEY_TEXT
 
 MONEY = "money"
 MONEY_ARRAY = "money[]"
@@ -278,16 +280,40 @@ def _case(condition: exp.Expr, then: exp.Expr, otherwise: exp.Expr) -> exp.Expr:
     return exp.Case(ifs=[exp.If(this=condition, true=then)], default=otherwise)
 
 
+def _guarded(
+    outside: exp.Expr, value: exp.Expr, sqlstate: str, message: str, dialect: str
+) -> exp.Expr | None:
+    """``value``, PostgreSQL's error ``sqlstate`` where ``outside`` holds; None where ``dialect``
+    raises none. ClickHouse's throwIf answers 0 where it does not raise, so it is added to the
+    value, which is NULL where it would raise: the value is not computed there."""
+    if dialect == "clickhouse":
+        text = f"{MARK} {sqlstate}: {message}{END}"
+        raised = exp.Anonymous(
+            this="throwIf",
+            expressions=[
+                exp.Anonymous(this="ifNull", expressions=[outside.copy(), exp.Literal.number(0)]),
+                exp.Literal.string(text),
+            ],
+        )
+        kept = _case(outside, exp.Null(), value)
+        return exp.Add(this=exp.Paren(this=kept), expression=raised)
+    refused = _raises(sqlstate, message, dialect)
+    return None if refused is None else _case(outside, refused, value)
+
+
 def _in_range(value: exp.Expr, dialect: str) -> exp.Expr:
     """``value`` as the base, PostgreSQL's error where it is outside int8 cents."""
-    refused = _raises("22003", "money out of range", dialect)
-    if refused is None:
+    if dialect not in _RAISERS and dialect != "clickhouse":
         return exp.Cast(this=value, to=_base())
+    highest, lowest = _number(_MAX), _number(_MIN)
+    if dialect == "clickhouse":  # a number with a fraction is a Float64 there: the base's, exact
+        highest, lowest = exp.Cast(this=highest, to=_base()), exp.Cast(this=lowest, to=_base())
     outside = exp.or_(
-        exp.GT(this=value.copy(), expression=_number(_MAX)),
-        exp.LT(this=value.copy(), expression=_number(_MIN)),
+        exp.GT(this=value.copy(), expression=highest),
+        exp.LT(this=value.copy(), expression=lowest),
     )
-    return exp.Cast(this=_case(outside, refused, value), to=_base())
+    guarded = _guarded(outside, value, "22003", "money out of range", dialect)
+    return exp.Cast(this=guarded, to=_base())
 
 
 def _cents(value: exp.Expr) -> exp.Expr:
@@ -301,7 +327,12 @@ def _cents_double(value: exp.Expr) -> exp.Expr:
 
 
 def _from_cents(cents: exp.Expr) -> exp.Expr:
-    return exp.Mul(this=exp.Paren(this=cents), expression=exp.Literal.number("0.01"))
+    """Whole cents as money's dollars, a decimal times a decimal: ClickHouse reads a number literal
+    with a fraction as a Float64, which holds no int8 of cents past 2^53 (cash_div_int2 of
+    -92233720368547758.08 by 3 answered -30744573456182581.66)."""
+    whole = exp.Cast(this=exp.Paren(this=cents), to=exp.DataType.build("DECIMAL(19, 0)"))
+    cent = exp.Cast(this=exp.Literal.number("0.01"), to=exp.DataType.build("DECIMAL(3, 2)"))
+    return exp.Mul(this=whole, expression=cent)
 
 
 def _rint(value: exp.Expr, dialect: str) -> exp.Expr:
@@ -326,25 +357,22 @@ def _rounded(cents: exp.Expr, dialect: str) -> exp.Expr:
     """A cents double, rounded as cash.c rounds it, as the base; PostgreSQL's error outside int8."""
     whole = _rint(cents, dialect)
     value = _from_cents(_as(whole, "NUMERIC(19,0)"))
-    refused = _raises("22003", "money out of range", dialect)
-    if refused is None:
+    if dialect not in _RAISERS and dialect != "clickhouse":
         return exp.Cast(this=value, to=_base())
     limit = _as(exp.Literal.number(_FLOAT_LIMIT), "DOUBLE PRECISION")
     outside = exp.or_(
         exp.GTE(this=whole.copy(), expression=limit),
         exp.LT(this=whole.copy(), expression=exp.Neg(this=limit.copy())),
     )
-    return exp.Cast(this=_case(outside, refused, value), to=_base())
+    guarded = _guarded(outside, value, "22003", "money out of range", dialect)
+    return exp.Cast(this=guarded, to=_base())
 
 
 def _nonzero(divisor: exp.Expr, dialect: str) -> exp.Expr:
     """``divisor``, PostgreSQL's error where it is zero."""
-    refused = _raises("22012", "division by zero", dialect)
-    if refused is None:
-        return divisor
-    return _case(
-        exp.EQ(this=divisor.copy(), expression=exp.Literal.number(0)), refused, divisor.copy()
-    )
+    zero = exp.EQ(this=divisor.copy(), expression=exp.Literal.number(0))
+    guarded = _guarded(zero, divisor.copy(), "22012", "division by zero", dialect)
+    return divisor if guarded is None else guarded
 
 
 def _number_kind(node: exp.Expr) -> str | None:
@@ -458,8 +486,13 @@ def _by_the_rule(row: str, operation: str, value: exp.Expr, dialect: str) -> exp
 
 
 def _money_text(value: exp.Expr, dialect: str) -> exp.Expr:
-    """money's text form."""
-    return _by_the_rule("money_text", "cast to text", value, dialect)
+    """money's text form, as the polyfill grid's row money_text writes it on ``dialect``
+    (provisa.transpiler.polyfill.money). Where the row refuses it, the refusal is raised here, as
+    the subtype's: its message is the row's."""
+    (rule,) = MONEY_TEXT.read.rules
+    if isinstance(rule.forms.get(dialect), Refusal):
+        raise SubtypeOperationRefused(MONEY, "cast to text", dialect)
+    return exp.Anonymous(this="money_text", expressions=[value])
 
 
 def _money_words(value: exp.Expr, dialect: str) -> exp.Expr:
@@ -727,9 +760,20 @@ class _Lowering:
             return _with_money_branches(node)
         if isinstance(node, exp.Dot) and id(node.expression) in self.written:
             return node.expression
+        if self._a_sum_of_money(node):
+            # cash_pl's overflow is PostgreSQL's error; a sum past int8 cents is no money
+            return _in_range(node.copy(), self.dialect)
         if isinstance(node, exp.Anonymous):
             return self._call(node) or node
         return node
+
+    def _a_sum_of_money(self, node: exp.Expr) -> bool:
+        """A sum of money, or its window: the sum itself where it is no window's."""
+        if isinstance(node, exp.Window):
+            node = node.this
+        elif isinstance(node.parent, exp.Window):
+            return False
+        return isinstance(node, exp.Sum) and self.kind(node.this) == MONEY
 
     def run(self, tree: exp.Expr) -> exp.Expr:
         nodes = list(tree.walk(bfs=False))
@@ -790,6 +834,21 @@ def _with_money_branches(node: exp.Expr) -> exp.Expr:
     return node
 
 
+def exact_on_clickhouse(node: exp.Expr) -> exp.Expr:
+    """A number cast to a decimal, as its text: ClickHouse reads a number with a fraction as a
+    Float64 before the cast, so 92233720368547758.07 would be 92233720368547758.0814 there, past
+    money's range; it reads the text of one exactly."""
+    if not isinstance(node, exp.Cast) or not node.to.is_type(_T.DECIMAL):
+        return node
+    value, negative = node.this, False
+    if isinstance(value, exp.Neg):
+        value, negative = value.this, True
+    if not isinstance(value, exp.Literal) or value.is_string:
+        return node
+    text = f"-{value.this}" if negative else value.this
+    return exp.Cast(this=exp.Literal.string(text), to=node.to.copy())
+
+
 def lowered(sql: str, dialect: str) -> str:
     """``sql`` (PostgreSQL's) with every money value and operation written for ``dialect``. A
     statement with none is returned as given, unparsed unless it names money."""
@@ -801,7 +860,10 @@ def lowered(sql: str, dialect: str) -> str:
         return sql  # what reads it next reports it, or reads it its own way
     before = tree.sql(dialect="postgres")
     written = _Lowering(dialect).run(tree)
-    after = written.sql(dialect="postgres")
+    if dialect == "clickhouse":
+        written = written.transform(exact_on_clickhouse)
+    # ClickHouse's function names are spelled as it spells them (throwIf): kept as written
+    after = written.sql(dialect="postgres", normalize_functions=dialect != "clickhouse" and "upper")
     return sql if after == before else after
 
 

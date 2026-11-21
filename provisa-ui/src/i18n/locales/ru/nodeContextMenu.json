@@ -1,7 +1,7 @@
 {
   "nodeContextMenu": {
     "excludeTooltip": "Исключить этот узел из запроса",
-    "excludeDisabledTooltip": "Первичный ключ не настроен — исключение невозможно",
+    "excludeDisabledTooltip": "Невозможно исключить: первичный ключ не настроен",
     "excludeFromQuery": "Исключить из запроса",
     "excludeCount": "Исключить узлы: {{count}}",
     "unfixPosition": "Открепить позицию",
