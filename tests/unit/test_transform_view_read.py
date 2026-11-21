@@ -627,3 +627,75 @@ def test_a_build_of_another_shape_lands_beside_the_last_never_into_it(monkeypatc
         asyncio.run(governed_build._transformed_rows_sql(SimpleNamespace(), mv, None, _Engine()))
     (first, _), (second, _) = landed
     assert first.startswith("mv_columns_view-clean_suppliers_") and first != second
+
+
+# --- REQ-2131 (amended 2026-11-16): one stored build, each reader under its own rules -------------
+#
+# The build is landed once, governed as the organisation's administrator (mv/governed_build.py),
+# so its stored rows hold every supplier, every address in clear and the input column each role's
+# row rule reads. These run each reader's statement against those stored rows in DuckDB: what a
+# reader gets is its own rules' answer, never the build's.
+
+_SUPPLIERS = [
+    (1, "1 Main St", "Springfield", "US", "east"),
+    (2, "2 Elm St", "Shelbyville", "US", "west"),
+    (3, "3 Oak St", "Ogdenville", "US", "east"),
+]
+
+
+def _run(statement: str, state: SimpleNamespace, gov: GovernanceContext) -> list[tuple]:
+    """The reader's statement, as it runs for them, over the build's stored rows."""
+    import duckdb
+
+    answered = _answered(statement, state, gov)
+    con = duckdb.connect()
+    try:
+        con.execute("ATTACH ':memory:' AS mat_store")
+        con.execute("CREATE SCHEMA mat_store.org_default_mv_cache")
+        con.execute(
+            "CREATE TABLE mat_store.org_default_mv_cache.mv_clean_suppliers (id INTEGER, "
+            "street VARCHAR, city VARCHAR, country VARCHAR, "
+            "__rule_input_suppliers__region VARCHAR)"
+        )
+        con.executemany(
+            "INSERT INTO mat_store.org_default_mv_cache.mv_clean_suppliers VALUES (?, ?, ?, ?, ?)",
+            _SUPPLIERS,
+        )
+        cursor = con.execute(answered)
+        names = [d[0] for d in cursor.description]
+        assert names == ["id", "street", "city", "country"]  # the kept input is no reader's
+        return sorted(cursor.fetchall())
+    finally:
+        con.close()
+
+
+_EVERY = "SELECT * FROM clean_suppliers"
+
+
+def test_two_readers_of_one_stored_build_each_get_their_own_rules_answer():
+    state = _state(MVStatus.FRESH, {1: _east()})
+    every = [row[:4] for row in _SUPPLIERS]
+    # The administrator reads the stored rows as they are.
+    assert _run(_EVERY, state, _reader()) == every
+    # east_reader's row rule on region, no column of the view, keeps only the east suppliers.
+    assert _run(_EVERY, state, _reader(row_rule=True)) == [every[0], every[2]]
+    # masked_reader sees raw_address masked: every output computed from it is masked, id is not.
+    assert _run(_EVERY, state, _reader(masked=("raw_address",))) == [
+        (i, "***", "***", "***") for i, *_ in every
+    ]
+    # Both rules on one reader: filtered and masked.
+    assert _run(_EVERY, state, _reader(row_rule=True, masked=("raw_address",))) == [
+        (1, "***", "***", "***"),
+        (3, "***", "***", "***"),
+    ]
+
+
+def test_a_reader_naming_the_kept_input_column_is_refused():
+    """The column a row rule reads is kept beside the outputs for Provisa's own filter; it is no
+    column of the view, so no reader -- unrestricted or not -- may name it."""
+    state = _state(MVStatus.FRESH, {1: _east()})
+    for gov in (_reader(), _reader(row_rule=True)):
+        with pytest.raises(Exception, match="__rule_input_suppliers__region"):
+            _answered(
+                'SELECT id, "__rule_input_suppliers__region" FROM clean_suppliers', state, gov
+            )
