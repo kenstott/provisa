@@ -227,6 +227,25 @@ def comment_statements(
 # REQ-2261: the TAGs a table's environment and stage are written under.
 ENVIRONMENT_TAG = "PROVISA_ENVIRONMENT"
 STAGE_TAG = "PROVISA_STAGE"
+# REQ-2122: the TAG holding a table's Provisa address (semantic URI).
+URI_TAG = "PROVISA_URI"
+
+
+def address_tag_statements(tables: list["TableAsset"], addresses: PublishedAddresses) -> list[str]:
+    """DDL tagging each table's published address with its Provisa address (REQ-2122). Snowflake
+    has no URL property, and a TAG is its free-form key/value metadata. Pure."""
+    if not tables:
+        return []
+    schema = f'"{addresses.landing_database}"."{TAGS_SCHEMA}"'
+    uri_tag = f'{schema}."{URI_TAG}"'
+    stmts = [f"CREATE SCHEMA IF NOT EXISTS {schema};", f"CREATE TAG IF NOT EXISTS {uri_tag};"]
+    for table in tables:
+        database, schema_name, name = addresses.table_and_column(table.ref)[0]
+        stmts.append(
+            f'ALTER TABLE "{database}"."{schema_name}"."{name}" SET TAG '
+            f"{uri_tag} = {_literal(table.semantic_uri)};"
+        )
+    return stmts
 
 
 def environment_tag_statements(
@@ -650,20 +669,10 @@ class SnowflakeHorizonExport(MetadataExport):  # REQ-1635
                 )
         if not tables:
             return 0
-        governed_fqns = {tag.asset.fqn() for tag in governance_tags}
         kinds: dict[tuple[str, str, str], str] = {}
         described: list["TableAsset"] = []
         for table in tables:
-            has_content = (
-                environment is not None  # REQ-2261: tagged with its environment and stage
-                or table.description
-                or any(c.description for c in table.columns)
-                or table.ref.fqn() in governed_fqns
-                or any(c.ref.fqn() in governed_fqns for c in table.columns)
-                or any(c.ref.fqn() in terms_by_column for c in table.columns)
-            )
-            if not has_content:
-                continue
+            # REQ-2122: every table carries its Provisa address, so every table is published.
             try:
                 parts = addresses.table_and_column(table.ref)[0]
             except ValueError as exc:
@@ -685,7 +694,9 @@ class SnowflakeHorizonExport(MetadataExport):  # REQ-1635
         statements = comment_statements(
             described, kinds, governance_tags, addresses, terms_by_column
         )
-        tag_statements = environment_tag_statements(described, addresses, environment)
+        tag_statements = address_tag_statements(described, addresses) + (
+            environment_tag_statements(described, addresses, environment)
+        )
         cur = runtime.connection.cursor()
         try:
             for stmt in statements:

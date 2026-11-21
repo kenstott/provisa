@@ -28,7 +28,7 @@ An org that has never been configured reads the unscoped policy too: that is the
 default it was created under, not a guess.
 """
 
-# Requirements: REQ-154, REQ-367, REQ-418, REQ-432, REQ-433, REQ-1266
+# Requirements: REQ-154, REQ-367, REQ-418, REQ-432, REQ-433, REQ-1266, REQ-1929
 
 from __future__ import annotations
 
@@ -222,6 +222,34 @@ class TableDomainRequired(ValueError):  # REQ-1531, REQ-433
     def __init__(self, table: str) -> None:
         super().__init__(f"Table {table!r} names no domain: every table is registered in a domain")
         self.table = table
+
+
+#: The one model name no table takes: JSON:API serves a domain's commands under
+#: /data/jsonapi/<domain>/commands/<name>, so a table of that name would share the path (REQ-1929).
+RESERVED_TABLE_NAME = "commands"
+
+
+class ReservedTableName(ValueError):  # REQ-1929
+    """A table is named ``commands``, the name JSON:API keeps for a domain's commands."""
+
+    code = "schema.table_name_reserved"
+
+    def __init__(self, table: str) -> None:
+        super().__init__(
+            f"Table name {table!r} is reserved: a domain's commands are served under "
+            f"'{RESERVED_TABLE_NAME}'. Register the table under another name or alias."
+        )
+        self.table = table
+
+
+def require_table_name(table: str, alias: str | None) -> None:  # REQ-1929
+    """Refuse a table whose name or alias is ``commands`` in any case once the SQL naming
+    convention has applied (:class:`ReservedTableName`). Every path that saves a table asks."""
+    from provisa.compiler.naming import apply_sql_name
+
+    for name in (table, alias):
+        if name and apply_sql_name(name).casefold() == RESERVED_TABLE_NAME:
+            raise ReservedTableName(name)
 
 
 def table_domain_id(requested: str | None, table: str) -> str:  # REQ-1531, REQ-433
