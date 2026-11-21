@@ -1,7 +1,7 @@
 [project]
 name = "provisa"
 version = "0.1.0"
-description = "Provisa is a data kernel: a small set of semantic primitives, compiled and run as one data control plane."
+description = "Provisa is a compiler and runtime for building your data control plane."
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
 dependencies = [
@@ -31,7 +31,7 @@ dependencies = [
     "graphql-core>=3.2.9,<3.3",
     # Bounded to the release the suite runs on: an unbounded pin installed 30.23 into alpha.485's
     # image while every test ran 30.9, and a renamed scope attribute failed every query there.
-    "sqlglot>=30.23,<30.24",
+    "sqlglot>=30.29,<30.30",
     # REQ-2135: the SPARQL front end parses a query with rdflib and lowers its SPARQL algebra to
     # the graph IR. BSD-3-Clause, as are its isodate and pyparsing (MIT).
     "rdflib>=7.1,<8",
@@ -70,7 +70,9 @@ dependencies = [
     # aisuite does not declare it as a dependency (it ships every provider's import as optional).
     "openai",
     "apscheduler>=3.10",
-    "inflect",
+    # REQ-194: singular and plural forms come from lemminflect's English lexicon (dictionary lookup,
+    # no suffix rules); provisa/core/inflection.py. MIT.
+    "lemminflect>=0.2,<0.3",
     "jsonpath-ng",
     # Reads an OpenAPI or Swagger spec and follows its references (provisa/openapi/mapper.py,
     # REQ-314). From the python-openapi project, over `referencing`. Apache-2.0.
@@ -142,6 +144,7 @@ dependencies = [
     "psycopg-pool",
     "sqlalchemy-redshift",  # REQ-1730: redshift+psycopg2 dialect — generic-RDB land driver
     "pyathena",  # REQ-1981: Amazon Athena source, through its own API (over boto3)
+    "opentelemetry-api>=1.45.2",  # CVE-2026-126360 fixed in 1.45.2; the SDK and exporters release in lockstep
     "opentelemetry-sdk",
     "opentelemetry-exporter-otlp-proto-grpc",
     "opentelemetry-exporter-otlp-proto-http",
@@ -157,7 +160,7 @@ dependencies = [
     # not fetched from an index — declaring it as a dependency would pull the wrong upstream package.
     # Its own runtime deps are folded in here instead (sqlglot already present):
     "python-dateutil",
-    "duckdb==1.5.5",
+    "duckdb==2.0.0",
     # REQ-1996: a Logs source reads Windows Event Log (.evtx) files, a binary chunked format;
     # pure Python, so nothing is built per platform.
     "python-evtx==0.8.1",
@@ -210,10 +213,30 @@ provisa = "provisa.cli:main"
 # omitted (PyPI carries no JVM server); full multi-engine query stays available by pointing
 # at a customer-provided external engine via TRINO_HOST/TRINO_PORT. duckdb is
 # already a base dep; this extra names the tier explicitly and adds fakeredis for the embedded cache.
-# provisa-duckdb-ext (the offline DuckDB extension blobs, REQ-1142) is now published on PyPI, so it is a
-# hard dep here: pip install provisa[embedded] stages the extensions offline (no extensions.duckdb.org
-# reach on first LOAD), matching _stage_duckdb_extensions in cli.py.
-embedded = ["duckdb", "fakeredis", "provisa-duckdb-ext>=0.1.1"]
+# The offline DuckDB extension blobs (REQ-1142) are hard deps here: pip install provisa[embedded]
+# stages the extensions offline (no extensions.duckdb.org reach on first LOAD), matching
+# _stage_duckdb_extensions in cli.py. TEMPORARY for DuckDB 2.0 (REQ-1142 amendment, TEMPORARY
+# EXTENSION SOURCES FOR DUCKDB 2.0, maintainer decision 2026-11-06): the core extensions come from the
+# third-party per-extension, per-platform wheels duckdb-extension-* (santosh-d3vpl3x/duckdb_extensions,
+# MIT; each holds the official signed binary, DuckDB loads it signature-checked), pinned to the DuckDB
+# version (avro too: iceberg loads it); provisa-duckdb-ext carries the rest (crypto and airport from Query.Farm, community). Dropped for Provisa's own
+# per-extension projects once PyPI is available again.
+embedded = [
+    "duckdb",
+    "fakeredis",
+    "duckdb-extension-postgres-scanner==2.0.0",
+    "duckdb-extension-httpfs==2.0.0",
+    "duckdb-extension-sqlite-scanner==2.0.0",
+    "duckdb-extension-iceberg==2.0.0",
+    "duckdb-extension-azure==2.0.0",
+    "duckdb-extension-delta==2.0.0",
+    "duckdb-extension-avro==2.0.0",  # iceberg loads it
+    "provisa-duckdb-ext>=0.2.2",  # 0.2.2: Query.Farm's airport
+    # The default config (config/provisa-install.yaml) registers a huggingface embedding model
+    # (all-MiniLM-L6-v2: glossary term embeddings, catalog search, the reference library), so every
+    # install carries the library that runs it (maintainer 2026-11-17, "Ship it in every install").
+    "provisa[vector]",
+]
 # Native/desktop tier: mcp-proxy is the Node-free stdio<->Streamable-HTTP bridge Claude Desktop
 # launches to reach the local MCP server (REQ-1104). Bundled into the standalone runtime by the
 # native installers (build-sfx.ps1 / build-dmg.sh) so the connector needs no Node and no user pip.
@@ -267,7 +290,11 @@ demo = ["great-expectations[postgresql]"]
 firebase = ["firebase-admin"]
 # Local embedding provider for catalog search (REQ-1008, provisa/vector/providers.py
 # HuggingFaceLocalProvider). No network at query time once the model is cached.
-vector = ["sentence-transformers"]
+# torch is named so [tool.uv.sources] can take it from PyTorch's CPU-only index on Linux, where
+# PyPI's build is the CUDA one (~2.5 GiB of GPU libraries an install never loads); macOS arm64 and
+# Windows PyPI wheels are CPU-only already. A native installer that pip-installs on Linux takes
+# torch from the same CPU index (packaging/linux/build-appimage.sh, first-launch.sh).
+vector = ["sentence-transformers", "torch"]
 # Encryption master-key providers (REQ-690-694). boto3 (AWS KMS) is a base dependency,
 # so aws_kms needs no extra. These optional SDKs auto-enable their provider in the
 # registry (provisa/encryption/registry.py) once installed.
@@ -330,6 +357,9 @@ dev = [
     # REQ-1310: the invite-delivery test sends over SMTP to a real local server this provides.
     # Asserting on a captured message is only meaningful against a server that speaks the protocol.
     "aiosmtpd",
+    # Every CI job and test venv has what every install ships: the default config's embedding
+    # model needs the vector extra (CPU torch, via [tool.uv.sources]).
+    "provisa[vector]",
 ]
 
 [build-system]
@@ -352,6 +382,13 @@ args = ["--locked"]
 # (`python -m provisa_notebook.build`); a release publishes it to PyPI with provisa.
 [tool.uv.sources]
 provisa-notebook = { path = "provisa-notebook", editable = true }
+# The vector extra's torch: the CPU-only build on Linux (PyPI's Linux wheel is the CUDA build).
+torch = [{ index = "pytorch-cpu", marker = "sys_platform == 'linux'" }]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
 
 [tool.uv]
 # REQ-2194: `uv sync` rebuilds provisa (and so provisa._encoders) when the Rust source changes.
@@ -399,12 +436,13 @@ include = ["provisa", "provisa.*", "buenavista", "buenavista.*"]
 "provisa.fakes" = ["portable/*.json", "portable/THIRD_PARTY_NOTICES"]
 # REQ-2147: the profiler's classification kinds and the reference lists they test, and their notice.
 "provisa.profiler" = ["classification_kinds.yaml", "reference/*.txt.gz", "reference/THIRD_PARTY_NOTICES"]
-# REQ-2155: the standard roles' definitions, read by provisa.core.db.
-"provisa.core" = ["standard_roles.yaml", "apoc_commands.yaml"]
+# REQ-2155: the standard roles' definitions, read by provisa.core.db. REQ-194: the English noun
+# singular/plural table (scripts/gen_noun_plurals.py) and its notice, read by provisa.core.inflection.
+"provisa.core" = ["standard_roles.yaml", "apoc_commands.yaml", "platform_connectors.yaml", "data/noun_plurals.tsv.gz", "data/THIRD_PARTY_NOTICES"]
 # REQ-1984: the reader a Node source's declarations are read with, run by the source's runtime.
 "provisa.node" = ["reader.mjs", "host.mjs"]
 # REQ-2200: the reader a Go source's package is read with, compiled by the pinned Go toolchain.
-"provisa.golang" = ["reader/go.mod", "reader/go.sum", "reader/main.go", "host/go.mod", "host/go.sum", "host/*.go"]
+"provisa.golang" = ["reader/go.mod", "reader/go.sum", "reader/main.go", "host/go.mod", "host/go.sum", "host/*.go", "services/go.mod", "services/*.go"]
 # REQ-2138: a sparql source's reasoner, run from its source by the pinned JDK.
 "provisa.sparql" = ["reasoner/Reasoner.java"]
 
@@ -442,6 +480,7 @@ markers = [
     "requires_mongodb: requires MongoDB service (docker compose up mongodb)",
     "requires_ldap: requires the OpenLDAP directory service (docker compose up openldap)",
     "requires_saml_idp: requires the SAML identity provider (docker compose up saml-idp)",
+    "requires_keycloak: requires the Keycloak identity provider (docker compose up keycloak)",
     "requires_pg_ext_targets: requires the external Postgres 15/16 containers (docker compose up pg-ext-target-15 pg-ext-target-16)",
     "requires_mariadb: requires MariaDB service (docker compose up mariadb)",
     "requires_tidb: requires TiDB service (docker compose up tidb)",
@@ -464,6 +503,7 @@ markers = [
     "requires_salesforce: requires a live Salesforce org (SF_* env); no self-provision",
     "requires_servicenow: requires a live ServiceNow instance (SERVICENOW_* env); no self-provision",
     "requires_microsoft_365: requires a live Microsoft 365 tenant (M365_* env); no self-provision",
+    "requires_fabric: reaches Microsoft Fabric (needs its capacity, and the CI service principal as Admin on the Fabric workspace); in no CI lane (maintainer 2026-11-11)",
     "requires_google_workspace: requires a live Google Workspace domain (GWS_* env); no self-provision",
     "requires_cloudops: requires live Azure, AWS or GCP credentials (CLOUDOPS_* env); no self-provision",
     "requires_quickbooks: requires a live QuickBooks Online sandbox company (QUICKBOOKS_* env); no self-provision",

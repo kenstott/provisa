@@ -163,6 +163,17 @@ def interval_fields(text: str) -> tuple[int, int, int] | None:
     return (fields["months"], fields["days"], fields["us"]) if words else None
 
 
+def interval_in_range(fields: tuple[int, int, int]) -> bool:
+    """Whether an interval's months and days fit its 32-bit fields and its microseconds its 64-bit
+    one, as interval_in requires ('178956971 years' is 2147483652 months: 22008)."""
+    months, days, us = fields
+    return (
+        -_INT32_MAX - 1 <= months <= _INT32_MAX
+        and -_INT32_MAX - 1 <= days <= _INT32_MAX
+        and -_INT64_MAX - 1 <= us <= _INT64_MAX
+    )
+
+
 def _plural(count: int, word: str) -> str:
     return f"{count} {word}" if count == 1 else f"{count} {word}s"
 

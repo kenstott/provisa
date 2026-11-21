@@ -21,6 +21,7 @@ import sqlglot
 import sqlglot.expressions as exp
 import pytest
 
+from provisa.ephemeral import store
 from tests.unit.ephemeral_harness import Session
 
 pytestmark = pytest.mark.unit
@@ -44,7 +45,7 @@ def test_instances_without_conditions_share_one_cte(monkeypatch):
     sql = s.sql("MATCH (a:T), (c:T) RETURN a.k, c.k")
     nodes = [name for name in _ctes(sql) if name.startswith("__session_node__T")]
     assert len(nodes) == 1
-    assert sql.count("cypher__anchor__T") == 1  # the union is written once
+    assert sql.count(store.anchor_table("T")) == 1  # the union is written once
 
 
 def test_instances_whose_conditions_differ_have_their_own_ctes(monkeypatch):

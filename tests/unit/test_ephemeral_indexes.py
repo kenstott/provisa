@@ -26,6 +26,8 @@ from tests.unit.ephemeral_harness import Session
 
 pytestmark = pytest.mark.unit
 
+_T = store.anchor_table("T")
+
 _MODEL = {"Person": ({"id": "integer", "name": "text"}, "(1, 'Ann')")}
 
 
@@ -65,20 +67,20 @@ def test_create_index_indexes_a_session_labels_anchor(monkeypatch):
     s = _session(monkeypatch)
     s.run("CREATE (:T {a: 1, b: 'x'})")
     assert s.run("CREATE INDEX ix FOR (n:T) ON (n.a, n.b)") == Indexed(1, 0)
-    assert "lookup cypher__anchor__T a,b" in _calls(s)
-    assert len(_indexed(s, "cypher__anchor__T")) == 1
+    assert f"lookup {_T} a,b" in _calls(s)
+    assert len(_indexed(s, _T)) == 1
     assert s.run("MATCH (n:T) WHERE n.a = 1 RETURN n.b AS b") == [{"b": "x"}]
 
 
 def test_an_index_made_before_its_label_has_nodes_is_built_when_it_does(monkeypatch):
     s = _session(monkeypatch)
     s.run("CREATE INDEX FOR (n:T) ON (n.a)")
-    assert not any(c.startswith("lookup cypher__anchor__T") for c in _calls(s))
+    assert not any(c.startswith(f"lookup {_T}") for c in _calls(s))
     s.run("CREATE (:T {b: 1})")  # no column a yet: no index
-    assert not any(c.startswith("lookup cypher__anchor__T") for c in _calls(s))
+    assert not any(c.startswith(f"lookup {_T}") for c in _calls(s))
     s.run("CREATE (:T {a: 2})")
-    assert "lookup cypher__anchor__T a" in _calls(s)
-    assert len(_indexed(s, "cypher__anchor__T")) == 1
+    assert f"lookup {_T} a" in _calls(s)
+    assert len(_indexed(s, _T)) == 1
 
 
 def test_create_index_on_a_relationship_type(monkeypatch):
@@ -126,7 +128,7 @@ def test_show_indexes_lists_the_sessions_and_the_built_in_ones(monkeypatch):
             "entityType": "NODE",
             "labelsOrTypes": ["T"],
             "properties": ["a"],
-            "table": "cypher__anchor__T",
+            "table": _T,
             "builtIn": False,
         }
     ]
@@ -139,7 +141,7 @@ def test_show_indexes_lists_the_sessions_and_the_built_in_ones(monkeypatch):
         (store.RELS, ("type",)),
         (store.NODE_LABELS, ("node_id", "label")),
         (store.NODE_LABELS, ("label", "node_id")),
-        ("cypher__anchor__T", ("node_id",)),
+        (_T, ("node_id",)),
     } <= built_in
 
 
@@ -148,11 +150,11 @@ def test_drop_index_drops_a_session_index(monkeypatch):
     s.run("CREATE (:T {a: 1})")
     s.run("CREATE INDEX ix FOR (n:T) ON (n.a)")
     assert s.run("DROP INDEX ix") == Indexed(0, 1)
-    assert "drop cypher__anchor__T a" in _calls(s)
-    assert _indexed(s, "cypher__anchor__T") == []
+    assert f"drop {_T} a" in _calls(s)
+    assert _indexed(s, _T) == []
     assert [r for r in s.run("SHOW INDEXES").rows if not r["builtIn"]] == []
     s.run("CREATE (:T {a: 2})")  # a dropped index is not made again
-    assert _indexed(s, "cypher__anchor__T") == []
+    assert _indexed(s, _T) == []
 
 
 def test_drop_index_refuses_a_built_in_one_and_an_unknown_name(monkeypatch):

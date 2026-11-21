@@ -1,0 +1,21 @@
+# The Rust source type's reader (REQ-2227): provisa/rustlang/reader.py compiles it once per
+# toolchain, its dependencies checked against the Cargo.lock beside this file.
+[package]
+name = "provisa-rust-reader"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[[bin]]
+name = "reader"
+path = "src/main.rs"
+
+[dependencies]
+syn = { version = "=2.0.111", default-features = false, features = ["full", "parsing", "printing", "clone-impls", "extra-traits"] }
+quote = { version = "=1.0.42", default-features = false }
+proc-macro2 = { version = "=1.0.103", default-features = false }
+serde_json = { version = "=1.0.145", features = ["preserve_order"] }
+
+[profile.release]
+opt-level = 1
+debug = false

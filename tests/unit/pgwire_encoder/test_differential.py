@@ -754,7 +754,7 @@ def _same_from_rows(
 ) -> None:
     """REQ-2195: the same result as a row result is encoded from its rows to the same bytes, or
     refused as the Arrow form is."""
-    if not has_row_form(batch.schema):
+    if not has_row_form(batch):
         return
     try:
         from_rows = rows_wired_encode(batch.schema, [batch], types, formats, **described)
@@ -1549,11 +1549,23 @@ COERCED_TEXTS = [
     "abcdefgh",
     "ab",
     "é日本",
+    # interval_out's text (cast_types.interval_of_text), and texts it is not
+    "1 day 02:03:04",
+    "1 year 2 mons -3 days +04:05:06.5",
+    "-1 days -00:00:01.000001",
+    "26:00:00",
+    "1 day",
+    "1 days 2",
+    "1:2:3",
+    "٣ days",
+    "",
 ]
 COERCER_POOL = (
     MATRIX
     + [(f"coerced_text_{k}", pa.array([t])) for k, t in enumerate(COERCED_TEXTS)]
     + [
+        ("clock_texts", pa.array(["01:02:03", "23:59:59.999999", "24:00:00", "1:2:3", "", None])),
+        ("byte_texts", pa.array(["\x00\x01", "abc", "é", "", None])),
         (
             "clock_bytes",
             pa.array(
@@ -1598,6 +1610,9 @@ COERCIONS: list[tuple[Any, list[Any]]] = [
     (cast_types._clock_of, [T.TIME]),
     (cast_types._of_no_zone, [T.TIMESTAMP]),
     (cast_types._padded(5), [T.TEXT]),
+    (cast_types.interval_of_text, [T.INTERVAL]),
+    (cast_types.bytes_of_text, [T.BYTES]),
+    (cast_types.clock_of_text, [T.TIME]),
 ]
 COERCER_CASES = [(c, t) for c, types in COERCIONS for t in types]
 
@@ -1953,6 +1968,12 @@ WITNESSES: dict[str, tuple[list[Any], list[Any], list[int], dict[str, Any]]] = {
     ),
     "coerced_infinity": ([_TS_INF], [T.DATE], [0], {"force_coerce": [(0, server._to_date)]}),
     "uuid_bytes": ([POOL_BY_NAME["fsb16"]], [T.UUID], [0], {}),
+    "date_range": (
+        [pa.array([_date(9999, 12, 31) + 1, _date(1, 1, 1) - 1, None], pa.date32())],
+        [T.DATE],
+        [0],
+        {},
+    ),
 }
 
 

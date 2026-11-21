@@ -857,7 +857,9 @@ def make_firebird_loader() -> AdapterLoader:
         # with the literal "${secret:...}" string, which fails and lands zero rows with no
         # surfaced error (airport has no such bug: its DSN carries no credential at all).
         resolved_source = (
-            source.model_copy(update={"password": resolve_secrets(source.password)})
+            source.model_copy(
+                update={"password": resolve_secrets(source.password, credential=True)}
+            )
             if source.password
             else source
         )
@@ -1089,7 +1091,8 @@ def make_elasticsearch_loader() -> AdapterLoader:
             int(getattr(source, "port", 0) or 9200),
             tls=bool(mapping.get("tls", False)),
             username=getattr(source, "username", None) or None,
-            password=resolve_secrets(getattr(source, "password", "") or "") or None,
+            password=resolve_secrets(getattr(source, "password", "") or "", credential=True)
+            or None,
         )
         if getattr(table, "query_template", None):
             # REQ-2017: a native search is read by running its search.
@@ -1118,7 +1121,8 @@ def make_elasticsearch_loader() -> AdapterLoader:
             int(getattr(source, "port", 0) or 9200),
             tls=bool(mapping.get("tls", False)),
             username=getattr(source, "username", None) or None,
-            password=resolve_secrets(getattr(source, "password", "") or "") or None,
+            password=resolve_secrets(getattr(source, "password", "") or "", credential=True)
+            or None,
         )
         if getattr(table, "query_template", None):
             # REQ-2017: a native search's replica is its search's rows.
@@ -1160,7 +1164,8 @@ def make_elasticsearch_keyed_loader() -> AdapterKeyedLoader:
             int(getattr(source, "port", 0) or 9200),
             tls=bool(mapping.get("tls", False)),
             username=getattr(source, "username", None) or None,
-            password=resolve_secrets(getattr(source, "password", "") or "") or None,
+            password=resolve_secrets(getattr(source, "password", "") or "", credential=True)
+            or None,
         )
         names = [c.name for c in table.columns if getattr(c, "native_filter_type", None) is None]
         if not names:
@@ -1187,7 +1192,8 @@ def make_redis_loader() -> AdapterLoader:
         conn = RedisConnection(
             host=resolve_secrets(getattr(source, "host", "") or "localhost"),
             port=int(getattr(source, "port", 0) or 6379),
-            password=resolve_secrets(getattr(source, "password", "") or "") or None,
+            password=resolve_secrets(getattr(source, "password", "") or "", credential=True)
+            or None,
         )
         names = [c.name for c in table.columns if getattr(c, "native_filter_type", None) is None]
         if not names:
@@ -1202,7 +1208,8 @@ def make_redis_loader() -> AdapterLoader:
         conn = RedisConnection(
             host=resolve_secrets(getattr(source, "host", "") or "localhost"),
             port=int(getattr(source, "port", 0) or 6379),
-            password=resolve_secrets(getattr(source, "password", "") or "") or None,
+            password=resolve_secrets(getattr(source, "password", "") or "", credential=True)
+            or None,
         )
         names = [name for name, _ in columns]
         return BlockingCursorSource(
@@ -1235,7 +1242,8 @@ def make_redis_keyed_loader() -> AdapterKeyedLoader:
         conn = RedisConnection(
             host=resolve_secrets(getattr(source, "host", "") or "localhost"),
             port=int(getattr(source, "port", 0) or 6379),
-            password=resolve_secrets(getattr(source, "password", "") or "") or None,
+            password=resolve_secrets(getattr(source, "password", "") or "", credential=True)
+            or None,
         )
         names = [c.name for c in table.columns if getattr(c, "native_filter_type", None) is None]
         if not names:
@@ -1276,7 +1284,7 @@ def make_clickhouse_loader() -> AdapterLoader:
             int(getattr(source, "port", 0) or 8123),
             getattr(source, "database", None) or table.schema_name,
             getattr(source, "username", None) or "default",
-            resolve_secrets(getattr(source, "password", "") or ""),
+            resolve_secrets(getattr(source, "password", "") or "", credential=True),
         )
         try:
             cols = ", ".join(f'"{n}"' for n in names)
@@ -1300,7 +1308,7 @@ def make_clickhouse_loader() -> AdapterLoader:
                 int(getattr(source, "port", 0) or 8123),
                 getattr(source, "database", None) or table.schema_name,
                 getattr(source, "username", None) or "default",
-                resolve_secrets(getattr(source, "password", "") or ""),
+                resolve_secrets(getattr(source, "password", "") or "", credential=True),
             )
             return (lambda: driver.iter_arrow_batches(sql)), driver.close
 
@@ -1354,7 +1362,7 @@ def make_clickhouse_keyed_arrow_loader() -> AdapterKeyedLoader:
             int(getattr(source, "port", 0) or 8123),
             getattr(source, "database", None) or table.schema_name,
             getattr(source, "username", None) or "default",
-            resolve_secrets(getattr(source, "password", "") or ""),
+            resolve_secrets(getattr(source, "password", "") or "", credential=True),
         )
         try:
             cols = ", ".join(f'"{n}"' for n in names)
@@ -1659,7 +1667,8 @@ def make_cassandra_loader() -> AdapterLoader:
             resolve_secrets(getattr(source, "host", "") or "localhost"),
             int(getattr(source, "port", 0) or 9042),
             username=getattr(source, "username", None) or None,
-            password=resolve_secrets(getattr(source, "password", "") or "") or None,
+            password=resolve_secrets(getattr(source, "password", "") or "", credential=True)
+            or None,
         )
         names = [c.name for c in table.columns if getattr(c, "native_filter_type", None) is None]
         if not names:
@@ -1674,7 +1683,8 @@ def make_cassandra_loader() -> AdapterLoader:
             resolve_secrets(getattr(source, "host", "") or "localhost"),
             int(getattr(source, "port", 0) or 9042),
             username=getattr(source, "username", None) or None,
-            password=resolve_secrets(getattr(source, "password", "") or "") or None,
+            password=resolve_secrets(getattr(source, "password", "") or "", credential=True)
+            or None,
         )
         names = [name for name, _ in columns]
         return BlockingCursorSource(
@@ -1703,7 +1713,8 @@ def make_cassandra_keyed_loader() -> AdapterKeyedLoader:
             resolve_secrets(getattr(source, "host", "") or "localhost"),
             int(getattr(source, "port", 0) or 9042),
             username=getattr(source, "username", None) or None,
-            password=resolve_secrets(getattr(source, "password", "") or "") or None,
+            password=resolve_secrets(getattr(source, "password", "") or "", credential=True)
+            or None,
         )
         names = [c.name for c in table.columns if getattr(c, "native_filter_type", None) is None]
         if not names:
@@ -1729,7 +1740,7 @@ def make_prometheus_loader() -> AdapterLoader:
             resolve_secrets(
                 endpoint_url(getattr(source, "host", None), getattr(source, "port", None), mapping)
             ),
-            token=resolve_secrets(getattr(source, "password", "") or "") or None,
+            token=resolve_secrets(getattr(source, "password", "") or "", credential=True) or None,
         )
         names = [c.name for c in table.columns if getattr(c, "native_filter_type", None) is None]
         if not names:
@@ -1745,7 +1756,7 @@ def make_prometheus_loader() -> AdapterLoader:
             resolve_secrets(
                 endpoint_url(getattr(source, "host", None), getattr(source, "port", None), mapping)
             ),
-            token=resolve_secrets(getattr(source, "password", "") or "") or None,
+            token=resolve_secrets(getattr(source, "password", "") or "", credential=True) or None,
         )
         names = [name for name, _ in columns]
         return SpooledDocumentSource(
@@ -1995,6 +2006,7 @@ def make_graphql_remote_loader(
         more to read fails by name (``replication.row_limit_reached``)."""
         from provisa.graphql_remote.executor import whole_connection
 
+        from provisa.core.org_settings import graphql_remote_max_rows
         from provisa.core.paging import connection_max_rows
 
         request = _request(source, table)
@@ -2007,7 +2019,7 @@ def make_graphql_remote_loader(
             table=f"{source.id}.{table.table_name}",
             page_size=page_size,
             # REQ-318: the table's own bound where it set one (registry row), else the operator's.
-            max_rows=connection_max_rows(table.pagination, max_rows),
+            max_rows=connection_max_rows(table.pagination, graphql_remote_max_rows(max_rows)),
             error_policy=request["error_policy"],
             variables=request["variables"],
             required_args=request["required_args"],

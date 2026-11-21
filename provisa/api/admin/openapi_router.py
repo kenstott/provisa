@@ -55,6 +55,11 @@ class OpenAPIRegisterRequest(BaseModel):
     # the address are the brand's.
     brand: str | None = None
     token: str = ""
+    # REQ-2265: a brand's setup values by its setup field names (its base URL), and the client
+    # credentials of a brand whose auth is an OAuth client credentials grant.
+    setup: dict[str, str] = {}
+    client_id: str = ""
+    client_secret: str = ""
 
     @model_validator(mode="after")
     def _set_inline_sentinel(self) -> "OpenAPIRegisterRequest":  # REQ-407
@@ -80,12 +85,15 @@ async def _load_and_register(  # REQ-314, REQ-315, REQ-316, REQ-317, REQ-320, RE
     relationships: list[dict] | None = None,
     store_auth: bool = False,
     brand: str | None = None,
+    setup: dict[str, str] | None = None,
 ) -> tuple[dict, int, int]:
     """Load spec, upsert source record, store in state. Returns (spec, n_queries, n_mutations).
 
     ``store_auth``: this call is the registration that supplies the source's auth, which is
     stored for the caller; a refresh re-reads the spec and leaves the stored auth as it is.
-    ``brand``: the brand a new source's row records (REQ-1923).
+    ``brand``: the brand a new source's row records (REQ-1923). ``setup``: the values its
+    setup was given, kept in ``brand_setup`` (Source.brand_setup) so its form shows them again
+    (REQ-2265); None on a refresh, which leaves them as they are.
 
     Tables and functions are NOT auto-registered here. Users register them
     individually via the Register Table / Register Action UI.
@@ -128,12 +136,18 @@ async def _load_and_register(  # REQ-314, REQ-315, REQ-316, REQ-317, REQ-320, RE
             username="",
             path=spec_path if spec_path else ":inline:",
             federation_hints={BRAND_HINT: brand} if brand else {},
+            brand_setup=setup or {},
         )
         if _existing is not None:
             # REQ-1909: re-importing a spec replaces the spec, not the operator's Load Management
             # and Timeliness settings the upsert now persists (cache, live cap, gates).
-            _spec_source = source_repo.source_from_row(_existing).model_copy(
-                update={"type": SourceType.openapi, "path": _spec_source.path}
+            _kept = source_repo.source_from_row(_existing)
+            _spec_source = _kept.model_copy(
+                update={
+                    "type": SourceType.openapi,
+                    "path": _spec_source.path,
+                    "brand_setup": _kept.brand_setup if setup is None else setup,
+                }
             )
         await source_repo.upsert(cast("Connection", _conn), _spec_source)
         # REQ-316/REQ-318: what the source's tables are called through (api_source.caller):
@@ -166,6 +180,7 @@ async def _load_and_register(  # REQ-314, REQ-315, REQ-316, REQ-317, REQ-320, RE
         "cache_ttl": cache_ttl,
         "operation_overrides": operation_overrides or {},
         "relationships": relationships or [],
+        "setup": _spec_source.brand_setup,
     }
 
     # REQ-1729: the upsert above wrote straight to the sources table — state.source_types and
@@ -213,11 +228,21 @@ def _require_credential(auth_config: dict | None) -> None:
 
 async def _verify_live_auth(url: str, auth: dict, headers: dict[str, str]) -> None:
     """Confirm the credential works with one call. A branded source's spec ships with Provisa,
-    so this is the only thing its registration asks of the remote."""
+    so this is the only thing its registration asks of the remote. A client credentials auth
+    (REQ-2265) is exchanged for its token first, as the caller does at every call."""
+    import asyncio
+
     import httpx
 
     from provisa.openapi.executor import _build_auth_headers
 
+    if auth["type"] == "oauth2_client_credentials":
+        from provisa.api_source.caller import _fetch_oauth2_token
+        from provisa.core.auth_models import ApiAuthOAuth2ClientCredentials
+
+        grant = ApiAuthOAuth2ClientCredentials(**auth)
+        token = await asyncio.to_thread(_fetch_oauth2_token, grant)
+        auth = {"type": "bearer", "token": token}
     async with httpx.AsyncClient(
         timeout=10.0, event_hooks=sandbox_egress.http_event_hooks()
     ) as client:
@@ -225,30 +250,50 @@ async def _verify_live_auth(url: str, auth: dict, headers: dict[str, str]) -> No
         resp.raise_for_status()
 
 
+async def _resolved_auth(auth: dict) -> dict:
+    """A brand's ``auth_config`` with its credential parts resolved, for the one call that
+    checks it; the stored auth keeps them as entered."""
+    from provisa.api.admin.graphql_remote_router import _resolved_credential
+
+    secret = {"token", "client_id", "client_secret"}
+    return {k: (await _resolved_credential(v) if k in secret else v) for k, v in auth.items()}
+
+
 async def _branded(body: OpenAPIRegisterRequest) -> OpenAPIRegisterRequest:
     """``body`` as the registration of its brand (REQ-1923): the brand's spec and address, and
-    the credential as the brand presents it, checked against the remote."""
-    from provisa.api.admin.graphql_remote_router import _resolved_credential
-    from provisa.openapi.brands import BRANDS
+    the credential as the brand presents it, checked against the remote. A brand that passes
+    through the generic source's settings (REQ-2265) takes its address from its setup, its spec
+    from the running instance, and its credential as its auth type states it."""
+    from provisa.graphql_remote.brands import SetupInvalid
+    from provisa.openapi.brands import BRANDS, CredentialMissing
 
     brand = BRANDS.get(body.brand or "")
     if brand is None:
         raise ApiError(
             422, "openapi.unknown_brand", f"Unknown branded source {body.brand!r}", brand=body.brand
         )
-    if not body.token:
+    try:
+        setup = brand.setup(body.setup)
+    except SetupInvalid as bad:
+        raise ApiError(
+            422, "openapi.setup_invalid", str(bad), brand=brand.id, field=bad.field
+        ) from bad
+    try:
+        auth = brand.credential_auth(
+            setup, token=body.token, client_id=body.client_id, client_secret=body.client_secret
+        )
+    except CredentialMissing as missing:
         raise ApiError(
             422,
             "openapi.credential_required",
-            f"{brand.label} needs an access token",
+            f"{brand.label} needs an access token" if missing.field == "token" else str(missing),
             brand=brand.id,
-        )
-    base_url = brand.spec()["servers"][0]["url"]
+            field=missing.field,
+        ) from missing
+    base_url = brand.base_url(setup)
     try:
         await _verify_live_auth(
-            base_url.rstrip("/") + brand.verify_path,
-            brand.auth(await _resolved_credential(body.token)),
-            brand.headers(),
+            base_url.rstrip("/") + brand.verify_path, await _resolved_auth(auth), brand.headers()
         )
     except Exception as exc:
         raise ApiError(
@@ -260,10 +305,11 @@ async def _branded(body: OpenAPIRegisterRequest) -> OpenAPIRegisterRequest:
         ) from exc
     return body.model_copy(
         update={
-            "spec_path": brand.spec_path,
+            "spec_path": brand.source_spec_path(setup),
             "spec_content": "",
             "base_url": base_url,
-            "auth_config": brand.auth(body.token),
+            "auth_config": auth,
+            "setup": setup,
         }
     )
 
@@ -292,6 +338,7 @@ async def register_openapi_source(
             relationships=body.relationships or None,
             store_auth=True,
             brand=body.brand,
+            setup=body.setup if body.brand else None,
         )
     except HTTPException:
         raise
@@ -425,6 +472,7 @@ async def list_openapi_sources(request: Request):
                 "domain_id": reg.get("domain_id", ""),
                 "cache_ttl": reg.get("cache_ttl", 300),
                 "auth_config": None if called is None else auth_without_secret(called.auth),
+                "setup": reg["setup"],  # REQ-2265: what a brand's setup was given
             }
         )
     return result
@@ -469,6 +517,10 @@ async def put_openapi_spec(source_id: str, request: Request):  # REQ-315, REQ-31
         servers = spec.get("servers", [])
         if servers:
             base_url = servers[0].get("url", "")
+    if "://" in base_url:
+        # REQ-2006: the address the spec's calls go to; a held org's is a public destination. A
+        # server URL relative to the spec names no address of its own.
+        sandbox_egress.require_url_allowed(base_url)
 
     if not hasattr(state, "openapi_specs"):
         state.openapi_specs = {}
@@ -477,6 +529,8 @@ async def put_openapi_spec(source_id: str, request: Request):  # REQ-315, REQ-31
         "spec": spec,
         "spec_path": existing.get("spec_path", ""),
         "base_url": base_url,
+        # A spec stored for a source no registration added has no brand setup (REQ-2265).
+        "setup": existing["setup"] if existing else {},
     }
 
     log.info(

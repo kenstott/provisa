@@ -17,10 +17,9 @@ duration() of an ISO-8601 string the query computes reads a negative or fraction
 
 from __future__ import annotations
 
-import time
-
 import duckdb
 import pytest
+import sqlglot
 
 from provisa.cypher.parser import parse_cypher
 from provisa.gql.label_map import CypherLabelMap
@@ -94,15 +93,18 @@ def test_a_duration_read_back_from_its_text_is_itself(components, text):
 
 def test_a_duration_read_back_from_its_text_is_translated_small_and_fast():
     # Each computed value is computed once (temporal._let), not copied per use: the round trip
-    # was 287 KB of SQL and nine seconds to translate when each part was copied in.
+    # was 287 KB of SQL, 43,474 translated nodes and seconds to translate when each part was
+    # copied in; computed once it is 8 KB and 1,083 nodes. The work is measured by the nodes the
+    # translator builds, not by a clock: a clock also counts the process's one-time warm-up
+    # (keyword list, polyfill grid, settings catalog) and the runner's load.
     query = (
         "WITH duration({years: 12, months: 5, days: -14, hours: 16, minutes: 12, seconds: 70,"
         " nanoseconds: 1}) AS d RETURN toString(d) AS ts, duration(toString(d)) = d AS b"
     )
-    started = time.perf_counter()
     sql_ast, _, _ = cypher_to_sql(parse_cypher(query), _EMPTY, {})
     sql = transpile_to_duckdb(sql_ast.sql(dialect="postgres"))
-    assert time.perf_counter() - started < 2.0
+    assert sum(1 for _ in sql_ast.walk()) < 2_000
+    assert sum(1 for _ in sqlglot.parse_one(sql, read="duckdb").walk()) < 2_000
     assert len(sql) < 20_000
 
 

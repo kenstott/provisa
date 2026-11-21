@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // Generates the marketing site's rendering of the product's source-type picker and writes it into
-// site/index.html and site/why/sources.html between the `source-picker` marker comments, and writes
+// site/why/sources.html between the `source-picker` marker comments, a short row of it into
+// site/index.html between the `source-row` marker comments, and writes
 // the counts it makes ("65 connectors", "80+ kinds of source") wherever a page or document states
 // them (COUNTED).
 //
@@ -35,6 +36,9 @@ export const SUB_ITEMS = {
     alsoTiles: ["CSV", "Parquet"],
   },
 };
+
+// The sources named in the home page's one-line row, in this order.
+export const HOME_ROW = ["postgresql", "snowflake", "salesforce", "mongodb", "elasticsearch", "databricks", "google_sheets"];
 
 // Categories shown first, in this order; the rest follow in the picker's own order.
 const CATEGORY_FIRST = ["Enterprise"];
@@ -121,6 +125,15 @@ export async function renderPicker() {
   const sprite = spriteFor(used);
   const logoFiles = new Map();
   for (const t of types) if (files[t.value]) logoFiles.set(t.value, logoFileFor(files[t.value]));
+  const logoFor = (s, cat) => {
+    const mark = marks[s.value];
+    const file = logoFiles.get(s.value);
+    return file
+      ? `<img class="picker-mark" src="/assets/${file.name}" width="20" height="20" alt="" aria-hidden="true">`
+      : mark
+      ? `<svg class="picker-mark" width="20" height="20" aria-hidden="true"><use href="/assets/${sprite.name}#m-${mark.slug}"/></svg>`
+      : `<span class="picker-tile" style="background:${tones[cat] ?? "#6b7280"}" aria-hidden="true">${esc(initials(s.label))}</span>`;
+  };
   const out = [];
   let total = 0;
   let extra = 0; // kinds of source shown under a tile that are not connectors of their own
@@ -129,13 +142,7 @@ export async function renderPicker() {
     for (const s of types.filter((t) => t.category === cat)) {
       total += 1;
       const name = plainName(s);
-      const mark = marks[s.value];
-      const file = logoFiles.get(s.value);
-      const logo = file
-        ? `<img class="picker-mark" src="/assets/${file.name}" width="20" height="20" alt="" aria-hidden="true">`
-        : mark
-        ? `<svg class="picker-mark" width="20" height="20" aria-hidden="true"><use href="/assets/${sprite.name}#m-${mark.slug}"/></svg>`
-        : `<span class="picker-tile" style="background:${tones[cat] ?? "#6b7280"}" aria-hidden="true">${esc(initials(s.label))}</span>`;
+      const logo = logoFor(s, cat);
       const subs = s.managed ? s.managed.split(/,\s*/) : (SUB_ITEMS[s.value]?.items ?? []);
       extra += s.managed ? subs.length : subs.filter((x) => !(SUB_ITEMS[s.value]?.alsoTiles ?? []).includes(x)).length;
       const sub = subs.length ? `<ul class="picker-sub">${subs.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>` : "";
@@ -146,7 +153,13 @@ export async function renderPicker() {
   }
   // The larger number is a floor to the nearest five: connectors plus the kinds shown under tiles.
   const kinds = Math.floor((total + extra) / 5) * 5;
+  const rowItems = HOME_ROW.map((value) => {
+    const s = types.find((t) => t.value === value);
+    if (!s) throw new Error(`HOME_ROW names ${value}, which the picker does not list`);
+    return `<li>${logoFor(s, s.category)}<span>${esc(plainName(s))}</span></li>`;
+  });
   return {
+    row: `<ul class="source-row">${rowItems.join("")}</ul>`,
     html: `<div class="picker" data-count="${total}" data-kinds="${kinds}">${out.join("")}</div>`,
     total,
     kinds,
@@ -155,16 +168,19 @@ export async function renderPicker() {
   };
 }
 
-const PAGES = ["site/index.html", "site/why/sources.html"];
-const START = "<!-- source-picker:start -->";
-const END = "<!-- source-picker:end -->";
+// Each page and the marked region of it the generator owns: the fragment is `html` or `row`.
+const PAGES = [
+  { page: "site/index.html", marker: "source-row", fragment: "row" },
+  { page: "site/why/sources.html", marker: "source-picker", fragment: "html" },
+];
 
 /** `page` with its marked region replaced by the fragment; throws when the markers are missing. */
-export function splice(page, html) {
-  const a = page.indexOf(START);
-  const b = page.indexOf(END);
-  if (a === -1 || b === -1 || b < a) throw new Error("source-picker markers missing");
-  return page.slice(0, a + START.length) + "\n" + html + "\n" + page.slice(b);
+export function splice(page, html, marker = "source-picker") {
+  const start = `<!-- ${marker}:start -->`;
+  const a = page.indexOf(start);
+  const b = page.indexOf(`<!-- ${marker}:end -->`);
+  if (a === -1 || b === -1 || b < a) throw new Error(`${marker} markers missing`);
+  return page.slice(0, a + start.length) + "\n" + html + "\n" + page.slice(b);
 }
 
 // Every file that states the number of connectors or of kinds of source.
@@ -222,11 +238,12 @@ const spritesOnDisk = () => fs.readdirSync(ASSETS).filter((f) => /^source-marks\
 const logoFilesOnDisk = () => fs.readdirSync(ASSETS).filter((f) => /^source-logo-[\w-]+\.[0-9a-f]{10}\.svg$/.test(f));
 
 export async function stalePages() {
-  const { html, sprite, logoFiles } = await renderPicker();
-  const stale = PAGES.filter((p) => {
-    const cur = fs.readFileSync(path.join(ROOT, p), "utf8");
-    return splice(cur, html) !== cur;
-  });
+  const rendered = await renderPicker();
+  const { sprite, logoFiles } = rendered;
+  const stale = PAGES.filter(({ page, marker, fragment }) => {
+    const cur = fs.readFileSync(path.join(ROOT, page), "utf8");
+    return splice(cur, rendered[fragment], marker) !== cur;
+  }).map(({ page }) => page);
   const onDisk = spritesOnDisk();
   const spriteOk =
     onDisk.length === 1 && onDisk[0] === sprite.name && fs.readFileSync(path.join(ASSETS, sprite.name), "utf8") === sprite.svg;
@@ -241,7 +258,8 @@ export async function stalePages() {
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  const { html, total, kinds, sprite, logoFiles } = await renderPicker();
+  const rendered = await renderPicker();
+  const { total, kinds, sprite, logoFiles } = rendered;
   if (process.argv.includes("--check")) {
     const stale = [...(await stalePages()), ...(await staleCounts())];
     if (stale.length) {
@@ -254,14 +272,14 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     fs.writeFileSync(path.join(ASSETS, sprite.name), sprite.svg);
     for (const f of logoFilesOnDisk()) fs.unlinkSync(path.join(ASSETS, f));
     for (const f of logoFiles) fs.writeFileSync(path.join(ASSETS, f.name), f.svg);
-    for (const p of PAGES) {
-      const file = path.join(ROOT, p);
-      fs.writeFileSync(file, splice(fs.readFileSync(file, "utf8"), html));
+    for (const { page, marker, fragment } of PAGES) {
+      const file = path.join(ROOT, page);
+      fs.writeFileSync(file, splice(fs.readFileSync(file, "utf8"), rendered[fragment], marker));
     }
     for (const f of COUNTED) {
       const file = path.join(ROOT, f);
       fs.writeFileSync(file, withCounts(fs.readFileSync(file, "utf8"), total, kinds));
     }
-    console.log(`wrote ${total} tiles (${kinds}+ kinds) into ${PAGES.join(", ")}`);
+    console.log(`wrote ${total} tiles (${kinds}+ kinds) into ${PAGES.map((p) => p.page).join(", ")}`);
   }
 }

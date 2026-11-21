@@ -11,7 +11,7 @@
 """One save of a table applies everything, or nothing (REQ-2109, settled).
 
 registerTable and updateTable carry the settings that also have mutations of their own -- the
-naming convention, the role TTLs, replicate, the write grants and draft -- and apply all of them
+naming convention, the role TTLs, replicate and the write grants -- and apply all of them
 with the table in one control-plane transaction. A refusal of any one leaves nothing stored: no
 table row, no columns, no grants on a registration; the stored table as it was on an update."""
 
@@ -158,7 +158,6 @@ EVERYTHING = {
     "role_ttl": [RoleTtlInput(role="support", ttl=60)],
     "replicate": -1,
     "write_grants": [_grant()],
-    "draft": False,
 }
 
 
@@ -198,7 +197,7 @@ async def test_a_registration_carrying_every_setting_stores_all_of_them(plane):
     assert table["gql_naming_convention"] == "snake"
     assert dict(table["role_ttl"]) == {"support": 60}
     assert table["replicate"] == -1
-    assert table["draft"] is False
+    assert table["withdrawn"] is False
     assert cols == ["id", "status"]
     assert [(g["role"], g["operation"]) for g in grants] == [("support", "update")]
 
@@ -222,8 +221,10 @@ async def test_a_hasura_spelling_of_a_convention_is_stored_as_the_preset_it_name
 
 
 async def test_a_registration_grants_read_to_the_registrant_and_viewer(plane):
-    """REQ-2154: registering a table grants read on every column to the role the registrant acts
-    as and to Viewer, beside any grant the registration names; it never grants write."""
+    """REQ-2154 (amended 2026-11-10, A NAMED GRANT IS USED AS GIVEN): a column registered with no
+    grant named is read by the role the registrant acts as and Viewer; a column registered with a
+    grant list named is granted exactly that list, so a column named for one role is no other's.
+    Registration never grants write."""
     result = await _register(
         columns=[
             ColumnInput(name="id", data_type="integer", visible_to=[]),
@@ -244,8 +245,34 @@ async def test_a_registration_grants_read_to_the_registrant_and_viewer(plane):
                 )
             ).fetchall()
         }
-    assert read == {"id": ["support", "viewer"], "status": ["analyst", "support", "viewer"]}
+    assert read == {"id": ["support", "viewer"], "status": ["analyst"]}
     assert grants == []
+
+
+async def test_a_named_grant_that_leaves_out_the_registrant_is_kept_as_given(plane):
+    """REQ-2154, REQ-2226: a column the registration grants to another role only is not the
+    registrant's, nor Viewer's: a sensitive column registered for one role reaches no other."""
+    result = await _register(
+        columns=[
+            ColumnInput(name="id", data_type="integer", visible_to=["analyst", "support"]),
+            ColumnInput(name="status", data_type="varchar", visible_to=["analyst"]),
+        ]
+    )
+    assert result.success, result.message
+    table, _cols, _grants = await _stored(plane)
+    assert table is not None
+    async with plane.acquire() as conn:
+        read = {
+            r.column_name: sorted(r.visible_to)
+            for r in (
+                await conn.execute_core(
+                    select(table_columns.c.column_name, table_columns.c.visible_to).where(
+                        table_columns.c.table_id == table["id"]
+                    )
+                )
+            ).fetchall()
+        }
+    assert read == {"id": ["analyst", "support"], "status": ["analyst"]}
 
 
 async def test_registering_a_stored_table_again_keeps_its_grants(plane):
@@ -268,12 +295,41 @@ async def test_registering_a_stored_table_again_keeps_its_grants(plane):
 
 
 async def test_left_out_a_registration_takes_a_new_tables_values(plane):
+    """REQ-1921 (amended 2026-11-16): a table registered in production is live on
+    registration: not withdrawn, and there is no draft."""
     result = await _register()
     assert result.success, result.message
     table, _cols, grants = await _stored(plane)
     assert table is not None
-    assert (table["draft"], table["replicate"], dict(table["role_ttl"])) == (True, None, {})
+    assert table["withdrawn"] is False and "draft" not in table
+    assert (table["replicate"], dict(table["role_ttl"])) == (None, {})
     assert grants == []
+
+
+def test_a_registration_or_an_update_takes_no_draft_and_no_withdrawn():
+    """REQ-1921: there is no draft, and withdrawn is set only by withdrawTable / putBackTable:
+    the table input has neither to send."""
+    with pytest.raises(TypeError):
+        _input(draft=True)
+    with pytest.raises(TypeError):
+        _input(withdrawn=True)
+
+
+async def test_an_update_of_a_withdrawn_table_keeps_it_withdrawn(plane):
+    """REQ-1921: an edit is not a put back: the table stays out of production."""
+    from sqlalchemy import update as _update
+
+    assert (await _register()).success
+    async with plane.acquire() as conn:
+        await conn.execute_core(
+            _update(registered_tables)
+            .where(registered_tables.c.table_name == "orders")
+            .values(withdrawn=True)
+        )
+    result = await schema_mutation.Mutation().update_table(_info(), _input(description="x"))
+    assert result.success, result.message
+    table, _cols, _grants = await _stored(plane)
+    assert table is not None and table["withdrawn"] is True
 
 
 @pytest.mark.parametrize(
@@ -301,7 +357,7 @@ async def test_an_update_carrying_every_setting_stores_all_of_them(plane):
     assert result.success, result.message
     table, cols, grants = await _stored(plane)
     assert table is not None
-    assert (table["gql_naming_convention"], table["replicate"], table["draft"]) == (
+    assert (table["gql_naming_convention"], table["replicate"], table["withdrawn"]) == (
         "snake",
         -1,
         False,
@@ -333,7 +389,7 @@ async def test_an_update_leaving_a_setting_out_keeps_the_stored_one(plane):
     assert result.success, result.message
     table, _cols, grants = await _stored(plane)
     assert table is not None
-    assert (table["gql_naming_convention"], table["replicate"], table["draft"]) == (
+    assert (table["gql_naming_convention"], table["replicate"], table["withdrawn"]) == (
         "snake",
         -1,
         False,
@@ -471,7 +527,7 @@ async def test_an_update_refused_on_a_carried_setting_leaves_the_table_as_it_was
     if refused.pop("_residency", False):
         from provisa.security.residency import ResidencyRefused
 
-        def _refuse(_info, what, _before, after, *, draft=False):
+        def _refuse(_info, what, _before, after):
             raise ResidencyRefused(what, after or "", holds_right=True)
 
         monkeypatch.setattr("provisa.api.admin.capabilities.require_residency_change", _refuse)
@@ -511,7 +567,6 @@ async def test_the_build_loads_what_a_bitemporal_table_maps(plane):
         recorded_time="updated_at",
         mv_refresh_interval=90,
         mv_allowed_lateness=30.0,
-        draft=False,
     )
     assert result.success, result.message
     async with plane.acquire() as conn:
@@ -542,7 +597,6 @@ async def test_a_version_logs_interval_and_lateness_are_kept_on_its_tables_row(p
             business_key=["id"],
             valid_time="placed_on",
             recorded_time="updated_at",
-            draft=False,
         )
     ).success
     registry = MVRegistry()

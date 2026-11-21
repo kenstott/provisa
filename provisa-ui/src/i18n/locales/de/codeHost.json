@@ -32,6 +32,8 @@
     "statusUnknown": "Remote-Host wird geprüft...",
     "answering": "Der Remote-Host antwortet.",
     "notAnswering": "Der Remote-Host antwortet nicht: {{error}}",
+    "health_healthy": "Gesund",
+    "health_unhealthy": "Nicht gesund",
     "otherCode": "Der Remote-Host führt anderen Code ({{reported}}) aus, als für diese Quelle festgelegt ist ({{pinned}}). Ihre Lesezugriffe werden abgelehnt, bis Sie den Code prüfen und neu festlegen.",
     "repin": "Auf den Code des Hosts neu festlegen",
     "refresh": "Erneut prüfen",

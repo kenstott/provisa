@@ -63,7 +63,10 @@ class _DuckEngine:
 
     def execute_engine_stream(self, sql: str, *a, **k):
         self.stream_calls.append(sql)
-        reader = self.con.execute(sql).to_arrow_reader(1)  # chunk=1 → lazily yielded batches
+        # A cursor of its own per stream, as each engine runtime opens one (run_arrow_stream):
+        # DuckDB refuses a second query on a connection whose result is still open, and a check
+        # over several inputs holds one lazy reader per input. chunk=1 → lazily yielded batches.
+        reader = self.con.cursor().execute(sql).to_arrow_reader(1)
         return reader.schema, reader
 
     def supports(self, cap) -> bool:

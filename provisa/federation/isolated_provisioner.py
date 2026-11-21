@@ -37,6 +37,8 @@ from typing import Any
 
 import httpx
 
+from provisa.core.http_failure import describe_http_failure
+
 log = logging.getLogger(__name__)
 
 # Docker Engine API over the mounted socket. The host part of the URL is ignored by the UDS
@@ -209,21 +211,22 @@ async def engine_status(org_id: str) -> dict:
 async def _wait_until_ready(host: str, port: int, timeout: float) -> None:
     """Poll the coordinator's own readiness endpoint until it reports it has finished starting."""
     deadline = asyncio.get_running_loop().time() + timeout
+    url = f"http://{host}:{port}/v1/info"
     last = "no response"
     async with httpx.AsyncClient(timeout=5.0) as probe:
         while True:  # always probe at least once — the timeout bounds retries, not the attempt
             try:
-                resp = await probe.get(f"http://{host}:{port}/v1/info")
+                resp = await probe.get(url)
                 if resp.status_code == 200 and not resp.json().get("starting", True):
                     return
-                last = f"HTTP {resp.status_code}"
+                last = f"GET {url} answered HTTP {resp.status_code}"
             except httpx.HTTPError as exc:
-                last = str(exc)
+                last = describe_http_failure(exc)
             if asyncio.get_running_loop().time() >= deadline:
                 break
             await asyncio.sleep(2.0)
     raise IsolatedProvisioningError(
-        f"dedicated coordinator {host}:{port} did not become ready within {timeout:.0f}s ({last})"
+        f"dedicated coordinator did not become ready within {timeout:.0f}s ({last})"
     )
 
 

@@ -23,6 +23,7 @@ import {
 } from "./demo-source-containers";
 import {
   expectDiscoveredColumns,
+  openListRow,
   existingSourcePath,
   openRegisterForm,
   openSourcesForm,
@@ -406,7 +407,9 @@ export async function registerGrpcRemote(page: Page, port: number): Promise<Regi
   await submitSwapSource(page, sourceId);
 
   // REQ-322: adding the source registers nothing; the table is registered on its own.
-  const breedTable = await registerOfferedTable(page, sourceId, "grpc_remote", "ListBreeds", [
+  // The offered (registered) name keeps the proto's names; SQL addresses it by its snake case alias
+  // <namespace>__animal_catalog__list_breeds (REQ-325).
+  await registerOfferedTable(page, sourceId, "grpc_remote", "ListBreeds", [
     "name",
     "species",
     "avg_lifespan_years",
@@ -415,7 +418,7 @@ export async function registerGrpcRemote(page: Page, port: number): Promise<Regi
   return {
     label: "grpc_remote",
     sourceId,
-    sql: `SELECT name, species FROM grpc_remote.${breedTable} ORDER BY name`,
+    sql: `SELECT name, species FROM grpc_remote.${namespace}__animal_catalog__list_breeds ORDER BY name`,
     assertRows: (rows) => {
       expect(rows).toHaveLength(3);
       expect(rows.map((r) => r[0])).toEqual(["Holland Lop", "Labrador Retriever", "Siamese"]);
@@ -587,7 +590,7 @@ export async function registerRss(page: Page): Promise<Registration> {
   // action button click doesn't also toggle the row), and a row wide enough for that column to
   // sit at the row's horizontal midpoint swallows a plain `row.click()` there — reproduced live
   // (the row locator resolves and clicks with no error, but the row never expands).
-  await row.locator("td").first().click();
+  await openListRow(row);
   const editBtn = page.getByTestId("table-read-view-edit").first();
   await editBtn.waitFor({ timeout: 10000 });
   await editBtn.click();

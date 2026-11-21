@@ -67,6 +67,8 @@ if [ -n "$IDP" ] && [ "$IDP" != "basic" ] && [ "$IDP" != "firebase" ]; then
 fi
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# REQ-2223: a virtual environment out of step with uv.lock stops the start here.
+"$SCRIPT_DIR/scripts/ensure-venv-in-step.sh" "$SCRIPT_DIR" || exit 1
 # A named demo's directory: this checkout's demo/named/<name>/, or -- for a published demo (REQ-2049)
 # -- its bundle, pulled from where the project publishes demos (PROVISA_DEMO_REGISTRY names another)
 # into $PROVISA_HOME/demos/<name>/<version>: `--demo weblogs` pulls its latest, `--demo
@@ -187,6 +189,7 @@ _mcp_scheme() {
 print_query_surfaces() {
   echo "  pgwire:  postgresql://admin:ignored@localhost:5439/provisa  (username = role)"
   [ "${PROVISA_BOLT_PORT:-0}" != 0 ] && echo "  bolt:    bolt://localhost:${PROVISA_BOLT_PORT}  (username = role)"
+  [ "${PROVISA_MINTED_PGWIRE_PORT:-0}" != 0 ] && echo "  minted:  postgresql://localhost:${PROVISA_MINTED_PGWIRE_PORT}/provisa  (tokens minted for one code-source call only)"
   echo "  sparql:  http://localhost:$PROVISA_API_PORT/data/sparql  (SPARQL 1.1 Protocol; role via sign-in or X-Provisa-Role)"
   echo "  graphql: http://localhost:$PROVISA_API_PORT/data/graphql  (GraphQL over HTTP; role via sign-in or X-Provisa-Role)"
   echo "  cypher:  http://localhost:$PROVISA_API_PORT/data/cypher  (Cypher over HTTP; role via sign-in or X-Provisa-Role)"
@@ -455,14 +458,19 @@ if [ -n "$DEMO_NAME" ]; then
       docker compose -f "$_NAMED_DIR/docker-compose.yml" up seeder
     fi
   fi
-  # REQ-2016: the optional dependency groups the demo's demo.yaml names (extras:), installed for
-  # this demo alone; any other start installs nothing more.
+  # REQ-2016: the optional dependency groups the demo's demo.yaml names (extras:), synced for
+  # this demo alone from uv.lock; any other start installs nothing more. Through the lock, torch
+  # comes from PyTorch's CPU-only index on Linux ([tool.uv.sources]), never PyPI's CUDA build.
+  # --inexact keeps what is already installed; --no-install-project leaves provisa's own build to
+  # rust/ensure-local-build.sh.
   if [ -f "$_NAMED_DIR/demo.yaml" ]; then
-    _DEMO_REQS="$("$SCRIPT_DIR/.venv/bin/python" "$SCRIPT_DIR/scripts/demo_extras.py" "$_NAMED_DIR")" || exit 1
-    if [ -n "$_DEMO_REQS" ]; then
-      echo "Named demo '$DEMO_NAME': installing what it needs: $(echo $_DEMO_REQS)"
-      # shellcheck disable=SC2086
-      "$SCRIPT_DIR/.venv/bin/python" -m pip install --quiet $_DEMO_REQS || exit 1
+    _DEMO_EXTRAS="$("$SCRIPT_DIR/.venv/bin/python" "$SCRIPT_DIR/scripts/demo_extras.py" --groups "$_NAMED_DIR")" || exit 1
+    if [ -n "$_DEMO_EXTRAS" ]; then
+      _DEMO_EXTRA_ARGS=()
+      for _extra in $_DEMO_EXTRAS; do _DEMO_EXTRA_ARGS+=(--extra "$_extra"); done
+      echo "Named demo '$DEMO_NAME': syncing the extras it needs: $(echo $_DEMO_EXTRAS)"
+      (cd "$SCRIPT_DIR" && UV_PROJECT_ENVIRONMENT=.venv uv sync --locked --inexact --no-install-project \
+        "${_DEMO_EXTRA_ARGS[@]}") || exit 1
     fi
   fi
   if [ "$_NAMED_WHOLE" = true ]; then
@@ -906,6 +914,7 @@ start_backend() {
     PROVISA_CONFIG="${PROVISA_CONFIG}"
     PROVISA_CONFIG_REPLACE="true"
     PROVISA_PGWIRE_PORT=5439
+    PROVISA_MINTED_PGWIRE_PORT="${PROVISA_MINTED_PGWIRE_PORT:-5440}"
     GRPC_PORT="$GRPC_PORT"
     FLIGHT_PORT="$FLIGHT_PORT"
     # MCP over plain HTTP: Claude Desktop reaches a local server only via the stdio bridge (works
@@ -915,7 +924,7 @@ start_backend() {
     # Bind 0.0.0.0 under WSL so Windows Claude Desktop can reach the backend via the WSL VM IP
     # (the localhost relay drops MCP's streamed response); loopback-only otherwise.
     PROVISA_MCP_HOST="${PROVISA_MCP_HOST:-$(is_wsl && echo 0.0.0.0 || echo 127.0.0.1)}"
-    PROVISA_MCP_ROLE="${PROVISA_MCP_ROLE:-admin}"
+    PROVISA_MCP_ROLE="${PROVISA_MCP_ROLE:-org_admin}"
     PROVISA_MCP_BRIDGE_COMMAND="${PROVISA_MCP_BRIDGE_COMMAND:-$SCRIPT_DIR/.venv/bin/python}"
   )
   # Native tier: in-process DuckDB engine + embedded fakeredis, so no Trino/Redis
@@ -963,25 +972,14 @@ start_backend() {
     _BACKEND_ENV+=( PROVISA_HTTP_LISTEN="0.0.0.0:$PROVISA_API_PORT" )
     _bind_args=( --uds "${TMPDIR:-/tmp}/provisa-supervisor-$$.sock" )
   fi
-  # Where this launch's output begins in the appended log, so a failure is read from this launch only.
-  _BACKEND_LOG_START=$(wc -c < "$LOG_DIR/backend.log" 2>/dev/null || echo 0)
+  # scripts/serve_backend.py: with --reload, a failed first start ends this process, which the
+  # wait below sees; plain uvicorn's reloader would keep running with no server under it.
   env "${_BACKEND_ENV[@]}" \
-    "$SCRIPT_DIR/.venv/bin/uvicorn" main:app \
+    "$SCRIPT_DIR/.venv/bin/python" "$SCRIPT_DIR/scripts/serve_backend.py" uvicorn main:app \
       "${_serve_args[@]}" \
       "${_bind_args[@]}" \
       >> "$LOG_DIR/backend.log" 2>&1 &
   BACKEND_PID=$!
-}
-
-# This launch's log output, from where start_backend began it.
-backend_launch_log() {
-  tail -c +$(( ${_BACKEND_LOG_START:-0} + 1 )) "$LOG_DIR/backend.log"
-}
-
-# uvicorn logs this and, under its reloader or worker supervisor, keeps the process alive, so a
-# liveness check alone never sees a failed startup.
-backend_startup_failed() {
-  backend_launch_log | grep -q "Application startup failed"
 }
 
 restart_backend() {
@@ -1019,20 +1017,13 @@ pkill -f "tail -n0 -f ${LOG_DIR}/backend.log" 2>/dev/null || true
 # follower as a live child that the final `wait` then blocks on forever. Killing the
 # subshell's children (below) reaps both tail and grep.
 ( tail -n0 -f "$LOG_DIR/backend.log" 2>/dev/null \
-  | grep --line-buffered -E "startup phase|introspect_tables|Catalog .* not yet ready|Application startup complete|Application startup failed" ) &
+  | grep --line-buffered -E "startup phase|introspect_tables|Catalog .* not yet ready|Application startup complete" ) &
 BACKEND_TAIL_PID=$!
 _backend_ok=false
 for i in $(seq 1 90); do
   if curl -sf "http://localhost:$PROVISA_API_PORT/health" > /dev/null 2>&1; then
     _backend_ok=true
     break
-  fi
-  if backend_startup_failed; then
-    pkill -P "$BACKEND_TAIL_PID" 2>/dev/null || true
-    kill "$BACKEND_TAIL_PID" 2>/dev/null || true
-    echo "Backend startup failed. The failure and its exception:"
-    backend_launch_log | tail -60
-    exit 1
   fi
   if ! kill -0 "$BACKEND_PID" 2>/dev/null; then
     pkill -P "$BACKEND_TAIL_PID" 2>/dev/null || true
@@ -1085,12 +1076,14 @@ fi
 
 echo "Starting Provisa UI on port 3000..."
 is_exfat "$SCRIPT_DIR/provisa-ui" && find "$SCRIPT_DIR/provisa-ui" -name "._*" -delete 2>/dev/null || true
-# Load nvm and switch to the Node version specified in .nvmrc (requires Node 20.19+ or 22+)
+# Load nvm and switch to the Node version .nvmrc pins, installing it when it is missing.
 export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
 # shellcheck disable=SC1091
 [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
 if command -v nvm >/dev/null 2>&1; then
-  nvm use 2>/dev/null || nvm use 22 2>/dev/null || true
+  (cd "$SCRIPT_DIR" && nvm install >/dev/null) \
+    || { echo "nvm could not install the Node version in $SCRIPT_DIR/.nvmrc" >&2; exit 1; }
+  nvm use "$(cat "$SCRIPT_DIR/.nvmrc")" >/dev/null
 fi
 # REQ-2071: provisa-notebook (the Data Science area's Python) installed and its assets built,
 # before vite serves them. A failure leaves the rest of the app running; the Data Science area

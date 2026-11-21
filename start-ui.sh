@@ -28,6 +28,8 @@ if [ -n "$IDP" ] && [ "$IDP" != "basic" ] && [ "$IDP" != "firebase" ]; then
 fi
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# REQ-2223: a virtual environment out of step with uv.lock stops the start here.
+"$SCRIPT_DIR/scripts/ensure-venv-in-step.sh" "$SCRIPT_DIR" || exit 1
 LOG_DIR="$SCRIPT_DIR/.logs"
 mkdir -p "$LOG_DIR"
 
@@ -206,32 +208,11 @@ if [ "$SEED_DATA" = true ] && [ -f "$SCRIPT_DIR/scripts/seed-kafka.py" ] && \
   "$SCRIPT_DIR/.venv/bin/python" "$SCRIPT_DIR/scripts/seed-kafka.py" 2>/dev/null || true
 fi
 
-# REQ-2071: provisa-notebook (the Data Science area's Python) installed and its assets built,
-# before the dependency sync below (pip alone would look for it on PyPI). A failure leaves the
-# rest of the app running; the Data Science area then says the notebook assets are missing.
+# REQ-2071: provisa-notebook (the Data Science area's Python) installed and its assets built.
+# A failure leaves the rest of the app running; the Data Science area then says the notebook
+# assets are missing.
 "$SCRIPT_DIR/scripts/ensure-notebook.sh" "$SCRIPT_DIR" \
   || echo "Warning: provisa-notebook could not be prepared; the Data Science area will say so"
-
-# Ensure Python dependencies are installed (skip if lockfile unchanged; 30s timeout guards against hangs)
-if [ -f "$SCRIPT_DIR/pyproject.toml" ] && [ -d "$SCRIPT_DIR/.venv" ]; then
-  LOCK_HASH=$(md5 -q "$SCRIPT_DIR/pyproject.toml" "$SCRIPT_DIR/uv.lock" 2>/dev/null || echo "")
-  CACHED_HASH=$(cat "$SCRIPT_DIR/.venv/.dep-hash" 2>/dev/null || echo "none")
-  if [ "$LOCK_HASH" != "$CACHED_HASH" ]; then
-    echo "Syncing Python dependencies..."
-    "$SCRIPT_DIR/.venv/bin/pip" install -e "$SCRIPT_DIR" -q &
-    PIP_PID=$!
-    for _i in $(seq 1 30); do
-      kill -0 $PIP_PID 2>/dev/null || break
-      sleep 1
-    done
-    if kill -0 $PIP_PID 2>/dev/null; then
-      kill $PIP_PID 2>/dev/null
-      echo "Warning: dependency sync timed out or failed — continuing"
-    else
-      wait $PIP_PID 2>/dev/null && echo "$LOCK_HASH" > "$SCRIPT_DIR/.venv/.dep-hash" || echo "Warning: dependency sync timed out or failed — continuing"
-    fi
-  fi
-fi
 
 # provisa._encoders (the Rust encoders pgwire, gRPC and JSON use, with no Python fallback) built for
 # this checkout before the API starts: rust/ensure-local-build.sh runs rust/build-local.sh when
@@ -241,11 +222,12 @@ fi
 
 # The firebase provider needs the firebase-admin SDK (the [firebase] extra, not a
 # base dependency). Without it, _load_and_build → FirebaseAuthProvider raises
-# ImportError and the backend never boots. Install it on demand for the firebase lane.
+# ImportError and the backend never boots. Synced from uv.lock on demand for the firebase lane,
+# as every start path installs (never pip from PyPI, whose Linux torch is the CUDA build).
 if [ "$IDP" = "firebase" ] && [ -d "$SCRIPT_DIR/.venv" ]; then
   if ! "$SCRIPT_DIR/.venv/bin/python" -c "import firebase_admin" 2>/dev/null; then
     echo "Installing firebase-admin for the firebase IDP lane..."
-    "$SCRIPT_DIR/.venv/bin/pip" install -e "$SCRIPT_DIR[firebase]" -q
+    (cd "$SCRIPT_DIR" && UV_PROJECT_ENVIRONMENT=.venv uv sync --locked --inexact --no-install-project --extra firebase) || exit 1
   fi
 fi
 
@@ -260,6 +242,7 @@ sleep 1
 print_query_surfaces() {
   [ "${PROVISA_PGWIRE_PORT:-0}" != 0 ] && echo "  pgwire:  postgresql://admin:ignored@localhost:${PROVISA_PGWIRE_PORT}/provisa  (username = role)"
   [ "${PROVISA_BOLT_PORT:-0}" != 0 ] && echo "  bolt:    bolt://localhost:${PROVISA_BOLT_PORT}  (username = role)"
+  [ "${PROVISA_MINTED_PGWIRE_PORT:-0}" != 0 ] && echo "  minted:  postgresql://localhost:${PROVISA_MINTED_PGWIRE_PORT}/provisa  (tokens minted for one code-source call only)"
   echo "  sparql:  http://localhost:$PROVISA_API_PORT/data/sparql  (SPARQL 1.1 Protocol; role via sign-in or X-Provisa-Role)"
   echo "  graphql: http://localhost:$PROVISA_API_PORT/data/graphql  (GraphQL over HTTP; role via sign-in or X-Provisa-Role)"
   echo "  cypher:  http://localhost:$PROVISA_API_PORT/data/cypher  (Cypher over HTTP; role via sign-in or X-Provisa-Role)"
@@ -285,7 +268,7 @@ _start_backend() {
     export OTEL_EXPORTER_OTLP_ENDPOINT="${OTEL_EXPORTER_OTLP_ENDPOINT:-http://localhost:4317}"
     export OTEL_SERVICE_NAME="${OTEL_SERVICE_NAME:-provisa}"
   fi
-  "$SCRIPT_DIR/.venv/bin/uvicorn" main:app --reload --reload-dir provisa --reload-dir config --host 0.0.0.0 --port "$PROVISA_API_PORT" \
+  "$SCRIPT_DIR/.venv/bin/python" "$SCRIPT_DIR/scripts/serve_backend.py" uvicorn main:app --reload --reload-dir provisa --reload-dir config --host 0.0.0.0 --port "$PROVISA_API_PORT" \
     >> "$LOG_DIR/server.log" 2>&1 &
   BACKEND_PID=$!
 }

@@ -14,11 +14,11 @@
     "generating": "Wird generiert…",
     "generateKey": "Masterschlüssel generieren",
     "saveTitle": "Verschlüsselungseinstellungen speichern",
-    "keyGeneratedStored": "Hauptschlüssel erzeugt und im OS-Schlüsselbund gespeichert (Schlüssel-ID: {{keyId}}) – sofort wirksam, kein Neustart nötig.",
-    "keyGeneratedNoKeychain": "Kein OS-Schlüsselbund verfügbar — kopieren Sie diesen Schlüssel und setzen Sie ihn als {{envVar}}. Er wird nicht erneut angezeigt.",
+    "keyGeneratedStored": "Master-Schlüssel erzeugt und im Schlüsselbund des Betriebssystems gespeichert (Schlüssel-ID: {{keyId}}). Er ist sofort wirksam, ohne Neustart.",
+    "keyGeneratedNoKeychain": "Kein Schlüsselbund des Betriebssystems verfügbar. Kopieren Sie diesen Schlüssel und setzen Sie ihn als {{envVar}}. Er wird nicht erneut angezeigt.",
     "savedRestartRequired": "Gespeichert. Starten Sie den Dienst neu, um die Änderungen zu übernehmen.",
     "saved": "Gespeichert.",
-    "secretOnFile": "Gespeichert – leer lassen, um es beizubehalten",
+    "secretOnFile": "Gespeichert. Leer lassen, um den Wert zu behalten.",
     "secretNotSet": "Nicht gesetzt",
     "fingerprintLabel": "Fingerabdruck"
   }

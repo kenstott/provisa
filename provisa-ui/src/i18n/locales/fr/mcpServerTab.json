@@ -1,6 +1,6 @@
 {
   "mcpServerTab": {
-    "intro": "Le serveur Model Context Protocol (MCP) expose la découverte gouvernée du catalogue et l'exécution SQL aux agents d'IA externes. Chaque appel est gouverné par le rôle de l'appelant — le serveur ne bascule jamais sur admin par défaut.",
+    "intro": "Le serveur Model Context Protocol (MCP) expose aux agents IA externes la découverte gouvernée du catalogue et l'exécution SQL. Chaque appel est régi par le rôle de l'appelant, et le serveur ne se rabat jamais sur admin par défaut.",
     "loading": "Chargement…",
     "statusLabel": "Statut",
     "statusEnabled": "Activé",
@@ -8,9 +8,11 @@
     "endpointLabel": "Endpoint",
     "transportLabel": "Transport",
     "stdioRoleLabel": "Rôle stdio lié",
-    "stdioRoleNone": "aucun défini — les appels stdio requièrent <code>{{envVar}}</code>",
+    "stdioRoleNone": "non défini ; les appels stdio nécessitent <code>{{envVar}}</code>",
+    "principalLabel": "Principal local",
+    "principalNone": "aucun défini — les appels locaux sont refusés tant que <code>{{envVar}}</code> n'en nomme pas un",
     "maxRowsLabel": "Plafond de lignes (run_sql)",
-    "enableHint": "Le serveur MCP est optionnel. Définissez la variable d'environnement <code>{{enableEnvVar}}</code> sur un port et redémarrez le service pour l'activer. Pour le transport stdio local, définissez aussi <code>{{roleEnvVar}}</code> sur un rôle provisa.",
+    "enableHint": "Le serveur MCP est optionnel. Définissez la variable d'environnement <code>{{enableEnvVar}}</code> sur un port et redémarrez le service pour l'activer. Pour le transport stdio local, définissez aussi <code>{{roleEnvVar}}</code> sur un rôle provisa et <code>{{principalEnvVar}}</code> sur le principal (identifiant utilisateur) pour lequel ces appels agissent.",
     "toolsHeading": "Outils exposés",
     "colTool": "Outil",
     "colDescription": "Description"

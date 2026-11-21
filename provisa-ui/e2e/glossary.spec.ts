@@ -35,12 +35,12 @@ const RENAMED_EMPLOYEE = "workforce member";
 const EMPLOYEE_DEFINITION = "A person employed by the shelter to care for animals.";
 
 /**
- * Open /admin/ontology and wait for the term list to be populated. The admin page
+ * Open /context/ontology and wait for the term list to be populated. The page
  * is a lazily-compiled Vite chunk, so the first navigation of the run can exceed
  * the 5 s default expect timeout — the generous wait is on first paint only.
  */
 async function openGlossary(page: Page) {
-  await page.goto("/admin/ontology");
+  await page.goto("/context/ontology");
   await expect(page.getByTestId("glossary-search")).toBeVisible({ timeout: 60000 });
   // The list has loaded once at least one derived term row is rendered.
   await expect(
@@ -170,7 +170,7 @@ test.describe("REQ-1387 glossary curation", () => {
 
     // Creation selects the new term; it is a concept, so it has no refs.
     await expect(page.getByTestId("glossary-read-fields")).toContainText(abstractName, ROUND_TRIP);
-    await expect(page.getByTestId("glossary-detail").getByText("No physical refs.")).toBeVisible();
+    await expect(page.getByTestId("glossary-detail").getByText("Grounded in no column")).toBeVisible();
 
     // KIND_OF edge to the rooted "species" term, in the term's Edit form.
     await editTerm(page);
@@ -193,7 +193,7 @@ test.describe("REQ-1387 glossary curation", () => {
     await expect(page.getByTestId("glossary-delete-btn")).toBeDisabled();
     await page.getByTestId("glossary-delete-btn").hover({ force: true });
     await expect(
-      page.getByText("This term has refs or relationships", { exact: false }),
+      page.getByText("This term is grounded in columns or has relationships", { exact: false }),
     ).toBeVisible();
 
     // The inverse direction is visible from the rooted term.

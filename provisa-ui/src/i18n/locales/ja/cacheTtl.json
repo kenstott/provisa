@@ -2,7 +2,7 @@
   "cacheTtl": {
     "neverExpires": "期限切れなし",
     "inputHint": "-1: 期限切れなし",
-    "neverExpiresHint": "期限切れなし: 一度だけロードされます。",
+    "neverExpiresHint": "期限切れにならず、一度だけ取り込まれます。",
     "asOf": "{{ttl}}（{{when}} 時点）",
     "roleTtlUnlisted": "キャッシュ TTL はどのロールでも期限切れになりません。",
     "roleTtlNoEffect": "キャッシュ TTL は期限切れにならないため、このエントリは効果がありません。"

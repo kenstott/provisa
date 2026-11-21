@@ -90,8 +90,13 @@ _ROUTE_RETURNS_WRITTEN_ROWS: dict[WritePath, bool] = {
 # every route takes. A source's pgwire server writes one sObject or list per statement and
 # commits it as it runs: no ON CONFLICT, no UPDATE ... FROM, no DELETE ... USING (it answers
 # each 0A000), and its contract names neither MERGE nor TRUNCATE.
+# ``with_write`` (REQ-039) is a write whose governed form leads with a WITH: the key-set read stage
+# 2 puts before an UPDATE or DELETE that reads beyond its target, or the write held in a CTE whose
+# RETURNING is read (``WITH w AS (<write> RETURNING ...) SELECT ... FROM w``). A route refusing it
+# takes the same write in two steps -- the keys and new values read as any read is, then a plain
+# write by key -- never as one statement.
 WRITE_FORMS: frozenset[str] = frozenset(
-    {"on_conflict", "update_from", "delete_using", "merge", "truncate"}
+    {"on_conflict", "update_from", "delete_using", "merge", "truncate", "with_write"}
 )
 _ROUTE_REFUSED_FORMS: dict[WritePath, frozenset[str]] = {
     WritePath.NATIVE: frozenset(),
@@ -109,6 +114,14 @@ _ROUTE_REFUSED_FORMS: dict[WritePath, frozenset[str]] = {
 # driver refuses any other conflict clause by name), and none of UPDATE ... FROM, DELETE ... USING,
 # MERGE or TRUNCATE.
 _TYPE_RETURNS_NO_ROWS: frozenset[str] = frozenset({"athena", "qdrant"})
+# REQ-039: the source types whose own SQL runs a WITH-led write -- a leading WITH on an UPDATE or
+# DELETE, and a data-modifying statement inside a CTE -- on a direct route. Every other type, and
+# the engine route (Trino and DuckDB take neither), refuses ``with_write`` and is written in two
+# steps. MySQL and its kin, SQLite, DuckDB, SQL Server, Oracle, Snowflake, BigQuery, ClickHouse,
+# Databricks, Redshift and Greenplum (whose writable CTEs are not those of a current PostgreSQL)
+# are among them.
+_TYPE_RUNS_WITH_WRITE: frozenset[str] = frozenset({"postgresql", "cockroachdb", "yugabytedb"})
+_DIRECT_ROUTES: frozenset[WritePath] = frozenset({WritePath.NATIVE, WritePath.SQLALCHEMY})
 _TYPE_REFUSED_FORMS: dict[str, frozenset[str]] = {
     "athena": frozenset({"on_conflict", "update_from", "delete_using", "truncate"}),
     "qdrant": frozenset({"update_from", "delete_using", "merge", "truncate"}),
@@ -225,4 +238,7 @@ def write_refused_forms(source_type: str, engine: FederationEngine | None = None
     route = resolve_write_path(source_type, engine)
     if route is None:
         return frozenset()
-    return _ROUTE_REFUSED_FORMS[route] | _TYPE_REFUSED_FORMS.get(source_type, frozenset())
+    refused = _ROUTE_REFUSED_FORMS[route] | _TYPE_REFUSED_FORMS.get(source_type, frozenset())
+    if route not in _DIRECT_ROUTES or source_type not in _TYPE_RUNS_WITH_WRITE:
+        refused |= {"with_write"}  # REQ-039: written in two steps
+    return refused

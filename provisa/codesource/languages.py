@@ -8,7 +8,7 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""The languages a code source can be written in (REQ-1984, REQ-1993, REQ-2200).
+"""The languages a code source can be written in (REQ-1984, REQ-1993, REQ-2200, REQ-2227).
 
 Nothing in the shared layer names a language (docs/arch/code-sources.md, section 1): a language
 is a :class:`CodeLanguage`, its source type, the runtimes a source of it may name, the package
@@ -19,7 +19,7 @@ Everything that asks whether a source type is code asks :data:`CODE_SOURCE_TYPES
 This module imports nothing of any language's, so any layer may ask it.
 """
 
-# Requirements: REQ-1984, REQ-1993, REQ-2200
+# Requirements: REQ-1984, REQ-1993, REQ-2200, REQ-2227
 from __future__ import annotations
 
 import importlib
@@ -34,7 +34,7 @@ class CodeLanguage:
     source_type: str
     #: The runtimes a source may name; with only one, a source that names none runs on it.
     runtimes: tuple[str, ...]
-    #: The kind of package reference its code may be (npm, pypi, gomod), beside the Git,
+    #: The kind of package reference its code may be (npm, pypi, gomod, cargo), beside the Git,
     #: upload and directory references every language shares.
     package_kind: str
     #: Whether a source names where its code is entered (Python's module, Go's package), when the
@@ -74,6 +74,10 @@ LANGUAGES: dict[str, CodeLanguage] = {
         # REQ-2200: Go, compiled by the pinned toolchain into one static host per code hash.
         CodeLanguage(
             "go", ("go",), "gomod", True, "provisa.golang.prepare", "provisa.golang.image"
+        ),
+        # REQ-2227: Rust, compiled by the pinned toolchain into one static host per code hash.
+        CodeLanguage(
+            "rust", ("rust",), "cargo", True, "provisa.rustlang.prepare", "provisa.rustlang.image"
         ),
     )
 }

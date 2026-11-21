@@ -57,8 +57,16 @@ def _state():
             "secret_cmd": hidden,
         },
         roles={
-            "admin": {"id": "admin", "domain_access": ["*", "meta", "ontology", "ops"]},
-            "guest": {"id": "guest", "domain_access": ["*", "meta", "ontology", "ops"]},
+            "admin": {
+                "id": "admin",
+                "capabilities": ["command_execution"],
+                "domain_access": ["*", "meta", "ontology", "ops"],
+            },
+            "guest": {
+                "id": "guest",
+                "capabilities": ["command_execution"],
+                "domain_access": ["*", "meta", "ontology", "ops"],
+            },
         },
     )
 
@@ -131,7 +139,11 @@ def test_flight_command_flight_info_descriptor_and_schema():
 def _schema_input():
     fns = list(_state().tracked_functions.values())
     return SimpleNamespace(
-        role={"id": "admin", "domain_access": ["*", "meta", "ontology", "ops"]},
+        role={
+            "id": "admin",
+            "capabilities": ["command_execution"],
+            "domain_access": ["*", "meta", "ontology", "ops"],
+        },
         functions=fns,
         webhooks=[],  # mirrors SchemaInput.webhooks (default []) — proto_gen reads both
         root_domain_ids=None,  # the role's whole proto, no domain asked for

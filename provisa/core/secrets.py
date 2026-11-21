@@ -32,6 +32,20 @@ import re
 from abc import ABC, abstractmethod
 
 _SECRET_PATTERN = re.compile(r"\$\{(\w+):([^}]+)\}")
+_ENV_REFERENCE = re.compile(r"\$\{env:([^}]+)\}")
+
+#: The words that make a field a credential's, in a structure resolved whole
+#: (:func:`resolve_secrets_in_dict`): REQ-1557's "password, token, key, secret".
+_CREDENTIAL_WORDS = frozenset(
+    {"password", "passwd", "pwd", "token", "key", "secret", "credential", "credentials"}
+)
+
+
+def is_credential_field(name: str) -> bool:
+    """Whether a field called ``name`` holds a credential: one of its words says so
+    (``password``, ``api_key``, ``clientSecret``, ``refresh_token``)."""
+    words = re.findall(r"[A-Za-z][a-z]*", name)
+    return any(word.lower() in _CREDENTIAL_WORDS for word in words)
 
 
 class SecretsProvider(ABC):  # REQ-125, REQ-320
@@ -134,14 +148,32 @@ def _provider_for(name: str) -> SecretsProvider:
     return provider
 
 
+def _note_env_values(written: str, resolved: str) -> None:  # REQ-1557, REQ-2087
+    """Hand central redaction each value ``written``'s ``${env:NAME}`` references resolved to in
+    ``resolved``, a credential field's value. A written default that was used is the reference's
+    own text, not the server's, and is not noted."""
+    from provisa.security.redaction import note_secret_value
+
+    for reference in _ENV_REFERENCE.findall(written):
+        name = reference.partition(":-")[0]
+        held = os.environ.get(name)
+        if held and held in resolved:
+            note_secret_value(f"env:{name}", held)
+
+
 def resolve_secrets(  # REQ-125, REQ-251, REQ-320, REQ-1557
-    value: str, *, providers: tuple[str, ...] | None = None
+    value: str, *, providers: tuple[str, ...] | None = None, credential: bool = False
 ) -> str:
     """Replace ${provider:reference} patterns with resolved secret values.
 
     ``providers`` narrows which provider names this particular call will honour. The caller that
     uses it is the one building a central backend from its config: that backend's own credential
     cannot come out of the store it opens, so its resolution is restricted to ``env``.
+
+    ``credential``: ``value`` is a credential field's (a password, a token, a key, a secret). What
+    the server's environment gave it is then matched by central redaction from this first use, so
+    an error or a log line that echoes it does not carry it (REQ-1557). A value the environment
+    gives any other field (a host, a port, a database's name) stays readable.
     """
 
     def _replace(match: re.Match) -> str:
@@ -171,7 +203,10 @@ def resolve_secrets(  # REQ-125, REQ-251, REQ-320, REQ-1557
             note_secret_value(reference, value)
         return value
 
-    return _SECRET_PATTERN.sub(_replace, value)
+    resolved = _SECRET_PATTERN.sub(_replace, value)
+    if credential:
+        _note_env_values(value, resolved)
+    return resolved
 
 
 def expand_scope(value: str) -> str:  # REQ-1622
@@ -192,8 +227,8 @@ async def resolve_api_key_field(value: str | None) -> str | None:  # REQ-1827
 
     The one resolution every "API key env" style config field should share (REQ-1808's actual
     scope: any credential field, not only the MCP chat path that originally generalized it) —
-    provisa/api/mcp/chat.py's own ``_resolve_api_key_field`` and provisa/vector/providers.py's
-    embedding-model key both delegate here rather than each reimplementing (and, before this,
+    provisa.core.org_secrets' AI endpoint key (``endpoint_key``) and embedding-model key
+    (``vector_model_key``) both delegate here rather than each reimplementing (and, before this,
     diverging on) the same grammar.
 
     Returns ``None`` for an empty/``None`` value, or when a bare env-var name is not set. Only a
@@ -208,10 +243,17 @@ async def resolve_api_key_field(value: str | None) -> str | None:  # REQ-1827
 
             async with bound_to_request_org():
                 return resolve_secrets(ref)
-        return resolve_secrets(ref)
+        resolved = resolve_secrets(ref)
+        _note_env_values(ref, resolved)  # REQ-1557: an API key is a credential
+        return resolved
 
     if not value:
         return None
+    # REQ-1557: a key variable a held organization's own settings name is not read. It cannot be
+    # saved there; this is the read's own refusal of a row that holds one all the same.
+    from provisa.core.env_reference_guard import refuse_named_by_org
+
+    refuse_named_by_org(value)
     if "${" in value:
         return await _resolve_reference(value)
     # A plain name: look up the env var. Its OWN value is returned as-is unless it too contains a
@@ -221,7 +263,12 @@ async def resolve_api_key_field(value: str | None) -> str | None:  # REQ-1827
     raw = os.environ.get(value)
     if not raw:
         return None
-    return await _resolve_reference(raw) if "${" in raw else raw
+    if "${" in raw:
+        return await _resolve_reference(raw)
+    from provisa.security.redaction import note_secret_value
+
+    note_secret_value(f"env:{value}", raw)  # REQ-1557: an API key is a credential
+    return raw
 
 
 def resolve_secret_name(name: str) -> str:  # REQ-2104
@@ -236,18 +283,26 @@ def resolve_secret_name(name: str) -> str:  # REQ-2104
 
 
 def resolve_secrets_in_dict(data: dict) -> dict:  # REQ-251, REQ-320
-    """Recursively resolve secret references in a dict."""
+    """Recursively resolve secret references in a dict. A value under a credential's field name
+    (:func:`is_credential_field`) is resolved as one (``resolve_secrets``'s ``credential``)."""
+
+    def _text(key: object, written: str) -> str:
+        resolved = resolve_secrets(written)
+        if isinstance(key, str) and is_credential_field(key):
+            _note_env_values(written, resolved)
+        return resolved
+
     result = {}
     for key, value in data.items():
         if isinstance(value, str):
-            result[key] = resolve_secrets(value)
+            result[key] = _text(key, value)
         elif isinstance(value, dict):
             result[key] = resolve_secrets_in_dict(value)
         elif isinstance(value, list):
             result[key] = [
                 resolve_secrets_in_dict(item)
                 if isinstance(item, dict)
-                else resolve_secrets(item)
+                else _text(key, item)
                 if isinstance(item, str)
                 else item
                 for item in value

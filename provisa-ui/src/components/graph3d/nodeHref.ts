@@ -48,4 +48,6 @@ const HREF: Record<NodeType, (n: GraphNode) => string> = {
 export const erdHref = (n: GraphNode): string =>
   erdViewHref("tables", { objects: [n.label], table: rest(n.id) });
 
-export const nodeHref = (n: GraphNode): string => HREF[n.type](n);
+/** A node's page; a table's folded columns are its table's (REQ-2174, amended 2026-11-07). */
+export const nodeHref = (n: GraphNode): string =>
+  n.folded && n.parent ? entityHref("table", rest(n.parent)) : HREF[n.type](n);

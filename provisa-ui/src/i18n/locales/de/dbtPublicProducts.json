@@ -1,0 +1,23 @@
+{
+  "dbtPublicProducts": {
+    "modeLabel": "Was registriert wird",
+    "modeTables": "Tabellen auswählen",
+    "modeProducts": "Öffentliche Modelle als Datenprodukte",
+    "intro_one": "Jedes öffentliche Modell mit erzwungenem Vertrag wird als Tabelle registriert, und {{count}} Datenprodukt wird als Entwurf zur Prüfung durch einen Steward angelegt.",
+    "intro_other": "Jedes öffentliche Modell mit erzwungenem Vertrag wird als Tabelle registriert, und {{count}} Datenprodukte werden als Entwürfe zur Prüfung durch einen Steward angelegt.",
+    "none": "Kein Modell in diesem Manifest ist öffentlich mit erzwungenem Vertrag.",
+    "groupProduct": "Datenprodukt {{id}} (dbt-Gruppe)",
+    "projectProduct": "Datenprodukt {{id}} (das ganze Projekt)",
+    "exists": "Ein Datenprodukt namens {{id}} existiert bereits. Benennen Sie es um oder entfernen Sie es, um diese Modelle zu registrieren.",
+    "owner": "Eigentümer: {{owner}}",
+    "ownerRole": "Eigentümerrolle {{role}}",
+    "tests": "Tests: {{tests}}",
+    "version": "Version {{version}}",
+    "columns": "Zugesagte Spalten: {{columns}}",
+    "required": "erforderlich",
+    "alreadyRegistered": "bereits registriert",
+    "ungrouped": "In keiner Gruppe und daher hier nicht registriert: {{models}}. Wählen Sie sie stattdessen als Tabellen aus.",
+    "confirm_one": "Registrieren und {{count}} Produktentwurf anlegen",
+    "confirm_other": "Registrieren und {{count}} Produktentwürfe anlegen"
+  }
+}

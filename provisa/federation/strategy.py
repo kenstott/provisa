@@ -148,6 +148,8 @@ _MATERIALIZE_ONLY = frozenset(
         # REQ-1934: a profiler's rows are written by its runs into the org's control plane, as
         # ingest's are; there is no remote table to federate.
         "data_profiler",
+        # REQ-2228: a dbt source holds no table; its models register on their warehouse source.
+        "dbt",
         # REQ-1730: sqlite/firebird/airport are DuckDB-ATTACH-only (no Trino/pg connector exists for
         # any of them) — before this, an engine with no connector raised UnreachableSource outright
         # rather than falling back to landing, the ONLY of Provisa's DIRECT/FETCH-shaped source
@@ -178,6 +180,12 @@ _MATERIALIZE_ONLY = frozenset(
         "pinot",
         "druid",
         "hive_s3",
+        # REQ-1998 (MOTHERDUCK LANDS THROUGH ITS POSTGRES ENDPOINT): an engine with no live reach
+        # for either lands it -- google_sheets through the Sheets API, motherduck through
+        # MotherDuck's Postgres endpoint (build_adapter_loaders); an engine that attaches one
+        # (Trino's gsheets, the pg engine's MotherDuck FDW) keeps its connector.
+        "google_sheets",
+        "motherduck",
     }
 )
 

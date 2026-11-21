@@ -46,7 +46,12 @@ from provisa.api.errors import ApiError
 from provisa.core.ir_types import bytea_hex
 
 # The schema name a source's operations are registered under, per source type.
-OPERATION_SCHEMA = {"openapi": "openapi", "graphql_remote": "graphql", "grpc_remote": "grpc_remote"}
+OPERATION_SCHEMA = {
+    "openapi": "openapi",
+    "graphql_remote": "graphql",
+    "grpc_remote": "grpc_remote",
+    "dbt": "dbt",  # REQ-2228
+}
 
 # An OpenAPI operation's request body is passed as this one argument.
 BODY_ARGUMENT = "body"
@@ -70,6 +75,13 @@ class Operation:
     arguments: tuple[str, ...]
     reads: bool = False
     binary: bool = False
+    # REQ-1986: an operation that reads rows and requires a parameter is a function returning the
+    # rows of its table: ``table`` names that table as the source offers it, ``argument_types``
+    # the type of each argument (by position), ``returns_type`` the row's type as the source's
+    # schema names it (None where it names none).
+    table: str | None = None
+    argument_types: tuple[str, ...] = ()
+    returns_type: str | None = None
 
 
 # What a command that answers with a file returns: one row holding the file, a bytea.
@@ -83,27 +95,63 @@ def _source_type(state, source_id: str) -> str:
 # --- what a source offers ----------------------------------------------------------------------
 
 
-# The commands of each source's spec, by operation, with the spec they were read from: a spec is
-# read once and again only when the source's spec is replaced (a refresh, a new registration).
-_COMMANDS: dict[str, tuple[dict, dict[str, Any]]] = {}
+# The commands of each source's spec, by operation, and its queries, with the spec they were read
+# from: a spec is read once and again only when the source's spec is replaced (a refresh, a new
+# registration).
+_COMMANDS: dict[str, tuple[dict, dict[str, Any], list[Any]]] = {}
 
 
-def _commands(state, source_id: str) -> dict[str, Any]:
+def _read_spec(state, source_id: str) -> tuple[dict, dict[str, Any], list[Any]]:
     spec = state.openapi_specs[source_id]["spec"]
     held = _COMMANDS.get(source_id)
     if held is None or held[0] is not spec:
         from provisa.openapi.mapper import parse_spec
 
-        _, mutations = parse_spec(spec)
-        held = _COMMANDS[source_id] = (spec, {m.operation_id: m for m in mutations})
-    return held[1]
+        queries, mutations = parse_spec(spec)
+        held = _COMMANDS[source_id] = (spec, {m.operation_id: m for m in mutations}, queries)
+    return held
+
+
+def _commands(state, source_id: str) -> dict[str, Any]:
+    return _read_spec(state, source_id)[1]
+
+
+# An OpenAPI parameter's type as a function's argument type.
+_OPENAPI_ARGUMENT_TYPE = {
+    "integer": "integer",
+    "number": "float",
+    "boolean": "boolean",
+    "string": "varchar",
+}
+
+
+def _openapi_reads(state, source_id: str) -> list[Operation]:
+    """REQ-1986: each GET that answers rows and requires a parameter, as the function returning
+    the rows of its table (named by its operation id)."""
+    found = []
+    for q in _read_spec(state, source_id)[2]:
+        params = [*q.path_params, *q.query_params]
+        if q.columns_declared or not any(p["required"] for p in params):
+            continue
+        found.append(
+            Operation(
+                name=q.operation_id,
+                comment=f"[{q.method}] {q.path}" + (f" — {q.summary}" if q.summary else ""),
+                arguments=tuple(p["name"] for p in params),
+                reads=True,
+                table=q.operation_id,
+                argument_types=tuple(_OPENAPI_ARGUMENT_TYPE.get(p["type"], "json") for p in params),
+                returns_type=q.returns_type,
+            )
+        )
+    return found
 
 
 def _openapi_operations(state, source_id: str) -> list[Operation] | None:
     if source_id not in (getattr(state, "openapi_specs", None) or {}):
         return None
     mutations = _commands(state, source_id).values()
-    return [
+    return _openapi_reads(state, source_id) + [
         Operation(
             name=m.operation_id,
             comment=f"[{m.method.upper()}] {m.path}" + (f" — {m.summary}" if m.summary else ""),
@@ -130,12 +178,42 @@ async def _graphql_schema(state, source_id: str) -> dict | None:
     return None if offered is None else offered[0].schema()
 
 
+async def _graphql_reads(state, source_id: str) -> list[Operation]:
+    """REQ-1986: each root query field that requires an argument, as the function returning the
+    rows of its table (named by its SQL name)."""
+    from provisa.api.admin._graphql_table_registration import source_offer
+    from provisa.graphql_remote.brands import available_tables
+
+    offered = await source_offer(state, source_id)
+    if offered is None:
+        return []
+    offer, reg = offered
+    found = []
+    for t in available_tables(offer, reg["namespace"]):
+        required = t.get("required_args") or []
+        if not required:
+            continue
+        args = [*required, *(t.get("optional_args") or [])]
+        found.append(
+            Operation(
+                name=t["sql_name"],
+                comment=t.get("description"),
+                arguments=tuple(a["name"] for a in args),
+                reads=True,
+                table=t["sql_name"],
+                argument_types=tuple(a["provisa_type"] for a in args),
+                returns_type=t.get("gql_type_name"),
+            )
+        )
+    return found
+
+
 async def _graphql_operations(state, source_id: str) -> list[Operation] | None:
     schema = await _graphql_schema(state, source_id)
     if schema is None:
         return None
     root = _mutation_root(schema)
-    return [
+    return await _graphql_reads(state, source_id) + [
         Operation(
             name=f["name"],
             comment=f.get("description"),
@@ -164,9 +242,75 @@ def _grpc_operations(state, source_id: str) -> list[Operation] | None:
     ]
 
 
-async def offered_operations(state, source_id: str) -> list[Operation] | None:
-    """Every write operation ``source_id`` offers, or None when it is not a remote source this
-    process holds."""
+async def _snowflake_operations(state, source_id: str, schema_name: str) -> list[Operation] | None:
+    """REQ-2230: what can be run on the Dynamic Tables and Tasks of ``schema_name``; None when the
+    source is not connected."""
+    if not state.source_pools.has(source_id):
+        return None
+    from provisa.executor.snowflake_objects import operations
+
+    return [
+        Operation(name=name, comment=statement, arguments=())
+        for name, statement in await operations(state.source_pools, source_id, schema_name)
+    ]
+
+
+async def _dbt_operations(state, source_id: str) -> list[Operation] | None:  # REQ-2228
+    """Everything a dbt source's manifest offers to run: None until its manifest is held."""
+    from provisa.dbt.commands import offered_commands
+    from provisa.dbt.store import held_manifest
+
+    async with state.model_db.acquire() as conn:
+        manifest = await held_manifest(conn, source_id)
+    if manifest is None:
+        return None
+    return [
+        Operation(name=c.name, comment=c.comment, arguments=c.arguments)
+        for c in offered_commands(manifest)
+    ]
+
+
+@dataclass(frozen=True)
+class PlainList:  # REQ-1986
+    """A source operation that reads rows and requires no parameter: the table it is offered as
+    (named as the source's parameterized operations name theirs) and the type of one of its rows
+    as the source's schema names it (None where it names none)."""
+
+    table: str
+    returns_type: str | None
+
+
+async def plain_lists(state, source_id: str) -> list[PlainList]:
+    """REQ-1986: every operation of ``source_id`` that reads rows without a required parameter,
+    in the source's own order. Empty for a source that offers no such operations."""
+    source_type = _source_type(state, source_id)
+    if source_type == "openapi" and source_id in (getattr(state, "openapi_specs", None) or {}):
+        return [
+            PlainList(q.operation_id, q.returns_type)
+            for q in _read_spec(state, source_id)[2]
+            if not any(p["required"] for p in [*q.path_params, *q.query_params])
+        ]
+    if source_type == "graphql_remote":
+        from provisa.api.admin._graphql_table_registration import source_offer
+        from provisa.graphql_remote.brands import available_tables
+
+        offered = await source_offer(state, source_id)
+        if offered is None:
+            return []
+        offer, reg = offered
+        return [
+            PlainList(t["sql_name"], t.get("gql_type_name"))
+            for t in available_tables(offer, reg["namespace"])
+            if not t.get("required_args")
+        ]
+    return []
+
+
+async def offered_operations(
+    state, source_id: str, schema_name: str | None = None
+) -> list[Operation] | None:
+    """Every write operation ``source_id`` offers, or None when it is not a source of operations
+    this process holds. A Snowflake source offers them by schema (REQ-2230), so one is named."""
     source_type = _source_type(state, source_id)
     if source_type == "openapi":
         return _openapi_operations(state, source_id)
@@ -174,12 +318,18 @@ async def offered_operations(state, source_id: str) -> list[Operation] | None:
         return await _graphql_operations(state, source_id)
     if source_type == "grpc_remote":
         return _grpc_operations(state, source_id)
+    if source_type == "snowflake" and schema_name is not None:
+        return await _snowflake_operations(state, source_id, schema_name)
+    if source_type == "dbt":
+        return await _dbt_operations(state, source_id)
     return None
 
 
-async def offered_operation(state, source_id: str, name: str) -> Operation:
+async def offered_operation(
+    state, source_id: str, name: str, schema_name: str | None = None
+) -> Operation:
     """The operation ``name`` of ``source_id``; refused when the source offers none by it."""
-    offered = await offered_operations(state, source_id)
+    offered = await offered_operations(state, source_id, schema_name)
     if offered is None:
         raise ApiError(
             422,
@@ -411,15 +561,41 @@ async def _call_grpc(state, source_id: str, operation: str, args: dict) -> list[
     return _rows(answer)
 
 
-async def call_operation(state, source_id: str, operation: str, args: dict) -> list[dict]:
+async def call_operation(
+    state, source_id: str, operation: str, args: dict, schema_name: str | None = None
+) -> list[dict]:
     """Call the write operation ``operation`` of ``source_id`` with ``args`` as given."""
-    await offered_operation(state, source_id, operation)
+    await offered_operation(state, source_id, operation, schema_name)
     source_type = _source_type(state, source_id)
+    if source_type == "snowflake":  # REQ-2230: on the source's own connection, its credential
+        from provisa.executor.snowflake_objects import run
+
+        assert schema_name is not None  # the operation was offered in it
+        return await run(state.source_pools, source_id, schema_name, operation)
     if source_type == "openapi":
         return await _call_openapi(state, source_id, operation, args)
     if source_type == "graphql_remote":
         return await _call_graphql(state, source_id, operation, args)
     return await _call_grpc(state, source_id, operation, args)
+
+
+def operation_table(state, source_id: str, operation: Operation) -> dict | None:
+    """REQ-1986: the registered table of ``source_id`` an operation that reads rows is read
+    through -- the one registered under its name (an OpenAPI table is matched on its operation
+    id as its endpoint is) -- or None when none is registered."""
+    from provisa.api_source.openapi_endpoint import normalize_op_id
+
+    if operation.table is None:
+        return None
+    wanted = normalize_op_id(operation.table)
+    return next(
+        (
+            t
+            for t in getattr(state, "tables", None) or []
+            if t["source_id"] == source_id and normalize_op_id(t["table_name"]) == wanted
+        ),
+        None,
+    )
 
 
 def written_table(state, source_id: str, schema_table: str) -> dict | None:
@@ -439,13 +615,16 @@ def written_table(state, source_id: str, schema_table: str) -> dict | None:
 
 
 def _writes(command: dict) -> bool:
-    """Whether ``command`` is a source's write operation (one registered as a query reads)."""
+    """Whether ``command`` is a source's write operation, a code source's @command (REQ-2226) or
+    a writing native SQL command (REQ-1988); one registered as a query reads."""
+    from provisa.core.native_sql import BINDING_KEY
     from provisa.security.mutation_authz import MutationKind, classify_kind
 
-    return (
-        command.get("impl_kind") == "source_operation"
-        and classify_kind(command.get("kind")) is MutationKind.WRITE
-    )
+    kind = command.get("impl_kind")
+    native_sql = kind == "source_query" and BINDING_KEY in (command.get("binding") or {})
+    return (kind in ("source_operation", "code_command") or native_sql) and classify_kind(
+        command.get("kind")
+    ) is MutationKind.WRITE
 
 
 def writes_called_in(tree, commands: dict) -> list[str]:

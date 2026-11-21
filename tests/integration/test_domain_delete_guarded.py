@@ -18,7 +18,7 @@ on the TEST instance: dedicated server processes on their own ports with their o
 planes.
 """
 
-# Requirements: REQ-1917, REQ-1918, REQ-1919
+# Requirements: REQ-1917, REQ-1918, REQ-1919, REQ-2248
 
 from __future__ import annotations
 
@@ -105,7 +105,7 @@ def test_a_domain_holding_a_table_is_refused_naming_it_and_nothing_is_removed(se
     assert _tables_in(srv, domain_id) == held
 
 
-def test_a_domain_nothing_refers_to_is_deleted(served):
+def test_a_domain_nothing_refers_to_is_retired(served):
     srv, _ = served
     made = _gql(
         srv,
@@ -118,3 +118,39 @@ def test_a_domain_nothing_refers_to_is_deleted(served):
     assert (answer["success"], answer["code"]) == (True, "schema.domain_deleted"), answer
     assert "scratch-1917" not in _domain_ids(srv)
     assert _delete(srv, "scratch-1917")["code"] == "schema.domain_not_found"
+
+
+def _retired_domains(srv: IsolatedServer) -> list[dict]:
+    listed = _gql(srv, "{ retiredModelObjects { kind key name } }")["retiredModelObjects"]
+    return [o for o in listed if o["kind"] == "domain"]
+
+
+def _restore(srv: IsolatedServer, key: str) -> dict:
+    return _gql(
+        srv,
+        'mutation { restoreModelObject(kind: "domain", key: "%s") { success code message } }' % key,
+    )["restoreModelObject"]
+
+
+def test_a_retired_domain_is_listed_its_name_reused_and_restored_once_free(served):
+    """REQ-2248 (amended 2026-11-15): the domain retired above is listed under its id; a new
+    domain takes that id, and while it holds it the restore is refused; once it is retired in
+    turn, the first one is restored at its id."""
+    srv, _ = served
+    [first] = [d for d in _retired_domains(srv) if d["name"] == "scratch-1917"]
+    made = _gql(
+        srv,
+        'mutation { createDomain(input: {id: "scratch-1917", description: "y"}) { success } }',
+    )["createDomain"]
+    assert made["success"] is True, made
+
+    held = _restore(srv, first["key"])
+    assert (held["success"], held["code"]) == (False, "schema.restore_name_held"), held
+
+    assert _delete(srv, "scratch-1917")["success"] is True
+    restored = _restore(srv, first["key"])
+    assert (restored["success"], restored["code"]) == (True, "schema.restored"), restored
+    assert "scratch-1917" in _domain_ids(srv)
+    assert [d["key"] for d in _retired_domains(srv) if d["name"] == "scratch-1917"] != [
+        first["key"]
+    ]

@@ -72,7 +72,10 @@ if TYPE_CHECKING:
 #: through ``user_role_assignments``, which travels into the environment with the ``roles`` rows
 #: that define what each name means there (REQ-1489), and what remains here is exactly the ability
 #: to build the model and nothing else.
-_DATA_RIGHTS: frozenset[str] = frozenset({"write", "full_results", "usage"})
+#:
+#: ``dq_read`` is a data right too (REQ-2155): reading quality results is reading data, and
+#: developer holds it through analyst.
+_DATA_RIGHTS: frozenset[str] = frozenset({"write", "full_results", "usage", "dq_read"})
 ENVIRONMENT_OWNER_CAPABILITIES: frozenset[str] = STANDARD_ROLE_RIGHTS["developer"] - _DATA_RIGHTS
 
 #: The domain_access value meaning "every domain" — the state of every seeded role, and therefore

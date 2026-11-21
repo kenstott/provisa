@@ -7,20 +7,20 @@
     "ack": "Begrepen",
     "leave": "Dit is niet mijn organisatie",
     "leaveError": "Kon de organisatie niet verlaten.",
-    "sandboxIntro": "U bevindt zich op onze gedeelde starterinstantie, in een eigen geïsoleerde omgeving. De voorbeeldgegevens zijn een privékopie — niets van wat u hier doet is zichtbaar voor een andere bezoeker, en niets hier raakt de gegevens van iemand anders.",
+    "sandboxIntro": "Je bent op onze gedeelde starterinstantie, in een eigen geïsoleerde omgeving. De voorbeelddata is een privékopie. Andere bezoekers zien niet wat je hier doet, en niets hier raakt de data van iemand anders.",
     "sandboxOpen": "Bijna elke bewerking staat voor u open: registreer uw eigen bronnen, modelleer ze, schrijf beleid en maskeringsregels en bevraag het resultaat in SQL, GraphQL of Cypher.",
-    "sandboxHeldBack": "Achtergehouden zijn de organisatiebrede besturingen — omgevingen wisselen of beheren, mensen uitnodigen en rollen toekennen, organisatie-instellingen en organisatiebrede observability. Die pagina's blijven zichtbaar, gemarkeerd als onderdeel van het productiesysteem.",
-    "sandboxTemporary": "Uw omgeving is tijdelijk. Uitloggen wist haar, en ze wordt ook teruggenomen na een dag zonder activiteit. Niets van wat u hier bouwt is bedoeld om te bewaren.",
+    "sandboxHeldBack": "Organisatiebrede bediening is achtergehouden: omgevingen wisselen of beheren, mensen uitnodigen en rollen toekennen, organisatie-instellingen en organisatiebrede observability. Die pagina's blijven zichtbaar, gemarkeerd als onderdeel van het productiesysteem.",
+    "sandboxTemporary": "De omgeving is tijdelijk. Afmelden wist hem, en na een dag inactiviteit wordt hij ook opgeruimd.",
     "sandboxUpgrade": "Wanneer u klaar bent voor een organisatie die blijft bestaan, stap dan over op een Starter-abonnement.",
     "sandboxAck": "Beginnen met verkennen",
     "demoSandboxTitle": "Welkom in uw demo-sandbox",
     "demoSandboxIntro": "Deze sandbox is uw eigen kopie van de demo, en een lichte versie van Provisa. Dit zijn de grenzen:",
-    "demoSandboxEngine": "Hij draait op een DuckDB-engine in één proces, niet op de engine die productieorganisaties gebruiken.",
+    "demoSandboxEngine": "Hij draait op een DuckDB-engine met één proces. Productieorganisaties gebruiken een andere engine.",
     "demoSandboxMemory": "Zijn engine mag hooguit {{memory}} geheugen gebruiken; een query die meer nodig heeft, wordt geweigerd.",
     "demoSandboxDisk": "Hij mag hooguit {{disk}} op schijf bevatten, zijn gegevens en uw geüploade bestanden samen; een schrijfactie daarboven wordt geweigerd.",
     "demoSandboxConflicts": "Wijzigingen die tegelijk vanaf meerdere apparaten worden gedaan, kunnen als conflict worden geweigerd. Probeer het opnieuw.",
     "demoSandboxExpires": "Hij wordt met alles erin verwijderd na {{idle}} zonder gebruik.",
     "demoSandboxHeldBack": "U kunt geen mensen uitnodigen en geen omgevingen wisselen of beheren.",
-    "demoSandboxSources": "De voorbeeldbronnen zijn alleen-lezen: wat u schrijft, blijft in de sandbox."
+    "demoSandboxSources": "De voorbeeldbronnen zijn alleen-lezen, dus wat je schrijft blijft binnen de sandbox."
   }
 }

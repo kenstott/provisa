@@ -31,7 +31,7 @@
     "policiesTitle": "查看此表的 RLS 策略",
     "editButtonLabel": "编辑表 {{name}}",
     "deleteButtonLabel": "删除表 {{name}}",
-    "profileHeading": "剖析 — 采样 {{count}} 行",
+    "profileHeading": "概要：抽样 {{count}} 行",
     "colNulls": "空值",
     "colNullsTitle": "Null 值",
     "colBlanks": "空白",
@@ -48,13 +48,12 @@
     "writable": "数据源接受",
     "noWrites": "无写入",
     "notShown": "未显示",
-    "draftLabel": "草稿",
-    "draftTooltip": "草稿：已停用——不在任何架构中，也无人可读取。取消勾选即发布该表；勾选则将其停用。",
-    "draftNoRightTooltip": "发布表或将其退回草稿，需要在该表所属域中拥有“表注册”权限。",
-    "draftPreviewNote": "草稿预览：读者目前还看不到此表。",
     "keepsHistory": "保留历史：每个版本，包括何时发生和何时记录。",
     "keepsHistoryQuery": "按截至某日或按记录时查询",
     "deleteTitle": "删除表 {{name}}？",
-    "deleteConsequence": "该表的注册将被删除。"
+    "deleteConsequence": "该表的注册将被删除。",
+    "withdrawConsequence": "任何角色都无法通过任何接口读取它，任何引擎都不会挂载它，其副本将被移除。其定义、授权和关系保留不变，“恢复”会将其恢复原样。",
+    "withdrawnNote": "已撤回：在恢复之前，任何角色都无法读取此表。其预览仍可读取。",
+    "sourceWithdrawnNote": "其数据源 {{source}} 已撤回：在数据源恢复之前，任何角色都无法读取此表。"
   }
 }

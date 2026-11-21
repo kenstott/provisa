@@ -212,9 +212,9 @@ class _Printer:
             raise SparqlExportRefused(
                 f"{self.label[var]}'s property {name} has no SPARQL predicate"
             )
-        own = f"{table_class_iri(self.vocab.base, nm.domain_id, nm.table_name)}#"
+        own = f"{table_class_iri(self.vocab.base, nm.domain_id, nm.model_name)}#"
         if iri.startswith(own):
-            self.prefix(nm.table_name, own)
+            self.prefix(nm.model_name, own)
         else:
             self.prefix("term", self.vocab.prefixes["term"])
         v = self._fresh(name if (var, name) in self.wanted else f"{var}_{name}")

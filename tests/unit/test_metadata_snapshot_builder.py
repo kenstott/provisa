@@ -31,11 +31,13 @@ from provisa.core.models import (
     Domain,
     ProvisaConfig,
     Relationship,
+    RLSRule,
     Role,
     Source,
     SourceType,
     Table,
 )
+from tests.unit.product_members import with_members
 
 
 def _source(source_id: str = "wh", description: str = "warehouse") -> Source:
@@ -48,17 +50,13 @@ def _table(
     table_name: str,
     domain_id: str = "sales",
     columns: list[Column] | None = None,
-    product_id: str | None = "prod",
     **kwargs,
 ) -> Table:
-    # product_id defaults to a non-None value here: these tests exercise what a PUBLISHED table
-    # carries, and only tables marked Data Product publish at all (the export filter).
     return Table(
         source_id=source_id,
         domain_id=domain_id,
         schema_name="public",
         table_name=table_name,
-        product_id=product_id,
         columns=columns
         if columns is not None
         else [Column(name="id", data_type="integer", visible_to=["admin"])],
@@ -66,7 +64,10 @@ def _table(
     )
 
 
-def _config(**kwargs) -> ProvisaConfig:
+def _config(*, members: dict[str, list[str]] | None = None, **kwargs) -> ProvisaConfig:
+    """``members``: product id -> the names of its member tables (REQ-1634). Left out, every
+    table is a member of "prod": these tests exercise what a PUBLISHED table carries, and only
+    product members publish at all (the export filter)."""
     base = {
         "sources": [_source()],
         "domains": [Domain(id="sales", description="Sales", steward="data-steward")],
@@ -74,6 +75,13 @@ def _config(**kwargs) -> ProvisaConfig:
         "roles": [],
     }
     base.update(kwargs)
+    tables = base["tables"]
+    chosen = (
+        {"prod": tables}
+        if members is None
+        else {pid: [t for t in tables if t.table_name in names] for pid, names in members.items()}
+    )
+    base["data_products"] = with_members(base.get("data_products", []), chosen)
     return ProvisaConfig(**base)
 
 
@@ -120,8 +128,9 @@ def test_only_data_product_tables_are_published():
     config = _config(
         tables=[
             _table(table_name="orders"),
-            _table(table_name="staging_orders", product_id=None),
-        ]
+            _table(table_name="staging_orders"),
+        ],
+        members={"prod": ["orders"]},
     )
 
     snapshot = build_snapshot(config, org_id="acme", dialect="postgres", contexts={})
@@ -129,12 +138,13 @@ def test_only_data_product_tables_are_published():
     assert [t.ref.fqn() for t in snapshot.tables] == ["wh.public.orders"]
 
 
-def test_tables_sharing_a_product_id_publish_as_one_data_product():
+def test_tables_sharing_a_product_publish_as_one_data_product():
     config = _config(
         tables=[
-            _table(table_name="orders", product_id="customer_360"),
-            _table(table_name="customers", product_id="customer_360"),
+            _table(table_name="orders"),
+            _table(table_name="customers"),
         ],
+        members={"customer_360": ["orders", "customers"]},
         data_products=[
             DataProduct(
                 id="customer_360",
@@ -165,7 +175,8 @@ def test_data_product_with_no_exported_members_does_not_publish():
     # A DataProduct listed in config but with zero tables actually exported (e.g. every member
     # table is unmarked) would tell the catalog about a listing with nothing behind it.
     config = _config(
-        tables=[_table(table_name="orders", product_id=None)],
+        tables=[_table(table_name="orders")],
+        members={},
         data_products=[
             DataProduct(
                 id="customer_360", domain_id="sales", name="Customer 360", owner_role="alice"
@@ -180,7 +191,8 @@ def test_data_product_with_no_exported_members_does_not_publish():
 
 def test_data_product_without_owner_publishes_with_no_owner_ref():
     config = _config(
-        tables=[_table(table_name="orders", product_id="customer_360")],
+        tables=[_table(table_name="orders")],
+        members={"customer_360": ["orders"]},
         data_products=[
             DataProduct(id="customer_360", domain_id="sales", name="Customer 360", owner_role=None)
         ],
@@ -198,7 +210,7 @@ def test_edges_and_tags_touching_an_unmarked_table_are_withheld():
     config = _config(
         tables=[
             _table(table_name="orders"),
-            _table(table_name="customers", product_id=None),
+            _table(table_name="customers"),
             _table(
                 table_name="order_totals",
                 view_sql="SELECT id FROM customers",
@@ -220,6 +232,7 @@ def test_edges_and_tags_touching_an_unmarked_table_are_withheld():
             Role(id="analyst", description="Test role.", capabilities=[], domain_access=["*"]),
             Role(id="admin", description="Test role.", capabilities=[], domain_access=["*"]),
         ],
+        members={"prod": ["orders", "order_totals"]},
     )
 
     snapshot = build_snapshot(config, org_id="acme", dialect="postgres", contexts={})
@@ -326,6 +339,72 @@ def test_unknown_relationship_table_is_refused():
         build_snapshot(config, org_id="acme", dialect="postgres", contexts={})
     assert exc.value.name == "ghost"
     assert "dangling" in str(exc.value)
+
+
+def _naming_a_seeded_table(**kwargs) -> ProvisaConfig:
+    """A config whose relationship and row rule name ``meta_tables``, a seeded table: the store
+    holds it, the export model leaves it out of ``tables`` and lists its names as seeded
+    (REQ-1634), as publishing._model_for_export builds it."""
+    config = _config(
+        tables=[_table(table_name="orders")],
+        relationships=[
+            Relationship(
+                id="meta-tables-to-columns",
+                source_table_id="meta_tables",
+                target_table_id="meta_columns",
+                source_column="id",
+                target_column="table_id",
+                cardinality=Cardinality.one_to_many,
+            ),
+            Relationship(
+                id="orders-to-meta",
+                source_table_id="orders",
+                target_table_id="meta_tables",
+                source_column="id",
+                target_column="id",
+                cardinality=Cardinality.many_to_one,
+            ),
+        ],
+        rls_rules=[
+            RLSRule(
+                table_id="meta_tables", role_id="analyst", filter="1 = 1", description="Test rule."
+            )
+        ],
+        roles=[Role(id="analyst", description="Test role.", capabilities=[], domain_access=["*"])],
+        **kwargs,
+    )
+    config._seeded_table_names = frozenset({"meta_tables", "meta_columns"})
+    return config
+
+
+def test_a_relationship_or_row_rule_naming_a_seeded_table_publishes_nothing():
+    """A seeded table publishes nowhere, so an edge or a rule on it has nothing to anchor to and
+    is left out; the snapshot is still built (REQ-1634)."""
+    snapshot = build_snapshot(
+        _naming_a_seeded_table(), org_id="acme", dialect="postgres", contexts={}
+    )
+
+    assert snapshot.relationships == []
+    assert {tag.asset.parts[:3] for tag in snapshot.governance_tags} <= {("wh", "public", "orders")}
+
+
+def test_an_unknown_table_beside_a_seeded_one_is_still_refused():
+    """Knowing the seeded names excuses those names only."""
+    config = _naming_a_seeded_table()
+    config.relationships.append(
+        Relationship(
+            id="dangling",
+            source_table_id="orders",
+            target_table_id="ghost",
+            source_column="id",
+            target_column="id",
+            cardinality=Cardinality.many_to_one,
+        )
+    )
+
+    with pytest.raises(UnknownTableError) as exc:
+        build_snapshot(config, org_id="acme", dialect="postgres", contexts={})
+    assert exc.value.name == "ghost"
 
 
 def test_ambiguous_bare_table_name_is_refused_not_guessed():
@@ -457,7 +536,8 @@ def test_data_product_carries_its_page_url_when_a_public_origin_is_configured():
     """REQ-1659: the listing's documentation link is the product's own page, at the org's public
     origin; without a configured origin there is no link rather than a guessed one."""
     config = _config(
-        tables=[_table(table_name="orders", product_id="customer_360")],
+        tables=[_table(table_name="orders")],
+        members={"customer_360": ["orders"]},
         data_products=[
             DataProduct(id="customer_360", domain_id="sales", name="Customer 360", purpose="x")
         ],

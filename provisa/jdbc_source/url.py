@@ -125,6 +125,15 @@ def _file_path(path: str) -> str:
             "a server of many organizations opens only a file in the organization's files "
             "area, written {files}/... or {org}/...",
         )
+    # REQ-1997: nor does a sandbox org on an install of one (source_uploads.require_own_disk).
+    from provisa.core.source_uploads import LocalPathRefused, require_own_disk
+
+    try:
+        require_own_disk(path)
+    except LocalPathRefused:
+        raise FileUrlRefused(
+            path, "is on the server's own disk, outside the organization's folder"
+        ) from None
     return path
 
 

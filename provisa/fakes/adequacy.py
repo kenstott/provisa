@@ -196,30 +196,35 @@ def fake_pairs(
     beside its fake. Under the process's platform key; nothing leaves the process."""
     from provisa.core import engine_memory
     import pandas as pd
-    import sqlglot
+    import sqlglot.expressions as exp
 
     from provisa.fakes import duckdb_functions
     from provisa.fakes.checks import family
     from provisa.fakes.digest import fingerprint, platform_key
     from provisa.fakes.projection import faked_projection
-    from provisa.fakes.read_sql import Column, _q
+    from provisa.fakes.read_sql import Column
+    from provisa.fakes.read_sql import column as ref
 
     fam = family(data_type)
     faked = Column(column, data_type, fam, kind, stable, None, stable_version)
     projection = faked_projection(
-        "sample",
+        exp.table_("sample"),
         "t",
         [(column, data_type, fam)],
         {column: faked},
         fingerprint(platform_key()),
         None,
-        carried={"__real__": f"t.{_q(column)}"},
+        carried={
+            "__real__": exp.Column(
+                this=exp.to_identifier(column, quoted=True), table=exp.to_identifier("t")
+            )
+        },
     )
-    statement = sqlglot.transpile(
-        f"SELECT {_q('__real__')}, {_q(column)} FROM {projection} AS t",
-        read="postgres",
-        write="duckdb",
-    )[0]
+    statement = (
+        exp.select(ref("__real__"), ref(column))
+        .from_(exp.Subquery(this=projection, alias=exp.TableAlias(this=exp.to_identifier("t"))))
+        .sql(dialect="duckdb")
+    )
     con = engine_memory.connect()
     try:
         duckdb_functions.register(con)
@@ -280,6 +285,14 @@ async def _leak(state: Any, reg: dict, col: dict, threshold: float) -> Result:
             None,
             f"{kind_name(kind)}() is computed from measurement or other columns, not sampled",
         )
+    # REQ-1986: a table that requires parameters has no sample to read; asked of its metadata,
+    # never found out by reading.
+    from provisa.core.parameters import not_read_reason
+    from provisa.profiler.run import not_read_whole
+
+    refusal = not_read_whole(state, reg["id"], reg["table_name"])
+    if refusal is not None:
+        return Result(LEAK_RATE, NOT_RUN, None, f"the table {not_read_reason(refusal.parameters)}")
     values = await _sample(state, reg, col["column_name"])
     if values is None:
         return Result(LEAK_RATE, NOT_RUN, None, "the org admin cannot read the column")

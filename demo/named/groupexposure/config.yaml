@@ -263,7 +263,7 @@ glossary_terms:
   edges:
   - to: group of connected clients
     rel_type: PART_OF
-- name: Tier 1 capital
+- name: tier 1 capital
   approve: true
   definition: "A bank's core capital -- its shares and retained earnings -- and the base its large-exposure limit is measured against."
   domains:
@@ -271,7 +271,7 @@ glossary_terms:
   edges:
   - to: large exposure
     rel_type: RELATED_TO
-- name: Legal Entity Identifier
+- name: legal entity identifier
   approve: true
   definition: 'The 20-character code (ISO 17442) that names one legal entity in financial reporting worldwide; the bank records each borrower''s owner by it, and Wikidata records it as P1278.'
   domains:
@@ -283,4 +283,4 @@ glossary_terms:
   - groupexposure
   edges:
   - to: group of connected clients
-    rel_type: RELATED_TO
+    rel_type: PART_OF

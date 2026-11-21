@@ -1050,9 +1050,33 @@ def req403_run(shared_data):
 
 @then("table-specific rules take precedence over domain-level rules")
 def req403_assert(shared_data):
-    # Table-specific filter is applied; the domain-level filter is not (table rule wins).
-    assert shared_data["req403_result"] == (
-        'SELECT "id" FROM "public"."orders" WHERE ("orders"."owner_id" = CURRENT_USER)'
+    """The table-specific filter is the row filter of the relation ``orders`` is read through;
+    the domain-level filter is in no part of the statement (the table rule wins).
+
+    Asserted on the governed tree, not its text: REQ-403 says which rule the governed pipeline
+    ANDs into a read of the table, not where in the statement it stands, and governance by
+    construction (REQ-039) puts it in the governed relation that replaces the table reference."""
+    import sqlglot
+    import sqlglot.expressions as exp
+
+    from tests.rules import holds, mentions
+
+    governed = shared_data["req403_result"]
+    tree = sqlglot.parse_one(governed, read="postgres")
+    relations = [
+        sub
+        for sub in tree.find_all(exp.Subquery)
+        if sub.alias == "orders"
+        and any(t.name == "orders" and t.db == "public" for t in sub.this.find_all(exp.Table))
+    ]
+    assert len(relations) == 1, governed
+    where = relations[0].this.args.get("where")
+    assert where is not None, governed
+    assert holds(where.this, '"orders"."owner_id" = CURRENT_USER'), governed
+    assert not mentions(tree, "us"), governed
+    # Every read of public.orders is through that relation.
+    assert all(t.find_ancestor(exp.Subquery) is relations[0] for t in tree.find_all(exp.Table)), (
+        governed
     )
 
 

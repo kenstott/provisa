@@ -46,12 +46,13 @@ import {
   openRegisterForm,
   openSourcesForm,
   pickSchemaAndTable,
+  submitRegister,
   runSqlOnPage,
-  releaseDraftTables,
+  expectRegisteredLive,
   setSourceCacheTtl,
   submitSourceAndExpectListed,
   FORM_FIELD,
-  removeTestSources,
+  retireTestSourcesTables,
 } from "./source-to-query-helpers";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
@@ -92,8 +93,11 @@ test.describe("source to query through the UI: hiveserver2 (REQ-1731)", () => {
   });
 
   test.afterAll(async () => {
-    await removeTestSources();
-    provision("down", ["hiveserver2"]);
+    try {
+      await retireTestSourcesTables();
+    } finally {
+      provision("down", ["hiveserver2"]);
+    }
   });
 
   test("hiveserver2: add the source, register a table, query it on the SQL page", async ({
@@ -118,7 +122,10 @@ test.describe("source to query through the UI: hiveserver2 (REQ-1731)", () => {
     await page.getByTestId("sources-type-select").selectOption("hiveserver2");
     await page.getByLabel(/^Host/).and(page.locator(FORM_FIELD)).fill("localhost");
     await page.getByLabel(/^Port/).and(page.locator(FORM_FIELD)).fill(String(E2E_HIVESERVER2_PORT));
-    await page.getByLabel(/^Database/).and(page.locator(FORM_FIELD)).fill("wh"); // demo/sources/hiveserver2/prime.py's seeded db
+    await page
+      .getByLabel(/^Database/)
+      .and(page.locator(FORM_FIELD))
+      .fill("wh"); // demo/sources/hiveserver2/prime.py's seeded db
     // auth_mechanism defaults to PLAIN (SourceFormFields.tsx), which is what demo/sources/
     // hiveserver2's stock HS2 speaks — left untouched.
     // REQ-1907: a source the engine lands needs a landing clock before a table is registered.
@@ -128,13 +135,12 @@ test.describe("source to query through the UI: hiveserver2 (REQ-1731)", () => {
     await openRegisterForm(page, sourceId);
     await pickSchemaAndTable(page, "wh", "widgets");
     await expectDiscoveredColumns(page, ["name"], 60000);
-    await page.getByTestId("register-table-submit").click();
-    // REQ-2109: the chosen table's settings follow in the editor's sections; Save registers it.
-    await page.getByTestId("table-edit-save").click();
+    // REQ-2234: registered from the Tables field, then saved from its editor.
+    await submitRegister(page);
     const row = page.locator(".data-table tbody tr").filter({ hasText: sourceId }).first();
     await expect(row).toBeVisible({ timeout: 120000 });
     // REQ-1921: registered through the admin, it starts as draft; released, it is read.
-    await releaseDraftTables(page, { sourceId });
+    await expectRegisteredLive(page, { sourceId });
     const res = await page.request.post("/admin/graphql", {
       data: { query: "{ tables { sourceId dqDataset } }" },
     });

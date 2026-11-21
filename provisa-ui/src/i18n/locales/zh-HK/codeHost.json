@@ -32,6 +32,8 @@
     "statusUnknown": "正在檢查遠端主機...",
     "answering": "遠端主機有回應。",
     "notAnswering": "遠端主機沒有回應：{{error}}",
+    "health_healthy": "正常",
+    "health_unhealthy": "異常",
     "otherCode": "遠端主機執行的程式碼（{{reported}}）與此資料來源固定的程式碼（{{pinned}}）不同。在您審查程式碼並重新固定之前，其讀取會被拒絕。",
     "repin": "重新固定到主機的程式碼",
     "refresh": "重新檢查",

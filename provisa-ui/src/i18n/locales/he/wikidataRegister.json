@@ -1,0 +1,14 @@
+{
+  "wikidataRegister": {
+    "starters": "טבלאות פתיחה",
+    "startersHint": "טבלאות ייחוס לצירוף, כל אחת עם העמודות שלה. תיאורים, סוגים וכינויים מעודנים אחר כך בכל טבלה.",
+    "startersPlaceholder": "בחירת טבלאות פתיחה",
+    "customLabel": "טבלה מותאמת",
+    "customNone": "ללא טבלה מותאמת",
+    "customSparql": "שאילתת SPARQL",
+    "classNotUsed": "בחרו מחלקה ולחצו על 'שימוש במחלקה זו', או בחרו 'ללא טבלה מותאמת'.",
+    "columnsReading": "העמודות נקראות מה-SELECT של השאילתה…",
+    "nothingChosen": "בחרו טבלת פתיחה או טבלה מותאמת לרישום.",
+    "columns": "עמודות: {{columns}}"
+  }
+}

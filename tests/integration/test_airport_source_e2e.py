@@ -71,8 +71,8 @@ details = connector.details(src)
 assert "ATTACH" in details["attach"] and '(TYPE AIRPORT)' in details["attach"], details
 
 conn = duckdb.connect()
-conn.execute(connector._install_sql())  # "INSTALL airport FROM community"
-conn.execute(f"LOAD {connector.extension}")
+for statement in connector._bring_up():  # airport comes from Query.Farm's repository on 2.0
+    conn.execute(statement)
 
 probe = conn.execute(
     "SELECT count(*) FROM duckdb_functions() WHERE function_name = ?", [connector.probe_symbol]

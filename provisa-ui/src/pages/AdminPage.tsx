@@ -9,8 +9,9 @@
 // permission from the copyright holder.
 
 import { PageTitle } from "../components/PageTitle";
-import { useState, useEffect } from "react";
-import { useLocation, useSearchParams } from "react-router-dom";
+import { useState, useEffect, useMemo } from "react";
+import { useLocation } from "react-router-dom";
+import { useDetailParam } from "../components/list/useDetailParam";
 import { useTranslation } from "react-i18next";
 import { Plus, Trash2, Settings } from "lucide-react";
 import {
@@ -36,6 +37,7 @@ import {
   useRoles,
   useCreateDomain,
   useDeleteDomain,
+  useDeleteDomains,
 } from "../hooks/useAdminQueries";
 import { useRLSRules } from "../hooks/useSecurityQueries";
 import { fetchSettings } from "../api/admin";
@@ -48,7 +50,7 @@ import { EnvironmentsTab } from "../components/admin/EnvironmentsTab";
 import { CacheManager } from "../components/admin/CacheManager";
 import { SystemHealth } from "../components/admin/SystemHealth";
 import { ScheduledTasks } from "../components/admin/ScheduledTasks";
-import { ObservabilityTab } from "../components/admin/ObservabilityTab";
+import { ObservabilityTab, PlatformObservabilityTab } from "../components/admin/ObservabilityTab";
 import { FederationEngineTab } from "../components/admin/FederationEngineTab";
 import { OrgEngineTab } from "../components/admin/OrgEngineTab";
 import { MaintenanceTab } from "../components/admin/MaintenanceTab"; // REQ-1466
@@ -58,14 +60,10 @@ import { OrgsTab } from "../components/admin/OrgsTab";
 import { AiModelsTab } from "../components/admin/AiModelsTab";
 import { PackageRegistriesTab } from "../components/admin/PackageRegistriesTab";
 import { ContainerRegistriesTab } from "../components/admin/ContainerRegistriesTab";
-import { CatalogsTab } from "../components/admin/CatalogsTab";
-import { ReferenceLibraryTab } from "../components/admin/ReferenceLibraryTab";
-import { MetadataExportTab } from "../components/admin/MetadataExportTab";
 import { ImportTab } from "../components/admin/ImportTab";
 import { TagsTab } from "../components/admin/TagsTab";
 import { ClassificationKindsTab } from "../components/admin/ClassificationKindsTab";
 import { ReportsTab } from "../components/admin/ReportsTab";
-import { GlossaryTab } from "../components/admin/GlossaryTab";
 import { SecurityManager } from "../components/admin/SecurityManager";
 import { SecretsTab, MySecretsTab } from "../components/admin/SecretsTab";
 import { EmailTab } from "../components/admin/EmailTab";
@@ -77,6 +75,7 @@ import {
   DomainModeCard,
   NameClashPolicyCard,
   NamingConventionsCard,
+  OrgProcessingCards,
 } from "../components/admin/settingsCards";
 import { PageLoading } from "../components/PageLoading";
 import { CollapsibleItem, Collapsibles } from "../components/collapsible/Collapsible";
@@ -86,6 +85,8 @@ import { useListSortGroup, pageItems, type ListColumn } from "../components/list
 import { FormField, FormFooter, FormIdentifiers, FormLayout } from "../components/form/FormLayout";
 import { assignableDomainIds } from "../lib/internalDomains";
 
+import { useListSelection } from "../components/list/listSelection";
+import { ListBulkBar } from "../components/list/ListBulkBar";
 const ROUTE_TO_SECTION: Record<string, string> = {
   // Both routes open the merged dashboard; /admin/system-health keeps working as a deep link.
   "/admin/overview": "Dashboard",
@@ -106,36 +107,30 @@ const ROUTE_TO_SECTION: Record<string, string> = {
   // owning a nav entry of its own; the old route still deep-links there.
   "/admin/mcp-server": "Dashboard",
   "/admin/observability": "Observability",
+  "/admin/platform-observability": "Platform Observability", // REQ-1327: the deployment's telemetry
   "/admin/orgs": "Orgs",
   "/admin/ai-models": "AI Models",
   "/admin/package-registries": "Package Registries", // REQ-1984: what Node installs go through
   "/admin/container-registries": "Container Registries", // REQ-2098: where built images go
-  "/admin/catalogs": "Catalogs", // REQ-2122: each catalog connected once
-  "/admin/reference-library": "Reference library", // REQ-2185: the documents assistants draw on
-  "/admin/metadata-export": "Metadata Export",
   "/admin/import": "Import", // REQ-1483: Hasura v2 / DDN import
   "/admin/tags": "Tags",
   "/admin/classification-kinds": "Classification", // REQ-2147: the profiler's classification kinds
   "/admin/reports": "Reports", // REQ-1386: ops-domain management report viewer
-  "/admin/ontology": "Glossary", // REQ-1387: business-glossary curation
-  // Consolidated Security area — posture, encryption, auth, and local users as sub-tabs.
+  // Consolidated Security area — posture, encryption, auth, and the secrets service as sub-tabs.
   // Legacy routes deep-link to the matching sub-tab.
   "/admin/security": "Security",
   "/admin/encryption": "Security",
   "/admin/auth": "Security",
-  "/admin/local-users": "Security",
   // REQ-1560: one vault per surface, each named for whose it is.
   "/admin/secrets": "Org Secrets",
   "/admin/my-secrets": "Your Secrets",
 };
 
 // Which Security sub-tab a route opens on.
-const SECURITY_SUBTAB: Record<string, "posture" | "encryption" | "authentication" | "localUsers"> =
-  {
-    "/admin/encryption": "encryption",
-    "/admin/auth": "authentication",
-    "/admin/local-users": "localUsers",
-  };
+const SECURITY_SUBTAB: Record<string, "encryption" | "authentication"> = {
+  "/admin/encryption": "encryption",
+  "/admin/auth": "authentication",
+};
 
 /** Admin overview page — dashboard, config management, platform settings. */
 export function AdminPage() {
@@ -148,13 +143,6 @@ export function AdminPage() {
   // REQ-1337: administering orgs other than the active one is the `cross_org` RIGHT. "platform_admin"
   // was never a capability — it was a role id folded in as a pseudo-right, which this rule forbids.
   const canAdministerAllOrgs = capabilities.includes("cross_org");
-  // REQ-1361: /admin/secrets serves whichever half the caller may reach, and the heading says which.
-  // Without a literal `org_settings` there is no org vault on the page -- only the DEPLOYMENT's
-  // choice of secrets service -- and the platform wildcard does not stand in for the org right here.
-  const heading =
-    activeTab === "Org Secrets" && !capabilities.includes("org_settings")
-      ? "Platform Secrets"
-      : activeTab;
   const [stats, setStats] = useState<Record<string, number>>({});
   const [addingDomain, setAddingDomain] = useState(false);
   const [newDomainId, setNewDomainId] = useState("");
@@ -169,7 +157,6 @@ export function AdminPage() {
   // subject they are (settingsCards.tsx); what is left is the domain mode, which decides whether
   // the Domains tab shows a domain catalog at all.
   const [settings, setSettings] = useState<PlatformSettings | null>(null);
-  const [allDomains, setAllDomains] = useState<string[]>([]);
 
   // Pagination state
   const [domainPage, setDomainPage] = useState(0);
@@ -206,7 +193,6 @@ export function AdminPage() {
         Roles: allRoles.length,
         "RLS Rules": rlsRules.length,
       });
-      setAllDomains(domains.filter((d) => d.id !== "").map((d) => d.id));
     }
   }, [
     sources,
@@ -256,10 +242,13 @@ export function AdminPage() {
     },
   ];
   const domainSortGroup = useListSortGroup(userDomains, domainColumns, "domains");
-  // `?domain=<id>` (a graph's domain link, lib/entityHref): that domain's row is marked, on the
-  // page that holds it, and brought into view.
-  const [searchParams] = useSearchParams();
-  const linkedDomain = searchParams.get("domain");
+  // REQ-2240: domains selected and deleted together.
+  const shownDomainIds = useMemo(() => userDomains.map((d) => d.id), [userDomains]);
+  const selection = useListSelection(shownDomainIds);
+  const deleteDomains = useDeleteDomains();
+  // `?domain=<id>` (a graph's or a refused delete's link, detailHref): that domain's row is
+  // marked, on the page that holds it, and brought into view.
+  const linkedDomain = useDetailParam("domains").id;
   const [seededDomain, setSeededDomain] = useState<string | null>(null);
   if (linkedDomain !== seededDomain && userDomains.length > 0) {
     setSeededDomain(linkedDomain);
@@ -322,30 +311,16 @@ export function AdminPage() {
 
   if (loading) return <PageLoading message={t("adminPage.loading")} />;
 
-  // Glossary's detail panel is meant to fill to the bottom of the viewport rather than
-  // shrink-wrap its content, so its page and content Stack join the flex-height chain that
-  // `main` already provides (the same `page-sticky-head` pattern the sticky-header list
-  // pages use) instead of the plain block-flow the other admin tabs render into.
-  const isGlossary = activeTab === "Glossary";
-  // The reference library's list and detail panel fill to the bottom of the viewport as well.
-  const fills = isGlossary || activeTab === "Reference library";
-
   return (
-    <div className={fills ? "page page-sticky-head" : "page"}>
-      {activeTab !== "Glossary" && (
-        <PageTitle icon={Settings} mb="md">
-          {/* Reads as a breadcrumb: the area, then the section within it. */}
-          {t("adminPage.title")} — {heading}
-        </PageTitle>
-      )}
+    <div className="page">
+      <PageTitle icon={Settings} mb="md">
+        {/* Reads as a breadcrumb: the area, then the section within it. */}
+        {t("adminPage.title")} — {activeTab}
+      </PageTitle>
 
       {/* Anchor the tour waits on: step23 highlights the navbar link, which exists before this
           page has painted, so it gates on the admin content itself. */}
-      <Stack
-        gap="lg"
-        data-tour="admin-content"
-        style={fills ? { flex: 1, minHeight: 0 } : undefined}
-      >
+      <Stack gap="lg" data-tour="admin-content">
         {activeTab === "Dashboard" && (
           <>
             <SimpleGrid cols={{ base: 2, sm: 4 }} spacing="md">
@@ -394,6 +369,7 @@ export function AdminPage() {
                 <SimpleGrid cols={{ base: 1, md: 2 }} spacing="lg">
                   <DomainModeCard onApplied={() => refetchDomains()} />
                   <NamingConventionsCard />
+                  <OrgProcessingCards />
                   <NameClashPolicyCard />
                   <ApolloSubgraphCard />
                 </SimpleGrid>
@@ -480,7 +456,13 @@ export function AdminPage() {
                 const totalPages = Math.max(1, Math.ceil(userDomains.length / PAGE_SIZE));
                 return (
                   <Stack gap="sm">
-                    <ListTable minWidth={480} testId="domains-list">
+                    <ListBulkBar
+                      selection={selection}
+                      nameOf={(id) => id}
+                      onDelete={deleteDomains}
+                      testId="domains-bulk"
+                    />
+                    <ListTable minWidth={480} testId="domains-list" selection={selection}>
                       <ListHead
                         sortGroup={domainSortGroup}
                         columns={[
@@ -532,6 +514,7 @@ export function AdminPage() {
                                 <ConfirmDialog
                                   title={t("adminPage.deleteDomainTitle", { id: d.id })}
                                   consequence={t("adminPage.deleteDomainConsequence")}
+                                  confirmLabel={t("common.delete")}
                                   onConfirm={() => handleDeleteDomain(d.id)}
                                 >
                                   {(open) => (
@@ -575,29 +558,22 @@ export function AdminPage() {
         {activeTab === "Deployment settings" && <SettingsCatalogPanel />}
         {activeTab === "Billing" && <BillingTab />}
         {activeTab === "Security" && (
-          <SecurityManager
-            allRoles={allRoles}
-            allDomains={allDomains}
-            initialTab={SECURITY_SUBTAB[location.pathname]}
-          />
+          <SecurityManager initialTab={SECURITY_SUBTAB[location.pathname]} />
         )}
         {activeTab === "Org Secrets" && <SecretsTab />}
         {activeTab === "Your Secrets" && <MySecretsTab />}
-        {activeTab === "Observability" && settings && (
-          <ObservabilityTab settings={settings} setSettings={setSettings} />
+        {activeTab === "Observability" && <ObservabilityTab />}
+        {activeTab === "Platform Observability" && settings && (
+          <PlatformObservabilityTab settings={settings} setSettings={setSettings} />
         )}
         {activeTab === "Orgs" && canAdministerAllOrgs && <OrgsTab />}
         {activeTab === "AI Models" && <AiModelsTab />}
         {activeTab === "Package Registries" && <PackageRegistriesTab />}
         {activeTab === "Container Registries" && <ContainerRegistriesTab />}
-        {activeTab === "Catalogs" && <CatalogsTab />}
-        {activeTab === "Reference library" && <ReferenceLibraryTab />}
-        {activeTab === "Metadata Export" && <MetadataExportTab />}
         {activeTab === "Import" && <ImportTab />}
         {activeTab === "Tags" && <TagsTab />}
         {activeTab === "Classification" && <ClassificationKindsTab />}
         {activeTab === "Reports" && <ReportsTab />}
-        {activeTab === "Glossary" && <GlossaryTab />}
       </Stack>
       {refusal.dialog}
     </div>

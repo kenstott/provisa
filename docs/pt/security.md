@@ -158,7 +158,7 @@ Direitos e dados seguem apenas as funções com que a requisição age: ter uma 
 
 Funções derivadas nomeadas entram como qualificadores. Um qualificador não tem direitos, acesso a domínios, máscaras ou filtros de linha próprios, então não é membro dos direitos da meta-função: como membro sem máscaras, desmascararia toda coluna, e como membro que não lê nenhuma tabela, encerraria todo OR de filtros de linha. Ele entra só nas concessões: uma concessão ou entrada de máscara que nomeia `region__eu` alcança uma requisição que nomeia esse qualificador junto com uma função concedida.
 
-Um agente MCP nunca age além dos papéis que lhe foram dados. Um agente remoto só nomeia papéis que o principal do seu token detém. Um agente stdio local só nomeia papéis dentro do conjunto fixado em `mcp.role` (`PROVISA_MCP_ROLE`), e age como esse conjunto quando não nomeia nenhum; qualquer outro papel é recusado pelo nome.
+Um agente MCP nunca age além dos papéis que lhe foram dados. Um agente remoto só nomeia papéis que o principal do seu token detém. Um agente stdio local só nomeia papéis dentro do conjunto fixado em `mcp.role` (`PROVISA_MCP_ROLE`), e age como esse conjunto quando não nomeia nenhum; qualquer outro papel é recusado pelo nome. Um agente local age em nome do principal indicado em `mcp.principal` (`PROVISA_MCP_PRINCIPAL`), o id de usuário que o token de login dessa pessoa carrega, de modo que os direitos dessa pessoa restringem o papel fixado exatamente como restringem as consultas da mesma pessoa em qualquer outro cliente. Um servidor MCP local cuja configuração não indica nenhum principal recusa toda chamada, nomeando a configuração; um que indica um principal que não está na organização também recusa toda chamada.
 
 Um agente pergunta com qual função age por meio da ferramenta MCP `describe_role`. A resposta é essa função e para que ela serve (uma meta-função com cada um de seus membros), e as funções para as quais o agente pode mudar, cada uma com sua descrição. Ela nunca traz uma regra de linha, máscara, concessão ou condição. O Provisa nunca diz a um agente por que um resultado foi restringido, e um resultado não traz nenhum indicador de "filtrado": os dados de uma função são toda a sua visão, e um motivo para o que falta convidaria a sondá-lo.
 
@@ -392,7 +392,7 @@ As linhas são mantidas para sempre. O Provisa não tem configuração de reten�
 
 ## Ocultação {: #redaction }
 
-O que o Provisa registra sobre o próprio trabalho passa por uma lista de regras de ocultação antes de ser escrito em qualquer lugar. O texto que uma regra reconhece é substituído por `[REDACTED:<rule>]`, que nomeia a regra correspondente.
+O que o Provisa registra sobre o próprio trabalho, e cada texto de erro que envia a um cliente, passa por uma lista de regras de ocultação antes de ser escrito em qualquer lugar. Nos logs, spans e trilha de auditoria do Provisa, o texto que uma regra reconhece é substituído por `[REDACTED:<rule>]`, que nomeia a regra correspondente. Um cliente recebe o marcador simples `[REDACTED]`. Ele não nomeia regra nem variável, então você não consegue saber a qual segredo corresponde uma palavra que enviou.
 
 A lista tem quatro partes:
 
@@ -412,7 +412,8 @@ A lista vale em cada saída que o Provisa escreve:
 - cada span, como uma cópia ocultada entregue a cada exportador, e a visão de spans recentes;
 - cada registro de log no pipeline de logs OpenTelemetry do Provisa, e cada linha que um handler de logging escreve, incluindo a saída padrão e os logs dos contêineres;
 - o texto da consulta no log de auditoria, antes de ter o hash calculado e ser criptografado, de modo que nem o texto nem o hash revelam um valor reconhecido; e o detalhe da trilha administrativa;
-- as mensagens de erro que um cliente recebe por HTTP, pgwire, gRPC, Arrow Flight e MCP.
+- as mensagens de erro que um cliente recebe por HTTP, pgwire, gRPC, Arrow Flight, MCP e Bolt. Um erro dentro de uma resposta bem-sucedida, como uma lista `errors` do GraphQL em uma resposta 200 ou o último frame de uma assinatura, é ocultado da mesma forma que um em uma resposta 400;
+- o texto que o Provisa envia a um modelo, como um prompt ou uma entrada de embedding, que leva o marcador simples.
 
 A telemetria e os erros de cliente não estão ligados a uma única organização quando são escritos, por isso são ocultados pelas regras de todas as organizações em conjunto. Dois erros passam sem ocultação: um corpo de erro HTTP maior que 1 MiB e o erro de um stream do Arrow Flight que falha depois de começar a enviar.
 

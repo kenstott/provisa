@@ -2,6 +2,9 @@
   "common": {
     "loading": "Cargando...",
     "cancel": "Cancelar",
+    "stop": "Detener",
+    "stopped": "Detenida",
+    "stopQuery": "Detener la consulta",
     "save": "Guardar",
     "delete": "Eliminar",
     "confirm": "Confirmar",
@@ -44,12 +47,16 @@
     "yes": "Sí",
     "no": "No",
     "none": "—",
-    "expandUser": "Mostrar asignaciones de {{username}}",
+    "expandUser": "Expandir las asignaciones de {{username}}",
     "deleteUser": "Eliminar la cuenta de {{username}}",
     "assignmentsHeading": "Asignaciones rol:dominio",
     "noAssignments": "Sin asignaciones",
     "removeAssignment": "Quitar asignación {{role}}:{{domain}}",
     "roleLabel": "Rol",
+    "rolesLabel": "Roles",
+    "rolesPlaceholder": "Elija uno o más roles",
+    "addList": "Agregar una lista",
+    "removeList": "Quitar esta lista",
     "domainLabel": "Dominio",
     "untilLabel": "Hasta",
     "untilPlaceholder": "Sin fecha de fin",
@@ -58,7 +65,6 @@
     "noExpiry": "Sin fecha de fin",
     "neverUsed": "Nunca",
     "allDomains": "* (todos los dominios)",
-    "add": "Agregar",
     "createHeading": "Crear usuario",
     "username": "Nombre de usuario",
     "usernameRequired": "Nombre de usuario *",
@@ -98,6 +104,6 @@
   },
   "pageError": {
     "title": "No se pudo mostrar esta página",
-    "body": "Falló al renderizarse. El resto de la aplicación sigue funcionando: vaya a otra página o vuelva a cargar esta."
+    "body": "Se produjo un error al renderizar. El resto de la aplicación sigue funcionando, así que vaya a otra página o recargue esta."
   }
 }

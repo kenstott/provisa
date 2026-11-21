@@ -192,16 +192,24 @@ OF_A_STORED_VALUE = frozenset(
 
 def _regexp_refused(engine: _Engine) -> str:
     """What this form cannot answer as PostgreSQL does, whose search keeps its place in the text: an
-    anchor, a pattern that matches nothing at all, a replacement of more than a group's number."""
+    anchor, a pattern that matches nothing at all, a replacement of more than a group's number.
+
+    The simple ``^`` anchor is included for DuckDB (which emits Provisa's own 0A000 refusal) but
+    excluded for Trino and ClickHouse: commit 1850a660e7 changed those MATRIX entries from
+    "refused" to "error", so their engines now raise their own error for a ``^``-anchored pattern
+    on the 5-arg form.  The 4-arg DuckDB-only Macro guards ``^`` inline anyway, but the 5-arg
+    form uses this function for all three engines, so the distinction is engine-scoped here."""
     has = engine.contains.format
 
     def text(value: str) -> str:
         reads_escapes = engine is _CLICKHOUSE_ENGINE
         return _quoted(value.replace("\\", "\\\\") if reads_escapes else value)
 
+    # Trino and ClickHouse: no '^' guard — let the engine return its own error (REQ-2167).
+    caret = () if engine in (_TRINO_ENGINE, _CLICKHOUSE_ENGINE) else (has("pattern", "'^'"),)
     return " OR ".join(
         (
-            has("pattern", "'^'"),
+            *caret,
             *(has("pattern", text("\\" + anchor)) for anchor in "AbBmMyYZ"),
             has("replacement", text("\\&")),
             has("replacement", text("\\\\")),
@@ -214,9 +222,9 @@ _DUCKDB_TAIL = "substring(value, CAST(start AS BIGINT))"
 _DUCKDB_FOUND = f"regexp_extract_all({_DUCKDB_TAIL}, pattern)"
 _DUCKDB_HEAD = (
     f"coalesce(list_sum(list_transform(list_slice(regexp_split_to_array({_DUCKDB_TAIL}, pattern), "
-    "1, n), _p -> length(_p))), 0) + "
+    "1, n), LAMBDA _p : length(_p))), 0) + "
     f"coalesce(list_sum(list_transform(list_slice({_DUCKDB_FOUND}, 1, n - 1), "
-    "_m -> length(_m))), 0)"
+    "LAMBDA _m : length(_m))), 0)"
 )
 _DUCKDB_REPLACED = (
     f"CASE WHEN n = 0 THEN regexp_replace({_DUCKDB_TAIL}, pattern, replacement, 'g') "

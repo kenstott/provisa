@@ -170,7 +170,10 @@ async def _profile_prod() -> None:
             row[0]
             for row in (
                 await conn.execute_core(
-                    select(sources.c.id).where(sources.c.type == SourceType.data_profiler.value)
+                    select(sources.c.id).where(
+                        sources.c.type == SourceType.data_profiler.value,
+                        sources.c.retired.is_(False),  # REQ-2248
+                    )
                 )
             ).fetchall()
         ]

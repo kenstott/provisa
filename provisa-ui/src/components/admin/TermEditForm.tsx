@@ -61,6 +61,7 @@ import { TermRoleBadge, TermStatusBadge } from "./TermRoleBadge";
 import { changes, draftOf, type Change, type TermDraft, type TermTags } from "./termDraft";
 import { useAssignTag, useUnassignTag } from "../../hooks/useTagQueries";
 import { refusalError } from "../../i18n/serverMessage";
+import { useViewDomains } from "../../lib/viewDomains";
 
 type Option = { value: string; label: string };
 
@@ -96,6 +97,7 @@ export function TermEditForm({
   onTermCreated: () => void;
 }) {
   const { t } = useTranslation();
+  const viewDomains = useViewDomains();
   const { actingRoles } = useAuth();
   const { tables } = useTables({ inPage: true });
   const { relationships } = useRelationships();
@@ -116,6 +118,8 @@ export function TermEditForm({
       if (!r.success) throw refusalError(r);
     },
   };
+  // REQ-1387: the bound tables the last draft read no samples from.
+  const [unsampled, setUnsampled] = useState<string[]>([]);
   const [refused, setRefused] = useState<{ field: Change["field"]; message: string } | null>(null);
   // A column's move refused over the tags it takes off (REQ-2145): which change, and what it does.
   const [loss, setLoss] = useState<{
@@ -169,7 +173,7 @@ export function TermEditForm({
   const claimOptions = useMemo(() => {
     const out: (Option & { from: ColumnTerm | null })[] = [];
     for (const tb of tables) {
-      if (tb.draft) continue;
+      if (tb.withdrawn) continue;
       for (const c of tb.columns ?? []) {
         const key = columnKey(tb.id, c.columnName);
         if (own.has(key)) continue;
@@ -185,7 +189,7 @@ export function TermEditForm({
   const tableOptions = useMemo(
     () =>
       tables
-        .filter((tb) => !tb.draft)
+        .filter((tb) => !tb.withdrawn)
         .map((tb) => ({ value: String(tb.id), label: relationName(tb) }))
         .sort((a, b) => a.label.localeCompare(b.label)),
     [tables],
@@ -263,9 +267,14 @@ export function TermEditForm({
 
   const generate = async () => {
     setGenerating(true);
+    setUnsampled([]);
     try {
-      const text = await generateGlossaryDefinition(term.id);
+      const { definition: text, tables_without_samples } = await generateGlossaryDefinition(
+        term.id,
+        viewDomains,
+      );
       if (text) set({ definition: text });
+      setUnsampled(tables_without_samples);
     } catch (e) {
       setRefused({ field: "fields", message: e instanceof Error ? e.message : String(e) });
     } finally {
@@ -336,6 +345,24 @@ export function TermEditForm({
               rows={2}
               generating={generating}
               onGenerate={() => void generate()}
+            />
+            {unsampled.length > 0 && (
+              <Alert color="yellow" data-testid="glossary-definition-unsampled">
+                {t("glossaryTab.tablesWithoutSamples", { tables: unsampled.join(", ") })}
+              </Alert>
+            )}
+          </Stack>
+        </FormField>
+        <FormField size="long">
+          <Stack gap={2} data-testid="glossary-calculation-method-input">
+            <Text size="sm" fw={500}>
+              {t("glossaryTab.calculationMethodLabel")}
+            </Text>
+            <DescriptionField
+              value={draft.calculationMethod}
+              onChange={(calculationMethod) => set({ calculationMethod })}
+              placeholder={t("glossaryTab.calculationMethodPlaceholder")}
+              rows={2}
             />
           </Stack>
         </FormField>

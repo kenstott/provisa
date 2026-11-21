@@ -1,20 +1,21 @@
 {
   "maintenanceTab": {
     "title": "Geplante Wartung",
-    "intro": "Zeigt allen angemeldeten Benutzern auf jeder Seite ein Banner, bis Sie es ausschalten. Schalten Sie es vor geplanten Arbeiten ein, die Abfragen unterbrechen – Austausch des Engine-Clusters, Wechsel seiner Topologie oder Upgrade der Control Plane –, damit die Unterbrechung als geplant und nicht als Störung erscheint.",
+    "intro": "Zeigt jedem angemeldeten Benutzer auf jeder Seite ein Banner, bis Sie es ausschalten. Schalten Sie es vor geplanten Arbeiten ein, die Abfragen unterbrechen, etwa das Ersetzen des Engine-Clusters, das Ändern seiner Topologie oder ein Upgrade der Control Plane, damit alle wissen, dass die Unterbrechung geplant ist.",
     "live": "Das Banner ist aktiv.",
     "liveSince": "Das Banner ist seit {{time}} aktiv.",
     "messageLabel": "Nachricht",
     "messagePlaceholder": "Provisa wird gerade planmäßig gewartet…",
     "messageHint": "Leer lassen für den Standardtext.",
     "endsAtLabel": "Voraussichtlich zurück um",
-    "endsAtHint": "Leer lassen, um keine Schätzung anzugeben, statt eine anzudeuten.",
+    "endsAtHint": "Leer lassen, wenn Sie keine Schätzung haben.",
     "showBanner": "Banner anzeigen",
     "updateBanner": "Banner aktualisieren",
     "clearBanner": "Banner entfernen",
     "dangerTitle": "Gefahrenzone",
-    "dangerIntro": "Stoppt das Backend und den UI-Entwicklungsserver auf diesem Rechner. Funktioniert nur bei einem Desktop-Start mit --demo/--native – überall sonst wird es abgelehnt.",
+    "dangerIntro": "Stoppt das Backend und den UI-Entwicklungsserver auf diesem Rechner. Funktioniert nur bei einem Desktop-Start mit --demo/--native und wird überall sonst abgelehnt.",
     "stopAll": "Alle Dienste stoppen",
-    "stopConfirm": "Backend und UI-Entwicklungsserver auf diesem Rechner beenden? Ihre Sitzung endet sofort."
+    "stopTitle": "Alle Dienste stoppen?",
+    "stopConsequence": "Dadurch werden das Backend und der UI-Entwicklungsserver auf diesem Rechner gestoppt. Solange sie gestoppt sind, funktionieren diese Seite, jede Abfrage und die Sitzungen aller anderen Benutzer nicht mehr, und Ihre Sitzung endet. Nichts kommt zurück, bis die Dienste auf diesem Rechner wieder gestartet werden."
   }
 }

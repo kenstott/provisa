@@ -52,10 +52,16 @@ RAW_CONFIG = {"naming": {"domain_prefix": True, "convention": "apollo_graphql"}}
 
 
 class _Conn:
-    """The two reads the loader makes: the tracked functions, then the approved webhooks."""
+    """The reads the loader makes: tracked functions, approved webhooks, then dbt manifest
+    tables and warehouse sources (REQ-2228 — dbt_model_tables added to the loader)."""
 
-    async def execute_core(self, _stmt):
-        return SimpleNamespace(fetchall=lambda: [SimpleNamespace(_mapping=dict(COMMAND))])
+    async def execute_core(self, stmt):
+        # REQ-2228: dbt_model_tables is now called in the loader; this test has no dbt sources.
+        # Return the tracked-functions row only for that query; empty for all dbt-store queries.
+        tables = {t.name for t in stmt.get_final_froms()}
+        if "tracked_functions" in tables:
+            return SimpleNamespace(fetchall=lambda: [SimpleNamespace(_mapping=dict(COMMAND))])
+        return SimpleNamespace(fetchall=lambda: [])
 
     async def fetch(self, _sql):
         return []
@@ -88,7 +94,7 @@ def _emitted() -> set[str]:
         relationships=[],
         column_types={},
         naming_rules=[],
-        role={"id": "admin", "domain_access": ["*"]},
+        role={"id": "admin", "domain_access": ["*"], "capabilities": ["command_execution"]},
         domains=DOMAINS,
         domain_prefix=True,
         functions=[COMMAND],

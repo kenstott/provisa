@@ -99,11 +99,12 @@ def _aggregates_beside(select: exp.Select, lists: list[exp.Expr]) -> bool:
     return False
 
 
-#: A registered table's columns, as governance knows them; None for a source it does not.
-ColumnsOf = Callable[[exp.Table], "list[str] | None"]
+#: A FROM item's columns -- a registered table's or its governed relation's, as governance knows
+#: them; None for a source it does not.
+ColumnsOf = Callable[[exp.Expr], "list[str] | None"]
 
 
-def _no_columns(_table: exp.Table) -> list[str] | None:
+def _no_columns(_table: exp.Expr) -> list[str] | None:
     return None
 
 
@@ -150,7 +151,7 @@ def _read_from_one_source(select: exp.Select, columns_of: ColumnsOf) -> list[exp
     carried: list[exp.Expr] = []
     by_alias: dict[str, list[str]] = {}
     for table in tables:
-        columns = columns_of(table) if isinstance(table, exp.Table) else None
+        columns = columns_of(table)
         if columns is None:
             raise ListNotCappable(
                 "a list beside other aggregates over a joined source of no known columns"
@@ -214,7 +215,7 @@ def _number_the_source(
         if isinstance(key, exp.Column) and isinstance(key.this, exp.Star):
             # A table's every column: each is a key the rows are partitioned by.
             joined_table = held.get(key.table)
-            names = columns_of(joined_table) if isinstance(joined_table, exp.Table) else None
+            names = None if joined_table is None else columns_of(joined_table)
             if names is None:
                 raise ListNotCappable("a grouping by every column of a source of no known columns")
             keys += [exp.column(name, table=key.table, quoted=True) for name in names]

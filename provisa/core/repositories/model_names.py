@@ -12,7 +12,7 @@
 aliases the disambiguate policy froze. The build is the only writer of the first two; the third
 is a model change of its own."""
 
-# Requirements: REQ-194
+# Requirements: REQ-194, REQ-1914
 
 from __future__ import annotations
 
@@ -21,6 +21,7 @@ from typing import Any
 
 from sqlalchemy import and_, delete, insert, update
 
+from provisa.core.repositories.build_output import replacing_build_output
 from provisa.core.schema_org import (
     model_name_clashes,
     model_names,
@@ -32,8 +33,6 @@ from provisa.core.schema_org import (
 async def write_names_table(conn: Any, rows: Iterable[Any]) -> None:
     """Replace the stored names table with ``rows`` (names_table.NameRow) and clear the refused
     clashes: a build that stored a names table refused none."""
-    await conn.execute_core(delete(model_names))
-    await conn.execute_core(delete(model_name_clashes))
     values = [
         {
             "object_kind": r.object_kind,
@@ -51,13 +50,15 @@ async def write_names_table(conn: Any, rows: Iterable[Any]) -> None:
     ]
     # One statement however many names: a multi-row VALUES binds ten parameters a name, and
     # PostgreSQL refuses a statement of more than 65535.
-    await conn.execute_core_many(insert(model_names), values)
+    async with replacing_build_output(conn, model_names):
+        await conn.execute_core(delete(model_names))
+        await conn.execute_core(delete(model_name_clashes))
+        await conn.execute_core_many(insert(model_names), values)
 
 
 async def write_refused_clashes(conn: Any, clashes: Iterable[Any]) -> None:
     """Replace the stored refused clashes with ``clashes`` (names_table.NameClash). The names
     table stays as the last version built stored it."""
-    await conn.execute_core(delete(model_name_clashes))
     values = {
         (c.surface, c.name, c.newcomer): {
             "surface": c.surface,
@@ -68,7 +69,9 @@ async def write_refused_clashes(conn: Any, clashes: Iterable[Any]) -> None:
         }
         for c in clashes
     }
-    await conn.execute_core_many(insert(model_name_clashes), list(values.values()))
+    async with replacing_build_output(conn, model_names):
+        await conn.execute_core(delete(model_name_clashes))
+        await conn.execute_core_many(insert(model_name_clashes), list(values.values()))
 
 
 async def freeze_aliases(conn: Any, frozen: Iterable[Any]) -> None:

@@ -64,10 +64,11 @@ describe("RegisterTableForm on a Qdrant search (REQ-1983)", () => {
         domainsEnabled
         tables={[]}
         roles={[{ id: "analyst" } as never]}
-        getAvailableColumnsMetadata={vi.fn().mockResolvedValue([])}
         suggestTableAlias={vi.fn().mockResolvedValue("")}
         onContinue={onContinue}
         onCancel={() => {}}
+        onProductsRegistered={vi.fn()}
+        onRegisteredMany={vi.fn()}
         setError={vi.fn()}
       />,
     );

@@ -81,7 +81,7 @@ describe("REQ-1568 the choice between orgs claiming one address", () => {
 
     await waitFor(() => expect(mockAccept).toHaveBeenCalledWith("globex"));
     expect(mockAccept).toHaveBeenCalledTimes(1);
-    await waitFor(() => expect(navigate).toHaveBeenCalledWith("/query"));
+    await waitFor(() => expect(navigate).toHaveBeenCalledWith("/"));
   });
 
   it("clears the question once every claim is turned down", async () => {

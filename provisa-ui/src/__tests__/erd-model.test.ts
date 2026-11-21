@@ -10,6 +10,16 @@
 
 import { describe, it, expect } from "vitest";
 import { buildTableLabel, buildErdElements, erdJson } from "../components/erd/erd-model";
+import { erdGraph } from "../components/erd/erd-graph";
+import { graphElements } from "../components/provisa-graph/model";
+import { graphStylesheet } from "../components/provisa-graph/stylesheet";
+import {
+  NODE_TYPES,
+  SIZE,
+  graphTokens,
+  typeShape,
+  type NodeType,
+} from "../components/provisa-graph/tokens";
 import type { RegisteredTable, Relationship, Domain, TableColumn } from "../types/admin";
 
 // ── fixtures ──────────────────────────────────────────────────────────────────
@@ -45,6 +55,7 @@ function makeTable(overrides: Partial<RegisteredTable> = {}): RegisteredTable {
     tableName: "orders",
     alias: null,
     description: null,
+    registeredAt: "2026-11-01T00:00:00+00:00",
     cacheTtl: null,
     roleTtl: [],
     pagingKind: null,
@@ -52,7 +63,8 @@ function makeTable(overrides: Partial<RegisteredTable> = {}): RegisteredTable {
     pagingCeilingRows: null,
     replicate: null,
     region: null,
-    draft: false,
+    withdrawn: false,
+    sourceWithdrawn: false,
     rowMaterialize: false,
     loadProtected: null,
     offPeakWindow: null,
@@ -85,12 +97,14 @@ function makeTable(overrides: Partial<RegisteredTable> = {}): RegisteredTable {
     mvPersist: "replace",
     mvPrimaryKey: [],
     mvIncremental: false,
+    mvRebuildEvery: null,
+    incrementalOption: { available: true, code: null, reason: null },
     mvCalendar: null,
     mvGrain: null,
     mvAllowedLateness: 0,
     mvExpectedEvents: null,
     mvBusinessDayGrain: false,
-    productId: null, // REQ-1634
+    productIds: [], // REQ-1634
     enableAggregates: false,
     enableGroupBy: false,
     canDeployToDb: false,
@@ -128,6 +142,7 @@ function makeRel(overrides: Partial<Relationship> = {}): Relationship {
     autoSuggested: false,
     disableCypher: false,
     sameEntity: false,
+    withdrawn: false,
     // REQ-1586: an FK/PK relationship declares no junction.
     viaTableId: null,
     viaTableName: null,
@@ -514,6 +529,43 @@ describe("buildErdElements — junction relationships", () => {
     expect(entity?.data.type === "table" && entity.data.junction).toBe(false);
   });
 
+  it("the erd-junction tag draws the junction as the graph's one diamond, legs in its grape", () => {
+    // REQ-2239 (A JUNCTION IS A DIAMOND): the one exception to the single node shape.
+    const erd = buildErdElements(
+      [pets, owners, companions],
+      [viaRel({ targetTableId: 12 })],
+      domains,
+      new Set(),
+      NO_HIDDEN,
+      "all",
+    );
+    const spec = erdGraph(erd, []);
+    expect(spec.nodes.find((n) => n.id === "t:11")?.type).toBe("junction");
+    expect(spec.nodes.find((n) => n.id === "t:10")?.type).toBe("table");
+    const els = graphElements(spec, (type) => type, "all");
+    const junction = els.find((e) => e.data.id === "t:11");
+    const entity = els.find((e) => e.data.id === "t:10");
+    expect(junction?.data.shape).toBe("diamond");
+    expect(junction?.data.w).toBe(SIZE.diamondWidth);
+    expect(junction?.data.h).toBe(SIZE.diamondHeight);
+    // Its name and type, no body.
+    expect(junction?.data.label).toBe("pet_companions\nJUNCTION");
+    expect(entity?.data.shape).toBe("box");
+    expect(entity?.data.w).toBe(SIZE.nodeWidth);
+    // Its legs keep the via tone; a junction's lines are solid.
+    const legs = spec.edges.filter((e) => e.source === "t:11" || e.target === "t:11");
+    expect(legs).toHaveLength(2);
+    expect(legs.every((e) => e.tone === "via" && !e.dashed)).toBe(true);
+    // The stylesheet draws a diamond for that shape, and for nothing else.
+    const sheet = graphStylesheet(graphTokens(false));
+    const diamonds = sheet.filter((r) => (r.style as Record<string, unknown>).shape === "diamond");
+    expect(diamonds.map((r) => r.selector)).toEqual(['node[kind = "node"][shape = "diamond"]']);
+    const shaped = (Object.keys(NODE_TYPES) as NodeType[]).filter(
+      (t) => typeShape(t) === "diamond",
+    );
+    expect(shaped).toEqual(["junction"]);
+  });
+
   it("a hidden junction collapses to a direct A→B edge labeled with the type", () => {
     const hrCompanions = makeTable({ id: 11, domainId: "hr", tableName: "pet_companions" });
     const { edges } = buildErdElements(
@@ -690,5 +742,55 @@ describe("erdJson", () => {
     const all = erdJson(buildErdElements(tables, rels, domains, new Set(), NO_HIDDEN, "all"));
     const none = erdJson(buildErdElements(tables, rels, domains, new Set(), NO_HIDDEN, "none"));
     expect(none).toEqual(all);
+  });
+});
+
+// REQ-1921: a withdrawn table (by itself or through its source) and a withdrawn relationship are
+// drawn dashed; a table in production keeps its solid border.
+describe("buildErdElements — withdrawn tables and relationships", () => {
+  const live = makeTable({ id: 1, domainId: "sales", tableName: "orders" });
+  const withdrawn = makeTable({ id: 2, domainId: "sales", tableName: "staging", withdrawn: true });
+  const viaSource = makeTable({
+    id: 3,
+    domainId: "sales",
+    tableName: "landing",
+    sourceWithdrawn: true,
+  });
+  const rels = [
+    makeRel({ id: 1, sourceTableId: 1, targetTableId: 2, withdrawn: true }),
+    makeRel({ id: 2, sourceTableId: 3, targetTableId: 1, withdrawn: true }),
+    makeRel({ id: 3, sourceTableId: 1, targetTableId: 1 }),
+  ];
+  const build = () =>
+    buildErdElements(
+      [live, withdrawn, viaSource],
+      rels,
+      [DOMAIN_SALES],
+      new Set(),
+      new Set(),
+      "all",
+    );
+
+  it("marks a table withdrawn by itself or through its source, and its relationships", () => {
+    const erd = build();
+    const node = (id: string) => erd.nodes.find((n) => n.data.id === id)?.data;
+    expect(node("t:1")).toMatchObject({ withdrawn: false });
+    expect(node("t:2")).toMatchObject({ withdrawn: true });
+    expect(node("t:3")).toMatchObject({ withdrawn: true });
+    expect(erd.edges.find((e) => e.data.relationshipId === "1")?.data.withdrawn).toBe(true);
+  });
+
+  it("draws a withdrawn table's border dashed and a withdrawn relationship's line dashed", () => {
+    const spec = erdGraph(build(), [live, withdrawn, viaSource]);
+    expect(spec.nodes.find((n) => n.id === "t:2")?.withdrawn).toBe(true);
+    expect(spec.nodes.find((n) => n.id === "t:1")?.withdrawn).toBeUndefined();
+    expect(spec.edges.find((e) => e.data?.relationshipId === "1")?.dashed).toBe(true);
+    const els = graphElements(spec, (type) => type, "all");
+    expect(els.find((e) => e.data.id === "t:2")?.data.withdrawn).toBe("yes");
+    expect(els.find((e) => e.data.id === "t:3")?.data.withdrawn).toBe("yes");
+    expect(els.find((e) => e.data.id === "t:1")?.data.withdrawn).toBeUndefined();
+    const sheet = graphStylesheet(graphTokens(false));
+    const rule = sheet.find((r) => r.selector === 'node[withdrawn = "yes"]');
+    expect((rule?.style as Record<string, unknown>)["border-style"]).toBe("dashed");
   });
 });

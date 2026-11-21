@@ -91,13 +91,18 @@ def test_an_insert_takes_its_values_or_its_select(session):
 
 def test_an_update_and_a_delete_are_the_tables_rows_afterwards(session):
     update = action_of("UPDATE t SET region = 'venus' WHERE id = 1")
-    assert update.kind == "rewrite" and update.rewrite.endswith("FROM {table}")
-    assert (
-        "CASE WHEN COALESCE((id = 1), FALSE) THEN ('venus') ELSE \"region\" END" in update.rewrite
+    # The statement's own expressions are in the SELECT the pipeline governs as the role.
+    assert update.kind == "rewrite" and not update.marks_gone
+    assert update.select == (
+        'SELECT "id", CASE WHEN COALESCE((id = 1), FALSE) THEN (\'venus\') ELSE "region" END '
+        'AS "region" FROM t'
     )
     delete = action_of("DELETE FROM t WHERE id = 2")
-    assert delete.rewrite == "SELECT * FROM {table} WHERE NOT COALESCE((id = 2), FALSE)"
-    assert action_of("DELETE FROM t").rewrite.endswith("NOT COALESCE((TRUE), FALSE)")
+    assert delete.kind == "rewrite" and delete.marks_gone
+    assert delete.select == ('SELECT "id", "region", COALESCE((id = 2), FALSE) AS "__gone" FROM t')
+    assert 'COALESCE((TRUE), FALSE) AS "__gone"' in action_of("DELETE FROM t").select
+    aliased = action_of("UPDATE t AS x SET region = 'venus' WHERE x.id = 1")
+    assert aliased.select.endswith("FROM t AS x")
 
 
 def test_drop_of_the_sessions_table_and_reads_of_it(session):
@@ -161,6 +166,41 @@ def test_a_statement_is_kept_for_its_session_alone_as_its_tables_stand():
     token = temp_tables.bind(second)
     try:
         assert temp_tables.slot_key() != mine
+    finally:
+        temp_tables.unbind(token)
+
+
+def test_a_plan_is_kept_for_its_session_as_its_tables_are_shaped_not_as_their_rows_stand():
+    """A governed plan reads a session's tables by their address and columns, never by their rows:
+    a write that leaves every table's columns as they were (a graph session advances its generation
+    on each one) keeps the session's plans; a new table, a dropped one, a column added or retyped,
+    and another session's tables of the same words each key their own (REQ-615, REQ-2176)."""
+    assert temp_tables.plan_key() == []  # no session
+    first = TempSession(id="p1")
+    token = temp_tables.bind(first)
+    try:
+        assert temp_tables.plan_key() == []  # a session with no table shares every statement
+        first.tables["mine"] = TempTable("mine", [("id", "bigint")])
+        mine = temp_tables.plan_key()
+        assert mine and mine[0][0] == "provisa.temp_session"
+        first.generation += 7  # rows written in place, or the session begun again after a clear
+        first.tables["mine"].serials["id"] = 3
+        assert temp_tables.plan_key() == mine
+        first.tables["mine"] = TempTable("mine", [("id", "bigint"), ("v", "text")])
+        widened = temp_tables.plan_key()
+        assert widened != mine
+        first.tables["mine"] = TempTable("mine", [("id", "double")])
+        assert temp_tables.plan_key() not in (mine, widened)
+        first.tables["mine"] = TempTable("mine", [("id", "bigint")])
+        assert temp_tables.plan_key() == mine  # dropped and made again alike: the same address
+        first.tables["other"] = TempTable("other", [("id", "bigint")])
+        assert temp_tables.plan_key() != mine
+    finally:
+        temp_tables.unbind(token)
+    second = TempSession(id="p2", tables={"mine": TempTable("mine", [("id", "bigint")])})
+    token = temp_tables.bind(second)
+    try:
+        assert temp_tables.plan_key() != mine  # another session's schema
     finally:
         temp_tables.unbind(token)
 

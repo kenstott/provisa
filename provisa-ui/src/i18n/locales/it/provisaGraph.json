@@ -1,0 +1,27 @@
+{
+  "provisaGraph": {
+    "legend": "Legenda",
+    "hint": "Trascina per spostare · scorri per muoverti · Ctrl/⌘ + scorri per ingrandire",
+    "layingOut": "Disposizione in corso…",
+    "type": {
+      "product": "Prodotto dati",
+      "source": "Origine",
+      "domain": "Dominio",
+      "group": "Gruppo",
+      "table": "Tabella",
+      "view": "Vista",
+      "relation": "Tabella esterna",
+      "junction": "Tabella di collegamento",
+      "column": "Colonna",
+      "term": "Termine",
+      "concept": "Concetto",
+      "class": "Classe",
+      "property": "Proprietà",
+      "command": "Comando",
+      "checker": "Controllo di qualità",
+      "profile": "Profilo",
+      "tag": "Tag",
+      "more": "Altro"
+    }
+  }
+}

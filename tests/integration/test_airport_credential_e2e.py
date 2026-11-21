@@ -49,8 +49,14 @@ import sys
 import duckdb
 
 conn = duckdb.connect()
-conn.execute("INSTALL airport FROM community")
-conn.execute("LOAD airport")
+# DuckDB 2.0's airport is Query.Farm's, from its own extension repository.
+conn.execute("SET allow_extension_repositories = 'allowed'")
+conn.execute(
+    "CREATE EXTENSION REPOSITORY IF NOT EXISTS query_farm "
+    "WITH PREFIX 'https://duckdb-extensions.query.farm'"
+)
+conn.execute("INSTALL airport FROM query_farm")
+conn.execute("LOAD airport FROM query_farm")
 loc = f"grpc://localhost:{sys.argv[1]}"
 conn.execute("CREATE SECRET airport_sec (TYPE airport, auth_token ?, scope ?)", [sys.argv[2], loc])
 conn.execute(f"ATTACH '{loc}' AS provisa (TYPE AIRPORT)")

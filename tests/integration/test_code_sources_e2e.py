@@ -26,13 +26,14 @@ from __future__ import annotations
 
 import io
 import json
+import subprocess
 import zipfile
+from pathlib import Path
 
 import httpx
 import pytest
 import yaml
 
-from tests.helpers import registered_id, release_field
 
 pytestmark = [pytest.mark.integration]
 
@@ -70,9 +71,14 @@ def rates(inputs: RateInputs) -> list[Rate]:
     ]
 
 
-def currencies() -> list[dict]:
+@dataclass
+class Currency:
+    code: str
+
+
+def currencies() -> list[Currency]:
     """@table"""
-    return [{"code": code} for code in sorted(_TABLE)]
+    return [Currency(code) for code in sorted(_TABLE)]
 ''',
 }
 
@@ -127,6 +133,30 @@ def _config() -> dict:
         "sources": [],
         "tables": [],
     }
+
+
+def build_provisa_wheel(cache: Path, arch: str) -> Path:
+    """This checkout's Linux provisa wheel for ``arch`` in the build cache's wheelhouse
+    (REQ-2194): a code image's front end carries the provisa._encoders compiled into it. Built as
+    the Provisa images build theirs, from the Dockerfile's provisa-wheel stage."""
+    house = cache / "wheels"
+    subprocess.run(
+        [
+            "docker",
+            "build",
+            "--platform",
+            f"linux/{arch}",
+            "--target",
+            "provisa-wheel",
+            "--output",
+            f"type=local,dest={house}",
+            str(Path(__file__).parents[2]),
+        ],
+        check=True,
+    )
+    wheels = sorted(house.glob("provisa-*.whl"))
+    assert len(wheels) == 1, wheels
+    return wheels[0]
 
 
 @pytest.fixture(scope="module")
@@ -236,13 +266,12 @@ def code_source(server):
         ),
         ("currencies", [_column("code", "text")]),
     ):
-        registered = _admin(
+        _admin(
             server,
             f'registerTable(input: {{sourceId: "{source_id}", domainId: "fx", '
             f'schemaName: "default", tableName: "{table}", cacheTtl: 300, '
             f"columns: [{', '.join(columns)}]}})",
         )
-        _admin(server, release_field(registered_id(registered["message"])))
     return language
 
 

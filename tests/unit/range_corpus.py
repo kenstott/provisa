@@ -208,9 +208,31 @@ def part_statements(type_name: str) -> list[str]:
     parts.append(f"SELECT i FROM s.t WHERE v BETWEEN '{first}' AND '{second}' ORDER BY i")
     return (
         parts
+        + null_statements("range_union")
+        + variadic_statements(type_name)
         + [f"SELECT i, v @> {element} AS r FROM s.t ORDER BY i" for element in ELEMENTS[type_name]]
         + [f"SELECT i, {element} <@ v AS r FROM s.t ORDER BY i" for element in ELEMENTS[type_name]]
     )
+
+
+def null_statements(union: str) -> list[str]:
+    """An untyped NULL beside the column: PostgreSQL reads it as the column's type, and the
+    operator or function, being strict, answers NULL."""
+    return [
+        "SELECT i, (v + NULL)::text AS r FROM s.t ORDER BY i",
+        "SELECT i, (NULL * v)::text AS r FROM s.t ORDER BY i",
+        f"SELECT i, {union}(v, NULL)::text AS r FROM s.t ORDER BY i",
+        "SELECT i, v && NULL AS r FROM s.t ORDER BY i",
+        "SELECT i, NULL -|- v AS r FROM s.t ORDER BY i",
+    ]
+
+
+def variadic_statements(type_name: str) -> list[str]:
+    """A multirange of an array only the rows hold: of the first three ranges, and of every one,
+    a NULL among them, which PostgreSQL refuses."""
+    multirange = RANGE_MULTIRANGE[type_name]
+    built = f"SELECT {multirange}(VARIADIC array_agg(v ORDER BY i))::text AS r FROM s.t"
+    return [f"{built} WHERE i < 3", built]
 
 
 def literal_statements(type_name: str) -> list[str]:
@@ -372,7 +394,14 @@ def multirange_statements(type_name: str) -> list[str]:
         out += [f"SELECT i, v {op} {written} AS r FROM s.t ORDER BY i" for op in RANGE_OPERATORS]
         out += [f"SELECT i, {written} {op} v AS r FROM s.t ORDER BY i" for op in RANGE_OPERATORS]
     out += [f"SELECT i, v @> {e} AS r FROM s.t ORDER BY i" for e in ELEMENTS[range_name]]
-    return out
+    return out + multirange_cmp_statements() + null_statements("multirange_union")
+
+
+def multirange_cmp_statements() -> list[str]:
+    return [
+        f"SELECT a.i, b.i, multirange_cmp(a.v, b.v) AS r {_PAIRS}",
+        "SELECT i, multirange_cmp(v, NULL) AS r FROM s.t ORDER BY i",
+    ]
 
 
 if __name__ == "__main__":

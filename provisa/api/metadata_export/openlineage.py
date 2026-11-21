@@ -46,6 +46,7 @@ from provisa.api.metadata_export.provider import (
 )
 from provisa.api.metadata_export.model import junction_payload
 from provisa.api.metadata_export.registry import register_provider
+from provisa.security import sandbox_egress  # REQ-2006: held to public destinations
 
 if TYPE_CHECKING:
     from provisa.api.metadata_export.model import (
@@ -86,6 +87,11 @@ def _dataset_name(table: TableAsset) -> str:
 
 def _custom_facet(**payload: Any) -> dict[str, Any]:
     return {"_producer": PRODUCER, "_schemaURL": FACET_URL, **payload}
+
+
+def _environment_facet(snapshot: MetadataSnapshot) -> dict[str, Any]:  # REQ-2261
+    assert snapshot.environment is not None
+    return _custom_facet(environment=snapshot.environment.name, stage=snapshot.environment.stage)
 
 
 def _schema_facet(table: TableAsset) -> dict[str, Any]:
@@ -217,7 +223,7 @@ def _dataset_facets(
     snapshot: MetadataSnapshot,
     table: TableAsset,
     domain_owner: dict[str, str],
-    product_by_table: dict[str, Any],
+    products_by_table: dict[str, list[Any]],
 ) -> dict[str, Any]:
     facets: dict[str, Any] = {"schema": _schema_facet(table)}
     # REQ-1385: the stable business-identity address — the cross-catalog join key a lineage
@@ -237,14 +243,24 @@ def _dataset_facets(
         facets["ownership"] = _ownership_facet(steward)
     if table.domain_id:
         facets["provisa_domain"] = _custom_facet(domainId=table.domain_id)
+    # REQ-2261: the environment the dataset was published from and its stage, so a lineage
+    # consumer can tell production assets from others.
+    if snapshot.environment is not None:
+        facets["provisa_environment"] = _environment_facet(snapshot)
 
-    product = product_by_table.get(table.ref.fqn())
-    if product is not None:
-        facets["provisa_data_product"] = _custom_facet(
-            productId=product.id,
-            name=product.name,
-            **({"owner": product.owner.id} if product.owner is not None else {}),
-            odps=product.odps_fields(),  # REQ-2118
+    # REQ-1634: every product the table is a member of, any number.
+    products = products_by_table.get(table.ref.fqn(), [])
+    if products:
+        facets["provisa_data_products"] = _custom_facet(
+            products=[
+                {
+                    "productId": product.id,
+                    "name": product.name,
+                    **({"owner": product.owner.id} if product.owner is not None else {}),
+                    "odps": product.odps_fields(),  # REQ-2118
+                }
+                for product in products
+            ]
         )
 
     asset_prefix = table.ref.fqn()
@@ -345,12 +361,13 @@ def to_events(snapshot: MetadataSnapshot, *, event_time: datetime) -> list[Expor
     # REQ-1634: OpenLineage has no persistent entity for a data product — only per-event
     # dataset/run facets — so membership rides each member table's own facets, the same way
     # ``provisa_domain`` already does above.
-    product_by_table = {
-        member.fqn(): product for product in snapshot.data_products for member in product.members
-    }
+    products_by_table: dict[str, list[Any]] = {}
+    for product in snapshot.data_products:
+        for member in product.members:
+            products_by_table.setdefault(member.fqn(), []).append(product)
 
     facets_by_name = {
-        _dataset_name(table): _dataset_facets(snapshot, table, domain_owner, product_by_table)
+        _dataset_name(table): _dataset_facets(snapshot, table, domain_owner, products_by_table)
         for table in snapshot.tables
     }
 
@@ -395,7 +412,16 @@ def to_events(snapshot: MetadataSnapshot, *, event_time: datetime) -> list[Expor
                     "producer": PRODUCER,
                     "schemaURL": RUN_EVENT_URL,
                     "run": {"runId": _run_id(job_name)},
-                    "job": {"namespace": namespace, "name": job_name},
+                    "job": {
+                        "namespace": namespace,
+                        "name": job_name,
+                        # REQ-2261: the job runs in this environment, at this stage.
+                        **(
+                            {"facets": {"provisa_environment": _environment_facet(snapshot)}}
+                            if snapshot.environment is not None
+                            else {}
+                        ),
+                    },
                     # Every dataset named by the run repeats its facets. A run event replaces the
                     # facets of the datasets it names, so sending the output with columnLineage
                     # alone would erase the schema the dataset event registered — and a consumer
@@ -449,7 +475,9 @@ class OpenLineageExport(MetadataExport):  # REQ-1069
         events = to_events(snapshot, event_time=datetime.now(UTC))
         result = PublishResult(provider_name=self.provider_name)
         url = self._lineage_url()
-        async with httpx.AsyncClient(timeout=self._config.timeout_seconds) as client:
+        async with httpx.AsyncClient(
+            timeout=self._config.timeout_seconds, event_hooks=sandbox_egress.endpoint_event_hooks()
+        ) as client:
             for event in events:
                 response = await client.post(url, json=event.payload, headers=self._headers())
                 if response.status_code >= 400:
@@ -467,6 +495,8 @@ class OpenLineageExport(MetadataExport):  # REQ-1069
 
     async def health(self) -> None:
         url = f"{self._config.endpoint.rstrip('/')}/api/v1/namespaces"
-        async with httpx.AsyncClient(timeout=self._config.timeout_seconds) as client:
+        async with httpx.AsyncClient(
+            timeout=self._config.timeout_seconds, event_hooks=sandbox_egress.endpoint_event_hooks()
+        ) as client:
             response = await client.get(url, headers=self._headers())
         response.raise_for_status()

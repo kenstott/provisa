@@ -11,14 +11,21 @@
 """Whether a release can be cut at HEAD, and from which release its notes start.
 
 Run by the "Release: cut" workflow (.github/workflows/release-cut.yml) before anything is written.
-It refuses, exiting 2 with the reason:
+With ``--ref`` it refuses any ref but the release's own branch, release/<version>. Without it, it
+refuses, exiting 2 with the reason:
 
 - a version not shaped as a release tag (v0.1.0, v0.1.0-alpha.480, -beta.N, -rc.N);
 - a tag that already exists;
 - a docs/releases/<version>.md that someone wrote: the notes generator would overwrite it. A
   page this same cut wrote, on an earlier attempt that did not finish, is its own and is
   written again;
-- a HEAD with no earlier release tag to start the notes from.
+- no earlier release tag to start the notes from;
+- an earlier release that is not in HEAD's history. A branch started while that release was
+  publishing merges its tag first: its notes would repeat that release, and its merge to main
+  would conflict once it is published.
+
+The previous release is the highest release tag below this version, by version and not by what
+is reachable: the tag is made on its own release branch.
 
 Run again with ``--written`` after the generator, it refuses a hand-written page under
 docs/releases that the generator changed or removed.
@@ -35,7 +42,16 @@ import subprocess  # nosec B404 - argv-list git invocations only, never shell=Tr
 import sys
 from pathlib import Path
 
-VERSION = re.compile(r"^v\d+\.\d+\.\d+(?:-(?:alpha|beta|rc)\.\d+)?$")
+VERSION = re.compile(r"^v(\d+)\.(\d+)\.(\d+)(?:-(alpha|beta|rc)\.(\d+))?$")
+_STAGES = {"alpha": 0, "beta": 1, "rc": 2, None: 3}  # a pre-release sorts below its release
+
+
+def _order(tag: str) -> tuple[int, int, int, int, int]:
+    """SemVer order of a tag shaped as ``VERSION``."""
+    match = VERSION.match(tag)
+    assert match is not None, tag
+    major, minor, patch, stage, number = match.groups()
+    return int(major), int(minor), int(patch), _STAGES[stage], int(number or 0)
 
 
 def cut_subject(version: str) -> str:
@@ -54,6 +70,30 @@ def _git(repo: Path, *args: str) -> subprocess.CompletedProcess:
     )
 
 
+def check_ref(ref: str, version: str) -> None:
+    """A release is cut only from its own branch."""
+    own = f"refs/heads/release/{version}"
+    if ref != own:
+        raise CutRefused(f"a release is cut from its own branch, {own}; this run is on {ref}")
+
+
+def _previous(repo: Path, version: str) -> str:
+    """The highest release tag below ``version``, which HEAD must already hold."""
+    tags = _git(repo, "tag", "--list", "v*").stdout.split()
+    earlier = [tag for tag in tags if VERSION.match(tag) and _order(tag) < _order(version)]
+    if not earlier:
+        raise CutRefused(
+            f"HEAD has no earlier release tag to start the notes from (below {version})"
+        )
+    previous = max(earlier, key=_order)
+    if _git(repo, "merge-base", "--is-ancestor", previous, "HEAD").returncode != 0:
+        raise CutRefused(
+            f"the previous release {previous} is not in this branch's history; bring it in with "
+            f"`git merge {previous}` and let the suites run on the result"
+        )
+    return previous
+
+
 def check(repo: Path, version: str) -> str:
     """The previous release's tag, when ``version`` can be cut at ``repo``'s HEAD."""
     if not VERSION.match(version):
@@ -70,12 +110,7 @@ def check(repo: Path, version: str) -> str:
                 f"{page} is already in the tree (last written by {last!r}), and the notes "
                 "generator would overwrite it; move or rename the hand-written page first"
             )
-    previous = _git(repo, "describe", "--tags", "--abbrev=0", "--match", "v*", "HEAD")
-    if previous.returncode != 0:
-        raise CutRefused(
-            f"HEAD has no earlier release tag to start the notes from: {previous.stderr.strip()}"
-        )
-    return previous.stdout.strip()
+    return _previous(repo, version)
 
 
 def check_written(repo: Path, version: str) -> None:
@@ -108,8 +143,12 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="after the notes were generated: check no hand-written page was changed",
     )
+    parser.add_argument("--ref", help="check only that this ref is the release's own branch")
     args = parser.parse_args(argv)
     try:
+        if args.ref:
+            check_ref(args.ref, args.version)
+            return 0
         if args.written:
             check_written(args.repo, args.version)
             return 0

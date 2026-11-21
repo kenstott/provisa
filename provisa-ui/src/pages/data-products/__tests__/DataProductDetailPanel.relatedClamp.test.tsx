@@ -16,6 +16,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen } from "../../../test-utils/render";
 import { DataProductDetailPanel } from "../DataProductDetailPanel";
 import { lifecycleProps } from "./lifecycleProps";
+import { openSection } from "./panelSections";
 import type { CoreEdge } from "../productCore";
 import type { DataProduct } from "../../../types/admin";
 
@@ -71,8 +72,8 @@ function panel() {
       canEdit={false}
       canDelete={false}
       owner
+      seesConsumers
       lineageLoading={false}
-      contractsVersion={0}
       lineageError=""
       lineageGraph={null}
       onEdit={vi.fn()}
@@ -80,6 +81,7 @@ function panel() {
       {...lifecycleProps()}
     />,
   );
+  openSection("related", "pet_health");
 }
 
 describe("a Related Tables entry", () => {

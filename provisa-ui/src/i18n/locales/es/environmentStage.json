@@ -1,0 +1,8 @@
+{
+  "environmentStage": {
+    "production": "Producción",
+    "preprod": "Preproducción",
+    "test": "Pruebas",
+    "development": "Desarrollo"
+  }
+}

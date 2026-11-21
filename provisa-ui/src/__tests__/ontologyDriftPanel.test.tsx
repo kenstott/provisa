@@ -49,7 +49,7 @@ describe("OntologyDriftPanel", () => {
     const row = within(await screen.findByTestId("drift-row-amount"));
     expect(row.getByRole("link", { name: "amount" })).toHaveAttribute(
       "href",
-      "/admin/ontology?term=7",
+      "/context/ontology?term=7",
     );
     expect(row.getByText("Grounded")).toBeInTheDocument();
     expect(row.getByText("Not grounded")).toBeInTheDocument();

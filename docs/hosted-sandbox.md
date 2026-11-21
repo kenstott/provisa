@@ -60,6 +60,9 @@ natural-language SQL, table selection) all use one OpenAI-wire endpoint the oper
 one model. A sandbox has no embedding model, so catalog search is unavailable there; Polly browses
 the catalog instead. The key is stored once, as a secret in the deployment organization, and
 resolved there for every sandbox; a sandbox's own secrets never hold it.
+On a server of many organizations this is the one AI endpoint whose key comes from the
+deployment. Every other organization's AI runs on keys that organization stored; see
+[Where an AI key comes from](secrets.md#where-an-ai-key-comes-from).
 
 | Setting | Value | Setting |
 |---|---|---|

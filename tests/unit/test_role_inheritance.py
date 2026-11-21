@@ -15,6 +15,7 @@ import pytest
 
 from provisa.compiler.rls import build_rls_context
 from provisa.core.models import Role, flatten_roles
+from tests.rules import rule_of, rules_of
 from provisa.security.inheritance import (
     children_of,
     expand_column_grants,
@@ -227,7 +228,7 @@ class TestMaterializeRls:
         rules = [_rule("reader", "region = 'east'", table_id=10)]
         out = materialize_rls(rules, TABLES, PARENTS)
         junior = build_rls_context(out, "junior")
-        assert junior.rules == {10: "region = 'east'"}
+        assert junior.rules == rules_of({10: "region = 'east'"})
         assert junior.domain_rules == {}
 
     def test_child_table_rule_narrows_parent(self):
@@ -236,7 +237,7 @@ class TestMaterializeRls:
             _rule("junior", "region = 'west'", table_id=10),
         ]
         junior = build_rls_context(materialize_rls(rules, TABLES, PARENTS), "junior")
-        assert junior.rules == {10: "(region = 'west') AND (region = 'east')"}
+        assert junior.rules == rules_of({10: "(region = 'west') AND (region = 'east')"})
 
     def test_a_nearer_domain_rule_and_a_farther_table_rule_are_both_applied(self):
         rules = [
@@ -244,17 +245,19 @@ class TestMaterializeRls:
             _rule("analyst", "tenant = 't1'", domain_id="sales"),
         ]
         junior = build_rls_context(materialize_rls(rules, TABLES, PARENTS), "junior")
-        assert junior.rules == {
-            10: "(tenant = 't1') AND (region = 'east')",
-            11: "tenant = 't1'",
-        }
+        assert junior.rules == rules_of(
+            {
+                10: "(tenant = 't1') AND (region = 'east')",
+                11: "tenant = 't1'",
+            }
+        )
 
     def test_own_domain_rule_stands_where_no_parent_narrows_it(self):
         rules = [_rule("junior", "tenant = 't1'", domain_id="sales")]
         out = materialize_rls(rules, TABLES, PARENTS)
         junior = build_rls_context(out, "junior")
         assert junior.rules == {}
-        assert junior.domain_rules == {"sales": "tenant = 't1'"}
+        assert junior.domain_rules == rules_of({"sales": "tenant = 't1'"})
         assert [r for r in out if r["role_id"] == "junior" and r.get("inherited_from")] == []
 
     def test_parent_domain_rule_lands_per_table_of_that_domain_only(self):
@@ -266,7 +269,7 @@ class TestMaterializeRls:
     def test_parent_rules_untouched_and_root_roles_untouched(self):
         rules = [_rule("reader", "region = 'east'", table_id=10)]
         out = materialize_rls(rules, TABLES, PARENTS)
-        assert build_rls_context(out, "reader").rules == {10: "region = 'east'"}
+        assert build_rls_context(out, "reader").rules == rules_of({10: "region = 'east'"})
         assert build_rls_context(out, "auditor").rules == {}
 
     def test_inherited_rule_records_its_source(self):
@@ -323,12 +326,12 @@ class TestSeveralParentsRowRules:
             _rule("owner", "owner_id = 7", domain_id="sales"),
         ]
         lead = build_rls_context(materialize_rls(rules, TABLES, MULTI_PARENTS), "lead")
-        assert lead.rules == {10: "(region = 'east') OR (owner_id = 7)"}
+        assert lead.rules == rules_of({10: "(region = 'east') OR (owner_id = 7)"})
 
     def test_one_rule_reached_through_both_parents_is_not_repeated(self):
         rules = [_rule("viewer", "region = 'east'", table_id=10)]
         lead = build_rls_context(materialize_rls(rules, TABLES, MULTI_PARENTS), "lead")
-        assert lead.rules == {10: "region = 'east'"}
+        assert lead.rules == rules_of({10: "region = 'east'"})
 
     def test_the_childs_own_rule_narrows_its_parents(self):
         rules = [
@@ -337,7 +340,9 @@ class TestSeveralParentsRowRules:
             _rule("lead", "tier = 1", table_id=10),
         ]
         lead = build_rls_context(materialize_rls(rules, TABLES, MULTI_PARENTS), "lead")
-        assert lead.rules == {10: "(tier = 1) AND ((region = 'east') OR (region = 'north'))"}
+        assert lead.rules == rules_of(
+            {10: "(tier = 1) AND ((region = 'east') OR (region = 'north'))"}
+        )
 
     def test_no_rule_anywhere_leaves_the_role_unrestricted(self):
         lead = build_rls_context(materialize_rls([], TABLES, MULTI_PARENTS), "lead")
@@ -367,5 +372,5 @@ class TestSeveralParentsRowRules:
         lead = next(g for g in tables[0]["write_grants"] if g["role"] == "lead")
         # A parent's grant with no row condition writes rows its read filter reaches (schema_org
         # table_write_grants: NULL is the role's read row filter), so it lifts no restriction.
-        assert lead["rows"] == "region = 'east'"
+        assert lead["rows"] == rule_of("region = 'east'")
         assert lead["columns"] == ["a", "b"]

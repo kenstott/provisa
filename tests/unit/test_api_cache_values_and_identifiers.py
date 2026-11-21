@@ -149,38 +149,44 @@ async def test_promotion_target_is_a_quoted_schema_qualified_name(monkeypatch):
     assert targets == ['org_a_api_cache."r_0123"', '"s""; x"."t""; y"']
 
 
-async def test_hydration_parent_lookup_quotes_its_names():
-    from provisa.api.data.hydration import _hydrate_dataloader
+async def test_a_joins_key_read_goes_through_the_pipeline_with_its_names_quoted(monkeypatch):
+    """REQ-1986: the keys a join gives a parameter are read through the one pipeline as the role
+    (the parent lookup hydration made on the tenant plane is gone): the binder's read, each
+    governed relation in it named again as its registered table, every name an identifier."""
+    from provisa.api.data import materialization
+    from provisa.compiler.nf_extractor import JoinKey
+    from provisa.pgwire import _pipeline
 
-    fetched: list[str] = []
+    governed: list[tuple[str, str]] = []
 
-    class _Conn:
-        capabilities = SimpleNamespace(schemas=True)
+    async def _govern(sql, role_id, **_kwargs):
+        governed.append((sql, role_id))
+        return "plan"
 
-        async def fetch(self, sql: str):
-            fetched.append(sql)
-            return []
+    async def _execute(_plan):
+        return SimpleNamespace(column_names=["key"], rows=[(1,), (2,)])
 
-    @asynccontextmanager
-    async def _acquire():
-        yield _Conn()
-
-    state = SimpleNamespace(tenant_db=SimpleNamespace(acquire=_acquire), api_endpoints={})
-    parent = SimpleNamespace(source_id="pg", table_name='pa"rent', schema_name="s;x")
-
-    await _hydrate_dataloader(
-        src=None,
-        endpoint=SimpleNamespace(table_name="child"),
-        ttl=300,
-        source_id="src",
-        dataloader_col=None,
-        dataloader_parent_join_col='jo"in',
-        dataloader_parent_table_meta=parent,
-        state=state,
-        hydration_rows={},
+    monkeypatch.setattr(_pipeline, "_govern_and_route", _govern)
+    monkeypatch.setattr(_pipeline, "_execute_plan", _execute)
+    monkeypatch.setattr(
+        "provisa.compiler.sql_rewrite.semantic_ref", lambda meta: '"s;x"."pa""rent"'
+    )
+    parent = SimpleNamespace(table_name='pa"rent', schema_name="s;x")
+    ctx = SimpleNamespace(tables={"parent": parent})
+    query = (
+        'SELECT DISTINCT "p"."jo""in" AS "key" FROM (SELECT "p"."jo""in" AS "jo""in" '
+        'FROM "pg"."s;x"."pa""rent" AS "p") AS p WHERE p."jo""in" > 3'
     )
 
-    assert fetched == ['SELECT DISTINCT "jo""in" FROM "s;x"."pa""rent" WHERE "jo""in" IS NOT NULL']
+    keys = await materialization._join_keys(JoinKey(query, "parent.join"), ctx, "analyst")
+
+    assert keys == [1, 2]
+    assert governed == [
+        (
+            'SELECT DISTINCT "p"."jo""in" AS "key" FROM "s;x"."pa""rent" AS "p" WHERE p."jo""in" > 3',
+            "analyst",
+        )
+    ]
 
 
 @pytest.mark.parametrize("make_session", [_duckdb_engine_session, _duckdb_broker_session])

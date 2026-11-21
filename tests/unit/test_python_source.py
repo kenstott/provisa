@@ -38,6 +38,7 @@ from provisa.codesource.manifest import (
     ManifestRefused,
     Named,
     Scalar,
+    TableOf,
     read_manifest,
 )
 from provisa.core import request_deadline
@@ -101,8 +102,70 @@ def test_the_codes_tables_commands_and_streams_are_read_from_docstrings_and_hint
         Field("sku", Scalar("text"), False),
         Field("qty", Scalar("bigint"), False),
     )
-    assert manifest.export("many").preview  # dict rows: typed by a preview
+    assert manifest.export("many").returns == Named("Counted")
     assert manifest.export("cancel_order").many is False
+
+
+def test_a_loose_row_type_is_refused_by_name(tmp_path):
+    code = _code(
+        tmp_path,
+        """
+        from typing import Any, Iterator, TypedDict
+
+        def plain() -> list[dict]:
+            \"\"\"@table\"\"\"
+            return []
+
+        def mapped() -> list[dict[str, Any]]:
+            \"\"\"@table\"\"\"
+            return []
+
+        def anything() -> list[Any]:
+            \"\"\"@table\"\"\"
+            return []
+
+        def feed() -> Iterator[dict]:
+            \"\"\"@stream\"\"\"
+            yield {}
+
+        class Row(TypedDict):
+            id: int
+            payload: dict
+
+        def typed() -> list[Row]:
+            \"\"\"@table\"\"\"
+            return []
+        """,
+    )
+    with pytest.raises(ManifestRefused) as refused:
+        read_manifest(_read(code, "rows"), PYTHON_RULES)
+    assert sorted(refused.value.problems) == [
+        f"{name}: its row type is loose (any, unknown, a Record or a dict); declare a typed row "
+        "whose fields are its columns"
+        for name in ("anything", "feed", "mapped", "plain")
+    ]
+
+
+def test_a_single_field_of_a_typed_row_may_still_be_loose(tmp_path):
+    code = _code(
+        tmp_path,
+        """
+        from typing import TypedDict
+
+        class Row(TypedDict):
+            id: int
+            payload: dict
+
+        def typed() -> list[Row]:
+            \"\"\"@table\"\"\"
+            return []
+        """,
+    )
+    manifest = read_manifest(_read(code, "rows"), PYTHON_RULES)
+    assert manifest.types["Row"].fields == (
+        Field("id", Scalar("bigint"), False),
+        Field("payload", Scalar("json"), False),
+    )
 
 
 def test_a_typed_dict_and_a_named_tuple_are_row_types(tmp_path):
@@ -448,3 +511,35 @@ def test_a_columns_call_answers_one_result_a_row_in_order(worker):
         {"street": "1 Main St", "city": "Springfield", "country": "US"},
         {"street": "2 Rue Haute", "city": "Lyon", "country": "FR"},
     ]
+
+
+def test_a_query_takes_a_table_and_a_command_is_a_mutation(tmp_path):  # REQ-2226
+    code = _code(
+        tmp_path,
+        """
+        from dataclasses import dataclass
+        from provisa_services import TableRef
+
+        @dataclass
+        class Order:
+            id: int
+            region: str
+
+        @dataclass
+        class Score:
+            region: str
+            score: float
+
+        def score(orders: TableRef[Order]) -> list[Score]:
+            '''@query'''
+            return []
+
+        def rescore(orders: TableRef[Order]) -> list[Score]:
+            '''@command'''
+            return []
+        """,
+    )
+    manifest = read_manifest(_read(code, "rows"), PYTHON_RULES)
+    assert manifest.export("score").kind == "query"
+    assert manifest.export("rescore").kind == "command"
+    assert manifest.export("score").parameters[0].shape == TableOf(Named("Order"))

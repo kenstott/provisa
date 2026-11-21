@@ -36,6 +36,7 @@ if TYPE_CHECKING:
     from provisa.pgwire._pipeline import StatementOutcome
 
 from provisa.core.read_refusal import ReadRefused
+from provisa.core.parameter_binding import ParameterBindingRefused
 from provisa.transpiler.function_macros import FunctionRefused
 from provisa.transpiler.metadata_functions import MetadataFunctionRefused
 from provisa.transpiler.metadata_settings import CatalogViewRefused
@@ -47,6 +48,7 @@ from provisa.api.errors import ApiError
 from provisa.api.error_answer import error_answer
 from provisa.core import domain_policy
 from provisa.compiler.sql_rewrite import rewrite_semantic_to_physical
+from provisa.compiler.sql_validator import GovernanceRefused
 from provisa.security.rights import Capability, InsufficientRightsError, check_capability
 from provisa.compiler.complexity import ComplexityLimitExceeded
 
@@ -66,6 +68,14 @@ class SQLRequest(BaseModel):
             "statement runs and never written into its text. Sent with exactly one statement "
             "whose placeholders number them exactly; anything else is refused before the "
             "statement runs. Omit for a statement without placeholders."
+        ),
+    )
+    paged: bool = Field(
+        default=False,
+        description=(
+            "True when the statement is one page its caller bounds with its own LIMIT (a grid "
+            "reading pageSize+1 rows to learn whether another page exists). Such a result is "
+            "not measured against the large-result threshold. Omit for any other statement."
         ),
     )
     role: str = "org_admin"  # REQ-1327: dev default is the DATA-plane admin; "admin"≡platform_admin is control-plane
@@ -168,6 +178,7 @@ async def proto_endpoint(role_id: str, request: Request, domains: str = ""):  # 
         reachable |= seed_ids
         filtered_tables = [t for t in tables if t["id"] in reachable]
         from provisa.mv.time_travel import relation_kinds
+        from provisa.security.masking import columns_masked_for
 
         si = SchemaInput(
             tables=filtered_tables,
@@ -179,6 +190,7 @@ async def proto_endpoint(role_id: str, request: Request, domains: str = ""):  # 
             role=role,
             domains=cache["domains"],
             source_types=state.source_types,
+            masked_columns=columns_masked_for(state.masking_rules, role["id"]),  # REQ-2131
             time_travel=relation_kinds(state, filtered_tables),  # REQ-1163
             domain_prefix=cache["domain_prefix"],
             physical_table_map=cache["physical_table_map"],
@@ -260,11 +272,25 @@ async def _registered_integers(result) -> list[bool]:  # REQ-1961
     ]
 
 
-async def _typed_rows(result) -> list[list]:  # REQ-1961
-    """The result's rows, each a registered integer column's value as the number it is."""
+async def _written_integers(result) -> list[bool]:  # REQ-1867, REQ-1961
+    """For each result column, whether it is written as a JSON number: a registered integer, or
+    a column the engine types an integer, whatever its reader represented the value as (a DuckDB
+    HUGEINT read through Arrow is a Decimal; ``serialize.result_records`` reads it the same)."""
+    from provisa.compiler.sql_types import is_integer_type
+
+    registered = await _registered_integers(result)
+    types = result.column_types or [None] * len(result.column_names)
+    return [
+        integer or is_integer_type(None if t is None else str(t))
+        for integer, t in zip(registered, types, strict=True)
+    ]
+
+
+async def _typed_rows(result) -> list[list]:  # REQ-1867, REQ-1961
+    """The result's rows, each integer column's value as the number it is."""
     from provisa.executor.serialize import integer_value
 
-    integers = await _registered_integers(result)
+    integers = await _written_integers(result)
     names = result.column_names
     if not any(integers):
         return [list(row) for row in result.rows]
@@ -287,13 +313,30 @@ def _with_warnings(body: dict) -> dict:
     return body
 
 
+#: Errors of the server's own code, never of the statement: a request reading the model while a
+#: build changes it, a broken invariant. Matched by exact type -- a driver's or engine's error
+#: subclassing one of them (pyarrow's NotImplementedError is a RuntimeError) stays the statement's.
+_SERVER_FAULTS = (
+    RuntimeError,
+    AssertionError,
+    AttributeError,
+    KeyError,
+    IndexError,
+    TypeError,
+    NameError,
+    UnboundLocalError,
+    RecursionError,
+)
+
+
 def _sql_error(exc: Exception) -> Exception:
     """The error /data/sql answers for ``exc``, raised by a statement it ran (the request
     boundary, mirroring pgwire's handle_query). A governance denial (RLS, masking, visibility, a
     relationship guard) raises PermissionError: 403. Any other error from an arbitrary user
     query -- a source or engine rejection, a parse error -- is a client error: 400 with the
-    detail, as pgwire answers it with a SQLSTATE. An error the app answers by its own handler
-    (its code and parameters) is itself."""
+    detail, as pgwire answers it with a SQLSTATE. A fault of the server's own code
+    (``_SERVER_FAULTS``) is a 500, ``data.statement_failed``, logged with its traceback. An error
+    the app answers by its own handler (its code and parameters) is itself."""
     if isinstance(exc, ParametersDoNotFit):
         # The values sent are not the values the statement's placeholders number: refused by
         # name, before the statement was governed or run.
@@ -309,6 +352,8 @@ def _sql_error(exc: Exception) -> Exception:
         | CatalogViewRefused  # REQ-2190
         | MetadataFunctionRefused  # REQ-2190
         | FunctionRefused  # REQ-2167
+        | GovernanceRefused  # REQ-2222: the app answers it under its code
+        | ParameterBindingRefused  # REQ-1986: the app answers it under its code
         | HTTPException,
     ):
         return exc
@@ -320,6 +365,17 @@ def _sql_error(exc: Exception) -> Exception:
         from provisa.api.errors import timeout_error
 
         return timeout_error(exc)
+    if type(exc) in _SERVER_FAULTS:
+        # A fault of the server's code is not the client's: a 500 naming it, logged with its
+        # traceback, never a 400 carrying a bare Python message.
+        log.error("statement failed inside the server: %r", exc, exc_info=exc)
+        return ApiError(
+            500,
+            "data.statement_failed",
+            f"The statement failed inside the server ({type(exc).__name__}): {exc}",
+            kind=type(exc).__name__,
+            error=str(exc),
+        )
     return HTTPException(status_code=400, detail=str(exc))
 
 
@@ -459,7 +515,7 @@ async def sql_endpoint(  # REQ-264, REQ-266, REQ-267
         # A column the engine types json or jsonb is written as its JSON (REQ-1867); a registered
         # integer column as its number (REQ-1961).
         types = result.column_types or [None] * len(result.column_names)
-        integers = await _registered_integers(result)
+        integers = await _written_integers(result)
         columns = [
             ColumnRef(
                 alias=None, column=c, field_name=c, nested_in=None, json=is_json_type(t), integer=i
@@ -485,7 +541,8 @@ async def sql_endpoint(  # REQ-264, REQ-266, REQ-267
     from provisa.pgwire._pipeline import execute_sql_batch, execute_sql_batch_each
 
     # REQ-1194: a redirect the request forces (X-Provisa-Redirect*); else REQ-1224's threshold
-    # decides, SQL over HTTP being a buffered transport.
+    # decides, SQL over HTTP being a buffered transport. REQ-029 (amended 2026-11-08): a page the
+    # caller bounds with its own LIMIT (``paged``) is not measured against it.
     delivery = delivery_from_headers(raw_request.headers, role_id)
     # Request-boundary error handling (mirrors the pgwire handle_query handler): a governance denial
     # (RLS/masking/visibility/relationship guard) raises PermissionError → 403; any OTHER error from an
@@ -500,7 +557,7 @@ async def sql_endpoint(  # REQ-264, REQ-266, REQ-267
                 role_id,
                 state,
                 deliver=delivery,
-                buffered=True,
+                buffered=not request.paged,
                 params=request.params,
             )
         except Exception as exc:  # allow-ble: request boundary -- answered as _sql_error maps it
@@ -515,7 +572,7 @@ async def sql_endpoint(  # REQ-264, REQ-266, REQ-267
             role_id,
             state,
             deliver=delivery,
-            buffered=True,
+            buffered=not request.paged,
             params=request.params,
         )
     except Exception as exc:  # allow-ble: request boundary -- answered as _sql_error maps it
@@ -605,6 +662,8 @@ async def sql_explain_endpoint(  # REQ-1519
         raise  # REQ-1174: answered as 413 by the app's handler
     except ReadRefused:
         raise  # refused by name; the app answers it (core/read_refusal.py)
+    except ParameterBindingRefused:
+        raise  # REQ-1986: a condition that binds no parameter; the app answers it (400)
     except SourceStillStartingError:
         raise  # a source still starting: the app answers 503 data.source_starting (REQ-1824)
     except PermissionError as exc:
@@ -672,11 +731,18 @@ def _check_qualifier_binding(tree) -> str | None:
 
 
 def _collect_nl_user_tables(
-    ctx, domain_access: list[str]
+    ctx, domain_access: list[str], scope: "frozenset[str] | None"
 ) -> tuple[list, dict, dict, "CypherLabelMap"]:
-    """Return (all_tables, user_nodes, table_name_to_type) from a schema context."""
+    """Return (all_tables, user_nodes, table_name_to_type, label_map) from a schema context.
+
+    ``scope`` is the domain filter's selection intersected with the role's authority
+    (``provisa.nl.scope.selected_scope``, REQ-2253): the tables, nodes and paths returned are only
+    its domains', so nothing outside it reaches table selection or SQL generation. ``None`` is no
+    selection: the role's whole surface.
+    """
     from provisa.compiler.sql_gen import TableMeta as _TableMeta
     from provisa.gql.label_map import CypherLabelMap as _CLM
+    from provisa.nl.scope import label_map_within
 
     seen_type_names: set[str] = set()
     all_tables: list[_TableMeta] = []
@@ -688,8 +754,10 @@ def _collect_nl_user_tables(
         if jm.target.type_name not in seen_type_names:
             seen_type_names.add(jm.target.type_name)
             all_tables.append(jm.target)
+    if scope is not None:
+        all_tables = [t for t in all_tables if t.domain_id in scope]
 
-    _lm = _CLM.from_schema(ctx, domain_access=domain_access)
+    _lm = label_map_within(_CLM.from_schema(ctx, domain_access=domain_access), scope)
     if domain_policy.single_domain():
         # Single-domain mode: nodes carry no domain label — include all non-traversal nodes.
         _user_nodes = {tn: nm for tn, nm in _lm.nodes.items() if not nm.traversal_only}
@@ -795,7 +863,10 @@ def _build_schema_block(
     ctx,
     sql_domain_fn,
     multihop_lines: list[str],
+    scope: "frozenset[str] | None",
 ) -> tuple[str, dict[str, set[str]]]:
+    """``scope`` (REQ-2253): no approved join to a table outside the selected domains is listed;
+    ``None`` lists every join of the role's surface."""
     from provisa.compiler.sql_rewrite import semantic_table_name
 
     schema_lines: list[str] = []
@@ -813,7 +884,7 @@ def _build_schema_block(
         schema_lines.append(f"Table {sql_domain_fn(tbl.domain_id)}.{tbl_sql}")
         schema_lines.append(f"  Columns: {col_list or '(unknown)'}")
         for (src_type, _), jm in ctx.joins.items():
-            if src_type == tbl.type_name:
+            if src_type == tbl.type_name and (scope is None or jm.target.domain_id in scope):
                 tgt_sql = semantic_table_name(jm.target)
                 schema_lines.append(
                     f"  Approved JOIN: {sql_domain_fn(jm.target.domain_id)}.{tgt_sql} "
@@ -852,6 +923,31 @@ def _check_columns_exist(tree, table_columns: dict[str, set[str]]) -> str | None
                 f"Unknown column '{col.table}.{col.name}' — this table's columns are: "
                 f"{valid}. Use only the column names listed for this table in the schema."
             )
+    return None
+
+
+def _check_tables_within(tree, table_columns: dict[str, set[str]]) -> str | None:  # REQ-2253
+    """Return an error if a table outside the selected domains' schema block is read.
+
+    Run only when the domain filter narrowed the question: the schema block then lists every
+    table the statement may read, and a table the model named from elsewhere is refused before
+    it is run, so nothing outside the selected domains is read.
+    """
+    from sqlglot import exp
+
+    ctes = {c.alias_or_name.lower() for c in tree.find_all(exp.CTE)}
+    outside = sorted(
+        {
+            t.name
+            for t in tree.find_all(exp.Table)
+            if t.name and t.name.lower() not in table_columns and t.name.lower() not in ctes
+        }
+    )
+    if outside:
+        return (
+            f"Table(s) not in the available tables: {', '.join(outside)}. Use only the tables "
+            "listed in the schema."
+        )
     return None
 
 
@@ -917,11 +1013,14 @@ async def _run_sql_generation_loop(
     api_keys: dict[str, str] | None = None,
     check: "Callable[[str], Awaitable[str | None]] | None" = None,
     best_effort: bool = False,
+    scoped: bool,
 ) -> tuple[str, int, str]:
     """``check``: the governed run of a generated statement, answering its error or None -- given,
     it takes the place of the local governance check, so the statement is refined against the
     path it runs on (the NL page shows no statement with an error). ``best_effort``: an error
-    saying the question cannot be expressed is answered with the closest expressible query."""
+    saying the question cannot be expressed is answered with the closest expressible query.
+    ``scoped`` (REQ-2253): the domain filter narrowed the schema block, so a statement reading a
+    table it does not list is refined against, never run."""
     import sqlglot
     from provisa.llm.client import ProvisaLLMClient
     from provisa.compiler.sql_validator import validate_sql
@@ -1011,6 +1110,11 @@ async def _run_sql_generation_loop(
             last_error = column_error
             continue
 
+        outside_error = _check_tables_within(tree, table_columns) if scoped else None
+        if outside_error:
+            last_error = outside_error
+            continue
+
         missing_agg_error = _check_missing_aggregate(question, tree)
         if missing_agg_error:
             last_error = missing_agg_error
@@ -1041,6 +1145,9 @@ async def _run_sql_generation_loop(
 
 class NLToSQLRequest(BaseModel):
     question: str
+    # REQ-2253: the domain filter's selection; absent is every domain the role reaches. A list,
+    # not one joined string: the no-domain domain's id is the empty string.
+    domains: list[str] | None = None
     role: str = "org_admin"  # REQ-1327: dev default is the DATA-plane admin; "admin"≡platform_admin is control-plane
     strict: bool = True  # REQ-1400: strict routes via the schema-validated GraphQL compiler; off is direct-SQL LLM generation
 
@@ -1069,11 +1176,17 @@ async def nl_to_sql_endpoint(  # REQ-354, REQ-355, REQ-356, REQ-357, REQ-358, RE
             400, "data.no_schema_for_role", f"No schema for role {role_id!r}", role_id=role_id
         )
 
+    from provisa.nl.scope import selected_scope
+    from provisa.security.rights import require_role
+
+    role_obj = require_role(state.roles, role_id)
+    scope = selected_scope(role_obj, request.domains)
+
     if request.strict:
         from provisa.nl.runner import _generate_graphql_sql_from_nl
 
         _graphql, sql, cypher, error = await _generate_graphql_sql_from_nl(
-            request.question, role_id, state
+            request.question, role_id, state, scope=scope
         )
         if error:
             raise ApiError(
@@ -1085,14 +1198,11 @@ async def nl_to_sql_endpoint(  # REQ-354, REQ-355, REQ-356, REQ-357, REQ-358, RE
         return {"sql": sql, "cypher": cypher, "attempts": 1}
 
     ctx = surface.context
-    from provisa.security.rights import require_role
-
-    role_obj = require_role(state.roles, role_id)
     gov_ctx = role_governance(state, surface, role_id)
     raw_tables = getattr(state, "tables", [])
 
     all_tables, _user_nodes, _table_name_to_type, _lm = _collect_nl_user_tables(
-        ctx, role_obj["domain_access"]
+        ctx, role_obj["domain_access"], scope
     )
 
     def _sql_domain(domain_id: str | None) -> str:
@@ -1114,7 +1224,7 @@ async def nl_to_sql_endpoint(  # REQ-354, REQ-355, REQ-356, REQ-357, REQ-358, RE
     multihop_lines = _build_multihop_lines(selected_types, _lm, _sql_domain)
     relevant_type_names = _build_relevant_type_names(selected_types, _lm)
     schema_block, table_columns = _build_schema_block(
-        all_tables, relevant_type_names, ctx, _sql_domain, multihop_lines
+        all_tables, relevant_type_names, ctx, _sql_domain, multihop_lines, scope
     )
 
     last_sql, attempt, last_error = await _run_sql_generation_loop(
@@ -1127,6 +1237,7 @@ async def nl_to_sql_endpoint(  # REQ-354, REQ-355, REQ-356, REQ-357, REQ-358, RE
         table_columns,
         config=llm_config,
         api_keys=llm_api_keys,
+        scoped=scope is not None,
     )
 
     if last_error:

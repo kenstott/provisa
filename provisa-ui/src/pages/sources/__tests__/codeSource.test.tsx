@@ -15,6 +15,7 @@
 // REQ-2105: the monthly cap on what its calls to the LLM service cost.
 // REQ-2106: its non-secret settings, which its code reads through Provisa's services.
 // REQ-2200: a Go source is a Go module at an exact version, its package and its go.sum.
+// REQ-2227: a Rust source is a crate at an exact version, its crate directory and its Cargo.lock.
 
 import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
@@ -41,13 +42,15 @@ import { codeFieldsFromMapping, codeMappingJson, missingCodeFields } from "../co
 import { NO_CONNECTION_TYPES, SOURCE_TYPES } from "../constants";
 
 describe("the source pick list", () => {
-  it("offers Node.js, Python and Go as code sources, with no connection fields", () => {
+  it("offers Node.js, Python, Go and Rust as code sources, with no connection fields", () => {
     expect(SOURCE_TYPES.filter((s) => s.category === "Code").map((s) => s.value)).toEqual([
       "node",
       "python",
       "go",
+      "rust",
     ]);
-    expect(["node", "python", "go"].every((t) => NO_CONNECTION_TYPES.has(t))).toBe(true);
+    expect(SOURCE_TYPES.find((s) => s.value === "rust")?.label).toBe("Rust");
+    expect(["node", "python", "go", "rust"].every((t) => NO_CONNECTION_TYPES.has(t))).toBe(true);
   });
 });
 
@@ -100,6 +103,61 @@ describe("what a code source saves", () => {
       code_version: "v1.2.0",
       code_entry: "feeds",
     });
+  });
+
+  it("is a crate at its version, its crate directory and the Cargo.lock given beside it", () => {
+    // REQ-2227: Rust has one runtime, its package kind is cargo, and its entry is its crate.
+    const fields = {
+      code_origin: "package",
+      code_runtime: "bun",
+      code_package: " acme-rates ",
+      code_version: "1.2.0",
+      lockfile_upload: "lock-sha-1",
+      lockfile_filename: "Cargo.lock",
+      code_entry: "feeds",
+    };
+    const mapping = JSON.parse(codeMappingJson("rust", fields));
+    expect(mapping).toEqual({
+      runtime: "rust",
+      code: { kind: "cargo", package: "acme-rates", version: "1.2.0" },
+      lockfile: { filename: "Cargo.lock", upload: "lock-sha-1" },
+      entry: "feeds",
+    });
+    expect(codeFieldsFromMapping(JSON.stringify(mapping))).toMatchObject({
+      code_origin: "package",
+      code_package: "acme-rates",
+      code_version: "1.2.0",
+      lockfile_filename: "Cargo.lock",
+      code_entry: "feeds",
+    });
+  });
+
+  it("is a Rust crate from Git, an upload or a server directory, as every language's is", () => {
+    const git = JSON.parse(
+      codeMappingJson("rust", {
+        code_origin: "git",
+        code_repository: "https://github.com/acme/rates.git",
+        code_commit: "b".repeat(40),
+        code_subdirectory: "crates/rates",
+      }),
+    );
+    expect(git).toEqual({
+      runtime: "rust",
+      code: {
+        kind: "git",
+        repository: "https://github.com/acme/rates.git",
+        commit: "b".repeat(40),
+        subdirectory: "crates/rates",
+      },
+    });
+    const upload = JSON.parse(
+      codeMappingJson("rust", {
+        code_origin: "upload",
+        code_upload: "code-hash-1",
+        code_upload_filename: "rates.tgz",
+      }),
+    );
+    expect(upload.code).toEqual({ kind: "upload", upload: "code-hash-1", filename: "rates.tgz" });
   });
 
   it("is a Git commit for Node on its runtime, with the lockfile given beside it", () => {
@@ -276,6 +334,20 @@ describe("the code source's fields", () => {
     // The module and the package in it are two things, each named as Go names it.
     expect(screen.getByLabelText(/^Module/)).toBe(screen.getByTestId("code-package"));
     expect(screen.getByLabelText(/^Package/)).toBe(screen.getByTestId("code-entry"));
+  });
+
+  it("offer a crate and its crate directory, with no runtime to pick", () => {
+    renderInForm(<Harness type="rust" onFields={() => {}} />);
+    expect(screen.queryByTestId("code-runtime")).toBeNull();
+    expect(screen.getByTestId("code-origin")).toHaveValue("Crate");
+    expect(screen.getByTestId("code-package")).toHaveAttribute("placeholder", "acme-rates");
+    expect(screen.getByTestId("code-version")).toHaveAttribute("placeholder", "1.2.0");
+    expect(screen.getByText("An exact crate version, such as 1.2.0.")).toBeInTheDocument();
+    expect(screen.getByTestId("code-entry")).toHaveAttribute("placeholder", "feeds");
+    expect(screen.getByLabelText(/^Crate directory/)).toBe(screen.getByTestId("code-entry"));
+    // The lockfile Rust installs from is Cargo.lock, and only it is picked.
+    expect(screen.getByRole("img", { name: /\(Cargo\.lock\)/ })).toBeInTheDocument();
+    expect(document.querySelector('input[type="file"][accept="Cargo.lock"]')).not.toBeNull();
   });
 
   it("upload the archive and keep its content hash", async () => {

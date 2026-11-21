@@ -45,3 +45,10 @@ if [ -n "${SP_CERT_P12_BASE64:-}" ]; then
   echo "SP_CERT_PATH=$dir/sharepoint.pfx" >> "$GITHUB_ENV"
   echo "wrote the SharePoint client certificate"
 fi
+
+# Maintainer 2026-11-10 ("Paid cloud resources"): the Fabric capacity is this run's own, made
+# here, tagged with the run, the lane's workspace assigned to it; the after-script deletes it
+# whatever happened. Only the warehouse UI job is passed Fabric's names.
+if [ -n "${FABRIC_RESOURCE_GROUP:-}" ] && [ -n "${FABRIC_CAPACITY_NAME:-}" ] && [ -n "${FABRIC_WORKSPACE_ID:-}" ]; then
+  ( cd "$GITHUB_WORKSPACE" && uv run python scripts/fabric_e2e.py up )
+fi

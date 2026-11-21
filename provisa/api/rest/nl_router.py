@@ -35,6 +35,7 @@ if TYPE_CHECKING:
     from provisa.executor.redirect import Delivery
 
 from provisa.nl.job import NlJob, _json_default, make_job_store, new_job_id
+from provisa.api.engine_error_names import client_value
 
 log = logging.getLogger(__name__)
 
@@ -51,6 +52,9 @@ class NlRequest(BaseModel):
     # REQ-1194: deliver each branch's result to the results store and answer its handle.
     redirect: bool = False
     redirect_format: str | None = None
+    # REQ-2253: the domain filter's selection; absent is every domain the role reaches. A list,
+    # not one joined string: the no-domain domain's id is the empty string.
+    domains: list[str] | None = None
 
 
 @router.post("/query/nl")
@@ -99,6 +103,11 @@ async def submit_nl_query(
 
     from provisa.nl.runner import effective_strict
 
+    from provisa.nl.scope import selected_scope
+    from provisa.security.rights import require_role
+
+    # REQ-2253: the job works only within the selected domains the role reaches.
+    scope = selected_scope(require_role(state.roles, role_id), body.domains)
     job_id = new_job_id()
     # REQ-603: a role that may not bypass the relationship guard runs strict, never refused.
     strict = effective_strict(body.strict, role_id, state)
@@ -112,7 +121,7 @@ async def submit_nl_query(
     # from the request thread it runs on the process loop, whose default executor runs its parallel
     # LLM branches on real worker threads.
     spawn_background(
-        _run_job(job_id, body.q, role_id, state, llm, strict, delivery),
+        _run_job(job_id, body.q, role_id, state, llm, strict, delivery, scope),
         name=f"nl-job:{job_id}",
     )
 
@@ -165,12 +174,21 @@ async def _run_job(
     llm,
     strict: bool,
     delivery: "Delivery | None",
+    scope: "frozenset[str] | None",
 ) -> None:
     from provisa.nl.runner import run_nl_job
 
     try:
         await run_nl_job(
-            job_id, nl_query, role, app_state, _job_store, llm, strict=strict, deliver=delivery
+            job_id,
+            nl_query,
+            role,
+            app_state,
+            _job_store,
+            llm,
+            strict=strict,
+            deliver=delivery,
+            scope=scope,
         )
     except Exception as exc:
         log.exception("NL job %s failed: %s", job_id, exc)
@@ -196,7 +214,7 @@ async def _sse_generator(job_id: str) -> AsyncGenerator[str, None]:
                     "target": target,
                     "query": branch.query,
                     "result": branch.result,
-                    "error": branch.error,
+                    "error": client_value(branch.error),
                 }
                 yield f"event: branch\ndata: {json.dumps(payload, default=_json_default)}\n\n"
 

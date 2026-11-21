@@ -34,6 +34,8 @@
     "fieldAiContext": "Contexto de IA",
     "fieldTags": "Etiquetas",
     "fieldAiContextPlaceholder": "Dicas para geração de consultas assistida por IA",
+    "fieldTerm": "Termo do glossário",
+    "fieldTermHint": "A sua definição e o método de cálculo são mostrados com a métrica",
     "saveFailed": "Falha ao salvar.",
     "editMetric": "Editar métrica {{name}}",
     "deleteMetric": "Excluir métrica {{name}}",
@@ -42,7 +44,7 @@
     "delete": "Excluir",
     "deleteFailed": "Falha ao excluir.",
     "purposeTitle": "Para que servem as métricas",
-    "purposeBody": "Uma métrica é a definição de negócio de uma medida: uma agregação sobre uma tabela de fatos, definida uma única vez aqui e projetada em todas as superfícies — SQL, GraphQL, o canvas de exploração, as visões construídas a partir de métricas e a exportação de intercâmbio.",
+    "purposeBody": "Uma métrica é a definição de negócio de uma medida: um agregado sobre uma tabela de fatos. Você a define uma vez aqui, e ela aparece em SQL, GraphQL, no canvas de exploração, em exibições construídas a partir de métricas e na exportação de intercâmbio.",
     "purposeAdd": "Defina uma vez para que os consumidores não divirjam reimplementando a aritmética. Uma visão construída a partir de uma métrica é regerada sempre que a métrica muda, então o número permanece o mesmo em toda parte.",
     "purposeAria": "Sobre as métricas",
     "detailPanel": "Detalhes da métrica"

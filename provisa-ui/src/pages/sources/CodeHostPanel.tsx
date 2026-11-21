@@ -17,6 +17,7 @@
 import { useEffect, useState } from "react";
 import {
   Alert,
+  Badge,
   Button,
   Code,
   CopyButton,
@@ -287,6 +288,18 @@ export function CodeHostPanel({ orgId, sourceId, fields, setFields }: Props) {
                   ? t("codeHost.answering")
                   : t("codeHost.notAnswering", { error: status.error ?? "" })}
             </Text>
+            {status?.health && (
+              <Group gap="xs" data-testid="code-host-health">
+                <Badge color={status.health.state === "healthy" ? "green" : "red"} variant="light">
+                  {t(`codeHost.health_${status.health.state}`)}
+                </Badge>
+                {status.health.detail && (
+                  <Text size="sm" data-testid="code-host-health-detail">
+                    {status.health.detail}
+                  </Text>
+                )}
+              </Group>
+            )}
             {otherCode && (
               <Alert color="yellow" variant="light" data-testid="code-host-other-code">
                 <Stack gap="xs">

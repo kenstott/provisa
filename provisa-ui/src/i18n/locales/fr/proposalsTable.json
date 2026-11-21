@@ -1,0 +1,66 @@
+{
+  "proposalsTable": {
+    "intro": "Une ligne cochée est acceptée lorsque vous appliquez. Les lignes dont le score atteint au moins le seuil sont cochées au départ. Une ligne sans case cochée reste indécise.",
+    "colScore": "Score",
+    "colConfidence": "Confiance",
+    "colJev": "Jev",
+    "colKind": "Type",
+    "colMeasure": "Mesuré",
+    "colReasoning": "Raisonnement",
+    "colNote": "Remarque",
+    "colNotAgain": "Ne plus recommander",
+    "notAgainAria": "Ne plus recommander {{name}}",
+    "kind": {
+      "foreign_keys": "Contrainte",
+      "semantics": "Sémantique"
+    },
+    "asWritten": "Tel que le modèle l'a écrit : {{answer}}",
+    "apply": "Appliquer",
+    "applyAccept": "Accepter {{count}}",
+    "applyNotAgain": "Ne plus recommander {{count}}",
+    "applyBoth": "Accepter {{accept}}, ne plus recommander {{notAgain}}",
+    "applied": "{{accepted}} acceptées, {{notAgain}} à ne plus recommander.",
+    "failed": "{{count}} n'a pas pu être appliquée :",
+    "failed_other": "{{count}} n'ont pas pu être appliquées :",
+    "none": "Cette exécution n'a plus aucune proposition à décider.",
+    "reason": {
+      "invalid_shape": "Pas une relation sous la forme demandée : un champ manque ou a une forme incorrecte",
+      "unknown_column": "Nomme une table ou une colonne que la requête n'a pas comparée",
+      "not_comparable": "Les deux colonnes ont des classes différentes, elles ne sont donc pas comparées",
+      "below_threshold": "Score inférieur aux {{threshold}} % à partir desquels une suggestion est conservée.",
+      "same_column": "D'une colonne vers elle-même",
+      "existing": "Déjà enregistrée",
+      "rejected": "Rejetée auparavant",
+      "out_of_scope": "Hors des tables source et cible choisies"
+    },
+    "threshold": "Cocher à partir de",
+    "thresholdHint": "Votre propre seuil, conservé pour vos prochaines exécutions.",
+    "measure": {
+      "inTarget": "{{found}} sur {{values}} valeurs de la source dans la cible.",
+      "inTargetFirst": "{{found}} des {{values}} premières valeurs de la source dans la cible.",
+      "inSource": "{{found}} sur {{values}} valeurs de la cible dans la source.",
+      "inSourceFirst": "{{found}} des {{values}} premières valeurs de la cible dans la source.",
+      "both": "Les deux colonnes sont des clés.",
+      "target": "La cible est une clé.",
+      "source": "La source est une clé.",
+      "neither": "Aucune des deux colonnes n'est une clé.",
+      "notRead": {
+        "source": "La source n'a pas été lue : sa table exige un paramètre.",
+        "target": "La cible n'a pas été lue : sa table exige un paramètre."
+      },
+      "notReadable": {
+        "source": "Vous ne pouvez pas lire la colonne source.",
+        "target": "Vous ne pouvez pas lire la colonne cible."
+      },
+      "noValues": "La source ne contient aucune valeur.",
+      "modelScore": "Score du modèle : aucune valeur n'a été comparée."
+    },
+    "dimensionMade": "L'accepter crée la dimension partagée {{name}}, à laquelle les deux colonnes sont jointes.",
+    "dimensionJoined": "L'accepter joint les deux colonnes à la dimension partagée {{name}}.",
+    "through": "Via {{table}}.",
+    "twoDimensions": "Ses colonnes sont déjà jointes à deux dimensions partagées différentes, elle ne peut donc pas être acceptée.",
+    "admittedOnKeyValues": "Admise parce que les valeurs de clé concordent dans les données ; la mesure est affichée à côté de la confiance du modèle.",
+    "hiddenByFilter_one": "{{count}} ligne est masquée par le filtre.",
+    "hiddenByFilter_other": "{{count}} lignes sont masquées par le filtre."
+  }
+}

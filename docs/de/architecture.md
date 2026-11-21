@@ -417,7 +417,7 @@ Diese Header implementieren clientgesteuerte Umleitung.
 | Env-Var | Standard | Zweck |
 | --------- | --------- | --------- |
 | `PROVISA_REDIRECT_ENABLED` | `false` | Serverseitige Schwellenwert-Umleitung aktivieren |
-| `PROVISA_REDIRECT_THRESHOLD` | `1000` | Standard-Zeilenanzahl-Schwellenwert |
+| `PROVISA_REDIRECT_THRESHOLD` | `100000` | Standard-Zeilenanzahl-Schwellenwert |
 | `PROVISA_REDIRECT_FORMAT` | `parquet` | Standard-Redirect-Format |
 | `PROVISA_REDIRECT_BUCKET` | `provisa-results` | S3-Bucket-Name |
 | `PROVISA_REDIRECT_ENDPOINT` | | S3-kompatible Endpunkt-URL |

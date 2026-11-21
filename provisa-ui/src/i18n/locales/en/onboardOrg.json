@@ -21,7 +21,7 @@
     "emailRuleLabel": "Allowed email rule (optional)",
     "emailRuleDesc": "A regular expression an invitee's email must match to join, e.g. \"@acme\\.com$\". Leave blank to allow any email.",
     "autoJoinLabel": "Auto-join matching accounts",
-    "autoJoinDesc": "Any new account whose email matches the rule above joins with the role below, with no invite.",
+    "autoJoinDesc": "Any new account whose verified email matches the rule above joins with the role below, with no invite.",
     "autoJoinRoleLabel": "Default role for auto-joined accounts",
     "autoJoinRoleDesc": "The role granted on auto-join, e.g. a read-only \"analyst\".",
     "autoJoinBreadthTitle": "This rule reaches past your domain",
@@ -31,7 +31,6 @@
     "createFailed": "Could not create the organization",
     "provisionFailed": "Provisioning failed",
     "provisionTimeout": "Provisioning did not complete in time",
-    "egressCheckoutFailed": "Could not open the data transfer subscription checkout. Add it later from Billing.",
     "welcomeTitle": "Welcome to {{name}}!",
     "welcomeAdmin": "Your organization is ready and you are its administrator.",
     "welcomeInviteHeading": "Invite others",
@@ -67,10 +66,10 @@
     "resumeTitle": "Finish signing up",
     "resumeBody": "You started signing up for {{name}} but did not finish checkout. The name is held until {{expires}}.",
     "resumeButton": "Resume checkout",
-    "checkoutNotSettled": "Your payment has not reached us yet. Reload this page in a minute to finish setting up your organization.",
     "autoJoinChoiceTitle": "More than one org matches your email",
     "autoJoinChoiceBody": "Your email address matches the join rules of several organizations. Pick the one you belong to, or turn them all down and create your own.",
     "joinOfferedOrg": "Join",
-    "declineAutoJoin": "None of these"
+    "declineAutoJoin": "None of these",
+    "checkoutReturnNoOrg": "This page was reached from a checkout that did not name its organization. Resume the checkout below."
   }
 }

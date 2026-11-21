@@ -13,6 +13,8 @@
     "replace": "置換文字列",
     "value": "定数値",
     "valuePlaceholder": "値（空欄で NULL）",
+    "readsNull": "NULL として読み取られます: この列はテキストではないため、定数マスクは NULL のみです。",
+    "notTextConstant": "この列はテキストではありません: 定数マスクは NULL として読み取られるため、保存できるのは NULL（空欄）のみです。",
     "precision": "精度",
     "year": "年",
     "month": "月",

@@ -28,6 +28,17 @@ pytestmark = pytest.mark.unit
 _SECRETS = ("region = 'eu'", "SECRET_MASK", "salary", "cost_center")
 
 
+@pytest.fixture(autouse=True)
+def _no_stored_ai_keys(monkeypatch):
+    """Listing the tools asks whether the organization has a Jev key (REQ-1395); the states
+    here hold no model store to ask, so the organization is said to have stored none."""
+
+    async def stored(_db):
+        return {}
+
+    monkeypatch.setattr("provisa.core.org_secrets.read_org_api_keys", stored)
+
+
 def _state():
     meta = "meta:analyst+region+region__eu"
     return SimpleNamespace(
@@ -100,11 +111,13 @@ def test_a_remote_caller_may_switch_to_what_its_token_holds_and_its_derived_role
     )
     i_token = server._request_identity.set(identity)
     r_token = server._request_role.set("analyst")
+    m_token = server._request_may_name.set(["analyst"])
     try:
         held = server.switchable_roles(state)
     finally:
         server._request_identity.reset(i_token)
         server._request_role.reset(r_token)
+        server._request_may_name.reset(m_token)
     assert held == {"analyst", "region", "region__eu"}
     assert "steward" not in held
 

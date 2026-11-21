@@ -19,7 +19,7 @@
     "colActions": "Aktionen",
     "empty": "Keine Organisationen",
     "membersButton": "Mitglieder",
-    "hideButton": "Ausblenden",
+    "hideButton": "Einklappen",
     "expandOrg": "Mitglieder von {{name}} ein-/ausblenden",
     "deleteOrg": "{{name}} löschen",
     "membersHeading": "Mitglieder",

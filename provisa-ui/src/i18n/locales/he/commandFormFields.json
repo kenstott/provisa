@@ -29,7 +29,7 @@
     "query": "שאילתה",
     "domain": "דומיין",
     "selectDomain": "בחירת דומיין...",
-    "dataProduct": "מוצר נתונים (אופציונלי)",
+    "dataProduct": "מוצרי נתונים",
     "dataProductPlaceholder": "בחירת מוצר נתונים...",
     "description": "תיאור",
     "descriptionPlaceholder": "אופציונלי",
@@ -52,6 +52,8 @@
     "colVisibleTo": "גלוי ל- (תפקידים, מופרדים בפסיקים; ריק = כולם)",
     "colVisibleToPlaceholder": "analyst, org_admin",
     "colMask": "מיסוך",
+    "exposedAsTable": "גם כטבלה",
+    "exposedAsTableHint": "לקוחות שקוראים טבלאות, כמו כלי BI, קוראים פונקציה זו כטבלה שהפרמטרים שלה הם עמודות. כשהיא כבויה, היא מחזירה את השורות של הרשימה של המקור מאותו סוג, והטבלה מוסרת.",
     "requiresApproval": "דורש אישור",
     "requiresApprovalHint": "כל קריאה מתבצעת רק לאחר שה-hook לאישור מאשר אותה. ללא hook מוגדר, קריאות נדחות.",
     "writesTable": "כותב לטבלה",
@@ -68,6 +70,8 @@
     "bindingTemplate": "ביטוי SQL",
     "bindingTemplateHint": "ביטוי SQL אחד. כתבו כל ארגומנט כ-{{placeholder}}; הוא רץ בתוך השאילתה הקוראת.",
     "argDefault": "ערך ברירת המחדל של הארגומנט {{name}}",
-    "argDefaultPlaceholder": "ברירת מחדל (השאירו ריק אם נדרש)"
+    "argDefaultPlaceholder": "ברירת מחדל (השאירו ריק אם נדרש)",
+    "nativeSql": "SQL מקורי",
+    "nativeSqlHint": "SQL בניב של המקור עצמו, משפט אחד או כמה, שרצים על המקור בטרנזקציה אחת: כולם נשמרים או אף אחד. כתבו ארגומנט כ-{{placeholder}}; כל אחד נקשר כערך. התשובה היא השורות של המשפט האחרון."
   }
 }

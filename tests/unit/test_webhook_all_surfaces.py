@@ -87,7 +87,11 @@ def _state() -> SimpleNamespace:
         role_chains={},
         federation_engine=_Engine(),
         roles={
-            "admin": {"id": "admin", "domain_access": ["*"], "capabilities": ["write"]},
+            "admin": {
+                "id": "admin",
+                "domain_access": ["*"],
+                "capabilities": ["write", "command_execution"],
+            },
             "guest": {"id": "guest", "domain_access": ["*"], "capabilities": []},
         },
         ephemeral=False,
@@ -230,7 +234,7 @@ def test_grpc_proto_gen_emits_webhook_rpc():
     from provisa.grpc.proto_gen import _visible_commands
 
     si = SimpleNamespace(
-        role={"id": "admin", "domain_access": ["*"]},
+        role={"id": "admin", "domain_access": ["*"], "capabilities": ["command_execution"]},
         functions=[],
         webhooks=[_webhook()],
         root_domain_ids=None,  # the role's whole proto, no domain asked for
@@ -260,7 +264,7 @@ def test_callable_field_applies_naming_convention(convention, expected):
     naming.configure(gql=convention)
     try:
         si = SimpleNamespace(
-            role={"id": "admin", "domain_access": ["*"]},
+            role={"id": "admin", "domain_access": ["*"], "capabilities": ["command_execution"]},
             functions=[],
             webhooks=[_webhook()],
             domain_prefix=True,

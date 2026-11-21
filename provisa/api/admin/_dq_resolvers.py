@@ -32,6 +32,7 @@ from typing import TYPE_CHECKING, Any
 from sqlalchemy import select
 
 from provisa.core.schema_org import registered_tables, sources, table_columns
+from provisa.api.engine_error_names import client_text
 
 if TYPE_CHECKING:
     from provisa.core.database import Connection
@@ -50,7 +51,7 @@ def parse_contract(checker: str, contract_text: str) -> dict:
         dataset = contract_dataset(contract_text, checker)
         checks = contract_checks(contract_text, checker)
     except ContractError as exc:
-        return {"dataset": None, "checker": checker, "checks": [], "error": str(exc)}
+        return {"dataset": None, "checker": checker, "checks": [], "error": client_text(str(exc))}
     return {"dataset": dataset, "checker": checker, "checks": checks, "error": None}
 
 
@@ -92,20 +93,20 @@ async def check_catalog_for(conn: "Connection", *, checker: str, dataset: str, s
     try:
         kinds = check_catalog(checker)
     except ContractError as exc:
-        return {"error": str(exc), "dataset_checks": [], "columns": []}
+        return {"error": client_text(str(exc)), "dataset_checks": [], "columns": []}
     dataset_checks = [_kind_document(k) for k in kinds if k.scope == "dataset"]
     from provisa.api.admin.read_rights import served_columns_of
 
     try:
         target = resolve_contract_target(dataset, model_contexts(state))
     except ContractError as exc:
-        return {"error": str(exc), "dataset_checks": dataset_checks, "columns": []}
+        return {"error": client_text(str(exc)), "dataset_checks": dataset_checks, "columns": []}
     # REQ-2152: only the columns the caller is served; a dataset it is served none of is
     # answered as one that resolves to no governed table.
     served = await served_columns_of(conn, scope, target.table_id)
     if served == set():
         return {
-            "error": f"contract dataset {dataset!r} resolves to no governed table",
+            "error": client_text(f"contract dataset {dataset!r} resolves to no governed table"),
             "dataset_checks": dataset_checks,
             "columns": [],
         }
@@ -157,7 +158,7 @@ def build_check(checker: str, check: dict) -> dict:
             level=check["level"],
         )
     except (ContractError, ValueError) as exc:
-        return {"definition": "", "error": str(exc)}
+        return {"definition": "", "error": client_text(str(exc))}
     return {"definition": definition, "error": None}
 
 
@@ -168,7 +169,7 @@ def serialize_contract(checker: str, dataset: str, checks: list[dict]) -> dict:
     try:
         return {"text": build_contract(checker, dataset, checks), "error": None}
     except ContractError as exc:
-        return {"text": "", "error": str(exc)}
+        return {"text": "", "error": client_text(str(exc))}
 
 
 async def dry_run_contract(conn: "Connection", *, source_id: str, contract_text: str) -> dict:
@@ -194,12 +195,14 @@ async def dry_run_contract(conn: "Connection", *, source_id: str, contract_text:
         )
     ).fetchone()
     if fetched is None:
-        return {"success": False, "message": f"no source {source_id!r}"}
+        return {"success": False, "message": client_text(f"no source {source_id!r}")}
     checker = str(fetched._mapping["type"])
     if not is_checker_source_type(checker):
         return {
             "success": False,
-            "message": f"source {source_id!r} is a {checker} source, not a data-quality checker",
+            "message": client_text(
+                f"source {source_id!r} is a {checker} source, not a data-quality checker"
+            ),
         }
     from provisa.core.secrets_store import bound_to_request_org
     from provisa.dq.scan import checker_connection
@@ -208,7 +211,7 @@ async def dry_run_contract(conn: "Connection", *, source_id: str, contract_text:
         dataset = contract_dataset(contract_text, checker)
         target = resolve_contract_target(dataset, model_contexts(state))
     except ContractError as exc:
-        return {"success": False, "message": str(exc)}
+        return {"success": False, "message": client_text(str(exc))}
     async with bound_to_request_org():
         connection = checker_connection(fetched._mapping["mapping"])
     try:
@@ -222,10 +225,12 @@ async def dry_run_contract(conn: "Connection", *, source_id: str, contract_text:
             target_table=f"{target.schema_name}.{target.table_name}",
         )
     except CheckerError as exc:
-        return {"success": False, "message": str(exc)}
+        return {"success": False, "message": client_text(str(exc))}
     return {
         "success": True,
-        "message": f"{len(results)} checks against {target.schema_name}.{target.table_name}",
+        "message": client_text(
+            f"{len(results)} checks against {target.schema_name}.{target.table_name}"
+        ),
         "checker_version": results[0]["checker_version"] if results else None,
         "checks": [_dry_run_check(row) for row in results],
     }
@@ -278,13 +283,15 @@ async def run_dq_check_now(
     ).fetchall()
     if not rows:
         named = f"id {table_id}" if by_id else f"{schema_name}.{table_name}"
-        return {"success": False, "message": f"no table {named}"}
+        return {"success": False, "message": client_text(f"no table {named}")}
     if len(rows) > 1:
         # Two sources may both hold schema.table: the name alone does not say which checker runs.
         sources = ", ".join(sorted(r._mapping["source_id"] for r in rows))
         return {
             "success": False,
-            "message": f"more than one source registers {schema_name}.{table_name} ({sources})",
+            "message": client_text(
+                f"more than one source registers {schema_name}.{table_name} ({sources})"
+            ),
         }
     fetched = rows[0]
     schema: str = fetched._mapping["schema_name"]
@@ -292,7 +299,7 @@ async def run_dq_check_now(
     if not fetched._mapping["dq_contract"]:
         return {
             "success": False,
-            "message": f"{schema}.{table} carries no dq_contract; nothing to run",
+            "message": client_text(f"{schema}.{table} carries no dq_contract; nothing to run"),
         }
     if scheduler is None:
         return {"success": False, "message": "the scheduler is not running"}
@@ -302,10 +309,10 @@ async def run_dq_check_now(
     if job is None:
         return {
             "success": False,
-            "message": f"{schema}.{table} has no scheduled scan job yet",
+            "message": client_text(f"{schema}.{table} has no scheduled scan job yet"),
         }
     await job.func(*job.args)
-    return {"success": True, "message": f"scanned {schema}.{table} now"}
+    return {"success": True, "message": client_text(f"scanned {schema}.{table} now")}
 
 
 def _dry_run_check(row: dict) -> dict:

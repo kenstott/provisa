@@ -36,9 +36,9 @@ from collections.abc import Iterator
 from datetime import time, timedelta, timezone
 from typing import Any, Callable
 
-import duckdb
 import pyarrow as pa
 
+from provisa.codehost.duckdb_sql import engine_error
 from provisa.core.ir_arrow import column_values
 from provisa.core.pg_error import from_engine
 from provisa.core.ir_types import infinite_date, infinite_timestamp, interval_value
@@ -62,24 +62,6 @@ _PER_SECOND = {"s": 1, "ms": 1_000, "us": 1_000_000, "ns": 1_000_000_000}
 _END_OF_DAY = "24:00:00"
 
 
-#: DuckDB's exceptions by the kind its message opens with, spaced and cased as there ("Out of Range
-#: Error: ..." is an OutOfRangeException).
-_ENGINE_ERRORS: dict[str, type[duckdb.Error]] = {
-    name.removesuffix("Exception").lower(): cls
-    for name, cls in vars(duckdb).items()
-    if name.endswith("Exception") and isinstance(cls, type) and issubclass(cls, duckdb.Error)
-}
-
-
-def _engine_error(error: OSError) -> Exception:
-    """The exception DuckDB raises for the error its Arrow reader raised as ``error``; ``error``
-    itself where its message names no kind DuckDB has an exception for."""
-    message = str(error)
-    kind, sep, _ = message.partition(" Error: ")
-    raised = _ENGINE_ERRORS.get(kind.replace(" ", "").lower()) if sep else None
-    return error if raised is None else raised(message)
-
-
 def answered_batches(reader: Any) -> Iterator[pa.RecordBatch]:  # noqa: ANN401 â€” a reader
     """The batches of DuckDB's Arrow ``reader``. DuckDB produces them as they are read, so an
     error the engine meets in a later batch is raised here, as an ``OSError`` carrying its
@@ -94,7 +76,7 @@ def answered_batches(reader: Any) -> Iterator[pa.RecordBatch]:  # noqa: ANN401 â
             return
         except OSError as error:
             answered = from_engine(error)
-            raise (_engine_error(error) if answered is None else answered) from error
+            raise (engine_error(error) if answered is None else answered) from error
         yield batch
 
 

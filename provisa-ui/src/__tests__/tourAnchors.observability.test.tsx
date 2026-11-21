@@ -81,10 +81,12 @@ const MCP_SERVER: McpServerStatus = {
   port: null,
   transport: null,
   stdio_role: null,
+  principal: null,
   max_rows: 1000,
   tools: [],
   enable_env_var: "PROVISA_MCP_PORT",
   role_env_var: "PROVISA_MCP_ROLE",
+  principal_env_var: "PROVISA_MCP_PRINCIPAL",
 };
 
 function answer(url: string): object {

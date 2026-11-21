@@ -1,0 +1,143 @@
+{
+  "entitlements": {
+    "kind": {
+      "domains": "Domänen",
+      "tables": "Tabellen",
+      "columns": "Spalten",
+      "metrics": "Metriken",
+      "relationships": "Beziehungen",
+      "commands": "Befehle",
+      "data_products": "Datenprodukte",
+      "sources": "Quellen",
+      "environments": "Umgebungen",
+      "roles": "Rollen",
+      "regions": "Regionen"
+    },
+    "origin": {
+      "idp": "Identitätsanbieter",
+      "provisa": "In Provisa festgelegt",
+      "role": "Rollenstandard"
+    },
+    "finding": {
+      "unknown_identifier": "{{identifier}} in {{kind}} bezeichnet nichts im Modell.",
+      "unused_kind": "Diese Rolle verwendet keine {{kind}}, daher wählt diese Liste nichts aus."
+    },
+    "picker": {
+      "everything": "Alles, einschließlich später Hinzugefügtem",
+      "typedLabel": "Einträge",
+      "typedPlaceholder": "Eintrag eingeben und Enter drücken",
+      "noObjects": "Das Modell enthält noch nichts dieser Art.",
+      "otherValues": "Ebenfalls aufgeführt",
+      "removeValue": "{{value}} entfernen",
+      "domains": {
+        "label": "Domänen",
+        "search": "Domänen suchen"
+      },
+      "tables": {
+        "label": "Tabellen",
+        "search": "Tabellen der gewählten Domänen suchen",
+        "searchAll": "Alle Tabellen suchen",
+        "chooseAbove": "Die gewählten Domänen haben keine Tabellen"
+      },
+      "columns": {
+        "label": "Spalten",
+        "search": "Spalten der gewählten Tabellen suchen",
+        "chooseAbove": "Tabellen wählen, um ihre Spalten aufzulisten"
+      },
+      "noMatch": "Keine Treffer",
+      "more": "{{shown}} von {{total}} angezeigt. Zum Eingrenzen tippen.",
+      "unknownValue": "Das Modell enthält dies nicht. Es bleibt erhalten, bis Sie es entfernen."
+    },
+    "people": {
+      "placeholder": "Nach Name oder E-Mail suchen",
+      "typedEmail": "{{email}} (wartet auf die erste Anmeldung)",
+      "typeMore": "Mindestens zwei Zeichen eingeben",
+      "noneFound": "Keine Treffer. Vollständige E-Mail-Adresse eingeben, um ihr Zugriff zu gewähren."
+    },
+    "form": {
+      "personLabel": "Person",
+      "personHint": "Wer noch nicht angemeldet war, erhält Zugriff per E-Mail.",
+      "roleLabel": "Rolle",
+      "rolePlaceholder": "Rolle auswählen",
+      "kindLabel": "Art",
+      "kindPlaceholder": "Art auswählen",
+      "entriesLabel": "Einträge",
+      "entriesHelp": "Was diese Person von dem erreichen darf, was die Rolle erlaubt. Eine Domäne oder Tabelle, unter der nichts ausgewählt ist, schließt alles darin ein. Eine leere Liste erreicht nichts dieser Art.",
+      "endsOnLabel": "Endet am",
+      "endsOnHint": "Leer lassen, um die Liste bis zu ihrer Beendigung zu behalten.",
+      "reasonLabel": "Grund",
+      "reasonHint": "Wird mit der Änderung gespeichert, für die Zugriffsprüfung.",
+      "noRoles": "Diese Person hat keine Rolle, die Sie verwalten."
+    },
+    "person": {
+      "help": "Was diese Person über jede Rollenzuweisung erreichen darf, Liste für Liste nach Art. Eine Liste vom Identitätsanbieter hat Vorrang und wird dort geändert.",
+      "roleLabel": "Rollenzuweisung",
+      "rolePlaceholder": "Rolle auswählen",
+      "roleHint": "Rollen mit in Provisa festgelegten Listen stehen zuerst.",
+      "roleWithLists": "{{role}} (Listen festgelegt)",
+      "readOnly": "Jede Liste dieser Zuweisung stammt vom Identitätsanbieter. Sie wird dort geändert und ist hier schreibgeschützt.",
+      "grantEnded": "Für diese gesamte Zuweisung ist ein Enddatum verstrichen: Nichts unten wird erreicht.",
+      "colKind": "Art",
+      "colEntries": "Einträge",
+      "colOrigin": "Herkunft",
+      "colEnds": "Endet",
+      "noLists": "Keine Listen: Diese Zuweisung erreicht alles, was die Rolle erlaubt.",
+      "nothing": "Nichts",
+      "everything": "Alles",
+      "more": "+{{count}} weitere",
+      "endedHint": "Durch ein verstrichenes Enddatum beendet",
+      "superseded": "Ersetzt: {{entries}}",
+      "supersededHint": "Die Liste, die diese ersetzt hat",
+      "setBy": "Festgelegt von {{who}}: {{reason}}",
+      "editList": "Liste {{kind}} bearbeiten",
+      "endList": "Liste {{kind}} beenden",
+      "addList": "Liste hinzufügen",
+      "endPrompt": "Liste {{kind}} beenden. Der Standard der Rolle gilt wieder.",
+      "endButton": "Liste beenden",
+      "noRoles": "Diese Person hat keine Rolle, die Sie verwalten.",
+      "roleNotHeld": "{{role}} (nicht mehr inne; Listen festgelegt)"
+    },
+    "grants": {
+      "heading": "Zugriffsgewährungen",
+      "help": "Gewähren Sie einer Person Zugriff innerhalb einer Rolle, nach Art. Wer sich noch nicht angemeldet hat, erhält ihn per E-Mail; die Gewährung greift bei der ersten Anmeldung.",
+      "grantButton": "Zugriff gewähren",
+      "saved": "Zugriff für Rolle {{role}} gespeichert.",
+      "savedPending": "Gespeichert. Die Gewährung wartet auf die Anmeldung von {{email}}.",
+      "pendingHeading": "Wartet auf Anmeldung",
+      "colEmail": "E-Mail",
+      "colRole": "Rolle",
+      "colKind": "Art",
+      "colEntries": "Einträge",
+      "colEnds": "Endet",
+      "colReason": "Grund",
+      "colActions": "Aktionen",
+      "noPending": "Keine Gewährungen warten.",
+      "endPrompt": "Gewährung {{kind}} für {{email}} in Rolle {{role}} beenden.",
+      "endButton": "Beenden"
+    },
+    "roleHeld": "{{role}} · {{origins}}",
+    "roleOrigin": {
+      "provisa": "In Provisa zugewiesen",
+      "default_assignment": "Standardzuweisung",
+      "idp": "Identitätsanbieter"
+    },
+    "expiry": {
+      "heading": "Enddaten",
+      "none": "Keine Enddaten: Diese Zuweisung gilt, bis sie beendet wird.",
+      "colEndsOn": "Endet am",
+      "colEnds": "Was endet",
+      "colReason": "Grund",
+      "wholeGrant": "Die gesamte Zuweisung",
+      "everyCapability": "Jede Capability",
+      "capability": "{{capability}}",
+      "everywhere": "{{what}} überall",
+      "on": "{{what}} für {{entries}}",
+      "passed": "Abgelaufen",
+      "noReason": "—",
+      "extend": "Verlängern",
+      "extendPrompt": "Das Ende der Liste „{{kind}}“ verschieben, derzeit {{date}}.",
+      "newDateLabel": "Neues Enddatum",
+      "newDateHint": "Die Einträge der Liste bleiben unverändert."
+    }
+  }
+}

@@ -24,7 +24,7 @@ import {
 } from "../../api/metaGraph";
 import { COLUMN_FACTS, TABLE_FACTS, TERM_FACTS } from "../../components/graph3d/ontologyData";
 import { catalogTableName, quoteIdent, tableSqlRef } from "../../naming";
-import type { ContractVersion, DataContract, DataProduct } from "../../types/admin";
+import type { DataProduct } from "../../types/admin";
 import type { LifecycleStatus } from "../../types/lifecycle";
 
 /** The product row's own fields, as data_products_meta names them. */
@@ -67,57 +67,65 @@ const DQ_RULES: NonNullable<Selection["rels"]>[string] = {
 const PANEL: Selection = {
   fields: ["id"],
   rels: {
-    memberTables: {
+    // REQ-1634: a product's members are junction rows (data_product_tables), each reaching its
+    // table; one a role cannot read reaches none.
+    dataProductTables: {
       sel: {
-        fields: [
-          "id",
-          "source_id",
-          "domain_id",
-          "schema_name",
-          "table_name",
-          "alias",
-          "description",
-          "dq_contract",
-          "contract",
-          // REQ-2158: its freshness, a contract row's SLA headline.
-          "cache_ttl",
-        ],
+        fields: [],
         rels: {
-          // Its checkers' latest scans: its quality on the graph (REQ-2174).
-          ...TABLE_FACTS.rels,
-          checks: { sel: { fields: ["id", "domain_id", "table_name", "alias"] } },
-          dqRules: DQ_RULES,
-          tableColumns: {
-            to: "table_columns",
-            sel: {
-              fields: ["column_name", "column_key", ...COLUMN_FACTS],
-              rels: {
-                glossaryRef: {
-                  sel: { fields: ["term_id"], rels: { term: { sel: TERM } } },
-                },
-              },
-            },
-          },
-          profileResults: {
-            sel: { fields: ["id", "domain_id", "table_name", "alias"] },
-          },
-          // REQ-351: its relationships, under the effective names stored on each (the panel's
-          // Relationships card and its Cypher click-through between member tables).
-          sourceRelationships: {
+          registeredTable: {
             sel: {
               fields: [
                 "id",
+                "source_id",
+                "domain_id",
+                "schema_name",
+                "table_name",
                 "alias",
-                "graphql_field",
-                "cypher_type",
-                "cardinality",
-                "source_column",
-                "target_column",
-                "disable_cypher",
+                "description",
+                "dq_contract",
+                // REQ-2158: its freshness, a contract row's SLA headline.
+                "cache_ttl",
               ],
               rels: {
-                targetTable: {
-                  sel: { fields: ["id", "domain_id", "table_name", "product_id"] },
+                // Its checkers' latest scans: its quality on the graph (REQ-2174).
+                ...TABLE_FACTS.rels,
+                checks: { sel: { fields: ["id", "domain_id", "table_name", "alias"] } },
+                dqRules: DQ_RULES,
+                tableColumns: {
+                  to: "table_columns",
+                  sel: {
+                    fields: ["column_name", "column_key", ...COLUMN_FACTS],
+                    rels: {
+                      glossaryRef: {
+                        sel: { fields: ["term_id"], rels: { term: { sel: TERM } } },
+                      },
+                    },
+                  },
+                },
+                profileResults: {
+                  sel: { fields: ["id", "domain_id", "table_name", "alias"] },
+                },
+                // REQ-351: its relationships, under the effective names stored on each (the panel's
+                // Relationships card and its Cypher click-through between member tables).
+                sourceRelationships: {
+                  sel: {
+                    fields: [
+                      "id",
+                      "alias",
+                      "graphql_field",
+                      "cypher_type",
+                      "cardinality",
+                      "source_column",
+                      "target_column",
+                      "disable_cypher",
+                    ],
+                    rels: {
+                      targetTable: {
+                        sel: { fields: ["id", "domain_id", "table_name"] },
+                      },
+                    },
+                  },
                 },
               },
             },
@@ -125,7 +133,13 @@ const PANEL: Selection = {
         },
       },
     },
-    commands: { sel: { fields: ["name", "description", "domain_id"] } },
+    // REQ-1634: its commands are junction rows (data_product_commands) too.
+    dataProductCommands: {
+      sel: {
+        fields: [],
+        rels: { trackedFunction: { sel: { fields: ["name", "description", "domain_id"] } } },
+      },
+    },
     tags: { sel: { fields: ["tag_id"] } },
     edges: {
       sel: {
@@ -172,8 +186,6 @@ export interface CoreTable {
   dqContract: string | null;
   // REQ-2158: how long a read may trail its source, in seconds (-1: never expires); null for none.
   cacheTtl?: number | null;
-  // REQ-2158: a member's contract as stored (snake_case JSON); null for a checker table.
-  contract?: StoredContract | string | null;
   checks?: { id: number; domainId: string; tableName: string; alias: string | null } | null;
   checkedBy?: { latestOutcome: "pass" | "fail" | null; latestRunAt: string | null }[] | null;
   dqRules?: CoreDqRule[] | null;
@@ -191,72 +203,6 @@ export interface CoreTable {
     | { id: number; domainId: string; tableName: string; alias: string | null }[]
     | null;
   sourceRelationships?: CoreRelationship[] | null;
-}
-
-/** REQ-2158: a member's contract as registered_tables.contract stores it. */
-export interface StoredContract {
-  version: string;
-  status: string;
-  description?: string | null;
-  terms?: { usage?: string | null; limitations?: string | null; notice_period?: string | null };
-  sla?: { property: string; value?: unknown; unit?: string | null; description?: string | null }[];
-  columns?: { name: string; type: string; description?: string | null; required?: boolean }[];
-  versions?: ContractVersion[];
-}
-
-/** REQ-2158: each output port's contract, in the order the members are read. */
-export function coreContracts(core: ProductCore): DataContract[] {
-  return (core.tables ?? []).flatMap((tb) => {
-    if (tb.contract === null || tb.contract === undefined) return [];
-    // The meta schema serves JSON as text where the engine answers it so.
-    const c = (
-      typeof tb.contract === "string" ? JSON.parse(tb.contract) : tb.contract
-    ) as StoredContract;
-    return [
-      {
-        tableId: tb.id,
-        sourceId: tb.sourceId,
-        schemaName: tb.schemaName,
-        tableName: tb.tableName,
-        contractId: `${core.product.id}/${tb.schemaName}.${tb.tableName}`,
-        version: c.version,
-        status: c.status,
-        description: c.description ?? null,
-        terms: {
-          usage: c.terms?.usage ?? null,
-          limitations: c.terms?.limitations ?? null,
-          noticePeriod: c.terms?.notice_period ?? null,
-        },
-        sla: (c.sla ?? []).map((x) => ({
-          property: x.property,
-          value: x.value ?? null,
-          unit: x.unit ?? null,
-          description: x.description ?? null,
-        })),
-        columns: (c.columns ?? []).map((x) => ({
-          name: x.name,
-          type: x.type,
-          description: x.description ?? null,
-          required: x.required ?? false,
-        })),
-        versions: c.versions ?? [],
-      },
-    ];
-  });
-}
-
-/** A contract status that is not yet in force: it has not been made active. */
-const NOT_IN_FORCE = ["proposed", "draft"];
-
-/** The newest versions not yet in force that carry a breaking change, newest first: the versions
- * after the last one in force. */
-export function breakingNotInForce(versions: ContractVersion[]): ContractVersion[] {
-  const pending: ContractVersion[] = [];
-  for (const v of [...versions].reverse()) {
-    if (!NOT_IN_FORCE.includes(v.contract.status)) break;
-    pending.push(v);
-  }
-  return pending.filter((v) => v.changes.some((c) => c.breaking));
 }
 
 /** One check of a checker table's contract, as meta's dq_rules serves it (REQ-1443 clause 10). */
@@ -283,7 +229,6 @@ export interface CoreRelationship {
     id: number;
     domainId: string;
     tableName: string;
-    productId?: string | null;
   } | null;
 }
 
@@ -329,10 +274,26 @@ export function restModelName(t: {
   return modelName({ domainId: t.domain_id, tableName: t.table_name, alias: t.alias });
 }
 
+/** What a product's membership rows reach, those the role can read; undefined when the role's
+ * schema holds no membership (REQ-1634). */
+function reachedBy<M, T>(rows: M[] | null | undefined, reach: (m: M) => T | null | undefined): T[] | undefined {
+  return rowsOf(rows)?.flatMap((m) => {
+    const t = reach(m);
+    return t ? [t] : [];
+  });
+}
+
+/** A command of a product, as its membership row reaches it. */
+export interface CoreCommand {
+  name: string;
+  description: string | null;
+  domainId: string;
+}
+
 interface PanelRow {
   id: string;
-  memberTables?: CoreTable[] | null;
-  commands?: { name: string; description: string | null; domainId: string }[] | null;
+  dataProductTables?: { registeredTable?: CoreTable | null }[] | null;
+  dataProductCommands?: { trackedFunction?: CoreCommand | null }[] | null;
   tags?: { tagId: string }[] | null;
   edges?: CoreEdge[] | null;
 }
@@ -341,7 +302,7 @@ interface PanelRow {
 export interface ProductCore {
   product: DataProduct;
   tables?: CoreTable[];
-  commands?: NonNullable<PanelRow["commands"]>;
+  commands?: CoreCommand[];
   tags?: string[];
   terms?: CoreTerm[];
   edges?: CoreEdge[];
@@ -459,7 +420,7 @@ export async function loadProductCore(
   ) as ProductRow;
   if (!doc) throw new Error(`No data product ${product} over JSON:API`);
   productRow.customProperties = doc.attributes.custom_properties;
-  const members = rowsOf(row.memberTables);
+  const members = reachedBy(row.dataProductTables, (m) => m.registeredTable);
   const bound = new Map<number, CoreTerm>();
   for (const t of members ?? [])
     for (const c of t.tableColumns ?? [])
@@ -467,7 +428,7 @@ export async function loadProductCore(
   return {
     product: asProduct(productRow),
     tables: members,
-    commands: rowsOf(row.commands),
+    commands: reachedBy(row.dataProductCommands, (m) => m.trackedFunction),
     tags: rowsOf(row.tags)?.map((t) => t.tagId),
     terms: (members ?? []).some((t) => t.tableColumns !== undefined)
       ? await termClosure(m, role, [...bound.values()])

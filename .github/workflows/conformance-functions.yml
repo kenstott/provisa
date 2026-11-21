@@ -2,9 +2,16 @@ name: Conformance (functions)
 
 # REQ-2167 (THE GOAL IS THE GUARANTEED LIST), REQ-2171 (AN ANSWER THAT DIFFERS IS REFUSED, EXACT OR
 # EQUIVALENT, RESULTS ARE BY ENGINE): which pg_catalog functions work today, per federation engine.
-# Each overload has a result on each engine: exact, equivalent under a written rule, refused by name
-# or differs. Nothing adds the engines up. Measurement only: it writes no function form, and nothing
-# it finds fails a gate. Separate from Conformance (pgwire), whose land gate reads its own report.
+# Each overload has a result on each engine: exact, equivalent under a written rule, within a stated
+# bound (REQ-2236: called with its types' edge values too, scripts/conformance/function_edges.py, it
+# raises where it cannot answer, as its polyfill grid row states), refused by name or differs.
+# Nothing adds the engines up. Measurement only: it writes no function form. Its last
+# step judges the merged result per engine against scripts/conformance/expected/functions.json
+# (scripts/conformance/baseline_gate.py), which holds base calls and edge calls apart: a wrong
+# answer or an engine error the file does not list fails the run, at a base call or at an edge
+# value, as do base calls right below the committed count and refusals by name above theirs. The
+# file is written from a run's merged result by scripts/conformance/functions_baseline.py.
+# Separate from Conformance (pgwire), whose land gate reads its own report.
 # Each overload with a sample value is called once more reading it from a column of
 # conformance.function_columns, which this workflow alone seeds and registers: a pass whose column
 # call fails passes on literals only, reported beside its result and changing none.
@@ -24,6 +31,8 @@ name: Conformance (functions)
 # leg that leaves no result leaves no guaranteed list.
 
 on:
+  # Runs on dispatch for a release (gh workflow run <workflow> --ref <release branch>): it gates the
+  # release (REQ-1989). No push starts it.
   workflow_dispatch:
     inputs:
       ref:
@@ -54,7 +63,7 @@ jobs:
           - engine: duckdb
           # The PostgreSQL service below, as the engine.
           - engine: pg
-            engine-url: postgresql://postgres:conformance@127.0.0.1:55432/conformance
+            engine-url: postgresql://postgres:conformance-pg-password@127.0.0.1:15432/conformance
           # chdb, in-process.
           - engine: clickhouse
           # The compose stack the Trino UI lane runs: the engine, its object store, its Arrow
@@ -68,10 +77,10 @@ jobs:
       PROVISA_API_PORT: "8901"
       PROVISA_PGWIRE_PORT: "8906"
       CONFORMANCE_PG_HOST: 127.0.0.1
-      CONFORMANCE_PG_PORT: "55432"
+      CONFORMANCE_PG_PORT: "15432"
       CONFORMANCE_PG_DATABASE: conformance
       CONFORMANCE_PG_USER: postgres
-      CONFORMANCE_PG_PASSWORD: conformance
+      CONFORMANCE_PG_PASSWORD: conformance-pg-password
       # Ephemeral, on a throwaway instance: not secrets (conformance-pgwire.yml).
       PROVISA_SUPERUSER_USERNAME: conformance-su
       PROVISA_SUPERUSER_PASSWORD: conformance-su-password
@@ -86,10 +95,10 @@ jobs:
         # The PostgreSQL the catalog is generated from (scripts/gen_pgwire_pg17_catalog.py).
         image: postgres:17.11
         env:
-          POSTGRES_PASSWORD: conformance
+          POSTGRES_PASSWORD: conformance-pg-password
           POSTGRES_DB: conformance
         ports:
-          - 55432:5432
+          - 15432:5432
         options: >-
           --health-cmd "pg_isready -U postgres"
           --health-interval 5s
@@ -104,6 +113,15 @@ jobs:
         uses: ./.github/actions/setup-python
         with:
           extras: dev
+
+      # The Trino leg alone mounts the pinned plugin jars, so it primes them itself: a cache hit,
+      # or one fetch from Maven Central, checksum-verified (.github/actions/trino-plugins). The
+      # stack script below fetches nothing.
+      - name: Trino plugins
+        if: matrix.engine == 'trino'
+        uses: ./.github/actions/trino-plugins
+        with:
+          phase: prime
 
       # scripts/ci/lanes/trino-stack-prepare.sh, the Trino lanes' one copy; no catalog here reads
       # the certificate. The app runs on this host and Trino in a container, so each is told the
@@ -220,6 +238,22 @@ jobs:
           .venv/bin/python scripts/conformance/fill_docs.py scripts/conformance/function_support.json
           exit "$status"
 
+      # REQ-2236: the polyfill grid held to this run's outcomes. A feature the grid marks native or
+      # polyfilled that answers otherwise than PostgreSQL fails, and so does a refusal or a
+      # difference the grid does not state. Reported, not a gate yet: the job goes on. Its files
+      # sit beside the data file, so the artifact keeps its layout.
+      - name: Check the polyfill grid
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        run: |
+          status=0
+          .venv/bin/python scripts/conformance/polyfill_check.py \
+            --in scripts/conformance/function_support.json \
+            --out-json scripts/conformance/polyfill-check.json \
+            --out-md scripts/conformance/polyfill-check.md || status=$?
+          cat scripts/conformance/polyfill-check.md >> "$GITHUB_STEP_SUMMARY"
+          exit "$status"
+
       - name: Upload the data file and the pages
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
@@ -229,4 +263,15 @@ jobs:
             scripts/conformance/function_support.json
             docs/conformance/pgwire.md
             docs/conformance/overview.md
+            scripts/conformance/polyfill-check.json
+            scripts/conformance/polyfill-check.md
           if-no-files-found: error
+
+      # REQ-2167: the run judged per engine against scripts/conformance/expected/functions.json:
+      # a wrong answer or an engine error not listed fails, at a base call or at an edge value, and
+      # so does a listed one now right or failing otherwise than listed; base calls right may not
+      # fall below the committed count, refusals by name may not rise above theirs; every listed
+      # engine has a full result. A run that passes prints its baseline.
+      - name: Judge against the expected-failures list
+        if: ${{ !cancelled() }}
+        run: .venv/bin/python scripts/conformance/baseline_gate.py functions scripts/conformance/function_support.json

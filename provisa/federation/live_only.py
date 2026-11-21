@@ -19,6 +19,13 @@ the statement on the table alone (its row rules among them), and, where the tabl
 in its SELECT, that SELECT's similarity ordering and LIMIT. A part with no condition and no top-k
 would read the whole table, a replica by another name, and is refused, as is a part the source's
 driver cannot state exactly: never replicated.
+
+Stage 2 reads every registered table through the role's governed relation (REQ-039,
+``compiler.governed_relation``), so the table stands in the statement inside a derived table and
+the statement's conditions and top-k sit around it. The part is cut where the governed relation
+stands: its row rules, and the statement's conditions and top-k on it read through it as the
+table's columns. A condition or ordering on a column the relation serves masked or computed is not
+one on the table's column, and is not the part's.
 """
 
 # Requirements: REQ-2000
@@ -30,6 +37,8 @@ from typing import Any
 
 import sqlglot
 from sqlglot import exp
+
+from provisa.compiler.governed_relation import ReadThrough, relation_of
 
 _SIMILARITY = "cosine_similarity"
 
@@ -71,21 +80,22 @@ def _joins(select: exp.Select) -> list[exp.Join]:
     return list(select.args.get("joins") or [])
 
 
-def _from_table(select: exp.Select) -> exp.Expr | None:
-    from_ = select.args.get("from") or select.args.get("from_")
-    return from_.this if from_ is not None else None
+_Place = tuple[exp.Select, exp.Expr, exp.Join | None, ReadThrough | None]
 
 
-def _reads(select: exp.Select, name: str) -> list[tuple[exp.Table, exp.Join | None]]:
-    """Each place ``select`` reads the table ``name`` directly: in its FROM (no join) or a JOIN."""
-    found: list[tuple[exp.Table, exp.Join | None]] = []
-    first = _from_table(select)
-    if isinstance(first, exp.Table) and first.name == name:
-        found.append((first, None))
-    for join in _joins(select):
-        if isinstance(join.this, exp.Table) and join.this.name == name:
-            found.append((join.this, join))
-    return found
+def _place(table: exp.Table) -> _Place | None:
+    """Where ``table`` stands in its SELECT: the SELECT, the FROM or JOIN item that reads it (the
+    table itself, or the governed relation that reads it), the join (None: the FROM), and the
+    governed relation (None: the table stands as itself)."""
+    relation = relation_of(table)
+    item: exp.Expr = table if relation is None else relation.relation
+    holder = item.parent
+    if isinstance(holder, exp.From) and isinstance(holder.parent, exp.Select):
+        return holder.parent, item, None, relation
+    if isinstance(holder, exp.Join) and isinstance(holder.parent, exp.Select):
+        if holder.this is item:
+            return holder.parent, item, holder, relation
+    return None
 
 
 def _nullable(select: exp.Select, join: exp.Join | None) -> bool:
@@ -128,6 +138,21 @@ def _unqualified(node: exp.Expr) -> exp.Expr:
     return copy
 
 
+def _through(node: exp.Expr, relation: ReadThrough | None) -> exp.Expr | None:
+    """``node``, a condition or ordering over the item read under ``relation``'s alias, over the
+    table's own columns, unqualified: each column the relation serves as it is read as the table's
+    column. None when it reads a column the relation serves masked or computed."""
+    if relation is None:
+        return _unqualified(node)
+    copy = node.copy()
+    for column in list(copy.find_all(exp.Column)):
+        physical = relation.column(column.name)
+        if physical is None:
+            return None
+        column.replace(exp.column(physical, quoted=True))
+    return copy
+
+
 def _top_k(select: exp.Select) -> tuple[exp.Expr, exp.Expr] | None:
     """The SELECT's ``ORDER BY cosine_similarity(...) DESC`` and LIMIT, when it reads one table
     with nothing between them and the rows it reads."""
@@ -149,7 +174,7 @@ def _top_k(select: exp.Select) -> tuple[exp.Expr, exp.Expr] | None:
         and ordered.args.get("desc")
     ):
         return None
-    return _unqualified(ordered), limit.expression
+    return ordered, limit.expression
 
 
 def cut(sql: str, table: dict) -> Part:
@@ -157,14 +182,16 @@ def cut(sql: str, table: dict) -> Part:
     name = table["table_name"]
     tree = sqlglot.parse_one(sql, read="postgres")
     places = [
-        (select, tbl, join)
-        for select in tree.find_all(exp.Select)
-        for tbl, join in _reads(select, name)
+        place
+        for tbl in tree.find_all(exp.Table)
+        if tbl.name == name
+        for place in [_place(tbl)]
+        if place is not None
     ]
     if len(places) != 1:
         raise LiveReadRefused(name, "the statement reads the table more than once")
-    select, tbl, join = places[0]
-    alias = tbl.alias_or_name
+    select, item, join, relation = places[0]
+    alias = item.alias_or_name
     single = not _joins(select)
     if _nullable(select, join):
         held = _conjuncts(join.args.get("on")) if join is not None else []
@@ -174,8 +201,15 @@ def cut(sql: str, table: dict) -> Part:
         for inner in _joins(select):
             if not inner.side:
                 held += _conjuncts(inner.args.get("on"))
-    pushed = [_unqualified(c) for c in held if _alone(c, alias, single)]
+    pushed = [_through(c, relation) for c in held if _alone(c, alias, single)]
+    # The relation's row rules hold of every row it reads, padded or not.
+    rules = [] if relation is None else relation.predicates
+    pushed += [_unqualified(c) for r in rules for c in _conjuncts(r) if _alone(c, alias, True)]
+    pushed = [c for c in pushed if c is not None]
     top = _top_k(select) if not _nullable(select, join) else None
+    if top is not None:
+        ordered = _through(top[0], relation)
+        top = None if ordered is None else (ordered, top[1])
     if not pushed and top is None:
         raise LiveReadRefused(
             name, "the statement reads it with no condition, key or top-k, the whole table"

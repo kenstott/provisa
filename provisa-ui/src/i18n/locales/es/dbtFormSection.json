@@ -1,0 +1,27 @@
+{
+  "dbtFormSection": {
+    "specLegend": "De dónde procede el manifiesto",
+    "specLocation": "URL o ubicación del artefacto",
+    "specUpload": "Subir",
+    "specCloud": "dbt Cloud",
+    "locationLabel": "URL del manifiesto o ubicación del artefacto",
+    "locationPlaceholder": "https://example.com/manifest.json o s3://bucket/target/manifest.json",
+    "uploadLabel": "Archivo manifest.json",
+    "cloudHostLabel": "URL de dbt Cloud",
+    "accountLabel": "ID de cuenta",
+    "jobLabel": "ID de job",
+    "tokenLabel": "Token de API",
+    "tokenHint": "Se guarda con este origen y se usa para leer el manifiesto y ejecutar jobs.",
+    "commandLineLabel": "Comando que ejecuta dbt",
+    "commandLineHint": "Se ejecuta donde está instalado dbt, por ejemplo dbt --project-dir /srv/project.",
+    "previewButton": "Vista previa del manifiesto",
+    "summary": "{{project}} ({{adapter}}): {{models}} modelos y {{commands}} comandos disponibles.",
+    "warehouseFound": "{{database}} se lee a través del origen {{source}}.",
+    "warehouseMissing": "Ningún origen registrado lee la base de datos {{adapter}} {{database}}. Cree uno:",
+    "warehouseId": "ID del nuevo origen",
+    "warehouseHost": "Cuenta o host",
+    "warehouseUser": "Nombre de usuario",
+    "warehouseCredential": "Credencial",
+    "adapterUnknown": "El adaptador {{adapter}} no tiene un tipo de origen correspondiente. Registre primero su almacén de datos y luego añada este origen."
+  }
+}

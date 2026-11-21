@@ -286,3 +286,86 @@ def test_lossy_conversion_is_warned_once():
 def test_unknown_policy_refused():
     with pytest.raises(ValueError, match="unknown clash policy"):
         build_names_table([], "rename")
+
+
+def _sources_table(*sources: tuple[str, str]):
+    """The names table of one table per (source id, catalog), in that order."""
+    ctx = CompilationContext()
+    for i, (source, catalog) in enumerate(sources, start=1):
+        field = f"t{i}"
+        ctx.tables[field] = TableMeta(
+            table_id=i,
+            field_name=field,
+            type_name=f"T{i}",
+            source_id=source,
+            catalog_name=catalog,
+            schema_name="public",
+            table_name=field,
+            domain_id="sales",
+        )
+    return build_names_table(model_name_rows(ctx, []))
+
+
+def test_sources_sharing_a_catalog_they_are_pinned_to_are_no_clash():
+    """A checker reads through the control plane's catalog, which is not named after it."""
+    table = _sources_table(
+        ("provisa-admin", "provisa_admin"),
+        ("dq-checker", "provisa_admin"),
+        ("dq-soda", "provisa_admin"),
+    )
+    assert table.names_of("source", "dq-checker") == {"catalog": "provisa_admin"}
+    assert table.names_of("source", "dq-soda") == {"catalog": "provisa_admin"}
+
+
+def test_the_catalog_address_stays_with_the_source_it_is_named_after():
+    table = _sources_table(("dq-checker", "provisa_admin"), ("provisa-admin", "provisa_admin"))
+    row = table.resolve_sql(("catalog",), "PROVISA_ADMIN")
+    assert row is not None and row.object_id == "provisa-admin"
+
+
+def test_two_sources_collapsing_to_one_catalog_are_refused():
+    with pytest.raises(NamesClashRefused) as refused:
+        _sources_table(("sales-pg", "sales_pg"), ("sales_pg", "sales_pg"))
+    message = str(refused.value)
+    assert "source sales-pg" in message and "source sales_pg" in message
+
+
+def test_two_sources_collapsing_to_one_org_scoped_catalog_are_refused():
+    with pytest.raises(NamesClashRefused):
+        _sources_table(("sales-pg", "org_acme__sales_pg"), ("sales_pg", "org_acme__sales_pg"))
+
+
+def test_a_user_source_taking_the_control_planes_catalog_name_is_refused():
+    with pytest.raises(NamesClashRefused):
+        _sources_table(("provisa-admin", "provisa_admin"), ("provisa_admin", "provisa_admin"))
+
+
+def _reference_model(*, governed: bool):
+    """Orders with a remote-style column ``customer`` and a relationship named ``customer``."""
+    ctx = CompilationContext()
+    orders = _orders()
+    ctx.tables = {"orders": orders}
+    ctx.physical_to_gql[(1, "customer")] = "customer"
+    ctx.physical_to_sql[(1, "customer")] = "customer"
+    if governed:
+        ctx.gql_governed_object_cols.add((1, "customer"))
+    ctx.joins[("Orders", "customer")] = JoinMeta(
+        source_column="customer",
+        target_column="id",
+        source_column_type="integer",
+        target_column_type="integer",
+        target=_customers(),
+        cardinality="many-to-one",
+    )
+    return ctx
+
+
+def test_a_field_pointing_at_a_registered_type_leaves_the_name_to_its_relationship():
+    table = build_names_table(model_name_rows(_reference_model(governed=True), []))
+    assert table.names_of("relationship", "Orders.customer")["graphql_field"] == "customer"
+    assert "graphql_field" not in table.names_of("column", "1:customer")
+
+
+def test_a_data_column_and_a_relationship_of_one_name_are_still_refused():
+    with pytest.raises(NamesClashRefused, match="relationship Orders.customer"):
+        build_names_table(model_name_rows(_reference_model(governed=False), []))

@@ -210,7 +210,7 @@
       "description": "Conceptbeschrijving",
       "notCreatedTitle": "Vastgelegd, niet gemaakt",
       "ruleNotCreated": "Business-vault-regel \"{{rule}}\": vastgelegd in de beschrijving van de tabel; bouw hem als view over deze tabellen.",
-      "draftNote": "Elke beschrijving is een eerste concept dat een steward bijwerkt in Geregistreerde tabellen.",
+      "draftNote": "Elke beschrijving is een eerste concept dat een steward bijwerkt op de pagina Tabellen.",
       "create": "Maken",
       "nameRequired": "Geef elke tabel een naam.",
       "nameTaken": "Twee tabellen hebben dezelfde naam. Geef elk een eigen naam."
@@ -219,8 +219,8 @@
       "created_one": "{{count}} tabel gemaakt",
       "created_other": "{{count}} tabellen gemaakt",
       "stopped": "Gestopt bij {{name}}",
-      "draftNote": "Hun beschrijvingen zijn eerste concepten: werk ze bij in Geregistreerde tabellen.",
-      "oneWay": "De wizard maakt alleen. Wijzig deze tabellen in Geregistreerde tabellen of het entiteit/feit-formulier; de wizard genereert ze niet opnieuw.",
+      "draftNote": "Hun beschrijvingen zijn eerste concepten: werk ze bij op de pagina Tabellen.",
+      "oneWay": "De wizard maakt alleen. Wijzig deze tabellen op de pagina Tabellen of het entiteit/feit-formulier; de wizard genereert ze niet opnieuw.",
       "relatesTo": "verbonden met {{tables}}",
       "status": {
         "created": "Gemaakt",

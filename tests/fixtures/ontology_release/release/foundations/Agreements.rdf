@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+         xmlns:rdfs="http://www.w3.org/2000/01/rdf-schema#"
+         xmlns:owl="http://www.w3.org/2002/07/owl#"
+         xmlns:skos="http://www.w3.org/2004/02/skos/core#">
+  <owl:Ontology rdf:about="https://example.org/mini-fibo/foundations/Agreements/">
+    <rdfs:label>Agreements</rdfs:label>
+    <owl:imports rdf:resource="https://example.org/mini-fibo/foundations/Parties/"/>
+  </owl:Ontology>
+  <owl:Class rdf:about="https://example.org/mini-fibo/foundations/Agreements/Agreement">
+    <rdfs:label xml:lang="en">agreement</rdfs:label>
+    <skos:definition xml:lang="en">A meeting of minds between parties.</skos:definition>
+  </owl:Class>
+  <owl:ObjectProperty rdf:about="https://example.org/mini-fibo/foundations/Agreements/isPartOfAgreement">
+    <rdf:type rdf:resource="http://www.w3.org/2002/07/owl#TransitiveProperty"/>
+    <rdfs:label xml:lang="en">is part of agreement</rdfs:label>
+    <rdfs:domain rdf:resource="https://example.org/mini-fibo/foundations/Agreements/Agreement"/>
+    <rdfs:range rdf:resource="https://example.org/mini-fibo/foundations/Agreements/Agreement"/>
+  </owl:ObjectProperty>
+</rdf:RDF>

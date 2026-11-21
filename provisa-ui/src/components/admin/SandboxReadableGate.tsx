@@ -20,11 +20,13 @@ import { CapabilityGate } from "../CapabilityGate";
 
 export function SandboxReadableGate({
   capability,
+  andCapability,
   fallback,
   navigable,
   children,
 }: {
   capability: Capability;
+  andCapability?: Capability;
   fallback?: ReactNode;
   navigable?: boolean;
   children: ReactNode;
@@ -32,7 +34,12 @@ export function SandboxReadableGate({
   const { activeOrgId } = useAuth();
   if (isDemoSandbox(activeOrgId)) return <>{children}</>;
   return (
-    <CapabilityGate capability={capability} fallback={fallback} navigable={navigable}>
+    <CapabilityGate
+      capability={capability}
+      andCapability={andCapability}
+      fallback={fallback}
+      navigable={navigable}
+    >
       {children}
     </CapabilityGate>
   );

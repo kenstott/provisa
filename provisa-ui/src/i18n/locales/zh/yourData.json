@@ -1,0 +1,15 @@
+{
+  "yourData": {
+    "title": "您的数据",
+    "loading": "正在读取刚注册的表…",
+    "openQuery": "在查询浏览器中打开",
+    "otherWays": "访问此表的其他方式",
+    "graphql": "GraphQL 查询",
+    "pgwire": "SQL 客户端的连接字符串 (pgwire)",
+    "sql": "SQL",
+    "rest": "REST",
+    "mcp": "MCP 工具调用",
+    "copy": "复制{{what}}",
+    "close": "关闭"
+  }
+}

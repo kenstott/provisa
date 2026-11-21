@@ -163,7 +163,7 @@ class TestTheStore:
     @pytest.mark.parametrize(
         ("changed", "code"),
         [
-            ({"kind": "cargo"}, "package_registry.unknown_kind"),
+            ({"kind": "maven"}, "package_registry.unknown_kind"),
             ({"address": "  "}, "package_registry.incomplete"),
             ({"credential": None}, "package_registry.incomplete"),
         ],
@@ -173,6 +173,16 @@ class TestTheStore:
             await _npm(plane, **changed)
         assert refused.value.code == code
         assert _stored(plane) == []
+
+    async def test_a_cargo_registry_has_no_scope_and_may_be_the_default(self, plane):
+        """REQ-2227: a Cargo registry, its sparse index and token; crates have no scope."""
+        with pytest.raises(PackageRegistryRefused) as scoped:
+            await _npm(plane, kind="cargo", address="sparse+https://cargo.acme.test/")
+        assert scoped.value.code == "package_registry.cargo_scope"
+        kept = await _npm(
+            plane, kind="cargo", address="sparse+https://cargo.acme.test/", scope=None, mirror=True
+        )
+        assert (kept.kind, kept.mirror, kept.scope) == ("cargo", True, None)
 
     async def test_a_git_host_has_no_scope_and_is_never_the_mirror(self, plane):
         with pytest.raises(PackageRegistryRefused) as scoped:
