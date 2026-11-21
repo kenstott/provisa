@@ -25,7 +25,7 @@ def test_navigate_carries_the_steps_taken_on_its_screen():
     assert schema["required"] == ["route"]
     step = schema["properties"]["actions"]["items"]
     assert step["properties"]["do"]["enum"] == ["fill", "choose", "press", "show"]
-    assert set(step["properties"]["target"]["properties"]) == {"testId", "role", "name"}
+    assert set(step["properties"]["target"]["properties"]) == {"testId", "within", "role", "name"}
     assert step["required"] == ["do", "target"]
 
 

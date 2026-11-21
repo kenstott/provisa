@@ -39,8 +39,6 @@ permissions are required. Read from the environment (``.env`` through tests/env_
   M365_TEST_MAILBOXES        the address of the licensed mailbox the client reads (only the first
                              address is read); it must have received a message in the last
                              _RECENT_DAYS days
-  M365_TEST_MAILBOX_OUTSIDE  optional: one address the client may NOT read (outside its
-                             Exchange scope, or a user with no mailbox)
 
 In CI it runs only in its own lane, microsoft_365 (scripts/ci/run_lane.py), when a dispatch of
 integration-suite.yml asks for it (include_microsoft_365; the tenant is the maintainer's own,
@@ -95,11 +93,6 @@ def _inside() -> tuple[str, ...]:
     return tuple(
         a.strip().lower() for a in os.environ["M365_TEST_MAILBOXES"].split(",") if a.strip()
     )
-
-
-def _outside() -> str | None:
-    address = os.environ.get("M365_TEST_MAILBOX_OUTSIDE", "").strip().lower()
-    return address or None
 
 
 @pytest.fixture(scope="module")
@@ -226,22 +219,6 @@ def test_nothing_received_before_the_sources_date_is_held(token):
     assert sum(b.num_rows for b in none["messages"]) == 0
 
 
-# The outside mailbox is optional: the test exists only when one is named. It is not a skip,
-# which in this lane would be reported as a credential that was not supplied.
-if os.environ.get("M365_TEST_MAILBOX_OUTSIDE", "").strip():
-
-    def test_a_mailbox_the_client_may_not_read_is_left_out_and_named(token):
-        outside = _outside()
-        assert outside is not None
-        inside = _inside()[0]
-        got, notes = _read(tuple(sorted({inside, outside})), token)
-        left_out = [n for n in notes if n.code == MAILBOXES_LEFT_OUT]
-        assert len(left_out) == 1, f"notes were {[n.code for n in notes]}"
-        assert left_out[0].params["accounts"] == [outside] and left_out[0].params["count"] == 1
-        accounts = {row["account"] for b in got["messages"] for row in b.to_pylist()}
-        assert accounts == {inside}
-
-
 def test_a_completed_read_keeps_its_links_and_nothing_has_changed_right_after(token):
     """The read is made of delta rounds, one for each folder; what it keeps answers "unchanged"
     when asked at once with the same date (a quiet test mailbox), with a handful of requests and
@@ -351,7 +328,7 @@ def test_a_delta_link_can_be_followed_twice(token):
 def test_no_secret_or_token_is_logged_or_printed(token, caplog, capsys):
     secret, access = _secrets(token)
     with caplog.at_level(logging.DEBUG):
-        accounts = tuple(sorted({_inside()[0], *([_outside()] if _outside() else [])}))
+        accounts = (_inside()[0],)
         _read(accounts, token)
         with httpx.Client() as http:
             directory.mailboxes(Graph(http_send(http), token), m365.Mailboxes(m365.EVERYONE))

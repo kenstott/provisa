@@ -1,6 +1,7 @@
 {
  "core": {
   "tests/integration/test_abac_hook_endpoint.py": 0.0,
+  "tests/integration/test_access_review_api.py": 12.0,
   "tests/integration/test_action_governance.py": 0.0,
   "tests/integration/test_adbc.py": 39.1,
   "tests/integration/test_admin_api.py": 0.0,
@@ -48,6 +49,8 @@
   "tests/integration/test_cassandra_native_fetch.py": 96.7,
   "tests/integration/test_cassandra_pipeline_e2e.py": 0.0,
   "tests/integration/test_cassandra_source_e2e.py": 78.3,
+  "tests/integration/test_catalog_brand_drift.py": 0.0,
+  "tests/integration/test_catalog_brands_live.py": 0.0,
   "tests/integration/test_catalog_read_only_e2e.py": 31.5,
   "tests/integration/test_catalog_registrar_pgbouncer.py": 2.2,
   "tests/integration/test_central_secrets_org_namespace_pg.py": 0.3,
@@ -742,6 +745,7 @@
   "tests/steps/steps_warm_tables_replica_profile_low_latency_placement.py": 1.2,
   "tests/steps/steps_zaychik_flight_sql_proxy.py": 1.6,
   "tests/integration/test_demo_http_surfaces_e2e.py": 240.0,
-  "tests/integration/test_node_sdk_reader.py": 12.0
+  "tests/integration/test_node_sdk_reader.py": 12.0,
+  "tests/integration/test_code_sdk_spellings_node.py": 20.0
  }
 }

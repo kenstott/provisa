@@ -38,14 +38,12 @@ granted these application permissions, with admin consent:
     Calendars.ReadWrite
     Tasks.ReadWrite.All
 
-  M365_TENANT_ID, M365_CLIENT_ID, M365_CLIENT_SECRET, M365_TEST_MAILBOXES (the first address is
-  the licensed mailbox written to, the organiser; the first other address is the meeting's
-  attendee, see below). The meeting test fails by name when there is no second address.
+  M365_TENANT_ID, M365_CLIENT_ID, M365_CLIENT_SECRET, M365_TEST_MAILBOXES (its first address is
+  the tenant's one licensed mailbox, written to and the organiser).
 
-A meeting needs a second person: the attendee is the first address of M365_TEST_MAILBOXES other
-than the organiser (maintainer 2026-11-21). Every assertion of the meeting test is on the organizer's side -- the refusal,
-the attendee row as written, which change is told -- so any address that receives mail serves;
-the invitation is sent to it.
+The tenant has no second mailbox. The meeting test's attendee is that same mailbox: every
+assertion is on the organiser's side -- the refusal, the attendee row as written, which change is
+told.
 
 In CI it runs in the mail test's lane, microsoft_365, when a dispatch asks for it
 (include_microsoft_365); a credential that is not set fails it by name.
@@ -96,13 +94,6 @@ def _mailboxes() -> tuple[str, ...]:
 
 
 ADA = _mailboxes()[0] if _HAVE_CREDS else ""
-
-
-def _attendee() -> str:
-    """The meeting's attendee: the first address of M365_TEST_MAILBOXES other than the organiser."""
-    others = [a for a in _mailboxes() if a != ADA]
-    assert others, "M365_TEST_MAILBOXES has no address other than the organiser (the attendee)"
-    return others[0]
 
 
 ROOT = f"/users/{quote(ADA, safe='')}"
@@ -270,7 +261,7 @@ def test_a_series_is_one_rrule_with_one_occurrence_moved_and_another_cancelled(t
 
 
 def test_a_meeting_is_changed_only_when_the_source_tells_its_attendees(token, made):
-    attendee = _attendee()
+    attendee = ADA
     _run(
         token,
         "INSERT INTO events (calendar_id, title, start_at, end_at) VALUES ($1, $2, $3, $4)",

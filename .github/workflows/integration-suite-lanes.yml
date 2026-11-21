@@ -111,8 +111,6 @@ on:
         required: false
       M365_TEST_MAILBOXES:
         required: false
-      M365_TEST_MAILBOX_OUTSIDE:
-        required: false
       BIGQUERY_LOCATION:
         required: false
       BIGQUERY_TEST_GCS_BUCKET:
@@ -1015,7 +1013,6 @@ jobs:
       M365_CLIENT_SECRET: ${{ secrets.M365_CLIENT_SECRET }}
       M365_TEST_MAILBOXES: ${{ secrets.M365_TEST_MAILBOXES }}
       # Optional: the test of a mailbox the client may not read runs only when it is set.
-      M365_TEST_MAILBOX_OUTSIDE: ${{ secrets.M365_TEST_MAILBOX_OUTSIDE }}
     steps:
       - uses: actions/checkout@v4
         with:

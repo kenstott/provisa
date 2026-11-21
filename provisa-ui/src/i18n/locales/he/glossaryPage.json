@@ -1,0 +1,25 @@
+{
+  "glossaryPage": {
+    "title": "מילון מונחים",
+    "intro": "המונחים המאושרים של הארגון שלך ומשמעותו של כל אחד מהם.",
+    "search": "חיפוש מונחים",
+    "searchPlaceholder": "חיפוש בשמות ובהגדרות",
+    "domainFilter": "תחומים",
+    "domainFilterPlaceholder": "כל התחומים",
+    "sort": "מיון",
+    "sortName": "א–ת",
+    "sortRecent": "שונו לאחרונה",
+    "letterBar": "מעבר לאות",
+    "otherLetter": "#",
+    "alsoCalled": "נקרא גם",
+    "kindOf": "סוג של",
+    "kinds": "סוגים",
+    "seeAlso": "ראו גם",
+    "allDomains": "כל התחומים",
+    "loadFailed": "לא ניתן לטעון את מילון המונחים: {{message}}",
+    "empty": "אין עדיין מונחים מאושרים.",
+    "noMatch": "אין מונחים תואמים.",
+    "count_one": "מונחים: {{count}}",
+    "count_other": "מונחים: {{count}}"
+  }
+}

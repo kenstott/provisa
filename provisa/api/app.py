@@ -5900,6 +5900,9 @@ def create_app() -> FastAPI:
     from provisa.api.admin.local_users_router import router as local_users_router
 
     app.include_router(local_users_router)
+    from provisa.api.admin.access_review_router import router as access_review_router
+
+    app.include_router(access_review_router)  # REQ-2266
     from provisa.api.admin.orgs_router import router as orgs_router
 
     app.include_router(orgs_router)

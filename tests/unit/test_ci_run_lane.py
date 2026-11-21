@@ -663,7 +663,7 @@ def test_the_microsoft_365_lane_runs_only_when_a_dispatch_asks_for_it_with_its_s
         "(github.event_name == 'workflow_dispatch' && inputs.include_microsoft_365) "
         "&& needs.plan.outputs.microsoft_365 == 'true'"
     )
-    names = (*_M365_SECRETS, "M365_TEST_MAILBOX_OUTSIDE")
+    names = _M365_SECRETS
     assert {k: job["env"][k] for k in names} == {k: f"${{{{ secrets.{k} }}}}" for k in names}
     # The tests drive the loader directly: no stack is brought up for them.
     assert job["env"]["PYTEST_NO_DOCKER"] == "1"

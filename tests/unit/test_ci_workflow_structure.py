@@ -1288,8 +1288,7 @@ def test_the_microsoft_365_lane_reads_its_secrets_from_the_live_environment_and_
     """The repository is at GitHub's 100-secret cap: the live lanes' secrets move to the `live`
     environment (maintainer 2026-11-10). The microsoft_365 job names that environment, reads the
     same secret names, and still fails by name, before the lane runs, when one is missing.
-    The calendar test's meeting attendee is the first address of M365_TEST_MAILBOXES other than
-    the organiser (maintainer 2026-11-21)."""
+    The tenant has one mailbox, the maintainer's: no second address is read from any secret."""
     path = REPO / ".github" / "workflows" / "integration-suite-lanes.yml"
     job = yaml.safe_load(path.read_text())["jobs"]["microsoft_365"]
     assert job["environment"] == "live"
@@ -1299,7 +1298,7 @@ def test_the_microsoft_365_lane_reads_its_secrets_from_the_live_environment_and_
         "M365_CLIENT_SECRET",
         "M365_TEST_MAILBOXES",
     )
-    for name in (*required, "M365_TEST_MAILBOX_OUTSIDE"):
+    for name in required:
         assert job["env"][name] == f"${{{{ secrets.{name} }}}}", name
     names = [s.get("name") for s in job["steps"]]
     assert names.index("Credentials present") < names.index("Run lane")
