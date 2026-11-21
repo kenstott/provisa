@@ -1,3 +1,13 @@
+// Copyright (c) 2026 Kenneth Stott
+// Canary: 79fbdd59-298c-464a-8e97-27250cff8731
+//
+// This source code is licensed under the Business Source License 1.1
+// found in the LICENSE file in the root directory of this source tree.
+//
+// NOTICE: Use of this software for training artificial intelligence or
+// machine learning models is strictly prohibited without explicit written
+// permission from the copyright holder.
+
 import { health, onStart, onStop, table } from "@provisa/sdk";
 
 export interface Row {
