@@ -73,7 +73,9 @@ vi.mock("../context/AuthContext", () => ({
 }));
 
 vi.mock("../hooks/useAdminQueries", () => ({
-  useRoles: () => ({ roles: [{ id: "viewer" }] }),
+  useRoles: () => ({
+    roles: [{ id: "viewer", capabilities: ["query"], effectiveCapabilities: ["query"] }],
+  }),
   useDomains: () => ({ domains: [] }),
 }));
 vi.mock("../hooks/useTableQueries", () => ({ useTables: () => ({ tables: [] }) }));

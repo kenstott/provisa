@@ -28,6 +28,10 @@ const deleteOrgSpy = vi.fn(async () => undefined);
 const exportSpy = vi.fn(async () => "sources: []\n");
 let mockMembers: OrgMember[] = [];
 let mockMultitenancy = true;
+// REQ-1327 (amended 2026-11-16): the org_admin acts on this page are shown to a holder of every
+// right org_admin carries; user_management alone is not enough.
+const ORG_ADMIN_CAPS = ["user_management", "org_settings", "table_registration"];
+let mockCapabilities: string[] = ORG_ADMIN_CAPS;
 
 vi.mock("../api/admin", () => ({
   // REQ-2076: the team page's Suspended access section reads the org's suspensions.
@@ -61,12 +65,17 @@ vi.mock("../context/AuthContext", () => ({
     activeOrgId: "acme",
     userId: "uid-me",
     multitenancy: mockMultitenancy,
-    capabilities: [],
+    capabilities: mockCapabilities,
   }),
 }));
 
 vi.mock("../hooks/useAdminQueries", () => ({
-  useRoles: () => ({ roles: [{ id: "analyst" }] }),
+  useRoles: () => ({
+    roles: [
+      { id: "org_admin", capabilities: ORG_ADMIN_CAPS, effectiveCapabilities: ORG_ADMIN_CAPS },
+      { id: "analyst", capabilities: ["query"], effectiveCapabilities: ["query"] },
+    ],
+  }),
 }));
 
 vi.mock("@mantine/notifications", () => ({ notifications: { show: vi.fn() } }));
@@ -96,6 +105,7 @@ describe("TeamPage offboarding", () => {
     exportSpy.mockClear();
     mockMembers = [];
     mockMultitenancy = true;
+    mockCapabilities = ORG_ADMIN_CAPS;
   });
 
   it("lists each member and says who holds org_admin", async () => {
@@ -215,9 +225,60 @@ describe("TeamPage offboarding", () => {
   });
 });
 
+describe("TeamPage for a holder of user_management alone", () => {
+  // REQ-1327 (amended 2026-11-14, 2026-11-16): granting, revoking and deleting are refused by the
+  // server for this caller, so the page offers none of them.
+  beforeEach(() => {
+    mockMultitenancy = true;
+    mockCapabilities = ["user_management"];
+    mockMembers = [
+      member({ user_id: "uid-me" }),
+      member({ user_id: "uid-ann", is_org_admin: true }),
+      member({ user_id: "uid-bob" }),
+    ];
+  });
+
+  it("offers no promotion or demotion", async () => {
+    renderTeamPage();
+    await screen.findByTestId("team-member-uid-bob");
+    expect(screen.queryByTestId("team-toggle-admin-uid-bob")).toBeNull();
+    expect(screen.queryByTestId("team-toggle-admin-uid-ann")).toBeNull();
+  });
+
+  it("offers removal of an ordinary member but not of an org_admin", async () => {
+    renderTeamPage();
+    expect(await screen.findByTestId("team-remove-uid-bob")).toBeInTheDocument();
+    expect(screen.queryByTestId("team-remove-uid-ann")).toBeNull();
+  });
+
+  it("offers no deletion of the organization", async () => {
+    renderTeamPage();
+    await screen.findByTestId("team-member-uid-bob");
+    expect(screen.queryByTestId("team-delete-org")).toBeNull();
+  });
+});
+
+describe("TeamPage for the platform", () => {
+  beforeEach(() => {
+    mockMultitenancy = true;
+    mockCapabilities = ["cross_org", "user_management"];
+    mockMembers = [
+      member({ user_id: "uid-ann", is_org_admin: true }),
+      member({ user_id: "uid-bob" }),
+    ];
+  });
+
+  it("offers the appointment of an org admin and the org's deletion", async () => {
+    renderTeamPage();
+    expect(await screen.findByTestId("team-toggle-admin-uid-bob")).toBeInTheDocument();
+    expect(screen.getByTestId("team-delete-org")).toBeInTheDocument();
+  });
+});
+
 describe("TeamPage member attributes", () => {
   it("opens the selected member's attributes beside the list, and a row's own buttons do not", async () => {
     mockMembers = [member({ user_id: "uid-a", email: "a@example.test" })];
+    mockCapabilities = ORG_ADMIN_CAPS;
     renderTeamPage();
     const row = await screen.findByTestId("team-member-uid-a");
     fireEvent.click(screen.getByTestId("team-toggle-admin-uid-a"));
