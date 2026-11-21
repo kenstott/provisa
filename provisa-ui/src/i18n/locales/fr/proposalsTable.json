@@ -12,7 +12,8 @@
     "notAgainAria": "Ne plus recommander {{name}}",
     "kind": {
       "foreign_keys": "Contrainte",
-      "semantics": "Sémantique"
+      "semantics": "Sémantique",
+      "key_names": "Correspondance de nom"
     },
     "asWritten": "Tel que le modèle l'a écrit : {{answer}}",
     "apply": "Appliquer",
@@ -53,7 +54,9 @@
         "target": "Vous ne pouvez pas lire la colonne cible."
       },
       "noValues": "La source ne contient aucune valeur.",
-      "modelScore": "Score du modèle : aucune valeur n'a été comparée."
+      "modelScore": "Score du modèle : aucune valeur n'a été comparée.",
+      "ruleForeignKeys": "Produite par une clé étrangère déclarée : aucune valeur n'a été comparée.",
+      "ruleKeyNames": "Produite par un nom et un type de clé correspondants : aucune valeur n'a été comparée."
     },
     "dimensionMade": "L'accepter crée la dimension partagée {{name}}, à laquelle les deux colonnes sont jointes.",
     "dimensionJoined": "L'accepter joint les deux colonnes à la dimension partagée {{name}}.",
