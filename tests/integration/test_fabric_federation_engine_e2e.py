@@ -13,8 +13,11 @@ connector's ``attach_source`` for an S3-compatible (Cloudflare R2) source — wh
 whole external-data chain (an ``AmazonS3Compatible`` connection + a lakehouse + a OneLake shortcut via
 the Fabric REST API) and reads the R2 parquet zero-copy via OPENROWSET. Auth is Azure AD (``az login``).
 
-Skipped without FABRIC_SQL_SERVER / FABRIC_DATABASE (and, for the external link, R2 creds +
-FABRIC_WORKSPACE_ID). pyodbc + the Microsoft ODBC driver (PROVISA_MSSQL_ODBC_DRIVER) must be present."""
+The warehouse and its workspace are the run's own (maintainer 2026-11-21): ``scripts/fabric_e2e.py up``
+creates them and hands FABRIC_SQL_SERVER / FABRIC_DATABASE / FABRIC_WORKSPACE_ID to the test steps
+(tests/integration/fabric_capacity.py); ``down`` deletes them. Skipped without FABRIC_SQL_SERVER /
+FABRIC_DATABASE (and, for the external link, R2 creds + FABRIC_WORKSPACE_ID). pyodbc + the Microsoft
+ODBC driver (PROVISA_MSSQL_ODBC_DRIVER) must be present."""
 
 from __future__ import annotations
 
