@@ -75,9 +75,27 @@ SOURCE_TO_DIALECT: dict[str, str] = {
     "google_workspace": "postgres",
     "microsoft_365": "postgres",
     "exasol": "exasol",
+    # SQLAlchemy URL schemes a generic RDB engine reports as its native store (REQ-1922); the
+    # source kinds above that name a scheme directly (postgresql, mariadb, cockroachdb, ...) are
+    # shared, so one table states every dialect.
+    "mssql": "tsql",
+    "exa": "exasol",
+    "singlestoredb": "singlestore",
     # REQ-2100: a code table's rows are read in DuckDB when its host answers the engine.
     **{t: "duckdb" for t in CODE_SOURCE_TYPES},
 }
+
+
+def engine_dialect(store: str) -> str | None:
+    """The sqlglot dialect a federation engine whose native store is ``store`` transpiles to: the
+    store's own name when sqlglot has a dialect of that name, else its ``SOURCE_TO_DIALECT`` entry,
+    else None (no sqlglot dialect for that product)."""
+    from sqlglot.dialects.dialect import Dialect
+
+    if store in Dialect.classes:
+        return store
+    return SOURCE_TO_DIALECT.get(store)
+
 
 # Source types that are CONNECTOR_ONLY — no direct driver, no SQLGlot dialect (REQ-229)
 LAKE_ONLY_SOURCES: set[str] = {"iceberg", "delta_lake", "hive_s3"}
