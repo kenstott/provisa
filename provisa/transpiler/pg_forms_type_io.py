@@ -169,7 +169,7 @@ DUCKDB = Engine(
     size=lambda v: f"strlen({v})",
     chars=lambda v: f"length({v})",
     raises=refused,
-    let=lambda n, v, b: f"list_transform([{v}], {n} -> {b})[1]",
+    let=lambda n, v, b: f"list_transform([{v}], LAMBDA {n} : {b})[1]",
     days=lambda v: f"date_diff('day', DATE '2000-01-01', CAST({v} AS DATE))",
     valid_date=lambda v: f"TRY_CAST({v} AS DATE)",
     nan=lambda t: f"CAST('NaN' AS {t})",
@@ -182,7 +182,7 @@ DUCKDB = Engine(
     ),
     numbers=lambda v: (
         f"array_to_string(list_transform(regexp_extract_all({v}, '{_NUMBER_TEXT}'), "
-        "_n -> printf('%016x', CAST(CAST(CAST(_n AS DOUBLE) AS BIT) AS BIGINT))), '')"
+        "LAMBDA _n : printf('%016x', CAST(CAST(CAST(_n AS DOUBLE) AS BIT) AS BIGINT))), '')"
     ),
 )
 TRINO = Engine(
@@ -1557,6 +1557,8 @@ def _fold_text(name: str, text: str, arguments: list[exp.Expr]) -> exp.Expr | No
         fields = literals.interval_fields(text)
         if fields is None:
             raise literals.Refused("22007", f'invalid input syntax for type interval: "{text}"')
+        if not literals.interval_in_range(fields):
+            raise literals.Refused("22008", "interval out of range")
         if name == "interval_send":
             return _said_bytes(literals.interval_bytes(*fields))
         return _said_text(literals.interval_text(*fields))

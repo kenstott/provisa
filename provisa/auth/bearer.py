@@ -128,11 +128,13 @@ def authorize_role_or_probe(
         org_id = state.org_id
     if run(role_probe.suspended(identity, org_id, transport)):
         raise PermissionError(role_probe.NOT_PERMITTED)
-    from provisa.auth.held_assignments import sign_in_roles
+    from provisa.auth.held_assignments import default_request, sign_in_roles
 
-    acts_as, may_name = run(sign_in_roles(state, identity, org_id, naming=bool(requested)))
+    acts_as, may_name = run(sign_in_roles(state, identity, org_id))
+    # REQ-2155: naming no role acts as the union of the roles held.
+    named = requested or default_request(state, identity, acts_as, may_name)
     try:
-        return authorize_role(state, identity, requested, acts_as, may_name)
+        return authorize_role(state, identity, named, acts_as, may_name)
     except RoleNotHeld as refused:
         probe = role_probe.probe_of(
             identity, refused, org_id=org_id, transport=transport, endpoint=endpoint, client=client

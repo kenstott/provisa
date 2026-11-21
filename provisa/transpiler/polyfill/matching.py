@@ -112,7 +112,9 @@ def _is_null(node: exp.Expr) -> bool:
 
 
 def _absent(value: Any) -> bool:
-    return value is None or (isinstance(value, list) and not value)
+    """An argument a node does not set: sqlglot's parser writes a flag it does not set as False
+    (chr's charset), where a node built by name leaves it out."""
+    return value is None or value is False or (isinstance(value, list) and not value)
 
 
 def _all_match(patterns: list[Any], nodes: list[Any], bindings: Bindings) -> bool:

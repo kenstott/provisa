@@ -25,7 +25,7 @@
     "partial": "{{count}} 件中 {{failed}} 件のリクエストが失敗したため、結果は部分的です。",
     "partial_other": "{{count}} 件中 {{failed}} 件のリクエストが失敗したため、結果は部分的です。",
     "semanticsNoneProposed": "セマンティクス: なし。モデルはリレーションシップを提案しませんでした。",
-    "semanticsBelowThreshold": "セマンティクス: なし。すべての提案が、提案が保持される {{threshold}}% を下回るスコアでした。",
+    "semanticsBelowThreshold": "セマンティクス: なし。すべての提案のスコアが、提案を保持するしきい値 {{threshold}}% を下回りました。",
     "semanticsFiltered": "セマンティクス: なし。すべての提案が下記の理由で除外されました。",
     "split": "{{count}} 件のリクエストを半分に分割して再送しました。",
     "split_other": "{{count}} 件のリクエストを半分に分割して再送しました。",
@@ -35,7 +35,7 @@
     "jevBelow_other": "Jev は {{count}} 件の候補を {{threshold}}% 未満と評価しました。それぞれ、判断に使うモデルのスコアの横に表示されます。",
     "scoringFailed": "Jev は {{count}} 件のリクエストの候補を評価できなかったため、モデルの信頼度をそのまま使いました。",
     "scoringFailed_other": "Jev は {{count}} 件のリクエストの候補を評価できなかったため、モデルの信頼度をそのまま使いました。",
-    "failedRequest": "{{group}} の列: {{message}}",
+    "failedRequest": "{{group}} 列について: {{message}}",
     "leftOut": "提案されなかったもの: {{list}}。",
     "leftOutItem": "{{label}} ({{count}})",
     "removed": {

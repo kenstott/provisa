@@ -31,7 +31,7 @@
     "policiesTitle": "Visualizza i criteri RLS per questa tabella",
     "editButtonLabel": "Modifica tabella {{name}}",
     "deleteButtonLabel": "Elimina tabella {{name}}",
-    "profileHeading": "Profilo — {{count}} righe campionate",
+    "profileHeading": "Profilo: {{count}} righe campionate",
     "colNulls": "Null",
     "colNullsTitle": "Valori null",
     "colBlanks": "Vuoti",

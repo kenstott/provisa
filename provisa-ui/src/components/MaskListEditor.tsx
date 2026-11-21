@@ -34,6 +34,7 @@ import { checkMasks, maskPresets, type MaskPreset, type MasksReport } from "../a
 import { serverMessage } from "../i18n/serverMessage";
 import {
   EVERYONE,
+  isTextType,
   pickedReaders,
   readersOf,
   maskValueOf,
@@ -60,12 +61,15 @@ export function MaskListEditor({
   value,
   onChange,
   roleOptions,
+  dataType,
   disabled,
   testId = "mask-list",
 }: {
   value: MaskEntry[];
   onChange: (next: MaskEntry[]) => void;
   roleOptions: { id: string; label: string }[];
+  /** The column's type; null while it is not yet chosen. */
+  dataType: string | null;
   disabled?: boolean;
   testId?: string;
 }) {
@@ -132,6 +136,8 @@ export function MaskListEditor({
     const mask = value[i].mask;
     if (mask !== null) set(i, { ...value[i], mask: { ...mask, ...patch } });
   };
+  // REQ-2131: a constant mask on a column that is not text reads as NULL; only NULL is saved.
+  const nullOnly = dataType !== null && !isTextType(dataType);
   const unreachable = new Map((report?.unreachable ?? []).map((u) => [u.entry, u.covered_by]));
 
   return (
@@ -194,19 +200,28 @@ export function MaskListEditor({
                   testId={`${testId}-regex-${i}`}
                 />
               )}
-              {entry.mask?.type === "constant" && (
-                <TextInput
-                  aria-label={t("maskList.value")}
-                  placeholder={t("maskList.valuePlaceholder")}
-                  value={
-                    entry.mask.value === null || entry.mask.value === undefined
-                      ? ""
-                      : String(entry.mask.value)
-                  }
-                  onChange={(e) => setMask(i, { value: maskValueOf(e.currentTarget.value) })}
-                  disabled={disabled}
-                />
-              )}
+              {entry.mask?.type === "constant" &&
+                nullOnly &&
+                (entry.mask.value === null || entry.mask.value === undefined) && (
+                  <Text size="sm" c="dimmed" mt={6} data-testid={`${testId}-reads-null-${i}`}>
+                    {t("maskList.readsNull")}
+                  </Text>
+                )}
+              {entry.mask?.type === "constant" &&
+                !(nullOnly && (entry.mask.value === null || entry.mask.value === undefined)) && (
+                  <TextInput
+                    aria-label={t("maskList.value")}
+                    placeholder={t("maskList.valuePlaceholder")}
+                    value={
+                      entry.mask.value === null || entry.mask.value === undefined
+                        ? ""
+                        : String(entry.mask.value)
+                    }
+                    onChange={(e) => setMask(i, { value: maskValueOf(e.currentTarget.value) })}
+                    error={nullOnly ? t("maskList.notTextConstant") : undefined}
+                    disabled={disabled}
+                  />
+                )}
               {entry.mask?.type === "truncate" && (
                 <Select
                   aria-label={t("maskList.precision")}

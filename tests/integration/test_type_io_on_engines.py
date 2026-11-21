@@ -11,7 +11,8 @@
 """The type operators family on the engines DuckDB's replay does not reach (REQ-2171, AN ANSWER THAT
 DIFFERS IS REFUSED): each statement of type_io_corpus as Provisa writes it for the engine, run there,
 against postgres:17.11's recorded answer. tests/unit/pgwire/test_pg_type_io_forms.py proves the same
-on DuckDB."""
+on DuckDB. A statement conformance-functions measures on the engine is not replayed here
+(tests/integration/replay_coverage.py)."""
 
 # Requirements: REQ-2167, REQ-2171
 
@@ -27,6 +28,7 @@ from provisa.core.pg_error import from_engine
 from provisa.transpiler.function_macros import RowRefused
 from provisa.transpiler.pg_forms_json import jsonb_out
 from provisa.transpiler.transpile import transpile
+from tests.integration.replay_coverage import ENGINES, remaining
 from tests.unit.pgwire.pg17_type_io_answers import RECORDED
 from tests.unit.pgwire.type_io_corpus import (
     REFUSALS,
@@ -38,7 +40,8 @@ from tests.unit.pgwire.type_io_corpus import (
 
 pytestmark = [pytest.mark.integration]
 
-_FUNCTIONS = by_function(RECORDED)
+#: Each engine's statements of each function that conformance-functions does not measure there.
+_FUNCTIONS = {engine: by_function(remaining("type_io", engine, RECORDED)) for engine in ENGINES}
 _BYTEA = 17
 #: A call the grid row raises by name before the engine is reached: an edge value a served form does
 #: not read (a NULL of a type the engine does not hold, interval's infinity). REQ-2236, amended
@@ -71,9 +74,10 @@ def _difference(
 def _column_differences(run: Callable[[str, int | None], Any], dialect: str) -> dict[str, str]:
     """The statements whose argument is a column, where a literal's call is folded, that differ
     from the answer the literal's call recorded."""
+    columns = column_statements(RECORDED, dialect)
     found = {
-        sql: _difference(run, dialect, sql, literal)
-        for sql, literal in column_statements(RECORDED, dialect).items()
+        sql: _difference(run, dialect, sql, columns[sql])
+        for sql in remaining("type_io", dialect, columns)
     }
     return {sql: why for sql, why in found.items() if why is not None}
 
@@ -82,7 +86,7 @@ def _differences(
     run: Callable[[str, int | None], Any], dialect: str, function: str
 ) -> dict[str, str]:
     """The statements of ``function`` that differ, and those it refuses past its allowance."""
-    found = {sql: _difference(run, dialect, sql) for sql in _FUNCTIONS[function]}
+    found = {sql: _difference(run, dialect, sql) for sql in _FUNCTIONS[dialect][function]}
     edge = None if None in found.values() else REFUSED
     found = {s: edge if why == _EDGE else why for s, why in found.items()}
     differ = {s: why for s, why in found.items() if why not in (None, REFUSED)}
@@ -91,7 +95,7 @@ def _differences(
 
 
 @pytest.mark.requires_trino
-@pytest.mark.parametrize("function", sorted(_FUNCTIONS))
+@pytest.mark.parametrize("function", sorted(_FUNCTIONS["trino"]))
 def test_trino_answers_as_postgresql_17_answered(trino_conn, function: str):
     def run(sql: str, _: int | None) -> Any:
         cursor = trino_conn.cursor()
@@ -134,6 +138,9 @@ def test_clickhouse_answers_as_postgresql_17_answered():
         digits = client.query(f"SELECT hex(v) FROM ({sql})").result_rows[0][0]
         return None if digits is None else bytes.fromhex(digits)
 
-    found = {function: _differences(run, "clickhouse", function) for function in sorted(_FUNCTIONS)}
+    found = {
+        function: _differences(run, "clickhouse", function)
+        for function in sorted(_FUNCTIONS["clickhouse"])
+    }
     found["in columns"] = _column_differences(run, "clickhouse")
     assert {function: differ for function, differ in found.items() if differ} == {}

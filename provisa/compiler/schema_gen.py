@@ -804,6 +804,8 @@ def _make_object_type_fields(
             fields, ops_traversal_targets, gql_types, where_types, order_by_types, distinct_enums
         )
 
+    # REQ-1929: a relationship never hides a column -- one named for a column's field is refused.
+    column_fields = set(info.gql_fields)
     # field -> (relationship id, computed?) for the relationships of this type.
     held: dict[str, tuple[str, bool]] = {}
     for rel in visible_rels:
@@ -820,6 +822,10 @@ def _make_object_type_fields(
             )
         if name is None:
             continue
+        if name in column_fields:
+            from provisa.compiler.context import RelationshipHidesColumn
+
+            raise RelationshipHidesColumn(info.type_name, name, rel["id"])
         computed = bool(fn_name)
         holder = held.get(name)
         if holder is not None and (computed or holder[1]):
@@ -1161,6 +1167,7 @@ def generate_schema(
             enum_types=si.enum_types,
             object_type_registry=_object_type_registry,
             governed_gql_types=si.governed_gql_types or None,
+            masked=si.masked_columns,
         )
 
     table_lookup: dict[int, _TableInfo] = {t.table_id: t for t in tables}

@@ -14,7 +14,8 @@
       "webhook_not_found": "Webhook '{{name}}' not found",
       "written_table_not_registered": "'{{table}}' is not a registered table of source '{{source_id}}'",
       "function_exists": "Function '{{name}}' already exists",
-      "webhook_exists": "Webhook '{{name}}' already exists"
+      "webhook_exists": "Webhook '{{name}}' already exists",
+      "mask_constant_not_text": "A constant mask on a non-text column reads as NULL; only NULL can be saved: {{column}} ({{type}})"
     },
     "ai_models": {
       "vector_model_fields_required": "each vector_models entry requires id, provider, and dimensions",
@@ -168,7 +169,8 @@
       "table_is_withdrawn": "{{table}} is withdrawn: out of production until it is put back",
       "view_awaits_rule_rebuild": "The view {{view}} is being built again for a change to the row rules on its inputs. This role can read it once that build has published.",
       "parameter_required": "Table '{{table}}' requires the parameter(s) {{parameters}}: give each a value (a WHERE condition on its column in SQL, an argument in GraphQL).",
-      "parameter_wrong_type": "The parameter {{parameter}} takes a value of type {{type}}; '{{value}}' is not one."
+      "parameter_wrong_type": "The parameter {{parameter}} takes a value of type {{type}}; '{{value}}' is not one.",
+      "statement_failed": "The statement failed inside the server ({{kind}}): {{error}}"
     },
     "discovery": {
       "adapter_missing_discover_schema": "Adapter for '{{source_type}}' does not implement discover_schema",
@@ -243,7 +245,8 @@
       "host_code_refused": "Command '{{name}}' is of kind {{impl_kind}}, which runs code on the server's host. Host code is off on this deployment; use a code resolver instead.",
       "no_plain_list": "No operation of source '{{source_id}}' without a required parameter returns the rows of '{{operation}}', so its table stays on",
       "plain_list_unregistered": "'{{operation}}' of source '{{source_id}}' returns the rows of its list {{lists}}; register that list as a table first",
-      "table_has_dependents": "The table '{{table}}' of function '{{name}}' is still referred to by other objects; remove those references first"
+      "table_has_dependents": "The table '{{table}}' of function '{{name}}' is still referred to by other objects; remove those references first",
+      "statement_failed": "Command '{{name}}' failed: {{error}}"
     },
     "graphql_remote": {
       "introspection_failed": "Introspection failed: {{error}}",
@@ -564,7 +567,8 @@
       "withdrawn_table_not_previewable": "Table {{table}} cannot be previewed: it is withdrawn and keeps no replica, and the engine reads its source only through one.",
       "table_not_withdrawn": "Table {{table}} is not withdrawn: only a withdrawn table is put back. To move a table in production to another region, set its region.",
       "source_not_withdrawn": "Source {{source}} is not withdrawn: only a withdrawn source is put back. To change its region, set its region.",
-      "put_back_needs_region": "Putting back {{object}} names a region: give one, or none for no region."
+      "put_back_needs_region": "Putting back {{object}} names a region: give one, or none for no region.",
+      "mask_constant_not_text": "A constant mask on a non-text column reads as NULL; only NULL can be saved: {{column}} ({{type}})"
     },
     "secrets": {
       "env_reference_object_locked": "This object is the operator's: it reads the server's own environment and cannot be changed here. Add one of your own instead.",
@@ -614,7 +618,8 @@
     "sparql": {
       "columns_not_inferred": "Could not infer columns: probe returned no rows and no SELECT variables found.",
       "probe_failed": "SPARQL endpoint probe failed: {{error}}",
-      "source_not_found": "SPARQL source '{{source_id}}' not found"
+      "source_not_found": "SPARQL source '{{source_id}}' not found",
+      "no_select_variables": "The query names no SELECT variables (SELECT * or not a SELECT query): its columns cannot be read from it"
     },
     "subscribe": {
       "avro_topic_without_registry": "Topic '{{topic}}' carries Avro messages, and its source names no schema registry to read them with: set the source's schema registry URL",
@@ -810,7 +815,6 @@
       "status_by_action": "A term's status changes through Approve, Deprecate, Retire or Restore.",
       "successor_required": "This term still has columns or tables; retiring it moves them to a successor. Choose one.",
       "successor_role": "A {{role}}'s successor must be a {{role}} or a concept; '{{successor}}' is a {{successor_role}}.",
-      "no_retirement_history": "The model's history has no retirement of this term.",
       "finding": {
         "unlinked_tables": "This class is grounded in tables that same-entity relationships don't all join: {{tables}}.",
         "class_and_attribute": "This class also holds columns that aren't its keys: {{columns}}.",
@@ -897,7 +901,8 @@
       "blank_identifier": "An entry cannot be blank.",
       "expiry_in_past": "An end date must be in the future.",
       "expiry_removes_nothing": "An end date on this {{kind}} list would remove nothing.",
-      "pending_not_found": "No grant waits on {{email}} for role {{role_id}} and {{kind}}."
+      "pending_not_found": "No grant waits on {{email}} for role {{role_id}} and {{kind}}.",
+      "invalid_identifier": "{{identifier}} is not a valid {{kind}} entry."
     },
     "mv": {
       "change_key_missing": "{{function}} returned a row without its key column {{column}}",
@@ -926,6 +931,15 @@
     },
     "relationship": {
       "name_taken": "The name '{{name}}' is taken by relationship '{{held_by}}'. Name this one otherwise."
+    },
+    "wikidata": {
+      "no_credential": "The Wikidata query service takes no credential",
+      "bad_id": "{{value}} is not a Wikidata {{kind}}",
+      "bad_language": "{{language}} is not a language code",
+      "bad_column_type": "Column types not offered for a Wikidata property: {{types}}",
+      "filter_required": "This class has {{count}} instances, more than {{limit}}: choose a filter",
+      "filter_too_wide": "The filter leaves more than {{limit}} instances",
+      "unreachable": "Wikidata could not be reached: {{reason}}"
     }
   }
 }

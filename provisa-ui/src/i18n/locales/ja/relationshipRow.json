@@ -1,6 +1,6 @@
 {
   "relationshipRow": {
-    "fkBadge": "FK由来",
+    "fkBadge": "FK から",
     "fkBadgeTitle": "ソースの外部キーから作成されました",
     "yes": "はい",
     "no": "いいえ",

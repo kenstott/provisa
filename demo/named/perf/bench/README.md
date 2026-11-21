@@ -48,7 +48,7 @@ demo/named/perf/bench/orchestrate.sh duckdb pg trino
 
 For each engine, `orchestrate.sh` starts Provisa with `start-ui-install.sh --demo perf`, runs `run_benchmark.py` and the Artillery ramps, then stops Provisa. Results land in `demo/named/perf/bench/results/<engine>/`. `METHODOLOGY.md` one directory up describes the three-device mechanics and what each number means.
 
-The publishable run's design, what makes a result valid and its cost are in `METHODOLOGY.md` in this directory. A run names its VM and CPU platform in its report, and timings from two VMs are never compared.
+The publishable run's design, what makes a result valid and its cost are in `METHODOLOGY.md` in this directory. `bench_units.py` holds its unit of work (one transport, one repetition), the order units run in, the check after each one and the run's ledger. A run names its VM and CPU platform in its report, and timings from two VMs are never compared.
 
 ## Sanity and chaos
 

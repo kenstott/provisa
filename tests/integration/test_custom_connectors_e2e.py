@@ -83,7 +83,7 @@ async def test_config_driven_duckdb_attach_federates_ducklake(tmp_path, monkeypa
             install_from_community: false
             probe_symbol: ducklake_snapshots
             mechanism: attach_rw
-            attach_template: "ATTACH 'ducklake:{path}' AS \\"{alias}\\" (DATA_PATH '{data_path}')"
+            attach_template: "ATTACH 'ducklake:' || {path} AS {alias:ident} (DATA_PATH {data_path})"
             remote_schema: main
         """,
     )
@@ -125,7 +125,7 @@ async def test_config_driven_duckdb_scan_federates_excel(tmp_path, monkeypatch):
             extension: excel
             install_from_community: false
             probe_symbol: read_xlsx
-            scan_template: "read_xlsx('{path}', sheet='{sheet}', header=true)"
+            scan_template: "read_xlsx({path}, sheet={sheet}, header=true)"
         """,
     )
     monkeypatch.setenv("PROVISA_CUSTOM_CONNECTORS", str(cfg))
@@ -156,7 +156,7 @@ async def test_unknown_kind_fails_loud(tmp_path, monkeypatch):
             kind: duckdb_teleport
             extension: nope
             probe_symbol: nope
-            scan_template: "nope('{path}')"
+            scan_template: "nope({path})"
         """,
     )
     monkeypatch.setenv("PROVISA_CUSTOM_CONNECTORS", str(cfg))

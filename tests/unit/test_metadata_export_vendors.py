@@ -735,3 +735,25 @@ def test_datahub_owners_carry_only_fields_gms_accepts(snapshot):
     for owner in owners:
         assert set(owner) <= {"owner", "type", "typeUrn", "source"}
         assert owner["source"] == {"type": "SERVICE", "url": "provisa"}
+
+
+def test_a_collibra_table_carries_the_environment_and_its_stage(snapshot):  # REQ-2261
+    import dataclasses
+
+    from provisa.api.metadata_export.collibra import ENVIRONMENT_ATTRIBUTE, STAGE_ATTRIBUTE
+    from provisa.api.metadata_export.model import EnvironmentStage
+
+    staged = dataclasses.replace(snapshot, environment=EnvironmentStage("eu", "production"))
+    tables = [
+        r
+        for r in to_rows(staged, "Provisa", "Provisa Governed Assets")
+        if r["type"]["name"] == "Table"
+    ]
+    assert tables
+    for row in tables:
+        assert row["attributes"][ENVIRONMENT_ATTRIBUTE] == [{"value": "eu"}]
+        assert row["attributes"][STAGE_ATTRIBUTE] == [{"value": "production"}]
+    assert (ENVIRONMENT_ATTRIBUTE, STAGE_ATTRIBUTE) == ("Provisa Environment", "Provisa Stage")
+    # Without an environment registry no stage is claimed.
+    bare = to_rows(snapshot, "Provisa", "Provisa Governed Assets")
+    assert not any(STAGE_ATTRIBUTE in r.get("attributes", {}) for r in bare)

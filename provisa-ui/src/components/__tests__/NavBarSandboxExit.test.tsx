@@ -85,7 +85,7 @@ function renderBar() {
         <Route path="*" element={<Where />} />
       </Routes>
     </>,
-    { initialEntries: ["/admin/ontology"] },
+    { initialEntries: ["/context/ontology"] },
   );
 }
 
@@ -107,7 +107,7 @@ describe("leaving the sandbox", () => {
 
     await waitFor(() => expect(calls.order).toEqual(["deleteSandboxAccount", "signOut"]));
     // It no longer opens the organizations administration page, which a visitor cannot open.
-    expect(screen.getByTestId("where")).toHaveTextContent("/admin/ontology");
+    expect(screen.getByTestId("where")).toHaveTextContent("/context/ontology");
   });
 
   it("Log Out deletes the sandbox account and signs out", async () => {

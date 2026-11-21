@@ -14,11 +14,11 @@
     "generating": "Generazione…",
     "generateKey": "Genera chiave master",
     "saveTitle": "Salva impostazioni di crittografia",
-    "keyGeneratedStored": "Chiave master generata e memorizzata nel portachiavi del sistema operativo (ID chiave: {{keyId}}) — attiva subito, nessun riavvio necessario.",
-    "keyGeneratedNoKeychain": "Nessun portachiavi del sistema operativo disponibile — copiare questa chiave e impostarla come {{envVar}}. Non verrà mostrata di nuovo.",
+    "keyGeneratedStored": "Chiave master generata e archiviata nel portachiavi del sistema operativo (ID chiave: {{keyId}}). È già in vigore, senza riavvio.",
+    "keyGeneratedNoKeychain": "Nessun portachiavi del sistema operativo disponibile. Copiare questa chiave e impostarla come {{envVar}}. Non verrà mostrata di nuovo.",
     "savedRestartRequired": "Salvato. Riavviare il servizio per applicare.",
     "saved": "Salvato.",
-    "secretOnFile": "Memorizzato — lascia vuoto per mantenerlo",
+    "secretOnFile": "Salvato. Lasciare vuoto per mantenerlo.",
     "secretNotSet": "Non impostato",
     "fingerprintLabel": "Impronta"
   }

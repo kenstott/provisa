@@ -1,6 +1,6 @@
 {
   "relationshipRow": {
-    "fkBadge": "Uit FK",
+    "fkBadge": "Van FK",
     "fkBadgeTitle": "Gemaakt op basis van een foreign key in de bron",
     "yes": "Ja",
     "no": "Nee",

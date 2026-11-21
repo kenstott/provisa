@@ -153,3 +153,48 @@ def test_trino_reads_no_element_of_no_keys(sql: str):
     # before any element of them is read -- an empty array (only NULL keys) or no array at all
     # (array_agg over no rows) (test_percentile_null_elements_on_engines runs it).
     assert "CASE WHEN COALESCE(CARDINALITY(_s), 0) = 0 THEN NULL ELSE" in transpile(sql, "trino")
+
+
+#: A ClickHouse without Variant types (24.3, the integration lanes' server) holds no common type of
+#: NULL and an array: chdb is held to it by use_variant_as_common_type=0.
+_NO_VARIANT = " SETTINGS use_variant_as_common_type = 0"
+_KEYS = "FROM (VALUES (1.0::float8), (2.0::float8), (4.0::float8), (NULL::float8)) AS t(c1)"
+#: Each array of fractions over keys, and PostgreSQL 17's answer.
+OF_KEYS: dict[str, list[float | None]] = {
+    f"SELECT percentile_cont(ARRAY[0.25,0.75]::float8[]) WITHIN GROUP (ORDER BY c1) AS v {_KEYS}": [
+        1.5,
+        3.0,
+    ],
+    f"SELECT percentile_disc(ARRAY[0.25,0.75]::float8[]) WITHIN GROUP (ORDER BY c1) AS v {_KEYS}": [
+        1.0,
+        4.0,
+    ],
+    "SELECT percentile_cont(ARRAY[0.5, NULL]::float8[]) WITHIN GROUP (ORDER BY c1 DESC) AS v "
+    f"{_KEYS}": [2.0, None],
+}
+
+
+def _chdb(sql: str) -> list[object]:
+    import json
+
+    import chdb
+
+    data = chdb.query(transpile(sql, "clickhouse") + _NO_VARIANT, "JSONCompactEachRow").data()
+    return [json.loads(line)[0] for line in data.splitlines() if line]
+
+
+@pytest.mark.parametrize("sql", list(OF_KEYS))
+def test_clickhouse_without_variant_types_answers_an_array_of_fractions(sql: str):
+    got = _chdb(sql)
+    assert len(got) == 1 and agrees(got[0], OF_KEYS[sql]), got
+
+
+@pytest.mark.parametrize("sql", [sql for sql in NO_KEYS if "ARRAY[" in sql])
+def test_clickhouse_refuses_an_array_of_fractions_over_no_keys_by_name(sql: str):
+    with pytest.raises(Exception, match="postgresql-error 0A000: percentile of an array"):
+        _chdb(sql)
+
+
+@pytest.mark.parametrize("sql", [sql for sql in NO_KEYS if "ARRAY[" not in sql])
+def test_clickhouse_answers_null_of_one_fraction_over_no_keys(sql: str):
+    assert _chdb(sql) == [None]

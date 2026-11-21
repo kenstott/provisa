@@ -1,7 +1,7 @@
 {
   "orgEncryptionTab": {
     "loading": "Laden…",
-    "intro": "De versleutelingssleutel waarmee de gegevens van deze organisatie zijn omhuld. Hij kan hier worden ingesteld, vervangen en geroteerd; hij wordt nooit getoond, en niets op deze deployment kan hem aan jou of aan iemand anders laten zien.",
+    "intro": "De versleutelingssleutel waaronder de data van deze organisatie is verpakt. Hier kan die worden ingesteld, vervangen en geroteerd. Niets in deze deployment kan hem aan jou of aan iemand anders tonen.",
     "fingerprintLabel": "Vingerafdruk",
     "supplied": "Aangeleverd",
     "generated": "Hier gegenereerd",
@@ -9,14 +9,14 @@
     "retired": "{{count}} buiten gebruik gestelde sleutel(s) nog leesbaar",
     "unset": "Deze organisatie heeft geen eigen sleutel ingesteld. Haar gegevens zijn omhuld met de sleutel van de deployment.",
     "modeLabel": "Hoe de sleutel in te stellen",
-    "modeGenerate": "Genereer er een — hij bestaat alleen in de keyring en wordt aan niemand getoond",
+    "modeGenerate": "Er een genereren. Hij bestaat alleen in de sleutelring en wordt aan niemand getoond.",
     "modeSupply": "Mijn eigen aanleveren (base64, 32 bytes)",
     "keyLabel": "Sleutel",
     "keyHelp": "Base64 van 32 willekeurige bytes, bijv. openssl rand -base64 32. Wordt eenmaal geschreven en nooit teruggelezen.",
-    "rotationNote": "Roteren wijzigt de sleutel waarmee NIEUWE gegevens worden omhuld. De vorige sleutel wordt buiten gebruik gesteld in de keyring en blijft ontsleutelen wat hij al schreef, dus niets wordt onleesbaar — en daarom is een rotatie geen intrekking.",
+    "rotationNote": "Roteren wijzigt de sleutel waaronder nieuwe data wordt verpakt. De vorige sleutel wordt in de sleutelring uitgefaseerd en ontsleutelt nog steeds wat hij heeft geschreven, dus bestaande data blijft leesbaar, en een rotatie is geen intrekking.",
     "set": "Sleutel instellen",
     "rotate": "Sleutel roteren",
-    "applied": "Sleutel {{keyId}} actief — vingerafdruk {{fingerprint}}",
+    "applied": "Sleutel {{keyId}} actief, vingerafdruk {{fingerprint}}",
     "panelTitle": "Organisatiesleutel"
   }
 }

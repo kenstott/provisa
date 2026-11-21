@@ -2,7 +2,7 @@
   "jsonApiPage": {
     "title": "Esploratore JSON:API",
     "specLink": "Specifica",
-    "description": "Fieldset sparsi, filtri, ordinamento e paginazione. La governance si applica in modo uniforme indipendentemente dal protocollo di trasporto.",
+    "description": "Sparse fieldset, filtri, ordinamento e paginazione. La stessa governance si applica su ogni protocollo di rete.",
     "tableLabel": "Tabella",
     "loadingOption": "Caricamento…",
     "selectTablePlaceholder": "Seleziona una tabella",

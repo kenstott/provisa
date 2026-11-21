@@ -31,7 +31,7 @@
     "policiesTitle": "Voir les politiques RLS de cette table",
     "editButtonLabel": "Modifier la table {{name}}",
     "deleteButtonLabel": "Supprimer la table {{name}}",
-    "profileHeading": "Profil — {{count}} lignes échantillonnées",
+    "profileHeading": "Profil : {{count}} lignes échantillonnées",
     "colNulls": "Nuls",
     "colNullsTitle": "Valeurs nulles",
     "colBlanks": "Vides",

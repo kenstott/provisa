@@ -181,6 +181,20 @@ def resolve_target(state: Any, table_id: int, table_name: str, tags: dict[str, s
     """The member table as the org admin's compiled context publishes it: what a count, a profile
     or a sample of the whole table reads. A table that requires parameters has no such read, and
     is refused from its metadata (:class:`provisa.core.parameters.RequiresParameters`)."""
+    target = published_target(state, table_id, table_name, tags)
+    refusal = not_read_whole(state, table_id, table_name)
+    if refusal is not None:
+        raise refusal
+    return target
+
+
+def published_target(
+    state: Any, table_id: int, table_name: str, tags: dict[str, set[str]]
+) -> Target:
+    """The member table as the org admin's compiled context publishes it, whether or not it can
+    be read whole: what a declared profile describes (REQ-1942), which reads nothing, so a table
+    that requires parameters is described as any other. A reader of its rows asks
+    :func:`resolve_target`."""
     ctx = state.contexts.get(PROFILE_ROLE)
     if ctx is None:
         raise ProfileError(f"no compiled schema for role {PROFILE_ROLE!r}; cannot profile")
@@ -192,9 +206,6 @@ def resolve_target(state: Any, table_id: int, table_name: str, tags: dict[str, s
             f"to profile"
         )
 
-    refusal = not_read_whole(state, table_id, table_name)
-    if refusal is not None:
-        raise refusal
     _name = _published_name
 
     p2s: dict = ctx.physical_to_sql

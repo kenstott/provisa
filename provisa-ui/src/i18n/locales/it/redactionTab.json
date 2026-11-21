@@ -3,7 +3,7 @@
     "panelTitle": "Regole di oscuramento",
     "loading": "Caricamento…",
     "intro": "Il testo che corrisponde a queste regole viene sostituito prima di uscire da Provisa: nelle tracce e nei log esportati, nell'output dei container, nel log di audit e in ogni messaggio di errore restituito a un client, anche all'interno di una risposta riuscita. Un client riceve [REDACTED], che non nomina alcuna regola. I log, le tracce e il log di audit conservano [REDACTED:<rule>]. I segreti dell'organizzazione vengono oscurati automaticamente.",
-    "bestEffort": "L'oscuramento è svolto al meglio delle possibilità. I pattern integrati sono un insieme di partenza, non una garanzia: aggiungi qui pattern per i formati sensibili propri della tua organizzazione. I log propri di un'origine sono fuori dalla portata di Provisa.",
+    "bestEffort": "L'oscuramento avviene al meglio delle possibilità. I pattern integrati sono solo un insieme iniziale, quindi aggiungere qui pattern per i formati sensibili propri dell'organizzazione. I log propri di un'origine sono fuori dalla portata di Provisa.",
     "unresolved": "Queste regole di riferimento non si risolvono e non oscurano nulla: {{names}}",
     "orgTitle": "Regole di questa organizzazione",
     "deploymentTitle": "Regole del deployment (tutte le organizzazioni)",

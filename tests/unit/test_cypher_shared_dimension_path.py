@@ -25,7 +25,8 @@ import pytest
 import sqlglot
 
 from provisa.compiler import join_guard
-from provisa.compiler.view_expand import expand_view_refs
+from provisa.compiler.view_expand import VIEW_CATALOG, expand_view_refs
+from provisa.core.models import DERIVED_SOURCE_ID
 from provisa.cypher.parser import parse_cypher
 from provisa.gql.label_map import CypherLabelMap, NodeMapping, RelationshipMapping
 from provisa.gql.graph_rewriter import apply_graph_rewrites
@@ -50,13 +51,21 @@ def _view_sql(sides: list[str]) -> str:
 
 
 def _shelter(label: str) -> NodeMapping:
+    """A side is a table of the source; the dimension is a table of the derived source, read
+    under its catalog (view_expand.VIEW_CATALOG) as discovery registers it."""
+    view = label == DIM
     props = (
         {"neighborhood": "neighborhood"}
         if label == DIM
         else {"id": "id", "neighborhood": "neighborhood"}
     )
+    node = _node(label, TABLES[label])
+    if label == DIM:
+        # A shared dimension is a view: a table of the derived source, read under its catalog
+        # (discovery.dimension); under another catalog its name is that catalog's table.
+        node = dataclasses.replace(node, source_id="__derived__", catalog_name="__derived__")
     return dataclasses.replace(
-        _node(label, TABLES[label]),
+        node,
         type_name=f"Shelter__{label}",
         label=f"Shelter:{label}",
         domain_label="Shelter",
@@ -64,6 +73,8 @@ def _shelter(label: str) -> NodeMapping:
         table_label=label,
         id_column="neighborhood" if label == DIM else "id",
         properties=props,
+        source_id=DERIVED_SOURCE_ID if view else "pg-main",
+        catalog_name=VIEW_CATALOG if view else "pg",
     )
 
 
@@ -126,7 +137,9 @@ def _compiled(query: str, sides: list[str]) -> str:
 
 def _refused(query: str, sides: list[str]) -> list[tuple[int, int, str]]:
     """What governance refuses in the statement, the dimension expanded as it is for the check."""
-    sql = expand_view_refs(_compiled(query, sides), {TABLES[DIM]: _view_sql(sides)}, mark=True)
+    sql = expand_view_refs(
+        _compiled(query, sides), {f"public.{TABLES[DIM]}": _view_sql(sides)}, mark=True
+    )
     found = join_guard.unrelated_tables(
         sqlglot.parse_one(sql, read="postgres"),
         resolve_table_id=lambda t: IDS.get(t.name),
@@ -139,7 +152,7 @@ def _refused(query: str, sides: list[str]) -> list[tuple[int, int, str]]:
 
 
 def _rows(con, query: str, sides: list[str]) -> list[tuple]:
-    sql = expand_view_refs(_compiled(query, sides), {TABLES[DIM]: _view_sql(sides)})
+    sql = expand_view_refs(_compiled(query, sides), {f"public.{TABLES[DIM]}": _view_sql(sides)})
     cur = con.execute(transpile_to_duckdb(sql))
     names = [d[0] for d in cur.description]
     rows = [dict(zip(names, r)) for r in cur.fetchall()]
@@ -202,7 +215,7 @@ def test_a_side_with_no_relationship_to_the_dimension_is_still_refused():
     sides = ["Budget", "Complaints", "Permits"]
     sql = expand_view_refs(
         _compiled(_path("Budget", "Complaints"), sides),
-        {TABLES[DIM]: _view_sql(sides)},
+        {f"public.{TABLES[DIM]}": _view_sql(sides)},
         mark=True,
     )
     without = {r for r in _registered(sides) if IDS["complaints"] not in r[:2]}

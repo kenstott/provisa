@@ -2937,9 +2937,12 @@ main {
   }
 }
 /* Grouped fields keep their class minimum (or their label) and move to the next line together. */
-.form-field-group {
+.form-field-group,
+.form-identifiers {
   /* the label's line, and the hairline the control's own border adds */
   --form-label-offset: calc(var(--mantine-font-size-sm) * var(--mantine-line-height) + 3px);
+}
+.form-field-group {
   display: flex;
   flex-wrap: wrap;
   align-items: flex-start;
@@ -2976,7 +2979,8 @@ main {
 }
 /* An unlabelled control (a switch, a segmented choice) beside a labelled input: it starts where
  * the input's control starts, so the two share a centre line. */
-.form-field-group > .form-field--after-label {
+.form-field-group > .form-field--after-label,
+.form-identifiers > .form-field--after-label {
   margin-top: var(--form-label-offset);
 }
 /* A row whose boxes carry no label above them (one entry of a list): its action sits level with

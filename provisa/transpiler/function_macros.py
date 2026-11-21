@@ -72,6 +72,9 @@ from provisa.transpiler import (
 )
 from provisa.transpiler.metadata_functions import VALUE_FORMS
 from provisa.transpiler.polyfill import notation as polyfill_notation
+from provisa.transpiler.polyfill import texts as polyfill_texts
+from provisa.transpiler.polyfill import trino as polyfill_trino
+from provisa.transpiler.polyfill.numbers import ch_fail
 from provisa.transpiler.polyfill.regex import said_text
 from provisa.transpiler.pg_literals import literal_input as postgres_literal
 from provisa.transpiler.pg_literals import values_cast
@@ -1211,7 +1214,7 @@ def _sha(bits: int) -> Macro:
     }
     if bits in (256, 512):  # the digests Trino and SQL Server have
         forms[_TRINOS] = f"sha{bits}(value)"
-        forms[frozenset({"tsql"})] = Pg(f"sha{bits}(value)")
+        forms[frozenset({"tsql"})] = f"HASHBYTES('SHA2_{bits}', value)"  # sqlglot 30.29 writes none
     return Macro(f"sha{bits}", ("value",), forms)
 
 
@@ -2040,12 +2043,17 @@ _HELD_AS_TEXT = frozenset(
 )  # fmt: skip
 
 
-def _argument(value: exp.Expr, held: bool = False) -> exp.Expr:
+#: A text padded on the right to a count of characters, by dialect: ClickHouse's rpad counts bytes.
+_PADDED_BY_CHARACTERS = {"clickhouse": "rightPadUTF8"}
+
+
+def _argument(value: exp.Expr, held: bool = False, dialect: str = "") -> exp.Expr:
     size = _padded_to(value) if held else None
     if said_type(value) in _HELD_AS_TEXT or (held and isinstance(value.unnest(), exp.Cast)):
         value = value.unnest().this
     if size is not None:  # bpchar's input pads to its length, which the text does not hold
-        value = exp.Anonymous(this="rpad", expressions=[value, size, exp.Literal.string(" ")])
+        pad = _PADDED_BY_CHARACTERS.get(dialect, "rpad")
+        value = exp.Anonymous(this=pad, expressions=[value, size, exp.Literal.string(" ")])
     return value if isinstance(value, _ATOMIC) else exp.Paren(this=value)
 
 
@@ -2111,7 +2119,7 @@ def _written(macro: Macro, args: list[exp.Expr], dialect: str, node: exp.Expr) -
     held = macro.name in pg_forms_types.HELD | pg_forms_hash.HELD | pg_forms_index.HELD
     named = [c.name for c in form.find_all(exp.Column) if not c.table]
     if _repeats_volatile(named, macro.params, args):
-        each = [_argument(a, held) for a in args]
+        each = [_argument(a, held, dialect) for a in args]
         return _held_once(form, macro.params, each, node, macro.name, dialect)
     if form.find(exp.Lambda) is not None and any(a.find(exp.Select) is not None for a in args):
         return _in_a_subquery(form, macro.params, [_argument(a) for a in args])
@@ -2119,7 +2127,7 @@ def _written(macro: Macro, args: list[exp.Expr], dialect: str, node: exp.Expr) -
 
     def bound(node: exp.Expr) -> exp.Expr:
         if isinstance(node, exp.Column) and not node.table and node.name in values:
-            return _argument(values[node.name], held).copy()
+            return _argument(values[node.name], held, dialect).copy()
         return node
 
     return form.transform(bound)
@@ -2186,6 +2194,10 @@ def _polyfilled_by_rule(
     if isinstance(form, polyfill.Refusal):
         raise RowRefused(called, dialect, form)
     if isinstance(form, polyfill.Rewrite):
+        if form.function is polyfill_trino.kept:
+            # The old table's form: no argument is read here, as each would be read again by the
+            # old table's walk (twice a level of a nested call: abs of abs of abs).
+            return None
         written = applied.rewritten
         if written is None:
             # A rule's own pattern: its arguments in their forms first, as a form's holes are
@@ -2353,18 +2365,28 @@ _EXACT = {
     "clickhouse": {
         "sorted": "arraySort(groupArray({k}))",
         "descending": "arrayReverseSort(groupArray({k}))",
-        "bound": "arrayElement(arrayMap(_s -> {answer}, [{sorted}]), 1)",
-        "each": "arrayMap(_f -> {answer}, [{fractions}])",
-        "disc": ("if(length(_s) = 0, NULL, _s[toUInt64(greatest(ceil({f} * length(_s)), 1))])"),
-        "cont": (
-            "if(length(_s) = 0, NULL, _s[{low}] + (_s[{high}] - _s[{low}]) * ({place} - {low}))"
+        # No keys answer NULL. An array of fractions' answers over none raises by name instead:
+        # ClickHouse holds no Nullable(Array), and a server without Variant types (24.3, the
+        # integration lanes') has no common type of NULL and an array (polyfill.clickhouse
+        # PERCENTILE states the limitation).
+        "bound": "arrayElement(arrayMap(_s -> if(length(_s) = 0, NULL, {answer}), [{sorted}]), 1)",
+        "bound array": (
+            "arrayElement(arrayMap(_s -> if({no_keys} = 0, {answer}, []), [{sorted}]), 1)"
         ),
+        "each": "arrayMap(_f -> {answer}, [{fractions}])",
+        "disc": "_s[toUInt64(greatest(ceil({f} * length(_s)), 1))]",
+        "cont": "_s[{low}] + (_s[{high}] - _s[{low}]) * ({place} - {low})",
         "place": "({f} * (length(_s) - 1) + 1)",
         "low": "toUInt64(floor({place}))",
         "high": "toUInt64(ceil({place}))",
         "number": "toFloat64({k})",
     },
 }
+
+
+#: ClickHouse's refusal of an array of fractions' percentiles over no keys (polyfill.clickhouse
+#: PERCENTILE).
+_NO_KEYS = "percentile of an array of fractions over no keys does not read this value"
 
 
 def _exact(node: exp.WithinGroup, fractions: list[float], array: bool, dialect: str) -> exp.Expr:
@@ -2396,7 +2418,11 @@ def _exact(node: exp.WithinGroup, fractions: list[float], array: bool, dialect: 
         if array
         else answer(repr(fractions[0]))
     )
-    written = forms["bound"].format(sorted=sorted_, answer=each)
+    bound = forms["bound array"] if array and "bound array" in forms else forms["bound"]
+    no_keys = ch_fail("0A000", _NO_KEYS)
+    written = bound.format(
+        sorted=sorted_, answer=each, no_keys=no_keys.format(condition="length(_s) = 0")
+    )
     return sqlglot.parse_one(written, read=dialect)
 
 
@@ -2564,7 +2590,7 @@ def _call(node: exp.Expr) -> tuple[str, list[exp.Expr]] | None:
         return called, [a for a in (node.this, node.expression) if a is not None]
     if isinstance(node, exp.Time):  # what sqlglot reads as a zone is an overload's second argument
         return "time", [a for a in (node.this, node.args.get("zone")) if a is not None]
-    if isinstance(node, exp.SHA2):  # sqlglot's reading of sha256, sha384 and sha512
+    if isinstance(node, exp.SHA2Digest):  # sqlglot's reading of sha256, sha384 and sha512
         length = node.args.get("length")
         return f"sha{length.this if isinstance(length, exp.Literal) else 256}", [node.this]
     if isinstance(node, exp.Encode) and isinstance(node.args.get("charset"), exp.Literal):
@@ -2827,11 +2853,36 @@ def _said_scale(scale: exp.Expr, called: str, dialect: str) -> int | None:
         said = said.this.unnest()
     if isinstance(said, exp.Null):
         return None
+    negated = said.this.unnest() if isinstance(said, exp.Neg) else None
+    if isinstance(negated, exp.Cast):  # -1::integer is -(1::integer): the cast reads 1 first
+        inner = _constant(negated.this)
+        if inner is None:
+            raise FunctionRefused(called, dialect)
+        if inner > _INT4_GREATEST:
+            raise PostgresError("22003", "integer out of range")  # the cast, before the negation
+        said = exp.Neg(this=exp.Literal.number(inner))
     digits = _constant(said)
+    if digits is None and isinstance(said, exp.Literal) and said.is_string:
+        digits = _integer_text(said.this)  # '0'::integer
     most = _DUCKDB_MOST_SCALE if dialect in _DUCKDB else _MOST_SCALE
-    if digits is None or digits > most or (dialect not in _DUCKDB and digits < 0):
+    negative_kept = dialect in _DUCKDB or dialect == "clickhouse"  # ClickHouse's round takes -38..
+    if digits is None or digits > most or (not negative_kept and digits < 0):
         raise FunctionRefused(called, dialect)
     return digits
+
+
+_INT4_GREATEST = 2147483647
+#: The fewest digits ClickHouse's round and trunc of a Decimal take; below it every numeric a
+#: Decimal holds (38 digits) is 0, as PostgreSQL's round and trunc answer it.
+_CLICKHOUSE_LEAST_SCALE = -38
+
+
+def _integer_text(text: str) -> int | None:
+    """The integer an integer's text says, as int4in reads it; None for any other text."""
+    try:
+        return int(text.strip())
+    except ValueError:
+        return None
 
 
 def _answered_by_a_row(node: exp.Expr, dialect: str) -> bool:
@@ -2855,6 +2906,20 @@ def _answered_by_a_row(node: exp.Expr, dialect: str) -> bool:
         return False
 
 
+def _answered_first(node: exp.Expr, dialect: str) -> bool:
+    """Whether a grid rule over every call (Rewrite.first, read before any pattern by the walk)
+    answers ``node``, a call the old table refuses: a bit string's row, whose name bytea's
+    patterns share. Read only for such a call: the rules are many, and the walk reads them again."""
+    try:
+        first = polyfill.GRID.read_first(node, dialect)
+    except polyfill_notation.Refused as refused:
+        if refused.ruling:
+            called = node.name.lower() if isinstance(node, exp.Anonymous) else _feature_of(node)
+            raise RowRefused(called, dialect, refused.refusal) from refused
+        return False
+    return first is not None and first.rewritten is not None
+
+
 def inline(tree: exp.Expr, dialect: str) -> exp.Expr:
     """``tree`` with each call of a function of the table written in its form for ``dialect``.
     Raises :class:`FunctionRefused` for a call of one it has no form of. A call with no overload
@@ -2867,11 +2932,11 @@ def inline(tree: exp.Expr, dialect: str) -> exp.Expr:
             if _answered_by_a_row(node, dialect):
                 continue  # REQ-2167: an answer within a stated bound comes before a refusal
             refused_call = engine_refusals.refused_call(node, dialect, said_type)
-            if refused_call is not None:
+            if refused_call is not None and not _answered_first(node, dialect):
                 raise FunctionRefused(refused_call, dialect)
     try:
         tree = pg_forms_textsearch.lowered(tree, dialect)
-        tree = pg_forms_json.lowered(tree, dialect)
+        tree = pg_forms_json.lowered(tree, dialect, lambda n: _answered_by_a_row(n, dialect))
     except (pg_forms_json.NoForm, pg_forms_textsearch.NoForm) as refused:
         raise FunctionRefused(refused.called, dialect) from refused
 
@@ -2902,10 +2967,6 @@ def inline(tree: exp.Expr, dialect: str) -> exp.Expr:
             and any(_is_null(part) for part in node.expressions)
         ):  # strict, and an engine's own part of a NULL is its error
             return exp.Cast(this=exp.Null(), to=exp.DataType.build("DOUBLE"))
-        if isinstance(node, (exp.Substring, exp.Left, exp.Right)) and dialect in _FROM_THE_END:
-            edged = _past_the_edge(node, dialect)
-            if edged is not None:
-                return edged
         target = node
         if (
             isinstance(node, exp.Dot)
@@ -2913,11 +2974,34 @@ def inline(tree: exp.Expr, dialect: str) -> exp.Expr:
             and node.this.name.lower() == "pg_catalog"
         ):
             target = node.expression
-        first = polyfill.GRID.read_first(target, dialect)  # a grid rule over every call
+        # A grid rule over every call, before the forms of a substring past its edge: a substring
+        # of a bit string is its row's.
+        try:
+            first = polyfill.GRID.read_first(target, dialect)
+        except polyfill_notation.Refused as refused:
+            if not refused.ruling:
+                raise
+            called = (
+                target.name.lower() if isinstance(target, exp.Anonymous) else _feature_of(target)
+            )
+            raise RowRefused(called, dialect, refused.refusal) from refused
         if first is not None and first.rewritten is not None:
             in_select = isinstance(node.parent, exp.Select) and node.arg_key == "expressions"
             return first.rewritten if in_select else first.rewritten.unalias()
-        polyfilled = _polyfilled(target, node, dialect, rewrite)
+        # A substring of a range's own text (pg_ranges' mark): ASCII, which no row reads by
+        # characters, so the grid is not read of it (its arguments would be read twice).
+        tried = bool(node.meta.get(polyfill_texts.RANGE_TEXT))
+        if isinstance(node, (exp.Substring, exp.Left, exp.Right)) and dialect in _FROM_THE_END:
+            if dialect == "clickhouse" and not tried:
+                # REQ-2236: a grid row that reads the position as PostgreSQL does (ClickHouse's
+                # text by characters) comes before this form, which reads bytes there.
+                polyfilled, tried = _polyfilled(target, node, dialect, rewrite), True
+                if polyfilled is not None:
+                    return polyfilled
+            edged = _past_the_edge(node, dialect)
+            if edged is not None:
+                return edged
+        polyfilled = None if tried else _polyfilled(target, node, dialect, rewrite)
         if polyfilled is not None:
             return polyfilled
         if type(node) in _ARRAY_OPERATOR_ROWS and dialect in _TRINO:
@@ -2957,7 +3041,10 @@ def inline(tree: exp.Expr, dialect: str) -> exp.Expr:
         if digits is not None:  # an engine takes a scale only as a constant
             args = [args[0], exp.Literal.number(digits)]
         # transform does not revisit what a replaced node holds: a call in an argument.
-        written = _written(macro, [a.transform(rewrite) for a in args], dialect, node)
+        if digits is not None and dialect == "clickhouse" and digits < _CLICKHOUSE_LEAST_SCALE:
+            written = exp.Mul(this=args[0].transform(rewrite), expression=exp.Literal.number(0))
+        else:
+            written = _written(macro, [a.transform(rewrite) for a in args], dialect, node)
         if digits is not None:  # the scale PostgreSQL's numeric answers with, 0 for one below it
             scaled = f"DECIMAL(38, {max(digits, 0)})"
             written = exp.Cast(this=written, to=exp.DataType.build(scaled, dialect="postgres"))

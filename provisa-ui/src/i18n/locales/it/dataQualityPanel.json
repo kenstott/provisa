@@ -27,7 +27,7 @@
     "datasetLabel": "Dataset",
     "datasetHelp": "La tabella osservata dal verificatore, nella forma «<origine dati>/<schema>/<tabella>». Viene risolta sul catalogo governato, allo stesso modo della scansione.",
     "datasetTableLabel": "Tabella",
-    "argsHelp": "Ogni riga è un controllo. Modificane gli argomenti direttamente qui: il testo del contratto del verificatore viene serializzato da queste righe.",
+    "argsHelp": "Ogni riga è un controllo. Modifica gli argomenti direttamente; il testo del contratto del verificatore viene serializzato da queste righe.",
     "invalidRow": "Non è stato possibile analizzare gli argomenti di questa riga; è stato mantenuto il valore precedente."
   }
 }

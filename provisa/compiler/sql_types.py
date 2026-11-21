@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import functools
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING, Any, Protocol
 
 if TYPE_CHECKING:
     from provisa.compiler.native_nested import NestedColumns
@@ -255,6 +255,14 @@ class CompilationContext:
     # aggregate compiler selects a metric exactly like a sum/avg column (same expansion the
     # raw-SQL pipeline applies via metric_expand).
     metric_exprs: dict[tuple[int, str], str] = field(default_factory=dict)
+    # The lookups sql_rewrite derives from this context to lower a statement (its table names,
+    # replacements, published columns), each kept with the stamp of the inputs it was derived
+    # from and the SQL naming convention in force (sql_rewrite._derived). A context is built once
+    # and read by every statement of its role; derived per statement, they were most of the
+    # server time of a simple query.
+    lowering_memo: dict[Any, tuple[Any, Any]] = field(
+        default_factory=dict, repr=False, compare=False
+    )
 
 
 # --- Compiled query result ---

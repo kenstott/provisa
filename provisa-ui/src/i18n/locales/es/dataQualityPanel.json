@@ -27,7 +27,7 @@
     "datasetLabel": "Conjunto de datos",
     "datasetHelp": "La tabla que observa el verificador, como «<fuente de datos>/<esquema>/<tabla>». Se resuelve contra el catálogo gobernado, igual que lo resuelve el escaneo.",
     "datasetTableLabel": "Tabla",
-    "argsHelp": "Cada fila es una comprobación. Edite sus argumentos aquí mismo: el texto del contrato del verificador se serializa a partir de estas filas.",
+    "argsHelp": "Cada fila es una comprobación. Edite sus argumentos directamente; el texto del contrato del verificador se serializa a partir de estas filas.",
     "invalidRow": "No se pudieron analizar los argumentos de esta fila; se conservó el valor anterior."
   }
 }

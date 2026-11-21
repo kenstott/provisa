@@ -1,6 +1,6 @@
 {
   "proposalsTable": {
-    "intro": "Eine angehakte Zeile wird beim Anwenden akzeptiert. Zeilen, deren Bewertung mindestens die Schwelle erreicht, sind von Anfang an angehakt. Eine Zeile ohne Haken bleibt unentschieden.",
+    "intro": "Eine markierte Zeile wird beim Anwenden akzeptiert. Zeilen mit einer Bewertung ab dem Schwellenwert sind anfangs markiert. Eine Zeile ohne markiertes Kästchen bleibt unentschieden.",
     "colScore": "Bewertung",
     "colConfidence": "Konfidenz",
     "colJev": "Jev",
@@ -27,7 +27,7 @@
       "invalid_shape": "Keine Beziehung in der verlangten Form: Ein Feld fehlt oder hat die falsche Form",
       "unknown_column": "Nennt eine Tabelle oder Spalte, die die Anfrage nicht verglichen hat",
       "not_comparable": "Die beiden Spalten haben unterschiedliche Klassen und werden daher nicht verglichen",
-      "below_threshold": "Unter den {{threshold}} % bewertet, ab denen ein Vorschlag behalten wird.",
+      "below_threshold": "Bewertung unter den {{threshold}} %, ab denen ein Vorschlag behalten wird.",
       "same_column": "Von einer Spalte zu sich selbst",
       "existing": "Bereits registriert",
       "rejected": "Zuvor abgelehnt",

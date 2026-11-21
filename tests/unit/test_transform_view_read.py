@@ -103,8 +103,9 @@ def _state(
     )
     state = SimpleNamespace(
         mv_registry=registry,
-        stored_view_reads={"clean_suppliers"},
-        view_sql_map={"clean_suppliers": READ},
+        source_catalogs={},  # the default org: its views lowered under __derived__
+        stored_view_reads={"fx.clean_suppliers"},
+        view_sql_map={"fx.clean_suppliers": READ},
         column_transforms={"clean_address": CLEAN_ADDRESS},
         role_build_inputs={
             "withdrawn_tables": [],  # no table is out of service
@@ -145,7 +146,12 @@ RANK_SUPPLIERS = {
 
 def _gov() -> GovernanceContext:
     gov = GovernanceContext()
-    gov.table_map = {"fx.suppliers": 1, "suppliers": 1, "clean_suppliers": 2}
+    gov.table_map = {
+        "fx.suppliers": 1,
+        "suppliers": 1,
+        "fx.clean_suppliers": 2,
+        "clean_suppliers": 2,
+    }
     return gov
 
 
@@ -159,7 +165,7 @@ def _relations(sql: str) -> set[str]:
 @pytest.mark.parametrize("status", [MVStatus.FRESH, MVStatus.STALE])
 def test_a_transform_view_keeps_its_reference_through_governance(status):
     governed, validated = semantic_statement(
-        STATEMENT, {"clean_suppliers": READ}, _state(status), _gov()
+        STATEMENT, {"fx.clean_suppliers": READ}, _state(status), _gov()
     )
     # Governance judges the view as the registered table it is, its own rules on top.
     assert governed == STATEMENT
@@ -169,8 +175,8 @@ def test_a_transform_view_keeps_its_reference_through_governance(status):
 
 @pytest.mark.parametrize("status", [MVStatus.FRESH, MVStatus.STALE])
 def test_a_transform_view_is_answered_from_its_stored_table(status):
-    bodies = unnarrowed_view_bodies(STATEMENT, {"clean_suppliers": READ}, _state(status))
-    assert bodies == {"clean_suppliers": READ}
+    bodies = unnarrowed_view_bodies(STATEMENT, {"fx.clean_suppliers": READ}, _state(status))
+    assert bodies == {"fx.clean_suppliers": READ}
 
 
 # --- REQ-2131 (amended 2026-11-16): the stored rows read under the reader's rules ----------------
@@ -190,9 +196,9 @@ def _answered(statement: str, state: SimpleNamespace, gov: GovernanceContext) ->
     from provisa.compiler.view_expand import expand_view_refs
     from provisa.mv.view_read import read_stored_views
 
-    governed, _ = semantic_statement(statement, {"clean_suppliers": READ}, state, gov)
+    governed, _ = semantic_statement(statement, {"fx.clean_suppliers": READ}, state, gov)
     governed = asyncio.run(read_stored_views(governed, state, gov))
-    bodies = unnarrowed_view_bodies(governed, {"clean_suppliers": READ}, state)
+    bodies = unnarrowed_view_bodies(governed, {"fx.clean_suppliers": READ}, state)
     return expand_view_refs(governed, bodies)
 
 
@@ -250,7 +256,7 @@ def test_a_masked_input_masks_the_outputs_derived_from_it_and_no_other(status):
 @pytest.mark.parametrize("status", [MVStatus.FRESH, MVStatus.STALE])
 def test_a_mask_on_a_plain_input_masks_its_own_output_only(status):
     items = _items(_answered(STATEMENT, _state(status), _reader(masked=("id",))))
-    assert items["id"] == "'***'"
+    assert items["id"] == "NULL"  # an integer output reads a constant mask as NULL (REQ-2131)
     assert {items[c] for c in ("street", "city", "country")} == {
         f'"clean_suppliers"."{c}"' for c in ("street", "city", "country")
     }
@@ -262,7 +268,10 @@ def test_a_reader_whose_rules_narrow_nothing_reads_the_stored_rows_as_they_are(s
     stored rows as they are."""
     answered = _answered(STATEMENT, _state(status, {1: _east()}), _reader())
     # The statement only has the view put in at optimization, as for an administrator.
-    assert answered == f"SELECT id, city FROM ({READ}) clean_suppliers WHERE city = 'Springfield 3'"
+    assert (
+        answered
+        == f"SELECT id, city FROM ({READ}) \"clean_suppliers\" WHERE city = 'Springfield 3'"
+    )
 
 
 def test_rows_and_masks_hold_together():
@@ -395,7 +404,7 @@ def test_a_code_command_view_read_by_a_restricted_role_gets_only_its_rows_masked
     )
     assert f"WHERE {HELD.replace('suppliers__', 's__')} = 'east'" in answered
     items = _items(answered)
-    assert items["score"] == "'***'"
+    assert items["score"] == "NULL"  # a double output keeps its type: NULL, never '***'
     assert items["id"] == '"clean_suppliers"."id"'
     assert "rank_suppliers" not in answered  # no command is called on a read
 
@@ -424,7 +433,7 @@ def test_a_mask_on_a_table_a_code_command_is_given_masks_its_outputs():
     called_only = "SELECT r.supplier_id AS id, r.score FROM rank_suppliers('fx.suppliers') AS r"
     state = _state(MVStatus.FRESH, definition=called_only)
     items = _items(_answered(RANKED_STATEMENT, state, _ranked_reader(masked=("region",))))
-    assert items == {"id": "'***'", "score": "'***'"}
+    assert items == {"id": "NULL", "score": "NULL"}
 
 
 # --- REQ-2131 (amended 2026-11-16): a rule change builds the view again --------------------------
@@ -471,7 +480,10 @@ def test_a_reader_the_change_does_not_touch_keeps_reading_and_nothing_is_probed(
     state = _state(MVStatus.FRESH, {1: _east()})
     _changed(state)
     answered = _answered(STATEMENT, state, _reader())
-    assert answered == f"SELECT id, city FROM ({READ}) clean_suppliers WHERE city = 'Springfield 3'"
+    assert (
+        answered
+        == f"SELECT id, city FROM ({READ}) \"clean_suppliers\" WHERE city = 'Springfield 3'"
+    )
     assert state.federation_engine.probes == []
 
 
@@ -559,9 +571,9 @@ def test_a_key_output_is_masked_only_by_a_mask_on_its_key_column():
     state = _state(MVStatus.FRESH, definition=CALLED_ONLY)
     state.relationships = [SUPPLIER_TO_VIEW]
     items = _items(_answered(RANKED_STATEMENT, state, _ranked_reader(masked=("region",))))
-    assert items == {"id": '"clean_suppliers"."id"', "score": "'***'"}
+    assert items == {"id": '"clean_suppliers"."id"', "score": "NULL"}
     items = _items(_answered(RANKED_STATEMENT, state, _ranked_reader(masked=("id",))))
-    assert items == {"id": "'***'", "score": "'***'"}
+    assert items == {"id": "NULL", "score": "NULL"}
 
 
 def test_a_junction_edge_through_the_view_is_no_relationship_to_filter_by():

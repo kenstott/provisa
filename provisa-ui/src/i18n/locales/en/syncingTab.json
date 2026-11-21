@@ -1,5 +1,6 @@
 {
   "syncingTab": {
+    "title": "Context Sync",
     "loading": "Loading…",
     "intro": "Every outside system kept in step with Provisa: data catalogs, ontologies and systems of your own. Each says which way it syncs. Descriptions, owners, tags and terms are kept in step, not data.",
     "heading_data_catalog": "Data Catalog",

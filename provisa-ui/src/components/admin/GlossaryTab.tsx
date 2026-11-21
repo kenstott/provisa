@@ -79,7 +79,6 @@ import {
   generateGlossaryRelationships,
   fetchGlossaryFindings,
   listAttributablePeople,
-  listGlossaryTerms,
   restoreGlossaryTerm,
   type AttributablePerson,
   type GlossaryFinding,
@@ -109,6 +108,7 @@ import {
   readStoredBool,
   readStoredString,
   useGlossaryPanel,
+  useReadableTermIds,
   writeStored,
   writeStoredBool,
 } from "./useGlossaryPanel";
@@ -126,8 +126,9 @@ export function GlossaryTab() {
   // The page reopens as it was left: its view, search and filters are per-viewer preferences kept in
   // the browser. A deep link (?term=, ?search=) decides that visit instead, and is not saved over
   // them; only the reader's own changes are.
+  const [readableTermIds, readTerms] = useReadableTermIds(); // REQ-2260
   const { ontology, setOntology, selectedId, setSelectedId, editing, setEditing } =
-    useGlossaryPanel(canEdit);
+    useGlossaryPanel(canEdit, readableTermIds);
   // REQ-1592: the org's glossary owner. It is what admits a term to the enterprise scope ("*"),
   // so the option is offered only to a holder — the server refuses it to anyone else.
   const isOrgGlossaryOwner = useCapability("org_glossary_rw");
@@ -198,7 +199,7 @@ export function GlossaryTab() {
   const [findTermsOpen, setFindTermsOpen] = useState(false);
   // REQ-2115: the open term by name, once the glossary has answered for it, and whether the Find
   // terms dialog is open.
-  useScreenInputs("/admin/ontology", {
+  useScreenInputs("/context/ontology", {
     termName: detail?.id === selectedId ? (detail?.name ?? null) : null,
     findTerms: findTermsOpen,
   });
@@ -231,11 +232,11 @@ export function GlossaryTab() {
     setListLoading(true);
     try {
       // Every status is fetched: the Status filter narrows the list in the browser.
-      setTerms(await listGlossaryTerms(query, true, viewDomains && [...viewDomains]));
+      setTerms(await readTerms(query, viewDomains && [...viewDomains]));
     } finally {
       setListLoading(false);
     }
-  }, [query, viewDomains]);
+  }, [query, viewDomains, readTerms]);
 
   useEffect(() => {
     // Deferred so the loading flag is never set synchronously inside the effect body
@@ -428,11 +429,21 @@ export function GlossaryTab() {
     setBulkGeneratingDefinitions(true);
     setActionError("");
     try {
-      const { generated } = await generateAllGlossaryDefinitions(viewDomains);
+      const { generated, tables_without_samples } =
+        await generateAllGlossaryDefinitions(viewDomains);
       notifications.show({
         color: "green",
         message: t("glossaryTab.definitionsGenerated", { count: generated }),
       });
+      // REQ-1387: name the tables the drafts read no samples from; it stays until dismissed.
+      if (tables_without_samples.length > 0)
+        notifications.show({
+          color: "yellow",
+          autoClose: false,
+          message: t("glossaryTab.tablesWithoutSamples", {
+            tables: tables_without_samples.join(", "),
+          }),
+        });
       if (selectedId !== null) await loadDetail(selectedId);
       await refreshList();
     } catch (e) {

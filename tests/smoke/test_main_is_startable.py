@@ -84,6 +84,8 @@ class Instance:
     bolt: int
     ui: int
     log_dir: Path
+    # The demo pet store's base URL, built from the port this harness leased for it.
+    petstore: str
     env: dict[str, str] = field(default_factory=dict)
 
     @property
@@ -200,6 +202,7 @@ def instance() -> Iterator[Instance]:
                 {**base, "DEMO_GRPC_PORT": str(demo_grpc)},
             )
         )
+        petstore = f"http://localhost:{pet}/api/v3"
         env = {
             **base,
             "PROVISA_HOME": str(home),
@@ -237,7 +240,7 @@ def instance() -> Iterator[Instance]:
             "POSTGRES_HOST": host,
             "GRAPHQL_DEMO_ENABLED": "true",
             "GRAPHQL_DEMO_URL": f"http://localhost:{gql}/graphql",
-            "PETSTORE_BASE_URL": f"http://localhost:{pet}/api/v3",
+            "PETSTORE_BASE_URL": petstore,
             "DEMO_GRPC_PORT": str(demo_grpc),
             "DEMO_GRPC_TARGET": f"localhost:{demo_grpc}",
             "SMOKE_PG_HOST": source["PG_HOST"],
@@ -251,7 +254,7 @@ def instance() -> Iterator[Instance]:
             env,
         )
         processes.append(backend)
-        running = Instance(api, grpc_port, flight, pgwire, mcp, bolt, ui, log_dir, base)
+        running = Instance(api, grpc_port, flight, pgwire, mcp, bolt, ui, log_dir, petstore, base)
         _wait_for_health(backend, running.url, log_dir / "backend.log")
         seat_principal(database_url)
         yield running
@@ -472,7 +475,8 @@ def test_the_graphql_demo_source_registers_at_startup(instance: Instance):
         assert time.monotonic() < deadline, f"no graphql-demo registration outcome:\n{text[-4000:]}"
         time.sleep(1)
         text = log.read_text(errors="replace")
-    assert failed not in text, text[text.index(failed) - 200 : text.index(failed) + 4000]
+    # The failure line and its traceback, from the start of that line.
+    assert failed not in text, text[text.rfind("\n", 0, text.index(failed)) + 1 :][:4000]
     assert registered in text
 
 

@@ -236,7 +236,7 @@ async function registeredDescription(): Promise<unknown> {
 async function openForm() {
   render(<TablesPage />);
   await waitFor(() => {
-    expect(screen.getByRole("heading", { name: /registered tables/i })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /^tables$/i })).toBeInTheDocument();
   });
   await userEvent.click(screen.getByRole("button", { name: "+ Table" }));
   // One domain is offered here, so it is the domain and is not asked: there is no select.

@@ -260,6 +260,20 @@ DECLARED: list[Setting] = [
         unit="seconds",
     ),
     Setting(
+        key="sparql.query_timeout",
+        card="limits",
+        type="float",
+        effect="live",  # read at each SPARQL call: a preview, a Wikidata lookup, a replica load
+        # REQ-1923 (amended 2026-11-20): complex SPARQL is given a generous deadline, stated as a
+        # setting with its UI; the full read happens in the replica load, never in a request.
+        req="REQ-1923",
+        env="PROVISA_SPARQL_QUERY_TIMEOUT",
+        config_path=("server", "limits", "sparql_query_timeout"),
+        default=300.0,
+        min=1,
+        unit="seconds",
+    ),
+    Setting(
         key="sampling.default_sample_size",
         card="limits",
         type="int",

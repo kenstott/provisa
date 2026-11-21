@@ -416,6 +416,9 @@ async def _seat_claimant_in_root(user_id: str) -> None:  # REQ-1296
     # seat them as its org_admin too. Without this the claim lands on "No roles configured" again: the
     # welcome modal would hand them a deployment whose own org they cannot query.
     await grant_org_role(model_db, user_id, ORG_ADMIN_ROLE, granter_capabilities=DEPLOYMENT_GRANTER)
+    from provisa.api.effective_rows import record_people
+
+    await record_people(state.org_id, [user_id])
     # REQ-1599: and in the sandbox org, which is a tenant org their platform_admin reaches no
     # further into than any other. A no-op while it is still building — that build seats them.
     from provisa.api.sandbox_org import seat_platform_admins
@@ -809,6 +812,7 @@ async def register(body: RegisterRequest, request: Request):
         )
         assert role_rt.model_db is not None
         await seat_redeemed_roles(role_rt.model_db, user_id, role_id)
+        await _record_redeemed(invite["org_id"], pinned_env, user_id)
         # REQ-1599: if platform_admin, seat in sandbox org
         from provisa.api.sandbox_org import reseat_after_conferral
 
@@ -923,6 +927,7 @@ async def redeem_invite(body: RedeemInviteRequest, request: Request):
         )
         assert role_rt.model_db is not None
         await seat_redeemed_roles(role_rt.model_db, user_id, role_id)
+        await _record_redeemed(invite["org_id"], pinned_env, user_id)
         # REQ-1599: an invitation is the other way platform_admin is conferred, and a new administrator
         # is owed the sandbox org the same as the claimant is.
         from provisa.api.sandbox_org import reseat_after_conferral
@@ -979,6 +984,9 @@ async def delete_sandbox_account(request: Request):
     delete_firebase_user(user_id)
     model_db = await _org_model_db(SANDBOX_ORG_ID)
     await remove_from_org(admin_db, model_db, user_id, SANDBOX_ORG_ID)
+    from provisa.api.effective_rows import record_people
+
+    await record_people(SANDBOX_ORG_ID, [user_id])
     async with admin_db.acquire() as conn:
         await conn.execute_core(delete(user_profiles).where(user_profiles.c.user_id == user_id))
     return {"deleted": user_id}
@@ -1078,7 +1086,7 @@ async def delete_account(request: Request, confirm: str | None = None):
     platform_db = state.platform_model_db
     assert platform_db is not None
     try:
-        return await remove_account(
+        removed = await remove_account(
             _admin_pool(),
             platform_db,
             user_id,
@@ -1106,3 +1114,19 @@ async def delete_account(request: Request, confirm: str | None = None):
                 "another user before deleting your account."
             ),
         ) from refused
+    from provisa.api.effective_rows import record_removed_account
+
+    await record_removed_account(removed)
+    return removed
+
+
+async def _record_redeemed(org_id: str, pinned_env: str | None, user_id: str) -> None:
+    """REQ-2219: a redemption granted ``user_id`` a role in ``org_id``; their effective rows are
+    recomputed. The rows are prod's: an environment's model is the prod's, and only the prod
+    build records rows (write_every_holder), so a grant pinned to another environment changes no
+    prod row."""
+    from provisa.api.effective_rows import record_people
+    from provisa.core.environments import PROD
+
+    if pinned_env is None or pinned_env == PROD:
+        await record_people(org_id, [user_id])

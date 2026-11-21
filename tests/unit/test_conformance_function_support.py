@@ -1291,6 +1291,34 @@ def test_an_answer_about_the_database_is_equivalent_for_those_functions_only():
     assert _compare(want, garbled, function="database_to_xmlschema").difference is not None
 
 
+def test_a_comparison_function_compares_by_sign_alone():
+    # byteacmp's memcmp difference: -222 on one reference platform, -1 on another (run 44547205126).
+    for want, got in (("-222", "-1"), ("133", "1"), ("0", "0"), ("-97", "-1")):
+        compared = _compare(_ok(want, oid=23), _ok(got, oid=23), function="byteacmp")
+        assert compared.difference is None
+        if want != got:
+            assert compared.rules == {report.COMPARISON_SIGN}
+    for want, got in (("-222", "1"), ("0", "-1"), ("1", "0"), ("1", "x")):
+        compared = _compare(_ok(want, oid=23), _ok(got, oid=23), function="bttextcmp")
+        assert compared.difference is not None
+    # Any other function's integer answer still compares by value.
+    assert _compare(_ok("-222", oid=23), _ok("-1", oid=23), function="length").difference
+
+
+def test_the_comparison_functions_are_the_families_comparators():
+    families = (REPO / "scripts" / "conformance" / "function_families.yaml").read_text()
+    for name in (
+        "byteacmp",
+        "btnametextcmp",
+        "bttext_pattern_cmp",
+        "bttextnamecmp",
+        "gin_cmp_tslexeme",
+        "gin_compare_jsonb",
+    ):
+        assert name in support.COMPARISON_FUNCTIONS
+        assert name in families
+
+
 def test_a_record_compares_json_only_in_its_json_fields():
     assert _compare(_ok('(a,"[1]")', oid=2249), _ok('(b,"[1]")', oid=2249)).difference
     assert _compare(_ok('(a,"[1,2]")', oid=2249), _ok('(a,"[1,3]")', oid=2249)).difference
@@ -1478,6 +1506,7 @@ def test_the_rules_are_the_ones_the_requirement_and_the_brief_name():
         report.ARRAY_ORDER,
         report.CLOCK_FIELD,
         report.ZONE_PACKAGING,
+        report.COMPARISON_SIGN,
     ]
 
 

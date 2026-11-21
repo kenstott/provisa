@@ -18,8 +18,12 @@ import { PanelDuplicate } from "../../components/list/PanelDuplicate";
 import { Tip } from "../../components/Tip";
 import { DetailFields } from "../../components/detail/DetailFields";
 import { TagControl } from "../../components/TagControl";
+import { EntityLink } from "../../components/EntityLink";
 
 interface MetricDetailPanelProps {
+  /** REQ-2259: the Context group's Metrics page -- no Edit, Duplicate or Delete, no tag edits,
+   * and the name links to the metric in its editor when the viewer may open it. */
+  readOnly?: boolean;
   m: Metric;
   dependentViews: string[];
   onEdit: () => void;
@@ -83,6 +87,7 @@ function MetricActions({
 // Row-click detail view for a metric — detail-then-edit: the read-only facts, with Edit,
 // Duplicate and Delete in the panel's head.
 export function MetricDetailPanel({
+  readOnly = false,
   m,
   dependentViews,
   onEdit,
@@ -93,12 +98,23 @@ export function MetricDetailPanel({
 
   return (
     <Stack gap="sm" data-testid={`metric-detail-${m.name}`}>
-      <MetricActions m={m} onEdit={onEdit} onDuplicate={onDuplicate} onDelete={onDelete} />
+      {!readOnly && (
+        <MetricActions m={m} onEdit={onEdit} onDuplicate={onDuplicate} onDelete={onDelete} />
+      )}
       {/* Every value of the metric, under its form's labels. */}
       <DetailFields
         testId={`metric-read-${m.name}`}
         fields={[
-          { label: t("metricsPage.fieldName"), value: m.name },
+          {
+            label: t("metricsPage.fieldName"),
+            value: readOnly ? (
+              <EntityLink kind="metric" id={m.name} testId={`metric-link-${m.name}`}>
+                {m.name}
+              </EntityLink>
+            ) : (
+              m.name
+            ),
+          },
           {
             label: t("metricsPage.fieldExpression"),
             value: (
@@ -115,7 +131,7 @@ export function MetricDetailPanel({
           // REQ-2208: a metric carries tags as the model's objects do.
           {
             label: t("metricsPage.fieldTags"),
-            value: <TagControl objectType="metric" metricName={m.name} />,
+            value: <TagControl objectType="metric" metricName={m.name} readOnly={readOnly} />,
           },
           {
             label: t("metricsPage.builderFact"),

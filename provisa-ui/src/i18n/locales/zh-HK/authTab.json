@@ -9,12 +9,12 @@
     "assignmentsSourceClaims": "權杖宣告",
     "assignmentsSourceProvisa": "Provisa（本機指派）",
     "trustUpstream": "信任上游代理伺服器的身分識別標頭",
-    "allowSimpleAuth": "允許簡易驗證（正式環境防護 — 啟用使用者名稱／密碼所需）",
+    "allowSimpleAuth": "允許簡易驗證（生產環境防護，啟用使用者名稱／密碼登入時必須）",
     "saveButton": "儲存驗證設定",
     "loading": "正在載入…",
     "saved": "已儲存。",
     "savedRestartRequired": "已儲存。請重新啟動服務以套用。",
-    "secretOnFile": "已儲存 — 留空即保留",
+    "secretOnFile": "已儲存。留空以保持不變。",
     "secretNotSet": "未設定",
     "allowRegistration": "允許使用者自行建立帳戶"
   }

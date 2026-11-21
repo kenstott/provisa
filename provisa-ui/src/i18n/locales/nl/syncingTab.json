@@ -1,5 +1,6 @@
 {
   "syncingTab": {
+    "title": "Contextsynchronisatie",
     "loading": "Laden…",
     "intro": "Elk extern systeem dat met Provisa in de pas wordt gehouden: datacatalogi, ontologieën en eigen systemen. Elk geeft aan in welke richting het synchroniseert. Beschrijvingen, eigenaren, tags en termen worden in de pas gehouden, geen data.",
     "heading_data_catalog": "Datacatalogus",

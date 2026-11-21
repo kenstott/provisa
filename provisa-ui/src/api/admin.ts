@@ -19,6 +19,7 @@ import { serverMessage, requestFailed, type ServerMessageShape } from "../i18n/s
 import type { MaskEntry } from "../lib/masks";
 import type { ResultRedirect } from "../types/resultRedirect";
 import { columnKeys, rowByKeys } from "../lib/columnKeys";
+import { selectedDomainsQuery, withSelectedDomains } from "./selectedDomains";
 
 const API_BASE = import.meta.env.VITE_API_BASE || "";
 
@@ -963,15 +964,8 @@ export function fetchModelLimits(vendor: string, model: string): Promise<ModelLi
   return discoveryRequest(`/limits?${q}`, "Model limits");
 }
 
-// REQ-2253: a run carries the navbar filter's selection (useViewDomains; null asks for no
-// narrowing) as repeated ``domains=`` parameters, so the server reads, counts and proposes no table
-// outside it. Repeated rather than comma-joined: the no-domain domain's id is the empty string.
-function selectedDomainsQuery(domains: ReadonlySet<string> | null): string {
-  if (domains === null) return "";
-  const params = new URLSearchParams();
-  for (const d of domains) params.append("domains", d);
-  return `?${params.toString()}`;
-}
+// REQ-2253: a run carries the navbar filter's selection (selectedDomainsQuery), so the server
+// reads, counts and proposes no table outside it.
 
 export function countDiscoveryRun(
   scope: DiscoveryScope,
@@ -2595,20 +2589,30 @@ export async function fetchUserAssignments(userId: string): Promise<UserAssignme
   return res.json();
 }
 
-export async function addUserAssignment(
+/** A member's access in this environment, given in one save (REQ-2155). */
+export interface MemberAccess {
+  role_ids: string[];
+  domain_id: string;
+  expires_at: string | null;
+  /** Entitlement lists of grants the save makes (REQ-2219). */
+  entitlements: { role_id: string; kind: string; identifiers: string[] }[];
+  /** Recorded with every list; required when there is one. */
+  reason: string;
+}
+
+/** Grant a member several roles and their entitlement lists at once: all of it, or none. */
+export async function grantMemberAccess(
   userId: string,
-  roleId: string,
-  domainId: string,
-  expiresAt: string | null = null,
-): Promise<UserAssignment> {
-  const res = await fetch(`${API_BASE}/admin/users/${userId}/assignments`, {
+  access: MemberAccess,
+): Promise<{ assignments: UserAssignment[] }> {
+  const res = await fetch(`${API_BASE}/admin/users/${userId}/access`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ role_id: roleId, domain_id: domainId, expires_at: expiresAt }),
+    body: JSON.stringify(access),
   });
   if (!res.ok) {
     const data = await res.json().catch(() => ({ detail: res.statusText }));
-    throw new Error(serverMessage(data, requestFailed("add assignment", res.status)));
+    throw new Error(serverMessage(data, requestFailed("grant access", res.status)));
   }
   return res.json();
 }
@@ -3236,13 +3240,18 @@ export interface TableSearchAnswer {
 }
 
 /** REQ-464: search a source's schema for the tables a description fits. The steward chooses;
- *  nothing is registered by a search. */
+ *  nothing is registered by a search. REQ-2253: within the navbar filter's selection
+ *  (useViewDomains; null for none). */
 export async function searchSourceTables(
   sourceId: string,
   query: string,
   schemaName: string,
+  selected: ReadonlySet<string> | null,
 ): Promise<TableSearchAnswer> {
-  const params = new URLSearchParams({ q: query, schema_name: schemaName });
+  const params = withSelectedDomains(
+    new URLSearchParams({ q: query, schema_name: schemaName }),
+    selected,
+  );
   const res = await fetch(
     `${API_BASE}/admin/sources/${encodeURIComponent(sourceId)}/tables/search?${params}`,
   );

@@ -5,13 +5,13 @@
     "layingOut": "Organizando o layout…",
     "type": {
       "product": "Produto de dados",
-      "source": "Origem",
+      "source": "Fonte",
       "domain": "Domínio",
       "group": "Grupo",
       "table": "Tabela",
-      "view": "Visão",
+      "view": "Exibição",
       "relation": "Tabela externa",
-      "junction": "Junção",
+      "junction": "Tabela de junção",
       "column": "Coluna",
       "term": "Termo",
       "concept": "Conceito",
@@ -20,7 +20,7 @@
       "command": "Comando",
       "checker": "Verificação de qualidade",
       "profile": "Perfil",
-      "tag": "Etiqueta",
+      "tag": "Tag",
       "more": "Mais"
     }
   }

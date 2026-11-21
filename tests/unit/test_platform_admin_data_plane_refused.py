@@ -870,13 +870,22 @@ async def test_an_org_administrator_cannot_assign_a_role_carrying_a_platform_rig
 
 @pytest.fixture
 def org_runtime(monkeypatch):
-    """ensure_org_runtime answering with a tenant plane that holds the given role rows."""
+    """ensure_org_runtime answering with a tenant plane that holds the given role rows.
+
+    As the real one does (OrgRegistry.get_or_build), an org with no runtime gets one registered,
+    so work bound to the org afterwards (REQ-2219: an auto-join recomputing the member's effective
+    rows) reads it; no model is built in it (``names_table`` None). The deployment org's runtime is
+    already registered and stays. The registration is undone at teardown without retiring the
+    stand-in, which holds no engine to stop."""
 
     def _install(rows: list[dict]) -> Any:
         db = _Db(rows)
 
-        async def _ensure(_org_id):
-            return types.SimpleNamespace(model_db=db, tenant_db=db)
+        async def _ensure(org_id):
+            rt: Any = types.SimpleNamespace(model_db=db, tenant_db=db, names_table=None)
+            if appmod.state.org_registry.get(org_id) is None:
+                monkeypatch.setitem(appmod.state.org_registry._runtimes, org_id, rt)
+            return rt
 
         monkeypatch.setattr(appmod, "ensure_org_runtime", _ensure)
         return db

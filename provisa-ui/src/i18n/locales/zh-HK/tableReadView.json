@@ -31,7 +31,7 @@
     "policiesTitle": "檢視此表格的 RLS 原則",
     "editButtonLabel": "編輯表格 {{name}}",
     "deleteButtonLabel": "刪除表格 {{name}}",
-    "profileHeading": "剖析 — 已取樣 {{count}} 列",
+    "profileHeading": "設定檔：抽樣 {{count}} 行",
     "colNulls": "Null 值",
     "colNullsTitle": "Null 值",
     "colBlanks": "空白",

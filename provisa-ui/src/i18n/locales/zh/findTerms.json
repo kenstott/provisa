@@ -121,7 +121,7 @@
     "roleSynthesis": "已使用",
     "roleSupporting": "辅助",
     "conflicts": "相互矛盾的解释",
-    "conflictsHint": "这些段落不可能同时成立。它们并排显示，绝不合并。",
+    "conflictsHint": "这些段落不可能同时成立，因此并排显示。",
     "accept": "接受",
     "merge": "合并",
     "mergeInto": "合并到",

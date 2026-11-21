@@ -95,7 +95,7 @@ def _rows(name: str, params: str, form: Callable[[str, str], str]) -> list[Row]:
 
 _EACH = (
     f"unnest(list_transform(json_keys(CAST({_guard(_D, 'v', 'object', 'json_each')} AS JSON)), "
-    """_k -> struct_pack(key := _k, value := json_extract(v, '$."' || """
+    """LAMBDA _k : struct_pack(key := _k, value := json_extract(v, '$."' || """
     """replace(_k, '"', '\\"') || '"'))))"""
 )
 #: A row: name, parameters, each dialect's form.
@@ -705,7 +705,7 @@ def _aggregate(node: exp.Func, name: str, args: list[exp.Expr], inner: Callable)
 
     if name in _AGG_STRICT:
         return _duckdb(
-            "to_json(list_filter(_rows, _v -> _v IS NOT NULL))", _rows=rows(member(args[0]))
+            "to_json(list_filter(_rows, LAMBDA _v : _v IS NOT NULL))", _rows=rows(member(args[0]))
         )
     # An ordered one too: DuckDB's json_group_object is a macro, which takes no ORDER BY.
     ordered_value = len(args) > 1 and isinstance(args[1], exp.Order)
@@ -970,9 +970,12 @@ def _call(node: exp.Func, dialect: str, inner: Callable[[exp.Expr], exp.Expr]) -
     return node
 
 
-def lowered(tree: exp.Expr, dialect: str) -> exp.Expr:
+def lowered(
+    tree: exp.Expr, dialect: str, by_a_row: Callable[[exp.Expr], bool] = lambda _: False
+) -> exp.Expr:
     """``tree``'s json operators, set-returning calls and casts as the table writes them. Raises
-    :class:`NoForm` for what it does not."""
+    :class:`NoForm` for what it does not. A call ``by_a_row`` holds (a polyfill grid row's, REQ-2236)
+    is left to its row."""
     json_is_text = dialect in _OF[_T] | _OF[_C]
     on_duckdb = dialect in _OF[_D]
 
@@ -1002,8 +1005,10 @@ def lowered(tree: exp.Expr, dialect: str) -> exp.Expr:
                 return _extracted(node, rewrite)
             steps = _steps("#>>" if scalar else "#>", path)
             return _path(node.this.transform(rewrite), steps, scalar)
-        if isinstance(node, exp.JSONExtract | exp.JSONExtractScalar) and not isinstance(
-            node.expression, exp.JSONPath
+        if (
+            isinstance(node, exp.JSONExtract | exp.JSONExtractScalar)
+            and not isinstance(node.expression, exp.JSONPath)
+            and not by_a_row(node)  # json_extract_path(v, VARIADIC path), read as ->
         ):
             stepped = _stepped(node, dialect, rewrite)
             if stepped is not None:
@@ -1037,6 +1042,8 @@ def lowered(tree: exp.Expr, dialect: str) -> exp.Expr:
                 if dialect in _OF[_C]:
                     raise NoForm(name)
                 return _table(node, dialect)
-        return _call(node, dialect, rewrite) if isinstance(node, exp.Func) else node
+        if not isinstance(node, exp.Func) or by_a_row(node):
+            return node
+        return _call(node, dialect, rewrite)
 
     return tree.transform(rewrite, copy=False)

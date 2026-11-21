@@ -2,7 +2,7 @@
   "cacheTtl": {
     "neverExpires": "永不過期",
     "inputHint": "-1：永不過期",
-    "neverExpiresHint": "永不過期：只載入一次。",
+    "neverExpiresHint": "永不過期，只落地一次。",
     "asOf": "{{ttl}}，截至 {{when}}",
     "roleTtlUnlisted": "快取 TTL 對所有角色都永不過期。",
     "roleTtlNoEffect": "快取 TTL 永不過期，因此此項目不起作用。"
