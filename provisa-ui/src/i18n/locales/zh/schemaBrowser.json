@@ -1,7 +1,7 @@
 {
   "schemaBrowser": {
-    "collapsePanel": "折叠架构面板",
-    "expandPanel": "展开架构面板",
+    "collapsePanel": "隐藏架构面板",
+    "expandPanel": "显示架构面板",
     "heading": "架构",
     "groupMetrics": "指标",
     "groupFacts": "事实表",

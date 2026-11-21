@@ -1063,6 +1063,20 @@ def _binding(values: dict[str, exp.Expr], alias: str) -> exp.Subquery:
     return exp.Subquery(this=row, alias=exp.TableAlias(this=exp.to_identifier(alias)))
 
 
+def _reads_in_a_relation(select: exp.Select) -> bool:
+    """Whether the binding row (``_arg``) is read inside a relation of a FROM or a JOIN (a derived
+    table or a set operation), where the select's own FROM items are not in scope."""
+    for column in select.find_all(exp.Column):
+        if column.table != _ARGUMENTS:
+            continue
+        node = column.parent
+        while node is not None and node is not select:
+            if isinstance(node, exp.Subquery) and isinstance(node.parent, (exp.From, exp.Join)):
+                return True
+            node = node.parent
+    return False
+
+
 def _written(form: Form, args: list[exp.Expr]) -> exp.Expr:
     """The form with each parameter its argument. An argument that computes and that the form names
     more than once is bound once, in a row the form reads (``_arg``), so it is evaluated and
@@ -1087,6 +1101,21 @@ def _written(form: Form, args: list[exp.Expr]) -> exp.Expr:
         return written
     row = _binding({p: values[p] for p in values if p in once}, _ARGUMENTS)
     if isinstance(written, exp.Select):
+        if _reads_in_a_relation(written):
+            # A relation in FROM cannot see its sibling FROM items, so a row joined beside it is
+            # out of its scope: a CTE is in scope of the whole statement, and still evaluated once.
+            # A CTE is read as a relation, so each use is a scalar subquery over it (planned as one
+            # initial plan, evaluated once).
+            def read_from_row(node: exp.Expr) -> exp.Expr:
+                if isinstance(node, exp.Column) and node.table == _ARGUMENTS:
+                    return exp.Subquery(
+                        this=exp.select(exp.column(node.name, table=_ARGUMENTS)).from_(_ARGUMENTS)
+                    )
+                return node
+
+            return cast(exp.Select, written.transform(read_from_row)).with_(
+                _ARGUMENTS, as_=cast(exp.Subquery, row).this, append=True
+            )
         return written.join(row, join_type="cross")
     return exp.Subquery(this=exp.select(written).from_(row))
 

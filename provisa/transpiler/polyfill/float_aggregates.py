@@ -200,4 +200,7 @@ SUM = Feature(
     read=Side(rules=(Rule(None, {"clickhouse": Rewrite(_sum, mentions=r"\bsum\s*\(")}),)),
 )
 
+#: The family's place in the grid (polyfill.GRID), which tries the rules of one function in
+#: the order of their families.
+ORDER = 150
 FEATURES: tuple[Feature, ...] = (*REGRESSIONS, SUM)

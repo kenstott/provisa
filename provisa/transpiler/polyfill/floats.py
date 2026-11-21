@@ -599,6 +599,9 @@ IN_RANGE = Feature(
     read=Side(rules=(Rule(_IN_RANGE, ch_only(Rewrite(_in_range))),)),
 )
 
+#: The family's place in the grid (polyfill.GRID), which tries the rules of one function in
+#: the order of their families.
+ORDER = 140
 FEATURES: tuple[Feature, ...] = (
     *COMPARISONS,
     *CHOSEN,

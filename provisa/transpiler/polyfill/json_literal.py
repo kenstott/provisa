@@ -352,6 +352,9 @@ LITERALS = Limitation(
     "name, as ClickHouse's JSON functions write no jsonb text and hold no jsonb order."
 )
 
+#: The family's place in the grid (polyfill.GRID), which tries the rules of one function in
+#: the order of their families.
+ORDER = 240
 FEATURES: tuple[Feature, ...] = tuple(
     Feature(
         name,

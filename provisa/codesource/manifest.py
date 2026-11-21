@@ -818,7 +818,11 @@ def read_manifest(raw: dict, rules: Rules = NODE_RULES) -> Manifest:
             if t["tag"] in WRITE_TAGS and t["text"]
         )
         for tag in tags:
-            if tag not in PROVISA_TAGS and tag not in rules.standard_tags | {LOADER, REQUIRES}:
+            if tag not in PROVISA_TAGS and tag not in rules.standard_tags | {
+                LOADER,
+                REQUIRES,
+                *WRITE_TAGS,
+            }:
                 problems.append(f"{name}: unknown tag @{tag}")
         for argued in entry.get("tag_arguments", []):
             known = PROVISA_TAGS | rules.standard_tags | {LOADER, REQUIRES, *WRITE_TAGS}

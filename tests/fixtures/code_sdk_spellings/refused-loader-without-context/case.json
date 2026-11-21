@@ -1,0 +1,25 @@
+{
+  "python": {
+    "doc": {
+      "problems": [
+        "rows: a @loader is given the join's keys in its read context, and rows takes no ReadContext"
+      ]
+    },
+    "sdk": {
+      "problems": [
+        "rows: a @loader is given the join's keys in its read context, and rows takes no ReadContext"
+      ],
+      "checker": "rejects"
+    }
+  },
+  "typescript": {
+    "doc": {
+      "problems": [
+        "rows: a @loader is given the join's keys in its read context, and rows takes no ReadContext"
+      ]
+    },
+    "sdk": {
+      "checker": "rejects"
+    }
+  }
+}

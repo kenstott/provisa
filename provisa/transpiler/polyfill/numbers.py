@@ -817,6 +817,9 @@ INT2INT4_SUM = Feature(
     ),
 )
 
+#: The family's place in the grid (polyfill.GRID), which tries the rules of one function in
+#: the order of their families.
+ORDER = 130
 FEATURES: tuple[Feature, ...] = (
     INT2INT4_SUM,
     _sum("int2_sum"),

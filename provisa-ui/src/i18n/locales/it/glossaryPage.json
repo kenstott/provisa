@@ -1,0 +1,25 @@
+{
+  "glossaryPage": {
+    "title": "Glossario",
+    "intro": "I termini approvati della tua organizzazione e il significato di ciascuno.",
+    "search": "Cerca termini",
+    "searchPlaceholder": "Cerca in nomi e definizioni",
+    "domainFilter": "Domini",
+    "domainFilterPlaceholder": "Tutti i domini",
+    "sort": "Ordina",
+    "sortName": "A–Z",
+    "sortRecent": "Modificati di recente",
+    "letterBar": "Vai alla lettera",
+    "otherLetter": "#",
+    "alsoCalled": "Detto anche",
+    "kindOf": "Un tipo di",
+    "kinds": "Tipi",
+    "seeAlso": "Vedi anche",
+    "allDomains": "Tutti i domini",
+    "loadFailed": "Impossibile caricare il glossario: {{message}}",
+    "empty": "Nessun termine approvato.",
+    "noMatch": "Nessun termine corrisponde.",
+    "count_one": "{{count}} termine",
+    "count_other": "{{count}} termini"
+  }
+}

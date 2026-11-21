@@ -367,6 +367,9 @@ AGGREGATE_LIMIT = Limitation(
     "An ORDER BY of one key; a FILTER, a window, DISTINCT or a second key is refused by name."
 )
 
+#: The family's place in the grid (polyfill.GRID), which tries the rules of one function in
+#: the order of their families.
+ORDER = 220
 FEATURES: tuple[Feature, ...] = (
     *(_feature(name, "A value as its JSON.", scalar_json) for name in sorted(_SCALARS)),
     *(_feature(name, "A JSON array of the values given.", built_array) for name in sorted(_BUILT)),

@@ -1,0 +1,25 @@
+{
+  "glossaryPage": {
+    "title": "Woordenlijst",
+    "intro": "De goedgekeurde termen van uw organisatie en wat elke term betekent.",
+    "search": "Termen zoeken",
+    "searchPlaceholder": "Zoeken in namen en definities",
+    "domainFilter": "Domeinen",
+    "domainFilterPlaceholder": "Alle domeinen",
+    "sort": "Sorteren",
+    "sortName": "A–Z",
+    "sortRecent": "Recent gewijzigd",
+    "letterBar": "Naar letter springen",
+    "otherLetter": "#",
+    "alsoCalled": "Ook wel",
+    "kindOf": "Een soort",
+    "kinds": "Soorten",
+    "seeAlso": "Zie ook",
+    "allDomains": "Alle domeinen",
+    "loadFailed": "De woordenlijst kon niet worden geladen: {{message}}",
+    "empty": "Nog geen goedgekeurde termen.",
+    "noMatch": "Geen termen gevonden.",
+    "count_one": "{{count}} term",
+    "count_other": "{{count}} termen"
+  }
+}

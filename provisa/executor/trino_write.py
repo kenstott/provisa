@@ -89,8 +89,9 @@ def execute_ctas_redirect(  # REQ-029, REQ-044, REQ-138
         select_sql: The SELECT query to execute (already transpiled to Trino SQL).
         output_format: Target format (parquet, orc).
         params: The statement's bound values, in ``$N`` order (None: it binds none). Bound
-            exactly as the row terminal binds them (``execute_trino``): the transpiled ``@N``
-            placeholders become ``?`` in occurrence order, a repeated one repeating its value.
+            exactly as the Trino read binds them (``trino_flight.bound_statement``): the transpiled
+            ``@N`` placeholders become ``?`` in occurrence order, a repeated one repeating its
+            value.
 
     Returns:
         {"table_name": "...", "s3_prefix": "...", "row_count": N}

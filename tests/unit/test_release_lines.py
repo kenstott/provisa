@@ -52,6 +52,7 @@ _FULL_SUITES = {
     "conformance-functions.yml",
     "conformance-graphql.yml",
     "conformance-pgwire.yml",
+    "conformance-sparql.yml",
 }
 
 

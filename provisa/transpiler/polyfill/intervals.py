@@ -2148,7 +2148,10 @@ def _feature(name: str) -> Feature:
     )
 
 
-#: The rows. isfinite's is read before instants' (polyfill.GRID lists this family first).
+#: The family's place in the grid (polyfill.GRID), which tries the rules of one function in
+#: the order of their families.
+ORDER = 300
+#: The rows. isfinite's is read before instants' (this family's ORDER is below instants').
 FEATURES: tuple[Feature, ...] = (*(_feature(name) for name in _ROWS), _literal_feature())
 
 __all__ = ["FEATURES", "HELD", "LITERAL", "interval_read", "interval_text", "keyword_read"]

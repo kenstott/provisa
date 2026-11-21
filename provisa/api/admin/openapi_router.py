@@ -109,12 +109,11 @@ async def _load_and_register(  # REQ-314, REQ-315, REQ-316, REQ-317, REQ-320, RE
 
         spec = load_spec(_resolve_secrets(spec_path))
 
-    # Resolve base_url: explicit override > spec servers[0].url
-    resolved_base_url = base_url.strip()
-    if not resolved_base_url:
-        servers = spec.get("servers", [])
-        if servers:
-            resolved_base_url = servers[0].get("url", "")
+    # Resolve base_url: explicit override > spec servers[0].url, a relative one read against
+    # where the spec was read from (REQ-2265)
+    from provisa.openapi.loader import spec_server_url
+
+    resolved_base_url = base_url.strip() or spec_server_url(spec, spec_path or "")
 
     if state.model_db is None:
         raise ApiError(503, "openapi.database_not_connected", "Database not connected")
@@ -290,10 +289,27 @@ async def _branded(body: OpenAPIRegisterRequest) -> OpenAPIRegisterRequest:
             brand=brand.id,
             field=missing.field,
         ) from missing
-    base_url = brand.base_url(setup)
+    spec = None
+    if brand.address_from_spec:
+        # REQ-2265: where its calls go is the server its running instance's spec names.
+        import asyncio
+
+        from provisa.openapi.loader import load_spec
+
+        try:
+            spec = await asyncio.to_thread(load_spec, brand.source_spec_path(setup))
+        except Exception as exc:
+            raise ApiError(
+                422,
+                "openapi.spec_unreadable",
+                f"{brand.label} did not serve its OpenAPI description: {exc}",
+                brand=brand.id,
+                error=str(exc),
+            ) from exc
+    base_url = brand.base_url(setup, spec)
     try:
         await _verify_live_auth(
-            base_url.rstrip("/") + brand.verify_path, await _resolved_auth(auth), brand.headers()
+            brand.verify_url(setup, base_url), await _resolved_auth(auth), brand.headers()
         )
     except Exception as exc:
         raise ApiError(
@@ -514,9 +530,9 @@ async def put_openapi_spec(source_id: str, request: Request):  # REQ-315, REQ-31
     existing = specs.get(source_id, {})
     base_url = existing.get("base_url", "") or ""
     if not base_url:
-        servers = spec.get("servers", [])
-        if servers:
-            base_url = servers[0].get("url", "")
+        from provisa.openapi.loader import spec_server_url
+
+        base_url = spec_server_url(spec, existing.get("spec_path", "") or "")
     if "://" in base_url:
         # REQ-2006: the address the spec's calls go to; a held org's is a public destination. A
         # server URL relative to the spec names no address of its own.

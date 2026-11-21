@@ -611,6 +611,9 @@ _PART_STATED = (
     "translator reads as the same node as date_part's, keeps its refusal."
 )
 
+#: The family's place in the grid (polyfill.GRID), which tries the rules of one function in
+#: the order of their families.
+ORDER = 270
 FEATURES: tuple[Feature, ...] = (
     _row(
         "extract(text, time)",
