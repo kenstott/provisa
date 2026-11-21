@@ -357,8 +357,8 @@ _STEWARD_CAPABILITIES = {"command_execution", "full_results", "write"}
 
 def test_only_the_entity_steward_may_delete_bridge_rows_and_it_writes_as_a_data_steward():
     [steward] = [r for r in _CONFIG["roles"] if r["id"] == "entity_steward"]
-    # data_steward holds no write right; developer is the parent that holds it.
-    assert steward["parents"] == ["data_steward", "developer"]
+    # data_steward holds no write right; data_writer is the parent that holds it.
+    assert steward["parents"] == ["data_steward", "data_writer"]
     assert set(steward["capabilities"]) == _STEWARD_CAPABILITIES
     for table, _, columns in _COMMANDS.values():
         grants = {(g["role"], g["operation"]): g for g in _table("er", table)["write_grants"]}
