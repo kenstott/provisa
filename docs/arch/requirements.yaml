@@ -91819,7 +91819,7 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     applied, through the one pipeline. Two forms: a file (Turtle, or N-Triples streamed for large exports)
     and a direct load into a running store over the SPARQL 1.1 Graph Store HTTP Protocol, reporting triples
     loaded and failures as the Neo4j export does. It accepts as_recorded (and as_of where a valid time
-    is mapped), so an export can be reproduced exactly later.'
+    is mapped), so an export can be reproduced exactly later. (Amended 2026-11-20 by the maintainer. A domain- or class-scoped export carries every ontology axiom the exporting role may read, not only the axioms about terms in the scope.)'
   scenario: 'Given a role that reads the Customer class with email masked
 
     When it exports class Customer as Turtle
