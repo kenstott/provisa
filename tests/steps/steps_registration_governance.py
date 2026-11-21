@@ -1761,33 +1761,72 @@ def _req417_then(shared_data):
 # ---------------------------------------------------------------------------
 
 
-@given(
-    "tables registered in domains A and B When a table named orders is registered in domain A and a "
-    "table named orders in domain B Then both registrations succeed, each name being unique only "
-    "within its own domain When a second table named orders is registered in domain A Then it is "
-    "refused by name When the table orders in domain A is deleted and the same source table is "
-    "registered again in domain A Then the retired table is restored with its id, relationships and "
-    "tags And the register form does not grey out a table another domain registered"
+_R433_SRC, _R433_TBL = "shared_pg", "public.orders"
+
+
+@given("tables registered in domains A and B")
+def _req433_given(shared_data):
+    shared_data["r433_reg"] = DomainTableRegistry()
+
+
+@when("a table named orders is registered in domain A and a table named orders in domain B")
+def _req433_register_both(shared_data):
+    reg = shared_data["r433_reg"]
+    shared_data["r433_a"] = reg.register("A", _R433_SRC, _R433_TBL, "orders")
+    shared_data["r433_b"] = reg.register("B", _R433_SRC, _R433_TBL, "orders")
+
+
+@then("both registrations succeed, each name being unique only within its own domain")
+def _req433_both_succeed(shared_data):
+    assert shared_data["r433_a"].id != shared_data["r433_b"].id
+    assert shared_data["r433_a"].domain_id == "A"
+    assert shared_data["r433_b"].domain_id == "B"
+
+
+@when("a second table named orders is registered in domain A")
+def _req433_second(shared_data):
+    try:
+        shared_data["r433_reg"].register("A", _R433_SRC, _R433_TBL, "Orders")
+    except RegistrationError as exc:
+        shared_data["r433_error"] = exc
+    else:
+        shared_data["r433_error"] = None
+    shared_data["r433_a"].relationships.append("orders_to_customers")
+    shared_data["r433_a"].tags.append("pii")
+
+
+@then("it is refused by name")
+def _req433_refused(shared_data):
+    err = shared_data["r433_error"]
+    assert err is not None
+    assert "orders" in str(err).lower()
+
+
+@when(
+    "the table orders in domain A is deleted and the same source table is registered again in "
+    "domain A"
 )
-def _req433_scenario():
-    reg = DomainTableRegistry()
-    src, tbl = "shared_pg", "public.orders"
-    a = reg.register("A", src, tbl, "orders")
-    b = reg.register("B", src, tbl, "orders")
-    assert a.id != b.id
-    with pytest.raises(RegistrationError, match="orders"):
-        reg.register("A", src, tbl, "Orders")
-    a.relationships.append("orders_to_customers")
-    a.tags.append("pii")
+def _req433_delete_reregister(shared_data):
+    reg = shared_data["r433_reg"]
     reg.delete("A", "orders")
-    restored = reg.register("A", src, tbl, "orders")
-    assert restored.id == a.id
+    shared_data["r433_restored"] = reg.register("A", _R433_SRC, _R433_TBL, "orders")
+
+
+@then("the retired table is restored with its id, relationships and tags")
+def _req433_restored(shared_data):
+    restored = shared_data["r433_restored"]
+    assert restored.id == shared_data["r433_a"].id
     assert restored.retired is False
     assert restored.relationships == ["orders_to_customers"]
     assert restored.tags == ["pii"]
-    assert reg.get("B", "orders").id == b.id
-    assert reg.is_greyed_out_for(src, tbl, "B") is False
-    assert reg.is_greyed_out_for(src, tbl, "A") is False
+
+
+@then("the register form does not grey out a table another domain registered")
+def _req433_not_greyed(shared_data):
+    reg = shared_data["r433_reg"]
+    assert reg.get("B", "orders").id == shared_data["r433_b"].id
+    assert reg.is_greyed_out_for(_R433_SRC, _R433_TBL, "B") is False
+    assert reg.is_greyed_out_for(_R433_SRC, _R433_TBL, "A") is False
 
 
 # ---------------------------------------------------------------------------

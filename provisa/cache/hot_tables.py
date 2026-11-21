@@ -18,7 +18,7 @@ import logging
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from decimal import Decimal
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from typing import TYPE_CHECKING
 
 from provisa.federation.execution_auth import system_auth
@@ -66,6 +66,10 @@ class HotTableEntry:  # REQ-230, REQ-232
     pk_column: str
     rows: list[dict] = field(default_factory=list)
     column_names: list[str] = field(default_factory=list)
+    #: Each column's IR type, where the rows' reader declares it (the registered table's columns):
+    #: the VALUES CTE casts the column's literals to it (REQ-232), so a jsonb, numeric or date
+    #: value is not read as text. Empty for the rows the manager loads itself (``_store_rows``), which declare none.
+    column_types: Mapping[str, str] = field(default_factory=dict)
     is_api: bool = False
 
 

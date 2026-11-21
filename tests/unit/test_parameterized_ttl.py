@@ -261,9 +261,23 @@ def _gql_state():
 @pytest.mark.parametrize(
     ("columns", "own", "kept"),
     [
-        ([{"column_name": "id"}], None, 600),  # no argument: the source's TTL, not a fixed 300
-        ([{"column_name": "id"}], 45, 45),
-        ([{"column_name": "_nf_breed", "native_filter_type": "graphql_arg"}], 45, 45),
+        (
+            [{"column_name": "id", "data_type": "integer"}],
+            None,
+            600,
+        ),  # no argument: the source's TTL, not a fixed 300
+        ([{"column_name": "id", "data_type": "integer"}], 45, 45),
+        (
+            [
+                {
+                    "column_name": "_nf_breed",
+                    "data_type": "text",
+                    "native_filter_type": "graphql_arg",
+                }
+            ],
+            45,
+            45,
+        ),
     ],
 )
 async def test_a_graphql_remote_table_keeps_for_its_resolved_ttl(columns, own, kept):
@@ -303,7 +317,9 @@ async def test_a_graphql_remote_table_with_arguments_and_no_ttl_is_read_per_stat
     registration = {
         "table_name": "pets",
         "source_id": "ghsrc",
-        "columns": [{"column_name": "_nf_breed", "native_filter_type": "graphql_arg"}],
+        "columns": [
+            {"column_name": "_nf_breed", "data_type": "text", "native_filter_type": "graphql_arg"}
+        ],
     }
     with (
         patch("provisa.graphql_remote.executor.execute_remote", new=remote),

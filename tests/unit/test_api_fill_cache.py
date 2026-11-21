@@ -100,13 +100,29 @@ def _endpoint(**kw) -> ApiEndpoint:
     return ApiEndpoint(**base)
 
 
+# The type a column of each API type registers as.
+_REGISTERED_TYPE = {
+    "string": "text",
+    "integer": "bigint",
+    "number": "double",
+    "boolean": "boolean",
+    "jsonb": "jsonb",
+    "date": "date",
+    "timestamp": "timestamp",
+}
+
+
 def _registered(endpoint: ApiEndpoint, cache_ttl: int | None = 300) -> dict:
     """The endpoint's registered row: its parameters as parameter columns, and a TTL of its own
     -- a parameterized endpoint keeps its answers only for one (REQ-1986)."""
 
     def _column(c: ApiColumn) -> dict:
         kind = getattr(c.param_type, "value", c.param_type)
-        return {"column_name": c.name, **({"native_filter_type": f"{kind}_param"} if kind else {})}
+        return {
+            "column_name": c.name,
+            "data_type": _REGISTERED_TYPE[getattr(c.type, "value", c.type)],
+            **({"native_filter_type": f"{kind}_param"} if kind else {}),
+        }
 
     return {
         "id": zlib.crc32(f"{endpoint.source_id}.{endpoint.table_name}".encode()),

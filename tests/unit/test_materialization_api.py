@@ -62,7 +62,7 @@ def _pets_row(source_id: str, **table) -> dict:
         "id": PETS,
         "source_id": source_id,
         "table_name": "pets",
-        "columns": [{"column_name": "id"}],
+        "columns": [{"column_name": "id", "data_type": "integer"}],
         "cache_ttl": 300,
         **table,
     }
@@ -353,6 +353,7 @@ class TestMatStoreRows:
                 MagicMock(),
                 cache_rewrites,
                 values_cte_entries,
+                column_types={"id": "integer", "name": "varchar"},
                 whole=True,
             )
             mock_insert.assert_called_once()
@@ -388,6 +389,7 @@ class TestMatStoreRows:
                 {},
                 values_cte_entries,
                 all_ep_col_names=["id", "photo_urls"],
+                column_types={"id": "integer", "name": "varchar"},
                 whole=True,
             )
 
@@ -422,6 +424,7 @@ class TestMatStoreRows:
                 MagicMock(),
                 cache_rewrites,
                 values_cte_entries,
+                column_types={"id": "integer", "name": "varchar"},
                 whole=True,
             )
 
@@ -455,6 +458,7 @@ class TestMatStoreRows:
                 MagicMock(),
                 cache_rewrites,
                 values_cte_entries,
+                column_types={"id": "integer", "name": "varchar"},
                 whole=True,
             )
 
@@ -485,6 +489,7 @@ class TestMatStoreRows:
                 MagicMock(),
                 {},
                 values_cte_entries,
+                column_types={"id": "integer", "name": "varchar"},
                 whole=False,
             )
         assert values_cte_entries["pets"].rows == [{"id": 1}]
@@ -514,8 +519,10 @@ class TestPromoteJoinedFromFills:
                 set(),
                 loc,
                 500,
+                {"id": "integer", "name": "varchar"},
             )
         assert hot_mgr._hot_tables[PETS].rows == [{"id": 1, "name": "Fido"}]
+        assert hot_mgr._hot_tables[PETS].column_types == {"id": "integer", "name": "varchar"}
 
     async def test_over_threshold_not_promoted(self):
         hot_mgr = _hot_manager()
@@ -530,6 +537,7 @@ class TestPromoteJoinedFromFills:
                 set(),
                 loc,
                 2,
+                {"id": "integer", "name": "varchar"},
             )
         assert hot_mgr._hot_tables == {}
 
@@ -547,6 +555,7 @@ class TestPromoteJoinedFromFills:
                 set(),
                 loc,
                 500,
+                {"id": "integer", "name": "varchar"},
             )
         assert hot_mgr._hot_tables == {}
 
@@ -1053,7 +1062,10 @@ def _gql_registration(**table):
     return {
         "table_name": "pets",
         "source_id": "ghsrc",
-        "columns": [{"column_name": "id"}, {"column_name": "name"}],
+        "columns": [
+            {"column_name": "id", "data_type": "integer"},
+            {"column_name": "name", "data_type": "text"},
+        ],
         "cache_ttl": 300,
         **table,
     }
@@ -1370,6 +1382,7 @@ class TestMaterializeApiToEngineCache:
         }
         name = {
             "column_name": "_nf_name",
+            "data_type": "text",
             "native_filter_type": "graphql_arg",
             "native_filter_required": True,
             "required_by_steward": False,
