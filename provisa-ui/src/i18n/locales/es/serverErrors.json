@@ -569,7 +569,8 @@
       "source_not_withdrawn": "El origen {{source}} no está retirado: solo se restablece un origen retirado. Para cambiar su región, establezca su región.",
       "put_back_needs_region": "Restablecer {{object}} nombra una región: indique una, o ninguna para ninguna región.",
       "mask_constant_not_text": "Una máscara constante en una columna que no es de texto se lee como NULL; solo se puede guardar NULL: {{column}} ({{type}})",
-      "table_domain_required": "La tabla '{{table}}' no indica ningún dominio: toda tabla se registra en un dominio"
+      "table_domain_required": "La tabla '{{table}}' no indica ningún dominio: toda tabla se registra en un dominio",
+      "table_name_reserved": "El nombre de tabla '{{table}}' está reservado: los comandos de un dominio se sirven bajo 'commands'. Registre la tabla con otro nombre o alias."
     },
     "secrets": {
       "env_reference_object_locked": "Este objeto es del operador: lee el entorno propio del servidor y no puede cambiarse aquí. Añada uno propio en su lugar.",

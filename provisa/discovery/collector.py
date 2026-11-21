@@ -43,6 +43,25 @@ async def collect_fk_for_tables(  # REQ-413
     return await _fk_candidates(source_pools, source_types, pg_conn, tables, table_by_name)
 
 
+async def same_source_ids(  # REQ-2262
+    pg_conn: "Connection", table_ids: set[int], among: set[int]
+) -> set[int]:
+    """Those of ``among`` registered on a source one of ``table_ids`` is registered on."""
+    from sqlalchemy import select
+
+    from provisa.core.schema_org import registered_tables as rt
+
+    if not table_ids or not among:
+        return set()
+    their_sources = select(rt.c.source_id).where(rt.c.id.in_(sorted(table_ids)))
+    rows = (
+        await pg_conn.execute_core(
+            select(rt.c.id).where(rt.c.id.in_(sorted(among)), rt.c.source_id.in_(their_sources))
+        )
+    ).fetchall()
+    return {int(r[0]) for r in rows}
+
+
 async def _fk_candidates(
     source_pools: Any,
     source_types: dict[str, str],

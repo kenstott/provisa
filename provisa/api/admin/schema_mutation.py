@@ -4605,7 +4605,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         self, info: StrawberryInfo, input: TableInput
     ) -> MutationResult:  # REQ-013, REQ-016, REQ-252, REQ-366, REQ-413, REQ-432, REQ-433, REQ-434
         # REQ-1531: a registration naming no domain is refused by name, before its right is asked.
-        _no_domain = table_domain_refusal(input.domain_id, input.table_name)
+        _no_domain = table_domain_refusal(input.domain_id, input.table_name, input.alias)
         if _no_domain is not None:
             return _no_domain
         require_capability(info, "table_registration", domain_id=input.domain_id)
@@ -4753,7 +4753,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         )
 
         # REQ-1531: a table stays in a domain; a save naming none is refused by name.
-        _no_domain = table_domain_refusal(input.domain_id, input.table_name)
+        _no_domain = table_domain_refusal(input.domain_id, input.table_name, input.alias)
         if _no_domain is not None:
             return _no_domain
         _governance_sets = governance_sets(info, input)  # REQ-1958: of the input as sent
