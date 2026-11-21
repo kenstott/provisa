@@ -4154,13 +4154,22 @@
   - provisa-ui/e2e/registration-admin.spec.ts
   since: 2026-01
   scenario: 'Given tables registered in domains A and B
+
     When a table named orders is registered in domain A and a table named orders in domain B
+
     Then both registrations succeed, each name being unique only within its own domain
+
     When a second table named orders is registered in domain A
+
     Then it is refused by name
+
     When the table orders in domain A is deleted and the same source table is registered again in domain A
+
     Then the retired table is restored with its id, relationships and tags
-    And the register form does not grey out a table another domain registered'
+
+    And the register form does not grey out a table another domain registered
+
+    '
   integration_test: not_required
   integration_test_reason: Per-domain naming and retired-table restore are state management; tested without real
     external services.
