@@ -392,3 +392,58 @@ async def require_current_domain(info: "StrawberryInfo", conn: "Connection", mod
     stored = await stored_table(conn, model)
     if stored is not None and stored["domain_id"] != model.domain_id:
         require_capability(info, "table_registration", domain_id=stored["domain_id"])
+
+
+async def require_move_rules(  # REQ-1531
+    info: "StrawberryInfo", conn: "Connection", model: Any
+) -> dict | None:
+    """A save moving a stored table to another domain checks its row rules again: a table-level
+    rule lands in its table's domain, so the mover needs ``masking_config`` there, as writing the
+    rule would (upsert_rls_rule). Returns the stored row when the save is a move, else None."""
+    from sqlalchemy import select
+
+    from provisa.api.admin._hiding_guard import stored_table
+    from provisa.api.admin.capabilities import require_right_in_domains
+    from provisa.core.schema_org import rls_rules
+
+    stored = await stored_table(conn, model)
+    if stored is None or stored["domain_id"] == model.domain_id:
+        return None
+    ruled = (
+        await conn.execute_core(
+            select(rls_rules.c.id).where(rls_rules.c.table_id == stored["id"]).limit(1)
+        )
+    ).fetchone()
+    if ruled is not None:
+        require_right_in_domains(info, "masking_config", {model.domain_id})
+    return stored
+
+
+async def review_moved_relationships(conn: "Connection", table_id: int) -> None:  # REQ-1531
+    """After a table moves domain its relationships are checked again: an edge whose other end now
+    sits in another domain is a cross-domain edge and lands needs_review, as one created that way
+    does (_save_relationship)."""
+    from sqlalchemy import or_, select, update
+    from sqlalchemy.orm import aliased
+
+    from provisa.core.schema_org import registered_tables, relationships
+
+    src = aliased(registered_tables)
+    tgt = aliased(registered_tables)
+    crossing = (
+        select(relationships.c.id)
+        .join(src, src.c.id == relationships.c.source_table_id)
+        .join(tgt, tgt.c.id == relationships.c.target_table_id)
+        .where(
+            or_(
+                relationships.c.source_table_id == table_id,
+                relationships.c.target_table_id == table_id,
+            ),
+            src.c.domain_id != tgt.c.domain_id,
+        )
+    )
+    ids = [r.id for r in (await conn.execute_core(crossing)).fetchall()]
+    if ids:
+        await conn.execute_core(
+            update(relationships).where(relationships.c.id.in_(ids)).values(needs_review=True)
+        )

@@ -12,17 +12,25 @@
 
 Endpoints:
   GET  /admin/sources/sparql/wikidata/starters      — the starter reference tables
-  GET  /admin/sources/sparql/wikidata/search?q=     — items by name: a class, or a filter value
+  GET  /admin/sources/sparql/wikidata/search?q=&kind= — items by name: a class (only those with
+                                                      instances), or a filter value
+  GET  /admin/sources/sparql/wikidata/browse        — the most-used top-level classes, counted
   GET  /admin/sources/sparql/wikidata/classes/{id}  — a class: its instance count, broader and
                                                       narrower classes, suggested columns
   POST /admin/sources/sparql/wikidata/class-table   — the SPARQL table of a class's instances
 
-Nothing is saved here: the form registers the table it is given as any SPARQL table.
+  POST /admin/sources/sparql/columns                — any SPARQL table's columns, read from the
+                                                      SELECT variables of its query
+
+Nothing is saved here and nothing waits on a query of the table itself: the form registers the
+table it is given as any SPARQL table, its columns read from its query.
 """
 
 # Requirements: REQ-1923
 
 from __future__ import annotations
+
+from typing import Literal
 
 import httpx
 from fastapi import APIRouter, Request
@@ -32,9 +40,12 @@ from provisa.api.admin.capabilities import require_capability_request
 from provisa.api.errors import ApiError
 from provisa.api_source.models import ApiColumnType
 from provisa.core.http_failure import describe_http_failure
+from provisa.api_source.persist import data_type_for_api_column
 from provisa.sparql import wikidata
+from provisa.sparql.source import extract_variables
 
 router = APIRouter(prefix="/admin/sources/sparql/wikidata", tags=["admin", "sparql"])
+sparql_router = APIRouter(prefix="/admin/sources/sparql", tags=["admin", "sparql"])
 
 
 def _refused(exc: wikidata.InvalidWikidataSource) -> ApiError:
@@ -53,10 +64,23 @@ async def starters(request: Request) -> list[dict]:
 
 
 @router.get("/search")
-async def search(request: Request, q: str, language: str) -> list[dict]:
+async def search(
+    request: Request, q: str, language: str, kind: Literal["class", "item"]
+) -> list[dict]:
     require_capability_request(request, "table_registration")
     try:
-        return await wikidata.search_entities(q, language=language)
+        return await wikidata.search_entities(q, language=language, classes=kind == "class")
+    except wikidata.InvalidWikidataSource as exc:
+        raise _refused(exc) from exc
+    except httpx.HTTPError as exc:
+        raise _unreachable(exc) from exc
+
+
+@router.get("/browse")
+async def browse(request: Request, language: str) -> list[dict]:
+    require_capability_request(request, "table_registration")
+    try:
+        return await wikidata.browse_classes(language=language)
     except wikidata.InvalidWikidataSource as exc:
         raise _refused(exc) from exc
     except httpx.HTTPError as exc:
@@ -133,3 +157,25 @@ async def class_table(request: Request, body: ClassTableBody) -> dict:
     except httpx.HTTPError as exc:
         raise _unreachable(exc) from exc
     return wikidata.describe_class_table(table)
+
+
+class SparqlQueryBody(BaseModel):
+    query: str
+
+
+@sparql_router.post("/columns")
+async def select_columns(request: Request, body: SparqlQueryBody) -> dict:
+    """REQ-1923 (amended 2026-11-20): a SPARQL table's columns, one per SELECT variable of its
+    query, every binding text; read from the query alone, so nothing waits on the endpoint. A
+    query whose columns cannot be read from it (``SELECT *``, or not a SELECT) is refused."""
+    require_capability_request(request, "table_registration")
+    names = extract_variables(body.query)
+    if not names:
+        raise ApiError(
+            422,
+            "sparql.no_select_variables",
+            "The query names no SELECT variables (SELECT * or not a SELECT query): its columns "
+            "cannot be read from it",
+        )
+    text = data_type_for_api_column(ApiColumnType.string)
+    return {"columns": [{"name": n, "data_type": text} for n in names]}

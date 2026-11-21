@@ -14,7 +14,8 @@
       "webhook_not_found": "找不到 Webhook「{{name}}」",
       "written_table_not_registered": "'{{table}}' 不是資料來源 '{{source_id}}' 的已註冊表",
       "function_exists": "函數「{{name}}」已存在",
-      "webhook_exists": "Webhook「{{name}}」已存在"
+      "webhook_exists": "Webhook「{{name}}」已存在",
+      "mask_constant_not_text": "非文字欄上的常數遮罩讀取為 NULL；只能儲存 NULL：{{column}} ({{type}})"
     },
     "ai_models": {
       "vector_model_fields_required": "每個 vector_models 項目都需要 id、provider 及 dimensions",
@@ -566,7 +567,9 @@
       "withdrawn_table_not_previewable": "無法預覽表 {{table}}：它已撤下且不保留副本，而引擎只能透過副本讀取其來源。",
       "table_not_withdrawn": "表 {{table}} 未撤下：只有已撤下的表才能恢復。要將生產中的表移到另一個區域，請設定其區域。",
       "source_not_withdrawn": "來源 {{source}} 未撤下：只有已撤下的來源才能恢復。要更改其區域，請設定其區域。",
-      "put_back_needs_region": "恢復 {{object}} 需指定一個區域：請給出一個區域，無區域則不給出。"
+      "put_back_needs_region": "恢復 {{object}} 需指定一個區域：請給出一個區域，無區域則不給出。",
+      "table_domain_required": "表 '{{table}}' 未指定域：每個表都註冊在一個域中",
+      "mask_constant_not_text": "非文字欄上的常數遮罩讀取為 NULL；只能儲存 NULL：{{column}} ({{type}})"
     },
     "secrets": {
       "env_reference_object_locked": "此物件屬於營運方：它讀取伺服器自身的環境，無法在此更改。請改為新增您自己的物件。",
@@ -616,7 +619,8 @@
     "sparql": {
       "columns_not_inferred": "無法推斷欄位：探測未傳回任何資料列，亦找不到 SELECT 變數。",
       "probe_failed": "SPARQL 端點探測失敗：{{error}}",
-      "source_not_found": "找不到 SPARQL 數據來源「{{source_id}}」"
+      "source_not_found": "找不到 SPARQL 數據來源「{{source_id}}」",
+      "no_select_variables": "查詢沒有指定 SELECT 變數（SELECT * 或不是 SELECT 查詢）：無法從中讀取其欄位"
     },
     "subscribe": {
       "avro_topic_without_registry": "主題「{{topic}}」包含 Avro 訊息，但其資料來源未指定用於讀取的綱要註冊表：請設定資料來源的綱要註冊表 URL",
@@ -829,7 +833,9 @@
       "not_bulk_approvable": "只有已定義且已錨定的草稿術語才能一起批准；以下不符合：{{terms}}。",
       "term_ids_required": "請指定要批准的術語。",
       "impact_action": "此操作沒有預覽。",
-      "impact_table_required": "綁定指定一張表或其中的一欄。"
+      "impact_table_required": "綁定指定一張表或其中的一欄。",
+      "name_taken": "域 {{domain}} 中已存在名為 '{{name}}' 的術語。請選擇其他名稱，或將該術語放入其他域。",
+      "name_taken_unscoped": "已存在名為 '{{name}}' 且不屬於任何域的術語，它適用於所有域。請選擇其他名稱。"
     },
     "table": {
       "requires_parameters": "無法對資料表 {{table}} 計數或產生概要：它需要 {{parameters}}。請為每個參數提供值以讀取其資料列。"

@@ -1,0 +1,14 @@
+{
+  "wikidataRegister": {
+    "starters": "入門表格",
+    "startersHint": "可供連接的參考表格，各附其欄位。描述、類型和別名之後在各表格上細化。",
+    "startersPlaceholder": "選擇入門表格",
+    "customLabel": "自訂表格",
+    "customNone": "沒有自訂表格",
+    "customSparql": "SPARQL 查詢",
+    "classNotUsed": "請選擇一個類別並按「使用此類別」，或選擇「沒有自訂表格」。",
+    "columnsReading": "正在從查詢的 SELECT 讀取欄位…",
+    "nothingChosen": "請選擇要註冊的入門表格或自訂表格。",
+    "columns": "欄位：{{columns}}"
+  }
+}

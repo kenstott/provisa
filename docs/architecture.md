@@ -284,17 +284,19 @@ You can see the semantic SQL for any GraphQL read in the Provisa panel of the Gr
 
 | Path | Transport | Via | When used |
 | ------ | ----------- | ----- | ----------- |
-| REST | federation engine client (HTTP :8080) | Direct query | Default, always available |
-| Flight SQL | `adbc-driver-flightsql` (gRPC :8480) | Zaychik proxy → JDBC | When Zaychik is running |
+| REST | federation engine client (HTTP :8080) | Direct statement | Catalog provisioning and writes |
+| Flight SQL | `adbc-driver-flightsql` (gRPC :8480) | Zaychik proxy → Trino client protocol | Every read |
 | CTAS | federation engine client (HTTP :8080) | Direct write, Iceberg to S3 | Parquet/ORC redirect |
 
 ### Zaychik Arrow Flight SQL Proxy
 
-The federation engine does not natively support the Arrow Flight SQL protocol. [Zaychik](https://github.com/Raiffeisen-DGTL/zaychik-trino-proxy) is a Java proxy that implements the Arrow Flight SQL gRPC interface, translates requests to JDBC queries, and streams results back as Arrow record batches.
+The federation engine does not natively support the Arrow Flight SQL protocol. [Zaychik](https://github.com/Raiffeisen-DGTL/zaychik-trino-proxy) is a Java proxy that implements the Arrow Flight SQL gRPC interface. Provisa's image patches it to run each statement through Trino's client protocol and stream the results back as Arrow record batches.
 
 ```text
-ADBC client → gRPC :8480 → Zaychik → JDBC :8080 → Federation Engine → results → Arrow batches → client
+ADBC client → gRPC :8480 → Zaychik → Trino client protocol :8080 → Federation Engine → JSON pages → Arrow batches → client
 ```
+
+Trino delivers results only as JSON, paged or spooled. Zaychik converts them to Arrow once, in Java, so no Python touches the rows; that decode is the remaining cost of a Trino read. Every Trino read in Provisa, row or Arrow, goes through this path.
 
 The Provisa Flight server (port 8815) connects to Zaychik as an ADBC client, so Arrow streams end to end and results are never materialized.
 

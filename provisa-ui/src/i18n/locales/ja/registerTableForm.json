@@ -127,6 +127,10 @@
     "continue": "次へ",
     "checkReasonLabel": "このチェックが存在する理由",
     "checkReasonHint": "ビジネス用語で表した品質の約束。各プロダクトでチェックの見出しになります。",
-    "checkReasonPlaceholder": "日次売上が財務と一致するよう、注文は欠けがなく一意である"
+    "checkReasonPlaceholder": "日次売上が財務と一致するよう、注文は欠けがなく一意である",
+    "errorSparqlQuery": "テーブルの行を返す SPARQL クエリを入力してください。",
+    "errorQueryPreviewFirst": "カラムとその型がわかるように、まずクエリをプレビューしてください。",
+    "previewFailed": "プレビューに失敗しました: {{error}}",
+    "previewNoRows": "プレビューは行を返しませんでした。"
   }
 }

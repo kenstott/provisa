@@ -50,7 +50,7 @@ const RELS = {
   loading: false,
   refetch: vi.fn(),
 };
-const TABLES: { tables: unknown[]; loading: boolean } = { tables: [], loading: false };
+const TABLES: { tables: unknown[]; loading: boolean; refetch: () => Promise<unknown> } = { tables: [], loading: false, refetch: () => Promise.resolve() };
 const DOMAINS = { domains: [] };
 const UPSERT = { upsertRelationship: vi.fn(async () => ({ success: true, message: "" })) };
 const DELETE = {

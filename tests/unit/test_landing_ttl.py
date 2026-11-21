@@ -28,7 +28,11 @@ import pytest
 from provisa.api.data import materialization as mat
 from provisa.cache.values_cte import InlineRows
 
-_TABLE = {"table_name": "movie_hits", "source_id": "atlas"}
+_TABLE = {
+    "table_name": "movie_hits",
+    "source_id": "atlas",
+    "columns": [{"column_name": "title", "data_type": "text"}],
+}
 
 
 def _state(source_ttl=None, default=300, source="atlas"):
@@ -70,11 +74,15 @@ def test_an_endpoints_ttl_is_the_last_one_asked():
 
 # -- a parameterized table keeps only for a TTL of its own (REQ-1986) ----------------------------
 
-_PARAMETER = {"column_name": "_nf_q", "native_filter_type": "query_param"}
+_PARAMETER = {"column_name": "_nf_q", "data_type": "text", "native_filter_type": "query_param"}
 
 
 def _parameterized(**table):
-    return {**_TABLE, "columns": [{"column_name": "title"}, _PARAMETER], **table}
+    return {
+        **_TABLE,
+        "columns": [{"column_name": "title", "data_type": "text"}, _PARAMETER],
+        **table,
+    }
 
 
 @pytest.mark.parametrize(
@@ -321,7 +329,7 @@ async def test_a_grpc_remote_tables_ttl_is_the_first_one_set(
         "table_name": "s__m",
         "source_id": "grpc_src",
         "cache_ttl": registered,
-        "columns": [{"column_name": "id"}],
+        "columns": [{"column_name": "id", "data_type": "integer"}],
     }
     query = SimpleNamespace(
         columns=[],
@@ -368,7 +376,9 @@ async def test_a_grpc_remote_table_with_arguments_keeps_only_for_its_own_ttl(
         "table_name": "s__m",
         "source_id": "grpc_src",
         "cache_ttl": own,
-        "columns": [{"column_name": "_nf_id", "native_filter_type": "grpc_input"}],
+        "columns": [
+            {"column_name": "_nf_id", "data_type": "text", "native_filter_type": "grpc_input"}
+        ],
     }
     query = SimpleNamespace(
         columns=[],

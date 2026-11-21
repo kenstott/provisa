@@ -113,7 +113,8 @@ _STAGES: dict[tuple[str, str], str] = {
     ("provisa/executor/drivers/postgresql.py", "fetch"): "execute:pg_source.fetch",
     ("provisa/pgwire/pg_passthrough.py", "open_passthrough"): "execute:pg_passthrough.open",
     ("provisa/pgwire/pg_passthrough.py", "fetch"): "send:pg_passthrough.fetch",
-    ("provisa/executor/trino.py", "execute_trino"): "execute:trino",
+    ("provisa/executor/trino_flight.py", "execute_trino_flight"): "execute:trino",
+    ("provisa/executor/trino_flight.py", "execute_trino_flight_sync"): "execute:trino",
     ("provisa/executor/trino_flight.py", "execute_trino_flight_stream"): "execute:trino.flight",
     ("provisa/executor/trino_flight.py", "execute_trino_flight_arrow"): "execute:trino.flight",
     # encode / send

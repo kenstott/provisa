@@ -3133,7 +3133,7 @@
     snake_case exceptions (Hasura''s 2023 naming feature flag) is added only if an import needs it. Both
     presets are always offered; importing from Hasura picks the one its metadata names (a source''s
     customization.naming_convention, or the deployment default). Each preset is proved against a schema that
-    Hasura itself generates for the same tables, compared name by name.'
+    Hasura itself generates for the same tables, compared name by name. (Amended 2026-11-20 by the maintainer. Inflection uses lemminflect plus a recorded supplement word list kept as dictionary data in provisa/core/inflection.py (person and people, doc and docs, dataset and datasets, and the other common words lemminflect lacks); a word in neither stays as written.)'
   use_case: Consistent multi-language naming with a single authority ensures client-facing names are predictable
     and independent of physical schema.
   code:
@@ -3897,7 +3897,7 @@
     tables cannot be read is left unmeasured and says why; it does not fail the run. (Amended 2026-11-18,
     EVERY COLUMN OF THE PROPOSED RELATIONSHIPS LIST HAS A FILTER:) Maintainer 2026-11-18 (''every column
     needs a filter'', on the proposed relationships dialog). Every column of the standard list in the discovery
-    dialog has a column filter, as the standard list gives its filterable columns.'
+    dialog has a column filter, as the standard list gives its filterable columns. (Amended 2026-11-20 by the maintainer. Every same-name column pair in the same type group is measured deterministically whether or not the model lists it; the model may add pairs but can never drop one.) (Amended 2026-11-20 by the maintainer. Same-name column pairs are measured by key-value overlap even when a run did not choose that method, so they are never listed unmeasured.)'
   use_case: Auto-generated FK relationships reduce manual relationship registration overhead while preserving
     steward control.
   code:
@@ -4139,9 +4139,9 @@
   type: behavioral
   description: A datasource may be associated with multiple domains. Any domain owner may register any
     unclaimed table from that source. Once a table is claimed by one domain, no other domain may register it (first-come ownership). Unique constraint enforced on (source_id, normalized_table_name).
-    The UI greys out claimed tables regardless of which domain claimed them.
-  use_case: Multi-domain with first-claim ownership prevents the same physical table from being registered
-    multiple times while allowing flexible domain-to-source associations.
+    The UI greys out claimed tables regardless of which domain claimed them. (Amended 2026-11-20 by the maintainer. First-come ownership is withdrawn. Every name in the model is unique within its domain, except the names that are unique across the organisation, which are source ids, environment names (REQ-1523) and secrets provider names. A source's table may be registered in more than one domain, once per domain, and the uniqueness checked is (domain, table name), not (source, table name). The UI no longer greys out a table another domain registered. Removing a table frees its name in its domain at once, including a table that was registered with no domain.) (Amended 2026-11-20 by the maintainer, the general rule. Operational objects are named per organisation (for example sources, environments, secrets providers, roles, settings, schedules), and model objects are named per domain (tables, relationships, commands, products, metrics and views). A model object's name is unique within its domain and the same name may exist in another domain; an operational object's name is unique within the organisation.) (Amended 2026-11-20, correcting the earlier amendment's wording. Removing a table retires it per REQ-2248; registering the same source table again in that domain restores it, and the retired row never blocks registration in another domain.)
+  use_case: Model objects are named per domain, so two domains can each register their own orders table and
+    a deleted table comes back with its links when it is registered again.
   code:
   - provisa/api/admin/schema_helpers.py
   - provisa/api/admin/schema_mutation.py
@@ -4153,18 +4153,26 @@
   - tests/unit/test_dataset_uniqueness.py
   - provisa-ui/e2e/registration-admin.spec.ts
   since: 2026-01
-  scenario: 'Given a datasource shared across multiple domains
+  scenario: 'Given tables registered in domains A and B
 
-    When a domain owner claims a table
+    When a table named orders is registered in domain A and a table named orders in domain B
 
-    Then no other domain may claim that same physical table; the UI greys it out for all other
+    Then both registrations succeed, each name being unique only within its own domain
 
-    domains
+    When a second table named orders is registered in domain A
+
+    Then it is refused by name
+
+    When the table orders in domain A is deleted and the same source table is registered again in domain A
+
+    Then the retired table is restored with its id, relationships and tags
+
+    And the register form does not grey out a table another domain registered
 
     '
   integration_test: not_required
-  integration_test_reason: First-claim ownership model is state management; can be tested without real
-    data sources.
+  integration_test_reason: Per-domain naming and retired-table restore are state management; tested without real
+    external services.
   e2e: true
   e2e_reason: The UI greying-out of claimed tables across domains requires a browser- level E2E test —
     the visual behaviour and UI state cannot be verified by unit or integration tests alone.
@@ -22707,7 +22715,7 @@
   type: behavioral
   description: Masking respects column type constraints. NULL masks are allowed only on nullable columns;
     regex and truncate masks validated for applicable types (regex on text, truncate on temporal). Validation
-    enforced at config load time.
+    enforced at config load time. (Amended 2026-11-20 by the maintainer. A NULL constant mask is allowed on a NOT NULL column, since a masked column is reported nullable to the readers it masks (REQ-2131).)
   use_case: Type-aware masking validation at config time prevents runtime errors and ensures masks produce
     valid SQL.
   code:
@@ -41312,7 +41320,8 @@
     '
   since: 2026-07
 - id: REQ-1250
-  status: proposed
+  status: complete
+  since: 2026-11
   group: 13. Multi-Tenancy & Organizations
   category: Org Membership
   feature: organizations-membership
@@ -46867,7 +46876,7 @@
   type: structural
   description: Config exports carry JSON Pointer refs for internal cross-references plus composed physical
     resourcePath URIs for data elements, enabling external validators and interchange converters (Ossie/DDN)
-    to resolve semantic and physical locations without second passes.
+    to resolve semantic and physical locations without second passes. (Amended 2026-11-20 by the maintainer. A data element's composed resourcePath appears beside its name in the export, not instead of it.)
   use_case: JSON Pointers make exported references self-resolving for downstream validators and format
     converters; resourcePaths provide precise physical source locations (e.g. postgresql://host:5432/db/schema/table#column)
     for interchange systems.
@@ -54733,7 +54742,7 @@
 
     (Amended 2026-08-21, WHAT THE BUILD SETTLED:) The domain half of the gate is now a function of its own, ``capabilities.require_domain(info, domain_id)``, because an act can be permitted by more than one right — registering a view is allowed to a holder of create_view OR query_development — while the question of which domains it may touch has a single answer regardless of which right carried the caller in; ``require_capability``''s domain argument now calls it, [SUPERSEDED by REQ-1327, 2026-10-03 -- platform_admin holds zero data capabilities, so there is no platform bypass: require_domain has two exemptions (provisa/api/admin/capabilities.py:145-148) and tests/unit/test_domain_guard.py:94-98 asserts the platform administrator is scoped like anyone else. Kept here for history; do not implement against it.] so the three exemptions (dev/no-auth, the platform bypass, single-domain mode) are written once [END SUPERSEDED BLOCK]. The scope it reads is ``rights.domain_access_for_claims``, the companion of capabilities_for_claims, which resolves claims to ``roles.domain_access`` and never to the claim''s ``:domain`` suffix. The previous implementation read the suffix, which contradicted REQ-1530. ``*`` is interpreted in one place only, ``env_authority.domains_within``. THE CAPABILITY EACH UNGATED MUTATION NOW NAMES: create_domain and delete_domain take org_settings (the org''s domain vocabulary is the org_admin''s; a member scoped to sales must not answer their own scoping by minting a domain, and there is no domain to be a member of yet, so membership does not apply); create_role and delete_role take user_management (a role carries both capabilities and domain_access, so minting one is how a member would widen their own scope); upsert_rls_rule and delete_rls_rule take masking_config plus the domain the rule lands in, named directly for a domain-level rule, looked up from the table for a table-level one; delete_table takes table_registration plus the domain that holds the table, looked up from the id; update_source_allowed_domains takes source_registration and is NOT gated by membership in the domains being listed, because widening the list is granting reach rather than exercising it. A fact and a dim need no gate of their own: both lower to register_table, which is gated. THE VIEW''S TWO HALVES are both applied at the free-hand path in register_table: the domain registered into, and every table the SQL reads, resolved through ``domain_guard.view_read_domains``; CTE names are excluded because a CTE is defined in the statement rather than read from the model, and unparseable SQL raises rather than returning an empty set. THE RELATIONSHIP asks about the SOURCE table''s domain, and when the target lives in another domain the row is written with ``needs_review`` re-asserted AFTER the upsert. rel_repo''s upsert clears that flag on conflict because REQ-020 treats a save as an explicit re-review, and a cross-domain edge is not the source steward''s to clear. Both the view and the relationship queue a creation request on an out-of-domain edit rather than raising, matching what a missing right already does; the mutations that delete or administer raise.
 
-    (Amended 2026-10-07, A ROLE''S DOMAINS ARE ALL ACTED IN:) Redefining a role, removing a domain from it, or deleting it is an act in every domain the role reaches before and after the change, so it needs user_management reaching every one of them; a manager reaching only sales cannot change, narrow or delete a role that reaches finance. Removing a domain is no longer exempt.'
+    (Amended 2026-10-07, A ROLE''S DOMAINS ARE ALL ACTED IN:) Redefining a role, removing a domain from it, or deleting it is an act in every domain the role reaches before and after the change, so it needs user_management reaching every one of them; a manager reaching only sales cannot change, narrow or delete a role that reaches finance. Removing a domain is no longer exempt. (Amended 2026-11-20, maintainer: registering a table names its domain on every path, including the Wikidata starter and class tables and every source''s register step; a registration with no domain is refused, by the server and by the form. A table''s domain can be changed after registration: the table editor offers a select of the domains the member may change, the move needs the right on both the old and the new domain, and the table''s relationships and rules are checked again at save.)'
   use_case: A developer on the sales domain writes a view over a finance table and registers it into sales;
     the registration is refused because the view reads a table outside their domains, and what they get
     back is a request awaiting the finance owner rather than an error.
@@ -91216,7 +91225,7 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     2026-11-20, SEVERAL PARENTS'' ROW RULES ARE ORED:) Maintainer 2026-11-20. A role that inherits from
     several parents each carrying a row rule on the same table reads the rows that match any of those rules,
     consistent with acting with the union of held roles; inheriting a parent never narrows access. Earlier
-    text that each parent''s rule is ANDed in is superseded. (Amended 2026-11-20, maintainer: a personal access token naming no role still acts as its first live scope per REQ-1263, not the union of its scopes; in claims mode the union counts only roles the claims name, and a role reached only through role_mapping or default_role is not added to it.)'
+    text that each parent''s rule is ANDed in is superseded. (Amended 2026-11-20, maintainer: a personal access token naming no role still acts as its first live scope per REQ-1263, not the union of its scopes; in claims mode the union counts only roles the claims name, and a role reached only through role_mapping or default_role is not added to it.) (Amended 2026-11-20 by the maintainer. The member access form gives every role selected in one save the same domain and end date; different domains for different roles take another save.) (Amended 2026-11-21 by the maintainer. The rule A ROLE JUST TO RUN A COMMAND is superseded by REQ-870 COMMAND EXECUTION IS A CAPABILITY (2026-11-09). A role that exists only to run a command holds command_execution alone, runs its assigned commands, and reads no data; a role with no capabilities reaches no command.)'
   scenario: 'Given an org role ''dq lead'' inheriting from Data quality steward and Data product owner
 
     Then it holds the union of both roles'' capabilities
@@ -91803,7 +91812,8 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     And no network request is made'
 - id: REQ-2165
   value: 'Export your governed graph as Turtle or N-Triples and load it into any triple store you already run.'
-  status: in-progress
+  status: complete
+  since: 2026-11
   target: 2027-Q1
   group: 3. Source Registration & Data Modeling
   category: Business Glossary & Ontology
@@ -91819,7 +91829,7 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     applied, through the one pipeline. Two forms: a file (Turtle, or N-Triples streamed for large exports)
     and a direct load into a running store over the SPARQL 1.1 Graph Store HTTP Protocol, reporting triples
     loaded and failures as the Neo4j export does. It accepts as_recorded (and as_of where a valid time
-    is mapped), so an export can be reproduced exactly later.'
+    is mapped), so an export can be reproduced exactly later. (Amended 2026-11-20 by the maintainer. A domain- or class-scoped export carries every ontology axiom the exporting role may read, not only the axioms about terms in the scope.)'
   scenario: 'Given a role that reads the Customer class with email masked
 
     When it exports class Customer as Turtle
@@ -97619,7 +97629,7 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     free for reuse. It is listed with the other retired objects and restored from there with its tables;
     a restore is refused while a live object holds its name. Nothing is removed. Reason: with the keep rule
     a source that had ever held a table could never be deleted, so a kind that allows one source could never
-    be added again.'
+    be added again. (Amended 2026-11-20 by the maintainer. Re-registering the same source table under the same name in the same domain restores its retired row, with the same id and its relationships and tags, and clears the retirement; a different object taking a retired name is still refused.)'
   scenario: 'Given a table with a grounded term and a tag
 
     When a steward deletes the table
@@ -97850,7 +97860,7 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     ships the runtime and every pack at the same engine version; a pack whose contents did not change is
     re-stamped with the new runtime pin. The full per-adapter bundles stop with the first pack release,
     and nothing is tagged at that version until the AskAmerica engine's installer reads the runtime and
-    the govdata pack. The govdata catalog cache is regenerated by the maintainer before any bundle release.
+    the govdata pack. The govdata catalog cache is regenerated by the maintainer before any bundle release. (Amended 2026-11-20 by the maintainer. A pack names a compatible runtime line (major.minor, or a runtime ABI number in runtime.json), not an exact runtime version; it starts the newest installed runtime on that line, so a runtime release ships with the packs unchanged. Homebrew and Scoop ship one runtime formula plus one formula per pack that depends on it. A jar present in both the runtime and a pack is refused at start and also at pack build time.) (Amended 2026-11-20 by the maintainer. A pack records the runtime jar names it was built against, and start refuses a runtime on its line that lacks any of them, naming the missing jar.) (Amended 2026-11-20 by the maintainer, superseding the 2026-11-19 rule that the maintainer regenerates the govdata catalog cache. Each engine release builds the govdata catalog cache by a live walk in CI, keyed by the engine release, inside the govdata pack's build; the walk fails the release on a gap; no committed cache file and no manual step remain.)
 - id: REQ-2255
   status: proposed
   target: 2026-Q3
@@ -97991,7 +98001,8 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     domains, relations on either end or status sets that time. The Glossary''s recent-change sort orders by
     it.'
 - id: REQ-2260
-  status: proposed
+  status: complete
+  since: 2026-11
   target: 2026-Q4
   group: 10. UI & Admin Surfaces
   category: UI
@@ -98024,7 +98035,7 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     roles assigned there (REQ-1539). Reports (usage, query health, policy denials, cost) can be filtered and
     grouped by stage; the audit log and the lineage and catalog exports carry the environment''s stage, so a
     catalog can tell production assets from others; the environment switcher shows the stage beside each
-    environment''s name.'
+    environment''s name. (Amended 2026-11-21 by the maintainer. Cost grouped by stage is withdrawn from this requirement; cost reporting, if wanted, is its own requirement.)'
 - id: REQ-2262
   status: proposed
   target: 2026-Q4
@@ -98114,4 +98125,18 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     URL setup field for a per-instance host, a spec location that may point at the running instance (whose
     spec changes between versions), and the authentication type, including OAuth client credentials. The
     Marquez source (REQ-2264) uses the same mechanism. Until a brand exists, any of these catalogs can be
-    added as a plain OpenAPI source. (Amended 2026-11-20, maintainer: DataHub is read through its OpenAPI v3 spec ({base_url}/openapi/v3/api-docs) by the same OpenAPI passthrough brand mechanism as OpenMetadata, not the GraphQL source; a list answer whose next-page cursor is nested (paging.after, scrollId) is paged by the generic OpenAPI source, which takes a dotted cursor path and the required array as the rows.)'
+    added as a plain OpenAPI source. (Amended 2026-11-20, maintainer: DataHub is read through its OpenAPI v3 spec ({base_url}/openapi/v3/api-docs) by the same OpenAPI passthrough brand mechanism as OpenMetadata, not the GraphQL source; a list answer whose next-page cursor is nested (paging.after, scrollId) is paged by the generic OpenAPI source, which takes a dotted cursor path and the required array as the rows.) (Amended 2026-11-20 by the maintainer. When a brand instance''s spec needs authentication to fetch, the spec request carries the same credential as the source''s data calls.) (Amended 2026-11-20, correcting the earlier amendment''s wording. DataHub''s entity endpoints are in the spec group at {base_url}/openapi/v3/api-docs/10-openapi-v3, not the bare /openapi/v3/api-docs address.)'
+
+- id: REQ-2266
+  status: proposed
+  target: 2026-Q4
+  group: 1. Access Governance & Security
+  category: Security
+  feature: roles-and-capabilities-domain-access
+  priority: SHOULD
+  type: behavioral
+  description: 'Maintainer 2026-11-20. Access review. Provisa produces an access review, on demand and on a schedule,
+    listing each member with their roles, entitlements and last use, grouped by the domain whose owner reviews them.
+    The owner confirms or revokes each row; a revocation takes effect at once, and every confirmation and revocation
+    is recorded with who made it, when and why. The scheduled review is exported to the operator''s chosen
+    destination.'

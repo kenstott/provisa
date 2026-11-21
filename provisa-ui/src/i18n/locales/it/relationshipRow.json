@@ -51,6 +51,8 @@
     "retireResolverConsequence": "La sua vista delle corrispondenze e le sue tre relazioni vengono ritirate insieme. I loro nomi restano occupati.",
     "queryLinks": {
       "heading": "Interroga",
+      "tableMissing": "I link di query non sono disponibili: la tabella {{ids}} indicata da questa relazione non è tra le tabelle registrate.",
+      "tablesUnread": "I link di query non sono disponibili: non è stato possibile leggere le tabelle registrate ({{error}}).",
       "cypher": "Leggi {{name}} in Cypher",
       "sql": "Leggi {{name}} in SQL",
       "sparql": "Leggi {{name}} in SPARQL",

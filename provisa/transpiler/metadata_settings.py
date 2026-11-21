@@ -47,6 +47,7 @@ NAMES = (
     "row_estimates",
     "scope",
     "asked",
+    "masked",
 )
 _PREFIX = "provisa.catalog"
 _WRITES_SETTINGS = re.compile(r"\bset_config\b", re.IGNORECASE)
@@ -127,18 +128,31 @@ def set_statement(values: Mapping[str, str]) -> tuple[str, tuple[str, ...]]:
     return f"SELECT {calls}", tuple(values[n] for n in names)
 
 
+def masked_column_key(table_id: str, column: str) -> str:
+    """How :func:`masked_columns_literal` names a column, as SQL over a table id and a column name
+    (each an SQL expression): what a catalog view compares to the ``masked`` setting."""
+    return f"CAST({table_id} AS TEXT) || '.' || {column}"
+
+
+def masked_columns_literal(masked: Iterable[tuple[int, str]]) -> str:
+    """``masked`` -- (table id, column) -- as the text array the ``masked`` setting holds."""
+    return relation_names_literal(f"{table_id}.{column}" for table_id, column in masked)
+
+
 def statement_settings(
     role_id: str,
     can_write: bool,
     database: str,
     domain_prefix: bool,
     *,
+    masked: Iterable[tuple[int, str]],
     session: Mapping[str, str] | None = None,
     scope: str | None = None,
 ) -> dict[str, str]:
     """What a statement's catalog views are told: who asks, what database it is on, the naming in
-    force, where a connection asks, that connection (pid, application_name, backend_start,
-    query), and where the role's meta rows are scoped, to which tables."""
+    force, the columns the role reads under a mask (``masked``: table id, column; each listed
+    nullable, REQ-2131), where a connection asks, that connection (pid, application_name,
+    backend_start, query), and where the role's meta rows are scoped, to which tables."""
     from provisa.compiler.naming import active_gql_convention, active_sql_form
 
     return {
@@ -148,6 +162,7 @@ def statement_settings(
         "sql_convention": active_sql_form(),
         "gql_convention": active_gql_convention(),
         "domain_prefix": "true" if domain_prefix else "false",
+        "masked": masked_columns_literal(masked),
         **(session or {}),
         **({"scope": scope} if scope is not None else {}),
     }

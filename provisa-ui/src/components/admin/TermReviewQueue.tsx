@@ -59,6 +59,7 @@ import { FormChecks, FormField, FormFooter, FormLayout } from "../form/FormLayou
 import { CollapsibleItem, Collapsibles } from "../collapsible/Collapsible";
 import { documentMark } from "../../lib/documentMark";
 import { StopButton } from "../StopButton";
+import { termLabel } from "./termLabel";
 
 /** How often a running scan is read again, in milliseconds. */
 const POLL_MS = 2000;
@@ -436,7 +437,10 @@ function DraftCard({
                 searchable
                 value={target}
                 onChange={setTarget}
-                data={terms.map((term) => ({ value: String(term.id), label: term.name }))}
+                data={terms.map((term) => ({
+                  value: String(term.id),
+                  label: termLabel(term, terms),
+                }))}
                 data-testid="find-terms-merge-target"
               />
             </FormField>
