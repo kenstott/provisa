@@ -713,8 +713,11 @@ def root_field(ctx: CompilationContext, field_name: str) -> tuple[str, TableMeta
     if row is None:
         return None
     assert row.table_id is not None  # a table's root-field row carries its table (_table_rows)
+    # Each table by id, as the context holds it under its own root field.
     by_id = context_derived(
-        ctx, "tables_by_id", lambda c: {tm.table_id: tm for tm in c.tables.values()}
+        ctx,
+        "tables_by_id",
+        lambda c: {tm.table_id: tm for key, tm in c.tables.items() if key == tm.field_name},
     )
     return row.surface, by_id[row.table_id]
 
