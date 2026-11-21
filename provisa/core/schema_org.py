@@ -2818,6 +2818,12 @@ discovery_run_proposals = Table(
     Column("answer", Text, nullable=True),
     Column("decision", Text, nullable=True),
     Column("accepted_as", Text, nullable=True),
+    # REQ-1586: a suggestion joining two ends through a junction both its legs refer from: the
+    # junction and its two referring columns (source_column = via_source_column, via_target_column
+    # = target_column). Null for every other proposal.
+    Column("via_table_id", Integer, ForeignKey("registered_tables.id"), nullable=True),
+    Column("via_source_column", Text, nullable=True),
+    Column("via_target_column", Text, nullable=True),
     Column("tenant_id", Uuid),
 )
 

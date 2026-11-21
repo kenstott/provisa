@@ -403,4 +403,7 @@ CH_REGEXPS = Feature(
     ),
 )
 
+#: The family's place in the grid (polyfill.GRID), which tries the rules of one function in
+#: the order of their families.
+ORDER = 80
 FEATURES: tuple[Feature, ...] = (REGEXP_REPLACE, CH_REGEXPS)

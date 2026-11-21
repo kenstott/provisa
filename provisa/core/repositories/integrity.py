@@ -253,6 +253,7 @@ REFERENCES: tuple[Reference, ...] = (
     # REQ-413: what a discovery run read of a table goes with the table.
     _part("discovery_run_proposals", "source_table_id", "table"),
     _part("discovery_run_proposals", "target_table_id", "table"),
+    _part("discovery_run_proposals", "via_table_id", "table"),  # REQ-1586: a junction suggestion
     # REQ-413: a run's proposals go with the run.
     _part("discovery_run_proposals", "run_id", "discovery_run"),
     _part("materialized_views", "id", "table", by="view_mv_id", of="materialized_view", owner="id"),

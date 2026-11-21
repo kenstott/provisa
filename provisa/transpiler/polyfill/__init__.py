@@ -11,52 +11,17 @@
 """Polyfills (REQ-2236): how pgwire gives PostgreSQL's behaviour on an engine that is not
 PostgreSQL, as one grid of rules the translator runs and the documentation prints.
 
-:data:`GRID` is the grid. Each family of features is a module of its rows; a family moves here from
-the per-engine tables of provisa.transpiler (scripts/conformance/polyfill_audit.md) one at a time."""
+:data:`GRID` is the grid. Each family of features is a module of its rows, collected by module; a
+family moves here from the per-engine tables of provisa.transpiler
+(scripts/conformance/polyfill_audit.md) one at a time."""
 
 # Requirements: REQ-2236
 
 from __future__ import annotations
 
-from provisa.transpiler.polyfill import (
-    aggregates,
-    array_dimensions,
-    array_sets,
-    arrays,
-    bits,
-    byte_compares,
-    bytea,
-    calls,
-    casts,
-    clickhouse,
-    clocks,
-    collations,
-    dates,
-    float_aggregates,
-    floats,
-    geometric,
-    instants,
-    intervals,
-    json_built,
-    json_keys,
-    json_literal,
-    json_members,
-    json_values,
-    money,
-    network,
-    numbers,
-    ported,
-    ranges,
-    records,
-    regex,
-    server,
-    snapshots,
-    texts,
-    textsearch,
-    type_io,
-    unheld,
-    zones,
-)
+import importlib
+import pkgutil
+
 from provisa.transpiler.polyfill.grid import (
     DIALECTS,
     Applied,
@@ -73,49 +38,32 @@ from provisa.transpiler.polyfill.grid import (
 from provisa.transpiler.polyfill.matching import Bindings, graft, match
 from provisa.transpiler.polyfill.notation import Refusal, Rewrite, RuleError, hole_name, holes
 
-#: The one grid: every family's features.
-GRID = Grid(
-    # an array of dimensions is read before any row of its call's name
-    array_dimensions.FEATURES
-    + arrays.FEATURES
-    + array_sets.FEATURES
-    + zones.FEATURES
-    + records.FEATURES
-    + money.FEATURES
-    + type_io.FEATURES
-    + regex.FEATURES
-    + collations.FEATURES
-    + textsearch.FEATURES
-    + network.FEATURES
-    + unheld.FEATURES
-    + numbers.FEATURES
-    + floats.FEATURES
-    + float_aggregates.FEATURES
-    + dates.FEATURES
-    + calls.FEATURES
-    + casts.FEATURES
-    + server.FEATURES
-    + ranges.FEATURES
-    + json_keys.FEATURES
-    + json_built.FEATURES
-    + json_members.FEATURES
-    + json_literal.FEATURES
-    + json_values.FEATURES
-    + clickhouse.FEATURES
-    + clocks.FEATURES
-    + aggregates.FEATURES
-    + snapshots.FEATURES
-    # intervals' isfinite row is read before instants' (its call of no interval is that row's).
-    + intervals.FEATURES
-    + instants.FEATURES
-    + geometric.FEATURES
-    # a text's rows are read before bytea's, whose rows of one name keep what is no bytea
-    + texts.FEATURES
-    + bits.FEATURES
-    + byte_compares.FEATURES
-    + bytea.FEATURES
-    + ported.FEATURES
-)
+#: The package's modules that hold no family: the grid, its notation and matching, the pages, and
+#: the Trino helpers families share.
+_NOT_FAMILIES = frozenset({"docs", "grid", "inet_literal", "matching", "notation", "trino"})
+
+
+def _features() -> tuple[Feature, ...]:
+    """Every family's features, the families in their ORDER, refusing two families of one place."""
+    families = [
+        importlib.import_module(f"{__name__}.{m.name}")
+        for m in pkgutil.iter_modules(__path__)
+        if m.name not in _NOT_FAMILIES
+    ]
+    placed: dict[int, str] = {}
+    for family in families:
+        if family.ORDER in placed:
+            raise RuleError(
+                f"{placed[family.ORDER]} and {family.__name__} are both ORDER {family.ORDER}"
+            )
+        placed[family.ORDER] = family.__name__
+    families.sort(key=lambda family: family.ORDER)
+    return tuple(feature for family in families for feature in family.FEATURES)
+
+
+#: The one grid: every family's features, each family from its own module (its FEATURES, at its
+#: ORDER), so a family is edited in its module alone and a new family needs no edit here.
+GRID = Grid(_features())
 
 __all__ = [
     "DIALECTS",

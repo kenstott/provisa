@@ -21,7 +21,6 @@ from __future__ import annotations
 
 import importlib.util
 import re
-import sys
 from pathlib import Path
 
 import pytest
@@ -282,8 +281,7 @@ _WAREHOUSE_SECRETS = {
     "SNOWFLAKE_ACCOUNT", "SNOWFLAKE_USER", "SNOWFLAKE_PASSWORD", "SNOWFLAKE_WAREHOUSE",
     "DATABRICKS_SERVER_HOSTNAME", "DATABRICKS_HTTP_PATH", "DATABRICKS_TOKEN",
     "GOOGLE_CLOUD_PROJECT", "GOOGLE_APPLICATION_CREDENTIALS_JSON", "GSHEETS_TEST_SHEET_ID",
-    "FABRIC_SQL_SERVER", "FABRIC_DATABASE", "FABRIC_RESOURCE_GROUP", "FABRIC_CAPACITY_NAME",
-    "FABRIC_WORKSPACE_ID",
+    "FABRIC_RESOURCE_GROUP", "FABRIC_CAPACITY_NAME",
     "AZURE_CLIENT_ID", "AZURE_CLIENT_SECRET", "AZURE_TENANT_ID",
 }  # fmt: skip
 _LIVE_SOURCE_SECRETS = _WAREHOUSE_SECRETS | {
@@ -375,7 +373,7 @@ def test_the_core_ui_lanes_credential_files_are_private_and_removed():
     # Maintainer 2026-11-10 ("Paid cloud resources"): the Fabric capacity is the run's own --
     # made by the prepare script, deleted (and read back gone) by the after-script whatever the
     # lane's outcome.
-    assert "scripts/fabric_e2e.py up" in prepare
+    assert 'scripts/fabric_e2e.py up "$GITHUB_ENV"' in prepare
     assert "scripts/fabric_e2e.py down" in after and "suspend_capacity()" not in after
     # REQ-254: the warehouses the cloud-warehouse spec wakes are stopped again, whatever happened.
     assert "stop_warehouse" in after and "suspend_warehouse" in after
@@ -395,13 +393,13 @@ def test_the_warehouse_lane_leaves_every_compute_it_runs_stopped_whatever_happen
     steps = {s.get("name"): s for s in job["steps"]}
     run_lane = [s.get("name") for s in job["steps"]].index("Run lane")
     for name, call in (
-        ("Delete this run's Fabric capacity", "scripts/fabric_e2e.py down"),
+        ("Delete this run's Fabric workspace and capacity", "scripts/fabric_e2e.py down"),
         ("Leave the Databricks warehouse stopped", "stop_warehouse"),
         ("Leave the Snowflake warehouse suspended", "suspend_warehouse"),
     ):
         step = steps[name]
         assert [s.get("name") for s in job["steps"]].index(name) > run_lane, name
-        if name == "Delete this run's Fabric capacity":
+        if name == "Delete this run's Fabric workspace and capacity":
             # Whenever the step that creates the capacity ran, whatever its outcome (below).
             assert step["if"] == _FABRIC_DOWN_IF, name
         else:
@@ -416,9 +414,33 @@ def test_the_warehouse_lane_creates_its_own_fabric_capacity_before_any_test():
         "jobs"
     ]["warehouse"]
     names = [s.get("name") for s in job["steps"]]
-    up = names.index("This run's Fabric capacity")
+    up = names.index("This run's Fabric capacity, workspace and warehouse")
     assert up < names.index("Run lane")
-    assert "scripts/fabric_e2e.py up" in job["steps"][up]["run"]
+    assert 'scripts/fabric_e2e.py up "$GITHUB_ENV"' in job["steps"][up]["run"]
+
+
+# Maintainer 2026-11-21: the Fabric workspace and warehouse are the run's own. Their endpoint,
+# database and workspace id are written by ``scripts/fabric_e2e.py up`` to $GITHUB_ENV, never read
+# from a standing secret.
+_FABRIC_RUN_OUTPUTS = ("FABRIC_SQL_SERVER", "FABRIC_DATABASE", "FABRIC_WORKSPACE_ID")
+
+
+def test_fabric_endpoint_database_and_workspace_are_run_outputs_not_secrets():
+    """No workflow passes, declares or reads a standing Fabric workspace, warehouse or endpoint,
+    and no step's own environment sets those names: a step-level value would hide the one
+    ``up`` wrote to $GITHUB_ENV."""
+    for path in sorted((REPO / ".github" / "workflows").glob("*.yml")):
+        text = path.read_text()
+        for name in _FABRIC_RUN_OUTPUTS:
+            assert f"secrets.{name}" not in text, f"{path.name}: secrets.{name}"
+    for where, step in _steps():
+        assert not set(step.get("env") or {}) & set(_FABRIC_RUN_OUTPUTS), where
+    for workflow in ("lane.yml", "integration-suite-lanes.yml"):
+        doc = yaml.safe_load((REPO / ".github" / "workflows" / workflow).read_text())
+        declared = set(doc[True]["workflow_call"].get("secrets") or {})
+        assert not declared & set(_FABRIC_RUN_OUTPUTS), workflow
+        for job in doc["jobs"].values():
+            assert not set(job.get("env") or {}) & set(_FABRIC_RUN_OUTPUTS), workflow
 
 
 # The delete step's condition: it runs whenever the create step ran, and only then.
@@ -440,30 +462,50 @@ def _fabric_test_files() -> set[str]:
     }
 
 
-def test_the_warehouse_lane_never_creates_a_fabric_capacity_and_selects_no_fabric_test():
-    """Maintainer 2026-11-11 ("skip fabric tests for now"): no lane selects a requires_fabric
-    test, so the capacity step never runs (assignToCapacity returns 403 until the CI service
-    principal is Admin on the Fabric workspace; run 42930869189). The delete step stays tied to
-    the create step's outcome, so it is skipped with it."""
+def _fabric_up_runs(condition: str, tests: str) -> bool:
+    """The create step's ``if:`` evaluated for a run's ``inputs.tests``. The condition may only be
+    ``inputs.tests == ''`` or'd with ``contains(inputs.tests, '<file>')`` clauses; anything else
+    fails here rather than being guessed at."""
+    runs = False
+    for clause in (c.strip() for c in condition.split("||")):
+        if clause == "inputs.tests == ''":
+            runs = runs or tests == ""
+            continue
+        named = re.fullmatch(r"contains\(inputs\.tests, '([^']+)'\)", clause)
+        assert named, f"unexpected clause in the Fabric capacity step's condition: {clause!r}"
+        runs = runs or named.group(1) in tests
+    return runs
+
+
+def test_the_warehouse_lane_creates_a_fabric_capacity_only_for_a_run_selecting_a_fabric_test():
+    """REQ-254: a lane run that selects no Fabric test creates no capacity. The whole lane (no
+    inputs.tests) still makes it; a targeted run makes it only when it names a test file that
+    reaches Fabric -- every such file, so none runs without one. The delete step runs whenever
+    the create step ran, whatever happened, and is skipped with it."""
     job = yaml.safe_load((REPO / ".github/workflows/integration-suite-lanes.yml").read_text())[
         "jobs"
     ]["warehouse"]
     steps = {s.get("name"): s for s in job["steps"]}
-    up = steps["This run's Fabric capacity"]
+    up = steps["This run's Fabric capacity, workspace and warehouse"]
     assert up["id"] == "fabric-capacity"
-    assert up["if"] is False  # YAML `if: false`: the step never runs
-    assert steps["Delete this run's Fabric capacity"]["if"] == _FABRIC_DOWN_IF
+    condition = up["if"]
+    fabric = _fabric_test_files()
+    assert fabric, "no integration test reaches Fabric: the condition below would be vacuous"
+    assert set(re.findall(r"contains\(inputs\.tests, '([^']+)'\)", condition)) == fabric
 
+    assert _fabric_up_runs(condition, "")
+    for f in sorted(fabric):
+        assert _fabric_up_runs(condition, f), f
+        assert _fabric_up_runs(
+            condition, f"tests/integration/test_google_sheets_source_e2e.py {f}::test_x"
+        ), f
+    # Run 42930869189: a targeted Google Sheets run made (and paid for) a capacity it never used.
+    assert not _fabric_up_runs(condition, "tests/integration/test_google_sheets_source_e2e.py")
+    assert not _fabric_up_runs(
+        condition, "tests/integration/test_metadata_export_purview_e2e.py::test_x"
+    )
 
-def test_run_lane_s_warehouse_lane_excludes_requires_fabric():
-    spec = importlib.util.spec_from_file_location("run_lane", REPO / "scripts/ci/run_lane.py")
-    run_lane = importlib.util.module_from_spec(spec)
-    sys.modules[spec.name] = run_lane
-    spec.loader.exec_module(run_lane)
-    assert "and not requires_fabric" in run_lane.LANES["warehouse"].marker
-    for name, lane in run_lane.LANES.items():
-        if name != "warehouse":
-            assert "requires_fabric" not in lane.marker.replace("not requires_fabric", ""), name
+    assert steps["Delete this run's Fabric workspace and capacity"]["if"] == _FABRIC_DOWN_IF
 
 
 def test_every_integration_file_reaching_fabric_carries_requires_fabric():

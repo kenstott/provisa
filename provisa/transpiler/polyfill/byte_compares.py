@@ -103,4 +103,7 @@ COMPARISONS: tuple[Feature, ...] = (
     ),
 )
 
+#: The family's place in the grid (polyfill.GRID), which tries the rules of one function in
+#: the order of their families.
+ORDER = 350
 FEATURES: tuple[Feature, ...] = COMPARISONS
