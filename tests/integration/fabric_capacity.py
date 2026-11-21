@@ -461,6 +461,29 @@ def _read_back_gone(fabric, what: str, path: str) -> None:
     _wait_for(f"{what} gone", gone)
 
 
+def _item_gone(fabric, what: str, workspace_path: str, item_path: str) -> bool:
+    """One read-back of an item of a deleted workspace. 404 is gone. Once the workspace itself
+    answers 404, 401/403 is gone too: Fabric no longer authorizes reads of a deleted workspace's
+    items (observed: warehouse read-back answered 401 after the workspace delete). Any other
+    answer is raised with its status, body and the workspace's status."""
+    workspace = fabric.get(f"{_FABRIC_API}{workspace_path}")
+    got = fabric.get(f"{_FABRIC_API}{item_path}")
+    if got.status_code == 404:
+        return True
+    if got.status_code == 200:
+        return False
+    if got.status_code in (401, 403) and workspace.status_code == 404:
+        return True
+    raise RuntimeError(
+        f"{what}: read back: HTTP {got.status_code}: {got.text[:1000]}; "
+        f"workspace read back: HTTP {workspace.status_code}"
+    )
+
+
+def _read_back_item_gone(fabric, what: str, workspace_path: str, item_path: str) -> None:
+    _wait_for(f"{what} gone", lambda: _item_gone(fabric, what, workspace_path, item_path))
+
+
 def _delete_run_workspaces() -> None:
     """Delete each of the run's workspaces (its items with it) and read back that the workspace
     and its warehouses are gone."""
@@ -489,9 +512,10 @@ def _delete_run_workspaces() -> None:
                 )
             _read_back_gone(fabric, label, f"/workspaces/{workspace_id}")
             for wh in warehouses:
-                _read_back_gone(
+                _read_back_item_gone(
                     fabric,
                     f"Fabric warehouse {wh.get('displayName')!r} ({wh['id']}) of {label}",
+                    f"/workspaces/{workspace_id}",
                     f"/workspaces/{workspace_id}/warehouses/{wh['id']}",
                 )
             print(f"{label}: deleted with its items, read back gone", flush=True)
