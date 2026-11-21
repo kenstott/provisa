@@ -687,17 +687,17 @@ def _attachable(connectors: list[Connector]) -> tuple[list[Connector], dict[str,
     what is missing for each type left with no connector that no reader lands either. A type
     Provisa lands is a replica (complete_reach gives it its land reach), never unreachable. A
     server with no staged directory counts what it installed when it started (THE SERVER TIER
-    STAGES AT START); where neither is known DuckDB installs on first use and every connector
-    stays."""
+    STAGES AT START) and installs, once, what a connector declared since then needs (REQ-1177);
+    where neither is known DuckDB installs on first use and every connector stays, less any whose
+    extension has no build for the running DuckDB (REQ-1998: a sheet lands through the Sheets API
+    on DuckDB 2.0, whatever is staged)."""
     from provisa.federation.duckdb_extensions import (
-        staged_extensions,
+        attachable_extensions,
         unstaged_needs,
         unstaged_reason,
     )
 
-    staged = staged_extensions()
-    if staged is None:
-        return connectors, {}
+    staged = attachable_extensions(connectors)
     kept: list[Connector] = []
     missing: dict[str, tuple[str, ...]] = {}
     for connector in connectors:
@@ -792,17 +792,15 @@ def build_duckdb_engine(
     from provisa.federation.connector_duckdb import DuckDBMotherDuckConnector
     from provisa.federation.duckdb_backend import DuckDBBackend
     from provisa.federation.runtime import EngineCapability
-    from provisa.federation.duckdb_extensions import motherduck_reader_missing
+    from provisa.core.engine_memory import motherduck_extension_limit
 
     connectors, unreachable = _attachable(duckdb_engine_connectors())
-    # REQ-1998 (Amended 2026-11-06, MOTHERDUCK IS A REPLICA WHERE IT CANNOT ATTACH): attached where
-    # MotherDuck's extension loads on this DuckDB; where it does not, no reader in this deployment
-    # lands it either, so it is unreachable, naming what is missing.
-    missing_reader = motherduck_reader_missing()
-    if missing_reader is None:
+    # REQ-1998 (Amended 2026-11-06, MOTHERDUCK IS A REPLICA WHERE IT CANNOT ATTACH; MOTHERDUCK
+    # LANDS THROUGH ITS POSTGRES ENDPOINT): attached where MotherDuck's extension loads on this
+    # DuckDB; where it does not, its replicas land through MotherDuck's Postgres endpoint
+    # (complete_reach gives it its land reach).
+    if motherduck_extension_limit() is None:
         connectors.append(DuckDBMotherDuckConnector())
-    else:
-        unreachable["motherduck"] = missing_reader
     return FederationEngine(
         name,
         connectors,

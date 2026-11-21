@@ -78,6 +78,10 @@ export interface FormState {
   outputColumns: DatasetColumn[];
   // REQ-2168: the command's name per language; a language left out offers its own name.
   languageBindings: Record<string, LanguageBinding>;
+  // REQ-1986: a registered source operation that reads rows is also exposed as a parameterized
+  // table while this is on; null for a function with no table form, or one not yet registered
+  // (registration sets it).
+  exposedAsTable: boolean | null;
 }
 
 // REQ-885: selectable implementation kinds for the function/command editor.
@@ -97,7 +101,18 @@ export const IMPL_KINDS = [
   // REQ-2131: a code source's @columns function, a batch column transform applied in a
   // projection. Chosen by picking a code source; its columns follow from the function.
   { value: "code_columns", label: "Column transform (code source)" },
+  // REQ-1988: native SQL in a relational source's own dialect, run on the source in one
+  // transaction. Offered with the relational sources it runs on (NATIVE_SQL_SOURCE_TYPES).
+  { value: "source_query", label: "Native SQL (relational source)" },
 ];
+
+// REQ-1988: the source types a native SQL command runs on (core/native_sql.DIALECTS).
+export const NATIVE_SQL_SOURCE_TYPES: readonly string[] = ["postgresql"];
+
+// A source_query command whose binding is a MongoDB pipeline is not native SQL.
+export function isNativeSql(implKind: string, binding: Record<string, unknown>): boolean {
+  return implKind === "source_query" && !("pipeline" in binding);
+}
 
 export const ARG_KINDS = [
   { value: "column_value", label: "column_value (scalar)" },
@@ -153,6 +168,7 @@ export const EMPTY_FORM: FormState = {
   writesTable: "",
   outputColumns: [],
   languageBindings: {},
+  exposedAsTable: null,
 };
 
 // REQ-1159: IR type → JSON-schema scalar. return_schema is the GraphQL projection of the

@@ -338,6 +338,40 @@ def _log_http_surfaces(app: Any, _log: logging.Logger) -> None:
             _log.warning("%s endpoint not served at %s", name, path)
 
 
+async def _start_minted_pgwire(_log: logging.Logger) -> None:
+    """The listener for minted tokens (REQ-2226): the one port a sandbox may reach. Under
+    high-security mode no pgwire listener starts (REQ-693), and a command given a table is refused,
+    naming why. TLS is the main listener's certificate without its client-certificate policy: the
+    minted token authenticates the connection."""
+    import ssl
+
+    from provisa.api.app import state
+    from provisa.core import settings_registry
+    from provisa.pgwire.minted_server import start_minted_pgwire_server
+    from provisa.security.high_security import pgwire_start_allowed
+
+    port = settings_registry.value("server.minted_pgwire_port")
+    if not port:
+        return
+    if not pgwire_start_allowed(state, port):
+        _log.warning("minted-token pgwire listener not started: security.mode=high (REQ-693)")
+        return
+    try:
+        pair = _resolve_tls("PROVISA_PGWIRE_CERT", "PROVISA_PGWIRE_KEY")
+        context = None
+        if pair is not None:
+            context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+            context.load_cert_chain(*pair)
+        state._minted_pgwire_server = start_minted_pgwire_server(
+            host="0.0.0.0",  # nosec B104 - a remote host reaches it; it accepts only minted tokens
+            port=port,
+            ssl_ctx=context,
+        )
+        _log.info("minted-token pgwire listener on 0.0.0.0:%d (TLS=%s)", port, context is not None)
+    except Exception:
+        _log.exception("minted-token pgwire listener startup failed")
+
+
 async def _start_servers(_log: logging.Logger) -> None:
     """Start gRPC, Arrow Flight, pgwire, and APQ cache servers."""
     from provisa.api.app import state  # lazy: avoid app<->app_startup cycle
@@ -514,6 +548,8 @@ async def _start_servers(_log: logging.Logger) -> None:
             )
         except Exception:
             _log.exception("pgwire server startup failed")
+
+    await _start_minted_pgwire(_log)
 
     bolt_port = settings_registry.value("server.bolt_port")  # REQ-1913; 0 = not started
     if bolt_port and not bolt_start_allowed(state, bolt_port):

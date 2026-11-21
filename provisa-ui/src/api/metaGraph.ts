@@ -171,9 +171,10 @@ export type Cond =
   | { ilike: string }
   | { is_null: boolean };
 
-/** A where: every column condition holds, each of ``_and`` and any of ``_or``, and for each
- * relationship named, a related row matching its own where. */
-export type Where = { _and?: Where[]; _or?: Where[] } & {
+/** A where: every column condition holds, each of ``_and`` and any of ``_or``, ``_not``'s does
+ * not (SQL's NOT: a comparison with a null keeps no row either way), and for each relationship
+ * named, a related row matching its own where. */
+export type Where = { _and?: Where[]; _or?: Where[]; _not?: Where } & {
   [columnOrRelationship: string]: Cond | Where | Where[];
 };
 
@@ -235,6 +236,12 @@ export function whereText(m: MetaReader, type: string, where: Where): string | n
       const subs = (cond as Where[]).map((w) => whereText(m, type, w));
       if (subs.some((x) => x === null)) return null;
       conds.push(`${key}: [${subs.join(", ")}]`);
+      continue;
+    }
+    if (key === "_not") {
+      const sub = whereText(m, type, cond as Where);
+      if (sub === null) return null;
+      conds.push(`_not: ${sub}`);
       continue;
     }
     // A relationship's condition: a related row matching it (REQ-2136), on the type it reaches.

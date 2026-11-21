@@ -566,9 +566,7 @@ def _compile_group_by_field(  # REQ-196, REQ-197, REQ-213
 
     _vvals = ctx.virtual_columns.get(table.table_id)
     # REQ-1986, REQ-1991: the table's parameters, as on its base field.
-    api_args = _sw.native_args(
-        args, _GROUP_BY_ARGS, ctx.native_filter_columns.get(table.table_id, {})
-    )
+    api_args = _sw.native_args(args, _GROUP_BY_ARGS, ctx.parameter_names.get(table.table_id, {}))
     nf_conditions = _sw.native_arg_conditions(api_args)
     if "where" in args:
         # After the aggregate filter's: its values are bound first, as its FILTER is written first.
@@ -726,9 +724,7 @@ def _compile_aggregate_field(  # REQ-196, REQ-197, REQ-198, REQ-199
             )
         )
     # REQ-1986, REQ-1991: the table's parameters, as on its base field.
-    api_args = _sw.native_args(
-        args, _AGGREGATE_ARGS, ctx.native_filter_columns.get(table.table_id, {})
-    )
+    api_args = _sw.native_args(args, _AGGREGATE_ARGS, ctx.parameter_names.get(table.table_id, {}))
     where_parts += _sw.native_arg_conditions(api_args)
     if where_parts:
         sql += f" WHERE {' AND '.join(where_parts)}"

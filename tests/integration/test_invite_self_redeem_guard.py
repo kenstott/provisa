@@ -66,10 +66,7 @@ def _prepare():
 
 @pytest.fixture
 def admin_db(monkeypatch):
-    try:
-        sync = _prepare()
-    except Exception as exc:  # noqa: BLE001 — the suite provisions this PG; a miss is a config fault
-        pytest.skip(f"live Postgres not reachable at {_URL}: {exc}")
+    sync = _prepare()
     db = Database(create_engine_from_url(_URL), name="admin", search_path=_ADMIN_SCHEMA)
     from provisa.api.app import state as app_state
 

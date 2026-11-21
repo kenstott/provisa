@@ -32,6 +32,14 @@ from provisa.lineage.reported import REPORTED_KINDS
 NATIVE = "native"
 
 
+def _visible_ops(ops: tuple) -> tuple:
+    """The ops from ``ops`` whose kind is ``command``: a command op names the function called,
+    not the SQL expression, so it survives when a hidden input is beside a visible one (REQ-1161).
+    SQL-function and operator ops reference the expression text, which may name the hidden column,
+    so they are cleared alongside the transform string."""
+    return tuple(op for op in ops if op.kind == "command")
+
+
 def readable_graph(
     graph: LineageGraph, *, registered: set[str], readable: set[str]
 ) -> LineageGraph:
@@ -125,7 +133,9 @@ def readable_graph(
             if e.source in keep:
                 joined.add(e.source)
                 result.add_edge(
-                    e if not hidden_parent else Edge(e.source, target, "", (), origin=e.origin)
+                    e
+                    if not hidden_parent
+                    else Edge(e.source, target, "", _visible_ops(e.ops), origin=e.origin)
                 )
         for e in parents:
             if e.source in keep:

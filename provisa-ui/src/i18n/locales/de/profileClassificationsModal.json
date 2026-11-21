@@ -19,6 +19,9 @@
     "linked": "Die Spalte bedeutet jetzt {{term}}.",
     "keyColumn": "Die Spalte behält ihren Klassen-Begriff: Die Bedeutung einer Schlüsselspalte ist ihr Klassen-Begriff.",
     "markedPii": "Sie ist als PII markiert.",
-    "maskOffered": "Vorgeschlagene Maske: {{mask}}. Fügen Sie sie in den Masken der Spalte hinzu."
+    "maskOffered": "Vorgeschlagene Maske: {{mask}}. Fügen Sie sie in den Masken der Spalte hinzu.",
+    "tooFewTitle": "Zu wenige Werte zum Klassifizieren",
+    "tooFewNote": "Diese Spalten enthielten in der Stichprobe des Laufs zu wenige Werte, um zu sagen, was sie enthalten. Das ist nicht dasselbe, wie keiner Art zu entsprechen.",
+    "tooFew": "{{column}}: {{count}} Werte in der Stichprobe, zu wenige zum Klassifizieren."
   }
 }

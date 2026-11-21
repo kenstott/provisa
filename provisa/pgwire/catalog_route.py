@@ -38,6 +38,7 @@ from provisa.pgwire.catalog_pg17 import RELATION_CLASS, RELATIONS, TYPES
 from provisa.pgwire.catalog_pin import asked_relations, narrow_kinds
 from provisa.pgwire.catalog_server_answers import as_written, input_check, input_failure
 from provisa.pgwire.ext_surfaces import extension_rows, surface_pg_type_rows
+from provisa.transpiler.metadata_arguments import read_oid_literals, strict_null
 from provisa.transpiler.metadata_facts import CatalogFacts
 from provisa.transpiler.metadata_functions import expand
 from provisa.transpiler.metadata_views import catalog_view_name
@@ -523,9 +524,16 @@ def _oid_sql(reg: str, operand: exp.Expr, rewrite=None) -> str:
     while (
         isinstance(operand, exp.Cast)
         and _reg_of(operand.to) in _TEXT_TYPES
-        and isinstance(operand.this, (exp.Literal, exp.Cast))
+        and isinstance(operand.this, (exp.Literal, exp.Cast, exp.Null))
     ):
         operand = operand.this
+    if isinstance(operand, exp.Null):
+        # The input function is strict: NULL names nothing to look up. Looked up as a name, the
+        # lookup wrote its operand five times, and each caller wrote that again (run 42527458223:
+        # pg_partition_root(NULL::regclass), 70 KB, had no answer in 30s).
+        return exp.cast(exp.null(), exp.DataType.build("OID", dialect="postgres")).sql(
+            dialect="postgres"
+        )
     if isinstance(operand, exp.Literal) and operand.is_string:
         return _input_oid(reg, operand.this)
     numbered = _is_number(operand)
@@ -597,6 +605,11 @@ def _is_number(operand: exp.Expr) -> bool:
     if isinstance(operand, exp.Subquery) and isinstance(operand.this, exp.Select):
         selects = operand.this.selects
         return len(selects) == 1 and _is_number(selects[0].unalias())
+    called = _call(operand)
+    if called is not None:
+        # A call answering a relation or a schema: its form answers the oid (metadata_server_forms).
+        name = called[0].name.lower()
+        return name in _CALLS_OF_REG_TYPE and name != "regclass"
     return False
 
 
@@ -789,6 +802,9 @@ def _current_setting(args: list[exp.Expr], settings: Mapping[str, str]) -> exp.E
     is its value, and any other is looked up among the ones a session has."""
     if not args:
         return exp.null()
+    null = strict_null("current_setting", args)  # strict: a NULL name, or a NULL missing_ok
+    if null is not None:
+        return null
     name = args[0]
     # current_setting(name, missing_ok): a setting no session has is NULL where missing_ok is.
     missing_ok = len(args) > 1 and _is_true(args[1])
@@ -798,10 +814,6 @@ def _current_setting(args: list[exp.Expr], settings: Mapping[str, str]) -> exp.E
     if isinstance(name, exp.Literal):
         held = settings.get(name.name.lower())
         return exp.Literal.string(held) if held is not None else _parsed(unknown)
-    if isinstance(name, exp.Null) or (
-        isinstance(name, exp.Cast) and isinstance(name.this, exp.Null)
-    ):
-        return exp.cast(exp.null(), "TEXT")
     cases = " ".join(f"WHEN {_literal(k)} THEN {_literal(v)}" for k, v in sorted(settings.items()))
     return _parsed(f"CASE LOWER({name.sql(dialect='postgres')}) {cases} ELSE {unknown} END")
 
@@ -1030,6 +1042,7 @@ def address(sql: str, request: CatalogRequest) -> tuple[str, frozenset[str] | No
     token = _ENUMS.set(request.enums)
     try:
         tree = _read(sql)
+        read_oid_literals(tree)  # REQ-2236: oidin's error, before any function is given the oid
         _coerce_reg_comparisons(tree)
         _result_regs(tree)
         routed = tree.transform(_rewriter(request, _cte_names(tree)))

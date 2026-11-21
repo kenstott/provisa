@@ -8,6 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
+import { DestructiveConfirmButton } from "../form/DestructiveConfirmButton";
 import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import {
@@ -17,7 +18,6 @@ import {
   Group,
   Modal,
   Pagination,
-  Select,
   Stack,
   Table,
   Text,
@@ -25,7 +25,6 @@ import {
   PasswordInput,
   Title,
 } from "@mantine/core";
-import { DateInput } from "@mantine/dates";
 import { notifications } from "@mantine/notifications";
 import { ChevronDown, ChevronRight, Plus, Trash2, X } from "lucide-react";
 import {
@@ -33,7 +32,6 @@ import {
   createLocalUser,
   deleteLocalUser,
   fetchUserAssignments,
-  addUserAssignment,
   removeUserAssignment,
 } from "../../api/admin";
 import type { LocalUser, UserAssignment } from "../../api/admin";
@@ -44,7 +42,7 @@ import { LIST_COLUMN_CAP_PX } from "../list/listCellLimits";
 import { Tip } from "../Tip";
 import { SortGroupTable } from "../list/SortGroupTable";
 import { FormField, FormFooter, FormIdentifiers, FormLayout } from "../form/FormLayout";
-import { tomorrow, untilEndOf } from "../../lib/grantUntil";
+import { MemberAccessForm } from "./MemberAccessForm";
 
 const PAGE_SIZE = 50;
 
@@ -111,9 +109,6 @@ export function LocalUsersTab({ allRoles, allDomains }: LocalUsersTabProps) {
   const [newDisplayName, setNewDisplayName] = useState("");
   const [expandedUserId, setExpandedUserId] = useState<string | null>(null);
   const [userAssignments, setUserAssignments] = useState<Record<string, UserAssignment[]>>({});
-  const [assignRole, setAssignRole] = useState<string | null>(null);
-  const [assignDomain, setAssignDomain] = useState<string>("*");
-  const [assignUntil, setAssignUntil] = useState<string | null>(null);
   const day = (value: string | null) =>
     value ? new Date(value).toLocaleDateString(i18n.language) : t("localUsers.none");
   const [userPage, setUserPage] = useState(1);
@@ -199,34 +194,22 @@ export function LocalUsersTab({ allRoles, allDomains }: LocalUsersTabProps) {
       return;
     }
     setExpandedUserId(userId);
-    setAssignRole(allRoles[0] ?? null);
-    setAssignDomain("*");
-    setAssignUntil(null);
     if (!userAssignments[userId]) {
       const rows = await fetchUserAssignments(userId);
       setUserAssignments((prev) => ({ ...prev, [userId]: rows }));
     }
   };
 
-  const handleAddAssignment = async (userId: string) => {
-    if (!assignRole) return;
-    try {
-      await addUserAssignment(
-        userId,
-        assignRole,
-        assignDomain || "*",
-        assignUntil ? untilEndOf(assignUntil) : null,
-      );
-      setAssignUntil(null);
-      const rows = await fetchUserAssignments(userId);
-      setUserAssignments((prev) => ({ ...prev, [userId]: rows }));
-    } catch (e: unknown) {
-      notifications.show({
-        color: "red",
-        message: e instanceof Error ? e.message : t("localUsers.assignmentFailed"),
-      });
-    }
+  const reloadAssignments = async (userId: string) => {
+    const rows = await fetchUserAssignments(userId);
+    setUserAssignments((prev) => ({ ...prev, [userId]: rows }));
   };
+
+  const showAssignmentError = (e: unknown) =>
+    notifications.show({
+      color: "red",
+      message: e instanceof Error ? e.message : t("localUsers.assignmentFailed"),
+    });
 
   const handleRemoveAssignment = async (userId: string, assignmentId: number) => {
     await removeUserAssignment(userId, assignmentId);
@@ -401,43 +384,13 @@ export function LocalUsersTab({ allRoles, allDomains }: LocalUsersTabProps) {
                         </Table.Tbody>
                       </Table>
                     )}
-                    <Group gap="xs" align="flex-end">
-                      <Select
-                        label={t("localUsers.roleLabel")}
-                        size="xs"
-                        data={allRoles}
-                        value={assignRole}
-                        onChange={setAssignRole}
-                        allowDeselect={false}
-                      />
-                      <Select
-                        label={t("localUsers.domainLabel")}
-                        size="xs"
-                        data={domainOptions}
-                        value={assignDomain}
-                        onChange={(v) => setAssignDomain(v ?? "*")}
-                        allowDeselect={false}
-                      />
-                      <DateInput
-                        label={t("localUsers.untilLabel")}
-                        placeholder={t("localUsers.untilPlaceholder")}
-                        size="xs"
-                        valueFormat="YYYY-MM-DD"
-                        clearable
-                        minDate={tomorrow()}
-                        value={assignUntil}
-                        onChange={setAssignUntil}
-                        popoverProps={{ withinPortal: true }}
-                        data-testid="assignment-until"
-                      />
-                      <Button
-                        size="xs"
-                        onClick={() => handleAddAssignment(u.id)}
-                        disabled={!assignRole}
-                      >
-                        {t("localUsers.add")}
-                      </Button>
-                    </Group>
+                    <MemberAccessForm
+                      userId={u.id}
+                      allRoles={allRoles}
+                      domainOptions={domainOptions}
+                      onSaved={() => void reloadAssignments(u.id)}
+                      onError={showAssignmentError}
+                    />
                   </Stack>
                 </Collapse>
               </Table.Td>
@@ -489,18 +442,17 @@ export function LocalUsersTab({ allRoles, allDomains }: LocalUsersTabProps) {
             onCancel={() => setRemoving(null)}
             cancelProps={{ disabled: removeBusy }}
             action={
-              <Button
-                color="red"
+              <DestructiveConfirmButton
                 onClick={handleDeleteUser}
                 loading={removeBusy}
-                data-testid="remove-user-confirm"
+                testId="remove-user-confirm"
               >
                 {t(
                   deletesAccount
                     ? "localUsers.confirmDeleteButton"
                     : "localUsers.confirmRemoveButton",
                 )}
-              </Button>
+              </DestructiveConfirmButton>
             }
           />
         </Stack>

@@ -1,7 +1,7 @@
 {
   "uniquesPanel": {
     "title": "唯一約束",
-    "infoTooltip": "此資料表宣告的 UNIQUE 約束——單欄或複合。外部索引鍵可指向任何唯一索引鍵，用戶端會將其視為 UNIQUE 約束。註冊時從數據來源植入；可編輯或自行新增。",
+    "infoTooltip": "為此資料表宣告的 UNIQUE 限制式，可為單一欄位或複合。外部索引鍵可參照任何唯一索引鍵，用戶端會將它們視為 UNIQUE 限制式。註冊時從數據來源匯入；可編輯或自行新增。",
     "addConstraint": "約束",
     "nameLabel": "名稱",
     "namePlaceholder": "約束名稱（例如 users_tenant_email_key）",

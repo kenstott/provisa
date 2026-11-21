@@ -52,7 +52,7 @@ def _patch_fetch_tables(monkeypatch):
         ]
 
     monkeypatch.setattr("provisa.api.admin.db_queries.fetch_tables", _fetch)
-    monkeypatch.setattr("provisa.core.repositories.source.list_all", _source_rows)
+    monkeypatch.setattr("provisa.core.repositories.source.list_in_production", _source_rows)
 
 
 class _Sched:
@@ -474,10 +474,10 @@ async def test_a_sources_own_probe_runs_with_its_orgs_vault_bound(monkeypatch):
     source_probe = app_wiring.make_source_probe(
         SimpleNamespace(), {"google_workspace": loader}, [source]
     )
-    probe = source_probe(source, SimpleNamespace(table_name="messages"))
+    probe = source_probe(source, SimpleNamespace(schema_name="mail", table_name="messages"))
     assert await probe() == "t"
     assert order == ["bound:1", "asked", "released"]
-    assert source_probe(source, SimpleNamespace(table_name="events")) is None
+    assert source_probe(source, SimpleNamespace(schema_name="mail", table_name="events")) is None
 
 
 def _state_with_a_view_over_a_view(built: set[str], probed: list[str]):

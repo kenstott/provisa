@@ -123,28 +123,46 @@ async def _vault_names() -> set[str]:
     return {info.name for info in listing}
 
 
+@pytest_asyncio.fixture(loop_scope="session")
+async def literal_source(client):
+    """Create req1695_literal with 's3cr3t-as-typed'; clean up after each test regardless."""
+    source_id = "req1695_literal"
+    await _gql(client, _create(source_id, "s3cr3t-as-typed"))
+    yield source_id
+    # Best-effort: the test may have already deleted the source (test_deleting...).
+    await client.post(
+        "/admin/graphql",
+        json={"query": f'mutation {{ deleteSource(id: "{source_id}") {{ success }} }}'},
+    )
+
+
 class TestLiteralPassword:  # REQ-1695
-    async def test_a_typed_value_is_kept_as_typed_and_nothing_is_put_in_the_vault(self, client):
+    async def test_typed_value_is_kept_as_typed_and_nothing_is_put_in_the_vault(self, client):
         source_id = "req1695_literal"
         typed = "s3cr3t-as-typed"
         before = await _vault_names()
         result = (await _gql(client, _create(source_id, typed)))["data"]["createSource"]
-        assert result["success"] is True, result["message"]
+        try:
+            assert result["success"] is True, result["message"]
+            row = await _row(source_id)
+            assert row["password_ref"] == typed
+            assert await _vault_names() == before  # nothing written on the operator's behalf
+        finally:
+            await client.post(
+                "/admin/graphql",
+                json={"query": f'mutation {{ deleteSource(id: "{source_id}") {{ success }} }}'},
+            )
 
-        row = await _row(source_id)
-        assert row["password_ref"] == typed
-        assert await _vault_names() == before  # nothing written on the operator's behalf
-
-    async def test_b_the_row_reads_back_as_a_source_carrying_what_was_typed(self, client):
+    async def test_the_row_reads_back_as_a_source_carrying_what_was_typed(self, literal_source):
         from provisa.core.repositories.source import source_from_row
         from provisa.core.secrets import resolve_secrets
 
-        password = source_from_row(await _row("req1695_literal")).password
+        password = source_from_row(await _row(literal_source)).password
         assert password == "s3cr3t-as-typed"
         assert resolve_secrets(password) == "s3cr3t-as-typed"  # a value is used as it is
 
-    async def test_c_retyping_the_password_replaces_the_fields_text(self, client):
-        source_id = "req1695_literal"
+    async def test_retyping_the_password_replaces_the_fields_text(self, client, literal_source):
+        source_id = literal_source
         before = await _vault_names()
         update = _create(source_id, "retyped-value").replace("createSource", "updateSource")
         result = (await _gql(client, update))["data"]["updateSource"]
@@ -153,10 +171,15 @@ class TestLiteralPassword:  # REQ-1695
         assert (await _row(source_id))["password_ref"] == "retyped-value"
         assert await _vault_names() == before
 
-    async def test_d_deleting_the_source_removes_its_row_and_nothing_from_the_vault(self, client):
+    async def test_deleting_the_source_removes_its_row_and_nothing_from_the_vault(
+        self, client, literal_source
+    ):
         before = await _vault_names()
         result = (
-            await _gql(client, 'mutation { deleteSource(id: "req1695_literal") { success } }')
+            await _gql(
+                client,
+                f'mutation {{ deleteSource(id: "{literal_source}") {{ success }} }}',
+            )
         )["data"]["deleteSource"]
         assert result["success"] is True
         assert await _vault_names() == before

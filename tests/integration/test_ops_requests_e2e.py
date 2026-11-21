@@ -35,7 +35,6 @@ import sqlalchemy as sa
 import yaml
 from sqlalchemy.engine import make_url
 
-from tests.helpers import registered_id, release_field
 from tests.integration.isolated_server import IsolatedServer, drop_org_schema
 
 pytestmark = [pytest.mark.integration, pytest.mark.local_platform]
@@ -240,7 +239,7 @@ def test_a_user_table_relates_to_ops_requests_by_request_id(server):
             f'port: {url.port}, database: "{url.database}", username: "{url.username}", '
             f'password: "{url.password}"}})',
         )
-        registered = _admin(
+        _admin(
             server,
             'registerTable(input: {sourceId: "process-pg", domainId: "process", '
             f'schemaName: "{_EXT_SCHEMA}", tableName: "request_trail", columns: ['
@@ -248,7 +247,6 @@ def test_a_user_table_relates_to_ops_requests_by_request_id(server):
             f'{{name: "request_id", visibleTo: ["{_ROLE}"], dataType: "integer"}}, '
             f'{{name: "step", visibleTo: ["{_ROLE}"], dataType: "text"}}]}})',
         )
-        _admin(server, release_field(registered_id(registered["message"])))
         _admin(
             server,
             'createRelationship(input: {id: "trail-request", sourceTableId: "request_trail", '

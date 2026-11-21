@@ -498,19 +498,48 @@ async def suspended_principals(admin_db: "Database", org_id: str) -> list[dict]:
     return out
 
 
-async def record_admin_action(  # REQ-1303, REQ-1308
-    model_db: "Database", *, action: str, actor_id: str, subject_id: str, detail: dict
+class AdminTrailOfAnotherOrg(RuntimeError):  # REQ-2087, REQ-1303
+    """An administrative-trail entry about one org handed the model store of another."""
+
+    def __init__(self, org_id: str, store_org_id: str) -> None:
+        self.org_id = org_id
+        self.store_org_id = store_org_id
+        super().__init__(
+            f"an administrative-trail entry about org {org_id!r} was given the model store of "
+            f"org {store_org_id!r}; the entry is written to the trail of the org it is about"
+        )
+
+
+async def record_admin_action(  # REQ-1303, REQ-1308, REQ-2087
+    model_db: "Database",
+    *,
+    org_id: str,
+    action: str,
+    actor_id: str,
+    subject_id: str,
+    detail: dict,
 ) -> None:
-    """Append an entry to the org's administrative trail. ``model_db`` must be scoped to that org's
-    schema — the entry belongs to the org the act was performed against, so a platform_admin's
-    intervention is visible there afterward rather than only on the platform."""
-    # REQ-2087: the trail's detail is redacted as every record Provisa writes is.
+    """Append an entry to the administrative trail of ``org_id``, the org the act is about.
+
+    ``model_db`` is that org's model store: the entry belongs to the org the act was performed
+    against, so a platform_admin's intervention is visible there afterward rather than only on the
+    platform. A store that holds another org's model is refused (:class:`AdminTrailOfAnotherOrg`).
+    The detail is redacted with ``org_id``'s rules (REQ-2087: an org's rules apply to the text it
+    produced, its audit entries among them), not the rules of whichever org the actor is bound to.
+    """
     from provisa.security.redaction import redact_value
 
+    # A handle built without a model plane (``Database.model`` is None) names no org to compare.
+    plane = model_db.model
+    if plane is not None and plane.org_id != org_id:
+        raise AdminTrailOfAnotherOrg(org_id, plane.org_id)
     async with model_db.acquire() as conn:
         await conn.execute_core(
             insert(admin_audit_log).values(
-                action=action, actor_id=actor_id, subject_id=subject_id, detail=redact_value(detail)
+                action=action,
+                actor_id=actor_id,
+                subject_id=subject_id,
+                detail=redact_value(detail, org_id),
             )
         )
 
@@ -595,6 +624,7 @@ async def remove_account(  # REQ-1307, REQ-1312, REQ-1918
         user_attributes,
         user_directory,
         user_idp_attributes,
+        user_idp_roles,
     )
     from provisa.security.rights import PLATFORM_ADMIN_ROLE
 
@@ -670,7 +700,12 @@ async def remove_account(  # REQ-1307, REQ-1312, REQ-1918
             # The org's own copies of who they are (REQ-1439, REQ-1382, REQ-1383) go with the
             # profile: a name and email left in user_directory would still label every audit row
             # the tombstone was meant to stop identifying them on.
-            for identity in (user_directory, user_attributes, user_idp_attributes):
+            for identity in (
+                user_directory,
+                user_attributes,
+                user_idp_attributes,
+                user_idp_roles,
+            ):
                 await conn.execute_core(delete(identity).where(identity.c.user_id == user_id))
             await conn.execute_core(
                 update(admin_audit_log)

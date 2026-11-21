@@ -241,3 +241,27 @@ def test_the_example_query_answers_on_us(nodes):
     assert resp.status_code == 200, resp.text
     body = resp.json()
     assert not body.get("errors") and body["data"], body
+
+
+def test_the_example_query_answers_its_twenty_newest_customers_as_a_group_analyst(nodes):
+    """The demo's first query, as its comment says to run it: the group's 20 newest customers
+    (``limit: 20``; db/20-eu-shop.sql and db/30-us-shop.sql hold thousands). Until the EU copy is
+    built a read of it is refused, naming eu; once built it answers the whole page."""
+    query = (_DEMO / "queries" / "1-group-customers.graphql").read_text()
+    deadline, last = time.monotonic() + 600, None
+    while time.monotonic() < deadline:
+        resp = httpx.post(
+            f"{nodes['us'].base_url}/data/graphql",
+            json={"query": query},
+            headers={"X-Provisa-Role": "group_analyst"},
+            timeout=nodes["us"].request_timeout + 10,
+        )
+        last = (resp.status_code, resp.text[:600])
+        if resp.status_code == 200 and not resp.json().get("errors"):
+            [rows] = resp.json()["data"].values()
+            assert len(rows) == 20, rows
+            return
+        time.sleep(2)
+    raise AssertionError(
+        f"as group_analyst: {last}\n--- the node's log ---\n{_log_tail(nodes['us'])}"
+    )

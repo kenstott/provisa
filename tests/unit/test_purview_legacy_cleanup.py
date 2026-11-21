@@ -54,20 +54,16 @@ class FakeAccount:
                 "t3": {"id": "t3", "name": "keep me", "status": "Published"},
             },
         }
-        self.search = {
-            PROVISA_SOURCE_TYPE: [
-                {"id": "g-src", "qualifiedName": "mdx-wh@provisa"},
-                {"id": "g-other-src", "qualifiedName": "mdx-wh-abcd1234@provisa"},
-            ],
-            PROVISA_TABLE_TYPE: [
-                {"id": "g-t", "qualifiedName": "mdx-wh.mdx_e2e.public.orders@provisa"},
-                {"id": "g-nt", "qualifiedName": "other.s.t@provisa"},
-            ],
-            PROVISA_COLUMN_TYPE: [
-                {"id": "g-c", "qualifiedName": "mdx-wh.mdx_e2e.public.orders.id@provisa"}
-            ],
-            PROVISA_DATA_PRODUCT_TYPE: [{"id": "g-dp", "qualifiedName": "data-product.x@provisa"}],
+        # What the Data Map holds, by (type, qualifiedName); every other lookup is a 404 (None).
+        self.entities = {
+            (PROVISA_SOURCE_TYPE, "mdx-wh@provisa"): "g-src",
+            (PROVISA_TABLE_TYPE, "mdx-wh.mdx_e2e.orders@provisa"): "g-t",
+            (PROVISA_COLUMN_TYPE, "mdx-wh.mdx_e2e.orders.id@provisa"): "g-c",
+            (PROVISA_DATA_PRODUCT_TYPE, "data-product.customer_360@provisa"): "g-dp",
+            # Not a legacy name: never asked for, so never selected.
+            (PROVISA_SOURCE_TYPE, "mdx-wh-abcd1234@provisa"): "g-other-src",
         }
+        self.lookups: list[tuple[str, str]] = []
 
     def _rec(self, *call):
         self.calls.append(call)
@@ -99,13 +95,16 @@ class FakeAccount:
     def asset_delete(self, asset_id):
         self._rec("delete-asset", asset_id)
 
-    def dm_search(self, type_name):
-        return self.search[type_name]
-
-    def dm_entities(self, guids):
-        return [
-            {"guid": g, "typeName": "t", "attributes": {"qualifiedName": f"qn-{g}"}} for g in guids
-        ]
+    def dm_lookup(self, type_name, qualified_name):
+        self.lookups.append((type_name, qualified_name))
+        guid = self.entities.get((type_name, qualified_name))
+        if guid is None:
+            return None
+        return {
+            "guid": guid,
+            "typeName": type_name,
+            "attributes": {"qualifiedName": qualified_name},
+        }
 
     def dm_delete_entities(self, guids):
         self._rec("bulk-delete", tuple(guids))
@@ -137,11 +136,65 @@ def test_selection_takes_only_legacy_objects():
 
 
 def test_never_selects_domain_or_typedefs():
-    rows, _ = cleanup.find_legacy(FakeAccount())
+    fake = FakeAccount()
+    rows, _ = cleanup.find_legacy(fake)
     text = cleanup.render_table(rows)
     assert "provisa-e2e-sales" not in text
-    assert not cleanup.is_legacy_data_map_name("typedef", "mdx-wh@provisa")
-    assert not cleanup.is_legacy_data_map_name(PROVISA_SOURCE_TYPE, "mdx-wh@other")
+    assert "mdx-wh-abcd1234" not in text
+    assert {t for t, _ in fake.lookups} == {
+        PROVISA_SOURCE_TYPE,
+        PROVISA_TABLE_TYPE,
+        PROVISA_COLUMN_TYPE,
+        PROVISA_DATA_PRODUCT_TYPE,
+    }
+
+
+def test_lookups_are_the_exact_legacy_names():
+    names = cleanup.legacy_data_map_names()
+    assert (PROVISA_SOURCE_TYPE, "mdx-wh@provisa") in names
+    assert (PROVISA_TABLE_TYPE, "mdx-wh.mdx_e2e.customers@provisa") in names
+    assert (PROVISA_COLUMN_TYPE, "mdx-wh.mdx_e2e.orders.margin@provisa") in names
+    assert (PROVISA_DATA_PRODUCT_TYPE, "data-product.customer_360@provisa") in names
+    # 1 source + 2 tables + 2 + 6 columns + 1 product
+    assert len(names) == 12
+
+
+def test_a_missing_entity_is_reported_absent_not_selected():
+    rows, ids = cleanup.find_legacy(FakeAccount())
+    absent = [r for r in rows if r.status == "absent"]
+    assert len(absent) == 12 - 4
+    assert all(r.id == "-" for r in absent)
+    assert "-" not in ids["entities"]
+
+
+def _response(status, text):
+    return httpx.Response(status, text=text, request=httpx.Request("GET", "https://x/y"))
+
+
+def test_non_2xx_raises_with_status_and_body():
+    with pytest.raises(cleanup.PurviewError) as err:
+        cleanup.check(_response(400, '{"error":"bad type"}'))
+    assert "HTTP 400" in str(err.value)
+    assert '{"error":"bad type"}' in str(err.value)
+    assert cleanup.check(_response(200, "ok")).text == "ok"
+
+
+def _account_answering(status):
+    account = object.__new__(cleanup.HttpAccount)
+    account._map = "https://m"
+
+    def handler(request):
+        return httpx.Response(status, json={"entity": {"guid": "g"}})
+
+    account._http = httpx.Client(transport=httpx.MockTransport(handler))
+    return account
+
+
+def test_live_lookup_404_is_absent_and_other_errors_raise():
+    assert _account_answering(404).dm_lookup(PROVISA_SOURCE_TYPE, "q@provisa") is None
+    assert _account_answering(200).dm_lookup(PROVISA_SOURCE_TYPE, "q@provisa") == {"guid": "g"}
+    with pytest.raises(cleanup.PurviewError, match="HTTP 403"):
+        _account_answering(403).dm_lookup(PROVISA_SOURCE_TYPE, "q@provisa")
 
 
 def test_table_has_a_row_per_object():

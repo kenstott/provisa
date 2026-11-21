@@ -21,12 +21,12 @@ vi.mock("@mantine/notifications", () => ({ notifications: { show: vi.fn() } }));
 
 describe("reportCellHref", () => {
   it("opens the term a term id names", () => {
-    expect(reportCellHref("term_id", 7)).toBe("/admin/ontology?term=7");
-    expect(reportCellHref("other_term_id", "12")).toBe("/admin/ontology?term=12");
+    expect(reportCellHref("term_id", 7)).toBe("/context/ontology?term=7");
+    expect(reportCellHref("other_term_id", "12")).toBe("/context/ontology?term=12");
   });
 
   it("opens a placeholder's term with the list filtered to RELATED_TO", () => {
-    expect(reportCellHref("related_to_review", 7)).toBe("/admin/ontology?term=7&relatedTo=1");
+    expect(reportCellHref("related_to_review", 7)).toBe("/context/ontology?term=7&relatedTo=1");
   });
 
   it("leaves every other cell, and a value that is no id, as text", () => {
@@ -60,8 +60,8 @@ describe("a report grid", () => {
     const table = screen.getByRole("table");
     const links = within(table).getAllByRole("link");
     expect(links.map((a) => [a.textContent, a.getAttribute("href")])).toEqual([
-      ["7", "/admin/ontology?term=7"],
-      ["7", "/admin/ontology?term=7&relatedTo=1"],
+      ["7", "/context/ontology?term=7"],
+      ["7", "/context/ontology?term=7&relatedTo=1"],
     ]);
     // A null stays the null marker, not a link.
     expect(within(table).getByText("orphan").closest("a")).toBeNull();

@@ -71,6 +71,7 @@ function table(
     tableName,
     alias: null,
     description: null,
+    registeredAt: "2026-11-01T00:00:00+00:00",
     cacheTtl: 60,
     roleTtl,
     pagingKind: null,
@@ -78,7 +79,8 @@ function table(
     pagingCeilingRows: null,
     replicate: null,
     region: null,
-    draft: false,
+    withdrawn: false,
+    sourceWithdrawn: false,
     rowMaterialize: false,
     loadProtected: null,
     offPeakWindow: null,
@@ -115,6 +117,8 @@ function table(
     mvPersist: "replace",
     mvPrimaryKey: [],
     mvIncremental: false,
+    mvRebuildEvery: null,
+    incrementalOption: { available: true, code: null, reason: null },
     mvCalendar: null,
     mvGrain: null,
     mvAllowedLateness: 0,
@@ -166,7 +170,6 @@ const updateTableRoleTtl = vi.fn();
 vi.mock("../../hooks/useRegionQueries", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../hooks/useRegionQueries")>()),
   useRegionChoices: () => ({ regions: [], connected: null }),
-  useSetTableDraft: () => vi.fn(async () => ok),
   useSetTableRegion: () => vi.fn(async () => ok),
 }));
 
@@ -204,7 +207,7 @@ import { TablesPage } from "../TablesPage";
 async function saveEdit() {
   render(<TablesPage />);
   const row = (await screen.findByText("orders")).closest("tr") as HTMLElement;
-  await userEvent.click(row.querySelector("td") as HTMLElement);
+  await userEvent.click(row.querySelector("td:not(.list-select)") as HTMLElement);
   await userEvent.click(await screen.findByTestId("table-read-view-edit"));
   await userEvent.click(await screen.findByTestId("table-edit-save"));
 }

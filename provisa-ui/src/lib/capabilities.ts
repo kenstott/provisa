@@ -32,7 +32,8 @@ export function hasCapability(capabilities: string[], cap: Capability): boolean 
  * says and neither lets one right answer for another.
  */
 export interface CapabilityRequirement {
-  capability: Capability;
+  /** `null`: the surface asks no right, and every member of the org opens it (REQ-1327). */
+  capability: Capability | null;
   orCapability?: Capability;
   /** REQ-1944: further rights, any one of which also opens the surface. */
   anyOf?: Capability[];
@@ -48,7 +49,7 @@ export interface CapabilityRequirement {
  * check -- `platform_settings` and `cross_org`, as require_deployment_settings does -- so a
  * single-tenant org admin, who holds `platform_settings` alone, is never shown a page it cannot use.
  */
-export function routeRequirement(capability: Capability): CapabilityRequirement {
+export function routeRequirement(capability: Capability | null): CapabilityRequirement {
   return capability === "platform_settings"
     ? { capability, andCapability: "cross_org" }
     : { capability };
@@ -115,7 +116,7 @@ export function hidingDomains(
  * an `orCapability` pair being demonstrated is enough: the surface is the same surface.
  */
 export function isDemonstrated(demonstrated: string[], req: CapabilityRequirement): boolean {
-  if (demonstrated.includes(req.capability)) return true;
+  if (req.capability !== null && demonstrated.includes(req.capability)) return true;
   if ((req.anyOf ?? []).some((c) => demonstrated.includes(c))) return true;
   if (req.orAllOf !== undefined && req.orAllOf.every((c) => demonstrated.includes(c))) return true;
   return req.orCapability !== undefined && demonstrated.includes(req.orCapability);
@@ -144,7 +145,7 @@ export function meetsRequirement(capabilities: string[], req: CapabilityRequirem
   if (req.andCapability !== undefined && !hasCapability(capabilities, req.andCapability)) {
     return false;
   }
-  if (hasCapability(capabilities, req.capability)) return true;
+  if (req.capability === null || hasCapability(capabilities, req.capability)) return true;
   if ((req.anyOf ?? []).some((c) => hasCapability(capabilities, c))) return true;
   if (req.orAllOf !== undefined && req.orAllOf.every((c) => hasCapability(capabilities, c))) {
     return true;

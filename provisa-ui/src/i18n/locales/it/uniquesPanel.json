@@ -1,7 +1,7 @@
 {
   "uniquesPanel": {
     "title": "Vincoli univoci",
-    "infoTooltip": "Vincoli UNIQUE dichiarati per questa tabella — a colonna singola o compositi. Le chiavi esterne possono puntare a qualsiasi chiave univoca, e i client li vedono come vincoli UNIQUE. Popolati dall'origine alla registrazione; modificarli o aggiungerne di propri.",
+    "infoTooltip": "Vincoli UNIQUE dichiarati per questa tabella, a colonna singola o composti. Le chiavi esterne possono puntare a qualsiasi chiave univoca, e i client li vedono come vincoli UNIQUE. Ripresi dall'origine alla registrazione; modificarli o aggiungerne di propri.",
     "addConstraint": "Vincolo",
     "nameLabel": "Nome",
     "namePlaceholder": "nome del vincolo (es. users_tenant_email_key)",

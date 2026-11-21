@@ -112,7 +112,9 @@
     "SELECT 1 + $1" with no values, and its engine answers "Values were not provided".
   workaround: >-
     Bind after Prepare, as the suite's other bind tests do.
-  reason: "Values were not provided for the following prepared statement parameter"
+  # The engine's answer to a placeholder given no value: DuckDB 1.x words it "... the following
+  # prepared statement parameters", DuckDB 2.0 "... the following parameters".
+  reason: "Values were not provided for the following (prepared statement )?parameters"
   case: "^tests\\.test_statement\\.TestStatement::test_parameter_execute\\[provisa:flightsql\\]$"
 
 - group: Times and timestamps beyond microseconds

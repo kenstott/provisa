@@ -39,7 +39,14 @@ a backslash:
     CONFORMANCE-GROUP <group name>                  (one per skipped-by-design group)
     CONFORMANCE-FAILURE <feature> :: <scenario>     (one per failed case)
 
-The exit status is non-zero only when the suite did not run (no scenario passed or failed).
+The exit status is non-zero only when the suite did not run (no scenario passed or failed), or
+when the run passed its deadline.
+
+Progress and timings go to stderr: a line every PROGRESS_EVERY scenarios, one for each scenario
+slower than SLOW_SECONDS, a ``::warning::`` for a scenario still running after STALL_SECONDS, and
+at the end the time each kind of scenario took and the slowest ones. CONFORMANCE_DEADLINE_SECONDS
+bounds the run inside its step's timeout: past it the runner stops, names the scenario in progress
+in an ``::error::`` and in the Markdown, and writes no JSON, since an unfinished run has no score.
 
 Usage: cypher_tck.py <features dir> <version> <base url> <role> <out.json> <out.md>
 """
@@ -54,6 +61,8 @@ import math
 import os
 import re
 import sys
+import threading
+import time
 import urllib.error
 import urllib.request
 from dataclasses import dataclass, field
@@ -746,6 +755,147 @@ def in_running_order(scenarios: list[Scenario]) -> list[int]:
     return [n for *_, n in sorted(keyed)]
 
 
+# --- progress, timings and the deadline ------------------------------------------------------
+
+#: A progress line every this many scenarios; a line for each scenario slower than SLOW_SECONDS;
+#: a warning for one still running after STALL_SECONDS; the slowest SLOWEST in the summary.
+PROGRESS_EVERY = 250
+SLOW_SECONDS = 5.0
+STALL_SECONDS = 120.0
+SLOWEST = 15
+#: How often the run checks its deadline and the scenario in progress.
+POLL_SECONDS = 5.0
+
+
+def _say(*lines: str) -> None:
+    """Progress and timings, on stderr: stdout carries the log lines (by_design.log_lines)."""
+    for line in lines:
+        print(line, file=sys.stderr, flush=True)
+
+
+def kind(scenario: Scenario) -> str:
+    """How a scenario runs, for its timing: ``procedure`` (its test procedure declared in the
+    model first), ``session`` (over Bolt) or ``http``."""
+    try:
+        if procedure(scenario) is not None:
+            return "procedure"
+    except procedures.NotACommand:
+        pass
+    return "http" if _session_scenario(scenario) is None else "session"
+
+
+@dataclass
+class Progress:
+    """Where a run is: the scenario in progress and since when, and each finished one's time."""
+
+    total: int
+    started: float = field(default_factory=time.monotonic)
+    done: int = 0
+    current: Scenario | None = None
+    current_since: float = 0.0
+    timings: list[tuple[float, str, str]] = field(default_factory=list)  # seconds, kind, case
+
+    def begin(self, scenario: Scenario) -> None:
+        self.current_since = time.monotonic()
+        self.current = scenario
+
+    def end(self, scenario: Scenario, how: str) -> None:
+        took = time.monotonic() - self.current_since
+        self.current = None
+        self.done += 1
+        case = f"{scenario.feature} :: {scenario.name}"
+        self.timings.append((took, how, case))
+        if took >= SLOW_SECONDS:
+            _say(f"slow: {took:.1f}s ({how}) {case}")
+        if self.done % PROGRESS_EVERY == 0:
+            _say(f"[{self.done}/{self.total}] {time.monotonic() - self.started:.0f}s elapsed")
+
+    def in_progress(self) -> str:
+        scenario = self.current
+        if scenario is None:
+            return "no scenario in progress"
+        took = time.monotonic() - self.current_since
+        return f"in progress for {took:.0f}s: {scenario.feature} :: {scenario.name}"
+
+    def unfinished(self, deadline: float) -> str:
+        return (
+            f"the TCK run passed its deadline of {deadline:.0f}s with {self.done} of "
+            f"{self.total} scenarios run; {self.in_progress()}"
+        )
+
+    def timing_lines(self) -> list[str]:
+        lines = [f"timings: {self.done} scenarios in {time.monotonic() - self.started:.0f}s"]
+        for how in sorted({h for _, h, _ in self.timings}):
+            took = [t for t, h, _ in self.timings if h == how]
+            lines.append(
+                f"timings: {how}: {len(took)} scenarios, {sum(took):.0f}s, "
+                f"{sum(took) / len(took):.2f}s each"
+            )
+        for took, how, case in sorted(self.timings, reverse=True)[:SLOWEST]:
+            lines.append(f"timings: slowest {took:.1f}s ({how}) {case}")
+        return lines
+
+
+def _run_all(
+    scenarios: list[Scenario],
+    base: str,
+    role: str,
+    outcomes: list[Outcome | None],
+    progress: Progress,
+    failure: list[BaseException],
+) -> None:
+    try:
+        for n in in_running_order(scenarios):
+            s = scenarios[n]
+            how = kind(s)
+            progress.begin(s)
+            try:
+                outcomes[n] = run(s, base, role)
+            except (OSError, ValueError, KeyError) as exc:
+                outcomes[n] = Outcome(s.feature, s.name, "failed", f"runner: {exc}")
+            progress.end(s, how)
+    except BaseException as exc:  # re-raised on the main thread
+        failure.append(exc)
+
+
+def run_within(
+    scenarios: list[Scenario],
+    base: str,
+    role: str,
+    outcomes: list[Outcome | None],
+    progress: Progress,
+    deadline: float,
+) -> bool:
+    """Run every scenario into ``outcomes``; False when ``deadline`` seconds (0: none) passed
+    first. The scenarios run on a daemon thread, so a scenario that never returns cannot hold the
+    run past its deadline, and one running past STALL_SECONDS is named while it runs."""
+    failure: list[BaseException] = []
+    worker = threading.Thread(
+        target=_run_all,
+        args=(scenarios, base, role, outcomes, progress, failure),
+        name="cypher-tck",
+        daemon=True,
+    )
+    worker.start()
+    warned: Scenario | None = None
+    while worker.is_alive():
+        left = deadline - (time.monotonic() - progress.started) if deadline else None
+        if left is not None and left <= 0:
+            return False
+        worker.join(min(left, POLL_SECONDS) if left is not None else POLL_SECONDS)
+        current = progress.current
+        if (
+            current is not None
+            and current is not warned
+            and time.monotonic() - progress.current_since >= STALL_SECONDS
+        ):
+            warned = current
+            print(f"::warning::a TCK scenario is {progress.in_progress()}", flush=True)
+    if failure:
+        raise failure[0]
+    return True
+
+
 # --- the report --------------------------------------------------------------------------------
 
 
@@ -868,12 +1018,19 @@ def main(argv: list[str]) -> int:
     spec = os.environ.get("CONFORMANCE_FEATURES", "")
     scenarios = select_scenarios(scenarios, spec)
     outcomes: list[Outcome | None] = [None] * len(scenarios)
-    for n in in_running_order(scenarios):
-        s = scenarios[n]
-        try:
-            outcomes[n] = run(s, base, role)
-        except (OSError, ValueError, KeyError) as exc:
-            outcomes[n] = Outcome(s.feature, s.name, "failed", f"runner: {exc}")
+    progress = Progress(len(scenarios))
+    deadline = float(os.environ.get("CONFORMANCE_DEADLINE_SECONDS") or 0)
+    if not run_within(scenarios, base, role, outcomes, progress, deadline):
+        unfinished = progress.unfinished(deadline)
+        print(f"::error::{unfinished}", flush=True)
+        Path(out_md).write_text(
+            f"## Cypher conformance: unfinished\n\n{unfinished}\n\n"
+            + "\n".join(f"    {line}" for line in progress.timing_lines())
+            + "\n"
+        )
+        _say(*progress.timing_lines())
+        return 1
+    _say(*progress.timing_lines())
     doc = report([o for o in outcomes if o is not None], version, spec)
     Path(out_json).write_text(json.dumps(doc, indent=2) + "\n")
     Path(out_md).write_text(markdown(doc))

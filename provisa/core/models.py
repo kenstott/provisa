@@ -60,6 +60,10 @@ DERIVED_SOURCE_ID = "__derived__"
 # sources into its allowance.
 BUILT_IN_SOURCE_IDS = frozenset({"provisa-admin", "provisa-otel", DERIVED_SOURCE_ID})
 
+# The control plane's own source: its meta, ontology and ops tables are registered on it, and only
+# its registrations are read through the views the physical table map names (REQ-884).
+ADMIN_SOURCE_ID = "provisa-admin"
+
 
 class SourceType(str, Enum):
     # RDBMS
@@ -127,11 +131,12 @@ class SourceType(str, Enum):
     kafka = "kafka"
     websocket = "websocket"  # External WebSocket feed — connect, subscribe, receive events
     rss = "rss"  # RSS 2.0 / Atom feed — poll, watermark by pubDate/updated
-    # Code (REQ-1984, REQ-1993, REQ-2200): the organisation's own functions, run in a sandboxed
-    # worker; their tables are read per argument set and landed, as a pipeline table is.
+    # Code (REQ-1984, REQ-1993, REQ-2200, REQ-2227): the organisation's own functions, run in a
+    # sandboxed worker; their tables are read per argument set and landed, as a pipeline table is.
     node = "node"
     python = "python"
     go = "go"
+    rust = "rust"
     # Graph / Semantic
     neo4j = "neo4j"
     sparql = "sparql"
@@ -236,6 +241,24 @@ class Cardinality(str, Enum):
 _SAFE_ID_PATTERN = re.compile(r"^[a-zA-Z][a-zA-Z0-9_-]*$")
 
 
+def source_object_name(value: str, what: str) -> str:
+    """``value`` as the name of a schema, table or column of a source, or why it is not one.
+
+    A source's names are its own: they hold spaces, dots, quotes and letters of any script, and
+    every statement that carries one writes it as a quoted identifier. What no source's name
+    holds is a control character (a NUL, a line break, a tab, an escape), so one is refused
+    here, where the name is registered."""
+    import unicodedata
+
+    for char in value:
+        if unicodedata.category(char) == "Cc":
+            raise ValueError(
+                f"{what} name {value!r} holds a control character (U+{ord(char):04X}); a "
+                "source's schema, table and column names hold none"
+            )
+    return value
+
+
 class SourceCdcConfig(BaseModel):  # REQ-824
     """Source-level CDC transport config (Debezium/Kafka), entered once per source.
 
@@ -313,6 +336,10 @@ class Source(BaseModel):  # REQ-012, REQ-052, REQ-053, REQ-204, REQ-229, REQ-250
     # table of this source in. It decides nothing about where copies live — each table carries
     # its own — and changing it later moves no table.
     region: str | None = None
+    # REQ-1921: withdrawn -- out of production, as the store holds it: no engine attaches it and
+    # none of its tables serves any role. Carried as the store holds it, so a promotion lands a
+    # move in progress with it.
+    withdrawn: bool = False
     # REQ-1141: mark this source LOAD-PROTECTED. Like replicate 0 it removes the live route
     # AND selects the SCHEDULED freshness discipline: the query path NEVER pulls the source — reads
     # always serve the last materialized snapshot — and the source is refreshed ONLY by the
@@ -378,6 +405,10 @@ class Source(BaseModel):  # REQ-012, REQ-052, REQ-053, REQ-204, REQ-229, REQ-250
     # (redis/elasticsearch/prometheus). Holds {"tables": [...]} plus connector options.
     mapping: dict = Field(default_factory=dict)
     approval_hook: bool = False  # REQ-204/247: scope the ABAC approval hook to this source
+    # A source Provisa runs for itself (its control plane, its telemetry, the views' sentinel, a
+    # data-quality checker or profiler whose results land as tables): no one registers tables on
+    # it, so the Register table source picker leaves it out.
+    is_system: bool = False
     allowed_domains: list[str] = Field(
         default_factory=list
     )  # restrict this source to specific domains; empty = unrestricted
@@ -598,13 +629,17 @@ class DataProduct(BaseModel):  # REQ-1634
     retire_on: date | None = None
     successor: str | None = None
     created_by: str | None = None  # REQ-2219: set on insert only, and it grants nothing
-    # REQ-2158: no SLA of its own: each output port's contract holds its SLA (DataContract).
+    # REQ-2180: what all of the product's contracts share -- support, freshness -- is written
+    # once here; the contracts themselves are derived from its offers.
     support: str | None = None
     # REQ-1635: Horizon Catalog's CREATE ORGANIZATION LISTING mandates a support contact
     # (email or URL) on the manifest — there is no other email/URL-shaped field on a data
     # product this can be derived from (owner_role is a role name, not a contact address).
     support_contact: str | None = None
     custom_properties: dict[str, str] = Field(default_factory=dict)
+    # REQ-2180: the freshness every contract of the product promises: a read trails its source
+    # by at most this many seconds. None: each dataset's own (its cache_ttl).
+    freshness: int | None = Field(default=None, gt=0)
     # REQ-1634: the product's members, many-to-many: the tables and views it holds, each named as a
     # relationship names a table (its alias, else its table name) or as source.schema.table where
     # that is not unique, and the commands, by name. A
@@ -612,6 +647,10 @@ class DataProduct(BaseModel):  # REQ-1634
     # are the one place it is declared.
     tables: list[str] = Field(default_factory=list)
     commands: list[str] = Field(default_factory=list)
+    # REQ-2180: the product's offers, each added or replaced by its name when the configuration
+    # loads; an offer the file does not declare is kept (an apply removes nothing). A product
+    # declaring none keeps the default offer it starts with.
+    offers: list["DeclaredOffer"] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def _status_fields_fit(self) -> "DataProduct":
@@ -624,15 +663,8 @@ class DataProduct(BaseModel):  # REQ-1634
         return self
 
 
-#: REQ-2158: the states of an ODCS contract.
-CONTRACT_STATUSES = ("proposed", "draft", "active", "deprecated", "retired")
-#: REQ-2158: the version a member's contract is created at, as a draft.
-FIRST_CONTRACT_VERSION = "0.1.0"
-
-
 class VersionColumn(BaseModel):  # REQ-2158
-    """A member column as a saved contract version snapshotted it: a contract holds no columns, so
-    what a version's field differences compare is what the member's columns were when it was saved."""
+    """A contract's field as two of its versions are compared (provisa.core.contract_versions)."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -642,28 +674,8 @@ class VersionColumn(BaseModel):  # REQ-2158
     required: bool = False  # ODCS: the column is never null
 
 
-class ContractSlaProperty(BaseModel):  # REQ-2158
-    """One declared ODCS service-level property (availability, retention, ...). Freshness is
-    not declared here: it is the member's declared freshness, read when the contract is."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    property: str = Field(min_length=1)
-    value: str | int | float | None = None
-    unit: str | None = None
-    description: str | None = None
-
-
-class ContractTerms(BaseModel):  # REQ-2158
-    model_config = ConfigDict(extra="forbid")
-
-    usage: str | None = None
-    limitations: str | None = None
-    notice_period: str | None = None  # ODCS noticePeriod, e.g. P3M
-
-
 class ContractCheck(BaseModel):  # REQ-2158
-    """One check the product promised on the member, as a contract version saved it: promises are
+    """One check the product promised on a dataset, as a contract's terms keep it: promises are
     read live, so what a version promised is kept with it."""
 
     model_config = ConfigDict(extra="forbid")
@@ -688,14 +700,19 @@ class ContractChange(BaseModel):  # REQ-2158
         "field_required",
         "field_optional",
         "field_described",
-        "sla_added",
-        "sla_removed",
-        "sla_changed",
         "check_added",
         "check_removed",
         "check_changed",
-        "description_changed",
-        "terms_changed",
+        # REQ-2180: an offer's contract on a dataset changing with the offer.
+        "field_masked",
+        "field_unmasked",
+        "row_rule_added",
+        "row_rule_removed",
+        "data_level_changed",
+        "dq_results_changed",
+        "profiles_changed",
+        "duration_changed",
+        "terms_of_use_changed",
     ]
     subject: str = Field(min_length=1)
     before: str | None = None
@@ -703,43 +720,129 @@ class ContractChange(BaseModel):  # REQ-2158
     breaking: bool = False
 
 
-class DataContract(BaseModel):  # REQ-2158
-    """A data product member's ODCS contract: its output port, versioned on its own. Its schema
-    is its member table's columns, never a selection of its own; its promises are the checks the
-    product owns on the member (REQ-2157), read when the contract is."""
+#: REQ-2180: an offer's level of data: the product's datasets, a sample (existing views over
+#: them), or synthetic (the product's shape, generated from each dataset's profile).
+OFFER_DATA_LEVELS = ("full", "sample", "synthetic")
+
+
+class _OfferBase(BaseModel):  # REQ-2180
+    """What an offer is, however its sample's views are named: a role its owner may grant, the
+    level of data it gives, whether it includes the product's data quality results and its
+    profiles, whether it is open (accepted at once), how long what accepting it grants lasts
+    (None: no end), and its terms of use in prose -- its purpose, its usage and its limitations,
+    each empty where it states none (amended 2026-11-11, THE PRODUCT PAGE IS SUMMARY ROWS). A
+    synthetic offer has no profiles."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(min_length=1)
+    role_id: str = Field(min_length=1)
+    data_level: Literal["full", "sample", "synthetic"] = "full"
+    sample_views: list[Any] = Field(default_factory=list)
+    dq_results: bool = True
+    profiles: bool = False
+    open: bool = False
+    duration_days: int | None = Field(default=None, gt=0)
+    purpose: str = ""
+    usage: str = ""
+    limitations: str = ""
+
+    @model_validator(mode="after")
+    def _data_fits(self) -> "_OfferBase":
+        if self.data_level == "sample" and not self.sample_views:
+            raise ValueError("a sample offer names one or more views (sample_views)")
+        if self.data_level != "sample" and self.sample_views:
+            raise ValueError("only a sample offer names views (sample_views)")
+        if self.data_level == "synthetic" and self.profiles:
+            raise ValueError("a synthetic offer has no profiles")
+        return self
+
+
+class DataProductOffer(_OfferBase):  # REQ-2180
+    """One offer of a data product as it is stored: a sample names the views it gives by table
+    id."""
+
+    sample_views: list[int] = Field(default_factory=list)
+
+
+class DeclaredOffer(_OfferBase):  # REQ-2180
+    """One offer of a data product as a configuration declares it: a sample names its views as a
+    product names its tables (the alias, else the table name, or ``source.schema.table``)."""
+
+    sample_views: list[str] = Field(default_factory=list)
+
+
+DataProduct.model_rebuild()
+
+
+#: REQ-2180: the offer every product starts with, and only it.
+DEFAULT_OFFER = DataProductOffer(name="default", role_id="viewer")
+
+#: REQ-2180 (amended 2026-11-11, A BID NAMES ITS CONSUMER AND AGREES TO THE TERMS): the kinds of
+#: consumer a request is for.
+CONSUMER_KINDS = ("person", "team", "data_product", "agent")
+
+#: REQ-2180 (amended 2026-11-11): an offer's terms of use, in the order its contract states them.
+TERMS_OF_USE = ("purpose", "usage", "limitations")
+ConsumerKind = Literal["person", "team", "data_product", "agent"]
+
+
+class OfferField(BaseModel):  # REQ-2180
+    """A dataset's column as an offer's role sees it: masked (and how) or not."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(min_length=1)
+    type: str = Field(min_length=1)
+    description: str | None = None
+    masked: str | None = None  # the mask's kind (regex, constant, truncate); None: unmasked
+
+
+class OfferTerms(BaseModel):  # REQ-2180
+    """What one offer gives on one dataset: what its contract states. Its fields are the dataset's
+    columns its role reads; its row rules each in words; its data level, with the sample views over
+    the dataset; the data quality promises, always; whether their results can be read; and the
+    profile tables where the offer includes them."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    fields: list[OfferField] = Field(default_factory=list)
+    row_rules: list[str] = Field(default_factory=list)
+    data_level: Literal["full", "sample", "synthetic"] = "full"
+    sample_views: list[str] = Field(default_factory=list)
+    checks: list[ContractCheck] = Field(default_factory=list)
+    dq_results: bool = True
+    profiles: list[str] = Field(default_factory=list)
+    duration_days: int | None = None
+    # The offer's terms of use, in prose; empty where it states none.
+    purpose: str = ""
+    usage: str = ""
+    limitations: str = ""
+
+
+class OfferContractVersion(BaseModel):  # REQ-2180
+    """A saved version of an offer's contract on a dataset, how it differs from the one before it,
+    and when and by whom it was saved."""
 
     model_config = ConfigDict(extra="forbid")
 
     version: str = Field(min_length=1)
-    status: Literal["proposed", "draft", "active", "deprecated", "retired"] = "draft"
-    description: str | None = None
-    terms: ContractTerms = Field(default_factory=ContractTerms)
-    sla: list[ContractSlaProperty] = Field(default_factory=list)
-    # REQ-2118: when the contract was first created (UTC), its ODCS contractCreatedTs; kept by
-    # every later version (data_contracts.for_save).
-    created_at: datetime | None = None
-    # Every saved version, oldest first, the last this one (contract_versions.recorded). The
-    # store's record, as created_at is: a save replaces whatever it declares here.
-    versions: list["ContractVersion"] = Field(default_factory=list)
-
-
-class ContractVersion(BaseModel):  # REQ-2158
-    """A saved version of a contract: what it was, what it promised, how it differs from the one
-    before it, and when and by whom it was saved. ``saved_by`` None is the system (a configuration
-    load, a boot), as model_change.actor() says."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    contract: DataContract
-    # The member's columns when this version was saved (REQ-2158): a contract has none of its own.
-    columns: list[VersionColumn] = Field(default_factory=list)
-    checks: list[ContractCheck] = Field(default_factory=list)
+    terms: OfferTerms
     changes: list[ContractChange] = Field(default_factory=list)
     saved_at: datetime
     saved_by: str | None = None
 
 
-DataContract.model_rebuild()
+class OfferContract(BaseModel):  # REQ-2180
+    """An offer's contract on one dataset: its terms now, at its version, with every saved
+    version, oldest first, the last this one."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    version: str = Field(min_length=1)
+    terms: OfferTerms
+    created_at: datetime
+    versions: list[OfferContractVersion] = Field(default_factory=list)
 
 
 class GlossaryTermEdgeConfig(BaseModel):  # REQ-1641
@@ -796,6 +899,8 @@ class GlossaryTermConfig(BaseModel):  # REQ-1641
 
     name: str
     definition: str | None = None
+    # REQ-2243: how the measure the term names is computed, in business language.
+    calculation_method: str | None = None
     domains: list[str] = Field(min_length=1)
     edges: list[GlossaryTermEdgeConfig] = Field(default_factory=list)
     # REQ-1387, REQ-2144: its status, set by people. ``approve`` approves it (it needs a
@@ -950,6 +1055,15 @@ class Tag(BaseModel):  # REQ-1373, REQ-1375
     # REQ-1943: the Sensitive data option. A column carrying a tag with it set is a sensitive
     # column, whose hiding only a holder of the sensitive_data right changes.
     sensitive: bool = False
+    # REQ-2208 (CITATIONS PER ASSIGNMENT): each assignment must cite a library document or section;
+    # one that does not is reported as a gap, never refused.
+    requires_citation: bool = False
+    # REQ-2208 (THE TAGS REPORT): required on every object of the kinds applies_to lists; an object
+    # without it is listed by the tags report, never refused.
+    required: bool = False
+    # REQ-2208 (A TAG IS OFFERED BY DOMAIN): offered for assignment, and assignable, only on objects
+    # of these domains, and required only there; empty = every domain, as a source's.
+    allowed_domains: list[str] = Field(default_factory=list)
 
 
 # REQ-1375: the system tags are code-defined intrinsics — present in EVERY install, never
@@ -1348,6 +1462,11 @@ class Column(
     gql_is_list: bool = False
     scope: str = "domain"  # "domain" | "listed" | "public" | "own-domain" (core/column_scope.py)
 
+    @field_validator("name")
+    @classmethod
+    def _a_sources_column_name(cls, v: str) -> str:
+        return source_object_name(v, "column")
+
     @model_validator(mode="before")
     @classmethod
     def _writes_are_granted_by_table(cls, data: Any) -> Any:  # REQ-2074
@@ -1666,6 +1785,8 @@ class Metric(BaseModel):  # REQ-1317
     visible_to: list[str] = Field(default_factory=list)
     # REQ-1320: set when this metric was auto-registered from a fact spec's measure.
     from_fact: str | None = None
+    # REQ-2243: the glossary term the metric names, by its name, as a table names its class term.
+    term: str | None = None
 
     @field_validator("name")
     @classmethod
@@ -1716,6 +1837,18 @@ def _refuse_member_product_id(data: Any, member: str) -> Any:  # REQ-1634
     return data
 
 
+def _refuse_draft(data: Any) -> Any:  # REQ-1921
+    """A table declaring ``draft`` is refused by name: there is no draft state. A table out of
+    production, or midway through a move between regions, is ``withdrawn``."""
+    if isinstance(data, dict) and "draft" in data:
+        name = data.get("table") or data.get("table_name") or data.get("name")
+        raise ValueError(
+            f"table {name!r} declares draft, which is not a setting; a table out of production "
+            "is declared withdrawn: true"
+        )
+    return data
+
+
 #: ``Table.read_wait``: a read with nothing landed does not wait for it (REQ-2224).
 READ_WAIT_NO_ROWS = 0
 
@@ -1729,6 +1862,24 @@ class Table(
     @classmethod
     def _no_product_id(cls, data: Any) -> Any:  # REQ-1634
         return _refuse_member_product_id(data, "table")
+
+    @model_validator(mode="before")
+    @classmethod
+    def _no_draft(cls, data: Any) -> Any:  # REQ-1921
+        return _refuse_draft(data)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _no_contract(cls, data: Any) -> Any:  # REQ-2180
+        # A table once declared its product contract by hand. Contracts are derived from the
+        # product's offers now, so the key means nothing: a config carrying it is told so.
+        if isinstance(data, dict) and "contract" in data:
+            name = data.get("table") or data.get("table_name")
+            raise ValueError(
+                f"table {name!r} declares a contract; a data product's contracts are derived "
+                "from its offers (declare offers on the data product). Remove the key."
+            )
+        return data
 
     source_id: str
     domain_id: str
@@ -1764,16 +1915,26 @@ class Table(
     # REQ-1921: the org region this table's data lives in; None = no region (a copy may be kept in
     # every region). Its source's region is only the admin form's default for a new table.
     region: str | None = None
-    # REQ-1921: out of service while set — read and written nowhere, offered in no schema, copied
-    # nowhere. A table or view registered through the admin starts as draft; one a config file
-    # declares is draft only when the file says so.
-    draft: bool = False
+    # REQ-1921: withdrawn -- out of production, as the store holds it; the waypoint of a move
+    # between regions. A registration never sets it, so a registered table is live. Carried as
+    # the store holds it, so a promotion lands a move in progress with it.
+    withdrawn: bool = False
     # REQ-1141: per-table load-protection override; None = inherit the source's load_protected.
     load_protected: bool | None = None
     # REQ-1141: per-table off-peak window override ("HH:MM-HH:MM"); None = inherit source window.
     off_peak_window: str | None = None
     off_peak_tz: str | None = None  # None = inherit source off_peak_tz
     gql_naming_convention: str | None = None  # overrides source; None = inherit
+
+    @field_validator("schema_name")
+    @classmethod
+    def _a_sources_schema_name(cls, v: str) -> str:
+        return source_object_name(v, "schema")
+
+    @field_validator("table_name")
+    @classmethod
+    def _a_sources_table_name(cls, v: str) -> str:
+        return source_object_name(v, "table")
 
     @field_validator("gql_naming_convention")
     @classmethod
@@ -1943,9 +2104,9 @@ class Table(
     mv_persist: str = "replace"
     mv_primary_key: list[str] = []
     mv_incremental: bool = False
-    # REQ-2158: a member's contract, its output port. None keeps the stored one; a member with
-    # none is given a draft at FIRST_CONTRACT_VERSION; its schema is the member's columns.
-    contract: DataContract | None = None
+    # REQ-2249: seconds between whole rebuilds of a view kept by its code resolver's @change
+    # function; required while it is kept incrementally. None = no clock.
+    mv_rebuild_every: int | None = None
     # REQ-2141: the glossary term this table's rows are instances of, by name. Resolved when the
     # configuration loads, after the terms it declares or derives exist; the table must have a
     # primary key.
@@ -2608,7 +2769,9 @@ class Function(BaseModel):  # REQ-205, REQ-206, REQ-207, REQ-208
     # source_operation (REQ-1924): a write operation of a remote source (OpenAPI, GraphQL, gRPC),
     # named by source_id and function_name and passed through as is.
     # source_query (REQ-1988): a query command running its source's native query -- a MongoDB
-    # pipeline, its binding {"inputCollection", "pipeline"} -- with the call's typed arguments.
+    # pipeline, its binding {"inputCollection", "pipeline"} -- with the call's typed arguments;
+    # on a relational source, native SQL in the source's dialect, its binding {"sql"}, one
+    # statement or several run in one transaction (executor/native_sql_command).
     # statement (REQ-2001): a Provisa SQL statement, its binding {"sql"}, an argument written
     # {{name}}; run through the one pipeline as the caller's role (executor/statement_command).
     impl_kind: str = "source_procedure"
@@ -2638,6 +2801,14 @@ class Function(BaseModel):  # REQ-205, REQ-206, REQ-207, REQ-208
     # REQ-2168: the command's name per language (sql, cypher, graphql, rest, mcp, sparql). A
     # language left out offers it under its generated name; SQL cannot be excluded.
     language_bindings: dict[str, CommandBinding] = Field(default_factory=dict)
+    # REQ-1986: for a source operation that returns rows, the type of one row as the source's
+    # own schema names it (an OpenAPI component, a GraphQL type, a gRPC message); None where the
+    # source names none. Two operations of a source return the same type when this is equal.
+    source_type: str | None = None
+    # REQ-1986: whether this function is also exposed as a parameterized table, derived from it
+    # and never registered on its own. None for a function with no table form (anything but a
+    # source operation that reads rows and requires a parameter).
+    exposed_as_table: bool | None = None
 
     model_config = ConfigDict(populate_by_name=True)
 
@@ -2680,8 +2851,16 @@ class Function(BaseModel):  # REQ-205, REQ-206, REQ-207, REQ-208
     @model_validator(mode="after")
     def _source_query_is_a_reading_native_query(self) -> "Function":  # REQ-1988
         """A source_query command is a query, and its binding is a native query that names only
-        its arguments, uses each, and only reads."""
+        its arguments, uses each, and only reads. One whose binding holds native SQL for a
+        relational source (amended 2026-11-13) reads or writes, as it declares; its text is
+        checked against its source's dialect where the source is known (ProvisaConfig, the admin
+        API)."""
         if self.impl_kind != "source_query":
+            return self
+        from provisa.core.native_sql import BINDING_KEY, native_sql_text
+
+        if BINDING_KEY in self.binding:
+            native_sql_text(self.name, self.binding)
             return self
         if self.kind != "query":
             raise ValueError(f"command {self.name!r}: a source_query command is a query")
@@ -3050,8 +3229,8 @@ class MailConfig(BaseModel):  # REQ-1310, REQ-1330, REQ-1576
 
 
 # The fields of a catalog connection: where the catalog is and how to sign in to it (REQ-2122).
-# Export and import both read a catalog through one connection, so these live on the connection,
-# and an export target names its catalog instead of holding them.
+# Export and import both read a catalog through one connection, so these live on its Syncing entry
+# with its export settings (REQ-2247).
 _CATALOG_CONNECTION_FIELDS = (
     "id",
     "provider",
@@ -3074,10 +3253,10 @@ _CATALOG_CONNECTION_FIELDS = (
 )
 
 
-class MetadataExportTarget(BaseModel):  # REQ-1068, REQ-2118, REQ-2122
-    """What an export provider is built from: one catalog's connection with the export's own
-    settings for it (REQ-2122). Never stored: :meth:`CatalogConnection.export_target` builds it
-    from the stored catalog and the export's :class:`CatalogExport` for it.
+class MetadataExportTarget(BaseModel):  # REQ-1068, REQ-2118, REQ-2122, REQ-2247
+    """What an export provider is built from: one data catalog's connection with its export
+    settings (REQ-2247). Never stored: :meth:`CatalogConnection.export_target` builds it from the
+    stored entry.
 
     id: the catalog's name within the org, unique there; its catalog bindings are kept under it,
         so two catalogs of one provider (two OpenMetadata servers) never share them (REQ-2118).
@@ -3168,17 +3347,47 @@ def _check_catalog_connection(catalog: Any) -> None:  # REQ-1068, REQ-2118, REQ-
         )
 
 
-class CatalogConnection(BaseModel):  # REQ-2122
-    """One external catalog an org connects to once, for export and import alike.
+# The types of entry on the Syncing page (REQ-2247): a data catalog Provisa has an adapter for, an
+# ontology system whose releases are uploaded to it, and a custom system its webhooks sync.
+SyncEntryType = Literal["data_catalog", "ontology", "custom"]
+# Which way an entry syncs (REQ-2247): Export is Provisa to the system, Import the system to Provisa.
+SyncDirection = Literal["export", "import", "both"]
+# One direction a run goes in.
+SyncRunDirection = Literal["export", "import"]
 
-    Its fields are :class:`MetadataExportTarget`'s connection fields (``_CATALOG_CONNECTION_FIELDS``),
-    each held as entered and resolved at use. ``domains`` are the domains that work with it: their
-    tables offer only their catalogs, and their tables and data products publish to them. A
-    connection serves at least one domain.
+# An entry's export settings: what a metadata export target carried beside its catalog (REQ-2247).
+_EXPORT_SETTING_FIELDS = ("role", "datazone_project_id", "delta_share")
+
+
+class SyncDirectionOff(ValueError):  # REQ-2247
+    """A run asked of an entry in a direction it does not sync: it never runs, by schedule or by
+    hand."""
+
+
+class CatalogConnection(BaseModel):  # REQ-2122, REQ-2247
+    """One entry of the Syncing page: an outside system kept in sync with Provisa.
+
+    type: ``data_catalog`` (a catalog reached through its provider's adapter), ``ontology`` or
+        ``custom``. Only a data catalog has a provider, a connection and export settings.
+    direction: ``export`` (Provisa to the system), ``import`` (the system to Provisa) or ``both``.
+        A direction that is off never runs, on a schedule or by hand (:meth:`require_runs`).
+
+    A data catalog's connection fields are :class:`MetadataExportTarget`'s
+    (``_CATALOG_CONNECTION_FIELDS``), each held as entered and resolved at use. ``domains`` are the
+    domains that work with it: their tables offer only their catalogs, and their tables and data
+    products publish to them; a data catalog serves at least one domain.
+
+    Its export settings are what a metadata export target carried (REQ-2247): ``role``, the role
+    it is published as -- it is sent exactly what that role reads, and a publish refuses an entry
+    that names none (REQ-2152, ruling Q1); ``datazone_project_id``, the DataZone project that owns
+    the org's data products (REQ-2118); ``delta_share``, whether a unity_catalog catalog also gets
+    each product as a Delta Share (REQ-2117).
     """
 
     id: str
-    provider: str
+    type: SyncEntryType
+    direction: SyncDirection
+    provider: str = ""
     endpoint: str = ""
     api_key: SecretStr = SecretStr("")
     token: SecretStr = SecretStr("")
@@ -3195,35 +3404,74 @@ class CatalogConnection(BaseModel):  # REQ-2122
     aws_access_key_id: SecretStr = SecretStr("")
     aws_secret_access_key: SecretStr = SecretStr("")
     timeout_seconds: int = 30
-    domains: list[str]
+    domains: list[str] = Field(default_factory=list)
+    role: str | None = None
+    datazone_project_id: str = ""
+    delta_share: bool = False
 
     @field_validator("id")
     @classmethod
     def _validate_id(cls, v: str) -> str:
         if not _SAFE_ID_PATTERN.match(v):
-            raise ValueError(f"a catalog's id is a name like 'catalog-1', not {v!r}")
+            raise ValueError(f"an entry's id is a name like 'catalog-1', not {v!r}")
         return v
 
     @model_validator(mode="after")
     def _validate(self) -> "CatalogConnection":
+        if self.type != "data_catalog":
+            # Only a data catalog is reached through a provider's adapter, so only it has one.
+            given = [name for name in ("provider", *_EXPORT_SETTING_FIELDS) if getattr(self, name)]
+            if given:
+                raise ValueError(
+                    f"entry {self.id!r} is of type {self.type!r}, which has no {', '.join(given)}"
+                )
+            return self
+        if not self.provider:
+            raise ValueError(f"catalog {self.id!r} names no provider")
         if not self.domains:
             raise ValueError(f"catalog {self.id!r} is assigned to no domain")
         _check_catalog_connection(self)
+        # REQ-2118: a DataZone data product is owned by a project, which only the export names.
+        if self.exports and self.provider == "datazone" and not self.datazone_project_id:
+            raise ValueError(
+                f"the export to {self.id!r} needs the DataZone project that owns its data products"
+            )
         return self
 
-    def export_target(self, export: "CatalogExport") -> MetadataExportTarget:
-        """The export provider's settings for this catalog: its connection and ``export``."""
+    @property
+    def exports(self) -> bool:
+        """Whether the entry syncs from Provisa to the system."""
+        return self.direction in ("export", "both")
+
+    @property
+    def imports(self) -> bool:
+        """Whether the entry syncs from the system to Provisa."""
+        return self.direction in ("import", "both")
+
+    def runs(self, direction: SyncRunDirection) -> bool:
+        return self.exports if direction == "export" else self.imports
+
+    def require_runs(self, direction: SyncRunDirection) -> None:
+        """Refuse a run in ``direction`` unless the entry syncs that way (REQ-2247)."""
+        if not self.runs(direction):
+            raise SyncDirectionOff(f"{self.id!r} does not {direction}: its direction is off")
+
+    def export_target(self) -> MetadataExportTarget:
+        """The export provider's settings for this data catalog: its connection and its export
+        settings."""
+        if self.type != "data_catalog":
+            raise ValueError(f"entry {self.id!r} is of type {self.type!r}, which has no provider")
         return MetadataExportTarget(
             **{name: getattr(self, name) for name in _CATALOG_CONNECTION_FIELDS},
-            datazone_project_id=export.datazone_project_id,
-            delta_share=export.delta_share,
+            datazone_project_id=self.datazone_project_id,
+            delta_share=self.delta_share,
             domains=list(self.domains),
-            role=export.role,
+            role=self.role,
         )
 
 
-class CatalogsConfig(BaseModel):  # REQ-2122
-    """The org's catalog connections, each held once (the Catalogs panel)."""
+class CatalogsConfig(BaseModel):  # REQ-2122, REQ-2247
+    """The org's Syncing entries, each held once."""
 
     catalogs: list[CatalogConnection] = Field(default_factory=list)
 
@@ -3232,76 +3480,34 @@ class CatalogsConfig(BaseModel):  # REQ-2122
         ids = [c.id for c in self.catalogs]
         repeated = sorted({i for i in ids if ids.count(i) > 1})
         if repeated:
-            raise ValueError(f"catalogs named twice: {', '.join(repeated)}")
+            raise ValueError(f"entries named twice: {', '.join(repeated)}")
         return self
 
     def by_id(self) -> dict[str, CatalogConnection]:
         return {c.id: c for c in self.catalogs}
 
+    def export_targets(self, only: str | None = None) -> list[MetadataExportTarget]:
+        """What a publish reaches: every data catalog whose direction includes Export, or, with
+        ``only``, that one entry, refused (:class:`SyncDirectionOff`) when it does not export
+        (REQ-2247). A missing entry is a ``KeyError``."""
+        if only is None:
+            return [
+                c.export_target() for c in self.catalogs if c.type == "data_catalog" and c.exports
+            ]
+        entry = self.by_id()[only]
+        entry.require_runs("export")
+        return [entry.export_target()]
 
-class CatalogExport(BaseModel):  # REQ-2118, REQ-2122
-    """The export to one catalog: the catalog it names, and its export settings alone.
 
-    datazone_project_id: the DataZone project that owns the org's data products (REQ-2118).
-    delta_share: whether a unity_catalog catalog also gets each product as a Delta Share
-        (REQ-2117).
-    role: the role the catalog is published as -- it is sent exactly what that role reads
-        (REQ-2152, ruling Q1); a publish refuses an export that names none.
+class MetadataExportConfig(BaseModel):  # REQ-1072
+    """The organisation-wide schedule of the publish to its exporting entries (REQ-1072).
+
+    reconcile_cron: schedule for the full-snapshot reconcile that corrects drift from dropped
+        events. Empty disables the reconcile and leaves only the event-driven path.
+    What is published, and to which systems, is on each Syncing entry (REQ-2247).
     """
 
-    catalog: str
-    datazone_project_id: str = ""
-    delta_share: bool = False
-    role: str | None = None
-
-
-class MetadataExportConfig(BaseModel):  # REQ-1068, REQ-1072, REQ-1073, REQ-2118, REQ-2122
-    """Outbound publication of governance metadata to external catalogs.
-
-    Per-org, premium-gated (REQ-1073).
-
-    targets: the catalogs the org publishes to, each named by its id in the Catalogs panel with
-        its export settings; one publish reaches each (REQ-2118, REQ-2122).
-    reconcile_cron: schedule for the full-snapshot reconcile that corrects drift from
-        dropped events (REQ-1072). Empty disables the reconcile and leaves only the
-        event-driven path.
-    """
-
-    enabled: bool = False
-    targets: list[CatalogExport] = Field(default_factory=list)
     reconcile_cron: str = "0 * * * *"
-
-    @model_validator(mode="after")
-    def _validate_targets(self) -> "MetadataExportConfig":
-        ids = [t.catalog for t in self.targets]
-        repeated = sorted({i for i in ids if ids.count(i) > 1})
-        if repeated:
-            raise ValueError(f"metadata export targets named twice: {', '.join(repeated)}")
-        # REQ-1068: an enabled export with nowhere to publish cannot publish.
-        if self.enabled and not self.targets:
-            raise ValueError("metadata_export.enabled is true but no target is configured")
-        return self
-
-    def export_targets(self, catalogs: CatalogsConfig) -> list[MetadataExportTarget]:
-        """Each target as its provider is built from: the named catalog with its export settings.
-        A target naming no catalog of the org is refused by name (REQ-2122)."""
-        known = catalogs.by_id()
-        missing = sorted(t.catalog for t in self.targets if t.catalog not in known)
-        if missing:
-            raise ValueError(
-                f"metadata export targets name no catalog of the org: {', '.join(missing)}"
-            )
-        targets = [known[t.catalog].export_target(t) for t in self.targets]
-        # REQ-2118: a DataZone data product is owned by a project, which only the export names.
-        unowned = sorted(
-            t.id for t in targets if t.provider == "datazone" and not t.datazone_project_id
-        )
-        if unowned:
-            raise ValueError(
-                f"the export to {', '.join(unowned)} needs the DataZone project that owns its "
-                "data products"
-            )
-        return targets
 
 
 class SubsystemTracesConfig(BaseModel):  # REQ-1432
@@ -3448,6 +3654,13 @@ class AiEndpointConfig(BaseModel):  # REQ-1790
     enabled: bool = True
 
 
+class ModelLimitsConfig(BaseModel):  # REQ-464
+    """One model's input and output limits in tokens, as an administrator set them."""
+
+    input_tokens: int = Field(gt=0)
+    output_tokens: int = Field(gt=0)
+
+
 class AIModelsConfig(BaseModel):  # REQ-464
     """AI model configuration for various operations.
 
@@ -3467,6 +3680,11 @@ class AIModelsConfig(BaseModel):  # REQ-464
     # REQ-2179: no default. A scan reads a whole document, so a model is chosen for it, and until
     # one is a scan is refused saying so (provisa/term_finding/model.py).
     glossary_term_finding: str | dict = ""
+    # REQ-464: the organization's own input and output limits, in tokens, by vendor and model id
+    # ({"anthropic": {"claude-haiku-4-5": {"input_tokens": 200000, "output_tokens": 8192}}}). A
+    # model with none set takes the vendor's published figure or the default pair
+    # (provisa.llm.limits.limits_for).
+    model_limits: dict[str, dict[str, ModelLimitsConfig]] = Field(default_factory=dict)
 
 
 class NlConfig(BaseModel):  # REQ-464
@@ -3691,15 +3909,6 @@ class SecurityConfig(BaseModel):  # REQ-693
         return self.mode.lower() == "high"
 
 
-class ReferenceLibraryConfig(BaseModel):  # REQ-2185
-    """The reference library's retrieval setting, as an org holds it (org setting
-    ``reference_library``): the passages nearest a question, or the glossary walk's as well."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    retrieval: Literal["passage", "graph"] = "passage"
-
-
 class ConnectorRequirement(BaseModel):  # REQ-2221
     """A named value a connector needs from whoever sets it up: a ``@requires`` tag in its code."""
 
@@ -3838,7 +4047,7 @@ class ConnectorConfig(BaseModel):  # REQ-2221
     path: str = ""
     build_command: str = ""
     # REQ-2221: the source type it becomes, read from the project's standard files when it is built.
-    language: Literal["node", "python", "go"]
+    language: Literal["node", "python", "go", "rust"]
     image: str
     digest: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
     # What a paired host is held to: the hash of the code the image at ``digest`` was built from.
@@ -3959,7 +4168,9 @@ class ProvisaConfig(BaseModel):
     # This embedded-MPP instance's role in the cluster: "coordinator" (also schedules work on itself)
     # or "worker". Drives which template write_trino_config renders into config.properties.
     node_role: str = "coordinator"
-    jvm_heap_gb: int = 8
+    # Fits docker-compose.core.yml's 7g engine container with room for the JVM's native memory;
+    # trino/etc/jvm.config carries the same -Xmx.
+    jvm_heap_gb: int = 5
     query_max_memory: str = "4GB"
     query_max_memory_per_node: str = "2GB"
     query_max_total_memory: str = "8GB"
@@ -4003,8 +4214,6 @@ class ProvisaConfig(BaseModel):
     # and a sub-role ``<attribute>__<value>`` for the value a user's attributes give it. Only these,
     # never every claim.
     derived_roles: list[DerivedRole] = Field(default_factory=list)
-    # REQ-2185: the reference library's retrieval setting, passage or graph.
-    reference_library: ReferenceLibraryConfig = Field(default_factory=ReferenceLibraryConfig)
     rls_rules: list[RLSRule] = Field(default_factory=list)
     event_triggers: list[EventTrigger] = Field(default_factory=list)
     scheduled_triggers: list[ScheduledTrigger] = Field(default_factory=list)
@@ -4068,6 +4277,27 @@ class ProvisaConfig(BaseModel):
     @model_validator(mode="after")
     def _validate_regions(self) -> "ProvisaConfig":
         validate_regions(self)  # REQ-1922
+        return self
+
+    @model_validator(mode="after")
+    def _native_sql_commands_run_on_their_source(self) -> "ProvisaConfig":  # REQ-1988
+        """A source_query command holding native SQL is on a relational source that runs it, and
+        its text, split in that source's dialect, names exactly its arguments."""
+        from provisa.core.native_sql import BINDING_KEY, check_on_source
+
+        types = {s.id: s.type.value for s in self.sources}
+        for f in self.functions:
+            if f.impl_kind != "source_query" or BINDING_KEY not in f.binding:
+                continue
+            if f.source_id not in types:
+                raise ValueError(f"command {f.name!r}: its source {f.source_id!r} is not declared")
+            check_on_source(
+                f.name,
+                f.source_id,
+                types[f.source_id],
+                f.binding,
+                [a.name for a in f.arguments],
+            )
         return self
 
     @model_validator(mode="after")

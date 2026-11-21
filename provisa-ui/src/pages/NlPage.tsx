@@ -32,6 +32,7 @@ import { HelpBubble } from "../components/HelpBubble";
 import { Tip } from "../components/Tip";
 import { useAuth } from "../context/AuthContext";
 import { fetchNlMode, submitNlQuery, streamNlResult, type NlBranchEvent } from "../api/admin";
+import { useViewDomains } from "../lib/viewDomains";
 import { getStored, setStored } from "../lib/browserStorage";
 import { kept, restored, type KeptResult } from "../lib/resultWithQuery";
 import { readBulk, writeBulk } from "../lib/bulkStorage";
@@ -147,6 +148,8 @@ export function NlPage() {
   }, [actingRoleId]);
   const strictLocked = !(nlMode?.role === actingRoleId && nlMode.nonStrict);
   const effectiveStrict = strict || strictLocked;
+  // REQ-2253: the navbar's selected domains, the only ones the question is answered within.
+  const viewDomains = useViewDomains();
   // The answers are kept with the question that produced them, and shown only beside it.
   const [branches, setBranches] = useState<Record<Target, BranchState>>({
     sql: EMPTY_BRANCH,
@@ -207,7 +210,7 @@ export function NlPage() {
 
     let jobId: string;
     try {
-      const res = await submitNlQuery(q, roleId, effectiveStrict);
+      const res = await submitNlQuery(q, roleId, effectiveStrict, viewDomains);
       jobId = res.job_id;
     } catch (e) {
       setGlobalError(e instanceof Error ? e.message : String(e));
@@ -261,7 +264,7 @@ export function NlPage() {
       },
     );
     cancelRef.current = stop;
-  }, [question, submitting, actingRoles, effectiveStrict, saveBranches]);
+  }, [question, submitting, actingRoles, effectiveStrict, viewDomains, saveBranches]);
 
   const openInExplorer = useCallback(
     (target: Target, _query: string) => {

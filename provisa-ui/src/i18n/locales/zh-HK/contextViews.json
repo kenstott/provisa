@@ -1,0 +1,16 @@
+{
+  "contextViews": {
+    "colWhereApplied": "套用位置",
+    "colDependents": "依賴項",
+    "detectedHeader": "偵測位置",
+    "nowhere": "無",
+    "hiddenPlaces_one": "另有 {{count}} 項您無權讀取",
+    "hiddenPlaces_other": "另有 {{count}} 項您無權讀取",
+    "rowFilters_one": "{{count}} 個資料列篩選器",
+    "rowFilters_other": "{{count}} 個資料列篩選器",
+    "classifiedAs": "由分類指定：{{kind}}",
+    "noDependents": "無",
+    "enabled": "已啟用",
+    "disabled": "已停用"
+  }
+}

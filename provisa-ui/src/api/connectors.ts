@@ -38,7 +38,7 @@ export interface Connector {
   git: string;
   ref: string;
   commit: string;
-  language: "node" | "python" | "go";
+  language: "node" | "python" | "go" | "rust";
   image: string;
   digest: string;
   code_hash: string;

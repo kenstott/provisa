@@ -28,6 +28,7 @@ from provisa.api.admin.schema_mutation import Mutation
 
 # Re-exports for external importers of provisa.api.admin.schema (catalog_cache,
 # table_search_router, tests + steps). Keep these paths stable.
+from provisa.api.admin.env_reference_check import EnteredEnvReference
 from provisa.compiler.naming import source_to_catalog  # noqa: F401
 from provisa.api.admin.schema_helpers import _get_pool, _rebuild_schemas  # noqa: F401
 from provisa.api.admin._table_ops import (  # noqa: F401
@@ -42,4 +43,7 @@ from provisa.api.admin.schema_common import (  # noqa: F401
 
 # REQ-1524: the one place every model-changing mutation passes through, so the environment's
 # branch records the change without fifty resolvers each remembering to say so.
-admin_schema = strawberry.Schema(query=Query, mutation=Mutation, extensions=[ModelChangeLabel])
+# REQ-1557: and the one place every admin operation's arguments pass through before it runs.
+admin_schema = strawberry.Schema(
+    query=Query, mutation=Mutation, extensions=[ModelChangeLabel, EnteredEnvReference]
+)

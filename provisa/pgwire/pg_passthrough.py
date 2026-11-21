@@ -217,8 +217,10 @@ _SYNC = b"S" + _INT32.pack(4)
 # Execute(unnamed portal, no row limit): the whole result, read off the socket as it is consumed.
 _EXECUTE_ALL = b"E" + _INT32.pack(9) + b"\x00" + _INT32.pack(0)
 
-# SQLSTATEs after which a kept prepared statement cannot be used again as it stands.
-_STALE_STATEMENT_STATES = frozenset({"26000", "0A000"})
+# The error routine (R) PostgreSQL's plan cache reports when it refuses a kept plan: "cached plan
+# must not change result type", after the statement's tables changed shape. Its SQLSTATE, 0A000,
+# is also what any function raises for a feature it does not support.
+_STALE_PLAN_ROUTINE = "RevalidateCachedQuery"
 
 
 def _build_parse(name: str, sql: str) -> bytes:
@@ -268,21 +270,29 @@ def _build_bind(statement: str, params: list, result_formats: list[int]) -> byte
     return bytes(out)
 
 
-def _error_sqlstate(payload: bytes) -> str:
-    for part in payload.split(b"\x00"):
-        if part[:1] == b"C":
-            return part[1:].decode("ascii", errors="replace")
-    return ""
-
-
-def _source_failure(payload: bytes) -> PassthroughFailure:
-    """An ErrorResponse as the source's error: its SQLSTATE (C) and its message (M)."""
-    fields = {
+def _error_fields(payload: bytes) -> dict[bytes, str]:
+    return {
         part[:1]: part[1:].decode("utf-8", errors="replace")
         for part in payload.split(b"\x00")
         if len(part) > 1
     }
+
+
+def _source_failure(payload: bytes) -> PassthroughFailure:
+    """An ErrorResponse as the source's error: its SQLSTATE (C) and its message (M)."""
+    fields = _error_fields(payload)
     return PassthroughFailure(fields.get(b"M", "unknown Postgres error"), fields.get(b"C"))
+
+
+def _kept_statement_unusable(payload: bytes) -> bool:
+    """Whether an ErrorResponse says the statement kept prepared cannot be used again as it
+    stands: the source no longer holds it (26000), or its plan cache refused the kept plan. Every
+    other error, a function's own 0A000 included, is the statement's answer."""
+    fields = _error_fields(payload)
+    sqlstate = fields.get(b"C")
+    if sqlstate == "26000":
+        return True
+    return sqlstate == "0A000" and fields.get(b"R") == _STALE_PLAN_ROUTINE
 
 
 def _parse_row_description(payload: bytes) -> tuple[list[str], list[int]]:
@@ -405,12 +415,23 @@ def open_passthrough(
 
 
 def _prepare(
-    exchange: _RawExchange, borrowed: BorrowedPgConnection, sql: str
+    exchange: _RawExchange,
+    borrowed: BorrowedPgConnection,
+    sql: str,
+    *,
+    replacing: PreparedOnConnection | None = None,
 ) -> PreparedOnConnection:
     """Prepare ``sql`` under a name on this connection and read its RowDescription. The exchange is
-    left open (Flushed, not Synced): the Bind/Execute/Sync that follows completes it."""
+    left open (Flushed, not Synced): the Bind/Execute/Sync that follows completes it.
+
+    ``replacing`` is the statement kept for ``sql`` that can no longer be used. It is forgotten here
+    and closed at the source in the same request, so its name is free on both sides before it is
+    given out again (Close of a name the source no longer holds is not an error)."""
     statements = borrowed.statements
     request = bytearray()
+    if replacing is not None:
+        del statements[sql]
+        request += _build_close_statement(replacing.name)
     if len(statements) >= _PREPARED_MAX:
         oldest = next(iter(statements))
         request += _build_close_statement(statements.pop(oldest).name)
@@ -496,15 +517,14 @@ class PassthroughCursor:
                     tag == b"E"
                 ):  # ErrorResponse — ReadyForQuery follows (the Sync is already sent)
                     failure = _source_failure(payload)
-                    if _error_sqlstate(payload) in _STALE_STATEMENT_STATES:
-                        self._borrowed.statements.pop(self._sql, None)
-                        stale = True
+                    stale = _kept_statement_unusable(payload)
                 elif tag == b"Z":  # ReadyForQuery — the exchange is complete, the connection idle
                     if stale and not rows and not self._handed_on and not self._prepared_again:
-                        # The statement kept prepared here was deallocated behind this module:
-                        # the connection's driver runs DEALLOCATE ALL after a ROLLBACK (psycopg
-                        # does), which a failed stream on the same pooled connection issues.
-                        # Nothing was handed on, so it is prepared again and run once more.
+                        # The statement kept prepared here was deallocated behind this module
+                        # (the connection's driver runs DEALLOCATE ALL after a ROLLBACK, as
+                        # psycopg does, which a failed stream on the same pooled connection
+                        # issues), or its kept plan is stale. Nothing was handed on, so it is
+                        # prepared again and run once more.
                         self._run_again()
                         failure, stale = None, False
                         continue
@@ -530,12 +550,12 @@ class PassthroughCursor:
             raise
 
     def _run_again(self) -> None:
-        """Prepare the statement again on this (idle) connection and send its run once more. The
-        client was told the statement's columns already, so a statement that now describes other
-        columns is refused rather than run."""
+        """Close the kept statement and prepare it again on this (idle) connection, then send its
+        run once more. The client was told the statement's columns already, so a statement that now
+        describes other columns is refused rather than run."""
         self._prepared_again = True
         before = (self._prepared.column_names, self._prepared.type_oids)
-        prepared = _prepare(self._exchange, self._borrowed, self._sql)
+        prepared = _prepare(self._exchange, self._borrowed, self._sql, replacing=self._prepared)
         if (prepared.column_names, prepared.type_oids) != before:
             self._exchange.sync()
             raise _ConnectionLost(

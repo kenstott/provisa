@@ -25,8 +25,10 @@ vi.mock("../api/billing", async () => {
     startTrial: vi.fn(),
     cancelTrial: vi.fn(),
     fetchPortalUrl: vi.fn(),
-    openCheckout: vi.fn(),
-    startEgressSubscription: vi.fn(),
+    mountCheckout: vi.fn(),
+    checkoutReturnUrl: actual.checkoutReturnUrl,
+    readCheckoutReturn: actual.readCheckoutReturn,
+    clearCheckoutReturn: actual.clearCheckoutReturn,
     fetchPlans: vi.fn(),
     changePlan: vi.fn(),
   };
@@ -38,16 +40,24 @@ import {
   changePlan,
   fetchBillingSummary,
   fetchPlans,
-  openCheckout,
-  startEgressSubscription,
+  fetchPortalUrl,
+  mountCheckout,
   startTrial,
 } from "../api/billing";
-import type { PlanOffers } from "../api/billing";
+import type { CheckoutSession, PlanOffers } from "../api/billing";
 const mockSummary = vi.mocked(fetchBillingSummary);
 const mockStart = vi.mocked(startTrial);
 const mockCancel = vi.mocked(cancelTrial);
-const mockOpen = vi.mocked(openCheckout);
-const mockEgress = vi.mocked(startEgressSubscription);
+const mockMount = vi.mocked(mountCheckout);
+const mockPortal = vi.mocked(fetchPortalUrl);
+
+/** What /billing/trial/start answers: the session the page mounts in place. */
+const SESSION: CheckoutSession = {
+  client_secret: "cs_test_secret",
+  session_id: "cs_test_1",
+  publishable_key: "pk_test_1",
+  trial: true,
+};
 const mockPlans = vi.mocked(fetchPlans);
 const mockChange = vi.mocked(changePlan);
 
@@ -149,7 +159,6 @@ function summary(overrides: Partial<BillingSummary> = {}): BillingSummary {
     bill_unavailable: null,
     next_charge: null,
     has_portal: false,
-    has_egress_subscription: true,
     ...overrides,
   };
 }
@@ -162,12 +171,12 @@ function subscribed(): Partial<BillingSummary> {
     subscription: {
       status: "active",
       renews_at: "2026-09-01T00:00:00+00:00",
+      cancel_at_period_end: false,
       ends_at: null,
       trial_ends_at: null,
       card_brand: "visa",
       card_last_four: "4242",
-      product_name: "Provisa",
-      variant_name: "Starter",
+      product_name: "Provisa Starter",
       fixed_cents: 2500,
       fixed_kind: "minimum" as const,
       fixed_interval: "month",
@@ -175,13 +184,16 @@ function subscribed(): Partial<BillingSummary> {
   };
 }
 
+const realLocation = window.location;
+
 describe("BillingTab", () => {
   beforeEach(() => {
     mockSummary.mockReset();
     mockStart.mockReset();
     mockCancel.mockReset();
-    mockOpen.mockReset();
-    mockEgress.mockReset();
+    mockMount.mockReset();
+    mockPortal.mockReset();
+    window.history.replaceState(null, "", "/");
     mockPlans.mockReset();
     mockChange.mockReset();
     mockPlans.mockResolvedValue(offers());
@@ -202,30 +214,44 @@ describe("BillingTab", () => {
     expect(screen.queryByTestId("billing-start-trial")).not.toBeInTheDocument();
   });
 
-  // REQ-1482: transfer is a second Lemon Squeezy subscription, so an org can hold a plan and be
-  // metering transfer that nothing bills. This card is the only place that is offered.
-  it("offers the transfer subscription to a subscribed org that has none", async () => {
-    mockSummary.mockResolvedValue(summary({ ...subscribed(), has_egress_subscription: false }));
-    mockEgress.mockResolvedValue("https://provisa.lemonsqueezy.com/checkout/egress");
-    render(<BillingTab />);
-    fireEvent.click(await screen.findByTestId("billing-add-transfer-button"));
-    await waitFor(() =>
-      expect(mockOpen).toHaveBeenCalledWith(
-        "https://provisa.lemonsqueezy.com/checkout/egress",
-        expect.any(Function),
-      ),
-    );
-    expect(mockEgress).toHaveBeenCalledWith("acme", window.location.href, {
-      scheme: "dark",
-      locale: expect.any(String),
-    });
-  });
-
-  it("does not offer the transfer subscription to an org that has one", async () => {
+  // REQ-1482: data transfer is the second price on the one subscription, so a subscribed org is
+  // never offered a second checkout for it.
+  it("offers no second checkout for data transfer", async () => {
     mockSummary.mockResolvedValue(summary(subscribed()));
     render(<BillingTab />);
     await screen.findByTestId("billing-next-charge");
     expect(screen.queryByTestId("billing-add-transfer")).not.toBeInTheDocument();
+    expect(screen.queryByText(/Add data transfer/)).not.toBeInTheDocument();
+  });
+
+  // REQ-1469: the portal is told where its back link goes, which is this page.
+  it("opens the portal with this page as its return address", async () => {
+    mockSummary.mockResolvedValue(summary({ ...subscribed(), has_portal: true }));
+    mockPortal.mockResolvedValue("https://billing.stripe.com/p/session/test");
+    const href = vi.fn();
+    const here = "http://localhost:3000/admin/billing";
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      value: {
+        ...window.location,
+        set href(v: string) {
+          href(v);
+        },
+        get href() {
+          return here;
+        },
+      },
+    });
+    try {
+      render(<BillingTab />);
+      fireEvent.click(await screen.findByTestId("billing-portal"));
+      await waitFor(() =>
+        expect(href).toHaveBeenCalledWith("https://billing.stripe.com/p/session/test"),
+      );
+      expect(mockPortal).toHaveBeenCalledWith("acme", here);
+    } finally {
+      Object.defineProperty(window, "location", { configurable: true, value: realLocation });
+    }
   });
 
   it("states the three bounds the trial ends on", async () => {
@@ -240,35 +266,62 @@ describe("BillingTab", () => {
     ]);
   });
 
-  it("opens the checkout the server minted as an overlay", async () => {
+  it("mounts the checkout the server minted in the modal", async () => {
     mockSummary.mockResolvedValue(summary());
-    mockStart.mockResolvedValue("https://provisa.lemonsqueezy.com/checkout/x");
+    mockStart.mockResolvedValue(SESSION);
+    mockMount.mockResolvedValue({ mount: vi.fn(), destroy: vi.fn() });
     render(<BillingTab />);
     fireEvent.click(await screen.findByTestId("billing-start-trial"));
     await waitFor(() =>
-      expect(mockOpen).toHaveBeenCalledWith(
-        "https://provisa.lemonsqueezy.com/checkout/x",
-        expect.any(Function),
-      ),
+      expect(mockMount).toHaveBeenCalledWith(SESSION, screen.getByTestId("checkout-container")),
     );
     // The checkout is minted in the scheme this page is being read in; the test app renders dark.
+    // It returns to this page, which is where the purchase is picked up.
     expect(mockStart).toHaveBeenCalledWith("acme", window.location.href, {
       scheme: "dark",
       locale: expect.any(String),
     });
   });
 
-  // The checkout is an overlay, so the page stays mounted through payment; the summary it is
-  // showing is stale the moment the subscription lands.
-  it("refetches the summary when the checkout reports success", async () => {
+  // Closing the modal without paying is an abandoned checkout: Stripe's iframe is destroyed and the
+  // page is left as it was, with the trial still on offer.
+  it("destroys the checkout when the modal is closed without paying", async () => {
     mockSummary.mockResolvedValue(summary());
-    mockStart.mockResolvedValue("https://provisa.lemonsqueezy.com/checkout/x");
+    mockStart.mockResolvedValue(SESSION);
+    const destroy = vi.fn();
+    mockMount.mockResolvedValue({ mount: vi.fn(), destroy });
     render(<BillingTab />);
     fireEvent.click(await screen.findByTestId("billing-start-trial"));
-    await waitFor(() => expect(mockOpen).toHaveBeenCalled());
+    await waitFor(() => expect(mockMount).toHaveBeenCalled());
+    await waitFor(() => expect(screen.queryByTestId("checkout-loading")).not.toBeInTheDocument());
+    fireEvent.keyDown(screen.getByTestId("checkout-container"), { key: "Escape" });
+    await waitFor(() => expect(destroy).toHaveBeenCalledTimes(1));
+    await waitFor(() =>
+      expect(screen.queryByTestId("checkout-container")).not.toBeInTheDocument(),
+    );
+    expect(screen.getByTestId("billing-start-trial")).toBeEnabled();
+  });
+
+  it("shows why the checkout could not be shown", async () => {
+    mockSummary.mockResolvedValue(summary());
+    mockStart.mockResolvedValue(SESSION);
+    mockMount.mockRejectedValue(new Error("Could not load the checkout."));
+    render(<BillingTab />);
+    fireEvent.click(await screen.findByTestId("billing-start-trial"));
+    expect(await screen.findByTestId("checkout-error")).toHaveTextContent(
+      "Could not load the checkout.",
+    );
+  });
+
+  // REQ-1476: after payment Stripe navigates back to this page with the session id. The summary
+  // is read afresh and the id is taken off the address so a reload does not carry it.
+  it("refetches the summary on the return from checkout and clears the session id", async () => {
+    window.history.replaceState(null, "", "/admin/billing?tab=billing&session_id=cs_test_1");
     mockSummary.mockResolvedValue(summary({ plan: "starter", entitled: true }));
-    mockOpen.mock.calls[0][1]();
-    await waitFor(() => expect(mockSummary).toHaveBeenCalledTimes(2));
+    render(<BillingTab />);
+    await waitFor(() => expect(mockSummary).toHaveBeenCalledWith("acme"));
+    expect(window.location.search).toBe("?tab=billing");
+    expect(window.location.pathname).toBe("/admin/billing");
   });
 
   // REQ-1474: the trial is once per person. The server's message names both readings of the
@@ -338,16 +391,16 @@ describe("BillingTab", () => {
   it("states no further charge for a cancelled subscription", async () => {
     mockSummary.mockResolvedValue(
       summary({
-        subscription_status: "cancelled",
+        subscription_status: "canceled",
         subscription: {
-          status: "cancelled",
-          renews_at: "2026-09-01T00:00:00+00:00",
+          status: "canceled",
+          renews_at: null,
+          cancel_at_period_end: false,
           ends_at: "2026-09-01T00:00:00+00:00",
           trial_ends_at: null,
           card_brand: null,
           card_last_four: null,
-          product_name: "Provisa",
-          variant_name: "Starter",
+          product_name: "Provisa Starter",
           fixed_cents: 2500,
           fixed_kind: "minimum" as const,
           fixed_interval: "month",
@@ -358,6 +411,57 @@ describe("BillingTab", () => {
     const card = await screen.findByTestId("billing-next-charge");
     expect(card).toHaveTextContent("There is no further charge");
     expect(card).not.toHaveTextContent("plus metered usage");
+  });
+
+  // A subscription set to end at the period's close says when, and a trial already set to end
+  // offers no second cancel.
+  it("states the end of a subscription set to cancel at the period's end", async () => {
+    const live = subscribed();
+    mockSummary.mockResolvedValue(
+      summary({
+        ...live,
+        subscription_status: "trialing",
+        trial: {
+          started_at: "2026-08-10T00:00:00+00:00",
+          ends_at: "2026-08-24T00:00:00+00:00",
+          trial_days: 14,
+          active_hours_used: 1,
+          active_hours_included: 40,
+          egress_bytes_used: 0,
+          egress_bytes_included: 25 * 1024 ** 3,
+          converted_at: null,
+        },
+        subscription: {
+          ...live.subscription!,
+          status: "trialing",
+          renews_at: null,
+          cancel_at_period_end: true,
+          ends_at: "2026-08-24T00:00:00+00:00",
+          trial_ends_at: "2026-08-24T00:00:00+00:00",
+        },
+      }),
+    );
+    render(<BillingTab />);
+    expect(await screen.findByTestId("billing-ends-at-period-end")).toHaveTextContent(
+      "This subscription ends Aug 24, 2026 and does not renew.",
+    );
+    expect(screen.getByTestId("billing-trial")).toBeInTheDocument();
+    expect(screen.queryByTestId("billing-cancel-trial")).not.toBeInTheDocument();
+  });
+
+  it("asks for a new payment method when Stripe could not collect", async () => {
+    const live = subscribed();
+    mockSummary.mockResolvedValue(
+      summary({
+        ...live,
+        subscription_status: "unpaid",
+        subscription: { ...live.subscription!, status: "unpaid" },
+      }),
+    );
+    render(<BillingTab />);
+    expect(await screen.findByTestId("billing-next-charge")).toHaveTextContent(
+      "The last payment failed",
+    );
   });
 
   // REQ-1469: the metered half of the bill and the next charge are money, and every amount is
@@ -397,12 +501,12 @@ describe("BillingTab", () => {
     mockSummary.mockResolvedValue(
       summary({
         ...subscribed(),
-        bill_unavailable: "the data transfer price cannot be read: the variant carries no price",
+        bill_unavailable: "the subscription carries no data transfer price",
       }),
     );
     render(<BillingTab />);
     const notice = await screen.findByTestId("billing-bill-unavailable");
-    expect(notice).toHaveTextContent("the variant carries no price");
+    expect(notice).toHaveTextContent("the subscription carries no data transfer price");
     expect(screen.queryByTestId("billing-current-bill")).not.toBeInTheDocument();
     expect(screen.queryByTestId("billing-next-charge-amount")).not.toBeInTheDocument();
     expect(screen.getByTestId("billing-next-charge")).toHaveTextContent(
@@ -431,11 +535,11 @@ describe("BillingTab", () => {
   });
 
   it("quotes no rate when the prices cannot be read", async () => {
-    mockPlans.mockRejectedValue(new Error("Lemon Squeezy variant 7 carries no price"));
+    mockPlans.mockRejectedValue(new Error("price price_starter carries no unit amount"));
     mockSummary.mockResolvedValue(summary());
     render(<BillingTab />);
     const notice = await screen.findByTestId("billing-prices-unavailable");
-    expect(notice).toHaveTextContent("carries no price");
+    expect(notice).toHaveTextContent("carries no unit amount");
     expect(screen.getByTestId("billing-trial-terms")).not.toHaveTextContent("per active hour");
   });
 
@@ -479,15 +583,20 @@ describe("BillingTab", () => {
     expect(screen.getByTestId("billing-choose-pro_m")).toBeInTheDocument();
   });
 
-  it("says an upgrade is charged now and a downgrade credits the next invoice", async () => {
+  // REQ-1509: no proration either way. Moving up and moving down both bill each plan's minimum in
+  // full: the old one with its usage to date now, the new one at the period's end.
+  it("says both plans' minimums are charged in full, up or down", async () => {
     mockSummary.mockResolvedValue(summary({ ...subscribed(), plan: "pro_m" }));
     mockPlans.mockResolvedValue(offers({ plan: "pro_m" }));
+    const rule =
+      "There is no proration. Your current plan's usage to date is invoiced now with its full minimum, and the new plan's full minimum is invoiced at the end of this period.";
     render(<BillingTab />);
     fireEvent.click(await screen.findByTestId("billing-choose-pro_l"));
-    expect(await screen.findByText(/charged now/)).toBeInTheDocument();
+    expect(await screen.findByTestId("billing-plan-confirm-minimums")).toHaveTextContent(rule);
     fireEvent.click(screen.getByText("Cancel"));
     fireEvent.click(await screen.findByTestId("billing-choose-starter"));
-    expect(await screen.findByText(/next invoice/)).toBeInTheDocument();
+    expect(await screen.findByTestId("billing-plan-confirm-minimums")).toHaveTextContent(rule);
+    expect(screen.queryByText(/credit/i)).not.toBeInTheDocument();
   });
 
   it("reports the dedicated engine the change moved the org onto", async () => {
@@ -496,7 +605,8 @@ describe("BillingTab", () => {
       org_id: "acme",
       plan: "pro_m",
       changed: true,
-      prorated: "charged_now",
+      minimums: "each_plan_in_full",
+      subscription_status: "active",
       engine: {
         lane: "isolated",
         moved: true,
@@ -516,6 +626,9 @@ describe("BillingTab", () => {
     fireEvent.click(await screen.findByTestId("billing-plan-confirm"));
     const changed = await screen.findByTestId("billing-plan-changed");
     expect(changed).toHaveTextContent("n2-highmem-8");
+    expect(screen.getByTestId("billing-plan-minimums")).toHaveTextContent(
+      "The previous plan's usage to date has been invoiced with its full minimum",
+    );
     await waitFor(() => expect(mockChange).toHaveBeenCalledWith("acme", "pro_m"));
   });
 
@@ -527,7 +640,8 @@ describe("BillingTab", () => {
       org_id: "acme",
       plan: "pro_s",
       changed: true,
-      prorated: "charged_now",
+      minimums: "each_plan_in_full",
+      subscription_status: "active",
       engine: null,
       engine_error: "the cluster refused the shard",
     });
@@ -566,7 +680,7 @@ describe("BillingTab", () => {
         ...trialing,
         subscription: {
           ...trialing.subscription!,
-          status: "on_trial",
+          status: "trialing",
           trial_ends_at: "2026-09-01T00:00:00+00:00",
         },
       }),
@@ -577,33 +691,22 @@ describe("BillingTab", () => {
     expect(await screen.findByText(/ends your trial now/)).toBeInTheDocument();
   });
 
-  // REQ-1509: the provider would not take the change over the API, so the only place it can happen
-  // is the portal. Reporting a change here would report one that did not happen.
-  it("sends the administrator to the portal when the provider will not take the change", async () => {
+  // REQ-1509: a subscription that does not carry both of this deployment's prices cannot be moved.
+  // The refusal is shown and nothing is reported as changed.
+  it("reports a subscription it cannot move and claims no change", async () => {
     mockSummary.mockResolvedValue(summary(subscribed()));
-    mockChange.mockResolvedValue({
-      org_id: "acme",
-      plan: "pro_s",
-      changed: false,
-      portal_url: "https://provisa.lemonsqueezy.com/billing/portal",
-    });
-    const href = vi.fn();
-    Object.defineProperty(window, "location", {
-      configurable: true,
-      value: {
-        set href(v: string) {
-          href(v);
-        },
-        get href() {
-          return "";
-        },
-      },
-    });
+    mockChange.mockRejectedValue(
+      new BillingError(
+        502,
+        "billing.subscription_items_unrecognized",
+        "Subscription sub_1 does not carry both a plan price and a data transfer price this deployment sells, so it cannot be moved.",
+      ),
+    );
     render(<BillingTab />);
     fireEvent.click(await screen.findByTestId("billing-choose-pro_s"));
     fireEvent.click(await screen.findByTestId("billing-plan-confirm"));
-    await waitFor(() =>
-      expect(href).toHaveBeenCalledWith("https://provisa.lemonsqueezy.com/billing/portal"),
+    expect(await screen.findByTestId("billing-plan-refused")).toHaveTextContent(
+      "cannot be moved",
     );
     expect(screen.queryByTestId("billing-plan-changed")).not.toBeInTheDocument();
   });

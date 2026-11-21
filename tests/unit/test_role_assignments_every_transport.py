@@ -118,18 +118,41 @@ def test_a_bearer_sign_in_selects_a_role_granted_in_the_control_plane(granted, m
 
 
 def test_a_bolt_sign_in_selects_a_role_granted_in_the_control_plane(granted):
+    """REQ-1338: the default role, which the user does not hold, gives way to the one granted."""
     from provisa.bolt.session import BoltSession
 
     roles = asyncio.run(BoltSession._selectable_roles(_state(), _USER))
-    assert roles == ["analyst", "steward"]
+    assert roles == ["steward"]
 
 
 def test_a_pgwire_sign_in_selects_a_role_granted_in_the_control_plane(granted):
-    from provisa.pgwire.server import _held_roles
-
-    held = _held_roles(_state(), _USER, "analyst", "acme", run=asyncio.run)
-    assert held == {"analyst", "steward"}
+    """pgwire reads what its sign-in acts as and may name from sign_in_roles."""
+    acts_as, may_name = asyncio.run(held_assignments.sign_in_roles(_state(), _USER, "acme"))
+    assert (acts_as, may_name) == ("steward", ["steward"])
     assert granted == ["acme"]
+
+
+def test_a_sign_in_that_names_no_role_still_acts_as_a_role_it_holds(granted):
+    """REQ-120 (amended 2026-11-01), REQ-802: where Provisa holds the assignments, a sign-in that
+    names no role is read too, and acts as the role it is granted, not the default analyst."""
+    acts_as, may_name = asyncio.run(held_assignments.sign_in_roles(_state(), _USER, "acme"))
+    assert (acts_as, may_name) == ("steward", ["steward"])
+    assert granted == ["acme"]
+
+
+def test_with_claims_as_the_source_a_sign_in_is_answered_from_its_claims(granted):
+    """REQ-2155: what a sign-in holds is read whether it names a role or not -- it acts as their
+    union -- and where roles are claims, the control plane is not read."""
+    claimed = AuthIdentity(user_id="u-1", email=None, display_name=None, roles=["steward"])
+    acts_as, may_name = asyncio.run(held_assignments.sign_in_roles(_state("claims"), claimed, None))
+    assert (acts_as, may_name) == ("analyst", ["analyst", "steward"])
+    assert granted == []
+
+
+def test_with_claims_as_the_source_the_mapped_role_stays_beside_the_claimed_ones(granted):
+    claimed = AuthIdentity(user_id="u-1", email=None, display_name=None, roles=["steward"])
+    acts_as, may_name = asyncio.run(held_assignments.sign_in_roles(_state("claims"), claimed, None))
+    assert (acts_as, may_name) == ("analyst", ["analyst", "steward"])
 
 
 def test_a_flight_sign_in_selects_a_role_granted_in_the_control_plane(granted, monkeypatch):
@@ -212,7 +235,6 @@ def test_the_bootstrap_claimant_holds_platform_admin_in_the_deployments_org(monk
 def test_in_a_tenant_org_bolt_pgwire_and_bearer_hold_the_same_filtered_set(tenant, monkeypatch):
     from provisa.auth.bearer import authorize_role_or_probe
     from provisa.bolt.session import BoltSession
-    from provisa.pgwire.server import _held_roles
     from provisa.security import role_probe
 
     async def _not_suspended(identity, org_id, transport):  # noqa: ARG001  # role_probe's
@@ -224,11 +246,11 @@ def test_in_a_tenant_org_bolt_pgwire_and_bearer_hold_the_same_filtered_set(tenan
     in_acme = AuthIdentity(
         user_id="u-1", email=None, display_name=None, roles=[], active_org_id="acme"
     )
-    assert asyncio.run(BoltSession._selectable_roles(state, in_acme)) == ["analyst", "steward"]
-    assert _held_roles(state, in_acme, "analyst", "acme", run=asyncio.run) == {
-        "analyst",
+    assert asyncio.run(BoltSession._selectable_roles(state, in_acme)) == ["steward"]
+    assert asyncio.run(held_assignments.sign_in_roles(state, in_acme, "acme")) == (
         "steward",
-    }
+        ["steward"],
+    )
     from provisa.core.request_context import reset_current_org, set_current_org
 
     token = set_current_org("acme")

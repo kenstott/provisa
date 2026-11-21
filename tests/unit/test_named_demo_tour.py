@@ -115,8 +115,8 @@ _PROFILE_GRAPHS = set(
     )
 )
 # REQ-2201: the page the glossary's Find terms opens on, and the Reference library page.
-_GLOSSARY_PAGE = "/admin/ontology"
-_LIBRARY_PAGE = "/library"
+_GLOSSARY_PAGE = "/context/ontology"
+_LIBRARY_PAGE = "/context/documents"
 # The page each surface's step runs on.
 _SURFACE_PAGES = {"api": "/openapi", "jsonapi": "/jsonapi", "grpc": "/grpc", "cypher": "/graph"}
 

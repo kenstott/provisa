@@ -8,7 +8,7 @@
     "operations": "Operations",
     "tableName": "Table",
     "tableDomain": "Domain",
-    "draft": "Draft",
+    "withdrawn": "Withdrawn",
     "commands": "Commands",
     "commandName": "Command",
     "commandKind": "Kind"

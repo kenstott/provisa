@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import fnmatch as _fnmatch
 import re as _re
-from collections.abc import Iterable
+from collections.abc import Mapping
 
 from graphql import (
     BooleanValueNode,
@@ -57,23 +57,27 @@ META_QUERY_NAME = "table_query_name"
 SERVED_WITH_EVERY_TABLE = _VIRTUAL_COLS | {META_QUERY_NAME}
 
 
-def _parameter_of(argument: str, columns: Iterable[str]) -> str:  # REQ-1986
+def _parameter_of(argument: str, names: Mapping[str, str]) -> str:  # REQ-1986
     """The parameter (its column without ``_nf_``) a native argument fills. The schema names the
-    argument ``_<name>`` when ``<name>`` is also one of the field's own (schema_gen
-    ``_build_native_filter_args``), so the underscore is not part of the parameter (#247)."""
-    names = {c[4:] if c.startswith("_nf_") else c for c in columns}
-    if argument in names:
-        return argument
-    if argument.startswith("_") and argument[1:] in names:
-        return argument[1:]
-    raise ValueError(f"argument {argument!r} is not a parameter of the table")
+    argument by the parameter's alias where it has one, else its own name, and ``_<name>`` when
+    ``<name>`` is also one of the field's own (schema_gen ``_build_native_filter_args``): each is
+    a name the parameter is bound under (``names``, core.parameters.parameter_names)."""
+    from provisa.core.parameters import NF_PREFIX, parameter_column, parameter_name
+
+    column = parameter_column(names, argument)
+    if column is None and argument.startswith("_"):
+        # ``_<name>``: the name a parameter whose own is one of the field's is offered under.
+        column = parameter_column(names, f"{NF_PREFIX}{argument[1:]}")
+    if column is None:
+        raise ValueError(f"argument {argument!r} is not a parameter of the table")
+    return parameter_name({"column_name": column})
 
 
-def native_args(args: dict, standard: frozenset[str], columns: Iterable[str]) -> dict:  # REQ-1986
+def native_args(args: dict, standard: frozenset[str], names: Mapping[str, str]) -> dict:  # REQ-1986
     """A root field's native arguments (a table's parameters, every argument but ``standard``),
-    by parameter name. ``columns`` are the table's parameter columns."""
-    columns = list(columns)
-    return {_parameter_of(k, columns): v for k, v in args.items() if k not in standard}
+    by parameter name. ``names``: every name the table's parameters are bound under
+    (``CompilationContext.parameter_names``)."""
+    return {_parameter_of(k, names): v for k, v in args.items() if k not in standard}
 
 
 def native_arg_conditions(api_args: dict, alias: str | None = None) -> list[str]:  # REQ-1986
@@ -445,6 +449,21 @@ def _compile_where(
             parts.append(f"({' OR '.join(sub_parts)})" if sub_parts else "FALSE")
             continue
 
+        if key == "_not":
+            # Plain SQL NOT, as Hasura's: a comparison with a null stays null and keeps no row.
+            inner = _compile_where(
+                value,
+                collector,
+                alias,
+                virtual_vals,
+                table_id,
+                exposed_to_physical,
+                relationships,
+                column_types,
+            )
+            parts.append(f"NOT ({inner})")
+            continue
+
         join_meta = relationships.join(key) if relationships is not None else None
         if relationships is not None and join_meta is not None:
             if alias is None or table_id is None:
@@ -541,7 +560,7 @@ def where_names_relationship(  # REQ-2136
     if not isinstance(where, dict):
         return False
     return any(
-        (k in ("_and", "_or") and where_names_relationship(v, ctx, type_name))
+        (k in ("_and", "_or", "_not") and where_names_relationship(v, ctx, type_name))
         or (type_name, k) in ctx.joins
         for k, v in where.items()
     )

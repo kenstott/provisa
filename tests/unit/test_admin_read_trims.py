@@ -361,6 +361,9 @@ async def _assignments(monkeypatch, domain_access):
             ),
         ),
         patch("provisa.core.domain_policy.single_domain", return_value=False),
+        # REQ-2208: the assignments' citations and the tags' citation flags, none here.
+        patch("provisa.core.repositories.tag.assignment_citations", new=AsyncMock(return_value={})),
+        patch("provisa.core.repositories.tag.list_all", new=AsyncMock(return_value=[])),
     ):
         return await Query().tag_assignments(info)
 

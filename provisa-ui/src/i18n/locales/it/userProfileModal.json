@@ -25,7 +25,7 @@
     "leaveOrg": "Abbandona",
     "leaveHelp": "Abbandonare rimuove l'accesso a quell'organizzazione. Se questo account è il suo unico amministratore, promuovere prima qualcun altro.",
     "patHeading": "Token di accesso personali",
-    "patHelp": "Un token di accesso personale ti autentica dagli strumenti che non possono aprire un browser: psql, un client Neo4j, un client Arrow Flight o gRPC, un client MCP o uno script. Agisce come te, in questa organizzazione.",
+    "patHelp": "Un token di accesso personale consente di accedere da strumenti che non possono aprire un browser, come psql, un client Neo4j, un client Arrow Flight o gRPC, un client MCP o uno script. Agisce a tuo nome, in questa organizzazione.",
     "patName": "Nome",
     "patExpiresInDays": "Scade tra (giorni)",
     "patIssue": "Crea token",
@@ -44,6 +44,9 @@
     "deleteAccountConfirmLabel": "Digitare {{userId}} per confermare",
     "deleteAccountButton": "Elimina il mio account",
     "patEnvironment": "Ambiente",
-    "patEnvironmentHelp": "Un token funziona in un solo ambiente: quello che stavi consultando quando lo hai emesso. Un nuovo token funzionerà in {{env}}."
+    "patEnvironmentHelp": "Un token funziona in un solo ambiente: quello che stavi consultando quando lo hai emesso. Un nuovo token funzionerà in {{env}}.",
+    "patRoles": "Ruoli",
+    "patRolesHelp": "Il token può agire solo con i ruoli che scegli qui, e solo finché li detieni.",
+    "patRolesPlaceholder": "Scegli i ruoli"
   }
 }

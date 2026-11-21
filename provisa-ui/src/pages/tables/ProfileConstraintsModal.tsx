@@ -35,6 +35,7 @@ import {
   type ConstraintDecision,
 } from "../../api/profiler";
 import { useAuth } from "../../context/AuthContext";
+import { CancelButton } from "../../components/form/CancelButton";
 
 type Proposal = Record<string, unknown>;
 
@@ -230,13 +231,7 @@ export function ProfileConstraintsModal({
                           >
                             {t("profileConstraintsModal.acceptEdited")}
                           </Button>
-                          <Button
-                            size="compact-xs"
-                            variant="default"
-                            onClick={() => setEditing(null)}
-                          >
-                            {t("profileConstraintsModal.cancel")}
-                          </Button>
+                          <CancelButton onClick={() => setEditing(null)} />
                         </Group>
                       ) : (
                         <Group gap={4} wrap="nowrap">

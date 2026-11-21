@@ -331,6 +331,8 @@ def ensure_tables(engine: sa.Engine) -> dict[str, sa.Table]:
     md, tables = build_metadata(schema)
     with engine.begin() as conn:
         if use_schema:
-            conn.execute(sa.schema.CreateSchema(OPS_SCHEMA, if_not_exists=True))
+            from provisa.core.schema_create import create_schema_sync
+
+            create_schema_sync(conn, OPS_SCHEMA)
         md.create_all(conn)
     return tables

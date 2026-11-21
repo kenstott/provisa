@@ -61,8 +61,13 @@ _MV_READS = ("mv_list", "materialize_store_info")
 def _install_mv_state(monkeypatch, store_dsn: str = "postgresql://store-host/provisa") -> None:
     serve_every_column(monkeypatch)
     monkeypatch.setattr(appmod.state, "tables", [], raising=False)
-    monkeypatch.setattr(appmod.state, "role_build_inputs", {"draft_tables": []}, raising=False)
-    monkeypatch.setattr(appmod.state, "mv_registry", types.SimpleNamespace(_mvs={}), raising=False)
+    monkeypatch.setattr(
+        appmod.state,
+        "role_build_inputs",
+        {"withdrawn_tables": []},
+        raising=False,
+    )
+    monkeypatch.setattr(appmod.state, "mv_registry", types.SimpleNamespace(all=list), raising=False)
     monkeypatch.setattr(
         appmod.state,
         "federation_engine",

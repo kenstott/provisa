@@ -46,17 +46,14 @@ class NotAvailableHere(ValueError):
     is governed or sent to a source. pgwire answers it 0A000 (feature_not_supported)."""
 
 
-#: Why a draft table is refused, in every refusal of one (REQ-1921).
-DRAFT_REASON = "is a draft: out of service until its domain's owners release it"
-
-
-class TableIsDraft(NotAvailableHere):
-    """A statement naming a table or view that is draft (REQ-1921): out of service — in no
-    schema, read and written nowhere — and refused naming it, on every surface."""
+class TableIsWithdrawn(NotAvailableHere):
+    """A view read while a table its SQL names is withdrawn (REQ-1921): out of production -- in
+    no schema, read and written nowhere -- and refused naming it, on every surface. The view is
+    answered again once the table is put back."""
 
     def __init__(self, table: str) -> None:
         self.table = table
-        super().__init__(f"{table!r} {DRAFT_REASON}")
+        super().__init__(f"{table!r} is withdrawn: out of production until it is put back")
 
 
 class DefinitionNotAvailable(NotAvailableHere):

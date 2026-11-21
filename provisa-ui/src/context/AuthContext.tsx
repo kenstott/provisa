@@ -47,17 +47,23 @@ export const DEFAULT_ADMIN_ROLE: Role = {
   capabilities: [
     "environment_management",
     "environment_data",
-    "user_management",
-    "assign_entitlements", // REQ-2219
     "org_glossary_rw",
     "data_product_rw",
+    // REQ-2219: the five owner capabilities, with no list.
+    "data_product_owner",
+    "relationship_owner",
+    "domain_steward",
+    "term_owner",
+    "judgment_basis_owner",
   ] as Capability[],
   parents: [
     "developer",
+    "data_writer", // REQ-2155: write and full_results
     "data_product_owner",
     "data_steward",
     "dq_steward",
     "source_admin",
+    "member_admin", // REQ-2155: user_management and assign_entitlements
     "org_operator",
   ],
   // REQ-2155: its own capabilities and every ancestor's.
@@ -95,6 +101,11 @@ export const DEFAULT_ADMIN_ROLE: Role = {
     "dq_rw", // REQ-2155
     "lineage_report", // REQ-2229
     "command_execution", // REQ-870
+    "data_product_owner", // REQ-2219
+    "relationship_owner", // REQ-2219
+    "domain_steward", // REQ-2219
+    "term_owner", // REQ-2219
+    "judgment_basis_owner", // REQ-2219
   ] as Capability[],
   // REQ-1602: org_admin holds every right it is offered, so it is shown nothing it cannot use.
   demonstrated: [],

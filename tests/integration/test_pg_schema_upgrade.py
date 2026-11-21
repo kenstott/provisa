@@ -417,15 +417,37 @@ _CREATE_ONLY = {
         "id request_type capability payload requested_by status rejection_reason resolved_by "
         "created_at resolved_at"
     ),
+    "data_product_bids": "id request_id kind cancels product_id offer_id offer_version terms requester reason hook payload status decided_by decided_at decline_reason granted created_at",
     "data_product_commands": "product_id command_name",
+    "data_product_offers": "id product_id name role_id data_level sample_views dq_results profiles open duration_days version published_by review created_at updated_at",
+    "data_product_offer_contracts": "offer_id table_id contract",
     "data_product_tables": "product_id table_id",
     "data_products": "id domain_id name",
+    "dbt_manifests": "source_id definitions updated_at",
+    "dbt_node_runs": "source_id unique_id status generated_at built_at",
+    "discovery_run_proposals": (
+        "id run_id kind source_table_id source_column target_table_id target_column confidence "
+        "scored score cardinality measure reasoning suggested_name left_out answer decision "
+        "accepted_as tenant_id"
+    ),
+    "discovery_runs": (
+        "id status scope model requests_total requests_done suggestions report error "
+        "stop_requested stopped_by started_by started_at finished_at launch progress_at tenant_id"
+    ),
     "domains": "id description",
+    "effective_entitlements": (
+        "id principal role_id capability bits model_version expansion removed valid_from "
+        "recorded_at"
+    ),
     "email_send_authority_audit": (
         "id email_address user_id granted_by org_id action reason created_at"
     ),
     "entitlement_expiries": (
         "id rule_key principal role_id ends_at ends removed reason set_by valid_from recorded_at"
+    ),
+    "entitlement_pending": (
+        "id email role_id kind identifiers expires_at outcome principal reason set_by valid_from "
+        "recorded_at"
     ),
     "entitlements": (
         "id source principal role_id kind capability identifiers removed reason set_by valid_from "
@@ -440,6 +462,17 @@ _CREATE_ONLY = {
     "events": "id source_table event_type payload created_at",
     "fake_adequacy_checks": "table_id column_name check_name checked_at status measure detail",
     "file_source_mtimes": "table_id source_mtime synced_at",
+    "glossary_ontology_alignments": (
+        "id import_id item_id term_id other_item_id rel_type item_is_source basis status "
+        "use_definition decided_by decided_at tenant_id"
+    ),
+    "glossary_ontology_imports": (
+        "id title file_name format domains summary imported_by imported_at applied_by applied_at "
+        "tenant_id"
+    ),
+    "glossary_ontology_items": (
+        "id import_id ordinal name kind definition iri payload status term_id tenant_id"
+    ),
     "glossary_term_domains": "id term_id domain_id tenant_id",
     "glossary_term_drafts": (
         "id scan_id ordinal name category sense definition definition_kind proposal match_term_id "
@@ -452,6 +485,8 @@ _CREATE_ONLY = {
         "id document_id document_title document_source domains status error summary started_by "
         "started_at finished_at tenant_id"
     ),
+    "glossary_term_sources": "id term_id catalog catalog_ref sourced_at tenant_id",
+    "glossary_term_statements": "id term_id ordinal kind statement tenant_id",
     "glossary_term_vectors": "term_id embedding_model digest vector tenant_id",
     "glossary_terms": "id name definition deprecated tenant_id",
     "graph_sessions": "user_id generation stored tables graph roles assigned rights used_at",
@@ -492,6 +527,7 @@ _CREATE_ONLY = {
     "naming_rules": "id pattern replacement",
     "node_freshness_state": "node content_hash probe_token updated_at",
     "node_ids": "id composite_id label properties",
+    "openlineage_dataset_facets": "dataset_namespace dataset_name facet payload run_id event_time",
     "openlineage_run_datasets": (
         "id job_namespace job_name run_id event_time direction dataset_namespace dataset_name "
         "column_lineage"
@@ -513,6 +549,10 @@ _CREATE_ONLY = {
     "profiler_sensitive_scans": (
         "scan_id table_id status started_at finished_at sampled_rows scanned_columns requested_by "
         "error"
+    ),
+    "reference_citations": (
+        "id citer_kind tag_id object_key document_id document_title document_source "
+        "section_heading section_page cite_key text_sha256 cited_by cited_at tenant_id"
     ),
     "reference_document_domains": "id document_id domain_id tenant_id",
     "reference_document_tags": (
@@ -575,6 +615,7 @@ _CREATE_ONLY = {
     "user_attributes": "id user_id name value updated_at",
     "user_directory": "user_id display_name email updated_at",
     "user_idp_attributes": "user_id name value seen_at",
+    "user_idp_roles": "user_id role_id domain_id seen_at",
     "user_role_assignments": "id user_id role_id domain_id created_at",
 }
 _NOT_A_COLUMN = {"PRIMARY", "UNIQUE", "CONSTRAINT", "FOREIGN", "CHECK", "EXCLUDE", "LIKE"}
@@ -764,6 +805,145 @@ async def test_schema_sql_alone_restores_every_constraint_added_to_an_existing_t
     await _run_in_org_schema(db, _SCHEMA_SQL)
     assert _constraints(db) == fresh
     assert [c for c in _NOT_NULL_ONCE_EMPTY if _nullable(db, *c)] == []
+
+
+# --- constraints REMOVED from a CREATE that survive on older planes ---------------------------
+#
+# The inverse of the gap above: a constraint removed from the CREATE TABLE stays on a control
+# plane that was built before the removal. schema.sql must DROP it so it no longer blocks the
+# writes the design now allows.
+
+# SQL that reinstates each removed constraint on a fresh schema, reproducing the older plane.
+_OLDER_REMOVED_CONSTRAINTS = """
+-- rls_rules: uniqueness per target+role the design removed (a role may now have multiple rules
+-- on the same target, one per rights set). Commit 78be70ea removed them.
+ALTER TABLE rls_rules ADD CONSTRAINT rls_rules_table_id_role_id_key
+    UNIQUE (table_id, role_id);
+ALTER TABLE rls_rules ADD CONSTRAINT rls_rules_action_name_role_id_key
+    UNIQUE (action_name, role_id);
+ALTER TABLE rls_rules ADD CONSTRAINT rls_rules_tag_role_key
+    UNIQUE (tag_id, role_id);
+ALTER TABLE rls_rules ADD CONSTRAINT rls_rules_domain_role_key
+    UNIQUE (domain_id, role_id);
+
+-- mv_refresh_log / mv_delta_ledger: state-store tables; FK into the model removed in c43e33c3.
+ALTER TABLE mv_refresh_log ADD CONSTRAINT mv_refresh_log_mv_id_fkey
+    FOREIGN KEY (mv_id) REFERENCES materialized_views(id) ON DELETE CASCADE;
+ALTER TABLE mv_delta_ledger ADD CONSTRAINT mv_delta_ledger_mv_id_fkey
+    FOREIGN KEY (mv_id) REFERENCES materialized_views(id) ON DELETE CASCADE;
+
+-- file_source_mtimes: state-store table; FK into the model removed in c43e33c3.
+ALTER TABLE file_source_mtimes ADD CONSTRAINT file_source_mtimes_table_id_fkey
+    FOREIGN KEY (table_id) REFERENCES registered_tables(id) ON DELETE CASCADE;
+
+-- tag_assignments: uniqueness was on tag_id before base_tag_id was introduced (333860e7).
+ALTER TABLE tag_assignments ADD CONSTRAINT tag_assignments_tag_id_object_key_key
+    UNIQUE (tag_id, object_key);
+
+-- glossary_terms: a name was unique across every domain before REQ-1591's 2026-11-18 amendment.
+ALTER TABLE glossary_terms ADD CONSTRAINT glossary_terms_name_key UNIQUE (name);
+"""
+
+# Every constraint the script must drop, keyed by table.
+_REMOVED_CONSTRAINT_NAMES: dict[str, set[str]] = {
+    "rls_rules": {
+        "rls_rules_table_id_role_id_key",
+        "rls_rules_action_name_role_id_key",
+        "rls_rules_tag_role_key",
+        "rls_rules_domain_role_key",
+    },
+    "mv_refresh_log": {"mv_refresh_log_mv_id_fkey"},
+    "mv_delta_ledger": {"mv_delta_ledger_mv_id_fkey"},
+    "file_source_mtimes": {"file_source_mtimes_table_id_fkey"},
+    "tag_assignments": {"tag_assignments_tag_id_object_key_key"},
+    "glossary_terms": {"glossary_terms_name_key"},
+}
+
+
+def _constraint_names_for(db, schema: str, tables: list[str]) -> dict[str, set[str]]:
+    """table_name -> set of its constraint names, for each of the given tables."""
+    with db.engine.connect() as conn:
+        rows = conn.execute(
+            sa.text(
+                "SELECT t.relname, c.conname "
+                "FROM pg_constraint c "
+                "JOIN pg_class t ON t.oid = c.conrelid "
+                "JOIN pg_namespace n ON n.oid = t.relnamespace "
+                "WHERE n.nspname = :schema AND t.relname = ANY(:tables)"
+            ),
+            {"schema": schema, "tables": tables},
+        ).fetchall()
+    result: dict[str, set[str]] = {}
+    for table, name in rows:
+        result.setdefault(table, set()).add(name)
+    return result
+
+
+async def test_schema_sql_drops_constraints_removed_from_the_create(own_database):
+    """A control plane built from an older CREATE still carries constraints the design removed.
+    schema.sql must DROP them so the rows written today are accepted — including a second rule
+    the rls_rules design allows (same table+role, different rights).
+
+    # REQ-065: V1 no-migration policy — schema.sql handles all schema evolution in place.
+    """
+    db = own_database
+    await init_schema(db, _SCHEMA_SQL, org_id=_ORG)
+
+    # Reinstate each old constraint so the plane looks like one built before the removal.
+    await _run_in_org_schema(db, _OLDER_REMOVED_CONSTRAINTS)
+    tables = list(_REMOVED_CONSTRAINT_NAMES)
+    before = _constraint_names_for(db, _SCHEMA, tables)
+    for table, names in _REMOVED_CONSTRAINT_NAMES.items():
+        assert names <= before.get(table, set()), (
+            f"{table}: expected {names!r} present before schema.sql, got {before.get(table)!r}"
+        )
+
+    # schema.sql running drops them.
+    await _run_in_org_schema(db, _SCHEMA_SQL)
+    after = _constraint_names_for(db, _SCHEMA, tables)
+    still_present = {
+        table: names & after.get(table, set())
+        for table, names in _REMOVED_CONSTRAINT_NAMES.items()
+        if names & after.get(table, set())
+    }
+    assert not still_present, f"constraints still present after schema.sql: {still_present}"
+
+    # A second run changes nothing.
+    await _run_in_org_schema(db, _SCHEMA_SQL)
+    after2 = _constraint_names_for(db, _SCHEMA, tables)
+    still_present2 = {
+        table: names & after2.get(table, set())
+        for table, names in _REMOVED_CONSTRAINT_NAMES.items()
+        if names & after2.get(table, set())
+    }
+    assert not still_present2, f"still present after second run: {still_present2}"
+
+    # The design allows multiple rules per (table_id, role_id); the old unique blocked a second.
+    async with db.acquire() as conn:
+        await conn.execute(f'SET search_path TO "{_SCHEMA}"')
+        await conn.execute("INSERT INTO sources (id, type) VALUES ('src_rls', 'postgres')")
+        await conn.execute(
+            "INSERT INTO registered_tables (source_id, domain_id, schema_name, table_name) "
+            "VALUES ('src_rls', '', 'public', 'orders')"
+        )
+        await conn.execute("INSERT INTO roles (id) VALUES ('analyst_rls')")
+        tbl_id = (
+            await conn.fetchrow("SELECT id FROM registered_tables WHERE table_name = 'orders'")
+        )["id"]
+        # First rule — always accepted.
+        await conn.execute(
+            "INSERT INTO rls_rules (table_id, role_id, filter_expr, rights) "
+            "VALUES ($1, 'analyst_rls', decode('00', 'hex'), 'R')",
+            tbl_id,
+        )
+        # Second rule on the SAME (table_id, role_id) — refused by the old unique key.
+        await conn.execute(
+            "INSERT INTO rls_rules (table_id, role_id, filter_expr, rights) "
+            "VALUES ($1, 'analyst_rls', decode('00', 'hex'), 'U')",
+            tbl_id,
+        )
+        # REQ-1591: a name is unique only within a domain, so two terms may share one.
+        await conn.execute("INSERT INTO glossary_terms (name) VALUES ('order'), ('order')")
 
 
 async def test_constraints_reach_a_table_holding_rows_that_have_no_key(own_database):

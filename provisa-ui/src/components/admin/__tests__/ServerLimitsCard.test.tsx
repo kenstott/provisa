@@ -22,6 +22,7 @@ const TRANSPORTS = [
   "odata",
   "sql_http",
   "cypher_http",
+  "sparql_http",
   "pgwire",
   "flight",
   "bolt",

@@ -30,6 +30,7 @@ from provisa.codesource.manifest import (
     ManifestRefused,
     Named,
     Scalar,
+    TableOf,
     read_manifest,
 )
 from provisa.runtime_deps.code_runtimes import RUNTIMES, CodeRuntimeResolver
@@ -663,3 +664,80 @@ def test_go_rules_take_an_iterator_yielding_errors_as_a_stream_and_no_standard_t
     )
     with pytest.raises(ManifestRefused, match="Doc: unknown tag @deprecated"):
         read_manifest(raw, GO_RULES)
+
+
+def test_a_query_takes_a_table_and_a_command_is_a_mutation(reader, go, tmp_path):  # REQ-2226
+    code = _code(
+        tmp_path,
+        """
+        package rows
+
+        type TableRef[R any] struct {
+            Ref     string   `json:"ref"`
+            Columns []string `json:"columns"`
+        }
+
+        type Order struct {
+            ID     int64  `json:"id"`
+            Region string `json:"region"`
+        }
+
+        type Score struct {
+            Region string  `json:"region"`
+            Score  float64 `json:"score"`
+        }
+
+        // @query
+        func Scored(orders TableRef[Order]) ([]Score, error) { return nil, nil }
+
+        // @command
+        func Rescore(orders TableRef[Order]) ([]Score, error) { return nil, nil }
+        """,
+    )
+    manifest = _read(reader, go, code, tmp_path)
+    assert manifest.export("Scored").kind == "query"
+    assert manifest.export("Rescore").kind == "command"
+    assert manifest.export("Scored").parameters[0].shape == TableOf(Named("Order"))
+
+
+def test_a_change_function_is_read_with_its_declaration(reader, go, tmp_path):  # REQ-2249
+    """Go reads the @change lines of a doc comment, each a tag with its argument, and the
+    manifest carries what they state."""
+    code = _code(
+        tmp_path,
+        """
+        package rows
+
+        type TableRef[R any] struct {
+            Ref     string   `json:"ref"`
+            Columns []string `json:"columns"`
+        }
+
+        type Store struct {
+            ID int64 `json:"id"`
+        }
+
+        type Changed struct {
+            StoreID  int64 `json:"store_id"`
+            RegionID int64 `json:"region_id"`
+            Removed  bool  `json:"removed"`
+            Seq      int64 `json:"seq"`
+        }
+
+        // StoreRegionsChanges is what changed since the cursor.
+        //
+        // @change table=store_regions
+        // @change key=store_id,region_id
+        // @change removed=removed
+        // @change cursor=seq
+        func StoreRegionsChanges(stores TableRef[Store], regions TableRef[Store], since *int64) ([]Changed, error) {
+            return nil, nil
+        }
+        """,
+    )
+    from provisa.codesource.manifest import Change
+
+    export = _read(reader, go, code, tmp_path).export("StoreRegionsChanges")
+    assert export.kind == "change"
+    assert export.change == Change("store_regions", ("store_id", "region_id"), "removed", "seq")
+    assert [p.name for p in export.parameters] == ["stores", "regions", "since"]

@@ -1,6 +1,6 @@
 {
   "candidatesTable": {
-    "heading": "AI 建議的關係",
+    "heading": "建議的關係",
     "colName": "名稱",
     "colSource": "來源",
     "colTarget": "目標",
@@ -10,6 +10,25 @@
     "accept": "接受",
     "reject": "拒絕",
     "acceptAria": "接受建議的關係 {{name}}",
-    "rejectAria": "拒絕建議的關係 {{name}}"
+    "rejectAria": "拒絕建議的關係 {{name}}",
+    "acceptAll": "全部接受",
+    "rejectAll": "全部拒絕",
+    "acceptAllTitle": "接受所有建議",
+    "rejectAllTitle": "拒絕所有建議",
+    "acceptAllConsequence": "接受列出的 {{count}} 項建議？它將成為已註冊的關係。",
+    "acceptAllConsequence_other": "接受列出的全部 {{count}} 項建議？每項都將成為已註冊的關係。",
+    "rejectAllConsequence": "拒絕列出的 {{count}} 項建議？在清除拒絕記錄之前不會再次建議。",
+    "rejectAllConsequence_other": "拒絕列出的全部 {{count}} 項建議？在清除拒絕記錄之前不會再次建議。",
+    "acceptedAll": "已接受 {{count}} 項建議。",
+    "acceptedAll_other": "已接受 {{count}} 項建議。",
+    "rejectedAll": "已拒絕 {{count}} 項建議。",
+    "rejectedAll_other": "已拒絕 {{count}} 項建議。",
+    "acceptFailed": "{{count}} 項建議無法接受：",
+    "acceptFailed_other": "{{count}} 項建議無法接受：",
+    "rejectFailed": "{{count}} 項建議無法拒絕：",
+    "rejectFailed_other": "{{count}} 項建議無法拒絕：",
+    "failedOne": "{{name}}：{{error}}",
+    "reducedInformation": "資訊有限：未比較任何值",
+    "reducedInformationHelp": "其中一個資料表需要參數，因此從不讀取。此建議僅依據名稱、描述、類型和必需參數得出。"
   }
 }

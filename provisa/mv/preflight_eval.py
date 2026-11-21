@@ -39,7 +39,7 @@ from provisa.federation.execution_auth import system_auth
 from provisa.mv.preflight import Verdict, run_preflight
 from provisa.mv.preflight_sql import _quoted_from, translate
 from provisa.mv.preflight_services import compile_check
-from provisa.processors.arrow import rows_of
+from provisa.processors.arrow import BatchRows
 
 
 def _requires_stream(source: str) -> bool:
@@ -60,7 +60,7 @@ async def _open_input_streams(engine: Any, input_nodes: Iterable[str]) -> dict[s
         sql = engine.address_replicas(f"SELECT * FROM {_quoted_from(node)}")
         _schema, batches = await asyncio.to_thread(engine.execute_engine_stream, sql)
         del _schema  # the reader carries its own schema; we only stream batches
-        streams[node] = rows_of(batches)
+        streams[node] = BatchRows(batches)
     return streams
 
 
@@ -119,7 +119,10 @@ async def _hold_on_failing_checks(
             f"view {ctx.node} holds on failing checks, but it is no registered view table, so it "
             "has no inputs to check"
         )
-    check = compile_check(hold_checks.SOURCE, subject=f"view {ctx.node}", product_ids=product_ids)
+    # Provisa's own text, not the organization's: it runs in the server everywhere.
+    check = compile_check(
+        hold_checks.SOURCE, subject=f"view {ctx.node}", product_ids=product_ids, own=True
+    )
     return await run_preflight(check, {}, ctx)
 
 

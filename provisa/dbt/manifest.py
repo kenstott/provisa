@@ -103,6 +103,14 @@ class DbtMacro:
 
 
 @dataclass(frozen=True)
+class DbtGroup:
+    """A dbt group: the models one team owns, and who that team is."""
+
+    name: str
+    owner: DbtOwner | None
+
+
+@dataclass(frozen=True)
 class DbtManifest:
     project: str
     adapter: str
@@ -112,6 +120,7 @@ class DbtManifest:
     snapshots: tuple[DbtNode, ...]
     seeds: tuple[DbtNode, ...]
     macros: tuple[DbtMacro, ...]
+    groups: tuple[DbtGroup, ...] = ()
 
     @property
     def databases(self) -> list[str]:
@@ -144,11 +153,18 @@ def _email(value: Any) -> str | None:  # dbt allows one address or a list of the
     return _text(value[0] if isinstance(value, list) and value else value)
 
 
-def _owner(node: dict, groups: dict[str, dict]) -> DbtOwner | None:
-    """Who the manifest says owns the model: its group's owner, else its ``meta.owner``."""
-    owner = (groups.get(node.get("group") or "") or {}).get("owner") or {}
+def _group_owner(group: dict) -> DbtOwner | None:
+    owner = group.get("owner") or {}
     if _text(owner.get("name")) or _email(owner.get("email")):
         return DbtOwner(name=_text(owner.get("name")), email=_email(owner.get("email")))
+    return None
+
+
+def _owner(node: dict, groups: dict[str, dict]) -> DbtOwner | None:
+    """Who the manifest says owns the model: its group's owner, else its ``meta.owner``."""
+    owner = _group_owner(groups.get(node.get("group") or "") or {})
+    if owner is not None:
+        return owner
     declared = _text((node.get("config") or {}).get("meta", {}).get("owner")) or _text(
         (node.get("meta") or {}).get("owner")
     )
@@ -237,6 +253,9 @@ def parse_manifest(document: str | bytes | dict) -> DbtManifest:
             for m in sorted((raw.get("macros") or {}).values(), key=lambda m: m["name"])
             if _called_macro(m)
         ),
+        groups=tuple(
+            DbtGroup(name=g["name"], owner=_group_owner(g)) for _, g in sorted(groups.items())
+        ),
     )
 
 
@@ -272,4 +291,8 @@ def from_definitions(text: str) -> DbtManifest:
         snapshots=tuple(DbtNode(**n) for n in held["snapshots"]),
         seeds=tuple(DbtNode(**n) for n in held["seeds"]),
         macros=tuple(DbtMacro(**m) for m in held["macros"]),
+        groups=tuple(
+            DbtGroup(name=g["name"], owner=None if g["owner"] is None else DbtOwner(**g["owner"]))
+            for g in held.get("groups", ())
+        ),
     )

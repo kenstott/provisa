@@ -17,6 +17,10 @@
     "noTerms": "没有术语命名此表的列",
     "relationships": "关系",
     "noRelationships": "此表未参与任何关系",
+    "metrics": "指标",
+    "noMetrics": "没有指标使用此表",
+    "metricTerm": "{{term}}：",
+    "metricMethod": "计算方式：{{method}}",
     "fromSource": "{{value}}（来自数据源）",
     "fromSourceAsIs": "与数据源相同",
     "notScheduledLikeSource": "并非仅按计划读取，尽管其数据源是：查询可能会读取数据源。",
@@ -34,6 +38,9 @@
     "classTerm": "行是以下术语的实例",
     "noClassTerm": "无术语",
     "classTermUnreadable": "无法读取其术语：{{error}}",
+    "classTermNoModel": "无法读取其术语：您的角色无法读取模型的表。",
+    "classTermNoEntry": "无法读取其术语：您的角色无法读取此表在模型中的条目。",
+    "classTermNoField": "无法读取其术语：您的角色无法读取表的行是哪个术语的实例。",
     "access": "访问"
   }
 }

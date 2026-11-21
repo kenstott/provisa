@@ -213,6 +213,7 @@ def _compile_root_field(  # REQ-009, REQ-011, REQ-032, REQ-033, REQ-034, REQ-035
                         variables,
                         cardinality=join_meta.cardinality,
                         flat=flat,
+                        joined=f"{tgt_expr} = {src_expr}",
                     )
                     has_lateral_ops_joins |= _child_lateral
             elif _use_agg and sel.selection_set:
@@ -283,6 +284,7 @@ def _compile_root_field(  # REQ-009, REQ-011, REQ-032, REQ-033, REQ-034, REQ-035
                         variables,
                         cardinality=join_meta.cardinality,
                         flat=flat,
+                        joined=f"{tgt_expr} = {src_expr}",
                     )
                     has_lateral_ops_joins |= _child_lateral
         else:
@@ -403,7 +405,7 @@ def _compile_root_field(  # REQ-009, REQ-011, REQ-032, REQ-033, REQ-034, REQ-035
     # Native filter args (any arg not handled by SQL compilation): each a _nf_-prefixed condition
     # of the root's WHERE, so the SQL/CQL preview shows the filter. nf_extractor strips them before
     # the engine runs the statement; endpoint.py uses api_args for the REST call.
-    api_args = native_args(args, _STANDARD_ARGS, ctx.native_filter_columns.get(table.table_id, {}))
+    api_args = native_args(args, _STANDARD_ARGS, ctx.parameter_names.get(table.table_id, {}))
 
     # WHERE
     where_parts: list[str] = []

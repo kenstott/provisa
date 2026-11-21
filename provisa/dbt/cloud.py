@@ -28,6 +28,7 @@ from provisa.core.secrets_store import resolved_credential
 from provisa.security import sandbox_egress
 
 MANIFEST_ARTIFACT = "manifest.json"
+RUN_RESULTS_ARTIFACT = "run_results.json"
 _TIMEOUT_S = 30.0
 #: The status dbt Cloud gives a run that succeeded.
 _RUN_SUCCESS = 10
@@ -54,6 +55,15 @@ async def authorization(state: Any, source_id: str, scheme: str) -> dict[str, st
 
 async def latest_manifest(host: str, account_id: str, job_id: str, token: str) -> bytes:
     """The manifest of the job's latest successful run."""
+    return await _latest_artifact(host, account_id, job_id, token, MANIFEST_ARTIFACT)
+
+
+async def latest_run_results(host: str, account_id: str, job_id: str, token: str) -> bytes:
+    """The run results of the job's latest successful run."""
+    return await _latest_artifact(host, account_id, job_id, token, RUN_RESULTS_ARTIFACT)
+
+
+async def _latest_artifact(host: str, account_id: str, job_id: str, token: str, name: str) -> bytes:
     base = f"{host.rstrip('/')}/api/v2/accounts/{account_id}"
     async with httpx.AsyncClient(
         timeout=_TIMEOUT_S,
@@ -73,6 +83,6 @@ async def latest_manifest(host: str, account_id: str, job_id: str, token: str) -
         latest = runs.json().get("data") or []
         if not latest:
             raise NoCloudRun(f"dbt Cloud job {job_id} has no successful run")
-        artifact = await client.get(f"{base}/runs/{latest[0]['id']}/artifacts/{MANIFEST_ARTIFACT}")
+        artifact = await client.get(f"{base}/runs/{latest[0]['id']}/artifacts/{name}")
         artifact.raise_for_status()
         return artifact.content

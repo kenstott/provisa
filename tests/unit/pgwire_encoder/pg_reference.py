@@ -60,6 +60,9 @@ DEFECTS = {
     "timestamp and no-zone coercers",
     "uuid_bytes": "a uuid column of 16 plain bytes (fixed_size_binary(16) without arrow.uuid) is "
     "the UUID they hold (the product writes str(bytes), and refuses binary)",
+    "date_range": "a date PostgreSQL holds past year 9999 or BC is written as date_out writes it "
+    "(Python's date holds years 1 to 9999: the product raised, and the error dropped the "
+    "connection, J1367 D9)",
 }
 
 
@@ -372,6 +375,8 @@ def _infinity(v: Any) -> int:
 
 
 def to_date(v: Any) -> Any:
+    if isinstance(v, PgDay):
+        return v
     return infinite_date(_infinity(v)) if _infinity(v) else srv._to_date(v)
 
 
@@ -392,6 +397,101 @@ COERCERS: dict[Any, Callable[[Any], Any]] = {
     ct._of_no_zone: of_no_zone,
     srv._duckdb_inet: duckdb_inet,
 }
+
+
+# --- dates past Python's years ---
+
+#: PostgreSQL's dates as days since 1970-01-01: Julian day 0 (4714-11-24 BC) up to, not including,
+#: DATE_END_JULIAN (5874898-01-01).
+_PG_FIRST_DAY = -2_440_588
+_PG_END_DAY = 2_147_483_494 - 2_440_588
+#: Python's date(1, 1, 1) and date(9999, 12, 31) as days since 1970-01-01.
+_PY_FIRST_DAY, _PY_LAST_DAY = -719_162, 2_932_896
+
+
+class PgDay(int):
+    """A date PostgreSQL holds and Python's date does not: its days since 1970-01-01."""
+
+
+def _civil(days: int) -> tuple[int, int, int]:
+    """The proleptic Gregorian (year, month, day) of days since 1970-01-01, year 0 being 1 BC."""
+    z = days + 719_468
+    era, doe = divmod(z, 146_097)
+    yoe = (doe - doe // 1460 + doe // 36_524 - doe // 146_096) // 365
+    doy = doe - (365 * yoe + yoe // 4 - yoe // 100)
+    mp = (5 * doy + 2) // 153
+    d = doy - (153 * mp + 2) // 5 + 1
+    m = mp + 3 if mp < 10 else mp - 9  # noqa: PLR2004
+    return yoe + era * 400 + (m <= 2), m, d  # noqa: PLR2004
+
+
+def pg_date_text(days: int) -> str:
+    """date_out in DateStyle ISO: a year past 9999 in all its digits, one BC numbered before
+    year 1, at least four digits, then " BC"."""
+    y, m, d = _civil(days)
+    return f"{1 - y:04d}-{m:02d}-{d:02d} BC" if y <= 0 else f"{y:04d}-{m:02d}-{d:02d}"
+
+
+def _day_values(column: Any, read: Callable[[Any], list[Any]]) -> list[Any] | None:
+    """A date column's values with each date Python's date cannot hold a PgDay; None for any
+    other column, and for one Python holds whole. A date past PostgreSQL's raises date_in's
+    error."""
+    import pyarrow as pa
+
+    if pa.types.is_date32(column.type):
+        days = column.cast(pa.int32()).to_pylist()
+    elif pa.types.is_date64(column.type):
+        days = [
+            None if ms is None else ms // 86_400_000 for ms in column.cast(pa.int64()).to_pylist()
+        ]
+    else:
+        return None
+    marks = {2**31 - 1, -(2**31 - 1)} if pa.types.is_date32(column.type) else set()
+    outside = [
+        d
+        for d in days
+        if d is not None and d not in marks and not _PY_FIRST_DAY <= d <= _PY_LAST_DAY
+    ]
+    if not outside:
+        return None
+    if any(not _PG_FIRST_DAY <= d < _PG_END_DAY for d in outside):
+        raise ValueError("date out of range")
+    held = read(
+        column.filter(
+            pa.array([d is None or d in marks or _PY_FIRST_DAY <= d <= _PY_LAST_DAY for d in days])
+        )
+    )
+    it = iter(held)
+    return [
+        PgDay(d)
+        if d is not None and d not in marks and not _PY_FIRST_DAY <= d <= _PY_LAST_DAY
+        else next(it)
+        for d in days
+    ]
+
+
+def _reading_days(read: Callable[[Any], list[Any]]) -> Callable[[Any], list[Any]]:
+    """The reference's read of a column, a date PostgreSQL holds past Python's years a PgDay."""
+
+    def values(column: Any) -> list[Any]:
+        held = _day_values(column, read)
+        return read(column) if held is None else held
+
+    return values
+
+
+def date_text(v: Any) -> str:
+    return pg_date_text(v) if isinstance(v, PgDay) else _ORIGINAL_DATE_TEXT(v)
+
+
+def date_binary(v: Any) -> bytes:
+    if isinstance(v, PgDay):
+        return struct.pack("!i", v - 10_957)
+    return _ORIGINAL_DATE_BINARY(v)
+
+
+_ORIGINAL_DATE_TEXT = bp._date_text
+_ORIGINAL_DATE_BINARY = bp._date_binary
 
 
 def _setattr(stack: ExitStack, obj: Any, name: str, value: Any) -> None:
@@ -416,6 +516,8 @@ def pg17() -> Iterator[None]:
         table[t.INET] = (869, inet_text, table[t.INET][2])
         table[t.CIDR] = (650, cidr_text, table[t.CIDR][2])
         table[t.TEXT] = (25, text_text, lambda v: text_text(v).encode("utf-8"))
+        table[t.DATE] = (1082, date_text, date_binary)
+        _setattr(stack, python_ref, "column_values", _reading_days(python_ref.column_values))
         table.update(_ranges())
         table.update(_arrays())
 

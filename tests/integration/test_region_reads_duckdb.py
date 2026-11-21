@@ -17,6 +17,7 @@ replica that region built — against a real PostgreSQL store."""
 from __future__ import annotations
 
 import os
+import threading
 import uuid
 
 import duckdb
@@ -54,6 +55,7 @@ def test_a_node_reads_another_regions_replica_through_its_attached_store(eu_repl
     runtime = DuckDBFederationRuntime.__new__(DuckDBFederationRuntime)
     runtime._con = duckdb.connect()
     runtime._region_stores = set()
+    runtime._region_store_lock = threading.Lock()
     # The org environment's name for eu's store (replica_address.region_read_name).
     alias = runtime.attach_region_store("org_acme__region_eu", url)
     assert alias == "org_acme__region_eu"

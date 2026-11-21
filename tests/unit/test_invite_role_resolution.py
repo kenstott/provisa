@@ -70,7 +70,12 @@ async def test_a_role_less_invitation_confers_analyst():  # REQ-1314
 
 
 async def test_a_role_in_the_target_org_is_conferred_as_named():  # REQ-1313
-    assert await resolve_invite_role("acme", "org_admin", granter_capabilities=set()) == "org_admin"
+    # REQ-1327 (amended 2026-11-16): org_admin is conferred only by a holder of its rights, which
+    # in this fixture's org are user_management alone.
+    assert (
+        await resolve_invite_role("acme", "org_admin", granter_capabilities={"user_management"})
+        == "org_admin"
+    )
 
 
 async def test_a_role_the_org_does_not_have_is_refused_not_substituted():  # REQ-1313

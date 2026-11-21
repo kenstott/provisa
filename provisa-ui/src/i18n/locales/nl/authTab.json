@@ -9,12 +9,12 @@
     "assignmentsSourceClaims": "Tokenclaims",
     "assignmentsSourceProvisa": "Provisa (lokale toewijzingen)",
     "trustUpstream": "Identiteitsheaders van upstream-proxy vertrouwen",
-    "allowSimpleAuth": "Eenvoudige authenticatie toestaan (productiebeveiliging — vereist om gebruikersnaam/wachtwoord in te schakelen)",
+    "allowSimpleAuth": "Eenvoudige authenticatie toestaan (productiebeveiliging, vereist om gebruikersnaam/wachtwoord in te schakelen)",
     "saveButton": "Authenticatie-instellingen opslaan",
     "loading": "Laden…",
     "saved": "Opgeslagen.",
     "savedRestartRequired": "Opgeslagen. Herstart de service om toe te passen.",
-    "secretOnFile": "Opgeslagen — leeg laten om te behouden",
+    "secretOnFile": "Opgeslagen. Laat leeg om te behouden.",
     "secretNotSet": "Niet ingesteld",
     "allowRegistration": "Mensen zelf een account laten aanmaken"
   }

@@ -16,6 +16,8 @@ with, against postgres:17.11's answer."""
 
 from __future__ import annotations
 
+from contextlib import closing
+
 import duckdb
 import pytest
 import sqlglot
@@ -170,7 +172,9 @@ def test_a_row_replay_found_another_answer_of_is_refused_there():
     function = "pg_lsn_pli('0/1'::pg_lsn, 2.5::numeric)"
     with pytest.raises(FunctionRefused):
         transpile(f"SELECT {function} AS v", "clickhouse")
-    assert transpile(f"SELECT {function} AS v", "trino")
+    # Trino reads the form's 2^64 as no literal (run 43307392116): the grid refuses it by name.
+    with pytest.raises(FunctionRefused, match=r"pg_lsn_pli\(\) has no form on trino"):
+        transpile(f"SELECT {function} AS v", "trino")
 
 
 def test_a_clickhouse_timestamp_keeps_its_fraction():
@@ -180,7 +184,9 @@ def test_a_clickhouse_timestamp_keeps_its_fraction():
 
 
 def test_a_clickhouse_refusal_raises_where_a_nullable_cast_reads_null():
-    written = transpile("SELECT masklen('::1'::inet) AS v", "clickhouse")
+    # a literal PostgreSQL refuses as the statement is read (masklen of an inet literal is
+    # answered on ClickHouse since CONF-CH4)
+    written = transpile("SELECT numerictypmodin('{1001}'::cstring[]) AS v", "clickhouse")
     assert "accurateCast(materialize(" in written
 
 
@@ -229,20 +235,20 @@ def test_an_enum_is_not_every_type():
 def test_a_statement_after_a_failed_one_has_its_own_answer():
     from provisa.federation.clickhouse_runtime import ClickHouseFederationRuntime
 
-    runtime = ClickHouseFederationRuntime.embedded()
-    with pytest.raises(RuntimeError):
-        runtime.run_sync("SELECT throwIf(1, 'refused')")
-    assert runtime.run_sync("SELECT 'a' AS v").rows == [("a",)]
+    with closing(ClickHouseFederationRuntime.embedded()) as runtime:
+        with pytest.raises(RuntimeError):
+            runtime.run_sync("SELECT throwIf(1, 'refused')")
+        assert runtime.run_sync("SELECT 'a' AS v").rows == [("a",)]
 
 
 def test_a_clickhouse_time_is_read_as_its_text_says():
     from provisa.federation.clickhouse_runtime import ClickHouseFederationRuntime
 
-    runtime = ClickHouseFederationRuntime.embedded()
-    equal = "SELECT time_eq('23:59:59.5'::time, '23:59:59.5'::time) AS v"
-    assert runtime.run_sync(transpile(equal, "clickhouse")).rows == [(1,)]
-    missing = "SELECT time_eq(NULL::time, NULL::time) AS v"
-    assert runtime.run_sync(transpile(missing, "clickhouse")).rows == [(None,)]
+    with closing(ClickHouseFederationRuntime.embedded()) as runtime:
+        equal = "SELECT time_eq('23:59:59.5'::time, '23:59:59.5'::time) AS v"
+        assert runtime.run_sync(transpile(equal, "clickhouse")).rows == [(1,)]
+        missing = "SELECT time_eq(NULL::time, NULL::time) AS v"
+        assert runtime.run_sync(transpile(missing, "clickhouse")).rows == [(None,)]
 
 
 def test_a_null_scale_answers_null():
@@ -277,7 +283,8 @@ def test_an_oid_is_held_as_a_bigint_and_reaches_a_call(sql, dialect):
     assert " oid" not in transpile(sql, dialect).lower()
 
 
-@pytest.mark.parametrize("dialect", ["trino", "clickhouse"])
+# ClickHouse answers both: the polyfill grid's rows (tests/unit/polyfill/test_polyfill_clickhouse_texts.py).
+@pytest.mark.parametrize("dialect", ["trino"])
 @pytest.mark.parametrize(
     "sql",
     [

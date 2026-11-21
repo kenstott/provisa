@@ -1,6 +1,7 @@
 {
   "filterInput": {
     "filter": "Filter",
-    "clear": "Clear"
+    "clear": "Clear",
+    "syntaxHint": "Uses Google search syntax: every word must match; put or between alternatives; -word excludes; \"quotes\" keep a phrase together."
   }
 }

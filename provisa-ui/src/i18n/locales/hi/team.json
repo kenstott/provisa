@@ -91,6 +91,8 @@
       "cancelEdit": "संपादन रद्द करें",
       "remove": "{{name}} हटाएँ"
     },
-    "localUsersHeading": "स्थानीय उपयोगकर्ता"
+    "localUsersHeading": "स्थानीय उपयोगकर्ता",
+    "attributesTab": "गुण",
+    "accessTab": "पहुँच"
   }
 }

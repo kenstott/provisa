@@ -123,7 +123,8 @@ async def test_a_table_something_refers_to_is_refused_naming_each_and_nothing_is
     assert await _count(plane, table_columns) == 1
 
 
-async def test_a_table_nothing_refers_to_goes_with_its_parts(plane):
+async def test_a_table_nothing_refers_to_is_retired_with_its_parts_kept(plane):
+    """REQ-2248: deleting it retires it; its row and what is attached to it are kept."""
     orders = await _table(plane, "orders")
     other = await _table(plane, "customers")
     async with plane.acquire() as conn:
@@ -145,9 +146,15 @@ async def test_a_table_nothing_refers_to_goes_with_its_parts(plane):
         )
         assert await table_repo.delete(conn, orders) is True
         assert await table_repo.delete(conn, orders) is False
-    assert await _count(plane, table_columns) == 1  # the other table's
-    assert await _count(plane, rls_rules) == 0 and await _count(plane, tag_assignments) == 0
-    assert await _count(plane, registered_tables) == 1
+        retired = (
+            await conn.execute_core(
+                select(registered_tables.c.retired).where(registered_tables.c.id == orders)
+            )
+        ).scalar_one()
+    assert retired is True
+    assert await _count(plane, table_columns) == 3
+    assert await _count(plane, rls_rules) == 1 and await _count(plane, tag_assignments) == 1
+    assert await _count(plane, registered_tables) == 2
 
 
 async def test_a_set_of_registrations_is_removed_without_the_guard(plane):
@@ -268,6 +275,7 @@ async def test_the_mutation_refuses_with_the_list_and_removes_nothing(plane, ser
                 "kind": "table",
                 "id": view,
                 "name": "open_orders",
+                "label": "open_orders",
                 "via": ["registered_tables.view_sql"],
             }
         ],
@@ -279,7 +287,13 @@ async def test_the_mutation_deletes_drops_its_cached_results_and_rebuilds(plane,
     orders = await _table(plane, "orders")
     result = await _delete_table(orders)
     assert (result.success, result.code) == (True, "schema.table_deleted")
-    assert await _count(plane, registered_tables) == 0
+    async with plane.acquire() as conn:  # REQ-2248: retired, not removed
+        retired = (
+            await conn.execute_core(
+                select(registered_tables.c.retired).where(registered_tables.c.id == orders)
+            )
+        ).scalar_one()
+    assert retired is True
     assert served == [-1, 1]  # its response-cache entries invalidated, then the rebuild
 
 

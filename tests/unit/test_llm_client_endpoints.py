@@ -160,7 +160,9 @@ def _detailed(*, content, finish_reason, completion_tokens, max_tokens=16):
             )
 
     client = ProvisaLLMClient(
-        "x", config={"ai_models": {"x": {"vendor": "anthropic", "model": "m"}}}
+        "x",
+        config={"ai_models": {"x": {"vendor": "anthropic", "model": "m"}}},
+        api_keys={"anthropic": "k"},
     )
     stub = MagicMock()
     stub.Client = _Answering
@@ -223,7 +225,7 @@ class TestReasoningOff:
                     usage=SimpleNamespace(completion_tokens=1),
                 )
 
-        client = ProvisaLLMClient("x", config=cfg, api_keys={"anthropic": "k"})
+        client = ProvisaLLMClient("x", config=cfg, api_keys={"anthropic": "k", "groq": "k"})
         stub = MagicMock()
         stub.Client = _Recording
         with patch.dict(os.environ, env or {}), patch.dict("sys.modules", {"aisuite": stub}):
@@ -319,7 +321,9 @@ class TestJsonAnswer:
                     usage=SimpleNamespace(completion_tokens=1),
                 )
 
-        client = ProvisaLLMClient("x", config=cfg, api_keys={"anthropic": "k", "openai": "k"})
+        client = ProvisaLLMClient(
+            "x", config=cfg, api_keys={"anthropic": "k", "openai": "k", "groq": "k"}
+        )
         stub = MagicMock()
         stub.Client = _Recording
         with patch.dict("sys.modules", {"aisuite": stub}):

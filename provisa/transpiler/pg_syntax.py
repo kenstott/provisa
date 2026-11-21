@@ -24,7 +24,11 @@ taught to its parser here:
   array, not SQL's JSON_OBJECT of key and value pairs.
 - a keyword after ``AS`` is a column label (``AS select``): sqlglot refuses the reserved ones; the
   label is read as a quoted identifier, so the statement writes back as PostgreSQL reads it.
-- pgvector's ``a <#> b`` is its negative inner product: it tokenizes as ``<`` and ``#>``."""
+- pgvector's ``a <#> b`` is its negative inner product: it tokenizes as ``<`` and ``#>``.
+- ``interval '1 day 02:03'`` is the whole interval its text is (``'1 day 02:03'::interval``):
+  sqlglot keeps its first amount and unit and drops the rest.
+- to_date's and to_timestamp's template is read whole (``TEMPLATE``): sqlglot's own reading leaves
+  a month's or a day's name (``Mon``, ``Month``, ``Dy``), ``HH`` and the meridiem as literal text."""
 
 # Requirements: REQ-2167, REQ-423
 
@@ -34,7 +38,11 @@ from typing import Any
 
 from sqlglot import exp
 from sqlglot.dialects.postgres import Postgres
+from sqlglot.time import format_time
 from sqlglot.tokens import TokenType
+from sqlglot.trie import new_trie
+
+from provisa.transpiler import interval_input
 
 #: The routine pg_proc names for overlaps: what a call of it reads as (function_macros' form).
 OVERLAPS = "overlaps_timestamp"
@@ -83,6 +91,34 @@ def _reads_types(parser: type) -> None:
         return this
 
     parser._parse_types = _parse_types
+
+
+def _reads_interval_literals(parser: type) -> None:
+    """``interval 'text'`` is ``'text'::interval`` (REQ-2167): sqlglot keeps the first amount and
+    its unit of the text and drops the rest ('1 day 02:03' is read as 1 day, '1 day ago' as
+    1 day), and writes a unit word as it is ('3 mons' is no unit of an engine). The text is read
+    here as PostgreSQL's interval input reads it (interval_input): one whole amount of a unit every
+    engine reads alike stays sqlglot's INTERVAL 'n' UNIT; any other interval it reads is the cast
+    of its fields' text, which each engine reads exactly; a text it does not read (ISO 8601, the
+    SQL standard's) is the cast of the text, as the statement's ``::interval`` would be. A unit
+    written after the text (``interval '1' day``) is read by sqlglot, as before."""
+    parse_span = parser._parse_interval_span
+
+    def _parse_interval_span(self: Any, this: exp.Expr, parse_function_unit: bool = True) -> Any:
+        text = this.name if this is not None and this.is_string else None
+        span = parse_span(self, this, parse_function_unit=parse_function_unit)
+        if text is None or not isinstance(span, exp.Interval) or span.this is None:
+            return span
+        if span.args.get("unit") is not None and span.this.name == text:
+            return span  # the unit is written after the text
+        one = interval_input.one_amount(text)
+        if one is not None:
+            return exp.Interval(this=exp.Literal.string(one[0]), unit=exp.Var(this=one[1]))
+        read = interval_input.interval_read(text)
+        written = text if read is None else interval_input.canonical(*read)
+        return exp.Cast(this=exp.Literal.string(written), to=exp.DataType.build("interval"))
+
+    parser._parse_interval_span = _parse_interval_span
 
 
 def _overlaps(args: list[exp.Expr]) -> exp.Anonymous:
@@ -177,18 +213,104 @@ def _reads_keyword_labels(parser: type) -> None:
     parser._parse_alias = _parse_alias
 
 
+#: PostgreSQL's template patterns, as to_date and to_timestamp read them, by the strptime
+#: specifier of each (formatting.c's keywords): sqlglot's own, with the names, HH and the meridiem
+#: it lacks, and its day names for parsing (its lower-case ones are to_char's).
+TEMPLATE: dict[str, str] = {
+    **Postgres.TIME_MAPPING,
+    **{name: "%b" for name in ("Mon", "MON", "mon")},
+    **{name: "%B" for name in ("Month", "MONTH", "month")},
+    **{name: "%a" for name in ("Dy", "DY", "dy")},
+    **{name: "%A" for name in ("Day", "DAY", "day")},
+    **{name: "%I" for name in ("HH", "hh", "hh12")},
+    "hh24": "%H",
+    "us": "%f",
+    **{name: "%p" for name in ("AM", "PM", "am", "pm")},
+}
+_TEMPLATE_TRIE = new_trie(TEMPLATE)
+
+
+def template(written: str) -> str:
+    """PostgreSQL's template ``written``, as the strptime format of it."""
+    return format_time(written, TEMPLATE, _TEMPLATE_TRIE) or written
+
+
+def _formatted(kind: type[exp.StrToDate] | type[exp.StrToTime]) -> Any:
+    def build(args: list[exp.Expr]) -> exp.Expr:
+        value, format_ = args[0], args[1] if len(args) > 1 else None
+        if isinstance(format_, exp.Literal) and format_.is_string:
+            format_ = exp.Literal.string(template(format_.this))
+        return kind(this=value, format=format_)
+
+    return build
+
+
+_TO_TIMESTAMP = Postgres.Parser.FUNCTIONS["TO_TIMESTAMP"]
+
+
+def _to_timestamp(args: list[exp.Expr], dialect: Any) -> exp.Expr:
+    """to_timestamp: of one argument, the epoch's; of two, a text read by its template."""
+    if len(args) == 1:
+        return _TO_TIMESTAMP(args, dialect)
+    return _formatted(exp.StrToTime)(args)
+
+
+_TO_CHAR = Postgres.Parser.FUNCTIONS["TO_CHAR"]
+#: The key of a to_char call's meta that holds its template as the statement wrote it.
+TO_CHAR_TEMPLATE = "pg_template"
+
+
+#: The key of the strftime text sqlglot wrote of that template, as it read it.
+_TO_CHAR_STRFTIME = "pg_template_strftime"
+
+
+def _to_char(args: list[exp.Expr], dialect: Any) -> exp.Expr:
+    """to_char as sqlglot reads it, its template as the statement wrote it kept in the call's meta:
+    sqlglot's strftime text of it no longer tells PostgreSQL's YYYY from a literal %Y."""
+    call = _TO_CHAR(args, dialect)
+    written = args[1] if len(args) > 1 else None
+    strftime = call.args.get("format")
+    if isinstance(written, exp.Literal) and written.is_string and isinstance(strftime, exp.Literal):
+        call.meta[TO_CHAR_TEMPLATE] = written.this
+        call.meta[_TO_CHAR_STRFTIME] = strftime.this
+    return call
+
+
+_TIME_TO_STR_SQL = Postgres.Generator.TRANSFORMS[exp.TimeToStr]
+
+
+def _to_char_sql(self: Any, expression: exp.TimeToStr) -> str:
+    """to_char written back in PostgreSQL's SQL with the template the statement wrote, where its
+    strftime text is still the one sqlglot read: sqlglot's own writes that text back as a template,
+    in which a literal %Y is YYYY and SSSS is SS twice."""
+    strftime = expression.args.get("format")
+    template = expression.meta.get(TO_CHAR_TEMPLATE)
+    if (
+        template is None
+        or not isinstance(strftime, exp.Literal)
+        or strftime.this != expression.meta.get(_TO_CHAR_STRFTIME)
+    ):
+        return _TIME_TO_STR_SQL(self, expression)
+    return self.func("TO_CHAR", expression.this, exp.Literal.string(template))
+
+
 _JSON_OBJECT = Postgres.Parser.FUNCTION_PARSERS["JSON_OBJECT"]
 
 _reads_types(Postgres.Parser)
 _reads_qualified_calls(Postgres.Parser)
 _reads_negative_inner_product(Postgres.Parser)
 _reads_keyword_labels(Postgres.Parser)
+_reads_interval_literals(Postgres.Parser)
 Postgres.Parser.FUNC_TOKENS = Postgres.Parser.FUNC_TOKENS | {TokenType.OVERLAPS}
 Postgres.Parser.FUNCTIONS["OVERLAPS"] = _overlaps
+Postgres.Parser.FUNCTIONS["TO_DATE"] = _formatted(exp.StrToDate)
+Postgres.Parser.FUNCTIONS["TO_TIMESTAMP"] = _to_timestamp
+Postgres.Parser.FUNCTIONS["TO_CHAR"] = _to_char
 Postgres.Parser.FUNCTION_PARSERS.pop("CONVERT", None)
 Postgres.Parser.FUNCTIONS["CONVERT"] = lambda args: exp.Anonymous(this="convert", expressions=args)
 Postgres.Parser.FUNCTION_PARSERS["JSON_OBJECT"] = _pg_json_object
 Postgres.Generator.TRANSFORMS[NegativeInnerProduct] = lambda self, e: self.binary(e, "<#>")
+Postgres.Generator.TRANSFORMS[exp.TimeToStr] = _to_char_sql
 
 
 def _anonymous_sql(self: Any, expression: exp.Anonymous) -> str:

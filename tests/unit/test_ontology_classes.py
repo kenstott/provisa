@@ -332,7 +332,8 @@ def built(monkeypatch):
         gql_object_cols={},
         rls_rules=[],
         metrics=[],
-        draft_tables=[],
+        withdrawn_tables=[],
+        withdrawn_relationships=[],
     )
     monkeypatch.setattr(state, "tables", tables, raising=False)
     monkeypatch.setattr(state, "class_tables", {class_view_key(r): r for r in rows}, raising=False)
@@ -573,9 +574,13 @@ def test_the_class_is_read_where_the_ontology_schema_is_named() -> None:
     body = _CLASS_FOUR["ontology.four"]
     for sql in ("SELECT * FROM ontology.four", 'SELECT * FROM "ontology"."four"'):
         assert expand_view_refs(sql, _CLASS_FOUR) == f'SELECT * FROM ({body}) "four"'
-    assert expand_view_refs('SELECT * FROM "x"."ontology"."four" AS c', _CLASS_FOUR) == (
+    # A Class table is the derived source's, read under its catalog; under another catalog the
+    # name is that catalog's table.
+    assert expand_view_refs('SELECT * FROM "__derived__"."ontology"."four" AS c', _CLASS_FOUR) == (
         f"SELECT * FROM ({body}) AS c"
     )
+    other = 'SELECT * FROM "x"."ontology"."four" AS c'
+    assert expand_view_refs(other, _CLASS_FOUR) == other
 
 
 def test_views_read_finds_a_class_only_where_the_ontology_schema_is_named() -> None:

@@ -19,13 +19,68 @@ import threading
 from abc import ABC, abstractmethod
 from typing import Any
 
+from provisa.security import sandbox_egress  # REQ-2006
 from provisa.vector.registry import VectorModel
 
 # Requirements: REQ-420, REQ-431, REQ-1827
 
 
+#: Where each network provider is reached when a model names no ``base_url``.
+_OPENAI = "https://api.openai.com/v1"
+_OLLAMA = "http://localhost:11434"
+
+
 class EmbeddingError(RuntimeError):
     """An embedding request failed or returned an unexpected shape."""
+
+
+#: The pyproject extra each local provider's library ships in, and the module the extra installs.
+#: Every native installer carries the vector extra (the default config's embedding model needs it);
+#: an install without it refuses such a model at startup (:func:`require_provider_libraries`).
+PROVIDER_LIBRARIES: dict[str, tuple[str, str]] = {
+    "huggingface": ("vector", "sentence_transformers"),
+}
+
+
+class EmbeddingLibraryMissing(EmbeddingError):
+    """A configured embedding model's provider library is not installed: refused by name when the
+    configuration is loaded, never left to fail at its first embedding in a background task."""
+
+    code = "ai_models.embedding_library_missing"
+
+    def __init__(self, model_id: str, provider: str, extra: str, module: str) -> None:
+        self.model_id = model_id
+        self.provider = provider
+        self.extra = extra
+        self.module = module
+        super().__init__(
+            f"The embedding model {model_id} uses the {provider} provider, which needs the "
+            f"{extra} extra (module {module} is not installed): pip install 'provisa[{extra}]'."
+        )
+
+    @property
+    def params(self) -> dict[str, str]:
+        """What the catalogued message of :attr:`code` is filled with."""
+        return {
+            "model": self.model_id,
+            "provider": self.provider,
+            "extra": self.extra,
+            "module": self.module,
+        }
+
+
+def require_provider_libraries(models: Any) -> None:
+    """Refuse the first of ``models`` (each with ``id`` and ``provider``) whose provider's library
+    is not installed (:data:`PROVIDER_LIBRARIES`), naming the model and the extra. The module is
+    found, not imported: importing sentence-transformers loads torch."""
+    import importlib.util
+
+    for model in models:
+        if model.provider not in PROVIDER_LIBRARIES:
+            continue
+        extra, module = PROVIDER_LIBRARIES[model.provider]
+        if importlib.util.find_spec(module) is None:
+            raise EmbeddingLibraryMissing(model.id, model.provider, extra, module)
 
 
 class EmbeddingProvider(ABC):  # REQ-420
@@ -55,18 +110,6 @@ async def model_version(model: VectorModel, provider: EmbeddingProvider) -> str 
     return reported if reported is not None else model.version
 
 
-async def _api_key(model: VectorModel) -> str | None:  # REQ-1827
-    """The vector model's API key from its ``api_key_env`` field — the SAME shared grammar
-    (${secret:NAME}/${env:NAME}/${user:NAME}, or a bare env-var name) provisa/api/mcp/chat.py's
-    custom AI endpoints use, not a separate bare-env-var-only implementation. Before this, a
-    vault-reference value here silently resolved to nothing (a plain os.environ.get on a string
-    that is never itself a real env var name), which the OpenAI-compatible provider then treated
-    as simply "no key" rather than failing loud."""
-    from provisa.core.secrets import resolve_api_key_field
-
-    return await resolve_api_key_field(model.api_key_env)
-
-
 class OpenAICompatibleProvider(EmbeddingProvider):  # REQ-420
     """Any OpenAI-compatible POST {base_url}/embeddings endpoint."""
 
@@ -78,12 +121,16 @@ class OpenAICompatibleProvider(EmbeddingProvider):  # REQ-420
     ) -> tuple[list[list[float]], int | None]:  # REQ-2105
         import httpx
 
-        base = (model.base_url or "https://api.openai.com/v1").rstrip("/")
+        from provisa.core.org_secrets import vector_model_address, vector_model_key
+
+        base = (await vector_model_address(model, _OPENAI, local_server=False)).rstrip("/")
         headers = {}
-        key = await _api_key(model)
+        key = await vector_model_key(model)
         if key:
             headers["Authorization"] = f"Bearer {key}"
-        async with httpx.AsyncClient(timeout=30) as client:
+        async with httpx.AsyncClient(
+            timeout=30, event_hooks=sandbox_egress.http_event_hooks()
+        ) as client:  # REQ-2006
             resp = await client.post(
                 f"{base}/embeddings", headers=headers, json={"model": model.id, "input": texts}
             )
@@ -97,15 +144,23 @@ class OpenAICompatibleProvider(EmbeddingProvider):  # REQ-420
         return vectors, usage.get("prompt_tokens")
 
 
+async def _ollama_address(model: VectorModel) -> str:
+    from provisa.core.org_secrets import vector_model_address
+
+    return (await vector_model_address(model, _OLLAMA, local_server=True)).rstrip("/")
+
+
 class OllamaProvider(EmbeddingProvider):  # REQ-420
     """Ollama embeddings — one POST {base_url}/api/embeddings per text."""
 
     async def embed(self, texts: list[str], model: VectorModel) -> list[list[float]]:
         import httpx
 
-        base = (model.base_url or "http://localhost:11434").rstrip("/")
+        base = await _ollama_address(model)
         out: list[list[float]] = []
-        async with httpx.AsyncClient(timeout=60) as client:
+        async with httpx.AsyncClient(
+            timeout=60, event_hooks=sandbox_egress.http_event_hooks()
+        ) as client:  # REQ-2006
             for text in texts:
                 resp = await client.post(
                     f"{base}/api/embeddings", json={"model": model.id, "prompt": text}
@@ -121,8 +176,10 @@ class OllamaProvider(EmbeddingProvider):  # REQ-420
         """The model's digest, as the server's model list gives it."""
         import httpx
 
-        base = (model.base_url or "http://localhost:11434").rstrip("/")
-        async with httpx.AsyncClient(timeout=30) as client:
+        base = await _ollama_address(model)
+        async with httpx.AsyncClient(
+            timeout=30, event_hooks=sandbox_egress.http_event_hooks()
+        ) as client:  # REQ-2006
             resp = await client.get(f"{base}/api/tags")
             resp.raise_for_status()
             listed = resp.json().get("models")
@@ -135,6 +192,19 @@ class OllamaProvider(EmbeddingProvider):  # REQ-420
         raise EmbeddingError(f"Ollama does not list model {model.id!r}")
 
 
+#: A hub snapshot's files for frameworks other than torch, which a local model never loads.
+_OTHER_FRAMEWORKS = [
+    "onnx/*",
+    "openvino/*",
+    "*.onnx",
+    "*.h5",
+    "*.msgpack",
+    "*.ot",
+    "coreml/*",
+    "*.mlpackage/*",
+]
+
+
 class HuggingFaceLocalProvider(EmbeddingProvider):  # REQ-420
     """Local sentence-transformers model — no network. A model is loaded once per process, and it
     is used by one request at a time: each request runs on its own thread, and two encoding at
@@ -142,12 +212,14 @@ class HuggingFaceLocalProvider(EmbeddingProvider):  # REQ-420
     (``failed assertion _status < MTLCommandBufferStatusCommitted``)."""
 
     _cache: dict = {}
+    _snapshots: dict[str, str] = {}  # model id -> the hub snapshot directory it was loaded from
     _in_use = threading.Lock()
 
     def _loaded(self, model: VectorModel):
         """``model``, loaded once for this process -- fetched into the hub cache first when this
         host has never had it. Called with ``_in_use`` held."""
         try:
+            from huggingface_hub import snapshot_download  # pyright: ignore[reportMissingImports]
             from sentence_transformers import SentenceTransformer  # pyright: ignore[reportMissingImports]
         except ImportError as exc:
             raise EmbeddingError(
@@ -155,7 +227,21 @@ class HuggingFaceLocalProvider(EmbeddingProvider):  # REQ-420
             ) from exc
         st = self._cache.get(model.id)
         if st is None:
-            st = SentenceTransformer(model.id)
+            from provisa.core.org_secrets import hub_endpoint, hub_token
+
+            # The snapshot is fetched here, from the hub address the operator setting names
+            # (hub_endpoint), and the model loaded from it: sentence-transformers takes no address
+            # and would fetch from the one huggingface_hub read from HF_ENDPOINT at import. The
+            # other frameworks' weights (ONNX, OpenVINO, TensorFlow, Flax, Rust, Core ML) are not
+            # fetched: sentence-transformers on torch loads none of them.
+            path = snapshot_download(  # nosec B615 -- the hub's current snapshot, as a first use takes
+                model.id,
+                endpoint=hub_endpoint(),
+                token=hub_token(),
+                ignore_patterns=_OTHER_FRAMEWORKS,
+            )
+            st = SentenceTransformer(path, token=hub_token())
+            self._snapshots[model.id] = path
             self._cache[model.id] = st
         return st
 
@@ -176,17 +262,9 @@ class HuggingFaceLocalProvider(EmbeddingProvider):  # REQ-420
         first use would -- the version is asked before any text is embedded."""
         from pathlib import Path
 
-        try:
-            from huggingface_hub import snapshot_download  # pyright: ignore[reportMissingImports]
-        except ImportError as exc:
-            raise EmbeddingError(
-                "huggingface provider requires sentence-transformers: pip install provisa[vector]"
-            ) from exc
         with self._in_use:
             self._loaded(model)
-        # local_files_only: the cached snapshot's own name is read, and nothing is downloaded, so
-        # there is no revision to pin.
-        return Path(snapshot_download(model.id, local_files_only=True)).name  # nosec B615
+            return Path(self._snapshots[model.id]).name
 
 
 _PROVIDERS: dict[str, type[EmbeddingProvider]] = {

@@ -24,6 +24,7 @@ import sqlglot
 from provisa.cypher.parser import parse_cypher
 from provisa.ephemeral import seam
 from provisa.gql.traversal_order import reordered
+from provisa.transpiler.transpile import transpile_to_trino
 from tests.unit.ephemeral_harness import Session
 
 pytestmark = pytest.mark.unit
@@ -80,3 +81,27 @@ def test_an_optional_or_bound_path_is_as_written(session):
     ):
         ast = parse_cypher(query, lm)
         assert reordered(ast, lm) is ast, query
+
+
+def test_an_optional_paths_label_filters_reach_trino_as_trinos_sql(session):
+    """The semantic statement filters a session hop's ends by their labels with PostgreSQL's
+    ``@>``; Trino, reading the session's scratch, is sent the statement in its own SQL, which its
+    rewrites read back as Trino's (tests/integration/test_ephemeral_traversal_order_engines.py)."""
+    query = "MATCH (x:Small) OPTIONAL MATCH (a:Big)-[:R]->(b:Small) RETURN a.k AS a"
+    semantic = session.sql(query)
+    assert sqlglot.parse_one(semantic, read="postgres").find(sqlglot.exp.ArrayContainsAll)
+    written = transpile_to_trino(semantic)
+    assert sqlglot.parse_one(written, read="trino").find(sqlglot.exp.ArrayContainsAll) is None
+
+
+def test_a_session_nodes_labels_reach_trino_as_a_json_value(session):
+    """A session node's object names its every label, a list; Trino's JSON_OBJECT takes no array
+    value, and a JSON value only as its text marked FORMAT JSON, so each object it is sent holds
+    the labels so."""
+    query = "MATCH (x:Small) OPTIONAL MATCH (a:Big)-[:R]->(b:Small) RETURN a.k AS a"
+    written = transpile_to_trino(session.sql(query))
+    # Each object's labels, as written and as Trino's own rewrites write it again after reading it.
+    labels = "'labels': JSON_FORMAT(CAST(\"__labels\" AS JSON)) FORMAT JSON"
+    again = sqlglot.parse_one(written, read="trino").sql("trino")
+    for text in (written, again):
+        assert text.count("'labels':") == text.count(labels) > 0

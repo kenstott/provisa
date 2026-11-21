@@ -142,6 +142,8 @@ query SourcesQuery {
     passwordRef
     changeSignal
     rowFetchByKeys
+    isSystem
+    withdrawn
     cdc {
       bootstrapServers
       topicPrefix
@@ -231,7 +233,27 @@ query TagsQuery {
       value
       description
     }
+    requiresCitation
+    required
+    allowedDomains
+    needsReview
+    citations {
+      documentId
+      documentTitle
+      documentSource
+      sectionHeading
+      sectionPage
+      textSha256
+      citedBy
+      citedAt
+      state
+      needsReview
+    }
   }
+}
+
+query OfferedTags($target: TagTargetInput!) {
+  offeredTags(target: $target)
 }
 
 query TagAssignmentsQuery {
@@ -254,6 +276,21 @@ query TagAssignmentsQuery {
     tableRef
     reason
     expiresOn
+    objectKey
+    needsReview
+    citationGap
+    citations {
+      documentId
+      documentTitle
+      documentSource
+      sectionHeading
+      sectionPage
+      textSha256
+      citedBy
+      citedAt
+      state
+      needsReview
+    }
   }
 }
 
@@ -268,7 +305,8 @@ fragment ListedTableFields on RegisteredTableType {
   tableName
   alias
   description
-  draft
+  withdrawn
+  sourceWithdrawn
   viewSql
   materialize
   productIds
@@ -277,6 +315,7 @@ fragment ListedTableFields on RegisteredTableType {
   timeTravel
   apiEndpoint
   modelingRole
+  registeredAt
   viewMetrics {
     metrics
     dimensions
@@ -286,16 +325,16 @@ fragment ListedTableFields on RegisteredTableType {
 
 # The registered tables without their columns, for the pages that name, count or pick tables and
 # show none of their columns.
-query TableRowsQuery {
-  tables {
+query TableRowsQuery($includeWithdrawn: Boolean! = false) {
+  tables(includeWithdrawn: $includeWithdrawn) {
     ...ListedTableFields
   }
 }
 
 # The registered tables with the columns the pages that list them read. TablesQuery is the
 # editor's, every field of every table.
-query TableListQuery {
-  tables {
+query TableListQuery($includeWithdrawn: Boolean! = false) {
+  tables(includeWithdrawn: $includeWithdrawn) {
     ...ListedTableFields
     columns {
       id
@@ -313,8 +352,8 @@ query TableListQuery {
   }
 }
 
-query TablesQuery {
-  tables {
+query TablesQuery($includeWithdrawn: Boolean! = false) {
+  tables(includeWithdrawn: $includeWithdrawn) {
     id
     sourceId
     domainId
@@ -322,6 +361,7 @@ query TablesQuery {
     tableName
     alias
     description
+    registeredAt
     cacheTtl
     roleTtl {
       role
@@ -342,7 +382,8 @@ query TablesQuery {
     pagingCeilingRows
     replicate
     region
-    draft
+    withdrawn
+    sourceWithdrawn
     rowMaterialize
     loadProtected
     offPeakWindow
@@ -375,6 +416,7 @@ query TablesQuery {
     queryTemplate
     fileGlob
     sourceFileColumn
+    importSet
     arguments
     landingFilter
     readWait
@@ -398,6 +440,12 @@ query TablesQuery {
     mvPersist
     mvPrimaryKey
     mvIncremental
+    mvRebuildEvery
+    incrementalOption {
+      available
+      code
+      reason
+    }
     mvCalendar
     mvGrain
     mvAllowedLateness
@@ -675,6 +723,19 @@ query MetricsQuery {
     aiContext
     visibleTo
     fromFact
+    term
+  }
+}
+
+# REQ-2243: the governed metrics a dataset uses, with the glossary term each names.
+query TableMetricsQuery($tableId: Int!) {
+  tableMetrics(tableId: $tableId) {
+    name
+    description
+    aiContext
+    term
+    termDefinition
+    termCalculationMethod
   }
 }
 
@@ -712,11 +773,42 @@ query RelationshipsQuery {
       parameter
       sourceColumn
     }
+    codeResolver
+    withdrawn
   }
 }
 
-query AllRelationshipsQuery {
-  allRelationships {
+query CodeResolversQuery {
+  codeResolvers {
+    id
+    resolver
+    sourceTable
+    sourceColumn
+    sourceMatch
+    targetTable
+    targetColumn
+    targetMatch
+    refreshInterval
+    incremental
+    rebuildEvery
+    incrementalOption {
+      available
+      code
+      reason
+    }
+  }
+}
+
+query CodeResolverIncrementalQuery($resolver: String!, $id: String!) {
+  codeResolverIncremental(resolver: $resolver, id: $id) {
+    available
+    code
+    reason
+  }
+}
+
+query AllRelationshipsQuery($includeWithdrawn: Boolean! = false) {
+  allRelationships(includeWithdrawn: $includeWithdrawn) {
     id
     sourceTableId
     targetTableId
@@ -745,6 +837,7 @@ query AllRelationshipsQuery {
     viaTypeColumn
     viaTypeValue
     viaLabelSource
+    withdrawn
     parameters {
       parameter
       sourceColumn
@@ -847,6 +940,36 @@ query GenerateColumnDescription($tableId: String!, $columnName: String!) {
 
 query GenerateTableDescription($tableId: String!) {
   generateTableDescription(tableId: $tableId)
+}
+
+query GenerateUnregisteredTableDescription(
+  $sourceId: String!
+  $schemaName: String!
+  $tableName: String!
+  $columns: [String!]!
+) {
+  generateTableDescription(
+    sourceId: $sourceId
+    schemaName: $schemaName
+    tableName: $tableName
+    columns: $columns
+  )
+}
+
+query GenerateUnregisteredColumnDescription(
+  $sourceId: String!
+  $schemaName: String!
+  $tableName: String!
+  $columns: [String!]!
+  $columnName: String!
+) {
+  generateColumnDescription(
+    sourceId: $sourceId
+    schemaName: $schemaName
+    tableName: $tableName
+    columns: $columns
+    columnName: $columnName
+  )
 }
 
 query SuggestTableAlias($tableName: String!, $domainId: String!, $sourceId: String!) {
@@ -1070,12 +1193,6 @@ mutation UpdateDataProduct($input: DataProductInput!) {
   }
 }
 
-mutation SaveDataContract($tableId: Int!, $contract: DataContractInput!) {
-  saveDataContract(tableId: $tableId, contract: $contract) {
-    ...MutationResult
-  }
-}
-
 # REQ-1634: a product's members become exactly these tables and commands; the one place membership
 # changes.
 mutation SetDataProductMembers($id: String!, $tableIds: [Int!]!, $commandNames: [String!]!) {
@@ -1128,14 +1245,38 @@ query DataProductFindingsQuery {
   }
 }
 
-mutation CreateTag($input: TagInput!) {
-  createTag(input: $input) {
+mutation CreateTag($input: TagInput!, $citations: [LibraryCitationInput!]) {
+  createTag(input: $input, citations: $citations) {
     ...MutationResult
   }
 }
 
-mutation UpdateTag($input: TagInput!) {
-  updateTag(input: $input) {
+mutation UpdateTag($input: TagInput!, $citations: [LibraryCitationInput!]) {
+  updateTag(input: $input, citations: $citations) {
+    ...MutationResult
+  }
+}
+
+mutation CiteTagDefinition($tagId: String!, $citation: LibraryCitationInput!) {
+  citeTagDefinition(tagId: $tagId, citation: $citation) {
+    ...MutationResult
+  }
+}
+
+mutation UnciteTagDefinition($tagId: String!, $citation: LibraryCitationInput!) {
+  unciteTagDefinition(tagId: $tagId, citation: $citation) {
+    ...MutationResult
+  }
+}
+
+mutation CiteTagAssignment($assignment: TagAssignmentInput!, $citation: LibraryCitationInput!) {
+  citeTagAssignment(assignment: $assignment, citation: $citation) {
+    ...MutationResult
+  }
+}
+
+mutation UnciteTagAssignment($assignment: TagAssignmentInput!, $citation: LibraryCitationInput!) {
+  unciteTagAssignment(assignment: $assignment, citation: $citation) {
     ...MutationResult
   }
 }
@@ -1158,8 +1299,8 @@ mutation DeleteTagParamValue($tagId: String!, $value: String!) {
   }
 }
 
-mutation AssignTag($input: TagAssignmentInput!) {
-  assignTag(input: $input) {
+mutation AssignTag($input: TagAssignmentInput!, $citations: [LibraryCitationInput!]) {
+  assignTag(input: $input, citations: $citations) {
     ...MutationResult
   }
 }
@@ -1173,6 +1314,25 @@ mutation UnassignTag($input: TagAssignmentInput!) {
 mutation RegisterTable($input: TableInput!) {
   registerTable(input: $input) {
     ...MutationResult
+  }
+}
+
+mutation RegisterTables($inputs: [TableInput!]!) {
+  registerTables(inputs: $inputs) {
+    tableName
+    result {
+      ...MutationResult
+    }
+  }
+}
+
+query TableAccess($tableId: Int!, $role: String!) {
+  tableAccess(tableId: $tableId, role: $role) {
+    graphql
+    sql
+    pgwire
+    rest
+    mcp
   }
 }
 
@@ -1197,6 +1357,71 @@ mutation UpdateTable($input: TableInput!) {
 mutation DeleteTable($id: Int!) {
   deleteTable(id: $id) {
     ...MutationResult
+  }
+}
+
+# REQ-2240: several tables deleted in one call, each through deleteTable's own guard.
+mutation DeleteTables($ids: [Int!]!) {
+  deleteTables(ids: $ids) {
+    ...BulkDeleteResult
+  }
+}
+
+# REQ-2240: rows of each list deleted in one call, each through its single delete's own guard.
+mutation DeleteRelationships($ids: [String!]!) {
+  deleteRelationships(ids: $ids) {
+    ...BulkDeleteResult
+  }
+}
+
+mutation DeleteMetrics($names: [String!]!) {
+  deleteMetrics(names: $names) {
+    ...BulkDeleteResult
+  }
+}
+
+mutation DeleteSources($ids: [String!]!) {
+  deleteSources(ids: $ids) {
+    ...BulkDeleteResult
+  }
+}
+
+mutation DeleteRoles($ids: [String!]!) {
+  deleteRoles(ids: $ids) {
+    ...BulkDeleteResult
+  }
+}
+
+mutation DeleteDomains($ids: [String!]!) {
+  deleteDomains(ids: $ids) {
+    ...BulkDeleteResult
+  }
+}
+
+mutation DeleteDataProducts($ids: [String!]!) {
+  deleteDataProducts(ids: $ids) {
+    ...BulkDeleteResult
+  }
+}
+
+mutation DeleteTags($ids: [String!]!) {
+  deleteTags(ids: $ids) {
+    ...BulkDeleteResult
+  }
+}
+
+mutation DeleteScheduledTasks($taskIds: [String!]!) {
+  deleteScheduledTasks(taskIds: $taskIds) {
+    ...BulkDeleteResult
+  }
+}
+
+fragment BulkDeleteResult on BulkDeleteResult {
+  deleted
+  refused {
+    name
+    reason
+    dependents
   }
 }
 
@@ -1265,8 +1490,30 @@ mutation UpdateRelationship($input: RelationshipInput!) {
   }
 }
 
-mutation DeleteRelationship($id: String!, $confirmTagLoss: [String!], $carryTags: Boolean! = false) {
+mutation DeleteRelationship(
+  $id: String!
+  $confirmTagLoss: [String!]
+  $carryTags: Boolean! = false
+) {
   deleteRelationship(id: $id, confirmTagLoss: $confirmTagLoss, carryTags: $carryTags) {
+    ...MutationResult
+  }
+}
+
+mutation CreateCodeResolver($input: CodeResolverInput!) {
+  createCodeResolver(input: $input) {
+    ...MutationResult
+  }
+}
+
+mutation UpdateCodeResolver($input: CodeResolverInput!) {
+  updateCodeResolver(input: $input) {
+    ...MutationResult
+  }
+}
+
+mutation RetireCodeResolver($id: String!) {
+  retireCodeResolver(id: $id) {
     ...MutationResult
   }
 }
@@ -1294,6 +1541,32 @@ mutation StageKaggleDataset($token: String!, $owner: String!, $ref: String!, $id
 
 mutation RefreshKaggleSource($sourceId: String!) {
   refreshKaggleSource(sourceId: $sourceId) {
+    ...MutationResult
+  }
+}
+
+# REQ-1921: a table or view out of production and back; the same for a source.
+mutation WithdrawTable($tableId: Int!) {
+  withdrawTable(tableId: $tableId) {
+    ...MutationResult
+  }
+}
+
+# A put back names the region it returns to (null: no region), within the caller's grant.
+mutation PutBackTable($tableId: Int!, $region: String) {
+  putBackTable(tableId: $tableId, region: $region) {
+    ...MutationResult
+  }
+}
+
+mutation WithdrawSource($sourceId: String!) {
+  withdrawSource(sourceId: $sourceId) {
+    ...MutationResult
+  }
+}
+
+mutation PutBackSource($sourceId: String!, $region: String) {
+  putBackSource(sourceId: $sourceId, region: $region) {
     ...MutationResult
   }
 }
@@ -1484,7 +1757,11 @@ mutation RefreshMv($mvId: String!, $full: Boolean! = false) {
 }
 
 mutation UpdateVersionLog($mvId: String!, $refreshInterval: Int!, $allowedLateness: Float!) {
-  updateVersionLog(mvId: $mvId, refreshInterval: $refreshInterval, allowedLateness: $allowedLateness) {
+  updateVersionLog(
+    mvId: $mvId
+    refreshInterval: $refreshInterval
+    allowedLateness: $allowedLateness
+  ) {
     ...MutationResult
   }
 }
@@ -1595,13 +1872,6 @@ mutation SetSourceRegion($sourceId: String!, $region: String) {
   }
 }
 
-# REQ-1921: put a table or view out of service (draft) or release it.
-mutation SetTableDraft($tableId: Int!, $draft: Boolean!) {
-  setTableDraft(tableId: $tableId, draft: $draft) {
-    ...MutationResult
-  }
-}
-
 # REQ-1954: the import sets a ServiceNow table may be bound to (its active transform maps).
 query AvailableImportSets($sourceId: String!, $schemaName: String!, $tableName: String!) {
   availableImportSets(sourceId: $sourceId, schemaName: $schemaName, tableName: $tableName) {
@@ -1665,4 +1935,25 @@ query SampleOpenapiColumns($sourceId: String!, $tableName: String!, $params: JSO
 # REQ-416: the naming conventions the server takes -- the one list the admin offers.
 query NamingConventions {
   namingConventions
+}
+
+# REQ-788: one table over many files of a files source, before it is registered.
+query FileGlobPreview($sourceId: String!, $glob: String, $tables: [String!]) {
+  fileGlobPreview(sourceId: $sourceId, glob: $glob, tables: $tables) {
+    glob
+    files {
+      file
+      table
+    }
+    sharedColumns
+    differing {
+      file
+      missing
+      extra
+      error
+    }
+    extraFiles
+    unmatchedTables
+    referenceTable
+  }
 }

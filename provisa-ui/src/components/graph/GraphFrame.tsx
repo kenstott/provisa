@@ -21,6 +21,7 @@ import { injectExclusion } from "./graph-model";
 import type { GNode, GEdge, GraphStats, RelLineOverride, FrameData } from "./graph-model";
 import type { FrameView } from "./graph-model";
 import type { SchemaRel } from "./graph-schema-types";
+import type { PathScope } from "./dropPath";
 import { useRequestedView } from "./use-requested-view";
 import { useColumnWidths } from "./use-column-widths";
 import CodeMirror from "@uiw/react-codemirror";
@@ -70,6 +71,7 @@ import {
   ExpandQueryIcon,
   PushPinIcon,
 } from "./GraphIcons";
+import { StopButton } from "../StopButton";
 import { Tip } from "../Tip";
 import { ResultRedirectNotice } from "../ResultRedirectNotice";
 import {
@@ -77,6 +79,7 @@ import {
   FrameError,
   FrameQueryActions,
   FrameRunning,
+  FrameStopped,
   FrameStatementTabs,
 } from "./FrameParts";
 import { nodeAtPoint } from "./canvas/canvas-helpers";
@@ -90,6 +93,8 @@ interface GraphFrameProps {
   requestedView?: FrameView;
   onClose: (id: string) => void;
   onRerun: (id: string, query: string) => void;
+  /** Stop the frame's running query. */
+  onStop?: (id: string) => void;
   onTableDrop?: (frameId: string, compoundLabel: string) => void;
   onDomainDrop?: (frameId: string, domainLabel: string) => void;
   /** A vocabulary pill dropped on a SPARQL frame, on the node of its drawing it landed on, if any. */
@@ -116,6 +121,10 @@ interface GraphFrameProps {
   /** The acting role's relationship types (/data/graph-schema): what a query this frame writes to
    * expand a node names (REQ-1586). */
   schemaRels: SchemaRel[];
+  /** The labels no expansion reaches: their tables take arguments to read (REQ-2135). */
+  parameterized: ReadonlySet<string>;
+  /** Where Show children and Show parents may reach: the selected domains (REQ-2135). */
+  pathScope: PathScope;
   autoImpute?: boolean;
   onSaveEdgeAlias?: (relId: number, cqlAlias: string, gqlAlias: string) => Promise<string | null>;
   onSelectedLabelChange?: (label: string | null) => void;
@@ -150,6 +159,7 @@ export function GraphFrame({
   requestedView,
   onClose,
   onRerun,
+  onStop,
   onTableDrop,
   onDomainDrop,
   onSparqlDrop,
@@ -167,6 +177,8 @@ export function GraphFrame({
   relationships,
   graphRelationships = relationships,
   schemaRels,
+  parameterized,
+  pathScope,
   autoImpute: autoImputeProp = false,
   onSaveEdgeAlias,
   onSelectedLabelChange,
@@ -275,6 +287,8 @@ export function GraphFrame({
     setOverlayData,
     frameNodes: frame.nodes,
     schemaRels,
+    parameterized,
+    pathScope,
   });
 
   const handleExcludeNode = useCallback(
@@ -480,6 +494,16 @@ export function GraphFrame({
             {frame.status === "loading" && (
               <span className="gf-loading">{t("graphFrame.running")}</span>
             )}
+            {frame.status === "loading" && onStop && (
+              <StopButton
+                onClick={() => onStop(frame.id)}
+                tip={t("common.stopQuery")}
+                testId="graph-frame-stop-btn"
+              />
+            )}
+            {frame.status === "stopped" && (
+              <span className="gf-meta-text">{t("common.stopped")}</span>
+            )}
             {frame.status === "done" && (
               <span className="gf-meta-text">{frameMetaText(frame, t)}</span>
             )}
@@ -488,7 +512,7 @@ export function GraphFrame({
             )}
           </div>
           {!isModal && (
-            <Tip text={t("graphFrame.expand")} named>
+            <Tip text={t("graphFrame.enlarge")} named>
               <ActionIcon
                 variant="subtle"
                 className="gf-icon-btn"
@@ -496,7 +520,7 @@ export function GraphFrame({
                   setExpanded(true);
                   setQueryFocused(true);
                 }}
-                aria-label={t("graphFrame.expand")}
+                aria-label={t("graphFrame.enlarge")}
                 data-testid="graph-frame-expand-btn"
               >
                 <ExpandModalIcon size={14} />
@@ -813,6 +837,7 @@ export function GraphFrame({
         {onStatement && <FrameStatementTabs frame={frame} onStatement={onStatement} />}
         <SparqlDrawControls draw={sparqlDraw} onDrawn={() => setView("graph")} />
         {frame.status === "loading" && <FrameRunning />}
+        {frame.status === "stopped" && <FrameStopped />}
         {frame.status === "error" && <FrameError frame={frame} />}
         {frame.redirect && (
           <ResultRedirectNotice className="gf-redirect" redirect={frame.redirect} />
@@ -907,7 +932,8 @@ export function GraphFrame({
             )}
           </div>
         )}
-        {frame.status !== "error" && !frame.redirect && activeView === "table" && (
+        {/* An answer's panes: a query still running has none, and "No rows" is an answer. */}
+        {frame.status === "done" && !frame.redirect && activeView === "table" && (
           <TableView
             columns={frame.columns}
             rows={frame.rows}
@@ -916,7 +942,7 @@ export function GraphFrame({
             setColWidths={setTableColWidths}
           />
         )}
-        {frame.status !== "error" &&
+        {frame.status === "done" &&
           activeView === "json" &&
           (() => {
             const jsonStr = JSON.stringify(frame.rows, null, 2);

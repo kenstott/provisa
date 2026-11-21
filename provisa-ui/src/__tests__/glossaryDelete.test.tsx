@@ -34,7 +34,7 @@ vi.mock("../api/glossary", async (importOriginal) => ({
   deleteGlossaryTerm: vi.fn(),
   fetchGlossaryFindings: vi.fn(async () => []),
   listTermTables: vi.fn(async () => []),
-  fetchAppliedHistory: vi.fn(async () => null),
+  fetchAppliedHistory: vi.fn(async () => ({ retired_in: null, as_of: null, columns: [], tables: [] })),
 }));
 vi.mock("../components/admin/claimColumns", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../components/admin/claimColumns")>()),
@@ -62,6 +62,7 @@ const REVENUE: GlossaryTermSummary = {
   id: 1,
   name: "Revenue",
   definition: "Money in.",
+  calculation_method: null,
   is_abstract: false,
   deprecated: false,
   ref_count: 1,
@@ -95,6 +96,7 @@ const MARGIN_DETAIL: GlossaryTermDetail = {
   experts: [],
   tags: [],
   pending_on: [],
+  iri: null,
 };
 
 describe("GlossaryTab delete (REQ-2198)", () => {

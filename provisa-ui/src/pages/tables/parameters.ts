@@ -24,3 +24,21 @@ export function parameterName(columnName: string): string {
 export function isRequired(c: Pick<TableColumn, "nativeFilterRequired" | "requiredBySteward">) {
   return Boolean(c.nativeFilterRequired) || Boolean(c.requiredBySteward);
 }
+
+// The kinds that are a real column of the table (core/parameters.py REAL_COLUMN_KINDS); every
+// other kind is opaque: an input to the source's call.
+const REAL_COLUMN_KINDS = new Set(["partition_key", "column_value"]);
+
+/** Whether the parameter is an input to the source's call rather than a real column of the
+ * table. */
+export function isOpaque(c: Pick<TableColumn, "nativeFilterType">): boolean {
+  return !REAL_COLUMN_KINDS.has(c.nativeFilterType ?? "");
+}
+
+/** The parameters a read of the table must give, as a caller names each. With any, the table
+ * gives no row count, profile or sample. */
+export function requiredParameters(columns: TableColumn[]): string[] {
+  return columns
+    .filter((c) => c.nativeFilterType && isRequired(c))
+    .map((c) => parameterName(c.columnName));
+}

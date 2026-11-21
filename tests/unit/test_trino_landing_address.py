@@ -113,7 +113,7 @@ def _state(cfg, registered, monkeypatch):
             for src in cfg.sources
         ]
 
-    monkeypatch.setattr("provisa.core.repositories.source.list_all", _source_rows)
+    monkeypatch.setattr("provisa.core.repositories.source.list_in_production", _source_rows)
     return SimpleNamespace(
         config=cfg,
         model_db=(_one_db := SimpleNamespace(acquire=lambda: _FakeConn())),

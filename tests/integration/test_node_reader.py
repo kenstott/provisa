@@ -17,7 +17,15 @@ from __future__ import annotations
 
 import pytest
 
-from provisa.codesource.manifest import EnumOf, Field, ListOf, ManifestRefused, Named, Scalar
+from provisa.codesource.manifest import (
+    EnumOf,
+    Field,
+    ListOf,
+    ManifestRefused,
+    Named,
+    Scalar,
+    TableOf,
+)
 from provisa.node.reader import ensure_typescript, read_bundle
 from provisa.runtime_deps.code_runtimes import CodeRuntimeResolver
 
@@ -185,3 +193,25 @@ def test_a_bundle_that_breaks_the_rules_is_refused_with_every_problem(cache, com
         "typo: unknown tag @tabel",
         "one: @table returns a single value, not a collection of rows",
     ]
+
+
+TABLE_ARGUMENT = """
+import type { TableRef } from "@provisa/services";
+export interface Order { id: number; region: string; }
+export interface Score { region: string; score: number; }
+/** @query */
+export declare function score(orders: TableRef<Order>): Promise<Score[]>;
+/** @command */
+export declare function rescore(orders: TableRef<Order>): Promise<Score[]>;
+"""
+
+
+def test_a_query_takes_a_table_and_a_command_is_a_mutation(cache, compiler, tmp_path):  # REQ-2226
+    (tmp_path / "index.d.ts").write_text(TABLE_ARGUMENT)
+    executable = CodeRuntimeResolver(cache_root=cache).resolve("node")
+    manifest = read_bundle(
+        runtime="node", executable=executable, compiler=compiler, bundle=tmp_path
+    )
+    assert manifest.export("score").kind == "query"
+    assert manifest.export("rescore").kind == "command"
+    assert manifest.export("score").parameters[0].shape == TableOf(Named("Order"))

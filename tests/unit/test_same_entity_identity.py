@@ -17,6 +17,7 @@ term cannot be withdrawn or changed."""
 
 from __future__ import annotations
 
+from unittest.mock import AsyncMock
 import types
 from contextlib import asynccontextmanager
 from typing import Any, cast
@@ -79,6 +80,8 @@ async def _surface(control_plane, monkeypatch):
 
     monkeypatch.setattr(glossary_router, "_pool", _pool)
     monkeypatch.setattr(glossary_router, "_notify", _notify)
+    # REQ-2185: a term's save embeds it in the background, which these cases do not run.
+    monkeypatch.setattr("provisa.api.admin.reference_library_router.embed_terms", AsyncMock())
     monkeypatch.setattr(glossary_router, "_require_glossary_rw", lambda request: None)
     monkeypatch.setattr(glossary_router, "_authority", lambda request: None)
     monkeypatch.setattr(glossary_router, "_curate_authority", lambda request: None)

@@ -85,10 +85,7 @@ def _prepare_sync():
 
 @pytest.fixture
 def planes(monkeypatch):
-    try:
-        sync_engine = _prepare_sync()
-    except Exception as exc:  # noqa: BLE001 — the suite provisions this PG; a miss is a config fault
-        pytest.skip(f"live Postgres not reachable at {_SYNC_URL}: {exc}")
+    sync_engine = _prepare_sync()
 
     admin_db = Database(create_engine_from_url(_ASYNC_URL), name="admin", search_path=_ADMIN_SCHEMA)
     tenant_db = Database(
@@ -182,15 +179,27 @@ def test_a_failed_environment_mint_fails_registration_instead_of_seating_prod(pl
 # so request.state.identity is never set -- exactly the unauthenticated case the middleware forwards.
 
 
-def _make_app_authed(user_id: str = "existing-user") -> FastAPI:
-    """Router plus a shim that marks every request as an already-authenticated caller."""
+# What each role may do, as the roles registry holds it: a gate reads rights, never a role's name.
+_ROLE_RIGHTS = {
+    "org_admin": {"capabilities": ["user_management"]},
+    "analyst": {"capabilities": ["query_development"]},
+}
+
+
+def _make_app_authed(role: str, user_id: str = "existing-user") -> FastAPI:
+    """Router plus a shim that marks every request as a signed-in caller acting as ``role``."""
     app = FastAPI()
     _install_api_error_handler(app)
 
     @app.middleware("http")
     async def _inject(request, call_next):
         request.state.identity = AuthIdentity(
-            user_id=user_id, email=None, display_name=None, roles=[], raw_claims={}
+            user_id=user_id,
+            email=None,
+            display_name=None,
+            roles=[role],
+            raw_claims={},
+            acting_roles=[role],
         )
         return await call_next(request)
 
@@ -243,17 +252,45 @@ def test_register_with_an_expired_invite_is_refused_and_writes_nothing(planes):
     assert "expired" not in _usernames(sync_engine)
 
 
-def test_an_authenticated_caller_may_register_without_an_invite(planes, monkeypatch):
+def test_a_user_manager_may_register_an_account_without_an_invite(planes, monkeypatch):
+    """A signed-in caller holding user_management creates an account for someone else."""
     _admin_db, _tenant_db, sync_engine = planes
+    from provisa.api.app import state as app_state
 
     async def _noop_verifier(*_a, **_k):
         return None
 
+    monkeypatch.setattr(app_state, "roles", _ROLE_RIGHTS, raising=False)
     monkeypatch.setattr("provisa.api.auth_router.write_verifier", _noop_verifier)
-    with TestClient(_make_app_authed(), raise_server_exceptions=False) as client:
+    with TestClient(_make_app_authed("org_admin"), raise_server_exceptions=False) as client:
         resp = client.post("/auth/register", json={"username": "byadmin", "password": "pw-pw-pw"})
     assert resp.status_code == 200, resp.text
     assert "byadmin" in _usernames(sync_engine)
+
+
+def test_a_signed_in_caller_without_user_management_registers_nothing(planes, monkeypatch):
+    """Being signed in is not a right to create accounts: without user_management the register is
+    refused as any missing right is, with or without an invitation in hand, and writes nothing."""
+    _admin_db, _tenant_db, sync_engine = planes
+    from provisa.api.app import state as app_state
+
+    monkeypatch.setattr(app_state, "roles", _ROLE_RIGHTS, raising=False)
+    with TestClient(_make_app_authed("analyst"), raise_server_exceptions=False) as client:
+        bare = client.post("/auth/register", json={"username": "second", "password": "pw-pw-pw"})
+        invited = client.post(
+            "/auth/register",
+            json={"username": "third", "password": "pw-pw-pw", "invite_token": _TOKEN},
+        )
+    for resp in (bare, invited):
+        assert resp.status_code == 403, resp.text
+        assert resp.json()["code"] == "auth.missing_capability"
+    assert _usernames(sync_engine).isdisjoint({"second", "third"})
+    with sync_engine.begin() as conn:
+        conn.execute(text(f"SET search_path TO {_ADMIN_SCHEMA}"))
+        uses = conn.execute(
+            select(org_invites.c.uses).where(org_invites.c.token == _TOKEN)
+        ).scalar_one()
+    assert uses == 0, "a refused register spends no invitation"
 
 
 def test_credential_less_register_with_a_valid_invite_creates_the_membership(planes, monkeypatch):

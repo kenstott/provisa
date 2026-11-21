@@ -31,26 +31,6 @@ export interface DbtPreview {
   warehouses: DbtWarehouseOffer[];
 }
 
-/** A model the manifest marks public with an enforced contract: a steward decides. */
-export interface DbtCandidate {
-  unique_id: string;
-  name: string;
-  description: string | null;
-  version: string | null;
-  suggested_id: string;
-  owner: { name: string | null; email: string | null } | null;
-  owner_role: string | null;
-  columns: {
-    name: string;
-    data_type: string | null;
-    description: string | null;
-    required: boolean;
-  }[];
-  tests: { name: string; column: string | null }[];
-  table_id: number | null;
-  products: string[];
-}
-
 /** What creating a warehouse source asks for: the manifest knows the rest. */
 export interface DbtNewWarehouse {
   sourceId: string;

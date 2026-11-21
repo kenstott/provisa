@@ -49,6 +49,34 @@ export const EMPTY_CDC: CdcState = {
   consumerGroupId: "",
 };
 
+/** The create form's state before a type is picked: every field at its default, no source's. */
+export function emptySourceForm(): SourceFormState {
+  return {
+    id: "",
+    type: "postgresql",
+    host: "",
+    port: 5432,
+    database: "",
+    username: "",
+    password: "",
+    gqlNamingConvention: "",
+    cacheTtl: "",
+    cacheEnabled: true,
+    replicate: null,
+    region: null,
+    loadProtected: false,
+    offPeakWindow: "",
+    offPeakTz: "UTC",
+    changeSignal: "ttl",
+    sentinelPath: "",
+    freshnessGate: false,
+    maxLiveConcurrency: "",
+    path: "",
+    allowedDomains: "",
+    description: "",
+  };
+}
+
 export interface SharepointSeed {
   authType: string;
   certPath: string;
@@ -353,6 +381,8 @@ export type RemoteSeed =
       baseUrl: string;
       cacheTtl: string;
       auth: RemoteAuth;
+      // REQ-2265: what an OpenAPI brand's setup was given (its base URL).
+      setup: Record<string, string>;
     }
   | {
       kind: "grpc";
@@ -422,6 +452,7 @@ export async function fetchRemoteSeed(s: Source): Promise<RemoteSeed> {
       baseUrl: String(reg.base_url),
       cacheTtl: ttl,
       auth: reg.auth_config as RemoteAuth,
+      setup: reg.setup as Record<string, string>,
     };
   }
   return {

@@ -17,10 +17,9 @@
 # (integration-suite-lanes.yml warehouse-ui), which is.
 #
 # 1. Names every test that did not execute (never counted as passed).
-# 2. Leaves the Fabric capacity paused. The cloud-warehouse spec resumes it (a billable compute
-#    unit) and pauses it in its own teardown -- which does not run when the spec dies or the job
-#    is cut short. Its state is READ here: paused is done, Active is suspended, a transition is
-#    waited out; only a capacity that does not end paused fails the step, and it says so.
+# 2. Deletes this run's Fabric capacity (the prepare script made it; maintainer 2026-11-10, "Paid
+#    cloud resources"), the workspace unassigned first, and reads it back gone, whatever the
+#    spec's outcome; one still there fails the step, and it says so.
 # 3. Leaves the Databricks SQL warehouse stopped and the Snowflake warehouse suspended, for the
 #    same reason: the cloud-warehouse spec's seed wakes the Databricks warehouse and its statements
 #    resume Snowflake's, and nothing in the spec stops either (other workers may still be reading
@@ -38,10 +37,9 @@ status=0
 
 python3 "$(dirname "$0")/playwright_not_executed.py" "${1:?the Playwright JSON report}" || status=1
 
-if [ -n "${FABRIC_RESOURCE_GROUP:-}" ] && [ -n "${FABRIC_CAPACITY_NAME:-}" ]; then
-  ( cd "$GITHUB_WORKSPACE" && uv run python -c \
-      "from tests.integration.fabric_capacity import ensure_capacity_paused as p; print('the Fabric capacity is', p())" ) \
-    || { echo "::error::the Fabric capacity could not be confirmed paused: check it, it may be billing"; status=1; }
+if [ -n "${FABRIC_RESOURCE_GROUP:-}" ] && [ -n "${FABRIC_CAPACITY_NAME:-}" ] && [ -n "${FABRIC_WORKSPACE_ID:-}" ]; then
+  ( cd "$GITHUB_WORKSPACE" && uv run python scripts/fabric_e2e.py down ) \
+    || { echo "::error::this run's Fabric capacity could not be confirmed deleted: check it, it may be billing"; status=1; }
 fi
 
 if [ -n "${DATABRICKS_SERVER_HOSTNAME:-}" ] && [ -n "${DATABRICKS_HTTP_PATH:-}" ] && [ -n "${DATABRICKS_TOKEN:-}" ]; then

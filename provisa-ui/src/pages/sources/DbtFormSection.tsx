@@ -13,17 +13,14 @@
 import { Button, FileInput, Group, PasswordInput, Radio, Text, TextInput } from "@mantine/core";
 import { useTranslation } from "react-i18next";
 import { FormField } from "../../components/form/FormLayout";
-import { DbtCandidates } from "./DbtCandidates";
 import { type DbtNewWarehouse, type DbtSourceForm, type DbtSpecMode } from "./dbt";
 
 interface Props {
   dbt: DbtSourceForm;
   sourceId: string;
-  /** The source is saved, so it holds a manifest whose candidates can be decided. */
-  saved?: boolean;
 }
 
-export function DbtFormSection({ dbt, sourceId, saved = false }: Props) {
+export function DbtFormSection({ dbt, sourceId }: Props) {
   const { t } = useTranslation();
   const fill = (database: string, change: Partial<DbtNewWarehouse>) =>
     dbt.setFills({ ...dbt.fills, [database]: { ...dbt.fills[database], ...change } });
@@ -210,7 +207,6 @@ export function DbtFormSection({ dbt, sourceId, saved = false }: Props) {
           </FormField>
         ),
       )}
-      {saved && <DbtCandidates sourceId={sourceId} />}
     </>
   );
 }

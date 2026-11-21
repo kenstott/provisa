@@ -17,7 +17,7 @@ from __future__ import annotations
 import logging
 
 from fastapi import APIRouter, Request
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, model_validator
 from sqlalchemy import func, select, update
@@ -25,7 +25,12 @@ from sqlalchemy import func, select, update
 from provisa.api.errors import ApiError
 from provisa.core.host_code import refuse_host_code
 from provisa.core.schema_org import tracked_functions, tracked_webhooks
+from provisa.security import sandbox_egress  # REQ-2006
 from provisa.api.admin.capabilities import require_capability_request
+from provisa.api.engine_error_names import client_text
+
+if TYPE_CHECKING:
+    from provisa.executor.source_operation import Operation
 
 log = logging.getLogger(__name__)
 router = APIRouter(prefix="/admin/actions", tags=["admin", "actions"])
@@ -85,6 +90,8 @@ def _row_to_function(row: dict) -> dict:
         "requiresApproval": bool(row.get("requires_approval", False)),  # REQ-1924
         "writesTable": row.get("writes_table"),  # REQ-1924, REQ-871
         "languageBindings": row.get("language_bindings") or {},  # REQ-2168
+        "sourceType": row.get("source_type"),  # REQ-1986
+        "exposedAsTable": row.get("exposed_as_table"),  # REQ-1986
     }
 
 
@@ -184,6 +191,13 @@ class FunctionInput(BaseModel):  # REQ-205, REQ-206, REQ-304, REQ-305, REQ-306
     writesTable: str | None = None  # REQ-1924, REQ-871: "schema.table" of the table it writes
     # REQ-2168: the command's name per language {language: {name?, exclude?}}.
     languageBindings: dict[str, dict] = {}
+    # REQ-1986: the type of the rows a source operation returns as the source's schema names it;
+    # set from the operation the source offers, never from what the form sent.
+    sourceType: str | None = None
+    # REQ-1986: whether a source operation that reads rows is also exposed as a parameterized
+    # table derived from it. Left out, it keeps its stored value; at registration it takes the
+    # default (on unless a plain list of the same type exists).
+    exposedAsTable: bool | None = None
 
 
 class WebhookInput(BaseModel):  # REQ-209, REQ-210, REQ-211
@@ -201,7 +215,7 @@ class WebhookInput(BaseModel):  # REQ-209, REQ-210, REQ-211
     requiresApproval: bool = False  # REQ-209, REQ-1924: each call approved before it is made
 
 
-async def _as_source_operation(body: FunctionInput) -> None:
+async def _as_source_operation(body: FunctionInput) -> "Operation | None":
     """REQ-1924: a command registered on a remote source is one of the operations the source
     offers as commands -- its write operations, and an OpenAPI source's GETs that answer with
     no row schema, which read -- called as it is. What it is follows from the operation the source offers -- its
@@ -222,7 +236,7 @@ async def _as_source_operation(body: FunctionInput) -> None:
     elif source_type in OPERATION_SCHEMA:
         schema_name = OPERATION_SCHEMA[source_type]
     else:
-        return
+        return None
     if source_type == "openapi":
         from provisa.api.admin.schema_helpers import _ensure_openapi_spec
 
@@ -235,6 +249,20 @@ async def _as_source_operation(body: FunctionInput) -> None:
     body.binding = {}
     body.materialize = False
     body.arguments = [{"name": a, "type": "json"} for a in operation.arguments]
+    # Its answer follows from the operation too: the form's empty output columns would declare
+    # it VOID (REQ-2001), which no source operation is.
+    body.outputColumns = None
+    body.returnSchema = None
+    body.sourceType = None
+    if operation.table is not None:
+        # REQ-1986: an operation that reads rows and requires a parameter is a function returning
+        # rows, its arguments typed as the source types them. Which table it returns follows from
+        # its table attribute (:func:`_settle_table`).
+        body.arguments = [
+            {"name": a, "type": t}
+            for a, t in zip(operation.arguments, operation.argument_types, strict=True)
+        ]
+        body.sourceType = operation.returns_type
     if operation.binary:
         body.outputColumns = [dict(c) for c in BINARY_ANSWER]
     if source_type == "dbt":  # REQ-2228: it runs wherever dbt already runs
@@ -243,6 +271,74 @@ async def _as_source_operation(body: FunctionInput) -> None:
         body.implKind, body.binding = await command_target(
             state.model_db, body.sourceId, body.functionName
         )
+    return operation
+
+
+async def _settle_table(
+    request: Request, body: FunctionInput, operation: "Operation | None", stored: dict | None
+) -> int | None:
+    """REQ-1986: the table attribute of a source operation that reads rows, and what it returns.
+    ``stored`` is the function's row before this save (None at registration). On, it returns its
+    derived table; off, the rows of the source's plain list of the same type. The attribute
+    left out keeps its stored value, or at registration takes the default. Turned off, it is
+    refused while anything refers to the derived table; else the id of the table to remove once
+    the function is saved."""
+    from provisa.api.admin import _function_table as ft
+    from provisa.api.app import state
+
+    if operation is None or operation.table is None:
+        body.exposedAsTable = None
+        return None
+    was = None if stored is None else stored.get("exposed_as_table")
+    if body.exposedAsTable is None:
+        body.exposedAsTable = (
+            was
+            if was is not None
+            else await ft.default_exposed(state, body.sourceId, operation.returns_type)
+        )
+    if body.exposedAsTable:
+        body.returns = await ft.derive_table(request, body.sourceId, body.domainId, operation)
+        return None
+    assert state.model_db is not None
+    async with state.model_db.acquire() as conn:
+        returns = await ft.plain_list_returned(conn, state, body.sourceId, operation)
+        hidden = (
+            await ft.refuse_hiding(request, conn, body.name, stored["returns"])
+            if was and stored is not None
+            else None
+        )
+    body.returns = returns
+    return hidden
+
+
+def _source_type_of(body: FunctionInput) -> str | None:  # REQ-1986
+    """The returned rows' source type: a source operation's, as :func:`_as_source_operation`
+    read it from the source; no other command has one."""
+    return body.sourceType if body.implKind == "source_operation" else None
+
+
+async def _as_code_command(body: FunctionInput) -> None:  # REQ-2226
+    """A command registered on a code source that names one of its ``@command`` or ``@query``
+    functions is that function. What it is follows from the declaration -- a @command a mutation
+    and a @query a query, its arguments and its output columns -- and not from what the form
+    sent. Any other function is left to :func:`_as_column_transform`, which refuses it by name."""
+    from provisa.api.app import state
+    from provisa.codesource.commands import CODE_COMMAND, SCHEMA, registration
+    from provisa.codesource.source import CODE_SOURCE_TYPES
+
+    source_type = (getattr(state, "source_types", None) or {}).get(body.sourceId, "")
+    if source_type not in CODE_SOURCE_TYPES:
+        return
+    found = await registration(state, body.sourceId, body.functionName)
+    if found is None:
+        return
+    body.kind, body.arguments, body.outputColumns = found
+    body.implKind = CODE_COMMAND
+    body.schemaName = SCHEMA
+    body.returns = ""
+    body.binding = {}
+    body.materialize = False
+    body.writesTable = None
 
 
 async def _as_column_transform(body: FunctionInput) -> None:  # REQ-2131
@@ -260,7 +356,7 @@ async def _as_column_transform(body: FunctionInput) -> None:  # REQ-2131
     from provisa.codesource.source import CODE_SOURCE_TYPES
 
     source_type = (getattr(state, "source_types", None) or {}).get(body.sourceId, "")
-    if source_type not in CODE_SOURCE_TYPES:
+    if source_type not in CODE_SOURCE_TYPES or body.implKind == "code_command":
         return
     try:
         arguments, outputs = await registration(state, body.sourceId, body.functionName)
@@ -308,6 +404,37 @@ def _as_statement(body: FunctionInput) -> None:  # REQ-2001
     body.functionName = body.functionName or body.name
 
 
+def _check_native_sql(body: FunctionInput) -> None:  # REQ-1988
+    """A source_query command holding native SQL is on a relational source that runs it, and its
+    text, split in that source's dialect, names exactly its arguments. Refused naming what is
+    wrong, on create and on update alike."""
+    from provisa.api.app import state
+    from provisa.core.native_sql import BINDING_KEY, NativeSqlRefused, check_on_source
+
+    if body.implKind != "source_query" or BINDING_KEY not in body.binding:
+        return
+    source_type = (getattr(state, "source_types", None) or {}).get(body.sourceId)
+    if source_type is None:
+        raise ApiError(
+            422,
+            "actions.source_not_registered",
+            f"command {body.name!r}: its source {body.sourceId!r} is not registered",
+            name=body.name,
+            source_id=body.sourceId,
+        )
+    try:
+        check_on_source(
+            body.name,
+            body.sourceId,
+            source_type,
+            body.binding,
+            [a["name"] for a in body.arguments],
+        )
+    except NativeSqlRefused as exc:
+        raise ApiError(422, exc.code, str(exc), name=body.name, reason=exc.reason) from exc
+    body.functionName = body.functionName or body.name
+
+
 def _check_command_bindings(body: FunctionInput) -> None:  # REQ-2168
     """The command's bindings and, for a SQL expression function, its template, as they will be
     served: no binding another command or a built-in holds in its language (refused naming both),
@@ -315,6 +442,7 @@ def _check_command_bindings(body: FunctionInput) -> None:  # REQ-2168
     from provisa.api.app import state
     from provisa.core.builtin_commands import BuiltinRefused, check as check_builtin
     from provisa.core.command_bindings import CommandBindingRefused, check_declared, check_names
+    from provisa.api.mcp.tool_groups import check_command_names
     from provisa.core.sql_expression import (
         SqlExpressionRefused,
         check_for_engines,
@@ -348,6 +476,7 @@ def _check_command_bindings(body: FunctionInput) -> None:  # REQ-2168
     try:
         check_declared(body.name, body.languageBindings)
         check_names([*served.values(), saved])
+        check_command_names([*served.values(), saved])  # REQ-2246
         if body.implKind == "builtin":
             check_builtin(body.name, body.binding)
         if body.implKind == "sql_expression":
@@ -494,9 +623,11 @@ async def create_function(
     """Create a tracked DB function."""
     require_capability_request(request, "table_registration")
     body.domainId = _saved_domain(request, body.name, body.domainId)
-    await _as_source_operation(body)
+    operation = await _as_source_operation(body)
+    await _as_code_command(body)  # REQ-2226
     await _as_column_transform(body)  # REQ-2131
     _as_statement(body)  # REQ-2001
+    _check_native_sql(body)  # REQ-1988
     _check_command_bindings(body)  # REQ-2168
     _check_written_table(body)
     from provisa.api.app import state
@@ -505,6 +636,9 @@ async def create_function(
 
     if state.model_db is None:
         raise ApiError(503, "actions.database_not_connected", "Database not connected")
+    async with state.model_db.acquire() as _conn:
+        await _refuse_taken_name(_conn, tracked_functions, body.name, "function")
+    await _settle_table(request, body, operation, None)  # REQ-1986
 
     func = Function(
         name=body.name,
@@ -522,6 +656,8 @@ async def create_function(
         materialize=body.materialize,
         requires_approval=body.requiresApproval,  # REQ-1924
         writes_table=body.writesTable,  # REQ-1924, REQ-871
+        source_type=_source_type_of(body),  # REQ-1986
+        exposed_as_table=body.exposedAsTable,  # REQ-1986
         language_bindings={  # REQ-2168
             k: CommandBinding(**v) for k, v in body.languageBindings.items()
         },
@@ -535,7 +671,6 @@ async def create_function(
     )
     # return_schema is a JSON column — pass the Python object directly (no double-encoding).
     async with state.model_db.acquire() as _conn:
-        await _refuse_taken_name(_conn, tracked_functions, body.name, "function")
         await _refuse_unreachable_mask(_conn, body.outputColumns)
         # REQ-870: re-registering a stored command read-safe is a reclassification.
         await _require_reclassification(
@@ -558,9 +693,11 @@ async def update_function(
     require_capability_request(request, "table_registration")
     refuse_host_code(name, body.implKind)  # REQ-2134
     body.domainId = _saved_domain(request, name, body.domainId)
-    await _as_source_operation(body)
+    operation = await _as_source_operation(body)
+    await _as_code_command(body)  # REQ-2226
     await _as_column_transform(body)  # REQ-2131
     _as_statement(body)  # REQ-2001
+    _check_native_sql(body)  # REQ-1988
     _check_command_bindings(body)  # REQ-2168
     _check_written_table(body)
     from provisa.api.app import state
@@ -569,6 +706,19 @@ async def update_function(
         raise ApiError(503, "actions.database_not_connected", "Database not connected")
 
     from provisa.core.repositories import data_product as data_product_repo
+    from provisa.core.repositories import function as function_repo
+
+    stored = None
+    if operation is not None and operation.table is not None:
+        # REQ-1986: its table attribute is settled against what is stored.
+        async with state.model_db.acquire() as conn:
+            stored = await function_repo.get_function(conn, name)
+        if stored is None:
+            raise ApiError(
+                404, "actions.function_not_found", f"Function '{name}' not found", name=name
+            )
+    body.name = name
+    hidden = await _settle_table(request, body, operation, stored)  # REQ-1986
 
     async with state.model_db.acquire() as conn:
         # REQ-1531: moving it needs the domain it is moved out of as well.
@@ -610,12 +760,18 @@ async def update_function(
                 requires_approval=body.requiresApproval,  # REQ-1924
                 writes_table=body.writesTable,  # REQ-1924, REQ-871
                 language_bindings=body.languageBindings,  # REQ-2168
+                source_type=_source_type_of(body),  # REQ-1986
+                exposed_as_table=body.exposedAsTable,  # REQ-1986
                 updated_at=func.now(),
             )
         )
 
     if (result.rowcount or 0) == 0:
         raise ApiError(404, "actions.function_not_found", f"Function '{name}' not found", name=name)
+    if hidden is not None:  # REQ-1986: its table, no longer exposed, goes once nothing returns it
+        from provisa.api.admin._function_table import remove_table
+
+        await remove_table(hidden)
 
     log.info("Updated tracked function %s", name)
     from provisa.api.app import _rebuild_schemas
@@ -624,10 +780,15 @@ async def update_function(
     return {"success": True, "name": name}
 
 
-async def _refuse_unreachable_mask(conn, columns: list[dict] | None) -> None:  # REQ-2059
-    """A contract column's mask list holding an entry no reader can reach is not saved (422)."""
+async def _refuse_unreachable_mask(conn, columns: list[dict] | None) -> None:  # REQ-2059, REQ-2131
+    """A contract column's mask list holding an entry no reader can reach, or a constant other
+    than NULL on a non-text column, is not saved (422)."""
     from provisa.core.repositories.mask_lists import refuse_unreachable_masks
-    from provisa.security.masking import MaskUnreachable
+    from provisa.security.masking import (
+        MaskConstantNotText,
+        MaskUnreachable,
+        refuse_non_text_constant,
+    )
 
     lists = {c["name"]: c.get("masks") or [] for c in columns or []}
     try:
@@ -639,6 +800,17 @@ async def _refuse_unreachable_mask(conn, columns: list[dict] | None) -> None:  #
             str(refused),
             entries=refused.entries,
             column=refused.column,
+        ) from None
+    try:
+        for c in columns or []:
+            refuse_non_text_constant(c["name"], lists[c["name"]], c["type"])
+    except MaskConstantNotText as refused:
+        raise ApiError(
+            422,
+            "actions.mask_constant_not_text",
+            str(refused),
+            column=refused.column,
+            type=refused.data_type,
         ) from None
 
 
@@ -681,10 +853,21 @@ async def delete_function(request: Request, name: str):  # REQ-205, REQ-253
         await _require_its_domain(request, conn, tracked_functions, name)
         from provisa.core.repositories import function as function_repo
 
+        stored = await function_repo.get_function(conn, name)
+        derived = None
+        if stored is not None and stored.get("exposed_as_table"):
+            # REQ-1986: its derived table goes with it, refused as turning it off is.
+            from provisa.api.admin._function_table import refuse_hiding
+
+            derived = await refuse_hiding(request, conn, name, stored["returns"])
         deleted = await function_repo.delete_function(conn, name)
 
     if not deleted:
         raise ApiError(404, "actions.function_not_found", f"Function '{name}' not found", name=name)
+    if derived is not None:
+        from provisa.api.admin._function_table import remove_table
+
+        await remove_table(derived)
 
     log.info("Deleted tracked function %s", name)
     from provisa.api.app import _rebuild_schemas
@@ -699,6 +882,8 @@ async def create_webhook(
 ):  # REQ-209, REQ-210, REQ-211, REQ-253, REQ-434
     """Create a tracked webhook."""
     require_capability_request(request, "table_registration")
+    # REQ-2006: a held org's webhook reaches public destinations only; refused by name.
+    sandbox_egress.require_endpoint_url_allowed(body.url)
     body.domainId = _saved_domain(request, body.name, body.domainId)
     from provisa.api.app import state
 
@@ -771,8 +956,10 @@ async def create_webhook(
         "approved": False,
         "creationRequestId": request_id,
         "message": (
-            f"Webhook {body.name!r} registered — awaiting a steward holding "
-            "'webhook_registration' to approve it before it is exposed."
+            client_text(
+                f"Webhook {body.name!r} registered — awaiting a steward holding "
+                "'webhook_registration' to approve it before it is exposed."
+            )
         ),
     }
 
@@ -781,6 +968,8 @@ async def create_webhook(
 async def update_webhook(request: Request, name: str, body: WebhookInput):  # REQ-209, REQ-253
     """Update a tracked webhook by name."""
     require_capability_request(request, "table_registration")
+    # REQ-2006: a held org's webhook reaches public destinations only; refused by name.
+    sandbox_egress.require_endpoint_url_allowed(body.url)
     body.domainId = _saved_domain(request, name, body.domainId)
     from provisa.api.app import state
 

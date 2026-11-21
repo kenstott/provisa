@@ -8,15 +8,16 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// REQ-1984, REQ-1993, REQ-2200: a code source -- the organisation's own Node, Python or Go
-// functions, run in a sandboxed worker -- keeps what its code is in its mapping
+// REQ-1984, REQ-1993, REQ-2200, REQ-2227: a code source -- the organisation's own Node, Python,
+// Go or Rust functions, run in a sandboxed worker -- keeps what its code is in its mapping
 // (provisa/codesource/source.py):
 //
-//   runtime   node | bun | deno (Node); python (Python); go (Go)
+//   runtime   node | bun | deno (Node); python (Python); go (Go); rust (Rust)
 //   code      a package at an exact version, a Git repository at a commit, or an uploaded archive
 //   lockfile  a lockfile given beside code that carries none
 //   entry     a Python source's entry module, when its code has more than one; a Go source's
-//             package directory, when its functions are not the module's root package
+//             package directory, when its functions are not the module's root package; a Rust
+//             source's crate directory, when its functions are not in the code's root crate
 //   mode      REQ-2098: dev (its code on this server) or built (its image on a remote host); a
 //             built source also keeps its remote host and the code hash it is pinned to, which
 //             an edit of the form carries through unchanged
@@ -32,14 +33,16 @@
 export const NODE = "node";
 export const PYTHON = "python";
 export const GO = "go";
-export const CODE_SOURCE_TYPES = new Set([NODE, PYTHON, GO]);
+export const RUST = "rust";
+export const CODE_SOURCE_TYPES = new Set([NODE, PYTHON, GO, RUST]);
 
-/** The languages whose source names where its code is entered: Python's module, Go's package. */
-export const NAMED_ENTRY = new Set([PYTHON, GO]);
+/** The languages whose source names where its code is entered: Python's module, Go's package,
+ * Rust's crate. */
+export const NAMED_ENTRY = new Set([PYTHON, GO, RUST]);
 
 export const NODE_RUNTIMES = ["node", "bun", "deno"] as const;
 
-/** Where the code comes from: a package (npm, PyPI or a Go module), a Git repository, or an
+/** Where the code comes from: a package (npm, PyPI, a Go module or a crate), a Git repository, or an
  * upload. */
 export type CodeOrigin = "package" | "git" | "upload" | "directory";
 
@@ -48,14 +51,16 @@ export const PACKAGE_KIND: Record<string, string> = {
   [NODE]: "npm",
   [PYTHON]: "pypi",
   [GO]: "gomod",
+  [RUST]: "cargo",
 };
 
 /** The lockfiles each language installs from (provisa/node/install.py, provisa/python/install.py,
- * provisa/golang/install.py). */
+ * provisa/golang/install.py, provisa/rustlang/install.py). */
 export const LOCKFILES: Record<string, string[]> = {
   [NODE]: ["package-lock.json", "npm-shrinkwrap.json", "bun.lock", "bun.lockb", "deno.lock"],
   [PYTHON]: ["uv.lock", "pylock.toml", "requirements.txt"],
   [GO]: ["go.sum"],
+  [RUST]: ["Cargo.lock"],
 };
 
 const COMMIT = /^[0-9a-f]{40}$/;
@@ -147,7 +152,7 @@ export function codeMappingJson(type: string, fields: Record<string, string>): s
         }
       : {};
   return JSON.stringify({
-    // Node names its runtime; Python and Go each have one.
+    // Node names its runtime; Python, Go and Rust each have one.
     runtime: type === NODE ? (fields.code_runtime ?? "node") : type,
     code,
     ...(lockfile ? { lockfile } : {}),

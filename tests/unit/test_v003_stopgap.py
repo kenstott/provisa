@@ -45,11 +45,9 @@ def _gov(rls_rules: dict[int, str] | None = None, **extra) -> GovernanceContext:
     return GovernanceContext(
         rls_rules=rls_rules or {},
         masking_rules={},
-        visible_columns={
-            1: frozenset({"id", "name", "email"}),
-            2: None,  # all columns visible (REQ-039: absent key = fail closed, None = all visible)
-            3: None,
-        },
+        # As the build states every table it serves (stage2): customer's ssn hidden, orders and
+        # regions served whole (None). A table with no entry is refused (fail closed, REQ-039).
+        visible_columns={1: frozenset({"id", "name", "email"}), 2: None, 3: None},
         table_map={
             "bank.customer": 1,
             "customer": 1,

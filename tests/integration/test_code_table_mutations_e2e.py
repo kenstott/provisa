@@ -29,7 +29,7 @@ import httpx
 import pytest
 import yaml
 
-from tests.helpers import registered_id, release_field, write_grants_field
+from tests.helpers import registered_id, write_grants_field
 
 pytestmark = [pytest.mark.integration, pytest.mark.local_platform]
 
@@ -272,7 +272,6 @@ def shop(server):
             f'schemaName: "default", tableName: "{table}", cacheTtl: 300, columns: [{", ".join(columns)}]}})',
         )
         ids[table] = registered_id(registered["message"])
-        _admin(server, release_field(ids[table]))
     _admin(
         server,
         write_grants_field(ids["orders"], [_ADMIN, _CLERK], ["id", "status", "total", "region"]),

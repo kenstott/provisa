@@ -1,0 +1,36 @@
+{
+  "wikidataTable": {
+    "modeClass": "類別的表格",
+    "starters": {
+      "countries": "國家（ISO 代碼、首都、人口）",
+      "currencies": "貨幣（ISO 4217）",
+      "languages": "語言（ISO 639）",
+      "admin_regions": "一級行政區",
+      "organizations": "上市機構（LEI、股票代號、ISIN）"
+    },
+    "class": "類別",
+    "classHint": "按名稱搜尋類別，或從下方最常用的類別開始；表格包含該類別的實例。",
+    "nothingFound": "找不到",
+    "instances": "實例數目：{{value}}",
+    "broader": "上位類別",
+    "narrower": "下位類別",
+    "columns": "欄",
+    "columnsHint": "此類別實例最常用的屬性。",
+    "filterRequired": "超過 {{limit}} 個實例：請選擇篩選條件。",
+    "filterProperty": "篩選依據",
+    "filterValue": "值",
+    "useClass": "使用此類別",
+    "browseTitle": "最常用的類別",
+    "browseLoading": "正在統計最常用的類別…",
+    "members": "成員",
+    "starterDescriptions": {
+      "countries": "每個國家一行。",
+      "currencies": "每種具有 ISO 4217 代碼的貨幣一行。",
+      "languages": "每種具有 ISO 639-3 代碼的語言一行。",
+      "admin_regions": "州、省及其他一級行政區劃，連同其所屬國家。",
+      "organizations": "每個現時證券交易所上市一行。"
+    },
+    "searching": "正在搜尋…",
+    "loadingClass": "正在建立該類別的查詢…"
+  }
+}

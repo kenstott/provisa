@@ -32,6 +32,7 @@ from sqlalchemy import select
 from provisa.api.admin.capabilities import require_capability_request
 from provisa.api.app import state
 from provisa.api.errors import ApiError
+from provisa.api.engine_error_names import client_value
 
 router = APIRouter(prefix="/admin/synthetic-datasets", tags=["admin", "synthetic"])
 
@@ -135,7 +136,7 @@ async def list_datasets(request: Request) -> list[dict]:
             "scale": r.scale,
             "status": r.status,
             "storeSchema": r.store_schema,
-            "error": r.error,
+            "error": client_value(r.error),
             "generatedAt": _jsonable(r.generated_at),
             "tables": [
                 {

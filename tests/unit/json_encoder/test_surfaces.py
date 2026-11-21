@@ -183,6 +183,9 @@ def jsonapi(
     warnings=None,
     batches=None,
     table_name="orders",
+    include_fields=None,
+    include_names=None,
+    single=False,
 ):
     batches = table.to_batches() if batches is None else batches
     include_keys = (
@@ -212,6 +215,9 @@ def jsonapi(
             include_keys=include_keys,
             extra=extra,
             warnings=warnings,
+            include_fields=include_fields,
+            include_names=include_names,
+            single=single,
         ),
         lambda: rs.encode_jsonapi(
             rust_batches(batches),
@@ -230,6 +236,9 @@ def jsonapi(
             base_path=f"/data/jsonapi/sales/{table_name}",
             link_params=list(extra.items()),
             warnings=warnings_json(warnings),
+            include_fields=include_fields,
+            include_names=include_names,
+            single=single,
         ),
     )
 
@@ -340,6 +349,83 @@ def test_jsonapi_include_errors():
     jsonapi(t, [C("id"), C("x", "customer", "many-to-one", column="c")], includes=("customer",))
     t = pa.table({"id": [1, 2], "customer": ["7", "{}"]})
     jsonapi(t, [C("id"), C("customer", json=True)], includes=("customer",))
+
+
+NO_PK_PLAN = [
+    C("status"),
+    C("item_id", "items", "one-to-many"),
+    C("part_id", "items.parts", "one-to-many"),
+    C("prod_name", "items.product", "many-to-one"),
+    C("cust_id", "customer", "many-to-one"),
+    C("cust_name", "customer", "many-to-one"),
+]
+NO_PK_NAMES = {
+    "items.parts": ("parts", {"part_id": "part_ref"}),
+    "items.product": ("product", {"prod_name": "name"}),
+}
+
+
+@pytest.mark.parametrize(
+    "includes",
+    [("items",), ("items.parts",), ("items.parts", "items.product", "customer"), ("customer",)],
+    ids=["o2m", "o2m-dotted", "dotted-both", "m2o"],
+)
+@pytest.mark.parametrize(
+    "keys",
+    [
+        {"items": [], "items.parts": [], "items.product": ["name"], "customer": ["cust_id"]},
+        {"items": ["item_id"], "items.parts": ["part_ref"], "items.product": [], "customer": []},
+    ],
+    ids=["position", "keyed"],
+)
+@pytest.mark.parametrize("base_keys", [(), ("status",)], ids=["root-position", "root-key"])
+def test_jsonapi_req1929_ids(includes, keys, base_keys):
+    """REQ-1929: no primary key needed; a root with no key columns is its position; a one-to-many
+    include with no key is '<parent id>:<n>'; dotted includes and fields[<type>] on both paths."""
+    t = project(orders(), NO_PK_PLAN)
+    for fields in (None, {"items": ["item_id"], "parts": [], "customer": ["cust_name"]}):
+        assert (
+            jsonapi(
+                t,
+                NO_PK_PLAN,
+                base_keys=base_keys,
+                includes=includes,
+                include_keys=keys,
+                include_names=NO_PK_NAMES,
+                include_fields=fields,
+                page_size=1000,
+            )
+            == "ok"
+        )
+
+
+def test_jsonapi_position_id_escapes_parent():
+    """The parent id's ':' and '\\' are escaped in a position id."""
+    t = pa.table({"k": ["a:b", "c\\d", "e"], "item": pa.array([1, 2, 3], pa.int64())})
+    plan = [C("k"), C("item_id", "items", "one-to-many", column="item")]
+    assert (
+        jsonapi(
+            project(t, plan),
+            plan,
+            base_keys=("k",),
+            includes=("items",),
+            include_keys={"items": []},
+        )
+        == "ok"
+    )
+
+
+@pytest.mark.parametrize(
+    "includes", [(), ("customer",), ("line_items",)], ids=["bare", "m2o", "o2m"]
+)
+@pytest.mark.parametrize("base_keys", [("id",), ("id", "order_status")], ids=["id", "composite"])
+def test_jsonapi_single_resource(includes, base_keys):
+    """REQ-1929: a lookup's document is its one resource (null for none), linked only to self."""
+    cols = JA_INCLUDE if includes else JA_COLS
+    t = project(jsonapi_orders(), cols)
+    kw = {"includes": includes, "base_keys": base_keys, "single": True, "page_size": 1, "probe": 0}
+    assert jsonapi(t, cols, **kw) == "ok"
+    assert jsonapi(t.slice(0, 0), cols, **kw) == "ok"
 
 
 @pytest.mark.parametrize("seed", range(1, 1500, 5))

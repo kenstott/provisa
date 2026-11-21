@@ -20,25 +20,53 @@ import { RoleGrantAction } from "../RoleGrantAction";
 import type { Dependent } from "../../lib/dependents";
 
 const DEPENDENTS: Dependent[] = [
-  { kind: "column", id: 41, name: "orders.amount", via: ["table_columns.visible_to"], table_id: 1 },
-  { kind: "column", id: 42, name: "orders.note", via: ["table_columns.writable_by"], table_id: 1 },
+  {
+    kind: "column",
+    id: 41,
+    name: "orders.amount",
+    label: "orders.amount",
+    via: ["table_columns.visible_to"],
+    table_id: 1,
+  },
+  {
+    kind: "column",
+    id: 42,
+    name: "orders.note",
+    label: "orders.note",
+    via: ["table_columns.writable_by"],
+    table_id: 1,
+  },
   {
     kind: "column",
     id: 51,
     name: "refunds.reason",
+    label: "refunds.reason",
     via: ["table_columns.visible_to"],
     table_id: 2,
   },
-  { kind: "metric", id: "revenue", name: "revenue", via: ["metrics.visible_to"] },
-  { kind: "command", id: "refund", name: "refund", via: ["tracked_functions.visible_to"] },
+  { kind: "metric", id: "revenue", name: "revenue", label: "revenue", via: ["metrics.visible_to"] },
+  {
+    kind: "command",
+    id: "refund",
+    name: "refund",
+    label: "refund",
+    via: ["tracked_functions.visible_to"],
+  },
   {
     kind: "role_assignment",
     id: 7,
     name: "alice holds seller",
+    label: "alice holds seller",
     via: ["user_role_assignments.role_id"],
     user_id: "alice",
   },
-  { kind: "data_product", id: "sales-core", name: "Sales", via: ["data_products.owner_role"] },
+  {
+    kind: "data_product",
+    id: "sales-core",
+    name: "Sales",
+    label: "Sales",
+    via: ["data_products.owner_role"],
+  },
 ];
 
 const ok = { success: true, message: "" };

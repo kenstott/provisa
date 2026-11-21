@@ -94,7 +94,7 @@
     "authMechanismGssapi": "GSSAPI (Kerberos)",
     "upload": "Carica file",
     "uploadReplace": "Carica un nuovo file",
-    "uploadNeedsId": "Inserisci prima l'ID della sorgente: il file viene conservato sotto di esso.",
+    "uploadNeedsId": "Inserire prima l'ID dell'origine, perché il file viene conservato sotto di esso.",
     "uploadedFileHint": "Il file caricato di questa sorgente, conservato nella cartella della tua organizzazione. Caricane uno nuovo per sostituirlo.",
     "fileLocationsHint": "{files}/… nei file dell'organizzazione, un percorso sul server, un indirizzo https://, oppure s3://, gs:// o az:// con le credenziali dell'archivio; oppure carica il file.",
     "fileDatabaseLocationsHint": "{files}/… nei file dell'organizzazione, un percorso sul server, un indirizzo https://, oppure s3://, gs:// o az:// con le credenziali dell'archivio (lì in sola lettura); oppure carica il file.",
