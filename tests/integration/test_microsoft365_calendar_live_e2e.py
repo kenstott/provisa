@@ -166,6 +166,22 @@ def _sweep(token, everything: bool) -> None:
                     graph.write("DELETE", f"{ROOT}/todo/lists/{quote(item['id'], safe='')}")
 
 
+def _assert_none_left(token) -> None:
+    """Read back after the sweep: a calendar or To Do list of the test's mark still there fails."""
+    with httpx.Client() as client:
+        graph = _graph(client, token)
+        left = [
+            c.get("name")
+            for c in calendar.calendars(graph, ADA)
+            if (c.get("name") or "").startswith(_MARK)
+        ]
+        for page in graph.pages(f"{ROOT}/todo/lists"):
+            left += [
+                i.get("displayName") for i in page if (i.get("displayName") or "").startswith(_MARK)
+            ]
+    assert not left, f"test residue left in the tenant mailbox: {left}"
+
+
 @pytest.fixture(scope="module")
 def made(token):
     """A calendar and a To Do list of this run's own, removed when the module ends."""
@@ -178,6 +194,7 @@ def made(token):
         yield SimpleNamespace(calendar=made_calendar["id"], task_list=made_list["id"])
     finally:
         _sweep(token, everything=True)
+        _assert_none_left(token)
 
 
 def _ours(rows: list[dict], made) -> list[dict]:
