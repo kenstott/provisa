@@ -229,7 +229,7 @@ def view(server):
     )
     # A column with a mask list masks every reader holding none of its entries (REQ-2059): the
     # last entry, with no "to" and no mask, leaves every other reader unmasked.
-    id_mask = f'{{to: ["{_ID_MASKED}"], mask: {{type: "constant", value: 0}}}}, {{mask: null}}'
+    id_mask = f'{{to: ["{_ID_MASKED}"], mask: {{type: "constant", value: null}}}}, {{mask: null}}'
     address_mask = (
         f'{{to: ["{_MASKED}"], mask: {{type: "constant", value: "***"}}}}, {{mask: null}}'
     )
@@ -414,9 +414,25 @@ def test_a_masked_input_masks_the_outputs_computed_from_it_and_not_the_others(
 def test_a_masked_plain_input_masks_its_own_output_only(server, endpoint, door):
     before = len(endpoint.received)
     rows = _DOORS[door](server, _ID_MASKED)
-    assert {int(r["id"]) for r in rows} == {0}
+    # A non-text column under a constant mask reads as NULL, keeping its type (amended 2026-11-20).
+    assert {r["id"] for r in rows} == {None}
     assert sorted(_parts(r) for r in rows) == sorted(_clear(i) for i in range(_ROWS))
     assert len(endpoint.received) == before
+
+
+@pytest.mark.parametrize("role", [_ADMIN, _EAST, _MASKED])
+def test_the_input_column_the_build_keeps_for_a_row_rule_reaches_no_reader(server, role):
+    """The build, governed as the administrator, keeps raw_address beside the outputs for
+    east_reader's rule; a reader's star read gets the view's columns only, and naming the kept
+    column is refused."""
+    rows = _http(server, role, "SELECT * FROM clean_suppliers ORDER BY id")
+    assert rows is not None, server.dump_stderr_debug()[-4000:]
+    assert {tuple(sorted(r)) for r in rows} == {("city", "country", "id", "street")}
+    named = _sql(
+        server, role, 'SELECT id, "__rule_input_suppliers__raw_address" FROM clean_suppliers'
+    )
+    assert named.status_code in (400, 403), named.text
+    assert "__rule_input_suppliers__raw_address" in named.text, named.text
 
 
 # --- REQ-2249: a view calling a code command is read under the same rule ---------------------------

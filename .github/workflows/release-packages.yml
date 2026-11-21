@@ -74,15 +74,15 @@ jobs:
 
       # SBOM + vulnerability gate for what actually ships: the venv "Install and test" resolved
       # for provisa-client (its own pyproject has no lockfile, unlike the root package's uv.lock).
-      # pip-audit's non-zero exit on any finding fails this job, which fails publish-pypi via its
-      # existing `needs: build-python-client` — no separate gating job/needs wiring required.
+      # pip-audit's non-zero exit on any finding fails this job, and with it the
+      # release's publish leg.
       - name: Generate SBOM (CycloneDX)
         run: |
           mkdir -p sbom
           pip install cyclonedx-bom -q
           cyclonedx-py environment --of JSON -o sbom/provisa-client-sbom.cdx.json
 
-      - name: CVE scan (gates PyPI publish)
+      - name: CVE scan (gates the release)
         run: |
           set -o pipefail
           pip install pip-audit -q
@@ -98,10 +98,11 @@ jobs:
           tag: ${{ inputs.version }}
           files: |
             provisa-client/dist/provisa_client-*.whl
+            provisa-client/dist/provisa_client-*.tar.gz
             sbom/provisa-client-sbom.cdx.json
             sbom/provisa-client-cve-report.json
 
-      # Kept on a release too: publish-pypi uploads it to PyPI from the run.
+      # Kept in the run for the dry run's inspection.
       - name: Upload dist
         uses: actions/upload-artifact@v4
         with:
@@ -314,7 +315,7 @@ jobs:
       # PyPI does not carry. -s osv: PyPI's JSON API has no local versions (+cpu), so it skips
       # them; OSV matches them to their release's advisories. The gate fails on any skipped
       # dependency, which pip-audit itself reports with exit 0.
-      - name: CVE scan (gates PyPI publish)
+      - name: CVE scan (gates the release)
         run: |
           set -o pipefail
           uvx --python 3.12 pip-audit --timeout 60 -r requirements-audit.txt --no-deps -s osv \
@@ -399,7 +400,7 @@ jobs:
           tag: ${{ inputs.version }}
           files: provisa-notebook/dist/provisa_notebook-*.whl
 
-      # Kept on a release too: publish-notebook-pypi uploads it to PyPI from the run.
+      # Kept in the run for the dry run's inspection.
       - name: Upload dist
         uses: actions/upload-artifact@v4
         with:
@@ -407,8 +408,8 @@ jobs:
           path: provisa-notebook/dist/
           retention-days: 1
 
-  # REQ-1984: the Python SDK (PyPI provisa-sdk), at the release's version. Built and tested here;
-  # published by the orchestrator (publish-sdk-pypi), after every leg.
+  # REQ-1984: the Python SDK (provisa-sdk), at the release's version. Built and tested here, and
+  # attached to the draft release as an asset: nothing goes to PyPI (maintainer 2026-11-21).
   build-sdk-python:
     name: Build provisa-sdk (Python)
     runs-on: ubuntu-latest
@@ -453,6 +454,15 @@ jobs:
           path: provisa-sdk/python/dist/
           if-no-files-found: error
           retention-days: 1
+
+      - name: Attach the wheel and sdist to the draft release
+        if: inputs.publish
+        uses: ./.github/actions/attach-release-assets
+        with:
+          tag: ${{ inputs.version }}
+          files: |
+            provisa-sdk/python/dist/provisa_sdk-*.whl
+            provisa-sdk/python/dist/provisa_sdk-*.tar.gz
 
   # REQ-1984: the TypeScript SDK (npm @provisa/sdk), at the release's version as semver. Packed
   # here; published by the orchestrator (publish-sdk-npm), after every leg.

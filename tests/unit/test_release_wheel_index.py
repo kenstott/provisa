@@ -42,6 +42,9 @@ def _release(tag: str, names: list[str], *, draft: bool = False) -> dict:
 
 _W509 = "provisa-0.1.0a509-cp312-cp312-manylinux_2_28_x86_64.whl"
 _W510 = "provisa-0.1.0a510-cp312-cp312-macosx_11_0_arm64.whl"
+_CLIENT = "provisa_client-0.1.0a510-py3-none-any.whl"
+_NOTEBOOK = "provisa_notebook-0.1.0a510-py3-none-any.whl"
+_SDK = "provisa_sdk-0.1.0a510-py3-none-any.whl"
 
 
 @pytest.mark.parametrize(
@@ -73,7 +76,7 @@ def test_only_the_projects_wheels_of_published_releases_are_listed(tmp_path):
         ),
         _release("v0.1.0-alpha.509", [_W509, "Provisa-0.1.0a509-1-cp312-cp312-win_amd64.whl"]),
     ]
-    listed = index.write_index(releases, tmp_path)
+    listed = index.write_index(releases, tmp_path, projects=("provisa",))
     assert listed == sorted([_W509, _W510, "Provisa-0.1.0a509-1-cp312-cp312-win_amd64.whl"])
     page = (tmp_path / "simple" / "provisa" / "index.html").read_text()
     hrefs = re.findall(r'href="([^"]+)"', page)
@@ -83,10 +86,30 @@ def test_only_the_projects_wheels_of_published_releases_are_listed(tmp_path):
     assert re.findall(r'href="([^"]+)"', root) == ["provisa/"]
 
 
+def test_the_client_notebook_and_sdk_wheels_are_indexed_beside_the_server(tmp_path):
+    names = [_W510, _CLIENT, _NOTEBOOK, _SDK]
+    listed = index.write_index([_release("v0.1.0-alpha.510", names)], tmp_path)
+    assert sorted(listed) == sorted(names)
+    root = (tmp_path / "simple" / "index.html").read_text()
+    assert re.findall(r'href="([^"]+)"', root) == [
+        "provisa/",
+        "provisa-client/",
+        "provisa-notebook/",
+        "provisa-sdk/",
+    ]
+    for project, name in (
+        ("provisa-client", _CLIENT),
+        ("provisa-notebook", _NOTEBOOK),
+        ("provisa-sdk", _SDK),
+    ):
+        page = (tmp_path / "simple" / project / "index.html").read_text()
+        assert name in page
+
+
 def test_every_link_carries_its_assets_sha256_fragment(tmp_path):
     sha = "0123456789abcdef" * 4
     release = {"draft": False, "assets": [_asset("v0.1.0-alpha.510", _W510, sha)]}
-    index.write_index([release], tmp_path)
+    index.write_index([release], tmp_path, projects=("provisa",))
     page = (tmp_path / "simple" / "provisa" / "index.html").read_text()
     assert f'<a href="{_DL}/v0.1.0-alpha.510/{_W510}#sha256={sha}">{_W510}</a>' in page
 
@@ -108,9 +131,12 @@ def test_the_same_wheel_on_two_releases_is_refused(tmp_path):
 
 
 def test_main_reads_the_slurped_paginated_listing(tmp_path, capsys):
-    pages = [[_release("v0.1.0-alpha.510", [_W510])], [_release("v0.1.0-alpha.509", [_W509])]]
+    pages = [
+        [_release("v0.1.0-alpha.510", [_W510, _CLIENT, _NOTEBOOK])],
+        [_release("v0.1.0-alpha.509", [_W509])],
+    ]
     listing = tmp_path / "releases.json"
     listing.write_text(json.dumps(pages))
     assert index.main([str(listing), str(tmp_path / "site")]) == 0
-    assert "2 provisa wheel(s) indexed" in capsys.readouterr().out
+    assert "4 wheel(s) indexed" in capsys.readouterr().out
     assert (tmp_path / "site" / "simple" / "provisa" / "index.html").is_file()

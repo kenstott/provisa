@@ -665,12 +665,10 @@ _LEAVES_THE_RUN = re.compile(
 )
 
 
-#: The orchestrator's own jobs, not legs: PyPI trusted publishing does not accept a token issued
-#: to a reusable workflow (pypa/gh-action-pypi-publish#166).
-#: The provisa server wheel is not among them: it outgrew PyPI's 10 GB project limit (alpha.510)
-#: and is installed from the release through the GitHub Pages index the publish leg writes.
-_RELEASE_PYPI = ("publish-pypi", "publish-notebook-pypi", "publish-sdk-pypi")
-#: REQ-1984: the TypeScript SDK's npm upload, the orchestrator's own job for the same reason.
+#: Nothing in the release goes to PyPI (maintainer 2026-11-21): the server, client, notebook and SDK
+#: wheels are release assets, installed through the GitHub Pages index the publish leg writes.
+_RELEASE_PYPI: tuple[str, ...] = ()
+#: REQ-1984: the TypeScript SDK's npm upload, the orchestrator's own job.
 _RELEASE_NPM = "publish-sdk-npm"
 #: REQ-2225: the provisa wheel carries the platform connector block, so the release that attaches
 #: it waits for the image the block names, which the orchestrator pushes itself, after every leg.
@@ -696,9 +694,8 @@ def _release_legs() -> dict[str, tuple[str, dict]]:
     return legs
 
 
-def test_the_release_orchestrator_calls_legs_and_publishes_to_pypi_itself():
+def test_the_release_orchestrator_calls_legs_and_pushes_the_connector_image_itself():
     jobs = yaml.safe_load(_RELEASE.read_text())["jobs"]
-    pypi = {job: jobs.pop(job) for job in _RELEASE_PYPI}
     npm = jobs.pop(_RELEASE_NPM)
     image_push = jobs.pop(_RELEASE_IMAGE_PUSH)
     given = {job: body["with"] for job, body in jobs.items()}
@@ -713,15 +710,8 @@ def test_the_release_orchestrator_calls_legs_and_publishes_to_pypi_itself():
     assert trigger["workflow_dispatch"]["inputs"]["publish"]["default"] is False
     for body in jobs.values():
         assert "steps" not in body and body.get("secrets") != "inherit"
-    # PyPI's jobs: a download of the run's wheel and the upload, gated as the legs'
-    # publications are, holding only the OIDC token, after every build leg.
     builds = set(jobs) - {"publish"}
-    for job, body in pypi.items():
-        assert body["if"] == _RELEASE_PUBLISH, job
-        assert set(body["needs"]) == builds | _RELEASE_PYPI_AFTER.get(job, set()), job
-        assert body["permissions"] == {"id-token": "write"}, job
-        uses = [str(step.get("uses", "")) for step in body["steps"]]
-        assert uses == ["actions/download-artifact@v4", "pypa/gh-action-pypi-publish@release/v1"]
+    assert not any("pypi" in job for job in jobs)
     # npm's job: the run's tarball and the upload, gated as PyPI's are, with provenance, a
     # prerelease never under `latest`, after every build leg.
     assert npm["if"] == _RELEASE_PUBLISH
@@ -736,7 +726,7 @@ def test_the_release_orchestrator_calls_legs_and_publishes_to_pypi_itself():
     assert image_push["if"] == _RELEASE_PUBLISH
     assert set(image_push["needs"]) == builds
     assert image_push["permissions"] == {"contents": "read", "packages": "write"}
-    assert set(jobs["publish"]["needs"]) == builds | set(pypi) | {_RELEASE_NPM, _RELEASE_IMAGE_PUSH}
+    assert set(jobs["publish"]["needs"]) == builds | {_RELEASE_NPM, _RELEASE_IMAGE_PUSH}
 
 
 def test_every_step_of_the_release_that_leaves_the_run_waits_for_publish():
@@ -757,12 +747,8 @@ def test_every_step_of_the_release_that_leaves_the_run_waits_for_publish():
                 if push is not None:
                     seen += 1
                     assert job_gated or push == "${{ inputs.publish }}", where
-    # PyPI's uploads are the orchestrator's own jobs, gated as a whole by the publish expression.
-    # So is the connector image's push (REQ-2225).
+    # The connector image's push (REQ-2225) is the orchestrator's own job, gated as a whole.
     for job, body in yaml.safe_load(_RELEASE.read_text())["jobs"].items():
-        if job in _RELEASE_PYPI:
-            assert body["if"] == _RELEASE_PUBLISH, job
-            seen += sum("pypi-publish" in str(s.get("uses", "")) for s in body["steps"])
         if job == _RELEASE_NPM:
             assert body["if"] == _RELEASE_PUBLISH, job
             seen += sum("npm publish" in str(s.get("run", "")) for s in body["steps"])
@@ -1648,7 +1634,8 @@ def test_nothing_in_ci_names_the_plugin_jars_maven_location_but_the_pin():
 
 def test_the_release_builds_both_sdks_and_publishes_them_from_the_run():
     """REQ-1984: each SDK is built in the packages leg (a dry run builds both), stamped with the
-    release's version, and uploaded to the run; only the orchestrator's publish jobs read them."""
+    release's version, and uploaded to the run. The Python SDK's wheel and sdist are attached to the
+    draft release (no PyPI, maintainer 2026-11-21); only npm's publish job reads the TypeScript one."""
     legs = dict(_release_legs().values())
     jobs = legs["release-packages.yml"]["jobs"]
     py, ts = jobs["build-sdk-python"], jobs["build-sdk-typescript"]
@@ -1661,12 +1648,14 @@ def test_the_release_builds_both_sdks_and_publishes_them_from_the_run():
         ]
         assert uploads == [artifact]
         assert not _LEAVES_THE_RUN.search("\n".join(str(s.get("run", "")) for s in job["steps"]))
+    [attach] = [s for s in py["steps"] if "attach-release-assets" in str(s.get("uses", ""))]
+    assert attach["if"] == "inputs.publish"
+    assert "provisa_sdk-*.whl" in attach["with"]["files"]
+    assert "provisa_sdk-*.tar.gz" in attach["with"]["files"]
+    assert not any("attach-release-assets" in str(s.get("uses", "")) for s in ts["steps"])
     orchestrator = yaml.safe_load(_RELEASE.read_text())["jobs"]
-    for job, artifact in (
-        ("publish-sdk-pypi", "sdk-python-dist"),
-        ("publish-sdk-npm", "sdk-typescript-dist"),
-    ):
-        assert orchestrator[job]["steps"][0]["with"]["name"] == artifact
+    assert not any("pypi" in job for job in orchestrator)
+    assert orchestrator["publish-sdk-npm"]["steps"][0]["with"]["name"] == "sdk-typescript-dist"
 
 
 def _metadata_outputs(tag: str) -> dict[str, str]:

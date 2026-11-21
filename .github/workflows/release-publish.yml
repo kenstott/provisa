@@ -1,10 +1,9 @@
 # Release: attach and publish
 #
-# The release's publications after PyPI: the draft release checked for every asset and undrafted,
+# The release's publications: the draft release checked for every asset and undrafted,
 # the provisa wheel index regenerated on GitHub Pages, the engine and Flight proxy images pushed.
-# The client and notebook wheels go to PyPI from the orchestrator (build-dmg.yml) first. The server
-# wheel is not on PyPI (it outgrew the 10 GB project limit): users install it through the Pages
-# index, https://kenstott.github.io/provisa/simple/.
+# Nothing goes to PyPI (maintainer 2026-11-21). The server, client and notebook wheels are release
+# assets: users install them through the Pages index, https://kenstott.github.io/provisa/simple/.
 #
 # Nothing is attached here. Every job that builds a release asset attaches it to the draft itself,
 # once (.github/actions/attach-release-assets): GitHub has no server-side copy from a workflow
@@ -80,17 +79,14 @@ jobs:
 
   # ── Release ──────────────────────────────────────────────────────────────────
   # Nothing that cannot be taken back happens until every artifact exists: this leg starts only
-  # after every other leg has succeeded and the PyPI publications are done (the orchestrator's
-  # `publish` job needs them all), so a failed installer blocks PyPI as well as the release, and
-  # the release is undrafted only after the client and notebook wheels are on PyPI. The PyPI jobs
-  # are the orchestrator's own (build-dmg.yml): PyPI trusted publishing does not accept a token
-  # issued to a reusable workflow. What remains is the moment between them and the undraft, which
-  # a re-run of publish-release closes.
+  # after every other leg has succeeded and the connector image is pushed (the orchestrator's
+  # `publish` job needs them all), so a failed installer blocks the release. The undraft verifies
+  # every wheel, client and notebook included, is attached.
   publish-release:
     name: Publish GitHub Release
     runs-on: ubuntu-latest
     needs: [metadata]
-    # The caller never starts this leg after a PyPI publication that failed or was cancelled.
+    # The caller never starts this leg after a publication that failed or was cancelled.
     if: ${{ !cancelled() && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') }}
     permissions:
       contents: write
@@ -131,6 +127,7 @@ jobs:
             ${{ needs.metadata.outputs.duckdb_extensions_name }}.sha256
             provisa_client-${{ needs.metadata.outputs.py_version }}-py3-none-any.whl
             provisa_notebook-${{ needs.metadata.outputs.py_version }}-py3-none-any.whl
+            provisa_sdk-${{ needs.metadata.outputs.py_version }}-py3-none-any.whl
             provisa-${{ needs.metadata.outputs.py_version }}-cp312-cp312-manylinux_2_28_x86_64.whl
             provisa-${{ needs.metadata.outputs.py_version }}-cp312-cp312-manylinux_2_28_aarch64.whl
             provisa-${{ needs.metadata.outputs.py_version }}-cp312-cp312-macosx_*_arm64.whl

@@ -80,8 +80,15 @@ export type ReadFn =
   | (() => Result<object>)
   | ((inputs: never) => Result<object>)
   | ((inputs: never, context: ReadContext) => Result<object>);
-/** A @loader's function: a @table's that takes its read context, alone or after its inputs. */
-export type LoaderFn<F extends ReadFn> = Parameters<F> extends [ReadContext] | [unknown, ReadContext] ? F : never;
+/** A loader call's answer: the hash of each key to its rows (REQ-2100 LOADER CALL). */
+export type KeyedRows<R> = Record<string, R[]>;
+type LoaderResult<R> = Collection<R> | KeyedRows<R> | Promise<Collection<R> | KeyedRows<R>>;
+/** A @loader's function: a @table's that takes its read context, alone or after its inputs, and
+ * that alone may return its rows or a mapping of names to its rows. */
+export type LoaderReadFn =
+  | ((context: ReadContext) => LoaderResult<object>)
+  | ((inputs: never, context: ReadContext) => LoaderResult<object>);
+export type LoaderFn<F extends LoaderReadFn> = Parameters<F> extends [ReadContext] | [unknown, ReadContext] ? F : never;
 /** A @stream's function: an async generator. */
 export type StreamFn =
   | (() => AsyncIterable<object>)
@@ -91,7 +98,7 @@ export type StreamFn =
 export type ColumnsFn = (...batches: never[][]) => object[] | Promise<object[]>;
 
 export declare function table<F extends ReadFn>(fn: F): F & Tagged<"table", {}, Spelling>;
-export declare function table<F extends ReadFn, const O extends TableOptions & { readonly loader: true | number }>(
+export declare function table<F extends LoaderReadFn, const O extends TableOptions & { readonly loader: true | number }>(
   fn: F & LoaderFn<F>,
   options: O,
 ): F & Tagged<"table", O, Spelling>;

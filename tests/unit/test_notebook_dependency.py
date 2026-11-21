@@ -51,14 +51,27 @@ def test_the_release_builds_the_notebook_and_stamps_both_pins():
     assert '"provisa-notebook==${{ needs.metadata.outputs.py_version }}"' in wheel_steps
 
 
-def test_the_notebook_is_published_before_provisa_and_only_after_every_leg():
-    """provisa's wheels reach users through the release and its Pages index (the publish leg), so
-    the notebook package they pin is on PyPI before that leg starts."""
+def test_the_notebook_wheel_is_a_release_asset_and_not_published_to_pypi():
+    """provisa pins provisa-notebook; users resolve both from the release's Pages index, so the
+    notebook wheel is attached to the draft and required by the publish leg. Nothing goes to PyPI."""
     jobs = yaml.safe_load((WORKFLOWS / "build-dmg.yml").read_text())["jobs"]
-    legs = {"prebuilt", "packages", "macos", "windows", "linux"}
-    assert legs <= set(jobs["publish-notebook-pypi"]["needs"])
-    assert "publish-provisa-pypi" not in jobs
-    assert "publish-notebook-pypi" in jobs["publish"]["needs"]
+    assert not any("pypi" in job for job in jobs)
+    packages = yaml.safe_load((WORKFLOWS / "release-packages.yml").read_text())["jobs"]
+    attach = [
+        s["with"]["files"]
+        for s in packages["build-provisa-notebook"]["steps"]
+        if "attach-release-assets" in str(s.get("uses", ""))
+    ]
+    assert any("provisa_notebook-*.whl" in files for files in attach)
+    publish = (WORKFLOWS / "release-publish.yml").read_text()
+    assert "provisa_notebook-${{ needs.metadata.outputs.py_version }}-py3-none-any.whl" in publish
+    assert "provisa_sdk-${{ needs.metadata.outputs.py_version }}-py3-none-any.whl" in publish
+    sdk_attach = [
+        s["with"]["files"]
+        for s in packages["build-sdk-python"]["steps"]
+        if "attach-release-assets" in str(s.get("uses", ""))
+    ]
+    assert any("provisa_sdk-*.whl" in files for files in sdk_attach)
 
 
 def test_every_installer_and_launcher_builds_the_notebook_from_this_repository():
