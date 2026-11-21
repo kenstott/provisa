@@ -111,11 +111,8 @@ sources:
 - id: control_room
   type: files
   path: ${env:PROVISA_NAMED_DEMO_DIR}/control_room
-  # Every sheet's first row is its header: a sheet of ids reads its header as data otherwise
-  # (the screening scope's columns were not message_id and deal_id).
-  mapping:
-    excel_hints:
-      header_rows: 1
+  # Each sheet but deals ends in a long-text note column so the Excel reader keeps the first row
+  # as the only header (calcite #1422; generate.py). Revert when #1422 ships.
   description: The control room's watch list, an Excel workbook it keeps itself
 - id: insider_signals
   type: python

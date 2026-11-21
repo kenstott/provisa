@@ -12,5 +12,13 @@
     }
   },
   "types": "./index.d.ts",
-  "files": ["index.js", "index.d.ts", "services.d.ts"]
+  "files": [
+    "index.js",
+    "index.d.ts",
+    "services.d.ts",
+    "bin/check.js"
+  ],
+  "bin": {
+    "provisa-sdk": "./bin/check.js"
+  }
 }

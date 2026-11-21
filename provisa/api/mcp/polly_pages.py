@@ -177,6 +177,11 @@ PAGES: dict[str, PollyPage] = {
         "the classification kinds and where each was detected, read-only; kinds are switched on "
         "/admin/classification-kinds, and a column's classification is decided in the table editor"
     ),
+    "/context/glossary": PollyPage(
+        "the glossary of approved terms, read-only: glossary-search filters by text, "
+        "glossary-domain-filter by domain, glossary-sort orders the entries, and "
+        "glossary-letters jumps to a letter section; terms are edited elsewhere"
+    ),
     "/admin/import": PollyPage("import"),
     "/admin/tags": PollyPage(
         "the tag editor: + Tag (tags-create-button) opens the form; the scope tabs "

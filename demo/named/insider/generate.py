@@ -256,13 +256,24 @@ def _watch_list(
     from openpyxl import Workbook
 
     book = Workbook()
+    # calcite #1422: the Excel reader folds up to three short-text leading data rows into the
+    # header (MultiTableExcelToJsonConverter, MAX_HEADER_ROWS = 3), giving columns like
+    # deal_id_d_01_d_01. Each sheet but deals therefore ends in a note column of long text (over
+    # 50 characters stops a row reading as a header). Revert this when #1422 ships.
+    note_team = (
+        "Brought over the wall by the control room; confidential until the deal is announced."
+    )
+    note_cp = "A counterparty to the deal; its mail domain is on the control room's watch list."
+    note_scope = "In the control room's standing screening scope: every message against every deal."
     sheets = {
         "deals": (["deal_id", "code_name", "legal_name", "aliases", "ticker", "deal_type",
                    "description", "announced_on"], deals),
-        "deal_team": (["deal_id", "employee_id", "over_wall_at"],
-                      [[d, e, at.replace(" ", "T")] for d, e, at in teams]),
-        "counterparties": (["deal_id", "domain"], counterparties),
-        "screening": (["message_id", "deal_id"], screening),
+        "deal_team": (["deal_id", "employee_id", "over_wall_at", "note"],
+                      [[d, e, at.replace(" ", "T"), note_team] for d, e, at in teams]),
+        "counterparties": (["deal_id", "domain", "note"],
+                           [[*c, note_cp] for c in counterparties]),
+        "screening": (["message_id", "deal_id", "note"],
+                      [[*s, note_scope] for s in screening]),
     }  # fmt: skip
     book.remove(book.active)
     for title, (header, rows) in sheets.items():

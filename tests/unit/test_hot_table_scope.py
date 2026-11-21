@@ -76,7 +76,7 @@ async def _load(
     catalog: str = "pg",
     schema: str = "public",
 ) -> None:
-    await mgr._store_rows(table_id, "customers", rows, "id", catalog, schema)
+    await mgr._store_rows(table_id, "customers", rows, "id", catalog, schema, {})
 
 
 async def _keys(mgr: HotTableManager) -> list[str]:
@@ -129,7 +129,7 @@ async def test_another_worker_of_another_org_does_not_read_the_blob(manager, act
     await _load(manager, ACME_ROWS)
     other = HotTableManager(redis_url=None, auto_threshold=100, max_rows=1000)
     acting.place = "globex"
-    await other._store_rows(CUSTOMERS, "customers", GLOBEX_ROWS, "id", "pg", "public")
+    await other._store_rows(CUSTOMERS, "customers", GLOBEX_ROWS, "id", "pg", "public", {})
     assert await other.get_rows(CUSTOMERS) == GLOBEX_ROWS
     acting.place = "acme"
     assert await manager.get_rows(CUSTOMERS) == ACME_ROWS
@@ -158,7 +158,7 @@ async def test_a_branch_does_not_read_prods_rows(manager, acting):
 async def test_a_table_pointed_elsewhere_does_not_serve_the_old_rows(manager, acting):
     """The model changes (the table now reads another relation) and the runtime reloads at the
     next stamp: what was loaded under the previous model is not hot any more."""
-    manager.register_candidate(HotTableCandidate(CUSTOMERS, "customers", "id", "pg", "public"))
+    manager.register_candidate(HotTableCandidate(CUSTOMERS, "customers", "id", "pg", "public", {}))
     await _load(manager, ACME_ROWS)
 
     acting.stamp = 8
@@ -291,7 +291,7 @@ class _Engine:
 async def test_a_write_reloads_the_table_with_the_key_it_was_hot_under(manager, acting):
     """A write drops the table's hot rows and loads them again — with its own key and address,
     not a guessed ``id`` column."""
-    await manager._store_rows(CUSTOMERS, "customers", ACME_ROWS, "customer_no", "pg", "crm")
+    await manager._store_rows(CUSTOMERS, "customers", ACME_ROWS, "customer_no", "pg", "crm", {})
     engine = _Engine([(1, "changed")], ["customer_no", "name"])
     await manager.refresh_after_write(engine, CUSTOMERS)
     assert engine.sent == ['SELECT * FROM "pg"."crm"."customers"']
@@ -329,12 +329,19 @@ async def test_boot_keeps_two_sources_same_named_tables_apart(monkeypatch, actin
         ],
     }
     registered = [
-        {"id": CUSTOMERS, "source_id": "pg", "schema_name": "public", "table_name": "customers"},
+        {
+            "id": CUSTOMERS,
+            "source_id": "pg",
+            "schema_name": "public",
+            "table_name": "customers",
+            "columns": [],
+        },
         {
             "id": OTHER_CUSTOMERS,
             "source_id": "wh",
             "schema_name": "public",
             "table_name": "customers",
+            "columns": [],
         },
     ]
 
@@ -399,7 +406,7 @@ def test_a_statement_holds_fetched_rows_under_the_table_it_reads(acting):
 async def test_a_filtered_read_makes_the_table_hot_with_all_of_its_rows(manager, acting):
     """A statement reads one row of a small candidate table: the table is loaded whole — its
     hot rows are never the statement's own (filtered) result."""
-    manager.register_candidate(HotTableCandidate(CUSTOMERS, "customers", "id", "pg", "public"))
+    manager.register_candidate(HotTableCandidate(CUSTOMERS, "customers", "id", "pg", "public", {}))
     whole = [(1, "a"), (2, "b"), (3, "c")]
     engine = _Counted(3, whole, ["id", "name"])
     await manager.promote_on_read(engine, CUSTOMERS)
@@ -411,7 +418,7 @@ async def test_a_filtered_read_makes_the_table_hot_with_all_of_its_rows(manager,
 
 
 async def test_a_candidate_too_large_is_counted_once_per_model(manager, acting):
-    manager.register_candidate(HotTableCandidate(CUSTOMERS, "customers", "id", "pg", "public"))
+    manager.register_candidate(HotTableCandidate(CUSTOMERS, "customers", "id", "pg", "public", {}))
     engine = _Counted(101, [], ["id"])  # the manager's auto threshold is 100
     await manager.promote_on_read(engine, CUSTOMERS)
     await manager.promote_on_read(engine, CUSTOMERS)
@@ -469,6 +476,7 @@ async def test_boot_finds_a_table_registered_under_its_settled_name(monkeypatch,
             "source_id": "gql",
             "schema_name": "graphql",
             "table_name": "animal_breeds",
+            "columns": [],
         }
     ]
     mgr = await hot_tables.init_hot_tables(raw, _Engine([], []), registered, {}, {})
@@ -524,7 +532,13 @@ async def test_boot_loads_an_openapi_table_through_its_endpoint_and_its_sources_
         "tables": [{"source_id": "pay", "schema": "openapi", "table": "GetPlans", "hot": True}],
     }
     registered = [
-        {"id": CUSTOMERS, "source_id": "pay", "schema_name": "openapi", "table_name": "GetPlans"}
+        {
+            "id": CUSTOMERS,
+            "source_id": "pay",
+            "schema_name": "openapi",
+            "table_name": "GetPlans",
+            "columns": [],
+        }
     ]
     plans = [{"id": f"p{i}", "name": f"plan {i}"} for i in range(3)]
     with respx.mock:

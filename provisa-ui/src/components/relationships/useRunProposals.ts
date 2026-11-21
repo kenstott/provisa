@@ -96,7 +96,7 @@ const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e));
 export function useRunProposals(
   run: DiscoveryRun | null,
   /** Told after an Apply that decided something: relationships and suggestions have changed. */
-  onApplied: () => void,
+  onApplied: (accepted: number) => void,
 ): RunProposalsState {
   const [read, setRead] = useState<{
     runId: number;
@@ -217,7 +217,7 @@ export function useRunProposals(
           results.filter((r) => r.ok && r.action === action).length;
         setApplied({ accepted: ok("accept"), notAgain: ok("not_again") });
         await load(shown.runId);
-        if (results.some((r) => r.ok)) onApplied();
+        if (results.some((r) => r.ok)) onApplied(ok("accept"));
       } catch (e) {
         setError(errorText(e));
       } finally {

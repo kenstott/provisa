@@ -23,7 +23,9 @@ import datetime
 import functools
 import logging
 import re
+import threading
 from collections.abc import Mapping
+from typing import Any
 
 from provisa.pgwire.catalog_data import (
     _CATALOG_TABLE_NAMES,
@@ -528,16 +530,30 @@ def _declared_types(sql: str, names: list[str], served: list[str]) -> list[str]:
     ]
 
 
+_EVALUATOR_LOCK = threading.Lock()
+_EVALUATOR: Any = None
+
+
+def _constant_evaluator():
+    """The one DuckDB a constant argument is evaluated on, opened once: opening a database per
+    statement cost ~14 ms, which a driver's pool timing counts against the statement (psycopg's
+    test_queue wants 0.2 s sleeps done within 0.24 s). Each evaluation runs on its own cursor."""
+    global _EVALUATOR
+    with _EVALUATOR_LOCK:
+        if _EVALUATOR is None:
+            from provisa.core import engine_memory
+
+            _EVALUATOR = engine_memory.connect()
+        return _EVALUATOR
+
+
 def _handle_pg_sleep(match: re.Match[str]):  # REQ-2167
     """pg_sleep(seconds), pg_sleep_for(interval) or pg_sleep_until(timestamp with time zone):
     sleeps that long and answers void (empty text); strict, so a NULL argument answers NULL
     without sleeping. A sleep longer than the request has left ends with
     the request's timeout."""
-    import threading
-
     import sqlglot
 
-    from provisa.core import engine_memory
     from provisa.executor.result import QueryResult
 
     arg = match["arg"]
@@ -552,7 +568,7 @@ def _handle_pg_sleep(match: re.Match[str]):  # REQ-2167
         "pg_sleep_until": f"EXTRACT(EPOCH FROM ({arg})) - EXTRACT(EPOCH FROM NOW())",
     }[match["name"]]
     seconds_sql = sqlglot.transpile(f"SELECT {seconds}", read="postgres", write="duckdb")[0]
-    con = engine_memory.connect()
+    con = _constant_evaluator().cursor()
     try:
         ((seconds,),) = con.execute(seconds_sql).fetchall()
     finally:
