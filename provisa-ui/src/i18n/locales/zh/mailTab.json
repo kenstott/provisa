@@ -1,10 +1,10 @@
 {
   "mailTab": {
     "loading": "加载中…",
-    "intro": "此部署用于发送平台消息（邀请及其他通知）的邮件服务器。此构建已知的每种传输方式均已列出；需要软件包的会注明其名称。",
+    "intro": "此部署发送邀请和其他平台通知所用的邮件服务器。列出构建版本支持的所有传输方式；需要额外软件包的会注明其名称。",
     "providerLabel": "传输方式",
-    "providerRequires": "{{label}} — 请安装 {{library}}",
-    "secretOnFile": "已存储凭据——输入以替换",
+    "providerRequires": "{{label}}（安装 {{library}}）",
+    "secretOnFile": "已存有凭据。输入新值以替换。",
     "secretNotSet": "未设置",
     "fromAddressLabel": "发件人地址",
     "fromAddressHelp": "收件人看到的地址。大多数传输方式要求其为已验证的发件人。",
@@ -12,7 +12,7 @@
     "baseUrlHelp": "消息中链接（如邀请链接）所指向的地址。",
     "timeoutLabel": "超时（秒）",
     "save": "保存邮件设置",
-    "saved": "邮件设置已保存——通过 {{provider}} 发送。",
+    "saved": "邮件设置已保存。通过 {{provider}} 发送。",
     "testTitle": "发送测试消息",
     "testIntro": "使用与邀请相同的凭据通过已配置的传输方式发送，并在下方记录此次尝试。",
     "testRecipient": "发送至",

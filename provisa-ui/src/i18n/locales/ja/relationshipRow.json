@@ -1,6 +1,6 @@
 {
   "relationshipRow": {
-    "fkBadge": "FK由来",
+    "fkBadge": "FK から",
     "fkBadgeTitle": "ソースの外部キーから作成されました",
     "yes": "はい",
     "no": "いいえ",
@@ -48,6 +48,27 @@
     "changeResolver": "コードリゾルバーを変更",
     "retireResolver": "コードリゾルバーを廃止",
     "retireResolverTitle": "コードリゾルバー {{resolver}} を廃止しますか？",
-    "retireResolverConsequence": "一致ビューと 3 つのリレーションシップがまとめて廃止されます。名前は使用済みのまま残ります。"
+    "retireResolverConsequence": "一致ビューと 3 つのリレーションシップがまとめて廃止されます。名前は使用済みのまま残ります。",
+    "queryLinks": {
+      "heading": "クエリ",
+      "tableMissing": "クエリリンクを利用できません: このリレーションシップが指すテーブル {{ids}} は登録済みテーブルに含まれていません。",
+      "tablesUnread": "クエリリンクを利用できません: 登録済みテーブルを読み取れませんでした ({{error}})。",
+      "cypher": "{{name}} を Cypher で読む",
+      "sql": "{{name}} を SQL で読む",
+      "sparql": "{{name}} を SPARQL で読む",
+      "graphql": "{{name}} を GraphQL で読む",
+      "rest": "{{name}} を REST で読む",
+      "grpc": "{{name}} を gRPC で読む",
+      "jsonapi": "{{name}} を JSON:API で読む",
+      "surfaces": {
+        "cypher": "Cypher",
+        "sql": "SQL",
+        "sparql": "SPARQL",
+        "graphql": "GraphQL",
+        "rest": "REST",
+        "grpc": "gRPC",
+        "jsonapi": "JSON:API"
+      }
+    }
   }
 }

@@ -8,16 +8,20 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""The requests a semantic discovery run makes (REQ-413).
+"""The calls a semantic discovery run makes (REQ-413, amended 2026-11-18).
 
-For each type group, the source columns and the target columns are packed into windows by the
-length in characters of what is sent, sized from the chosen model's input limit at
-:data:`provisa.llm.limits.CHARS_PER_TOKEN` characters per token (REQ-464); a request holds one
-source window and one target window of one group, and asks for at most as many suggestions as the
-model's output limit holds at :data:`TOKENS_PER_SUGGESTION` tokens each. A pair of windows holding
-no two columns that are compared (:func:`provisa.discovery.columns.comparable`) is not asked.
-:func:`plan` is the run's work list. :func:`bound` is the count shown before Run: the most
-requests :func:`plan` can give for the same tables, computed from their registration alone.
+Code lists every table pair of the run's scope (:func:`table_pairs`): each source table with each
+target table that shares a compared type group with it (dates and timestamps are in none); with
+the target the same as the source, each two tables once, a table with itself included. The model
+never chooses which tables to compare. The pairs are batched, in order, into calls sized from the
+chosen model's input limit at :data:`provisa.llm.limits.CHARS_PER_TOKEN` characters per token
+(REQ-464), and at most as many pairs to a call as the model's output limit answers at
+:data:`TOKENS_PER_PAIR` tokens each. A call lists its tables once, then its pairs numbered from 1.
+
+:func:`plan` is the run's work list. :func:`bound` is the count shown before Run: the most calls
+:func:`plan` can give for the same tables, computed from their registration alone. A pair left
+unanswered is asked once more in calls of their own (:meth:`Plan.again`), which the count does
+not include.
 """
 
 # Requirements: REQ-413, REQ-464
@@ -28,177 +32,220 @@ from collections.abc import Sequence
 from dataclasses import dataclass, replace
 
 from provisa.discovery import context
-from provisa.discovery.columns import GROUPS, ColumnFacts, TableFacts, comparable
+from provisa.discovery.columns import ColumnFacts, TableFacts, compared
 from provisa.llm.limits import CHARS_PER_TOKEN
 
-#: REQ-413: each request asks for at most as many suggestions as the output limit holds at this
-#: many tokens per suggestion.
-TOKENS_PER_SUGGESTION = 150
-
-# The headers context.prompt puts before the windows, the longer pair.
-_HEADERS = len("\n## SOURCE window\n") + len("\n## TARGET window\n")
+#: REQ-413: a call lists at most as many table pairs as the output limit answers at this many
+#: tokens per pair.
+TOKENS_PER_PAIR = 150
 
 
 class NoRoomError(ValueError):
-    """The model's limits hold no request: its output limit holds no suggestion, or its input
-    limit no window beside the instructions."""
+    """The model's limits hold no call: its output limit answers no pair, or its input limit
+    holds nothing beside the instructions."""
+
+
+ColumnPair = tuple[ColumnFacts, ColumnFacts]
 
 
 @dataclass(frozen=True)
-class Entry:
-    """One table's columns in a window."""
+class TablePair:
+    """One table pair of a run. ``either_direction``: source and target are one set of tables,
+    so a relationship may start in either."""
 
-    table: TableFacts
-    columns: tuple[ColumnFacts, ...]
-
-    @property
-    def weight(self) -> int:
-        return context.block_weight(self.table, self.columns)
-
-
-@dataclass(frozen=True)
-class Window:
-    entries: tuple[Entry, ...]
-
-    @property
-    def weight(self) -> int:
-        return context.window_weight([e.weight for e in self.entries])
-
-    def blocks(self) -> list[dict]:
-        return [context.block(e.table, e.columns) for e in self.entries]
-
-    def columns(self) -> list[tuple[TableFacts, ColumnFacts]]:
-        return [(e.table, c) for e in self.entries for c in e.columns]
-
-    @property
-    def splittable(self) -> bool:
-        return len(self.columns()) > 1
-
-    def halves(self) -> tuple["Window", "Window"]:
-        """The window's columns split in two, in order, a table's context going with each half
-        that holds one of its columns."""
-        cols = self.columns()
-        cut = len(cols) // 2
-        return _window(cols[:cut]), _window(cols[cut:])
-
-
-def _window(cols: Sequence[tuple[TableFacts, ColumnFacts]]) -> Window:
-    entries: list[Entry] = []
-    for table, column in cols:
-        if entries and entries[-1].table.table_id == table.table_id:
-            last = entries[-1]
-            entries[-1] = Entry(table, (*last.columns, column))
-        else:
-            entries.append(Entry(table, (column,)))
-    return Window(tuple(entries))
-
-
-@dataclass(frozen=True)
-class Request:
-    """One model request: a source window and a target window of one group. ``target`` None: the
-    source window compared with itself (the target is the same as the source)."""
-
-    group: str
-    source: Window
-    target: Window | None
+    source: TableFacts
+    target: TableFacts
     either_direction: bool
 
-    def prompt(self, at_most: int) -> str:
-        return context.prompt(
-            self.group,
-            at_most,
-            self.source.blocks(),
-            None if self.target is None else self.target.blocks(),
-            either_direction=self.either_direction,
-        )
+    def column_pairs(self) -> list[ColumnPair]:
+        """Every two different columns of the pair compared in some type group, source first:
+        unordered for a table with itself in one set, ordered where source and target differ."""
+        out: list[ColumnPair] = []
+        same = self.source.table_id == self.target.table_id
+        for i, a in enumerate(self.source.columns):
+            for j, b in enumerate(self.target.columns):
+                if same and (j == i or (self.either_direction and j < i)):
+                    continue
+                if compared(a, b):
+                    out.append((a, b))
+        return out
 
-    def halves(self) -> list["Request"]:
-        """The request split in half (REQ-413): its heavier splittable window in two, every pair
-        of columns it held still asked once."""
-        if self.target is None:
-            a, b = self.source.halves()
-            return [
-                Request(self.group, a, None, self.either_direction),
-                Request(self.group, a, b, self.either_direction),
-                Request(self.group, b, None, self.either_direction),
-            ]
-        split_source = self.source.splittable and (
-            not self.target.splittable or self.source.weight >= self.target.weight
+    @property
+    def key(self) -> tuple[int, int]:
+        return (self.source.table_id, self.target.table_id)
+
+
+@dataclass(frozen=True)
+class Call:
+    """One model call: its table pairs, numbered from 1 in order. ``labels``: each table's name
+    in the run's calls, by id."""
+
+    pairs: tuple[TablePair, ...]
+    labels: dict[int, str]
+
+    def tables(self) -> list[TableFacts]:
+        """The call's tables, each once, in order of first appearance."""
+        seen: dict[int, TableFacts] = {}
+        for p in self.pairs:
+            seen.setdefault(p.source.table_id, p.source)
+            seen.setdefault(p.target.table_id, p.target)
+        return list(seen.values())
+
+    def named(self, pair: TablePair) -> str:
+        """A pair as a run names it to people: ``source × target``."""
+        return f"{self.labels[pair.source.table_id]} × {self.labels[pair.target.table_id]}"
+
+    def prompt(self, threshold: float) -> str:
+        """The call as sent, stating the run's ``threshold`` (REQ-413)."""
+        return context.prompt(
+            [context.table_context(t, self.labels[t.table_id]) for t in self.tables()],
+            [
+                context.pair_entry(
+                    n, self.labels[p.source.table_id], self.labels[p.target.table_id]
+                )
+                for n, p in enumerate(self.pairs, start=1)
+            ],
+            threshold=threshold,
+            either_direction=self.pairs[0].either_direction,
         )
-        if split_source:
-            a, b = self.source.halves()
-            return [Request(self.group, w, self.target, self.either_direction) for w in (a, b)]
-        a, b = self.target.halves()
-        return [Request(self.group, self.source, w, self.either_direction) for w in (a, b)]
 
     @property
     def splittable(self) -> bool:
-        return self.source.splittable or (self.target is not None and self.target.splittable)
+        return len(self.pairs) > 1
+
+    def halves(self) -> list["Call"]:
+        """The call's pairs split in two, in order (a call the vendor refuses as too long)."""
+        cut = len(self.pairs) // 2
+        return [Call(self.pairs[:cut], self.labels), Call(self.pairs[cut:], self.labels)]
 
 
-def at_most(output_tokens: int) -> int:
-    """How many suggestions one request asks for: what the output limit holds at
-    :data:`TOKENS_PER_SUGGESTION` tokens each."""
-    k = output_tokens // TOKENS_PER_SUGGESTION
+def per_call(output_tokens: int) -> int:
+    """How many table pairs one call lists: what the output limit answers at
+    :data:`TOKENS_PER_PAIR` tokens each."""
+    k = output_tokens // TOKENS_PER_PAIR
     if k < 1:
         raise NoRoomError(
-            f"the model's output limit of {output_tokens} tokens holds no suggestion "
-            f"({TOKENS_PER_SUGGESTION} tokens each)"
+            f"the model's output limit of {output_tokens} tokens answers no table pair "
+            f"({TOKENS_PER_PAIR} tokens each)"
         )
     return k
 
 
-def window_chars(
-    input_tokens: int, group: str, k: int, *, either_direction: bool, not_read: bool = False
-) -> int:
-    """The characters one window may hold: the input limit in characters, less the instructions
-    and headers, shared by the two windows of a request. ``not_read``: a table of the run is
-    never read, so a request's instructions may carry the text saying so."""
+def labels(tables: Sequence[TableFacts]) -> dict[int, str]:
+    """Each table's name in the run's calls, by id: its name as people see it
+    (:attr:`TableFacts.shown`), with its domain before it where two of the run's tables share
+    that name, and its id after where they share both."""
+    by_id = {t.table_id: t for t in tables}
+    shown: dict[str, list[int]] = {}
+    for t in by_id.values():
+        shown.setdefault(t.shown, []).append(t.table_id)
+    out: dict[int, str] = {}
+    for name, ids in shown.items():
+        if len(ids) == 1:
+            out[ids[0]] = name
+            continue
+        qualified = {i: f"{by_id[i].domain_id}.{name}" for i in ids}
+        counts: dict[str, int] = {}
+        for q in qualified.values():
+            counts[q] = counts.get(q, 0) + 1
+        for i, q in qualified.items():
+            out[i] = q if counts[q] == 1 else f"{q}#{i}"
+    return out
+
+
+def _ordered(tables: Sequence[TableFacts]) -> list[TableFacts]:
+    return sorted(tables, key=lambda t: (t.domain_id, t.table_name, t.table_id))
+
+
+def table_pairs(
+    source: Sequence[TableFacts], target: Sequence[TableFacts] | None
+) -> list[TablePair]:
+    """Every table pair of the scope, in order: each source table with each target table that
+    has two different columns compared with each other. ``target`` None: the target is the same
+    as the source, and each two tables are one pair, a table with itself included."""
+    src = _ordered(source)
+    out: list[TablePair] = []
+    if target is None:
+        for i, a in enumerate(src):
+            for b in src[i:]:
+                pair = TablePair(a, b, True)
+                if pair.column_pairs():
+                    out.append(pair)
+        return out
+    for a in src:
+        for b in _ordered(target):
+            pair = TablePair(a, b, False)
+            if pair.column_pairs():
+                out.append(pair)
+    return out
+
+
+@dataclass(frozen=True)
+class Plan:
+    """A run's calls, and how pairs are batched into calls (``room`` characters of tables and
+    pairs, at most ``k`` pairs to a call)."""
+
+    k: int
+    room: int
+    labels: dict[int, str]
+    calls: list[Call]
+    table_pairs: int
+
+    def batch(self, pairs: Sequence[TablePair]) -> list[Call]:
+        return batch(pairs, self.labels, self.room, self.k)
+
+    def again(self, pairs: Sequence[TablePair]) -> list[Call]:
+        """The calls asking ``pairs`` once more: each left unanswered."""
+        return self.batch(pairs)
+
+
+def _room(input_tokens: int, k: int, *, either_direction: bool, not_read: bool) -> int:
+    """The characters a call's tables and pairs may hold: the input limit in characters less the
+    instructions (weighed at the widest threshold they can state) and headers."""
     fixed = (
-        len(context.instructions(group, k, either_direction=either_direction, not_read=not_read))
-        + _HEADERS
+        context.instructions_chars(k, either_direction=either_direction, not_read=not_read)
+        + context.HEADERS
     )
-    room = (input_tokens * CHARS_PER_TOKEN - fixed) // 2
+    room = input_tokens * CHARS_PER_TOKEN - fixed
     if room < 1:
         raise NoRoomError(
-            f"the model's input limit of {input_tokens} tokens holds no window beside the "
+            f"the model's input limit of {input_tokens} tokens holds nothing beside the "
             "instructions"
         )
     return room
 
 
-def pack(tables: Sequence[TableFacts], group: str, room: int) -> list[Window]:
-    """The group's columns of ``tables`` packed, in order, into windows of at most ``room``
-    characters; a table whose columns do not fit one window is spread over several, its context
-    with each. A single column heavier than ``room`` is a window alone."""
-    windows: list[Window] = []
-    current: list[tuple[TableFacts, ColumnFacts]] = []
-    for table in tables:
-        for column in table.columns:
-            if group not in column.groups:
-                continue
-            trial = [*current, (table, column)]
-            if current and _window(trial).weight > room:
-                windows.append(_window(current))
-                current = [(table, column)]
-            else:
-                current = trial
+def batch(pairs: Sequence[TablePair], names: dict[int, str], room: int, k: int) -> list[Call]:
+    """``pairs`` batched in order into calls of at most ``k`` pairs whose tables (each once) and
+    numbered pairs take at most ``room`` characters. A pair heavier than ``room`` is a call
+    alone."""
+    table_w: dict[int, int] = {}
+
+    def weight_of(t: TableFacts) -> int:
+        if t.table_id not in table_w:
+            table_w[t.table_id] = context.table_weight(t, names[t.table_id])
+        return table_w[t.table_id]
+
+    calls: list[Call] = []
+    current: list[TablePair] = []
+    tables: dict[int, int] = {}
+    pair_ws: list[int] = []
+    for p in pairs:
+        added = {t.table_id: weight_of(t) for t in (p.source, p.target) if t.table_id not in tables}
+        pw = context.pair_weight(k, names[p.source.table_id], names[p.target.table_id])
+        trial = context.list_weight([*tables.values(), *added.values()]) + context.list_weight(
+            [*pair_ws, pw]
+        )
+        if current and (len(current) >= k or trial > room):
+            calls.append(Call(tuple(current), names))
+            current, tables, pair_ws = [], {}, []
+            added = {t.table_id: weight_of(t) for t in (p.source, p.target)}
+        current.append(p)
+        tables.update(added)
+        pair_ws.append(pw)
     if current:
-        windows.append(_window(current))
-    return windows
-
-
-def _meets(a: Window, b: Window, group: str) -> bool:
-    """Whether some column of ``a`` and a different column of ``b`` are compared in ``group``."""
-    return any(
-        comparable(ca, cb, group) and (ta.table_id, ca.name) != (tb.table_id, cb.name)
-        for ta, ca in a.columns()
-        for tb, cb in b.columns()
-    )
-
-
-def _ordered(tables: Sequence[TableFacts]) -> list[TableFacts]:
-    return sorted(tables, key=lambda t: (t.domain_id, t.table_name, t.table_id))
+        calls.append(Call(tuple(current), names))
+    return calls
 
 
 def plan(
@@ -206,35 +253,22 @@ def plan(
     target: Sequence[TableFacts] | None,
     input_tokens: int,
     output_tokens: int,
-) -> tuple[int, list[Request]]:
-    """``(k, requests)``: the suggestions each request asks for, and the run's requests in order,
-    by group. ``target`` None: the target is the same as the source."""
-    k = at_most(output_tokens)
+) -> Plan:
+    """The run's calls in order. ``target`` None: the target is the same as the source."""
+    k = per_call(output_tokens)
     either = target is None
-    src = _ordered(source)
-    tgt = src if target is None else _ordered(target)
-    not_read = any(t.reduced for t in [*src, *tgt])
-    requests: list[Request] = []
-    for group in GROUPS:
-        room = window_chars(input_tokens, group, k, either_direction=either, not_read=not_read)
-        s_windows = pack(src, group, room)
-        if either:
-            for i, a in enumerate(s_windows):
-                for b in s_windows[i:]:
-                    if _meets(a, b, group):
-                        same = b is a
-                        requests.append(Request(group, a, None if same else b, True))
-            continue
-        t_windows = pack(tgt, group, room)
-        for a in s_windows:
-            for b in t_windows:
-                if _meets(a, b, group):
-                    requests.append(Request(group, a, b, False))
-    return k, requests
+    every = [*source, *(target or [])]
+    names = labels(every)
+    room = _room(input_tokens, k, either_direction=either, not_read=any(t.reduced for t in every))
+    pairs = table_pairs(source, target)
+    return Plan(k, room, names, batch(pairs, names, room, k), len(pairs))
 
 
-def _widest(tables: Sequence[TableFacts]) -> list[TableFacts]:
-    return [replace(t, columns=tuple(context.widest(c) for c in t.columns)) for t in tables]
+def _widest(tables: Sequence[TableFacts], samples_per_column: int) -> list[TableFacts]:
+    return [
+        replace(t, columns=tuple(context.widest(c, samples_per_column) for c in t.columns))
+        for t in tables
+    ]
 
 
 def bound(
@@ -242,31 +276,27 @@ def bound(
     target: Sequence[TableFacts] | None,
     input_tokens: int,
     output_tokens: int,
-) -> tuple[int, dict[str, int]]:
-    """``(k, requests by group)``: the suggestions each request asks for, and an upper bound on
-    the requests :func:`plan` gives for these tables whatever their values and classes turn out
-    to be, from their registration alone (REQ-413: the count before Run reads no table).
+    samples_per_column: int,
+) -> tuple[int, int, int]:
+    """``(k, calls, table pairs)``: the pairs each call lists at most, and upper bounds on the
+    calls and the table pairs :func:`plan` gives for these tables whatever their values and
+    classes turn out to be, from their registration alone (REQ-413: the count before Run reads
+    no table), each column sending at most ``samples_per_column`` (the run's) sample values.
 
-    Each column is weighed at the most it can send (:func:`provisa.discovery.context.widest`).
-    Packing in order never gives fewer windows for heavier columns, so a group has at least as
-    many windows here as in the run; and every pair of windows is counted, as if some two of
-    their columns were always compared. A group with no two different columns to compare has no
-    request."""
-    k = at_most(output_tokens)
+    The tables are registered ones: every column of a read table has the class unknown and meets
+    every other of its type group, so the pairs counted are every pair the run's classes can give.
+    Each column is weighed at the most it can send (:func:`provisa.discovery.context.widest`), so
+    each of the run's pairs weighs no more. Batching
+    in order takes as many pairs into each call as fit, and a run's call holding fewer or lighter
+    pairs still fits, so the run makes no more calls than counted."""
+    k = per_call(output_tokens)
     either = target is None
-    src = _ordered(_widest(source))
-    tgt = src if target is None else _ordered(_widest(target))
-    not_read = any(t.reduced for t in [*src, *tgt])
-    out: dict[str, int] = {}
-    for group in GROUPS:
-        s_columns = {(t.table_id, c.name) for t in src for c in t.columns if group in c.groups}
-        t_columns = {(t.table_id, c.name) for t in tgt for c in t.columns if group in c.groups}
-        if not s_columns or not t_columns or len(s_columns | t_columns) < 2:
-            continue
-        room = window_chars(input_tokens, group, k, either_direction=either, not_read=not_read)
-        s_windows = len(pack(src, group, room))
-        if either:
-            out[group] = s_windows * (s_windows + 1) // 2
-        else:
-            out[group] = s_windows * len(pack(tgt, group, room))
-    return k, out
+    every = [*source, *(target or [])]
+    names = labels(every)
+    room = _room(input_tokens, k, either_direction=either, not_read=any(t.reduced for t in every))
+    heaviest = {t.table_id: t for t in _widest(every, samples_per_column)}
+    pairs = [
+        replace(p, source=heaviest[p.source.table_id], target=heaviest[p.target.table_id])
+        for p in table_pairs(source, target)
+    ]
+    return k, len(batch(pairs, names, room, k)), len(pairs)

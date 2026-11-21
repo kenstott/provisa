@@ -359,10 +359,19 @@ def _runtime_state(held=None):
         schema_boot_id="b",
         schema_version=1,
         names_table=_names(),
-        roles={"viewer": {"capabilities": [], "domain_access": ["*"], "default_entitlements": {}}},
+        roles={
+            "viewer": {
+                "capabilities": [],
+                "domain_access": ["*"],
+                "own_domain_access": ["*"],
+                "default_entitlements": {},
+            }
+        },
         held_entitlements=held or {},
         entitlement_masks=MaskCache(),
         data_product_refs=(),
+        glossary_term_refs=(),
+        judgment_basis_ids=(),
     )
 
 

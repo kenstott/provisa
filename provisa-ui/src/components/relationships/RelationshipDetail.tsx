@@ -12,6 +12,7 @@
 // edits it. Its actions sit in the panel's pinned head; the form's Save and Cancel take their
 // place while it is open.
 
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { FormChecks, FormField, FormFooter, FormLayout } from "../form/FormLayout";
 import { ActionIcon, Checkbox, Group, Select, Text, TextInput, NumberInput } from "@mantine/core";
@@ -27,6 +28,9 @@ import { PanelActions } from "../list/SplitPane";
 import { PanelDelete } from "../list/PanelDelete";
 import { PanelDuplicate } from "../list/PanelDuplicate";
 import { Tip } from "../Tip";
+import { RelationshipQueryLinks } from "./RelationshipQueryLinks";
+import { relationshipQueryRef } from "./relationshipQueries";
+import { useRelationshipSurfaces } from "./useRelationshipSurfaces";
 
 interface RelationshipDetailProps {
   rel: Relationship;
@@ -45,6 +49,8 @@ interface RelationshipDetailProps {
   /** What the form says of a save that did not go through. */
   problem: string;
   tables: ListedTable[];
+  /** Reads the registered tables again: a relationship's table the list lacks is looked up once. */
+  refetchTables: () => Promise<unknown>;
   functions: TrackedFunction[];
   tableDomainById: Record<string, string>;
   domainsEnabled: boolean;
@@ -52,6 +58,8 @@ interface RelationshipDetailProps {
   onChangeResolver?: (set: string) => void;
   /** REQ-2249: retires the code resolver set ``set``, all of it. */
   onRetireResolver?: (set: string) => Promise<boolean | void>;
+  /** REQ-2252: the acting roles, whose names the relationship's query links use; null while none. */
+  actingRole: string | null;
 }
 
 export function RelationshipDetail({
@@ -67,13 +75,37 @@ export function RelationshipDetail({
   saving,
   problem,
   tables,
+  refetchTables,
   functions,
   tableDomainById,
   domainsEnabled,
   onChangeResolver,
   onRetireResolver,
+  actingRole,
 }: RelationshipDetailProps) {
   const { t } = useTranslation();
+  const surfaces = useRelationshipSurfaces(actingRole);
+  const queryRef = relationshipQueryRef(r, tables);
+  // A table the relationship names that the cached list lacks (registered or changed since it was
+  // read) is read again once, never silently dropping the links; if it is still missing, say so.
+  const missingKey = [r.sourceTableId, r.targetTableId, r.viaTableId]
+    .filter((id): id is number => id !== null && !tables.some((tb) => tb.id === id))
+    .join(",");
+  const [lookedUp, setLookedUp] = useState<{ key: string; error: string | null } | null>(null);
+  useEffect(() => {
+    if (missingKey === "") return;
+    let live = true;
+    refetchTables().then(
+      () => live && setLookedUp({ key: missingKey, error: null }),
+      (e: unknown) =>
+        live && setLookedUp({ key: missingKey, error: e instanceof Error ? e.message : String(e) }),
+    );
+    return () => {
+      live = false;
+    };
+  }, [missingKey, refetchTables]);
+  const linksUnavailable =
+    queryRef === null && missingKey !== "" && lookedUp?.key === missingKey ? lookedUp : null;
   // REQ-2249: one of a code resolver set's objects is changed and retired with the set.
   const set = r.codeResolver ?? null;
 
@@ -158,6 +190,22 @@ export function RelationshipDetail({
             </Group>
           </fieldset>
         </PanelActions>
+      )}
+      {!editingRel && queryRef !== null && (
+        <RelationshipQueryLinks
+          rel={queryRef}
+          name={String(r.id)}
+          heading={t("relationshipRow.queryLinks.heading")}
+          surfaces={surfaces}
+          testIdPrefix="relationship-detail"
+        />
+      )}
+      {!editingRel && linksUnavailable !== null && (
+        <Text fz="sm" c="dimmed" mb="md" data-testid="relationship-detail-query-links-unavailable">
+          {linksUnavailable.error === null
+            ? t("relationshipRow.queryLinks.tableMissing", { ids: missingKey })
+            : t("relationshipRow.queryLinks.tablesUnread", { error: linksUnavailable.error })}
+        </Text>
       )}
       {!editingRel ? (
         <RelationshipRead

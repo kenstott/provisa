@@ -39,6 +39,11 @@ const ROW = {
   apiEndpoint: null,
   modelingRole: null,
   viewMetrics: null,
+  withdrawn: false,
+  sourceWithdrawn: false,
+  productIds: [],
+  registeredAt: null,
+  columns: [],
 };
 
 function harness() {
@@ -88,5 +93,18 @@ describe("a table write's refetch", () => {
     await act(() => result.current.write.updateTable({ id: 1 }));
     await waitFor(() => expect(sent.filter((n) => n === "TableRowsQuery")).toHaveLength(2));
     expect(sent).not.toContain("TablesQuery");
+  });
+
+  it("invalidates a list nothing shows, so a page that mounts later reads it again", async () => {
+    const { sent, wrapper } = harness();
+    const first = renderHook(() => useTables(), { wrapper });
+    await waitFor(() => expect(first.result.current.tables).toHaveLength(1));
+    first.unmount();
+    await act(() => new Promise((resolve) => setTimeout(resolve, 100)));
+    const write = renderHook(() => useUpdateTable(), { wrapper });
+    await act(() => write.result.current.updateTable({ id: 1 }));
+    const later = renderHook(() => useTables({ inPage: true }), { wrapper });
+    await waitFor(() => expect(later.result.current.tables).toHaveLength(1));
+    expect(sent.filter((n) => n === "TableListQuery")).toHaveLength(2);
   });
 });

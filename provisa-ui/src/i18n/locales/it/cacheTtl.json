@@ -2,7 +2,7 @@
   "cacheTtl": {
     "neverExpires": "non scade mai",
     "inputHint": "-1: non scade mai",
-    "neverExpiresHint": "Non scade mai: caricata una volta.",
+    "neverExpiresHint": "Non scade mai e viene caricato una sola volta.",
     "asOf": "{{ttl}}, al {{when}}",
     "roleTtlUnlisted": "Il TTL della cache non scade mai, per ogni ruolo.",
     "roleTtlNoEffect": "Il TTL della cache non scade mai, quindi questa voce non ha effetto."

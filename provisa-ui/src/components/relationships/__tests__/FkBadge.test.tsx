@@ -67,9 +67,11 @@ function panel(r: Relationship) {
       saving={null}
       problem=""
       tables={[]}
+      refetchTables={() => Promise.resolve()}
       functions={[]}
       tableDomainById={{}}
       domainsEnabled={false}
+      actingRole={null}
     />,
   );
 }

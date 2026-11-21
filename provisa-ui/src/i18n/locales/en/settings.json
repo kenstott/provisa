@@ -890,6 +890,12 @@
         "label": "Running Kafka sinks per person",
         "help": "How many Kafka sinks one person may have running at once. A request to start another is refused until one of theirs stops."
       }
+    },
+    "sparql": {
+      "query_timeout": {
+        "label": "SPARQL query timeout",
+        "help": "How long one SPARQL query may run before it is given up: a preview, a Wikidata class lookup, and each replica load of a SPARQL table. A public endpoint may stop a query sooner by its own limit (Wikidata's is 60 seconds)."
+      }
     }
   }
 }

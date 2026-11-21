@@ -48,7 +48,7 @@
     "directoryHint": "Ein Verzeichnis unter denen, die der Betreiber zulässt. Es wird an Ort und Stelle gelesen, daher liest die nächste Abfrage eine Änderung.",
     "chooseFolder": "Ordner wählen",
     "folderKept": "Speichern packt diesen Ordner und sendet ihn erneut.",
-    "folderAgain": "Dieser Browser kann den Ordner nicht behalten: Wählen Sie ihn erneut, um eine neuere Kopie zu senden.",
+    "folderAgain": "Dieser Browser kann den Ordner nicht behalten. Wählen Sie ihn erneut, um eine neuere Kopie zu senden.",
     "editor": "Editor",
     "openInVscode": "In VS Code öffnen",
     "secrets": "Secrets",

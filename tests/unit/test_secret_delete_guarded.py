@@ -16,8 +16,7 @@ environment of the org the row sits, or among the org's own rows in the platform
 each one, and nothing is removed. The search reads stored text only: it resolves nothing and
 reads no secret's value.
 
-The scenarios run here on PostgreSQL control planes, and again through a served instance in
-``tests/integration/test_secret_delete_guarded_pg.py``.
+The scenarios run on PostgreSQL control planes.
 """
 
 # Requirements: REQ-1918, REQ-1558

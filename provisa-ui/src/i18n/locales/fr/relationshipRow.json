@@ -48,6 +48,27 @@
     "changeResolver": "Modifier le resolver de code",
     "retireResolver": "Retirer le resolver de code",
     "retireResolverTitle": "Retirer le resolver de code {{resolver}} ?",
-    "retireResolverConsequence": "Sa vue des correspondances et ses trois relations sont retirées ensemble. Leurs noms restent pris."
+    "retireResolverConsequence": "Sa vue des correspondances et ses trois relations sont retirées ensemble. Leurs noms restent pris.",
+    "queryLinks": {
+      "heading": "L’interroger",
+      "tableMissing": "Les liens de requête sont indisponibles : la table {{ids}} citée par cette relation ne figure pas parmi les tables enregistrées.",
+      "tablesUnread": "Les liens de requête sont indisponibles : les tables enregistrées n'ont pas pu être lues ({{error}}).",
+      "cypher": "Lire {{name}} en Cypher",
+      "sql": "Lire {{name}} en SQL",
+      "sparql": "Lire {{name}} en SPARQL",
+      "graphql": "Lire {{name}} en GraphQL",
+      "rest": "Lire {{name}} en REST",
+      "grpc": "Lire {{name}} en gRPC",
+      "jsonapi": "Lire {{name}} en JSON:API",
+      "surfaces": {
+        "cypher": "Cypher",
+        "sql": "SQL",
+        "sparql": "SPARQL",
+        "graphql": "GraphQL",
+        "rest": "REST",
+        "grpc": "gRPC",
+        "jsonapi": "JSON:API"
+      }
+    }
   }
 }

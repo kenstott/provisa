@@ -58,6 +58,8 @@ REGISTRY_ONLY_TABLES = {
     # The simple provider's stored user ids (a GUID per configured username). Portable metadata only.
     "simple_user_ids",
     "org_invites",
+    # REQ-1250: requests to join an org, the inverse of org_invites. Portable metadata only.
+    "org_join_requests",
     # REQ-1306: the auto-join opt-out written when a user deliberately leaves an org.
     "org_auto_join_optouts",
     # Billing tables are now portable metadata too (schema_admin), created via

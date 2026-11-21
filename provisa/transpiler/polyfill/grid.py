@@ -188,6 +188,9 @@ class Grid:
                     self._by_root.setdefault(_root_key(root), []).append((feature, rule))
                     if not isinstance(root, exp.Anonymous):
                         self._typed_names.update(_called(root))
+                        # The name the pattern writes, where sqlglot reads it as a node of another
+                        # name (log10 as log of base 10): a quoted call of it is that node too.
+                        self._typed_names.add(_written_name(rule.pattern))
 
     @staticmethod
     def _check(feature: Feature, side: Side) -> None:
@@ -329,6 +332,11 @@ def _called(node: exp.Expr) -> tuple[str, ...]:
     if isinstance(node, exp.Func):
         return tuple(name.lower() for name in type(node).sql_names())
     return ()
+
+
+def _written_name(pattern: str) -> str:
+    """The name of the function a pattern's text calls at its root."""
+    return pattern.split("(", 1)[0].strip().lower()
 
 
 def _root_key(node: exp.Expr) -> str:

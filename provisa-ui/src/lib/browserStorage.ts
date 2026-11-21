@@ -111,6 +111,23 @@ export function storageScope(): StorageScope | null {
   return bound;
 }
 
+let boundViewer: string | null = null;
+
+/**
+ * REQ-2260: who is viewing, for what is remembered per viewer within the scope (the item each list
+ * page had open). The scope gate binds it with the scope, from `/auth/me`'s user id, and remounts
+ * the pages when it changes; `null` unbinds it.
+ */
+export function bindViewer(viewer: string | null): void {
+  boundViewer = viewer;
+}
+
+/** The viewer the pages are shown to. A read before the scope gate binds one is a defect. */
+export function viewer(): string {
+  if (boundViewer === null) throw new Error("No viewer is bound yet: the scope gate binds it");
+  return boundViewer;
+}
+
 /** The key as the browser holds it. */
 export function storageKey(key: string, options?: StoredKeyOptions): string {
   if (options?.global) return key;

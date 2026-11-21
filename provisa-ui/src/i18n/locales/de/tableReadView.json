@@ -31,7 +31,7 @@
     "policiesTitle": "RLS-Richtlinien für diese Tabelle anzeigen",
     "editButtonLabel": "Tabelle {{name}} bearbeiten",
     "deleteButtonLabel": "Tabelle {{name}} löschen",
-    "profileHeading": "Profil — {{count}} Zeilen in der Stichprobe",
+    "profileHeading": "Profil: {{count}} Stichprobenzeilen",
     "colNulls": "Nullwerte",
     "colNullsTitle": "Nullwerte",
     "colBlanks": "Leer",

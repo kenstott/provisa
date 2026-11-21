@@ -19,7 +19,7 @@
     "run": "実行",
     "removeFromFavorites": "お気に入りから削除",
     "addToFavorites": "お気に入りに追加",
-    "autoImputeOn": "リレーションの自動補完 ON — クリックで無効化",
+    "autoImputeOn": "リレーションシップの自動推定がオンです。クリックで無効にします。",
     "autoImputeOff": "表示中のノード間のリレーションを自動補完",
     "groupTooltip": "属性でノードをグループ化（ハルをダブルクリックで折りたたみ、折りたたまれたノードをダブルクリックで展開）",
     "groupPlaceholder": "⬡ グループ",

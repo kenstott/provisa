@@ -28,11 +28,17 @@ import pytest
 
 from provisa.discovery import gather, measure
 from provisa.discovery.columns import UNKNOWN, ColumnFacts, TableFacts, type_groups
-from provisa.discovery.context import KEPT_AT, KEY_SCORE, SHARED_CEILING
+from provisa.discovery.context import CONTAINED_AT, KEY_SCORE, SHARED_CEILING, Scoring
+
+from provisa.discovery.threshold import DEFAULT as THRESHOLD
 from provisa.discovery.direction import from_answer
 from provisa.discovery.measure import Measurer, Values
 from provisa.discovery.proposals import BELOW_THRESHOLD, NOT_COMPARABLE
 from provisa.discovery.runner import KeyValues, Tally, judged
+from tests.unit.discovery_engine_reader import EngineReader
+
+#: The measured score's settings at their defaults.
+DEFAULT_SCORING = Scoring(CONTAINED_AT, SHARED_CEILING)
 
 
 def _column(name: str, *, parameter: str | None = None) -> ColumnFacts:
@@ -90,44 +96,15 @@ DATA: dict[tuple[str, str], list[Any]] = {
 }
 
 
-class _Reader:
-    """Columns' values as the governed pipeline would give them, each read kept."""
-
-    def __init__(self, data: dict[tuple[str, str], list[Any]], bound: int):
-        self.data = data
-        self.bound = bound
-        self.reads: list[tuple[str, str]] = []
-        self.lookups: list[tuple[str, str, int]] = []
-
-    async def values(
-        self, table: TableFacts, column: str, bound: int
-    ) -> Values | measure.Unmeasured:
-        if table.reduced:
-            return measure.NOT_READ
-        self.reads.append((table.table_name, column))
-        held = self.data[(table.table_name, column)]
-        counts: dict[Any, int] = {}
-        for v in held:
-            counts[v] = counts.get(v, 0) + 1
-        ranked = sorted(counts, key=lambda v: -counts[v])
-        return Values(
-            read=tuple(ranked[:bound]),
-            more=len(ranked) > bound,
-            distinct=all(c == 1 for c in counts.values()),
-        )
-
-    async def found(self, table: TableFacts, column: str, among: Values) -> frozenset[Any]:
-        self.lookups.append((table.table_name, column, len(among.read)))
-        return frozenset(among.keys & set(self.data[(table.table_name, column)]))
-
-
 def _semantic(source: tuple[int, str], target: tuple[int, str], confidence: float):
     return from_answer("semantics", source, target, "many-to-one", confidence, "same name")
 
 
 async def _measured(p, *, bound: int = measure.DISTINCT_BOUND, data=DATA):
-    reader = _Reader(data, bound)
-    return await Measurer(reader, TABLES, decided=frozenset(), bound=bound).measured(p), reader
+    reader = EngineReader(data)
+    return await Measurer(
+        reader, TABLES, decided=frozenset(), bound=bound, scoring=DEFAULT_SCORING
+    ).measured(p), reader
 
 
 async def test_neighborhood_shared_by_tables_none_of_which_it_keys_is_many_to_many():
@@ -142,7 +119,7 @@ async def test_neighborhood_shared_by_tables_none_of_which_it_keys_is_many_to_ma
     assert m.source.distinct is False and m.target.distinct is False
     # A shared value, not a key relationship: under the threshold whatever the model said.
     assert got.score == SHARED_CEILING
-    assert got.rank < KEPT_AT
+    assert got.rank < THRESHOLD
     assert got.confidence == 0.45  # the model's own is kept beside it
 
 
@@ -154,7 +131,7 @@ async def test_permit_id_contained_in_a_distinct_target_scores_as_a_key_relation
     assert (m.source_in_target, m.source.values) == (30, 30)
     assert (m.target_in_source, m.target.values) == (30, 100)
     assert m.target.distinct is True and m.source.distinct is False
-    assert got.score == KEY_SCORE and got.rank >= KEPT_AT
+    assert got.score == KEY_SCORE and got.rank >= THRESHOLD
     assert got.confidence == 0.45
 
 
@@ -165,7 +142,7 @@ async def test_a_pair_whose_values_barely_meet_scores_low_however_alike_the_name
     assert (m.source_in_target, m.source.values) == (1, 50)
     assert got.cardinality == "one-to-one"
     assert got.score is not None and got.score < 0.05
-    assert got.rank < KEPT_AT
+    assert got.rank < THRESHOLD
 
 
 async def test_a_semantic_pair_whose_source_alone_is_distinct_is_turned_to_start_at_the_referrer():
@@ -187,7 +164,8 @@ async def test_a_table_that_requires_a_parameter_is_measured_on_what_it_can_give
     got, reader = await _measured(_semantic((6, "permit_id"), (2, "permit_id"), 0.8))
     m = got.measure
     assert m is not None
-    assert ("pet_visits", "permit_id") not in reader.reads
+    assert reader.queries == [(("building_permits",), reader.queries[0][1])]
+    assert "pet_visits" not in reader.queries[0][1]
     assert m.source.unmeasured == measure.NOT_READ and m.target.unmeasured is None
     assert m.source_in_target is None and m.target_in_source is None
     # Only the target was read: it is distinct, so the pair is many-to-one.
@@ -196,19 +174,60 @@ async def test_a_table_that_requires_a_parameter_is_measured_on_what_it_can_give
     assert got.score is None and got.rank == 0.8
 
 
-async def test_a_column_holding_more_than_the_bound_is_looked_up_not_compared_with_its_first_values():
+async def test_a_column_holding_more_than_the_sample_size_is_counted_on_the_rows_read():
     got, reader = await _measured(_semantic((3, "permit_id"), (2, "permit_id"), 0.5), bound=40)
     m = got.measure
     assert m is not None
     assert m.target.more is True and m.target.values == 40
-    # The inspections' 30 values were looked up in the permits, so all are found.
-    assert ("building_permits", "permit_id", 30) in reader.lookups
-    assert m.source_in_target == 30 and got.score == KEY_SCORE
+    # Forty of the inspections' rows were read: each permit they name is found among all the
+    # permits, not only among the permits' first forty.
+    assert m.source.more is True and m.source.values is not None and m.source.values <= 40
+    assert m.source_in_target == m.source.values and got.score == KEY_SCORE
+    assert len(reader.queries) == 1
 
 
-async def test_each_column_is_read_once_for_the_run():
-    reader = _Reader(DATA, measure.DISTINCT_BOUND)
-    measurer = Measurer(reader, TABLES, decided=frozenset(), bound=measure.DISTINCT_BOUND)
+async def test_the_source_read_stops_at_the_sample_size():
+    data = {**DATA, ("complaints", "code"): [f"C-{n}" for n in range(100)]}
+    got, reader = await _measured(_semantic((4, "code"), (5, "code"), 0.5), bound=40, data=data)
+    m = got.measure
+    assert m is not None
+    assert m.source.values == 40 and m.source.more is True
+    assert 'WHERE "code" IS NOT NULL LIMIT 40)' in reader.queries[0][1]
+
+
+async def test_nulls_never_count_and_the_sample_size_counts_non_null_values():
+    data = {
+        **DATA,
+        ("complaints", "code"): [None] * 10 + ["C-1", "C-2", "C-3"],
+        ("regions", "code"): ["C-1", "C-2", "C-3", "C-4", None, None],
+    }
+    got, _ = await _measured(_semantic((4, "code"), (5, "code"), 0.5), bound=3, data=data)
+    m = got.measure
+    assert m is not None
+    # Three non-null values fill a sample of three, and all are in the target.
+    assert (m.source.values, m.source.more, m.source_in_target) == (3, False, 3)
+    assert m.contained == 1.0 and m.source.distinct is True
+    # The target's nulls are no values: three of its four read, none repeating.
+    assert (m.target.values, m.target.more, m.target.distinct) == (3, True, True)
+
+
+async def test_values_of_a_whole_number_column_are_matched_in_the_engine():
+    data = {("complaints", "code"): [1, 2, 2, None], ("regions", "code"): [2, 3, 4]}
+    reader = EngineReader(data, sql_type="BIGINT")
+    measurer = Measurer(
+        reader, TABLES, decided=frozenset(), bound=measure.DISTINCT_BOUND, scoring=DEFAULT_SCORING
+    )
+    m = (await measurer.measured(_semantic((4, "code"), (5, "code"), 0.5))).measure
+    assert m is not None
+    assert (m.source_in_target, m.source.values, m.source.distinct) == (1, 2, False)
+    assert (m.target_in_source, m.target.values, m.target.distinct) == (1, 3, True)
+
+
+async def test_each_pair_is_measured_by_one_query_and_reused_turned_round():
+    reader = EngineReader(DATA)
+    measurer = Measurer(
+        reader, TABLES, decided=frozenset(), bound=measure.DISTINCT_BOUND, scoring=DEFAULT_SCORING
+    )
     await measurer.all(
         [
             _semantic((2, "neighborhood"), (1, "neighborhood"), 0.5),
@@ -216,19 +235,18 @@ async def test_each_column_is_read_once_for_the_run():
             _semantic((1, "neighborhood"), (2, "neighborhood"), 0.5),
         ]
     )
-    assert sorted(reader.reads) == sorted(
-        [
-            ("building_permits", "neighborhood"),
-            ("budget", "neighborhood"),
-            ("complaints", "neighborhood"),
-        ]
-    )
+    assert [tables for tables, _ in reader.queries] == [
+        ("building_permits", "budget"),
+        ("complaints", "budget"),
+    ]
 
 
 async def test_a_band_pair_is_judged_on_its_measured_score_and_the_rest_are_kept_with_why():
-    reader = _Reader(DATA, measure.DISTINCT_BOUND)
-    tally = Tally(total=1)
-    measurer = Measurer(reader, TABLES, decided=frozenset(), bound=measure.DISTINCT_BOUND)
+    reader = EngineReader(DATA)
+    tally = Tally(total=1, threshold=THRESHOLD)
+    measurer = Measurer(
+        reader, TABLES, decided=frozenset(), bound=measure.DISTINCT_BOUND, scoring=DEFAULT_SCORING
+    )
     out = await judged(
         [
             _semantic((3, "permit_id"), (2, "permit_id"), 0.45),
@@ -249,7 +267,7 @@ async def test_a_band_pair_is_judged_on_its_measured_score_and_the_rest_are_kept
     by_start = {r.proposal.start: r.proposal for r in tally.left_out if r.proposal is not None}
     assert by_start[(2, "neighborhood")].measure is not None
     assert by_start[(4, "code")].measure is None
-    assert ("complaints", "code") not in reader.reads
+    assert all("complaints" not in tables for tables, _ in reader.queries)
 
 
 # --- the reader: the governed pipeline as the run's role ------------------------------------------
@@ -272,6 +290,7 @@ def pipeline(monkeypatch):
 
     monkeypatch.setattr(gather, "_published_as", published_as)
     monkeypatch.setattr(gather, "_governed_as", governed_as)
+    monkeypatch.setattr(gather, "_measured_as", governed_as)
     return SimpleNamespace(calls=calls, answers=answers)
 
 
@@ -324,3 +343,37 @@ async def test_values_are_looked_up_in_another_column_as_literals_of_their_type(
     for value in (date(2026, 1, 2), datetime(2026, 1, 2, 3, 4), datetime(2026, 1, 2, tzinfo=UTC)):
         with pytest.raises(TypeError):
             gather._literal(value)
+
+
+async def test_a_pair_is_measured_by_one_governed_query_joining_a_limited_source(pipeline):
+    reader = measure.governed_reader(SimpleNamespace(), "steward")
+    measurer = Measurer(reader, TABLES, decided=frozenset(), bound=500, scoring=DEFAULT_SCORING)
+    pipeline.answers.append([(90, 30, 90, 100, 100, 100, 30, 30)])
+    got = await measurer.measured(_semantic((3, "permit_id"), (2, "permit_id"), 0.5))
+    assert len(pipeline.calls) == 1
+    sql, role = pipeline.calls[0]
+    assert role == "steward"
+    source = 'SELECT "permit_id" AS v FROM "city"."inspections" WHERE "permit_id" IS NOT NULL'
+    assert f"s AS ({source} LIMIT 500)" in sql
+    assert 'JOIN "city"."building_permits" AS s_in ON s.v = s_in."permit_id"' in sql
+    assert 'JOIN "city"."inspections" AS t_in ON t.v = t_in."permit_id"' in sql
+    # A distinct count is taken only of the rows read, never of a whole column.
+    assert sql.count("COUNT(DISTINCT") == 4
+    assert "COUNT(DISTINCT v) FROM s)" in sql and "COUNT(DISTINCT v) FROM t)" in sql
+    m = got.measure
+    assert m is not None
+    assert (m.source.values, m.source.distinct, m.source.more) == (30, False, False)
+    assert (m.target.values, m.target.distinct, m.target.more) == (100, True, False)
+    assert (m.source_in_target, m.target_in_source) == (30, 30)
+
+
+async def test_the_governed_reader_does_not_measure_what_the_role_cannot_read(pipeline):
+    assert (
+        measure.governed_reader(SimpleNamespace(), "outsider").column(PERMITS, "permit_id")
+        == measure.NOT_READABLE
+    )
+    assert (
+        measure.governed_reader(SimpleNamespace(), "steward").column(VISITS, "permit_id")
+        == measure.NOT_READ
+    )
+    assert pipeline.calls == []

@@ -9,12 +9,12 @@
     "assignmentsSourceClaims": "Claims של אסימון",
     "assignmentsSourceProvisa": "Provisa (שיוכים מקומיים)",
     "trustUpstream": "מתן אמון בכותרות זהות של proxy במעלה הזרם",
-    "allowSimpleAuth": "אפשור אימות פשוט (מגן פרודקשן — נדרש כדי להפעיל שם משתמש/סיסמה)",
+    "allowSimpleAuth": "התרת אימות פשוט (הגנת סביבת ייצור, נדרש להפעלת שם משתמש/סיסמה)",
     "saveButton": "שמירת הגדרות אימות",
     "loading": "טוען…",
     "saved": "נשמר.",
     "savedRestartRequired": "נשמר. יש להפעיל מחדש את השירות כדי להחיל.",
-    "secretOnFile": "נשמר — השאירו ריק כדי לשמור אותו",
+    "secretOnFile": "נשמר. יש להשאיר ריק כדי לשמור על הערך.",
     "secretNotSet": "לא הוגדר",
     "allowRegistration": "לאפשר לאנשים ליצור חשבונות בעצמם"
   }

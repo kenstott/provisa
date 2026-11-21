@@ -28,6 +28,8 @@ locals {
     server   = var.server_machine_type
     client   = var.client_machine_type
     backends = var.backends_machine_type
+    # The second node of the kill-a-node check. It measures nothing, so it can be small.
+    server2 = var.second_server_machine_type
   }
   # Only the devices asked for: the seed job creates the backends device alone.
   devices = { for name, type in local.machine_types : name => type if contains(var.devices, name) }
@@ -36,6 +38,7 @@ locals {
   provisioning_model = {
     server   = var.provisioning_model
     client   = var.provisioning_model
+    server2  = var.provisioning_model
     backends = var.backends_provisioning_model == null ? var.provisioning_model : var.backends_provisioning_model
   }
   # A run's backends device boots from the stored seed image, its data already seeded; every other
@@ -43,6 +46,7 @@ locals {
   boot_image = {
     server   = var.image
     client   = var.image
+    server2  = var.image
     backends = var.seed_mode == "from_image" ? var.backends_image : var.image
   }
 }
@@ -132,8 +136,16 @@ resource "google_compute_instance" "device" {
     automatic_restart   = false
     provisioning_model  = local.provisioning_model[each.key]
     preemptible         = local.provisioning_model[each.key] == "SPOT"
-    # A reclaimed Spot device stops (its disk and seeded data kept), as an idle one powers off.
-    instance_termination_action = local.provisioning_model[each.key] == "SPOT" ? "STOP" : null
+    # With a self-destruct, GCE deletes the device, disk and all, when the time is up, and when a
+    # Spot device is reclaimed: GCE takes one action for both. Without one, a reclaimed Spot device
+    # stops (its disk and seeded data kept), as an idle one powers off.
+    instance_termination_action = var.max_run_hours != null ? "DELETE" : (local.provisioning_model[each.key] == "SPOT" ? "STOP" : null)
+    dynamic "max_run_duration" {
+      for_each = var.max_run_hours == null ? [] : [var.max_run_hours]
+      content {
+        seconds = max_run_duration.value * 3600
+      }
+    }
   }
 
   # Run at every boot: Docker, the repository at var.commit, uv sync, the idle shutdown, and on

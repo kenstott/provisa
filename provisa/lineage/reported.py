@@ -21,11 +21,11 @@ then the same schema and table (and database, when the name carries one). A data
 table name on another server is a different dataset.
 """
 
-# Requirements: REQ-2229
+# Requirements: REQ-2229, REQ-2263
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field as dataclass_field
 from datetime import datetime
 from typing import Any
 from urllib.parse import urlsplit
@@ -68,11 +68,32 @@ class ColumnInput:
     transform: str  # the facet's "type:subtype"; never its free-text description
 
 
+#: The dataset facets the receiver keeps, latest per dataset (REQ-2263), by the name stored.
+SCHEMA_FACET = "schema"
+DOCUMENTATION_FACET = "documentation"
+OWNERSHIP_FACET = "ownership"
+
+
 @dataclass(frozen=True)
 class ReportedDataset:
     namespace: str
     name: str
     column_lineage: dict[str, tuple[ColumnInput, ...]]  # output column -> what it came from
+    #: The schema, documentation and ownership facets the event carried, by the name stored
+    #: (SCHEMA_FACET, ...): each one's payload as :func:`_kept_facets` reads it. A facet the
+    #: event did not carry is absent.
+    facets: dict[str, dict] = dataclass_field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class SkippedFacet:
+    """A schema, documentation or ownership facet the event carried malformed: not kept, while the
+    rest of the event is (REQ-2263)."""
+
+    dataset_namespace: str
+    dataset_name: str
+    facet: str
+    reason: str
 
 
 @dataclass(frozen=True)
@@ -83,6 +104,8 @@ class RunEvent:
     event_time: datetime
     inputs: tuple[ReportedDataset, ...]
     outputs: tuple[ReportedDataset, ...]
+    #: The kept facets left out as malformed, in the order the event lists their datasets.
+    skipped_facets: tuple[SkippedFacet, ...]
 
 
 @dataclass(frozen=True)
@@ -146,30 +169,107 @@ def _column_lineage(facets: dict) -> dict[str, tuple[ColumnInput, ...]]:
     return out
 
 
-def _datasets(body: dict, key: str) -> tuple[ReportedDataset, ...]:
+def _optional_text(parent: dict, key: str, where: str) -> str | None:
+    value = parent.get(key)
+    if value is not None and not isinstance(value, str):
+        raise InvalidRunEvent(f"{where}.{key} must be a string")
+    return value
+
+
+def _objects(parent: dict, key: str, where: str) -> list[dict]:
+    listed = parent.get(key)
+    if not isinstance(listed, list) or not all(isinstance(i, dict) for i in listed):
+        raise InvalidRunEvent(f"{where}.{key} must be a list of objects")
+    return listed
+
+
+def _facet(facets: dict, key: str) -> dict | None:
+    facet = facets.get(key)
+    if facet is None:
+        return None
+    if not isinstance(facet, dict):
+        raise InvalidRunEvent(f"{key} must be an object")
+    return facet
+
+
+def _schema(facet: dict) -> dict:
+    return {
+        "fields": [
+            {
+                "name": _text(f, "name", "schema.fields[]"),
+                "type": _optional_text(f, "type", "schema.fields[]"),
+                "description": _optional_text(f, "description", "schema.fields[]"),
+            }
+            for f in _objects(facet, "fields", "schema")
+        ]
+    }
+
+
+def _documentation(facet: dict) -> dict:
+    return {"description": _text(facet, "description", "documentation")}
+
+
+def _ownership(facet: dict) -> dict:
+    return {
+        "owners": [
+            {
+                "name": _text(o, "name", "ownership.owners[]"),
+                "type": _optional_text(o, "type", "ownership.owners[]"),
+            }
+            for o in _objects(facet, "owners", "ownership")
+        ]
+    }
+
+
+#: Each kept facet: its key in the event, the name it is stored by, and what is read of it.
+_KEPT_FACETS = (
+    ("schema", SCHEMA_FACET, _schema),
+    ("documentation", DOCUMENTATION_FACET, _documentation),
+    ("ownership", OWNERSHIP_FACET, _ownership),
+)
+
+
+def _kept_facets(facets: dict) -> tuple[dict[str, dict], dict[str, str]]:
+    """The SchemaDatasetFacet's fields (name, type, description), the DocumentationDatasetFacet's
+    description and the OwnershipDatasetFacet's owners (name, type) the dataset carries, and why
+    each malformed one is left out, both by the name stored. Each facet is read on its own, so a
+    malformed one costs only itself (REQ-2263)."""
+    kept: dict[str, dict] = {}
+    skipped: dict[str, str] = {}
+    for key, stored, read in _KEPT_FACETS:
+        try:
+            facet = _facet(facets, key)
+            if facet is not None:
+                kept[stored] = read(facet)
+        except InvalidRunEvent as exc:
+            skipped[stored] = str(exc)
+    return kept, skipped
+
+
+def _datasets(body: dict, key: str) -> tuple[tuple[ReportedDataset, ...], tuple[SkippedFacet, ...]]:
+    """The datasets listed under ``key``, and the kept facets left out of them as malformed."""
     listed = body.get(key)
     if listed is None:
-        return ()
+        return (), ()
     if not isinstance(listed, list) or not all(isinstance(d, dict) for d in listed):
         raise InvalidRunEvent(f"{key} must be a list of datasets")
     out = []
+    skips: list[SkippedFacet] = []
     for dataset in listed:
         facets = dataset.get("facets") or {}
         if not isinstance(facets, dict):
             raise InvalidRunEvent(f"{key}[].facets must be an object")
-        out.append(
-            ReportedDataset(
-                _text(dataset, "namespace", key),
-                _text(dataset, "name", key),
-                _column_lineage(facets),
-            )
-        )
-    return tuple(out)
+        namespace, name = _text(dataset, "namespace", key), _text(dataset, "name", key)
+        kept, skipped = _kept_facets(facets)
+        out.append(ReportedDataset(namespace, name, _column_lineage(facets), kept))
+        skips.extend(SkippedFacet(namespace, name, f, why) for f, why in skipped.items())
+    return tuple(out), tuple(skips)
 
 
 def parse_run_event(body: Any) -> RunEvent:
     """The run event in ``body``, or :class:`InvalidRunEvent`. A dataset or job event carries no
-    run and is refused."""
+    run and is refused. A malformed schema, documentation or ownership facet does not refuse the
+    event: it is left out and listed in the event's ``skipped_facets`` (REQ-2263)."""
     if not isinstance(body, dict):
         raise InvalidRunEvent("a run event is a JSON object")
     run, job = body.get("run"), body.get("job")
@@ -182,13 +282,16 @@ def parse_run_event(body: Any) -> RunEvent:
         raise InvalidRunEvent(f"event.eventTime is not a timestamp: {stamp!r}") from exc
     if event_time.tzinfo is None:
         raise InvalidRunEvent("event.eventTime must carry a UTC offset")
+    inputs, inputs_skipped = _datasets(body, "inputs")
+    outputs, outputs_skipped = _datasets(body, "outputs")
     return RunEvent(
         job_namespace=_text(job, "namespace", "job"),
         job_name=_text(job, "name", "job"),
         run_id=_text(run, "runId", "run"),
         event_time=event_time,
-        inputs=_datasets(body, "inputs"),
-        outputs=_datasets(body, "outputs"),
+        inputs=inputs,
+        outputs=outputs,
+        skipped_facets=inputs_skipped + outputs_skipped,
     )
 
 
@@ -215,6 +318,21 @@ def dataset_rows(event: RunEvent) -> list[dict]:
         for direction, datasets in ((_INPUT, event.inputs), (_OUTPUT, event.outputs))
         for d in datasets
     ]
+
+
+def facet_rows(event: RunEvent) -> list[dict]:
+    """One row per kept facet of each dataset the event names (REQ-2263). A dataset named as both
+    input and output with the facet on each side is one row, the output's."""
+    kept: dict[tuple[str, str, str], dict] = {}
+    for d in (*event.inputs, *event.outputs):
+        for facet, payload in d.facets.items():
+            kept[(d.namespace, d.name, facet)] = {
+                "dataset_namespace": d.namespace,
+                "dataset_name": d.name,
+                "facet": facet,
+                "payload": payload,
+            }
+    return list(kept.values())
 
 
 def reported_jobs(rows: list[dict]) -> list[ReportedJob]:

@@ -353,12 +353,18 @@ async def sweep(db: "Database", *, org_id: str, notify: bool) -> Sweep:
     """Remove ``db``'s expired and unused grants into the trail of ``org_id``, the org ``db``
     holds, and find the ones to give notice of. With ``notify`` False (no mail is configured) no
     grant is marked as told."""
+    from provisa.api.app import state
     from provisa.core.org_membership import record_admin_action
+    from provisa.entitlements import effective_store
 
     async with db.acquire() as conn:
         async with conn.transaction():
             expired = await _expired(conn)
             inactive = await _inactive(conn)
+            # REQ-2219: a removed grant changes what its holder holds, so their effective rows
+            # are recomputed with the removal, from the runtime of the org the caller bound.
+            for user_id in sorted({g.user_id for g in (*expired, *inactive)}):
+                await effective_store.write_person(conn, state, user_id)
     for g in expired:
         await record_admin_action(
             db,

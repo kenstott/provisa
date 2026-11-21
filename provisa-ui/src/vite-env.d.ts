@@ -58,6 +58,8 @@ declare module "*.graphql" {
   export const ColumnDependents: DocumentNode;
   export const GenerateColumnDescription: DocumentNode;
   export const GenerateTableDescription: DocumentNode;
+  export const GenerateUnregisteredTableDescription: DocumentNode;
+  export const GenerateUnregisteredColumnDescription: DocumentNode;
   export const CompileQuery: DocumentNode;
   export const MVList: DocumentNode;
   export const NamingConventions: DocumentNode;
@@ -218,6 +220,8 @@ declare module "*.gql" {
   export const AvailableFunctions: DocumentNode;
   export const GenerateColumnDescription: DocumentNode;
   export const GenerateTableDescription: DocumentNode;
+  export const GenerateUnregisteredTableDescription: DocumentNode;
+  export const GenerateUnregisteredColumnDescription: DocumentNode;
   export const CompileQuery: DocumentNode;
   export const MVList: DocumentNode;
   export const NamingConventions: DocumentNode;

@@ -25,7 +25,7 @@
     "leaveOrg": "Abbandona",
     "leaveHelp": "Abbandonare rimuove l'accesso a quell'organizzazione. Se questo account è il suo unico amministratore, promuovere prima qualcun altro.",
     "patHeading": "Token di accesso personali",
-    "patHelp": "Un token di accesso personale ti autentica dagli strumenti che non possono aprire un browser: psql, un client Neo4j, un client Arrow Flight o gRPC, un client MCP o uno script. Agisce come te, in questa organizzazione.",
+    "patHelp": "Un token di accesso personale consente di accedere da strumenti che non possono aprire un browser, come psql, un client Neo4j, un client Arrow Flight o gRPC, un client MCP o uno script. Agisce a tuo nome, in questa organizzazione.",
     "patName": "Nome",
     "patExpiresInDays": "Scade tra (giorni)",
     "patIssue": "Crea token",

@@ -1,7 +1,7 @@
 {
   "nodeContextMenu": {
     "excludeTooltip": "इस नोड को क्वेरी से बाहर रखें",
-    "excludeDisabledTooltip": "कोई प्राथमिक कुंजी कॉन्फ़िगर नहीं — बाहर नहीं रखा जा सकता",
+    "excludeDisabledTooltip": "बाहर नहीं किया जा सकता: कोई प्राथमिक कुंजी कॉन्फ़िगर नहीं",
     "excludeFromQuery": "क्वेरी से बाहर रखें",
     "excludeCount": "{{count}} नोड बाहर रखें",
     "unfixPosition": "स्थिति अनफ़िक्स करें",

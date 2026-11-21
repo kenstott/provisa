@@ -440,7 +440,9 @@ def test_the_sql_catalog_lists_no_retired_table_column_or_metric(catalog):
     from provisa.transpiler.metadata_settings import set_statement, statement_settings
 
     with catalog.begin() as conn:
-        sql, values = set_statement(statement_settings(ROLE, True, "provisa", False, session={}))
+        sql, values = set_statement(
+            statement_settings(ROLE, True, "provisa", False, masked=(), session={})
+        )
         for n, value in reversed(list(enumerate(values, 1))):
             sql = sql.replace(f"${n}", "'" + value.replace("'", "''") + "'")
         conn.exec_driver_sql(sql)

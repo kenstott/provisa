@@ -25,7 +25,7 @@
     "partial": "{{failed}} de {{count}} solicitação falhou, portanto o resultado é parcial.",
     "partial_other": "{{failed}} de {{count}} solicitações falharam, portanto o resultado é parcial.",
     "semanticsNoneProposed": "Semântica: nenhuma. O modelo não propôs relacionamentos.",
-    "semanticsBelowThreshold": "Semântica: nenhuma. Toda proposta ficou abaixo dos {{threshold}}% com que uma sugestão é mantida.",
+    "semanticsBelowThreshold": "Semântica: nenhuma. Todas as propostas pontuaram abaixo dos {{threshold}}% a partir dos quais uma sugestão é mantida.",
     "semanticsFiltered": "Semântica: nenhuma. Todas as sugestões foram deixadas de fora, pelos motivos abaixo.",
     "split": "{{count}} solicitação foi dividida ao meio e enviada de novo.",
     "split_other": "{{count}} solicitações foram divididas ao meio e enviadas de novo.",
@@ -35,23 +35,17 @@
     "jevBelow_other": "O Jev pontuou {{count}} propostas abaixo de {{threshold}}%. Cada uma aparece ao lado da pontuação do modelo, que é a que decide.",
     "scoringFailed": "O Jev não conseguiu pontuar as propostas de {{count}} solicitação, então elas mantiveram a confiança do modelo.",
     "scoringFailed_other": "O Jev não conseguiu pontuar as propostas de {{count}} solicitações, então elas mantiveram a confiança do modelo.",
-    "failedRequest": "Para colunas do tipo {{group}}: {{message}}",
+    "failedRequest": "Para {{group}} colunas: {{message}}",
     "leftOut": "Não sugeridas: {{list}}.",
     "leftOutItem": "{{label}} ({{count}})",
     "removed": {
-      "below_threshold": "com pontuação inferior a {{threshold}}%",
+      "below_threshold": "pontuou menos de {{threshold}}%",
       "invalid": "sem citar duas colunas comparadas",
       "not_comparable": "entre colunas de classes diferentes",
       "same_column": "de uma coluna para ela mesma",
-      "primary_key_to_primary_key": "chave primária para chave primária",
-      "both_repeating": "valores repetidos nos dois lados",
       "existing": "já registradas",
-      "pending": "já aguardando",
       "rejected": "rejeitadas antes",
-      "matches_foreign_key": "iguais a uma chave estrangeira encontrada nesta execução",
-      "out_of_scope": "fora das tabelas escolhidas",
-      "weaker": "repetindo um par de colunas para o qual uma proposta mais forte foi mantida",
-      "many_to_many": "sem que nenhuma coluna seja uma chave"
+      "out_of_scope": "fora das tabelas escolhidas"
     }
   }
 }

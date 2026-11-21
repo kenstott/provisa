@@ -501,8 +501,11 @@ test.describe("source to query through the UI: kafka (REQ-1739/REQ-1745/REQ-1766
   test.afterAll(async () => {
     // Nothing is left by the afterEach above unless it failed; a table left in service against
     // the stack going down would be rebuilt against a refused connection for the rest of the lane.
-    await retireTestSourcesTables();
-    provisionKafka("down");
+    try {
+      await retireTestSourcesTables();
+    } finally {
+      provisionKafka("down");
+    }
   });
 
   test("kafka: add the source, register a table, land a produced message, query it", async ({

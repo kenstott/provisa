@@ -1,7 +1,7 @@
 {
   "nodeContextMenu": {
     "excludeTooltip": "Esclude questo nodo dalla query",
-    "excludeDisabledTooltip": "Nessuna chiave primaria configurata — impossibile escludere",
+    "excludeDisabledTooltip": "Impossibile escludere: nessuna chiave primaria configurata",
     "excludeFromQuery": "Escludi dalla query",
     "excludeCount": "Escludi {{count}} nodi",
     "unfixPosition": "Sblocca posizione",

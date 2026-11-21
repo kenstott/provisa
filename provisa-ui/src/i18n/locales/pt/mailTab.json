@@ -1,10 +1,10 @@
 {
   "mailTab": {
     "loading": "Carregando…",
-    "intro": "O servidor de e-mail pelo qual esta implantação envia mensagens da plataforma — convites e outros avisos. Todo transporte que a build conhece está listado; o que precisa de um pacote o nomeia.",
+    "intro": "O servidor de e-mail pelo qual esta implantação envia convites e outros avisos da plataforma. Todos os transportes que a build conhece são listados; um que precisa de um pacote o informa.",
     "providerLabel": "Transporte",
-    "providerRequires": "{{label}} — instale {{library}}",
-    "secretOnFile": "Há uma credencial armazenada — digite para substituí-la",
+    "providerRequires": "{{label}} (instale {{library}})",
+    "secretOnFile": "Há uma credencial registrada. Digite para substituí-la.",
     "secretNotSet": "Não definido",
     "fromAddressLabel": "Endereço do remetente",
     "fromAddressHelp": "O endereço que os destinatários veem. A maioria dos transportes exige que seja um remetente verificado.",
@@ -12,7 +12,7 @@
     "baseUrlHelp": "O endereço para o qual os links de uma mensagem apontam, como um link de convite.",
     "timeoutLabel": "Tempo limite (segundos)",
     "save": "Salvar configurações de e-mail",
-    "saved": "Configurações de e-mail salvas — enviando por {{provider}}.",
+    "saved": "Configurações de e-mail salvas. Enviando por {{provider}}.",
     "testTitle": "Enviar uma mensagem de teste",
     "testIntro": "Envia pelo transporte configurado, com as mesmas credenciais que um convite usa, e registra a tentativa abaixo.",
     "testRecipient": "Enviar para",

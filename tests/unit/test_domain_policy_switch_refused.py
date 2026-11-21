@@ -14,8 +14,7 @@ Every registered table's domain is bound to the policy. The switch used to wipe 
 catalog as a side effect; it now answers with a refusal counting the tables, sources and domains
 that exist, and removes nothing. With no catalog it is applied.
 
-The scenarios run here on a SQLite control plane, and unchanged on PostgreSQL in
-``tests/integration/test_domain_policy_switch_refused_pg.py``.
+The scenarios run on a PostgreSQL control plane.
 """
 
 # Requirements: REQ-1919, REQ-165

@@ -8,7 +8,7 @@
     "never": "Live indien mogelijk",
     "always": "Altijd",
     "hot": "Hot-{{threshold}}",
-    "neverWithLoadProtection": "'Live indien mogelijk' kan niet worden gecombineerd met belastingsbescherming: een tabel met belastingsbescherming wordt nooit live gelezen.",
+    "neverWithLoadProtection": "Live indien mogelijk kan niet worden gecombineerd met belastingbescherming, omdat een tabel met belastingbescherming nooit live wordt gelezen.",
     "scheduled": "Altijd, bron alleen volgens schema gelezen",
     "helpScheduled": "Altijd, bron alleen volgens schema gelezen: leesbewerkingen komen altijd uit de replica en een query leidt nooit tot het lezen van de bron; de planner ververst de replica in het dalurenvenster, volgens de cache-TTL of de wijzigingscontrole, en minstens een van de drie is vereist."
   }

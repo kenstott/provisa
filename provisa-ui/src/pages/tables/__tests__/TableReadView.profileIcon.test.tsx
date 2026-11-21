@@ -125,6 +125,7 @@ function Harness({ initial = {} }: { initial?: Record<number, unknown> }) {
       handleProfile={() => setProfiles((p) => ({ ...p, 7: PROFILE }))}
       onPreview={vi.fn()}
       relationships={[]}
+      actingRole={null}
     />
   );
 }

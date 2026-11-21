@@ -473,7 +473,9 @@ def test_a_literal_keeps_what_its_cast_says(sql: str, want: str):
     "sql",
     [
         "SELECT date_part('century'::text, x::timestamp) AS v FROM t",
-        "SELECT ln(x) AS v FROM t",
+        # ln of a numeric: its exact digits, which ClickHouse's double does not hold (ln of a
+        # double is polyfill.floats' row)
+        "SELECT ln(x::numeric) AS v FROM t",
         'SELECT pg_catalog."in_range"(a::time, b::time, c::interval, true, false) AS v FROM t',
     ],
 )

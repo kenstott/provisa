@@ -425,7 +425,20 @@ _CREATE_ONLY = {
     "data_products": "id domain_id name",
     "dbt_manifests": "source_id definitions updated_at",
     "dbt_node_runs": "source_id unique_id status generated_at built_at",
+    "discovery_run_proposals": (
+        "id run_id kind source_table_id source_column target_table_id target_column confidence "
+        "scored score cardinality measure reasoning suggested_name left_out answer decision "
+        "accepted_as tenant_id"
+    ),
+    "discovery_runs": (
+        "id status scope model requests_total requests_done suggestions report error "
+        "stop_requested stopped_by started_by started_at finished_at launch progress_at tenant_id"
+    ),
     "domains": "id description",
+    "effective_entitlements": (
+        "id principal role_id capability bits model_version expansion removed valid_from "
+        "recorded_at"
+    ),
     "email_send_authority_audit": (
         "id email_address user_id granted_by org_id action reason created_at"
     ),
@@ -472,6 +485,7 @@ _CREATE_ONLY = {
         "id document_id document_title document_source domains status error summary started_by "
         "started_at finished_at tenant_id"
     ),
+    "glossary_term_sources": "id term_id catalog catalog_ref sourced_at tenant_id",
     "glossary_term_statements": "id term_id ordinal kind statement tenant_id",
     "glossary_term_vectors": "term_id embedding_model digest vector tenant_id",
     "glossary_terms": "id name definition deprecated tenant_id",
@@ -513,6 +527,7 @@ _CREATE_ONLY = {
     "naming_rules": "id pattern replacement",
     "node_freshness_state": "node content_hash probe_token updated_at",
     "node_ids": "id composite_id label properties",
+    "openlineage_dataset_facets": "dataset_namespace dataset_name facet payload run_id event_time",
     "openlineage_run_datasets": (
         "id job_namespace job_name run_id event_time direction dataset_namespace dataset_name "
         "column_lineage"

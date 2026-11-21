@@ -1,7 +1,7 @@
 {
   "nodeContextMenu": {
     "excludeTooltip": "將此節點從查詢中排除",
-    "excludeDisabledTooltip": "未設定主索引鍵 — 無法排除",
+    "excludeDisabledTooltip": "無法排除：未設定主索引鍵",
     "excludeFromQuery": "從查詢中排除",
     "excludeCount": "排除 {{count}} 個節點",
     "unfixPosition": "取消固定位置",

@@ -24,7 +24,7 @@
     "history": "Geschiedenis",
     "noHistory": "Nog geen geschiedenis",
     "favorites": "Favorieten",
-    "noFavorites": "Nog geen favorieten — klik op ★ in een resultaatframe",
+    "noFavorites": "Nog geen favorieten. Klik op ★ in een resultaatkader.",
     "matchAllNodes": "MATCH (n) RETURN n LIMIT 25",
     "matchAllRels": "MATCH p=()-->() RETURN p LIMIT 25",
     "firstPage": "Eerste pagina",

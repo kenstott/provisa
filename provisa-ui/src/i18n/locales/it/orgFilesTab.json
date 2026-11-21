@@ -2,7 +2,7 @@
   "orgFilesTab": {
     "panelTitle": "Cifratura della cartella dei file",
     "loading": "Caricamento…",
-    "intro": "I file che Provisa conserva per la tua organizzazione su ogni server — cache, conversioni, repliche e risultati di grandi dimensioni — sono conservati nella cartella della tua organizzazione. Attiva la cifratura per conservarli cifrati con una chiave custodita dalla tua organizzazione.",
+    "intro": "Su ogni server, Provisa conserva cache, conversioni, repliche e risultati di grandi dimensioni dell'organizzazione nella cartella propria dell'organizzazione. Attivare la crittografia per mantenerli cifrati con una chiave detenuta dall'organizzazione.",
     "encrypt": "Cifra la cartella dei file dell'organizzazione",
     "referenceLabel": "Riferimento della chiave",
     "referenceHelp": "Il nome della chiave nel vault dei segreti della tua organizzazione, scritto ${secret:NAME}. Provisa conserva solo questo riferimento, mai la chiave.",

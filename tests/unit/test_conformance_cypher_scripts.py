@@ -38,7 +38,8 @@ def _load(name: str):
     return module
 
 
-by_design = _load("by_design")  # the scripts import it as their sibling
+import by_design  # noqa: E402  # the scripts' sibling: one module object, never re-executed
+
 bolt = _load("cypher_tck_bolt")  # cypher_tck's sibling too
 procedures = _load("cypher_tck_procedures")  # and this
 tck = _load("cypher_tck")
@@ -1424,6 +1425,6 @@ def test_the_tck_session_user_holds_the_role_its_bolt_sessions_act_as(monkeypatc
         raw_claims={"username": catalog.TCK_SESSION_USER},
     )
     acts_as, may_name = asyncio.run(
-        held_module.sign_in_roles(SimpleNamespace(auth_config=auth), identity, None, naming=True)
+        held_module.sign_in_roles(SimpleNamespace(auth_config=auth), identity, None)
     )
     assert (acts_as, may_name) == (bolt.EMPTY_ROLE, [bolt.EMPTY_ROLE])

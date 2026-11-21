@@ -13,7 +13,7 @@
 // application, and a preview is a separate act from the merge it describes.
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor, fireEvent } from "../test-utils/render";
+import { render, screen, waitFor, fireEvent, within } from "../test-utils/render";
 import { EnvironmentsTab } from "../components/admin/EnvironmentsTab";
 import type { BranchSync, Environment } from "../api/environments";
 import { notifications } from "@mantine/notifications";
@@ -22,12 +22,19 @@ import { notifications } from "@mantine/notifications";
 // the call rather than out of the DOM (REQ-1556).
 vi.mock("@mantine/notifications", () => ({ notifications: { show: vi.fn() } }));
 
-const auth = { activeOrgId: "acme" as string | null, capabilities: ["environment_management"] };
+const auth = {
+  activeOrgId: "acme" as string | null,
+  capabilities: ["environment_management"],
+  userId: "me" as string | null,
+};
 vi.mock("../context/AuthContext", () => ({ useAuth: () => auth }));
 vi.mock("../api/environments", () => ({
   // isBase is a pure derivation over a row, not a call — the component reads it the way it reads
   // any other field, so the mock keeps the real one.
   isBase: (e: { data_mode: string | null }) => e.data_mode !== "inherit",
+  // REQ-2261: the stages and their colours are constants, not calls; the mock keeps them.
+  ENVIRONMENT_STAGES: ["production", "preprod", "test", "development"],
+  STAGE_COLOR: { production: "red", preprod: "orange", test: "blue", development: "gray" },
   // The refusal's error class, as the tab tells it apart by `instanceof` (REQ-1918).
   EnvironmentInUse: class EnvironmentInUse extends Error {
     dependents: unknown[];
@@ -86,6 +93,7 @@ import {
   listRemoteBranches,
   fetchRepoIntegration,
   mergeEnvironment,
+  patchEnvironment,
   previewMerge,
   requestReview,
   fetchBranchSync,
@@ -122,6 +130,7 @@ function syncOf(overrides: Partial<BranchSync> = {}): BranchSync {
 function env(name: string, overrides: Partial<Environment> = {}): Environment {
   return {
     name,
+    stage: name === "prod" ? "production" : "development",
     created_at: null,
     created_by: "someone",
     expires_at: null,
@@ -164,6 +173,36 @@ beforeEach(() => {
 });
 
 describe("EnvironmentsTab", () => {
+  it("changes an environment's stage from its row", async () => {
+    // REQ-2261: an environment-management act, sent as the stage alone.
+    vi.mocked(patchEnvironment).mockResolvedValue(env("dev", { stage: "preprod" }));
+    render(<EnvironmentsTab />);
+    const field = await screen.findByTestId("env-stage-select-dev");
+    expect(field).toHaveValue("Development");
+    fireEvent.click(field);
+    // Every row's picker keeps its options mounted; the one this field controls is its listbox.
+    const listbox = await waitFor(() => {
+      const id = field.getAttribute("aria-controls");
+      const box = id === null ? null : document.getElementById(id);
+      expect(box).not.toBeNull();
+      return box as HTMLElement;
+    });
+    fireEvent.click(within(listbox).getByRole("option", { name: "Preprod", hidden: true }));
+    await waitFor(() =>
+      expect(patchEnvironment).toHaveBeenCalledWith("acme", "dev", { stage: "preprod" }),
+    );
+  });
+
+  it("lets an environment's owner change its stage, and no one else without the org right", async () => {
+    // REQ-2155: environment_owned_management manages the environments the holder created.
+    auth.capabilities = ["environment_owned_management"];
+    mockList.mockResolvedValue([env("prod"), env("mine", { created_by: "me" }), env("dev")]);
+    render(<EnvironmentsTab />);
+    expect(await screen.findByTestId("env-stage-select-mine")).not.toBeDisabled();
+    expect(screen.getByTestId("env-stage-select-dev")).toBeDisabled();
+    expect(screen.getByTestId("env-stage-select-prod")).toBeDisabled();
+  });
+
   it("offers the org's environment controls on environment_management, as its API asks", async () => {
     // REQ-1573, REQ-1327: _guard asks environment_management; org_settings opens none of these.
     render(<EnvironmentsTab />);

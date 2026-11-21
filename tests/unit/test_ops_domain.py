@@ -191,7 +191,7 @@ class TestOpsCatalog:
                 _Col("status_code", "integer"),
             ]
         }
-        idx = _build_catalog_index(_ops_ctx(), col_types, database="provisa")
+        idx = _build_catalog_index(_ops_ctx(), col_types, database="provisa", masked=frozenset())
 
         schemas = {row[1] for row in idx.tables}
         names = {(row[1], row[2]) for row in idx.tables}

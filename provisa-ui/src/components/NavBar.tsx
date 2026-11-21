@@ -159,7 +159,7 @@ export function NavBar() {
     location.pathname === "/openapi" ||
     // REQ-1591: the glossary list is narrowed by the same selection, and its create modal makes a
     // term's domains from it.
-    location.pathname === "/admin/ontology";
+    location.pathname === "/context/ontology";
 
   function toggleGroup(id: string) {
     // If already in this group's route, just toggle the pin

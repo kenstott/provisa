@@ -12,7 +12,7 @@
 
 Run by start-ui-install.sh --demo --source=neo4j after the compose project is healthy. Idempotent:
 the wipe makes every run land exactly the seed graph. Talks to the HTTP transaction API the same
-way provisa-ui/e2e/neo4j-docker-export.spec.ts does.
+way tests/integration/test_demo_http_surfaces_e2e.py does.
 """
 
 from __future__ import annotations

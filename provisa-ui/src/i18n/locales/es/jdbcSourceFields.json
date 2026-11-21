@@ -16,7 +16,7 @@
     "checkPassed": "{{capability}}: superada",
     "checkFailed": "{{capability}}: fallida ({{reason}})",
     "jdbcDriverJar": "JAR del controlador JDBC",
-    "jdbcDriverJarHint": "El archivo JAR del controlador, subido desde su equipo. Solo instalaciones autoalojadas.",
+    "jdbcDriverJarHint": "El archivo jar del controlador, subido desde su equipo. Solo instalaciones autoalojadas.",
     "jdbcDriverClass": "Clase del controlador",
     "driver": "Controlador",
     "jarDriver": "Su propio controlador JDBC (JAR)",

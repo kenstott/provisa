@@ -36,7 +36,8 @@ def _load(name: str, path: Path):
     return module
 
 
-by_design = _load("by_design", CONFORMANCE / "by_design.py")  # the scripts' sibling import
+import by_design  # noqa: E402  # the scripts' sibling: one module object, never re-executed
+
 junit = _load("junit_summary", CONFORMANCE / "junit_summary.py")
 fill_docs = _load("fill_docs", CONFORMANCE / "fill_docs.py")
 fixtures = _load("flightsql_fixtures", CONFORMANCE / "flightsql" / "fixtures.py")
