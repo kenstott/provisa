@@ -390,7 +390,7 @@ async def test_two_starts_reconciling_one_org_schema_at_once_both_succeed(own_da
 # added to an existing table does NOT go here, it gets an ALTER.
 _CREATE_ONLY = {
     "access_review_rows": (
-        "id review_id user_id role_id domain_id entitlements expires_at last_used_at decision "
+        "id review_id user_id role_id domain_id source entitlements expires_at last_used_at decision "
         "decided_by decided_at reason"
     ),
     "access_reviews": "id started_by started_at webhook_status webhook_error webhook_at",
