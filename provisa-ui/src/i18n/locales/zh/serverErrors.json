@@ -568,7 +568,8 @@
       "table_not_withdrawn": "表 {{table}} 未撤下：只有已撤下的表才能恢复。要将生产中的表移到另一个区域，请设置其区域。",
       "source_not_withdrawn": "源 {{source}} 未撤下：只有已撤下的源才能恢复。要更改其区域，请设置其区域。",
       "put_back_needs_region": "恢复 {{object}} 需指定一个区域：请给出一个区域，无区域则不给出。",
-      "mask_constant_not_text": "非文本列上的常量脱敏规则读取为 NULL；只能保存 NULL：{{column}} ({{type}})"
+      "mask_constant_not_text": "非文本列上的常量脱敏规则读取为 NULL；只能保存 NULL：{{column}} ({{type}})",
+      "table_domain_required": "表 '{{table}}' 未指定域：每个表都注册在一个域中"
     },
     "secrets": {
       "env_reference_object_locked": "此对象属于运营方：它读取服务器自身的环境，无法在此更改。请改为添加您自己的对象。",

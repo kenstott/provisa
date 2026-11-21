@@ -568,7 +568,8 @@
       "table_not_withdrawn": "La tabella {{table}} non è ritirata: si ripristina solo una tabella ritirata. Per spostare in un'altra regione una tabella in produzione, impostane la regione.",
       "source_not_withdrawn": "L'origine {{source}} non è ritirata: si ripristina solo un'origine ritirata. Per cambiarne la regione, impostane la regione.",
       "put_back_needs_region": "Ripristinare {{object}} indica una regione: indicane una, o nessuna per nessuna regione.",
-      "mask_constant_not_text": "Una maschera costante su una colonna non di testo viene letta come NULL; si può salvare solo NULL: {{column}} ({{type}})"
+      "mask_constant_not_text": "Una maschera costante su una colonna non di testo viene letta come NULL; si può salvare solo NULL: {{column}} ({{type}})",
+      "table_domain_required": "La tabella '{{table}}' non indica alcun dominio: ogni tabella è registrata in un dominio"
     },
     "secrets": {
       "env_reference_object_locked": "Questo oggetto è dell'operatore: legge l'ambiente proprio del server e non può essere modificato qui. Aggiungine invece uno tuo.",

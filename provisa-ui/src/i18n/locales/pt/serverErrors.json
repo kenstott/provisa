@@ -568,7 +568,8 @@
       "table_not_withdrawn": "A tabela {{table}} não está retirada: só se repõe uma tabela retirada. Para mover para outra região uma tabela em produção, defina a sua região.",
       "source_not_withdrawn": "A fonte {{source}} não está retirada: só se repõe uma fonte retirada. Para mudar a sua região, defina a sua região.",
       "put_back_needs_region": "Repor {{object}} indica uma região: indique uma, ou nenhuma para nenhuma região.",
-      "mask_constant_not_text": "Uma máscara constante em uma coluna que não é de texto é lida como NULL; só é possível salvar NULL: {{column}} ({{type}})"
+      "mask_constant_not_text": "Uma máscara constante em uma coluna que não é de texto é lida como NULL; só é possível salvar NULL: {{column}} ({{type}})",
+      "table_domain_required": "A tabela '{{table}}' não indica nenhum domínio: toda tabela é registrada em um domínio"
     },
     "secrets": {
       "env_reference_object_locked": "Este objeto é do operador: ele lê o ambiente próprio do servidor e não pode ser alterado aqui. Adicione um seu em vez disso.",

@@ -54,6 +54,11 @@ class _Conn:
     async def execute_core(self, stmt):
         return SimpleNamespace(scalar=lambda: 0)
 
+    async def execute_core_many(self, stmt, rows):
+        # Like the real connection: a no-op for an empty batch.
+        for row in rows:
+            self.sent.append("insert_many")
+
     @asynccontextmanager
     async def advisory_lock(self, key: int):
         self.sent.append("lock")
@@ -239,6 +244,10 @@ def test_a_landed_environments_runtime_is_built_again_cloned_once_bound(monkeypa
 
         async def execute_core(self, stmt):
             return SimpleNamespace(fetchall=lambda: [])
+
+        async def execute_core_many(self, stmt, rows):
+            # Like the real connection: a no-op for an empty batch.
+            return None
 
     class _Db:
         @asynccontextmanager

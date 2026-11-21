@@ -138,8 +138,54 @@ for _entry in _ENTRIES:
         _MODEL_MAPS.setdefault(_origin, _entry["label_map"])
 
 
+# REQ-1586 (amended 2026-11-18): a junction table that registered relationships of its own join
+# (Join through keeps its two hops beside the joined relationship) keeps its node and every edge
+# into and out of it, where the split's label map dropped it. These are the junction labels each
+# model keeps; the comparison leaves them, and the edges that touch them, out.
+_KEPT_JUNCTION_LABELS = {
+    "tour:sonnets": frozenset({"S__Echo"}),
+    "tour:worldcup": frozenset({"W__CountryAlias"}),
+}
+
+
+def _without_labels(value, labels):
+    """A _structure with the given node labels, and every edge that touches one, removed."""
+    if isinstance(value, dict):
+        out = {}
+        for k, v in value.items():
+            if isinstance(k, str) and "::" in k:
+                ends = k.split("::", 1)[1].split("→")
+                if any(e in labels for e in ends):
+                    continue
+            if k in labels:
+                continue
+            kept = _without_labels(v, labels)
+            if kept == [] and v != []:
+                continue
+            out[k] = kept
+        return out
+    if isinstance(value, tuple) and len(value) == 2 and isinstance(value[1], dict):
+        return (value[0], _without_labels(value[1], labels))
+    if isinstance(value, list):
+        kept = []
+        for v in value:
+            if isinstance(v, str) and v in labels:
+                continue
+            if (
+                isinstance(v, tuple)
+                and len(v) == 2
+                and isinstance(v[1], dict)
+                and (v[1].get("source_label") in labels or v[1].get("target_label") in labels)
+            ):
+                continue
+            kept.append(_without_labels(v, labels))
+        return kept
+    return value
+
+
 @pytest.mark.parametrize("origin", sorted(_MODEL_MAPS))
 def test_each_models_label_map_is_built_as_before_the_split(origin):
     config = _MODELS.get(origin) or f"demo/named/{origin.split(':', 1)[1]}/config.yaml"
-    built = cypher_golden.model_label_map(_REPO / config)
-    assert _structure(built) == _structure(cypher_golden.load_blob(_MODEL_MAPS[origin]))
+    built = _structure(cypher_golden.model_label_map(_REPO / config))
+    built = _without_labels(built, _KEPT_JUNCTION_LABELS.get(origin, frozenset()))
+    assert built == _structure(cypher_golden.load_blob(_MODEL_MAPS[origin]))

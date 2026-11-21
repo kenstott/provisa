@@ -46,9 +46,12 @@ if [ -n "${SP_CERT_P12_BASE64:-}" ]; then
   echo "wrote the SharePoint client certificate"
 fi
 
-# Maintainer 2026-11-10 ("Paid cloud resources"): the Fabric capacity is this run's own, made
-# here, tagged with the run, the lane's workspace assigned to it; the after-script deletes it
-# whatever happened. Only the warehouse UI job is passed Fabric's names.
-if [ -n "${FABRIC_RESOURCE_GROUP:-}" ] && [ -n "${FABRIC_CAPACITY_NAME:-}" ] && [ -n "${FABRIC_WORKSPACE_ID:-}" ]; then
-  ( cd "$GITHUB_WORKSPACE" && uv run python scripts/fabric_e2e.py up )
+# Maintainer 2026-11-10 ("Paid cloud resources") and 2026-11-21 (per-run workspace): the Fabric
+# capacity, a workspace on it and a warehouse in that are this run's own, made here and tagged
+# with the run; the warehouse's SQL endpoint and database and the workspace id go to $GITHUB_ENV
+# (FABRIC_SQL_SERVER / FABRIC_DATABASE / FABRIC_WORKSPACE_ID) for the lane's run and after steps.
+# The after-script deletes them whatever happened. Only the warehouse UI job is passed Fabric's
+# names.
+if [ -n "${FABRIC_RESOURCE_GROUP:-}" ] && [ -n "${FABRIC_CAPACITY_NAME:-}" ]; then
+  ( cd "$GITHUB_WORKSPACE" && uv run python scripts/fabric_e2e.py up "$GITHUB_ENV" )
 fi
