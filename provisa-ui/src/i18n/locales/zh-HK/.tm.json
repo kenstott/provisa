@@ -2560,7 +2560,7 @@
   "zh-HK/erdModal.json::erdModal.edgeRoutingBezier": "Curved edges",
   "zh-HK/erdModal.json::erdModal.edgeRoutingLabel": "Edge routing",
   "zh-HK/erdModal.json::erdModal.edgeRoutingTaxi": "Right-angle edges",
-  "zh-HK/erdModal.json::erdModal.exitFullscreen": "Exit full screen",
+  "zh-HK/erdModal.json::erdModal.exitFullscreen": "Restore size",
   "zh-HK/erdModal.json::erdModal.expandAll": "Expand all",
   "zh-HK/erdModal.json::erdModal.fitAll": "Fit all",
   "zh-HK/erdModal.json::erdModal.focus": "Focus",
