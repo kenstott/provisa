@@ -58,7 +58,7 @@ TAGS = frozenset(PROVISA_TAGS | {LOADER, REQUIRES, *WRITE_TAGS})
 SDK_IMPORTS = {
     "python": re.compile(r"^\s*(from provisa_sdk import|import provisa_sdk)\b", re.M),
     "typescript": re.compile(r"""from ["']@provisa/sdk["']"""),
-    "rust": re.compile(r"\bprovisa_sdk::"),
+    "rust": re.compile(r"\bprovisa_sdk\b"),
 }
 
 _TAG_LINE = re.compile(r'^\s*(?:/\*\*|\*|"""|///)?\s*@(?P<tag>[a-z][a-z-]*)\b', re.M)
