@@ -167,15 +167,21 @@ def bc_read(node: exp.Expr, dialect: str) -> exp.Expr | None:
     cast, text = plain
     if cast.to.is_type(exp.DataType.Type.DATE):
         read = _bc(text, "date")
-        return None if read is None else _bc_day(read[0])
+        return None if read is None else _said(_bc_day(read[0]), cast)
     zoned = cast.to.is_type(exp.DataType.Type.TIMESTAMPTZ)
     read = _bc(text, "timestamp with time zone" if zoned else "timestamp")
     if read is None:
         return None
     stamp = _bc_stamp(*read)
     if zoned:
-        return exp.Anonymous(this="with_timezone", expressions=[stamp, exp.Literal.string("UTC")])
-    return stamp
+        stamp = exp.Anonymous(this="with_timezone", expressions=[stamp, exp.Literal.string("UTC")])
+    return _said(stamp, cast)
+
+
+def _said(value: exp.Expr, cast: exp.Cast) -> exp.Cast:
+    """``value`` cast to the type the statement said (a cast of its own type on Trino): a row that
+    reads a call after its arguments are written (to_char's) still reads the value's type."""
+    return exp.Cast(this=value, to=cast.to.copy())
 
 
 def stamp_read(node: exp.Expr, dialect: str) -> exp.Expr | None:
@@ -216,6 +222,19 @@ def date_read(node: exp.Expr, dialect: str) -> exp.Expr | None:
     if not 1 <= day <= calendar.monthrange(year % 400 + 2000, month)[1]:
         return None  # a day that does not exist: Trino's cast refuses it
     raise Refused(Refusal("22008", f'date out of range: "{text}"'))
+
+
+def held_literal(node: exp.Expr, dialect: str) -> exp.Expr:
+    """``node`` as this module's rows read it, for a rewrite that keeps it as a hole of what it
+    writes (the walk does not descend into what a rule writes): a text of a year BC as its days,
+    a date or a timestamp past PostgreSQL's range its 22008, past Trino's refused by name, a
+    numeric of more digits than Trino's decimal holds refused by name. A node no row reads is the
+    value itself."""
+    for read in (bc_read, date_read, stamp_read, numeric_read):
+        written = read(node, dialect)
+        if written is not None:
+            return written
+    return node
 
 
 def clock_read(node: exp.Expr, dialect: str) -> exp.Expr | None:
@@ -307,7 +326,10 @@ def int8_sum_read(node: exp.Expr, dialect: str) -> exp.Expr | None:
     call = trino.called(node)
     if call is None or "int8_sum" not in call[0] or len(call[1]) != 2:  # noqa: PLR2004
         return None
-    state, value = call[1]
+    try:
+        state, value = (held_literal(arg, dialect) for arg in call[1])
+    except Refused as refused:  # a rule read before any pattern: its refusal is the client's
+        raise Refused(refused.refusal, ruling=True) from refused
     said = _decimal_type(state)
     if said is not None:
         precision, scale = said

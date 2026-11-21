@@ -23,7 +23,7 @@ import sqlglot
 import sqlglot.expressions as exp
 
 from provisa.pgwire.catalog_server_answers import macros
-from provisa.transpiler.function_macros import RowRefused
+from provisa.transpiler.function_macros import FunctionRefused, RowRefused
 from provisa.transpiler.transpile import transpile
 
 
@@ -221,6 +221,62 @@ def test_extract_of_a_date_reads_the_date_not_a_timestamp():
     assert not any(c.to.is_type(exp.DataType.Type.TIMESTAMP) for c in tree.find_all(exp.Cast))
 
 
+_BC_VALUES = (
+    "'4713-01-01 BC'::date",
+    "'4713-01-01 00:00:00 BC'::timestamp without time zone",
+    "'4713-01-01 00:00:00+00 BC'::timestamp with time zone",
+)
+
+
+@pytest.mark.parametrize("value", _BC_VALUES)
+@pytest.mark.parametrize("name", ["date_part", "extract"])
+def test_the_year_of_a_value_before_christ_is_postgresqls(name, value):
+    """Trino's year of 4713 BC is the ISO calendar's -4712 (its year 0 is 1 BC); PostgreSQL's is
+    -4713: a year of 0 or below is one less."""
+    written = _trino(f"\"{name}\"('year'::text, {value})")
+    assert "<= 0 THEN" in written and ") - 1 ELSE" in written
+    assert "'4713-01-01" not in written  # the literal is its days from the epoch
+
+
+def test_extract_of_a_date_past_postgresqls_last_day_raises_22008():
+    refused = _refused("\"extract\"('year'::text, '5874898-01-01'::date)")
+    assert (refused.sqlstate, str(refused)) == ("22008", 'date out of range: "5874898-01-01"')
+
+
+def test_to_char_of_a_year_before_christ_writes_its_year_unsigned():
+    written = _trino(
+        "\"to_char\"('4713-01-01 00:00:00 BC'::timestamp without time zone, 'YYYY-MM-DD'::text)"
+    )
+    assert "DATE_FORMAT" not in written and "THEN 1 - YEAR(" in written
+    assert "'4713-01-01" not in written
+
+
+def test_int8_sum_of_a_numeric_past_38_digits_is_refused_by_name():
+    refused = _refused(
+        "\"int8_sum\"('123456789012345678901234567890.123456789012345678901234567890'::numeric, "
+        "3::bigint)"
+    )
+    assert refused.sqlstate == "0A000" and "more than 38 digits" in str(refused)
+
+
+def test_avg_of_a_real_sums_doubles_as_float4_accum_does():
+    written = transpile(
+        'SELECT pg_catalog."avg"(c1) AS v FROM (VALUES '
+        "('3.4028235e+38'::real), ('3.4028235e+38'::real)) AS t(c1)",
+        "trino",
+    )
+    assert "AVG(CAST(c1 AS DOUBLE))" in written and "SUM(CAST(c1 AS DOUBLE))" in written
+
+
+def test_sum_of_a_real_sums_reals_as_float4pl_does():
+    written = transpile(
+        'SELECT pg_catalog."sum"(c1) AS v FROM (VALUES '
+        "('3.4028235e+38'::real), ('3.4028235e+38'::real)) AS t(c1)",
+        "trino",
+    )
+    assert "SUM(c1)" in written and "DOUBLE" not in written
+
+
 # --- texts ------------------------------------------------------------------------------------------
 
 
@@ -236,6 +292,20 @@ def test_a_one_byte_char_is_held_as_its_byte(name):
 
 def test_position_by_name_is_strpos_in_its_order():
     assert _trino("\"position\"(''::text, 'abc'::text)") == "SELECT STRPOS('', 'abc') AS v"
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        '"position"(NULL::bit, NULL::bit)',
+        "\"position\"(B'101'::bit varying, B'01'::bit varying)",
+        "\"position\"('\\x0102'::bytea, '\\x02'::bytea)",
+    ],
+)
+def test_position_of_a_bit_string_or_a_bytea_is_not_strpos(sql):
+    """strpos takes neither; Trino has no form of byteapos or bitposition."""
+    with pytest.raises(FunctionRefused):
+        _trino(sql)
 
 
 def test_replace_of_an_empty_text_leaves_the_string():

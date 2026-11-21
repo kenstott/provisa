@@ -585,6 +585,32 @@ ENGINE_ERRORS: list[tuple[str, str, Any]] = [
         "value",
         "6",
     ),
+    *(
+        (f"SELECT pg_catalog.\"{name}\"('year'::text, {value}) AS v", "value", "-4713")
+        for name in ("date_part", "extract")
+        for value in (_BC_DATE, _BC_STAMP, _BC_ZONED)
+    ),
+    ("SELECT pg_catalog.\"extract\"('year'::text, '5874898-01-01'::date) AS v", "err", "22008"),
+    (
+        f"SELECT pg_catalog.\"to_char\"({_BC_STAMP}, 'YYYY-MM-DD'::text) AS v",
+        "value",
+        "4713-01-01",
+    ),
+    (
+        "SELECT pg_catalog.\"int8_sum\"('123456789012345678901234567890.123456789012345678901234567890'::numeric, 3::bigint) AS v",
+        "value",
+        "123456789012345678901234567893.123456789012345678901234567890",
+    ),
+    (
+        "SELECT pg_catalog.\"avg\"(c1) AS v FROM (VALUES ('3.4028235e+38'::real), ('3.4028235e+38'::real)) AS t(c1)",
+        "value",
+        "3.4028234663852886e+38",
+    ),
+    (
+        "SELECT pg_catalog.\"var_pop\"(c1) AS v FROM (VALUES ('3.4028235e+38'::real), ('3.4028235e+38'::real)) AS t(c1)",
+        "value",
+        "0",
+    ),
 ]
 
 

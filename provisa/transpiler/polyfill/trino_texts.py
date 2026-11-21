@@ -29,6 +29,8 @@ from provisa.transpiler.polyfill.grid import Feature, Limitation, Rule, Side
 from provisa.transpiler.polyfill.notation import Rewrite
 
 FAMILY = "texts on Trino"
+#: The types of position's other overloads (byteapos, bitposition), which this row does not read.
+_NOT_TEXT = frozenset({"bytea", "bit", "bit varying"})
 
 
 def position_called(node: exp.Expr, dialect: str) -> exp.Expr | None:
@@ -38,6 +40,8 @@ def position_called(node: exp.Expr, dialect: str) -> exp.Expr | None:
     if len(node.expressions) != 2:  # noqa: PLR2004 -- textpos takes two
         return None
     string, substring = node.expressions
+    if any(trino.said(arg) in _NOT_TEXT for arg in node.expressions):
+        return None  # bytea's and bit's position: strpos takes neither
     return trino.written("strpos($a, $b)", "position($a, $b)", {"a": string, "b": substring})
 
 

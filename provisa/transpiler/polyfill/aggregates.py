@@ -292,6 +292,12 @@ def trino_of_doubles(node: exp.Expr, dialect: str) -> exp.Expr | None:
     double = _double_argument(node)
     if double is None:
         return None
+    from provisa.transpiler.function_macros import said_type
+
+    if (said_type(double) or trino.said(double)) == "real":
+        # float4_accum reads a real as a double, summed and squared as doubles (Trino's own of a
+        # real sums reals, which overflow where PostgreSQL's do not).
+        double = exp.Cast(this=double.copy(), to=exp.DataType.build("DOUBLE"))
     form = float_aggregates.trino_of_doubles(function)
     return graft(replacement(form, written_in(dialect), _PATTERN.format(function)), {"v": double})
 

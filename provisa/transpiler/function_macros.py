@@ -1137,7 +1137,10 @@ _DATES: tuple[Macro, ...] = (
             name,
             ("part", "value"),
             {_DUCKDB: Pg("DATE_PART(part, value)"), _EVERY: Pg(pg_forms.date_part_form(name))},
-            own={_CLICKHOUSE: pg_forms.clickhouse_date_part()},
+            own={
+                _CLICKHOUSE: pg_forms.clickhouse_date_part(),
+                _TRINO: Pg(pg_forms.trino_date_part_form(name)),
+            },
         )
         for name in ("date_part", "extract")
     ),

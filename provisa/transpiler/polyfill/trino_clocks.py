@@ -26,7 +26,7 @@ import re
 
 import sqlglot.expressions as exp
 
-from provisa.transpiler.polyfill import trino
+from provisa.transpiler.polyfill import trino, trino_literals
 from provisa.transpiler.polyfill.grid import Feature, Limitation, Rule, Side
 from provisa.transpiler.polyfill.notation import Refusal, Refused, Rewrite
 
@@ -145,7 +145,8 @@ def summed(node: exp.Expr, dialect: str) -> exp.Expr | None:
 #: extract of a date by each part PostgreSQL's date reads, as Trino's EXTRACT of the DATE itself:
 #: the form of a timestamp's part casts the date to a TIMESTAMP, which holds no day past 294247.
 _DATE_PARTS = {
-    "year": "year($d)",
+    # Trino's year of a date before Christ is the ISO calendar's (0 is 1 BC), PostgreSQL's -1.
+    "year": "CASE WHEN year($d) <= 0 THEN year($d) - 1 ELSE year($d) END",
     "quarter": "quarter($d)",
     "month": "month($d)",
     "day": "day($d)",
@@ -199,7 +200,8 @@ def part_of_date(node: exp.Expr, dialect: str) -> exp.Expr | None:
     form = None if unit is None else _DATE_PARTS.get(unit.strip().lower())
     if form is None:
         return None
-    return trino.written(form, "extract($p, $d)", {"p": part, "d": day})
+    held = trino_literals.held_literal(day, dialect)
+    return trino.written(form, "extract($p, $d)", {"p": part, "d": held})
 
 
 _STATED = (
