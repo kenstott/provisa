@@ -201,8 +201,8 @@ legs:
     secrets: [GOOGLE_CLOUD_PROJECT, GOOGLE_APPLICATION_CREDENTIALS_JSON]
   - engine: fabric
     lane: warehouse
-    image: none (the warehouse lane's Fabric warehouse and capacity)
-    secrets: [FABRIC_SQL_SERVER, FABRIC_DATABASE, FABRIC_WORKSPACE_ID, FABRIC_CAPACITY_NAME, FABRIC_RESOURCE_GROUP, AZURE_CLIENT_ID, AZURE_CLIENT_SECRET, AZURE_TENANT_ID]
+    image: none (this run's own Fabric capacity, workspace and warehouse, created and deleted by the leg, tests/integration/fabric_capacity.py)
+    secrets: [FABRIC_CAPACITY_NAME, FABRIC_RESOURCE_GROUP, AZURE_CLIENT_ID, AZURE_CLIENT_SECRET, AZURE_TENANT_ID]
     concurrency: live-cloud-warehouses
     odbc: true
   - engine: synapse
@@ -224,15 +224,6 @@ legs:
     secrets: [SINGLESTORE_HOST, SINGLESTORE_PORT, SINGLESTORE_USERNAME, SINGLESTORE_PASSWORD, SINGLESTORE_DATABASE]
 
 not_run:
-  teradata: >-
-    no container image: Teradata Vantage Express is a VirtualBox/VMware virtual machine, which a
-    hosted runner cannot boot as a container
-  sapase: >-
-    no container image: SAP ASE Developer Edition is an installer behind SAP's registration, with no
-    published image
-  sqlanywhere: >-
-    no container image: SAP SQL Anywhere is an installer behind SAP's registration, with no
-    published image
   trino-byo: >-
     the trino leg: trino-byo is built by the same builder (provisa/federation/engine.py
     _ENGINE_BUILDERS, build_trino_engine), and the trino leg already reaches its coordinator in a

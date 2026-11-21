@@ -104,11 +104,13 @@ def _bigquery_up(env: dict[str, str], state: Path) -> tuple[str, dict[str, str]]
 
 
 def _fabric_up(env: dict[str, str], state: Path) -> tuple[str, dict[str, str]]:
-    from tests.integration.fabric_capacity import ensure_capacity_resumed
+    from tests.integration.fabric_capacity import create_run_fabric
 
-    ensure_capacity_resumed()
-    # The engine connects from FABRIC_SQL_SERVER / FABRIC_DATABASE, never a URL (engine.py).
-    return "", {}
+    # The leg's own capacity, workspace and warehouse (maintainer 2026-11-10, 2026-11-21), deleted
+    # by ``down``. The engine connects from FABRIC_SQL_SERVER / FABRIC_DATABASE, never a URL
+    # (engine.py).
+    made = create_run_fabric()
+    return "", dict(line.split("=", 1) for line in made.env_lines())
 
 
 def _az_login(env: dict[str, str]) -> None:
@@ -214,9 +216,10 @@ def _databricks_down(env: dict[str, str], state: Path) -> None:
 
 
 def _fabric_down(env: dict[str, str], state: Path) -> None:
-    from tests.integration.fabric_capacity import ensure_capacity_paused
+    from tests.integration.fabric_capacity import delete_run_fabric
 
-    print("the Fabric capacity is", ensure_capacity_paused())
+    delete_run_fabric()
+    print("this run's Fabric workspace and capacity are deleted")
 
 
 def _synapse_down(env: dict[str, str], state: Path) -> None:
