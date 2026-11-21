@@ -70,8 +70,37 @@ def _scope() -> str | None:
     return _scope_resolver() if _scope_resolver is not None else None
 
 
+@dataclass
+class _Window:
+    """A policy that the context which opened it reads alone, while it is open (:func:`trial`,
+    :func:`staged`). Configuring inside the window changes this one object, so work that the context
+    starts inside it (a task, a thread, each carrying a copy of the context) reads the same policy.
+    Once the window closes, that work reads the scope's policy again: a copy of a context made
+    inside the window does not keep a policy that has since gone."""
+
+    policy: _DomainPolicy
+    #: The scope the window was opened in. Work of another org, bound inside it, reads its own.
+    scope: str | None
+    open: bool = True
+    #: Whether :func:`configure` was called inside the window.
+    configured: bool = False
+
+
 # REQ-2222: the policy of a dry run in progress, seen by that dry run alone.
-_trial: ContextVar[_DomainPolicy | None] = ContextVar("provisa_domain_policy_trial", default=None)
+_window: ContextVar[_Window | None] = ContextVar("provisa_domain_policy_window", default=None)
+
+
+@contextmanager
+def _opened(*, keep: bool) -> Iterator[None]:
+    held = _Window(replace(_current()), _scope())
+    token = _window.set(held)
+    try:
+        yield
+        if keep and held.configured:
+            _policies[held.scope] = held.policy
+    finally:
+        held.open = False
+        _window.reset(token)
 
 
 @contextmanager
@@ -79,26 +108,46 @@ def trial() -> Iterator[None]:  # REQ-2222
     """Within this block :func:`configure` changes the policy for the current context only, and
     the change ends with the block: an apply configures the policy before it writes anything, and
     a dry run of one must not change what the org's other requests read."""
-    token = _trial.set(replace(_current()))
-    try:
+    with _opened(keep=False):
         yield
-    finally:
-        _trial.reset(token)
+
+
+@contextmanager
+def staged() -> Iterator[None]:  # REQ-1266, REQ-2006
+    """A runtime build's window: as :func:`trial`, and when the block ends normally the policy it
+    configured last becomes the scope's, in one write.
+
+    A build sets the deployment's naming, reads its model under it, then sets the org's own
+    (``app._build_org_runtime``). Two builds of one org's environments run at once (a sandbox's
+    open, REQ-2006), and each reads its own window's policy, never the other's in-between value.
+    Neither do the org's requests meanwhile. A block that configures nothing writes nothing (the
+    scope keeps inheriting the deployment's), and one that raises leaves the scope's as it was."""
+    with _opened(keep=True):
+        yield
+
+
+def _open_window() -> _Window | None:
+    held = _window.get()
+    if held is not None and held.open and held.scope == _scope():
+        return held
+    return None
 
 
 def _current() -> _DomainPolicy:
     """The policy for the current scope, or the deployment-wide one it was created under."""
-    in_trial = _trial.get()
-    if in_trial is not None:
-        return in_trial
+    held = _open_window()
+    if held is not None:
+        return held.policy
     policy = _policies.get(_scope())
     return policy if policy is not None else _policies[None]
 
 
 def configure(use_domains: bool | None, default_domain: str) -> None:  # REQ-154, REQ-432, REQ-433
     """Set the resolved policy for the current scope, before any registration."""
-    if _trial.get() is not None:
-        _trial.set(_DomainPolicy(use_domains, default_domain))
+    held = _open_window()
+    if held is not None:
+        held.policy = _DomainPolicy(use_domains, default_domain)
+        held.configured = True
         return
     _policies[_scope()] = _DomainPolicy(use_domains, default_domain)
 
