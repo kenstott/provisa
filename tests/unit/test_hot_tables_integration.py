@@ -127,7 +127,7 @@ class TestHotTableLoading:
         mgr._redis = mock_redis
 
         count = await mgr.load_table(
-            conn, TABLE_IDS["products"], "products", "public", "test_pg", "id"
+            conn, TABLE_IDS["products"], "products", "public", "test_pg", "id", {}
         )
         assert count == 2
         assert mgr.is_hot(TABLE_IDS["products"])
@@ -148,7 +148,7 @@ class TestHotTableLoading:
         mgr._redis = mock_redis
 
         count = await mgr.load_table(
-            conn, TABLE_IDS["big_table"], "big_table", "public", "test_pg", "id"
+            conn, TABLE_IDS["big_table"], "big_table", "public", "test_pg", "id", {}
         )
         assert count == 10
         assert not mgr.is_hot(TABLE_IDS["big_table"])
