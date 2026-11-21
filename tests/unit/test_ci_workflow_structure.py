@@ -20,6 +20,7 @@ the shape, with no list of exceptions beyond the one stated below (the NixOS gue
 from __future__ import annotations
 
 import importlib.util
+import os
 import re
 from pathlib import Path
 
@@ -668,13 +669,15 @@ _LEAVES_THE_RUN = re.compile(
 #: to a reusable workflow (pypa/gh-action-pypi-publish#166).
 #: The provisa server wheel is not among them: it outgrew PyPI's 10 GB project limit (alpha.510)
 #: and is installed from the release through the GitHub Pages index the publish leg writes.
-_RELEASE_PYPI = ("publish-pypi", "publish-notebook-pypi")
+_RELEASE_PYPI = ("publish-pypi", "publish-notebook-pypi", "publish-sdk-pypi")
+#: REQ-1984: the TypeScript SDK's npm upload, the orchestrator's own job for the same reason.
+_RELEASE_NPM = "publish-sdk-npm"
 #: REQ-2225: the provisa wheel carries the platform connector block, so the release that attaches
 #: it waits for the image the block names, which the orchestrator pushes itself, after every leg.
 _RELEASE_IMAGE_PUSH = "publish-connector-image"
 _RELEASE_PYPI_AFTER: dict[str, set[str]] = {}
 #: Every orchestrator job that is not a leg.
-_RELEASE_OWN = (*_RELEASE_PYPI, _RELEASE_IMAGE_PUSH)
+_RELEASE_OWN = (*_RELEASE_PYPI, _RELEASE_NPM, _RELEASE_IMAGE_PUSH)
 _RELEASE_PUBLISH = (
     "${{ inputs.publish == true && github.ref_type == 'tag' && github.ref_name == inputs.version }}"
 )
@@ -696,6 +699,7 @@ def _release_legs() -> dict[str, tuple[str, dict]]:
 def test_the_release_orchestrator_calls_legs_and_publishes_to_pypi_itself():
     jobs = yaml.safe_load(_RELEASE.read_text())["jobs"]
     pypi = {job: jobs.pop(job) for job in _RELEASE_PYPI}
+    npm = jobs.pop(_RELEASE_NPM)
     image_push = jobs.pop(_RELEASE_IMAGE_PUSH)
     given = {job: body["with"] for job, body in jobs.items()}
     first = next(iter(given.values()))
@@ -718,12 +722,21 @@ def test_the_release_orchestrator_calls_legs_and_publishes_to_pypi_itself():
         assert body["permissions"] == {"id-token": "write"}, job
         uses = [str(step.get("uses", "")) for step in body["steps"]]
         assert uses == ["actions/download-artifact@v4", "pypa/gh-action-pypi-publish@release/v1"]
+    # npm's job: the run's tarball and the upload, gated as PyPI's are, with provenance, a
+    # prerelease never under `latest`, after every build leg.
+    assert npm["if"] == _RELEASE_PUBLISH
+    assert set(npm["needs"]) == builds
+    assert npm["permissions"] == {"contents": "read", "id-token": "write"}
+    publish_step = next(s for s in npm["steps"] if s.get("name") == "Publish to npm")
+    assert "--provenance" in publish_step["run"] and "--tag" in publish_step["run"]
+    assert "'-alpha'" in publish_step["env"]["DIST_TAG"]
+    assert "'latest'" in publish_step["env"]["DIST_TAG"]
     # The connector image's push: gated the same way, after every build leg, holding only what a
     # push to the registry needs.
     assert image_push["if"] == _RELEASE_PUBLISH
     assert set(image_push["needs"]) == builds
     assert image_push["permissions"] == {"contents": "read", "packages": "write"}
-    assert set(jobs["publish"]["needs"]) == builds | set(pypi) | {_RELEASE_IMAGE_PUSH}
+    assert set(jobs["publish"]["needs"]) == builds | set(pypi) | {_RELEASE_NPM, _RELEASE_IMAGE_PUSH}
 
 
 def test_every_step_of_the_release_that_leaves_the_run_waits_for_publish():
@@ -750,10 +763,13 @@ def test_every_step_of_the_release_that_leaves_the_run_waits_for_publish():
         if job in _RELEASE_PYPI:
             assert body["if"] == _RELEASE_PUBLISH, job
             seen += sum("pypi-publish" in str(s.get("uses", "")) for s in body["steps"])
+        if job == _RELEASE_NPM:
+            assert body["if"] == _RELEASE_PUBLISH, job
+            seen += sum("npm publish" in str(s.get("run", "")) for s in body["steps"])
         if job == _RELEASE_IMAGE_PUSH:
             assert body["if"] == _RELEASE_PUBLISH, job
             seen += sum(bool(_LEAVES_THE_RUN.search(str(s.get("run", "")))) for s in body["steps"])
-    assert seen >= 14, f"only {seen} publishing steps found: the pattern no longer matches them"
+    assert seen >= 16, f"only {seen} publishing steps found: the pattern no longer matches them"
 
 
 def test_no_leg_of_the_release_reads_the_pushed_ref():
@@ -1628,3 +1644,61 @@ def test_nothing_in_ci_names_the_plugin_jars_maven_location_but_the_pin():
         if p.is_file() and p.suffix in {".yml", ".yaml", ".sh", ".py"} and maven in p.read_text()
     ]
     assert named == []
+
+
+def test_the_release_builds_both_sdks_and_publishes_them_from_the_run():
+    """REQ-1984: each SDK is built in the packages leg (a dry run builds both), stamped with the
+    release's version, and uploaded to the run; only the orchestrator's publish jobs read them."""
+    legs = dict(_release_legs().values())
+    jobs = legs["release-packages.yml"]["jobs"]
+    py, ts = jobs["build-sdk-python"], jobs["build-sdk-typescript"]
+    py_text, ts_text = str(py), str(ts)
+    assert "needs.metadata.outputs.py_version" in py_text
+    assert "needs.metadata.outputs.npm_version" in ts_text
+    for job, artifact in ((py, "sdk-python-dist"), (ts, "sdk-typescript-dist")):
+        uploads = [
+            s["with"]["name"] for s in job["steps"] if "upload-artifact" in s.get("uses", "")
+        ]
+        assert uploads == [artifact]
+        assert not _LEAVES_THE_RUN.search("\n".join(str(s.get("run", "")) for s in job["steps"]))
+    orchestrator = yaml.safe_load(_RELEASE.read_text())["jobs"]
+    for job, artifact in (
+        ("publish-sdk-pypi", "sdk-python-dist"),
+        ("publish-sdk-npm", "sdk-typescript-dist"),
+    ):
+        assert orchestrator[job]["steps"][0]["with"]["name"] == artifact
+
+
+def _metadata_outputs(tag: str) -> dict[str, str]:
+    """Runs the metadata action's own script for `tag` and returns what it writes."""
+    import subprocess
+    import tempfile
+
+    action = yaml.safe_load(
+        (REPO / ".github" / "actions" / "release-metadata" / "action.yml").read_text()
+    )
+    [step] = [s for s in action["runs"]["steps"] if s.get("id") == "meta"]
+    with tempfile.NamedTemporaryFile("r+", suffix=".out") as out:
+        subprocess.run(  # noqa: S603 -- the repository's own script, on a made-up tag
+            ["bash", "-c", step["run"]],
+            env={"VERSION": tag, "GITHUB_OUTPUT": out.name, "PATH": os.environ["PATH"]},
+            check=True,
+        )
+        out.seek(0)
+        return dict(line.rstrip("\n").split("=", 1) for line in out if "=" in line)
+
+
+@pytest.mark.parametrize(
+    ("tag", "pypi", "npm"),
+    [
+        ("v0.1.0-alpha.481", "0.1.0a481", "0.1.0-alpha.481"),
+        ("v0.2.0-beta.3", "0.2.0b3", "0.2.0-beta.3"),
+        ("v1.0.0-rc.12", "1.0.0rc12", "1.0.0-rc.12"),
+        ("v1.2.3", "1.2.3", "1.2.3"),
+    ],
+)
+def test_the_sdk_versions_map_from_the_release_tag(tag, pypi, npm):
+    """REQ-1984: PyPI takes the PEP 440 form, npm the tag as semver."""
+    got = _metadata_outputs(tag)
+    assert got["py_version"] == pypi
+    assert got["npm_version"] == npm
