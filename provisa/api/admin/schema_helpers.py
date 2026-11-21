@@ -679,16 +679,20 @@ async def _domain_table_conflict(  # REQ-432
     return None
 
 
-def table_domain_refusal(domain_id: str | None, table_name: str) -> "MutationResult | None":
+def table_domain_refusal(
+    domain_id: str | None, table_name: str, alias: str | None = None
+) -> "MutationResult | None":
     """REQ-1531/REQ-433: a table registration names its domain, refused by name when it does not
-    (the table repository refuses it again at the write: every path)."""
+    (the table repository refuses it again at the write: every path). REQ-1929: a table named
+    ``commands`` is refused by name too."""
     from provisa.core import domain_policy
 
     try:
         domain_policy.table_domain_id(domain_id, table_name)
-    except domain_policy.TableDomainRequired as refused:
+        domain_policy.require_table_name(table_name, alias)
+    except (domain_policy.TableDomainRequired, domain_policy.ReservedTableName) as refused:
         return MutationResult(
-            success=False, message=str(refused), code=refused.code, params={"table": table_name}
+            success=False, message=str(refused), code=refused.code, params={"table": refused.table}
         )
     return None
 
