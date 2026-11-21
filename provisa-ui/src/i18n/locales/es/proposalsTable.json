@@ -61,6 +61,7 @@
     "twoDimensions": "Sus columnas ya se unen a dos dimensiones compartidas distintas, así que no se puede aceptar.",
     "admittedOnKeyValues": "Admitido porque los valores clave coinciden en los datos; la medida se muestra junto a la confianza del modelo.",
     "hiddenByFilter_one": "El filtro oculta {{count}} fila.",
-    "hiddenByFilter_other": "El filtro oculta {{count}} filas."
+    "hiddenByFilter_other": "El filtro oculta {{count}} filas.",
+    "editAria": "Editar {{name}}"
   }
 }

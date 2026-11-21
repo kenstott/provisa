@@ -38,7 +38,7 @@ import {
   Table,
   Text,
 } from "@mantine/core";
-import { X } from "lucide-react";
+import { Pencil, X } from "lucide-react";
 import type { RunProposal } from "../../api/admin";
 import { FormField, FormLayout } from "../form/FormLayout";
 import { BreakableName } from "../list/BreakableName";
@@ -55,6 +55,7 @@ import {
   type FilterSpec,
 } from "../../pages/sql/columnFilter";
 import { measureLines } from "./pairMeasure";
+import { ProposalEditDialog } from "./ProposalEditDialog";
 import { candidateName } from "./relationship-types";
 import { scorePercent, type RunProposalsState } from "./useRunProposals";
 
@@ -98,6 +99,8 @@ export function ProposalsTable({
 }: ProposalsTableProps) {
   const { t } = useTranslation();
   const proposals = useMemo(() => state.proposals ?? [], [state.proposals]);
+  // The row whose edit dialog is open (REQ-2262).
+  const [editing, setEditing] = useState<RunProposal | null>(null);
 
   const label = (tableId: number | null, column: string | null) => {
     if (tableId === null || column === null) return "";
@@ -436,7 +439,7 @@ export function ProposalsTable({
                       <BreakableName name={label(p.target_table_id, p.target_column)} />
                     </Table.Td>
                     <Table.Td data-testid={`proposal-cardinality-${p.id}`}>
-                      {p.cardinality ?? ""}
+                      {state.edits.get(p.id)?.cardinality ?? p.cardinality ?? ""}
                     </Table.Td>
                     <Table.Td data-testid={`proposal-measure-${p.id}`}>{measured(p)}</Table.Td>
                     <Table.Td>{t(`proposalsTable.kind.${p.kind}`)}</Table.Td>
@@ -444,6 +447,17 @@ export function ProposalsTable({
                     <Table.Td>{note(p)}</Table.Td>
                     {/* The cell a row's actions take (ListActions), written as the table cell it is. */}
                     <Table.Td className="list-actions">
+                      {p.acceptable && (
+                        <ActionIcon
+                          size="sm"
+                          variant="subtle"
+                          aria-label={t("proposalsTable.editAria", { name })}
+                          data-testid={`proposal-edit-${p.id}`}
+                          onClick={() => setEditing(p)}
+                        >
+                          <Pencil size={14} />
+                        </ActionIcon>
+                      )}
                       {p.decidable && (
                         <Checkbox
                           size="xs"
@@ -460,6 +474,16 @@ export function ProposalsTable({
             </Table.Tbody>
           </ListTable>
         </div>
+      )}
+      {editing && (
+        <ProposalEditDialog
+          name={nameOf(editing)}
+          // A junction or shared-dimension row's cardinality is fixed by what accepting makes.
+          cardinality={editing.via || editing.dimension ? null : editing.cardinality}
+          edit={state.edits.get(editing.id)}
+          onSave={(edit) => state.setEdit(editing.id, edit)}
+          onClose={() => setEditing(null)}
+        />
       )}
       {proposals.length > 0 && active.length > 0 && (
         <Text fz="sm" c="dimmed" mt="xs" data-testid="discover-filter-hidden">

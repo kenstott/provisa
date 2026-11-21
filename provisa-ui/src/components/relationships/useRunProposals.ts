@@ -55,6 +55,13 @@ export function startsAccepted(p: RunProposal, threshold: number): boolean {
 const ticked = (proposals: RunProposal[], threshold: number) =>
   new Set(proposals.filter((p) => startsAccepted(p, threshold)).map((p) => p.id));
 
+/** A candidate's name and cardinality as edited before accepting it; a field left out keeps the
+ *  run's own (REQ-2262). */
+export interface RowEdit {
+  name?: string;
+  cardinality?: string;
+}
+
 export interface RunProposalsState {
   /** The shown run's undecided proposals, the highest score first; null until read. */
   proposals: RunProposal[] | null;
@@ -72,6 +79,10 @@ export interface RunProposalsState {
   accept: ReadonlySet<number>;
   notAgain: ReadonlySet<number>;
   toggleAccept: (id: number) => void;
+  /** What the person set in a row's edit dialog, by proposal id: sent with it on Apply. */
+  edits: ReadonlyMap<number, RowEdit>;
+  /** Keep a row's edit; null drops it. */
+  setEdit: (id: number, edit: RowEdit | null) => void;
   toggleNotAgain: (id: number) => void;
   /** Every listed row that can be accepted ticked, or none where all already are. The list
    *  names its rows: those the Score filter and its other column filters show. */
@@ -106,6 +117,15 @@ export function useRunProposals(
     scoreFilter: ScoreFilter | null;
   } | null>(null);
   const [accept, setAccept] = useState<ReadonlySet<number>>(new Set());
+  const [edits, setEdits] = useState<ReadonlyMap<number, RowEdit>>(new Map());
+  const setEdit = useCallback((id: number, edit: RowEdit | null) => {
+    setEdits((prev) => {
+      const next = new Map(prev);
+      if (edit === null) next.delete(id);
+      else next.set(id, edit);
+      return next;
+    });
+  }, []);
   const [notAgain, setNotAgain] = useState<ReadonlySet<number>>(new Set());
   const [applying, setApplying] = useState(false);
   const [failures, setFailures] = useState<RunProposalsState["failures"]>([]);
@@ -204,7 +224,7 @@ export function useRunProposals(
         const results: DecisionResult[] = await applyRunDecisions(shown.runId, {
           accept: chosen(accept)
             .filter((p) => p.acceptable && listed.has(p.id))
-            .map((p) => ({ id: p.id })),
+            .map((p) => ({ id: p.id, ...edits.get(p.id) })),
           not_again: chosen(notAgain).map((p) => p.id),
         });
         setFailures(
@@ -224,7 +244,7 @@ export function useRunProposals(
         setApplying(false);
       }
     },
-    [shown, accept, notAgain, load, onApplied],
+    [shown, accept, notAgain, edits, load, onApplied],
   );
 
   return {
@@ -236,6 +256,8 @@ export function useRunProposals(
     keptAt: shown ? shown.keptAt : 0,
     setThreshold,
     accept,
+    edits,
+    setEdit,
     notAgain,
     toggleAccept,
     toggleNotAgain,

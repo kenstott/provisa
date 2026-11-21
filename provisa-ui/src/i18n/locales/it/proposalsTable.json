@@ -61,6 +61,7 @@
     "twoDimensions": "Le sue colonne si uniscono già a due dimensioni condivise diverse, quindi non può essere accettata.",
     "admittedOnKeyValues": "Ammessa perché i valori chiave corrispondono nei dati; la misura è mostrata accanto alla confidenza del modello.",
     "hiddenByFilter_one": "{{count}} riga è nascosta dal filtro.",
-    "hiddenByFilter_other": "{{count}} righe sono nascoste dal filtro."
+    "hiddenByFilter_other": "{{count}} righe sono nascoste dal filtro.",
+    "editAria": "Modifica {{name}}"
   }
 }

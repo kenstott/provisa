@@ -61,6 +61,7 @@
     "twoDimensions": "其列已关联到两个不同的共享维度，因此无法接受。",
     "admittedOnKeyValues": "因数据中键值匹配而采纳；测量结果显示在模型置信度旁边。",
     "hiddenByFilter_one": "筛选器隐藏了 {{count}} 行。",
-    "hiddenByFilter_other": "筛选器隐藏了 {{count}} 行。"
+    "hiddenByFilter_other": "筛选器隐藏了 {{count}} 行。",
+    "editAria": "编辑 {{name}}"
   }
 }

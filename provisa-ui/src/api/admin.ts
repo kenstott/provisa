@@ -1060,10 +1060,10 @@ export function saveDiscoveryThreshold(threshold: number): Promise<{ threshold: 
 
 /** What a reviewer decided in a run's result: the proposals to accept, and those not to
  *  recommend again. One in neither stays undecided. An accepted proposal carries a name only
- *  where a person typed one; without one the server names it, telling it apart from names
+ *  where a person typed one in the row's edit dialog (with the cardinality they set there); without one the server names it, telling it apart from names
  *  already held (REQ-415). */
 export interface RunDecisions {
-  accept: { id: number; name?: string }[];
+  accept: { id: number; name?: string; cardinality?: string }[];
   not_again: number[];
 }
 

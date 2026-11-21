@@ -61,6 +61,7 @@
     "twoDimensions": "列がすでに異なる 2 つの共有ディメンションに結合しているため、承認できません。",
     "admittedOnKeyValues": "データでキー値が一致したため採用されました。測定値はモデルの信頼度の横に表示されます。",
     "hiddenByFilter_one": "{{count}} 行がフィルターで非表示になっています。",
-    "hiddenByFilter_other": "{{count}} 行がフィルターで非表示になっています。"
+    "hiddenByFilter_other": "{{count}} 行がフィルターで非表示になっています。",
+    "editAria": "{{name}} を編集"
   }
 }
