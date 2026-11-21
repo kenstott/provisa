@@ -122,11 +122,11 @@ const detailOf = (term: GlossaryTermSummary): GlossaryTermDetail => ({
 });
 const REVENUE_DETAIL: GlossaryTermDetail = {
   ...detailOf(REVENUE),
-  edges_out: [{ term_id: 2, rel_type: "RELATED_TO", name: "Churn" }],
+  edges_out: [{ term_id: 2, rel_type: "RELATED_TO", name: "Churn", domains: [] }],
 };
 const CHURN_DETAIL: GlossaryTermDetail = {
   ...detailOf(CHURN),
-  edges_in: [{ term_id: 1, rel_type: "RELATED_TO", name: "Revenue" }],
+  edges_in: [{ term_id: 1, rel_type: "RELATED_TO", name: "Revenue", domains: [] }],
 };
 
 // Mantine Select in jsdom: the options are found through the input's aria-controls listbox.
@@ -188,7 +188,7 @@ describe("Related to guidance", () => {
         ? {
             ...CHURN_DETAIL,
             grounding: "not_grounded",
-            edges_out: [{ term_id: 3, rel_type: "PART_OF", name: "Margin" }],
+            edges_out: [{ term_id: 3, rel_type: "PART_OF", name: "Margin", domains: [] }],
           }
         : REVENUE_DETAIL,
     );

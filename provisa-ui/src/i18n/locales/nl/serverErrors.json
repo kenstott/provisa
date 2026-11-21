@@ -22,17 +22,17 @@
       "embedding_library_missing": "Het embeddingmodel {{model}} gebruikt de provider {{provider}}, die de extra {{extra}} nodig heeft (de module {{module}} is niet geïnstalleerd): pip install 'provisa[{{extra}}]'."
     },
     "ai": {
-      "key_required": "{{vendor}} heeft geen sleutel. Stel er een in onder Beheer, AI-modellen.",
-      "vendor_uses_server_credentials": "{{vendor}} wordt bereikt met de eigen inloggegevens van de server, die een organisatie op deze server niet gebruikt. Kies onder Beheer, AI-modellen een leverancier die een sleutel accepteert, of een AI-eindpunt.",
+      "endpoint_address_from_server": "Het AI-eindpunt {{vendor}} haalt zijn adres uit de omgeving van de server, die een organisatie op deze server niet gebruikt. Geef het onder Beheer, AI-modellen een eigen adres.",
       "endpoint_key_from_server": "Het AI-eindpunt {{vendor}} haalt zijn sleutel uit de omgeving van de server, die een organisatie op deze server niet gebruikt. Geef het onder Beheer, AI-modellen een eigen sleutel.",
       "endpoint_key_unset": "Het AI-eindpunt {{vendor}} heeft geen sleutel: {{field}} is niet ingesteld.",
-      "endpoint_address_from_server": "Het AI-eindpunt {{vendor}} haalt zijn adres uit de omgeving van de server, die een organisatie op deze server niet gebruikt. Geef het onder Beheer, AI-modellen een eigen adres.",
+      "key_required": "{{vendor}} heeft geen sleutel. Stel er een in onder Beheer, AI-modellen.",
       "local_server_from_environment": "{{vendor}} wordt bereikt op het eigen adres van de server, dat een organisatie op deze server niet gebruikt. Leg onder Beheer, AI-modellen een AI-eindpunt op uw eigen adres vast.",
       "server_environment_sets": "{{vendor}} kan hier niet worden aangeroepen: de omgeving van de server stelt {{variable}} in, die zijn client voor elke organisatie zou meesturen.",
+      "vector_model_address_from_server": "Het embeddingmodel {{vendor}} haalt zijn adres uit de omgeving van de server, die een organisatie op deze server niet gebruikt. Geef het onder Beheer, AI-modellen een eigen adres.",
       "vector_model_key_from_server": "Het embeddingmodel {{vendor}} haalt zijn sleutel uit de omgeving van de server, die een organisatie op deze server niet gebruikt. Geef het onder Beheer, AI-modellen een eigen sleutel.",
       "vector_model_key_unset": "Het embeddingmodel {{vendor}} heeft geen sleutel: {{field}} is niet ingesteld.",
-      "vector_model_address_from_server": "Het embeddingmodel {{vendor}} haalt zijn adres uit de omgeving van de server, die een organisatie op deze server niet gebruikt. Geef het onder Beheer, AI-modellen een eigen adres.",
-      "vector_model_local_server": "Het embeddingmodel {{vendor}} wordt bereikt op het eigen adres van de server, dat een organisatie op deze server niet gebruikt. Geef het onder Beheer, AI-modellen een eigen adres."
+      "vector_model_local_server": "Het embeddingmodel {{vendor}} wordt bereikt op het eigen adres van de server, dat een organisatie op deze server niet gebruikt. Geef het onder Beheer, AI-modellen een eigen adres.",
+      "vendor_uses_server_credentials": "{{vendor}} wordt bereikt met de eigen inloggegevens van de server, die een organisatie op deze server niet gebruikt. Kies onder Beheer, AI-modellen een leverancier die een sleutel accepteert, of een AI-eindpunt."
     },
     "api": {
       "answer_cut": "Het antwoord voor {{table}} is afgekapt bij max_pages={{max_pages}} ({{rows}} rijen): de API heeft meer. Verhoog max_pages of de paginagrootte van het endpoint om alles te lezen.",
@@ -174,13 +174,14 @@
     },
     "discovery": {
       "adapter_missing_discover_schema": "Adapter voor '{{source_type}}' implementeert discover_schema niet",
+      "answer_unreadable": "Het antwoord van het model bevatte geen leesbare lijst.",
       "cassandra_discovery_unsupported": "Cassandra-schemadetectie vereist een actieve CQL-sessie, die niet beschikbaar is. Definieer de kolommen voor deze bron handmatig.",
       "database_not_connected": "Database niet verbonden",
+      "decided_both_ways": "Een voorstel wordt geaccepteerd of niet opnieuw aanbevolen, niet allebei.",
       "domain_id_required": "domain_id vereist voor domeinbereik",
       "elasticsearch_index_hint_required": "Elasticsearch-detectie vereist een 'index'-hint.",
       "elasticsearch_mapping_failed": "Kan Elasticsearch-mapping voor index '{{index}}' niet lezen: {{error}}",
       "endpoint_already_registered": "Endpoint al geregistreerd: {{error}}",
-      "decided_both_ways": "Een voorstel wordt geaccepteerd of niet opnieuw aanbevolen, niet allebei.",
       "model_has_no_room": "Het model {{model}} kan geen verzoek bevatten: {{reason}}",
       "model_incomplete": "Een gekozen model noemt zowel de leverancier als het model.",
       "no_adapter_for_source_type": "Geen adapter geregistreerd voor brontype '{{source_type}}'",
@@ -201,8 +202,7 @@
       "target_tables_not_read": "Geen van de gekozen doeltabellen ({{count}}) wordt gelezen: detectie laat tabellen van een systeemdomein en tabellen buiten gebruik weg.",
       "target_tables_outside_domains": "De gekozen doeltabellen vallen buiten de domeinen die in het domeinfilter zijn geselecteerd: {{names}}.",
       "unknown_source_type": "Onbekend brontype: {{type}}",
-      "vendor_unknown": "{{vendor}} toont hier geen modellen; voer de modelnaam in.",
-      "answer_unreadable": "Het antwoord van het model bevatte geen leesbare lijst."
+      "vendor_unknown": "{{vendor}} toont hier geen modellen; voer de modelnaam in."
     },
     "llm": {
       "request_failed": "Het verzoek aan het model is mislukt: {{reason}}",
@@ -617,9 +617,9 @@
     },
     "sparql": {
       "columns_not_inferred": "Kon geen kolommen afleiden: probe retourneerde geen rijen en er zijn geen SELECT-variabelen gevonden.",
-      "no_select_variables": "De query noemt geen SELECT-variabelen (SELECT * of geen SELECT-query): de kolommen zijn er niet uit te lezen",
       "probe_failed": "SPARQL-endpointprobe mislukt: {{error}}",
-      "source_not_found": "SPARQL-bron '{{source_id}}' niet gevonden"
+      "source_not_found": "SPARQL-bron '{{source_id}}' niet gevonden",
+      "no_select_variables": "De query noemt geen SELECT-variabelen (SELECT * of geen SELECT-query): de kolommen zijn er niet uit te lezen"
     },
     "subscribe": {
       "avro_topic_without_registry": "Topic '{{topic}}' bevat Avro-berichten en de bron noemt geen schema-registry om ze mee te lezen: stel de schema-registry-URL van de bron in",
@@ -832,7 +832,9 @@
       "not_bulk_approvable": "Alleen gedefinieerde, verankerde ontwerpen worden samen goedgekeurd; niet: {{terms}}.",
       "term_ids_required": "Noem de goed te keuren termen.",
       "impact_action": "Voor die actie bestaat geen voorbeeld.",
-      "impact_table_required": "Een koppeling noemt een tabel, of een van zijn kolommen."
+      "impact_table_required": "Een koppeling noemt een tabel, of een van zijn kolommen.",
+      "name_taken": "Er bestaat al een term met de naam '{{name}}' in domein {{domain}}. Kies een andere naam of plaats de term in een ander domein.",
+      "name_taken_unscoped": "Er bestaat al een term met de naam '{{name}}' zonder domein, die dus in elk domein geldt. Kies een andere naam."
     },
     "table": {
       "requires_parameters": "De tabel {{table}} kan niet worden geteld of geprofileerd: ze vereist {{parameters}}. Geef elk een waarde om de rijen te lezen."
@@ -897,10 +899,10 @@
       "unknown_kind": "{{kind}} is geen soort rechtenlijst.",
       "idp_supersedes": "De identiteitsprovider stuurt de lijst {{kind}} van deze persoon voor rol {{role_id}}. Die lijst gaat voor en wordt daar gewijzigd, niet hier.",
       "blank_identifier": "Een item mag niet leeg zijn.",
-      "invalid_identifier": "{{identifier}} is geen geldige {{kind}}-vermelding.",
       "expiry_in_past": "Een einddatum moet in de toekomst liggen.",
       "expiry_removes_nothing": "Een einddatum op deze lijst {{kind}} zou niets verwijderen.",
-      "pending_not_found": "Er wacht geen verlening op {{email}} voor rol {{role_id}} en {{kind}}."
+      "pending_not_found": "Er wacht geen verlening op {{email}} voor rol {{role_id}} en {{kind}}.",
+      "invalid_identifier": "{{identifier}} is geen geldige {{kind}}-vermelding."
     },
     "mv": {
       "change_key_missing": "{{function}} gaf een rij terug zonder de sleutelkolom {{column}}",

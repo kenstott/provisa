@@ -617,9 +617,9 @@
     },
     "sparql": {
       "columns_not_inferred": "Could not infer columns: probe returned no rows and no SELECT variables found.",
-      "no_select_variables": "The query names no SELECT variables (SELECT * or not a SELECT query): its columns cannot be read from it",
       "probe_failed": "SPARQL endpoint probe failed: {{error}}",
-      "source_not_found": "SPARQL source '{{source_id}}' not found"
+      "source_not_found": "SPARQL source '{{source_id}}' not found",
+      "no_select_variables": "The query names no SELECT variables (SELECT * or not a SELECT query): its columns cannot be read from it"
     },
     "subscribe": {
       "avro_topic_without_registry": "Topic '{{topic}}' carries Avro messages, and its source names no schema registry to read them with: set the source's schema registry URL",
@@ -832,7 +832,9 @@
       "not_bulk_approvable": "Only defined, grounded draft terms are approved together; not: {{terms}}.",
       "term_ids_required": "Name the terms to approve.",
       "impact_action": "There is no preview for that action.",
-      "impact_table_required": "Binding names a table, or one of its columns."
+      "impact_table_required": "Binding names a table, or one of its columns.",
+      "name_taken": "A term named '{{name}}' already exists in domain {{domain}}. Choose another name, or put the term in another domain.",
+      "name_taken_unscoped": "A term named '{{name}}' already exists with no domain, so it reaches every domain. Choose another name."
     },
     "table": {
       "requires_parameters": "The table {{table}} cannot be counted or profiled: it requires {{parameters}}. Give each a value to read its rows."
@@ -897,10 +899,10 @@
       "unknown_kind": "{{kind}} is not a kind of entitlement list.",
       "idp_supersedes": "The identity provider sends this person's {{kind}} list for role {{role_id}}. That list wins, so it is changed there, not here.",
       "blank_identifier": "An entry cannot be blank.",
-      "invalid_identifier": "{{identifier}} is not a valid {{kind}} entry.",
       "expiry_in_past": "An end date must be in the future.",
       "expiry_removes_nothing": "An end date on this {{kind}} list would remove nothing.",
-      "pending_not_found": "No grant waits on {{email}} for role {{role_id}} and {{kind}}."
+      "pending_not_found": "No grant waits on {{email}} for role {{role_id}} and {{kind}}.",
+      "invalid_identifier": "{{identifier}} is not a valid {{kind}} entry."
     },
     "mv": {
       "change_key_missing": "{{function}} returned a row without its key column {{column}}",

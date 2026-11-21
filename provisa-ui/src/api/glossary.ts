@@ -97,6 +97,8 @@ export interface GlossaryEdge {
   term_id: number;
   rel_type: GlossaryRelType;
   name: string;
+  // REQ-1591: the related term's domains, which tell related terms of one name apart
+  domains: string[];
 }
 
 export interface GlossaryExpert {
