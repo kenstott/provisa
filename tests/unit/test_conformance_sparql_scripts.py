@@ -109,7 +109,7 @@ def test_the_model_entries_load_as_the_models_own():
         )
     for entry in fixtures.relationship_entries(f):
         Relationship(**entry)
-    access = fixtures.access([f])
+    access = fixtures.access([f], "conformance")
     assert [Domain(**d).id for d in access["domains"]] == ["sparql_d001"]
     assert [Role(**r).id for r in access["roles"]] == ["sparql_d001"]
     assert {GlossaryTermConfig(**t).name for t in access["glossary_terms"]} == {
@@ -125,12 +125,13 @@ def test_pgwire_config_takes_the_jobs_assignments_and_terms(tmp_path, monkeypatc
     monkeypatch.setattr(types, "registrable_columns", lambda dsn: [])
     f = _adapt(":a :v 1 . :b :v 'x' .")
     access = tmp_path / "access.yaml"
-    access.write_text(yaml.safe_dump(fixtures.access([f])))
+    access.write_text(yaml.safe_dump(fixtures.access([f], "conformance")))
     out = tmp_path / "provisa.yaml"
     types.write_config(out, 5432, "dsn", extra_access=access)
     config = yaml.safe_load(out.read_text())
-    assert {"domain_id": "*", "role_id": "sparql_d001"} in config["auth"]["default_assignments"]
-    assert {"domain_id": "*", "role_id": "org_admin"} in config["auth"]["default_assignments"]
+    assert types.job_assignments(access, ["conformance"]) == {
+        "conformance": [{"domain_id": "*", "role_id": "sparql_d001"}]
+    }
     assert [t["name"] for t in config["glossary_terms"]] == ["d001 p0"]
 
 

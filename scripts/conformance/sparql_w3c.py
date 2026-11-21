@@ -206,7 +206,7 @@ def report(outcomes: list[Outcome], version: str, spec: str) -> dict:
         "tests": "query, update and result formats",
         **by_design.outcomes(passed, excluded, failures),
         "groups": [{"group": g, **c} for g, c in tally.items()],
-        "adapted": by_design.adapted(ran, declared),
+        "adapted": by_design.adapted(ran, declared, excluded),
     }
     if spec.strip():
         doc["filter"] = spec
