@@ -26,7 +26,7 @@
 
 ## כל המקורות {: #all-sources }
 
-Provisa רושמת **80** סוגי מקור, אלה שטופס המקורות מציע. הטבלאות שלהלן מכסות את כל 80; המספור הוא הספירה.
+Provisa רושמת **82** סוגי מקור, אלה שטופס המקורות מציע. הטבלאות שלהלן מכסות את כל 82; המספור הוא הספירה.
 
 | # | קבוצה | סוגי מקור |
 | --- | --- | --- |
@@ -42,12 +42,12 @@ Provisa רושמת **80** סוגי מקור, אלה שטופס המקורות מ
 | 51–55 | [מבוססי קובץ](#file-based) | `sqlite`, `csv`, `parquet`, `files`, `logs` |
 | 56–57 | [Observability ואחרים](#observability-other) | `google_sheets`, `prometheus` |
 | 58–66 | [מחברי SaaS ארגוניים](#enterprise-saas-connectors) | `sharepoint`, `salesforce`, `servicenow`, `jira`, `cloudops`, `splunk`, `google_workspace`, `microsoft_365`, `quickbooks` |
-| 67–74 | [מקורות API](#api-sources) | `openapi`, [`dbt`](#dbt), `graphql_remote`, `grpc_remote`, GitHub, GitLab, Shopify, Stripe |
-| 75 | [GovData](#govdata) | `govdata` |
-| 76–77 | [בודקי איכות נתונים](#data-quality-checkers) | `soda`, `great_expectations` |
-| 78 | [Data Profiler](#data-profiler) | `data_profiler` |
-| 79 | [ערכות נתונים של Kaggle](#kaggle-datasets) | Kaggle (מוכן דרך טופס המקורות; נרשם כמקור מסוג `files` — ראו [ערכות נתונים של Kaggle](#kaggle-datasets)) |
-| 80 | [Wikipedia](#wikipedia) | Wikipedia (נרשם כמקור מסוג `files` שסורק את הדפים הנקובים — ראו [Wikipedia](#wikipedia)) |
+| 67–76 | [מקורות API](#api-sources) | `openapi`, [`dbt`](#dbt), `graphql_remote`, `grpc_remote`, GitHub, GitLab, Shopify, Stripe, OpenMetadata, DataHub |
+| 77 | [GovData](#govdata) | `govdata` |
+| 78–79 | [בודקי איכות נתונים](#data-quality-checkers) | `soda`, `great_expectations` |
+| 80 | [Data Profiler](#data-profiler) | `data_profiler` |
+| 81 | [ערכות נתונים של Kaggle](#kaggle-datasets) | Kaggle (מוכן דרך טופס המקורות; נרשם כמקור מסוג `files` — ראו [ערכות נתונים של Kaggle](#kaggle-datasets)) |
+| 82 | [Wikipedia](#wikipedia) | Wikipedia (נרשם כמקור מסוג `files` שסורק את הדפים הנקובים — ראו [Wikipedia](#wikipedia)) |
 
 מסמך עזר לכל סוג מקור שנתמך על ידי Provisa. "דרייבר ישיר" פירושו ששאילתות חד-מקוריות מבוצעות מול המקור באופן ילידי (מתחת ל-100ms). "שם המחבר" הוא המחבר המפודרר שבו נעשה שימוש כאשר המקור משתתף ב-JOIN רב-מקורי.
 

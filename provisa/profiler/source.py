@@ -27,7 +27,7 @@ import logging
 from dataclasses import dataclass
 from typing import Any
 
-from apscheduler.triggers.cron import CronTrigger
+from provisa.core.cron import cron_trigger
 from sqlalchemy import select
 
 PROFILER_SOURCE_TYPE = "data_profiler"
@@ -112,7 +112,7 @@ def profiler_settings(source_id: str, mapping: dict) -> ProfilerSettings:
     if not isinstance(cron, str) or not cron.strip():
         raise ValueError(f"profiler source {source_id!r} needs a cron schedule")
     try:
-        CronTrigger.from_crontab(cron)
+        cron_trigger(cron)
     except ValueError as exc:
         raise ValueError(f"profiler source {source_id!r}: cron {cron!r} is invalid: {exc}") from exc
     sample = mapping.get("sample_above_cells")
@@ -288,7 +288,7 @@ async def register_org_profilers(scheduler: Any, org_id: str) -> int:
     for p in profilers:
         scheduler.add_job(
             _scheduled_run,
-            trigger=CronTrigger.from_crontab(p["settings"].cron),
+            trigger=cron_trigger(p["settings"].cron),
             args=[p["id"], org_id],
             id=profiler_job_id(p["id"], org_id),
             name=f"profiler:{p['id']}",

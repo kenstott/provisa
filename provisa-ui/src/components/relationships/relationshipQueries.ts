@@ -58,7 +58,7 @@ export interface RelationshipQueryRef {
   /** The type it is served as in Cypher (stored by the server, never derived here). */
   cypherType: string | null;
   disableCypher: boolean;
-  /** Its GraphQL field as stored (graphql_field); null for a junction-backed edge. */
+  /** Its GraphQL field as stored (graphql_field), junction-backed edges included. */
   graphqlField: string | null;
   /** REQ-1417: its name on the SQL plane, which JSON:API's ?include= takes; null when none. */
   physicalName: string | null;
@@ -412,8 +412,9 @@ export function relationshipQueryRef(
     cypherType: r.cypherType,
     disableCypher: r.disableCypher,
     // The admin list's graphqlAlias is the pinned alias or the stored GraphQL field
-    // (provisa/api/admin/db_queries.py); a junction-backed edge has no GraphQL field.
-    graphqlField: r.viaTableId === null ? r.graphqlAlias : null,
+    // (provisa/api/admin/db_queries.py); a junction-backed edge stores its nominated-label
+    // field the same way (provisa/compiler/naming.py junction_field_name).
+    graphqlField: r.graphqlAlias,
     physicalName: r.physicalName,
   };
 }

@@ -559,3 +559,57 @@ def test_requires_is_kept_with_a_built_source():
 
 def test_a_manifest_kept_before_requires_existed_reads_as_requiring_nothing():
     assert manifest_from_json({"exports": [], "types": {}}).requires == ()
+
+
+# -- a loader's return: rows, or a mapping of names to rows (REQ-1984) ----------------------------
+
+CONTEXT_PARAM = ("context", False, ref("ReadContext"))
+
+
+def _union(*members: dict) -> dict:
+    return {"kind": "union", "name": None, "members": list(members)}
+
+
+def _record(value: dict | None = None) -> dict:
+    return {"kind": "record"} if value is None else {"kind": "record", "value": value}
+
+
+@pytest.mark.parametrize(
+    "returns",
+    [
+        _union(arr(ref("Order")), _record(arr(ref("Order")))),  # TypeScript: Record<string, R[]>
+        _union(arr(ref("Order")), _record()),  # Python: dict[str, list[R]]
+        promise(_union(arr(ref("Order")), _record(arr(ref("Order"))))),
+    ],
+)
+def test_a_loader_may_return_rows_or_a_mapping_of_names_to_rows(returns):
+    (table,) = read_manifest(
+        raw(fn("orders", ["table", "loader"], [CONTEXT_PARAM], returns))
+    ).exports
+    assert (table.loader, table.returns) == (True, Named("Order"))
+
+
+@pytest.mark.parametrize(
+    "returns",
+    [
+        _union(arr(ref("Order")), _record(arr(ref("Line")))),  # a mapping of other rows
+        _union(arr(ref("Order")), _record(ref("Order"))),  # a mapping of single rows
+        _union(arr(ref("Order")), S),  # not a mapping
+    ],
+)
+def test_a_loaders_union_is_rows_or_a_mapping_of_the_same_rows_only(returns):
+    problems = refused(fn("orders", ["table", "loader"], [CONTEXT_PARAM], returns))
+    assert problems and problems[0].startswith("orders:")
+
+
+@pytest.mark.parametrize("tags", [["table"], ["stream"]])
+def test_a_union_return_is_refused_for_every_kind_but_a_loader(tags):
+    returns = _union(arr(ref("Order")), _record(arr(ref("Order"))))
+    problems = refused(fn("orders", tags, [], returns))
+    assert problems and problems[0].startswith("orders:")
+
+
+def test_a_command_returning_the_union_is_not_a_loader():
+    returns = _union(arr(ref("Order")), _record(arr(ref("Order"))))
+    problems = refused(fn("orders", ["command"], [], returns))
+    assert problems and problems[0].startswith("orders: only a @table @loader may return")

@@ -205,7 +205,12 @@ async def test_hot_table_entry_coherence_under_concurrent_promotion():
     mgr = HotTableManager(redis_url=None, auto_threshold=1000, max_rows=1000)  # embedded fakeredis
     mgr.register_candidate(
         HotTableCandidate(
-            table_id=1, table_name="orders", pk_column="id", catalog="pg", schema="public"
+            table_id=1,
+            table_name="orders",
+            pk_column="id",
+            catalog="pg",
+            schema="public",
+            column_types={},
         )
     )
 

@@ -784,6 +784,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     register_connector(sub)
 
+    # REQ-1984: read a code source's working tree as Provisa does, before anything is registered.
+    from provisa.cli_code import register as register_code
+
+    register_code(sub)
+
     # REQ-2222: the commands that move the config: validate, diff, apply, export, promote.
     from provisa.cli_config import register as register_config
 
