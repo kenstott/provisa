@@ -51,7 +51,7 @@ def _input(**kw: Any) -> TableInput:
     return TableInput(**base)
 
 
-def _table(**kw: Any) -> Table:
+def _table_fields(**kw: Any) -> dict[str, Any]:
     base: dict[str, Any] = dict(
         source_id="s",
         domain_id="d",
@@ -60,7 +60,11 @@ def _table(**kw: Any) -> Table:
         columns=[Column(name="id", visible_to=["analyst"])],
     )
     base.update(kw)
-    return Table(**base)
+    return base
+
+
+def _table(**kw: Any) -> Table:
+    return Table(**_table_fields(**kw))
 
 
 @pytest.mark.parametrize("name", SPELLINGS)
@@ -107,14 +111,17 @@ async def test_the_repository_write_refuses_it():
     from provisa.core.repositories import table as table_repo
 
     with pytest.raises(domain_policy.ReservedTableName):
-        await table_repo.upsert(MagicMock(), _table())
+        await table_repo.upsert(MagicMock(), Table.model_construct(**_table_fields()))
 
 
 async def test_the_repository_write_refuses_a_reserved_alias():
     from provisa.core.repositories import table as table_repo
 
     with pytest.raises(domain_policy.ReservedTableName):
-        await table_repo.upsert(MagicMock(), _table(table_name="beer", alias="Commands"))
+        await table_repo.upsert(
+            MagicMock(),
+            Table.model_construct(**_table_fields(table_name="beer", alias="Commands")),
+        )
 
 
 @pytest.mark.parametrize("name", SPELLINGS)
