@@ -942,6 +942,16 @@
       "filter_required": "This class has {{count}} instances, more than {{limit}}: choose a filter",
       "filter_too_wide": "The filter leaves more than {{limit}} instances",
       "unreachable": "Wikidata could not be reached: {{reason}}"
+    },
+    "access_review": {
+      "not_found": "No such access review",
+      "row_not_found": "No such review row",
+      "already_decided": "This row is already decided",
+      "reason_required": "Say why",
+      "decision_invalid": "A decision is confirmed or revoked",
+      "cron_invalid": "Not a five-field cron expression: {{cron}}",
+      "not_owner": "Only the owner of domain {{domain}} decides this row",
+      "own_access": "You cannot review your own access. Ask another owner."
     }
   }
 }

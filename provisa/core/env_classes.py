@@ -186,6 +186,9 @@ NEVER_RUNTIME: frozenset[str] = frozenset(
         "trigger_runs",
         "preserved_snapshots",
         "admin_audit_log",
+        # REQ-2266: the access reviews of this environment's grants, and their decisions.
+        "access_reviews",
+        "access_review_rows",
         # REQ-2098: the image builds made in this environment.
         "code_source_builds",
         # REQ-2105: what this environment's code sources spent on the LLM service.

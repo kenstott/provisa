@@ -2547,12 +2547,15 @@ async def test_accepting_a_junction_suggestion_creates_one_relationship_through_
         "customer_id",
         "store_id",
     )
-    remaining = (await discovery.list_proposals(_REQUEST, run["id"]))["proposals"]
+    remaining = _named((await discovery.list_proposals(_REQUEST, run["id"]))["proposals"])
     assert [r["via"] for r in remaining] == [None, None]
-    # A later run finding the legs again finds the relationship through orders already there.
-    _, again = await _answered(world, _JUNCTION_LEGS)
-    (joined,) = [r for r in again if r["via"] is not None]
-    assert joined["reason"] == "existing" and joined["acceptable"] is False
+    # A later run finding the legs again finds the relationship through orders already there:
+    # kept with why, and not listed (REQ-413, amended 2026-11-18: an existing pair is left out).
+    # Its legs are existing too, as a junction relationship's legs are (amended 2026-11-16).
+    later, again = await _answered(world, _JUNCTION_LEGS)
+    assert again == []
+    (joined,) = [r for r in await _proposals(db, later["id"]) if r["via_table_id"] is not None]
+    assert joined["left_out"] == "existing"
 
 
 async def test_a_junction_suggestion_marked_not_again_is_left_out_of_later_runs(
@@ -2567,9 +2570,11 @@ async def test_a_junction_suggestion_marked_not_again_is_left_out_of_later_runs(
         _REQUEST, run["id"], _apply(not_again=[combined["id"]])
     )
     assert marked["results"] == [{"id": combined["id"], "action": "not_again", "ok": True}]
-    _, again = await _answered(world, _JUNCTION_LEGS)
-    (joined,) = [r for r in again if r["via"] is not None]
-    assert joined["reason"] == "rejected" and joined["decidable"] is False
+    # Kept with why, and not listed (REQ-413, amended 2026-11-18: a not-again pair is left out).
+    later, again = await _answered(world, _JUNCTION_LEGS)
+    assert [r["via"] for r in again] == [None, None]
+    (joined,) = [r for r in await _proposals(db, later["id"]) if r["via_table_id"] is not None]
+    assert joined["left_out"] == "rejected"
 
 
 async def test_a_pair_with_a_table_that_requires_a_parameter_keeps_the_models_score_and_says_so(

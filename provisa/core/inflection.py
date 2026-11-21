@@ -14,8 +14,8 @@ The dictionary is ``data/noun_plurals.tsv.gz``: English noun singular/plural pai
 the English Speller Database (scripts/gen_noun_plurals.py; notice in ``data/THIRD_PARTY_NOTICES``).
 A noun in it takes only its dictionary forms; a form the table marks as a word of its own
 (``data``) is its own singular and plural, though it is another noun's plural too; a word it does
-not list (an abbreviation, a coined table name) takes lemminflect's rule-based out-of-vocabulary
-form. This is the one inflection helper every naming path uses (relationship fields, aliases,
+not list is looked up in lemminflect's dictionary; a word in neither the supplement, the table nor
+lemminflect (an abbreviation, a coined table name) stays as written in both directions. This is the one inflection helper every naming path uses (relationship fields, aliases,
 glossary terms).
 """
 
@@ -25,7 +25,7 @@ import functools
 import gzip
 from pathlib import Path
 
-from lemminflect import getAllInflectionsOOV, getAllLemmasOOV
+from lemminflect import getAllInflections, getAllInflectionsOOV, getAllLemmas
 
 _TABLE = Path(__file__).parent / "data" / "noun_plurals.tsv.gz"
 
@@ -94,11 +94,12 @@ def is_plural(word: str) -> bool:
         return True
     if lower in plural_of:
         return False
-    return getAllLemmasOOV(lower, upos="NOUN")["NOUN"][0] != lower
+    lemmas = getAllLemmas(lower, upos="NOUN")
+    return bool(lemmas) and lemmas["NOUN"][0] != lower
 
 
 def singular(word: str) -> str:
-    """``word``'s singular: the dictionary's for a word it lists, else the rule-based form."""
+    """``word``'s singular: the dictionary's (then lemminflect's) for a word listed there, else as written."""
     lower = word.lower()
     plural_of, singular_of, own = _dictionary()
     if lower in own:
@@ -107,18 +108,32 @@ def singular(word: str) -> str:
         return _match_case(singular_of[lower], word)
     if lower in plural_of:
         return word
-    return _match_case(getAllLemmasOOV(lower, upos="NOUN")["NOUN"][0], word)
+    lemmas = getAllLemmas(lower, upos="NOUN")
+    if not lemmas:
+        return word
+    return _match_case(lemmas["NOUN"][0], word)
+
+
+def regular_plural(word: str) -> str:
+    """The rule-based plural (lower case) lemminflect forms for any word, listed or not. For
+    scripts/gen_noun_plurals.py only: it names the regularly formed plural among a listed noun's
+    accepted forms. No naming path calls it."""
+    return getAllInflectionsOOV(word.lower(), upos="NOUN")["NNS"][0]
 
 
 def rule_plural(word: str) -> str:
-    """``word``'s rule-based plural (lower case): the form a word the dictionary does not list takes,
-    and the regularly formed plural among a listed noun's accepted forms (scripts/gen_noun_plurals.py)."""
-    return getAllInflectionsOOV(word.lower(), upos="NOUN")["NNS"][0]
+    """``word``'s plural per lemminflect's dictionary (lower case); as written when lemminflect does
+    not list it."""
+    lower = word.lower()
+    inflections = getAllInflections(lower, upos="NOUN")
+    if not inflections:
+        return lower
+    return inflections["NNS"][0]
 
 
 def plural(word: str) -> str:
     """``word``'s plural: as written when it is already one, the dictionary's for a noun it
-    lists, else the rule-based form."""
+    lists, else lemminflect's, else as written."""
     if is_plural(word):
         return word
     lower = word.lower()
