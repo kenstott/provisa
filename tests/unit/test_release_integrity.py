@@ -460,7 +460,38 @@ def test_the_publish_leg_requires_the_client_and_notebook_wheels_as_release_asse
     required = step["env"]["REQUIRED"]
     assert "provisa_client-" in required and "provisa_notebook-" in required
     script = (_ROOT / "scripts" / "release_wheel_index.py").read_text()
-    assert 'PROJECTS = ("provisa", "provisa-client", "provisa-notebook")' in script
+    for project in ("provisa", "provisa-client", "provisa-notebook"):
+        assert f'"{project}",' in script.split("PROJECTS = (")[1].split(")")[0]
+
+
+def test_the_extension_wheels_are_attached_not_published_to_pypi():
+    """provisa-duckdb-ext and provisa-pg-ext are release assets (maintainer 2026-11-21): each
+    workflow attaches its wheels under the publish input, none uses the PyPI publish action or
+    twine, none holds an id-token, and the publish leg requires the wheels and the index lists them."""
+    for name, wheels in (
+        ("build-duckdb-extensions.yml", "dist-ext/provisa_duckdb_ext-*.whl"),
+        ("build-pg-extensions.yml", "dist-pg-ext/provisa_pg_ext-*.whl"),
+    ):
+        text = (_ROOT / ".github" / "workflows" / name).read_text()
+        for line in text.splitlines():
+            if not line.lstrip().startswith("#"):
+                assert "pypi-publish" not in line and "twine upload" not in line, name
+        workflow = _load(name)
+        assert workflow[True]["workflow_dispatch"]["inputs"]["publish"]["default"] is False
+        job = workflow["jobs"]["wheel"]
+        assert "id-token" not in job["permissions"]
+        attach = [s for s in job["steps"] if s.get("uses") == _ATTACH]
+        assert len(attach) == 1 and attach[0]["if"] == "inputs.publish", name
+        assert wheels in attach[0]["with"]["files"]
+    cut = (_WORKFLOWS / "release-cut.yml").read_text()
+    for name in ("build-duckdb-extensions.yml", "build-pg-extensions.yml"):
+        assert name in cut
+    assert 'gh workflow run "$workflow" --ref "$VERSION" -f publish=true' in cut
+    step = next(s for s in _publish_job()["steps"] if "Publish release" in s.get("name", ""))
+    required = step["env"]["REQUIRED"]
+    assert "provisa_pg_ext-" in required and required.count("provisa_duckdb_ext-") == 4
+    script = (_ROOT / "scripts" / "release_wheel_index.py").read_text()
+    assert '"provisa-duckdb-ext",' in script and '"provisa-pg-ext",' in script
 
 
 if __name__ == "__main__":
