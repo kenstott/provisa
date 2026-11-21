@@ -68,7 +68,7 @@ async def test_a_created_term_records_when(control_plane, monkeypatch):
             declared = await glossary_repo.upsert_declared_term(
                 conn, "ledger", definition="A book.", domains={"sales"}
             )
-            derived = await glossary_repo._find_or_create_term(conn, "sku")
+            derived = await glossary_repo._find_or_create_term(conn, "sku", "sales")
             for tid in (abstract, declared, derived):
                 assert await _changed_at(conn, tid) >= before
 
@@ -195,14 +195,14 @@ async def test_a_scheduled_retirement_sets_it(control_plane, monkeypatch):
 async def test_a_derived_deprecation_and_revival_set_it(control_plane, monkeypatch):
     async with _surface(control_plane, monkeypatch) as (db, _ids, _notified):
         async with db.acquire() as conn:
-            tid = await glossary_repo._find_or_create_term(conn, "sku")
+            tid = await glossary_repo._find_or_create_term(conn, "sku", "sales")
             await glossary_repo.set_definition(conn, tid, "A stock unit.")  # curated: kept
             await _backdate(conn, tid)
             removed = await glossary_repo._settle_terms(conn, {tid}, domains_before={})
             assert removed == set()
             assert await _moved(conn, tid)
             await _backdate(conn, tid)
-            assert await glossary_repo._find_or_create_term(conn, "sku") == tid  # revived
+            assert await glossary_repo._find_or_create_term(conn, "sku", "sales") == tid  # revived
             assert await _moved(conn, tid)
 
 
