@@ -56,6 +56,7 @@ import { Tip } from "../components/Tip";
 import { SplitPane } from "../components/list/SplitPane";
 import { MemberAttributes } from "../components/admin/MemberAttributes";
 import { SuspendedAccess } from "../components/admin/SuspendedAccess";
+import { AccessReviews } from "../components/admin/AccessReviews";
 import { TeamLocalUsers } from "../components/admin/TeamLocalUsers";
 import { PersonEntitlements } from "../components/entitlements/PersonEntitlements";
 import { EntitlementGrants } from "../components/entitlements/EntitlementGrants";
@@ -72,6 +73,10 @@ export function TeamPage() {
   const { roles } = useRoles();
   // REQ-2219: granting and ending a person's entitlement lists is assign_entitlements.
   const canAssign = useCapability("assign_entitlements");
+  // REQ-2266: access reviews are taken by user_management and decided by each domain's owner.
+  const canManageUsers = useCapability("user_management");
+  const ownsDomains = useCapability("domain_steward");
+  const canReview = canManageUsers || ownsDomains;
   const [invites, setInvites] = useState<OrgInvite[]>([]);
   const [members, setMembers] = useState<OrgMember[]>([]);
   // The member whose attributes the panel beside the list shows.
@@ -473,6 +478,20 @@ export function TeamPage() {
             title={t("entitlements.grants.heading")}
           >
             <EntitlementGrants roleIds={roles.map((r) => r.id)} />
+          </CollapsibleItem>
+        )}
+
+        {/* REQ-2266: each member's grants, reviewed by the owner of each domain. Mounted only when
+            open, so a closed section reads nothing. */}
+        {canReview && (
+          <CollapsibleItem
+            value="access-review"
+            defaultOpen={false}
+            mountWhenOpen
+            controlTestId="team-section-access-review"
+            title={t("accessReview.heading")}
+          >
+            <AccessReviews />
           </CollapsibleItem>
         )}
 

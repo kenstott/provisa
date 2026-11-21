@@ -1,6 +1,7 @@
 {
  "core": {
   "tests/integration/test_abac_hook_endpoint.py": 0.0,
+  "tests/integration/test_access_review_api.py": 12.0,
   "tests/integration/test_action_governance.py": 0.0,
   "tests/integration/test_adbc.py": 39.1,
   "tests/integration/test_admin_api.py": 0.0,
