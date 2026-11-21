@@ -76499,7 +76499,7 @@
     does when the whole source is mapped at once, so the relationship and a column never share a name.
     (Amended 2026-11-19, A COLUMN IN USE REFUSES THE REGISTRATION:) Maintainer 2026-11-19. When the nested
     column a relationship would take is used by a view, metric or row filter, registering the table is
-    refused, naming what uses it, and nothing is written.'
+    refused, naming what uses it, and nothing is written. (Amended 2026-11-21 by the maintainer. A Query-kind command read over REST or JSON:API is lowered to the role''s GraphQL command field and runs through the one SQL pipeline, so its filtering, ordering, paging and governance match GraphQL. The REST read is GET on the command and takes the table parameters filter, orderBy, limit and offset plus the declared arguments; a Mutation-kind command stays POST. JSON:API serves commands at /data/jsonapi/<domain>/commands/<name>, GET to read and POST to write.)'
   use_case: An operator who assigns a command to a role, hides a column, or moves an object to another
     domain changes what every API offers in one place, and no surface can offer what another surface hides.
   scenario: 'Given a query-kind command find_pets in domain petstore, assigned to role analyst
@@ -98051,7 +98051,7 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     types among the new tables, and from joins between the new tables and tables already in the model,
     across sources. Every candidate, declared foreign keys included, waits for review: each shows its
     cardinality and why it was proposed, and is accepted, edited or skipped; accepted ones follow the normal
-    relationship approval rules. Done returns to the source with the count of relationships created.'
+    relationship approval rules. Done returns to the source with the count of relationships created. (Amended 2026-11-21 by the maintainer. Editing a candidate before accepting it covers its name and its cardinality, in a per-row edit dialog.)'
 - id: REQ-2263
   status: proposed
   target: 2026-Q4
