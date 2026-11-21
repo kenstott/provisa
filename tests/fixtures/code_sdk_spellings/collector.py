@@ -22,9 +22,10 @@ Two places hold cases:
 
 ``case.json`` holds, per language, per spelling, ``problems`` (the manifest's refusal, every
 problem in order; absent means accepted) and ``checker`` (``accepts`` or ``rejects``: whether the
-language's type checker, pyright or the pinned tsc, passes the SDK spelling; absent means
-``accepts``). A TypeScript SDK spelling the checker rejects does not build, so it is never read and
-states no problems. ``unspelled`` names a language, or a ``<language>/<spelling>``, the case leaves
+language's type checker, pyright, the pinned tsc or cargo check, passes the SDK spelling; absent
+means ``accepts``). A TypeScript SDK spelling the checker rejects does not build, so it is never
+read and states no problems. Rust's reader parses without compiling, so a Rust spelling cargo
+rejects is still read and states what the reader gives. ``unspelled`` names a language, or a ``<language>/<spelling>``, the case leaves
 out, with the reason.
 """
 
@@ -41,15 +42,15 @@ from provisa.codesource.manifest import LOADER, PROVISA_TAGS, REQUIRES, WRITE_TA
 HERE = Path(__file__).resolve().parent
 DOCS = HERE.parents[2] / "docs" / "code-sources.md"
 
-#: The languages an SDK is built for. Go and Rust join when their SDKs do.
-BUILT = ("python", "typescript")
+#: The languages an SDK is built for. Go joins when its SDK does.
+BUILT = ("python", "typescript", "rust")
 SPELLINGS = ("doc", "sdk")
 #: Each language's file of a spelling.
-FILES = {"python": "source.py", "typescript": "index.ts"}
+FILES = {"python": "source.py", "typescript": "index.ts", "rust": "lib.rs"}
 #: The fence language of each built language in the docs.
-FENCES = {"python": "python", "typescript": "typescript"}
+FENCES = {"python": "python", "typescript": "typescript", "rust": "rust"}
 #: The label of a docs example's first tab, which holds the tag form.
-DOC_TABS = {"python": "Docstring", "typescript": "JSDoc"}
+DOC_TABS = {"python": "Docstring", "typescript": "JSDoc", "rust": "Doc comment"}
 SDK_TAB = "SDK"
 #: Every tag a code source's function may carry.
 TAGS = frozenset(PROVISA_TAGS | {LOADER, REQUIRES, *WRITE_TAGS})
@@ -57,9 +58,10 @@ TAGS = frozenset(PROVISA_TAGS | {LOADER, REQUIRES, *WRITE_TAGS})
 SDK_IMPORTS = {
     "python": re.compile(r"^\s*(from provisa_sdk import|import provisa_sdk)\b", re.M),
     "typescript": re.compile(r"""from ["']@provisa/sdk["']"""),
+    "rust": re.compile(r"\bprovisa_sdk::"),
 }
 
-_TAG_LINE = re.compile(r'^\s*(?:/\*\*|\*|""")?\s*@(?P<tag>[a-z][a-z-]*)\b', re.M)
+_TAG_LINE = re.compile(r'^\s*(?:/\*\*|\*|"""|///)?\s*@(?P<tag>[a-z][a-z-]*)\b', re.M)
 _FENCE = re.compile(r"^(?P<indent> *)```(?P<lang>\w+)\s*$")
 _TAB = re.compile(r'^=== "(?P<label>[^"]+)"\s*$')
 _ANCHOR = re.compile(r"^#+ .*\{: #(?P<anchor>[\w-]+) \}\s*$")
@@ -97,7 +99,8 @@ class Case:
 
 
 def tags_of(code: str) -> set[str]:
-    """The Provisa tags a spelling's code carries, on docstring, JSDoc or decorator lines."""
+    """The Provisa tags a spelling's code carries, on docstring, JSDoc, doc-comment or decorator
+    lines."""
     return {m.group("tag") for m in _TAG_LINE.finditer(code)} & TAGS
 
 

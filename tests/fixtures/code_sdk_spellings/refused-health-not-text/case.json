@@ -21,5 +21,18 @@
     "sdk": {
       "checker": "rejects"
     }
+  },
+  "rust": {
+    "doc": {
+      "problems": [
+        "status: @health returns its status as text"
+      ]
+    },
+    "sdk": {
+      "problems": [
+        "status: @health returns its status as text"
+      ],
+      "checker": "rejects"
+    }
   }
 }

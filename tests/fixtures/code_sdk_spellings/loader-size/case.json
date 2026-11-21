@@ -1,0 +1,5 @@
+{
+  "unspelled": {
+    "rust": "A Rust source has no read context (docs/code-sources.md, Rust), so no Rust function takes a ReadContext. A @loader needs one."
+  }
+}

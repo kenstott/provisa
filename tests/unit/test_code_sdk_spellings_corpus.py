@@ -9,7 +9,7 @@
 # permission from the copyright holder.
 
 """The binding corpus is whole (REQ-1984): every tagged example in docs/code-sources.md is a
-docstring/SDK tab pair, docstring first; every case has every language the SDK is built for, or
+docstring/SDK tab pair, docstring first (JSDoc in TypeScript, the doc comment in Rust); every case has every language the SDK is built for, or
 says why not; every tag form has an accepted case in each built language; and a docstring spelling
 never imports the SDK while an SDK spelling always does."""
 
@@ -59,7 +59,7 @@ def test_a_tagged_example_outside_a_pair_is_found(tmp_path):
     markdown = tmp_path / "page.md"
     markdown.write_text(
         "## A {: #a }\n\n```typescript\n/** @table */\nexport function f(): R[] {}\n```\n\n"
-        "```go\n// @table\nfunc F() []R\n```\n\n```python\nx = 1\n```\n"
+        "```java\n/** @table */\nList<R> f() {}\n```\n\n```python\nx = 1\n```\n"
     )
     pairs, problems = doc_cases(markdown)
     assert pairs == []
@@ -136,7 +136,8 @@ def test_a_docstring_spelling_never_imports_the_sdk_and_an_sdk_spelling_always_d
 
 def test_an_sdk_spelling_carries_no_tag_line_of_its_own():
     """The SDK spelling states each tag with the SDK, never as a docstring or JSDoc line too. A
-    Python decorator sits at the margin; a docstring's tag line is indented."""
+    Python decorator sits at the margin; a docstring's tag line is indented. A Rust registration
+    is code, never a doc-comment line."""
     tagged = [
         f"{c.origin} {c.language}"
         for c in cases()
@@ -146,7 +147,7 @@ def test_an_sdk_spelling_carries_no_tag_line_of_its_own():
 
 
 def _docstring_lines(language: str, code: str) -> str:
-    if language == "typescript":
+    if language in ("typescript", "rust"):
         return code
     return "\n".join(line for line in code.splitlines() if line[:1].isspace())
 

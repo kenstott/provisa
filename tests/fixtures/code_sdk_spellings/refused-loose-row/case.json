@@ -22,5 +22,17 @@
         "rows: its row type is loose (any, unknown, a Record or a dict); declare a typed row whose fields are its columns"
       ]
     }
+  },
+  "rust": {
+    "doc": {
+      "problems": [
+        "rows: its row type is loose (any, unknown, a Record or a dict); declare a typed row whose fields are its columns"
+      ]
+    },
+    "sdk": {
+      "problems": [
+        "rows: its row type is loose (any, unknown, a Record or a dict); declare a typed row whose fields are its columns"
+      ]
+    }
   }
 }

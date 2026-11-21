@@ -1013,6 +1013,86 @@ func ChurnRisk(ctx context.Context, in RiskInputs) ([]Risk, error) {
 }
 ```
 
+### Rust {: #rust }
+
+- Rust code is a library crate. Provisa compiles your crate into its host once per version of the code, with the pinned Rust toolchain. A `rust-version` newer than that toolchain is refused.
+- Tags go in the `///` doc comment, each on a line of its own, and types come from the function's signature. A `pub fn` at the crate's root is offered; a function in a module, or one that is not `pub`, is not.
+- A `@table` or `@stream` function takes nothing, or one struct of its inputs. An `Option` field is an optional input; any other field is required. A command takes its parameters by value, never borrowed.
+- A field is named as serde names it: `rename`, `rename_all`, `skip`, `flatten` and `default` are read.
+- A `@table` returns a `Vec<T>` or an `impl Iterator<Item = T>`. A `@stream` returns an iterator; an item that is a `Result` ends the stream with its error. A trailing `Result<T, E>` is how a function fails.
+- An enum of unit variants is an enum of their names. chrono's `DateTime` is a timestamp, `NaiveDate` a date, rust_decimal's `Decimal` a numeric and serde_json's `Value` json.
+- A function is neither `async` nor generic.
+- `@loader` and the read context are not offered for Rust.
+
+The scored account in Rust:
+
+=== "Doc comment"
+
+    ```rust
+    use serde::{Deserialize, Serialize};
+
+    #[derive(Serialize)]
+    pub struct Risk {
+        pub score: f64,
+        pub reasons: Vec<String>,
+    }
+
+    #[derive(Deserialize)]
+    pub struct RiskInputs {
+        pub account_id: String,
+    }
+
+    /// The churn risk of one account.
+    ///
+    /// @table
+    pub fn churn_risk(inputs: RiskInputs) -> Result<Vec<Risk>, String> {
+        let _ = inputs.account_id;
+        Ok(vec![Risk { score: 0.82, reasons: vec!["no logins in 30 days".into()] }])
+    }
+    ```
+
+=== "SDK"
+
+    ```rust
+    use serde::{Deserialize, Serialize};
+
+    #[derive(Serialize)]
+    pub struct Risk {
+        pub score: f64,
+        pub reasons: Vec<String>,
+    }
+
+    #[derive(Deserialize)]
+    pub struct RiskInputs {
+        pub account_id: String,
+    }
+
+    /// The churn risk of one account.
+    pub fn churn_risk(inputs: RiskInputs) -> Result<Vec<Risk>, String> {
+        let _ = inputs.account_id;
+        Ok(vec![Risk { score: 0.82, reasons: vec!["no logins in 30 days".into()] }])
+    }
+
+    provisa_sdk::table!(churn_risk);
+    ```
+
+The SDK tab registers the function with the `provisa-sdk` crate, an ordinary dependency in your `Cargo.toml` with no dependencies of its own. A registration is a macro invoked at the crate's root, naming a `pub fn` at the crate's root. Provisa reads it as the tags it stands for:
+
+| Registration | Tag |
+|---|---|
+| `table!(f)`, `stream!(f)` | `@table`, `@stream` |
+| `command!(f)`, `query!(f)`, `columns!(f)` | `@command`, `@query`, `@columns` |
+| `on_start!(f)`, `on_stop!(f)`, `health!(f)` | `@on-start`, `@on-stop`, `@health` |
+| `change!(f, table = "t", key = ["k"], removed = "r", cursor = "c")` | `@change table=t`, `key=k`, `removed=r`, `cursor=c` |
+| option `requires = "NAME"`, `secret = "NAME"` | `@requires NAME`, `@requires NAME:secret` |
+| command option `insert = "t"`, `update = "t"`, `delete = "t"` | `@insert t`, `@update t`, `@delete t` |
+
+- Provisa knows a registration by its path: `provisa_sdk::table!`, the name your `Cargo.toml` gives the dependency (`p = { package = "provisa-sdk", ... }` makes it `p::table!`), a `use provisa_sdk as p;` at the root, or a name a root `use provisa_sdk::{table}` or `use provisa_sdk::*` brings in. A module's own `use` is not followed.
+- The compiler checks a `table!`, `stream!`, `columns!`, `on_start!`, `on_stop!` or `health!` function's signature against its tag's rules, and that each option is one its registration takes. A command, query or change function can take any parameters, so Provisa checks those when it reads the code.
+- Every option's value is a literal. A registration naming anything but a function by its name, an option that isn't a literal, and an SDK macro invoked inside a module or a function are refused, naming each.
+- The aliases `Rows<T>`, `Batch<T>` and `Results<T>` are `Vec<T>`, and `Stream<T>` is `Box<dyn Iterator<Item = T>>`. The column aliases `Text`, `BigInt`, `Double` and `Boolean` are `String`, `i64`, `f64` and `bool`.
+- The SDK has no `TableRef`: the host decodes each argument with serde, and the SDK has no serde dependency. Declare your own generic `TableRef` type, as a doc-comment source does; Provisa knows it by its name.
+
 ## Deployment {: #deployment }
 
 ### Dev mode and workers {: #workers }
