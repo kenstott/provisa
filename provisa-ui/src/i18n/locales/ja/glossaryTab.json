@@ -152,6 +152,7 @@
     "lastAppliedTo": "最後の適用先",
     "lastAppliedColumns": "列: {{columns}}",
     "lastAppliedTables": "テーブル: {{tables}}",
+    "noRetirementHistory": "この用語には廃止の履歴がありません。",
     "status_draft": "下書き",
     "status_deprecated": "非推奨",
     "status_retired": "廃止済み",

@@ -14,7 +14,8 @@
       "webhook_not_found": "Webhook '{{name}}' nicht gefunden",
       "written_table_not_registered": "'{{table}}' ist keine registrierte Tabelle der Quelle '{{source_id}}'",
       "function_exists": "Die Funktion '{{name}}' existiert bereits",
-      "webhook_exists": "Der Webhook '{{name}}' existiert bereits"
+      "webhook_exists": "Der Webhook '{{name}}' existiert bereits",
+      "mask_constant_not_text": "Eine konstante Maske auf einer Nicht-Text-Spalte wird als NULL gelesen; nur NULL kann gespeichert werden: {{column}} ({{type}})"
     },
     "ai_models": {
       "vector_model_fields_required": "jeder vector_models-Eintrag erfordert id, provider und dimensions",
@@ -168,7 +169,8 @@
       "table_is_withdrawn": "{{table}} ist zurückgezogen: außer Produktion, bis sie wieder in Betrieb genommen wird",
       "view_awaits_rule_rebuild": "Die Ansicht {{view}} wird wegen einer Änderung der Zeilenregeln für ihre Eingaben neu erstellt. Diese Rolle kann sie lesen, sobald dieser Build veröffentlicht ist.",
       "parameter_required": "Die Tabelle '{{table}}' erfordert den Parameter bzw. die Parameter {{parameters}}: Geben Sie jedem einen Wert (in SQL eine WHERE-Bedingung auf seiner Spalte, in GraphQL ein Argument).",
-      "parameter_wrong_type": "Der Parameter {{parameter}} nimmt einen Wert vom Typ {{type}}; '{{value}}' ist keiner."
+      "parameter_wrong_type": "Der Parameter {{parameter}} nimmt einen Wert vom Typ {{type}}; '{{value}}' ist keiner.",
+      "statement_failed": "Die Anweisung ist im Server fehlgeschlagen ({{kind}}): {{error}}"
     },
     "discovery": {
       "adapter_missing_discover_schema": "Adapter für '{{source_type}}' implementiert discover_schema nicht",
@@ -243,7 +245,8 @@
       "host_code_refused": "Befehl '{{name}}' ist vom Typ {{impl_kind}} und führt Code auf dem Host des Servers aus. Host-Code ist in dieser Bereitstellung ausgeschaltet; verwenden Sie stattdessen einen Code-Resolver.",
       "no_plain_list": "Keine Operation der Quelle '{{source_id}}' ohne Pflichtparameter liefert die Zeilen von '{{operation}}', daher bleibt ihre Tabelle eingeschaltet",
       "plain_list_unregistered": "'{{operation}}' der Quelle '{{source_id}}' liefert die Zeilen ihrer Liste {{lists}}; registrieren Sie diese Liste zuerst als Tabelle",
-      "table_has_dependents": "Auf die Tabelle '{{table}}' der Funktion '{{name}}' verweisen noch andere Objekte; entfernen Sie zuerst diese Verweise"
+      "table_has_dependents": "Auf die Tabelle '{{table}}' der Funktion '{{name}}' verweisen noch andere Objekte; entfernen Sie zuerst diese Verweise",
+      "statement_failed": "Befehl '{{name}}' ist fehlgeschlagen: {{error}}"
     },
     "graphql_remote": {
       "introspection_failed": "Introspektion fehlgeschlagen: {{error}}",
@@ -564,7 +567,9 @@
       "withdrawn_table_not_previewable": "Für Tabelle {{table}} ist keine Vorschau möglich: Sie ist zurückgezogen und hält kein Replikat, und die Engine liest ihre Quelle nur über ein solches.",
       "table_not_withdrawn": "Tabelle {{table}} ist nicht zurückgezogen: nur eine zurückgezogene Tabelle wird wieder in Betrieb genommen. Um eine Tabelle in Produktion in eine andere Region zu verschieben, setzen Sie ihre Region.",
       "source_not_withdrawn": "Quelle {{source}} ist nicht zurückgezogen: nur eine zurückgezogene Quelle wird wieder in Betrieb genommen. Um ihre Region zu ändern, setzen Sie ihre Region.",
-      "put_back_needs_region": "Wer {{object}} wieder in Betrieb nimmt, nennt eine Region: geben Sie eine an, oder keine für keine Region."
+      "put_back_needs_region": "Wer {{object}} wieder in Betrieb nimmt, nennt eine Region: geben Sie eine an, oder keine für keine Region.",
+      "table_domain_required": "Tabelle '{{table}}' nennt keine Domäne: Jede Tabelle wird in einer Domäne registriert",
+      "mask_constant_not_text": "Eine konstante Maske auf einer Nicht-Text-Spalte wird als NULL gelesen; nur NULL kann gespeichert werden: {{column}} ({{type}})"
     },
     "secrets": {
       "env_reference_object_locked": "Dieses Objekt gehört dem Betreiber: Es liest die eigene Umgebung des Servers und kann hier nicht geändert werden. Legen Sie stattdessen ein eigenes an.",
@@ -614,7 +619,8 @@
     "sparql": {
       "columns_not_inferred": "Spalten konnten nicht abgeleitet werden: Der Probe-Aufruf lieferte keine Zeilen und keine SELECT-Variablen.",
       "probe_failed": "Prüfung des SPARQL-Endpunkts fehlgeschlagen: {{error}}",
-      "source_not_found": "SPARQL-Quelle '{{source_id}}' nicht gefunden"
+      "source_not_found": "SPARQL-Quelle '{{source_id}}' nicht gefunden",
+      "no_select_variables": "Die Abfrage nennt keine SELECT-Variablen (SELECT * oder keine SELECT-Abfrage): Ihre Spalten lassen sich nicht daraus lesen"
     },
     "subscribe": {
       "avro_topic_without_registry": "Topic '{{topic}}' enthält Avro-Nachrichten, und seine Quelle nennt keine Schema-Registry zum Lesen: Setzen Sie die Schema-Registry-URL der Quelle",
@@ -810,7 +816,6 @@
       "status_by_action": "Der Status eines Begriffs ändert sich über Freigeben, Als veraltet markieren, Außer Dienst stellen oder Wiederherstellen.",
       "successor_required": "Dieser Begriff hat noch Spalten oder Tabellen; beim Ausmustern gehen sie an einen Nachfolger über. Wählen Sie einen aus.",
       "successor_role": "Der Nachfolger einer {{role}} muss eine {{role}} oder ein Konzept sein; '{{successor}}' ist eine {{successor_role}}.",
-      "no_retirement_history": "Die Historie des Modells enthält keine Ausmusterung dieses Begriffs.",
       "finding": {
         "unlinked_tables": "Diese Klasse ist in Tabellen verankert, die Same-Entity-Beziehungen nicht alle verbinden: {{tables}}.",
         "class_and_attribute": "Diese Klasse hat außerdem Spalten, die nicht ihre Schlüssel sind: {{columns}}.",
@@ -828,7 +833,9 @@
       "not_bulk_approvable": "Nur definierte, verankerte Entwürfe werden gemeinsam freigegeben; nicht: {{terms}}.",
       "term_ids_required": "Nennen Sie die freizugebenden Begriffe.",
       "impact_action": "Für diese Aktion gibt es keine Vorschau.",
-      "impact_table_required": "Eine Bindung nennt eine Tabelle oder eine ihrer Spalten."
+      "impact_table_required": "Eine Bindung nennt eine Tabelle oder eine ihrer Spalten.",
+      "name_taken": "Ein Begriff namens '{{name}}' existiert bereits in der Domäne {{domain}}. Wählen Sie einen anderen Namen oder ordnen Sie den Begriff einer anderen Domäne zu.",
+      "name_taken_unscoped": "Ein Begriff namens '{{name}}' existiert bereits ohne Domäne und gilt damit in jeder Domäne. Wählen Sie einen anderen Namen."
     },
     "table": {
       "requires_parameters": "Die Tabelle {{table}} kann nicht gezählt oder profiliert werden: Sie verlangt {{parameters}}. Geben Sie jedem einen Wert, um ihre Zeilen zu lesen."

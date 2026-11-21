@@ -105,6 +105,8 @@
     "accessToken": "Toegangstoken",
     "accessTokenHint": "Opgeslagen in de geheimenkluis. Een verwijzing ${secret:NAME} of ${env:NAME} wordt ook geaccepteerd.",
     "brandNamespaceHint": "Voorvoegsel van de tabelnamen van deze bron. Laat leeg voor de standaardwaarde.",
+    "brandBaseUrl": "Basis-URL",
+    "brandBaseUrlHint": "Het adres van uw instantie, bijvoorbeeld https://catalog.example.com. De API wordt hier aangeroepen en de OpenAPI-beschrijving wordt hier gelezen.",
     "shopifyStore": "Winkelnaam",
     "shopifyStoreHint": "Het deel van het beheeradres van uw winkel vóór .myshopify.com, bijvoorbeeld my-store.",
     "shopifyApiVersion": "API-versie",

@@ -24,7 +24,12 @@ scalar or an array each raises PostgreSQL's 22023, and of NULL answers no rows."
 
 from __future__ import annotations
 
+import sqlglot.expressions as exp
+
+from provisa.transpiler.polyfill import trino
 from provisa.transpiler.polyfill.grid import Feature, Rule, Side
+from provisa.transpiler.polyfill.json_built import for_name, written
+from provisa.transpiler.polyfill.notation import Refused
 from provisa.transpiler.polyfill.numbers import ch_fail, ch_once, ch_only
 
 FAMILY = "JSON"
@@ -62,6 +67,41 @@ def _feature(name: str, pattern: str, summary: str, form: str) -> Feature:
     return Feature(name, FAMILY, summary, read=Side(rules=(Rule(pattern, ch_only(form)),)))
 
 
+def _text_array(node: exp.Expr, name: str, dialect: str) -> exp.Expr:
+    """A text[] argument as ClickHouse holds one: a literal of unknown type written as an array
+    ('{a,b}', which PostgreSQL reads as the parameter's text[]) as an array of its elements, a
+    sub-array's in place (the form reads every dimension); any other argument as it stands."""
+    inner = node.unnest()
+    if not (isinstance(inner, exp.Literal) and inner.is_string):
+        return node
+    if not inner.this.lstrip().startswith("{"):
+        raise Refused(trino.no_form(name, dialect))
+    from provisa.transpiler.pg_forms_json import _array_items
+
+    cells = [
+        exp.Null() if item is None else exp.Literal.string(item)
+        for item in _array_items(inner.this)
+    ]
+    return exp.cast(exp.Array(expressions=cells), "Array(Nullable(String))", dialect="clickhouse")
+
+
+def _exists(name: str, form: str):
+    """``form`` of a call of ``name`` (a jsonb and a text[]), its text[] read by _text_array."""
+
+    def exists(node: exp.Expr, dialect: str) -> exp.Expr | None:
+        called = trino.called(node)
+        if called is None or len(called[1]) != 2:
+            return None
+        value, texts = called[1]
+        return written(form, {"v": value, "a": _text_array(texts, name, dialect)}, dialect)
+
+    exists.__doc__ = (
+        f"{form}, $a a text[] argument, or a literal of unknown type written as an array ('{{a,b}}') "
+        "as an Array(Nullable(String)) of its elements; another literal is refused by name."
+    )
+    return for_name(name, exists)
+
+
 def _keys(name: str, answer: str) -> str:
     """The rows of ``answer`` (an array of $v's keys); 22023 of a scalar or an array."""
     first = _FIRST.format(v="$v")
@@ -90,17 +130,41 @@ FEATURES: tuple[Feature, ...] = (
         "Whether a text is a top-level key, a string element, or the scalar string of a jsonb.",
         _strict("vk", f"has({_strings(_HELD)}, _k)"),
     ),
-    _feature(
+    Feature(
         "jsonb_exists_any",
-        "jsonb_exists_any($v, $a)",
+        FAMILY,
         "Whether any text of an array is a top-level key or string element of a jsonb.",
-        _strict("va", f"hasAny({_strings(_HELD)}, {_texts('_a')})"),
+        read=Side(
+            rules=(
+                Rule(
+                    None,
+                    ch_only(
+                        _exists(
+                            "jsonb_exists_any",
+                            _strict("va", f"hasAny({_strings(_HELD)}, {_texts('_a')})"),
+                        )
+                    ),
+                ),
+            )
+        ),
     ),
-    _feature(
+    Feature(
         "jsonb_exists_all",
-        "jsonb_exists_all($v, $a)",
+        FAMILY,
         "Whether every text of an array is a top-level key or string element of a jsonb.",
-        _strict("va", f"hasAll({_strings(_HELD)}, {_texts('_a')})"),
+        read=Side(
+            rules=(
+                Rule(
+                    None,
+                    ch_only(
+                        _exists(
+                            "jsonb_exists_all",
+                            _strict("va", f"hasAll({_strings(_HELD)}, {_texts('_a')})"),
+                        )
+                    ),
+                ),
+            )
+        ),
     ),
     _feature(
         "jsonb_object_keys",

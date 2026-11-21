@@ -127,6 +127,10 @@
     "continue": "Doorgaan",
     "checkReasonLabel": "Waarom deze controle bestaat",
     "checkReasonHint": "De kwaliteitsbelofte in zakelijke termen; ze staat boven de controle in elk product.",
-    "checkReasonPlaceholder": "Bestellingen zijn volledig en uniek zodat de dagomzet aansluit op finance"
+    "checkReasonPlaceholder": "Bestellingen zijn volledig en uniek zodat de dagomzet aansluit op finance",
+    "errorSparqlQuery": "Voer de SPARQL-query in die de rijen van de tabel oplevert.",
+    "errorQueryPreviewFirst": "Bekijk eerst een voorbeeld van de query, zodat de kolommen en hun typen bekend zijn.",
+    "previewFailed": "Het voorbeeld is mislukt: {{error}}",
+    "previewNoRows": "Het voorbeeld leverde geen rijen op."
   }
 }

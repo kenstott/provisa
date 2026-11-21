@@ -32,13 +32,13 @@ from provisa.core.schema_org import (
 )
 from provisa.api.admin.types import MutationResult, TableInput
 from provisa.api.admin.schema_helpers import (
-    _dataset_ownership_conflict,
     _domain_table_conflict,
+    table_domain_refusal,
     _get_pool,
     _rebuild_schemas,
 )
 from provisa.api.admin._table_ops import _build_columns_for_input, column_field_refusal
-from provisa.security.masking import MaskUnreachable
+from provisa.security.masking import MaskConstantNotText, MaskUnreachable
 from provisa.api.admin._live_mappers import table_model_from_input as _table_model_from_input
 from provisa.api.admin._retired_objects import retired_name_result
 from provisa.core.repositories.retirement import RetiredNameTaken
@@ -274,6 +274,10 @@ async def register_table(
     from provisa.api.admin._table_ops import land_transform_view
 
     land_transform_view(input)  # REQ-2131
+    # REQ-1531/REQ-433: a registration names its domain, on every path; refused before anything else.
+    _no_domain = table_domain_refusal(input.domain_id, input.table_name)
+    if _no_domain is not None:
+        return _no_domain
     from provisa.api.admin._dbt_table_registration import read_through_warehouse
 
     _dbt_refused = await read_through_warehouse(input)  # REQ-2228
@@ -586,11 +590,6 @@ async def register_table(
                 )
                 if _conflict:
                     raise TableSaveRefused(MutationResult(success=False, message=_conflict))
-                _owner_conflict = await _dataset_ownership_conflict(
-                    _conn, model.source_id, model.table_name, model.domain_id
-                )
-                if _owner_conflict:
-                    raise TableSaveRefused(MutationResult(success=False, message=_owner_conflict))
                 if input.source_id == DERIVED_SOURCE_ID:
                     from provisa.api.app import state
 
@@ -661,6 +660,8 @@ async def register_table(
                         model = model.model_copy(update={"write_grants": _carried_grants})
                     from provisa.api.admin._declared_keys import registration_keys
 
+                    # REQ-433: a removed source table registered again is that table restored.
+                    await table_repo.restore_registered(_conn, model)
                     # REQ-2170: the keys its source declares are recorded with the input's.
                     table_id = await table_repo.upsert(
                         _conn, model, declared=await registration_keys(model)
@@ -700,6 +701,20 @@ async def register_table(
                                 "table": model.table_name,
                                 "column": _mask.column,
                                 "entries": _mask.entries,
+                            },
+                        )
+                    )
+                except MaskConstantNotText as _const:
+                    # REQ-2131: a constant other than NULL on a non-text column reads as NULL; not saved.
+                    raise TableSaveRefused(
+                        MutationResult(
+                            success=False,
+                            message=str(_const),
+                            code="schema.mask_constant_not_text",
+                            params={
+                                "table": model.table_name,
+                                "column": _const.column,
+                                "type": _const.data_type,
                             },
                         )
                     )
@@ -866,17 +881,6 @@ async def register_table(
         )
 
     await _rebuild_schemas()
-    # Schema-currency reconcile (REQ-846/932): a UI (re)registration re-enters the convergent
-    # reconcile — the new/changed table's landing schema is created (or recreated on a column
-    # drift) and its read view attached. Same primitive as the boot pass. Best-effort: a store
-    # hiccup logs but does not fail the registration.
-    try:
-        from provisa.api.app import state as _rc_state
-
-        await _rc_state.federation_engine.reconcile_landed_tables()
-    except Exception:
-        logging.getLogger(__name__).exception("landed-table reconcile after registration failed")
-
     # REQ-1730: a mapping-DSL source (redis) registered under an engine that is ALREADY primary
     # from a cold start (no prior DuckDB registration to replay from) has its Trino catalog
     # provisioned at create_source time, BEFORE this table existed — create_source's own

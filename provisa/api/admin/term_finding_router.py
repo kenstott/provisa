@@ -704,7 +704,7 @@ async def _require_curatable(conn: Connection, term_ids: Any, request: Request) 
 async def _accept(conn: Connection, draft_id: int, request: Request) -> dict[str, Any]:
     found, held_scan = await _draft_held(conn, draft_id, request)
     domains = glossary._declared_domains(request, held_scan.domains, current=set())
-    existing = await review.existing_terms(conn, review.kept_synonyms(found))
+    existing = await review.existing_terms(conn, review.kept_synonyms(found), domains)
     await _require_curatable(conn, existing.values(), request)
     term_id = await review.accept(conn, found, domains, glossary._caller_id(request))
     return {"id": draft_id, "status": queue.ACCEPTED, "term_id": term_id}
@@ -726,7 +726,7 @@ async def _merge(
     if term is None:
         raise review.ReviewRefused(f"the glossary holds no term {target_id}")
     domains = glossary._declared_domains(request, held_scan.domains, current=set())
-    existing = await review.existing_terms(conn, review.merge_names(found, term["name"]))
+    existing = await review.existing_terms(conn, review.merge_names(found, term["name"]), domains)
     await _require_curatable(conn, [target_id, *existing.values()], request)
     await review.merge(
         conn,

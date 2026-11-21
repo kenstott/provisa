@@ -28,7 +28,7 @@ from provisa.api.admin.types import SourceInput
 from provisa.api_source.models import ApiColumnType
 from provisa.core.replicate import ALWAYS
 from provisa.sparql import wikidata
-from provisa.sparql.source import extract_variables
+from provisa.sparql.source import _probe_limit, extract_variables
 
 # ── 1. The preset ────────────────────────────────────────────────────────────
 
@@ -101,10 +101,23 @@ def test_the_starter_tables_offered():
 
 
 @pytest.mark.parametrize("name", sorted(_STARTERS))
-def test_each_starter_query_selects_exactly_its_typed_columns(name):
+def test_each_starter_s_columns_are_its_select_variables_every_binding_text(name):
+    """REQ-1923 (amended 2026-11-20): a starter's columns are known from its query's SELECT
+    variables, every binding text: registering one never waits on a live query."""
     starter = _STARTERS[name]
     assert extract_variables(starter.query) == [c.name for c in starter.columns]
     assert starter.columns[0].name == "id" and starter.columns[1].name == "name"
+    assert {c.type for c in starter.columns} == {ApiColumnType.string}
+
+
+@pytest.mark.parametrize("name", sorted(_STARTERS))
+def test_each_starter_s_preview_limits_the_pattern_its_rows_come_from(name):
+    """A starter aggregates in a subquery, so its preview's limit is placed on the anchor
+    sub-select that produces the rows the group reads, as well as on the answer."""
+    preview = _probe_limit(_STARTERS[name].query, limit=5)
+    assert "} LIMIT 5 }" in preview, preview
+    assert preview.rstrip().endswith("LIMIT 5")
+    assert preview.index("LIMIT 5") < preview.index("GROUP BY")
 
 
 @pytest.mark.parametrize("name", sorted(_STARTERS))
@@ -115,6 +128,60 @@ def test_each_starter_query_is_bounded(name):
     assert "P279*" not in query and "P279+" not in query
     assert "SERVICE wikibase:label" not in query  # labels read directly, grouped
     assert re.search(r"\bGROUP BY\b", query)
+
+
+def _grouped_vars(query: str) -> set[str]:
+    """The variables the grouped rows are keyed by: those of the GROUP BY."""
+    group_by = re.search(r"GROUP BY ((?:\?\w+ ?)+)", query)
+    assert group_by is not None, query
+    return set(re.findall(r"\?(\w+)", group_by.group(1)))
+
+
+def _labels_read_after_the_group(query: str) -> bool:
+    """Whether no label is read inside the group, where a row has one binding per combination
+    of its values, and some label is read after it."""
+    inside, after = query.split("GROUP BY", 1)
+    return "rdfs:label" not in inside and "rdfs:label" in after
+
+
+def _label_joins_are_bound(query: str) -> list[str]:
+    """The label patterns joined on a variable that may be unbound: none is allowed, since a
+    label pattern on an unbound variable matches every label there is. A label's subject is
+    bound when the rows are grouped by it, or when the same optional pattern first reaches it
+    from a grouped variable."""
+    keys = _grouped_vars(query)
+    unbound = []
+    for line in query.split("GROUP BY", 1)[1].splitlines():
+        found = re.search(r"\?(\w+) rdfs:label", line)
+        if found is None:
+            continue
+        subject = found.group(1)
+        reached = re.search(rf"\?(\w+) wdt:P[0-9]+ \?{subject} \.", line)
+        if subject not in keys and (reached is None or reached.group(1) not in keys):
+            unbound.append(line.strip())
+    return unbound
+
+
+@pytest.mark.parametrize("name", sorted(_STARTERS))
+def test_each_starter_reads_its_labels_once_per_row_after_the_group(name):
+    """Labels are read after the rows are grouped, once per row and joined by id: read inside
+    the group they are read once per combination of the row's values, which drove admin_regions
+    and a class table past the public endpoint's limit (504, 503)."""
+    query = _STARTERS[name].query
+    assert _labels_read_after_the_group(query), query
+    assert _label_joins_are_bound(query) == [], query
+
+
+@pytest.mark.parametrize("name", sorted(_STARTERS))
+def test_each_starter_runs_on_any_wikidata_endpoint(name):
+    """A starter declares its prefixes and carries no optimizer hint of the query service's
+    own, so the QLever mirror answers it as the query service does."""
+    query = _STARTERS[name].query
+    assert query.startswith(wikidata.PREFIXES)
+    assert "hint:" not in query
+    declared = set(re.findall(r"PREFIX (\w+):", query))
+    used = set(re.findall(r"(?<![\w<\"])([a-z]+):[A-Za-z]", query.split("SELECT", 1)[1]))
+    assert used <= declared, used - declared
 
 
 def _types(name: str) -> dict[str, ApiColumnType]:
@@ -129,7 +196,7 @@ def test_countries_carry_their_iso_codes_capital_and_population():
         "iso_alpha3": ApiColumnType.string,
         "capital_id": ApiColumnType.string,
         "capital": ApiColumnType.string,
-        "population": ApiColumnType.integer,
+        "population": ApiColumnType.string,
     }
     query = _STARTERS["countries"].query
     for prop in ("wdt:P297", "wdt:P298", "wdt:P36", "wdt:P1082"):
@@ -223,7 +290,7 @@ _INT = "http://www.w3.org/2001/XMLSchema#integer"
 
 
 @respx.mock
-async def test_class_search_by_name_reads_wbsearchentities():
+async def test_a_value_search_by_name_reads_wbsearchentities():
     route = respx.get(_SEARCH).mock(
         return_value=httpx.Response(
             200,
@@ -235,7 +302,7 @@ async def test_class_search_by_name_reads_wbsearchentities():
             },
         )
     )
-    found = await wikidata.search_entities("city", language="en")
+    found = await wikidata.search_entities("city", language="en", classes=False)
     assert found == [
         {"id": "Q515", "label": "city", "description": "large human settlement"},
         {"id": "Q1549591", "label": "big city", "description": None},
@@ -373,8 +440,8 @@ async def test_saving_a_class_table_defines_its_sparql_query_and_typed_columns()
     table = await wikidata.class_table(
         "Q515",
         [
-            _prop("P17", "country", ApiColumnType.string, True),
             _prop("P1082", "population", ApiColumnType.number, False),
+            _prop("P17", "country", ApiColumnType.string, True),
         ],
         row_filter=None,
         language="en",
@@ -382,14 +449,33 @@ async def test_saving_a_class_table_defines_its_sparql_query_and_typed_columns()
     assert [(c.name, c.type) for c in table.columns] == [
         ("id", ApiColumnType.string),
         ("name", ApiColumnType.string),
+        ("population", ApiColumnType.number),
         ("country_id", ApiColumnType.string),
         ("country", ApiColumnType.string),
-        ("population", ApiColumnType.number),
     ]
     assert extract_variables(table.query) == [c.name for c in table.columns]
     assert "wdt:P31 wd:Q515" in table.query
     assert "wdt:P17" in table.query and "wdt:P1082" in table.query
     assert "P279*" not in table.query
+    # Every label -- the instance's and the item property's -- is read after the instances are
+    # grouped, joined on a bound id (a class table of country answered 503 reading them per
+    # combination of its values).
+    assert _labels_read_after_the_group(table.query), table.query
+    assert _label_joins_are_bound(table.query) == [], table.query
+    assert "hint:" not in table.query and table.query.startswith(wikidata.PREFIXES)
+
+
+def test_a_label_joined_on_an_unbound_id_is_detected():
+    """The bound-join check fails a label read on a linked id that some row lacks, which on
+    both endpoints joins every label there is (WIKIDATA-REG4's cartesian read)."""
+    query = (
+        "SELECT ?id ?capital WHERE {\n  { SELECT ?c (SAMPLE(?cap) AS ?capital_e) WHERE {\n"
+        "  OPTIONAL { ?c wdt:P36 ?cap } }\n    GROUP BY ?c\n  }\n"
+        '  OPTIONAL { ?capital_e rdfs:label ?capital FILTER(LANG(?capital) = "en") }\n}'
+    )
+    assert _label_joins_are_bound(query) == [
+        'OPTIONAL { ?capital_e rdfs:label ?capital FILTER(LANG(?capital) = "en") }'
+    ]
 
 
 @respx.mock

@@ -62,6 +62,7 @@ import { changes, draftOf, type Change, type TermDraft, type TermTags } from "./
 import { useAssignTag, useUnassignTag } from "../../hooks/useTagQueries";
 import { refusalError } from "../../i18n/serverMessage";
 import { useViewDomains } from "../../lib/viewDomains";
+import { type TermOption } from "./termLabel";
 
 type Option = { value: string; label: string };
 
@@ -80,7 +81,7 @@ export function TermEditForm({
   onTermCreated,
 }: {
   term: GlossaryTermDetail;
-  otherTermOptions: Option[];
+  otherTermOptions: TermOption[];
   relTypeOptions: Option[];
   kindOptions: Option[];
   memberOptions: Option[];
@@ -165,7 +166,10 @@ export function TermEditForm({
     };
   }, [actingRoles]);
 
-  const nameOf = (id: number) => otherTermOptions.find((o) => o.value === String(id))?.label ?? "";
+  const optionOf = (id: number) => otherTermOptions.find((o) => o.value === String(id));
+  const nameOf = (id: number) => optionOf(id)?.name ?? "";
+  // REQ-1591: an edge's other term carries its domains, which tell same-named terms apart
+  const domainsOf = (id: number) => optionOf(id)?.domains ?? [];
   const own = useMemo(
     () => new Set(term.refs.map((r) => columnKey(r.table_id, r.column_name))),
     [term.refs],
@@ -292,11 +296,22 @@ export function TermEditForm({
         : from === term.id
           ? {
               ...d,
-              edgesOut: [...d.edgesOut, { term_id: to, rel_type: rel, name: name ?? nameOf(to) }],
+              edgesOut: [
+                ...d.edgesOut,
+                { term_id: to, rel_type: rel, name: name ?? nameOf(to), domains: domainsOf(to) },
+              ],
             }
           : {
               ...d,
-              edgesIn: [...d.edgesIn, { term_id: from, rel_type: rel, name: name ?? nameOf(from) }],
+              edgesIn: [
+                ...d.edgesIn,
+                {
+                  term_id: from,
+                  rel_type: rel,
+                  name: name ?? nameOf(from),
+                  domains: domainsOf(from),
+                },
+              ],
             },
     );
   const removeEdge = async (from: number, to: number, rel: GlossaryRelType) =>

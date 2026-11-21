@@ -1098,9 +1098,12 @@ CREATE TABLE IF NOT EXISTS glossary_terms (
     -- recent-change sort orders by it. The DEFAULT dates the rows of a control plane created
     -- before the column (the ADD COLUMN below needs one for NOT NULL); a term's insert sets it.
     changed_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
-    tenant_id       UUID,
-    UNIQUE (name)
+    -- REQ-1591 (amended 2026-11-18): a name is unique only within a domain, and a term's domains
+    -- are derived from its refs (glossary.term_domains), so no table constraint can state it; the
+    -- create and rename paths refuse a name already held in one of the term's domains.
+    tenant_id       UUID
 );
+ALTER TABLE glossary_terms DROP CONSTRAINT IF EXISTS glossary_terms_name_key;  -- REQ-1591
 ALTER TABLE glossary_terms ADD COLUMN IF NOT EXISTS retired BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE glossary_terms ADD COLUMN IF NOT EXISTS calculation_method TEXT;  -- REQ-2243
 ALTER TABLE glossary_terms ADD COLUMN IF NOT EXISTS export_excluded BOOLEAN NOT NULL DEFAULT FALSE;
@@ -1420,6 +1423,19 @@ CREATE TABLE IF NOT EXISTS openlineage_run_datasets (
     column_lineage    JSONB NOT NULL DEFAULT '{}',
     CONSTRAINT openlineage_run_datasets_key UNIQUE
         (job_namespace, job_name, run_id, direction, dataset_namespace, dataset_name)
+);
+
+-- REQ-2263: each dataset's latest schema, documentation and ownership facet any OpenLineage event
+-- carried, with the run and event time it came from. One row per dataset and facet.
+CREATE TABLE IF NOT EXISTS openlineage_dataset_facets (
+    dataset_namespace TEXT NOT NULL,
+    dataset_name      TEXT NOT NULL,
+    facet             TEXT NOT NULL CONSTRAINT openlineage_dataset_facets_facet_check
+                      CHECK (facet IN ('schema', 'documentation', 'ownership')),
+    payload           JSONB NOT NULL,
+    run_id            TEXT NOT NULL,
+    event_time        TIMESTAMPTZ NOT NULL,
+    PRIMARY KEY (dataset_namespace, dataset_name, facet)
 );
 
 -- REQ-2125: the governed table each checker table's contract scans, as the model build resolved

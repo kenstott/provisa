@@ -25,7 +25,8 @@ import pytest
 import sqlglot
 
 from provisa.compiler import join_guard
-from provisa.compiler.view_expand import expand_view_refs
+from provisa.compiler.view_expand import VIEW_CATALOG, expand_view_refs
+from provisa.core.models import DERIVED_SOURCE_ID
 from provisa.cypher.parser import parse_cypher
 from provisa.gql.label_map import CypherLabelMap, NodeMapping, RelationshipMapping
 from provisa.gql.graph_rewriter import apply_graph_rewrites
@@ -50,13 +51,21 @@ def _view_sql(sides: list[str]) -> str:
 
 
 def _shelter(label: str) -> NodeMapping:
+    """A side is a table of the source; the dimension is a table of the derived source, read
+    under its catalog (view_expand.VIEW_CATALOG) as discovery registers it."""
+    view = label == DIM
     props = (
         {"neighborhood": "neighborhood"}
         if label == DIM
         else {"id": "id", "neighborhood": "neighborhood"}
     )
+    node = _node(label, TABLES[label])
+    if label == DIM:
+        # A shared dimension is a view: a table of the derived source, read under its catalog
+        # (discovery.dimension); under another catalog its name is that catalog's table.
+        node = dataclasses.replace(node, source_id="__derived__", catalog_name="__derived__")
     return dataclasses.replace(
-        _node(label, TABLES[label]),
+        node,
         type_name=f"Shelter__{label}",
         label=f"Shelter:{label}",
         domain_label="Shelter",
@@ -64,6 +73,8 @@ def _shelter(label: str) -> NodeMapping:
         table_label=label,
         id_column="neighborhood" if label == DIM else "id",
         properties=props,
+        source_id=DERIVED_SOURCE_ID if view else "pg-main",
+        catalog_name=VIEW_CATALOG if view else "pg",
     )
 
 

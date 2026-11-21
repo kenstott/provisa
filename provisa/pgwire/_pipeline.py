@@ -841,10 +841,13 @@ def _catalog_settings(
     """REQ-2190: what a statement reading a catalog view of the meta domain is told of the
     request; None for any other, which pays no round trip for settings."""
     from provisa.pgwire.catalog_data import served_database_name
+    from provisa.security.masking import columns_masked_for
     from provisa.transpiler.metadata_settings import statement_settings
 
     if source_id != "provisa-admin":
         return None
+    # REQ-2131: the columns the role reads under a mask, which its catalog lists nullable.
+    masked = columns_masked_for(state.masking_rules, gov_ctx.role_id)
     request = current_catalog_request.get()
     if request is not None:
         return statement_settings(
@@ -852,6 +855,7 @@ def _catalog_settings(
             gov_ctx.can_write,
             request.database,
             bool(state.schema_build_cache.get("domain_prefix", False)),
+            masked=masked,
             session=request.session,
             scope=gov_ctx.meta_scope,
         )
@@ -862,6 +866,7 @@ def _catalog_settings(
         gov_ctx.can_write,
         served_database_name(state),
         bool(state.schema_build_cache.get("domain_prefix", False)),
+        masked=masked,
         scope=gov_ctx.meta_scope,
     )
 
@@ -3393,7 +3398,11 @@ async def route_governed(
         # ref is source-less so it survives the rewrites unchanged and still matches its key.
         if _view_map:
             from provisa.compiler.view_expand import expand_view_refs
-            from provisa.mv.view_read import read_views_at, unnarrowed_view_bodies
+            from provisa.mv.view_read import (
+                lowered_view_catalog,
+                read_views_at,
+                unnarrowed_view_bodies,
+            )
 
             # REQ-1163: a bitemporal view reference that says its own time is read at it; the
             # rest at the request's.
@@ -3401,6 +3410,8 @@ async def route_governed(
             _qualified = expand_view_refs(
                 _qualified,
                 unnarrowed_view_bodies(_qualified, _view_map, state, as_of=_travel.default),
+                # Lowered: its views are named under the org's derived catalog (REQ-1266).
+                view_catalog=lowered_view_catalog(state),
             )
             # View bodies are stored in semantic form; after expansion, lower any
             # newly-introduced semantic refs to catalog-physical (same pass the outer SQL
@@ -6229,7 +6240,11 @@ async def _route_compiled(
     _view_map = getattr(state, "view_sql_map", None)
     if _view_map:
         from provisa.compiler.view_expand import expand_view_refs
-        from provisa.mv.view_read import read_views_at, unnarrowed_view_bodies
+        from provisa.mv.view_read import (
+            lowered_view_catalog,
+            read_views_at,
+            unnarrowed_view_bodies,
+        )
 
         # Optimization, as on the raw-SQL stage: a view governance kept as its reference is
         # answered here (REQ-1163: a bitemporal view is read at its reference's time, else the
@@ -6238,6 +6253,8 @@ async def _route_compiled(
         _exec_sql = expand_view_refs(
             _exec_sql,
             unnarrowed_view_bodies(_exec_sql, _view_map, state, as_of=travel.default),
+            # Lowered: its views are named under the org's derived catalog (REQ-1266).
+            view_catalog=lowered_view_catalog(state),
         )
     # REQ-2109: a table updated in place is read from its version log at its reference's time.
     from provisa.mv.bitemporal_capture import read_logs

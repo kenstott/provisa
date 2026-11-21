@@ -14,7 +14,8 @@
       "webhook_not_found": "Webhook « {{name}} » introuvable",
       "written_table_not_registered": "'{{table}}' n'est pas une table enregistrée de la source '{{source_id}}'",
       "function_exists": "La fonction « {{name}} » existe déjà",
-      "webhook_exists": "Le webhook « {{name}} » existe déjà"
+      "webhook_exists": "Le webhook « {{name}} » existe déjà",
+      "mask_constant_not_text": "Un masque constant sur une colonne non textuelle est lu comme NULL ; seul NULL peut être enregistré : {{column}} ({{type}})"
     },
     "ai_models": {
       "vector_model_fields_required": "chaque entrée vector_models requiert id, provider et dimensions",
@@ -168,7 +169,8 @@
       "table_is_withdrawn": "{{table}} est retirée : hors production jusqu'à sa remise en service",
       "view_awaits_rule_rebuild": "La vue {{view}} est en cours de reconstruction suite à une modification des règles de ligne sur ses entrées. Ce rôle pourra la lire une fois cette construction publiée.",
       "parameter_required": "La table '{{table}}' exige le ou les paramètres {{parameters}} : donnez une valeur à chacun (une condition WHERE sur sa colonne en SQL, un argument en GraphQL).",
-      "parameter_wrong_type": "Le paramètre {{parameter}} prend une valeur de type {{type}} ; '{{value}}' n'en est pas une."
+      "parameter_wrong_type": "Le paramètre {{parameter}} prend une valeur de type {{type}} ; '{{value}}' n'en est pas une.",
+      "statement_failed": "L'instruction a échoué dans le serveur ({{kind}}) : {{error}}"
     },
     "discovery": {
       "adapter_missing_discover_schema": "L'adaptateur pour « {{source_type}} » n'implémente pas discover_schema",
@@ -243,7 +245,8 @@
       "host_code_refused": "La commande '{{name}}' est de type {{impl_kind}}, qui exécute du code sur l'hôte du serveur. Le code hôte est désactivé sur ce déploiement ; utilisez plutôt un résolveur de code.",
       "no_plain_list": "Aucune opération de la source '{{source_id}}' sans paramètre obligatoire ne renvoie les lignes de '{{operation}}' ; sa table reste donc activée",
       "plain_list_unregistered": "'{{operation}}' de la source '{{source_id}}' renvoie les lignes de sa liste {{lists}} ; enregistrez d'abord cette liste comme table",
-      "table_has_dependents": "La table '{{table}}' de la fonction '{{name}}' est encore référencée par d'autres objets ; supprimez d'abord ces références"
+      "table_has_dependents": "La table '{{table}}' de la fonction '{{name}}' est encore référencée par d'autres objets ; supprimez d'abord ces références",
+      "statement_failed": "La commande '{{name}}' a échoué : {{error}}"
     },
     "graphql_remote": {
       "introspection_failed": "Échec de l'introspection : {{error}}",
@@ -564,7 +567,9 @@
       "withdrawn_table_not_previewable": "Impossible de prévisualiser la table {{table}} : elle est retirée et ne conserve aucune réplique, et le moteur ne lit sa source qu'à travers une réplique.",
       "table_not_withdrawn": "La table {{table}} n'est pas retirée : seule une table retirée est remise en service. Pour déplacer une table en production vers une autre région, définissez sa région.",
       "source_not_withdrawn": "La source {{source}} n'est pas retirée : seule une source retirée est remise en service. Pour changer sa région, définissez sa région.",
-      "put_back_needs_region": "Remettre en service {{object}} nomme une région : indiquez-en une, ou aucune pour aucune région."
+      "put_back_needs_region": "Remettre en service {{object}} nomme une région : indiquez-en une, ou aucune pour aucune région.",
+      "table_domain_required": "La table '{{table}}' ne nomme aucun domaine : toute table est enregistrée dans un domaine",
+      "mask_constant_not_text": "Un masque constant sur une colonne non textuelle est lu comme NULL ; seul NULL peut être enregistré : {{column}} ({{type}})"
     },
     "secrets": {
       "env_reference_object_locked": "Cet objet appartient à l'opérateur : il lit l'environnement propre du serveur et ne peut pas être modifié ici. Ajoutez plutôt le vôtre.",
@@ -614,7 +619,8 @@
     "sparql": {
       "columns_not_inferred": "Impossible d'inférer les colonnes : le sondage n'a renvoyé aucune ligne et aucune variable SELECT n'a été trouvée.",
       "probe_failed": "Échec du sondage de l'endpoint SPARQL : {{error}}",
-      "source_not_found": "Source SPARQL « {{source_id}} » introuvable"
+      "source_not_found": "Source SPARQL « {{source_id}} » introuvable",
+      "no_select_variables": "La requête ne nomme aucune variable SELECT (SELECT * ou pas une requête SELECT) : ses colonnes ne peuvent pas en être lues"
     },
     "subscribe": {
       "avro_topic_without_registry": "Le topic '{{topic}}' transporte des messages Avro et sa source ne désigne aucun registre de schémas pour les lire : renseignez l'URL du registre de schémas de la source",
@@ -810,7 +816,6 @@
       "status_by_action": "Le statut d'un terme change par Approuver, Déprécier, Retirer ou Restaurer.",
       "successor_required": "Ce terme a encore des colonnes ou des tables ; le retirer les transfère à un successeur. Choisissez-en un.",
       "successor_role": "Le successeur d'un {{role}} doit être un {{role}} ou un concept ; « {{successor}} » est un {{successor_role}}.",
-      "no_retirement_history": "L'historique du modèle ne contient aucun retrait de ce terme.",
       "finding": {
         "unlinked_tables": "Cette classe est ancrée dans des tables que les relations de même entité ne relient pas toutes : {{tables}}.",
         "class_and_attribute": "Cette classe porte aussi des colonnes qui ne sont pas ses clés : {{columns}}.",
@@ -828,7 +833,9 @@
       "not_bulk_approvable": "Seuls les brouillons définis et ancrés sont approuvés ensemble ; pas : {{terms}}.",
       "term_ids_required": "Indiquez les termes à approuver.",
       "impact_action": "Aucun aperçu n'existe pour cette action.",
-      "impact_table_required": "Une liaison nomme une table, ou l'une de ses colonnes."
+      "impact_table_required": "Une liaison nomme une table, ou l'une de ses colonnes.",
+      "name_taken": "Un terme nommé '{{name}}' existe déjà dans le domaine {{domain}}. Choisissez un autre nom ou placez le terme dans un autre domaine.",
+      "name_taken_unscoped": "Un terme nommé '{{name}}' existe déjà sans domaine : il s'applique donc à tous les domaines. Choisissez un autre nom."
     },
     "table": {
       "requires_parameters": "La table {{table}} ne peut être ni comptée ni profilée : elle exige {{parameters}}. Donnez une valeur à chacun pour lire ses lignes."

@@ -12,7 +12,7 @@
 
 A nested relationship field is compiled to a subquery whose condition equates the two columns the
 relationship registers. The engine reads those keys to join; the role reads a masked key, where it
-selects one, as its mask. Anywhere else -- a filter of the role's own, a projection -- the masked
+selects one, as its mask: an integer key under a constant mask reads as NULL (REQ-2131). Anywhere else -- a filter of the role's own, a projection -- the masked
 key is masked or refused as any masked column is. Run on DuckDB, lowered as every surface lowers a
 governed statement.
 """
@@ -146,9 +146,9 @@ def test_a_one_to_many_relationship_joins_on_a_masked_key_and_shows_the_mask():
     model = _model((1, "id"))  # customers.id masked
     rows = _graphql(model, "{ customers { name id orders { id } } }")
     assert sorted((name, key, _ids(orders)) for name, key, orders in rows) == [
-        ("ann", 0, [10, 11]),
-        ("bob", 0, [12]),
-        ("cy", 0, []),
+        ("ann", None, [10, 11]),
+        ("bob", None, [12]),
+        ("cy", None, []),
     ]
 
 
@@ -156,9 +156,9 @@ def test_a_many_to_one_relationship_joins_on_a_masked_key_and_shows_the_mask():
     model = _model((2, "customer_id"))  # orders.customer_id masked
     rows = _graphql(model, "{ orders { id customerId customer { id } } }")
     assert sorted((oid, key, _ids(customer)) for oid, key, customer in rows) == [
-        (10, 0, [1]),
-        (11, 0, [1]),
-        (12, 0, [2]),
+        (10, None, [1]),
+        (11, None, [1]),
+        (12, None, [2]),
     ]
 
 
@@ -167,9 +167,9 @@ def test_a_masked_key_outside_the_join_condition_is_masked_or_refused():
     assert "V005" in _violations(model, 'SELECT "id" FROM "shop"."orders" WHERE "customer_id" = 1')
     # An expression over it reads the mask.
     rows = _run(model, 'SELECT "id", "customer_id" + 5 AS "k" FROM "shop"."orders"')
-    assert sorted(rows) == [(10, 5), (11, 5), (12, 5)]
+    assert sorted(rows) == [(10, None), (11, None), (12, None)]
     assert sorted(_run(model, 'SELECT "id", "customer_id" FROM "shop"."orders"')) == [
-        (10, 0),
-        (11, 0),
-        (12, 0),
+        (10, None),
+        (11, None),
+        (12, None),
     ]

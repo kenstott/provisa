@@ -127,6 +127,10 @@
     "continue": "Weiter",
     "checkReasonLabel": "Warum diese Prüfung existiert",
     "checkReasonHint": "Die Qualitätszusage in fachlichen Begriffen; sie steht über der Prüfung in jedem Produkt.",
-    "checkReasonPlaceholder": "Bestellungen sind vollständig und eindeutig, damit der Tagesumsatz mit der Finanzabteilung abgestimmt werden kann"
+    "checkReasonPlaceholder": "Bestellungen sind vollständig und eindeutig, damit der Tagesumsatz mit der Finanzabteilung abgestimmt werden kann",
+    "errorSparqlQuery": "Geben Sie die SPARQL-Abfrage ein, die die Zeilen der Tabelle liefert.",
+    "errorQueryPreviewFirst": "Zeigen Sie zuerst eine Vorschau der Abfrage an, damit die Spalten und ihre Typen bekannt sind.",
+    "previewFailed": "Die Vorschau ist fehlgeschlagen: {{error}}",
+    "previewNoRows": "Die Vorschau hat keine Zeilen geliefert."
   }
 }

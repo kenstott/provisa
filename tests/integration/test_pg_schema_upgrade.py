@@ -527,6 +527,7 @@ _CREATE_ONLY = {
     "naming_rules": "id pattern replacement",
     "node_freshness_state": "node content_hash probe_token updated_at",
     "node_ids": "id composite_id label properties",
+    "openlineage_dataset_facets": "dataset_namespace dataset_name facet payload run_id event_time",
     "openlineage_run_datasets": (
         "id job_namespace job_name run_id event_time direction dataset_namespace dataset_name "
         "column_lineage"
@@ -838,6 +839,9 @@ ALTER TABLE file_source_mtimes ADD CONSTRAINT file_source_mtimes_table_id_fkey
 -- tag_assignments: uniqueness was on tag_id before base_tag_id was introduced (333860e7).
 ALTER TABLE tag_assignments ADD CONSTRAINT tag_assignments_tag_id_object_key_key
     UNIQUE (tag_id, object_key);
+
+-- glossary_terms: a name was unique across every domain before REQ-1591's 2026-11-18 amendment.
+ALTER TABLE glossary_terms ADD CONSTRAINT glossary_terms_name_key UNIQUE (name);
 """
 
 # Every constraint the script must drop, keyed by table.
@@ -852,6 +856,7 @@ _REMOVED_CONSTRAINT_NAMES: dict[str, set[str]] = {
     "mv_delta_ledger": {"mv_delta_ledger_mv_id_fkey"},
     "file_source_mtimes": {"file_source_mtimes_table_id_fkey"},
     "tag_assignments": {"tag_assignments_tag_id_object_key_key"},
+    "glossary_terms": {"glossary_terms_name_key"},
 }
 
 
@@ -937,6 +942,8 @@ async def test_schema_sql_drops_constraints_removed_from_the_create(own_database
             "VALUES ($1, 'analyst_rls', decode('00', 'hex'), 'U')",
             tbl_id,
         )
+        # REQ-1591: a name is unique only within a domain, so two terms may share one.
+        await conn.execute("INSERT INTO glossary_terms (name) VALUES ('order'), ('order')")
 
 
 async def test_constraints_reach_a_table_holding_rows_that_have_no_key(own_database):

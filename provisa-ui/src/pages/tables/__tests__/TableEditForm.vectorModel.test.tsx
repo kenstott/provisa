@@ -137,6 +137,7 @@ function renderForm(updateEditCol = vi.fn()) {
     <TableEditForm
       hidingOnly={false}
       savedProfilerId={null}
+      domainChoices={[]}
       editingTable={makeTable({ columns: COLUMNS })}
       savedTable={makeTable({ columns: COLUMNS })}
       setEditingTable={vi.fn()}

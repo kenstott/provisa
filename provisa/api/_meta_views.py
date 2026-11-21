@@ -1603,7 +1603,10 @@ _OPS_LOG_TABLE_VIEWS: dict[str, str] = {
                q.route, q.row_count, q.route_reason, q.sources, q.data_age, q.region,
                q.model_stamp, q.model_commit, q.enforced,
                -- The statement's time travel: last, so an existing view is replaced in place.
-               q.as_of, q.as_recorded
+               q.as_of, q.as_recorded,
+               -- The environment's stage when the statement ran; appended last for the
+               -- same reason.
+               q.stage
         FROM query_audit_log q
         LEFT JOIN user_directory ud ON ud.user_id = q.user_id
     """,
@@ -1812,12 +1815,18 @@ _OPS_REPORT_VIEWS: dict[str, str] = {
     "policy_denials": """
         CREATE OR REPLACE VIEW policy_denials AS
         SELECT q.id, q.user_id, ud.display_name AS user_name, q.role_id, q.query_hash, q.table_ids,
-               q.source, q.status_code, q.duration_ms, q.logged_at
+               q.source, q.status_code, q.duration_ms, q.logged_at,
+               -- Filter and group denials by the environment's stage. Last, so an
+               -- existing view is replaced in place.
+               q.stage
         FROM query_audit_log q
         LEFT JOIN user_directory ud ON ud.user_id = q.user_id
         WHERE q.status_code IN (401, 403)
     """,
-    # Daily traffic per protocol surface (the audit log's ``source`` column).
+    # Daily traffic per protocol surface (the audit log's ``source`` column), per stage (REQ-2261).
+    # The id names the stage too, so a day split across a stage change keeps one row per stage;
+    # a row from a deployment without a control plane records no stage (NULL), and the id must
+    # still be a non-NULL key, hence the COALESCE in the id alone -- the column stays NULL.
     # REQ-1910: one row per statement Provisa executed — the audit row, which is the one home of
     # a statement's user, role, transport (``source``), route, rows, outcome and duration. A statement over
     # several tables names its first registered table (lowest id) and counts them; the full set is
@@ -1829,7 +1838,8 @@ _OPS_REPORT_VIEWS: dict[str, str] = {
         SELECT q.id AS id, q.trace_id, q.logged_at, q.duration_ms, q.status_code,
                q.user_id, q.role_id, q.source, q.route, q.row_count, q.query_hash,
                q.region,
-               t.table_id, rt.table_name, rt.domain_id, t.table_count
+               t.table_id, rt.table_name, rt.domain_id, t.table_count,
+               q.stage  -- last, so an existing view is replaced in place
         FROM query_audit_log q
         LEFT JOIN (SELECT u.id AS audit_id, MIN(u.table_id) AS table_id,
                           COUNT(*) AS table_count
@@ -1839,25 +1849,29 @@ _OPS_REPORT_VIEWS: dict[str, str] = {
     """,
     "surface_mix": """
         CREATE OR REPLACE VIEW surface_mix AS
-        SELECT source || ':' || SUBSTR(CAST(logged_at AS TEXT), 1, 10) AS id,
+        SELECT source || ':' || SUBSTR(CAST(logged_at AS TEXT), 1, 10)
+                   || ':' || COALESCE(stage, '') AS id,
                source, SUBSTR(CAST(logged_at AS TEXT), 1, 10) AS day,
                COUNT(*) AS query_count,
-               COUNT(DISTINCT user_id) AS distinct_users
+               COUNT(DISTINCT user_id) AS distinct_users,
+               stage
         FROM query_audit_log
-        GROUP BY source, SUBSTR(CAST(logged_at AS TEXT), 1, 10)
+        GROUP BY source, SUBSTR(CAST(logged_at AS TEXT), 1, 10), stage
     """,
     # Daily latency/error profile per protocol surface. Portable aggregates only
     # (percentile_cont is PG-only); p95 arrives with the REQ-1386 rollup tables.
     "query_health": """
         CREATE OR REPLACE VIEW query_health AS
-        SELECT source || ':' || SUBSTR(CAST(logged_at AS TEXT), 1, 10) AS id,
+        SELECT source || ':' || SUBSTR(CAST(logged_at AS TEXT), 1, 10)
+                   || ':' || COALESCE(stage, '') AS id,
                source, SUBSTR(CAST(logged_at AS TEXT), 1, 10) AS day,
                COUNT(*) AS query_count,
                SUM(CASE WHEN status_code >= 400 THEN 1 ELSE 0 END) AS error_count,
                AVG(duration_ms) AS avg_duration_ms,
-               MAX(duration_ms) AS max_duration_ms
+               MAX(duration_ms) AS max_duration_ms,
+               stage
         FROM query_audit_log
-        GROUP BY source, SUBSTR(CAST(logged_at AS TEXT), 1, 10)
+        GROUP BY source, SUBSTR(CAST(logged_at AS TEXT), 1, 10), stage
     """,
     # Governance-completeness gaps: tables/columns missing a description,
     # domains missing a steward (REQ-609 PENDING state).

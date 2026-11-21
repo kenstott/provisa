@@ -287,6 +287,16 @@
     "holdOnFailingChecksCodeHelp": "此選項套用的檢查。如要修改，請將其複製到上方的預檢中。",
     "discoverHint": "儲存時會讀取即時資料來源的欄位，並加入此表缺少的欄位；現有欄位保持不變。新增的欄位在授予之前對任何角色都不可見。",
     "mvRebuildEveryLabel": "完整重建間隔（秒）",
-    "mvRebuildEveryHelp": "重新計算整個檢視的頻率。由代碼來源的 @change 函數維護的檢視必須填寫。"
+    "mvRebuildEveryHelp": "重新計算整個檢視的頻率。由代碼來源的 @change 函數維護的檢視必須填寫。",
+    "domainHelp": "將表移到另一個域，需要在兩個域中都有更改表的權限。",
+    "domainPlaceholder": "選擇域",
+    "sparqlQueryLabel": "SPARQL 查詢",
+    "sparqlQueryHelp": "此表格所含各行來自的查詢。其欄位即其 SELECT 變數：更改會相應增刪欄位，並保留留下欄位的設定。複本的下次載入會以已儲存的查詢讀取。",
+    "sparqlQueryDrops": "此查詢會刪除使用中的欄位：{{columns}}。儲存後，這些欄位會連同使用它們的內容一併刪除。",
+    "sparqlQueryDropUse": "{{column}}（{{uses}}）",
+    "sparqlQueryUse_mask": "一項遮罩",
+    "sparqlQueryUse_grant": "一項寫入授權",
+    "sparqlQueryUse_relationship": "一個關係",
+    "sparqlQueryDropAgree": "刪除這些欄位"
   }
 }

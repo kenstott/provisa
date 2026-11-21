@@ -732,7 +732,21 @@ class _Binder:
         else:
             literal = exp.Literal.string(str(value))
         ir_type = self.types.get(parameter.lower())
-        return literal if ir_type is None else exp.cast(literal, to_physical(ir_type, "postgresql"))
+        if ir_type is None:
+            return literal
+        if isinstance(value, str) and _is_vector(ir_type):
+            # REQ-430: a search's vector query is also given a text, embedded by the search's
+            # model; the column repeats the text asked, which is no vector to cast to.
+            return literal
+        return exp.cast(literal, to_physical(ir_type, "postgresql"))
+
+
+def _is_vector(ir_type: str) -> bool:
+    """Whether ``ir_type`` declares a vector: an array, in any spelling, or a vector."""
+    from provisa.core.ir_types import base_type
+
+    spelled = base_type(ir_type).strip().lower()
+    return spelled.startswith(("array(", "array<", "vector")) or spelled.endswith("[]")
 
 
 def _same(a: Any, b: Any) -> bool:

@@ -101,6 +101,17 @@ const OntologyPage = lazyPage(() =>
 const ContextSyncPage = lazyPage(() =>
   import("./pages/context/ContextSyncPage").then((m) => ({ default: m.ContextSyncPage })),
 );
+const ContextMetricsPage = lazyPage(() =>
+  import("./pages/context/ContextMetricsPage").then((m) => ({ default: m.ContextMetricsPage })),
+);
+const ContextTagsPage = lazyPage(() =>
+  import("./pages/context/ContextTagsPage").then((m) => ({ default: m.ContextTagsPage })),
+);
+const ContextClassificationPage = lazyPage(() =>
+  import("./pages/context/ContextClassificationPage").then((m) => ({
+    default: m.ContextClassificationPage,
+  })),
+);
 const DataProductsPage = lazyPage(() =>
   import("./pages/DataProductsPage").then((m) => ({ default: m.DataProductsPage })),
 ); // REQ-1634
@@ -609,6 +620,40 @@ function App() {
                                                 fallback={<NotAuthorized />}
                                               >
                                                 <OntologyPage />
+                                              </CapabilityGate>
+                                            }
+                                          />
+                                          {/* REQ-2259: Metrics, Tags and Classification, read-only; editing stays where it is. */}
+                                          <Route
+                                            path="/context/metrics"
+                                            element={
+                                              <CapabilityGate
+                                                capability="glossary_read"
+                                                fallback={<NotAuthorized />}
+                                              >
+                                                <ContextMetricsPage />
+                                              </CapabilityGate>
+                                            }
+                                          />
+                                          <Route
+                                            path="/context/tags"
+                                            element={
+                                              <CapabilityGate
+                                                capability="glossary_read"
+                                                fallback={<NotAuthorized />}
+                                              >
+                                                <ContextTagsPage />
+                                              </CapabilityGate>
+                                            }
+                                          />
+                                          <Route
+                                            path="/context/classification"
+                                            element={
+                                              <CapabilityGate
+                                                capability="glossary_read"
+                                                fallback={<NotAuthorized />}
+                                              >
+                                                <ContextClassificationPage />
                                               </CapabilityGate>
                                             }
                                           />

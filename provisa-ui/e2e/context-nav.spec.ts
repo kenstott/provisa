@@ -11,7 +11,9 @@ import { test, expect } from "./coverage";
 
 test("the Context group opens the Ontology, Documents and Context Sync pages", async ({ page }) => {
   await page.goto("/");
-  await expect(page.locator(".navbar-links").getByRole("link", { name: "Ontology" })).toHaveCount(0);
+  await expect(page.locator(".navbar-links").getByRole("link", { name: "Ontology" })).toHaveCount(
+    0,
+  );
   await expect(page.locator(".navbar-links").getByRole("link", { name: "Library" })).toHaveCount(0);
 
   await page.getByTestId("nav-group-context").click();
@@ -28,7 +30,7 @@ test("the Context group opens the Ontology, Documents and Context Sync pages", a
   await expect(page.getByTestId("syncing")).toBeVisible();
 
   // The group's pages still to come are listed, not linked.
-  for (const label of ["Context Health", "Metrics", "Tags", "Classification"]) {
+  for (const label of ["Context Health"]) {
     await expect(subnav.getByText(`${label} — coming soon`)).toBeVisible();
   }
 });

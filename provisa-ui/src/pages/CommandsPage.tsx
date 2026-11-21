@@ -53,7 +53,11 @@ import type { Role } from "../types/auth";
 import { PanelDelete } from "../components/list/PanelDelete";
 import { PanelDuplicate } from "../components/list/PanelDuplicate";
 import { PanelActions, SplitPane } from "../components/list/SplitPane";
-import { commandId, readCommandId, useDetailParam } from "../components/list/useDetailParam";
+import {
+  commandId,
+  readCommandId,
+  useRememberedDetail,
+} from "../components/list/useDetailParam";
 import { PanelWorking } from "./sources/PanelWorking";
 import { TagControl } from "../components/TagControl";
 import type { ActionType, FormState } from "./commands/types";
@@ -106,7 +110,16 @@ export function CommandsPage() {
   // names: a function by its name, a webhook as `webhook:<name>` (a function and a webhook may
   // share a name; commandId).
   // REQ-2168: `?section=` is the open function's section, the same tab in its read view and form.
-  const detail = useDetailParam("commands");
+  // REQ-2260: and the one left open is open again on coming back.
+  const detail = useRememberedDetail(
+    "commands",
+    loading
+      ? null
+      : [
+          ...functions.map((f) => commandId("function", f.name)),
+          ...webhooks.map((w) => commandId("webhook", w.name)),
+        ],
+  );
   const fnSection = (detail.tab ?? "command") as CommandSection;
   const setFnSection = detail.setTab;
   const openCommand = (kind: ActionType, name: string | null) =>

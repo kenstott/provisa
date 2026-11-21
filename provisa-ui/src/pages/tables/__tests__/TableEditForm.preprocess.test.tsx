@@ -110,6 +110,7 @@ function renderForm(table: RegisteredTable, setEditingTable = vi.fn()) {
       section="load"
       onSectionChange={vi.fn()}
       savedProfilerId={null}
+      domainChoices={[]}
       editingTable={table}
       // Saved before any history was declared: what this file stages is still open to change.
       savedTable={{ ...table, businessKey: [], validTime: null, recordedTime: null }}

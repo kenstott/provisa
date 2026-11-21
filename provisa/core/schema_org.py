@@ -855,11 +855,11 @@ glossary_terms = Table(
     Column("status_at", DateTime(timezone=True)),
     # REQ-2237: the IRI of the imported concept the term is (schema.sql).
     Column("iri", Text),
+    # REQ-1591: no unique name; a name is unique only within a domain (schema.sql).
     # REQ-2259: when the term last changed; the server default dates rows older than the
     # column (schema.sql), and every repository write sets it.
     Column("changed_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
     Column("tenant_id", Uuid),
-    UniqueConstraint("name"),
 )
 
 # Physical ref = (table_id, column_name): the stable column identity — table_columns.id is
@@ -1146,6 +1146,24 @@ openlineage_run_datasets = Table(
         "dataset_namespace",
         "dataset_name",
         name="openlineage_run_datasets_key",
+    ),
+)
+
+# REQ-2263: each dataset's latest schema, documentation and ownership facet any OpenLineage event
+# carried, with the run and event time it came from
+# (provisa.core.repositories.openlineage_facets). One row per dataset and facet.
+openlineage_dataset_facets = Table(
+    "openlineage_dataset_facets",
+    metadata,
+    Column("dataset_namespace", Text, primary_key=True),
+    Column("dataset_name", Text, primary_key=True),
+    Column("facet", Text, primary_key=True),
+    Column("payload", JSON, nullable=False),
+    Column("run_id", Text, nullable=False),
+    Column("event_time", DateTime(timezone=True), nullable=False),
+    CheckConstraint(
+        "facet IN ('schema', 'documentation', 'ownership')",
+        name="openlineage_dataset_facets_facet_check",
     ),
 )
 
@@ -2146,6 +2164,10 @@ query_audit_log = Table(
     Column("as_of", Text),
     Column("as_recorded", Text),
     Column("logged_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    # REQ-2261: the stage (production | preprod | test | development) the environment declared when
+    # the statement ran, so reports filter and group by it. NULL only for a deployment without a
+    # control plane, which keeps no environment registry to read a stage from.
+    Column("stage", Text),
 )
 
 # Service-level breaches (REQ-506). A row is opened when a measure goes past its limit and closed

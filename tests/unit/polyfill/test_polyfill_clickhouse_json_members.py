@@ -2361,3 +2361,25 @@ def test_clickhouse_raises_postgresqls_class(runtime, sql, sqlstate):
         assert f"postgresql-error {sqlstate[:2]}" in str(raised), raised
         return
     pytest.fail(f"answered where PostgreSQL raises {sqlstate}")
+
+
+# A ClickHouse without Variant types (the 24.3 server the integration lanes run) holds no common type
+# of a UInt64 and an Int64: chdb is held to it by use_variant_as_common_type=0.
+NO_VARIANT = [
+    ("SELECT jsonb_delete(NULL::jsonb, 0)", [None]),
+    ("SELECT jsonb_delete('[1, \"two\", null]'::jsonb, 0)", ['["two", null]']),
+    ("SELECT jsonb_delete('[1, \"two\", null]'::jsonb, -1)", ['[1, "two"]']),
+    ("SELECT jsonb_delete('[1, \"two\", null]'::jsonb, 1::integer)", ["[1, null]"]),
+]
+
+
+@pytest.mark.parametrize(("sql", "want"), NO_VARIANT)
+def test_delete_by_index_without_variant_types(sql, want):
+    import chdb
+
+    written = transpile(sql, "clickhouse") + " SETTINGS use_variant_as_common_type = 0"
+    rows = [line for line in chdb.query(written, "JSONCompactEachRow").data().splitlines() if line]
+    got = [json.loads(line)[0] for line in rows]
+    assert [None if v is None else json.loads(v) for v in got] == [
+        None if v is None else json.loads(v) for v in want
+    ]

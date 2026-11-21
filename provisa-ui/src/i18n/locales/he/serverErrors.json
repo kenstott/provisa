@@ -14,7 +14,8 @@
       "webhook_not_found": "Webhook '{{name}}' לא נמצא",
       "written_table_not_registered": "'{{table}}' אינה טבלה רשומה של המקור '{{source_id}}'",
       "function_exists": "הפונקציה '{{name}}' כבר קיימת",
-      "webhook_exists": "ה-webhook '{{name}}' כבר קיים"
+      "webhook_exists": "ה-webhook '{{name}}' כבר קיים",
+      "mask_constant_not_text": "מסכה קבועה על עמודה שאינה טקסט נקראת כ-NULL; ניתן לשמור רק NULL: {{column}} ({{type}})"
     },
     "ai_models": {
       "vector_model_fields_required": "כל רשומת vector_models דורשת id, provider ו-dimensions",
@@ -168,7 +169,8 @@
       "table_is_withdrawn": "{{table}} הוסרה מהייצור: מחוץ לייצור עד שתוחזר",
       "view_awaits_rule_rebuild": "התצוגה {{view}} נבנית מחדש בעקבות שינוי בכללי השורות של הקלטים שלה. תפקיד זה יוכל לקרוא אותה לאחר שהבנייה תפורסם.",
       "parameter_required": "הטבלה '{{table}}' דורשת את הפרמטר או הפרמטרים {{parameters}}: תנו לכל אחד ערך (תנאי WHERE על העמודה שלו ב-SQL, ארגומנט ב-GraphQL).",
-      "parameter_wrong_type": "הפרמטר {{parameter}} מקבל ערך מסוג {{type}}; '{{value}}' אינו כזה."
+      "parameter_wrong_type": "הפרמטר {{parameter}} מקבל ערך מסוג {{type}}; '{{value}}' אינו כזה.",
+      "statement_failed": "ההוראה נכשלה בתוך השרת ({{kind}}): {{error}}"
     },
     "discovery": {
       "adapter_missing_discover_schema": "המתאם עבור '{{source_type}}' אינו מממש discover_schema",
@@ -243,7 +245,8 @@
       "host_code_refused": "הפקודה '{{name}}' היא מסוג {{impl_kind}}, שמריץ קוד על מארח השרת. קוד מארח כבוי בפריסה זו; השתמשו במקום זאת במפענח קוד.",
       "no_plain_list": "אף פעולה של המקור '{{source_id}}' ללא פרמטר חובה אינה מחזירה את השורות של '{{operation}}', ולכן הטבלה שלה נשארת מופעלת",
       "plain_list_unregistered": "'{{operation}}' של המקור '{{source_id}}' מחזירה את השורות של הרשימה שלה {{lists}}; יש לרשום תחילה את הרשימה הזו כטבלה",
-      "table_has_dependents": "אובייקטים אחרים עדיין מפנים לטבלה '{{table}}' של הפונקציה '{{name}}'; יש להסיר תחילה את ההפניות האלה"
+      "table_has_dependents": "אובייקטים אחרים עדיין מפנים לטבלה '{{table}}' של הפונקציה '{{name}}'; יש להסיר תחילה את ההפניות האלה",
+      "statement_failed": "הפקודה '{{name}}' נכשלה: {{error}}"
     },
     "graphql_remote": {
       "introspection_failed": "Introspection נכשל: {{error}}",
@@ -564,7 +567,9 @@
       "withdrawn_table_not_previewable": "לא ניתן להציג תצוגה מקדימה של הטבלה {{table}}: היא הוסרה מהייצור ואינה שומרת רפליקה, והמנוע קורא את המקור שלה רק דרך רפליקה.",
       "table_not_withdrawn": "הטבלה {{table}} לא הוסרה מהייצור: רק טבלה שהוסרה מהייצור מוחזרת. כדי להעביר טבלה בייצור לאזור אחר, הגדירו את האזור שלה.",
       "source_not_withdrawn": "המקור {{source}} לא הוסר מהייצור: רק מקור שהוסר מהייצור מוחזר. כדי לשנות את האזור שלו, הגדירו את האזור שלו.",
-      "put_back_needs_region": "החזרת {{object}} מציינת אזור: ציינו אזור, או אף אחד ללא אזור."
+      "put_back_needs_region": "החזרת {{object}} מציינת אזור: ציינו אזור, או אף אחד ללא אזור.",
+      "table_domain_required": "הטבלה '{{table}}' אינה מציינת תחום: כל טבלה נרשמת בתחום",
+      "mask_constant_not_text": "מסכה קבועה על עמודה שאינה טקסט נקראת כ-NULL; ניתן לשמור רק NULL: {{column}} ({{type}})"
     },
     "secrets": {
       "env_reference_object_locked": "אובייקט זה שייך למפעיל: הוא קורא את סביבת השרת עצמו ואי אפשר לשנותו כאן. יש להוסיף אובייקט משלך במקומו.",
@@ -614,7 +619,8 @@
     "sparql": {
       "columns_not_inferred": "לא ניתן היה להסיק עמודות: הבדיקה לא החזירה שורות ולא נמצאו משתני SELECT.",
       "probe_failed": "בדיקת נקודת הקצה של SPARQL נכשלה: {{error}}",
-      "source_not_found": "מקור SPARQL '{{source_id}}' לא נמצא"
+      "source_not_found": "מקור SPARQL '{{source_id}}' לא נמצא",
+      "no_select_variables": "השאילתה אינה מציינת משתני SELECT (SELECT * או שאינה שאילתת SELECT): לא ניתן לקרוא ממנה את העמודות"
     },
     "subscribe": {
       "avro_topic_without_registry": "הנושא '{{topic}}' נושא הודעות Avro, והמקור שלו אינו מציין רישום סכמות לקריאתן: הגדירו את כתובת ה-URL של רישום הסכמות של המקור",
@@ -810,7 +816,6 @@
       "status_by_action": "הסטטוס של מונח משתנה דרך אישור, סימון כמיושן, הוצאה משימוש או שחזור.",
       "successor_required": "למונח זה עדיין יש עמודות או טבלאות; גריעתו מעבירה אותן ליורש. בחרו יורש.",
       "successor_role": "היורש של {{role}} חייב להיות {{role}} או מושג; '{{successor}}' הוא {{successor_role}}.",
-      "no_retirement_history": "בהיסטוריה של המודל אין גריעה של מונח זה.",
       "finding": {
         "unlinked_tables": "מחלקה זו מעוגנת בטבלאות שקשרי אותה-ישות אינם מחברים את כולן: {{tables}}.",
         "class_and_attribute": "למחלקה זו יש גם עמודות שאינן המפתחות שלה: {{columns}}.",
@@ -828,7 +833,9 @@
       "not_bulk_approvable": "רק טיוטות מוגדרות ומעוגנות מאושרות יחד; לא: {{terms}}.",
       "term_ids_required": "ציינו את המונחים לאישור.",
       "impact_action": "אין תצוגה מקדימה לפעולה זו.",
-      "impact_table_required": "קישור מציין טבלה או אחת מעמודותיה."
+      "impact_table_required": "קישור מציין טבלה או אחת מעמודותיה.",
+      "name_taken": "מונח בשם '{{name}}' כבר קיים בתחום {{domain}}. בחרו שם אחר, או שייכו את המונח לתחום אחר.",
+      "name_taken_unscoped": "מונח בשם '{{name}}' כבר קיים ללא תחום, ולכן הוא חל על כל התחומים. בחרו שם אחר."
     },
     "table": {
       "requires_parameters": "לא ניתן לספור או ליצור פרופיל לטבלה {{table}}: היא דורשת את {{parameters}}. תנו ערך לכל אחד מהם כדי לקרוא את השורות שלה."

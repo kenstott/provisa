@@ -66,6 +66,7 @@ function show(rel: Relationship, domainsEnabled = true) {
       saving={null}
       problem=""
       tables={[]}
+      refetchTables={() => Promise.resolve()}
       functions={[]}
       tableDomainById={{ "2": "zoo" }}
       domainsEnabled={domainsEnabled}

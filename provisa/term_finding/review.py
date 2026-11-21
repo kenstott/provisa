@@ -25,10 +25,8 @@ from __future__ import annotations
 from collections.abc import Collection, Iterable
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import select
 
 from provisa.core.repositories import glossary as glossary_repo
-from provisa.core.schema_org import glossary_terms
 from provisa.term_finding import queue
 from provisa.term_finding.scan import normal
 
@@ -75,25 +73,23 @@ def merge_names(found: queue.DraftRow, target_name: str) -> list[str]:
     return [n for n in dict.fromkeys([found.name, *kept_synonyms(found)]) if normal(n) != target]
 
 
-async def existing_terms(conn: Connection, names: Iterable[str]) -> dict[str, int]:
-    """The glossary terms named ``names``, by name."""
-    wanted = sorted({n.strip().lower() for n in names})
-    if not wanted:
-        return {}
-    rows = (
-        await conn.execute_core(
-            select(glossary_terms.c.name, glossary_terms.c.id).where(
-                glossary_terms.c.name.in_(wanted)
-            )
-        )
-    ).fetchall()
-    return {name: int(term_id) for name, term_id in rows}
+async def existing_terms(
+    conn: Connection, names: Iterable[str], domains: Collection[str]
+) -> dict[str, int]:
+    """The glossary terms named ``names`` in ``domains``, by name: a name is unique only within
+    a domain (REQ-1591), so a same-named term of another domain is not one of them."""
+    out: dict[str, int] = {}
+    for name in sorted({n.strip().lower() for n in names}):
+        term_id = await glossary_repo.resolve_term(conn, name, domains=domains)
+        if term_id is not None:
+            out[name] = term_id
+    return out
 
 
 async def _link_synonym(
     conn: Connection, name: str, term_id: int, domains: Collection[str]
 ) -> None:
-    held_terms = await existing_terms(conn, [name])
+    held_terms = await existing_terms(conn, [name], domains)
     synonym = held_terms.get(name)
     if synonym == term_id:
         return
@@ -139,7 +135,7 @@ async def accept(
     conn: Connection, found: queue.DraftRow, domains: Collection[str], by: str | None
 ) -> int:
     """Add the draft's term to the glossary with its kept synonyms; the new term's id."""
-    if (await existing_terms(conn, [found.name])).get(found.name) is not None:
+    if (await existing_terms(conn, [found.name], domains)).get(found.name) is not None:
         raise ReviewRefused(
             f"the glossary already holds a term {found.name!r}: merge the draft into it, or "
             "rename the draft"

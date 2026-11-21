@@ -9,8 +9,9 @@
 // permission from the copyright holder.
 
 // REQ-1923: what a Wikidata source's table form asks the server (provisa/api/admin/
-// wikidata_router.py): its starter tables, items by name, a class to build a table of, and the
-// SPARQL table of that class. Nothing is saved by these calls.
+// wikidata_router.py): its starter tables, items by name, the classes to browse, a class to build
+// a table of, the SPARQL table of that class, and any SPARQL table's columns read from its query.
+// Nothing is saved by these calls.
 
 import { requestFailed, serverMessage } from "../i18n/serverMessage";
 
@@ -76,9 +77,38 @@ export async function fetchWikidataStarters(): Promise<WikidataStarter[]> {
   return answer(await fetch(`${BASE}/starters`), "Wikidata starter tables");
 }
 
-export async function searchWikidata(q: string, language: string): Promise<WikidataEntity[]> {
-  const params = new URLSearchParams({ q, language });
+/** Items by name: a value to filter by (`item`), or a class (`class`) -- only classes that have
+ * instances are answered. */
+export async function searchWikidata(
+  q: string,
+  language: string,
+  kind: "class" | "item",
+): Promise<WikidataEntity[]> {
+  const params = new URLSearchParams({ q, language, kind });
   return answer(await fetch(`${BASE}/search?${params}`), "Wikidata search");
+}
+
+/** A class the browse view offers, with its member count. */
+export interface WikidataBrowseClass {
+  id: string;
+  label: string | null;
+  instance_count: number;
+}
+
+/** The most-used top-level classes, most members first. */
+export async function fetchWikidataBrowse(language: string): Promise<WikidataBrowseClass[]> {
+  const params = new URLSearchParams({ language });
+  return answer(await fetch(`${BASE}/browse?${params}`), "Wikidata classes");
+}
+
+/** Any SPARQL table's columns, one per SELECT variable of its query, every binding text. */
+export async function fetchSparqlColumns(query: string): Promise<WikidataColumn[]> {
+  const res = await fetch(`${API_BASE}/admin/sources/sparql/columns`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ query }),
+  });
+  return (await answer<{ columns: WikidataColumn[] }>(res, "SPARQL columns")).columns;
 }
 
 export async function fetchWikidataClass(id: string, language: string): Promise<WikidataClass> {

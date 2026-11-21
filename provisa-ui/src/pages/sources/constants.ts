@@ -325,8 +325,10 @@ export const BRAND_CARRIER: Record<string, string> = {
 
 // REQ-1923/REQ-1960: the credential each brand asks for, stated by the brand. None is given
 // by default: a brand asks for what its own service takes, and one read without a credential
-// asks for nothing. "token" is a token the brand's API is called with.
-export type BrandAuth = "token" | "none";
+// asks for nothing. "token" is a token the brand's API is called with; "client_credentials" is
+// an OAuth client ID and secret exchanged for a token at the brand's token endpoint (REQ-2265,
+// the OpenAPI source's oauth2_client_credentials auth).
+export type BrandAuth = "token" | "client_credentials" | "none";
 export const BRAND_AUTH: Record<string, BrandAuth> = {
   github: "token",
   gitlab: "token",
@@ -338,7 +340,8 @@ export const BRAND_AUTH: Record<string, BrandAuth> = {
 
 // REQ-1923: what a brand reached at a per-customer address asks for besides its credential,
 // sent as the registration's `setup` under each field's `name` (the brand's setup fields,
-// provisa/graphql_remote/brands.py). A field with a `defaultValue` starts filled with it.
+// provisa/graphql_remote/brands.py and provisa/openapi/brands.py). A field with a
+// `defaultValue` starts filled with it.
 export interface BrandSetupField {
   name: string;
   labelKey: string;
@@ -367,6 +370,16 @@ export const BRAND_SETUP: Record<string, BrandSetupField[]> = {
       required: true,
     },
   ],
+};
+
+// REQ-2265: the setup field of an OpenAPI brand each customer runs at its own host: the base URL
+// its calls go to, and its spec is read from when the brand reads it from the instance.
+export const BRAND_BASE_URL_FIELD: BrandSetupField = {
+  name: "base_url",
+  labelKey: "sourceFormFieldsExtended.brandBaseUrl",
+  hintKey: "sourceFormFieldsExtended.brandBaseUrlHint",
+  placeholder: "https://catalog.example.com",
+  required: true,
 };
 
 /** The setup values a brand's form starts with: each field's default, or empty. */

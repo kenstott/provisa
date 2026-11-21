@@ -14,7 +14,8 @@
       "webhook_not_found": "Webhook '{{name}}' niet gevonden",
       "written_table_not_registered": "'{{table}}' is geen geregistreerde tabel van bron '{{source_id}}'",
       "function_exists": "Functie '{{name}}' bestaat al",
-      "webhook_exists": "Webhook '{{name}}' bestaat al"
+      "webhook_exists": "Webhook '{{name}}' bestaat al",
+      "mask_constant_not_text": "Een constant masker op een kolom die geen tekst is, wordt gelezen als NULL; alleen NULL kan worden opgeslagen: {{column}} ({{type}})"
     },
     "ai_models": {
       "vector_model_fields_required": "elk vector_models-item vereist id, provider en dimensions",
@@ -168,7 +169,8 @@
       "table_is_withdrawn": "{{table}} is teruggetrokken: buiten productie tot hij wordt teruggezet",
       "view_awaits_rule_rebuild": "De view {{view}} wordt opnieuw opgebouwd vanwege een wijziging in de rijregels op de invoer. Deze rol kan hem lezen zodra die build is gepubliceerd.",
       "parameter_required": "Tabel '{{table}}' vereist de parameter(s) {{parameters}}: geef elk een waarde (een WHERE-voorwaarde op de kolom in SQL, een argument in GraphQL).",
-      "parameter_wrong_type": "De parameter {{parameter}} neemt een waarde van type {{type}}; '{{value}}' is dat niet."
+      "parameter_wrong_type": "De parameter {{parameter}} neemt een waarde van type {{type}}; '{{value}}' is dat niet.",
+      "statement_failed": "De opdracht is in de server mislukt ({{kind}}): {{error}}"
     },
     "discovery": {
       "adapter_missing_discover_schema": "Adapter voor '{{source_type}}' implementeert discover_schema niet",
@@ -243,7 +245,8 @@
       "host_code_refused": "Opdracht '{{name}}' is van het type {{impl_kind}}, dat code uitvoert op de host van de server. Hostcode staat uit op deze implementatie; gebruik in plaats daarvan een code-resolver.",
       "no_plain_list": "Geen enkele bewerking van bron '{{source_id}}' zonder verplichte parameter geeft de rijen van '{{operation}}' terug, dus de tabel blijft ingeschakeld",
       "plain_list_unregistered": "'{{operation}}' van bron '{{source_id}}' geeft de rijen van de lijst {{lists}} terug; registreer die lijst eerst als tabel",
-      "table_has_dependents": "Naar de tabel '{{table}}' van functie '{{name}}' wordt nog verwezen door andere objecten; verwijder eerst die verwijzingen"
+      "table_has_dependents": "Naar de tabel '{{table}}' van functie '{{name}}' wordt nog verwezen door andere objecten; verwijder eerst die verwijzingen",
+      "statement_failed": "Opdracht '{{name}}' is mislukt: {{error}}"
     },
     "graphql_remote": {
       "introspection_failed": "Introspectie mislukt: {{error}}",
@@ -564,7 +567,9 @@
       "withdrawn_table_not_previewable": "Tabel {{table}} kan niet worden bekeken: hij is teruggetrokken en houdt geen replica, en de engine leest de bron alleen via een replica.",
       "table_not_withdrawn": "Tabel {{table}} is niet teruggetrokken: alleen een teruggetrokken tabel wordt teruggezet. Stel de regio in om een tabel in productie naar een andere regio te verplaatsen.",
       "source_not_withdrawn": "Bron {{source}} is niet teruggetrokken: alleen een teruggetrokken bron wordt teruggezet. Stel de regio in om die te wijzigen.",
-      "put_back_needs_region": "Het terugzetten van {{object}} noemt een regio: geef er een, of geen voor geen regio."
+      "put_back_needs_region": "Het terugzetten van {{object}} noemt een regio: geef er een, of geen voor geen regio.",
+      "table_domain_required": "Tabel '{{table}}' noemt geen domein: elke tabel wordt in een domein geregistreerd",
+      "mask_constant_not_text": "Een constant masker op een kolom die geen tekst is, wordt gelezen als NULL; alleen NULL kan worden opgeslagen: {{column}} ({{type}})"
     },
     "secrets": {
       "env_reference_object_locked": "Dit object is van de beheerder: het leest de eigen omgeving van de server en kan hier niet worden gewijzigd. Voeg in plaats daarvan een eigen object toe.",
@@ -614,7 +619,8 @@
     "sparql": {
       "columns_not_inferred": "Kon geen kolommen afleiden: probe retourneerde geen rijen en er zijn geen SELECT-variabelen gevonden.",
       "probe_failed": "SPARQL-endpointprobe mislukt: {{error}}",
-      "source_not_found": "SPARQL-bron '{{source_id}}' niet gevonden"
+      "source_not_found": "SPARQL-bron '{{source_id}}' niet gevonden",
+      "no_select_variables": "De query noemt geen SELECT-variabelen (SELECT * of geen SELECT-query): de kolommen zijn er niet uit te lezen"
     },
     "subscribe": {
       "avro_topic_without_registry": "Topic '{{topic}}' bevat Avro-berichten en de bron noemt geen schema-registry om ze mee te lezen: stel de schema-registry-URL van de bron in",
@@ -810,7 +816,6 @@
       "status_by_action": "De status van een term verandert via Goedkeuren, Afschaffen, Buiten gebruik stellen of Herstellen.",
       "successor_required": "Deze term heeft nog kolommen of tabellen; buiten gebruik stellen verplaatst ze naar een opvolger. Kies er een.",
       "successor_role": "De opvolger van een {{role}} moet een {{role}} of een concept zijn; '{{successor}}' is een {{successor_role}}.",
-      "no_retirement_history": "De geschiedenis van het model bevat geen buitengebruikstelling van deze term.",
       "finding": {
         "unlinked_tables": "Deze klasse is verankerd in tabellen die same-entity-relaties niet allemaal verbinden: {{tables}}.",
         "class_and_attribute": "Deze klasse heeft ook kolommen die niet haar sleutels zijn: {{columns}}.",
@@ -828,7 +833,9 @@
       "not_bulk_approvable": "Alleen gedefinieerde, verankerde ontwerpen worden samen goedgekeurd; niet: {{terms}}.",
       "term_ids_required": "Noem de goed te keuren termen.",
       "impact_action": "Voor die actie bestaat geen voorbeeld.",
-      "impact_table_required": "Een koppeling noemt een tabel, of een van zijn kolommen."
+      "impact_table_required": "Een koppeling noemt een tabel, of een van zijn kolommen.",
+      "name_taken": "Er bestaat al een term met de naam '{{name}}' in domein {{domain}}. Kies een andere naam of plaats de term in een ander domein.",
+      "name_taken_unscoped": "Er bestaat al een term met de naam '{{name}}' zonder domein, die dus in elk domein geldt. Kies een andere naam."
     },
     "table": {
       "requires_parameters": "De tabel {{table}} kan niet worden geteld of geprofileerd: ze vereist {{parameters}}. Geef elk een waarde om de rijen te lezen."

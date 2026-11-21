@@ -222,8 +222,6 @@ const PANELS: Readonly<Record<string, Panel>> = {
       "viewDefinitionForm.fieldDomain":
         "the view's name and domain: shown in Identity as Table and Domain",
       "registerTableForm.aliasLabel": "registration's SQL alias: shown in Identity as SQL Alias",
-      "registerTableForm.descriptionLabel":
-        "registration's description: shown in Identity as Description",
       "registerTableForm.checkReasonLabel":
         "a checker's claim, its registration's description: shown in Identity as Description",
       "registerTableForm.cacheTtlLabel":

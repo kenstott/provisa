@@ -457,6 +457,8 @@ class Worker:
         self._stderr_thread: threading.Thread | None = None
         self._services_token: str | None = None
         self.exports: list[str] = []
+        #: When a call last ended, or the pool last handed the worker out (:meth:`idle_since`).
+        self._last_used = time.monotonic()
 
     # -- lifecycle ------------------------------------------------------------------------------
 
@@ -592,6 +594,24 @@ class Worker:
     def alive(self) -> bool:
         return self._ended is None and self._process is not None and self._process.poll() is None
 
+    def kill(self) -> None:
+        """End the host process at once, waiting for nothing: its reader then ends the worker,
+        and :meth:`stop` (the pool's, at the next call) cleans up after it."""
+        if self._process is not None and self._process.poll() is None:
+            self._process.kill()
+
+    def touch(self) -> None:
+        """The worker is in use from now: the pool has handed it to a caller."""
+        self._last_used = time.monotonic()
+
+    def idle_since(self) -> float | None:
+        """When the worker was last used (``time.monotonic``), or None while a connection is
+        leased: a worker serving a call, or answering a ping, is not idle."""
+        with self._leases:
+            if len(self._idle) < len(self._lanes):
+                return None
+        return self._last_used
+
     def stop(self) -> None:
         """End the host: its sockets are closed (the host exits when one closes), then the
         process."""
@@ -695,6 +715,7 @@ class Worker:
     def _close(self, lane: _Lane, call_id: int) -> None:
         lane.lease(None)
         with self._leases:
+            self._last_used = time.monotonic()
             self._idle.append(lane)
             self._leases.notify()
         if self._services_token is not None:
@@ -952,6 +973,7 @@ class Worker:
         pulls them; an input in ``whole`` is one the server holds whole. ``subject`` and
         ``product_ids`` are what the services answer the call's requests for."""
         export = "preflight"
+        shield = request_deadline.shielded()  # taken before the work (see request_deadline)
         with stage(_tracer, "codesource.call") as span:
             self._describe(span, export, "preflight", ())
             lane, call_id = self._open()
@@ -984,6 +1006,9 @@ class Worker:
                 finished = True
                 span.set_attribute("codesource.worker_cpu_ms", message.get("cpu_ms") or 0)
                 return value
+            except TimeoutError:
+                # The request's deadline (an OSError too): raised as its own error, not as an end.
+                raise
             except OSError as exc:
                 # The socket closed under a send: the worker has ended, named as its reader says.
                 raise WorkerFailed(
@@ -992,10 +1017,13 @@ class Worker:
             finally:
                 span.set_attribute("codesource.batches", batches)
                 if not finished:
-                    try:
-                        self._send(lane, {"op": "cancel", "id": call_id})
-                    except (OSError, WorkerFailed):
-                        pass  # the worker has ended: there is no call left to stop
+                    # A check reaches a cancel only at its next read, and one in a loop that never
+                    # reads runs on in the host's thread: the process is ended instead, and the
+                    # next check starts another (WorkerPool.get). Calls it serves at once fail.
+                    with shield.lock:  # the deadline's raise does not cut the kill short
+                        shield.settle()
+                        self.kill()
+                    self._end("a preflight it ran was cancelled")
                 self._close(lane, call_id)
 
     def _describe(self, span: Any, export: str, kind: str, args: Sequence[Any]) -> None:
@@ -1137,16 +1165,67 @@ def _pull_in(
 # -- the pool ---------------------------------------------------------------------------------------
 
 
+#: The setting a worker's idle limit is read from, at each sweep.
+IDLE_SETTING = "codesource.worker_idle_timeout"
+#: How often the pool looks for workers idle past the limit.
+_REAP_EVERY_S = 30.0
+
+
+def idle_limit() -> float:
+    """How long a worker may go unused before the pool ends it (:data:`IDLE_SETTING`)."""
+    from provisa.core import settings_registry
+
+    return float(settings_registry.value(IDLE_SETTING))
+
+
 class WorkerPool:
     """The process's workers, as many per ``(source, content hash)`` as the source runs (REQ-2131:
     each its ``slot``), each started on first use. A worker whose process has ended is dropped and
-    the next call starts another."""
+    the next call starts another. A worker of any kind -- a code source's, a preflight's, a remote
+    host's connection -- unused for :func:`idle_limit` is ended (:meth:`reap_idle`), every
+    :data:`_REAP_EVERY_S` while the pool holds one; the next call starts another."""
 
     def __init__(self) -> None:
         self._workers: dict[tuple[str | None, str, str, int], Worker] = {}
         #: REQ-2098: a remote host's failed dials: (count, next try, why).
         self._failures: dict[tuple[str | None, str, str, int], tuple[int, float, str]] = {}
         self._lock = threading.Lock()
+        self._reaper: threading.Thread | None = None
+
+    def _held(self, key: tuple[str | None, str, str, int], worker: Worker) -> Worker:
+        """``worker`` kept under ``key`` and handed out, the reaper running. Under the lock."""
+        self._workers[key] = worker
+        worker.touch()
+        if self._reaper is None:
+            self._reaper = threading.Thread(
+                target=self._reap_loop, name="code-worker-reaper", daemon=True
+            )
+            self._reaper.start()
+        return worker
+
+    def _reap_loop(self) -> None:
+        """End idle workers each sweep, until the pool holds none."""
+        while True:
+            time.sleep(_REAP_EVERY_S)
+            self.reap_idle(idle_limit())
+            with self._lock:
+                if not self._workers:
+                    self._reaper = None
+                    return
+
+    def reap_idle(self, limit_s: float, now: float | None = None) -> int:
+        """End every worker unused for ``limit_s`` seconds; how many were ended."""
+        at = time.monotonic() if now is None else now
+        with self._lock:
+            idle = []
+            for key, worker in self._workers.items():
+                since = worker.idle_since()
+                if since is not None and at - since >= limit_s:
+                    idle.append(key)
+            workers = [self._workers.pop(k) for k in idle]
+        for worker in workers:
+            worker.stop()
+        return len(workers)
 
     def get(
         self,
@@ -1164,13 +1243,12 @@ class WorkerPool:
         with self._lock:
             worker = self._workers.get(key)
             if worker is not None and worker.alive():
-                return worker
+                return self._held(key, worker)
             if worker is not None:
                 worker.stop()
             worker = Worker(source_id, content_hash, command())
             worker.start()
-            self._workers[key] = worker
-            return worker
+            return self._held(key, worker)
 
     def remote(
         self,
@@ -1189,7 +1267,7 @@ class WorkerPool:
         with self._lock:
             worker = self._workers.get(key)
             if worker is not None and worker.alive():
-                return worker
+                return self._held(key, worker)
             if worker is not None:
                 worker.stop()
                 self._workers.pop(key, None)
@@ -1208,8 +1286,7 @@ class WorkerPool:
                 self._failures[key] = (count, time.monotonic() + wait, str(exc))
                 raise
             self._failures.pop(key, None)
-            self._workers[key] = worker
-            return worker
+            return self._held(key, worker)
 
     def remote_status(self, org: str, source_id: str) -> dict:
         """What this process's pool holds for a built source: a live connection, or the last

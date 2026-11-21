@@ -152,6 +152,7 @@
     "lastAppliedTo": "Aplicado pela última vez a",
     "lastAppliedColumns": "Colunas: {{columns}}",
     "lastAppliedTables": "Tabelas: {{tables}}",
+    "noRetirementHistory": "Este termo não tem histórico de retirada.",
     "status_draft": "Rascunho",
     "status_deprecated": "Obsoleto",
     "status_retired": "Retirado",

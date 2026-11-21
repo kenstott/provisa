@@ -1167,6 +1167,7 @@ def generate_schema(
             enum_types=si.enum_types,
             object_type_registry=_object_type_registry,
             governed_gql_types=si.governed_gql_types or None,
+            masked=si.masked_columns,
         )
 
     table_lookup: dict[int, _TableInfo] = {t.table_id: t for t in tables}

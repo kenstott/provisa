@@ -294,7 +294,10 @@ describe("admin surface capabilities", () => {
     expect(groups.indexOf("context")).toBe(groups.indexOf("/relationships") + 1);
     expect(groups.indexOf("model")).toBe(groups.indexOf("context") + 1);
     for (const to of ["/admin/ontology", "/library"]) {
-      expect(NAV_BAR.some((e) => e.kind === "link" && e.to === to), to).toBe(false);
+      expect(
+        NAV_BAR.some((e) => e.kind === "link" && e.to === to),
+        to,
+      ).toBe(false);
     }
     const context = NAV_GROUPS.find((g) => g.id === "context")!;
     expect(context.items.map((i) => i.to)).toEqual([
@@ -318,6 +321,10 @@ describe("admin surface capabilities", () => {
     expect(Object.fromEntries(open.map((i) => [i.to, i.capability]))).toEqual({
       "/context/glossary": "glossary_read",
       "/context/ontology": "glossary_read",
+      // REQ-2259: the read-only Metrics, Tags and Classification views.
+      "/context/metrics": "glossary_read",
+      "/context/tags": "glossary_read",
+      "/context/classification": "glossary_read",
       "/context/documents": "glossary_read",
       "/context/sync": "org_settings",
     });
@@ -336,7 +343,8 @@ describe("admin surface capabilities", () => {
     const admin = NAV_GROUPS.find((g) => g.id === "admin")!;
     expect(admin.items.some((i) => i.to === "/admin/syncing")).toBe(false);
     const routes = routeCapabilities();
-    for (const old of ["/admin/syncing", "/admin/ontology"]) expect(routes[old], old).toBeUndefined();
+    for (const old of ["/admin/syncing", "/admin/ontology"])
+      expect(routes[old], old).toBeUndefined();
     const appSource = readFileSync(resolve(SRC, "App.tsx"), "utf-8");
     expect(appSource).not.toContain('path="/library"');
   });

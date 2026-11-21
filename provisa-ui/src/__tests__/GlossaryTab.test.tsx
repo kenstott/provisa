@@ -279,7 +279,7 @@ const REVENUE_DETAIL: GlossaryTermDetail = {
       domain_id: "sales",
     },
   ],
-  edges_out: [{ term_id: 2, rel_type: "RELATED_TO", name: "Churn" }],
+  edges_out: [{ term_id: 2, rel_type: "RELATED_TO", name: "Churn", domains: [] }],
   edges_in: [],
   experts: [{ user_id: "u1", kind: "expert" }],
   tags: [],
@@ -291,7 +291,7 @@ const CHURN_DETAIL: GlossaryTermDetail = {
   ...CHURN,
   refs: [],
   edges_out: [],
-  edges_in: [{ term_id: 1, rel_type: "RELATED_TO", name: "Revenue" }],
+  edges_in: [{ term_id: 1, rel_type: "RELATED_TO", name: "Revenue", domains: [] }],
   experts: [],
   tags: [],
   pending_on: [],
@@ -332,7 +332,7 @@ const save = () => fireEvent.click(screen.getByTestId("glossary-edit-save"));
 describe("GlossaryTab", () => {
   beforeEach(() => {
     mockFindings.mockResolvedValue([]);
-    mockHistory.mockResolvedValue(null);
+    mockHistory.mockResolvedValue({ retired_in: null, as_of: null, columns: [], tables: [] });
     mockList.mockReset();
     mockFetchTerm.mockReset();
     mockUpdate.mockReset();
@@ -426,7 +426,7 @@ describe("GlossaryTab", () => {
             status: "retired",
             status_reason: "merged into Churn",
             status_by: "alice",
-            edges_in: [{ term_id: 2, rel_type: "REPLACES", name: "Churn" }],
+            edges_in: [{ term_id: 2, rel_type: "REPLACES", name: "Churn", domains: [] }],
           }
         : CHURN_DETAIL,
     );
@@ -448,12 +448,13 @@ describe("GlossaryTab", () => {
 
   it("says when the model's history holds no retirement of a retired term", async () => {
     mockFetchTerm.mockResolvedValue({ ...REVENUE_DETAIL, retired: true, status: "retired" });
-    mockHistory.mockResolvedValue(null);
+    mockHistory.mockResolvedValue({ retired_in: null, as_of: null, columns: [], tables: [] });
     render(<GlossaryTab />);
     fireEvent.click(await screen.findByTestId("glossary-item-1"));
     expect(await screen.findByTestId("glossary-applied-none")).toHaveTextContent(
-      t("serverErrors.glossary.no_retirement_history"),
+      t("glossaryTab.noRetirementHistory"),
     );
+    expect(screen.queryByTestId("glossary-applied-history")).not.toBeInTheDocument();
   });
 
   it("flags a dangling concept (no path to a term naming data) in red", async () => {

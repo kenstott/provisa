@@ -79,7 +79,6 @@ import {
   generateGlossaryRelationships,
   fetchGlossaryFindings,
   listAttributablePeople,
-  listGlossaryTerms,
   restoreGlossaryTerm,
   type AttributablePerson,
   type GlossaryFinding,
@@ -109,10 +108,12 @@ import {
   readStoredBool,
   readStoredString,
   useGlossaryPanel,
+  useReadableTermIds,
   writeStored,
   writeStoredBool,
 } from "./useGlossaryPanel";
 import { assignableDomainIds } from "../../lib/internalDomains";
+import { termLabel, termOptions } from "./termLabel";
 
 export function GlossaryTab() {
   const { t } = useTranslation();
@@ -125,8 +126,9 @@ export function GlossaryTab() {
   // The page reopens as it was left: its view, search and filters are per-viewer preferences kept in
   // the browser. A deep link (?term=, ?search=) decides that visit instead, and is not saved over
   // them; only the reader's own changes are.
+  const [readableTermIds, readTerms] = useReadableTermIds(); // REQ-2260
   const { ontology, setOntology, selectedId, setSelectedId, editing, setEditing } =
-    useGlossaryPanel(canEdit);
+    useGlossaryPanel(canEdit, readableTermIds);
   // REQ-1592: the org's glossary owner. It is what admits a term to the enterprise scope ("*"),
   // so the option is offered only to a holder — the server refuses it to anyone else.
   const isOrgGlossaryOwner = useCapability("org_glossary_rw");
@@ -230,11 +232,11 @@ export function GlossaryTab() {
     setListLoading(true);
     try {
       // Every status is fetched: the Status filter narrows the list in the browser.
-      setTerms(await listGlossaryTerms(query, true, viewDomains && [...viewDomains]));
+      setTerms(await readTerms(query, viewDomains && [...viewDomains]));
     } finally {
       setListLoading(false);
     }
-  }, [query, viewDomains]);
+  }, [query, viewDomains, readTerms]);
 
   useEffect(() => {
     // Deferred so the loading flag is never set synchronously inside the effect body
@@ -510,9 +512,7 @@ export function GlossaryTab() {
       options.find((o) => o.value === relType)?.label ?? relType,
     [],
   );
-  const otherTermOptions = terms
-    .filter((term) => term.id !== detail?.id)
-    .map((term) => ({ value: String(term.id), label: term.name }));
+  const otherTermOptions = termOptions(terms.filter((term) => term.id !== detail?.id));
   const displayedTerms = terms.filter(
     (term) =>
       (statusFilter.length === 0 || statusFilter.includes(term.status)) &&
@@ -718,7 +718,7 @@ export function GlossaryTab() {
                     <NavLink
                       key={term.id}
                       active={term.id === selectedId}
-                      label={term.name}
+                      label={termLabel(term, terms)}
                       onClick={termDeleting ? undefined : () => setSelectedId(term.id)}
                       disabled={termDeleting}
                       data-deleting={termDeleting || undefined}

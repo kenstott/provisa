@@ -10,7 +10,8 @@
 
 """The text search functions on Trino and ClickHouse against what postgres:17.11 answered (REQ-2167,
 REQ-2171): each statement of the corpus, as Provisa writes it for the engine, run there. DuckDB's
-replay is tests/unit/pgwire/test_pg_text_search_forms.py."""
+replay is tests/unit/pgwire/test_pg_text_search_forms.py. A statement conformance-functions measures
+on the engine is not replayed here (tests/integration/replay_coverage.py)."""
 
 # Requirements: REQ-2167, REQ-2171
 
@@ -24,9 +25,20 @@ from typing import Any
 import pytest
 
 from tests.integration.every_case import failures_of_every_case
-from tests.unit.pgwire.text_search_replay import BY_FUNCTION, problems
+from tests.integration.replay_coverage import ENGINES, remaining
+from tests.unit.pgwire.text_search_replay import BY_FUNCTION, outcome
 
 pytestmark = [pytest.mark.integration]
+
+#: Each engine's statements of each function that conformance-functions does not measure there.
+_REMAINING: dict[str, dict[str, list[str]]] = {
+    engine: {
+        function: left
+        for function, statements in BY_FUNCTION.items()
+        if (left := remaining("text_search", engine, statements))
+    }
+    for engine in ENGINES
+}
 
 
 def _check(
@@ -44,12 +56,14 @@ def _check(
             on_engine[1] = max(on_engine[1], took)
             on_engine[2] = max(on_engine[2], len(sql))
 
+    statements = _REMAINING[dialect][function]
     started = time.perf_counter()
-    wrong, refused = problems(function, dialect, timed)
+    said = [outcome(sql, dialect, timed) for sql in statements]
+    wrong, refused = [s for s in said if s not in ("ok", "refused")], said.count("refused")
     took = time.perf_counter() - started
     with capsys.disabled():  # the run's record, in the log whether the test passes or not
         print(  # noqa: T201
-            f"\nTIMING {dialect} {function} statements={len(BY_FUNCTION[function])} "
+            f"\nTIMING {dialect} {function} statements={len(statements)} "
             f"refused={refused} total={took:.1f}s engine={on_engine[0]:.1f}s "
             f"slowest={on_engine[1]:.2f}s largest_sql={on_engine[2]}"
         )
@@ -57,7 +71,7 @@ def _check(
 
 
 @pytest.mark.requires_trino
-@pytest.mark.parametrize("function", sorted(BY_FUNCTION))
+@pytest.mark.parametrize("function", sorted(_REMAINING["trino"]))
 def test_text_search_on_trino(trino_conn, function: str, capsys):
     def run(sql: str) -> list[Any]:
         cursor = trino_conn.cursor()
@@ -84,6 +98,8 @@ def test_text_search_on_clickhouse(capsys):
         return list(client.query(sql).result_rows)
 
     assert (
-        failures_of_every_case(sorted(BY_FUNCTION), lambda f: _check(f, "clickhouse", run, capsys))
+        failures_of_every_case(
+            sorted(_REMAINING["clickhouse"]), lambda f: _check(f, "clickhouse", run, capsys)
+        )
         == {}
     )

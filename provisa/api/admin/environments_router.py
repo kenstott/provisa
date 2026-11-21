@@ -68,6 +68,7 @@ from provisa.core.env_store import (
     list_envs,
     set_expiry,
     set_protected,
+    set_stage,
 )
 from provisa.core.environments import PROD, EnvironmentNameError, EnvironmentNameTaken
 from provisa.core.schema_admin import user_org_memberships, user_profiles
@@ -391,10 +392,19 @@ async def _known(org_id: str, name: str) -> dict:
 
 
 async def _audit(org_id: str, actor: str | None, action: str, name: str, detail: dict) -> None:
-    """Record the act in the ORG's own trail (REQ-1488), where the org can see it."""
+    """Record the act in the ORG's own trail (REQ-1488), where the org can see it.
+
+    REQ-2261: an entry about one environment carries the stage it declares as the entry is
+    written. An act on the org's environments as a whole (subject ``-``) is about no one
+    environment and so carries none; an act that removed its environment states the stage it had
+    in ``detail`` itself, read before the removal."""
     from provisa.api.admin.orgs_router import _org_model_db
     from provisa.core.org_membership import record_admin_action
 
+    if "stage" not in detail:
+        row = await get_env(_admin_pool(), org_id, name)
+        if row is not None:
+            detail = {**detail, "stage": row["stage"]}
     await record_admin_action(
         await _org_model_db(org_id),
         org_id=org_id,
@@ -437,6 +447,8 @@ class PatchEnvBody(BaseModel):
     expires_at: datetime | None = None
     clear_expiry: bool = False
     protected: bool | None = None
+    # REQ-2261: the stage the environment declares; absent leaves it as it is.
+    stage: Literal["production", "preprod", "test", "development"] | None = None
 
 
 class MergeBody(BaseModel):
@@ -744,7 +756,7 @@ async def delete_environment(
     environment takes the visitor's membership with it (``env_retire``'s inventory says so).
     """
     actor = await _guard_owned(request, org_id, name)  # REQ-2155
-    await _known(org_id, name)
+    known = await _known(org_id, name)
     try:
         outcome = await retire_environment(
             _pool(), _admin_pool(), org_id, name, drop_branch=delete_branch
@@ -776,7 +788,8 @@ async def delete_environment(
         actor,
         "environment.delete",
         name,
-        {**outcome, "remote_branch_deleted": remote_deleted},
+        # REQ-2261: the row is gone by now, so the stage it declared is the one read before.
+        {**outcome, "remote_branch_deleted": remote_deleted, "stage": known["stage"]},
     )
 
     return {
@@ -788,12 +801,36 @@ async def delete_environment(
 
 @router.patch("/{name}")
 async def patch_environment(request: Request, org_id: str, name: str, body: PatchEnvBody) -> dict:
-    """Set what the registry row holds and the schema cannot: expiry (REQ-1523) and whether a merge
-    into this environment waits for someone else's approval (REQ-1504)."""
-    await _confined(request, org_id, name)
-    actor = await _guard(request, org_id)
+    """Set what the registry row holds and the schema cannot: expiry (REQ-1523), whether a merge
+    into this environment waits for someone else's approval (REQ-1504), and its stage (REQ-2261).
+
+    A stage change alone is managing that one environment, so its owner holding
+    environment_owned_management may make it (:func:`_guard_owned`), as it may delete it; expiry
+    and protection stay with environment_management."""
+    only_stage = (
+        body.stage is not None
+        and body.protected is None
+        and body.expires_at is None
+        and not body.clear_expiry
+    )
+    if only_stage:
+        actor = await _guard_owned(request, org_id, name)
+    else:
+        await _confined(request, org_id, name)
+        actor = await _guard(request, org_id)
     await _known(org_id, name)
     detail: dict = {}
+    if body.stage is not None:
+        # The body's Literal admits only STAGES, so set_stage's own refusal cannot arise here.
+        previous = await set_stage(_admin_pool(), org_id, name, body.stage)
+        if previous != body.stage:
+            await _audit(
+                org_id,
+                actor,
+                "environment.stage",
+                name,
+                {"from": previous, "to": body.stage, "stage": body.stage},
+            )
     try:
         if body.clear_expiry:
             await set_expiry(_admin_pool(), org_id, name, None)
@@ -1067,6 +1104,7 @@ async def _retire(org_id: str, actor: str | None, name: str, *, remote: bool = F
     holding the branch, which is the copy that survives a lost volume; deleting it too is what a
     finished feature says explicitly, and it happens only after the local retirement succeeded.
     """
+    known = await _known(org_id, name)
     try:
         outcome = await retire_environment(_pool(), _admin_pool(), org_id, name, drop_branch=True)
     except EnvironmentInUse as refused:
@@ -1084,8 +1122,9 @@ async def _retire(org_id: str, actor: str | None, name: str, *, remote: bool = F
             ) from exc
         _forget_pushed(org_id, name)
         remote_deleted = True
+    # REQ-2261: the row is gone by now, so the stage it declared is the one read before.
     outcome = {**outcome, "remote_branch_deleted": remote_deleted}
-    await _audit(org_id, actor, "environment.retired", name, outcome)
+    await _audit(org_id, actor, "environment.retired", name, {**outcome, "stage": known["stage"]})
     return outcome
 
 

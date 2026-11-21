@@ -25,6 +25,7 @@ generation timestamp and the omitted sheets, so a partial workbook can never pas
 
 from __future__ import annotations
 
+import dataclasses
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
@@ -144,6 +145,7 @@ async def _hydrate(org_id: str) -> tuple["MetadataSnapshot", "ProvisaConfig"]:
     from provisa.api.metadata_export.publishing import (
         GOVERNED_DIALECT,
         _model_for_export,
+        environment_stage,
         offer_exports,
     )
     from provisa.core.request_context import reset_current_org, set_current_org
@@ -175,6 +177,8 @@ async def _hydrate(org_id: str) -> tuple["MetadataSnapshot", "ProvisaConfig"]:
             data_products_only=False,
             offers=offers,
         )
+        # REQ-2261: the workbook states the environment's stage beside its name.
+        snapshot = dataclasses.replace(snapshot, environment=await environment_stage(org_id))
     finally:
         reset_current_org(token)
     return snapshot, model
@@ -443,6 +447,8 @@ async def model_report(
     header = wb.ReportHeader(
         org_id=org_id,
         environment=active_env(),
+        # REQ-2261; None only without a control plane (publishing.environment_stage).
+        stage=snapshot.environment.stage if snapshot.environment is not None else None,
         domains=_domains_label(scope),
         generated_at=datetime.now(UTC),
         included=included,

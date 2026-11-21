@@ -105,6 +105,8 @@
     "accessToken": "访问令牌",
     "accessTokenHint": "存储在密钥保管库中。也接受 ${secret:NAME} 或 ${env:NAME} 引用。",
     "brandNamespaceHint": "此数据源表名的前缀。留空则使用默认值。",
+    "brandBaseUrl": "基础 URL",
+    "brandBaseUrlHint": "您的实例地址，例如 https://catalog.example.com。在此调用其 API，并从此处读取其 OpenAPI 描述。",
     "shopifyStore": "店铺名称",
     "shopifyStoreHint": "店铺后台地址中 .myshopify.com 之前的部分，例如 my-store。",
     "shopifyApiVersion": "API 版本",

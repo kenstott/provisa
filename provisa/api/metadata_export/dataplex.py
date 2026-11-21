@@ -23,7 +23,10 @@ object it is:
   (``BigQueryFederationRuntime.publish_replica_view``);
 - any other member has no BigQuery object, and is reported by name.
 
-Each asset carries its freshness (the member's ``cache_ttl``) as a label. Assets no longer members
+Each asset carries its freshness (the member's ``cache_ttl``) as a label. The product and each
+asset carry the environment they were published from and its stage as the ``provisa-environment``
+and ``provisa-stage`` labels (REQ-2261), so a catalog can tell production assets from others;
+neither is written when the snapshot names no environment. Assets no longer members
 are removed. Dataplex answers create, update and delete with a long-running operation, which is
 followed to its end. Access groups are not published yet.
 
@@ -68,6 +71,7 @@ if TYPE_CHECKING:
     from provisa.api.metadata_export.model import (
         AssetRef,
         DataProductAsset,
+        EnvironmentStage,
         GlossaryTermAsset,
         MetadataSnapshot,
         SourceAsset,
@@ -107,6 +111,16 @@ def asset_id(resource: str) -> str:
 def label(value: str) -> str:
     """``value`` in Dataplex's label alphabet."""
     return _LABEL_DISALLOWED.sub("_", value.lower())[:63]
+
+
+def environment_labels(environment: "EnvironmentStage | None") -> dict[str, str]:  # REQ-2261
+    """The environment and its stage as labels; none without an environment."""
+    if environment is None:
+        return {}
+    return {
+        "provisa-environment": label(environment.name),
+        "provisa-stage": label(environment.stage),
+    }
 
 
 def bigquery_engine_project() -> str | None:
@@ -307,7 +321,9 @@ class DataplexExport(MetadataExport):  # REQ-2118
                     )
                     continue
                 try:
-                    count = await self._publish_product(client, product, assets)
+                    count = await self._publish_product(
+                        client, product, assets, snapshot.environment
+                    )
                 except (httpx.HTTPError, RuntimeError, TimeoutError) as exc:
                     message = str(exc)
                     if isinstance(exc, httpx.HTTPStatusError):
@@ -325,12 +341,14 @@ class DataplexExport(MetadataExport):  # REQ-2118
         client: httpx.AsyncClient,
         product: "DataProductAsset",
         assets: dict[str, "TableAsset | None"],
+        environment: "EnvironmentStage | None",
     ) -> int:
         """Create or update the data product and converge its assets to ``assets``; the number of
         assets it has."""
         product_id = resource_id(product.id)
         name = f"{self._parent()}/dataProducts/{product_id}"
         body = product_body(product)
+        body["labels"] = {**body["labels"], **environment_labels(environment)}
         found = await client.get(self._url(name))
         if found.status_code == 404:
             await self._done(
@@ -359,7 +377,7 @@ class DataplexExport(MetadataExport):  # REQ-2118
             if resource not in assets:
                 await self._done(client, await client.delete(self._url(asset_name)))
         for resource, table in assets.items():
-            labels = {"provisa-product": label(product.id)}
+            labels = {"provisa-product": label(product.id), **environment_labels(environment)}
             if table is not None and table.cache_ttl is not None:
                 # REQ-2118: the member's refresh cadence, from its freshness (-1: never expires).
                 labels["provisa-freshness-seconds"] = label(str(table.cache_ttl))

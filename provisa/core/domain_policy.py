@@ -165,6 +165,27 @@ def resolve_domain_id(requested: str | None) -> str:  # REQ-367, REQ-418, REQ-43
     return policy.default_domain
 
 
+class TableDomainRequired(ValueError):  # REQ-1531, REQ-433
+    """A table registration names no domain. Every table sits in a domain; refused by name."""
+
+    code = "schema.table_domain_required"
+
+    def __init__(self, table: str) -> None:
+        super().__init__(f"Table {table!r} names no domain: every table is registered in a domain")
+        self.table = table
+
+
+def table_domain_id(requested: str | None, table: str) -> str:  # REQ-1531, REQ-433
+    """The domain a table is registered into. Every table sits in a domain: an empty domain is
+    refused (:class:`TableDomainRequired`) on every path that saves one -- a single or bulk
+    registration, a source's register step, the Wikidata starter and class tables, a
+    configuration import or apply. In single-domain mode the one domain is used."""
+    resolved = resolve_domain_id(requested)
+    if not resolved:
+        raise TableDomainRequired(table)
+    return resolved
+
+
 def command_domain_id(requested: str | None, name: str) -> str:  # REQ-1531
     """The domain a command or webhook is saved into. Every one sits in a domain: an empty
     domain is refused, by every path that saves one. In single-domain mode the one domain is

@@ -74,6 +74,7 @@ from provisa.transpiler.metadata_functions import VALUE_FORMS
 from provisa.transpiler.polyfill import notation as polyfill_notation
 from provisa.transpiler.polyfill import texts as polyfill_texts
 from provisa.transpiler.polyfill import trino as polyfill_trino
+from provisa.transpiler.polyfill.numbers import ch_fail
 from provisa.transpiler.polyfill.regex import said_text
 from provisa.transpiler.pg_literals import literal_input as postgres_literal
 from provisa.transpiler.pg_literals import values_cast
@@ -1213,7 +1214,7 @@ def _sha(bits: int) -> Macro:
     }
     if bits in (256, 512):  # the digests Trino and SQL Server have
         forms[_TRINOS] = f"sha{bits}(value)"
-        forms[frozenset({"tsql"})] = Pg(f"sha{bits}(value)")
+        forms[frozenset({"tsql"})] = f"HASHBYTES('SHA2_{bits}', value)"  # sqlglot 30.29 writes none
     return Macro(f"sha{bits}", ("value",), forms)
 
 
@@ -2364,9 +2365,14 @@ _EXACT = {
     "clickhouse": {
         "sorted": "arraySort(groupArray({k}))",
         "descending": "arrayReverseSort(groupArray({k}))",
-        # No keys answer NULL, the array of fractions' answers too: ClickHouse holds no
-        # Nullable(Array), and reads if(..., NULL, an array) as a Variant whose NULL is NULL.
+        # No keys answer NULL. An array of fractions' answers over none raises by name instead:
+        # ClickHouse holds no Nullable(Array), and a server without Variant types (24.3, the
+        # integration lanes') has no common type of NULL and an array (polyfill.clickhouse
+        # PERCENTILE states the limitation).
         "bound": "arrayElement(arrayMap(_s -> if(length(_s) = 0, NULL, {answer}), [{sorted}]), 1)",
+        "bound array": (
+            "arrayElement(arrayMap(_s -> if({no_keys} = 0, {answer}, []), [{sorted}]), 1)"
+        ),
         "each": "arrayMap(_f -> {answer}, [{fractions}])",
         "disc": "_s[toUInt64(greatest(ceil({f} * length(_s)), 1))]",
         "cont": "_s[{low}] + (_s[{high}] - _s[{low}]) * ({place} - {low})",
@@ -2376,6 +2382,11 @@ _EXACT = {
         "number": "toFloat64({k})",
     },
 }
+
+
+#: ClickHouse's refusal of an array of fractions' percentiles over no keys (polyfill.clickhouse
+#: PERCENTILE).
+_NO_KEYS = "percentile of an array of fractions over no keys does not read this value"
 
 
 def _exact(node: exp.WithinGroup, fractions: list[float], array: bool, dialect: str) -> exp.Expr:
@@ -2407,7 +2418,11 @@ def _exact(node: exp.WithinGroup, fractions: list[float], array: bool, dialect: 
         if array
         else answer(repr(fractions[0]))
     )
-    written = forms["bound"].format(sorted=sorted_, answer=each)
+    bound = forms["bound array"] if array and "bound array" in forms else forms["bound"]
+    no_keys = ch_fail("0A000", _NO_KEYS)
+    written = bound.format(
+        sorted=sorted_, answer=each, no_keys=no_keys.format(condition="length(_s) = 0")
+    )
     return sqlglot.parse_one(written, read=dialect)
 
 
@@ -2575,7 +2590,7 @@ def _call(node: exp.Expr) -> tuple[str, list[exp.Expr]] | None:
         return called, [a for a in (node.this, node.expression) if a is not None]
     if isinstance(node, exp.Time):  # what sqlglot reads as a zone is an overload's second argument
         return "time", [a for a in (node.this, node.args.get("zone")) if a is not None]
-    if isinstance(node, exp.SHA2):  # sqlglot's reading of sha256, sha384 and sha512
+    if isinstance(node, exp.SHA2Digest):  # sqlglot's reading of sha256, sha384 and sha512
         length = node.args.get("length")
         return f"sha{length.this if isinstance(length, exp.Literal) else 256}", [node.this]
     if isinstance(node, exp.Encode) and isinstance(node.args.get("charset"), exp.Literal):
