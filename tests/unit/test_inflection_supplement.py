@@ -73,3 +73,22 @@ def test_is_plural_flags(one, many):
 def test_case_is_kept(one, many):
     assert inflection.plural(one.capitalize()) == many.capitalize()
     assert inflection.singular(many.upper()) == one.upper()
+
+
+@pytest.mark.parametrize("word", ["zorbex", "Zorbex", "ZORBEX", "qwrtz"])
+def test_unknown_word_plural_as_written(word):
+    assert inflection.plural(word) == word
+
+
+@pytest.mark.parametrize("word", ["zorbexes", "Zorbexes", "qwrtzs"])
+def test_unknown_word_singular_as_written(word):
+    assert inflection.singular(word) == word
+
+
+def test_unknown_word_is_not_plural():
+    assert not inflection.is_plural("zorbexes")
+
+
+def test_dictionary_word_case_preserved():
+    assert inflection.plural("Cat") == "Cats"
+    assert inflection.singular("CATS") == "CAT"
