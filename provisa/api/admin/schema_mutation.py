@@ -2737,6 +2737,7 @@ async def _set_table_withdrawn(
             await conn.execute_core(
                 select(
                     registered_tables.c.domain_id,
+                    registered_tables.c.schema_name,
                     registered_tables.c.table_name,
                     registered_tables.c.alias,
                     registered_tables.c.materialize,
@@ -2760,6 +2761,17 @@ async def _set_table_withdrawn(
         _unread = await _table_unread(info, table_id)  # REQ-2152
         if _unread is not None:
             return _unread
+        from provisa.api.admin._function_table import derived_state_refusal
+
+        _derived = await derived_state_refusal(conn, dict(row._mapping))
+        if _derived is not None:  # REQ-1986: the derived table has its function's state
+            _function, _why = _derived
+            return MutationResult(
+                success=False,
+                message=_why,
+                code="schema.table_state_from_function",
+                params={"table": row.table_name, "name": _function},
+            )
         if not withdrawn and not row.withdrawn:
             # Putting back names a region: a table in production is moved by setTableRegion.
             return MutationResult(

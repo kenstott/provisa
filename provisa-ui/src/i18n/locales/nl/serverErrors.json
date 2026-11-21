@@ -559,6 +559,7 @@
       "incremental_no_change": "De codebron heeft geen @change-functie voor {{table}}. Declareer er een met @change table={{table}}.",
       "incremental_needs_rebuild_every": "{{table}} wordt incrementeel bijgehouden en daarom volgens een klok volledig herbouwd. Stel bij 'Volledige herbouw elke' in hoe vaak (in seconden).",
       "table_derived_from_function": "Tabel '{{name}}' is afgeleid van een functie: ze wordt verwijderd door de tabel van de functie uit te schakelen, en de kolommen en parameters worden op de functie bewerkt",
+      "table_state_from_function": "Tabel '{{table}}' is afgeleid van de functie '{{name}}' en heeft haar releasestatus: ze wordt niet op zichzelf teruggetrokken of teruggezet",
       "table_withdrawn": "Tabel {{table}} teruggetrokken",
       "table_put_back": "Tabel {{table}} teruggezet",
       "source_withdrawn": "Bron {{source}} teruggetrokken",

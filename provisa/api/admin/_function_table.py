@@ -281,3 +281,17 @@ async def derived_delete_refusal(conn: "Connection", table: dict) -> str | None:
         f"Table {table['table_name']!r} is derived from the function {function!r}; it is removed "
         "by turning off the function's table, where the function is edited."
     )
+
+
+async def derived_state_refusal(conn: "Connection", table: dict) -> tuple[str, str] | None:
+    """The function the table ``table`` (a registered table row) is derived from and why the
+    table may not be withdrawn or put back on its own, or None for a table no function derives:
+    a derived table has its function's release state, so it never leaves its released function
+    unreadable."""
+    function = await deriving_function(conn, table)
+    if function is None:
+        return None
+    return function, (
+        f"Table {table['table_name']!r} is derived from the function {function!r} and has its "
+        "release state; it is not withdrawn or put back on its own."
+    )

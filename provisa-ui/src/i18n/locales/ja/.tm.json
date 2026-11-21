@@ -7620,6 +7620,7 @@
   "ja/serverErrors.json::serverErrors.schema.table_registered_fields_omitted": "Table '{{table}}' registered (id={{id}}). Left out, because the source's credential may not read them: {{fields}}",
   "ja/serverErrors.json::serverErrors.schema.table_released": "Table {{table}} released",
   "ja/serverErrors.json::serverErrors.schema.table_replicate_set": "Replicate set for table {{table}}",
+  "ja/serverErrors.json::serverErrors.schema.table_state_from_function": "Table '{{table}}' is derived from the function '{{name}}' and has its release state: it is not withdrawn or put back on its own",
   "ja/serverErrors.json::serverErrors.schema.table_too_complex": "Table '{{table}}' was not registered with the columns selected: {{reason}}. Choose fewer columns.",
   "ja/serverErrors.json::serverErrors.schema.table_updated": "Table '{{table}}' updated (id={{id}})",
   "ja/serverErrors.json::serverErrors.schema.table_withdrawn": "Table {{table}} withdrawn",

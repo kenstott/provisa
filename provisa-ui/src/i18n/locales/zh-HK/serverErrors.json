@@ -559,6 +559,7 @@
       "incremental_no_change": "代碼來源沒有針對 {{table}} 的 @change 函數。請使用 @change table={{table}} 宣告一個。",
       "incremental_needs_rebuild_every": "{{table}} 採用增量維護，因此會依時鐘完整重建。請在「完整重建間隔」中設定間隔（秒）。",
       "table_derived_from_function": "表 '{{name}}' 衍生自函數：透過關閉該函數的表來刪除它，其欄和參數在函數上編輯",
+      "table_state_from_function": "表 '{{table}}' 衍生自函數 '{{name}}'，並具有其發佈狀態：不能單獨撤回或恢復",
       "table_withdrawn": "表 {{table}} 已撤下",
       "table_put_back": "表 {{table}} 已恢復",
       "source_withdrawn": "來源 {{source}} 已撤下",
