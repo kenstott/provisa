@@ -21,5 +21,15 @@
     "sdk": {
       "checker": "rejects"
     }
+  },
+  "go": {
+    "doc": {
+      "problems": [
+        "Rows: a @loader is given the join's keys in its read context, and Rows takes no ReadContext"
+      ]
+    }
+  },
+  "unspelled": {
+    "go/sdk": "The Go SDK offers no loader until Go has the read context a loader needs."
   }
 }
