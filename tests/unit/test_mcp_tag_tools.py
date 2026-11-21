@@ -292,7 +292,12 @@ async def test_the_chat_never_writes_a_tag_edit_itself(monkeypatch, app_state):
     monkeypatch.setattr(Mutation, "assign_tag", must_not)
     with pytest.raises(ValueError, match="confirm"):
         await chat._execute_tool(
-            app_state, "steward", "assign_tag", _CALLS[0][1], request=_request("steward")
+            app_state,
+            "steward",
+            "assign_tag",
+            _CALLS[0][1],
+            scope=None,
+            request=_request("steward"),
         )
 
 
