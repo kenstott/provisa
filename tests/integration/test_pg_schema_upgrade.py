@@ -393,7 +393,7 @@ _CREATE_ONLY = {
         "id review_id user_id role_id domain_id entitlements expires_at last_used_at decision "
         "decided_by decided_at reason"
     ),
-    "access_reviews": "id started_by started_at",
+    "access_reviews": "id started_by started_at webhook_status webhook_error webhook_at",
     "admin_audit_log": "id action actor_id subject_id detail created_at",
     "api_endpoints": "id source_id path method table_name columns ttl created_at",
     "api_sources": "id type base_url spec_url auth created_at",
