@@ -238,13 +238,27 @@ pub mod check {
 #[doc(hidden)]
 #[macro_export]
 macro_rules! __provisa_option {
-    (read, requires = $v:literal) => { $crate::check::text($v) };
-    (read, secret = $v:literal) => { $crate::check::text($v) };
-    (command, requires = $v:literal) => { $crate::check::text($v) };
-    (command, secret = $v:literal) => { $crate::check::text($v) };
-    (command, insert = $v:literal) => { $crate::check::text($v) };
-    (command, update = $v:literal) => { $crate::check::text($v) };
-    (command, delete = $v:literal) => { $crate::check::text($v) };
+    (read, requires = $v:literal) => {
+        $crate::check::text($v)
+    };
+    (read, secret = $v:literal) => {
+        $crate::check::text($v)
+    };
+    (command, requires = $v:literal) => {
+        $crate::check::text($v)
+    };
+    (command, secret = $v:literal) => {
+        $crate::check::text($v)
+    };
+    (command, insert = $v:literal) => {
+        $crate::check::text($v)
+    };
+    (command, update = $v:literal) => {
+        $crate::check::text($v)
+    };
+    (command, delete = $v:literal) => {
+        $crate::check::text($v)
+    };
 }
 
 /// One registration: the function type-checked by `$check`, each option by its rule. It expands
