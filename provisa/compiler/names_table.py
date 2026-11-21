@@ -96,6 +96,11 @@ SURFACE_NAMES: dict[str, str] = {
 #: by case are one name there.
 _CASE_INSENSITIVE = frozenset({"sql", "catalog", "pg_constraint"})
 
+#: The surfaces of a table's GraphQL query root fields (REQ-467: a root field resolves by them).
+_ROOT_FIELD_SURFACES = frozenset(
+    {"graphql_field", "graphql_aggregate", "graphql_group_by", "graphql_connection"}
+)
+
 
 @dataclass(frozen=True)
 class NameRow:
@@ -173,6 +178,19 @@ class NamesTable:
     rows: tuple[NameRow, ...]
     frozen_aliases: tuple[FrozenAlias, ...] = ()
     _sql_index: dict[tuple[tuple[str, ...], str], NameRow] = field(default_factory=dict)
+    # REQ-467: each object's row on each surface, and each table's (a table or a view, by id).
+    _by_object: dict[tuple[str, str, str], NameRow] = field(default_factory=dict, init=False)
+    _by_table: dict[tuple[int, str], NameRow] = field(default_factory=dict, init=False)
+    # REQ-467: the tables each GraphQL root field (a table's field and its variants) names.
+    _root_fields: dict[str, list[NameRow]] = field(default_factory=dict, init=False)
+
+    def __post_init__(self) -> None:
+        for r in self.rows:
+            self._by_object[(r.object_kind, r.object_id, r.surface)] = r
+            if r.object_kind in ("table", "view") and r.table_id is not None:
+                self._by_table[(r.table_id, r.surface)] = r
+                if r.surface in _ROOT_FIELD_SURFACES:
+                    self._root_fields.setdefault(r.name, []).append(r)
 
     @property
     def warnings(self) -> list[NameWarning]:
@@ -182,13 +200,27 @@ class NamesTable:
         """The object an unquoted SQL ``name`` in ``scope`` names, ignoring case; None if none."""
         return self._sql_index.get((scope, name.lower()))
 
-    def names_of(self, object_kind: str, object_id: str) -> dict[str, str]:
-        """The object's name on each surface."""
-        return {
-            r.surface: r.name
-            for r in self.rows
-            if r.object_kind == object_kind and r.object_id == object_id
-        }
+    def table_row(self, table_id: int, surface: str) -> NameRow:  # REQ-467
+        """Table ``table_id``'s row on ``surface``. A table the table does not name on that
+        surface raises KeyError: a name not in the names table does not exist (REQ-194)."""
+        return self._by_table[(table_id, surface)]
+
+    def object_name(self, object_kind: str, object_id: str, surface: str) -> str:  # REQ-467
+        """The object's name on ``surface``; KeyError when it has none there."""
+        return self._by_object[(object_kind, object_id, surface)].name
+
+    def root_field(self, name: str) -> NameRow | None:  # REQ-467
+        """The row of GraphQL query root field ``name`` (a table's field, its aggregate,
+        group-by or connection field: the row's surface says which); None when no table's root
+        field is so named."""
+        held = self._root_fields.get(name)
+        if not held:
+            return None
+        if len(held) > 1:
+            raise ValueError(
+                f"GraphQL root field {name!r} names tables {sorted(r.table_id or 0 for r in held)}"
+            )
+        return held[0]
 
 
 def _key(row: NameRow) -> str:
@@ -349,7 +381,7 @@ def model_name_rows(  # REQ-194
 ) -> list[NameRow]:
     """Every name of the model compiled into ``ctx`` (the whole model's context, which belongs to
     no role), with ``tables`` (the stored table rows: ``id``, ``source_id``, ``alias``,
-    ``view_sql``, ``gql_naming_convention``, ``columns`` with ``column_name`` and ``alias``),
+    ``view_sql``, ``columns`` with ``column_name`` and ``alias``),
     ``commands`` (each with ``name``, ``kind`` and its GraphQL ``field``) and ``enums`` (each
     source enum's labels, by name). ``sql_name_of`` gives each table's bare SQL name as the
     compiler spells it (``sql_rewrite.semantic_table_name``)."""
@@ -395,7 +427,7 @@ def _table_rows(
     oid = str(tm.table_id)
     label = _table_label(tm)
     physical = tm.original_table_name or tm.table_name
-    convention = t.get("gql_naming_convention") or naming.active_gql_convention()
+    convention = tm.gql_convention or naming.active_gql_convention()
     domain_sql = naming.domain_to_sql_name(tm.domain_id)
     bare = naming.bare_field_name(tm.field_name, tm.domain_id)
     proto_type = naming.proto_type_name(tm.type_name)
@@ -638,3 +670,47 @@ def build_model_names(
         sql_name_of={tm.table_id: semantic_table_name(tm) for tm in ctx.tables.values()},
     )
     return build_names_table(rows, policy)
+
+
+# ── the names a compilation context resolves by ───────────────────────────────────────────────
+
+
+def context_names(ctx: CompilationContext) -> NamesTable:  # REQ-467, REQ-194
+    """The names table of the objects ``ctx`` holds: what SQL, Cypher and GraphQL resolve a
+    model name by (REQ-467), so no language derives a name of its own. Built once per context
+    (kept on ``ctx.lowering_memo`` beside the other lookups derived from it) from the same rows
+    as the model version's table (:func:`model_name_rows`). Its clashes are not settled again:
+    the model version's build settled every one (:func:`build_model_names`), and a context holds
+    a subset of that model's objects under the same names."""
+    from provisa.compiler.sql_rewrite import context_derived, semantic_table_name
+
+    def build(c: CompilationContext) -> NamesTable:
+        metas = {tm.table_id: tm for tm in c.tables.values()}.values()
+        rows = model_name_rows(
+            c, (), sql_name_of={tm.table_id: semantic_table_name(tm) for tm in metas}
+        )
+        return NamesTable(rows=tuple(rows))
+
+    return context_derived(ctx, ("names", naming.active_gql_convention()), build)
+
+
+def root_field(ctx: CompilationContext, field_name: str) -> tuple[str, TableMeta] | None:  # REQ-467
+    """What GraphQL query root field ``field_name`` reads in ``ctx``, resolved through the names
+    table: its surface (``graphql_field``, ``graphql_aggregate``, ``graphql_group_by``,
+    ``graphql_connection``) and its table. None when no table of ``ctx`` has a root field so
+    named."""
+    names = context_names(ctx)
+    row = names.root_field(field_name)
+    if row is None:
+        return None
+    assert row.table_id is not None  # a table's root-field row carries its table (_table_rows)
+    return row.surface, ctx.tables[names.table_row(row.table_id, "graphql_field").name]
+
+
+def root_table(ctx: CompilationContext, field_name: str) -> TableMeta:  # REQ-467
+    """The table GraphQL query root field ``field_name`` reads in ``ctx``. A field no table has
+    raises KeyError, as no name outside the names table exists (REQ-194)."""
+    found = root_field(ctx, field_name)
+    if found is None:
+        raise KeyError(field_name)
+    return found[1]

@@ -735,7 +735,7 @@ def table_cypher_label(
 ) -> str:  # REQ-572
     """The Cypher label a table answers to, without its domain: its GraphQL field name
     (:func:`generate_name`) in the label convention, the part after a domain qualifier when the
-    name carries one -- as the label map derives it (``gql.label_map._split_cypher_labels``)."""
+    name carries one -- as the names table names it (``names_table._table_rows``)."""
     field = generate_name(
         table_name, naming_rules, alias=alias, convention=convention or active_gql_convention()
     )
