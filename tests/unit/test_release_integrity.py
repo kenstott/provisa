@@ -168,10 +168,9 @@ _ASSETS: dict[tuple[str, str], tuple[str, ...]] = {
     ("release-prebuilt.yml", "package-demo-images"): ("outputs.demo_images_name",),
     ("release-prebuilt.yml", "package-core-images"): ("outputs.core_images_name",),
     ("release-prebuilt.yml", "package-core-images-amd64"): ("outputs.core_images_amd64_name",),
-    ("release-macos.yml", "build-macos-core"): ("outputs.dmg_name",),
-    ("release-macos.yml", "build-macos-container"): ("outputs.dmg_container_name",),
-    ("release-macos.yml", "build-macos-obs"): ("outputs.dmg_obs_name",),
-    ("release-macos.yml", "build-macos-demo"): ("outputs.dmg_demo_name",),
+    # The DMGs are notarized after the builds: the notarize workflow's job attaches them
+    # (tests/unit/test_notarize_workflow.py), the Core build attaches what Apple never sees.
+    ("release-macos.yml", "build-macos-core"): ("outputs.duckdb_extensions_name",),
     ("release-windows.yml", "build-windows-core"): ("outputs.windows_name",),
     ("release-windows.yml", "build-windows-container"): ("outputs.windows_container_name",),
     ("release-linux.yml", "build-linux"): ("outputs.linux_name",),
@@ -219,7 +218,9 @@ def test_each_job_that_builds_a_release_asset_attaches_it_to_the_draft_itself():
         assert body["steps"][0]["uses"] == "actions/checkout@v4", where
     # No other job attaches anything.
     for name in {n for n, _j in _ASSETS} | set(_LEGS.values()):
-        for job in _load(name)["jobs"]:
+        for job, body in _load(name)["jobs"].items():
+            if "uses" in body:
+                continue  # a called workflow; its own jobs are checked where it is tested
             if (name, job) not in _ASSETS:
                 assert not _attach_steps(name, job), f"{name}:{job}"
 
@@ -320,22 +321,21 @@ def test_the_release_publishes_the_macos_duckdb_extensions_asset_with_its_checks
         if s.get("uses", "").startswith("actions/upload-artifact")
         and s["with"]["name"] == "macos-duckdb-extensions-dist"
     )
-    assert core.index(build) < core.index(upload)
+    attach = next(s for s in core if s.get("uses") == _ATTACH)
+    assert core.index(build) < core.index(upload) < core.index(attach)
     assert upload["with"]["path"].splitlines() == [
         f"packaging/macos/dist/{name}",
         f"packaging/macos/dist/{name}.sha256",
     ]
     assert upload["with"]["if-no-files-found"] == "error"
+    assert attach["with"]["files"].splitlines() == upload["with"]["path"].splitlines()
 
     publish = _publish_job()
     assert "duckdb_extensions_name" in _load("release-publish.yml")["jobs"]["metadata"]["outputs"]
-    download = next(s for s in publish["steps"] if s.get("name") == "Download all artifacts")
-    assert download["with"]["pattern"] == "*-dist"
-    files = next(s for s in publish["steps"] if s.get("id") == "assets")["env"][
-        "FILES"
-    ].splitlines()
-    assert f"release-assets/{name}" in files
-    assert f"release-assets/{name}.sha256" in files
+    verify = next(s for s in publish["steps"] if s.get("name", "").startswith("Publish release"))
+    required = verify["env"]["REQUIRED"].splitlines()
+    assert name.replace("needs.metadata", "needs.metadata") in required
+    assert f"{name}.sha256" in required
 
 
 def test_a_cve_scan_gives_the_advisory_lookup_time_to_answer():

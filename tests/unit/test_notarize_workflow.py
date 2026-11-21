@@ -84,7 +84,8 @@ def test_the_unnotarized_dmgs_outlive_a_notarization_that_is_run_again_later():
     jobs = _load("release-macos.yml")["jobs"]
     for job_id in _BUILD_JOBS:
         for step in filter(_is_upload, jobs[job_id]["steps"]):
-            assert step["with"]["retention-days"] >= 3
+            if step["with"]["name"].endswith("-unnotarized"):
+                assert step["with"]["retention-days"] >= 3
 
 
 def test_the_release_macos_leg_runs_the_notarize_workflow_after_every_dmg_build():
@@ -570,3 +571,21 @@ def test_the_core_build_splits_the_extensions_out_before_anything_is_signed():
         "stage_app",
     ]
     assert [main.index(step) for step in order] == sorted(main.index(step) for step in order)
+
+
+def test_the_notarize_job_attaches_each_notarized_dmg_to_the_draft_on_a_release_and_keeps_it_on_a_dry_run():
+    workflow = _load("notarize-macos.yml")
+    job = workflow["jobs"]["notarize"]
+    assert job["permissions"]["contents"] == "write"
+    attach = next(
+        s for s in job["steps"] if s.get("uses") == "./.github/actions/attach-release-assets"
+    )
+    assert attach["if"] == "${{ inputs.publish }}"
+    assert attach["with"]["tag"] == "${{ inputs.version }}"
+    assert attach["with"]["files"] == "dmg/${{ matrix.dmg }}"
+    kept = next(s for s in job["steps"] if _is_upload(s) and s["with"]["name"].endswith("-dist"))
+    assert kept["if"] == "${{ !inputs.publish }}"
+    assert kept["with"]["if-no-files-found"] == "error"
+    caller = _load("release-macos.yml")["jobs"]["notarize"]
+    assert caller["permissions"]["contents"] == "write"
+    assert caller["with"]["publish"] == "${{ inputs.publish }}"

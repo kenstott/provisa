@@ -97,7 +97,6 @@ jobs:
       - name: Set up Node.js
         uses: ./.github/actions/setup-ui
         with:
-          node-version: "20"
           install: "false"
 
       # REQ-2194: installing provisa compiles provisa._encoders, with the toolchain every recipe names.
@@ -179,7 +178,6 @@ jobs:
       - name: Set up Node.js
         uses: ./.github/actions/setup-ui
         with:
-          node-version: "20"
           install: "false"
 
       # REQ-2194: installing provisa compiles provisa._encoders, with the toolchain every recipe names.
