@@ -305,3 +305,13 @@ def test_no_tag_tool_text_names_a_requirement():
     for spec in model_tool_specs.TAG_SPECS:
         assert "REQ-" not in spec["description"]
     assert "REQ-" not in model_tool_specs.TAG_SYSTEM_SECTION
+
+
+def test_the_tag_tools_rights_are_the_mutations_tag_editor_rights():
+    """The tools' role gate admits exactly who schema_mutation._require_tag_editor admits."""
+    from provisa.api.mcp import tool_groups
+
+    admitted = {"table_registration", "sensitive_data", *schema_mutation._CURATING_RIGHT.values()}
+    assert tool_groups._TAG_EDITOR == admitted
+    for name in model_tool_specs.TAG_NAMES:
+        assert tool_groups.RIGHTS_OF[name] == admitted
