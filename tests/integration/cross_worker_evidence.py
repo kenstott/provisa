@@ -29,7 +29,6 @@ import http.client
 import json
 import time
 
-from tests.helpers import registered_id, release_mutation
 from tests.integration.worker_boot_harness import WorkerBoot
 
 ADMIN = "/admin/graphql"
@@ -135,9 +134,7 @@ def run(order: list[Worker], rows: list, tag: str) -> None:
         "{ success message } }"
     )
     print(f"[{tag}] registerTable -> {json.dumps(res)[:200]}")
-    # REQ-1921: registered through the admin, it starts as draft; released, it is read.
-    res = author.admin(release_mutation(registered_id(res["data"]["registerTable"]["message"])))
-    print(f"[{tag}] setTableDraft -> {json.dumps(res)[:200]}")
+    # REQ-1921: registered, it is live: no step puts it in service.
     observe(
         order,
         lambda w: (lambda r: (not _refused(r), r))(w.data("{ s__customers { id } }")),

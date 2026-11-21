@@ -12,6 +12,9 @@
 # 360s Trino wait.
 set -euo pipefail
 
+# torch first from PyTorch's CPU-only index: [dev,embedded] carries the vector extra, and pip's
+# torch on Linux from PyPI is the CUDA build (REQ-419). The editable install below finds it satisfied.
+pip install -q --index-url https://download.pytorch.org/whl/cpu torch
 pip install -q -e ".[dev,embedded]"
 
 export PYTEST_NO_DOCKER=1

@@ -8,7 +8,7 @@
     "never": "En vivo si es posible",
     "always": "Siempre",
     "hot": "Hot-{{threshold}}",
-    "neverWithLoadProtection": "«En vivo si es posible» no puede combinarse con la protección de carga: una tabla protegida contra carga nunca se lee en vivo.",
+    "neverWithLoadProtection": "«En vivo si es posible» no se puede combinar con la protección de carga, porque una tabla con protección de carga nunca se lee en vivo.",
     "scheduled": "Siempre, origen leído solo según programación",
     "helpScheduled": "Siempre, origen leído solo según programación: las lecturas siempre vienen de la réplica y una consulta nunca provoca la lectura del origen; el planificador actualiza la réplica en la ventana de menor actividad, según el TTL de caché o la sonda de cambios, y se requiere al menos uno de los tres."
   }

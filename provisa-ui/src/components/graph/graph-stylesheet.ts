@@ -12,6 +12,8 @@ import { labelColor, darkenColor, propertyValue } from "./graph-model";
 import type { GNode, RelLineOverride } from "./graph-model";
 import type { CyElement } from "./cytoscape-types";
 import { resolveNodeLabel } from "./canvas/canvas-helpers";
+import type { GraphTokens } from "../provisa-graph/tokens";
+import { META_LABEL_PAD, META_LABEL_SIZE } from "./canvas/edge-length";
 
 export const PIN_SVG =
   "data:image/svg+xml;utf8," +
@@ -83,7 +85,7 @@ export function buildGraphStylesheet({
   sizeOverridesRef,
   labelPropertyRef,
   relLineOverridesRef,
-}: StylesheetRefs): unknown[] {
+}: StylesheetRefs, t: GraphTokens): unknown[] {
   return [
     {
       selector: "node",
@@ -106,7 +108,7 @@ export function buildGraphStylesheet({
             : captionLines(cap, ele.width() + OUTSIDE_MARGIN, font);
         },
         color: (ele: CyElement) =>
-          insideCaption(ele, labelPropertyRef.current) ? "#fff" : "#d6d8e2",
+          insideCaption(ele, labelPropertyRef.current) ? "#fff" : t.text,
         "font-size": fontOf,
         "text-valign": (ele: CyElement) =>
           insideCaption(ele, labelPropertyRef.current) ? "center" : "bottom",
@@ -174,7 +176,7 @@ export function buildGraphStylesheet({
         "curve-style": "bezier",
         label: "data(label)",
         "font-size": 8,
-        color: "#6b6f82",
+        color: t.textMuted,
         "text-background-opacity": 0,
         /* eslint-disable @typescript-eslint/no-explicit-any -- cytoscape style mappers receive untyped elements; the stylesheet function signature is not modeled by our local CyInstance shim */
         width: ((ele: any) =>
@@ -203,16 +205,16 @@ export function buildGraphStylesheet({
     {
       selector: "edge[?_metaEdge]",
       style: {
-        "line-color": "#6366f1",
-        "target-arrow-color": "#6366f1",
+        "line-color": t.accent,
+        "target-arrow-color": t.accent,
         "target-arrow-shape": "triangle",
         "curve-style": "bezier",
         label: "data(label)",
-        "font-size": 9,
-        color: "#a5b4fc",
+        "font-size": META_LABEL_SIZE,
+        color: t.accent,
         "text-background-opacity": 0.7,
-        "text-background-color": "#1a1d2e",
-        "text-background-padding": "2px",
+        "text-background-color": t.canvas,
+        "text-background-padding": `${META_LABEL_PAD}px`,
         /* eslint-disable @typescript-eslint/no-explicit-any -- cytoscape style mapper receives an untyped element; the stylesheet function signature is not modeled by our local CyInstance shim */
         width: ((ele: any) =>
           Math.min(0.75 + Math.log1p(ele.data("_metaCount") as number) * 0.5, 3)) as any,

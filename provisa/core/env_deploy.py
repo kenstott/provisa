@@ -44,6 +44,7 @@ from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import Table, delete, select
 
+from provisa.core import model_change
 from provisa.core import schema_org as org
 from provisa.core.naming_rule_check import refuse_divergent_rule
 from provisa.core.env_classes import (
@@ -267,7 +268,36 @@ async def _load(
     scope = PROJECTED if seed else PROJECTED - SEEDED_AT_CREATION
     incoming = {p: b for p, b in tree.items() if in_scope(p, scope)}
     current = {p: b for p, b in (await project(conn, schema)).items() if in_scope(p, scope)}
+    # REQ-1557: a tree a fetch or a caller brought is text a member may have written, and this
+    # load writes the model as a whole, which the write seam does not hold to a person.
+    _refuse_brought(org_id, ref, incoming, current)
     return await land(conn, org_id, env, incoming, current, ref, seed, base_sha, apply=apply)
+
+
+def _refuse_brought(
+    org_id: str, ref: str, incoming: dict[str, Any], current: dict[str, Any]
+) -> None:  # REQ-1557
+    """Refuse a tree loaded into a held organization from outside its own stored history (a
+    commit a fetch brought, files a caller gave) when it adds or changes an object that names a
+    variable of the server's environment, or changes one that already does. An object the tree
+    carries exactly as the organization holds it is the organization's stored text, and loads."""
+    from provisa.core.env_reference_guard import (
+        EnvReferenceEditRefused,
+        EnvReferenceRefused,
+        env_names,
+    )
+    from provisa.core.env_repo import written_here
+    from provisa.security.sandbox_egress import held
+
+    if not held(org_id) or written_here(org_id, ref):
+        return
+    for path, body in incoming.items():
+        if path in current and current[path] == body:
+            continue
+        for name in env_names(body):
+            raise EnvReferenceRefused(name)
+        if path in current and next(env_names(current[path]), None) is not None:
+            raise EnvReferenceEditRefused(path)
 
 
 async def land(
@@ -301,6 +331,7 @@ async def land(
     conflicts = against_base(org_id, base_sha, incoming, current) if base_sha else []
 
     delta = _diff(current, incoming)
+    incoming = _retiring_what_it_lacks(incoming, current, ref)
     rows = _decompose(
         incoming, await _existing_ids(conn, schema), await _roles_after(conn, schema, incoming)
     )
@@ -320,6 +351,31 @@ async def land(
     await _apply(conn, ordered, schema, rows, delta)
     await _resync_sequences(conn, ordered, schema)
     return DeployReport(env or "prod", ref, seed, delta, base_sha, conflicts)
+
+
+def _retiring_what_it_lacks(
+    incoming: dict[str, dict[str, Any]], current: dict[str, dict[str, Any]], ref: str
+) -> dict[str, dict[str, Any]]:
+    """``incoming`` with each model object ``current`` holds and it lacks kept, RETIRED (REQ-2248,
+    amended 2026-11-15: deploy and undo retire a model object; they no longer delete it).
+
+    A table, tag or metric whose file the tree lacks keeps its file, retired by the acting person;
+    a column or relationship a table's file lacks is kept in it, retired; and what a retired object
+    stands on (its domain, terms, edge targets) is kept with it. The merge's own rule
+    (:func:`provisa.core.env_merge.merged_tree`), every path chosen and removals on: a tree this
+    applies is the whole statement of the model. A file the tree carries unretired is written
+    unretired, so an undo to a commit that holds it restores the same object (identity is the
+    path). A merge hands over a tree that already holds all of ``current``: nothing changes."""
+    from provisa.core.env_merge import merged_tree  # env_merge imports land from this module
+
+    return merged_tree(
+        incoming,
+        current,
+        set(incoming) | set(current),
+        True,
+        by=model_change.actor(),
+        why=f"removed by a deploy of {ref}",
+    )
 
 
 def _diff(current: dict[str, dict], incoming: dict[str, dict]) -> DeployDelta:
@@ -1017,7 +1073,11 @@ async def _apply(
     rows: dict[str, list[dict[str, Any]]],
     delta: DeployDelta,
 ) -> None:
-    """Delete what the tree no longer holds, then write what it does, parents before children.
+    """Clear each table of the scope, then write what the tree holds, parents before children.
+
+    The clear is how a whole tree is written, not a removal of objects: a root keeps its surrogate
+    (:class:`_Ids`), and an object the tree lacks is in it retired (:func:`_retiring_what_it_lacks`,
+    REQ-2248), so every model row written before is written again.
 
     An identity-only row is never deleted, for REQ-1491's reason: the binding it holds is a fact
     this environment established, and a model that stopped naming the source is not evidence that

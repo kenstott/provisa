@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 from typing import Any
+from provisa.api.engine_error_names import client_value
 
 
 def jsonapi_error(  # REQ-257
@@ -43,4 +44,4 @@ def jsonapi_error(  # REQ-257
 
 def error_response(errors: list[dict[str, Any]]) -> dict[str, Any]:  # REQ-257
     """Wrap error objects in a JSON:API error response envelope."""
-    return {"errors": errors}
+    return {"errors": client_value(errors)}

@@ -62,6 +62,7 @@ function makeTable(overrides: Partial<RegisteredTable> = {}): RegisteredTable {
     tableName: "orders_scans",
     alias: null,
     description: null,
+    registeredAt: "2026-11-01T00:00:00+00:00",
     cacheTtl: null,
     roleTtl: [],
     pagingKind: null,
@@ -69,7 +70,8 @@ function makeTable(overrides: Partial<RegisteredTable> = {}): RegisteredTable {
     pagingCeilingRows: null,
     replicate: null,
     region: null,
-    draft: false,
+    withdrawn: false,
+    sourceWithdrawn: false,
     rowMaterialize: false,
     loadProtected: null,
     offPeakWindow: null,
@@ -102,6 +104,8 @@ function makeTable(overrides: Partial<RegisteredTable> = {}): RegisteredTable {
     mvPersist: "replace",
     mvPrimaryKey: [],
     mvIncremental: false,
+    mvRebuildEvery: null,
+    incrementalOption: { available: true, code: null, reason: null },
     mvCalendar: null,
     mvGrain: null,
     mvAllowedLateness: 0,
@@ -137,6 +141,7 @@ function renderForm(table: RegisteredTable, sources: Source[]) {
       section="associations"
       onSectionChange={vi.fn()}
       savedProfilerId={null}
+      domainChoices={[]}
       editingTable={table}
       savedTable={table}
       setEditingTable={vi.fn()}

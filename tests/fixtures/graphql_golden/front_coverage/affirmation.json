@@ -1,0 +1,17 @@
+[
+ {
+  "lowered": "reads other sources",
+  "origin": "demo:affirmation/1-break-queue.graphql",
+  "root_field": "p__viewBreakQueue"
+ },
+ {
+  "lowered": "reads other sources",
+  "origin": "demo:affirmation/2-breaks-by-broker.graphql",
+  "root_field": "p__viewBreakQueueGroupBy"
+ },
+ {
+  "lowered": "reads other sources",
+  "origin": "demo:affirmation/3-trade-status.graphql",
+  "root_field": "p__viewTradeStatus"
+ }
+]

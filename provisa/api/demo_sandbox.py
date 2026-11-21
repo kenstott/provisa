@@ -34,6 +34,7 @@ sandbox whose tab said it was closing, and that no request has reached since for
 from __future__ import annotations
 
 import asyncio
+import concurrent.futures
 import contextlib
 import logging
 from functools import partial
@@ -501,12 +502,16 @@ async def _build(demo: PublishedDemo, org_id: str, person: str, kind: str) -> st
                     rt.user_attributes = await record_visitor_attributes(
                         conn, person, demo.directory
                     )
+        from provisa.api.effective_rows import record_people
+
+        await record_people(org_id, [person])
     async with _stage(org_id, demo.name, "its record, environments and ready mark"):
         async with _stage(org_id, demo.name, "its record"):
             await _record(rt.model_db, demo, org_id, person)
         await _environments(demo, org_id, person)
-        await _refresh_root_registry_view()
-        async with _admin_pool().acquire() as conn:
+        async with _stage(org_id, demo.name, "the registry view"):
+            await _refresh_root_registry_view()
+        async with _stage(org_id, demo.name, "its ready mark"), _admin_pool().acquire() as conn:
             await conn.execute_core(
                 update(orgs)
                 .where(orgs.c.id == org_id)
@@ -518,7 +523,9 @@ async def _build(demo: PublishedDemo, org_id: str, person: str, kind: str) -> st
         user_id=person,
         org_id=org_id,
         name=_TOKEN_NAME,
-        role_id=SANDBOX_ROLE,
+        # REQ-1263: the roles the token may act as -- every role its visitor was just granted, so
+        # the tour runs as each of them.
+        scopes=granted,
         env_name=PROD,  # REQ-1503: a sandbox is served from its one environment
     )
     return secret
@@ -555,23 +562,70 @@ async def _environments(demo: PublishedDemo, org_id: str, person: str) -> None:
 
     # REQ-2053: the template's environments (a test environment of fakes, say), each created from
     # the sandbox's prod after its person's roles are granted, so each carries them.
-    wanted = await template_environments(demo.template_org)
-    for env in wanted:
-        async with _stage(org_id, demo.name, f"its environment {env['name']}"):
+    async with _stage(org_id, demo.name, "its environments' list"):
+        wanted = await template_environments(demo.template_org)
+    # The org's redaction rules and secrets, loaded once (redaction_load.ensure_loaded) by the
+    # lookup of its prod runtime: before any environment is created, as the first creation's
+    # lookup loaded them when the environments were created one after another. Loaded inside the
+    # fan-out below, the second creation's lookup found the load under way and went on without it.
+    async with _stage(org_id, demo.name, "its redaction rules and secrets"):
+        await ensure_org_runtime(org_id)
+    synthetic = set(demo_synthetic.synthetic_envs(wanted))
+    # The environments are made side by side, each its own line: created from prod, given its
+    # rows, its runtime built. What two lines share is the org's, and each piece of it is keyed by
+    # the environment (its registry row, schema, branch, rows and runtime) or, the domain policy
+    # (keyed by the org, which a build sets to the deployment's naming and then to the org's own,
+    # reading it between), held in each build's own window (app._build_org_runtime,
+    # domain_policy.staged). So the two runtimes are built at once too.
+    # Each line runs on a thread and loop of its own (run_on_own_thread): the control plane blocks
+    # the thread that calls it (core.database), so two lines on one loop would run one after
+    # another.
+    from provisa.core.connection_loop import run_on_own_thread
+
+    # The phase each line failed in (its creation, its rows, its runtime), so the failure raised is
+    # the one an open making them one after another would have met first.
+    failed_in: dict[str, int] = {}
+
+    async def _line(env: dict[str, str]) -> None:
+        name = env["name"]
+        failed_in[name] = 0
+        async with _stage(org_id, demo.name, f"its environment {name}"):
             await create_environments(org_id, [env], person)
-    # REQ-1942: a Test (synthetic) one is given the template's generated rows; nothing is generated
-    # at a visitor's request. REQ-2006: its rows, records and bindings are copied from the
-    # template's prepared environment, through its schema.
-    async with _stage(org_id, demo.name, "its environments' rows"):
-        await demo_synthetic.copy_to_sandbox(
-            demo.template_org, org_id, demo_synthetic.synthetic_envs(wanted)
-        )
-    # REQ-2006 (amended 2026-11-04): then each one's runtime, built once and cloned, as its prod's
-    # is: its model was copied from prod a moment ago. Left to the first request, a tour step
-    # waited 15-20 s on an ordinary build that seeded the whole model again.
-    for env in wanted:
-        async with _stage(org_id, demo.name, f"its environment {env['name']}'s runtime"):
-            await ensure_org_runtime(org_id, env["name"], model_cloned=True)
+        # REQ-1942: a Test (synthetic) one is given the template's generated rows; nothing is
+        # generated at a visitor's request. REQ-2006: its rows, records and bindings are copied
+        # from the template's prepared environment, through its schema.
+        failed_in[name] = 1
+        if name in synthetic:
+            async with _stage(org_id, demo.name, f"its environment {name}'s rows"):
+                await demo_synthetic.copy_to_sandbox(demo.template_org, org_id, [name])
+        # REQ-2006 (amended 2026-11-04): then its runtime, built once and cloned, as its prod's
+        # is: its model was copied from prod a moment ago. Left to the first request, a tour step
+        # waited 15-20 s on an ordinary build that seeded the whole model again.
+        failed_in[name] = 2
+        async with _stage(org_id, demo.name, f"its environment {name}'s runtime"):
+            await ensure_org_runtime(org_id, name, model_cloned=True)
+
+    async with _stage(org_id, demo.name, "its environments"):
+        lines = [
+            run_on_own_thread(partial(_line, env), name=f"sandbox-environment-{env['name']}")
+            for env in wanted
+        ]
+        # Every line is waited for, failed or not, and however this wait ends: the open removes a
+        # sandbox that failed (reap), and a line still writing would write into what is being
+        # removed.
+        try:
+            await asyncio.gather(
+                *(asyncio.wrap_future(line) for line in lines), return_exceptions=True
+            )
+        finally:
+            concurrent.futures.wait(lines)
+    failures = [
+        (failed_in[env["name"]], index, failure)
+        for index, (env, line) in enumerate(zip(wanted, lines, strict=True))
+        if not line.cancelled() and (failure := line.exception()) is not None
+    ]
+    if failures:
+        raise min(failures, key=lambda failure: failure[:2])[2]
 
 
 async def carry_landed_data(template_org: str, org_id: str, seed: Any, demo: str) -> None:

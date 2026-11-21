@@ -56,14 +56,14 @@ describe("the acting role is sent in the header, never in the body", () => {
   });
 
   it("nlToSql", async () => {
-    await nlToSql("how many orders", ROLE_SET);
+    await nlToSql("how many orders", ROLE_SET, true, null);
     const { headers, body } = sent();
     expect(headers["X-Provisa-Role"]).toBe(ROLE_SET);
     expect(body).not.toHaveProperty("role");
   });
 
   it("submitNlQuery", async () => {
-    await submitNlQuery("how many orders", ROLE_SET);
+    await submitNlQuery("how many orders", ROLE_SET, false, null);
     const { headers, body } = sent();
     expect(headers["X-Provisa-Role"]).toBe(ROLE_SET);
     expect(body).not.toHaveProperty("role");

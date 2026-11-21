@@ -86,7 +86,7 @@ describe("a step with a graph on its page", () => {
   it("is asked of a named demo's term step and product step", () => {
     const steps = demoTourSteps(
       [
-        { key: "a", route: "/admin/ontology", term: "loss ratio" },
+        { key: "a", route: "/context/ontology", term: "loss ratio" },
         { key: "b", route: "/data-products", product: "c360" },
       ] as never,
       [],

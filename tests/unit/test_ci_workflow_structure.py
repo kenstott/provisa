@@ -21,7 +21,6 @@ from __future__ import annotations
 
 import importlib.util
 import re
-import sys
 from pathlib import Path
 
 import pytest
@@ -47,6 +46,8 @@ _OWNED = {
     r"pip install[^\n]*mkdocs": "docs-site-deps",
     r"security import\b": "apple-signing",
     r"key: (\$\{\{ inputs.key-prefix \}\})?trino-plugins-": "trino-plugins",
+    r"KEY: (\$\{\{ inputs.key-prefix \}\})?provisa-functions-": "trino-plugins",
+    r"key: pyodide-downloads-": "pyodide-downloads",
     r"gh release create": "ensure-release",
     r"rm -rf /usr/share/dotnet": "free-runner-disk",
 }
@@ -280,13 +281,16 @@ _WAREHOUSE_SECRETS = {
     "SNOWFLAKE_ACCOUNT", "SNOWFLAKE_USER", "SNOWFLAKE_PASSWORD", "SNOWFLAKE_WAREHOUSE",
     "DATABRICKS_SERVER_HOSTNAME", "DATABRICKS_HTTP_PATH", "DATABRICKS_TOKEN",
     "GOOGLE_CLOUD_PROJECT", "GOOGLE_APPLICATION_CREDENTIALS_JSON", "GSHEETS_TEST_SHEET_ID",
-    "FABRIC_SQL_SERVER", "FABRIC_DATABASE", "FABRIC_RESOURCE_GROUP", "FABRIC_CAPACITY_NAME",
-    "FABRIC_WORKSPACE_ID",
+    "FABRIC_RESOURCE_GROUP", "FABRIC_CAPACITY_NAME",
     "AZURE_CLIENT_ID", "AZURE_CLIENT_SECRET", "AZURE_TENANT_ID",
 }  # fmt: skip
 _LIVE_SOURCE_SECRETS = _WAREHOUSE_SECRETS | {
     "SP_TENANT_ID", "SP_CLIENT_ID", "SP_SITE_URL", "SP_CERT_PASSWORD",
     "FREE_ASKAMERICA_KEY", "KAGGLE_API_TOKEN", "STRIPE_API_KEY",
+    # SingleStore Cloud shared-tier workspace: a live source, not a warehouse (its spec is in the
+    # core-provisioning project, source-to-query-community-ext.spec.ts).
+    "SINGLESTORE_HOST", "SINGLESTORE_PORT", "SINGLESTORE_USERNAME", "SINGLESTORE_PASSWORD",
+    "SINGLESTORE_DATABASE",
 }  # fmt: skip
 _WAREHOUSE_UI = ("integration-suite-lanes.yml", "warehouse-ui")
 
@@ -369,7 +373,7 @@ def test_the_core_ui_lanes_credential_files_are_private_and_removed():
     # Maintainer 2026-11-10 ("Paid cloud resources"): the Fabric capacity is the run's own --
     # made by the prepare script, deleted (and read back gone) by the after-script whatever the
     # lane's outcome.
-    assert "scripts/fabric_e2e.py up" in prepare
+    assert 'scripts/fabric_e2e.py up "$GITHUB_ENV"' in prepare
     assert "scripts/fabric_e2e.py down" in after and "suspend_capacity()" not in after
     # REQ-254: the warehouses the cloud-warehouse spec wakes are stopped again, whatever happened.
     assert "stop_warehouse" in after and "suspend_warehouse" in after
@@ -389,13 +393,13 @@ def test_the_warehouse_lane_leaves_every_compute_it_runs_stopped_whatever_happen
     steps = {s.get("name"): s for s in job["steps"]}
     run_lane = [s.get("name") for s in job["steps"]].index("Run lane")
     for name, call in (
-        ("Delete this run's Fabric capacity", "scripts/fabric_e2e.py down"),
+        ("Delete this run's Fabric workspace and capacity", "scripts/fabric_e2e.py down"),
         ("Leave the Databricks warehouse stopped", "stop_warehouse"),
         ("Leave the Snowflake warehouse suspended", "suspend_warehouse"),
     ):
         step = steps[name]
         assert [s.get("name") for s in job["steps"]].index(name) > run_lane, name
-        if name == "Delete this run's Fabric capacity":
+        if name == "Delete this run's Fabric workspace and capacity":
             # Whenever the step that creates the capacity ran, whatever its outcome (below).
             assert step["if"] == _FABRIC_DOWN_IF, name
         else:
@@ -410,9 +414,33 @@ def test_the_warehouse_lane_creates_its_own_fabric_capacity_before_any_test():
         "jobs"
     ]["warehouse"]
     names = [s.get("name") for s in job["steps"]]
-    up = names.index("This run's Fabric capacity")
+    up = names.index("This run's Fabric capacity, workspace and warehouse")
     assert up < names.index("Run lane")
-    assert "scripts/fabric_e2e.py up" in job["steps"][up]["run"]
+    assert 'scripts/fabric_e2e.py up "$GITHUB_ENV"' in job["steps"][up]["run"]
+
+
+# Maintainer 2026-11-21: the Fabric workspace and warehouse are the run's own. Their endpoint,
+# database and workspace id are written by ``scripts/fabric_e2e.py up`` to $GITHUB_ENV, never read
+# from a standing secret.
+_FABRIC_RUN_OUTPUTS = ("FABRIC_SQL_SERVER", "FABRIC_DATABASE", "FABRIC_WORKSPACE_ID")
+
+
+def test_fabric_endpoint_database_and_workspace_are_run_outputs_not_secrets():
+    """No workflow passes, declares or reads a standing Fabric workspace, warehouse or endpoint,
+    and no step's own environment sets those names: a step-level value would hide the one
+    ``up`` wrote to $GITHUB_ENV."""
+    for path in sorted((REPO / ".github" / "workflows").glob("*.yml")):
+        text = path.read_text()
+        for name in _FABRIC_RUN_OUTPUTS:
+            assert f"secrets.{name}" not in text, f"{path.name}: secrets.{name}"
+    for where, step in _steps():
+        assert not set(step.get("env") or {}) & set(_FABRIC_RUN_OUTPUTS), where
+    for workflow in ("lane.yml", "integration-suite-lanes.yml"):
+        doc = yaml.safe_load((REPO / ".github" / "workflows" / workflow).read_text())
+        declared = set(doc[True]["workflow_call"].get("secrets") or {})
+        assert not declared & set(_FABRIC_RUN_OUTPUTS), workflow
+        for job in doc["jobs"].values():
+            assert not set(job.get("env") or {}) & set(_FABRIC_RUN_OUTPUTS), workflow
 
 
 # The delete step's condition: it runs whenever the create step ran, and only then.
@@ -434,30 +462,50 @@ def _fabric_test_files() -> set[str]:
     }
 
 
-def test_the_warehouse_lane_never_creates_a_fabric_capacity_and_selects_no_fabric_test():
-    """Maintainer 2026-11-11 ("skip fabric tests for now"): no lane selects a requires_fabric
-    test, so the capacity step never runs (assignToCapacity returns 403 until the CI service
-    principal is Admin on the Fabric workspace; run 42930869189). The delete step stays tied to
-    the create step's outcome, so it is skipped with it."""
+def _fabric_up_runs(condition: str, tests: str) -> bool:
+    """The create step's ``if:`` evaluated for a run's ``inputs.tests``. The condition may only be
+    ``inputs.tests == ''`` or'd with ``contains(inputs.tests, '<file>')`` clauses; anything else
+    fails here rather than being guessed at."""
+    runs = False
+    for clause in (c.strip() for c in condition.split("||")):
+        if clause == "inputs.tests == ''":
+            runs = runs or tests == ""
+            continue
+        named = re.fullmatch(r"contains\(inputs\.tests, '([^']+)'\)", clause)
+        assert named, f"unexpected clause in the Fabric capacity step's condition: {clause!r}"
+        runs = runs or named.group(1) in tests
+    return runs
+
+
+def test_the_warehouse_lane_creates_a_fabric_capacity_only_for_a_run_selecting_a_fabric_test():
+    """REQ-254: a lane run that selects no Fabric test creates no capacity. The whole lane (no
+    inputs.tests) still makes it; a targeted run makes it only when it names a test file that
+    reaches Fabric -- every such file, so none runs without one. The delete step runs whenever
+    the create step ran, whatever happened, and is skipped with it."""
     job = yaml.safe_load((REPO / ".github/workflows/integration-suite-lanes.yml").read_text())[
         "jobs"
     ]["warehouse"]
     steps = {s.get("name"): s for s in job["steps"]}
-    up = steps["This run's Fabric capacity"]
+    up = steps["This run's Fabric capacity, workspace and warehouse"]
     assert up["id"] == "fabric-capacity"
-    assert up["if"] is False  # YAML `if: false`: the step never runs
-    assert steps["Delete this run's Fabric capacity"]["if"] == _FABRIC_DOWN_IF
+    condition = up["if"]
+    fabric = _fabric_test_files()
+    assert fabric, "no integration test reaches Fabric: the condition below would be vacuous"
+    assert set(re.findall(r"contains\(inputs\.tests, '([^']+)'\)", condition)) == fabric
 
+    assert _fabric_up_runs(condition, "")
+    for f in sorted(fabric):
+        assert _fabric_up_runs(condition, f), f
+        assert _fabric_up_runs(
+            condition, f"tests/integration/test_google_sheets_source_e2e.py {f}::test_x"
+        ), f
+    # Run 42930869189: a targeted Google Sheets run made (and paid for) a capacity it never used.
+    assert not _fabric_up_runs(condition, "tests/integration/test_google_sheets_source_e2e.py")
+    assert not _fabric_up_runs(
+        condition, "tests/integration/test_metadata_export_purview_e2e.py::test_x"
+    )
 
-def test_run_lane_s_warehouse_lane_excludes_requires_fabric():
-    spec = importlib.util.spec_from_file_location("run_lane", REPO / "scripts/ci/run_lane.py")
-    run_lane = importlib.util.module_from_spec(spec)
-    sys.modules[spec.name] = run_lane
-    spec.loader.exec_module(run_lane)
-    assert "and not requires_fabric" in run_lane.LANES["warehouse"].marker
-    for name, lane in run_lane.LANES.items():
-        if name != "warehouse":
-            assert "requires_fabric" not in lane.marker.replace("not requires_fabric", ""), name
+    assert steps["Delete this run's Fabric workspace and capacity"]["if"] == _FABRIC_DOWN_IF
 
 
 def test_every_integration_file_reaching_fabric_carries_requires_fabric():
@@ -496,7 +544,8 @@ def test_the_ui_specs_on_live_warehouses_run_only_in_the_nightly_warehouse_lane(
     assert 'const WAREHOUSE_SPECS = ["**/source-to-query-cloud-warehouse.spec.ts"];' in config
     core = config[config.index('name: "core",') :]
     core = core[: core.index("},")]
-    assert "...WAREHOUSE_SPECS," in core and "grepInvert: WAREHOUSE_TITLES" in core
+    assert "...WAREHOUSE_SPECS," in core
+    assert "grepInvert: [WAREHOUSE_TITLES, ASKAMERICA_TITLES]" in core
     assert 'name: "warehouse",' in config
     workflows = REPO / ".github" / "workflows"
     for path in sorted(workflows.glob("*.yml")):
@@ -609,18 +658,21 @@ _RELEASE = REPO / ".github" / "workflows" / "build-dmg.yml"
 _LEAVES_THE_RUN = re.compile(
     r"gh release (upload|edit|create|view)|softprops/action-gh-release|pypi-publish|"
     r"attest-build-provenance|docker/login-action|\./\.github/actions/ensure-release|twine upload|"
-    r"docker push|oras push|skopeo copy|crane push|provisa connector push|--registry-password-env"
+    r"\./\.github/actions/attach-release-assets|"
+    r"docker push|oras push|skopeo copy|crane push|provisa connector push|--registry-password-env|"
+    r"actions/deploy-pages"
 )
 
 
 #: The orchestrator's own jobs, not legs: PyPI trusted publishing does not accept a token issued
 #: to a reusable workflow (pypa/gh-action-pypi-publish#166).
-_RELEASE_PYPI = ("publish-pypi", "publish-notebook-pypi", "publish-provisa-pypi")
-#: REQ-2071: provisa pins provisa-notebook at its own version, so provisa waits for it on PyPI.
-#: REQ-2225: the provisa wheel carries the platform connector block, so it waits for the image the
-#: block names, which the orchestrator pushes itself, after every build leg.
+#: The provisa server wheel is not among them: it outgrew PyPI's 10 GB project limit (alpha.510)
+#: and is installed from the release through the GitHub Pages index the publish leg writes.
+_RELEASE_PYPI = ("publish-pypi", "publish-notebook-pypi")
+#: REQ-2225: the provisa wheel carries the platform connector block, so the release that attaches
+#: it waits for the image the block names, which the orchestrator pushes itself, after every leg.
 _RELEASE_IMAGE_PUSH = "publish-connector-image"
-_RELEASE_PYPI_AFTER = {"publish-provisa-pypi": {"publish-notebook-pypi", _RELEASE_IMAGE_PUSH}}
+_RELEASE_PYPI_AFTER: dict[str, set[str]] = {}
 #: Every orchestrator job that is not a leg.
 _RELEASE_OWN = (*_RELEASE_PYPI, _RELEASE_IMAGE_PUSH)
 _RELEASE_PUBLISH = (
@@ -1068,7 +1120,7 @@ def test_the_reusable_workflows_are_checked_only_after_every_action_is():
     assert level_zero == {
         job for job, body in jobs.items() if str(body.get("name", "")).startswith("action / ")
     }
-    assert len(level_zero) == 12
+    assert len(level_zero) == 15
     assert jobs["level-1"]["needs"] == ["lane-results", "release-results"]
 
 
@@ -1165,7 +1217,10 @@ def test_a_ui_lane_can_be_run_for_named_specs_only(workflow):
     body = yaml.safe_load((REPO / ".github" / "workflows" / workflow).read_text())
     specs = body[True]["workflow_dispatch"]["inputs"]["specs"]
     assert (specs["type"], specs["required"], specs["default"]) == ("string", False, "")
-    for job, given in body["jobs"].items():
+    # The lane's jobs; the Trino lanes' plugin-priming job runs no Playwright.
+    lanes = {j: g for j, g in body["jobs"].items() if g.get("uses") == _LANE_WORKFLOW}
+    assert lanes, workflow
+    for job, given in lanes.items():
         with_ = given["with"]
         assert "PROVISA_E2E_SPECS=${{ inputs.specs }}" in with_["env"].splitlines(), job
         run = with_["run"]
@@ -1279,8 +1334,10 @@ def test_no_workflow_or_action_installs_playwright_with_a_full_apt_refresh():
 @pytest.mark.parametrize("name", ["ui-e2e-trino.yml", "ui-e2e-swap-amd64.yml"])
 def test_the_trino_and_swap_ui_lanes_install_plain_chromium(name):
     body = yaml.safe_load((REPO / ".github" / "workflows" / name).read_text())
-    (job,) = body["jobs"].values()
+    (job,) = [j for j in body["jobs"].values() if j.get("uses") == _LANE_WORKFLOW]
     assert job["with"]["ui"] == "chromium"
+    # The lane mounts the plugin jars a job of the same run primed; its stack script fetches none.
+    assert job["with"]["trino-plugins"] is True and job["needs"] == ["trino-plugins"]
 
 
 _MSSQL_ODBC = REPO / ".github" / "actions" / "mssql-odbc" / "action.yml"
@@ -1328,3 +1385,246 @@ def test_the_mssql_odbc_install_keeps_its_retries_and_has_no_fallback():
     miss = next(s for s in _odbc_steps() if "!= 'true'" in s.get("if", ""))
     assert "Acquire::Retries=5" in miss["env"]["APT_OPTS"]
     assert "ACCEPT_EULA=Y" in miss["run"]
+
+
+def _npm_audit_gate():
+    spec = importlib.util.spec_from_file_location(
+        "npm_audit_gate", REPO / "scripts/ci/npm_audit_gate.py"
+    )
+    gate = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(gate)
+    return gate
+
+
+def test_the_cve_audit_runs_the_npm_gate_over_every_npm_lockfile():
+    """Every committed npm lockfile is audited, from the lockfile alone (no install)."""
+    job = yaml.safe_load((REPO / ".github/workflows/cve-audit.yml").read_text())["jobs"][
+        "npm-audit"
+    ]
+    setup = next(s for s in job["steps"] if s.get("uses") == "./.github/actions/setup-ui")
+    assert setup["with"]["install"] == "false"
+    runs = [s["run"] for s in job["steps"] if "scripts/ci/npm_audit_gate.py" in s.get("run", "")]
+    assert len(runs) == 1
+    audited = set(runs[0].split("npm_audit_gate.py", 1)[1].split())
+    lockfiles = {
+        str(p.parent.relative_to(REPO))
+        for pattern in ("*/package-lock.json", "*/*/package-lock.json")
+        for p in REPO.glob(pattern)
+        if "node_modules" not in p.parts
+    }
+    assert lockfiles and audited == lockfiles
+
+
+def test_the_npm_gate_allow_list_names_dev_advisories_with_a_reason():
+    for ghsa, why in _npm_audit_gate().ALLOW.items():
+        assert re.fullmatch(r"GHSA(-[23456789cfghjmpqrvwx]{4}){3}", ghsa), ghsa
+        assert len(why.split()) >= 8, f"{ghsa}: say which package carries it and what blocks it"
+
+
+def _audit_report(*advisories: tuple[str, str, str]) -> dict:
+    """An npm audit --json report holding (package, severity, GHSA id) advisories."""
+    vulns: dict = {}
+    for package, severity, ghsa in advisories:
+        via = {
+            "name": package,
+            "severity": severity,
+            "title": "t",
+            "url": f"https://github.com/advisories/{ghsa}",
+        }
+        vulns.setdefault(package, {"via": []})["via"].append(via)
+    return {"vulnerabilities": vulns}
+
+
+def test_the_npm_gate_fails_a_production_advisory_even_when_allowed():
+    gate = _npm_audit_gate()
+    prod = _audit_report(("dompurify", "high", "GHSA-aaaa-bbbb-cccc"))
+    problems = gate.violations(
+        [("ui", prod, prod)], {"GHSA-aaaa-bbbb-cccc": "listed by mistake for a prod package"}
+    )
+    assert any("production GHSA-aaaa-bbbb-cccc" in p for p in problems)
+
+
+def test_the_npm_gate_passes_an_allowed_dev_advisory_and_fails_an_unlisted_one():
+    gate = _npm_audit_gate()
+    full = _audit_report(
+        ("vite", "critical", "GHSA-aaaa-bbbb-cccc"), ("zod", "high", "GHSA-dddd-eeee-ffff")
+    )
+    problems = gate.violations([("ui", full, _audit_report())], {"GHSA-aaaa-bbbb-cccc": "why"})
+    assert problems == ["ui: dev-only GHSA-dddd-eeee-ffff zod high: t (not in ALLOW)"]
+
+
+def test_the_npm_gate_ignores_moderate_and_fails_a_stale_allow_entry():
+    gate = _npm_audit_gate()
+    full = _audit_report(("glob", "moderate", "GHSA-aaaa-bbbb-cccc"))
+    assert gate.violations([("ui", full, full)], {}) == []
+    stale = gate.violations([("ui", full, full)], {"GHSA-aaaa-bbbb-cccc": "why"})
+    assert stale == [
+        "ALLOW names GHSA-aaaa-bbbb-cccc, which no dev-only advisory matches: remove it"
+    ]
+
+
+# Node: the repository's one pin is the root .nvmrc. CI, the image's renderer stage and the NixOS
+# guest build on it, so a bump in one place without the others fails here.
+_NVMRC = REPO / ".nvmrc"
+
+
+def _node_pin() -> str:
+    return _NVMRC.read_text().strip()
+
+
+def _setup_node_steps():
+    for where, step in _steps():
+        yield where, step
+    for action in ACTIONS:
+        for step in yaml.safe_load(action.read_text())["runs"]["steps"]:
+            yield f"{action.parent.name}:{step.get('name') or step.get('uses')}", step
+
+
+def test_node_is_pinned_once_at_the_repository_root():
+    import subprocess
+
+    tracked = subprocess.run(
+        ["git", "-C", str(REPO), "ls-files", "--", "*.nvmrc", ".nvmrc"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.split()
+    assert tracked == [".nvmrc"], f"Node pins tracked: {tracked}; the one pin is the root .nvmrc"
+    assert re.fullmatch(r"\d+\.\d+\.\d+", _node_pin()), f".nvmrc is {_node_pin()!r}, not x.y.z"
+
+
+def test_every_setup_node_reads_the_nvmrc_and_hard_codes_no_version():
+    setup_node = 0
+    for where, step in _setup_node_steps():
+        with_ = step.get("with") or {}
+        assert "node-version" not in with_, (
+            f"{where} hard-codes node-version {with_['node-version']}"
+        )
+        if (step.get("uses") or "").startswith("actions/setup-node"):
+            setup_node += 1
+            assert with_.get("node-version-file") == ".nvmrc", (
+                f"{where} sets up Node without node-version-file: .nvmrc"
+            )
+    assert setup_node, "no actions/setup-node step found"
+
+
+def test_no_workflow_or_action_names_a_node_version_anywhere():
+    for path in [*WORKFLOWS, *ACTIONS]:
+        for n, line in enumerate(path.read_text().splitlines(), 1):
+            assert not re.search(r"\bnode-version\s*:", line), f"{path.name}:{n}: {line.strip()}"
+
+
+def test_the_images_node_is_the_nvmrc():
+    tags = re.findall(r"^FROM node:(\S+?)-", (REPO / "Dockerfile").read_text(), flags=re.M)
+    assert tags == [_node_pin()], f"Dockerfile node images {tags}, .nvmrc {_node_pin()}"
+
+
+def test_the_nixos_guests_node_is_the_nvmrc_major():
+    nix = (REPO / "packaging" / "nixos" / "configuration.nix").read_text()
+    majors = re.findall(r"\bnodejs_(\d+)\b", nix)
+    assert majors == [_node_pin().split(".")[0]], f"nix nodejs {majors}, .nvmrc {_node_pin()}"
+
+
+def test_the_uis_engines_admit_the_nvmrc():
+    import json
+
+    engines = json.loads((REPO / "provisa-ui" / "package.json").read_text())["engines"]["node"]
+    floor = re.fullmatch(r">=(\d+)\.(\d+)\.(\d+)", engines)
+    assert floor, f"provisa-ui engines.node is {engines!r}, expected >=x.y.z"
+    pin = tuple(int(x) for x in _node_pin().split("."))
+    assert tuple(int(x) for x in floor.groups()) <= pin, f"engines {engines} refuses .nvmrc {pin}"
+
+
+# --- the Trino plugin jars: primed once per workflow run, restored before every test ------------
+
+_PLUGINS_ACTION = "./.github/actions/trino-plugins"
+_LANE_WORKFLOW = "./.github/workflows/lane.yml"
+
+
+def _plugin_phases(body: dict) -> list[str]:
+    """The plugin-cache phases a job runs: its own action steps, or `restore` for a call of the
+    lane workflow with trino-plugins switched on (literally or by an expression)."""
+    if body.get("uses") == _LANE_WORKFLOW:
+        return ["restore"] if (body.get("with") or {}).get("trino-plugins", False) else []
+    return [
+        (s.get("with") or {}).get("phase")
+        for s in body.get("steps") or []
+        if s.get("uses") == _PLUGINS_ACTION
+    ]
+
+
+def _needed(jobs: dict, job: str) -> set[str]:
+    """Every job ``job`` waits for, directly or through another."""
+    seen: set[str] = set()
+    todo = [job]
+    while todo:
+        needs = jobs[todo.pop()].get("needs") or []
+        for n in [needs] if isinstance(needs, str) else needs:
+            if n not in seen:
+                seen.add(n)
+                todo.append(n)
+    return seen
+
+
+def test_every_plugin_restore_waits_for_a_job_that_primed_the_cache():
+    """Release 510 (run 44081179966): each parallel lane missed an evicted plugin cache and
+    fetched the jars from Maven Central inside collection at the same moment; core 17/18 got HTTP
+    429 as an INTERNALERROR. Now one job per workflow run primes the cache (`phase: prime`: a hit,
+    or one download, checksum-verified, saved at once) and every job that restores it (`phase:
+    restore`, which fails on a miss and verifies each jar) waits for that job, so the cache step
+    precedes pytest and no lane ever downloads."""
+    restoring = []
+    for path in WORKFLOWS:
+        if path.name == "lane.yml":
+            continue  # the callee: each caller's job is checked where it calls it
+        jobs = yaml.safe_load(path.read_text()).get("jobs") or {}
+        primers = {j for j, body in jobs.items() if "prime" in _plugin_phases(body)}
+        for job, body in jobs.items():
+            phases = _plugin_phases(body)
+            assert set(phases) <= {"prime", "restore"}, f"{path.name}:{job}: {phases}"
+            if "restore" in phases and "prime" not in phases:
+                restoring.append(f"{path.name}:{job}")
+                assert _needed(jobs, job) & primers, (
+                    f"{path.name}:{job} restores the Trino plugins without waiting for a job "
+                    f"that primes them (primers here: {sorted(primers)})"
+                )
+    assert restoring, "no job restores the Trino plugins"
+
+
+def test_the_lane_workflow_restores_the_plugins_before_its_lane_and_saves_none():
+    steps = yaml.safe_load((REPO / ".github" / "workflows" / "lane.yml").read_text())["jobs"][
+        "lane"
+    ]["steps"]
+    names = [s.get("name") for s in steps]
+    restore = steps[names.index("Restore Trino plugins")]
+    assert restore["uses"] == _PLUGINS_ACTION and restore["with"] == {"phase": "restore"}
+    assert names.index("Restore Trino plugins") < names.index("Run lane")
+    assert [s for s in steps if s.get("uses") == _PLUGINS_ACTION] == [restore]
+
+
+def test_no_workflow_fetches_the_conftest_plugin_jars_outside_the_action():
+    """The jars come from the action's one fetch per pin; a workflow step of its own that ran the
+    fetch would be a second, uncached path to Maven Central."""
+    for where, step in _steps():
+        assert "trino_plugins.py fetch" not in (step.get("run") or ""), where
+
+
+def test_nothing_in_ci_names_the_plugin_jars_maven_location_but_the_pin():
+    """Maven Central is reached for the plugin jars from one place, tests/trino_plugins.py, run by
+    the action's priming job. The UI Trino and swap lanes' stack script and the release's plugin
+    job each fetched the jars with curl of their own, once per job and run, outside the cache
+    and the checksums."""
+    from tests import trino_plugins
+
+    maven = trino_plugins._TRINO_PLUGIN_MAVEN
+    sources = [
+        *WORKFLOWS,
+        *(REPO / ".github" / "actions").rglob("*.y*ml"),
+        *(REPO / "scripts" / "ci").rglob("*"),
+    ]
+    named = [
+        str(p.relative_to(REPO))
+        for p in sources
+        if p.is_file() and p.suffix in {".yml", ".yaml", ".sh", ".py"} and maven in p.read_text()
+    ]
+    assert named == []

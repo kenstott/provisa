@@ -64,7 +64,7 @@ async def plane(monkeypatch, control_plane) -> Database:
 
 
 async def seed(db: Database) -> None:
-    """The grants the scenarios take a role off; shared with the PostgreSQL module."""
+    """The grants the scenarios take a role off."""
     both = ["leaving", "staying"]
     async with db.acquire() as conn:
         for role_id in ("leaving", "staying"):
@@ -147,7 +147,12 @@ def commits(plane) -> Iterator[list[str]]:
         return "sha"
 
     plane.model = ModelPlane(ORG, "prod")
-    model_change.attach(object(), commit=_write_through, projected=PROJECTED)  # type: ignore[arg-type]
+    model_change.attach(
+        object(),  # type: ignore[arg-type]
+        commit=_write_through,
+        projected=PROJECTED,
+        uri_org=lambda org_id: org_id,
+    )
     yield asked
     model_change.detach()
 
@@ -223,7 +228,8 @@ async def test_a_table_revoke_takes_the_role_off_every_column_grant_and_only_tha
     grants = await _grants(plane)
     assert grants["table1"] == [["staying"], ["staying"], ["staying"]]
     assert grants["table2"] == [["leaving", "staying"]] * 3  # another table is not touched
-    assert commits == ["revoke table grants leaving on table 1"]
+    # REQ-1524: the table by its model URI, never its serial.
+    assert commits == ["revoke grants of role leaving on provisa://acme/sales/tables/orders"]
     assert rebuilds == [1]
 
 
@@ -237,7 +243,8 @@ async def test_an_object_revoke_takes_the_role_off_its_assigned_roles(
     result = await _object(_info(), "leaving", kind, name)
     assert (result.success, result.code) == (True, "schema.role_revoked_from_object")
     assert (await _grants(plane))[kind.value] == [["staying"]]
-    assert commits == [f"revoke {kind.value} grants leaving on {name}"]
+    keyword = "metrics" if kind == GrantKind.METRIC else "commands"
+    assert commits == [f"revoke grants of role leaving on provisa://acme/{keyword}/{name}"]
 
 
 async def test_a_revoke_of_a_role_not_on_the_grant_is_a_success_that_changes_nothing(

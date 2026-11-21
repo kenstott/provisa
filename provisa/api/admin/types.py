@@ -32,6 +32,19 @@ else:
 # Requirements: REQ-012, REQ-013, REQ-019, REQ-040, REQ-041, REQ-042, REQ-135, REQ-247, REQ-252, REQ-262, REQ-402
 
 
+class ClientText:  # REQ-2087
+    """A typed answer's ``message`` and ``error``, told as a client is told an error's text: the
+    admin API answers them in a 200, past the error-response middleware."""
+
+    def __post_init__(self) -> None:
+        from provisa.api.engine_error_names import client_text
+
+        for name in ("message", "error"):
+            said = getattr(self, name, None)
+            if isinstance(said, str):
+                setattr(self, name, client_text(said))
+
+
 @strawberry.type
 class CalendarType:  # REQ-962: a named, versioned snapshot-boundary calendar
     name: str
@@ -132,6 +145,8 @@ class SourceType:  # REQ-012
     password_ref: str | None = ""
     change_signal: str = "ttl"  # REQ-929: source default change signal (inherited by its tables)
     is_system: bool = False  # a source Provisa runs for itself: not offered by Register table
+    # REQ-1921: out of production until put back (withdrawSource / putBackSource).
+    withdrawn: bool = False
     cdc: SourceCdcConfigType | None = None  # REQ-824: source-level CDC transport
 
 
@@ -215,7 +230,7 @@ class DataProductType:  # REQ-1634, REQ-1660
 
 
 @strawberry.type
-class DataProductFindingType:  # REQ-2146
+class DataProductFindingType(ClientText):  # REQ-2146
     kind: str
     code: str
     message: str
@@ -275,6 +290,9 @@ class TagType:  # REQ-1373, REQ-1375
     requires_citation: bool = False
     # REQ-2208 (THE TAGS REPORT): required on every object of the kinds applies_to lists.
     required: bool = False
+    # REQ-2208 (A TAG IS OFFERED BY DOMAIN): the domains whose objects it is offered on; none
+    # names every domain, as a source's allowed_domains does.
+    allowed_domains: list[str] = strawberry.field(default_factory=list)
     # REQ-2208: the sections that define the tag, and whether one of them changed or is gone.
     citations: list[LibraryCitationType] = strawberry.field(default_factory=list)
     needs_review: bool = False
@@ -479,7 +497,10 @@ class RegisteredTableType:  # REQ-013, REQ-014, REQ-016, REQ-135
     cache_ttl: int | None
     replicate: int | None  # REQ-826: NULL = inherit source
     region: str | None  # REQ-1921: where its data lives; null = no region
-    draft: bool  # REQ-1921: out of service until its domain's owners release it
+    # REQ-1921: out of production until put back -- itself (withdrawTable / putBackTable), and
+    # its source (withdrawSource / putBackSource). Listed only to a caller who may preview it.
+    withdrawn: bool
+    source_withdrawn: bool
     row_materialize: bool  # REQ-1865: replicated row by row, fetched by key as statements ask
     load_protected: bool | None  # REQ-1141: NULL = inherit source
     off_peak_window: str | None  # REQ-1141: per-table window override
@@ -487,6 +508,8 @@ class RegisteredTableType:  # REQ-013, REQ-014, REQ-016, REQ-135
     gql_naming_convention: str | None
     watermark_column: str | None
     columns: list[TableColumnType]
+    # REQ-413: when the table was registered (ISO 8601).
+    registered_at: str
     # REQ-2074: null for a caller without view_governance, as a column's grant lists are.
     write_grants: list[WriteGrantType] | None = None
     unique_constraints: list[UniqueConstraintType] = strawberry.field(
@@ -544,6 +567,9 @@ class RegisteredTableType:  # REQ-013, REQ-014, REQ-016, REQ-135
     mv_persist: str = "replace"  # REQ-965: replace | append | upsert
     mv_primary_key: list[str] = strawberry.field(default_factory=list)  # REQ-970: row identity
     mv_incremental: bool = False  # REQ-969: incremental maintenance
+    mv_rebuild_every: int | None = (
+        None  # REQ-2249: whole rebuild interval of a view kept by @change
+    )
     mv_calendar: str | None = None  # REQ-962: periodic-snapshot calendar (None = not periodic)
     mv_grain: str | None = None  # REQ-962/1168: nesting grain ("daily".."annual") or "3WE"/"LFR"
     mv_allowed_lateness: float = 0.0  # REQ-961: seal-deadline slack (s)
@@ -575,6 +601,22 @@ class RegisteredTableType:  # REQ-013, REQ-014, REQ-016, REQ-135
         return await summarize_table_policy(self)
 
     @strawberry.field
+    async def incremental_option(self) -> IncrementalOptionType:  # REQ-2249
+        """Whether the view's incremental setting may be on. A view calling a code command may be
+        kept incrementally only through its resolver's @change function for it; any other table
+        is not judged here (available)."""
+        from provisa.api.app import state
+        from provisa.mv.change_refresh import code_call, incremental_option
+
+        called = code_call(self.view_sql, state.tracked_functions) if self.view_sql else None
+        if called is None:
+            return IncrementalOptionType(available=True)
+        option = await incremental_option(state, called[0], self.table_name)
+        return IncrementalOptionType(
+            available=option.available, code=option.code, reason=option.reason
+        )
+
+    @strawberry.field
     def time_travel(self) -> str | None:  # REQ-1163
         """How the relation travels in time: "bitemporal" (it takes as_of and as_recorded),
         "snapshot" (an Iceberg or Delta table: as_recorded alone), or null (it keeps no versions).
@@ -585,6 +627,7 @@ class RegisteredTableType:  # REQ-013, REQ-014, REQ-016, REQ-135
         row = {
             "id": self.id,
             "source_id": self.source_id,
+            "schema_name": self.schema_name,
             "table_name": self.table_name,
             "view_sql": self.view_sql,
         }
@@ -858,7 +901,7 @@ class CombinedFileType:  # REQ-788
 
 
 @strawberry.type
-class FileColumnsDifferType:  # REQ-788
+class FileColumnsDifferType(ClientText):  # REQ-788
     """A file whose columns differ from the others': what it lacks, what it adds, or why it could
     not be read."""
 
@@ -895,7 +938,7 @@ class KaggleDatasetType:  # REQ-1783
 
 
 @strawberry.type
-class KaggleStageResultType:  # REQ-1780/1781/1782
+class KaggleStageResultType(ClientText):  # REQ-1780/1781/1782
     """A staged dataset bundle, ready to register as ONE `files`-type Source pointed at
     `directory` (Amended 2026-09-19: was one plain csv/parquet Source PER FILE — see
     KaggleStageResultType's history in requirements.yaml for why that changed). v1 scope:
@@ -966,6 +1009,11 @@ class RelationshipType:  # REQ-019, REQ-020, REQ-158, REQ-413
     via_label_source: str | None = None
     # REQ-2099: the target's parameters this edge feeds, each from a source column.
     parameters: list["RelationshipParameterType"] = strawberry.field(default_factory=list)
+    # REQ-2249: the code resolver set this edge belongs to; changed and retired only through it.
+    code_resolver: str | None = None
+    # REQ-1921: withdrawn while an end (or its junction) is withdrawn or retired -- derived, in no
+    # compiled graph. Listed only when asked for, to a caller who may preview those ends.
+    withdrawn: bool = False
 
     @strawberry.field
     def auto_suggested(self) -> bool:
@@ -1150,9 +1198,10 @@ class SourceInput:  # REQ-012
     max_live_concurrency: int | None = None  # REQ-1909: None = no cap; else >= 1
     sentinel_path: str | None = None  # REQ-1148
     download_from: str | None = None  # REQ-2113
-    # REQ-2113: a single-file CSV or Parquet source's table set up with it, as a draft, in this
-    # domain, named and typed from the file as Register Table proposes it. Not stored on the source.
-    register_table_draft: bool = False
+    # REQ-2113: a single-file CSV or Parquet source's table set up with it, live (REQ-1921), in
+    # this domain, named and typed from the file as Register Table proposes it. Not stored on the
+    # source.
+    register_table_from_file: bool = False
     table_domain_id: str | None = None
     freshness_gate: bool = False  # REQ-860
     cdc: SourceCdcConfigInput | None = None  # REQ-824: source-level CDC transport
@@ -1204,6 +1253,9 @@ class TagInput:  # REQ-1373
     # REQ-2208 (THE TAGS REPORT): required on every object of the kinds applies_to lists; the tags
     # report lists each object without it, nothing is refused.
     required: bool = False
+    # REQ-2208 (A TAG IS OFFERED BY DOMAIN): the domains whose objects the tag is offered on, none
+    # meaning every domain. Left out (None), a saved tag keeps the list it has; a new one names none.
+    allowed_domains: list[str] | None = None
 
 
 @strawberry.input
@@ -1259,6 +1311,27 @@ class TagAssignmentInput:  # REQ-1377
     # REQ-2145: on a column, put the tag on the column's term instead, so it covers every column
     # with the same meaning, those to come included.
     also_term: bool = False
+
+
+@strawberry.input
+class TagTargetInput:  # REQ-2208
+    """An object a tag may be put on, named as a ``TagAssignmentInput`` names it, without a tag:
+    the tags offered on it are asked of the server, which knows the object's domains."""
+
+    object_type: str  # one of models.TAG_OBJECT_TYPES
+    source_id: str | None = None
+    table_id: int | None = None
+    column_name: str | None = None
+    relationship_id: str | None = None
+    command_name: str | None = None
+    term_id: int | None = None
+    product_id: str | None = None
+    document_id: int | None = None
+    section_heading: str | None = None
+    section_page: int | None = None
+    rls_rule_id: int | None = None
+    role_id: str | None = None
+    metric_name: str | None = None
 
 
 @strawberry.input
@@ -1427,6 +1500,9 @@ class TableInput:  # REQ-013, REQ-016, REQ-133, REQ-135, REQ-252
     mv_persist: str = "replace"  # REQ-965: replace | append | upsert
     mv_primary_key: list[str] = strawberry.field(default_factory=list)  # REQ-970: row identity
     mv_incremental: bool = False  # REQ-969: incremental maintenance
+    mv_rebuild_every: int | None = (
+        None  # REQ-2249: whole rebuild interval of a view kept by @change
+    )
     mv_calendar: str | None = None  # REQ-962: periodic-snapshot calendar (None = not periodic)
     mv_grain: str | None = None  # REQ-962/1168: nesting grain ("daily".."annual") or "3WE"/"LFR"
     mv_allowed_lateness: float = 0.0  # REQ-961: seal-deadline slack (s)
@@ -1447,7 +1523,6 @@ class TableInput:  # REQ-013, REQ-016, REQ-133, REQ-135, REQ-252
     role_ttl: list[RoleTtlInput] | None = strawberry.UNSET  # REQ-1907: the whole list
     replicate: int | None = strawberry.UNSET  # REQ-826: null inherits the source's value
     write_grants: list[WriteGrantInput] | None = strawberry.UNSET  # REQ-2074: the whole set
-    draft: bool | None = strawberry.UNSET  # REQ-1921: false releases it
     # REQ-1934, REQ-2109: row rules of this table (table_id is the table being saved), saved with
     # it: a profiler result table is registered with the rules its profiled table has.
     row_rules: list[RLSRuleInput] | None = strawberry.UNSET
@@ -1500,6 +1575,82 @@ class RelationshipInput:  # REQ-019, REQ-020, REQ-158, REQ-413
     # each lost tag confirmed, or carried to the term the column moves to.
     confirm_tag_loss: list[str] = strawberry.field(default_factory=list)
     carry_tags: bool = False
+
+
+@strawberry.type
+class JoinThroughType:  # REQ-1586
+    """What joining two relationships through the table they share makes: one junction-backed
+    relationship from ``source_table`` to ``target_table`` through ``via_table``, many-to-many,
+    named ``name`` (told apart as generated names are, REQ-415). ``shape``: ``junction`` (the two
+    refer from the middle table) or ``shared_dimension`` (the two refer to it). ``attributes``:
+    the middle table's columns that are no key of the join."""
+
+    shape: str
+    name: str
+    source_table: str
+    source_column: str
+    target_table: str
+    target_column: str
+    via_table: str
+    via_source_column: str
+    via_target_column: str
+    attributes: list[str]
+
+
+@strawberry.input
+class CodeResolverInput:  # REQ-2249
+    """A code resolver set as the form saves it: the resolver relating ``source_table`` to
+    ``target_table``, each table's key, the resolver's columns carrying them, and how often its
+    landed matches are worked out again at the latest (provisa/api/admin/code_resolver.py)."""
+
+    id: str
+    resolver: str
+    source_table: str
+    source_column: str
+    source_match: str
+    target_table: str
+    target_column: str
+    target_match: str
+    refresh_interval: int = 300
+    #: Its landed matches kept by the resolver's @change function, rebuilt whole every
+    #: ``rebuild_every`` seconds (required while on).
+    incremental: bool = False
+    rebuild_every: int | None = None
+
+
+@strawberry.type
+class IncrementalOptionType:  # REQ-2249
+    """Whether a view's incremental setting may be on. When not, ``code`` and ``reason`` say why
+    (the form disables the setting with that reason)."""
+
+    available: bool
+    code: str | None = None
+    reason: str | None = None
+
+
+@strawberry.type
+class CodeResolverType:  # REQ-2249
+    """A code resolver set in service, read back from its three objects."""
+
+    id: str
+    resolver: str
+    source_table: str
+    source_column: str
+    source_match: str
+    target_table: str
+    target_column: str
+    target_match: str
+    refresh_interval: int
+    incremental: bool = False
+    rebuild_every: int | None = None
+
+    @strawberry.field
+    async def incremental_option(self) -> IncrementalOptionType:
+        """Whether its landed matches may be kept incrementally: only when the resolver's source
+        declares a @change function for the set's bridge (named by the set's id)."""
+        from provisa.api.admin.code_resolver import incremental_option
+
+        return await incremental_option(self.resolver, self.id)
 
 
 @strawberry.input
@@ -1617,7 +1768,9 @@ class DqCheckColumnType:  # REQ-1443 clause 7
 
 
 @strawberry.type
-class DqCheckCatalogType:  # REQ-1443 clause 7: the picker's offer, scoped to the real dataset
+class DqCheckCatalogType(
+    ClientText
+):  # REQ-1443 clause 7: the picker's offer, scoped to the real dataset
     """``columns`` is empty and ``error`` non-null when the contract's dataset resolves to no
     governed table — the same failure the registration reports, surfaced while the operator is still
     editing rather than at scan time."""
@@ -1646,7 +1799,7 @@ class DqCheckBuildInput:  # REQ-1443 clause 7
 
 
 @strawberry.type
-class DqCheckDefinitionType:  # REQ-1443 clause 7
+class DqCheckDefinitionType(ClientText):  # REQ-1443 clause 7
     """One built check's own text, or the reason it could not be built."""
 
     definition: str = ""
@@ -1662,7 +1815,9 @@ class QueryPreviewColumnType:  # REQ-1670, REQ-1683
 
 
 @strawberry.type
-class QueryPreviewType:  # REQ-1670/REQ-1683: a query preview for Register Table on a query-API source
+class QueryPreviewType(
+    ClientText
+):  # REQ-1670/REQ-1683: a query preview for Register Table on a query-API source
     """``error`` is non-null when the source is unreachable, the query fails, or a column returns
     a node/list instead of a scalar; the form keeps the operator's text and shows the message."""
 
@@ -1681,7 +1836,7 @@ class QdrantVectorType:  # REQ-1983: one vector of a Qdrant collection
 
 
 @strawberry.type
-class DqContractType:  # REQ-1443: the parsed contract behind the builder panel
+class DqContractType(ClientText):  # REQ-1443: the parsed contract behind the builder panel
     """``error`` is non-null when the raw text does not parse or names no dataset; the panel keeps
     the operator's text and shows the message rather than replacing it with an empty builder."""
 
@@ -1692,7 +1847,9 @@ class DqContractType:  # REQ-1443: the parsed contract behind the builder panel
 
 
 @strawberry.type
-class DqContractTextType:  # REQ-1443: edited rows serialized back into the contract's own dialect
+class DqContractTextType(
+    ClientText
+):  # REQ-1443: edited rows serialized back into the contract's own dialect
     """The inverse of :class:`DqContractType`. Serialization is a server call so the dialect has one
     implementation; ``error`` carries a rejected build (an unparseable check body, a dataset that is
     not the three-part form) rather than emitting text the checker would refuse."""
@@ -1702,7 +1859,7 @@ class DqContractTextType:  # REQ-1443: edited rows serialized back into the cont
 
 
 @strawberry.type
-class DqDryRunType:  # REQ-1443 clause 7: outcomes WITHOUT landing them
+class DqDryRunType(ClientText):  # REQ-1443 clause 7: outcomes WITHOUT landing them
     """The failure mode this prevents is a contract that lands nothing but passing rows because its
     dataset name resolved somewhere else — so ``rows_tested`` and the per-check outcomes are shown as
     the checker reported them, not summarized to a verdict."""
@@ -1920,7 +2077,7 @@ class HotTableStatType:
 
 
 @strawberry.type
-class ReplicaIndexType:  # REQ-2015
+class ReplicaIndexType(ClientText):  # REQ-2015
     """One index a replica's standing landing asked for, and how it stands."""
 
     name: str
@@ -2095,7 +2252,7 @@ class RegionChoicesType:  # REQ-1921
 
 
 @strawberry.type
-class MutationResult:  # REQ-533
+class MutationResult(ClientText):  # REQ-533
     success: bool
     message: str
     # Hybrid server i18n (REQ-1350): stable code + params let the UI render
@@ -2107,15 +2264,13 @@ class MutationResult:  # REQ-533
 @strawberry.type
 class TableAccessType:  # REQ-2234
     """The ways to reach a registered table, each ready to copy. ``pgwire`` and ``rest`` are None
-    where that listener or surface is not serving. ``draft``: the table is a draft, reached this
-    way by a role holding org_admin alone (REQ-1921, A DRAFT IS SERVED TO ORG_ADMIN)."""
+    where that listener or surface is not serving."""
 
     graphql: str
     sql: str
     pgwire: str | None
     rest: str | None
     mcp: str
-    draft: bool
 
 
 @strawberry.type

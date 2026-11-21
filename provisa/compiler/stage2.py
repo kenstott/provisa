@@ -338,13 +338,13 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, RE
     source_types: dict[str, str] | None = None,
     engine=None,
     source_hints: dict[str, dict[str, str]] | None = None,
-    draft_reach: Callable[[], frozenset[str] | None] | None = None,
+    withdrawn_reach: Callable[[], frozenset[str] | None] | None = None,
 ) -> GovernanceContext:
     """Build GovernanceContext from server state for a given role.
 
-    ``draft_reach``: asked only where the model table is in this compilation, the domains whose
-    drafts' rows of it the role reads (security.rights.draft_reach): None for every domain, empty
-    for none. Not given: none.
+    ``withdrawn_reach``: asked only where the model table is in this compilation, the domains
+    whose withdrawn tables' rows of it the role reads (security.rights.withdrawn_reach): None for
+    every domain, empty for none. Not given: none.
 
     Args:
         role_id: The requesting role.
@@ -421,7 +421,7 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, RE
         Capability,
         acts_in_domain,
         column_served,
-        DRAFT_ROWS_VIEW,
+        WITHDRAWN_ROWS_VIEW,
         compute_meta_row_scope,
         has_capability,
         reaches_domain,
@@ -586,24 +586,26 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, RE
     # two described-table meta views (registered_tables_meta.id / table_columns_meta.table_id), so it
     # flows through the SAME apply_governance WHERE-injection as every other RLS rule — one code path.
     meta_scope = compute_meta_row_scope(role, tables, relationships)
-    # REQ-1921, A DRAFT IS SERVED TO ORG_ADMIN: a draft's row is read by a role holding table
-    # registration in its domain (draft_reach), and by no other; decided only where the model
-    # table is in this compilation, the one table it is about.
-    _draft_rows = [
+    # REQ-1921: a withdrawn table's row is read by a role holding table registration in its
+    # domain (withdrawn_reach), and by no other; decided only where the model table is in this
+    # compilation, the one table it is about.
+    _withdrawn_rows = [
         tm
         for tm in {tm.table_id: tm for tm in ctx.tables.values()}.values()
         if getattr(tm, "domain_id", None) == META_DOMAIN_ID
-        and getattr(tm, "table_name", "") == DRAFT_ROWS_VIEW
+        and getattr(tm, "table_name", "") == WITHDRAWN_ROWS_VIEW
     ]
     reach: frozenset[str] | None = (
-        draft_reach() if _draft_rows and draft_reach is not None else frozenset()
+        withdrawn_reach() if _withdrawn_rows and withdrawn_reach is not None else frozenset()
     )
-    # The drafts' rows it reads, beside the rows of its scope: every one, or those of its domains.
-    drafts_read: exp.Expr | None = (  # pyright: ignore[reportPrivateImportUsage]
-        exp.column("draft")
+    # The withdrawn rows it reads, beside the rows of its scope: every one, or those of its
+    # domains.
+    out_of_service = exp.column("withdrawn")
+    withdrawn_read: exp.Expr | None = (  # pyright: ignore[reportPrivateImportUsage]
+        out_of_service.copy()
         if reach is None
         else exp.and_(
-            exp.column("draft"),
+            out_of_service.copy(),
             _in_list(exp.column("domain_id"), [exp.Literal.string(d) for d in sorted(reach)]),
             copy=False,
         )
@@ -643,18 +645,20 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, RE
             else:
                 continue
             scoped = exp.and_(*terms, copy=False)
-            if tm.table_name == DRAFT_ROWS_VIEW and drafts_read is not None:
-                # A draft's row is in no role's reach (it is in no role's tables): the drafts
-                # the role is served are read beside the rows of its scope.
-                scoped = exp.or_(scoped, drafts_read.copy(), copy=False)
+            if tm.table_name == WITHDRAWN_ROWS_VIEW and withdrawn_read is not None:
+                # A withdrawn table's row is in no role's reach (it is in no role's tables): the
+                # ones the role may preview are read beside the rows of its scope.
+                scoped = exp.or_(scoped, withdrawn_read.copy(), copy=False)
             _and_rule(gov, tm.table_id, scoped)
-    # REQ-1921: of the model table's draft rows, only those the role is served, whatever its
-    # scope (the whole catalog's included).
-    for tm in _draft_rows if reach is not None else ():
-        if drafts_read is None:
-            _and_rule(gov, tm.table_id, exp.not_(exp.column("draft")))
+    # REQ-1921: of the model table's withdrawn rows, only those the role may preview, whatever
+    # its scope (the whole catalog's included).
+    for tm in _withdrawn_rows if reach is not None else ():
+        if withdrawn_read is None:
+            _and_rule(gov, tm.table_id, exp.not_(out_of_service.copy()))
         elif meta_scope is None:
-            _and_rule(gov, tm.table_id, exp.or_(exp.not_(exp.column("draft")), drafts_read.copy()))
+            _and_rule(
+                gov, tm.table_id, exp.or_(exp.not_(out_of_service.copy()), withdrawn_read.copy())
+            )
 
     # REQ-2190: a column the relation a statement reads does not hold is no column of the catalog's
     # either; which those are is decided in code, so no view can say.
@@ -1807,7 +1811,9 @@ def unmark_views(sql: str) -> str:  # REQ-039
     """``sql`` -- a statement whose views were expanded marked (``view_read.semantic_statement``)
     -- without the marks: the text every use other than governance reads, so the mark is never
     logged, audited or keyed on."""
-    return _unmark_views(sqlglot.parse_one(sql, read="postgres")).sql(dialect="postgres")
+    from provisa.compiler.view_expand import parse_marked
+
+    return _unmark_views(parse_marked(sql)).sql(dialect="postgres")
 
 
 def _unmark_views(tree: exp.Expr) -> exp.Expr:  # pyright: ignore[reportPrivateImportUsage]
@@ -2633,6 +2639,8 @@ def _govern_merge(
 ) -> None:
     """A MERGE's source is a read, governed as any is; its WHEN conditions and values may read
     the source and constants, not the target row; its ON may read the target's served columns."""
+    from provisa.compiler.write_admission import ADMITTED
+
     alias = _alias_for(target)
     names = {_folded(target.this), alias.lower(), alias}
     on = write.args.get("on")
@@ -2646,6 +2654,8 @@ def _govern_merge(
                 _refuse_hidden(col, tid, gov_ctx)
     whens = write.args.get("whens")
     for col in whens.find_all(exp.Column) if whens is not None else []:
+        if col.meta.get(ADMITTED):
+            continue  # REQ-2001: the role's delete rule, which admission put there
         if not col.table or _folded(col.args.get("table")) in names:
             if isinstance(col.parent, exp.EQ) and col.parent.this is col:
                 continue  # the column a WHEN sets
@@ -2787,8 +2797,11 @@ def apply_governance(
 
     trace_stage("govern.in", sql)
     # REQ-913: the statement as the client (or a compiler stage) wrote it, read once here.
-    tree = sqlglot.parse_one(sql, read="postgres")
-    governed = govern(tree, gov_ctx, session_vars, params).sql(dialect="postgres")
+    from provisa.compiler.view_expand import marks_withheld, parse_marked
+
+    with marks_withheld():  # REQ-039: an error governing a marked statement names no mark
+        tree = parse_marked(sql)
+        governed = govern(tree, gov_ctx, session_vars, params).sql(dialect="postgres")
     trace_stage("govern.out", governed)
     return governed
 

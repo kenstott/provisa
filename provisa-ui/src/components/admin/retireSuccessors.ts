@@ -11,6 +11,7 @@
 // Who can succeed a retired term (REQ-2144): a term in service, of its role or a concept.
 
 import { termRole, type GlossaryTermDetail, type GlossaryTermSummary } from "../../api/glossary";
+import { termLabel } from "./termLabel";
 
 /** The terms that can take ``term``'s columns and tables: in service, and of its role or a
  * concept (a concept's own successor may be any term). */
@@ -19,5 +20,5 @@ export function successorOptions(term: GlossaryTermDetail, terms: GlossaryTermSu
   return terms
     .filter((o) => o.id !== term.id && !o.retired)
     .filter((o) => role === "concept" || [role, "concept"].includes(termRole(o)))
-    .map((o) => ({ value: String(o.id), label: o.name }));
+    .map((o) => ({ value: String(o.id), label: termLabel(o, terms) }));
 }

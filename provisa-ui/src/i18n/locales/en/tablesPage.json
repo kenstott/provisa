@@ -2,7 +2,7 @@
   "tablesPage": {
     "loading": "Loading tables...",
     "titleViews": "Views",
-    "titleTables": "Registered Tables",
+    "titleTables": "Tables",
     "filterPlaceholderViews": "Filter views…",
     "filterPlaceholderTables": "Filter by source, domain, or table…",
     "addTable": "+ Table",
@@ -93,6 +93,9 @@
     "history": {
       "badge": "history",
       "title": "Keeps history: query it as of or as recorded (Time Travel)"
-    }
+    },
+    "withdrawn": "Withdrawn",
+    "withdrawnTitle": "Out of production: no role reads it until it is put back",
+    "sourceWithdrawnTitle": "Its source {{source}} is withdrawn: no role reads it until the source is put back"
   }
 }

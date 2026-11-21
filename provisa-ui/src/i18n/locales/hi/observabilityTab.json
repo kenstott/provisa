@@ -1,6 +1,6 @@
 {
   "observabilityTab": {
-    "noSpansYet": "अभी कोई स्पैन नहीं — ट्रेस देखने के लिए एक अनुरोध करें।",
+    "noSpansYet": "अभी कोई स्पैन नहीं। ट्रेस देखने के लिए अनुरोध करें।",
     "noSpansMatch": "फ़िल्टर से मेल खाता कोई स्पैन नहीं।",
     "traces": "ट्रेस",
     "filterPlaceholder": "फ़िल्टर करें…",
@@ -14,9 +14,9 @@
     "otelTitle": "OpenTelemetry ट्रेसिंग",
     "statusLabel": "स्थिति:",
     "statusExporting": "एक्सपोर्ट हो रहा है → {{endpoint}}",
-    "statusActiveNoCollector": "सक्रिय (ट्रेस इस पेज के लिए रखे जाते हैं, एक्सपोर्ट नहीं किए जाते)",
+    "statusActiveNoCollector": "सक्रिय (ट्रेस इस पेज के लिए रखे जाते हैं, निर्यात नहीं होते)",
     "endpointLabel": "OTLP कलेक्टर एंडपॉइंट",
-    "endpointHelp": "इसे Provisa के अपने कलेक्टर पर रखें, और बाहरी प्रदाता को कलेक्टर में एक्सपोर्टर के रूप में जोड़ें ताकि ट्रेस टेबल भरती रहें। ट्रेस केवल इसी पेज पर रखने के लिए खाली छोड़ें। OTEL_EXPORTER_OTLP_ENDPOINT env वेरिएबल से ओवरराइड करें।",
+    "endpointHelp": "इसे Provisa के अपने कलेक्टर पर पॉइंट करें, और कलेक्टर में बाहरी प्रदाता को एक्सपोर्टर के रूप में जोड़ें ताकि ट्रेस टेबल भरती रहें। ट्रेस केवल इस पेज पर रखने के लिए खाली छोड़ें। OTEL_EXPORTER_OTLP_ENDPOINT से ओवरराइड करें।",
     "serviceNameLabel": "सेवा नाम",
     "serviceNameHelp": "OTEL_SERVICE_NAME env वेरिएबल से ओवरराइड करें।",
     "sampleRateLabel": "सैंपल दर",

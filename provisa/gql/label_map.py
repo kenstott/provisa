@@ -64,6 +64,13 @@ class NodeMapping:
     native_filter_columns: dict[str, str] = field(
         default_factory=dict
     )  # SQL column name → data_type for native API params
+    # The table's parameters as its metadata states them (core.parameters.ParameterFact,
+    # REQ-1986): name, type, kind, opaque or a real column, required.
+    parameters: tuple[Any, ...] = ()
+    # Every name its parameters are bound under, lowercased, to the parameter column (REQ-1986:
+    # CompilationContext.parameter_names): its column, its own name, its alias. (name, column)
+    # pairs, a tuple as property_types is.
+    parameter_names: tuple[tuple[str, str], ...] = ()
     physical_table_name: str = ""  # physical DB table name; "" means same as table_name
     traversal_only: bool = False  # True = cross-domain node; may not be a MATCH starting node
     domain_id: str | None = None  # raw domain id, e.g. "pet-store"; None if no domain
@@ -87,6 +94,28 @@ class NodeMapping:
     #: A graph session's date time properties, each with the zone its values were written in
     #: (REQ-2176): the column holds the instant, and a read gives it back in that zone.
     property_zones: tuple[tuple[str, str], ...] = ()
+    #: REQ-1385: the table's alias, "" when it has none. With ``table_name`` it gives the table's
+    #: model name (:attr:`model_name`), the name SPARQL's IRIs are built from.
+    alias: str = ""
+    #: REQ-1385: the name the table is registered under where the model reads it through another
+    #: relation (meta's domains through domains_meta: TableMeta.original_table_name); "" where
+    #: ``table_name`` is the registered name. A model name is never the relation read.
+    registered_table_name: str = ""
+    #: REQ-1385: each aliased column's alias, as (cypher prop name, alias) pairs: the column's
+    #: model name, which its prop name need not spell (a GraphQL convention applied to the
+    #: physical name when the alias is that name's SQL spelling). A tuple, as property_types is.
+    property_aliases: tuple[tuple[str, str], ...] = ()
+
+    @property
+    def model_name(self) -> str:
+        """The table's model name (REQ-1385): its alias when it has one, else the name it is
+        registered under, the rule metadata export's table_uri follows."""
+        return self.alias or self.registered_table_name or self.table_name
+
+    def property_model_name(self, prop: str) -> str:
+        """The model name of the column ``prop`` reads (REQ-1385): its alias when it has one,
+        else the property's own name."""
+        return dict(self.property_aliases).get(prop, prop)
 
     def property_of(self, column: str) -> str:
         """The property a column of this node is read and written by, the column named by its
@@ -108,6 +137,23 @@ class NodeMapping:
         """Whether its table is read by arguments (REQ-1986): a function of them, with no rows of
         its own for a path to walk (REQ-2135)."""
         return bool(self.native_filter_columns)
+
+    def parameter_column(self, name: str) -> str | None:
+        """The parameter column a property ``name`` binds (REQ-1986), or None for no parameter:
+        a parameter is bound under its column (``_nf_petId``), its own name (``petId``, published
+        so by graph-schema) and its alias, in any spelling of those (``pet_id``, ``_petId``) --
+        the names every front binds it under (core.parameters.parameter_names)."""
+        from provisa.core.parameters import parameter_column
+
+        return parameter_column(dict(self.parameter_names), name)
+
+    @property
+    def required_parameters(self) -> list[str]:
+        """The parameters its table's metadata states as required (REQ-1986), by the name a caller
+        gives each. With any, the label gives no count without them."""
+        from provisa.core.parameters import required_of
+
+        return required_of(self.parameters)
 
     @property
     def role_label(self) -> str | None:  # REQ-1320
@@ -184,6 +230,9 @@ class RelationshipMapping:
     #: traverses it only from its source to its target. A model relationship is a join, which a
     #: directed pattern may read from either end (False).
     directed: bool = False
+    #: REQ-1586: a registered relationship row declares this edge (JoinMeta.registered); a
+    #: synthetic edge (HAS_TABLE) does not. Only a registered edge keeps a junction's node.
+    registered: bool = False
 
     @property
     def properties(self) -> dict[str, str]:
@@ -687,19 +736,31 @@ def _drop_junction_nodes(  # REQ-1586
     nodes_by_table: dict[str, list[str]],
     aliases: dict[str, list[RelationshipMapping]],
 ) -> None:
-    """Remove every declared junction table from the node side of the Cypher schema.
+    """Remove every declared junction table no registered relationship of its own joins from the
+    node side of the Cypher schema.
 
     A declared junction is an edge, not an entity: it must not appear as a label a pattern can
     match, as a pill a client can drag onto a canvas, or under a domain's label list. It stays a
     registered table and is still queryable in SQL and GraphQL — this drops it from the graph
     schema only.
 
-    The junction's own foreign keys also produced ordinary FK edges into and out of it. Those
-    edges are what the junction edge replaces, and they name a label that no longer exists, so
-    they go with the node — otherwise any consumer resolving an endpoint label (the graph-schema
-    endpoint, a label count) reads a key that was just removed. Mutates every dict passed in.
+    Edges into and out of a dropped junction name a label that no longer exists, so they go with
+    the node — otherwise any consumer resolving an endpoint label (the graph-schema endpoint, a
+    label count) reads a key that was just removed.
+
+    (Amended 2026-11-18) A junction that registered relationships of its own join (as after Join
+    through, which keeps its two hops beside the joined relationship) keeps its node and every
+    edge, so all three relationships are offered in Cypher as in SQL and GraphQL. A synthetic edge
+    (HAS_TABLE) is no relationship of its own. Mutates every dict passed in.
     """
-    junction_types = {rm.via.type_name for rm in relationships.values() if rm.via is not None}
+    declared = {rm.via.type_name for rm in relationships.values() if rm.via is not None}
+    joined = {
+        label
+        for rm in relationships.values()
+        if rm.via is None and rm.registered
+        for label in (rm.source_label, rm.target_label)
+    }
+    junction_types = declared - joined
     if not junction_types:
         return
     for rel_key, rm in list(relationships.items()):
@@ -733,10 +794,16 @@ def _build_target_pk(ctx_typed: "CompilationContext") -> dict[str, str]:
 
     Both cardinalities resolve to a single target row keyed by target_column, which is
     therefore the target table's actual PK (unlike one-to-many, where target_column is a FK).
+
+    A join onto a parameter of its target binds the parameter (REQ-1986): an argument, never an
+    attribute of the rows returned, so no key of them.
     """
     target_pk: dict[str, str] = {}
     for join_meta in ctx_typed.joins.values():
         tname = join_meta.target.type_name
+        parameters = ctx_typed.native_filter_columns.get(join_meta.target.table_id, {})
+        if any(c in parameters for c in key_list(join_meta.target_column)):
+            continue
         if tname not in target_pk and getattr(join_meta, "cardinality", None) in (
             "many-to-one",
             "one-to-one",
@@ -852,6 +919,8 @@ def _build_node_mappings(
             properties=props,
             physical_properties=phys_props,
             native_filter_columns=nf_cols,
+            parameters=ctx_typed.parameters.get(table_meta.table_id, ()),
+            parameter_names=tuple(ctx_typed.parameter_names.get(table_meta.table_id, {}).items()),
             physical_table_name=physical_table_name,
             map_properties=map_props,
             property_types=tuple(
@@ -865,6 +934,14 @@ def _build_node_mappings(
             if len(user_pks) > 1
             else (),
             key_readable=key_readable,
+            alias=table_meta.display_name,
+            registered_table_name=_strip_domain_prefix(table_meta.original_table_name, domain_id),
+            property_aliases=tuple(
+                (_published_property(ctx_typed, table_meta.table_id, c), alias)
+                for c in col_names
+                if (table_meta.table_id, c) not in _gov_obj
+                and (alias := ctx_typed.column_aliases.get((table_meta.table_id, c)))
+            ),
         )
 
         if domain_label:
@@ -969,6 +1046,7 @@ def _build_relationship_mappings(
             target_expr=getattr(join_meta, "target_expr", None),
             many=(cardinality == "one-to-many"),
             via=via,
+            registered=join_meta.registered,
         )
         rel_key = f"{rel_type}::{source_type_name}→{join_meta.target.type_name}"
         relationships[rel_key] = rm
@@ -1085,6 +1163,8 @@ def _make_traversal_node(
         properties=props,
         physical_properties=phys_props,
         traversal_only=True,
+        alias=tgt_table.get("alias") or "",
+        property_aliases=tuple((alias, alias) for alias in _col_alias.values()),
     )
 
 
@@ -1170,6 +1250,7 @@ def _add_cross_domain_nodes(
                 source_expr=_xsource_expr,
                 many=(rel_cardinality == "one-to-many"),
                 via=xvia,
+                registered=True,  # every row of all_relationships is a registered relationship
             )
             relationships[rel_key] = xrel
             aliases.setdefault(rel_type, []).append(xrel)

@@ -208,6 +208,9 @@ def _column_rows(spec: Any, fact: Any, rows: int, key: dict) -> dict[str, list[d
             "zero_share": None,
             "length_min": None,
             "length_max": None,
+            # A declared profile has no classification sample.
+            "classification": None,
+            "classification_values": None,
         }
     )
     if sketch is not None:
@@ -412,14 +415,16 @@ async def covered_columns(conn: Any, target: Any) -> frozenset[str]:
 async def declare(state: Any, table_id: int, table_name: str, doc: Any) -> str:
     """Store ``doc`` as a declared profile of the table, in the environment ``state.model_db`` is
     scoped to; its run id."""
-    from provisa.profiler.run import resolve_target, write_results
+    from provisa.profiler.run import published_target, write_results
 
     from dataclasses import replace
 
     from provisa.profiler.statement import ColumnSpec, family_of
     from provisa.synthetic.env_model import parameter_columns
 
-    target = resolve_target(state, table_id, table_name, {})
+    # REQ-1942: a declaration reads nothing, so a table that requires parameters is declared
+    # as any other -- its parameter then a column of the generated table.
+    target = published_target(state, table_id, table_name, {})
     run_id = f"{DECLARED}-{uuid.uuid4().hex}"
     async with state.model_db.acquire() as conn:
         # REQ-1942: a required parameter of an API table is generated as a column of it, so a

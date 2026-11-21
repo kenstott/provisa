@@ -6,7 +6,7 @@
     "signInTitle": "Anmelden",
     "firstLoginHeading": "Dieses Deployment einrichten",
     "firstLoginTitle": "Dies ist die erste Anmeldung",
-    "firstLoginBody": "Noch niemand verwaltet dieses Deployment. Wer sich zuerst anmeldet, wird Plattform-Administrator — mit voller Kontrolle über Organisationen, Benutzer und Datenquellen. Wählen Sie unten eine Anmeldemethode, um die Rolle zu übernehmen.",
+    "firstLoginBody": "Dieses Deployment wird noch von niemandem administriert. Wer sich zuerst anmeldet, wird Plattformadministrator, mit voller Kontrolle über Organisationen, Benutzer und Datenquellen. Wählen Sie unten eine Anmeldemethode, um die Rolle zu übernehmen.",
     "signInWithGoogle": "Mit Google anmelden",
     "signInWithGithub": "Mit GitHub anmelden",
     "signInWithMicrosoft": "Mit Microsoft anmelden",
@@ -36,9 +36,9 @@
     "signInWithSso": "Mit Single Sign-On anmelden",
     "samlSignInFailed": "Die Single-Sign-On-Anmeldung wurde nicht abgeschlossen. Versuchen Sie es erneut oder wenden Sie sich an Ihren Administrator.",
     "sandboxBuildingTitle": "Ihre Sandbox wird erstellt…",
-    "sandboxBuildingBody": "Eine private Kopie der Beispieldaten wird nur für Sie eingerichtet – das kann einige Minuten dauern.",
+    "sandboxBuildingBody": "Für Sie wird eine private Kopie der Beispieldaten eingerichtet. Das kann einige Minuten dauern.",
     "sandboxTryTitle": "Provisa kostenlos testen",
-    "sandboxTryBody": "Erkunden Sie die gesamte Plattform mit Beispieldaten – keine Kreditkarte erforderlich. Ihre Sandbox ist temporär: Sie verschwindet, wenn Sie sich abmelden.",
+    "sandboxTryBody": "Erkunden Sie die gesamte Plattform mit Beispieldaten. Keine Kreditkarte erforderlich. Ihre Sandbox ist temporär und verschwindet, wenn Sie sich abmelden.",
     "sandboxHeading": "Provisa testen"
   }
 }

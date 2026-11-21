@@ -132,7 +132,9 @@ def test_a_form_is_postgresql_syntax(form: Any):
 
 
 def test_only_a_replay_put_an_engine_tweak_beside_a_form():
-    assert set(DUCKDB_TWEAKS) == {"int8div"}
+    # date_pli and date_mii: the edge measure's 'infinity'::date, which PostgreSQL 17.11 answers as
+    # it is and DuckDB's day count read as a finite day past the range.
+    assert set(DUCKDB_TWEAKS) == {"int8div", "date_pli", "date_mii"}
 
 
 @pytest.mark.parametrize(

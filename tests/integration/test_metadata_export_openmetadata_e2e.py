@@ -26,7 +26,8 @@ import time
 import httpx
 import pytest
 
-from provisa.api.metadata_export.openmetadata import CLASSIFICATION
+from provisa.api.metadata_export.openmetadata import CLASSIFICATION, OpenMetadataExport
+from provisa.core.models import MetadataExportTarget
 from tests.integration.metadata_export_server import (
     CLASS_TERM,
     GLOSSARY_TERM,
@@ -265,3 +266,23 @@ async def test_each_term_sits_in_its_roles_group_and_carries_its_role(published,
     )
     assert term["parent"]["fullyQualifiedName"] == f"provisa_{ORG}.Classes"
     assert term["extension"]["provisaRole"] == "class"
+
+
+async def test_the_glossary_listing_reads_every_page_with_each_terms_parent(published, token):
+    """REQ-2247: list_glossary reads the server's whole glossary, a page per term here, and gives
+    each term its parent term as its broader term."""
+    reader = OpenMetadataExport(
+        MetadataExportTarget(
+            id="om",
+            provider="openmetadata",
+            endpoint=_base_url(),
+            auth_mode="bearer",
+            token=token,
+            timeout_seconds=60,
+        )
+    )
+    reader.glossary_page_size = 1
+    terms = {t.name: t for t in await reader.list_glossary()}
+    assert terms[CLASS_TERM].broader == ("Classes",)
+    assert terms["Classes"].broader == ()
+    assert terms[CLASS_TERM].ref

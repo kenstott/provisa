@@ -26,7 +26,7 @@ Every query ends up running through the federation engine, which is what lets an
 
 ## All Sources
 
-Provisa registers **79** source types, the ones the Sources form offers. The tables below cover all 79; the index is the count.
+Provisa registers **80** source types, the ones the Sources form offers. The tables below cover all 80; the index is the count.
 
 | # | Group | Source types |
 | --- | --- | --- |
@@ -38,16 +38,16 @@ Provisa registers **79** source types, the ones the Sources form offers. The tab
 | 40–43 | [Code sources](code-sources.md) | `node`, `python`, `go`, `rust` |
 | 44–46 | [Streaming](#streaming) | `kafka`, `websocket`, `rss` |
 | 47 | [Push receiver](#push-receiver) | `ingest` |
-| 48–49 | [Graph & semantic](#graph-semantic) | `neo4j`, `sparql` |
-| 50–54 | [File-based](#file-based) | `sqlite`, `csv`, `parquet`, `files`, `logs` |
-| 55–56 | [Observability & other](#observability-other) | `google_sheets`, `prometheus` |
-| 57–65 | [Enterprise SaaS](#enterprise-saas-connectors) | `sharepoint`, `salesforce`, `servicenow`, `jira`, `cloudops`, `splunk`, `google_workspace`, `microsoft_365`, [`quickbooks`](#quickbooks) |
-| 66–73 | [API sources](#api-sources) | `openapi`, [`dbt`](#dbt), `graphql_remote`, `grpc_remote`, GitHub, GitLab, Shopify, Stripe |
-| 74 | [GovData](#govdata) | `govdata` |
-| 75–76 | [Data quality checkers](#data-quality-checkers) | `soda`, `great_expectations` |
-| 77 | [Data profiler](#data-profiler) | `data_profiler` |
-| 78 | [Kaggle datasets](#kaggle-datasets) | Kaggle (staged via Sources form; registers as a `files` source; see [Kaggle datasets](#kaggle-datasets)) |
-| 79 | [Wikipedia](#wikipedia) | Wikipedia (registers as a `files` source that crawls the named pages; see [Wikipedia](#wikipedia)) |
+| 48–50 | [Graph & semantic](#graph-semantic) | `neo4j`, `sparql`, Wikidata |
+| 51–55 | [File-based](#file-based) | `sqlite`, `csv`, `parquet`, `files`, `logs` |
+| 56–57 | [Observability & other](#observability-other) | `google_sheets`, `prometheus` |
+| 58–66 | [Enterprise SaaS](#enterprise-saas-connectors) | `sharepoint`, `salesforce`, `servicenow`, `jira`, `cloudops`, `splunk`, `google_workspace`, `microsoft_365`, [`quickbooks`](#quickbooks) |
+| 67–74 | [API sources](#api-sources) | `openapi`, [`dbt`](#dbt), `graphql_remote`, `grpc_remote`, GitHub, GitLab, Shopify, Stripe |
+| 75 | [GovData](#govdata) | `govdata` |
+| 76–77 | [Data quality checkers](#data-quality-checkers) | `soda`, `great_expectations` |
+| 78 | [Data profiler](#data-profiler) | `data_profiler` |
+| 79 | [Kaggle datasets](#kaggle-datasets) | Kaggle (staged via Sources form; registers as a `files` source; see [Kaggle datasets](#kaggle-datasets)) |
+| 80 | [Wikipedia](#wikipedia) | Wikipedia (registers as a `files` source that crawls the named pages; see [Wikipedia](#wikipedia)) |
 
 Reference for every source type Provisa supports. "Direct driver" means single-source queries execute against the source natively (sub-100ms). "Connector Name" is the federated connector used when the source participates in multi-source JOINs.
 
@@ -918,7 +918,7 @@ A QuickBooks Online source reads the Accounting API of one company: its customer
 
 | Form field | Source field | Notes |
 | --- | --- | --- |
-| Company ID (realm ID) | `database` | The company's number. Intuit shows it when the app is connected, and in the company's account settings. |
+| Company ID (`realmId`) | `database` | The company's number. Intuit shows it when the app is connected, and in the company's account settings. |
 | Sandbox or production | `mapping.environment` | `sandbox` (default) reads `sandbox-quickbooks.api.intuit.com`; `production` reads `quickbooks.api.intuit.com`. |
 | Client ID | `username` | From the app's Keys and credentials page. |
 | Client secret | `password` | From the same page. |
@@ -926,7 +926,7 @@ A QuickBooks Online source reads the Accounting API of one company: its customer
 
 Any of them may be a `${secret:…}` or `${env:…}` reference. The source's Cache TTL is required, as for every source whose tables are landed.
 
-**The refresh token.** Intuit answers every refresh with the refresh token to send next time, and the one it replaces stops working. The token entered on the form is used once, at the first read. From then on the newest one is kept in the organisation's state store, under the company's realm ID, where a Microsoft 365 source's approval is kept. One refresh of a source runs at a time, across every process, and the replacement is stored before the access token is used. An entered token is never read again once one is kept, so a token entered after the first read does not replace the kept one. A token Intuit refuses (`invalid_grant`) fails the read and names Intuit's reason, never the token. QuickBooks refusing an access token drops it, and the read asks once more with a new one.
+**The refresh token.** Intuit answers every refresh with the refresh token to send next time, and the one it replaces stops working. The token entered on the form is used once, at the first read. From then on the newest one is kept in the organisation's state store, under the company's `realmId`, where a Microsoft 365 source's approval is kept. One refresh of a source runs at a time, across every process, and the replacement is stored before the access token is used. An entered token is never read again once one is kept, so a token entered after the first read does not replace the kept one. A token Intuit refuses (`invalid_grant`) fails the read and names Intuit's reason, never the token. QuickBooks refusing an access token drops it, and the read asks once more with a new one.
 
 **Columns.** Each field of an entity is a column, named in snake case (`TotalAmt` is `total_amt`). A reference is two columns, its id and its name: `CustomerRef` is `customer_ref_value` and `customer_ref_name`. `MetaData` is `meta_create_time` and `meta_last_updated_time`. Any other object or list is one JSON column: an address (`bill_addr`), and the line items of a transaction (`line`), as the generic API source keeps a nested value. `id` is the primary key.
 
@@ -1247,9 +1247,15 @@ A declared extension that is not installable fails loud, with no silent skip or 
 
 ### Template variables
 
-Every `server_options` value, `user_mapping` value, `attach_template`, and `scan_template` may use `{field}` placeholders. Available fields:
+Every `server_options`, `user_mapping` and `table_options` value, `remote_schema`, `attach_template`, `scan_template` and `engine_template` may use `{field}` placeholders. Available fields:
 
 `{id}`, `{host}`, `{port}`, `{database}`, `{username}`, `{password}`, `{path}`, `{schema_name}`, `{table_name}`, plus any key from `federation_hints`. DuckDB attach templates also receive `{alias}`, the internal catalog alias Provisa gives the attached database.
+
+A template takes raw values and never quotes a placeholder. Provisa writes each value with the engine's quoting rules, so a value holding a quote, a semicolon, a backslash or a newline stays inside its literal or name:
+
+- A `pg_fdw` option value is text. The filled value is written as one string literal: `address: "{host}"` becomes `address 'db.example'`. `remote_schema` is written as one identifier.
+- `attach_template`, `scan_template` and `engine_template` are SQL. `{field}` is written as a string literal, `{field:ident}` as an identifier, and `{field:int}` as an integer (a value that is not an integer fails). To join a value with other text, join it in SQL: `'ducklake:' || {path}` in DuckDB, `concat({host}, ':', {port})` in ClickHouse.
+- A placeholder inside quotes in a SQL template (`read_xlsx('{path}')`) fails when the descriptor is read.
 
 A template referencing an unknown field fails loud at attach time, surfacing a descriptor/source mismatch before broken DDL reaches the engine.
 
@@ -1286,7 +1292,7 @@ connectors:
     extension: excel
     install_from_community: false
     probe_symbol: read_xlsx
-    scan_template: "read_xlsx('{path}')"
+    scan_template: "read_xlsx({path})"
 ```
 
 With either descriptor in place, registering a source with the declared `source_type` routes through the custom connector, subject to a successful probe. No other configuration change is needed.
@@ -1885,6 +1891,35 @@ When an inferred table is read, the reasoner:
 All of a source's inferred tables share one classification, and it is reused for the table's cache TTL. The source's freshness declaration is therefore how often it reasons: `cache_ttl` for a live table, the replica's refresh for a replica, and once for a TTL of `-1`. What an inferred table serves is governed for every reader like any other table.
 
 HermiT runs as a separate program, never inside the server. It runs on a pinned Eclipse Temurin JDK 21 with HermiT, the OWL API and their libraries on its class path. Each piece is fetched on first use, checked against the SHA-256 Provisa pins, and cached under the runtime-deps cache root (`$PROVISA_RUNTIME_DEPS_CACHE`, default `~/.cache/provisa/runtime_deps`). A download that fails, or a file whose sum differs from the pin, fails the read by name.
+
+### Wikidata
+
+Wikidata is a branded SPARQL source: its endpoint is preset to the Wikidata Query Service and needs no credential. Everything else is the generic SPARQL source—the same User-Agent header, result-format handling and pushdown rules apply. Tables are defined with SPARQL SELECT queries, as on any SPARQL source.
+
+**Starter tables.** The Wikidata source ships a set of reference tables your organization is likely to join to its own data:
+
+- Countries with their ISO codes, capital and population
+- Currencies
+- Languages
+- Administrative regions
+- Organizations with identifiers such as LEI, ticker and ISIN
+
+Each is a bounded query exposed as a typed table. Register the ones you need; none are registered automatically.
+
+**Tables from any class.** Beyond the starter tables, the Wikidata source lets you build a table from the instances of any class. Search for a class by name, or browse from a broad class down through its narrower ones (subclass of). Once you pick a class, the source offers its most-used properties as columns and shows the class's instance count. For large classes a filter is asked before the table is registered, so the query stays within the Wikidata endpoint's time limit.
+
+**Replication.** Wikidata tables replicate on a schedule by default rather than being read live, since the public endpoint has rate limits and the data changes slowly.
+
+**Glossary grounding.** Glossary terms can be grounded to Wikidata items, so a term binds to both a column in your data and to the concept that item represents.
+
+```yaml
+sources:
+- id: wikidata
+  type: wikidata
+```
+
+No `host` is required. The endpoint is preset.
+
 
 ## Connection Examples
 

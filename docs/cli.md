@@ -2,12 +2,60 @@
 
 The `provisa` command is the single entry point for the pip-installed embedded tier. It starts the runtime, manages licenses, triggers metadata publishing, deploys models, queries any front door and controls the maintenance banner. You need no Docker, no Node and no external services.
 
+The `provisa` wheels are attached to each [GitHub release](https://github.com/kenstott/provisa/releases),
+not uploaded to PyPI, and a package index on GitHub Pages lists them:
+`https://kenstott.github.io/provisa/simple/`. Add that index to pip, uv or Poetry. Every other
+dependency, `provisa-client` and `provisa-notebook` among them, still comes from PyPI.
+
 Install it with the `embedded` extra, which also pulls in the offline DuckDB extensions
 and the embedded PostgreSQL model store:
 
 ```bash
-pip install 'provisa[embedded]'
+pip install 'provisa[embedded]' --extra-index-url https://kenstott.github.io/provisa/simple/
 ```
+
+On Linux, add PyTorch's CPU index as well:
+
+```bash
+pip install 'provisa[embedded]' \
+  --extra-index-url https://kenstott.github.io/provisa/simple/ \
+  --extra-index-url https://download.pytorch.org/whl/cpu
+```
+
+With uv, declare the index in `pyproject.toml` and pin `provisa` to it:
+
+```toml
+[[tool.uv.index]]
+name = "provisa"
+url = "https://kenstott.github.io/provisa/simple/"
+explicit = true
+
+[tool.uv.sources]
+provisa = { index = "provisa" }
+```
+
+With Poetry, add the index as a supplemental source and install from it:
+
+```toml
+[[tool.poetry.source]]
+name = "provisa"
+url = "https://kenstott.github.io/provisa/simple/"
+priority = "supplemental"
+```
+
+```bash
+poetry add 'provisa[embedded]' --source provisa
+```
+
+The extra carries the embedding library for the default embedding model (sentence-transformers on a
+CPU-only PyTorch), as every installer does. PyPI's Linux PyTorch wheel is the CUDA build, which pulls
+in about 2.5 GB of GPU libraries Provisa never loads; the CPU index keeps them out. macOS and Windows
+wheels on PyPI are CPU-only already, so the plain command is enough there.
+
+The embedding library adds about 700 MB to the install, most of it PyTorch. The default model itself
+(about 180 MB) is downloaded from the Hugging Face hub the first time it is used. Behind a firewall,
+point that download at a mirror with the `embedding.hub_endpoint` setting; see
+[Runtime Settings](admin.md#runtime-settings).
 
 **Platform requirements.** `provisa run` requires Python 3.12 and a platform with a pgserver
 wheel: linux x86_64, macOS, or Windows x86_64. Linux aarch64 has no pgserver wheel and no source
@@ -61,6 +109,8 @@ provisa run [--demo] [--host HOST] [--api-port PORT] [--ui-port PORT]
 | `--no-browser` | off | Skip opening a browser when the UI is ready; still prints the URL |
 | `--reset` | off | Drop and rebuild the embedded control-plane store before starting; use after a Provisa upgrade if startup reports a schema mismatch |
 | `--data-dir` | `~/.provisa/native` | Directory that holds the embedded PostgreSQL cluster and DuckDB extension cache |
+| `--mode` | `every` | Process mode: `every` serves requests and runs background work; `query` serves requests only; `coordinator` runs background work only. See [How to Scale](how-to-scale.md) |
+| `--region` | _(none)_ | The platform region this node serves. Required when the platform declares regions; refused when it declares none. Set via `PROVISA_REGION` |
 
 ### Environment variables
 
@@ -75,6 +125,8 @@ Set them to override the defaults that `load_profile("native", ...)` would other
 | `PROVISA_DEMO` | Set to `1` by `--demo`; marks the session as a demo run |
 | `PROVISA_DEMO_DIR` | Path to the demo's sample-data directory; set by `--demo` |
 | `PROVISA_DUCKDB_EXT_DIR` | Pre-staged DuckDB extension directory; set automatically from the `provisa-duckdb-ext` package if present; absent means DuckDB downloads from the network on first use |
+| `PROVISA_MODE` | Process mode for this node: `every`, `query`, or `coordinator`. Set automatically by `--mode`; set it directly for container or VM launches that bypass the CLI |
+| `PROVISA_REGION` | Platform region for this node. Set automatically by `--region`; mirrors the same rules |
 
 ### Startup sequence
 
@@ -109,6 +161,15 @@ provisa run --reset
 
 # Point at an external Trino cluster instead of the embedded DuckDB engine
 TRINO_HOST=trino.internal TRINO_PORT=8080 provisa run
+
+# Run as a query node in a scaled deployment
+provisa run --mode query
+
+# Run as a coordinator node
+provisa run --mode coordinator
+
+# Query node in a regional deployment
+provisa run --mode query --region us-east-1
 ```
 
 ---
@@ -157,7 +218,7 @@ Licensed:     no (no license installed)
 
 ## provisa metadata export
 
-Trigger the running server's on-demand metadata publish. The command posts to `POST /admin/metadata-export/publish`, the endpoint the Admin tab's **Publish now** button calls, so both paths send the same full snapshot.
+Trigger the running server's on-demand metadata publish. The command posts to `POST /admin/syncing/publish`, the publish the Context Sync page's **Publish now** runs, to every entry whose direction includes Export, so both paths send the same full snapshot.
 
 ```
 provisa metadata export [--api URL] [--token TOKEN] [--timeout SECONDS]
@@ -223,7 +284,7 @@ provisa api PUT /admin/config \
   --api "$PROVISA_API_URL" --token "$PROVISA_API_TOKEN"
 
 # Trigger a metadata publish and pipe the JSON response through jq
-provisa api POST /admin/metadata-export/publish \
+provisa api POST /admin/syncing/publish \
   --api "$PROVISA_API_URL" --token "$PROVISA_API_TOKEN" | jq .
 ```
 
@@ -626,6 +687,9 @@ Maintenance notice: ON
 | `provisa run` | Start the embedded API + UI |
 | `provisa run --demo` | Start with pet-store / shelter sample data |
 | `provisa run --reset` | Rebuild the model store before starting |
+| `provisa run --mode query` | Start as a query-only node (scaled deployment) |
+| `provisa run --mode coordinator` | Start as a background-work-only node (scaled deployment) |
+| `provisa run --mode query --region REGION` | Start as a query node in a named region |
 | `provisa license apply <file>` | Install a license file offline |
 | `provisa license status` | Show machine ID and trial / license state |
 | `provisa metadata export` | Publish the metadata snapshot on demand |
@@ -654,3 +718,4 @@ Maintenance notice: ON
 - [Environments](environments.md): environment model, protected environments, deploy approval lifecycle
 - [Metadata Export](metadata-export.md): catalog providers, configuration, and what the snapshot contains
 - [Deployment](deployment.md): container tier and cloud deployment
+- [How to Scale](how-to-scale.md): process modes, query nodes, coordinators and regions

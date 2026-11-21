@@ -1,7 +1,7 @@
 {
   "orgEncryptionTab": {
     "loading": "Wird geladen…",
-    "intro": "Der Verschlüsselungsschlüssel, unter dem die Daten dieser Organisation gewrappt sind. Er lässt sich hier setzen, ersetzen und rotieren; er wird nie angezeigt, und nichts in dieser Bereitstellung kann ihn Ihnen oder jemand anderem zeigen.",
+    "intro": "Der Verschlüsselungsschlüssel, unter dem die Daten dieser Organisation verpackt sind. Sie können ihn hier setzen, ersetzen und rotieren. Nichts auf diesem Deployment kann ihn Ihnen oder anderen anzeigen.",
     "fingerprintLabel": "Fingerabdruck",
     "supplied": "Bereitgestellt",
     "generated": "Hier erzeugt",
@@ -9,14 +9,14 @@
     "retired": "{{count}} stillgelegte(r) Schlüssel weiterhin lesbar",
     "unset": "Diese Organisation hat keinen eigenen Schlüssel gesetzt. Ihre Daten sind unter dem Schlüssel der Bereitstellung gewrappt.",
     "modeLabel": "Wie der Schlüssel gesetzt wird",
-    "modeGenerate": "Einen erzeugen – er existiert nur im Schlüsselbund und wird niemandem angezeigt",
+    "modeGenerate": "Einen erzeugen. Er existiert nur im Schlüsselring und wird niemandem angezeigt.",
     "modeSupply": "Eigenen angeben (Base64, 32 Bytes)",
     "keyLabel": "Schlüssel",
     "keyHelp": "Base64 von 32 Zufallsbytes, z. B. openssl rand -base64 32. Er wird einmal geschrieben und nie zurückgelesen.",
-    "rotationNote": "Beim Rotieren ändert sich der Schlüssel, unter dem NEUE Daten gewrappt werden. Der bisherige Schlüssel wird in den Schlüsselbund stillgelegt und entschlüsselt weiterhin, was er bereits geschrieben hat; nichts wird also unlesbar – und eine Rotation ist daher kein Widerruf.",
+    "rotationNote": "Rotieren ändert den Schlüssel, unter dem neue Daten verpackt werden. Der vorherige Schlüssel wird im Schlüsselring stillgelegt und entschlüsselt weiterhin, was er geschrieben hat. Bestehende Daten bleiben also lesbar, und eine Rotation ist kein Widerruf.",
     "set": "Schlüssel setzen",
     "rotate": "Schlüssel rotieren",
-    "applied": "Schlüssel {{keyId}} aktiv – Fingerabdruck {{fingerprint}}",
+    "applied": "Schlüssel {{keyId}} aktiv, Fingerabdruck {{fingerprint}}",
     "panelTitle": "Org-Schlüssel"
   }
 }

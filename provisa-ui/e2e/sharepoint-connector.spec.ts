@@ -6,15 +6,19 @@
 // found in the LICENSE file in the root directory of this source tree.
 
 import { test, expect, UI_URL, TRINO_BACKEND_URL } from "./coverage";
-import { deleteSourceAndItsTables } from "./delete-source";
+import { retireSourceTables, testSourceId } from "./retire-source-tables";
 import { isAssignableDomain } from "../src/lib/internalDomains";
-import { addSourceOfType } from "./source-to-query-helpers";
+import { addSourceOfType, listedTableNames } from "./source-to-query-helpers";
 
-const SOURCE_ID = "e2e-sharepoint";
+// This attempt's own source, table alias and schema, set in beforeEach (REQ-2248: the source is
+// kept after the test, with its table retired, and a retired table keeps its name and key, so a
+// retry or a later run registers under names no earlier attempt holds).
+let SOURCE_ID = "";
+let ALIAS = "";
 // REQ-1730: the sharepoint catalog's schema is the sql-normalized source id on every engine
 // (trino_connectors.TrinoSharepointConnector passes it as the catalog's `schema`, as
 // the DuckDB pgwire bridge exposes it), not the fixed literal "sharepoint".
-const SCHEMA = SOURCE_ID.replace(/-/g, "_");
+let SCHEMA = "";
 // Trino backend: register_source() creates a real Trino catalog so the schema dropdown populates.
 // DuckDB backend's register_source() is a no-op — the schema dropdown would stay empty.
 const GQL = `${TRINO_BACKEND_URL}/admin/graphql`;
@@ -62,10 +66,6 @@ async function gql(query: string, variables: Record<string, unknown> = {}) {
   return res.json();
 }
 
-async function cleanupSource() {
-  await deleteSourceAndItsTables(gql, SOURCE_ID);
-}
-
 async function getDomainId(): Promise<string> {
   const res = await gql(`{ domains { id } }`);
   const domains: Array<{ id: string }> = res.data?.domains ?? [];
@@ -79,16 +79,19 @@ async function getDomainId(): Promise<string> {
   return d.id;
 }
 
-test.beforeEach(async () => {
-  await cleanupSource();
+test.beforeEach(() => {
+  SOURCE_ID = testSourceId("sharepoint");
+  ALIAS = `e2e_sp_calendar_${SOURCE_ID.split("_").pop()}`;
+  SCHEMA = SOURCE_ID.replace(/-/g, "_");
 });
 
+// The test retires the table it registered and leaves its source (REQ-2248).
 test.afterEach(async () => {
-  await cleanupSource();
+  await retireSourceTables(gql, SOURCE_ID);
 });
 
 test("sharepoint connector: add source and verify calendar list is available", async ({ page }) => {
-  // 600s: beforeEach cleanup + navigation + form fill (~150s) + Trino SharePoint catalog init
+  // 600s: navigation + form fill (~150s) + Trino SharePoint catalog init
   // (~135s) + headroom. The trino lane runs with workers = 1 (playwright.config.ts derives
   // `workers` from CORE_BACKENDS, which is a single entry outside the core lane), so the splunk
   // spec is serialized against this one and cannot queue a competing catalog init.
@@ -213,10 +216,7 @@ test("sharepoint connector: add source and verify calendar list is available", a
   await expect(tablesField).toBeEnabled({ timeout: 30000 });
   await tablesField.click();
   await expect(page.getByRole("option", { name: /^calendar/ })).toBeVisible({ timeout: 30000 });
-  // An option's text is the table's name, followed by Register where it needs input.
-  const tableOptions = await page
-    .getByRole("option")
-    .evaluateAll((opts) => opts.map((o) => (o.textContent ?? "").replace(/Register$/, "")));
+  const tableOptions = await listedTableNames(page);
   await page.keyboard.press("Escape");
 
   expect(tableOptions).toContain("calendar");
@@ -240,7 +240,7 @@ test("sharepoint connector: add source and verify calendar list is available", a
         // registration with "no data type could be resolved from the source".
         schemaName: SCHEMA,
         tableName: "calendar",
-        alias: "e2e_sp_calendar",
+        alias: ALIAS,
         columns: CALENDAR_COLUMNS,
       },
     },
@@ -257,30 +257,19 @@ test("sharepoint connector: add source and verify calendar list is available", a
     `registerTable message: ${registerResult.data?.registerTable?.message}`,
   ).toBe(true);
 
-  // REQ-1921: registered through the admin, the table starts as draft; released, it is read.
-  const registeredId = Number(
-    /\(id=(\d+)\)/.exec(String(registerResult.data?.registerTable?.message))?.[1],
-  );
-  const releaseResult = await gql(
-    `mutation($id: Int!) { setTableDraft(tableId: $id, draft: false) { success message } }`,
-    { id: registeredId },
-  );
-  expect(
-    releaseResult.data?.setTableDraft?.success,
-    `setTableDraft: ${JSON.stringify(releaseResult)}`,
-  ).toBe(true);
-
   // ── 4. Verify the registered table appears in the UI ─────────────────────
   // Reload the page to show the registered tables list
   await page.goto("/tables");
   await page.waitForSelector(".page-header", { timeout: 30000 });
 
-  await expect(page.locator(".data-table").getByText("e2e_sp_calendar")).toBeVisible({
+  await expect(page.locator(".data-table").getByText(ALIAS)).toBeVisible({
     timeout: 10000,
   });
 
   // ── 5. Query via GQL data endpoint ───────────────────────────────────────
-  const queryResult = await gql(`{ e2eSpCalendar { id title } }`);
+  // The GraphQL field is the alias in camelCase.
+  const field = ALIAS.replace(/_([a-z0-9])/g, (_m, c: string) => c.toUpperCase());
+  const queryResult = await gql(`{ ${field} { id title } }`);
   // Query may error since the Calcite sharepoint connector does not support
   // direct SQL table access (getTableHandle returns null for user tables).
   // We assert the response shape is defined — success or a recognisable error.

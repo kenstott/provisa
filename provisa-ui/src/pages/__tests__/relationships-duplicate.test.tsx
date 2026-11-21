@@ -53,6 +53,7 @@ const tbl = (id: number, tableName: string, columns: string[]) => ({
 
 const RELS = { relationships: [rel], loading: false, refetch: vi.fn() };
 const TABLES = {
+  refetch: () => Promise.resolve(),
   tables: [tbl(1, "orders", ["customer_id", "total"]), tbl(2, "customers", ["cust_key", "name"])],
   loading: false,
 };
@@ -65,6 +66,13 @@ const FILTER = {
 };
 
 vi.mock("../../hooks/useAdminQueries", () => ({
+  // REQ-2249: no code resolver set is in service here.
+  useCodeResolvers: () => ({
+    codeResolvers: [],
+    loading: false,
+    saveCodeResolver: vi.fn(),
+    retireCodeResolver: vi.fn(),
+  }),
   useRelationships: () => RELS,
   useAllRelationships: () => RELS,
   useTables: () => TABLES,
@@ -77,7 +85,6 @@ vi.mock("../../context/AuthContext", () => ({ useAuth: () => AUTH }));
 vi.mock("../../context/DomainFilterContext", () => ({ useDomainFilter: () => FILTER }));
 vi.mock("../../api/admin", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../api/admin")>()),
-  fetchCandidates: vi.fn().mockResolvedValue([]),
   fetchRejectedCount: vi.fn().mockResolvedValue(0),
   fetchSettings: vi.fn().mockResolvedValue({
     naming: { convention: "apollo_graphql", use_domains: false, default_domain: "" },

@@ -8,7 +8,7 @@
       "purpose": {
         "environment_management": {
           "title": "Omgevingen zijn een productiefunctie",
-          "body": "Een omgeving is een complete, afzonderlijk beheerde kopie van je model — bronnen, tabellen, beleid, maskeringsregels en grants. Teams houden een dev-omgeving om het model in te wijzigen, een staging-omgeving om het te reviewen en prod om vanuit te serveren, en brengen de wijziging vervolgens vooruit door de ene omgeving in de volgende te mergen met een diff, een goedkeuring en een terug te draaien geschiedenis.\n\nJe sandbox IS zo'n omgeving, speciaal voor jou aangemaakt. Het beheer ervan — aanmaken, mergen, deployen, buiten gebruik stellen — is van de organisatie die ze bezit, dus het oppervlak wordt hier getoond in plaats van overgedragen: je kunt zien wat het doet, en het werkt op niets in."
+          "body": "Een omgeving is een volledige, afzonderlijk beheerde kopie van het model: bronnen, tabellen, beleid, maskeringsregels en toekenningen. Teams wijzigen het model in dev, beoordelen het in staging en leveren vanuit prod, waarbij de ene omgeving in de volgende wordt gemerged met een diff, een goedkeuring en een terug te draaien geschiedenis.\n\nDe sandbox is een van deze omgevingen, alleen voor jou gemaakt. Omgevingen aanmaken, mergen, deployen en uitfaseren is aan de organisatie die ze bezit, dus deze pagina wordt ter referentie getoond en doet niets."
         }
       }
     }

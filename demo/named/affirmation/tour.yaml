@@ -1,0 +1,66 @@
+# Copyright (c) 2026 Kenneth Stott
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+#
+# The affirmation demo's own tour (REQ-2010, REQ-2006). The step kinds and what each names are
+# listed in demo/named/weblogs/tour.yaml; every name here is checked against the demo by
+# tests/unit/test_named_demo_tour.py, and the words of each step are tour.steps.<key> in the UI's
+# tour.json, in every language.
+# The track: the scenario -- one trade, four systems that never see one another; how it fits -- the
+# order system, the broker's confirmations, the custodian's instructions, the Python matcher and the
+# join that feeds it; the answer -- the break queue with each break's time to cutoff and penalty,
+# and the affirmation log the command wrote; Polly's answers on the queue, stored; the same question
+# put to the explorer's agent in Explore, and the statement it ran; then a recap.
+# Where the tour's "Look around on my own" leaves the visitor: Explore, to ask the desk's questions.
+landing:
+  route: /explore
+  capability: query_development
+steps:
+- key: affirmationScenario
+  route: /sources
+  capability: source_registration
+  source: oms
+- key: affirmationBroker
+  source: broker
+- key: affirmationCustody
+  source: custody
+- key: affirmationMatcher
+  source: matcher
+- key: affirmationMatchTable
+  route: /tables
+  capability: table_registration
+  table: matcher.trade_match
+- key: affirmationFeed
+  route: /relationships
+  capability: create_relationship
+  relationship: MATCHED_AS
+- key: affirmationQueue
+  route: /sql
+  capability: query_development
+  sql: >-
+    SELECT trade_ref, security, broker_code, break_type, detail, minutes_to_cutoff, currency,
+    penalty_per_day FROM "postrade"."view_break_queue" ORDER BY minutes_to_cutoff, penalty_per_day DESC
+- key: affirmationAffirmed
+  sql: >-
+    SELECT l.trade_ref, a.fund_account, a.quantity, l.affirmed_at, l.affirmed_by
+    FROM "postrade"."affirmation_log" AS l
+    JOIN "postrade"."allocations" AS a ON a.trade_ref = l.trade_ref ORDER BY l.trade_ref
+- key: affirmationPollyCutoff
+  polly: Which trade break has the least time left before its market's affirmation cutoff?
+- key: affirmationPollyPenalty
+  polly: Which trade break would accrue the largest penalty a day if it failed to settle?
+- key: affirmationExplore
+  route: /explore
+  capability: query_development
+  mcp: Which of today's trades are not yet affirmed, and what break holds up each one?
+- key: affirmationExplain
+  mcp_explain: true
+- key: affirmationRecap
+  route: /sources
+  capability: source_registration
+  source: desk

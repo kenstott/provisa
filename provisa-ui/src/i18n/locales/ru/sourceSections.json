@@ -8,7 +8,7 @@
     "operations": "Операции",
     "tableName": "Таблица",
     "tableDomain": "Домен",
-    "draft": "Черновик",
+    "withdrawn": "Отозвана",
     "commands": "Команды",
     "commandName": "Команда",
     "commandKind": "Вид"

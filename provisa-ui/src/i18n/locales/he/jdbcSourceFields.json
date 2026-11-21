@@ -16,7 +16,7 @@
     "checkPassed": "{{capability}}: עבר",
     "checkFailed": "{{capability}}: נכשל ({{reason}})",
     "jdbcDriverJar": "קובץ JAR של מנהל התקן JDBC",
-    "jdbcDriverJarHint": "קובץ ה-JAR של מנהל ההתקן, שהועלה מהמחשב שלך. התקנות באירוח עצמי בלבד.",
+    "jdbcDriverJarHint": "קובץ ה-jar של מנהל ההתקן, שהועלה מהמחשב שלך. להתקנות באירוח עצמי בלבד.",
     "jdbcDriverClass": "מחלקת מנהל ההתקן",
     "driver": "מנהל התקן",
     "jarDriver": "מנהל התקן JDBC משלך (JAR)",

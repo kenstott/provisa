@@ -49,7 +49,6 @@ import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
 from tests.env_creds import unset
-from tests.helpers import registered_id, release_mutation
 
 pytestmark = [
     pytest.mark.integration,
@@ -120,10 +119,6 @@ async def _registered(client: AsyncClient, table: str, alias: str, columns: list
         "registerTable",
     )
     assert result["success"], result
-    released = await _mutation(
-        client, release_mutation(registered_id(result["message"])), "setTableDraft"
-    )
-    assert released["success"], released
 
 
 async def _sql(client: AsyncClient, sql: str) -> list[dict[str, Any]]:

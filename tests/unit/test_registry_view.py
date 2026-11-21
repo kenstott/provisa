@@ -82,7 +82,7 @@ async def test_every_source_is_its_row_and_builtins_stay_out(monkeypatch):
     async def _list_all(conn):
         return rows
 
-    monkeypatch.setattr("provisa.core.repositories.source.list_all", _list_all)
+    monkeypatch.setattr("provisa.core.repositories.source.list_in_production", _list_all)
     out = {s.id: s for s in await registry_view.registered_sources(state)}
     assert set(out) == {"cfg_pg", "ui_mongo"}  # the file-only source does not exist
     # The row wins over the file's declaration of the same id: an admin's edit governs.

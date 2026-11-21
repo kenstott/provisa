@@ -121,7 +121,7 @@
     "roleSynthesis": "Utilisé",
     "roleSupporting": "À l'appui",
     "conflicts": "Explications divergentes",
-    "conflictsHint": "Ces passages ne peuvent pas être vrais tous les deux. Ils sont présentés côte à côte, jamais fusionnés.",
+    "conflictsHint": "Ces passages ne peuvent pas être vrais tous les deux : ils sont donc affichés côte à côte.",
     "accept": "Accepter",
     "merge": "Fusionner",
     "mergeInto": "Fusionner dans",

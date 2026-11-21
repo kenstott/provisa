@@ -234,7 +234,7 @@ fn encode_rest_csv<'py>(
 #[pyo3(signature = (
     batches, columns, *, resource_type, page_size, page_number, probe, total, id_columns,
     scalar_names, rel_names, rel_scalar_names, includes, include_keys, base_path, link_params,
-    truncation, warnings=None
+    truncation, warnings=None, include_fields=None, include_names=None, single=false
 ))]
 #[allow(clippy::too_many_arguments)]
 fn encode_jsonapi<'py>(
@@ -256,9 +256,15 @@ fn encode_jsonapi<'py>(
     link_params: Vec<(String, String)>,
     truncation: (String, String),
     warnings: Option<Vec<u8>>,
+    include_fields: Option<HashMap<String, Vec<String>>>,
+    include_names: Option<HashMap<String, surfaces::IncludeNames>>,
+    single: bool,
 ) -> PyResult<(Bound<'py, PyBytes>, Vec<String>)> {
     let spec = spec_of(columns);
     let a = surfaces::JsonApi {
+        single,
+        include_fields: include_fields.unwrap_or_default(),
+        include_names: include_names.unwrap_or_default(),
         resource_type,
         page_size,
         page_number,

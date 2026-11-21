@@ -1,7 +1,7 @@
 {
   "nlPage": {
     "guideTitle": "Zo schrijf je een goede vraag",
-    "guideDesc": "Deze tool genereert query's rechtstreeks vanuit het schema — er wordt niet geredeneerd over vrije tekst of algemene kennis. Formuleer de vraag als een samenstelling van de tabellen, velden en relaties die in de gegevens bestaan.",
+    "guideDesc": "Deze tool genereert query's op basis van het schema. Hij redeneert niet over vrije tekst of algemene kennis, dus formuleer de vraag in termen van de tabellen, velden en relaties in de data.",
     "guideRuleNames": "Gebruik de namen van entiteiten, geen synoniemen ({{entity}}, niet {{synonym}})",
     "guideRuleFilters": "Geef filters, groeperingen en aggregaties op zoals in een query",
     "guideRuleSchema": "Als een veld of relatie niet in het schema staat, kan er geen query op worden uitgevoerd",
@@ -24,8 +24,8 @@
     "strictModeTooltip": "Alle generatie is strikt gebaseerd op de GraphQL-expressie: eerst wordt GraphQL gegenereerd en tegen het schema gevalideerd, daarna gecompileerd naar SQL en vervolgens naar Cypher. Uit: SQL, GraphQL en Cypher worden elk onafhankelijk gegenereerd, als de query die het dichtst bij de vraag komt.",
     "strictLocked": "Deze rol mag alleen goedgekeurde relaties gebruiken",
     "questionTooltip": "Stel uw vraag in gewone taal met uw eigen tabel-, kolom- en relatienamen. Enter verstuurt; Shift+Enter voegt een regel toe.",
-    "generateTooltip": "Genereert uit deze vraag een query voor elk oppervlak — GraphQL, SQL en Cypher — op basis van het schema dat uw huidige rol mag zien.",
-    "mcpChatTooltip": "Geeft deze vraag door aan de MCP-assistent, die de catalogus verkent en de query voor u uitvoert in plaats van die alleen te genereren.",
+    "generateTooltip": "Genereert GraphQL-, SQL- en Cypher-query's op basis van deze vraag, met het schema dat de huidige rol kan zien.",
+    "mcpChatTooltip": "Stuurt deze vraag naar de MCP-assistent, die de catalogus verkent en de query uitvoert.",
     "questionHelpTitle": "De vraag stellen",
     "strictHelpTitle": "Strikte generatie",
     "generateHelpTitle": "Wat Genereren oplevert",

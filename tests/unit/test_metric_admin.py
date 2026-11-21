@@ -101,8 +101,9 @@ async def test_upsert_get_list_delete_roundtrip(control_plane):
             assert derived["visible_to"] == []  # model default: no role (REQ-2153)
 
             assert await metric_repo.delete(conn, "net_revenue") is True
-            assert await metric_repo.get(conn, "net_revenue") is None
-            assert await metric_repo.delete(conn, "net_revenue") is False  # already gone
+            retired = await metric_repo.get(conn, "net_revenue")  # REQ-2248: kept, retired
+            assert retired is not None and retired["retired"] is True
+            assert await metric_repo.delete(conn, "net_revenue") is False  # retired already
 
 
 async def test_upsert_replaces_by_name(control_plane):

@@ -1003,6 +1003,12 @@ DUCKDB_TWEAKS = {
     )
     for form in OPERATORS
     if form.name == "int8div"
+} | {
+    # DuckDB's date holds infinity, which PostgreSQL's date_pli and date_mii answer as it is: the
+    # day count of DuckDB's marker would read as a finite day past the range.
+    form.name: f"CASE WHEN isfinite(CAST(a AS DATE)) THEN {form.sql} ELSE CAST(a AS DATE) END"
+    for form in _DATED_ARITHMETIC
+    if form.name in ("date_pli", "date_mii")
 }
 #: The forms that read an argument's text: a statement's cast to their type says nothing more, and
 #: a cast to character(n) says how far it pads.

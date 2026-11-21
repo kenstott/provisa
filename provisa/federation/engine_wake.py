@@ -18,7 +18,7 @@ query arrives, and this module is the seam that reconciles the two.
 Three things follow from a shard that can be absent, and all three are handled here rather than at
 any call site:
 
-* **The wake happens BEFORE the terminal is dispatched, not as a retry.** ``execute_trino``'s retry
+* **The wake happens BEFORE the terminal is dispatched, not as a retry.** The Trino read's retry
   budget is 30s (``PROVISA_RETRY_BUDGET_SECS``) and a cold shard is ~2-4min of node provision plus
   Trino start. A wake left to the retry loop therefore cannot succeed — the budget expires while
   Autopilot is still bringing a node up for the pod. :func:`ensure_engine_awake` runs at the top of ``_execute_plan``, so
@@ -371,8 +371,16 @@ async def restore_shared_terminal(state: Any, shard: str, stamp: int) -> None:
 
         async with state.model_db.acquire() as conn, bound_to_request_org():
             config = await store_config(raw, conn)
+            # REQ-1921: a withdrawn source is attached by no engine.
+            from provisa.core.repositories import source as source_repo
+
+            withdrawn = await source_repo.withdrawn_ids(conn)
             failed = await attach_store_sources(
-                config, state.federation_engine, catalog_names=default.source_catalogs
+                config.model_copy(
+                    update={"sources": [s for s in config.sources if s.id not in withdrawn]}
+                ),
+                state.federation_engine,
+                catalog_names=default.source_catalogs,
             )
         # A catalog that did not come back is not a boot-time inconvenience here: the resumed
         # coordinator now serves every shared-lane org WITHOUT it, and the next query answers a raw
@@ -593,8 +601,9 @@ def _is_lost_coordinator(exc: BaseException) -> bool:
             return True
         if isinstance(cause, requests.exceptions.ConnectionError | requests.exceptions.Timeout):
             return True
-        # execute_trino restates a failed reconnect as the builtin, which also covers a socket that
-        # was refused outright rather than timing out.
+        # The Trino read (trino_flight.EngineUnreachable) states a proxy or coordinator it could
+        # not reach as the builtin, which also covers a socket refused outright rather than
+        # timing out.
         if isinstance(cause, ConnectionError | TimeoutError):
             return True
     return False

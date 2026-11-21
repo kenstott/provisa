@@ -285,6 +285,14 @@ async def _leak(state: Any, reg: dict, col: dict, threshold: float) -> Result:
             None,
             f"{kind_name(kind)}() is computed from measurement or other columns, not sampled",
         )
+    # REQ-1986: a table that requires parameters has no sample to read; asked of its metadata,
+    # never found out by reading.
+    from provisa.core.parameters import not_read_reason
+    from provisa.profiler.run import not_read_whole
+
+    refusal = not_read_whole(state, reg["id"], reg["table_name"])
+    if refusal is not None:
+        return Result(LEAK_RATE, NOT_RUN, None, f"the table {not_read_reason(refusal.parameters)}")
     values = await _sample(state, reg, col["column_name"])
     if values is None:
         return Result(LEAK_RATE, NOT_RUN, None, "the org admin cannot read the column")

@@ -18,9 +18,17 @@ bid is a request fired through the outbound request hook (provisa.core.offer_hoo
 receives it accepts or declines the offer as bid, never altering it. An open offer is no request
 at all.
 
-What is checked here is what the store alone can answer: a sample's views exist, are views and
-read only the product's datasets, together all of them; a synthetic offer's datasets each have a
-profiler. Whether the one saving or accepting an offer may grant its role asks the runtime, and is
+What is checked here is what the store and the published build answer: a sample's views exist,
+are views and read only the product's datasets, together all of them; a synthetic offer's datasets
+each have a profiler. An offer saved through the API is checked when it is saved; one a
+configuration declares is saved by the load, its sample checked by the build after the load
+(REQ-2180, amended 2026-11-16).
+
+THE PUBLISHED BUILD (REQ-194, REQ-2125, both amended 2026-11-16). The names a request uses (an
+offer's grant, a bid, an offer's public check), a product's quality checks and the tables a sample
+view reads are the runtime's published build's (:class:`Published`), passed in by the caller,
+never the stored names table, checker targets or lineage edges: those are written after the
+build answers and are read only by the meta domain, which may show the build before. Whether the one saving or accepting an offer may grant its role asks the runtime, and is
 asked where it is (provisa.api.admin.data_product_offers_router).
 """
 
@@ -28,22 +36,19 @@ asked where it is (provisa.api.admin.data_product_offers_router).
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable, Mapping
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import delete, func, select, update
 
-from provisa.core import model_change
-from provisa.core.models import DEFAULT_OFFER, DataProductOffer, OfferContract
+from provisa.core.models import CONSUMER_KINDS, DEFAULT_OFFER, DataProductOffer, OfferContract
 from provisa.core.schema_org import (
-    checker_targets,
     data_product_bids,
     data_product_offer_contracts,
     data_product_offers,
     data_product_tables,
     data_products,
-    lineage_edges,
-    model_names,
     registered_tables,
     sources,
     table_columns,
@@ -52,7 +57,26 @@ from provisa.core.schema_org import (
 if TYPE_CHECKING:
     from datetime import datetime
 
+    from provisa.compiler.names_table import NamesTable
     from provisa.core.database import Connection
+
+
+@dataclass(frozen=True)
+class Published:
+    """What a request reads of the model build its runtime has published (REQ-194, REQ-2125,
+    REQ-1914): the build's names table (None while the runtime has built none), each checker
+    table's checked table as the build resolved it, and ``view_reads``: each of the given ids that
+    is a view of the build, with the ids of the tables it reads (a table that is no view is
+    absent). The caller, which holds the runtime, builds it (provisa.api.offer_derivation)."""
+
+    names: "NamesTable | None"
+    checked: Mapping[int, int]
+    view_reads: Callable[[list[int]], dict[int, set[int]]]
+
+    def checkers_of(self, dataset: int) -> list[int]:
+        """The checker tables whose contracts scan ``dataset``, in id order."""
+        return sorted(c for c, t in self.checked.items() if t == dataset)
+
 
 _OFFER_FIELDS = tuple(DataProductOffer.model_fields)
 
@@ -122,37 +146,14 @@ async def table_names(conn: "Connection", table_ids: Iterable[int]) -> dict[int,
     return {int(r.id): r.alias or r.table_name for r in rows.fetchall()}
 
 
-async def views_read(conn: "Connection", view_ids: Iterable[int]) -> dict[int, set[int]]:
-    """Each of ``view_ids`` that is a view, and the tables it reads, by the model's lineage. A
-    table that is no view is absent."""
-    ids = list(view_ids)
-    if not ids:
-        return {}
-    views = (
-        await conn.execute_core(
-            select(registered_tables.c.id)
-            .where(registered_tables.c.id.in_(ids))
-            .where(registered_tables.c.view_sql.is_not(None))
-        )
-    ).fetchall()
-    out: dict[int, set[int]] = {int(r.id): set() for r in views}
-    if not out:
-        return out
-    edges = await conn.execute_core(
-        select(lineage_edges.c.target_table_id, lineage_edges.c.source_table_id)
-        .where(lineage_edges.c.via_kind == "view")
-        .where(lineage_edges.c.target_table_id.in_(list(out)))
-        .where(lineage_edges.c.source_table_id.is_not(None))
-    )
-    for r in edges.fetchall():
-        out[int(r.target_table_id)].add(int(r.source_table_id))
-    return out
-
-
-async def _check_sample(conn: "Connection", datasets: list[int], views: list[int]) -> None:
-    """A sample's views each exist in the model as a view over the product's datasets alone, and
-    together they read every dataset: an offer covers all of them."""
-    read = await views_read(conn, views)
+async def check_sample(
+    conn: "Connection", datasets: list[int], views: list[int], published: Published
+) -> None:
+    """A sample's views each exist in the published model as a view over the product's datasets
+    alone, and together they read every dataset: an offer covers all of them. Checked when an
+    offer is saved through the API, and by every build of an offer a configuration declared
+    (provisa.api.offer_derivation)."""
+    read = published.view_reads(list(views))
     names = await table_names(conn, [*views, *datasets])
     for view in views:
         if view not in read:
@@ -244,17 +245,19 @@ async def synthetic_readers(conn: "Connection") -> dict[int, list[str]]:
     return {table_id: sorted(roles) for table_id, roles in sorted(out.items())}
 
 
-async def quality_tables(conn: "Connection", product_id: str, dataset: int) -> list[int]:
-    """The checker tables the product owns whose contracts scan ``dataset``: its data quality
-    results on it (REQ-2157)."""
-    owned = select(data_product_tables.c.table_id).where(
-        data_product_tables.c.product_id == product_id
-    )
+async def quality_tables(
+    conn: "Connection", product_id: str, dataset: int, published: Published
+) -> list[int]:
+    """The checker tables the product owns whose contracts scan ``dataset`` in the published
+    build: its data quality results on it (REQ-2157)."""
+    checkers = published.checkers_of(dataset)
+    if not checkers:
+        return []
     rows = await conn.execute_core(
-        select(checker_targets.c.table_id)
-        .where(checker_targets.c.checked_table_id == dataset)
-        .where(checker_targets.c.table_id.in_(owned))
-        .order_by(checker_targets.c.table_id)
+        select(data_product_tables.c.table_id)
+        .where(data_product_tables.c.product_id == product_id)
+        .where(data_product_tables.c.table_id.in_(checkers))
+        .order_by(data_product_tables.c.table_id)
     )
     return [int(r.table_id) for r in rows.fetchall()]
 
@@ -278,22 +281,23 @@ async def profile_tables(conn: "Connection", dataset: int) -> list[int]:
     ]
 
 
-async def sql_names(conn: "Connection", table_ids: Iterable[int]) -> dict[int, str]:
+async def sql_names(
+    conn: "Connection", table_ids: Iterable[int], published: Published
+) -> dict[int, str]:
     """Each table's identifier as an entitlement list names it (REQ-2219): its domain's SQL name
-    and its own, from the names table of the last model build. A table the build has not named
-    is refused: its entitlement entry cannot be written."""
+    and its own, from the names table of the build the runtime has published (REQ-194). A table
+    that build has not named is refused: its entitlement entry cannot be written."""
     from provisa.compiler.naming import domain_to_sql_name
 
     ids = sorted(set(table_ids))
     if not ids:
         return {}
-    rows = await conn.execute_core(
-        select(model_names.c.object_id, model_names.c.name, model_names.c.domain_id)
-        .where(model_names.c.surface == "sql")
-        .where(model_names.c.object_kind.in_(("table", "view")))
-        .where(model_names.c.object_id.in_([str(i) for i in ids]))
-    )
-    out = {int(r.object_id): f"{domain_to_sql_name(r.domain_id)}.{r.name}" for r in rows.fetchall()}
+    wanted = {str(i) for i in ids}
+    out = {
+        int(r.object_id): f"{domain_to_sql_name(r.domain_id)}.{r.name}"
+        for r in (() if published.names is None else published.names.rows)
+        if r.surface == "sql" and r.object_kind in ("table", "view") and r.object_id in wanted
+    }
     unnamed = [i for i in ids if i not in out]
     if unnamed:
         names = await table_names(conn, unnamed)
@@ -356,16 +360,36 @@ async def add_default(conn: "Connection", product_id: str, *, by: str | None) ->
     )
 
 
-async def check(conn: "Connection", product_id: str, offer: DataProductOffer) -> None:
+async def check_declared(conn: "Connection", product_id: str, offer: DataProductOffer) -> list[int]:
     """Refuse ``offer`` by name where the store says it cannot be given: its product does not
-    exist, a sample's views are not views over the product's datasets alone, together all of them,
-    or a synthetic offer's dataset has no profiler."""
+    exist, or a synthetic offer's dataset has no profiler. The product's datasets.
+
+    A sample's views are not checked here: an offer a configuration declares is checked against
+    the published build by the build that follows the load (REQ-2180, amended 2026-11-16)."""
     await _product(conn, product_id)
     datasets = await dataset_ids(conn, product_id)
-    if offer.data_level == "sample":
-        await _check_sample(conn, datasets, offer.sample_views)
-    elif offer.data_level == "synthetic":
+    if offer.data_level == "synthetic":
         await _check_synthetic(conn, datasets)
+    return datasets
+
+
+async def check(
+    conn: "Connection", product_id: str, offer: DataProductOffer, published: Published
+) -> None:
+    """Refuse ``offer`` by name where the store or the published build says it cannot be given:
+    :func:`check_declared`, and a sample's views are not views over the product's datasets alone,
+    together all of them (:func:`check_sample`)."""
+    datasets = await check_declared(conn, product_id, offer)
+    if offer.data_level == "sample":
+        await check_sample(conn, datasets, offer.sample_views, published)
+
+
+async def _name_change(conn: "Connection", action: str, product_id: str) -> None:  # REQ-1524
+    # An offer is written in its product's file: the change is named at the product's model URI.
+    # The product module imports this one; it is reached when a change is named, not at import.
+    from provisa.core.repositories import data_product
+
+    await data_product.name_change(conn, action, product_id)
 
 
 async def save(
@@ -375,49 +399,74 @@ async def save(
     *,
     offer_id: int | None,
     by: str | None,
+    published: Published,
 ) -> dict:
     """Add ``offer`` to the product (``offer_id`` None), or replace the one of that id: checked
-    (:func:`check`), its version counted up by a change, its publisher ``by`` and its review
-    cleared. The offer as stored."""
+    (:func:`check`) against the published build, its version counted up by a change, its
+    publisher ``by`` and its review cleared. The offer as stored."""
     async with conn.transaction():
-        await check(conn, product_id, offer)
-        await conn.require_admitted(update(data_products).where(data_products.c.id == product_id))
-        clash = (
-            await conn.execute_core(
-                select(data_product_offers.c.id)
-                .where(data_product_offers.c.product_id == product_id)
-                .where(data_product_offers.c.name == offer.name)
+        await check(conn, product_id, offer, published)
+        return await _store(conn, product_id, offer, offer_id=offer_id, by=by)
+
+
+async def save_declared(
+    conn: "Connection", product_id: str, offer: DataProductOffer, *, offer_id: int | None
+) -> dict:
+    """Save an offer a configuration declares, as :func:`save` does with no publisher, checked
+    by :func:`check_declared`: its sample is checked by the build that follows the load, which
+    lists it for review when it does not hold (REQ-2180, amended 2026-11-16). The offer as
+    stored."""
+    async with conn.transaction():
+        await check_declared(conn, product_id, offer)
+        return await _store(conn, product_id, offer, offer_id=offer_id, by=None)
+
+
+async def _store(
+    conn: "Connection",
+    product_id: str,
+    offer: DataProductOffer,
+    *,
+    offer_id: int | None,
+    by: str | None,
+) -> dict:
+    """Write ``offer``, its checks passed, in the caller's transaction."""
+    await conn.require_admitted(update(data_products).where(data_products.c.id == product_id))
+    clash = (
+        await conn.execute_core(
+            select(data_product_offers.c.id)
+            .where(data_product_offers.c.product_id == product_id)
+            .where(data_product_offers.c.name == offer.name)
+        )
+    ).fetchone()
+    if clash is not None and clash.id != offer_id:
+        raise OfferRefused(
+            "name_taken",
+            f"data product {product_id!r} already has an offer named {offer.name!r}",
+            status=409,
+            name=offer.name,
+        )
+    await _name_change(conn, f"upsert offer {offer.name} of", product_id)  # REQ-1524
+    values = {**offer.model_dump(), "published_by": by, "review": None}
+    if offer_id is None:
+        saved_id = int(
+            await conn.insert_returning(
+                data_product_offers, {"product_id": product_id, **values}, "id"
             )
-        ).fetchone()
-        if clash is not None and clash.id != offer_id:
-            raise OfferRefused(
-                "name_taken",
-                f"data product {product_id!r} already has an offer named {offer.name!r}",
-                status=409,
-                name=offer.name,
+        )
+    else:
+        saved_id = offer_id
+        held = await require_offer(conn, product_id, offer_id)
+        changed = as_offer(held) != offer
+        await conn.execute_core(
+            update(data_product_offers)
+            .where(data_product_offers.c.id == offer_id)
+            .values(
+                **values,
+                version=held["version"] + (1 if changed else 0),
+                updated_at=func.now(),
             )
-        model_change.name("upsert", "data product offer", f"{product_id}/{offer.name}")
-        values = {**offer.model_dump(), "published_by": by, "review": None}
-        if offer_id is None:
-            saved_id = int(
-                await conn.insert_returning(
-                    data_product_offers, {"product_id": product_id, **values}, "id"
-                )
-            )
-        else:
-            saved_id = offer_id
-            held = await require_offer(conn, product_id, offer_id)
-            changed = as_offer(held) != offer
-            await conn.execute_core(
-                update(data_product_offers)
-                .where(data_product_offers.c.id == offer_id)
-                .values(
-                    **values,
-                    version=held["version"] + (1 if changed else 0),
-                    updated_at=func.now(),
-                )
-            )
-        stored = await get_offer(conn, saved_id)
+        )
+    stored = await get_offer(conn, saved_id)
     assert stored is not None
     return stored
 
@@ -428,7 +477,7 @@ async def delete_offer(conn: "Connection", product_id: str, offer_id: int) -> No
     async with conn.transaction():
         offer = await require_offer(conn, product_id, offer_id)
         await conn.require_admitted(update(data_products).where(data_products.c.id == product_id))
-        model_change.name("delete", "data product offer", f"{product_id}/{offer['name']}")
+        await _name_change(conn, f"delete offer {offer['name']} of", product_id)  # REQ-1524
         await conn.execute_core(
             update(data_product_bids)
             .where(data_product_bids.c.offer_id == offer_id)
@@ -544,16 +593,32 @@ async def bid(
     *,
     requester: str,
     reason: str,
+    consumer_kind: str,
+    agreed: bool,
+    approver: str | None,
     request_id: str,
     hook: str,
     payload: dict,
 ) -> dict:
-    """``requester`` bids for the product's offer, stating why: the offer as it stands is what
-    is bid for, and ``payload`` the request fired for it, as ``request_id`` to ``hook``. One
+    """``requester`` bids for the product's offer for a consumer of ``consumer_kind``, stating its
+    purpose (``reason``), naming ``approver`` as who approves it, and having agreed to the offer's
+    terms of use (amended 2026-11-11, A BID NAMES ITS CONSUMER AND AGREES TO THE TERMS): the offer
+    as it stands, its terms of use with it, is what is bid for and agreed to, and ``payload`` the
+    request fired for it, as ``request_id`` to ``hook``. A bid that does not agree is refused. One
     pending bid per requester and offer."""
     text = reason.strip()
     if not text:
         raise OfferRefused("reason_required", "a bid states its reason")
+    if consumer_kind not in CONSUMER_KINDS:
+        raise OfferRefused(
+            "consumer_kind_unknown",
+            f"a bid is for a {', a '.join(CONSUMER_KINDS)}; not {consumer_kind!r}",
+            consumer_kind=consumer_kind,
+        )
+    if not agreed:
+        raise OfferRefused(
+            "terms_not_agreed", "a bid is sent only once its requester agrees to the offer's terms"
+        )
     offer = await require_offer(conn, product_id, offer_id)
     pending = (
         await conn.execute_core(
@@ -582,6 +647,9 @@ async def bid(
             "terms": as_offer(offer).model_dump(),
             "requester": requester,
             "reason": text,
+            "consumer_kind": consumer_kind,
+            "approver": approver,
+            "agreed_at": func.now(),
             "hook": hook,
             "payload": payload,
         },

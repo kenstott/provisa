@@ -32,6 +32,7 @@ import {
   TOUR_PREREQUISITES,
   TOPIC_IDS,
   stepRoute,
+  showsRoute,
   tourItinerary,
   stepsTheOrgCanShow,
   PET_STORE_DEMO_SQL,
@@ -51,7 +52,7 @@ import { prerequisitesMet, type OrgHas } from "./tourPrerequisites";
 import { useNamedDemo } from "../context/NamedDemoContext";
 import { TourMenu } from "./TourMenu";
 import { completedTopics, markTopicCompleted } from "./tourTopics";
-import { EXPANDED_STORAGE_KEY as DATA_PRODUCTS_EXPANDED_KEY } from "../pages/DataProductsPage";
+import { forgetDetailForEveryone } from "../components/list/useDetailParam";
 import { useAuth } from "../context/AuthContext";
 import { usePolly } from "../context/pollyState";
 import { viewerMeets } from "./viewerMeets";
@@ -232,12 +233,8 @@ const PREP_ACTIONS: Record<string, () => void> = {
   collapseDataProducts() {
     // The Data Products step clicks the first row to EXPAND it; a persisted expansion from an
     // earlier visit would make that same click collapse it instead. Nothing to restore: which
-    // row was open is a convenience, not state the visitor authored.
-    try {
-      removeStored(DATA_PRODUCTS_EXPANDED_KEY);
-    } catch {
-      /* localStorage unavailable -- the page mounts collapsed anyway */
-    }
+    // row was open is a convenience, not state the visitor authored (REQ-2260).
+    forgetDetailForEveryone("products");
   },
   seedMcp() {
     try {
@@ -700,7 +697,7 @@ export function TourProvider({ children }: { children: ReactNode }) {
         // per visit: the picker toggles, and Retry is a new attempt that picks again.
         const chooseEntry = `${visitRef.current}:${attempt}`;
         if (step.chooseFirst && chosenRef.current !== chooseEntry) {
-          if (route && route !== `${window.location.pathname}${window.location.search}`) {
+          if (route && !showsRoute(route, window.location.pathname, window.location.search)) {
             currentPathRef.current = route;
             navigate(route);
             // The route just taken re-renders the provider, which supersedes this run.
@@ -756,9 +753,10 @@ export function TourProvider({ children }: { children: ReactNode }) {
           route &&
           // The page actually shown, as well as the one the tour last sent the visitor to: a
           // record of the last navigation goes stale when the page changes under the tour, and
-          // a step that trusted it would wait on its own page's anchor from another page.
+          // a step that trusted it would wait on its own page's anchor from another page. The page
+          // shown is the route's with a panel open in its URL too (showsRoute, REQ-2241).
           (route !== currentPathRef.current ||
-            route !== `${window.location.pathname}${window.location.search}`)
+            !showsRoute(route, window.location.pathname, window.location.search))
         ) {
           currentPathRef.current = route;
           if (step.openBranch) {

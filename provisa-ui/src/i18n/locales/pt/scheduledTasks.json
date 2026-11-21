@@ -46,7 +46,7 @@
     "nextPage": "Próxima página",
     "lastPage": "Última página",
     "roleLabel": "Executa como função",
-    "validationRoleRequired": "Um gatilho de SQL ou de comando é executado como um papel: escolha um.",
+    "validationRoleRequired": "Um gatilho SQL ou de comando é executado com uma função, então escolha uma.",
     "runsAs": "executa como {{role}}",
     "deleteTitle": "Excluir o gatilho \"{{name}}\"?",
     "deleteConsequence": "O gatilho é removido e não é mais executado.",

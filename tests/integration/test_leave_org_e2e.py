@@ -27,25 +27,35 @@ pytestmark = [pytest.mark.integration]
 
 
 @pytest.fixture(scope="module")
-def server():
-    boot = tenancy.boot_server()
+def issuer():
+    idp = tenancy.Issuer()
+    try:
+        yield idp
+    finally:
+        idp.close()
+
+
+@pytest.fixture(scope="module")
+def server(issuer):
+    # People sign in with an identity provider's tokens: an org admits by email only an address
+    # the provider verified (REQ-1261), which a local account's typed address never is.
+    boot = tenancy.boot_server(issuer)
     try:
         yield boot
     finally:
         boot.cleanup()
 
 
-def test_leaving_removes_the_person_and_their_next_sign_in_does_not_rejoin_them(server):
-    operator = tenancy.operator_token(server)
-    tenancy.register(server, operator, "founder", "founder@hq.test")
-    alice_id = tenancy.register(server, operator, "alice", "alice@example.com")
+def test_leaving_removes_the_person_and_their_next_sign_in_does_not_rejoin_them(server, issuer):
+    alice_id = "alice"
 
-    founder = tenancy.sign_in(server, "founder")
+    founder = issuer.token("founder", "founder@hq.test", email_verified=True)
     org = tenancy.claim_platform_admin(server, founder)["org_id"]
     tenancy.let_matching_emails_join(server, founder, org, "example.com")
-    admin = tenancy.org_admin(server, operator, founder, org)
+    tenancy.grant_org_admin(server, founder, org, "org-admin")
+    admin = issuer.token("org-admin", "org-admin@hq.test", email_verified=True)
 
-    alice = tenancy.sign_in(server, "alice")
+    alice = issuer.token(alice_id, "alice@example.com", email_verified=True)
     joined = tenancy.me(server, alice)
     assert tenancy.member_of(joined) == [org], joined
     assert tenancy.MEMBER_ROLE in tenancy.roles_of(tenancy.me(server, alice, org=org))
@@ -67,7 +77,7 @@ def test_leaving_removes_the_person_and_their_next_sign_in_does_not_rejoin_them(
     assert alice_id not in tenancy.member_ids(server, admin, org)
 
     # The org's rule still matches her email. A fresh sign-in does not undo the departure.
-    again = tenancy.me(server, tenancy.sign_in(server, "alice"))
+    again = tenancy.me(server, issuer.token(alice_id, "alice@example.com", email_verified=True))
     assert tenancy.member_of(again) == [], again
     assert tenancy.MEMBER_ROLE not in tenancy.roles_of(again), again
     assert alice_id not in tenancy.member_ids(server, admin, org)

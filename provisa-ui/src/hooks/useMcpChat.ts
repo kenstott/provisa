@@ -10,6 +10,7 @@
 
 import { useRef, useState } from "react";
 import { executeClientTool, type ClientToolContext } from "../mcp/clientTools";
+import { useViewDomains } from "../lib/viewDomains";
 
 const API_BASE = import.meta.env.VITE_API_BASE || "";
 
@@ -77,6 +78,8 @@ export function useMcpChat(
   // thing that just changed (e.g. the Sources admin page's own query), which nothing did before.
   onServerToolResult?: (name: string, isError: boolean) => void,
 ) {
+  // REQ-2253: the chat works only within the navbar's selected domains; null sends none.
+  const viewDomains = useViewDomains();
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [tools, setTools] = useState<ToolEvent[]>([]);
   const [busy, setBusy] = useState(false);
@@ -107,7 +110,11 @@ export function useMcpChat(
     const resp = await fetch(`${API_BASE}/admin/mcp/chat`, {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-provisa-role": roleId },
-      body: JSON.stringify({ messages: convo, current_route: currentRoute }),
+      body: JSON.stringify({
+        messages: convo,
+        current_route: currentRoute,
+        domains: viewDomains ? [...viewDomains] : undefined,
+      }),
       signal,
     });
     if (!resp.ok || !resp.body) throw new Error(`chat failed: ${resp.status}`);

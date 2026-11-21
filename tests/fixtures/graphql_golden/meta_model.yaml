@@ -2537,6 +2537,10 @@ tables:
     data_type: oid
     visible_to:
     - viewer
+  - name: provisa_table_id
+    data_type: integer
+    visible_to:
+    - viewer
   - name: provolatile
     data_type: varchar
     visible_to:
@@ -9033,6 +9037,10 @@ tables:
     data_type: domain
     visible_to:
     - viewer
+  - name: provisa_table_id
+    data_type: integer
+    visible_to:
+    - viewer
   - name: result_cast_as_locator
     data_type: domain
     visible_to:
@@ -10371,10 +10379,6 @@ tables:
     data_type: text
     visible_to:
     - viewer
-  - name: draft
-    data_type: boolean
-    visible_to:
-    - viewer
   - name: gql_naming_convention
     data_type: text
     visible_to:
@@ -10416,6 +10420,10 @@ tables:
     data_type: integer
     visible_to:
     - viewer
+  - name: requires_parameters
+    data_type: boolean
+    visible_to:
+    - viewer
   - name: schema_name
     data_type: text
     visible_to:
@@ -10438,6 +10446,10 @@ tables:
     - viewer
   - name: watermark_column
     data_type: text
+    visible_to:
+    - viewer
+  - name: withdrawn
+    data_type: boolean
     visible_to:
     - viewer
 - source_id: provisa-admin
@@ -10928,6 +10940,22 @@ tables:
     - viewer
   - name: object_fields
     data_type: text
+    visible_to:
+    - viewer
+  - name: parameter_opaque
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: parameter_required
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: parameter_required_by_source
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: parameter_required_by_steward
+    data_type: boolean
     visible_to:
     - viewer
   - name: path
@@ -11621,12 +11649,13 @@ relationships:
   cardinality: many-to-one
   materialize: false
   refresh_interval: 300
-  disable_cypher: false
+  disable_cypher: true
   hide_target_meta: false
   same_entity: false
   parameters: {}
   version: 1
   needs_review: false
+  retired: false
   source_table_id: data_product_commands
   target_table_id: data_products
 - id: meta:data_product_commands:tracked_functions
@@ -11635,12 +11664,13 @@ relationships:
   cardinality: many-to-one
   materialize: false
   refresh_interval: 300
-  disable_cypher: false
+  disable_cypher: true
   hide_target_meta: false
   same_entity: false
   parameters: {}
   version: 1
   needs_review: false
+  retired: false
   source_table_id: data_product_commands
   target_table_id: tracked_functions
 - id: meta:data_product_edges:data_products
@@ -11657,6 +11687,7 @@ relationships:
   parameters: {}
   version: 1
   needs_review: false
+  retired: false
   source_table_id: data_product_edges
   target_table_id: data_products
 - id: meta:data_product_edges:target_product
@@ -11673,6 +11704,7 @@ relationships:
   parameters: {}
   version: 1
   needs_review: false
+  retired: false
   source_table_id: data_product_edges
   target_table_id: data_products
 - id: meta:data_product_edges:target_table
@@ -11689,6 +11721,7 @@ relationships:
   parameters: {}
   version: 1
   needs_review: false
+  retired: false
   source_table_id: data_product_edges
   target_table_id: registered_tables
 - id: meta:data_product_tables:data_products
@@ -11697,12 +11730,13 @@ relationships:
   cardinality: many-to-one
   materialize: false
   refresh_interval: 300
-  disable_cypher: false
+  disable_cypher: true
   hide_target_meta: false
   same_entity: false
   parameters: {}
   version: 1
   needs_review: false
+  retired: false
   source_table_id: data_product_tables
   target_table_id: data_products
 - id: meta:data_product_tables:registered_tables
@@ -11711,12 +11745,13 @@ relationships:
   cardinality: many-to-one
   materialize: false
   refresh_interval: 300
-  disable_cypher: false
+  disable_cypher: true
   hide_target_meta: false
   same_entity: false
   parameters: {}
   version: 1
   needs_review: false
+  retired: false
   source_table_id: data_product_tables
   target_table_id: registered_tables
 - id: meta:data_products:commands
@@ -11736,6 +11771,7 @@ relationships:
   parameters: {}
   version: 1
   needs_review: false
+  retired: false
   source_table_id: data_products
   target_table_id: tracked_functions
   via_table: data_product_commands
@@ -11745,12 +11781,13 @@ relationships:
   cardinality: one-to-many
   materialize: false
   refresh_interval: 300
-  disable_cypher: false
+  disable_cypher: true
   hide_target_meta: false
   same_entity: false
   parameters: {}
   version: 1
   needs_review: false
+  retired: false
   source_table_id: data_products
   target_table_id: data_product_commands
 - id: meta:data_products:data_product_edges
@@ -11767,6 +11804,7 @@ relationships:
   parameters: {}
   version: 1
   needs_review: false
+  retired: false
   source_table_id: data_products
   target_table_id: data_product_edges
 - id: meta:data_products:data_product_tables
@@ -11775,12 +11813,13 @@ relationships:
   cardinality: one-to-many
   materialize: false
   refresh_interval: 300
-  disable_cypher: false
+  disable_cypher: true
   hide_target_meta: false
   same_entity: false
   parameters: {}
   version: 1
   needs_review: false
+  retired: false
   source_table_id: data_products
   target_table_id: data_product_tables
 - id: meta:data_products:domains
@@ -11795,6 +11834,7 @@ relationships:
   parameters: {}
   version: 1
   needs_review: false
+  retired: false
   source_table_id: data_products
   target_table_id: domains
 - id: meta:data_products:member_tables
@@ -11814,6 +11854,7 @@ relationships:
   parameters: {}
   version: 1
   needs_review: false
+  retired: false
   source_table_id: data_products
   target_table_id: registered_tables
   via_table: data_product_tables
@@ -11831,6 +11872,7 @@ relationships:
   parameters: {}
   version: 1
   needs_review: false
+  retired: false
   source_table_id: data_products
   target_table_id: tag_assignments
 - id: meta:derived_tags:registered_tables
@@ -11845,6 +11887,7 @@ relationships:
   parameters: {}
   version: 1
   needs_review: false
+  retired: false
   source_table_id: derived_tags
   target_table_id: registered_tables
 - id: meta:derived_tags:tags
@@ -11861,6 +11904,7 @@ relationships:
   parameters: {}
   version: 1
   needs_review: false
+  retired: false
   source_table_id: derived_tags
   target_table_id: tags
 - id: meta:domains:data_products
@@ -11875,6 +11919,7 @@ relationships:
   parameters: {}
   version: 1
   needs_review: false
+  retired: false
   source_table_id: domains
   target_table_id: data_products
 - id: meta:domains:registered_tables
@@ -11889,6 +11934,7 @@ relationships:
   parameters: {}
   version: 1
   needs_review: false
+  retired: false
   source_table_id: domains
   target_table_id: registered_tables
 - id: meta:domains:rls_rules
@@ -11903,6 +11949,7 @@ relationships:
   parameters: {}
   version: 1
   needs_review: false
+  retired: false
   source_table_id: domains
   target_table_id: rls_rules
 - id: meta:domains:tracked_functions
@@ -11917,6 +11964,7 @@ relationships:
   parameters: {}
   version: 1
   needs_review: false
+  retired: false
   source_table_id: domains
   target_table_id: tracked_functions
 - id: meta:domains:tracked_webhooks
@@ -11931,6 +11979,7 @@ relationships:
   parameters: {}
   version: 1
   needs_review: false
+  retired: false
   source_table_id: domains
   target_table_id: tracked_webhooks
 - id: meta:effective_column_tags:tags
@@ -11947,6 +11996,7 @@ relationships:
   parameters: {}
   version: 1
   needs_review: false
+  retired: false
   source_table_id: effective_column_tags
   target_table_id: tags
 - id: meta:library_documents:policy_coverage
@@ -11963,6 +12013,7 @@ relationships:
   parameters: {}
   version: 1
   needs_review: false
+  retired: false
   source_table_id: library_documents
   target_table_id: policy_coverage
 - id: meta:library_documents:section_tags
@@ -11979,6 +12030,7 @@ relationships:
   parameters: {}
   version: 1
   needs_review: false
+  retired: false
   source_table_id: library_documents
   target_table_id: section_tags
 - id: meta:library_documents:tag_citations
@@ -11995,6 +12047,7 @@ relationships:
   parameters: {}
   version: 1
   needs_review: false
+  retired: false
   source_table_id: library_documents
   target_table_id: tag_citations
 - id: meta:policy_coverage:column
@@ -12011,6 +12064,7 @@ relationships:
   parameters: {}
   version: 1
   needs_review: false
+  retired: false
   source_table_id: policy_coverage
   target_table_id: table_columns
 - id: meta:policy_coverage:document
@@ -12027,6 +12081,7 @@ relationships:
   parameters: {}
   version: 1
   needs_review: false
+  retired: false
   source_table_id: policy_coverage
   target_table_id: library_documents
 - id: meta:policy_coverage:table
@@ -12043,6 +12098,7 @@ relationships:
   parameters: {}
   version: 1
   needs_review: false
+  retired: false
   source_table_id: policy_coverage
   target_table_id: registered_tables
 - id: meta:policy_coverage:tag_instance
@@ -12059,6 +12115,7 @@ relationships:
   parameters: {}
   version: 1
   needs_review: false
+  retired: false
   source_table_id: policy_coverage
   target_table_id: tag_instances
 - id: meta:policy_coverage:tags
@@ -12075,6 +12132,7 @@ relationships:
   parameters: {}
   version: 1
   needs_review: false
+  retired: false
   source_table_id: policy_coverage
   target_table_id: tags
 - id: meta:registered_tables:_term_refs
@@ -12084,12 +12142,13 @@ relationships:
   materialize: false
   refresh_interval: 300
   graphql_alias: glossaryRefs
-  disable_cypher: false
+  disable_cypher: true
   hide_target_meta: false
   same_entity: false
   parameters: {}
   version: 1
   needs_review: false
+  retired: false
   source_table_id: registered_tables
   target_table_id: _term_refs
 - id: meta:registered_tables:checked_by
@@ -12106,6 +12165,7 @@ relationships:
   parameters: {}
   version: 1
   needs_review: false
+  retired: false
   source_table_id: registered_tables
   target_table_id: registered_tables
 - id: meta:registered_tables:checks
@@ -12122,6 +12182,7 @@ relationships:
   parameters: {}
   version: 1
   needs_review: false
+  retired: false
   source_table_id: registered_tables
   target_table_id: registered_tables
 - id: meta:registered_tables:class_term
@@ -12138,6 +12199,7 @@ relationships:
   parameters: {}
   version: 1
   needs_review: false
+  retired: false
   source_table_id: registered_tables
   target_table_id: _terms
 - id: meta:registered_tables:data_product_tables
@@ -12146,12 +12208,13 @@ relationships:
   cardinality: one-to-many
   materialize: false
   refresh_interval: 300
-  disable_cypher: false
+  disable_cypher: true
   hide_target_meta: false
   same_entity: false
   parameters: {}
   version: 1
   needs_review: false
+  retired: false
   source_table_id: registered_tables
   target_table_id: data_product_tables
 - id: meta:registered_tables:derived_tags
@@ -12168,6 +12231,7 @@ relationships:
   parameters: {}
   version: 1
   needs_review: false
+  retired: false
   source_table_id: registered_tables
   target_table_id: derived_tags
 - id: meta:registered_tables:domains
@@ -12182,6 +12246,7 @@ relationships:
   parameters: {}
   version: 1
   needs_review: false
+  retired: false
   source_table_id: registered_tables
   target_table_id: domains
 - id: meta:registered_tables:dq_rules
@@ -12198,6 +12263,7 @@ relationships:
   parameters: {}
   version: 1
   needs_review: false
+  retired: false
   source_table_id: registered_tables
   target_table_id: dq_rules
 - id: meta:registered_tables:policy_coverage
@@ -12214,6 +12280,7 @@ relationships:
   parameters: {}
   version: 1
   needs_review: false
+  retired: false
   source_table_id: registered_tables
   target_table_id: policy_coverage
 - id: meta:registered_tables:products
@@ -12233,6 +12300,7 @@ relationships:
   parameters: {}
   version: 1
   needs_review: false
+  retired: false
   source_table_id: registered_tables
   target_table_id: data_products
   via_table: data_product_tables
@@ -12250,6 +12318,7 @@ relationships:
   parameters: {}
   version: 1
   needs_review: false
+  retired: false
   source_table_id: registered_tables
   target_table_id: registered_tables
 - id: meta:registered_tables:profiled_table
@@ -12266,6 +12335,7 @@ relationships:
   parameters: {}
   version: 1
   needs_review: false
+  retired: false
   source_table_id: registered_tables
   target_table_id: registered_tables
 - id: meta:registered_tables:relationships_source
@@ -12282,6 +12352,7 @@ relationships:
   parameters: {}
   version: 1
   needs_review: false
+  retired: false
   source_table_id: registered_tables
   target_table_id: relationships
 - id: meta:registered_tables:relationships_target
@@ -12298,6 +12369,7 @@ relationships:
   parameters: {}
   version: 1
   needs_review: false
+  retired: false
   source_table_id: registered_tables
   target_table_id: relationships
 - id: meta:registered_tables:rls_rules
@@ -12312,6 +12384,7 @@ relationships:
   parameters: {}
   version: 1
   needs_review: false
+  retired: false
   source_table_id: registered_tables
   target_table_id: rls_rules
 - id: meta:registered_tables:source
@@ -12328,6 +12401,7 @@ relationships:
   parameters: {}
   version: 1
   needs_review: false
+  retired: false
   source_table_id: registered_tables
   target_table_id: sources
 - id: meta:registered_tables:table_columns
@@ -12342,6 +12416,7 @@ relationships:
   parameters: {}
   version: 1
   needs_review: false
+  retired: false
   source_table_id: registered_tables
   target_table_id: table_columns
 - id: meta:registered_tables:tag_assignments
@@ -12358,6 +12433,7 @@ relationships:
   parameters: {}
   version: 1
   needs_review: false
+  retired: false
   source_table_id: registered_tables
   target_table_id: tag_assignments
 - id: meta:relationships:source_table
@@ -12374,6 +12450,7 @@ relationships:
   parameters: {}
   version: 1
   needs_review: false
+  retired: false
   source_table_id: relationships
   target_table_id: registered_tables
 - id: meta:relationships:target_table
@@ -12390,6 +12467,7 @@ relationships:
   parameters: {}
   version: 1
   needs_review: false
+  retired: false
   source_table_id: relationships
   target_table_id: registered_tables
 - id: meta:relationships:via_table
@@ -12406,6 +12484,7 @@ relationships:
   parameters: {}
   version: 1
   needs_review: false
+  retired: false
   source_table_id: relationships
   target_table_id: registered_tables
 - id: meta:rls_rules:domains
@@ -12420,6 +12499,7 @@ relationships:
   parameters: {}
   version: 1
   needs_review: false
+  retired: false
   source_table_id: rls_rules
   target_table_id: domains
 - id: meta:rls_rules:registered_tables
@@ -12434,6 +12514,7 @@ relationships:
   parameters: {}
   version: 1
   needs_review: false
+  retired: false
   source_table_id: rls_rules
   target_table_id: registered_tables
 - id: meta:rls_rules:roles
@@ -12448,6 +12529,7 @@ relationships:
   parameters: {}
   version: 1
   needs_review: false
+  retired: false
   source_table_id: rls_rules
   target_table_id: roles
 - id: meta:roles:domains
@@ -12462,6 +12544,7 @@ relationships:
   parameters: {}
   version: 1
   needs_review: false
+  retired: false
   source_table_id: roles
   target_table_id: domains
 - id: meta:roles:rls_rules
@@ -12476,6 +12559,7 @@ relationships:
   parameters: {}
   version: 1
   needs_review: false
+  retired: false
   source_table_id: roles
   target_table_id: rls_rules
 - id: meta:roles_domain_access:accessed_domains
@@ -12492,6 +12576,7 @@ relationships:
   parameters: {}
   version: 1
   needs_review: false
+  retired: false
   source_table_id: roles_domain_access
   target_table_id: domains
 - id: meta:roles_domain_access:domains
@@ -12506,6 +12591,7 @@ relationships:
   parameters: {}
   version: 1
   needs_review: false
+  retired: false
   source_table_id: roles_domain_access
   target_table_id: domains
 - id: meta:roles_domain_access:roles
@@ -12520,6 +12606,7 @@ relationships:
   parameters: {}
   version: 1
   needs_review: false
+  retired: false
   source_table_id: roles_domain_access
   target_table_id: roles
 - id: meta:roles_parents:parent_roles
@@ -12536,6 +12623,7 @@ relationships:
   parameters: {}
   version: 1
   needs_review: false
+  retired: false
   source_table_id: roles_parents
   target_table_id: roles
 - id: meta:roles_parents:roles
@@ -12550,6 +12638,7 @@ relationships:
   parameters: {}
   version: 1
   needs_review: false
+  retired: false
   source_table_id: roles_parents
   target_table_id: roles
 - id: meta:section_tags:document
@@ -12566,6 +12655,7 @@ relationships:
   parameters: {}
   version: 1
   needs_review: false
+  retired: false
   source_table_id: section_tags
   target_table_id: library_documents
 - id: meta:section_tags:policy_coverage
@@ -12582,6 +12672,7 @@ relationships:
   parameters: {}
   version: 1
   needs_review: false
+  retired: false
   source_table_id: section_tags
   target_table_id: policy_coverage
 - id: meta:section_tags:tag_instance
@@ -12598,6 +12689,7 @@ relationships:
   parameters: {}
   version: 1
   needs_review: false
+  retired: false
   source_table_id: section_tags
   target_table_id: tag_instances
 - id: meta:section_tags:tags
@@ -12614,6 +12706,7 @@ relationships:
   parameters: {}
   version: 1
   needs_review: false
+  retired: false
   source_table_id: section_tags
   target_table_id: tags
 - id: meta:table_columns:_term_refs
@@ -12623,12 +12716,13 @@ relationships:
   materialize: false
   refresh_interval: 300
   graphql_alias: glossaryRef
-  disable_cypher: false
+  disable_cypher: true
   hide_target_meta: false
   same_entity: false
   parameters: {}
   version: 1
   needs_review: false
+  retired: false
   source_table_id: table_columns
   target_table_id: _term_refs
 - id: meta:table_columns:effective_column_tags
@@ -12645,6 +12739,7 @@ relationships:
   parameters: {}
   version: 1
   needs_review: false
+  retired: false
   source_table_id: table_columns
   target_table_id: effective_column_tags
 - id: meta:table_columns:policy_coverage
@@ -12661,6 +12756,7 @@ relationships:
   parameters: {}
   version: 1
   needs_review: false
+  retired: false
   source_table_id: table_columns
   target_table_id: policy_coverage
 - id: meta:table_columns:sensitive_coverage
@@ -12676,6 +12772,7 @@ relationships:
   parameters: {}
   version: 1
   needs_review: false
+  retired: false
   source_table_id: table_columns
   target_table_id: sensitive_coverage
 - id: meta:table_columns:tag_assignments
@@ -12692,6 +12789,7 @@ relationships:
   parameters: {}
   version: 1
   needs_review: false
+  retired: false
   source_table_id: table_columns
   target_table_id: tag_assignments
 - id: meta:tag_assignments:data_products
@@ -12706,6 +12804,7 @@ relationships:
   parameters: {}
   version: 1
   needs_review: false
+  retired: false
   source_table_id: tag_assignments
   target_table_id: data_products
 - id: meta:tag_assignments:registered_tables
@@ -12720,6 +12819,7 @@ relationships:
   parameters: {}
   version: 1
   needs_review: false
+  retired: false
   source_table_id: tag_assignments
   target_table_id: registered_tables
 - id: meta:tag_assignments:table_columns
@@ -12736,6 +12836,7 @@ relationships:
   parameters: {}
   version: 1
   needs_review: false
+  retired: false
   source_table_id: tag_assignments
   target_table_id: table_columns
 - id: meta:tag_assignments:tags
@@ -12752,6 +12853,7 @@ relationships:
   parameters: {}
   version: 1
   needs_review: false
+  retired: false
   source_table_id: tag_assignments
   target_table_id: tags
 - id: meta:tag_citations:column
@@ -12768,6 +12870,7 @@ relationships:
   parameters: {}
   version: 1
   needs_review: false
+  retired: false
   source_table_id: tag_citations
   target_table_id: table_columns
 - id: meta:tag_citations:document
@@ -12784,6 +12887,7 @@ relationships:
   parameters: {}
   version: 1
   needs_review: false
+  retired: false
   source_table_id: tag_citations
   target_table_id: library_documents
 - id: meta:tag_citations:table
@@ -12800,6 +12904,7 @@ relationships:
   parameters: {}
   version: 1
   needs_review: false
+  retired: false
   source_table_id: tag_citations
   target_table_id: registered_tables
 - id: meta:tag_citations:tag_instance
@@ -12816,6 +12921,7 @@ relationships:
   parameters: {}
   version: 1
   needs_review: false
+  retired: false
   source_table_id: tag_citations
   target_table_id: tag_instances
 - id: meta:tag_citations:tags
@@ -12832,6 +12938,7 @@ relationships:
   parameters: {}
   version: 1
   needs_review: false
+  retired: false
   source_table_id: tag_citations
   target_table_id: tags
 - id: meta:tag_expiry:tags
@@ -12848,6 +12955,7 @@ relationships:
   parameters: {}
   version: 1
   needs_review: false
+  retired: false
   source_table_id: tag_expiry
   target_table_id: tags
 - id: meta:tag_instances:policy_coverage
@@ -12864,6 +12972,7 @@ relationships:
   parameters: {}
   version: 1
   needs_review: false
+  retired: false
   source_table_id: tag_instances
   target_table_id: policy_coverage
 - id: meta:tag_param_values:tags
@@ -12880,6 +12989,7 @@ relationships:
   parameters: {}
   version: 1
   needs_review: false
+  retired: false
   source_table_id: tag_param_values
   target_table_id: tags
 - id: meta:tags:tag_assignments
@@ -12896,6 +13006,7 @@ relationships:
   parameters: {}
   version: 1
   needs_review: false
+  retired: false
   source_table_id: tags
   target_table_id: tag_assignments
 - id: meta:tracked_functions:domains
@@ -12910,6 +13021,7 @@ relationships:
   parameters: {}
   version: 1
   needs_review: false
+  retired: false
   source_table_id: tracked_functions
   target_table_id: domains
 - id: meta:tracked_functions:products
@@ -12929,6 +13041,7 @@ relationships:
   parameters: {}
   version: 1
   needs_review: false
+  retired: false
   source_table_id: tracked_functions
   target_table_id: data_products
   via_table: data_product_commands
@@ -12944,6 +13057,7 @@ relationships:
   parameters: {}
   version: 1
   needs_review: false
+  retired: false
   source_table_id: tracked_webhooks
   target_table_id: domains
 - id: ontology:_domains:term
@@ -12953,12 +13067,13 @@ relationships:
   materialize: false
   refresh_interval: 300
   graphql_alias: term
-  disable_cypher: false
+  disable_cypher: true
   hide_target_meta: false
   same_entity: false
   parameters: {}
   version: 1
   needs_review: false
+  retired: false
   source_table_id: _domains
   target_table_id: _terms
 - id: ontology:_term_edges:source_term
@@ -12968,12 +13083,13 @@ relationships:
   materialize: false
   refresh_interval: 300
   graphql_alias: sourceTerm
-  disable_cypher: false
+  disable_cypher: true
   hide_target_meta: false
   same_entity: false
   parameters: {}
   version: 1
   needs_review: false
+  retired: false
   source_table_id: _term_edges
   target_table_id: _terms
 - id: ontology:_term_edges:target_term
@@ -12983,12 +13099,13 @@ relationships:
   materialize: false
   refresh_interval: 300
   graphql_alias: targetTerm
-  disable_cypher: false
+  disable_cypher: true
   hide_target_meta: false
   same_entity: false
   parameters: {}
   version: 1
   needs_review: false
+  retired: false
   source_table_id: _term_edges
   target_table_id: _terms
 - id: ontology:_term_refs:registered_tables
@@ -12997,12 +13114,13 @@ relationships:
   cardinality: many-to-one
   materialize: false
   refresh_interval: 300
-  disable_cypher: false
+  disable_cypher: true
   hide_target_meta: false
   same_entity: false
   parameters: {}
   version: 1
   needs_review: false
+  retired: false
   source_table_id: _term_refs
   target_table_id: registered_tables
 - id: ontology:_term_refs:table_columns
@@ -13012,12 +13130,13 @@ relationships:
   materialize: false
   refresh_interval: 300
   graphql_alias: column
-  disable_cypher: false
+  disable_cypher: true
   hide_target_meta: false
   same_entity: false
   parameters: {}
   version: 1
   needs_review: false
+  retired: false
   source_table_id: _term_refs
   target_table_id: table_columns
 - id: ontology:_term_refs:term
@@ -13027,12 +13146,13 @@ relationships:
   materialize: false
   refresh_interval: 300
   graphql_alias: term
-  disable_cypher: false
+  disable_cypher: true
   hide_target_meta: false
   same_entity: false
   parameters: {}
   version: 1
   needs_review: false
+  retired: false
   source_table_id: _term_refs
   target_table_id: _terms
 - id: ontology:_terms:antonym_of
@@ -13052,6 +13172,7 @@ relationships:
   parameters: {}
   version: 1
   needs_review: false
+  retired: false
   source_table_id: _terms
   target_table_id: _terms
   via_table: _term_edges
@@ -13071,6 +13192,7 @@ relationships:
   parameters: {}
   version: 1
   needs_review: false
+  retired: false
   source_table_id: _terms
   target_table_id: table_columns
   via_table: _term_refs
@@ -13091,6 +13213,7 @@ relationships:
   parameters: {}
   version: 1
   needs_review: false
+  retired: false
   source_table_id: _terms
   target_table_id: _terms
   via_table: _term_edges
@@ -13101,12 +13224,13 @@ relationships:
   materialize: false
   refresh_interval: 300
   graphql_alias: domains
-  disable_cypher: false
+  disable_cypher: true
   hide_target_meta: false
   same_entity: false
   parameters: {}
   version: 1
   needs_review: false
+  retired: false
   source_table_id: _terms
   target_table_id: _domains
 - id: ontology:_terms:edges_in
@@ -13116,12 +13240,13 @@ relationships:
   materialize: false
   refresh_interval: 300
   graphql_alias: edgesIn
-  disable_cypher: false
+  disable_cypher: true
   hide_target_meta: false
   same_entity: false
   parameters: {}
   version: 1
   needs_review: false
+  retired: false
   source_table_id: _terms
   target_table_id: _term_edges
 - id: ontology:_terms:edges_out
@@ -13131,12 +13256,13 @@ relationships:
   materialize: false
   refresh_interval: 300
   graphql_alias: edgesOut
-  disable_cypher: false
+  disable_cypher: true
   hide_target_meta: false
   same_entity: false
   parameters: {}
   version: 1
   needs_review: false
+  retired: false
   source_table_id: _terms
   target_table_id: _term_edges
 - id: ontology:_terms:experts
@@ -13153,6 +13279,7 @@ relationships:
   parameters: {}
   version: 1
   needs_review: false
+  retired: false
   source_table_id: _terms
   target_table_id: _experts
 - id: ontology:_terms:kind_of
@@ -13172,6 +13299,7 @@ relationships:
   parameters: {}
   version: 1
   needs_review: false
+  retired: false
   source_table_id: _terms
   target_table_id: _terms
   via_table: _term_edges
@@ -13192,6 +13320,7 @@ relationships:
   parameters: {}
   version: 1
   needs_review: false
+  retired: false
   source_table_id: _terms
   target_table_id: _terms
   via_table: _term_edges
@@ -13212,6 +13341,7 @@ relationships:
   parameters: {}
   version: 1
   needs_review: false
+  retired: false
   source_table_id: _terms
   target_table_id: _terms
   via_table: _term_edges
@@ -13222,12 +13352,13 @@ relationships:
   materialize: false
   refresh_interval: 300
   graphql_alias: refs
-  disable_cypher: false
+  disable_cypher: true
   hide_target_meta: false
   same_entity: false
   parameters: {}
   version: 1
   needs_review: false
+  retired: false
   source_table_id: _terms
   target_table_id: _term_refs
 - id: ontology:_terms:related_to
@@ -13247,6 +13378,7 @@ relationships:
   parameters: {}
   version: 1
   needs_review: false
+  retired: false
   source_table_id: _terms
   target_table_id: _terms
   via_table: _term_edges
@@ -13267,6 +13399,7 @@ relationships:
   parameters: {}
   version: 1
   needs_review: false
+  retired: false
   source_table_id: _terms
   target_table_id: _terms
   via_table: _term_edges
@@ -13287,6 +13420,7 @@ relationships:
   parameters: {}
   version: 1
   needs_review: false
+  retired: false
   source_table_id: _terms
   target_table_id: _terms
   via_table: _term_edges
@@ -13304,6 +13438,7 @@ relationships:
   parameters: {}
   version: 1
   needs_review: false
+  retired: false
   source_table_id: _terms
   target_table_id: registered_tables
 - id: ontology:_terms:tag_assignments
@@ -13320,6 +13455,7 @@ relationships:
   parameters: {}
   version: 1
   needs_review: false
+  retired: false
   source_table_id: _terms
   target_table_id: tag_assignments
 - id: ontology:_terms:term_domains
@@ -13338,6 +13474,7 @@ relationships:
   parameters: {}
   version: 1
   needs_review: false
+  retired: false
   source_table_id: _terms
   target_table_id: domains
   via_table: _domains
@@ -13358,6 +13495,7 @@ relationships:
   parameters: {}
   version: 1
   needs_review: false
+  retired: false
   source_table_id: _terms
   target_table_id: _terms
   via_table: _term_edges
@@ -13378,6 +13516,7 @@ relationships:
   parameters: {}
   version: 1
   needs_review: false
+  retired: false
   source_table_id: _terms
   target_table_id: _terms
   via_table: _term_edges

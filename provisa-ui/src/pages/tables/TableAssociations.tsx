@@ -20,12 +20,13 @@ import { TagControl } from "../../components/TagControl";
 import { DetailFields, type DetailField } from "../../components/detail/DetailFields";
 import { TableClassTerm } from "./TableClassTerm";
 import { TableMetrics } from "./TableMetrics";
+import { termLabel } from "../../components/admin/termLabel";
 
 /**
  * What a table is associated with besides its data product, the same in its read view and its
  * edit form: its tags, the glossary terms that name its columns, the relationships it takes
- * part in, and the governed metrics it uses. The two lists are read-only; a relationship is changed on the Relationships page, a
- * term in the glossary.
+ * part in, and the governed metrics it uses. The two lists are read-only links; a relationship is changed on the Relationships page, a
+ * term on the Ontology page.
  */
 export function TableAssociations({
   table,
@@ -79,7 +80,22 @@ export function TableAssociations({
                 {t("tableSections.noTerms")}
               </Text>
             ) : (
-              terms.map((term) => term.name).join(", ")
+              // REQ-1591: a name two listed terms share carries its domains
+              <Text span size="sm">
+                {terms.map((term, i) => (
+                  <span key={term.id}>
+                    {i > 0 && ", "}
+                    <Anchor
+                      component={Link}
+                      to={detailHref("ontology", term.id)}
+                      size="sm"
+                      data-testid={`table-association-term-${term.id}`}
+                    >
+                      {termLabel(term, terms)}
+                    </Anchor>
+                  </span>
+                ))}
+              </Text>
             ),
         },
         {

@@ -1042,7 +1042,7 @@ def test_the_guaranteed_list_is_answers_checked_and_type_and_form_checked_on_eve
     assert doc["counts"]["a"]["not_checked"] == 1
     assert doc["not_checked_reasons"]["a"] == {"volatile": 1}
     text = support.merged_markdown(doc)
-    assert "| a | 3 | 2 | 0 | 0 | 1 | 1 | 1 | 0 | 1 | 0 | 0 | 0 | 0 | 0 | 0 |" in text
+    assert "| a | 3 | 2 | 0 | 0 | 0 | 1 | 1 | 1 | 0 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |" in text
     assert (
         "| Numeric | 3 | 1 + 1 + 0, 1 not checked, of 3 | 1 + 1 + 0, 1 not checked, of 3 | 2 |"
         in text
@@ -1119,8 +1119,8 @@ def test_the_summary_gives_every_engine_and_every_family():
         }
     )
     text = support.merged_markdown(doc)
-    assert "| a | 2 | 1 | 0 | 1 | 0 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 1 | 0 | 0 |" in text
-    assert "| b | 2 | 2 | 0 | 0 | 0 | 2 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |" in text
+    assert "| a | 2 | 1 | 0 | 0 | 1 | 0 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 0 |" in text
+    assert "| b | 2 | 2 | 0 | 0 | 0 | 0 | 2 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |" in text
     assert (
         "| Numeric | 1 | 1 + 0 + 0, 0 not checked, of 1 | 1 + 0 + 0, 0 not checked, of 1 | 1 |"
         in text
@@ -1289,6 +1289,34 @@ def test_an_answer_about_the_database_is_equivalent_for_those_functions_only():
     assert _compare(want, got, function="xmlcomment").difference is not None
     garbled = _ok("not xml", oid=142)
     assert _compare(want, garbled, function="database_to_xmlschema").difference is not None
+
+
+def test_a_comparison_function_compares_by_sign_alone():
+    # byteacmp's memcmp difference: -222 on one reference platform, -1 on another (run 44547205126).
+    for want, got in (("-222", "-1"), ("133", "1"), ("0", "0"), ("-97", "-1")):
+        compared = _compare(_ok(want, oid=23), _ok(got, oid=23), function="byteacmp")
+        assert compared.difference is None
+        if want != got:
+            assert compared.rules == {report.COMPARISON_SIGN}
+    for want, got in (("-222", "1"), ("0", "-1"), ("1", "0"), ("1", "x")):
+        compared = _compare(_ok(want, oid=23), _ok(got, oid=23), function="bttextcmp")
+        assert compared.difference is not None
+    # Any other function's integer answer still compares by value.
+    assert _compare(_ok("-222", oid=23), _ok("-1", oid=23), function="length").difference
+
+
+def test_the_comparison_functions_are_the_families_comparators():
+    families = (REPO / "scripts" / "conformance" / "function_families.yaml").read_text()
+    for name in (
+        "byteacmp",
+        "btnametextcmp",
+        "bttext_pattern_cmp",
+        "bttextnamecmp",
+        "gin_cmp_tslexeme",
+        "gin_compare_jsonb",
+    ):
+        assert name in support.COMPARISON_FUNCTIONS
+        assert name in families
 
 
 def test_a_record_compares_json_only_in_its_json_fields():
@@ -1478,14 +1506,19 @@ def test_the_rules_are_the_ones_the_requirement_and_the_brief_name():
         report.ARRAY_ORDER,
         report.CLOCK_FIELD,
         report.ZONE_PACKAGING,
+        report.COMPARISON_SIGN,
     ]
 
 
 def test_the_report_fails_per_engine_never_overall_and_keeps_a_wrong_answer_in_view():
     doc = _results(("pg", "wrong_answer", []), ("duckdb", "refused", []))
     for text in (report.pgwire_block(doc), report.overview_block(doc)):
-        assert "| Engine | Passed | Skipped by design | Failed | Not tested |" in text
-        assert "| Postgres | 0 | 0 | 1 | 0 |" in text and "| DuckDB | 0 | 0 | 1 | 0 |" in text
+        assert (
+            "| Engine | Served | Of which within bound | Skipped by design | Failed | Not tested |"
+            in text
+        )
+        assert "| Postgres | 0 | 0 | 0 | 1 | 0 |" in text
+        assert "| DuckDB | 0 | 0 | 0 | 1 | 0 |" in text
         assert "| Total" not in text and "| All" not in text
     assert "| `abs(integer)` | x |" in report.pgwire_block(doc)
 
@@ -1562,9 +1595,11 @@ def test_both_pages_are_filled_from_the_results_between_their_markers(tmp_path):
     for name in ("pgwire.md", "overview.md"):
         text = (tmp_path / name).read_text()
         assert "stale text" not in text and "After." in text
-        assert "| Postgres | 1 | 0 | 0 |" in text and "| DuckDB | 0 | 0 | 1 |" in text
-        assert "| Postgres | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |" in text
-        assert "| DuckDB | 0 | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 0 | 0 |" in text
+        assert (
+            "| Postgres | 1 | 0 | 0 | 0 | 0 |" in text and "| DuckDB | 0 | 0 | 0 | 1 | 0 |" in text
+        )
+        assert "| Postgres | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |" in text
+        assert "| DuckDB | 0 | 0 | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 0 | 0 | 0 | 0 |" in text
 
 
 def test_a_page_without_markers_is_refused():
@@ -1603,6 +1638,7 @@ class Served(Fake):
         self.literal, self.column = answer, column
 
     def answer(self, sql: str) -> dict[str, Any]:
+        # An edge call (function_edges.bounded) of a scalar reads no column either.
         reads_a_column = " FROM " in sql
         return self.column if reads_a_column else self.literal
 
@@ -1825,6 +1861,10 @@ def test_the_results_a_floor_reads_keep_their_keys():
         "not_callable",
         "not_reached",
         "total",
+        "right",
+        "within_bound",
+        "differs_wrong_at_edge",
+        "differs_error_at_edge",
     )
     assert not set(report.RESULT_KEYS) & set(report.COLUMN_KEYS)
 
@@ -3108,7 +3148,8 @@ def test_an_overload_postgresql_answers_a_value_call_of_is_callable():
     planned = support.calls(ABS, "Numeric")
     answered = {planned[0].sql: _ok(None), planned[1].sql: _ok("3")}
     pg = Refusing(answered, sqlstate="0A000", error="ERROR:  not supported")
-    entry = support.measure_overload(ABS, "Numeric", pg, Fake(answered), _route, engine="pg")
+    provisa = Refusing(answered, sqlstate="0A000", error="ERROR:  not supported")
+    entry = support.measure_overload(ABS, "Numeric", pg, provisa, _route, engine="pg")
     assert entry["outcome"] == "pass"
 
 
@@ -3225,3 +3266,447 @@ def test_domain_in_answering_a_value_breaking_its_check_is_a_wrong_answer(monkey
     entry = _domain_in(monkeypatch, _ok("f", oid=16))
     assert entry["outcome"] == "wrong_answer"
     assert entry["detail"]["difference"].startswith("answered [('f',)], PostgreSQL refused: 23514 ")
+
+
+# --- REQ-2167, amended 2026-11-13, AN INTERNAL TYPE IS BY DESIGN ---------------------------------
+
+ENGINES = ("clickhouse", "trino", "duckdb")
+NOT_READ = "does not read this value"
+
+
+def _on(fn: Function, engine: str, provisa: dict[str, Any] | None) -> dict[str, Any]:
+    """``fn`` on ``engine`` where PostgreSQL answers every call and Provisa refuses each with
+    ``provisa``'s error, or answers as PostgreSQL does when ``provisa`` is None."""
+    sqls = [c.sql for c in support.calls(fn, fn_family(fn))]
+    want = {s: _ok("1") for s in sqls}
+    got = want if provisa is None else {s: provisa for s in sqls}
+    return support.measure_overload(fn, fn_family(fn), Fake(want), Fake(got), _route, engine=engine)
+
+
+def fn_family(fn: Function) -> str:
+    return "Aggregate and window" if fn.kind == "a" else "System"
+
+
+def _refusal(fn: Function, text: str, engine: str) -> dict[str, Any]:
+    said = f"{fn.name}() has no form on {engine}" if text == "no form" else f"{fn.name} {text}"
+    return {"ok": False, "error": f"ERROR:  {said}"}
+
+
+REGCLASSIN = Function(
+    "regclassin", "cstring", argtypes=("cstring",), rettype="regclass", volatility="s"
+)
+
+#: One overload of each internal type's own functions, and the refusal text it had in the baseline
+#: run: the type decides, whatever the text.
+OWN_FUNCTIONS = [
+    (REGCLASSIN, NOT_READ),
+    (Function("regclasssend", "regclass", argtypes=("regclass",), rettype="bytea"), "no form"),
+    (Function("regprocout", "regproc", argtypes=("regproc",), rettype="cstring"), NOT_READ),
+    (Function("record_out", "record", argtypes=("record",), rettype="cstring"), NOT_READ),
+    (
+        Function("btrecordcmp", "record, record", argtypes=("record", "record"), rettype="integer"),
+        NOT_READ,
+    ),
+    (
+        Function(
+            "hash_record_extended",
+            "record, bigint",
+            argtypes=("record", "bigint"),
+            rettype="bigint",
+        ),
+        NOT_READ,
+    ),
+    (Function("aclitemin", "cstring", argtypes=("cstring",), rettype="aclitem"), NOT_READ),
+    (
+        Function(
+            "aclitemeq", "aclitem, aclitem", argtypes=("aclitem", "aclitem"), rettype="boolean"
+        ),
+        "no form",
+    ),
+    (
+        Function(
+            "aclcontains",
+            "aclitem[], aclitem",
+            argtypes=("aclitem[]", "aclitem"),
+            rettype="boolean",
+        ),
+        "no form",
+    ),
+    (
+        Function(
+            "aclexplode",
+            "acl aclitem[], OUT grantor oid, OUT grantee oid, OUT privilege_type text, "
+            "OUT is_grantable boolean",
+            argtypes=("aclitem[]",),
+            rettype="record",
+        ),
+        NOT_READ,
+    ),
+    (
+        Function(
+            "array_in",
+            "cstring, oid, integer",
+            argtypes=("cstring", "oid", "integer"),
+            rettype="anyarray",
+        ),
+        NOT_READ,
+    ),
+    (
+        Function(
+            "domain_in",
+            "cstring, oid, integer",
+            argtypes=("cstring", "oid", "integer"),
+            rettype='"any"',
+        ),
+        NOT_READ,
+    ),
+    (
+        Function(
+            "record_in",
+            "cstring, oid, integer",
+            argtypes=("cstring", "oid", "integer"),
+            rettype="record",
+        ),
+        NOT_READ,
+    ),
+    (Function("xid8in", "cstring", argtypes=("cstring",), rettype="xid8"), NOT_READ),
+    (Function("xid8eq", "xid8, xid8", argtypes=("xid8", "xid8"), rettype="boolean"), "no form"),
+    (
+        Function("xid8_larger", "xid8, xid8", argtypes=("xid8", "xid8"), rettype="xid8"),
+        "no form",
+    ),
+    (Function("xid", "xid8", argtypes=("xid8",), rettype="xid"), "no form"),
+    (Function("age", "xid", argtypes=("xid",), rettype="integer", volatility="s"), NOT_READ),
+    (Function("int8_avg", "bigint[]", argtypes=("bigint[]",), rettype="numeric"), NOT_READ),
+    (
+        Function(
+            "int8inc_float8_float8",
+            "bigint, double precision, double precision",
+            argtypes=("bigint", "double precision", "double precision"),
+            rettype="bigint",
+        ),
+        NOT_READ,
+    ),
+]
+
+#: Refused overloads that stay refused by name: a PostgreSQL-only value type (class B), a value
+#: type an engine does not hold yet (class C), and a user-level function that merely takes or
+#: returns an internal type. Each is a gap.
+GAPS = [
+    (Function("jsonpath_in", "cstring", argtypes=("cstring",), rettype="jsonpath"), NOT_READ),
+    (Function("tsqueryout", "tsquery", argtypes=("tsquery",), rettype="cstring"), NOT_READ),
+    (Function("xml_in", "cstring", argtypes=("cstring",), rettype="xml"), NOT_READ),
+    (
+        Function(
+            "numeric_div", "numeric, numeric", argtypes=("numeric", "numeric"), rettype="numeric"
+        ),
+        NOT_READ,
+    ),
+    (Function("network_eq", "inet, inet", argtypes=("inet", "inet"), rettype="boolean"), NOT_READ),
+    (Function("interval_hash", "interval", argtypes=("interval",), rettype="integer"), NOT_READ),
+    # A type with a typmod reads it by the same shape: its own input, not a type's input by oid.
+    (
+        Function(
+            "interval_in",
+            "cstring, oid, integer",
+            argtypes=("cstring", "oid", "integer"),
+            rettype="interval",
+        ),
+        NOT_READ,
+    ),
+    (
+        Function(
+            "numeric_in",
+            "cstring, oid, integer",
+            argtypes=("cstring", "oid", "integer"),
+            rettype="numeric",
+        ),
+        NOT_READ,
+    ),
+    (Function("row_to_json", "record", argtypes=("record",), rettype="json"), "no form"),
+    (
+        Function("record_eq", "record, record", argtypes=("record", "record"), rettype="boolean"),
+        "no form",
+    ),
+    (
+        Function(
+            "record_image_lt",
+            "record, record",
+            argtypes=("record", "record"),
+            rettype="boolean",
+        ),
+        "no form",
+    ),
+    (
+        Function(
+            "ts_headline",
+            "regconfig, text, tsquery, text",
+            argtypes=("regconfig", "text", "tsquery", "text"),
+            rettype="text",
+        ),
+        "no form",
+    ),
+    (
+        Function("min", "xid8", kind="a", argtypes=("xid8",), rettype="xid8", volatility="i"),
+        "no form",
+    ),
+    (
+        Function(
+            "pg_xact_commit_timestamp",
+            "xid",
+            argtypes=("xid",),
+            rettype="timestamp with time zone",
+        ),
+        "no form",
+    ),
+    (
+        Function(
+            "pg_visible_in_snapshot",
+            "xid8, pg_snapshot",
+            argtypes=("xid8", "pg_snapshot"),
+            rettype="boolean",
+        ),
+        "no form",
+    ),
+    (Function("pg_xact_status", "xid8", argtypes=("xid8",), rettype="text"), "no form"),
+]
+
+
+@pytest.mark.parametrize("engine", ENGINES)
+@pytest.mark.parametrize(("fn", "text"), OWN_FUNCTIONS, ids=lambda v: getattr(v, "signature", v))
+def test_an_internal_types_own_function_refused_is_by_design_on_each_engine(fn, text, engine):
+    entry = _on(fn, engine, _refusal(fn, text, engine))
+    assert entry["outcome"] == "by_design", entry
+    assert entry["group"] == support.INTERNAL_TYPE_GROUP
+    assert entry["requirement"] == "REQ-2167"
+    assert entry["detail"] == support.GROUPS[support.INTERNAL_TYPE_GROUP]
+
+
+@pytest.mark.parametrize("engine", ENGINES)
+@pytest.mark.parametrize(("fn", "text"), GAPS, ids=lambda v: getattr(v, "signature", v))
+def test_a_gap_with_the_same_refusal_text_stays_refused_by_name(fn, text, engine):
+    entry = _on(fn, engine, _refusal(fn, text, engine))
+    assert entry["outcome"] == "refused", entry
+    assert report.result_of(entry["outcome"], ()) == report.REFUSED
+
+
+@pytest.mark.parametrize("engine", ENGINES)
+def test_an_internal_types_own_function_the_engine_answers_is_never_moved(engine):
+    entry = _on(REGCLASSIN, engine, None)
+    assert entry["outcome"] == "pass"
+
+
+@pytest.mark.parametrize("engine", ENGINES)
+def test_an_internal_types_own_function_with_an_engine_error_stays_a_defect(engine):
+    raw = {"ok": False, "error": "ERROR:  Code: 46. DB::Exception: Unknown function"}
+    assert _on(REGCLASSIN, engine, raw)["outcome"] == "error"
+
+
+@pytest.mark.parametrize("engine", ENGINES)
+def test_per_engine_the_totals_still_add_up(engine):
+    entries = [
+        *(_on(fn, engine, _refusal(fn, text, engine)) for fn, text in OWN_FUNCTIONS),
+        *(_on(fn, engine, _refusal(fn, text, engine)) for fn, text in GAPS),
+        _on(REGCLASSIN, engine, None),
+    ]
+    c = support.counts(entries)
+    assert c["total"] == len(entries)
+    assert c["passed"] + c["skipped_by_design"] + c["failed"] + c["not_tested"] == c["total"]
+    assert sum(c[o] for o in support.OUTCOMES) == c["total"]
+    assert (c["by_design"], c["refused"], c["pass"]) == (len(OWN_FUNCTIONS), len(GAPS), 1)
+    groups = support.by_design_groups(entries)
+    assert len(groups[support.INTERNAL_TYPE_GROUP]) == len(OWN_FUNCTIONS)
+    results = report.result_counts(
+        support._outcome(e)
+        for e in entries  # noqa: SLF001 - the data file's own shape
+    )
+    assert results["refused_by_name"] == len(GAPS)
+
+
+def test_the_internal_types_are_named_in_one_place():
+    assert set(support.INTERNAL_TYPES) == {
+        "regclass",
+        "regcollation",
+        "regconfig",
+        "regdictionary",
+        "regnamespace",
+        "regoper",
+        "regoperator",
+        "regproc",
+        "regprocedure",
+        "regrole",
+        "regtype",
+        "record",
+        "aclitem",
+        "xid",
+        "xid8",
+    }
+    for fn, _text in OWN_FUNCTIONS:
+        assert support.internal_types_own(fn), fn.signature
+    for fn, _text in GAPS:
+        assert not support.internal_types_own(fn), fn.signature
+
+
+# --- the validator's refusal of a function that reads or acts on its server (REQ-001, V007) -----
+
+from provisa.compiler.sql_validator import GovernanceRefused  # noqa: E402
+from provisa.transpiler import server_functions  # noqa: E402
+
+
+def _refused_as_a_client_reads_it(sql: str) -> str:
+    """The validator's own refusal of ``sql``, as pgwire sends it: its wording is read from the
+    rule, so the measure's pattern fails here when the rule's wording moves."""
+    import sqlglot
+
+    from provisa.compiler.sql_validator import _check_server_functions  # noqa: PLC2701
+
+    violations = _check_server_functions(sqlglot.parse_one(sql, read="postgres"))
+    assert violations, sql
+    return f"ERROR:  {GovernanceRefused(violations)}"
+
+
+def _not_served(name: str) -> str:
+    return _refused_as_a_client_reads_it(f'SELECT pg_catalog."{name}"(NULL) AS v FROM s.t')
+
+
+TS_STAT = Function(
+    "ts_stat",
+    "query text, OUT word text, OUT ndoc integer, OUT nentry integer",
+    argtypes=("text",),
+    volatility="v",
+    rettype="record",
+)
+TS_STAT_WEIGHTS = Function(
+    "ts_stat",
+    "query text, weights text, OUT word text, OUT ndoc integer, OUT nentry integer",
+    argtypes=("text", "text"),
+    volatility="v",
+    rettype="record",
+)
+TS_REWRITE_TEXT = _named("ts_rewrite", ("tsquery", "text"), "tsquery")
+TS_REWRITE = _named("ts_rewrite", ("tsquery", "tsquery", "tsquery"), "tsquery", "i")
+#: The overloads SEC-H7 reports the validator now refuses where the measure calls them.
+NOW_REFUSED = [TS_STAT, TS_STAT_WEIGHTS, TS_REWRITE_TEXT, TS_REWRITE]
+ENGINES = ("pg", "duckdb", "clickhouse", "trino")
+
+
+def _refused_everywhere(fn: Function, family: str, error: str, engine: str) -> dict[str, Any]:
+    """``fn`` on ``engine`` where PostgreSQL answers every call and Provisa refuses each alike."""
+    pg = Fake({c.sql: _ok("x", oid=25) for c in support.calls(fn, family)})
+    refusing = Refusing({}, sqlstate="42501", error=error)
+    return support.measure_overload(fn, family, pg, refusing, _route, engine=engine)
+
+
+def test_the_validators_refusal_is_no_refusal_by_name_and_is_this_decision():
+    said = _not_served("ts_stat")
+    assert said == (
+        "ERROR:  [V007] Function 'ts_stat' is not served: it reads or acts on its server, "
+        "outside the tables a statement is governed by"
+    )
+    assert not refused_by_name(said)  # it is no work to do, so it is not counted as one
+    assert support.decided_error("ts_stat", said) == support.SERVER_FUNCTION_GROUP
+    assert support.GROUPS[support.SERVER_FUNCTION_GROUP]
+    assert support.GROUP_REQUIREMENTS[support.SERVER_FUNCTION_GROUP] == "REQ-001"
+
+
+def test_the_measure_reads_the_validators_own_list():
+    always = server_functions.RUNS_SQL_AS_TEXT | server_functions.ACTS_ON_THE_SERVER
+    from provisa.transpiler.xml_syntax import MAPPINGS
+
+    listed = [
+        *sorted(always - set(MAPPINGS)),  # an XML mapping is refused by its own rule
+        *sorted(server_functions.READS_THE_SERVER - always),  # refused where a table is named
+        *(f"{prefix}x" for prefix in server_functions.ACTING_PREFIXES),
+    ]
+    assert len(listed) > 100
+    for name in listed:
+        assert support.not_served(name, _not_served(name)), name
+
+
+def test_a_refusal_of_a_function_off_the_list_or_of_another_function_is_no_decision():
+    wording = "is not served: it reads or acts on its server, outside the tables"
+    # The wording alone decides nothing: the function must be on the validator's list.
+    assert support.decided_error("abs", f"ERROR:  [V007] Function 'abs' {wording}") is None
+    # A call of abs refused for a listed function in its arguments is about that function.
+    assert support.decided_error("abs", _not_served("pg_read_file")) is None
+    assert support.decided_error("ts_stat", _not_served("pg_read_file")) is None
+    # The product's own functions are refused in other words, and none is PostgreSQL's.
+    own = _refused_as_a_client_reads_it("SELECT provisa_digest('a') AS v")
+    assert "it is the product's own" in own
+    assert support.decided_error("provisa_digest", own) is None
+    # Another rule's refusal is not this decision.
+    assert (
+        support.decided_error("ts_stat", "ERROR:  [V006] Relation 'x' is not a registered table")
+        is None
+    )
+
+
+@pytest.mark.parametrize("engine", ENGINES)
+@pytest.mark.parametrize("fn", NOW_REFUSED, ids=lambda fn: fn.signature)
+def test_an_overload_the_validator_refuses_is_by_design_on_every_engine(fn, engine):
+    entry = _refused_everywhere(fn, "Text search", _not_served(fn.name), engine)
+    assert entry["outcome"] == "by_design", entry
+    assert entry["group"] == support.SERVER_FUNCTION_GROUP
+    assert entry["requirement"] == "REQ-001"
+    assert entry["detail"] == support.GROUPS[support.SERVER_FUNCTION_GROUP]
+    assert report.verdict(entry) == "skipped_by_design"
+    kept = support._outcome(entry)  # noqa: SLF001 - the data file's own shape
+    assert report.result_counts([kept])["refused_by_name"] == 0
+    assert support.by_design_groups([entry])[support.SERVER_FUNCTION_GROUP]
+
+
+@pytest.mark.parametrize("engine", ENGINES)
+def test_a_side_effect_function_the_validator_refuses_is_in_the_same_group_on_every_engine(engine):
+    """Off the PostgreSQL engine a side-effect function is skipped as one; refused by the
+    validator, it is refused on every engine alike, and says so on each."""
+    entry = _refused_everywhere(LO_CREATE, "Large object", _not_served("lo_create"), engine)
+    assert entry["outcome"] == "by_design" and entry["group"] == support.SERVER_FUNCTION_GROUP
+
+
+@pytest.mark.parametrize("engine", ENGINES)
+def test_an_ordinary_refusal_by_name_is_counted_as_before(engine):
+    by_name = f"ERROR:  ts_stat() has no form on {engine}"
+    assert refused_by_name(by_name)
+    for fn in (TS_STAT, ABS):
+        entry = _refused_everywhere(fn, "Text search", by_name, engine)
+        assert entry["outcome"] == "refused", entry
+        assert "group" not in entry
+        assert report.verdict(entry) == "failed"
+        kept = support._outcome(entry)  # noqa: SLF001 - the data file's own shape
+        assert report.result_counts([kept])["refused_by_name"] == 1
+
+
+def test_an_engines_error_of_a_listed_function_is_still_an_error():
+    entry = _refused_everywhere(TS_STAT, "Text search", "ERROR:  syntax error at or near", "pg")
+    assert entry["outcome"] == "error"
+
+
+def test_a_call_refused_for_another_function_is_an_error_not_this_decision():
+    entry = _refused_everywhere(ABS, "Numeric", _not_served("pg_read_file"), "duckdb")
+    assert entry["outcome"] == "error"
+
+
+def test_a_column_call_the_validator_refuses_is_by_design_beside_the_overloads_outcome():
+    """pg_column_compression answers with no table, where the statement is the engine's, and is
+    refused over a governed table."""
+    fn = _named("pg_column_compression", ('"any"',), "text", "s")
+    first = support.column_calls(fn, "System")[0].sql
+    pg = Fake({first: _ok(None, oid=25)})
+    refusing = Refusing({}, sqlstate="42501", error=_not_served(fn.name))
+    assert support.measure_column(fn, "System", pg, refusing) == {
+        "outcome": "by_design",
+        "group": support.SERVER_FUNCTION_GROUP,
+    }
+
+
+def test_a_column_call_skipped_by_design_is_listed_by_its_group(monkeypatch):
+    # Run 44229979813: pg_replication_origin_oid(text) passes on literals; its column call is the
+    # validator's refusal of a server function, a decision (decided_error), kept as its group alone.
+    monkeypatch.setattr(support, "decided_error", lambda name, error: support.SERVER_FUNCTION_GROUP)
+    entry = _measured({"ok": False, "error": REFUSED_ON_COLUMN})
+    assert entry["column"] == {"outcome": "by_design", "group": support.SERVER_FUNCTION_GROUP}
+    doc = _doc(entry)
+    assert doc["by_engine"]["duckdb"]["pass_literal_only_overloads"] == ["to_tsvector(text)"]
+    assert report.literal_only_lists(doc)[4] == (
+        f"| `to_tsvector(text)` | skipped by design ({support.SERVER_FUNCTION_GROUP}) |"
+    )

@@ -69,7 +69,7 @@ def servicenow_settings(source: Any) -> dict:
     A missing username or password is a config error naming it."""
     who = f"servicenow source {source.id!r}"
     username = resolve_secrets(source.username) if source.username else ""
-    password = resolve_secrets(source.password) if source.password else ""
+    password = resolve_secrets(source.password, credential=True) if source.password else ""
     if not username:
         raise MissingConnectorConfig(f"{who}: requires the username")
     if not password:

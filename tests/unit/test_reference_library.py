@@ -913,7 +913,7 @@ async def test_the_labels_reach_the_assistant_in_the_tool_result(db, monkeypatch
 
     over_mcp = await tools.search_reference_library(state, "analyst", question, k=1)
     in_chat = await chat._execute_tool(
-        state, "analyst", "search_reference_library", {"question": question, "k": 1}
+        state, "analyst", "search_reference_library", {"question": question, "k": 1}, scope=None
     )
     assert in_chat == over_mcp
     # k=1: the passage nearest the question and one neighbour, within the default budget of 2

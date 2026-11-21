@@ -1,19 +1,19 @@
 {
   "maintenanceTab": {
     "title": "計劃維護",
-    "intro": "在你關閉之前，向每位已登入用戶的每個頁面顯示橫額。在會中斷查詢的計劃工作（更換引擎叢集、切換其拓撲或升級控制平面）之前開啟，讓中斷看來是計劃之內，而非故障。",
+    "intro": "在每個頁面向每位已登入的使用者顯示橫額，直至你將其關閉。在會中斷查詢的計劃工作前開啟，例如更換引擎叢集、切換拓撲或升級控制平面，讓大家知道中斷是預先安排的。",
     "live": "橫額正在顯示。",
     "liveSince": "橫額自 {{time}} 起顯示。",
     "messageLabel": "訊息",
     "messagePlaceholder": "Provisa 正在進行計劃維護…",
     "messageHint": "留空則使用標準字句。",
     "endsAtLabel": "預計恢復時間",
-    "endsAtHint": "留空表示不提供預計時間，而不是暗示一個時間。",
+    "endsAtHint": "如無預計時間請留空。",
     "showBanner": "顯示橫額",
     "updateBanner": "更新橫額",
     "clearBanner": "清除橫額",
     "dangerTitle": "危險區域",
-    "dangerIntro": "停止本機上的後端和 UI 開發伺服器。只適用於 --demo/--native 桌面啟動，其他情況一律拒絕。",
+    "dangerIntro": "停止此電腦上的後端和 UI 開發伺服器。只在 --demo/--native 桌面啟動時有效，其他情況下會被拒絕。",
     "stopAll": "停止所有服務",
     "stopTitle": "要停止所有服務嗎？",
     "stopConsequence": "這會停止本機上的後端和 UI 開發伺服器。在它們停止期間，此頁面、所有查詢以及其他所有使用者的工作階段都會無法使用，你的工作階段也會結束。在本機上重新啟動服務之前，一切都不會恢復。"

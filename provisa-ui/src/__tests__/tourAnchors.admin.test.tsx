@@ -9,7 +9,7 @@
 // permission from the copyright holder.
 
 // Tour anchors (test-utils/tourAnchor): the Deep Dives' steps on the admin pages (AdminPage, one
-// page per route), for a viewer holding every right the steps ask. Their topics need nothing of
+// page per route, and the Ontology page the Glossary moved to), for a viewer holding every right the steps ask. Their topics need nothing of
 // the org beyond its pages (tourPrerequisites.json).
 
 import { afterEach, beforeEach, describe, it, expect, vi } from "vitest";
@@ -92,6 +92,10 @@ vi.mock("../components/admin/SyntheticDatasetsPanel", () => ({
 vi.mock("../components/admin/McpServerTab", () => ({ McpServerTab: () => null }));
 
 import { AdminPage } from "../pages/AdminPage";
+import { OntologyPage } from "../pages/context/OntologyPage";
+
+// REQ-2259: the Glossary's steps run on the Context group's Ontology page, out of Admin.
+const ONTOLOGY_STEPS = new Set(["stepGlossary", "stepGlossaryTerm"]);
 
 // What the admin pages ask of the server, answered as an org with nothing in it yet answers.
 function answer(path: string): unknown {
@@ -130,7 +134,8 @@ describe("the Deep Dives' steps on the admin pages", () => {
     "stepScheduled",
   ]) {
     it(`finds ${key}'s anchor`, async () => {
-      render(<AdminPage />, { initialEntries: [stepRoute(key)] });
+      const page = ONTOLOGY_STEPS.has(key) ? <OntologyPage /> : <AdminPage />;
+      render(page, { initialEntries: [stepRoute(key)] });
       expect(await walkTourStep(key)).toBeInTheDocument();
     });
   }

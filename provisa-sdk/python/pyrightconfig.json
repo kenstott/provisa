@@ -1,0 +1,8 @@
+{
+  "include": ["provisa_sdk", "gen_services_stubs.py", "tests"],
+  "exclude": ["tests/typing_cases"],
+  "extraPaths": [".", "../.."],
+  "venvPath": "../..",
+  "venv": ".venv",
+  "pythonVersion": "3.12"
+}

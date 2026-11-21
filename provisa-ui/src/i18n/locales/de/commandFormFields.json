@@ -52,6 +52,8 @@
     "colVisibleTo": "Sichtbar für (Rollen, kommagetrennt; leer = alle)",
     "colVisibleToPlaceholder": "analyst, org_admin",
     "colMask": "Maske",
+    "exposedAsTable": "Auch als Tabelle",
+    "exposedAsTableHint": "Clients, die Tabellen lesen, etwa BI-Tools, lesen diese Funktion als Tabelle mit ihren Parametern als Spalten. Ausgeschaltet liefert sie die Zeilen der Liste der Quelle desselben Typs, und die Tabelle wird entfernt.",
     "requiresApproval": "Erfordert Genehmigung",
     "requiresApprovalHint": "Jeder Aufruf wird erst ausgeführt, wenn der Genehmigungs-Hook ihn genehmigt. Ohne konfigurierten Hook werden Aufrufe abgelehnt.",
     "writesTable": "Schreibt Tabelle",

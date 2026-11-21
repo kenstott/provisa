@@ -9,14 +9,16 @@
 // permission from the copyright holder.
 
 // REQ-1986: a table's parameters -- the values a caller passes to the source to read it. Each is
-// listed with its type, how it reaches the source and whether it is required. A parameter the
-// source requires is required for good: its switch is on and locked. A steward makes an optional
-// one required, or optional again, with the switch.
+// listed with its type, how it reaches the source, whether it is opaque (an input to the source's
+// call) or a real column of the table, and whether it is required. A parameter the source requires
+// is required for good: its switch is on and locked. A steward makes an optional one required, or
+// optional again, with the switch. A table that requires a parameter says what it cannot give.
 
-import { Group, Switch, Table, Text } from "@mantine/core";
+import { Alert, Group, Switch, Table, Text } from "@mantine/core";
+import { Info } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { TableColumn } from "../../types/admin";
-import { isRequired, parameterName } from "./parameters";
+import { isOpaque, isRequired, parameterName, requiredParameters } from "./parameters";
 
 interface Props {
   columns: TableColumn[];
@@ -28,6 +30,7 @@ export function ParametersPanel({ columns, onRequiredChange }: Props) {
   const { t } = useTranslation();
   const parameters = columns.map((c, i) => ({ c, i })).filter(({ c }) => c.nativeFilterType);
   if (parameters.length === 0) return null;
+  const required = requiredParameters(columns);
 
   return (
     <div data-testid="parameters-panel">
@@ -42,12 +45,24 @@ export function ParametersPanel({ columns, onRequiredChange }: Props) {
           })}
         </Text>
       </Group>
+      {required.length > 0 && (
+        <Alert
+          variant="light"
+          color="blue"
+          icon={<Info size={16} aria-hidden />}
+          mb="sm"
+          data-testid="parameters-limits"
+        >
+          {t("parametersPanel.limits", { parameters: required.join(", ") })}
+        </Alert>
+      )}
       <Table className="data-table">
         <Table.Thead>
           <Table.Tr>
             <Table.Th>{t("parametersPanel.name")}</Table.Th>
             <Table.Th>{t("parametersPanel.type")}</Table.Th>
             <Table.Th>{t("parametersPanel.reaches")}</Table.Th>
+            <Table.Th>{t("parametersPanel.meaning")}</Table.Th>
             <Table.Th>{t("parametersPanel.required")}</Table.Th>
           </Table.Tr>
         </Table.Thead>
@@ -62,6 +77,9 @@ export function ParametersPanel({ columns, onRequiredChange }: Props) {
                 </Table.Td>
                 <Table.Td>{c.dataType ?? ""}</Table.Td>
                 <Table.Td>{t(`parametersPanel.kind.${c.nativeFilterType}`)}</Table.Td>
+                <Table.Td data-testid={`parameter-${name}-meaning`}>
+                  {t(isOpaque(c) ? "parametersPanel.opaque" : "parametersPanel.realColumn")}
+                </Table.Td>
                 <Table.Td>
                   <Switch
                     size="sm"

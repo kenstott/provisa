@@ -143,6 +143,7 @@ query SourcesQuery {
     changeSignal
     rowFetchByKeys
     isSystem
+    withdrawn
     cdc {
       bootstrapServers
       topicPrefix
@@ -234,6 +235,7 @@ query TagsQuery {
     }
     requiresCitation
     required
+    allowedDomains
     needsReview
     citations {
       documentId
@@ -248,6 +250,10 @@ query TagsQuery {
       needsReview
     }
   }
+}
+
+query OfferedTags($target: TagTargetInput!) {
+  offeredTags(target: $target)
 }
 
 query TagAssignmentsQuery {
@@ -299,7 +305,8 @@ fragment ListedTableFields on RegisteredTableType {
   tableName
   alias
   description
-  draft
+  withdrawn
+  sourceWithdrawn
   viewSql
   materialize
   productIds
@@ -308,6 +315,7 @@ fragment ListedTableFields on RegisteredTableType {
   timeTravel
   apiEndpoint
   modelingRole
+  registeredAt
   viewMetrics {
     metrics
     dimensions
@@ -317,16 +325,16 @@ fragment ListedTableFields on RegisteredTableType {
 
 # The registered tables without their columns, for the pages that name, count or pick tables and
 # show none of their columns.
-query TableRowsQuery {
-  tables {
+query TableRowsQuery($includeWithdrawn: Boolean! = false) {
+  tables(includeWithdrawn: $includeWithdrawn) {
     ...ListedTableFields
   }
 }
 
 # The registered tables with the columns the pages that list them read. TablesQuery is the
 # editor's, every field of every table.
-query TableListQuery {
-  tables {
+query TableListQuery($includeWithdrawn: Boolean! = false) {
+  tables(includeWithdrawn: $includeWithdrawn) {
     ...ListedTableFields
     columns {
       id
@@ -344,8 +352,8 @@ query TableListQuery {
   }
 }
 
-query TablesQuery {
-  tables {
+query TablesQuery($includeWithdrawn: Boolean! = false) {
+  tables(includeWithdrawn: $includeWithdrawn) {
     id
     sourceId
     domainId
@@ -353,6 +361,7 @@ query TablesQuery {
     tableName
     alias
     description
+    registeredAt
     cacheTtl
     roleTtl {
       role
@@ -373,7 +382,8 @@ query TablesQuery {
     pagingCeilingRows
     replicate
     region
-    draft
+    withdrawn
+    sourceWithdrawn
     rowMaterialize
     loadProtected
     offPeakWindow
@@ -430,6 +440,12 @@ query TablesQuery {
     mvPersist
     mvPrimaryKey
     mvIncremental
+    mvRebuildEvery
+    incrementalOption {
+      available
+      code
+      reason
+    }
     mvCalendar
     mvGrain
     mvAllowedLateness
@@ -757,11 +773,42 @@ query RelationshipsQuery {
       parameter
       sourceColumn
     }
+    codeResolver
+    withdrawn
   }
 }
 
-query AllRelationshipsQuery {
-  allRelationships {
+query CodeResolversQuery {
+  codeResolvers {
+    id
+    resolver
+    sourceTable
+    sourceColumn
+    sourceMatch
+    targetTable
+    targetColumn
+    targetMatch
+    refreshInterval
+    incremental
+    rebuildEvery
+    incrementalOption {
+      available
+      code
+      reason
+    }
+  }
+}
+
+query CodeResolverIncrementalQuery($resolver: String!, $id: String!) {
+  codeResolverIncremental(resolver: $resolver, id: $id) {
+    available
+    code
+    reason
+  }
+}
+
+query AllRelationshipsQuery($includeWithdrawn: Boolean! = false) {
+  allRelationships(includeWithdrawn: $includeWithdrawn) {
     id
     sourceTableId
     targetTableId
@@ -790,6 +837,7 @@ query AllRelationshipsQuery {
     viaTypeColumn
     viaTypeValue
     viaLabelSource
+    withdrawn
     parameters {
       parameter
       sourceColumn
@@ -892,6 +940,36 @@ query GenerateColumnDescription($tableId: String!, $columnName: String!) {
 
 query GenerateTableDescription($tableId: String!) {
   generateTableDescription(tableId: $tableId)
+}
+
+query GenerateUnregisteredTableDescription(
+  $sourceId: String!
+  $schemaName: String!
+  $tableName: String!
+  $columns: [String!]!
+) {
+  generateTableDescription(
+    sourceId: $sourceId
+    schemaName: $schemaName
+    tableName: $tableName
+    columns: $columns
+  )
+}
+
+query GenerateUnregisteredColumnDescription(
+  $sourceId: String!
+  $schemaName: String!
+  $tableName: String!
+  $columns: [String!]!
+  $columnName: String!
+) {
+  generateColumnDescription(
+    sourceId: $sourceId
+    schemaName: $schemaName
+    tableName: $tableName
+    columns: $columns
+    columnName: $columnName
+  )
 }
 
 query SuggestTableAlias($tableName: String!, $domainId: String!, $sourceId: String!) {
@@ -1255,7 +1333,6 @@ query TableAccess($tableId: Int!, $role: String!) {
     pgwire
     rest
     mcp
-    draft
   }
 }
 
@@ -1407,14 +1484,58 @@ mutation CreateRelationship($input: RelationshipInput!) {
   }
 }
 
+# REQ-1586: two relationships sharing a middle table, joined through it.
+query JoinThroughQuery($firstId: String!, $secondId: String!) {
+  joinThrough(firstId: $firstId, secondId: $secondId) {
+    shape
+    name
+    sourceTable
+    sourceColumn
+    targetTable
+    targetColumn
+    viaTable
+    viaSourceColumn
+    viaTargetColumn
+    attributes
+  }
+}
+
+mutation JoinThrough($firstId: String!, $secondId: String!, $id: String!) {
+  joinThrough(firstId: $firstId, secondId: $secondId, id: $id) {
+    ...MutationResult
+  }
+}
+
 mutation UpdateRelationship($input: RelationshipInput!) {
   updateRelationship(input: $input) {
     ...MutationResult
   }
 }
 
-mutation DeleteRelationship($id: String!, $confirmTagLoss: [String!], $carryTags: Boolean! = false) {
+mutation DeleteRelationship(
+  $id: String!
+  $confirmTagLoss: [String!]
+  $carryTags: Boolean! = false
+) {
   deleteRelationship(id: $id, confirmTagLoss: $confirmTagLoss, carryTags: $carryTags) {
+    ...MutationResult
+  }
+}
+
+mutation CreateCodeResolver($input: CodeResolverInput!) {
+  createCodeResolver(input: $input) {
+    ...MutationResult
+  }
+}
+
+mutation UpdateCodeResolver($input: CodeResolverInput!) {
+  updateCodeResolver(input: $input) {
+    ...MutationResult
+  }
+}
+
+mutation RetireCodeResolver($id: String!) {
+  retireCodeResolver(id: $id) {
     ...MutationResult
   }
 }
@@ -1442,6 +1563,32 @@ mutation StageKaggleDataset($token: String!, $owner: String!, $ref: String!, $id
 
 mutation RefreshKaggleSource($sourceId: String!) {
   refreshKaggleSource(sourceId: $sourceId) {
+    ...MutationResult
+  }
+}
+
+# REQ-1921: a table or view out of production and back; the same for a source.
+mutation WithdrawTable($tableId: Int!) {
+  withdrawTable(tableId: $tableId) {
+    ...MutationResult
+  }
+}
+
+# A put back names the region it returns to (null: no region), within the caller's grant.
+mutation PutBackTable($tableId: Int!, $region: String) {
+  putBackTable(tableId: $tableId, region: $region) {
+    ...MutationResult
+  }
+}
+
+mutation WithdrawSource($sourceId: String!) {
+  withdrawSource(sourceId: $sourceId) {
+    ...MutationResult
+  }
+}
+
+mutation PutBackSource($sourceId: String!, $region: String) {
+  putBackSource(sourceId: $sourceId, region: $region) {
     ...MutationResult
   }
 }
@@ -1632,7 +1779,11 @@ mutation RefreshMv($mvId: String!, $full: Boolean! = false) {
 }
 
 mutation UpdateVersionLog($mvId: String!, $refreshInterval: Int!, $allowedLateness: Float!) {
-  updateVersionLog(mvId: $mvId, refreshInterval: $refreshInterval, allowedLateness: $allowedLateness) {
+  updateVersionLog(
+    mvId: $mvId
+    refreshInterval: $refreshInterval
+    allowedLateness: $allowedLateness
+  ) {
     ...MutationResult
   }
 }
@@ -1739,13 +1890,6 @@ mutation SetTableRegion($tableId: Int!, $region: String) {
 
 mutation SetSourceRegion($sourceId: String!, $region: String) {
   setSourceRegion(sourceId: $sourceId, region: $region) {
-    ...MutationResult
-  }
-}
-
-# REQ-1921: put a table or view out of service (draft) or release it.
-mutation SetTableDraft($tableId: Int!, $draft: Boolean!) {
-  setTableDraft(tableId: $tableId, draft: $draft) {
     ...MutationResult
   }
 }

@@ -45,15 +45,29 @@ interface TablesRead<T> {
  * cache and sends no request of its own: the page's mount revalidates the list, and a table
  * mutation or a schema-version bump refetches it while it is shown. Without it, every tab and
  * sub-form mounting under the page re-read the whole catalog. */
-export function useTables(opts: { inPage?: boolean; columns: false }): TablesRead<TableRow>;
-export function useTables(opts?: { inPage?: boolean; columns?: true }): TablesRead<ListedTable>;
+export function useTables(opts: {
+  inPage?: boolean;
+  columns: false;
+  includeWithdrawn?: boolean;
+}): TablesRead<TableRow>;
+export function useTables(opts?: {
+  inPage?: boolean;
+  columns?: true;
+  includeWithdrawn?: boolean;
+}): TablesRead<ListedTable>;
+/** `includeWithdrawn` (REQ-1921): the withdrawn tables too, marked, in the domains the caller may
+ * preview them: a graph view's Show withdrawn, a source's Tables section. */
 export function useTables({
   inPage = false,
   columns = true,
-}: { inPage?: boolean; columns?: boolean } = {}): TablesRead<TableRow> {
+  includeWithdrawn = false,
+}: { inPage?: boolean; columns?: boolean; includeWithdrawn?: boolean } = {}): TablesRead<TableRow> {
   const { data, loading, error, refetch } = useQuery<{ tables: TableRow[] }>(
     columns ? TABLE_LIST_QUERY : TABLE_ROWS_QUERY,
-    { fetchPolicy: inPage ? "cache-first" : "cache-and-network" },
+    {
+      fetchPolicy: inPage ? "cache-first" : "cache-and-network",
+      variables: { includeWithdrawn },
+    },
   );
   return {
     tables: data?.tables ?? NO_LISTED_TABLES,
@@ -63,10 +77,13 @@ export function useTables({
   };
 }
 
-/** The registered tables with every field the table editor reads (TablesQuery). */
-export function useTableDetails() {
+/** The registered tables with every field the table editor reads (TablesQuery). `includeWithdrawn`
+ * (REQ-1921): the withdrawn ones too, marked, in the domains the caller may preview them -- the
+ * Tables page lists them, so they can be put back. */
+export function useTableDetails({ includeWithdrawn = false }: { includeWithdrawn?: boolean } = {}) {
   const { data, loading, error, refetch } = useQuery<{ tables: RegisteredTable[] }>(TABLES_QUERY, {
     fetchPolicy: "cache-and-network",
+    variables: { includeWithdrawn },
   });
   return {
     tables: data?.tables ?? NO_TABLES,
@@ -79,11 +96,16 @@ export function useTableDetails() {
 const TABLE_QUERY_NAMES = ["TablesQuery", "TableListQuery", "TableRowsQuery"];
 
 /** The table queries a view is showing, for a table write's refetchQueries: the write refetches
- * those and no other. A `{ query: TablesQuery }` entry fetched the editor's whole catalog on every
+ * those and no other, and drops every cached table list so none is read stale. A `{ query: TablesQuery }` entry fetched the editor's whole catalog on every
  * write whether or not anything showed it. */
 export function useShownTableQueries(): () => string[] {
   const client = useApolloClient();
   return useCallback(() => {
+    // A write changed the catalog: every cached table list is stale, shown or not. A list nothing
+    // shows is not refetched by name, and a page that reads it cache-first (`inPage`) would
+    // otherwise serve the old one -- a relationship's tables missing from it hid its query links.
+    client.cache.evict({ fieldName: "tables" });
+    client.cache.gc();
     const shown = new Set([...client.getObservableQueries("active")].map((oq) => oq.queryName));
     return TABLE_QUERY_NAMES.filter((name) => shown.has(name));
   }, [client]);
@@ -152,8 +174,6 @@ export interface TableAccess {
   /** Null where the REST surface is not mounted. */
   rest: string | null;
   mcp: string;
-  /** REQ-1921: the table is a draft, reached these ways by a role holding org_admin alone. */
-  draft: boolean;
 }
 
 export function useTableAccess(tableId: number | null, role: string | null) {

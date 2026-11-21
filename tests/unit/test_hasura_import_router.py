@@ -239,6 +239,24 @@ def _wire_apply(monkeypatch) -> dict:
         seen["order"].append("residency")  # REQ-1921: judged before anything is loaded
 
     monkeypatch.setattr(ir, "_require_residency_of_import", _residency)
+
+    # REQ-1327: an imported role is judged against the org's roles and domains as stored; this org
+    # holds the standard roles and no domain yet (test_config_import_roles_checked covers the rule).
+    import provisa.core.repositories.domain as domain_repo
+    import provisa.core.repositories.role as role_repo
+    from provisa.core.db import standard_role_dicts
+
+    async def _stored_roles(conn):  # noqa: ARG001
+        return standard_role_dicts()
+
+    async def _stored_domains(conn, retired=False):  # noqa: ARG001
+        return []
+
+    monkeypatch.setattr(role_repo, "list_all", _stored_roles)
+    monkeypatch.setattr(domain_repo, "list_all", _stored_domains)
+    import provisa.api.admin.capabilities as capmod
+
+    monkeypatch.setattr(capmod, "allowed_domains_request", lambda request: None)  # noqa: ARG005
     monkeypatch.setattr(app_mod, "_rebuild_schemas", _rebuild)
     # REQ-2185: the term-embedding trigger reads the org's vector model; its own tests cover it.
     monkeypatch.setattr("provisa.api.admin.reference_library_router.embed_terms", AsyncMock())
@@ -309,7 +327,8 @@ async def test_an_import_offers_no_replace(monkeypatch):
 
 
 async def test_apply_rejects_an_invalid_config(monkeypatch):
-    _grant(monkeypatch, {"org_settings"})
+    # REQ-1557: the rights of what the document declares are asked before it is read further.
+    _grant(monkeypatch, {"source_registration"})
     _wire_apply(monkeypatch)
     with pytest.raises(ApiError) as exc:
         await ir.apply_import(ir.ImportApplyRequest(config_yaml="sources: [{}]"), _request())
@@ -320,7 +339,7 @@ async def test_apply_rejects_an_invalid_config(monkeypatch):
 async def test_apply_refuses_a_variable_the_deployment_has_not_set_by_its_name(monkeypatch):
     """A converted handler URL reads a variable the report names to set before applying (REQ-417);
     applied unset, the import is refused naming it, not answered with a server error."""
-    _grant(monkeypatch, {"org_settings"})
+    _grant(monkeypatch, CONFIG_RIGHTS)  # REQ-1557: asked before anything is resolved
     _wire_apply(monkeypatch)
     monkeypatch.delenv("PROVISA_TEST_UNSET_HANDLER", raising=False)
     config = yaml.safe_load(CONFIG_YAML)
@@ -485,3 +504,43 @@ async def test_preview_reports_what_was_carried_mapped_and_left_to_redo(monkeypa
     assert all(i.detail for i in resp.mapped)
     redo = {w.category for w in resp.warnings}
     assert {"sources", "computed_fields", "functions"} <= redo
+
+
+@pytest.mark.asyncio
+async def test_preview_refuses_an_include_outside_the_upload_by_name(monkeypatch):
+    """An uploaded project's ``!include`` of a server file is refused with its catalogued code."""
+    _grant(monkeypatch, {"org_settings"})
+    data = _zip(
+        {
+            "metadata/databases/databases.yaml": yaml.dump(
+                [
+                    {
+                        "name": "default",
+                        "kind": "postgres",
+                        "tables": "!include default/tables/tables.yaml",
+                    }
+                ]
+            ),
+            "metadata/databases/default/tables/tables.yaml": "- !include /etc/hosts\n",
+        }
+    )
+    req = ir.ImportPreviewRequest(
+        filename="metadata.zip", content_b64=base64.b64encode(data).decode()
+    )
+    with pytest.raises(ApiError) as exc:
+        await ir.preview_import(req, _request())
+    assert exc.value.status_code == 400
+    assert exc.value.code == "import.include_outside_upload"
+    assert exc.value.params == {"path": "/etc/hosts"}
+
+
+@pytest.mark.asyncio
+async def test_preview_refuses_a_filter_operator_it_has_no_sql_for_by_name(monkeypatch):
+    _grant(monkeypatch, {"org_settings"})
+    doc = yaml.safe_load(yaml.dump(V2_DOCUMENT))
+    perm = doc["sources"][0]["tables"][0]["select_permissions"][0]["permission"]
+    perm["filter"] = {"id": {"_x */ OR TRUE /*": 1}}
+    with pytest.raises(ApiError) as exc:
+        await ir.preview_import(_preview_req(doc), _request())
+    assert exc.value.code == "import.filter_operator_refused"
+    assert exc.value.params == {"operator": "_x */ OR TRUE /*"}

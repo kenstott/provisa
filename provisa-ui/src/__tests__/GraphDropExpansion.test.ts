@@ -9,12 +9,8 @@
 // stopped at the first type found would draw one kind of edge and silently hide the others.
 
 import { describe, it, expect } from "vitest";
-import {
-  buildDropExpansion,
-  nodePathQuery,
-  type DropExpansion,
-  type PathScope,
-} from "../pages/graph-drop";
+import { buildDropExpansion, nodePathQuery, type DropExpansion } from "../pages/graph-drop";
+import type { PathScope } from "../components/graph/dropPath";
 import type { GNode } from "../components/graph/graph-model";
 import type { SchemaRel } from "../components/graph/graph-schema-types";
 
@@ -36,9 +32,7 @@ function everyLabel(rels: SchemaRel[]): PathScope {
   const labels = [...new Set(rels.flatMap((r) => [r.source, r.target]))];
   return {
     nodeLabels: labels.map((label) => {
-      const [domainLabel, tableLabel] = label.includes(":")
-        ? label.split(":")
-        : [null, label];
+      const [domainLabel, tableLabel] = label.includes(":") ? label.split(":") : [null, label];
       return { domainLabel, domainId: domainLabel, tableLabel, systemDomain: false };
     }),
     checkedDomains: new Set(),
@@ -127,7 +121,7 @@ describe("a drop keeps the result's own paging", () => {
   it("keeps a LIMIT after the widened RETURN", () => {
     expect(drop("MATCH (t:GlossaryTerm) RETURN t LIMIT 25")).toBe(
       "MATCH (t:GlossaryTerm)\n" +
-        "OPTIONAL MATCH (t)-[rGlossaryTerm:KIND_OF]-(mGlossaryTerm:GlossaryTerm)\n" +
+        "OPTIONAL MATCH (t)-[rGlossaryTerm:KIND_OF]->(mGlossaryTerm:GlossaryTerm)\n" +
         "RETURN t, rGlossaryTerm, mGlossaryTerm\n" +
         "LIMIT 25",
     );
@@ -136,7 +130,7 @@ describe("a drop keeps the result's own paging", () => {
   it("keeps ORDER BY and LIMIT, in that order", () => {
     expect(drop("MATCH (t:GlossaryTerm) RETURN t ORDER BY t.name DESC LIMIT 10")).toBe(
       "MATCH (t:GlossaryTerm)\n" +
-        "OPTIONAL MATCH (t)-[rGlossaryTerm:KIND_OF]-(mGlossaryTerm:GlossaryTerm)\n" +
+        "OPTIONAL MATCH (t)-[rGlossaryTerm:KIND_OF]->(mGlossaryTerm:GlossaryTerm)\n" +
         "RETURN t, rGlossaryTerm, mGlossaryTerm\n" +
         "ORDER BY t.name DESC LIMIT 10",
     );
@@ -145,7 +139,7 @@ describe("a drop keeps the result's own paging", () => {
   it("keeps a SKIP", () => {
     expect(drop("MATCH (t:GlossaryTerm)\nRETURN t\nSKIP 50 LIMIT 25")).toBe(
       "MATCH (t:GlossaryTerm)\n" +
-        "OPTIONAL MATCH (t)-[rGlossaryTerm:KIND_OF]-(mGlossaryTerm:GlossaryTerm)\n" +
+        "OPTIONAL MATCH (t)-[rGlossaryTerm:KIND_OF]->(mGlossaryTerm:GlossaryTerm)\n" +
         "RETURN t, rGlossaryTerm, mGlossaryTerm\n" +
         "SKIP 50 LIMIT 25",
     );
@@ -155,7 +149,7 @@ describe("a drop keeps the result's own paging", () => {
     const out = drop("MATCH (t:GlossaryTerm) RETURN t");
     expect(out).toBe(
       "MATCH (t:GlossaryTerm)\n" +
-        "OPTIONAL MATCH (t)-[rGlossaryTerm:KIND_OF]-(mGlossaryTerm:GlossaryTerm)\n" +
+        "OPTIONAL MATCH (t)-[rGlossaryTerm:KIND_OF]->(mGlossaryTerm:GlossaryTerm)\n" +
         "RETURN t, rGlossaryTerm, mGlossaryTerm",
     );
     expect(out).not.toMatch(/LIMIT|SKIP|ORDER BY/);
@@ -168,8 +162,10 @@ describe("a drop keeps the result's own paging", () => {
   });
 });
 
-describe("buildDropExpansion anchors on every variable the query binds", () => {
+describe("REQ-2135 buildDropExpansion joins along one path, from one variable", () => {
   // The maintainer's case: a domain n with two data-product hops; RegisteredTables dropped on it.
+  // Each of n, p1 and p2 reaches it in one hop; one path is added, from the first, so the query
+  // never holds branches no condition relates.
   const DROPPED = "Meta:RegisteredTables";
   const RELS = [
     rt("IS_REGISTERED_TABLE", "Meta:Domains", DROPPED),
@@ -177,7 +173,7 @@ describe("buildDropExpansion anchors on every variable the query binds", () => {
     rt("PRODUCT", DROPPED, "Meta:DataProducts"),
   ];
 
-  it("expands from the domain as well as from each data product", () => {
+  it("expands from the first variable that reaches it, not from each", () => {
     const out = expand(
       "MATCH (n:Meta:Domains)-[r1:HAS_PRODUCT]-(p1:Meta:DataProducts)-[r2:FEEDS]-(p2:Meta:DataProducts) RETURN n, r1, p1, r2, p2",
       DROPPED,
@@ -186,23 +182,16 @@ describe("buildDropExpansion anchors on every variable the query binds", () => {
     const hops = [...out.query.matchAll(/OPTIONAL MATCH \((\w+)\)-\[\w+:(\w+)\]-\((\w+):/g)].map(
       ([, anchor, type]) => `${anchor}:${type}`,
     );
-    expect(hops).toEqual([
-      "n:IS_REGISTERED_TABLE",
-      "p1:MEMBER_TABLES",
-      "p2:MEMBER_TABLES",
-      "p1:PRODUCT",
-      "p2:PRODUCT",
-    ]);
-    // Each hop has its own target: none is shared across anchors (that would intersect them).
-    expect(new Set(out.targetVars).size).toBe(hops.length);
+    expect(hops).toEqual(["n:IS_REGISTERED_TABLE"]);
+    expect(out.targetVars).toEqual(["mRegisteredTa"]);
     for (const v of out.targetVars) expect(out.query).toContain(`, ${v}`);
   });
 
-  it("anchors on both variables a label is bound twice to", () => {
+  it("anchors on one of the variables a label is bound twice to", () => {
     const out = expand("MATCH (a:Meta:Domains) MATCH (b:Meta:Domains) RETURN a, b", DROPPED, RELS);
     expect(out.query).toContain("OPTIONAL MATCH (a)-[");
-    expect(out.query).toContain("OPTIONAL MATCH (b)-[");
-    expect(out.targetVars).toHaveLength(2);
+    expect(out.query).not.toContain("OPTIONAL MATCH (b)-[");
+    expect(out.targetVars).toHaveLength(1);
   });
 
   it("names every class the query holds when no relationship reaches the dropped label", () => {
@@ -225,13 +214,12 @@ describe("REQ-2135 a dropped label a relationship does not touch", () => {
     expect(out.targetVars).toEqual(["mC"]);
   });
 
-  it("adds at most five tied paths and says what it left out", () => {
+  it("adds one of several as-short paths", () => {
     const ties = [1, 2, 3, 4, 5, 6].flatMap((n) => [rt(`X${n}`, "A", "B")]);
     const out = expand("MATCH (a:A) RETURN a", "C", [...ties, rt("B_C", "B", "C")]);
-    expect(out.query.match(/OPTIONAL MATCH/g)).toHaveLength(5);
-    expect(out.notices).toEqual([
-      { key: "graphFrame.sparqlDropLeftOut", values: { shown: 5, total: 6 } },
-    ]);
+    expect(out.query.match(/OPTIONAL MATCH/g)).toHaveLength(1);
+    expect(out.query).toContain("OPTIONAL MATCH (a)-[rB:X1]-(mB:B)-[rC:B_C]-(mC:C)");
+    expect(out.notices).toEqual([]);
   });
 
   it("keeps a hop's ties whole: a junction's types are not cut", () => {
@@ -255,9 +243,9 @@ describe("REQ-2135 a dropped label a relationship does not touch", () => {
     expect(out.query).toContain("OPTIONAL MATCH (a)-[rB:A_B]-(mB:B)-[rC:B_C]-(mC:C)");
   });
 
-  it("says a query of no class has nothing to join to", () => {
+  it("says in Cypher's words that a node with no label and no relationship has nothing to join", () => {
     expect(refusal("MATCH (n) RETURN n", "C", rels)).toEqual({
-      key: "graphFrame.sparqlDropNoClass",
+      key: "graphFrame.cypherDropNoLabel",
     });
   });
 });

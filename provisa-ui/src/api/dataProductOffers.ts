@@ -20,6 +20,19 @@ const API_BASE = import.meta.env.VITE_API_BASE || "";
 
 export type DataLevel = "full" | "sample" | "synthetic";
 
+/** Why an offer is listed for review: its role is gone, a dataset is not built, its sample does
+ * not hold against the build, its open data is no longer public, or a synthetic dataset has lost
+ * its profiler or a column its fake. */
+export type OfferReviewReason =
+  | "role_gone"
+  | "not_built"
+  | "sample_not_a_view"
+  | "sample_outside_product"
+  | "sample_misses_dataset"
+  | "not_public"
+  | "profiler_gone"
+  | "fake_gone";
+
 /** A dataset's column as an offer's role sees it; ``masked`` is the mask's kind, null unmasked. */
 export interface OfferField {
   name: string;
@@ -46,6 +59,10 @@ export interface OfferTerms {
   dq_results: boolean;
   profiles: string[];
   duration_days: number | null;
+  /** The offer's terms of use, in prose; empty where it states none. */
+  purpose: string;
+  usage: string;
+  limitations: string;
 }
 
 export interface OfferContract {
@@ -73,6 +90,31 @@ export interface OfferInput {
   profiles: boolean;
   open: boolean;
   duration_days: number | null;
+  /** Its terms of use, in prose: what it is for, how it is used, and its limitations. */
+  purpose: string;
+  usage: string;
+  limitations: string;
+}
+
+/** A term of use an offer states. */
+export type TermOfUse = "purpose" | "usage" | "limitations";
+
+/** The kinds of consumer a request is for. */
+export type ConsumerKind = "person" | "team" | "data_product" | "agent";
+
+/** Who approves a request for a product: the authority its request hook reaches (by host), or
+ *  its owner role (null where it names none). */
+export interface Approver {
+  via: "hook" | "owner";
+  name: string | null;
+}
+
+/** What a requester sends to bid: its purpose, the kind of consumer it is for, and their
+ *  agreement to the offer's terms of use. */
+export interface BidInput {
+  reason: string;
+  consumer_kind: ConsumerKind;
+  agreed: boolean;
 }
 
 /** An offer as listed: its terms, its contracts, what accepting it would extend for the caller,
@@ -82,8 +124,9 @@ export interface Offer extends OfferInput {
   product_id: string;
   version: number;
   published_by: string | null;
-  /** Why it is listed for review; null when it is not. */
-  review: string | null;
+  /** Why it is listed for review, a reason the catalog states (dataProductOffers.reviewReason);
+   * null when it is not. */
+  review: OfferReviewReason | null;
   created_at: string;
   updated_at: string;
   contracts: OfferDatasetContract[];
@@ -103,7 +146,13 @@ export interface Bid {
   offer_version: number;
   terms: Partial<OfferInput>;
   requester: string;
+  /** A bid's purpose; a cancel's reason. */
   reason: string;
+  /** The kind of consumer a bid is for, who it named as approving it, and when its requester
+   *  agreed to the offer's terms of use; null on a cancel. */
+  consumer_kind: ConsumerKind | null;
+  approver: string | null;
+  agreed_at: string | null;
   status: BidStatus;
   decided_by: string | null;
   decided_at: string | null;
@@ -153,8 +202,12 @@ export const addOffer = (productId: string, offer: OfferInput) =>
 export const removeOffer = (productId: string, offerId: number) =>
   call<{ deleted: number }>("removeOffer", `${base(productId)}/offers/${offerId}`, "DELETE");
 
-export const bidForOffer = (productId: string, offerId: number, reason: string) =>
-  call<Bid>("bidForOffer", `${base(productId)}/offers/${offerId}/bids`, "POST", { reason });
+export const bidForOffer = (productId: string, offerId: number, bid: BidInput) =>
+  call<Bid>("bidForOffer", `${base(productId)}/offers/${offerId}/bids`, "POST", bid);
+
+/** Who a request for the product goes to for approval. */
+export const fetchApprover = (productId: string) =>
+  call<Approver>("fetchApprover", `${base(productId)}/approver`);
 
 /** Every bid for its owner role; else the caller's own. */
 export const fetchBids = (productId: string) =>

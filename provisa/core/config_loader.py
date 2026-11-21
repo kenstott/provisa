@@ -33,12 +33,12 @@ from provisa.core.models import (
     STORED_MODEL,
     ProvisaConfig,
     Source,
+    GlossaryTermConfig,
     Table,
     TagAssignment,
 )
 from provisa.core import domain_policy
 from provisa.core.schema_org import (
-    glossary_terms,
     model_seed,
     naming_rules,
     registered_tables,
@@ -338,6 +338,38 @@ def parse_config_dict(data: dict, *, stored: bool = False) -> ProvisaConfig:  # 
     return config
 
 
+def sections_as_written(data: dict) -> dict:  # REQ-1557
+    """``data`` with its sections as :func:`parse_config_dict` reads them (views and Kafka
+    topics as tables), and nothing resolved: what a caller's rights are asked of before a
+    reference in the document is read."""
+    import copy
+
+    return kafka_topics_as_tables(commit_time_columns(views_as_tables(copy.deepcopy(data))))
+
+
+def invalid_text(refusal: ValueError, data: dict) -> str:  # REQ-1557
+    """What to tell the caller whose config ``data`` was refused by ``refusal``, carrying no
+    value a ``${env:...}`` in it resolved to: a validation's errors without the input each
+    refused (the resolved document), and any such value the remaining text holds replaced by
+    the name of the variable that gave it."""
+    import os
+
+    from pydantic import ValidationError
+
+    from provisa.core.env_reference_guard import env_names
+
+    if isinstance(refusal, ValidationError):
+        errors = refusal.errors(include_input=False, include_url=False, include_context=False)
+        text = "; ".join(f"{'.'.join(str(p) for p in e['loc'])}: {e['msg']}" for e in errors)
+    else:
+        text = str(refusal)
+    for name in sorted(set(env_names(data))):
+        value = os.environ.get(name)
+        if value:
+            text = text.replace(value, f"(the value of {name})")
+    return text
+
+
 def _code_secrets_as_written(data: dict, resolve: Any) -> dict:
     """``resolve(data)``, but the mapping values resolved at use kept as the references written:
     a code source's declared secrets (REQ-2104), each resolved only when the code reads it,
@@ -441,7 +473,8 @@ async def _upsert_sources(conn: "Connection", config: ProvisaConfig) -> None:  #
     """Add each source the config declares to the store, or replace its definition. Stored as
     written: a credential's reference, never its value."""
     for src in config.written.sources:
-        await source_repo.upsert(conn, src)
+        # REQ-1921: a configuration carries a withdrawn source as withdrawn.
+        await source_repo.upsert(conn, src, withdrawn=src.withdrawn)
 
 
 def resolved_source(source: Source) -> Source:  # REQ-1919
@@ -468,7 +501,7 @@ def register_sources(  # REQ-012, REQ-1266, REQ-1730, REQ-1919
         try:
             engine.register_source(
                 src,
-                resolve_secrets(src.password),
+                resolve_secrets(src.password, credential=True),
                 catalog_name=(catalog_names or {}).get(src.id),
             )
         except Exception:
@@ -732,7 +765,8 @@ async def _upsert_single_table(
     # REQ-1426: data_type is design-time metadata — the config carries it and nothing infers it
     # here. A column that reaches this point untyped means the design was never completed; the
     # repository refuses it rather than persisting a hole the catalog renders as "unknown".
-    await table_repo.upsert(conn, tbl)
+    # REQ-1921: a configuration carries a withdrawn table as withdrawn.
+    await table_repo.upsert(conn, tbl, withdrawn=tbl.withdrawn)
 
     if src and src.type.value == "openapi" and src.base_url:
         spec = openapi_specs.get(src.id, {})
@@ -1136,7 +1170,9 @@ async def _product_table(conn: "Connection", name: str) -> dict | None:
 async def _save_declared_offers(conn: "Connection", dp: DataProduct) -> None:  # REQ-2180
     """Each offer ``dp`` declares added, or replacing the product's offer of its name; a sample's
     views named as the product's tables are. An offer the store refuses fails the load, naming the
-    product. Their contracts are derived by the build the load is followed by."""
+    product. A sample's views are checked against the published build by the build the load is
+    followed by, which lists a sample that does not hold for review (REQ-2180, amended
+    2026-11-16), and derives their contracts."""
     from provisa.core.models import DataProductOffer
     from provisa.core.repositories import data_product_offer as offer_repo
 
@@ -1153,7 +1189,7 @@ async def _save_declared_offers(conn: "Connection", dp: DataProduct) -> None:  #
             views.append(int(row["id"]))
         offer = DataProductOffer.model_validate({**declared.model_dump(), "sample_views": views})
         try:
-            await offer_repo.save(conn, dp.id, offer, offer_id=held.get(offer.name), by=None)
+            await offer_repo.save_declared(conn, dp.id, offer, offer_id=held.get(offer.name))
         except offer_repo.OfferRefused as refused:
             raise ValueError(
                 f"data product {dp.id!r}: offer {declared.name!r}: {refused}"
@@ -1229,26 +1265,23 @@ async def _load_after_tables(  # REQ-1919
     # declares or derives exists — an abstract term with no edge to a grounded term can never
     # be live, so this is what actually connects it rather than the name-collision trick of
     # declaring a term with the same name as a derived one.
-    if config.glossary_terms:
-        term_ids = {
-            row.name: row.id
-            for row in (
-                await conn.execute_core(select(glossary_terms.c.id, glossary_terms.c.name))
-            ).fetchall()
-        }
-        for gt in config.glossary_terms:
-            # REQ-1844: every term name in the catalog is lowercase, and the declared term was
-            # stored that way (upsert_declared_term), so it and its edges' targets are looked up
-            # that way too — a name the file wrote with a capital letter is the same term.
-            from_id = term_ids[gt.name.strip().lower()]
-            for edge in gt.edges:
-                target = edge.to.strip().lower()
-                if target not in term_ids:
-                    raise ValueError(
-                        f"glossary term {gt.name!r} has an edge to {edge.to!r}, "
-                        "which does not exist in this config or the catalog"
-                    )
-                await glossary_repo.add_edge(conn, from_id, term_ids[target], edge.rel_type)
+    for gt in config.glossary_terms:
+        # REQ-1844: every term name in the catalog is lowercase, and the declared term was
+        # stored that way (upsert_declared_term), so it and its edges' targets are looked up
+        # that way too — a name the file wrote with a capital letter is the same term.
+        # REQ-1591: a name is unique only within a domain, so the declared term is the one of
+        # its name in its domains, and an edge's target is found from them.
+        from_id = await _declared_term_id(conn, gt)
+        for edge in gt.edges:
+            target_id = await glossary_repo.resolve_reference(
+                conn, edge.to.strip().lower(), near=gt.domains
+            )
+            if target_id is None:
+                raise ValueError(
+                    f"glossary term {gt.name!r} has an edge to {edge.to!r}, "
+                    "which does not exist in this config or the catalog"
+                )
+            await glossary_repo.add_edge(conn, from_id, target_id, edge.rel_type)
 
     # 10.6 Class terms (REQ-2141): resolved by name, like the edges above, once every term the
     # config declares or derives exists and every table has its columns (a class needs a key).
@@ -1305,19 +1338,19 @@ async def _resolve_tag_assignment_term(
     if not ta.term:
         raise ValueError(f"tag assignment {ta.tag_id!r} on a term names no term")
     name = ta.term.strip().lower()  # REQ-1844: every term name in the catalog is lowercase
-    row = (
-        await conn.execute_core(select(glossary_terms.c.id).where(glossary_terms.c.name == name))
-    ).fetchone()
-    if row is None:
+    # REQ-1591: a tag assignment names its term without a domain; several of that name are
+    # refused by name (TermNameAmbiguous), never guessed.
+    term_id = await glossary_repo.resolve_term(conn, name, domains=None)
+    if term_id is None:
         raise ValueError(
             f"tag assignment {ta.tag_id!r} names term {ta.term!r}, which does not exist in this "
             "config or the catalog"
         )
     try:
-        await refuse_term_tag(conn, row.id, ta.tag_id)
+        await refuse_term_tag(conn, term_id, ta.tag_id)
     except TermTagRefused as refused:
         raise ValueError(f"tag {ta.tag_id!r} cannot go on term {ta.term!r}: {refused}") from None
-    return ta.model_copy(update={"term_id": row.id})
+    return ta.model_copy(update={"term_id": term_id})
 
 
 async def _declare_term_statuses(conn: "Connection", config: ProvisaConfig) -> None:
@@ -1330,16 +1363,10 @@ async def _declare_term_statuses(conn: "Connection", config: ProvisaConfig) -> N
     ]
     if not stated:
         return
-    term_ids = {
-        row.name: row.id
-        for row in (
-            await conn.execute_core(select(glossary_terms.c.id, glossary_terms.c.name))
-        ).fetchall()
-    }
     statuses = await glossary_repo.term_statuses(conn)
     today = datetime.date.today()
     for gt in stated:
-        term_id = term_ids[gt.name.strip().lower()]
+        term_id = await _declared_term_id(conn, gt)
         try:
             # Loading the same configuration again changes nothing: an approval already made
             # stands.
@@ -1352,13 +1379,14 @@ async def _declare_term_statuses(conn: "Connection", config: ProvisaConfig) -> N
             elif gt.retire is not None:
                 successor = None
                 if gt.retire.successor is not None:
-                    named = gt.retire.successor.strip().lower()
-                    if named not in term_ids:
+                    successor = await glossary_repo.resolve_reference(  # REQ-1591
+                        conn, gt.retire.successor.strip().lower(), near=gt.domains
+                    )
+                    if successor is None:
                         raise ValueError(
                             f"glossary term {gt.name!r} names {gt.retire.successor!r} as its "
                             "successor, which does not exist in this config or the catalog"
                         )
-                    successor = term_ids[named]
                 if statuses[term_id] != "retired":
                     await glossary_repo.retire_term(
                         conn, term_id, reason=gt.retire.reason, successor=successor, by=None
@@ -1394,22 +1422,29 @@ async def _check_identities(conn: "Connection", config: ProvisaConfig) -> None:
                 raise ValueError(refused.message)
 
 
+async def _declared_term_id(conn: "Connection", term: GlossaryTermConfig) -> int:
+    """The id of a term this configuration declares, found by its name in its declared domains as
+    upsert_declared_term found or made it (REQ-1591)."""
+    term_id = await glossary_repo.find_declared_term(
+        conn, term.name.strip().lower(), set(term.domains)
+    )
+    if term_id is None:
+        raise ValueError(f"glossary term {term.name!r} was not declared in {term.domains!r}")
+    return term_id
+
+
 async def _declare_class_terms(conn: "Connection", config: ProvisaConfig) -> None:
     declared = [t for t in config.tables if t.class_term is not None]
     if not declared:
         return
-    term_ids = {
-        row.name: row.id
-        for row in (
-            await conn.execute_core(select(glossary_terms.c.id, glossary_terms.c.name))
-        ).fetchall()
-    }
     for table in declared:
         assert table.class_term is not None
         address = f"{table.source_id}.{table.schema_name}.{table.table_name}"
-        # REQ-1844: every term name in the catalog is lowercase.
+        # REQ-1844: every term name in the catalog is lowercase. REQ-1591: the class term is
+        # found from the table's domain, since a name is unique only within a domain.
         name = table.class_term.strip().lower()
-        if name not in term_ids:
+        class_term_id = await glossary_repo.resolve_reference(conn, name, near={table.domain_id})
+        if class_term_id is None:
             raise ValueError(
                 f"table {address} names {table.class_term!r} as its class term, "
                 "which does not exist in this config or the catalog"
@@ -1425,7 +1460,7 @@ async def _declare_class_terms(conn: "Connection", config: ProvisaConfig) -> Non
         ).fetchone()
         assert row is not None, f"table {address} was upserted by this load"
         try:
-            await glossary_repo.declare_class_term(conn, row.id, term_ids[name])
+            await glossary_repo.declare_class_term(conn, row.id, class_term_id)
         except (
             glossary_repo.TableHasNoPrimaryKey,
             glossary_repo.TermIsProperty,
@@ -1789,6 +1824,21 @@ def _validate_triggers(config) -> None:  # REQ-2054
         refused = trigger_refusal(trigger, commands=commands, tables=tables, roles=roles)
         if refused is not None:
             raise ValueError(refused)
+
+
+def _validate_destinations(config) -> None:  # REQ-2006
+    """A configuration a held org's admin applies names public destinations only for its webhooks
+    and the URLs its scheduled triggers call, refused by name as a save of either is (REQ-2006,
+    amended 2026-11-16); each is checked again at each call. Any other org's reaches what it
+    names. A demo's own configuration, which builds its template and the orgs seeded with it, is
+    the operator's (``sandbox_egress``) and is not judged here."""
+    from provisa.security import sandbox_egress
+
+    for webhook in config.webhooks:
+        sandbox_egress.require_endpoint_url_allowed(webhook.url)
+    for trigger in config.scheduled_triggers:
+        if trigger.url:
+            sandbox_egress.require_endpoint_url_allowed(trigger.url)
 
 
 def _validate_paging(config) -> None:  # REQ-318
@@ -2240,6 +2290,9 @@ async def reset_model(conn: "Connection") -> None:  # REQ-1919
         # A calendar is removed by name, every version at once (integrity.discard).
         ("calendar", await _ids(select(calendars.c.name).distinct())),
     ]
+    # REQ-2248 (ruling 2026-11-15): a demo organisation's rebuild from its configuration is a
+    # built-in seed, so it DELETES its model rather than retiring it; the apply that follows
+    # declares the same objects again. Nothing else deletes a person's model objects.
     for kind, idents in order:
         for ident in idents:
             if kind == "table":
@@ -2286,15 +2339,15 @@ async def _unstamp_revived_terms(conn: "Connection", config: ProvisaConfig) -> N
     configuration does not."""
     from sqlalchemy import delete
 
-    from provisa.core.schema_org import glossary_term_domains, glossary_term_refs, glossary_terms
+    from provisa.core.schema_org import glossary_term_domains, glossary_term_refs
 
-    declared = [term.name.strip().lower() for term in config.glossary_terms]
+    # REQ-1591: the declared terms by name within their domains; a same-named term elsewhere
+    # is another term, and its stamp goes.
+    declared = {await _declared_term_id(conn, term) for term in config.glossary_terms}
     await conn.execute_core(
         delete(glossary_term_domains).where(
             glossary_term_domains.c.term_id.in_(select(glossary_term_refs.c.term_id)),
-            glossary_term_domains.c.term_id.not_in(
-                select(glossary_terms.c.id).where(glossary_terms.c.name.in_(declared))
-            ),
+            glossary_term_domains.c.term_id.not_in(sorted(declared)),
         )
     )
 
@@ -2396,6 +2449,7 @@ async def apply_config(  # REQ-1919, REQ-164
     ``engine`` decides only the names tables are registered under. Returns the source ids whose
     change feed could not be reached.
     """
+    _validate_destinations(config)
     # Nothing registers a table after an admin's apply: every relationship registers now.
     return await _apply(
         config, conn, engine, label="configuration applied", defer_unregistered=False
@@ -2438,6 +2492,7 @@ async def dry_run_config(  # REQ-2222
     from provisa.core.model_row_rules import unnarrowed
     from provisa.core.store_config import model_changes, store_model
 
+    _validate_destinations(config)
     async with model_change.committed_by_caller():
         with domain_policy.trial(), unnarrowed():
             try:

@@ -55,6 +55,7 @@ export function erdGraph(elements: ErdElements, tables: ListedTable[]): GraphSpe
           lines: junction
             ? []
             : d.columns.map((c) => ({ text: columnLine(c), key: c.isPrimaryKey || c.isForeignKey })),
+          ...(d.withdrawn ? { withdrawn: true } : {}),
           data: { tableId: d.tableId, tableName: d.tableName, domainId: d.domainId },
         };
       }),
@@ -64,7 +65,8 @@ export function erdGraph(elements: ErdElements, tables: ListedTable[]): GraphSpe
       target: e.target,
       label: e.label,
       arrow: arrowOf(e.cardinality, e.bidirectional),
-      dashed: e.proxy,
+      // A line to a collapsed group, or of a withdrawn relationship (REQ-1921).
+      dashed: e.proxy || e.withdrawn,
       ...(e.via ? { tone: "via" as const } : {}),
       data: { relationshipId: e.relationshipId },
     })),

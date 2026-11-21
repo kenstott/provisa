@@ -2,7 +2,7 @@
   "jsonApiPage": {
     "title": "Explorateur JSON:API",
     "specLink": "Spécification",
-    "description": "Ensembles de champs partiels, filtrage, tri et pagination. La gouvernance s'applique uniformément quel que soit le protocole de transport.",
+    "description": "Ensembles de champs clairsemés, filtrage, tri et pagination. La même gouvernance s'applique sur chaque protocole réseau.",
     "tableLabel": "Table",
     "loadingOption": "Chargement…",
     "selectTablePlaceholder": "Sélectionner une table",

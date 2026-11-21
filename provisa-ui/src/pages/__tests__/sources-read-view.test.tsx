@@ -136,7 +136,7 @@ describe("a registered source's read view", () => {
     expect(await screen.findByTestId("source-commands")).toHaveTextContent("add_pet");
   });
 
-  it("lists the tables registered from the source, each linked, a draft marked", async () => {
+  it("lists the tables registered from the source, each linked, a withdrawn one marked", async () => {
     SOURCES = [source({}), source({ id: "empty" })];
     TABLES = [
       {
@@ -145,7 +145,7 @@ describe("a registered source's read view", () => {
         tableName: "orders",
         alias: null,
         domainId: "sales",
-        draft: false,
+        withdrawn: false,
       },
       {
         id: 5,
@@ -153,15 +153,23 @@ describe("a registered source's read view", () => {
         tableName: "returns",
         alias: null,
         domainId: "sales",
-        draft: true,
+        withdrawn: true,
       },
-      { id: 6, sourceId: "other", tableName: "x", alias: null, domainId: "sales", draft: false },
+      {
+        id: 6,
+        sourceId: "other",
+        tableName: "x",
+        alias: null,
+        domainId: "sales",
+        withdrawn: false,
+      },
     ] as unknown as RegisteredTable[];
     render(<SourcesPage />);
     await userEvent.click(await screen.findByTestId("sources-row-sales"));
     await userEvent.click(await screen.findByTestId("source-section-tables"));
     expect(screen.getByRole("link", { name: "orders" })).toHaveAttribute("href", "/tables?table=4");
-    expect(screen.getByTestId("source-table-5")).toHaveTextContent("Draft");
+    expect(screen.getByTestId("source-table-5")).toHaveTextContent("Withdrawn");
+    expect(screen.getByTestId("source-table-4")).not.toHaveTextContent("Withdrawn");
     expect(screen.queryByTestId("source-table-6")).toBeNull();
     await userEvent.click(screen.getByTestId("sources-row-empty"));
     expect(await screen.findByTestId("source-tables-none")).toHaveTextContent("—");

@@ -7,7 +7,7 @@
     "redirectHint": "Tutti i risultati vengono reindirizzati su S3",
     "queryStats": "Statistiche query",
     "schemaError": "Errore di schema: {{message}}",
-    "redirectReady": "Reindirizzamento pronto — {{rowCount}} righe ({{contentType}})",
+    "redirectReady": "Reindirizzamento pronto: {{rowCount}} righe ({{contentType}})",
     "download": "Scarica",
     "dismissRedirect": "Ignora avviso di reindirizzamento",
     "formatNone": "Nessuno",

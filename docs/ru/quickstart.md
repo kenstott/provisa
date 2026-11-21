@@ -10,7 +10,7 @@
 
 - **Docker Desktop** (запущен)
 - **Python 3.12+**
-- **Node.js 20+**
+- **Node.js 24.12+**
 - **Git**
 
 ---

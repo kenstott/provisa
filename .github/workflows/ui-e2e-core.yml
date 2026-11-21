@@ -73,6 +73,16 @@ on:
         required: false
       SP_TENANT_ID:
         required: false
+      SINGLESTORE_HOST:
+        required: false
+      SINGLESTORE_PORT:
+        required: false
+      SINGLESTORE_USERNAME:
+        required: false
+      SINGLESTORE_PASSWORD:
+        required: false
+      SINGLESTORE_DATABASE:
+        required: false
 
 permissions:
   contents: read
@@ -94,13 +104,22 @@ jobs:
   # or removed on the runner aborts whatever page is loading (playwright.config.ts
   # PROVISIONING_SPECS).
   playwright:
-    name: Playwright core lane
+    name: Playwright core lane ${{ matrix.shard }}/2
+    # Two shards, each one worker (a backend and a browser) on a runner of its own. Two workers on
+    # one 4-vCPU runner still held it at a load of about 10 (run 43995449668's sampler): a schema
+    # rebuild there took a median 11.1 s against 3.3 s in the one-worker provisioning job of the
+    # same run, every navigation 6-9 s, and the longest specs (kaggle-source's multi-file dataset,
+    # grpc_remote, tables-enable-aggregates) ran out of their bounds with no step stalled.
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
     # Maintainer 2026-10-29: no live cloud warehouse is touched here (no credentials are passed),
     # so this job neither wakes nor stops the shared compute and holds no live-cloud-warehouses
     # group; the warehouse specs run in integration-suite-lanes.yml warehouse-ui.
     uses: ./.github/workflows/lane.yml
     with:
-      name: ui-core
+      name: ui-core ${{ matrix.shard }}/2
       timeout: 120
       # playwright.config.ts's webServer commands invoke `.venv/bin/uvicorn` by path, so the
       # environment must be a real repo-root .venv. `cassandra` and `saphana` are their demo
@@ -114,13 +133,14 @@ jobs:
       ui-timeout: 12
       # CI: every webServer is started by the harness, never adopted from a stale process.
       # PROVISA_E2E_LANE: the embedded control plane, and no Trino webServer in the config.
-      # Two workers, each a backend and a browser: at four, the 4-vCPU runner ran at a load of 13
-      # to 21 (run 38499105258's sampler) -- about five times slower than the specs' bounds allow,
-      # and the MV, file-connector and Cypher specs timed out there and nowhere else.
+      # One worker, a backend and a browser, per shard: at four, the 4-vCPU runner ran at a load of
+      # 13 to 21 (run 38499105258's sampler), at two about 10 (run 43995449668's) -- several times
+      # slower than the specs' bounds allow.
       env: |
         CI=true
         PROVISA_E2E_LANE=core
-        PROVISA_E2E_WORKERS=2
+        PROVISA_E2E_WORKERS=1
+        PROVISA_E2E_SHARD=${{ matrix.shard }}/2
         PROVISA_E2E_SPECS=${{ inputs.specs }}
         PROVISA_TASK_DUMP_S=${{ inputs.task_dump_s }}
         PROVISA_PYSPY=${{ inputs.pyspy && '1' || '' }}
@@ -142,7 +162,7 @@ jobs:
         for spec in $PROVISA_E2E_SPECS; do test -f "${spec%%:*}" || { echo "::error::no spec ${spec%%:*}"; exit 1; }; done; 
         if [ -n "$PROVISA_PYSPY" ]; then uv pip install --python ../.venv/bin/python py-spy; { nohup bash ../scripts/ci/lanes/pyspy-watch.sh "$PWD/pyspy" "$PWD/../.venv/bin/py-spy" > pyspy-watch.log 2>&1 & }; fi;
         PLAYWRIGHT_JSON_OUTPUT_NAME=playwright-results.json
-        npx playwright test --project=core --global-timeout=5700000 --reporter=line,html,json $PROVISA_E2E_SPECS ${PROVISA_E2E_SPECS:+--pass-with-no-tests}
+        npx playwright test --project=core --shard=$PROVISA_E2E_SHARD --global-timeout=5700000 --reporter=line,html,json $PROVISA_E2E_SPECS ${PROVISA_E2E_SPECS:+--pass-with-no-tests}
       # prepare: the credential files of the live sources. after: every test that did not run,
       # by name and reason, under its own count (not a pass); the Fabric capacity paused again;
       # the credential files removed.
@@ -150,7 +170,7 @@ jobs:
       after: bash ../scripts/ci/lanes/ui-core-after.sh playwright-results.json
       # What held the runner while the lane ran (run 37918605161 could not say).
       sampler: true
-      artifact-name: playwright-report-core
+      artifact-name: playwright-report-core-${{ matrix.shard }}of2
       artifact-path: |
         provisa-ui/playwright-report/
         provisa-ui/playwright-results.json
@@ -165,13 +185,13 @@ jobs:
       OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
       # The live APIs the job's specs call, each skipped by name without its key (run 40115205350
       # reported 10 NOT EXECUTED with every one of these present in the repo's secrets):
-      # AskAmerica/govdata (askamerica-*, source-to-query-special-cases), Kaggle (kaggle-source),
-      # OpenRouter (custom-ai-endpoint-secret), Stripe's sandbox (source-to-query-stripe).
-      FREE_ASKAMERICA_KEY: ${{ secrets.FREE_ASKAMERICA_KEY }}
+      # Kaggle (kaggle-source), OpenRouter (custom-ai-endpoint-secret), Stripe's sandbox
+      # (source-to-query-stripe). AskAmerica's is the provisioning job's, where its specs run.
       KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
       STRIPE_API_KEY: ${{ secrets.STRIPE_API_KEY }}
 
-  # The specs that bring source stacks up and down, with ONE worker on a runner of their own.
+  # The specs that bring source stacks up and down, and the AskAmerica ones, with ONE worker on a
+  # runner of their own.
   provisioning:
     name: Playwright core lane, provisioning specs
     uses: ./.github/workflows/lane.yml
@@ -185,9 +205,16 @@ jobs:
       odbc: true
       ui: chromium
       ui-timeout: 12
+      # PROVISA_E2E_WORKERS=1: playwright.config.ts starts one backend per worker it is told of
+      # (four when unset), and this job runs --workers=1, so three backends (8911, 8921, 8931) sat
+      # idle for the whole lane at up to 1.4 GB each (run 44446367464's sampler). With SAP HANA up
+      # (about 5 GB) that run peaked at 14.3 of 16 GB used, 1.7 GB free; with leaked containers
+      # beside it run 43775788692 reached 166 MiB free and a load of 147, and runs 44379805091 and
+      # 44574663250 lost their runner ("The hosted runner lost communication with the server").
       env: |
         CI=true
         PROVISA_E2E_LANE=core
+        PROVISA_E2E_WORKERS=1
         PROVISA_E2E_SPECS=${{ inputs.specs }}
         PROVISA_TASK_DUMP_S=${{ inputs.task_dump_s }}
       working-directory: provisa-ui
@@ -227,3 +254,12 @@ jobs:
       SP_CLIENT_ID: ${{ secrets.SP_CLIENT_ID }}
       SP_SITE_URL: ${{ secrets.SP_SITE_URL }}
       SP_CERT_PASSWORD: ${{ secrets.SP_CERT_PASSWORD }}
+      # AskAmerica/govdata (askamerica-*, the govdata case of source-to-query-special-cases): this
+      # job's, one worker (playwright.config.ts ASKAMERICA_SPECS); skipped by name without its key.
+      FREE_ASKAMERICA_KEY: ${{ secrets.FREE_ASKAMERICA_KEY }}
+      # SingleStore Cloud shared-tier workspace (source-to-query-community-ext.spec.ts singlestore).
+      SINGLESTORE_HOST: ${{ secrets.SINGLESTORE_HOST }}
+      SINGLESTORE_PORT: ${{ secrets.SINGLESTORE_PORT }}
+      SINGLESTORE_USERNAME: ${{ secrets.SINGLESTORE_USERNAME }}
+      SINGLESTORE_PASSWORD: ${{ secrets.SINGLESTORE_PASSWORD }}
+      SINGLESTORE_DATABASE: ${{ secrets.SINGLESTORE_DATABASE }}

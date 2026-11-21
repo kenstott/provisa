@@ -25,7 +25,6 @@ import httpx
 import pytest
 import yaml
 
-from tests.helpers import registered_id, release_field
 from tests.integration.test_code_sources_e2e import (
     _ROLE,
     _admin,
@@ -206,14 +205,13 @@ def uses(server):
         f'createSource(input: {{id: "{source_id}", type: "{language}", host: "", port: 0, '
         f'database: "", cacheTtl: 0, mappingJson: {json.dumps(json.dumps(mapping))}}})',
     )
-    registered = _admin(
+    _admin(
         server,
         f'registerTable(input: {{sourceId: "{source_id}", domainId: "fx", '
         f'schemaName: "default", tableName: "{_TABLE[language]}", cacheTtl: 0, '
         f"columns: [{_column('name', 'text')}, {_column('setting', 'text')}, "
         f"{_column('cached', 'text')}, {_parameter('name', 'text', required=True)}]}})",
     )
-    _admin(server, release_field(registered_id(registered["message"])))
     return source_id
 
 

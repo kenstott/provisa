@@ -27,18 +27,16 @@ from provisa.core.repositories import data_product as product_repo
 from provisa.core.repositories import data_product_offer as offers
 from provisa.core.repositories.data_product_offer import OfferRefused
 from provisa.core.schema_org import (
-    checker_targets,
     data_product_tables,
     domains,
     entitlements,
-    lineage_edges,
-    model_names,
     registered_tables,
     sources,
     table_columns,
     user_role_assignments,
 )
 from provisa.entitlements import store
+from tests.unit.offer_build import names_table, published
 
 _NOW = datetime(2026, 11, 11, 12, tzinfo=UTC)
 
@@ -52,12 +50,24 @@ _TABLES = (
     (6, "orders_1_profile_columns", False, "prof", None),
 )
 
+#: The names the build published: every table, ledger (7) among them.
+_NAMED = {tid: ("sales", name) for tid, name, *_ in (*_TABLES, (7, "ledger", False, "crm", None))}
+
+#: The build the runtime has published (REQ-194, REQ-2125): every table named; orders_sample (3)
+#: reads orders, wide_view (4) orders and ledger (7); the checker orders_checks (5) checks orders.
+_BUILT = published(
+    names_table(_NAMED, views=frozenset({3, 4})),
+    checked={5: 1},
+    views={3: {1}, 4: {1, 7}},
+)
+
 
 @asynccontextmanager
 async def _store(control_plane):
     """Product c360 in sales: datasets orders (1) and customers (2); a view orders_sample (3) over
     orders; a view wide_view (4) over orders and ledger (7); a checker orders_checks (5) of orders
-    the product owns; a profile result table of orders (6). Every table named by the build."""
+    the product owns; a profile result table of orders (6). What the build resolved of them (their
+    names, the views' reads, the checker's target) is _BUILT, published on the runtime."""
     db = control_plane.org()
     try:
         async with db.acquire() as conn:
@@ -76,32 +86,6 @@ async def _store(control_plane):
                         dq_contract="checks: []" if tid == 5 else None,
                     )
                 )
-                await conn.execute_core(
-                    insert(model_names).values(
-                        object_kind="view" if view else "table",
-                        object_id=str(tid),
-                        surface="sql",
-                        name=name,
-                        physical_name=name,
-                        label=name,
-                        domain_id="sales",
-                        table_id=tid,
-                    )
-                )
-            for view, source in ((3, 1), (4, 1), (4, 7)):
-                await conn.execute_core(
-                    insert(lineage_edges).values(
-                        source_relation="s",
-                        source_column="c",
-                        target_relation="t",
-                        target_column="c",
-                        via="v",
-                        via_kind="view",
-                        source_table_id=source,
-                        target_table_id=view,
-                    )
-                )
-            await conn.execute_core(insert(checker_targets).values(table_id=5, checked_table_id=1))
             await product_repo.upsert(
                 conn,
                 DataProduct(
@@ -148,7 +132,7 @@ async def test_a_changed_offer_counts_its_version_up_and_an_unchanged_one_does_n
     async with _store(control_plane) as db, db.acquire() as conn:
         offer = await _default(conn)
         same = await offers.save(
-            conn, "c360", offers.as_offer(offer), offer_id=offer["id"], by="o1"
+            conn, "c360", offers.as_offer(offer), offer_id=offer["id"], by="o1", published=_BUILT
         )
         assert same["version"] == 1
         changed = await offers.save(
@@ -157,8 +141,54 @@ async def test_a_changed_offer_counts_its_version_up_and_an_unchanged_one_does_n
             DataProductOffer(name="default", role_id="viewer", profiles=True),
             offer_id=offer["id"],
             by="o2",
+            published=_BUILT,
         )
         assert (changed["version"], changed["published_by"]) == (2, "o2")
+
+
+_TERMS_OF_USE = {
+    "purpose": "Churn analysis for the retention team.",
+    "usage": "Monthly churn models and their dashboards.",
+    "limitations": "Not for individual credit decisions; no re-identification.",
+}
+
+
+@pytest.mark.asyncio
+async def test_an_offer_stores_and_returns_its_terms_of_use(control_plane):
+    async with _store(control_plane) as db, db.acquire() as conn:
+        saved = await offers.save(
+            conn,
+            "c360",
+            DataProductOffer(name="analysts", role_id="viewer", **_TERMS_OF_USE),
+            offer_id=None,
+            by="o1",
+            published=_BUILT,
+        )
+        held = await offers.get_offer(conn, saved["id"])
+        assert held is not None
+        assert {k: held[k] for k in _TERMS_OF_USE} == _TERMS_OF_USE
+        assert offers.as_offer(held) == DataProductOffer(
+            name="analysts", role_id="viewer", **_TERMS_OF_USE
+        )
+        listed = {o["name"]: o for o in await offers.list_offers(conn, "c360")}
+        assert listed["analysts"]["limitations"] == _TERMS_OF_USE["limitations"]
+        # The default offer states none until its owner writes them.
+        assert (listed["default"]["purpose"], listed["default"]["usage"]) == ("", "")
+
+
+@pytest.mark.asyncio
+async def test_changing_an_offers_terms_of_use_counts_its_version_up(control_plane):
+    async with _store(control_plane) as db, db.acquire() as conn:
+        offer = await _default(conn)
+        changed = await offers.save(
+            conn,
+            "c360",
+            DataProductOffer(name="default", role_id="viewer", usage="Reporting only."),
+            offer_id=offer["id"],
+            by="o1",
+            published=_BUILT,
+        )
+        assert (changed["version"], changed["usage"]) == (2, "Reporting only.")
 
 
 @pytest.mark.asyncio
@@ -166,7 +196,12 @@ async def test_two_offers_of_a_product_have_two_names(control_plane):
     async with _store(control_plane) as db, db.acquire() as conn:
         with pytest.raises(OfferRefused) as refused:
             await offers.save(
-                conn, "c360", DataProductOffer(name="default", role_id="x"), offer_id=None, by="o"
+                conn,
+                "c360",
+                DataProductOffer(name="default", role_id="x"),
+                offer_id=None,
+                by="o",
+                published=_BUILT,
             )
         assert refused.value.code == "name_taken"
 
@@ -188,28 +223,17 @@ async def test_a_sample_is_views_over_the_products_datasets_covering_them(
             name="s", role_id="viewer", data_level="sample", sample_views=views
         )
         with pytest.raises(OfferRefused) as refused:
-            await offers.save(conn, "c360", sample, offer_id=None, by="o")
+            await offers.save(conn, "c360", sample, offer_id=None, by="o", published=_BUILT)
         assert refused.value.code == code
 
 
 @pytest.mark.asyncio
 async def test_a_sample_over_every_dataset_is_saved(control_plane):
     async with _store(control_plane) as db, db.acquire() as conn:
-        # customers' own sample: a view over it.
-        await conn.execute_core(
-            insert(lineage_edges).values(
-                source_relation="s",
-                source_column="c",
-                target_relation="t",
-                target_column="c",
-                via="v",
-                via_kind="view",
-                source_table_id=2,
-                target_table_id=3,
-            )
-        )
+        # orders_sample read customers too in the build published.
+        built = published(_BUILT.names, _BUILT.checked, {3: {1, 2}, 4: {1, 7}})
         sample = DataProductOffer(name="s", role_id="viewer", data_level="sample", sample_views=[3])
-        saved = await offers.save(conn, "c360", sample, offer_id=None, by="o")
+        saved = await offers.save(conn, "c360", sample, offer_id=None, by="o", published=built)
         assert saved["sample_views"] == [3]
 
 
@@ -218,7 +242,7 @@ async def test_a_synthetic_offer_needs_a_profiler_on_every_dataset(control_plane
     async with _store(control_plane) as db, db.acquire() as conn:
         synthetic = DataProductOffer(name="syn", role_id="viewer", data_level="synthetic")
         with pytest.raises(OfferRefused) as refused:
-            await offers.save(conn, "c360", synthetic, offer_id=None, by="o")
+            await offers.save(conn, "c360", synthetic, offer_id=None, by="o", published=_BUILT)
         assert refused.value.code == "synthetic_needs_profiler"
         assert refused.value.params == {"datasets": "orders, customers"}
         await conn.execute_core(
@@ -226,7 +250,9 @@ async def test_a_synthetic_offer_needs_a_profiler_on_every_dataset(control_plane
             .values(profiler_source_id="prof")
             .where(registered_tables.c.id.in_([1, 2]))
         )
-        assert (await offers.save(conn, "c360", synthetic, offer_id=None, by="o"))["name"] == "syn"
+        assert (
+            await offers.save(conn, "c360", synthetic, offer_id=None, by="o", published=_BUILT)
+        )["name"] == "syn"
 
 
 # -- contracts -------------------------------------------------------------------------------------
@@ -261,8 +287,18 @@ async def test_an_offers_contracts_are_stored_one_per_dataset(control_plane):
 # -- bids ------------------------------------------------------------------------------------------
 
 
-async def _bid(conn, offer: dict, requester: str = "u1", reason: str = "r") -> dict:
-    """``requester`` bids for ``offer``, the request landing in the local queue."""
+async def _bid(
+    conn,
+    offer: dict,
+    requester: str = "u1",
+    reason: str = "r",
+    *,
+    consumer_kind: str = "person",
+    agreed: bool = True,
+) -> dict:
+    """``requester`` bids for ``offer`` for a consumer of ``consumer_kind``, stating its purpose
+    (``reason``) and agreeing (or not) to its terms of use; the request lands in the local queue,
+    the product's owner role approving it."""
     request_id = offer_hooks.new_request_id()
     return await offers.bid(
         conn,
@@ -270,6 +306,9 @@ async def _bid(conn, offer: dict, requester: str = "u1", reason: str = "r") -> d
         offer["id"],
         requester=requester,
         reason=reason,
+        consumer_kind=consumer_kind,
+        agreed=agreed,
+        approver="owner",
         request_id=request_id,
         hook=offer_hooks.LOCAL,
         payload=await offer_hooks.payload(
@@ -279,6 +318,8 @@ async def _bid(conn, offer: dict, requester: str = "u1", reason: str = "r") -> d
             product_id="c360",
             offer_row=offer,
             reason=reason,
+            consumer_kind=consumer_kind,
+            published=_BUILT,
         ),
     )
 
@@ -298,7 +339,7 @@ def _decision(held: dict, outcome: str = "accepted", reason: str | None = None, 
 
 
 async def _provisa_held(_conn, _held: dict) -> offer_hooks.Grants:
-    return offer_hooks.Grants(domain_id="sales", role_defaults={})
+    return offer_hooks.Grants(domain_id="sales", role_defaults={}, published=_BUILT)
 
 
 @pytest.mark.asyncio
@@ -318,6 +359,57 @@ async def test_a_bid_states_why_and_one_is_pending_per_requester(control_plane):
 
 
 @pytest.mark.asyncio
+async def test_a_bid_carries_its_approver_consumer_kind_purpose_and_agreement(control_plane):
+    async with _store(control_plane) as db, db.acquire() as conn:
+        offer = await _default(conn)
+        offer = await offers.save(
+            conn,
+            "c360",
+            DataProductOffer(name="default", role_id="viewer", **_TERMS_OF_USE),
+            offer_id=offer["id"],
+            by="o1",
+            published=_BUILT,
+        )
+        held = await _bid(conn, offer, reason="Retention dashboard", consumer_kind="team")
+        assert (held["approver"], held["consumer_kind"], held["reason"]) == (
+            "owner",
+            "team",
+            "Retention dashboard",
+        )
+        assert held["agreed_at"] is not None
+        # What was agreed to is the offer's terms of use as bid.
+        assert {k: held["terms"][k] for k in _TERMS_OF_USE} == _TERMS_OF_USE
+        assert held["payload"]["consumer_kind"] == "team"
+        assert held["payload"]["offer"]["limitations"] == _TERMS_OF_USE["limitations"]
+
+
+@pytest.mark.asyncio
+async def test_a_bid_that_does_not_agree_to_the_terms_is_refused(control_plane):
+    async with _store(control_plane) as db, db.acquire() as conn:
+        offer = await _default(conn)
+        with pytest.raises(OfferRefused) as refused:
+            await _bid(conn, offer, agreed=False)
+        assert refused.value.code == "terms_not_agreed"
+        assert await offers.list_bids(conn, "c360") == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("kind", ["person", "team", "data_product", "agent"])
+async def test_a_bid_is_for_a_person_a_team_a_data_product_or_an_agent(control_plane, kind):
+    async with _store(control_plane) as db, db.acquire() as conn:
+        held = await _bid(conn, await _default(conn), consumer_kind=kind)
+        assert held["consumer_kind"] == kind
+
+
+@pytest.mark.asyncio
+async def test_a_bid_for_another_kind_of_consumer_is_refused(control_plane):
+    async with _store(control_plane) as db, db.acquire() as conn:
+        with pytest.raises(OfferRefused) as refused:
+            await _bid(conn, await _default(conn), consumer_kind="robot")
+        assert refused.value.code == "consumer_kind_unknown"
+
+
+@pytest.mark.asyncio
 async def test_an_offer_changed_after_the_bid_is_not_accepted_as_bid(control_plane):
     async with _store(control_plane) as db, db.acquire() as conn:
         offer = await _default(conn)
@@ -329,6 +421,7 @@ async def test_an_offer_changed_after_the_bid_is_not_accepted_as_bid(control_pla
             DataProductOffer(name="default", role_id="viewer", dq_results=False),
             offer_id=offer["id"],
             by="o",
+            published=_BUILT,
         )
         with pytest.raises(OfferRefused) as refused:
             await offer_hooks.decide(conn, _decision(held), may_grant=_anyone, grants=_provisa_held)
@@ -441,9 +534,13 @@ async def test_a_bid_carries_who_asks_the_terms_the_contract_versions_the_reason
                 "dq_results": True,
                 "profiles": False,
                 "duration_days": None,
+                "purpose": "",
+                "usage": "",
+                "limitations": "",
             },
             "contracts": {"sales.orders": "1.0.0", "sales.customers": "1.0.0"},
             "reason": "churn study",
+            "consumer_kind": "person",
         }
 
 
@@ -460,6 +557,9 @@ async def test_a_repeated_request_id_is_the_same_request(control_plane):
                 offer["id"],
                 requester="u2",
                 reason="r",
+                consumer_kind="person",
+                agreed=True,
+                approver="owner",
                 request_id=held["request_id"],
                 hook=offer_hooks.LOCAL,
                 payload=held["payload"],
@@ -556,6 +656,7 @@ async def test_cancelling_an_accepted_bid_is_the_matching_removal(control_plane)
             DataProductOffer(name="default", role_id="viewer", duration_days=30),
             offer_id=offer["id"],
             by="o1",
+            published=_BUILT,
         )
         offer = await _default(conn)
         held = await _bid(conn, offer)
@@ -632,13 +733,13 @@ async def test_withdrawing_a_pending_bid_is_a_cancel_of_it(control_plane):
 async def test_full_data_grants_the_datasets_and_the_dq_results(control_plane):
     async with _store(control_plane) as db, db.acquire() as conn:
         full = DataProductOffer(name="o", role_id="viewer")
-        assert await offer_grant.entries(conn, "c360", full) == [
+        assert await offer_grant.entries(conn, "c360", full, _BUILT) == [
             "sales.orders",
             "sales.customers",
             "sales.orders_checks",
         ]
         bare = DataProductOffer(name="o", role_id="viewer", dq_results=False, profiles=True)
-        assert await offer_grant.entries(conn, "c360", bare) == [
+        assert await offer_grant.entries(conn, "c360", bare, _BUILT) == [
             "sales.orders",
             "sales.customers",
             "sales.orders_1_profile_columns",
@@ -651,7 +752,7 @@ async def test_a_sample_grants_its_views_never_the_tables_beneath(control_plane)
         sample = DataProductOffer(
             name="s", role_id="viewer", data_level="sample", sample_views=[3], dq_results=False
         )
-        assert await offer_grant.entries(conn, "c360", sample) == ["sales.orders_sample"]
+        assert await offer_grant.entries(conn, "c360", sample, _BUILT) == ["sales.orders_sample"]
 
 
 @pytest.mark.asyncio
@@ -661,7 +762,7 @@ async def test_a_synthetic_offer_grants_the_datasets_once_each_has_a_profiler_an
     async with _store(control_plane) as db, db.acquire() as conn:
         synthetic = DataProductOffer(name="syn", role_id="viewer", data_level="synthetic")
         with pytest.raises(OfferRefused) as gone:
-            await offer_grant.entries(conn, "c360", synthetic)
+            await offer_grant.entries(conn, "c360", synthetic, _BUILT)
         # A dataset's profiler removed: the offer is not accepted, named so.
         assert gone.value.code == "synthetic_needs_profiler"
         await conn.execute_core(
@@ -675,7 +776,7 @@ async def test_a_synthetic_offer_grants_the_datasets_once_each_has_a_profiler_an
             )
         # Its role reads every column through its fake: a column with none is named.
         with pytest.raises(OfferRefused) as unfaked:
-            await offer_grant.entries(conn, "c360", synthetic)
+            await offer_grant.entries(conn, "c360", synthetic, _BUILT)
         assert (unfaked.value.code, unfaked.value.params) == (
             "synthetic_needs_fake",
             {"columns": "orders.total"},
@@ -686,7 +787,7 @@ async def test_a_synthetic_offer_grants_the_datasets_once_each_has_a_profiler_an
             .where(table_columns.c.column_name == "total")
         )
         # Accepted: the datasets (read through their fakes) and the dq results it includes.
-        assert await offer_grant.entries(conn, "c360", synthetic) == [
+        assert await offer_grant.entries(conn, "c360", synthetic, _BUILT) == [
             "sales.orders",
             "sales.customers",
             "sales.orders_checks",
@@ -707,6 +808,7 @@ async def test_accepting_a_synthetic_offer_grants_its_role(control_plane):
             DataProductOffer(name="syn", role_id="analyst", data_level="synthetic"),
             offer_id=None,
             by="o1",
+            published=_BUILT,
         )
         held = await _bid(conn, saved)
         accepted = await offer_hooks.decide(
@@ -725,9 +827,12 @@ async def test_accepting_a_synthetic_offer_grants_its_role(control_plane):
 @pytest.mark.asyncio
 async def test_a_table_the_build_has_not_named_is_refused(control_plane):
     async with _store(control_plane) as db, db.acquire() as conn:
-        await conn.execute_core(model_names.delete().where(model_names.c.object_id == "2"))
+        # customers (2) is not in the names table of the build published.
+        built = published(names_table({t: n for t, n in _NAMED.items() if t != 2}), _BUILT.checked)
         with pytest.raises(OfferRefused) as refused:
-            await offer_grant.entries(conn, "c360", DataProductOffer(name="o", role_id="viewer"))
+            await offer_grant.entries(
+                conn, "c360", DataProductOffer(name="o", role_id="viewer"), built
+            )
         assert (refused.value.code, refused.value.params) == ("not_built", {"tables": "customers"})
 
 
@@ -828,3 +933,131 @@ async def test_a_list_the_identity_provider_sends_is_not_added_to(control_plane)
             await conn.execute_core(select(entitlements).where(entitlements.c.source == "provisa"))
         ).fetchall()
         assert provisa_rows == []
+
+
+# -- the build a grant reads (REQ-194, REQ-2125, amended 2026-11-16) ----------------------------------
+
+
+async def _stored_sql_names(conn) -> dict[str, str]:
+    from provisa.core.schema_org import model_names
+
+    rows = await conn.execute_core(
+        select(model_names.c.object_id, model_names.c.name).where(model_names.c.surface == "sql")
+    )
+    return {r.object_id: r.name for r in rows.fetchall()}
+
+
+@pytest.mark.asyncio
+async def test_a_table_registered_and_granted_at_once_is_found_before_the_pass_has_run(
+    control_plane,
+):
+    """The build that registered customers (2) has answered and published its names; its
+    after-answer pass, which writes the stored names table, is held: the stored copy is the build
+    before's, which had no customers. The grant reads the build published."""
+    from provisa.core.repositories.model_names import write_names_table
+
+    async with _store(control_plane) as db, db.acquire() as conn:
+        before = names_table({t: n for t, n in _NAMED.items() if t != 2}, views=frozenset({3, 4}))
+        await write_names_table(conn, before.rows)
+
+        granted = await offer_grant.entries(
+            conn, "c360", DataProductOffer(name="o", role_id="viewer"), _BUILT
+        )
+
+        assert granted == ["sales.orders", "sales.customers", "sales.orders_checks"]
+        assert "2" not in await _stored_sql_names(conn), "the pass has not run"
+
+
+@pytest.mark.asyncio
+async def test_a_rename_then_a_grant_records_the_new_name_before_the_pass_has_run(control_plane):
+    """orders is renamed orders_v2 and granted at once: the entry is the new name, though the
+    stored names table (the pass of the build before) still holds the old one."""
+    from provisa.core.repositories.model_names import write_names_table
+
+    async with _store(control_plane) as db, db.acquire() as conn:
+        await write_names_table(conn, _BUILT.names.rows)  # type: ignore[union-attr]
+        renamed = published(
+            names_table({**_NAMED, 1: ("sales", "orders_v2")}, views=frozenset({3, 4})),
+            _BUILT.checked,
+            {3: {1, 2}, 4: {1, 7}},  # orders_sample reads both datasets
+        )
+        sample = DataProductOffer(
+            name="s", role_id="viewer", data_level="sample", sample_views=[3], dq_results=False
+        )
+        await offers.save(conn, "c360", sample, offer_id=None, by="o", published=renamed)
+        held = await _bid(conn, (await offers.list_offers(conn, "c360"))[-1])
+
+        async def _renamed_held(_conn, _held: dict) -> offer_hooks.Grants:
+            return offer_hooks.Grants(domain_id="sales", role_defaults={}, published=renamed)
+
+        accepted = await offer_hooks.decide(
+            conn, _decision(held), may_grant=_anyone, grants=_renamed_held
+        )
+        full = await offer_grant.entries(
+            conn, "c360", DataProductOffer(name="o", role_id="viewer"), renamed
+        )
+
+        assert accepted["granted"]["entries"] == ["sales.orders_sample"]
+        assert full == ["sales.orders_v2", "sales.customers", "sales.orders_checks"]
+        assert (await _stored_sql_names(conn))["1"] == "orders", "the pass has not run"
+
+
+@pytest.mark.asyncio
+async def test_a_checker_the_build_retargeted_is_granted_with_its_new_dataset(control_plane):
+    """The checker orders_checks (5) now checks customers (2) in the build published; the stored
+    checker targets, the pass's, still say orders (1). A grant gives the dq results on the
+    dataset the build resolved."""
+    from provisa.dq.registration import write_checker_targets
+
+    async with _store(control_plane) as db, db.acquire() as conn:
+        await write_checker_targets(conn, {5: 1})
+        retargeted = published(_BUILT.names, {5: 2}, {3: {1}, 4: {1, 7}})
+
+        assert await offers.quality_tables(conn, "c360", 1, retargeted) == []
+        assert await offers.quality_tables(conn, "c360", 2, retargeted) == [5]
+
+
+def test_a_request_reads_the_names_checkers_and_view_reads_its_runtime_published():
+    """What the routers hand the store (provisa.api.offer_derivation.published) is the runtime's
+    published build: its names table, its checker targets, and each view's reads resolved against
+    its tables -- a view over a view reads that view, and a table is no view."""
+    from types import SimpleNamespace
+
+    from provisa.api.offer_derivation import published as from_runtime
+    from provisa.mv.registry import MVRegistry
+
+    def row(tid: int, name: str, view_sql: str | None = None) -> dict:
+        return {
+            "id": tid,
+            "source_id": "__derived__" if view_sql else "crm",
+            "domain_id": "sales",
+            "schema_name": "public",
+            "table_name": name,
+            "view_sql": view_sql,
+        }
+
+    state = SimpleNamespace(
+        names_table=_BUILT.names,
+        checked_targets={5: 1},
+        tables=[
+            row(1, "orders"),
+            row(2, "customers"),
+            row(3, "orders_sample", "SELECT id FROM sales.orders LIMIT 10"),
+            row(
+                4,
+                "wide_view",
+                "SELECT o.id FROM sales.orders o JOIN sales.customers c ON o.customer_id = c.id",
+            ),
+            row(8, "sample_of_sample", "SELECT id FROM sales.orders_sample"),
+        ],
+        view_context=None,
+        source_catalogs={},
+        mv_registry=MVRegistry(),
+        tracked_functions={},
+    )
+
+    built = from_runtime(state)
+
+    assert built.names is _BUILT.names
+    assert built.checkers_of(1) == [5]
+    assert built.view_reads([1, 3, 4, 8]) == {3: {1}, 4: {1, 2}, 8: {3}}

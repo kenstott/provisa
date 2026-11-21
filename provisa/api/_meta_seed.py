@@ -17,6 +17,9 @@ the meta.* tables) upserted into ``relationships`` at startup. Each row is
 
 from __future__ import annotations
 
+from collections.abc import Iterable
+
+from provisa.core.builtin_relationship_prefix import BUILTIN_RELATIONSHIP_ID_PREFIXES
 from provisa.core.glossary import TERM_EDGE_TYPES
 
 _ADMIN = "provisa-admin"
@@ -1409,6 +1412,7 @@ RELATIONSHIP_SEED_COLUMNS = (
     "via_type_column",
     "via_type_value",
     "via_label_source",
+    "disable_cypher",
 )
 
 
@@ -1425,6 +1429,10 @@ def meta_relationship_seed_rows() -> list[
     """
     rows: list[tuple[tuple[str, str], tuple[str, str], str | None, dict]] = []
     _blank = dict.fromkeys(RELATIONSHIP_SEED_COLUMNS)
+    # REQ-1586, REQ-2130: a seeded junction's own FK rows are GraphQL's path through it only. The
+    # graph traverses the junction-backed edge, so they are off in Cypher, and the junction keeps
+    # no node there (a junction its own Cypher relationships join keeps its node).
+    _junctions = {(row[1], row[8]) for row in META_JUNCTION_RELATIONSHIPS}
     for (
         _rid,
         _src_source,
@@ -1450,6 +1458,8 @@ def meta_relationship_seed_rows() -> list[
                     "cardinality": _card,
                     "alias": _alias,
                     "graphql_alias": _gql_alias,
+                    "disable_cypher": (_src_source, _src_table) in _junctions
+                    or (_tgt_source, _tgt_table) in _junctions,
                 },
             )
         )
@@ -1488,7 +1498,34 @@ def meta_relationship_seed_rows() -> list[
                     "via_type_column": _via_type_col,
                     "via_type_value": _via_type_val,
                     "via_label_source": _via_label_source,
+                    "disable_cypher": False,
                 },
             )
         )
     return rows
+
+
+def undeclared_seed_relationship_ids(held_ids: Iterable[str]) -> list[str]:
+    """The built-in relationships a control plane holds that the seed no longer declares (R510).
+
+    The seed writes its relationships as a SET, keyed by id: an edge whose id changed between
+    versions (``meta:data_products:registered_tables`` -> ``meta:data_products:member_tables``)
+    leaves the old row behind, and that row still holds the edge's ``(source_table_id, alias)``,
+    so the new id's insert is refused (``relationships_source_alias_unique``) and the boot stops.
+    A row is the seed's own when its id carries a built-in prefix (``meta:``, ``ontology:``,
+    defined once in core); a relationship a person
+    made carries no such id and is never returned. Sorted, for a deterministic removal order.
+    """
+    declared = _declared_relationship_ids()
+    prefixes = seed_relationship_id_prefixes()
+    return sorted(rid for rid in set(held_ids) if rid.startswith(prefixes) and rid not in declared)
+
+
+def _declared_relationship_ids() -> set[str]:
+    return {cols["id"] for _src, _tgt, _via, cols in meta_relationship_seed_rows()}
+
+
+def seed_relationship_id_prefixes() -> tuple[str, ...]:
+    """The id prefixes of the seed's own relationships (``meta:``, ``ontology:``), sorted; defined
+    once in core, where the relationship repository refuses them."""
+    return tuple(sorted(BUILTIN_RELATIONSHIP_ID_PREFIXES))

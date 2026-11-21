@@ -31,7 +31,7 @@
     "paramPolicy_required": "Obbligatorio",
     "editValues": "Modifica i valori accettati da {{id}}",
     "deleteValue": "Rimuovi {{value}}",
-    "noValues": "Ancora nessun valore: non è possibile alcuna assegnazione finché non ne viene aggiunto uno",
+    "noValues": "Ancora nessun valore. Aggiungerne uno prima di effettuare un'assegnazione.",
     "newValueLabel": "Valore",
     "newValueDescriptionLabel": "Descrizione",
     "addValue": "Aggiungi",
@@ -50,7 +50,7 @@
     "colAssignments": "Assegnazioni",
     "colActions": "Azioni",
     "empty": "Nessun tag per questo ambito",
-    "systemTag": "Tag di sistema — sola lettura",
+    "systemTag": "Tag di sistema (sola lettura)",
     "editTag": "Modifica tag {{id}}",
     "deleteTag": "Elimina tag {{id}}",
     "deleteConfirm": "Eliminare il tag «{{id}}»? Verranno rimosse anche le sue assegnazioni.",
@@ -58,10 +58,13 @@
     "deleted": "Tag {{id}} eliminato",
     "pagination": "Paginazione dei tag",
     "derivedTag": "derivato",
-    "derivedTagHelp": "Derivato dalla registrazione di ciascun oggetto: non viene mai assegnato",
+    "derivedTagHelp": "Derivato dalla registrazione propria di ogni oggetto e mai assegnato",
     "purposeTitle": "A cosa servono i tag",
-    "purposeBody": "Un tag è un'unica etichetta valida per tutta l'organizzazione, con significato fisso, applicata a sorgenti, tabelle, colonne, relazioni o comandi. I tag portano comportamento, non solo documentazione: technical tiene una colonna fuori dall'export Data Product, entity trasforma i valori di una colonna in vocabolario di recupero, deprecated dice ai consumatori di migrare.",
-    "purposeAdd": "Il registro è unico. Un tag applicabile a più tipi di oggetto è la stessa identità ovunque, quindi modificarlo in uno degli elenchi lo modifica in tutti.",
-    "purposeAria": "Informazioni sui tag"
+    "purposeBody": "Un tag è un'etichetta unica a livello di organizzazione con un significato fisso, applicata a origini, tabelle, colonne, relazioni o comandi. I tag cambiano il comportamento: technical esclude una colonna dall'esportazione del prodotto dati, entity trasforma i valori di una colonna in vocabolario di ricerca, deprecated indica ai consumatori di migrare.",
+    "purposeAdd": "Un tag che si applica a più tipi di oggetto è un unico tag, quindi modificarlo in uno qualsiasi degli elenchi con ambito lo modifica in tutti.",
+    "purposeAria": "Informazioni sui tag",
+    "outsideTitle": "Assegnazioni fuori dai domini consentiti",
+    "outsideBody": "Il salvataggio ha mantenuto queste assegnazioni. Togli il tag da un oggetto a cui non appartiene più.",
+    "outsideItem": "{{kind}} {{name}}, in {{domains}}"
   }
 }

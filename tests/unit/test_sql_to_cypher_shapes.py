@@ -25,7 +25,7 @@ import sqlglot
 import sqlglot.expressions as exp
 from graphql import parse, validate
 
-from provisa.api._meta_seed import META_JUNCTION_RELATIONSHIPS, META_RELATIONSHIPS
+from provisa.api._meta_seed import meta_relationship_seed_rows
 from provisa.compiler.context import build_context
 from provisa.compiler.introspect import ColumnMetadata
 from provisa.compiler.schema_gen import SchemaInput, generate_schema
@@ -354,7 +354,7 @@ _META_COLUMNS = {
 @pytest.fixture
 def meta():
     """The three meta tables with the relationships the meta domain seeds between them
-    (META_RELATIONSHIPS, META_JUNCTION_RELATIONSHIPS), as the Ontology View queries them.
+    (meta_relationship_seed_rows), as the Ontology View queries them.
 
     party; customer KIND_OF party and KIND_OF old (retired); ledger PART_OF party and KIND_OF
     customer; lonely ANTONYM_OF party (a declared type no filter here keeps). party grounds a
@@ -376,37 +376,14 @@ def meta():
     ]
     rels = [
         {
-            "id": rid,
+            **{k: v for k, v in cols.items() if v is not None},
             "source_table_id": ids[st],
             "target_table_id": ids[tt],
-            "source_column": sc,
-            "target_column": tc,
-            "cardinality": card,
-            "alias": alias,
-            "graphql_alias": field,
+            **({} if vt is None else {"via_table_id": ids[vt]}),
         }
-        for (rid, _s, st, sc, tc, card, _t, tt, alias, field) in META_RELATIONSHIPS
-        if st in ids and tt in ids
-    ] + [
-        {
-            "id": rid,
-            "source_table_id": ids[st],
-            "target_table_id": ids[tt],
-            "source_column": sc,
-            "target_column": tc,
-            "cardinality": card,
-            "via_table_id": ids[vt],
-            "via_source_column": vs,
-            "via_target_column": vtc,
-            "via_type_column": vty,
-            "via_type_value": value,
-            "via_label_source": label_source,
-            "alias": alias,
-        }
-        for (rid, _s, st, sc, tc, card, _t, tt, vt, vs, vtc, vty, value, label_source, alias)
-        in META_JUNCTION_RELATIONSHIPS
-        if st in ids and tt in ids and vt in ids
-    ]  # fmt: skip
+        for (_s, st), (_t, tt), vt, cols in meta_relationship_seed_rows()
+        if st in ids and tt in ids and (vt is None or vt in ids)
+    ]
     si = SchemaInput(
         tables=tables,
         relationships=rels,
@@ -429,7 +406,9 @@ def meta():
         # As the server registers them: each table read through its system view, its fields
         # domain-prefixed.
         domain_prefix=True,
-        physical_table_map={name: _VIEW_OF.get(name, f"{name}_meta") for name in _META_COLUMNS},
+        physical_table_map={
+            ("provisa-admin", name): _VIEW_OF.get(name, f"{name}_meta") for name in _META_COLUMNS
+        },
     )
     ctx = build_context(si)
     c = duckdb.connect()

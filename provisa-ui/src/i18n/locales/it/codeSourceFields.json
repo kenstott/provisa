@@ -48,7 +48,7 @@
     "directoryHint": "Una directory tra quelle consentite dall’operatore. Viene letta dove si trova, quindi la query successiva legge ogni modifica.",
     "chooseFolder": "Scegli cartella",
     "folderKept": "Salva comprime questa cartella e la invia di nuovo.",
-    "folderAgain": "Questo browser non può conservare la cartella: sceglila di nuovo per inviare una copia più recente.",
+    "folderAgain": "Questo browser non può conservare la cartella, quindi selezionarla di nuovo per inviare una copia più recente.",
     "editor": "Editor",
     "openInVscode": "Apri in VS Code",
     "secrets": "Segreti",

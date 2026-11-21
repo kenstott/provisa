@@ -1,7 +1,7 @@
 {
   "nodeContextMenu": {
     "excludeTooltip": "Deze node uitsluiten van de query",
-    "excludeDisabledTooltip": "Geen primaire sleutel geconfigureerd — uitsluiten niet mogelijk",
+    "excludeDisabledTooltip": "Uitsluiten niet mogelijk: geen primaire sleutel geconfigureerd",
     "excludeFromQuery": "Uitsluiten van query",
     "excludeCount": "{{count}} nodes uitsluiten",
     "unfixPosition": "Positie losmaken",

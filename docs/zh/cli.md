@@ -157,7 +157,7 @@ Licensed:     no (no license installed)
 
 ## provisa metadata export
 
-触发正在运行的服务器按需发布元数据。该命令向 `POST /admin/metadata-export/publish` 发送请求，也就是 Admin 选项卡中 **立即发布** 按钮调用的端点，所以两条路径发送的是同一份完整快照。
+触发正在运行的服务器按需发布元数据。该命令向 `POST /admin/syncing/publish` 发送请求，也就是 Admin 选项卡中 **立即发布** 按钮调用的端点，所以两条路径发送的是同一份完整快照。
 
 ```
 provisa metadata export [--api URL] [--token TOKEN] [--timeout SECONDS]

@@ -43,6 +43,7 @@ from pydantic import BaseModel
 from provisa.api.role_surface import role_surface
 from provisa.core import request_deadline
 from provisa.core.read_refusal import ReadRefused
+from provisa.core.parameter_binding import ParameterBindingRefused
 from provisa.core.statement_warnings import collecting, warn
 from provisa.api.errors import ApiError
 from provisa.cache.middleware import build_cache_headers
@@ -335,17 +336,6 @@ async def graphql_endpoint(  # REQ-001, REQ-002, REQ-043, REQ-047, REQ-049, REQ-
     if not request.query:
         raise ApiError(400, "data.query_required", "query is required")
 
-    # REQ-1921, A DRAFT IS SERVED TO ORG_ADMIN: a query whose root fields name drafts served to
-    # its role (table registration in their domains) is read through the drafts' own view of the state, as a statement naming
-    # one is (admin/table_read): every step below reads that view -- its surface with the drafts
-    # in its context, their routes, caches that keep nothing.
-    from provisa.api.admin.table_read import drafts_a_document_reads, reading_drafts
-
-    _drafts = drafts_a_document_reads(state, request.query, role_id)
-    if _drafts:
-        state = await reading_drafts(state, role_id, _drafts)
-        surface = state.surfaces[role_id]
-
     # Legacy comment hints (kept for backwards compat)
     _legacy_hints = extract_graphql_hints(request.query)
 
@@ -435,11 +425,9 @@ async def graphql_endpoint(  # REQ-001, REQ-002, REQ-043, REQ-047, REQ-049, REQ-
             if result.errors and result.data is None:
                 # Variables that do not coerce, or no operation to run: nothing was executed.
                 raise GraphQLDocumentError([err.message for err in result.errors])
-            if result.errors:
-                return JSONResponse(
-                    {"data": result.data, "errors": [err.formatted for err in result.errors]}
-                )
-            return JSONResponse({"data": result.data})
+            from provisa.api.graphql_answer import graphql_body
+
+            return JSONResponse(graphql_body(result))
 
     steward_hint = directives.steward_hint
 
@@ -682,6 +670,8 @@ async def _executed(plan, state, root_field: str):
         ) from failed
     except (HTTPException, PermissionError, ReplicaBuilding, ReadRefused):
         raise  # ReadRefused (REQ-1922, REQ-1661): refused by name; the app answers it (503)
+    except ParameterBindingRefused:
+        raise  # REQ-1986: a condition that binds no parameter; the app answers it (400)
     except (MemoryError, ConnectionError) as exc:
         log.error("Query resource error for %s: %s", root_field, exc)
         raise HTTPException(status_code=503, detail=str(exc)) from exc

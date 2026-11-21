@@ -24,6 +24,7 @@ declare module "*.graphql" {
   export const TableRowsQuery: DocumentNode;
   export const TagsQuery: DocumentNode;
   export const TagAssignmentsQuery: DocumentNode;
+  export const OfferedTags: DocumentNode;
   export const CreateTag: DocumentNode;
   export const UpdateTag: DocumentNode;
   export const DeleteTag: DocumentNode;
@@ -57,6 +58,8 @@ declare module "*.graphql" {
   export const ColumnDependents: DocumentNode;
   export const GenerateColumnDescription: DocumentNode;
   export const GenerateTableDescription: DocumentNode;
+  export const GenerateUnregisteredTableDescription: DocumentNode;
+  export const GenerateUnregisteredColumnDescription: DocumentNode;
   export const CompileQuery: DocumentNode;
   export const MVList: DocumentNode;
   export const NamingConventions: DocumentNode;
@@ -85,8 +88,14 @@ declare module "*.graphql" {
   export const RegisterFact: DocumentNode;
   export const UpdateTable: DocumentNode;
   export const DeleteTable: DocumentNode;
+  export const WithdrawTable: DocumentNode;
+  export const PutBackTable: DocumentNode;
+  export const WithdrawSource: DocumentNode;
+  export const PutBackSource: DocumentNode;
   export const DeleteTables: DocumentNode;
   export const DeleteRelationships: DocumentNode;
+  export const JoinThroughQuery: DocumentNode;
+  export const JoinThrough: DocumentNode;
   export const DeleteMetrics: DocumentNode;
   export const DeleteSources: DocumentNode;
   export const DeleteRoles: DocumentNode;
@@ -101,6 +110,11 @@ declare module "*.graphql" {
   export const CreateRelationship: DocumentNode;
   export const UpdateRelationship: DocumentNode;
   export const DeleteRelationship: DocumentNode;
+  export const CodeResolversQuery: DocumentNode;
+  export const CodeResolverIncrementalQuery: DocumentNode;
+  export const CreateCodeResolver: DocumentNode;
+  export const UpdateCodeResolver: DocumentNode;
+  export const RetireCodeResolver: DocumentNode;
   export const CreateSource: DocumentNode;
   export const UpdateSource: DocumentNode;
   export const DeleteSource: DocumentNode;
@@ -133,7 +147,6 @@ declare module "*.graphql" {
   export const RegionChoices: DocumentNode;
   export const SetTableRegion: DocumentNode;
   export const SetSourceRegion: DocumentNode;
-  export const SetTableDraft: DocumentNode;
   export const UpdateSourceLoadProtection: DocumentNode;
   export const UpdateTableLoadProtection: DocumentNode;
   export const UpdateSourceNaming: DocumentNode;
@@ -181,6 +194,7 @@ declare module "*.gql" {
   export const TableRowsQuery: DocumentNode;
   export const TagsQuery: DocumentNode;
   export const TagAssignmentsQuery: DocumentNode;
+  export const OfferedTags: DocumentNode;
   export const CreateTag: DocumentNode;
   export const UpdateTag: DocumentNode;
   export const DeleteTag: DocumentNode;
@@ -208,6 +222,8 @@ declare module "*.gql" {
   export const AvailableFunctions: DocumentNode;
   export const GenerateColumnDescription: DocumentNode;
   export const GenerateTableDescription: DocumentNode;
+  export const GenerateUnregisteredTableDescription: DocumentNode;
+  export const GenerateUnregisteredColumnDescription: DocumentNode;
   export const CompileQuery: DocumentNode;
   export const MVList: DocumentNode;
   export const NamingConventions: DocumentNode;
@@ -236,8 +252,14 @@ declare module "*.gql" {
   export const RegisterFact: DocumentNode;
   export const UpdateTable: DocumentNode;
   export const DeleteTable: DocumentNode;
+  export const WithdrawTable: DocumentNode;
+  export const PutBackTable: DocumentNode;
+  export const WithdrawSource: DocumentNode;
+  export const PutBackSource: DocumentNode;
   export const DeleteTables: DocumentNode;
   export const DeleteRelationships: DocumentNode;
+  export const JoinThroughQuery: DocumentNode;
+  export const JoinThrough: DocumentNode;
   export const DeleteMetrics: DocumentNode;
   export const DeleteSources: DocumentNode;
   export const DeleteRoles: DocumentNode;
@@ -283,7 +305,6 @@ declare module "*.gql" {
   export const RegionChoices: DocumentNode;
   export const SetTableRegion: DocumentNode;
   export const SetSourceRegion: DocumentNode;
-  export const SetTableDraft: DocumentNode;
   export const UpdateSourceLoadProtection: DocumentNode;
   export const UpdateTableLoadProtection: DocumentNode;
   export const UpdateSourceNaming: DocumentNode;

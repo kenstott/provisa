@@ -1,0 +1,13 @@
+[project]
+name = "trade-match"
+version = "1.0.0"
+description = "One allocation matched across the order, execution, broker and custodian systems, each break named"
+requires-python = ">=3.12"
+dependencies = []
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+only-include = ["trade_match.py"]

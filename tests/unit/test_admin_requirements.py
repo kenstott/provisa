@@ -376,32 +376,35 @@ class TestREQ167LLMRelationshipDiscovery:
         paths = [r.path for r in router.routes if isinstance(r, APIRoute)]
         assert "/admin/discover/relationships" in paths
 
-    def test_discovery_uses_anthropic_api_key_for_llm(self):
-        # REQ-167: LLM discovery only runs when ANTHROPIC_API_KEY is set
+    def test_discovery_judges_semantics_by_the_assigned_models_key(self):
+        # REQ-167, amended by REQ-413: semantic discovery runs with the model assigned to
+        # relationship inference, judged by that model's own key, never one vendor's key.
         import inspect
         from provisa.api.admin import discovery
 
         src = inspect.getsource(discovery)
-        assert "ANTHROPIC_API_KEY" in src
+        assert "ANTHROPIC_API_KEY" not in src
+        assert '"relationship_inference"' in src
+        assert "key_problem()" in src
 
     def test_discovery_request_model_has_scope_field(self):
         # REQ-167: discovery must accept scope (table/domain/cross-domain)
         from provisa.api.admin.discovery import DiscoverRequest
 
-        req = DiscoverRequest(scope="domain", domain_id="d1")
+        req = DiscoverRequest(scope="domain", domain_id="d1", kinds=["foreign_keys"])
         assert req.scope == "domain"
+        assert req.kinds == ["foreign_keys"]
 
-    def test_discovery_fk_candidates_always_run(self):
-        # REQ-167: FK constraint candidates are always collected, not just when LLM key present
+    def test_discovery_fk_candidates_run_when_asked(self):
+        # REQ-167, amended by REQ-413: foreign keys are collected when the run asks for them
+        # (behaviour: tests/unit/test_discovery_kinds.py).
         import inspect
-        from provisa.api.admin import discovery
+        from provisa.discovery import run
 
-        src = inspect.getsource(discovery)
-        assert "collect_fk_candidates" in src
-        # FK collection appears before the ANTHROPIC_API_KEY check
-        fk_pos = src.index("collect_fk_candidates")
-        key_pos = src.index("ANTHROPIC_API_KEY")
-        assert fk_pos < key_pos
+        src = inspect.getsource(run.perform)
+        fk_pos = src.index("collect_fk_for_tables")
+        asked_pos = src.index('if "foreign_keys" in spec.kinds:')
+        assert asked_pos < fk_pos
 
 
 # ---------------------------------------------------------------------------
@@ -554,5 +557,10 @@ class TestREQ622GraphiQLAccessible:
         import inspect
         import provisa.api.app as app_mod
 
+        from strawberry.fastapi import GraphQLRouter
+
+        from provisa.api.admin.graphql_router import AdminGraphQLRouter
+
         src = inspect.getsource(app_mod)
-        assert "from strawberry.fastapi import GraphQLRouter" in src
+        assert "from provisa.api.admin.graphql_router import AdminGraphQLRouter" in src
+        assert issubclass(AdminGraphQLRouter, GraphQLRouter)

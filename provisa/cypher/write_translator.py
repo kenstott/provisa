@@ -158,6 +158,18 @@ class MergePart:
 # ---------------------------------------------------------------------------
 
 
+def _refuse_parameter_ends(rel: RelationshipMapping, start: NodeMapping, end: NodeMapping) -> None:
+    """Refuse a write of ``rel`` where it joins on a parameter of either end (REQ-1986): the
+    parameter is an argument bound for the source's call, no column a row holds to write."""
+    from provisa.core.parameter_binding import ParameterNotWritten
+    from provisa.core.parameters import parameter_name
+
+    for node, columns in ((start, rel.join_source_column), (end, rel.join_target_column)):
+        for column in key_list(columns):
+            if column in node.native_filter_columns:
+                raise ParameterNotWritten(parameter_name({"column_name": column}), rel.rel_type)
+
+
 class CypherWriteParseError(Exception):
     """Raised for unrecognised or unsupported write Cypher syntax."""
 
@@ -1289,6 +1301,7 @@ class WriteTranslator:
                 f"relationship type {rel_type} is not registered from {start.label} to {end.label}"
             )
         rel = between[0]
+        _refuse_parameter_ends(rel, start, end)
         if rel.via is None:
             raise CypherWriteParseError(
                 f"relationship type {rel_type} is derived from a foreign key, not stored in a "

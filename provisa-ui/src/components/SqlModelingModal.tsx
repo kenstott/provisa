@@ -33,6 +33,7 @@ import {
   useComputedColorScheme,
 } from "@mantine/core";
 import { runSql, nlToSql } from "../api/admin";
+import { useViewDomains } from "../lib/viewDomains";
 import type { ResultRedirect } from "../types/resultRedirect";
 import { useRoles, useDomains } from "../hooks/useAdminQueries";
 import { useAuth } from "../context/AuthContext";
@@ -104,6 +105,8 @@ export function SqlModelingModal({ tables, existingRels, onClose, onPromote }: P
   const [nlLoading, setNlLoading] = useState(false);
   const [nlError, setNlError] = useState("");
   const [nlStrict, setNlStrict] = useState(true);
+  // REQ-2253: NL-to-SQL works only within the navbar's selected domains.
+  const viewDomains = useViewDomains();
   const [nlCypher, setNlCypher] = useState("");
   const [page, setPage] = useState(0);
   const resizingRef = useRef<{ col: string; startX: number; startW: number } | null>(null);
@@ -327,7 +330,7 @@ export function SqlModelingModal({ tables, existingRels, onClose, onPromote }: P
     setNlError("");
     setNlCypher("");
     try {
-      const result = await nlToSql(nlText.trim(), role, nlStrict);
+      const result = await nlToSql(nlText.trim(), role, nlStrict, viewDomains);
       if (result.error) {
         setNlError(result.error);
       } else {

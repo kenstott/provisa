@@ -28,7 +28,7 @@ const cys = vi.hoisted(() => ({
 }));
 vi.mock("cytoscape", () => {
   const cytoscape = (options: unknown) => {
-    // cytoscape("layout", "elk"): the ELK layout is registered.
+    // cytoscape("layout", name): an extension is registered.
     if (typeof options === "string") return true;
     const container = (options as { container: HTMLElement }).container;
     container.appendChild(document.createElement("canvas"));
@@ -82,7 +82,6 @@ vi.mock("cytoscape", () => {
   };
   return { default: Object.assign(cytoscape, { use: vi.fn() }) };
 });
-vi.mock("cytoscape-elk", () => ({ default: vi.fn() }));
 
 import { LaneStage } from "../LaneStage";
 

@@ -133,7 +133,7 @@ class KafkaSecurity:  # REQ-147
             protocol=protocol,
             mechanism=held.get(HINT_MECHANISM) or None,
             username=resolve_secrets(username) if sasl and username else None,
-            password=resolve_secrets(password) if sasl and password else None,
+            password=resolve_secrets(password, credential=True) if sasl and password else None,
             ca=resolve_secrets(ca) if ca else None,
         )
 

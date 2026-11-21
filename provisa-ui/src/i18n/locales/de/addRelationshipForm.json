@@ -37,6 +37,16 @@
     "viaLabelSourceColumn": "Wert des Beziehungstyps",
     "viaLabelSourceTable": "Tabellenname",
     "viaLabelSourceFixed": "Cypher-Alias",
-    "cardinalityOneToOne": "1:1"
+    "cardinalityOneToOne": "1:1",
+    "targetTypeResolver": "Code-Resolver",
+    "resolverLabel": "Resolver",
+    "resolverHelp": "Eine Abfrage einer Codequelle, die die Quell- und die Zieltabelle erhält und je Treffer eine Zeile liefert.",
+    "resolverNone": "Keine Abfrage einer Codequelle erhält zwei Tabellen",
+    "sourceMatchLabel": "Trefferspalte mit dem Quellschlüssel",
+    "targetMatchLabel": "Trefferspalte mit dem Zielschlüssel",
+    "incrementalLabel": "Treffer inkrementell pflegen",
+    "incrementalHelp": "Bei jeder Aktualisierung wird die @change-Funktion des Resolvers nach den Treffern gefragt, die sich seit dem letzten Lauf geändert haben, und diese werden nach Schlüssel angewendet. Ausgeschaltet berechnet jede Aktualisierung alle Treffer neu.",
+    "rebuildEveryLabel": "Vollständiger Neuaufbau alle (Sekunden)",
+    "rebuildEveryHelp": "Wie oft alle Treffer neu berechnet werden, um zu korrigieren, was die Änderungen verpasst haben. Erforderlich, solange Treffer inkrementell gepflegt werden."
   }
 }
