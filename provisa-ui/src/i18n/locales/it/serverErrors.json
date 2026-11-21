@@ -170,7 +170,7 @@
       "view_awaits_rule_rebuild": "La vista {{view}} è in fase di ricostruzione per una modifica alle regole di riga sui suoi input. Questo ruolo potrà leggerla quando quella build sarà pubblicata.",
       "parameter_required": "La tabella '{{table}}' richiede il parametro o i parametri {{parameters}}: dai un valore a ciascuno (una condizione WHERE sulla sua colonna in SQL, un argomento in GraphQL).",
       "parameter_wrong_type": "Il parametro {{parameter}} accetta un valore di tipo {{type}}; '{{value}}' non lo è.",
-      "statement_failed": "L'istruzione non è riuscita all'interno del server ({{kind}}): {{error}}"
+      "statement_failed": "L'istruzione è fallita all'interno del server ({{kind}}): {{error}}"
     },
     "discovery": {
       "adapter_missing_discover_schema": "L'adattatore per '{{source_type}}' non implementa discover_schema",
@@ -246,7 +246,7 @@
       "no_plain_list": "Nessuna operazione della sorgente '{{source_id}}' senza un parametro obbligatorio restituisce le righe di '{{operation}}', quindi la sua tabella resta attiva",
       "plain_list_unregistered": "'{{operation}}' della sorgente '{{source_id}}' restituisce le righe del suo elenco {{lists}}; registrare prima quell'elenco come tabella",
       "table_has_dependents": "La tabella '{{table}}' della funzione '{{name}}' è ancora referenziata da altri oggetti; rimuovere prima quei riferimenti",
-      "statement_failed": "Il comando '{{name}}' non è riuscito: {{error}}"
+      "statement_failed": "Il comando '{{name}}' è fallito: {{error}}"
     },
     "graphql_remote": {
       "introspection_failed": "Introspezione non riuscita: {{error}}",
@@ -559,6 +559,8 @@
       "incremental_no_change": "L'origine di codice non ha alcuna funzione @change per {{table}}. Dichiarane una con @change table={{table}}.",
       "incremental_needs_rebuild_every": "{{table}} è mantenuta in modo incrementale, quindi viene ricostruita per intero a orario. Indica ogni quanto, in secondi, in \"Ricostruzione completa ogni\".",
       "table_derived_from_function": "La tabella '{{name}}' è derivata da una funzione: viene rimossa disattivando la tabella della funzione, e le sue colonne e i suoi parametri si modificano sulla funzione",
+      "table_state_from_function": "La tabella '{{table}}' è derivata dalla funzione '{{name}}' e ne ha lo stato di rilascio: non viene ritirata né ripristinata da sola",
+      "table_region_from_function": "La tabella '{{table}}' deriva dalla funzione '{{name}}' e ha la sua regione: non viene spostata da sola in un'altra regione",
       "table_withdrawn": "Tabella {{table}} ritirata",
       "table_put_back": "Tabella {{table}} ripristinata",
       "source_withdrawn": "Origine {{source}} ritirata",
@@ -835,8 +837,8 @@
       "term_ids_required": "Indica i termini da approvare.",
       "impact_action": "Non esiste un'anteprima per questa azione.",
       "impact_table_required": "Un collegamento nomina una tabella o una delle sue colonne.",
-      "name_taken": "Esiste già un termine chiamato '{{name}}' nel dominio {{domain}}. Scegli un altro nome o assegna il termine a un altro dominio.",
-      "name_taken_unscoped": "Esiste già un termine chiamato '{{name}}' senza dominio, quindi vale in ogni dominio. Scegli un altro nome."
+      "name_taken": "Esiste già un termine chiamato '{{name}}' nel dominio {{domain}}. Scegli un altro nome oppure inserisci il termine in un altro dominio.",
+      "name_taken_unscoped": "Esiste già un termine chiamato '{{name}}' senza dominio, quindi raggiunge ogni dominio. Scegli un altro nome."
     },
     "table": {
       "requires_parameters": "La tabella {{table}} non può essere contata né profilata: richiede {{parameters}}. Assegna un valore a ciascuno per leggerne le righe."
@@ -943,6 +945,19 @@
       "filter_required": "Questa classe ha {{count}} istanze, più di {{limit}}: scegli un filtro",
       "filter_too_wide": "Il filtro lascia più di {{limit}} istanze",
       "unreachable": "Impossibile raggiungere Wikidata: {{reason}}"
+    },
+    "access_review": {
+      "not_found": "Nessuna revisione degli accessi di questo tipo",
+      "row_not_found": "Nessuna riga di revisione di questo tipo",
+      "already_decided": "Questa riga è già decisa",
+      "reason_required": "Indica il motivo",
+      "decision_invalid": "Una decisione è confirmed o revoked",
+      "cron_invalid": "Non è un'espressione cron a cinque campi: {{cron}}",
+      "not_owner": "Solo il proprietario del dominio {{domain}} decide su questa riga",
+      "own_access": "Non puoi rivedere il tuo stesso accesso. Chiedi a un altro proprietario.",
+      "read_only": "Questo ruolo è assegnato tramite il provider di identità; Provisa non detiene alcuna assegnazione da confermare o revocare",
+      "webhook_invalid": "L'URL del webhook non è utilizzabile: {{url}}",
+      "webhook_secret_required": "Un webhook richiede il segreto con cui sono firmate le revisioni pianificate"
     }
   }
 }

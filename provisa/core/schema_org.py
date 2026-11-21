@@ -3008,6 +3008,14 @@ access_reviews = Table(
     Column("id", BigInteger(), primary_key=True, autoincrement=True),
     Column("started_by", Text, nullable=False),  # the person who asked for it, or "schedule"
     Column("started_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    # The scheduled review's post to the org's webhook: NULL when none was due (on demand, or no
+    # webhook set), else 'delivered' or 'failed' with the failure's text and the time of the try.
+    Column("webhook_status", Text),
+    Column("webhook_error", Text),
+    Column("webhook_at", DateTime(timezone=True)),
+    CheckConstraint(
+        "webhook_status IN ('delivered', 'failed')", name="access_reviews_webhook_status_check"
+    ),
 )
 
 access_review_rows = Table(
@@ -3023,6 +3031,9 @@ access_review_rows = Table(
     Column("user_id", Text, nullable=False),
     Column("role_id", Text, nullable=False),
     Column("domain_id", Text, nullable=False),
+    # Where the member holds the role: 'provisa' (a grant Provisa holds, which the owner can
+    # revoke) or 'identity_provider' (claims or a role mapping: listed read-only).
+    Column("source", Text, nullable=False, server_default="provisa"),
     # The grant's entitlement lists when the review was taken: [{kind, capability, identifiers}].
     Column("entitlements", JSON, nullable=False, default=list, server_default="[]"),
     Column("expires_at", DateTime(timezone=True)),
@@ -3033,6 +3044,9 @@ access_review_rows = Table(
     Column("reason", Text),
     CheckConstraint(
         "decision IN ('confirmed', 'revoked')", name="access_review_rows_decision_check"
+    ),
+    CheckConstraint(
+        "source IN ('provisa', 'identity_provider')", name="access_review_rows_source_check"
     ),
     UniqueConstraint("review_id", "user_id", "role_id", "domain_id"),
 )

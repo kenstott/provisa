@@ -80,6 +80,8 @@
       "newTables": "前回の実行以降に登録された {{count}} 件のテーブルは、その実行が対象にしなかった {{domains}} にあります。",
       "newTables_other": "前回の実行以降に登録された {{count}} 件のテーブルは、その実行が対象にしなかった {{domains}} にあります。",
       "addNewTables": "この実行に追加"
-    }
+    },
+    "keyNames": "キー名と型",
+    "reviewDone": "完了"
   }
 }

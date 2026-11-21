@@ -10,6 +10,9 @@
     "rest": "REST",
     "mcp": "MCP-toolaanroep",
     "copy": "{{what}} kopiëren",
-    "close": "Sluiten"
+    "close": "Sluiten",
+    "createRelationships": "Relaties maken",
+    "relationshipsCreated_one": "{{count}} relatie gemaakt.",
+    "relationshipsCreated_other": "{{count}} relaties gemaakt."
   }
 }

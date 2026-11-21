@@ -2065,6 +2065,7 @@ def build_engine(name: str | None = None) -> FederationEngine:  # REQ-840/893/90
     # live-attach plus the Provisa-direct/adapter land connectors. connector_for/federate/reconcile then
     # resolve landable sources from the registry directly rather than synthesizing per call.
     engine = _ENGINE_BUILDERS[key]().complete_reach()
+    engine.dialect  # noqa: B018 — refuses an engine with no sqlglot dialect, by name, at build
     # Record WHICH key won the precedence above, so the admin API can report the engine the process is
     # actually running instead of the persisted config field (which the env pin overrides).
     engine.selected_key = key

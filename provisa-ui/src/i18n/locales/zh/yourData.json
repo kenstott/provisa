@@ -10,6 +10,9 @@
     "rest": "REST",
     "mcp": "MCP 工具调用",
     "copy": "复制{{what}}",
-    "close": "关闭"
+    "close": "关闭",
+    "createRelationships": "创建关系",
+    "relationshipsCreated_one": "已创建 {{count}} 个关系。",
+    "relationshipsCreated_other": "已创建 {{count}} 个关系。"
   }
 }
