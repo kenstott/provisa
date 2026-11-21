@@ -141,6 +141,10 @@ def set_up(server):
         probes = []
         for sql in (
             'SELECT * FROM "bank"."screening" LIMIT 2',
+            'SELECT deal_id FROM "bank"."screening" LIMIT 2',
+            'SELECT * FROM "bank"."deal" LIMIT 2',
+            'SELECT * FROM "bank"."deal_team" LIMIT 2',
+            'SELECT * FROM "bank"."deal_counterparty" LIMIT 2',
             'SELECT s.message_id, m.id, d.deal_id FROM "bank"."screening" AS s '
             'JOIN "bank"."messages" AS m ON m.id = s.message_id '
             'JOIN "bank"."deal" AS d ON d.deal_id = s.deal_id LIMIT 2',
