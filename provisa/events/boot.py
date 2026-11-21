@@ -335,6 +335,7 @@ def specs_from_config(
     mv_admit_deltas: Callable[[Any], Callable[[list[dict]], list[dict]]] | None = None,
     mv_refreshed: Callable[[Any], Callable[[tuple[str, dict] | None], Awaitable[None]]]
     | None = None,
+    mv_change: Callable[[Any], Any] | None = None,
 ) -> list[NodeSpec]:
     """Bind the config to :class:`NodeSpec`s (REQ-941). A MATERIALIZED source table (``federate`` ==
     MATERIALIZED) becomes a source spec — its landing args resolved from config, its ``fetch`` the
@@ -392,6 +393,13 @@ def specs_from_config(
             from provisa.events.handlers import make_mv_bitemporal_generate
 
             handle = make_mv_bitemporal_generate(mv_bitemporal_append(mv))
+        elif (
+            getattr(mv, "incremental", False)
+            and mv_change is not None
+            and (kept_by_change := mv_change(mv)) is not None
+        ):
+            # REQ-2249: a view kept by its code resolver's @change function is refreshed through it.
+            handle = kept_by_change
         elif getattr(mv, "incremental", False):
             from provisa.events.handlers import make_mv_incremental
 

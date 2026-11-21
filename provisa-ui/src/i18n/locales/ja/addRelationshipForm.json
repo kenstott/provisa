@@ -37,6 +37,16 @@
     "viaLabelSourceColumn": "リレーションシップタイプの値",
     "viaLabelSourceTable": "テーブル名",
     "viaLabelSourceFixed": "Cypher エイリアス",
-    "cardinalityOneToOne": "一対一"
+    "cardinalityOneToOne": "一対一",
+    "targetTypeResolver": "コードリゾルバー",
+    "resolverLabel": "リゾルバー",
+    "resolverHelp": "ソーステーブルとターゲットテーブルを受け取り、一致ごとに 1 行を返すコードソースのクエリ。",
+    "resolverNone": "2 つのテーブルを受け取るコードソースのクエリはありません",
+    "sourceMatchLabel": "ソースキーを持つ一致列",
+    "targetMatchLabel": "ターゲットキーを持つ一致列",
+    "incrementalLabel": "一致を増分で維持する",
+    "incrementalHelp": "更新のたびに、リゾルバーの @change 関数に前回の実行以降に変更された一致を問い合わせ、キーごとに適用します。オフの場合、更新のたびにすべての一致を再計算します。",
+    "rebuildEveryLabel": "全体の再ビルド間隔 (秒)",
+    "rebuildEveryHelp": "変更で取りこぼしたものを修正するため、すべての一致を再計算する頻度です。一致を増分で維持している間は必須です。"
   }
 }

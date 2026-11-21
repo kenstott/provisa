@@ -72,7 +72,7 @@ async def _rows(
         "columns": list(result.column_names),
         "rows": rows,
         "rowCount": len(rows),
-        "draft": bool(table.get("draft")),
+        "withdrawn": bool(table.get("withdrawn")),
     }
 
 
@@ -94,7 +94,7 @@ async def preview_table(
     x_provisa_role: str | None = Header(None),
 ) -> dict:  # REQ-1921
     """One page of the table as the table viewer shows it, read as the caller: the viewer of a
-    DRAFT, which no statement a caller sends may read. The body is what the viewer chose — its
+    WITHDRAWN table, which no statement a caller sends may read. The body is what the viewer chose — its
     filters, sorts, grouping and page — and the server writes the statement from it. One row
     more than the page comes back when a next page exists."""
     return await _rows(request, table_id, x_provisa_role, page=page)

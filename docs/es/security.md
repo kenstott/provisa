@@ -158,7 +158,7 @@ Los derechos y los datos siguen solo a los roles con los que actúa la solicitud
 
 Los roles derivados nombrados entran como calificadores. Un calificador no tiene derechos, acceso por dominio, máscaras ni filtros de filas propios, así que no es miembro de los derechos del meta-rol: como miembro sin máscaras desenmascararía todas las columnas, y como uno que no lee ninguna tabla acabaría con cualquier OR de filtros de filas. Entra solo en las concesiones: una concesión o entrada de máscara que nombra `region__eu` alcanza a una solicitud que nombra ese calificador junto con un rol concedido.
 
-Un agente MCP nunca actúa más allá de los roles que se le dieron. Un agente remoto solo nombra roles que posee el principal de su token. Un agente local por stdio solo nombra roles dentro del conjunto fijado en `mcp.role` (`PROVISA_MCP_ROLE`), y actúa como ese conjunto cuando no nombra ninguno; cualquier otro rol se rechaza por su nombre.
+Un agente MCP nunca actúa más allá de los roles que se le dieron. Un agente remoto solo nombra roles que posee el principal de su token. Un agente local por stdio solo nombra roles dentro del conjunto fijado en `mcp.role` (`PROVISA_MCP_ROLE`), y actúa como ese conjunto cuando no nombra ninguno; cualquier otro rol se rechaza por su nombre. Un agente local actúa en nombre del principal indicado en `mcp.principal` (`PROVISA_MCP_PRINCIPAL`), el id de usuario que lleva el token de inicio de sesión de esa persona, de modo que sus derechos acotan el rol fijado igual que acotan las consultas de esa misma persona en cualquier otro cliente. Un servidor MCP local cuya configuración no nombra ningún principal rechaza toda llamada, nombrando el ajuste; uno que nombra un principal que no está en la organización también rechaza toda llamada.
 
 Un agente pregunta con qué rol actúa mediante la herramienta MCP `describe_role`. La respuesta es ese rol y para qué sirve (un meta-rol con cada uno de sus miembros), y los roles a los que el agente puede cambiar, cada uno con su descripción. Nunca incluye una regla de filas, máscara, concesión ni condición. Provisa nunca le dice a un agente por qué se redujo un resultado, y un resultado no lleva ninguna marca de "filtrado": los datos de un rol son toda su vista, y un motivo de lo que falta invitaría a sondearlo.
 
@@ -392,7 +392,7 @@ Las filas se conservan para siempre. Provisa no tiene ajuste de retención y nun
 
 ## Redacción de datos sensibles {: #redaction }
 
-Lo que Provisa registra sobre su propio trabajo pasa por una lista de reglas de redacción antes de escribirse en ningún sitio. El texto que coincide con una regla se sustituye por `[REDACTED:<rule>]`, que nombra la regla que coincidió.
+Lo que Provisa registra sobre su propio trabajo, y cada texto de error que envía a un cliente, pasa por una lista de reglas de redacción antes de escribirse en ningún sitio. En los logs, spans y registro de auditoría de Provisa, el texto que coincide con una regla se sustituye por `[REDACTED:<rule>]`, que nombra la regla que coincidió. Un cliente recibe la marca simple `[REDACTED]`. No nombra ninguna regla ni ninguna variable, así que no puede saber con qué secreto coincide una palabra que envió.
 
 La lista tiene cuatro partes:
 
@@ -412,7 +412,8 @@ La lista se aplica en cada salida que escribe Provisa:
 - cada span, como una copia redactada que se entrega a cada exportador, y la vista de spans recientes;
 - cada registro de log en la canalización de logs de OpenTelemetry de Provisa, y cada línea que escribe un manejador de logging, incluidas la salida estándar y los logs de los contenedores;
 - el texto de consulta del registro de auditoría, antes de calcular su hash y cifrarlo, de modo que ni el texto ni su hash revelan un valor detectado; y el detalle del registro administrativo;
-- los mensajes de error que recibe un cliente por HTTP, pgwire, gRPC, Arrow Flight y MCP.
+- los mensajes de error que recibe un cliente por HTTP, pgwire, gRPC, Arrow Flight, MCP y Bolt. Un error dentro de una respuesta correcta, como una lista `errors` de GraphQL en una respuesta 200 o el último frame de una suscripción, se redacta igual que uno en una respuesta 400;
+- el texto que Provisa envía a un modelo, como un prompt o una entrada de embedding, que lleva la marca simple.
 
 La telemetría y los errores de cliente no están ligados a una sola organización cuando se escriben, así que se redactan con las reglas de todas las organizaciones juntas. Dos errores pasan sin redactar: un cuerpo de error HTTP de más de 1 MiB y el error de un flujo de Arrow Flight que falla después de empezar a enviar.
 

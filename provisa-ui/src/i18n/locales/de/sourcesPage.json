@@ -2,13 +2,13 @@
   "sourcesPage": {
     "detailPanel": "Quellendetails",
     "resizeDetail": "Größe des Detailbereichs ändern",
-    "expandDetail": "Bereich maximieren",
+    "expandDetail": "Bereich vergrößern",
     "restoreDetail": "Bereich wiederherstellen",
     "closeDetail": "Detailbereich schließen",
     "backToList": "Zurück zur Liste",
     "backToSource": "Zurück zur Quelle",
     "panelNewSource": "Neue Quelle",
-    "title": "Datenquellen",
+    "title": "Quellen",
     "loading": "Quellen werden geladen...",
     "filterPlaceholder": "Nach Quellen-ID oder Typ filtern…",
     "addSource": "+ Quelle",
@@ -41,9 +41,12 @@
     "nextPage": "Nächste Seite",
     "lastPage": "Letzte Seite",
     "purposeTitle": "Wozu Datenquellen dienen",
-    "purposeBody": "Eine Quelle ist eine registrierte Verbindung zu einem System, das Daten hält — eine Datenbank, ein Warehouse, ein Dateispeicher, eine API. Durch die Registrierung liest Provisa deren Schemata und fragt sie in derselben Sprache ab wie jede andere Quelle, ohne die Daten irgendwohin zu kopieren.",
+    "purposeBody": "Eine Quelle ist eine registrierte Verbindung zu einem System, das Daten hält, etwa eine Datenbank, ein Warehouse, ein Dateispeicher oder eine API. Provisa kann dann die Schemas dieses Systems lesen und es in derselben Sprache abfragen wie jede andere Quelle, ohne Kopie der Daten.",
     "purposeAdd": "Das Hinzufügen einer Quelle registriert für sich genommen keine Tabellen. Nutzen Sie „Discover“ in der Zeile, um ihre Schemata zu durchsuchen und die Tabellen zu registrieren, die Sie unter Governance stellen wollen.",
     "purposeAria": "Über Datenquellen",
-    "registrationMissing": "{{list}} enthält keine Registrierung für die Quelle {{source}}."
+    "registrationMissing": "{{list}} enthält keine Registrierung für die Quelle {{source}}.",
+    "duplicateCredentialsNote": "Die Anmeldedaten von {{source}} werden nicht kopiert: Geben Sie sie hier ein oder eine Referenz auf ein Secret.",
+    "withdrawn": "Zurückgezogen",
+    "withdrawnTitle": "Außer Betrieb: Keine ihrer Tabellen bedient eine Rolle, bis sie zurückgeholt wird"
   }
 }

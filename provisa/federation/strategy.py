@@ -180,6 +180,12 @@ _MATERIALIZE_ONLY = frozenset(
         "pinot",
         "druid",
         "hive_s3",
+        # REQ-1998 (MOTHERDUCK LANDS THROUGH ITS POSTGRES ENDPOINT): an engine with no live reach
+        # for either lands it -- google_sheets through the Sheets API, motherduck through
+        # MotherDuck's Postgres endpoint (build_adapter_loaders); an engine that attaches one
+        # (Trino's gsheets, the pg engine's MotherDuck FDW) keeps its connector.
+        "google_sheets",
+        "motherduck",
     }
 )
 

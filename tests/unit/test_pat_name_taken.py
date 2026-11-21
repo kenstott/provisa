@@ -47,13 +47,15 @@ async def _count(db: Database) -> int:
 
 async def test_a_name_a_live_token_of_the_owner_has_is_refused(store):
     pats, db = store
-    await pats.issue(user_id="ada", org_id="acme", env_name="prod", name="ci")
+    await pats.issue(user_id="ada", org_id="acme", env_name="prod", name="ci", scopes=["analyst"])
     with pytest.raises(TokenNameTaken, match="'ci' already exists"):
-        await pats.issue(user_id="ada", org_id="acme", env_name="prod", name=" ci ")
+        await pats.issue(
+            user_id="ada", org_id="acme", env_name="prod", name=" ci ", scopes=["analyst"]
+        )
     assert await _count(db) == 1
     # Another owner, and the same owner in another org, may use it.
-    await pats.issue(user_id="ben", org_id="acme", env_name="prod", name="ci")
-    await pats.issue(user_id="ada", org_id="globex", env_name="prod", name="ci")
+    await pats.issue(user_id="ben", org_id="acme", env_name="prod", name="ci", scopes=["analyst"])
+    await pats.issue(user_id="ada", org_id="globex", env_name="prod", name="ci", scopes=["analyst"])
     # Revoked, its name is free again.
     async with db.acquire() as conn:
         first = (
@@ -65,5 +67,5 @@ async def test_a_name_a_live_token_of_the_owner_has_is_refused(store):
             )
         ).scalar_one()
     assert await pats.revoke(token_hash=first, user_id="ada")
-    await pats.issue(user_id="ada", org_id="acme", env_name="prod", name="ci")
+    await pats.issue(user_id="ada", org_id="acme", env_name="prod", name="ci", scopes=["analyst"])
     assert await _count(db) == 4

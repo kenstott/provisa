@@ -125,15 +125,18 @@ def _rls_tags(
     tags: list[GovernanceTag] = []
     for rule in config.rls_rules:
         if rule.table_id is not None:
-            targets = [index.resolve(rule.table_id, f"RLS rule for role {rule.role_id!r}")]
+            target = index.resolve_published(rule.table_id, f"RLS rule for role {rule.role_id!r}")
+            if target is None:  # REQ-1634: a seeded table publishes nowhere, nor its rule
+                continue
+            targets = [target]
             # REQ-1385: scope is the governed element's URN, not its config-vocabulary name.
-            scope = table_uri(org_id, targets[0])
+            scope = table_uri(org_id, target)
         elif rule.domain_id is not None:
             targets = [t for t in config.tables if t.domain_id == rule.domain_id]
             scope = domain_uri(org_id, rule.domain_id)
         elif rule.tag_id is not None:  # REQ-1384
-            targets = [
-                index.resolve(
+            resolved = [
+                index.resolve_published(
                     a.table_ref, f"RLS rule on tag {rule.tag_id!r} for role {rule.role_id!r}"
                 )
                 for a in config.tag_assignments
@@ -141,6 +144,8 @@ def _rls_tags(
                 and a.base_tag_id() == rule.tag_id
                 and a.table_ref is not None
             ]
+            # REQ-1634: a seeded table carrying the tag publishes nowhere, so it is no target.
+            targets = [t for t in resolved if t is not None]
             scope = tag_uri(org_id, rule.tag_id)
         else:
             raise ValueError(
@@ -210,7 +215,7 @@ def build_governance_tags(
 ) -> list[GovernanceTag]:  # REQ-1071
     """Every enforcement fact in the config, as catalog tags."""
     definitions, chains, all_roles = _role_definitions(config)
-    index = TableIndex(config.tables)
+    index = TableIndex(config.tables, config.seeded_table_names)
     tags: list[GovernanceTag] = []
     for table in config.tables:
         for column in table.columns:

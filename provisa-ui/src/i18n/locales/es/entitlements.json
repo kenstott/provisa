@@ -62,7 +62,7 @@
       "kindLabel": "Tipo",
       "kindPlaceholder": "Seleccione un tipo",
       "entriesLabel": "Entradas",
-      "entriesHelp": "Lo que esta persona puede alcanzar de lo que permite el rol. Un dominio o una tabla elegidos sin nada elegido debajo incluyen todo su contenido. Una lista vacía no alcanza nada de este tipo.",
+      "entriesHelp": "Lo que esta persona puede alcanzar de lo que permite el rol. Un dominio o tabla elegido sin nada seleccionado debajo lo incluye entero. Una lista vacía no alcanza nada de este tipo.",
       "endsOnLabel": "Termina el",
       "endsOnHint": "Déjelo vacío para mantener la lista hasta que se finalice.",
       "reasonLabel": "Motivo",

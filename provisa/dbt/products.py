@@ -15,10 +15,10 @@ them all at once, after a preview: one draft product per dbt group, and one for 
 it has no groups. The plan is read from the held manifest and holds nothing of its own; what
 registers the tables and creates the products is the admin surface's one governed path.
 
-A contract belongs to a product's member table (REQ-2158). The contract's schema stays the
-member's columns: what the manifest promises of them is written there, so each later version
-snapshots it. dbt's tests are carried as a property of the product and not as the contract's checks,
-which are read live from the checker tables that own them; their results are the dbt checker's.
+A product's contracts are derived from its offers (REQ-2180), their schema its members' columns:
+what the manifest promises of them is written there, so every contract derived states it. dbt's
+tests are carried as a property of the product and not as the contract's checks, which are read
+live from the checker tables that own them; their results are the dbt checker's.
 """
 
 # Requirements: REQ-2228
@@ -30,9 +30,8 @@ from typing import Any
 
 from sqlalchemy import update
 
-from provisa.core import contract_versions, data_contracts
 from provisa.core.repositories.table import load_columns
-from provisa.core.schema_org import registered_tables, table_columns
+from provisa.core.schema_org import table_columns
 from provisa.dbt.manifest import DbtManifest, DbtModel, DbtNode, DbtOwner
 
 #: The product's custom properties that say which models it came from and what dbt holds of them.
@@ -190,24 +189,3 @@ async def promise_columns(conn: Any, model: DbtModel, table_id: int) -> None:
             .where(table_columns.c.table_id == table_id, table_columns.c.column_name.in_(required))
             .values(not_null=True)
         )
-
-
-async def write_contract(conn: Any, model: DbtModel, table_id: int) -> None:
-    """The member's contract: dbt's version where the model has one, its first version recorded."""
-    declared = data_contracts.draft()
-    contract = contract_versions.recorded(
-        None,
-        declared.model_copy(
-            update={
-                "version": model.version or declared.version,
-                "description": model.description,
-            }
-        ),
-        [],
-        contract_versions.snapshot(await load_columns(conn, table_id)),
-    )
-    await conn.execute_core(
-        update(registered_tables)
-        .where(registered_tables.c.id == table_id)
-        .values(contract=contract.model_dump(mode="json"))
-    )

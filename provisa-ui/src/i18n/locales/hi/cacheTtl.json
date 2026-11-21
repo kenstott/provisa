@@ -2,7 +2,7 @@
   "cacheTtl": {
     "neverExpires": "कभी समाप्त नहीं होता",
     "inputHint": "-1: कभी समाप्त नहीं होता",
-    "neverExpiresHint": "कभी समाप्त नहीं होता: एक बार लोड होता है।",
+    "neverExpiresHint": "कभी समाप्त नहीं होता और एक बार लैंड होता है।",
     "asOf": "{{ttl}}, {{when}} तक",
     "roleTtlUnlisted": "Cache TTL किसी भी भूमिका के लिए कभी समाप्त नहीं होता।",
     "roleTtlNoEffect": "Cache TTL कभी समाप्त नहीं होता, इसलिए इस प्रविष्टि का कोई प्रभाव नहीं है।"

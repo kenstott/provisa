@@ -315,7 +315,7 @@ class SelectBuilderMixin:  # REQ-345, REQ-349, REQ-350, REQ-351
         if trail is not None:
             # REQ-751: a session walk's path, every node and relationship of its trail.
             nodes, rels = trail
-            return exp.Anonymous(
+            path = exp.Anonymous(
                 this="JSON_OBJECT",
                 expressions=[
                     exp.Literal.string("nodes"),
@@ -324,6 +324,13 @@ class SelectBuilderMixin:  # REQ-345, REQ-349, REQ-350, REQ-351
                     rels.copy(),
                 ],
             )
+            # An OPTIONAL MATCH's walk that found nothing is no row of it (its LEFT JOIN's
+            # nulls): the path is null, never a path of null nodes.
+            walked = [c for c in nodes.find_all(exp.Column) if c.name == "nodes"]
+            if not walked:
+                return path
+            absent = exp.or_(*(exp.Is(this=c.copy(), expression=exp.Null()) for c in walked))
+            return exp.Case(ifs=[exp.If(this=absent, true=exp.Null())], default=path)
         walk_ends = getattr(self, "_walk_paths", {}).get(path_var)
         if walk_ends is not None:
             # REQ-348: a session walk's path, from its start to its end, of its hops.
@@ -768,16 +775,19 @@ class SelectBuilderMixin:  # REQ-345, REQ-349, REQ-350, REQ-351
             # REQ-751: a session walk's relationships, in the order it took them.
             return exp.alias_(trail[1].copy(), alias or expr_text)
         if path_step_info is not None:
-            _, step_edges = path_step_info
-            edges_array = exp.Anonymous(
-                this="JSON_ARRAY",
-                expressions=[
-                    self._build_edge_object(rt, sa, snm, ta, tnm, rev, via)
-                    for rt, sa, snm, ta, tnm, rev, via in step_edges
-                ],
-            )
-            return exp.alias_(edges_array, alias or expr_text)
+            return exp.alias_(self._step_edges_json(path_step_info[1]), alias or expr_text)
         return exp.alias_(exp.Null(), alias or expr_text)
+
+    def _step_edges_json(self, step_edges: list) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        """The relationships of a path's fixed steps, as a JSON array of edge objects."""
+        return exp.Anonymous(this="JSON_ARRAY", expressions=self._step_edge_objects(step_edges))
+
+    def _step_edge_objects(self, step_edges: list) -> list[exp.Expression]:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        """Each relationship of a path's fixed steps, as its edge object."""
+        return [
+            self._build_edge_object(rt, sa, snm, ta, tnm, rev, via)
+            for rt, sa, snm, ta, tnm, rev, via in step_edges
+        ]
 
     def _element_list_kind(self, expr: CypherExpr) -> str | None:
         raise NotImplementedError(expr)
@@ -790,6 +800,15 @@ class SelectBuilderMixin:  # REQ-345, REQ-349, REQ-350, REQ-351
         (translator._element_list_kind), or of one item of one (translator._element_item_kind);
         None for any other expression."""
         kind = self._element_item_kind(expr) or self._element_list_kind(expr)
+        if (
+            kind is None
+            and isinstance(expr, FunctionCall)
+            and expr.name.lower() == "collect"
+            and len(expr.args) == 1
+            and isinstance(expr.args[0], FunctionCall)
+        ):
+            # collect(nodes(p)) of a walk: one list of them per row, each read as theirs is.
+            kind = self._element_list_kind(expr.args[0])
         return _ELEMENT_KINDS.get(kind or "")
 
     def _build_node_object_expr(self, alias: str, nm: NodeMapping) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__

@@ -2,7 +2,7 @@
   "jsonApiPage": {
     "title": "JSON:API 浏览器",
     "specLink": "规范",
-    "description": "稀疏字段集、筛选、排序和分页。无论使用何种传输协议，治理都统一生效。",
+    "description": "稀疏字段集、筛选、排序和分页。每种传输协议都适用相同的治理。",
     "tableLabel": "表",
     "loadingOption": "加载中…",
     "selectTablePlaceholder": "选择一个表",

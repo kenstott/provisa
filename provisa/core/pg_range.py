@@ -198,6 +198,10 @@ def element_text(value: Any) -> str:
         return _clock(value.astimezone(timezone.utc)) + "+00"
     if isinstance(value, date):
         return value.isoformat()
+    if isinstance(value, Decimal):
+        return format(
+            value, "f"
+        )  # numeric_out writes no exponent: 1E-21 is 0.000000000000000000001
     return str(value)
 
 
@@ -245,9 +249,10 @@ def make_range(rtype: RangeType, lower: Any, upper: Any, lower_inc: bool, upper_
         if order == 0 and not (lower_inc and upper_inc):
             return _empty(rtype)
     if rtype.discrete:
-        if lower is not None and not lower_inc:
+        # daterange_canonical leaves an infinite bound as written (DATE_NOT_FINITE).
+        if lower is not None and not lower_inc and not isinstance(lower, Infinite):
             lower, lower_inc = _step(rtype, lower), True
-        if upper is not None and upper_inc:
+        if upper is not None and upper_inc and not isinstance(upper, Infinite):
             upper, upper_inc = _step(rtype, upper), False
         if lower is not None and upper is not None and _compare_values(lower, upper) >= 0:
             return _empty(rtype)

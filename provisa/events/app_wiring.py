@@ -290,6 +290,17 @@ def build_adapter_loaders(state: Any, engine: Any) -> dict[str, Any]:
         loaders["druid"] = make_druid_loader()
     if not engine_attaches(bare_engine, "hive_s3"):  # REQ-1730
         loaders["hive_s3"] = make_hive_s3_loader()
+    # REQ-1998 (MOTHERDUCK LANDS THROUGH ITS POSTGRES ENDPOINT): an engine with no gsheets
+    # extension lands a sheet through the Sheets API, and one that cannot attach MotherDuck lands
+    # it through MotherDuck's Postgres endpoint; one that reads either in place keeps doing so.
+    if not engine_attaches(bare_engine, "google_sheets"):
+        from provisa.events.sheets_reader import make_google_sheets_loader
+
+        loaders["google_sheets"] = make_google_sheets_loader()
+    if not engine_attaches(bare_engine, "motherduck"):
+        from provisa.events.motherduck_reader import make_motherduck_loader
+
+        loaders["motherduck"] = make_motherduck_loader()
     allocator = PortAllocator()
     config = getattr(state, "config", None)
     for src in getattr(config, "sources", None) or []:
@@ -777,6 +788,8 @@ async def wire_event_loop(scheduler: Any, *, state: Any, log: Any, seed: bool = 
         def mv_columns(mv: Any) -> list[tuple[str, str]] | None:
             return _mv_cols.get(view_node(mv))
 
+        from provisa.mv.change_refresh import change_generate
+
         def mv_admit_deltas(mv: Any) -> Any:
             # REQ-1921/1922: the input an incremental view's deltas are rows of (an incremental
             # view reads one table), whose administrator's rule decides what this region keeps.
@@ -905,6 +918,7 @@ async def wire_event_loop(scheduler: Any, *, state: Any, log: Any, seed: bool = 
             expected_events_of=lambda mv: expected_event_nodes(mv, state, graph),
             mv_admit_deltas=mv_admit_deltas,  # REQ-1921/1922
             mv_refreshed=mv_refreshed,
+            mv_change=lambda mv: change_generate(state, engine, mv),  # REQ-2249
         )
         processors = build_processors(
             specs, db=db, dependents_of=dependents_of, on_event=node_event_triggers(state)

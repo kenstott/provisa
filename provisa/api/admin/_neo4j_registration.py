@@ -20,6 +20,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from provisa.core.http_failure import describe_http_failure
+
 if TYPE_CHECKING:
     from provisa.api.admin.types import QueryPreviewType
     from provisa.core.database import Connection
@@ -54,7 +56,9 @@ async def preview_neo4j(conn: "Connection", source_id: str, cypher: str) -> "Que
         validate_shape(rows)
     except Neo4jNodeObjectError as exc:
         return QueryPreviewType(error=str(exc))
-    except (httpx.HTTPError, ValueError) as exc:
+    except httpx.HTTPError as exc:
+        return QueryPreviewType(error=describe_http_failure(exc))
+    except ValueError as exc:
         return QueryPreviewType(error=f"{type(exc).__name__}: {exc}")
     columns = [
         QueryPreviewColumnType(name=c.name, data_type=data_type_for_api_column(c.type))

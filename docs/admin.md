@@ -18,11 +18,11 @@ A personal access token is accepted anywhere a bearer token is, this endpoint in
 
 | Route | Effect |
 | ------- | -------- |
-| `POST /auth/tokens` | Mint a token for the caller. Body: `name`, optional `role_id`, `scopes`, `expires_in_days` (1–366). The response is the only place the secret ever appears |
+| `POST /auth/tokens` | Mint a token for the caller. Body: `name`, `scopes` (the roles the token may act as, at least one), optional `expires_in_days` (1–366). The response is the only place the secret ever appears |
 | `GET /auth/tokens` | The caller's active tokens in this org: display prefix, name, lifecycle timestamps, and the hash that identifies a token for revocation. Never a working credential |
 | `DELETE /auth/tokens/{token_hash}` | Revoke one of the caller's tokens. 404 when it is not theirs or already revoked |
 
-Omitting `role_id` leaves the token resolving to whatever role its owner holds; naming one narrows the token below its owner. Revocation also happens implicitly. Removing a user's org membership revokes their tokens for that org. See [Security Model](security.md#personal-access-tokens) for the credential itself.
+A token's `scopes` are role names. Each must be a role you hold when you issue it; a scope you don't hold is refused and recorded as a security event, and a token with no scopes isn't issued. The token acts only as a scope you still hold, on every protocol: it never reaches another of your roles, and a scope whose role you lose stops working. Revocation also happens implicitly. Removing a user's org membership revokes their tokens for that org. See [Security Model](security.md#personal-access-tokens) for the credential itself.
 
 ## Capabilities
 
@@ -68,6 +68,23 @@ AI model assignments, the embedding and vector-model registry, and the NL rate l
 GET  /admin/ai-models
 PUT  /admin/ai-models
 ```
+
+**Hugging Face hub address.** `embedding.hub_endpoint` names the Hugging Face hub a local embedding model is downloaded from. Its default is `https://huggingface.co`. Behind a firewall, set it to a mirror inside your network. It sits on the Network and TLS card of Admin → Settings, and you can also set it with the `HF_ENDPOINT` environment variable or under `embedding.hub_endpoint` in the config file:
+
+```yaml
+embedding:
+  hub_endpoint: https://hf-mirror.internal.example.com
+```
+
+A value saved in Admin → Settings wins over `HF_ENDPOINT`, which wins over the config file. The setting is read at each model download, so a change applies to the next one with no restart. A model already downloaded and loaded is not fetched again while the server runs.
+
+**A model whose library is missing stops the start.** Every install carries sentence-transformers, the library a `huggingface` embedding model runs on. Without it, a config file that registers a `huggingface` model in `vector_models` stops the start, and the error names the model:
+
+```text
+The embedding model sentence-transformers/all-MiniLM-L6-v2 uses the huggingface provider, which needs the vector extra (module sentence_transformers is not installed): pip install 'provisa[vector]'.
+```
+
+Install the extra it names, adding `--extra-index-url https://download.pytorch.org/whl/cpu` on Linux, or remove the model from `vector_models`. The check runs whether or not the model is enabled.
 
 The admin encryption tab derives its provider list live from the encryption registry; unavailable providers appear but are not selectable.
 
@@ -145,6 +162,28 @@ mutation {
 You declare an associative table as an edge; Provisa never discovers one. `viaTable` names a registered table. Its two key columns carry the edge, and every other column becomes an attribute of the relationship, filterable like any field. `viaTypeColumn` / `viaTypeValue` split one junction table into several edge types. For example, rows of `pet_companions` whose `companion_type` is `bonded pair`, `littermate` or `shares enclosure` give three distinct relationships over the same pair of tables.
 
 `viaLabelSource` says where the exposed name comes from, and Cypher gets each form in upper snake case. `column` uses `viaTypeValue` (`BONDED_PAIR`), `table` uses the junction table's own name (`PET_COMPANIONS`), and `fixed` uses the declared `alias`. A junction table declared this way is an edge. Provisa drops it from the node labels, so it never appears as a node pill in the graph UI.
+
+Relate two tables with a code resolver. A code `@query` decides which rows match (see [code resolvers](code-sources.md#code-resolvers)). Provisa keeps a materialized view of the matches, a junction relationship through it (Cypher's edge), and two plain relationships to and from it (GraphQL's levels), saved, changed and retired as one:
+
+```graphql
+mutation {
+  createCodeResolver(input: {
+    id: "store_regions"
+    resolver: "stores_in_regions"
+    sourceTable: "stores"
+    sourceColumn: "id"
+    sourceMatch: "store_id"
+    targetTable: "regions"
+    targetColumn: "id"
+    targetMatch: "region_id"
+  }) {
+    success
+    message
+  }
+}
+```
+
+`updateCodeResolver` takes the same input and changes the set. `retireCodeResolver(id: "store_regions")` retires the view and its three relationships. `codeResolvers` lists the sets in service. Each relationship of a set carries its id in `codeResolver`, and `updateRelationship`, `deleteRelationship`, `updateTable`, `deleteTable` and `setTableDraft` refuse an object of a set, naming it.
 
 ### AI Relationship Discovery
 
@@ -394,6 +433,71 @@ The left panel lists every registered table in the `ops` domain, sorted by alias
 **Adding a custom report.** The "Add report" button opens a dialog where you give a name, an optional description and a SELECT statement. Saving registers the view as a governed derived table in the `ops` domain. It's cataloged, access-controlled and queryable through every surface, alongside the seeded views.
 
 **Deleting.** The trash icon appears only for custom reports. Seeded management views cannot be deleted from this interface.
+
+### Tags report
+
+`tags_report` has one row for each tag on each object. It also has a row for each required tag missing from an object of a kind the tag applies to. Polly and MCP clients read the same rows from the meta table `meta.tag_instances`. The report covers tags that someone assigned, tags a column inherits from its glossary term, tags Provisa derives from an object's registered state, and the library sections each of them cites. It does not yet show attestations, gates or the people behind each tag, and it shows the present state only.
+
+Each row carries the object's kind, id, domain and owner. Its name comes from the names table of the last model build, and is empty for kinds that table does not name, such as roles. The row also carries the tag's definition, whether the tag is required, and whether its assignments must cite a library section. An assigned row adds the parameter, reason, expiry, purpose, review date, and who assigned it and when.
+
+The `via` column says how the tag got onto the object. `assigned` means someone put it there. `inherited` means the column's glossary term carries it. `derived` means Provisa computes it from the object's registered state, as it does for `fact`. `missing` marks a required tag the object lacks.
+
+Provisa computes the citation columns and the status each time you read the report and stores none of them. `citations_broken` counts cited sections that no longer exist. `citations_drifted` counts sections whose text changed after they were cited. `citation_missing` is true when the tag requires a citation and the assignment has none. `expired` is true once the expiry date has passed. A row with any of these, a `missing` row, or whose tag definition cites a section that changed, has the status `needs attention`, and `status_reason` lists why. Every other row is `clean`.
+
+You see a row exactly when the tag admin would show you that assignment. A tag on a table, column, relationship, command, data product or row rule needs every domain the object touches. A tag on a source needs one of the source's allowed domains, if it names any. A tag on a glossary term or a library document is read the way the term or document is. A tag on a row rule also needs the `access_config` right. A tag on a role needs `user_management`, unless the role is your own. A tag on a metric needs the metric to be granted to your role.
+
+Group by `base_tag_id` to see each tag's quality, or by `domain_id` or `object_key` to see what needs attention there.
+
+### Tags, library sections and objects
+
+Four meta tables connect the reference library to the model. You query them through SQL, GraphQL or Cypher like any other meta table, and Polly and MCP clients read them the same way.
+
+`meta.library_documents` has one row per library document: its title, source, status, and the domains it is read in.
+
+`meta.tag_citations` has one row per citation of a library document or section. `citer` is `definition` when a tag's definition cites the place, and `assignment` when the tag's assignment to an object cites it. An assignment's row names the object as `tag_instances` does. `state` is `current`, `drifted` when the section's text changed after it was cited, or `broken` when the section or document is gone. `needs_review` is true for any state other than `current`.
+
+`meta.section_tags` has one row per tag on a document or on a section of one. `section_heading` and `section_page` are empty when the tag is on the whole document. The row carries the assignment's reason, expiry, purpose and review date.
+
+`meta.policy_coverage` has one row per path from a document or section to an object. The `link` column says how the path runs:
+
+| `link` | The path |
+|---|---|
+| `shared tag` | The section carries a tag the object also carries. |
+| `tag cites it` | The definition of a tag the object carries cites the section. |
+| `assignment cites it` | The object's assignment of the tag cites the section. |
+
+Each coverage row names the object by kind, key, id, name, domain and table, as `tag_instances` does, with `via` saying how the tag got onto the object. A citation's path also carries the citation's state in `citation_state`.
+
+You see a document, and any row about it, only where you read that document. A row that names an object also needs you to read the tag on that object, by the rule the tags report uses. A citation of a tag's definition needs the document alone.
+
+To find the columns relevant to document 12:
+
+```sql
+SELECT DISTINCT object_name, column_key, link, section_heading
+FROM meta.policy_coverage
+WHERE document_id = 12 AND object_kind = 'column'
+ORDER BY object_name, column_key;
+```
+
+To find the tags whose definition cites a section that changed:
+
+```sql
+SELECT tag_id, document_title, section_heading, section_page, state
+FROM meta.tag_citations
+WHERE citer = 'definition' AND state <> 'current';
+```
+
+In GraphQL and Cypher, a document reaches its coverage rows, section tags and citations, and each of those reaches the document back. A coverage row and a citation also reach their `tag_instances` row, their tag, and the registered table and column the object is or belongs to. So you can walk from a document to its coverage and on to each column. A tagged section reaches the objects covered from it. A table, a column and a tag instance reach the paths that cover them.
+
+The same walk in SQL:
+
+```sql
+SELECT DISTINCT c.column_key, p.link
+FROM meta.library_documents d
+JOIN meta.policy_coverage p ON p.document_id = d.id
+JOIN meta.table_columns c ON c.column_key = p.column_key
+WHERE d.title = 'Privacy policy';
+```
 
 ## Table preview
 

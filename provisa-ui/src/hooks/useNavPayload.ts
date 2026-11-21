@@ -36,10 +36,13 @@ export function useNavPayload<T>(handler: (payload: T) => void): void {
   useEffect(() => {
     if (location.state == null || handled.current === location.key) return;
     handled.current = location.key;
-    latest.current(location.state as T);
+    // The payload is cleared first, so a handler that writes the URL itself (REQ-2241: a panel it
+    // opens) is the last word and not overwritten by the clearing.
+    const payload = location.state as T;
     navigate(`${location.pathname}${location.search}${location.hash}`, {
       replace: true,
       state: null,
     });
+    latest.current(payload);
   }, [location.key, location.state, location.pathname, location.search, location.hash, navigate]);
 }

@@ -44,7 +44,7 @@ from pathlib import Path
 import sqlalchemy as sa
 import yaml
 
-from tests.integration.mcp_pin import pinned_roles
+from tests.integration.mcp_pin import pinned_roles, principal_env, seat_principal
 from tests.port_lease import lease_ports
 
 _REPO_ROOT = Path(__file__).parents[2]
@@ -246,6 +246,8 @@ class WorkerBoot:
             "PROVISA_MCP_HOST": "127.0.0.1",
             # REQ-2075: the roles this launch's MCP agent may act as (tests/integration/mcp_pin).
             "PROVISA_MCP_ROLE": pinned_roles(config),
+            # REQ-1105: and the principal it acts for, seated once the launch is up (_seat).
+            **principal_env(),
             "PROVISA_AIRPORT_PORT": str(self.ports["airport"]),
             "OTEL_SDK_DISABLED": "true",
             **(
@@ -359,9 +361,17 @@ class WorkerBoot:
         while time.monotonic() < deadline:
             self._alive()
             if self.health() is not None:
-                return time.monotonic() - self._started
+                elapsed = time.monotonic() - self._started
+                self._seat()
+                return elapsed
             time.sleep(0.1)
         raise RuntimeError(f"no worker became healthy in {timeout}s:\n{self.log_text()[-4000:]}")
+
+    def _seat(self) -> None:
+        """REQ-1105: the principal a loopback MCP call acts for is an account in the org, in the
+        control plane the launch created at its start (tests/integration/mcp_pin). Seated once a
+        worker is up, after the time to ready is taken."""
+        seat_principal(self.url)
 
     def ready_pids(self) -> set[int]:
         """Worker processes that logged the end of their startup."""
@@ -394,7 +404,9 @@ class WorkerBoot:
         while time.monotonic() < deadline:
             self._alive()
             if len(self.ready_pids()) >= self.workers and self._accepting():
-                return time.monotonic() - self._started
+                elapsed = time.monotonic() - self._started
+                self._seat()
+                return elapsed
             time.sleep(0.1)
         raise RuntimeError(
             f"{len(self.ready_pids())}/{self.workers} workers ready after {timeout}s:\n"

@@ -259,8 +259,16 @@ def test_a_failed_meter_is_retried_without_inserting_the_row_again(store):
     async def no_commit(pool: object, org_id: str, env: str, stamp: int) -> None:
         return None  # no environment position: the row names no model commit
 
+    async def stage(pool: object, org_id: str, env: str) -> str:
+        return "production"
+
     writer = AuditWriter(
-        interval_s=0.01, retry_s=0.01, insert=store.insert, meter=meter, deployed_commit=no_commit
+        interval_s=0.01,
+        retry_s=0.01,
+        insert=store.insert,
+        meter=meter,
+        deployed_commit=no_commit,
+        env_stage=stage,
     ).start()
     try:
         writer.enqueue(_record(1, meter_pool=object()))

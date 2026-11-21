@@ -195,8 +195,8 @@ async def test_no_materialize_store_configured_returns_empty():
 
 
 @pytest.mark.asyncio
-async def test_a_listener_whose_table_goes_draft_is_stopped_on_the_next_wire():
-    """REQ-1921: a drafted (or deleted) table leaves fetch_tables, and the rebuild's re-wire stops
+async def test_a_listener_whose_table_is_withdrawn_is_stopped_on_the_next_wire():
+    """REQ-1921: a withdrawn (or deleted) table leaves fetch_tables, and the rebuild's re-wire stops
     the listener that was landing it; a table that stays keeps its listener."""
     import asyncio
 
@@ -207,7 +207,7 @@ async def test_a_listener_whose_table_goes_draft_is_stopped_on_the_next_wire():
         await asyncio.sleep(3600)
 
     tables = [_kafka_table("orders"), _kafka_table("refunds")]
-    fetch = AsyncMock(side_effect=[tables, tables[1:]])  # "orders" goes draft before the 2nd wire
+    fetch = AsyncMock(side_effect=[tables, tables[1:]])  # "orders" is withdrawn before the 2nd wire
     with (
         patch("provisa.api.admin.db_queries.fetch_tables", fetch),
         patch(

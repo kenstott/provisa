@@ -9,12 +9,12 @@
     "assignmentsSourceClaims": "Claim del token",
     "assignmentsSourceProvisa": "Provisa (assegnazioni locali)",
     "trustUpstream": "Considera attendibili le intestazioni di identità del proxy upstream",
-    "allowSimpleAuth": "Consenti autenticazione semplice (protezione di produzione — necessaria per abilitare nome utente/password)",
+    "allowSimpleAuth": "Consenti autenticazione semplice (protezione di produzione, necessaria per abilitare nome utente/password)",
     "saveButton": "Salva impostazioni di autenticazione",
     "loading": "Caricamento in corso…",
     "saved": "Salvato.",
     "savedRestartRequired": "Salvato. Riavviare il servizio per applicare.",
-    "secretOnFile": "Memorizzato — lascia vuoto per mantenerlo",
+    "secretOnFile": "Salvato. Lasciare vuoto per mantenerlo.",
     "secretNotSet": "Non impostato",
     "allowRegistration": "Consenti agli utenti di creare il proprio account"
   }

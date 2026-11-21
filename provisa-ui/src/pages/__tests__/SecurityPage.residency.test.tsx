@@ -57,6 +57,7 @@ vi.mock("../../hooks/useSecurityQueries", () => ({
   useRLSRules: () => ({ rlsRules: [], loading: false, refetch: vi.fn() }),
   useUpsertRole: () => ({ upsertRole: upsertRoleSpy, loading: false }),
   useDeleteRole: () => ({ deleteRole: vi.fn(), loading: false }),
+  useDeleteRoles: () => vi.fn(),
   useUpsertRlsRule: () => ({ upsertRlsRule: vi.fn(), loading: false }),
   useDeleteRlsRule: () => ({ deleteRlsRule: vi.fn(), loading: false }),
   useRevokeRoleGrants: () => ({ revokeFromTable: vi.fn(), revokeFromObject: vi.fn() }),

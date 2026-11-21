@@ -136,13 +136,14 @@ class TestReadMaskValidation:
         assert failure.value.path == "amount.cents"
 
     @pytest.mark.parametrize("path", ["customers", "customers.name"])
-    def test_relation_field_is_not_a_readable_column(self, path):
-        """``Query{Type}`` reads the table's own columns; it never populates a relation field, so
-        a path naming one is rejected like any other path that is not a readable column."""
+    def test_relation_field_without_a_relationship_is_refused(self, path):
+        """A relation path reads a relationship of the role's schema (REQ-1929,
+        test_grpc_read_mask_relations); with none to the named table it is refused like any
+        other path that is not a readable field."""
         from provisa.grpc.query_ir import ReadMaskError
 
         ctx = _ctx()
-        ctx.joins = {("Orders", "customers"): SimpleNamespace()}
+        ctx.joins = {}
         from provisa.grpc.query_ir import resolve_read_mask
 
         with pytest.raises(ReadMaskError) as failure:

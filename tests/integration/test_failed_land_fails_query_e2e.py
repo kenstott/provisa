@@ -13,14 +13,20 @@ fails, errors -- it never answers from the stale replica.
 
 A real Provisa server (DuckDB engine, SQLite control plane, DuckDB materialize store) registers an
 RSS feed served by this test's own HTTP server. RSS is attached by no engine, so every read lands
-it. The first query lands the feed and returns its items; the feed then fails (HTTP 500), the
-source's 2s cache_ttl runs out, and the same query must fail rather than return the landed rows.
+it. The first query lands the feed and returns its items; the feed then fails (HTTP 500) and the
+source's 2s cache_ttl runs out.
+
+The source declares no freshness guarantee, so a read past its TTL may be answered from the copy it
+holds while the refresh runs in the background (REQ-860 and REQ-1661, amended 2026-11-09). That
+refresh is the land that fails. Once its failure is recorded, the same query must fail with the
+land's own cause rather than return the landed rows.
 """
 
 # Requirements: REQ-1661
 
 from __future__ import annotations
 
+import asyncio
 import os
 import tempfile
 import threading
@@ -46,6 +52,8 @@ _FEED = b"""<?xml version="1.0"?>
 <pubDate>Tue, 29 Sep 2026 11:00:00 GMT</pubDate></item>
 </channel></rss>"""
 _QUERY = {"query": "{ feedItems { title } }"}
+_REPLICA = ("feed-rss", "default", "feed_items")
+_STALE = ["stale-one", "stale-two"]
 
 
 class _Feed:
@@ -101,25 +109,79 @@ async def feed_server():
         del os.environ["PROVISA_TEST_RSS_FEED_URL"]
 
 
+def _failed_land(server) -> str | None:
+    """The error of the replica's failed land, read from the server's own control plane, waiting
+    for the land the read asked for to finish; None when no land of it failed by the deadline."""
+    import sqlalchemy as sa
+
+    from provisa.core.database import create_engine_from_url
+
+    engine = create_engine_from_url(server.plane.url)
+    query = sa.text(
+        f"SELECT last_error FROM org_{server.org_id}.replica_state "
+        "WHERE source_id = :s AND schema_name = :sc AND table_name = :t AND build_state = 'failed'"
+    )
+    source_id, schema_name, table_name = _REPLICA
+    deadline = time.monotonic() + 60
+    try:
+        while True:
+            with engine.connect() as conn:
+                error = conn.execute(
+                    query, {"s": source_id, "sc": schema_name, "t": table_name}
+                ).scalar()
+            if error is not None or time.monotonic() > deadline:
+                return error
+            time.sleep(0.2)
+    finally:
+        engine.dispose()
+
+
+def _body(response: httpx.Response) -> dict:
+    if response.headers.get("content-type", "").startswith("application/json"):
+        return response.json()
+    return {}
+
+
+def _assert_fails_with_the_lands_cause(response: httpx.Response) -> None:
+    body = _body(response)
+    stale_rows = (body.get("data") or {}).get("feedItems")
+    assert not stale_rows, f"served the stale replica: {response.text}"
+    assert response.status_code >= 400 or body.get("errors"), response.text
+    assert "500" in response.text, response.text  # the land's own cause reaches the caller
+
+
 async def test_a_failed_land_fails_the_query_instead_of_serving_the_stale_replica(feed_server):
+    from provisa.federation.query_residency import _BUILD_POLL_S
+
     feed, server = feed_server
     async with httpx.AsyncClient(base_url=server.base_url, timeout=60.0) as client:
         first = await client.post("/data/graphql", json=_QUERY)
         assert first.status_code == 200, first.text
         body = first.json()
         assert not body.get("errors"), body
-        assert sorted(r["title"] for r in body["data"]["feedItems"]) == ["stale-one", "stale-two"]
+        assert sorted(r["title"] for r in body["data"]["feedItems"]) == _STALE
 
         feed.fail = True
-        time.sleep(3)  # past the source's 2s cache_ttl: the next read must re-land
+        await asyncio.sleep(3)  # past the source's 2s cache_ttl: the replica must be re-landed
 
-        second = await client.post("/data/graphql", json=_QUERY)
-    body = (
-        second.json()
-        if second.headers.get("content-type", "").startswith("application/json")
-        else {}
-    )
-    stale_rows = (body.get("data") or {}).get("feedItems")
-    assert not stale_rows, f"served the stale replica: {second.text}"
-    assert second.status_code >= 400 or body.get("errors"), second.text
-    assert "500" in second.text, second.text  # the land's own cause reaches the caller
+        # This read asks for the re-land. Before any land has failed it may be answered from the
+        # copy held (REQ-860: no freshness guarantee); once one has failed it fails with its cause.
+        past_ttl = await client.post("/data/graphql", json=_QUERY)
+        asked_at = time.monotonic()
+        past_ttl_rows = (_body(past_ttl).get("data") or {}).get("feedItems")
+        if past_ttl_rows:
+            assert past_ttl.status_code == 200, past_ttl.text
+            assert sorted(r["title"] for r in past_ttl_rows) == _STALE
+        else:
+            _assert_fails_with_the_lands_cause(past_ttl)
+
+        error = await asyncio.to_thread(_failed_land, server)
+        assert error is not None, "the re-land of the failing feed was never recorded as failed"
+        assert "500" in error, error
+        # A reader reuses its process's copy of a record that shows a build running for
+        # _BUILD_POLL_S without reading it again (query_residency._joins): the next read comes
+        # after that copy has lapsed, so it reads the failure the control plane now holds.
+        await asyncio.sleep(max(0.0, asked_at + _BUILD_POLL_S - time.monotonic()))
+
+        after_failure = await client.post("/data/graphql", json=_QUERY)
+    _assert_fails_with_the_lands_cause(after_failure)

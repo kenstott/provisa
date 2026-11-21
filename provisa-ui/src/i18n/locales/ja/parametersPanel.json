@@ -2,9 +2,13 @@
   "parametersPanel": {
     "title": "パラメーター",
     "summary": "{{count}} 件中 {{required}} 件が必須",
+    "limits": "このテーブルには {{parameters}} が必要です。それぞれに値を指定しない限り、行数、プロファイル、サンプルは得られません。",
     "name": "パラメーター",
     "type": "型",
     "reaches": "ソースへの渡し方",
+    "meaning": "意味",
+    "opaque": "ソースへの不透明な入力",
+    "realColumn": "テーブルの実在の列",
     "required": "必須",
     "requiredBySource": "ソースが必須としています",
     "requiredAria": "{{name}} は必須です",
@@ -14,6 +18,7 @@
       "graphql_arg": "GraphQL 引数",
       "grpc_input": "gRPC リクエストのフィールド",
       "query_arg": "ネイティブクエリの引数",
+      "partition_key": "パーティションキー",
       "column_value": "列の値"
     }
   }

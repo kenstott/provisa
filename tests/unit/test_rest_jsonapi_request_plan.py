@@ -28,6 +28,7 @@ from __future__ import annotations
 
 from provisa.executor.result import QueryResult
 
+import json
 import re
 from types import SimpleNamespace
 from urllib.parse import parse_qs, urlsplit
@@ -387,9 +388,12 @@ async def test_a_replaced_schema_compiles_again(surface):
 
 
 async def test_an_invalid_request_is_rejected_every_time_and_nothing_is_kept(surface):
+    # An order on a field the type does not have reaches the GraphQL validation; an unknown
+    # ``fields`` path is refused before it (REQ-1929, tests/unit/test_rest_nested_fields.py).
+    order = json.dumps([{"field": "no_such_column", "direction": "asc"}])
     for _ in range(2):
         resp = await surface.client.get(
-            "/data/rest/sales/orders", params={"fields": "no_such_column"}, headers=_REST
+            "/data/rest/sales/orders", params={"orderBy": order}, headers=_REST
         )
         assert resp.status_code == 400, resp.text
     assert len(surface.compiles.parsed) == 2

@@ -44,6 +44,12 @@ pub enum Coercer {
     DuckdbInet,
     /// pg_enum.array_text: an enum array as array_out writes it
     EnumArray,
+    /// cast_types.interval_of_text: interval_out's text, which an engine holds an interval as
+    IntervalText,
+    /// cast_types.bytes_of_text: a string an engine holds bytes as, as those bytes
+    TextBytes,
+    /// cast_types.clock_of_text: time_out's text, which an engine holds a time as
+    ClockText,
 }
 
 pub fn coercer_of(name: &str) -> R<Coercer> {
@@ -63,6 +69,9 @@ pub fn coercer_of(name: &str) -> R<Coercer> {
         "null_alone" => Coercer::NullAlone,
         "duckdb_inet" => Coercer::DuckdbInet,
         "enum_array" => Coercer::EnumArray,
+        "interval_text" => Coercer::IntervalText,
+        "text_bytes" => Coercer::TextBytes,
+        "clock_text" => Coercer::ClockText,
         _ => match name.strip_prefix("pad:").and_then(|n| n.parse().ok()) {
             Some(n) => Coercer::Pad(n),
             None => return Err(EncErr::Value(format!("no coercer named {name:?}"))),
@@ -195,7 +204,103 @@ pub fn apply(c: &Coercer, v: PyVal) -> R<PyVal> {
             }
             other => other,
         },
+        Coercer::IntervalText => match v {
+            PyVal::Str(s) => {
+                let (months, days, micros) = interval_fields(&s)
+                    .ok_or_else(|| EncErr::Value(format!("invalid input syntax for type interval: \"{s}\"")))?;
+                pyval::interval_value(months, days, micros)
+            }
+            other => other,
+        },
+        Coercer::TextBytes => match v {
+            PyVal::Str(s) => PyVal::Bytes(s.into_bytes()),
+            other => other,
+        },
+        Coercer::ClockText => match v {
+            PyVal::Str(s) => PyVal::Time(
+                clock_of_text(&s)
+                    .ok_or_else(|| EncErr::Value(format!("invalid input syntax for type time: \"{s}\"")))?,
+            ),
+            other => other,
+        },
     })
+}
+
+/// An interval's (months, days, microseconds) of the text interval_out writes (IntervalStyle
+/// postgres): "1 year 2 mons -3 days +04:05:06.5"; None for any other text. As
+/// cast_types.interval_of_text reads it.
+pub fn interval_fields(text: &str) -> Option<(i128, i128, i128)> {
+    let words: Vec<&str> = text.split(' ').collect();
+    let (mut months, mut days, mut micros) = (0i128, 0i128, 0i128);
+    let mut at = 0;
+    while at < words.len() {
+        let word = words[at];
+        if let Some(clock) = clock_micros(word) {
+            micros += clock;
+            at += 1;
+            continue;
+        }
+        let amount: i128 = word.strip_prefix('+').unwrap_or(word).parse().ok()?;
+        match *words.get(at + 1)? {
+            "year" | "years" => months += amount * 12,
+            "mon" | "mons" => months += amount,
+            "day" | "days" => days += amount,
+            _ => return None,
+        }
+        at += 2;
+    }
+    (!text.is_empty()).then_some((months, days, micros))
+}
+
+/// time_out's text, "HH:MM:SS[.ffffff]", as its microseconds since midnight; None for any other
+/// text, and for 24:00:00, which is no time of day. As cast_types.clock_of_text reads it.
+pub fn clock_of_text(text: &str) -> Option<i64> {
+    let b = text.as_bytes();
+    let two = |at: usize| -> Option<i64> {
+        let (h, l) = (*b.get(at)?, *b.get(at + 1)?);
+        (h.is_ascii_digit() && l.is_ascii_digit()).then(|| i64::from(h - b'0') * 10 + i64::from(l - b'0'))
+    };
+    if b.len() < 8 || b[2] != b':' || b[5] != b':' {
+        return None;
+    }
+    let (hours, minutes, seconds) = (two(0)?, two(3)?, two(6)?);
+    if hours > 23 || minutes > 59 || seconds > 59 {
+        return None;
+    }
+    let fraction = match &b[8..] {
+        [] => 0,
+        [b'.', digits @ ..] if (1..=6).contains(&digits.len()) && digits.iter().all(u8::is_ascii_digit) => {
+            let padded = format!("{:0<6}", std::str::from_utf8(digits).ok()?);
+            padded.parse::<i64>().ok()?
+        }
+        _ => return None,
+    };
+    Some(((hours * 60 + minutes) * 60 + seconds) * 1_000_000 + fraction)
+}
+
+/// "[+-]H:MM:SS[.ffffff]" as its signed microseconds.
+fn clock_micros(word: &str) -> Option<i128> {
+    let (sign, rest) = match word.as_bytes().first()? {
+        b'-' => (-1, &word[1..]),
+        b'+' => (1, &word[1..]),
+        _ => (1, word),
+    };
+    let mut parts = rest.splitn(3, ':');
+    let (hours, minutes, seconds) = (parts.next()?, parts.next()?, parts.next()?);
+    let (whole, fraction) = seconds.split_once('.').unwrap_or((seconds, ""));
+    let digits = |t: &str| !t.is_empty() && t.bytes().all(|b| b.is_ascii_digit());
+    let fine = digits(hours) && minutes.len() == 2 && digits(minutes) && whole.len() == 2 && digits(whole);
+    if !fine || fraction.len() > 6 || !(fraction.is_empty() || digits(fraction)) {
+        return None;
+    }
+    let number = |t: &str| t.parse::<i128>().ok();
+    let total = (number(hours)? * 3600 + number(minutes)? * 60 + number(whole)?) * 1_000_000
+        + if fraction.is_empty() {
+            0
+        } else {
+            number(&format!("{fraction:0<6}"))?
+        };
+    Some(sign * total)
 }
 
 fn repr(v: &PyVal) -> String {

@@ -2,8 +2,8 @@
 #
 # Submits each DMG of one version to Apple's notary service, waits for the verdict under its own
 # limit (Apple's queue took 44 minutes for the Obs DMG of v0.1.0-alpha.508, run 42951512721, which
-# the DMG build's 45-minute limit cancelled), staples it, and uploads it as the macos-<x>-dist
-# artifact the release's publish leg attaches. The build jobs (release-macos.yml) build and sign;
+# the DMG build's 45-minute limit cancelled), staples it, and attaches it to the release's
+# draft (a dry run uploads it as the macos-<x>-dist artifact). The build jobs (release-macos.yml) build and sign;
 # they do not notarize, and hand each DMG (Obs, Demo) or signed .app (Core, Container) on as a
 # macos-<x>-unnotarized artifact. Core and Container: the .app is notarized and stapled, the DMG is
 # built from it, and the DMG is notarized and stapled.
@@ -30,6 +30,10 @@ on:
         default: ""
       attach:
         description: Upload the notarized DMGs to the release of `version`. Only a manual run does.
+        type: boolean
+        default: false
+      publish:
+        description: Attach the notarized DMGs to the draft release of `version`; false keeps them as artifacts of this run (a dry run).
         type: boolean
         default: false
     secrets:
@@ -81,6 +85,8 @@ jobs:
     name: Notarize macOS ${{ matrix.edition }} DMG
     needs: [metadata]
     runs-on: macos-15
+    permissions:
+      contents: write   # attaches the notarized DMG to the draft release
     timeout-minutes: 180
     strategy:
       fail-fast: false
@@ -156,15 +162,25 @@ jobs:
           chmod +x packaging/macos/notarize-dmg.sh
           packaging/macos/notarize-dmg.sh "dmg/${{ matrix.dmg }}"
 
+      # A dry run keeps it in the run (its only home); a release attaches it to the draft directly.
       - name: Upload notarized DMG artifact
+        if: ${{ !inputs.publish }}
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}-dist
           path: "dmg/${{ matrix.dmg }}"
+          if-no-files-found: error
           retention-days: 1
 
-      # Only by hand, and only when asked: the release of `version` takes the notarized DMG in
-      # place of the one it has.
+      - name: Attach the notarized DMG to the draft release
+        if: ${{ inputs.publish }}
+        uses: ./.github/actions/attach-release-assets
+        with:
+          tag: ${{ inputs.version }}
+          files: "dmg/${{ matrix.dmg }}"
+
+      # By hand, and only when asked: the release of `version` takes the notarized DMG in place of
+      # the one it has.
       - name: Attach the notarized DMG to the release
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.attach }}
         env:

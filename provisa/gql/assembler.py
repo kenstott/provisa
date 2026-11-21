@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
+from collections.abc import Callable
 from typing import Any, TypeVar
 
 from sqlalchemy import bindparam, select, update
@@ -250,11 +251,11 @@ def _deserialize_graph_value(col: str, value: Any, kind: GraphVarKind) -> Any:
 
     if kind == GraphVarKind.NODE:
         if isinstance(data, list):
-            return _present([_parse_node(n) for n in data if isinstance(n, dict)])
+            return _elements(data, _parse_node)
         return _parse_node(data)
     if kind == GraphVarKind.EDGE:
         if isinstance(data, list):
-            return _present([_parse_edge(e) for e in data if isinstance(e, dict)])
+            return _elements(data, _parse_edge)
         return _parse_edge(data)
     if kind == GraphVarKind.PASSTHROUGH:
         # Auto-detect: edge JSON has 'type' + ('identity' or 'startNode'); node JSON has 'label'
@@ -278,6 +279,23 @@ def _deserialize_graph_value(col: str, value: Any, kind: GraphVarKind) -> Any:
 
 
 _T = TypeVar("_T")
+
+
+def _elements(data: list, parse: Callable[[dict], _T | None]) -> list:
+    """A list of nodes or relationships, each its JSON (text or decoded): each parsed, an
+    OPTIONAL MATCH's null left out; a list in it (collect(nodes(p)): one list per row) is a list
+    of them in turn."""
+    out: list = []
+    for item in data:
+        if isinstance(item, str):
+            item = json.loads(item)
+        if isinstance(item, list):
+            out.append(_elements(item, parse))
+        elif isinstance(item, dict):
+            parsed = parse(item)
+            if parsed is not None:
+                out.append(parsed)
+    return out
 
 
 def _present(items: list[_T | None]) -> list[_T]:

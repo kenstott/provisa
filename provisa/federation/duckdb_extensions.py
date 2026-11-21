@@ -37,7 +37,6 @@ from pathlib import Path
 import duckdb
 
 from provisa.core import engine_memory
-from provisa.core.engine_memory import motherduck_extension_limit
 
 from provisa.federation.connector import Connector
 from provisa.federation.engine import build_duckdb_engine, duckdb_engine_connectors
@@ -76,6 +75,18 @@ _SHORT_NAMES = {"postgres_scanner": "postgres", "sqlite_scanner": "sqlite"}
 #: their connector attaches with (events/source_loader.make_firebird_loader, make_airport_loader):
 #: where it is not staged they cannot land either.
 LANDS_THROUGH_ITS_EXTENSION = frozenset({"firebird", "airport"})
+
+
+#: The first DuckDB version with no build of an extension, by extension name: DuckDB 2.0 has no
+#: gsheets (its download answers HTTP 404), so on 2.0 a Google Sheets source lands through the
+#: Sheets API (REQ-1998). Known from the version alone, whatever is staged or installed.
+NO_BUILD_FROM: dict[str, tuple[int, int, int]] = {"gsheets": (2, 0, 0)}
+
+
+def unbuilt_extensions() -> frozenset[str]:
+    """The extensions with no build for the running DuckDB version (NO_BUILD_FROM)."""
+    running = tuple(int(p) for p in duckdb.__version__.split(".")[:3])
+    return frozenset(name for name, first in NO_BUILD_FROM.items() if running >= first)
 
 
 @functools.cache
@@ -263,6 +274,10 @@ class StagedManifestMissing(RuntimeError):
 #: has (REQ-1142, THE SERVER TIER STAGES AT START).
 _installed_at_start: frozenset[str] | None = None
 
+#: Every extension this server process has tried to INSTALL, whether or not it installed: one that
+#: did not is not tried again on every engine build.
+_tried: frozenset[str] = frozenset()
+
 
 def staged_extensions() -> frozenset[str] | None:
     """The extensions a connector may count on for the running DuckDB version and platform: those
@@ -294,18 +309,21 @@ def _needs(connector: Connector) -> tuple[str, ...]:
     return tuple(needs)
 
 
-def unstaged_needs(connector: Connector, staged: frozenset[str]) -> tuple[str, ...]:
-    """The extensions ``connector`` needs that are not in ``staged``."""
-    return tuple(n for n in _needs(connector) if n not in staged)
+def unstaged_needs(connector: Connector, staged: frozenset[str] | None) -> tuple[str, ...]:
+    """The extensions ``connector`` needs that have no build for the running DuckDB or are not in
+    ``staged`` (``staged`` None: nothing is known to be staged, only the unbuilt count)."""
+    unbuilt = unbuilt_extensions()
+    return tuple(
+        n for n in _needs(connector) if n in unbuilt or (staged is not None and n not in staged)
+    )
 
 
 #: The reader that lands a source type's replicas where the engine cannot attach it, decided and
-#: not yet built (REQ-1998, MOTHERDUCK LANDS THROUGH ITS POSTGRES ENDPOINT, maintainer 2026-11-06:
-#: per-type readers; J866). A source of the type names it while the deployment lacks it.
-PENDING_READERS: dict[str, str] = {
-    "motherduck": "MotherDuck's Postgres-endpoint reader",
-    "google_sheets": "the Google Sheets API reader",
-}
+#: not yet built: a source of the type names it while the deployment lacks it. Empty: MotherDuck
+#: and Google Sheets have theirs (REQ-1998, MOTHERDUCK LANDS THROUGH ITS POSTGRES ENDPOINT;
+#: events/motherduck_reader.py, events/sheets_reader.py). An extension that lags a future DuckDB
+#: release gets its own reader decision, named here until its reader exists.
+PENDING_READERS: dict[str, str] = {}
 
 
 def unstaged_reason(source_type: str, missing: tuple[str, ...]) -> str:
@@ -326,20 +344,6 @@ def unstaged_reason(source_type: str, missing: tuple[str, ...]) -> str:
     return (
         f"no reader of {source_type!r} sources in this deployment: {unavailable}, and Provisa "
         "has no other reader to land it"
-    )
-
-
-def motherduck_reader_missing() -> str | None:
-    """What is missing to read a MotherDuck source in this deployment, or None where the engine's
-    DuckDB loads MotherDuck's extension (REQ-1998). Elsewhere a MotherDuck source is a replica
-    landed through MotherDuck's Postgres endpoint (REQ-1998, MOTHERDUCK LANDS THROUGH ITS POSTGRES
-    ENDPOINT), whose reader this deployment does not have yet: the source names it."""
-    limit = motherduck_extension_limit()
-    if limit is None:
-        return None
-    return (
-        f"needs {PENDING_READERS['motherduck']} to land it, which this deployment does not have "
-        f"yet: {limit}"
     )
 
 
@@ -399,22 +403,26 @@ def bring_up_statements(extension: str, *, from_community: bool) -> list[str]:
     return [*install_statements(extension, from_community=from_community), load]
 
 
-def install_extension_set() -> frozenset[str] | None:
-    """REQ-1142 (Amended 2026-11-06, THE SERVER TIER STAGES AT START): INSTALL every extension the
-    DuckDB engine's connectors need, each on a connection of its own, and remember what installed:
-    the engine counts a connector as attachable only when its extensions did. An extension that
-    does not install (no build for the running DuckDB) is named in the log and left out, so the
-    source shows it when added. None where a staged directory holds the set: nothing to install."""
-    global _installed_at_start
-    if extension_directory() is not None:
-        return None
+def _wanted(connectors: list[Connector]) -> dict[str, bool]:
+    """Each extension ``connectors`` need -> whether it is installed from community."""
     wanted: dict[str, bool] = {}
-    for connector in duckdb_engine_connectors():
+    for connector in connectors:
         for need in _needs(connector):
             community = bool(connector.install_from_community) and need == connector.extension
             wanted[need] = wanted.get(need, False) or community
-    installed: set[str] = set()
+    return wanted
+
+
+def _install(wanted: dict[str, bool]) -> frozenset[str]:
+    """INSTALL each of ``wanted`` this process has not tried yet, each on a connection of its own,
+    and add what installed to what the server counts on. An extension that does not install (no
+    build for the running DuckDB) is named in the log and left out, and not tried again."""
+    global _installed_at_start, _tried
+    tried = _tried if _installed_at_start is not None else frozenset()
+    installed: set[str] = set(_installed_at_start or ())
     for extension, from_community in sorted(wanted.items()):
+        if extension in tried:
+            continue
         con = connect()
         try:
             for statement in install_statements(extension, from_community=from_community):
@@ -425,8 +433,32 @@ def install_extension_set() -> frozenset[str] | None:
             installed.add(extension)
         finally:
             con.close()
+    _tried = tried | wanted.keys()
     _installed_at_start = frozenset(installed)
     return _installed_at_start
+
+
+def install_extension_set() -> frozenset[str] | None:
+    """REQ-1142 (Amended 2026-11-06, THE SERVER TIER STAGES AT START): INSTALL every extension the
+    DuckDB engine's connectors need, each on a connection of its own, and remember what installed:
+    the engine counts a connector as attachable only when its extensions did. An extension that
+    does not install (no build for the running DuckDB) is named in the log and left out, so the
+    source shows it when added. None where a staged directory holds the set: nothing to install."""
+    if extension_directory() is not None:
+        return None
+    return _install(_wanted(duckdb_engine_connectors()))
+
+
+def attachable_extensions(connectors: list[Connector]) -> frozenset[str] | None:
+    """The extensions the engine built from ``connectors`` may count on (staged_extensions), where
+    a server that installed its set at start also installs, once, an extension a connector
+    declared since then needs (REQ-1177: a custom connector config/custom_connectors.yaml declares
+    is read again on every engine build). Without this the engine judged that connector against a
+    set no one had tried its extension for, and named the extension unavailable for this DuckDB."""
+    staged = staged_extensions()
+    if staged is None or extension_directory() is not None:
+        return staged
+    return _install(_wanted(connectors))
 
 
 def install_and_load(

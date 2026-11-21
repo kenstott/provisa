@@ -12,7 +12,7 @@
 
 # Requirements: REQ-041, REQ-402, REQ-403
 
-from provisa.core import model_change
+from provisa.core import model_change, model_uri
 from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import delete as _delete, insert, select, update
@@ -58,6 +58,24 @@ class RuleRightTaken(ValueError):
         self.rule_id = rule_id
 
 
+async def name_change(conn: "Connection", action: str, column: str, value: Any) -> None:
+    """Name a change to a row filter (REQ-1524). A rule is written in its target's file, so the
+    change is named at the target's model URI: the table, domain, command or tag the rule is on
+    (``column``, its rls_rules scope column, holding ``value``)."""
+    if column == "tag_id":
+        on = model_change.uri(model_uri.tag_uri, value)
+    elif column == "action_name":
+        on = model_change.uri(model_uri.command_uri, value)
+    elif column == "domain_id":
+        on = model_change.uri(model_uri.domain_uri, value)
+    else:
+        named = await table_repo.model_name(conn, value)
+        if named is None:  # no such table: no rule of it to change, and nothing commits
+            return
+        on = model_change.uri(model_uri.named_table_uri, named.domain_id, named.name)
+    model_change.name(action, on)
+
+
 def _rights(rule: RLSRule) -> str:
     return "".join(rule.rights)
 
@@ -82,9 +100,6 @@ async def upsert(  # REQ-041, REQ-402, REQ-686, REQ-1919, REQ-2188
     person adding a rule: it replaces nothing, so a rule holding exactly these rights is a right
     taken like any other. A config load does not say so, and finds its own rule again."""
     target = rule.table_id or rule.domain_id or rule.action_name or rule.tag_id
-    model_change.name(
-        "upsert", "row filter", f"{rule.role_id} {_rights(rule)} on {target}"
-    )  # REQ-1524
     filter_enc = _encrypt_filter(rule.filter)
     if rule.action_name:  # REQ-1679
         scope = {"action_name": rule.action_name}
@@ -100,6 +115,12 @@ async def upsert(  # REQ-041, REQ-402, REQ-686, REQ-1919, REQ-2188
             raise ValueError(f"Table not registered: {rule.table_id}")
         scope = {"table_id": tbl["id"]}
     ((scope_column, scope_value),) = scope.items()
+    await name_change(  # REQ-1524
+        conn,
+        f"upsert row filter {_rights(rule)} of role {rule.role_id} on",
+        scope_column,
+        scope_value,
+    )
     async with conn.transaction():
         await conn.advisory_xact_lock(_RULE_SAVE_LOCK)
         held = [
@@ -217,17 +238,19 @@ async def delete(  # REQ-041, REQ-402, REQ-2188
     rule_id: int | None = None,
 ) -> bool:
     """Delete the role's rule ``rule_id`` on the target, or with none every rule it has there."""
-    model_change.name(  # REQ-1524
-        "delete", "row filter", f"{role_id} on {table_id or domain_id or action_name or tag_id}"
-    )
     if tag_id:  # REQ-1384
         target = rls_rules.c.tag_id == tag_id
+        scope: tuple[str, Any] = ("tag_id", tag_id)
     elif action_name:  # REQ-1679
         target = rls_rules.c.action_name == action_name
+        scope = ("action_name", action_name)
     elif domain_id:
         target = rls_rules.c.domain_id == domain_id
+        scope = ("domain_id", domain_id)
     else:
         target = rls_rules.c.table_id == table_id
+        scope = ("table_id", table_id)
+    await name_change(conn, f"delete row filters of role {role_id} on", *scope)  # REQ-1524
     stmt = _delete(rls_rules).where(target, rls_rules.c.role_id == role_id)
     if rule_id is not None:
         stmt = stmt.where(rls_rules.c.id == rule_id)

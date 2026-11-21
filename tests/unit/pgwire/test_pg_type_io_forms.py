@@ -436,3 +436,55 @@ def test_a_canonical_geometric_literal_cannot_reach_a_refusal(value: str, refuse
     stem = value.split("::")[1].replace("polygon", "poly")
     sql = f'SELECT pg_catalog."{stem}_send"({value}) AS v'
     assert (NAME_OF_THE_REFUSAL in transpile(sql, "clickhouse")) is refuses
+
+
+@pytest.mark.parametrize(
+    ("value", "said"),
+    [
+        ("a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11", None),
+        ("x", 'invalid input syntax for type uuid: "x"'),
+        (
+            "a0eebc99-9c0b-4ef8-bb6d",
+            'invalid input syntax for type uuid: "a0eebc99-9c0b-4ef8-bb6d"',
+        ),
+    ],
+)
+def test_uuid_in_on_clickhouse_answers_or_raises_by_name_never_an_engine_error(
+    value: str, said: str | None
+):
+    """ClickHouse's NULL of a uuid is a Nullable(UUID): a CAST(NULL AS UUID) is its own error,
+    raised in place of the refusal a value it does not read gets."""
+    import chdb
+
+    written = transpile(f"SELECT pg_catalog.uuid_in('{value}'::cstring) AS v", "clickhouse")
+    if said is None:
+        assert chdb.query(written, "TabSeparated").bytes().decode().strip() == value
+        return
+    with pytest.raises(Exception) as raised:  # noqa: PT011 -- chdb raises its own
+        chdb.query(written, "TabSeparated")
+    refusal = from_engine(raised.value)
+    assert refusal is not None, str(raised.value)[:300]
+    assert str(refusal) in (said, f"uuid_in {NAME_OF_THE_REFUSAL}")
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "SELECT pg_catalog.box_send('(1,1),(0,0)'::box) AS v",
+        "SELECT pg_catalog.point_send('(1,2)'::point) AS v",
+        "SELECT pg_catalog.circle_send('<(0,0),1>'::circle) AS v",
+        "SELECT pg_catalog.line_send('{1,2,3}'::line) AS v",
+        "SELECT pg_catalog.lseg_send('[(0,0),(1,1)]'::lseg) AS v",
+        "SELECT pg_catalog.path_send('[(0,0),(1,1)]'::path) AS v",
+        "SELECT pg_catalog.poly_send('((0,0),(1,1),(2,0))'::polygon) AS v",
+    ],
+)
+def test_a_geometric_send_on_clickhouse_reads_its_numbers_from_a_text_that_is_not_nullable(
+    sql: str,
+):
+    """ClickHouse 24.3 holds no Nullable(Array): extractAll of a Nullable(String) is the engine's
+    error 'Nested type Array(String) cannot be inside Nullable type', not an answer. A NULL is
+    answered before the numbers are read."""
+    written = transpile(sql, "clickhouse")
+    assert "extractAll(" in written
+    assert re.search(r"extractAll\((?!ifNull\()", written) is None, written

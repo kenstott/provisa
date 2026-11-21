@@ -12,6 +12,7 @@
 
 from __future__ import annotations
 
+from provisa.core import org_files
 from provisa.security import sandbox_egress  # REQ-2006
 import json
 import pathlib
@@ -44,15 +45,20 @@ def load_spec(spec_path: str) -> dict:  # REQ-314, REQ-315
     brand = spec_brand(spec_path)
     if brand is not None:
         return brand_spec(brand)
-    p = pathlib.Path(spec_path)
-    if p.exists():
-        text = p.read_text()
-    elif spec_path.startswith("http://") or spec_path.startswith("https://"):
+    from provisa.core.source_uploads import on_own_disk, require_own_disk
+
+    # REQ-1997: what the location is decides how it is read, never whether a file of that name
+    # happens to exist; a held org's specification on the server's own disk is in its own folder.
+    if not on_own_disk(spec_path) and spec_path.startswith(("http://", "https://")):
         r = sandbox_egress.checked_get(spec_path, timeout=30)
         r.raise_for_status()
         text = r.text
     else:
-        raise FileNotFoundError(f"Spec not found: {spec_path!r}")
+        require_own_disk(spec_path)
+        p = pathlib.Path(org_files.resolve_path(spec_path))
+        if not p.exists():
+            raise FileNotFoundError(f"Spec not found: {spec_path!r}")
+        text = p.read_text()
 
     if spec_path.endswith(".yaml") or spec_path.endswith(".yml"):
         return yaml.safe_load(text)

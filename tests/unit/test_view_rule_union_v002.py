@@ -74,7 +74,7 @@ def _v002(view_sql, rule):
     gov.all_columns = {tid: [(c, "varchar") for c in cols] for tid, cols in _COLUMNS.items()}
     if rule:
         gov.rls_rules = {3: "reviewer = current_setting('provisa.role')"}
-    state = SimpleNamespace(mv_registry={}, tables=[], role_build_inputs={"draft_tables": []})
+    state = SimpleNamespace(mv_registry={}, tables=[], role_build_inputs={"withdrawn_tables": []})
     _governed, validated = semantic_statement(
         "SELECT employee_id FROM view_queue", {"view_queue": view_sql}, state, gov
     )

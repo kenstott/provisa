@@ -24,6 +24,12 @@ vi.mock("../../../hooks/useAdminQueries", async (importOriginal) => ({
 vi.mock("../../../hooks/useQueryPreview", () => ({
   useQueryPreview: () => ({ preview }),
 }));
+// REQ-1923 (amended 2026-11-20): the columns are read from the query's SELECT by the server.
+const fetchSparqlColumns = vi.hoisted(() => vi.fn());
+vi.mock("../../../api/wikidata", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../../api/wikidata")>()),
+  fetchSparqlColumns,
+}));
 
 const { RegisterTableForm } = await import("../RegisterTableForm");
 
@@ -31,6 +37,10 @@ const QUERY = "SELECT ?volunteer_id ?name WHERE { ?v <urn:id> ?volunteer_id ; <u
 
 beforeEach(() => {
   vi.clearAllMocks();
+  fetchSparqlColumns.mockResolvedValue([
+    { name: "volunteer_id", data_type: "text" },
+    { name: "name", data_type: "text" },
+  ]);
   preview.mockResolvedValue({
     rows: [{ volunteer_id: "V-01", name: "Grace" }],
     columns: [
@@ -41,7 +51,95 @@ beforeEach(() => {
   });
 });
 
+function renderForm(onContinue: (r: unknown) => void, setError = vi.fn()) {
+  return render(
+    <RegisterTableForm
+      sources={[{ id: "sparql-demo", type: "sparql", allowedDomains: [] } as never]}
+      domainHints={["shelter"]}
+      domainAccess={["*"]}
+      checkedDomains={new Set<string>()}
+      domainsEnabled
+      tables={[]}
+      roles={[{ id: "org_admin" } as never]}
+      suggestTableAlias={vi.fn().mockResolvedValue("")}
+      onContinue={onContinue}
+      onCancel={() => {}}
+      onProductsRegistered={vi.fn()}
+      onRegisteredMany={vi.fn()}
+      setError={setError}
+    />,
+  );
+}
+
+async function fillQuery(query: string) {
+  const user = userEvent.setup();
+  await user.selectOptions(screen.getByTestId("register-table-source-select"), "sparql-demo");
+  await user.selectOptions(screen.getByTestId("register-table-domain-select"), "shelter");
+  fireEvent.change(await screen.findByTestId("register-table-sparql-table-name"), {
+    target: { value: "volunteer" },
+  });
+  fireEvent.change(screen.getByTestId("register-table-sparql-query"), {
+    target: { value: query },
+  });
+  return user;
+}
+
 describe("RegisterTableForm on a sparql source (REQ-1683)", () => {
+  it("registers without a preview, its columns read from the SELECT, every binding text", async () => {
+    const onContinue = vi.fn();
+    renderForm(onContinue);
+    await fillQuery(QUERY);
+    await waitFor(() => expect(fetchSparqlColumns).toHaveBeenCalledWith(QUERY));
+    fireEvent.click(await screen.findByTestId("register-table-submit"));
+    await waitFor(() => expect(onContinue).toHaveBeenCalledTimes(1));
+    expect(preview).not.toHaveBeenCalled();
+    const input = (onContinue.mock.calls[0][0] as { input: Record<string, unknown> }).input;
+    expect(input).toMatchObject({ tableName: "volunteer", queryTemplate: QUERY });
+    expect((input.columns as { name: string; dataType: string }[]).map((c) => c.name)).toEqual([
+      "volunteer_id",
+      "name",
+    ]);
+  });
+
+  it("says by name that a preview answered no rows", async () => {
+    preview.mockResolvedValue({ rows: [], columns: [], error: null });
+    renderForm(vi.fn());
+    const user = await fillQuery(QUERY);
+    await user.click(screen.getByTestId("register-table-sparql-preview"));
+    expect(await screen.findByTestId("register-table-sparql-preview-problem")).toHaveTextContent(
+      "The preview answered no rows.",
+    );
+  });
+
+  it("shows why a preview failed", async () => {
+    preview.mockResolvedValue({
+      rows: [],
+      columns: [],
+      error: "timed out waiting for a response from POST https://query.wikidata.org/sparql",
+    });
+    renderForm(vi.fn());
+    const user = await fillQuery(QUERY);
+    await user.click(screen.getByTestId("register-table-sparql-preview"));
+    expect(await screen.findByTestId("register-table-sparql-preview-problem")).toHaveTextContent(
+      "The preview failed: timed out waiting for a response from POST",
+    );
+  });
+
+  it("names SPARQL, not Cypher, when the query is missing", async () => {
+    const setError = vi.fn();
+    renderForm(vi.fn(), setError);
+    const user = userEvent.setup();
+    await user.selectOptions(screen.getByTestId("register-table-source-select"), "sparql-demo");
+    await user.selectOptions(screen.getByTestId("register-table-domain-select"), "shelter");
+    fireEvent.change(await screen.findByTestId("register-table-sparql-table-name"), {
+      target: { value: "volunteer" },
+    });
+    fireEvent.click(screen.getByTestId("register-table-submit"));
+    expect(setError).toHaveBeenLastCalledWith(
+      "Enter the SPARQL query that produces the table's rows.",
+    );
+  });
+
   it("previews the SELECT and registers its variables as text columns with the query", async () => {
     const onContinue = vi.fn();
     render(
@@ -53,11 +151,11 @@ describe("RegisterTableForm on a sparql source (REQ-1683)", () => {
         domainsEnabled
         tables={[]}
         roles={[{ id: "org_admin" } as never]}
-        getAvailableColumnsMetadata={vi.fn().mockResolvedValue([])}
         suggestTableAlias={vi.fn().mockResolvedValue("")}
         onContinue={onContinue}
         onCancel={() => {}}
         onProductsRegistered={vi.fn()}
+        onRegisteredMany={vi.fn()}
         setError={vi.fn()}
       />,
     );

@@ -576,9 +576,9 @@ Each step has:
 | `mcp` | a natural-language question | MCP explorer (`/explore`): its agent answers live, as the header's role, its tool calls shown as they run |
 | `mcp_explain` | `true` | MCP explorer: the explain of the agent's last `run_sql` call, the statement it sent beside the statement that ran for the role |
 | `mcp_connect` | `true` | MCP explorer: the Connect Claude Desktop panel, opened |
-| `find_terms` | a document's address, one the demo's `setup.yaml` scans, or `{url, domains}` with the demo's domains its scan is curated in | Glossary (`/admin/ontology`): Find terms opened, the address typed, a scan started and cancelled; the stopped scan explained |
-| `scan` | a document's address, one the demo's `setup.yaml` scans | Glossary: the scan of it done ahead, opened from Find terms' list, its candidate terms shown |
-| `library` | a document's address, one the demo's `setup.yaml` scans | Library (`/library`): the document's row |
+| `find_terms` | a document's address, one the demo's `setup.yaml` scans, or `{url, domains}` with the demo's domains its scan is curated in | Ontology (`/context/ontology`): Find terms opened, the address typed, a scan started and cancelled; the stopped scan explained |
+| `scan` | a document's address, one the demo's `setup.yaml` scans | Ontology: the scan of it done ahead, opened from Find terms' list, its candidate terms shown |
+| `library` | a document's address, one the demo's `setup.yaml` scans | Documents (`/context/documents`): the document's row |
 
 A `polly` step is answered once when the demo's bundle is built (Polly asked through OpenRouter on
 the sandbox's model, `OPENROUTER_API_KEY` given to the build; the answers are stored beside the
@@ -610,8 +610,8 @@ Find terms proposes none, and a scan in none is refused in a demo in domains), p
 cancels the scan at once,
 under the step's `acting` caption (its words carry one in every language). A `scan` step then opens
 the scan the bundle build made of the same document. Each step closes Find terms on leaving, so the
-next opens it afresh. The tour test refuses both off `/admin/ontology`, a `library` step off
-`/library`, and all three on a document the demo's `setup.yaml` does not scan.
+next opens it afresh. The tour test refuses both off `/context/ontology`, a `library` step off
+`/context/documents`, and all three on a document the demo's `setup.yaml` does not scan.
 Starting a scan needs an AI model for Find terms in the visitor's org, as the `mcp` step does.
 
 An `as_recorded_from` step is for a time Provisa stamps, which the tour cannot know when it is

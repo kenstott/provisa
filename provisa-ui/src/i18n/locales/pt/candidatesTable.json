@@ -1,6 +1,6 @@
 {
   "candidatesTable": {
-    "heading": "Relacionamentos sugeridos por IA",
+    "heading": "Relacionamentos sugeridos",
     "colName": "Nome",
     "colSource": "Origem",
     "colTarget": "Destino",
@@ -10,6 +10,25 @@
     "accept": "Aceitar",
     "reject": "Rejeitar",
     "acceptAria": "Aceitar relacionamento sugerido {{name}}",
-    "rejectAria": "Rejeitar relacionamento sugerido {{name}}"
+    "rejectAria": "Rejeitar relacionamento sugerido {{name}}",
+    "acceptAll": "Aceitar todas",
+    "rejectAll": "Rejeitar todas",
+    "acceptAllTitle": "Aceitar todas as sugestões",
+    "rejectAllTitle": "Rejeitar todas as sugestões",
+    "acceptAllConsequence": "Aceitar a {{count}} sugestão listada? Ela se torna um relacionamento registrado.",
+    "acceptAllConsequence_other": "Aceitar todas as {{count}} sugestões listadas? Cada uma se torna um relacionamento registrado.",
+    "rejectAllConsequence": "Rejeitar a {{count}} sugestão listada? Ela não será sugerida novamente até que as rejeições sejam limpas.",
+    "rejectAllConsequence_other": "Rejeitar todas as {{count}} sugestões listadas? Elas não serão sugeridas novamente até que as rejeições sejam limpas.",
+    "acceptedAll": "{{count}} sugestão aceita.",
+    "acceptedAll_other": "{{count}} sugestões aceitas.",
+    "rejectedAll": "{{count}} sugestão rejeitada.",
+    "rejectedAll_other": "{{count}} sugestões rejeitadas.",
+    "acceptFailed": "{{count}} sugestão não pôde ser aceita:",
+    "acceptFailed_other": "{{count}} sugestões não puderam ser aceitas:",
+    "rejectFailed": "{{count}} sugestão não pôde ser rejeitada:",
+    "rejectFailed_other": "{{count}} sugestões não puderam ser rejeitadas:",
+    "failedOne": "{{name}}: {{error}}",
+    "reducedInformation": "Informação reduzida: nenhum valor foi comparado",
+    "reducedInformationHelp": "Uma destas tabelas exige um parâmetro e, por isso, nunca é lida. Esta sugestão baseia-se apenas em nomes, descrições, tipos e parâmetros obrigatórios."
   }
 }

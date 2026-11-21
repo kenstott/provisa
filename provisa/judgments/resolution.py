@@ -28,6 +28,7 @@ from typing import Any
 
 from sqlalchemy import and_, select, update
 
+from provisa.core import model_change, model_uri
 from provisa.judgments import findings as fq
 
 REAFFIRMED = "reaffirmed"
@@ -79,6 +80,60 @@ async def _reg(conn: Any, table_id: int) -> dict:
     return dict(row._mapping)
 
 
+async def _name_on_table(
+    conn: Any,
+    action: str,
+    table_id: int,
+    column: str | None,
+    of: model_change.ObjectUri | None = None,
+) -> None:
+    """Name a reaffirmation by the model URI of the table, or its column, it is written on
+    (REQ-1524), after ``of`` -- what on the table was reaffirmed, when that has a URI of its own."""
+    from provisa.core.repositories.table import model_name
+    from provisa.core.schema_org import table_columns as tc
+
+    named = await model_name(conn, table_id)
+    if named is None:
+        raise ResolveRefused("the table of this finding is no longer registered")
+    if column is None:
+        on = model_change.uri(model_uri.named_table_uri, named.domain_id, named.name)
+    else:
+        alias = (
+            await conn.execute_core(
+                select(tc.c.alias).where(tc.c.table_id == table_id, tc.c.column_name == column)
+            )
+        ).scalar_one_or_none()
+        on = model_change.uri(
+            model_uri.named_column_uri, named.domain_id, named.name, column, alias
+        )
+    if of is None:
+        model_change.name(action, on)
+    else:
+        model_change.name(action, of, "on", on)
+
+
+async def _name_rule(conn: Any, action: str, rule_id: int) -> None:
+    """Name a reaffirmed row filter at its target's model URI (REQ-1524)."""
+    from provisa.core.repositories.rls import name_change
+    from provisa.core.schema_org import rls_rules
+
+    rule = (
+        await conn.execute_core(
+            select(
+                rls_rules.c.table_id,
+                rls_rules.c.domain_id,
+                rls_rules.c.action_name,
+                rls_rules.c.tag_id,
+            ).where(rls_rules.c.id == rule_id)
+        )
+    ).one()
+    for column in ("tag_id", "action_name", "domain_id", "table_id"):
+        if rule._mapping[column] is not None:
+            await name_change(conn, action, column, rule._mapping[column])
+            return
+    raise ResolveRefused("this row filter names no target")
+
+
 async def reaffirm(conn: Any, finding: dict, *, by: str | None, at: dt.datetime) -> int:
     """Re-record the finding's judgment with today's decider, time and evidence, and resolve every
     open finding on it. Returns how many findings were resolved."""
@@ -90,12 +145,10 @@ async def reaffirm(conn: Any, finding: dict, *, by: str | None, at: dt.datetime)
     )
     from provisa.judgments.evidence import evidence
 
-    from provisa.core import model_change
-
     kind, key = finding["object_type"], finding["object_key"]
     if finding["judgment"] == fq.POSTURE:
         raise ResolveRefused("a posture finding is dismissed with a note, not reaffirmed")
-    model_change.name("reaffirm", finding["judgment"], key)
+    action = f"reaffirm {finding['judgment']} judgment"
     if finding["category"] == fq.UNDECIDED:
         raise ResolveRefused("an undecided column is decided in its editor, not reaffirmed")
     if kind == "tag_assignment":
@@ -106,6 +159,16 @@ async def reaffirm(conn: Any, finding: dict, *, by: str | None, at: dt.datetime)
         if row is None:
             raise ResolveRefused(f"tag {base} is no longer on {object_key}")
         a = row._mapping
+        if a["table_id"] is None:
+            model_change.name(f"{action} of", model_change.uri(model_uri.tag_uri, base))
+        else:
+            await _name_on_table(
+                conn,
+                f"{action} of",
+                a["table_id"],
+                a["column_name"] if a["object_type"] == "column" else None,
+                model_change.uri(model_uri.tag_uri, base),
+            )
         ev = (
             {}
             if a["table_id"] is None
@@ -128,6 +191,7 @@ async def reaffirm(conn: Any, finding: dict, *, by: str | None, at: dt.datetime)
         row = (await conn.execute_core(select(tc.c.fake_why, tc.c.masks).where(where))).fetchone()
         if row is None:
             raise ResolveRefused(f"column {column} of table {tid} is no longer registered")
+        await _name_on_table(conn, f"{action} on", tid, column)
         ev = await evidence(conn, None, await _reg(conn, tid), column)
         if kind == "column":
             values: dict[str, Any] = {"fake_why": _restamped(row[0], ev, by, at)}
@@ -148,6 +212,10 @@ async def reaffirm(conn: Any, finding: dict, *, by: str | None, at: dt.datetime)
         ).fetchone()
         if row is None:
             raise ResolveRefused(f"{kind.replace('_', ' ')} {key} no longer exists")
+        if kind == "write_grant":
+            await _name_on_table(conn, f"{action} of a write grant on", row[0], None)
+        else:
+            await _name_rule(conn, f"{action} of a row filter on", int(key))
         ev = {} if row[0] is None else await evidence(conn, None, await _reg(conn, row[0]))
         await conn.execute_core(
             update(table).where(table.c.id == int(key)).values(why=_restamped(row[1], ev, by, at))

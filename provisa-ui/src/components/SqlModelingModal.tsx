@@ -33,6 +33,7 @@ import {
   useComputedColorScheme,
 } from "@mantine/core";
 import { runSql, nlToSql } from "../api/admin";
+import { useViewDomains } from "../lib/viewDomains";
 import type { ResultRedirect } from "../types/resultRedirect";
 import { useRoles, useDomains } from "../hooks/useAdminQueries";
 import { useAuth } from "../context/AuthContext";
@@ -55,6 +56,8 @@ import { CandidatesPanel } from "./sql-modeling/CandidatesPanel";
 import { ErrorsPanel } from "./sql-modeling/ErrorsPanel";
 import { HistoryPanel } from "./sql-modeling/HistoryPanel";
 import { Tip } from "./Tip";
+import { CanvasControls, CanvasButton, CONTROL_ICON } from "./provisa-graph/CanvasControls";
+import "./editor-hover-controls.css";
 
 // ── SqlModelingModal ─────────────────────────────────────────────────────────
 
@@ -102,6 +105,8 @@ export function SqlModelingModal({ tables, existingRels, onClose, onPromote }: P
   const [nlLoading, setNlLoading] = useState(false);
   const [nlError, setNlError] = useState("");
   const [nlStrict, setNlStrict] = useState(true);
+  // REQ-2253: NL-to-SQL works only within the navbar's selected domains.
+  const viewDomains = useViewDomains();
   const [nlCypher, setNlCypher] = useState("");
   const [page, setPage] = useState(0);
   const resizingRef = useRef<{ col: string; startX: number; startW: number } | null>(null);
@@ -325,7 +330,7 @@ export function SqlModelingModal({ tables, existingRels, onClose, onPromote }: P
     setNlError("");
     setNlCypher("");
     try {
-      const result = await nlToSql(nlText.trim(), role, nlStrict);
+      const result = await nlToSql(nlText.trim(), role, nlStrict, viewDomains);
       if (result.error) {
         setNlError(result.error);
       } else {
@@ -686,14 +691,7 @@ export function SqlModelingModal({ tables, existingRels, onClose, onPromote }: P
                     borderBottom: "1px solid var(--border)",
                     position: "relative",
                   }}
-                  onMouseEnter={(e) => {
-                    const btn = e.currentTarget.querySelector<HTMLElement>(".copy-sql-btn");
-                    if (btn) btn.style.opacity = "1";
-                  }}
-                  onMouseLeave={(e) => {
-                    const btn = e.currentTarget.querySelector<HTMLElement>(".copy-sql-btn");
-                    if (btn) btn.style.opacity = "0";
-                  }}
+                  className="editor-hover-host"
                 >
                   <CodeMirror
                     value={sqlText}
@@ -706,36 +704,15 @@ export function SqlModelingModal({ tables, existingRels, onClose, onPromote }: P
                     }}
                     style={{ fontSize: "0.8rem" }}
                   />
-                  <Tip text={t("sqlModelingModal.copySql")} named>
-                    <Button
-                      className="copy-sql-btn"
+                  <CanvasControls testId="sql-modeling">
+                    <CanvasButton
+                      label={t("sqlModelingModal.copySql")}
+                      icon={copied ? <Check size={CONTROL_ICON} /> : <Copy size={CONTROL_ICON} />}
+                      pressed={copied}
                       onClick={handleCopy}
-                      aria-label={t("sqlModelingModal.copySql")}
-                      variant="filled"
-                      color="gray"
-                      size="compact-xs"
-                      leftSection={
-                        copied ? (
-                          <Check size={11} style={{ color: "var(--approve)" }} />
-                        ) : (
-                          <Copy size={11} />
-                        )
-                      }
-                      style={{
-                        position: "absolute",
-                        top: "0.4rem",
-                        insetInlineEnd: "0.4rem",
-                        opacity: 0,
-                        transition: "opacity 0.15s",
-                        background: "rgba(30,30,40,0.85)",
-                        border: "1px solid var(--border)",
-                        fontSize: "0.72rem",
-                      }}
-                      data-testid="sql-modeling-copy-sql"
-                    >
-                      {copied ? t("sqlModelingModal.copied") : t("sqlModelingModal.copy")}
-                    </Button>
-                  </Tip>
+                      testId="sql-modeling-copy-sql"
+                    />
+                  </CanvasControls>
                 </div>
 
                 {/* Toolbar */}

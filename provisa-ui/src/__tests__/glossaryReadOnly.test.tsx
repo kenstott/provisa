@@ -57,6 +57,7 @@ const REVENUE: GlossaryTermSummary = {
   id: 1,
   name: "Revenue",
   definition: "Money in.",
+  calculation_method: null,
   is_abstract: false,
   deprecated: false,
   ref_count: 1,
@@ -103,11 +104,12 @@ const REVENUE_DETAIL: GlossaryTermDetail = {
       domain_id: "sales",
     },
   ],
-  edges_out: [{ term_id: 2, rel_type: "RELATED_TO", name: "Churn" }],
-  edges_in: [{ term_id: 2, rel_type: "PART_OF", name: "Churn" }],
+  edges_out: [{ term_id: 2, rel_type: "RELATED_TO", name: "Churn", domains: [] }],
+  edges_in: [{ term_id: 2, rel_type: "PART_OF", name: "Churn", domains: [] }],
   experts: [{ user_id: "u1", kind: "expert" }],
   tags: [],
   pending_on: [],
+  iri: null,
 };
 
 /** Mount the tab and open Revenue. */

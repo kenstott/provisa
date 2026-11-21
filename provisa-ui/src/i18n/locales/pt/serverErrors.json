@@ -14,10 +14,25 @@
       "webhook_not_found": "Webhook '{{name}}' não encontrado",
       "written_table_not_registered": "'{{table}}' não é uma tabela registrada da fonte '{{source_id}}'",
       "function_exists": "A função '{{name}}' já existe",
-      "webhook_exists": "O webhook '{{name}}' já existe"
+      "webhook_exists": "O webhook '{{name}}' já existe",
+      "mask_constant_not_text": "Uma máscara constante em uma coluna que não é de texto é lida como NULL; só é possível salvar NULL: {{column}} ({{type}})"
     },
     "ai_models": {
-      "vector_model_fields_required": "cada entrada de vector_models requer id, provider e dimensions"
+      "vector_model_fields_required": "cada entrada de vector_models requer id, provider e dimensions",
+      "embedding_library_missing": "O modelo de embeddings {{model}} usa o provedor {{provider}}, que precisa do extra {{extra}} (o módulo {{module}} não está instalado): pip install 'provisa[{{extra}}]'."
+    },
+    "ai": {
+      "endpoint_address_from_server": "O endpoint de IA {{vendor}} obtém seu endereço do ambiente do servidor, que uma organização neste servidor não usa. Atribua a ele um endereço próprio em Administração, Modelos de IA.",
+      "endpoint_key_from_server": "O endpoint de IA {{vendor}} obtém sua chave do ambiente do servidor, que uma organização neste servidor não usa. Atribua a ele uma chave própria em Administração, Modelos de IA.",
+      "endpoint_key_unset": "O endpoint de IA {{vendor}} não tem chave: {{field}} não está definido.",
+      "key_required": "{{vendor}} não tem chave. Defina uma em Administração, Modelos de IA.",
+      "local_server_from_environment": "{{vendor}} é acessado no endereço do próprio servidor, que uma organização neste servidor não usa. Declare um endpoint de IA no seu próprio endereço em Administração, Modelos de IA.",
+      "server_environment_sets": "{{vendor}} não pode ser chamado aqui: o ambiente do servidor define {{variable}}, que o cliente dele enviaria para todas as organizações.",
+      "vector_model_address_from_server": "O modelo de embedding {{vendor}} obtém seu endereço do ambiente do servidor, que uma organização neste servidor não usa. Atribua a ele um endereço próprio em Administração, Modelos de IA.",
+      "vector_model_key_from_server": "O modelo de embedding {{vendor}} obtém sua chave do ambiente do servidor, que uma organização neste servidor não usa. Atribua a ele uma chave própria em Administração, Modelos de IA.",
+      "vector_model_key_unset": "O modelo de embedding {{vendor}} não tem chave: {{field}} não está definido.",
+      "vector_model_local_server": "O modelo de embedding {{vendor}} é acessado no endereço do próprio servidor, que uma organização neste servidor não usa. Atribua a ele um endereço próprio em Administração, Modelos de IA.",
+      "vendor_uses_server_credentials": "{{vendor}} é acessado com as credenciais do próprio servidor, que uma organização neste servidor não usa. Escolha um fornecedor que aceite uma chave, ou um endpoint de IA, em Administração, Modelos de IA."
     },
     "api": {
       "answer_cut": "A resposta para {{table}} foi cortada em max_pages={{max_pages}} ({{rows}} linhas): a API tem mais. Aumente max_pages ou o tamanho de página do endpoint para ler tudo.",
@@ -41,17 +56,26 @@
       "role_not_assigned": "A função '{{role_id}}' não está atribuída a este usuário",
       "simple_provider_not_configured": "Provedor de autenticação simples não configurado",
       "username_exists": "Nome de usuário já existe",
-      "not_permitted": "Não permitido"
+      "not_permitted": "Não permitido",
+      "token_scopes_required": "Escolha pelo menos uma função para o token.",
+      "token_scope_not_held": "Um token só pode usar funções que você tem.",
+      "no_role_held": "'{{user}}' não tem nenhum papel nesta organização"
     },
     "authz": {
       "mutation_not_permitted": "Mutação '{{field_name}}' não permitida: {{reason}}"
     },
     "billing": {
-      "invalid_signature": "Assinatura Lemon Squeezy inválida",
-      "tenant_no_ls_customer": "O locatário não tem cliente Lemon Squeezy",
-      "tenant_not_found": "Locatário não encontrado",
-      "webhook_missing_customer_id": "Webhook sem id de cliente",
-      "webhook_missing_tenant_linkage": "Webhook sem vínculo com locatário"
+      "checkout_not_complete": "Este pagamento não foi concluído, então ainda não há assinatura para vincular.",
+      "invalid_signature": "Assinatura de webhook inválida",
+      "no_trial": "Esta organização não tem teste",
+      "org_no_customer": "Esta organização ainda não tem conta de faturamento.",
+      "org_not_found": "Organização não encontrada",
+      "reconcile_not_creator": "Somente o criador da organização pode fazer isso",
+      "session_org_mismatch": "Este pagamento não foi aberto para esta organização.",
+      "subscription_items_unrecognized": "Esta assinatura não contém ao mesmo tempo um preço de plano e um preço de transferência de dados vendidos por esta implantação, então não pode ser alterada.",
+      "trial_already_started": "Esta organização já iniciou seu teste. O teste é oferecido uma vez por organização.",
+      "webhook_missing_org_linkage": "A assinatura do webhook não indica nenhuma organização",
+      "webhook_missing_subscription": "O webhook não indica nenhuma assinatura"
     },
     "control_plane": {
       "multitenancy_disabled": "a multilocação não está habilitada"
@@ -115,7 +139,6 @@
       "unknown_command": "Comando desconhecido '{{name}}'",
       "write_not_admitted": "O papel '{{role}}' não pode fazer esta escrita: uma escrita exige o direito de escrita, acesso de escrita a cada coluna escrita e linhas que o filtro de linhas do papel admita.",
       "write_not_supported": "'{{table}}' não aceita {{operation}}: sua origem não consegue executá-lo",
-      "table_is_draft": "{{table}} é um rascunho: fora de serviço até que os responsáveis pelo seu domínio a liberem",
       "source_unbound": "A origem '{{source}}' não tem conexão no ambiente '{{env}}': vincule-a ou copie-a novamente do ambiente pai",
       "system_catalog_unavailable": "O catálogo '{{catalog}}' do mecanismo está sendo registrado. Tente novamente em instantes.",
       "domain_not_accessible": "A função '{{role_id}}' não tem acesso ao domínio '{{domain}}'",
@@ -125,7 +148,7 @@
       "viewer_column_unknown": "'{{column}}' não é uma coluna da tabela '{{table}}'",
       "viewer_filter_unknown": "'{{operator}}' não é um filtro da coluna '{{column}}'",
       "viewer_value_invalid": "O filtro em '{{column}}' não pode usar o valor '{{value}}'",
-      "replica_building": "A cópia de {{replica}} ainda está sendo criada. A criação continua; abra a pré-visualização novamente quando terminar.",
+      "replica_building": "A réplica de {{replica}} ainda está sendo construída. A construção continua; abra a pré-visualização novamente quando ela terminar.",
       "address_invalid": "O endereço não pode ser resolvido: {{reason}}",
       "address_not_found": "Nada a resolver: {{reason}}",
       "mixed_resolve_and_other_fields": "resolve não pode ser combinado com outros campos raiz na mesma operação",
@@ -137,28 +160,61 @@
       "graphql_request_not_object": "Uma requisição GraphQL é um objeto JSON com uma consulta.",
       "graphql_parameter_type": "O parâmetro {{parameter}} da requisição GraphQL deve ser {{expected}}.",
       "graphql_mutation_over_get": "Uma mutação é enviada com POST, nunca com GET.",
-      "listed_only": "A função {{role}} só pode listar {{table}}: os metadados podem ser lidos, os dados não"
+      "listed_only": "A função {{role}} só pode listar {{table}}: os metadados podem ser lidos, os dados não",
+      "parameter_by_equality_only": "O parâmetro {{parameter}} recebe o valor por igualdade: {{parameter}} = um valor, {{parameter}} IN (valores) ou um join em {{parameter}}. {{form}} não lhe dá nenhum valor.",
+      "parameter_unbound_on_branch": "O parâmetro {{parameter}} recebe um valor num ramo de um OR e nenhum noutro. Dê um valor a {{parameter}} em todos os ramos.",
+      "parameter_conflict": "O parâmetro {{parameter}} recebe dois valores diferentes ao mesmo tempo ({{first}} e {{second}}). Dê-lhe um único valor ou liste os valores com IN ou OR.",
+      "parameter_calls_over_cap": "A instrução precisa de {{calls}} chamadas a {{table}}, uma por cada valor dado aos seus parâmetros, e são feitas no máximo {{cap}} por instrução (definição {{setting}}). Indique menos valores.",
+      "parameter_not_written": "O relacionamento {{relationship}} faz junção pelo parâmetro {{parameter}}, que uma instrução vincula a um valor e nunca grava. Uma gravação não cria {{relationship}}.",
+      "table_is_withdrawn": "{{table}} está retirada: fora de produção até ser reposta",
+      "view_awaits_rule_rebuild": "A view {{view}} está sendo reconstruída por uma alteração nas regras de linha de suas entradas. Esta função poderá lê-la quando essa construção for publicada.",
+      "parameter_required": "A tabela '{{table}}' requer o(s) parâmetro(s) {{parameters}}: dê um valor a cada um (uma condição WHERE sobre a sua coluna em SQL, um argumento em GraphQL).",
+      "parameter_wrong_type": "O parâmetro {{parameter}} recebe um valor do tipo {{type}}; '{{value}}' não é um.",
+      "statement_failed": "A instrução falhou dentro do servidor ({{kind}}): {{error}}"
     },
     "discovery": {
       "adapter_missing_discover_schema": "O adaptador para '{{source_type}}' não implementa discover_schema",
+      "answer_unreadable": "A resposta do modelo não continha uma lista legível.",
       "cassandra_discovery_unsupported": "A descoberta de esquema do Cassandra requer uma sessão CQL ativa, que não está disponível. Defina as colunas manualmente para esta fonte.",
       "database_not_connected": "Banco de dados não conectado",
+      "decided_both_ways": "Uma proposta é aceita ou não é recomendada de novo, não as duas coisas.",
       "domain_id_required": "domain_id obrigatório para escopo de domínio",
       "elasticsearch_index_hint_required": "A descoberta do Elasticsearch requer uma dica de 'index'.",
       "elasticsearch_mapping_failed": "Falha ao ler o mapeamento do Elasticsearch para o índice '{{index}}': {{error}}",
       "endpoint_already_registered": "Endpoint já registrado: {{error}}",
+      "model_has_no_room": "O modelo {{model}} não comporta uma solicitação: {{reason}}",
+      "model_incomplete": "Um modelo escolhido indica tanto o fornecedor quanto o modelo.",
       "no_adapter_for_source_type": "Nenhum adaptador registrado para o tipo de fonte '{{source_type}}'",
       "no_live_connection": "Nenhuma conexão ativa para a fonte '{{source_id}}'. A descoberta de esquema do MongoDB requer uma conexão ativa no pool da fonte. Verifique se a fonte está conectada e se o servidor está acessível.",
+      "run_ended": "A execução de descoberta {{run_id}} já terminou: {{status}}",
+      "run_failed": "A execução de descoberta {{run_id}} falhou: {{error}}",
+      "run_not_found": "Execução de descoberta {{run_id}} não encontrada",
+      "run_still_going": "A execução de descoberta {{run_id}} ainda está em andamento. Decida sobre as propostas quando ela terminar.",
       "schema_discovery_unsupported": "O tipo de fonte '{{source_type}}' não oferece suporte à descoberta de esquema. Defina as colunas manualmente.",
+      "semantics_unavailable": "A semântica não pode ser executada: {{model}}, o modelo atribuído à inferência de relacionamentos, não tem chave. Defina uma em Administração, Modelos de IA.",
+      "source_domains_empty": "Os domínios de origem escolhidos não contêm nenhuma tabela que a descoberta lê.",
       "source_not_found": "Fonte '{{source_id}}' não encontrada",
+      "source_tables_not_read": "Nenhuma das tabelas de origem escolhidas ({{count}}) é lida: a descoberta deixa de fora as tabelas de um domínio do sistema e as fora de serviço.",
+      "source_tables_outside_domains": "As tabelas de origem escolhidas estão fora dos domínios selecionados no filtro de domínios: {{names}}.",
       "table_id_required": "table_id obrigatório para escopo de tabela",
-      "unknown_source_type": "Tipo de fonte desconhecido: {{type}}"
+      "table_not_found": "A tabela {{table_id}} não está registrada.",
+      "target_domains_empty": "Os domínios de destino escolhidos não contêm nenhuma tabela que a descoberta lê.",
+      "target_tables_not_read": "Nenhuma das tabelas de destino escolhidas ({{count}}) é lida: a descoberta deixa de fora as tabelas de um domínio do sistema e as fora de serviço.",
+      "target_tables_outside_domains": "As tabelas de destino escolhidas estão fora dos domínios selecionados no filtro de domínios: {{names}}.",
+      "unknown_source_type": "Tipo de fonte desconhecido: {{type}}",
+      "vendor_unknown": "{{vendor}} não lista modelos aqui; digite o nome do modelo."
+    },
+    "llm": {
+      "request_failed": "A solicitação ao modelo falhou: {{reason}}",
+      "no_answer_in_time": "O modelo não respondeu em {{seconds}} segundos.",
+      "empty_answer": "O modelo não retornou nenhum texto."
     },
     "environments": {
-      "in_use": "{{env}} ainda é referenciado por {{count}} item(ns). Remova ou altere cada um e exclua novamente."
+      "in_use": "{{env}} ainda é referenciado por {{count}} item(ns). Remova ou altere cada um e exclua novamente.",
+      "owner_not_member": "{{user}} criou o ambiente {{env}}, mas não é membro de {{org}}; atuar nele como proprietário exige ser membro."
     },
     "front_door": {
-      "coordinator_waking": "O ambiente está a iniciar. Estará pronto dentro de cerca de cinco minutos.",
+      "coordinator_waking": "O ambiente está iniciando. Ficará pronto em cerca de cinco minutos.",
       "coordinator_updating": "O ambiente está a ser atualizado. Estará disponível novamente em breve."
     },
     "functions": {
@@ -186,7 +242,11 @@
       "unknown_command": "Comando desconhecido: '{{name}}'",
       "unknown_impl_kind": "impl_kind de função desconhecido: '{{impl_kind}}'",
       "written_table_missing": "o comando '{{name}}' escreve '{{table}}', que não está registrada",
-      "host_code_refused": "O comando '{{name}}' é do tipo {{impl_kind}}, que executa código no host do servidor. O código do host está desativado nesta implantação; use um resolvedor de código em vez disso."
+      "host_code_refused": "O comando '{{name}}' é do tipo {{impl_kind}}, que executa código no host do servidor. O código do host está desativado nesta implantação; use um resolvedor de código em vez disso.",
+      "no_plain_list": "Nenhuma operação da fonte '{{source_id}}' sem um parâmetro obrigatório devolve as linhas de '{{operation}}', por isso a tabela continua ativada",
+      "plain_list_unregistered": "'{{operation}}' da fonte '{{source_id}}' devolve as linhas da sua lista {{lists}}; registre primeiro essa lista como tabela",
+      "table_has_dependents": "A tabela '{{table}}' da função '{{name}}' ainda é referenciada por outros objetos; remova primeiro essas referências",
+      "statement_failed": "O comando '{{name}}' falhou: {{error}}"
     },
     "graphql_remote": {
       "introspection_failed": "Falha na introspecção: {{error}}",
@@ -233,22 +293,22 @@
       "auth_required_create": "Autenticação necessária para criar uma organização",
       "auth_required_leave": "Autenticação necessária para sair de uma organização",
       "auto_join_breadth_unacknowledged": "Revise esta regra de entrada automática com cuidado, ou você poderá admitir pessoas de fora da sua organização: além de {{domains}}, ela também aceita endereços como {{admits}}. Qualquer pessoa em um domínio que você não controla poderia então entrar na sua organização automaticamente. Confirme que você aceita esse risco para salvá-la.",
-      "auto_join_public_domain": "auto_join exige uma regra de e-mail limitada a um domínio que você controla — esta corresponde a {{domain}}.",
+      "auto_join_public_domain": "auto_join precisa de uma regra de e-mail limitada a um domínio que você controla. Esta corresponde a {{domain}}.",
       "auto_join_requires_role": "auto_join requer auto_join_role",
-      "auto_join_rule_taken": "Outra organização já admite automaticamente todos que correspondem a esta regra. Duas organizações não podem reivindicar os mesmos endereços — peça um convite a elas ou restrinja sua regra a um domínio que somente sua organização usa.",
+      "auto_join_rule_taken": "Outra organização já faz entrar automaticamente todos que correspondem a esta regra. Duas organizações não podem reivindicar os mesmos endereços. Peça um convite a ela ou restrinja sua regra a um domínio que só sua organização usa.",
       "auto_join_rule_unbounded": "Esta regra de entrada automática não tem limite: ela admitiria endereços de domínios que você não controla. Ancore-a a um domínio seu, ex.: \"@acme\\\\.com$\".",
       "cannot_delete_root": "Não é possível excluir a organização raiz",
-      "delete_confirm_required": "Excluir '{{org}}' destrói todos os seus dados permanentemente — ninguém, nem mesmo um administrador da plataforma, pode recuperá-los. Repita o id da organização no parâmetro 'confirm' para prosseguir.",
+      "delete_confirm_required": "Excluir '{{org}}' destrói todos os seus dados permanentemente, e ninguém, nem mesmo um administrador da plataforma, pode recuperá-los. Repita o ID da organização no parâmetro 'confirm' para prosseguir.",
       "invalid_email_rule": "Regra de e-mail inválida: {{error}}",
       "invalid_org_id": "Id de organização inválido '{{org}}': 2-40 caracteres, apenas letras minúsculas e dígitos, começando com uma letra. O id se torna o nome do esquema do banco de dados e o subdomínio, e não pode ser alterado depois.",
       "limit_reached": "Limite de organizações atingido: uma única conta pode criar no máximo {{limit}} organizações. Exclua uma que não seja mais necessária para criar outra.",
       "membership_not_found": "Associação não encontrada",
-      "no_tenant_runtime": "A organização '{{org}}' não tem runtime de locatário — pode ainda estar em provisionamento.",
+      "no_tenant_runtime": "A organização '{{org}}' não tem runtime de locatário. Ela ainda pode estar sendo provisionada.",
       "not_found": "Organização não encontrada",
       "not_org_admin": "{{user}} não possui org_admin em {{org}}",
       "org_id_reserved": "O id de organização '{{org}}' é reservado. Ids reservados: {{reserved}}.",
       "platform_admin_required": "platform_admin necessário",
-      "retry_not_failed": "A organização '{{org}}' está em '{{state}}', não em 'failed' — nada a repetir.",
+      "retry_not_failed": "A organização '{{org}}' está '{{state}}', não 'failed', então não há nada para tentar novamente.",
       "self_role_change": "Um usuário não pode alterar a própria função. Peça a outro administrador.",
       "view_not_permitted": "Sem permissão para exibir esta organização",
       "org_id_sandbox_prefix": "Ids de organização que começam com {{prefix}} são reservados para sandboxes de demonstração.",
@@ -295,7 +355,9 @@
       "org_selection_required": "Seleção de organização necessária",
       "already_exists": "A função '{{role}}' já existe",
       "description_missing": "A função '{{role}}' precisa de uma descrição da sua finalidade",
-      "right_not_in_parents": "A função {{role}} não pode deter {{right}}: nenhum pai o detém"
+      "right_not_in_parents": "A função {{role}} não pode deter {{right}}: nenhum pai o detém",
+      "platform_right_requires_platform_admin": "Uma função com {{rights}} é definida por um administrador da plataforma",
+      "rights_not_held": "A função {{role}} inclui {{rights}}, que você não detém"
     },
     "schema": {
       "allowed_domains_updated": "Domínios permitidos atualizados para a fonte '{{source}}'",
@@ -306,13 +368,13 @@
       "cache_purged": "{{count}} entradas de cache removidas",
       "cache_purged_table": "{{count}} entradas de cache removidas para a tabela {{table}}",
       "calendar_deleted": "calendário '{{calendar}}' excluído",
-      "calendar_in_use": "o calendário '{{calendar}}' está em uso por exibições materializadas — limpe o agendamento de snapshot delas antes de excluir",
+      "calendar_in_use": "O calendário '{{calendar}}' está em uso por exibições materializadas. Remova o agendamento de snapshots delas antes de excluí-lo.",
       "calendar_not_found": "calendário '{{calendar}}' não encontrado",
       "calendar_saved": "calendário '{{calendar}}' {{version}} salvo",
       "column_natively_nested": "Não é possível registrar: a coluna {{column}} é nativamente {{native_type}} na sua fonte, portanto o seu tipo é json, não {{type}}.",
       "column_types_unresolved": "Não é possível registrar: nenhum tipo de dados pôde ser resolvido a partir da fonte para a(s) coluna(s): {{columns}}. Faça a introspecção da tabela (Descobrir esquema) ou defina um tipo de dados para cada uma antes de registrar.",
       "config_not_found": "Arquivo de configuração não encontrado",
-      "creation_request_queued": "Enfileirado como solicitação de criação nº {{id}} — aguardando um usuário com '{{capability}}' para executá-la ou rejeitá-la.",
+      "creation_request_queued": "Na fila como solicitação de criação nº {{id}}, aguardando um usuário com '{{capability}}' para executá-la ou rejeitá-la.",
       "db_pool_unavailable": "Pool de banco de dados não disponível",
       "discovery_failed": "Falha na descoberta de esquema: {{error}}",
       "domain_created": "Domínio '{{domain}}' criado",
@@ -324,7 +386,7 @@
       "invalid_calendar": "calendário inválido: {{error}}",
       "invalid_cardinality": "Cardinalidade inválida: '{{cardinality}}'",
       "invalid_off_peak_window": "janela fora de pico inválida: {{error}}",
-      "load_protection_gate_required": "{{who}}: a proteção de carga requer pelo menos um portão de atualização — defina uma janela fora de pico, uma cadência de cache_ttl ou um change_signal de sondagem (probe/ttl_probe)",
+      "load_protection_gate_required": "{{who}}: a proteção de carga exige pelo menos uma condição de atualização. Defina uma janela fora do pico, uma cadência cache_ttl ou um change_signal de sondagem (probe/ttl_probe)",
       "metric_deleted": "Métrica '{{metric}}' excluída",
       "metric_not_found": "Métrica '{{metric}}' não encontrada",
       "metric_saved": "Métrica '{{metric}}' salva",
@@ -426,8 +488,6 @@
       "mask_unreachable": "Você definiu uma máscara que não é alcançável: {{entries}}",
       "webhook_not_found": "Webhook '{{webhook}}' não encontrado",
       "change_streams_unavailable": "A origem '{{source}}' é um servidor MongoDB autônomo, que não oferece change streams: o sinal de alteração native exige um replica set ou um cluster fragmentado. Execute-o como replica set ou use o sinal de alteração poll.",
-      "table_draft_set": "Tabela {{table}} definida como rascunho",
-      "table_released": "Tabela {{table}} liberada",
       "openapi_no_rows_field": "Tabela {{table}}: a resposta não tem nenhuma propriedade {{rows_field}} de onde ler linhas.",
       "paging_rows_field_fixed": "Tabela {{table}}: onde estão suas linhas ({{rows_field}}) é definido quando a tabela é registrada. Registre a tabela novamente para ler suas linhas de outro lugar.",
       "relationship_request_queued": "Enfileirado como solicitação nº {{id}}. Ela precisa de aprovações de {{required}} usuários diferentes que possam criar relacionamentos, com pelo menos um alcançando cada domínio tocado.",
@@ -444,7 +504,6 @@
       "logs_invalid": "Fonte Logs {{source}}: {{error}}",
       "logs_path_refused": "Fonte Logs {{source}}: {{reason}}",
       "file_path_leaves_org": "Fonte {{source}}: {{path}} sai da pasta da organização.",
-      "file_path_local_refused": "Fonte {{source}}: um servidor de muitas organizações não lê arquivos do próprio disco; envie o arquivo ou indique-o como {files}/… ou por um endereço remoto.",
       "relationship_alias_taken": "O alias '{{alias}}' já é o alias do relacionamento '{{relationship}}' a partir de '{{table}}'",
       "relationship_ambiguous_table": "O nome de tabela '{{table}}' ({{end}}) designa uma tabela em mais de uma origem ({{sources}})",
       "relationship_unknown_source": "A tabela de origem '{{table}}' não está registrada",
@@ -456,6 +515,9 @@
       "role_id_taken": "A função '{{role}}' já existe",
       "role_updated": "Função '{{role}}' atualizada",
       "relationship_id_taken": "O relacionamento '{{relationship}}' já existe",
+      "relationship_id_reserved": "O id do relacionamento '{{id}}' começa com '{{prefix}}', um prefixo reservado para relacionamentos integrados. Escolha outro id.",
+      "relationship_source_column_missing": "O relacionamento '{{relationship}}' não indica nenhuma coluna de origem. Um relacionamento se une por uma coluna de sua tabela de origem.",
+      "relationship_target_column_missing": "O relacionamento '{{relationship}}' não indica nenhuma coluna de destino. Um relacionamento se une por uma coluna de sua tabela de destino, a menos que seu destino seja uma função.",
       "relationship_graphql_alias_taken": "O alias GraphQL '{{alias}}' já é o alias do relacionamento '{{relationship}}' a partir de '{{table}}'",
       "trigger_refused": "{{reason}}",
       "scheduled_task_updated": "Tarefa agendada '{{task}}' atualizada",
@@ -482,9 +544,35 @@
       "jdbc_invalid": "Fonte {{source}}: {{error}}",
       "jdbc_file_refused": "Fonte {{source}}: a URL indica {{path}}, que este servidor não pode abrir para a organização.",
       "jdbc_options_refused": "Fonte {{source}}: a URL desta organização não pode informar a opção de driver {{options}}.",
-      "jdbc_driver_refused": "Fonte {{source}}: um driver JDBC do cliente é executado como código na própria JVM do Provisa, o que só uma instalação auto-hospedada permite."
+      "jdbc_driver_refused": "Fonte {{source}}: um driver JDBC do cliente é executado como código na própria JVM do Provisa, o que só uma instalação auto-hospedada permite.",
+      "code_resolver_part": "{{kind}} '{{name}}' faz parte do resolver de código '{{resolver}}': altere-o ou retire-o lá",
+      "code_resolver_no_key": "A tabela de {{end}} '{{table}}' não tem a coluna '{{column}}'",
+      "code_resolver_no_reader": "Nenhum papel vê as duas chaves, então nenhum papel poderia ver uma correspondência",
+      "code_resolver_unknown": "Nenhum comando '{{function}}' está registrado",
+      "code_resolver_refused": "Resolver de código '{{function}}': {{reason}}",
+      "code_resolver_bad_id": "O id do resolver de código '{{resolver}}' não é um nome: letras minúsculas, dígitos e sublinhados, começando com uma letra",
+      "code_resolver_taken": "O resolver de código '{{resolver}}' já existe",
+      "code_resolver_not_found": "Resolver de código '{{resolver}}' não encontrado",
+      "code_resolver_saved": "Resolver de código '{{resolver}}' salvo",
+      "code_resolver_retired": "Resolver de código '{{resolver}}' retirado",
+      "code_resolver_has_dependents": "O resolver de código '{{resolver}}' não pode ser retirado enquanto algo depender dele",
+      "incremental_no_change": "A fonte de código não tem nenhuma função @change para {{table}}. Declare uma com @change table={{table}}.",
+      "incremental_needs_rebuild_every": "{{table}} é mantida de forma incremental, portanto é recompilada por inteiro por relógio. Defina a frequência, em segundos, em \"Recompilação completa a cada\".",
+      "table_derived_from_function": "A tabela '{{name}}' é derivada de uma função: é removida desativando a tabela da função, e as suas colunas e parâmetros são editados na função",
+      "table_withdrawn": "Tabela {{table}} retirada",
+      "table_put_back": "Tabela {{table}} reposta",
+      "source_withdrawn": "Fonte {{source}} retirada",
+      "source_put_back": "Fonte {{source}} reposta",
+      "withdrawn_source_not_previewable": "Não é possível pré-visualizar a tabela {{table}}: a sua fonte {{source}} está retirada e nenhum motor lê uma fonte retirada.",
+      "withdrawn_table_not_previewable": "Não é possível pré-visualizar a tabela {{table}}: está retirada e não mantém réplica, e o motor só lê a sua fonte através de uma.",
+      "table_not_withdrawn": "A tabela {{table}} não está retirada: só se repõe uma tabela retirada. Para mover para outra região uma tabela em produção, defina a sua região.",
+      "source_not_withdrawn": "A fonte {{source}} não está retirada: só se repõe uma fonte retirada. Para mudar a sua região, defina a sua região.",
+      "put_back_needs_region": "Repor {{object}} indica uma região: indique uma, ou nenhuma para nenhuma região.",
+      "mask_constant_not_text": "Uma máscara constante em uma coluna que não é de texto é lida como NULL; só é possível salvar NULL: {{column}} ({{type}})"
     },
     "secrets": {
+      "env_reference_object_locked": "Este objeto é do operador: ele lê o ambiente próprio do servidor e não pode ser alterado aqui. Adicione um seu em vez disso.",
+      "env_reference_refused": "{{name}} é uma variável do ambiente próprio do servidor, de que esta organização não dispõe. Armazene o valor como segredo da organização e referencie o segredo em vez disso.",
       "name_refused": "{{name}} não é um nome dentro dos segredos desta organização em {{service}}: um nome é relativo à organização e não pode sair dela",
       "name_too_long": "{{name}} é um nome longo demais: com o prefixo desta organização tem {{length}} caracteres, e {{service}} aceita no máximo {{limit}}",
       "org_not_found": "Organização '{{org_id}}' não encontrada",
@@ -493,7 +581,8 @@
     "security": {
       "unknown_mode": "modo de segurança desconhecido '{{mode}}'",
       "data_residency_refused": "Não é possível definir a região de {{object}}: a concessão data_residency não cobre {{value}}; uma concessão data_residency que o liste permite isso",
-      "data_residency_missing": "Não é possível definir a região de {{object}}: nenhuma concessão data_residency do chamador cobre {{value}}; uma concessão data_residency que o liste permite isso"
+      "data_residency_missing": "Não é possível definir a região de {{object}}: nenhuma concessão data_residency do chamador cobre {{value}}; uma concessão data_residency que o liste permite isso",
+      "withdraw_residency_refused": "Não é possível retirar {{object}}: nenhuma concessão data_residency de quem chama cobre {{value}}, onde é mantido; uma concessão data_residency que o liste permite isso"
     },
     "settings": {
       "auth_required": "{{field}} não pode ser alterado até que a autenticação seja configurada.",
@@ -529,7 +618,8 @@
     "sparql": {
       "columns_not_inferred": "Não foi possível inferir colunas: a sondagem não retornou linhas e nenhuma variável SELECT foi encontrada.",
       "probe_failed": "Falha na sondagem do endpoint SPARQL: {{error}}",
-      "source_not_found": "Fonte SPARQL '{{source_id}}' não encontrada"
+      "source_not_found": "Fonte SPARQL '{{source_id}}' não encontrada",
+      "no_select_variables": "A consulta não nomeia variáveis SELECT (SELECT * ou não é uma consulta SELECT): suas colunas não podem ser lidas dela"
     },
     "subscribe": {
       "avro_topic_without_registry": "O tópico '{{topic}}' contém mensagens Avro e sua origem não indica nenhum registro de esquemas para lê-las: defina a URL do registro de esquemas da origem",
@@ -540,10 +630,14 @@
       "schema_not_avro": "O esquema {{schema_id}} no registro {{registry}} é {{kind}}, não Avro",
       "schema_registry_error": "O registro de esquemas {{registry}} respondeu HTTP {{http_status}}: {{error}}",
       "schema_registry_refused_credentials": "O registro de esquemas {{registry}} recusou as credenciais da origem (HTTP {{http_status}}, autenticação '{{method}}')",
-      "schema_registry_unreachable": "Não é possível acessar o registro de esquemas {{registry}}: {{error}}",
+      "schema_registry_unreachable": "O schema registry não pode ser acessado: {{error}}",
       "sse_limit_reached": "máximo de assinaturas SSE simultâneas atingido",
       "table_not_found": "Tabela '{{table}}' não encontrada",
-      "unknown_role": "Função desconhecida '{{role}}'"
+      "unknown_role": "Função desconhecida '{{role}}'",
+      "owner_role_lost": "A assinatura terminou: seu proprietário não tem mais a função sob a qual ela foi iniciada ({{roles}})",
+      "sink_cap_reached": "Você já tem {{cap}} sinks do Kafka em execução, o máximo que o operador permite ({{setting}})",
+      "sink_needs_write": "O papel '{{role}}' não tem o direito de escrita que um sink do Kafka exige",
+      "owner_sign_in_expired": "A assinatura terminou: o login sob o qual ela foi iniciada expirou; entre novamente e inicie-a outra vez"
     },
     "users": {
       "assignment_not_found": "Atribuição não encontrada",
@@ -587,7 +681,6 @@
       "invalid_limit": "LIMIT {{value}} não é um número inteiro de linhas: LIMIT espera uma contagem de 0 ou mais, p. ex. LIMIT 10.",
       "invalid_skip": "SKIP {{value}} não é um número inteiro de linhas: SKIP espera uma contagem de 0 ou mais, p. ex. SKIP 10.",
       "engine_refused": "O mecanismo recusou a consulta: {{error}}",
-      "parameter_required": "{{reason}}",
       "no_variables": "{{clause}} lê {{variable}}, mas a instrução não vincula nenhuma variável: uma variável é vinculada por um padrão MATCH, WITH, UNWIND ou CALL.",
       "undefined_variable_property": "{{clause}} lê {{variable}}, que nada na instrução vincula: uma variável é vinculada por um padrão MATCH, WITH, UNWIND ou CALL. Vinculadas aqui: {{bound}}. Você quis dizer {{suggestion}}? {{owner}} está vinculada a :{{label}}, que tem uma propriedade {{variable}}.",
       "undefined_variable_properties": "{{clause}} lê {{variable}}, que nada na instrução vincula: uma variável é vinculada por um padrão MATCH, WITH, UNWIND ou CALL. Vinculadas aqui: {{bound}}. Você quis dizer {{suggestions}}? Cada uma está vinculada a um rótulo com uma propriedade {{variable}}.",
@@ -680,7 +773,11 @@
       "not_a_file_source": "Uma fonte {{type}} não recebe arquivo por envio."
     },
     "sources": {
-      "private_destination": "As fontes desta organização só podem alcançar endereços públicos; {{host}} é {{address}}, que não é um deles."
+      "private_destination": "As fontes desta organização só podem alcançar endereços públicos; {{host}} é {{address}}, que não é um deles.",
+      "local_path_refused": "As fontes desta organização não leem arquivos do disco do próprio servidor fora da pasta da organização; {{path}} é um deles. Envie o arquivo ou indique-o como {files}/… ou por um endereço remoto."
+    },
+    "egress": {
+      "private_destination": "Esta organização só pode chamar endereços públicos; {{host}} é {{address}}, que não é um deles."
     },
     "sandbox": {
       "wrong_tier": "Este sandbox é servido em outro lugar; abra-o pelo seu próprio endereço.",
@@ -718,7 +815,6 @@
       "status_by_action": "O estado de um termo muda através de Aprovar, Descontinuar, Retirar ou Restaurar.",
       "successor_required": "Este termo ainda tem colunas ou tabelas; retirá-lo as move para um sucessor. Escolha um.",
       "successor_role": "O sucessor de um {{role}} deve ser um {{role}} ou um conceito; '{{successor}}' é um {{successor_role}}.",
-      "no_retirement_history": "O histórico do modelo não tem nenhuma retirada deste termo.",
       "finding": {
         "unlinked_tables": "Esta classe está ancorada em tabelas que as relações de mesma entidade não unem todas: {{tables}}.",
         "class_and_attribute": "Esta classe também tem colunas que não são suas chaves: {{columns}}.",
@@ -736,7 +832,12 @@
       "not_bulk_approvable": "Só rascunhos definidos e ancorados são aprovados em conjunto; não: {{terms}}.",
       "term_ids_required": "Indique os termos a aprovar.",
       "impact_action": "Não há pré-visualização para essa ação.",
-      "impact_table_required": "Uma vinculação nomeia uma tabela ou uma das suas colunas."
+      "impact_table_required": "Uma vinculação nomeia uma tabela ou uma das suas colunas.",
+      "name_taken": "Já existe um termo chamado '{{name}}' no domínio {{domain}}. Escolha outro nome ou coloque o termo em outro domínio.",
+      "name_taken_unscoped": "Já existe um termo chamado '{{name}}' sem domínio, que portanto alcança todos os domínios. Escolha outro nome."
+    },
+    "table": {
+      "requires_parameters": "A tabela {{table}} não pode ser contada nem perfilada: exige {{parameters}}. Dê um valor a cada um para ler as suas linhas."
     },
     "tag": {
       "not_on_terms": "A tag '{{tag}}' não vai num termo; só pii vai.",
@@ -800,7 +901,45 @@
       "blank_identifier": "Uma entrada não pode ficar em branco.",
       "expiry_in_past": "A data de término deve ser futura.",
       "expiry_removes_nothing": "Uma data de término nesta lista de {{kind}} não removeria nada.",
-      "pending_not_found": "Nenhuma concessão aguarda {{email}} para a função {{role_id}} e {{kind}}."
+      "pending_not_found": "Nenhuma concessão aguarda {{email}} para a função {{role_id}} e {{kind}}.",
+      "invalid_identifier": "{{identifier}} não é uma entrada {{kind}} válida."
+    },
+    "mv": {
+      "change_key_missing": "{{function}} devolveu uma linha sem a sua coluna de chave {{column}}",
+      "change_key_repeated": "{{function}} devolveu a chave {{key}} duas vezes num mesmo resultado",
+      "change_cursor_backwards": "O cursor de {{function}} retrocedeu: devolveu {{returned}}, anterior ao armazenado {{stored}}"
+    },
+    "preflight": {
+      "confined_unavailable": "A verificação prévia de {{subject}} não foi executada: nesta organização ela só roda em um processo confinado, e não foi possível iniciar um ({{reason}}).",
+      "confined_failed": "A verificação prévia de {{subject}} não retornou nenhum veredito: seu processo confinado terminou antes ({{reason}})."
+    },
+    "redaction": {
+      "rule_invalid": "Regra de ocultação {{rule}}: {{why}}",
+      "pattern_backtracks": "Regra de ocultação {{rule}}: o padrão pode causar retrocesso catastrófico (uma repetição aninhada numa repetição ilimitada, ou alternativas dentro dela que podem começar pelo mesmo texto). Reescreva-o sem essa forma.",
+      "pattern_unsupported": "Regra de ocultação {{rule}}: a regra de uma organização não pode usar referências retroativas, lookahead ou lookbehind, grupos atômicos, repetições possessivas nem grupos condicionais.",
+      "pattern_too_large": "Regra de ocultação {{rule}}: o padrão é grande demais depois de expandidas as repetições. Use uma contagem de repetições menor.",
+      "server_reference": "Regra de ocultação {{rule}}: uma organização neste servidor não pode referenciar o ambiente do servidor. Use ${secret:NAME} do cofre da própria organização."
+    },
+    "debug_logs": {
+      "pattern_refused": "O padrão de filtro de logs foi recusado: {{why}}",
+      "pattern_exceeded": "O padrão de filtro de logs foi recusado: excedeu o seu limite de passos ({{steps}} passos) numa linha de log de {{length}} caracteres."
+    },
+    "import": {
+      "include_outside_upload": "{{path}} está fora do projeto enviado; um projeto lê apenas os seus próprios arquivos.",
+      "filter_value_refused": "{{value}} não pode ser um valor em um filtro de permissão: um valor é uma string, um número, true, false, null, uma lista destes ou uma variável de sessão.",
+      "filter_operator_refused": "{{operator}} não é um operador com o qual um filtro de permissão possa ser convertido."
+    },
+    "relationship": {
+      "name_taken": "O nome '{{name}}' já é usado pelo relacionamento '{{held_by}}'. Dê outro nome a este."
+    },
+    "wikidata": {
+      "no_credential": "O serviço de consultas do Wikidata não exige credencial",
+      "bad_id": "{{value}} não é um {{kind}} do Wikidata",
+      "bad_language": "{{language}} não é um código de idioma",
+      "bad_column_type": "Tipos de coluna não oferecidos para uma propriedade do Wikidata: {{types}}",
+      "filter_required": "Esta classe tem {{count}} instâncias, mais de {{limit}}: escolha um filtro",
+      "filter_too_wide": "O filtro deixa mais de {{limit}} instâncias",
+      "unreachable": "Não foi possível acessar o Wikidata: {{reason}}"
     }
   }
 }

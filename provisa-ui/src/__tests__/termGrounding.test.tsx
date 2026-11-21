@@ -111,6 +111,7 @@ const SUMMARY: GlossaryTermSummary = {
   id: 1,
   name: "Customer",
   definition: "One who buys.",
+  calculation_method: null,
   is_abstract: false,
   deprecated: false,
   ref_count: 0,
@@ -218,7 +219,7 @@ describe("a table's Rows are instances of", () => {
     render(<TableClassTerm tableId={10} />);
     expect(await screen.findByTestId("table-class-term-link")).toHaveAttribute(
       "href",
-      "/admin/ontology?term=1",
+      "/context/ontology?term=1",
     );
     expect(screen.getByTestId("table-class-term-link")).toHaveTextContent("Customer");
     render(<TableClassTerm tableId={11} />);
@@ -233,7 +234,7 @@ describe("a table's Rows are instances of", () => {
     render(<TableClassTerm tableId={10} />);
     expect(await screen.findByTestId("table-class-term-link")).toHaveAttribute(
       "href",
-      "/admin/ontology?term=1",
+      "/context/ontology?term=1",
     );
   });
 });

@@ -8,8 +8,9 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// The Roles list's derived roles follow the page's one search: a role is listed when any word
-// of the search is in its attribute or one of its value roles.
+// The Roles list's derived roles follow the page's one search: a role is listed when every word
+// of the search (or either word either side of or) is in its attribute or one of its value roles,
+// and no word with a leading - is.
 
 import { describe, expect, it, vi } from "vitest";
 import { Table } from "@mantine/core";
@@ -39,7 +40,19 @@ function rows(search: string) {
 }
 
 describe("the derived roles in the Roles list's search", () => {
-  it("lists the roles matching any word of the search", () => {
-    expect(rows("apac gold")).toEqual(["region", "tier"]);
+  it("lists the roles matching every word of the search, or either side of or", () => {
+    expect(rows("apac or gold")).toEqual(["region", "tier"]);
+  });
+
+  it("lists none when no role holds every word", () => {
+    expect(rows("apac gold")).toEqual([]);
+  });
+
+  it("lists the role holding every word", () => {
+    expect(rows("region apac")).toEqual(["region"]);
+  });
+
+  it("leaves out the roles holding a word with a leading -", () => {
+    expect(rows("-apac")).toEqual(["tier", "team"]);
   });
 });

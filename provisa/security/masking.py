@@ -12,7 +12,7 @@
 
 Generates SQL expressions that replace column values per (column, role):
   - regex: REGEXP_REPLACE for string columns
-  - constant: literal value (NULL, 0, custom)
+  - constant: a literal on a text column; NULL on any other (REQ-2131)
   - truncate: DATE_TRUNC for date/timestamp columns
 
 Type validation ensures invalid combinations are rejected at config load time.
@@ -20,7 +20,7 @@ Type validation ensures invalid combinations are rejected at config load time.
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from typing import Any
 
 import sqlglot.expressions as exp
@@ -50,13 +50,29 @@ UNIVERSAL_REGEX_REPLACE = "provisa_regex_replace"
 FULL_MASK_TEXT = "****"
 # REQ-2059: what a save of a list holding an entry no reader reaches is refused with.
 UNREACHABLE_MASK = "You have defined a mask that is not reachable: "
-_TEXT_TYPES = {"varchar", "char", "text"}
+# REQ-2131: what a save of a constant mask other than NULL on a non-text column is refused with.
+NON_TEXT_CONSTANT = "A constant mask on a non-text column reads as NULL; only NULL can be saved: "
+_TEXT_TYPES = {
+    "varchar",
+    "char",
+    "text",
+    "character varying",
+    "character",
+    "bpchar",
+    "nvarchar",
+    "string",
+}
+
+
+def is_text_type(data_type: str) -> bool:
+    """Whether a column of ``data_type`` holds text: the only type a mask may read as a string."""
+    return _base_type(data_type) in _TEXT_TYPES
 
 
 def full_mask(data_type: str) -> str | None:
     """The complete mask of a column of ``data_type``: what a regex mask reads a value it does not
     match as, and what a reader no entry of the column's list matches reads (REQ-2059)."""
-    return FULL_MASK_TEXT if _base_type(data_type) in _TEXT_TYPES else None
+    return FULL_MASK_TEXT if is_text_type(data_type) else None
 
 
 # the engine base types that support regex masking
@@ -64,15 +80,6 @@ _STRING_TYPES = {"varchar", "char", "text", "varbinary"}
 
 # the engine base types that support truncate masking
 _TEMPORAL_TYPES = {"date", "time", "timestamp", "time with time zone", "timestamp with time zone"}
-
-# the engine integer type bounds for MAX/MIN constant resolution
-_INTEGER_BOUNDS: dict[str, tuple[int, int]] = {
-    "tinyint": (-128, 127),
-    "smallint": (-32768, 32767),
-    "integer": (-2147483648, 2147483647),
-    "int": (-2147483648, 2147483647),
-    "bigint": (-9223372036854775808, 9223372036854775807),
-}
 
 
 def _base_type(column_type: str) -> str:
@@ -102,6 +109,27 @@ class MaskingRule:  # REQ-038, REQ-040, REQ-263
 
 class MaskingValidationError(Exception):
     """Raised when masking config is invalid for the column type."""
+
+
+class MaskConstantNotText(MaskingValidationError):
+    """A constant mask with a value other than NULL on a non-text column, which is not saved: it
+    can only read as NULL (REQ-2131)."""
+
+    def __init__(self, column: str, data_type: str) -> None:
+        self.column, self.data_type = column, data_type
+        super().__init__(f"{NON_TEXT_CONSTANT}{column} ({data_type})")
+
+
+def refuse_non_text_constant(column: str, masks: Iterable[dict], data_type: str) -> None:
+    """Raise :class:`MaskConstantNotText` when an entry of ``column``'s mask list is a constant
+    other than NULL and the column, of ``data_type``, is not text (REQ-2131)."""
+    if is_text_type(data_type):
+        return
+    for entry in masks:
+        mask = entry.get("mask")
+        if mask is not None and mask["type"] == MaskType.constant.value:
+            if mask.get("value") is not None:
+                raise MaskConstantNotText(column, data_type)
 
 
 def validate_masking_rule(  # REQ-038, REQ-040, REQ-042
@@ -147,45 +175,22 @@ def validate_masking_rule(  # REQ-038, REQ-040, REQ-042
             )
 
     elif rule.mask_type == MaskType.constant:
+        if rule.value is not None and not is_text_type(data_type):
+            raise MaskConstantNotText(column_name, data_type)  # REQ-2131
         if rule.value is None and not is_nullable:
             raise MaskingValidationError(
                 f"Column {column_name!r} is NOT NULL: cannot use NULL as constant mask value"
             )
 
 
-def _number(text: str) -> exp.Expr:  # pyright: ignore[reportPrivateImportUsage]
-    """A numeric literal, a negative one as the parser reads it (a negated literal)."""
-    if text.startswith("-"):
-        return exp.Neg(this=exp.Literal.number(text[1:]))
-    return exp.Literal.number(text)
-
-
 def _resolve_constant(value: int | float | str | None, data_type: str) -> exp.Expr:  # pyright: ignore[reportPrivateImportUsage]
-    """Resolve a constant mask value to a literal.
+    """Resolve a constant mask value to a literal of the column's type.
 
-    Handles special values: NULL, MAX, MIN (resolved from column type bounds).
+    REQ-2131 (amended 77da388aa6): a masked value keeps its column's type. A text column reads its
+    constant as text; any other column (numeric, boolean, date and time, binary) reads it as NULL.
     """
-    if value is None:
+    if value is None or not is_text_type(data_type):
         return exp.Null()
-
-    if isinstance(value, str):
-        upper = value.upper()
-        base = _base_type(data_type)
-
-        if upper == "MAX" and base in _INTEGER_BOUNDS:
-            return _number(str(_INTEGER_BOUNDS[base][1]))
-        if upper == "MIN" and base in _INTEGER_BOUNDS:
-            return _number(str(_INTEGER_BOUNDS[base][0]))
-
-        # String literal (governed semantic SQL; transpiled to the engine afterwards).
-        return exp.Literal.string(value)
-
-    if isinstance(value, bool):
-        return exp.Boolean(this=value)
-
-    if isinstance(value, (int, float)):
-        return _number(str(value))
-
     return exp.Literal.string(str(value))
 
 
@@ -243,18 +248,11 @@ def build_mask_expression(  # REQ-040, REQ-263
     return mask_expression(rule, column, data_type).sql(dialect="postgres")
 
 
-def _resolve_constant_value(value: int | float | str | None, data_type: str):
-    """Python equivalent of _resolve_constant: return the actual masked value, not a SQL literal."""
-    if value is None:
+def _resolve_constant_value(value: int | float | str | None, data_type: str) -> str | None:
+    """Python equivalent of _resolve_constant: the masked value itself, not a SQL literal."""
+    if value is None or not is_text_type(data_type):
         return None
-    if isinstance(value, str):
-        upper = value.upper()
-        base = _base_type(data_type)
-        if upper == "MAX" and base in _INTEGER_BOUNDS:
-            return _INTEGER_BOUNDS[base][1]
-        if upper == "MIN" and base in _INTEGER_BOUNDS:
-            return _INTEGER_BOUNDS[base][0]
-    return value
+    return str(value)
 
 
 def _truncate_temporal(value, precision: str):
@@ -348,14 +346,34 @@ def entry_for(masks: list[dict], chain: list[str]) -> int | None:
 
 
 def rule_of(mask: dict) -> MaskingRule:
-    """The masking rule of a mask entry's ``mask`` ({type, pattern, replace, value, precision})."""
+    """The masking rule of a mask entry's ``mask`` ({type, pattern, replace, value, precision};
+    a fake's {type, fake, fake_stable, fake_stable_version}, REQ-1494)."""
     return MaskingRule(
         mask_type=MaskType(mask["type"]),
         pattern=mask.get("pattern"),
         replace=mask.get("replace"),
         value=mask.get("value"),
         precision=mask.get("precision"),
+        fake=mask.get("fake"),
+        fake_stable=bool(mask.get("fake_stable")),
+        fake_stable_version=mask.get("fake_stable_version"),
     )
+
+
+def synthetic_masks(  # REQ-2180, REQ-1494
+    masks: list[dict], roles: list[str], data_type: str, fake: dict | None
+) -> list[dict]:
+    """A column's mask list with a role-wide fake mask for ``roles`` -- the roles of a synthetic
+    offer of a product the column's table is a dataset of -- ahead of its own entries: those roles
+    read the column through its declared fake (``fake``: {fake, fake_stable,
+    fake_stable_version}), or completely masked where it declares none, never its real value.
+    Every other reader reads it through the column's own list, unmasked where it has none."""
+    mask = (
+        {"type": MaskType.fake.value, **fake}
+        if fake is not None
+        else {"type": MaskType.constant.value, "value": full_mask(data_type)}
+    )
+    return [{"to": list(roles), "mask": mask}, *(masks or [{"to": None, "mask": None}])]
 
 
 def resolve(masks: list[dict], chain: list[str], data_type: str) -> MaskingRule | None:
@@ -376,6 +394,21 @@ def masked_for(masks: list[dict], chain: list[str]) -> bool:
         return False
     i = entry_for(masks, chain)
     return i is None or masks[i].get("mask") is not None
+
+
+def columns_masked_for(
+    masking_rules: Mapping[tuple[int, str], Mapping[str, tuple[MaskingRule, str]]], reader_id: str
+) -> frozenset[tuple[int, str]]:
+    """(table id, column) of each column ``reader_id`` reads under a mask, of
+    ``state.masking_rules``: what every catalog reports nullable to that reader, whatever the
+    column declares (REQ-2131). A fake is the column's own declaration, never a mask (REQ-1942)."""
+    return frozenset(
+        (table_id, column)
+        for (table_id, reader), columns in masking_rules.items()
+        if reader == reader_id
+        for column, (rule, _data_type) in columns.items()
+        if rule.mask_type != MaskType.fake
+    )
 
 
 def reader_masks(

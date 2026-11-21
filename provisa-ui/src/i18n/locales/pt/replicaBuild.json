@@ -50,9 +50,9 @@
       "mailboxes_left_out": "Caixas de correio deixadas de fora, porque a Microsoft ou a Google indica que não existem ou não podem ser lidas: {{total}}. São: {{accounts}}",
       "mailboxes_at_quota": "Caixas de correio deixadas de fora, porque atingiram a quota de armazenamento e a Microsoft não acompanhará as suas alterações até ser libertado espaço: {{total}}. São: {{accounts}}",
       "mailboxes_failed": "Caixas de correio cuja leitura falhou no meio: {{total}}. O que foi lido delas é mantido e a leitura continua na próxima atualização. São: {{accounts}}",
-      "place_not_kept": "Esta cópia está completa, mas não foi possível guardar até onde a leitura chegou, pelo que a próxima verificação de alterações pedirá a leitura novamente: {{reason}}",
-      "indexes_not_planned": "Esta cópia está completa e pode ser lida, mas não foi possível planejar seus índices; ela é lida sem eles até ser construída novamente: {{reason}}",
-      "column_not_landed": "A coluna {{column}} ({{subtype}}) não está nesta cópia: {{reader}} não consegue lê-la como {{subtype}}, por isso foi omitida e a sua leitura é recusada.",
+      "place_not_kept": "Esta réplica está completa, mas o ponto alcançado pela leitura não pôde ser mantido, então a próxima verificação de alterações pedirá a leitura novamente: {{reason}}",
+      "indexes_not_planned": "Esta réplica está completa e legível, mas seus índices não puderam ser planejados, então ela é lida sem eles até ser construída novamente: {{reason}}",
+      "column_not_landed": "A coluna {{column}} ({{subtype}}) não está nesta réplica: {{reader}} não tem como lê-la como {{subtype}}, então ela é omitida, e uma leitura dela é recusada.",
       "andMore": "{{ids}} e mais {{more}}",
       "other": "A última compilação registrou: {{code}}"
     },

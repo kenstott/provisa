@@ -23,9 +23,10 @@ import { fileURLToPath } from "node:url";
 
 import { test, expect, BACKEND_URL, TRINO_BACKEND_URL, UI_URL } from "./coverage";
 import { WAREHOUSE_SCHEMA } from "./cloud-warehouse";
+import { E2E_PUBLIC_URL } from "./publicUrl";
 import { runSqlOnPage, typeSql } from "./source-to-query-helpers";
 import type { Page } from "./coverage";
-import { deleteSourceAndItsTables, type AdminGql } from "./delete-source";
+import { retireSourceTables, type AdminGql } from "./retire-source-tables";
 
 
 export const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
@@ -811,6 +812,9 @@ export async function spawnRebootBackend(engineKind: RebootEngineKind): Promise<
     ORG_ID: REBOOT_ORG_ID,
     PROVISA_ENCRYPTION_KEY: REBOOT_ENCRYPTION_KEY,
     PROVISA_ENGINE: engineKind,
+    // The same public address every other e2e backend boots with (publicUrl.ts): without it the
+    // SPARQL vocabulary each relationship surface reads is refused, a 400 the coverage fixture fails.
+    PROVISA_PUBLIC_URL: E2E_PUBLIC_URL,
     // graphql_remote/openapi read these from the APP PROCESS's own env (not a per-source URL
     // field) — same defaults playwright.config.ts's own webServer entries use. No host rewrite is
     // ever needed for them: the app process that reads this env is native on EITHER engine (only
@@ -946,8 +950,9 @@ async function rebootReplicaBuilds(): Promise<string> {
   return res.text();
 }
 
-/** Delete every leftover `e2e_swap_*` source under the reboot-harness org before a fresh case
- * registers a new one. `prepareRebootDataDir` only wipes LOCAL state — the source/table rows
+/** Retire the tables of every leftover `e2e_swap_*` source under the reboot-harness org before a
+ * fresh case registers a new one; the sources are kept (REQ-2248: a source holding a table,
+ * retired or not, is not deleted), and a retired table is not served or attached. `prepareRebootDataDir` only wipes LOCAL state — the source/table rows
  * themselves live in the shared Postgres control plane and survive across reboots (that
  * persistence is the entire point). Without this, `_attach_tbl`'s dedup key is schema+table only
  * (`native_backend.py`), not source id — a same-named leftover source from an earlier retry
@@ -965,7 +970,8 @@ export async function sweepRebootZombieSources(): Promise<void> {
   if (!res.ok) return; // nothing registered yet on a brand-new org — nothing to sweep
   const sources: Array<{ id: string }> = (await res.json()).data?.sources ?? [];
   const zombies = sources.filter((s) => /^e2e_swap_[a-z0-9_]+_?\d{10,}$/.test(s.id));
-  // A source goes only after the tables registered against it (REQ-1918).
+  // Their tables are retired, and the sources are kept (REQ-2248: a source holding a table,
+  // retired or not, is kept).
   const admin: AdminGql = async (query, variables = {}) =>
     (
       await fetch(`${REBOOT_BACKEND_URL}/admin/graphql`, {
@@ -975,7 +981,7 @@ export async function sweepRebootZombieSources(): Promise<void> {
       })
     ).json();
   for (const { id } of zombies) {
-    await deleteSourceAndItsTables(admin, id);
+    await retireSourceTables(admin, id);
   }
 }
 
@@ -1328,7 +1334,8 @@ export async function sweepZombieSwapSources(): Promise<void> {
   // purpose (a real ingest-only physical-table-naming gap — see that registrar's own comment), so
   // the trailing underscore here is optional rather than required, matching both shapes.
   const zombies = sources.filter((s) => /^e2e_swap_[a-z0-9_]+_?\d{10,}$/.test(s.id));
-  // A source goes only after the tables registered against it (REQ-1918).
+  // Their tables are retired, and the sources are kept (REQ-2248: a source holding a table,
+  // retired or not, is kept).
   const admin: AdminGql = async (query, variables = {}) =>
     (
       await fetch(`${BACKEND_URL}/admin/graphql`, {
@@ -1338,7 +1345,7 @@ export async function sweepZombieSwapSources(): Promise<void> {
       })
     ).json();
   for (const { id } of zombies) {
-    await deleteSourceAndItsTables(admin, id);
+    await retireSourceTables(admin, id);
   }
 }
 

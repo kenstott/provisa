@@ -1,6 +1,6 @@
 {
   "dbtFormSection": {
-    "specLegend": "Herkomst van het manifest",
+    "specLegend": "Waar het manifest vandaan komt",
     "specLocation": "URL of artefactlocatie",
     "specUpload": "Uploaden",
     "specCloud": "dbt Cloud",
@@ -13,15 +13,15 @@
     "tokenLabel": "API-token",
     "tokenHint": "Wordt bij deze bron bewaard en gebruikt om het manifest te lezen en jobs uit te voeren.",
     "commandLineLabel": "Opdracht die dbt uitvoert",
-    "commandLineHint": "Opdrachten lopen hiermee op de plek waar dbt is geïnstalleerd, bijvoorbeeld dbt --project-dir /srv/project.",
+    "commandLineHint": "Uitgevoerd waar dbt is geïnstalleerd, bijvoorbeeld dbt --project-dir /srv/project.",
     "previewButton": "Manifest bekijken",
     "summary": "{{project}} ({{adapter}}): {{models}} modellen en {{commands}} opdrachten beschikbaar.",
     "warehouseFound": "{{database}} wordt gelezen via bron {{source}}.",
     "warehouseMissing": "Geen geregistreerde bron leest de {{adapter}}-database {{database}}. Maak er een aan:",
-    "warehouseId": "ID van de nieuwe bron",
+    "warehouseId": "ID van nieuwe bron",
     "warehouseHost": "Account of host",
     "warehouseUser": "Gebruikersnaam",
     "warehouseCredential": "Referentie",
-    "adapterUnknown": "De adapter {{adapter}} heeft geen bijbehorend brontype. Registreer eerst het warehouse en voeg daarna deze bron toe."
+    "adapterUnknown": "De adapter {{adapter}} heeft geen bijbehorend brontype. Registreer eerst het datawarehouse en voeg daarna deze bron toe."
   }
 }

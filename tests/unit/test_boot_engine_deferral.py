@@ -119,4 +119,5 @@ def test_the_seed_asks_for_an_address_only_when_there_is_one():
     assert "configured_engine_endpoint() if engine_addressable else None" in src
     # The otel row's host/port are the only thing that reads it, and a column the boot cannot
     # supply is not a column it may name in the update list.
-    assert "_otel_update = [c for c in _DERIVED_FROM_DEPLOYMENT if c in _otel_row]" in src
+    # (is_system is written by the seed itself, so it is always in the row and always updated.)
+    assert "*(c for c in _DERIVED_FROM_DEPLOYMENT if c in _otel_row)" in src

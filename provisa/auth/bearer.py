@@ -83,32 +83,24 @@ async def validate_bearer_credential(state, token: str, surface: str):
     return await throttled(validator, token, principal=None)
 
 
-def authorize_role(state, identity, requested: str | None, held: list) -> str:
+def authorize_role(state, identity, requested: str | None, acts_as: str, may_name: list) -> str:
     """The role a call executes as — derived from the validated identity, never asserted.
 
     A call may REQUEST a role (one, or a comma-separated set of held roles acting as their
-    meta-role), and it is honored only when ``held`` -- the identity's assignments, as every
-    transport reads them (provisa.auth.held_assignments) -- carries it; anything else is a
-    privilege claim by the client and raises PermissionError. With no request, the identity's
-    claims map to a role through the same rules every other surface uses.
+    meta-role), and it is honored only when ``may_name`` carries it; anything else is a privilege
+    claim by the client and raises PermissionError. With no request it executes as ``acts_as``.
+    Both are the identity's, as every transport reads them
+    (provisa.auth.held_assignments.sign_in_roles).
     """
-    from provisa.auth.role_mapping import resolve_role
     from provisa.security.meta_role import resolve_requested_role
 
-    auth_config = state.auth_config
-    default_role = auth_config.get("default_role")
-    if not default_role:
-        # No admin default: an identity matching no mapping rule is refused, not escalated.
-        raise PermissionError("identity matched no role and no default_role is configured")
+    if not requested:
+        return acts_as
     from provisa.auth.derived_roles import principal_of
 
-    mapped = resolve_role(identity, auth_config.get("role_mapping", []), default_role)
-    if not requested:
-        return mapped
-    permitted = {a.role_id for a in held} | {mapped}
     # REQ-2057: a derived role the identity holds is named like any role.
     return resolve_requested_role(
-        state, permitted, requested, lambda: principal_of(state, identity)[1]
+        state, set(may_name), requested, lambda: principal_of(state, identity)[1]
     )
 
 
@@ -136,11 +128,13 @@ def authorize_role_or_probe(
         org_id = state.org_id
     if run(role_probe.suspended(identity, org_id, transport)):
         raise PermissionError(role_probe.NOT_PERMITTED)
-    from provisa.auth.held_assignments import held_assignments
+    from provisa.auth.held_assignments import default_request, sign_in_roles
 
-    held = run(held_assignments(state, identity, org_id)) if requested else []
+    acts_as, may_name = run(sign_in_roles(state, identity, org_id))
+    # REQ-2155: naming no role acts as the union of the roles held.
+    named = requested or default_request(state, identity, acts_as, may_name)
     try:
-        return authorize_role(state, identity, requested, held)
+        return authorize_role(state, identity, named, acts_as, may_name)
     except RoleNotHeld as refused:
         probe = role_probe.probe_of(
             identity, refused, org_id=org_id, transport=transport, endpoint=endpoint, client=client

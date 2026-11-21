@@ -316,8 +316,16 @@ class Registry:
         return f"https://{self.host}/v2"
 
     def _client(self) -> httpx.Client:
+        from provisa.security import sandbox_egress
+
+        # REQ-2006: for a held org the registry, its sign-in realm and every redirect are
+        # public destinations, each request checked.
         return httpx.Client(
-            timeout=_TIMEOUT, verify=self.verify, follow_redirects=True, transport=self.transport
+            timeout=_TIMEOUT,
+            verify=self.verify,
+            follow_redirects=True,
+            transport=self.transport,
+            event_hooks=sandbox_egress.http_sync_event_hooks(),
         )
 
     def _token(self, client: httpx.Client, challenge: str, scope: str) -> str:

@@ -33,6 +33,7 @@ class FirebaseAuthProvider(AuthProvider):  # REQ-120, REQ-121
     """Validates Firebase ID tokens via firebase-admin SDK."""
 
     provider_name: str = "firebase"
+    rereads = True  # REQ-812: the Admin SDK reads a user's record and custom claims
 
     def __init__(self, firebase_config: dict, entitlements_claim: str | None = None) -> None:
         if not _HAS_FIREBASE:
@@ -42,7 +43,9 @@ class FirebaseAuthProvider(AuthProvider):  # REQ-120, REQ-121
             raise ValueError("firebase.project_id is required")
         # Resolve ${env:...} placeholders; an unset FIREBASE_SERVICE_ACCOUNT_KEY
         # yields "" (no key file) rather than a literal path that would be opened.
-        service_account_key = resolve_secrets(firebase_config.get("service_account_key") or "")
+        service_account_key = resolve_secrets(
+            firebase_config.get("service_account_key") or "", credential=True
+        )
         self._project_id = project_id
         self._entitlements_claim = entitlements_claim  # REQ-2219
         if not firebase_admin._apps:  # type: ignore[union-attr]
@@ -70,9 +73,35 @@ class FirebaseAuthProvider(AuthProvider):  # REQ-120, REQ-121
         return AuthIdentity(
             user_id=decoded["uid"],
             email=decoded.get("email"),
+            # REQ-1261: the issuer's own statement; absent or false, the address matches nothing.
+            email_verified=decoded.get("email_verified") is True,
             display_name=decoded.get("name"),
             roles=decoded.get("roles", []),
             raw_claims=decoded,
+            entitlements_claim=self._entitlements_claim,
+        )
+
+    async def reread(self, identity: AuthIdentity) -> AuthIdentity:  # REQ-812
+        """The Firebase user behind ``identity``, its custom claims read again through the Admin
+        SDK: the ``roles`` claim an ID token carries is one of them."""
+        import asyncio
+
+        try:
+            record = await asyncio.to_thread(firebase_auth.get_user, identity.user_id)  # type: ignore[union-attr]
+        except firebase_auth.UserNotFoundError as e:  # type: ignore[union-attr]
+            raise ValueError(str(e)) from e
+        if record.disabled:
+            raise ValueError(f"Firebase user {identity.user_id!r} is disabled")
+        # The Admin SDK answers None for a user with no custom claims set: then it has no roles,
+        # exactly as an ID token without a ``roles`` claim has none (validate_token).
+        claims = record.custom_claims or {}
+        return AuthIdentity(
+            user_id=record.uid,
+            email=record.email,
+            email_verified=record.email_verified is True,
+            display_name=record.display_name,
+            roles=claims.get("roles", []),
+            raw_claims={**identity.raw_claims, **claims},
             entitlements_claim=self._entitlements_claim,
         )
 

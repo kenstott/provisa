@@ -28,6 +28,7 @@ sync-reqs:
 	python scripts/gen_feature_matrix.py
 	python scripts/gen_traceability_matrix.py
 	python scripts/gen_roadmap.py
+	python scripts/gen_polyfill_docs.py
 
 coverage-reqs:
 	python scripts/coverage_reqs.py

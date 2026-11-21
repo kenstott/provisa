@@ -7,7 +7,7 @@
     "redirectHint": "所有结果重定向到 S3",
     "queryStats": "查询统计",
     "schemaError": "架构错误：{{message}}",
-    "redirectReady": "重定向就绪——{{rowCount}} 行（{{contentType}}）",
+    "redirectReady": "重定向已就绪：{{rowCount}} 行（{{contentType}}）",
     "download": "下载",
     "dismissRedirect": "关闭重定向通知",
     "formatNone": "无",

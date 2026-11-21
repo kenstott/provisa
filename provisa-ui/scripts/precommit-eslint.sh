@@ -15,12 +15,13 @@ for f in "$@"; do
 done
 [ ${#files[@]} -eq 0 ] && exit 0
 
-# Load nvm and the pinned Node version (eslint v10 + rolldown need Node 22).
+# Load nvm and the repository's pinned Node version (.nvmrc at the repo root).
 export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
 # shellcheck disable=SC1091
 [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
 if command -v nvm >/dev/null 2>&1; then
-  nvm use >/dev/null 2>&1 || nvm use 22 >/dev/null 2>&1 || true
+  nvm use "$(cat "$SCRIPT_DIR/../.nvmrc")" >/dev/null \
+    || { echo "Node $(cat "$SCRIPT_DIR/../.nvmrc") (.nvmrc) is not installed: nvm install" >&2; exit 1; }
 fi
 
 cd "$SCRIPT_DIR"

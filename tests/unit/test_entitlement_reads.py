@@ -272,6 +272,13 @@ async def test_kinds_names_the_kind_that_scopes_each_capability(api):
     assert {c.value for c in Capability} <= scopes.keys()
 
 
+async def test_kinds_carries_the_expiring_soon_threshold(api, monkeypatch):
+    # REQ-2077, REQ-2219: the one expiring-soon setting, for a grant and its entries.
+    assert (await _kinds(api))["expiring_soon_days"] == 7
+    monkeypatch.setenv("PROVISA_GRANT_NOTICE_DAYS", "3")
+    assert (await _kinds(api))["expiring_soon_days"] == 3
+
+
 async def test_the_names_tree_is_the_models_domains_tables_and_columns(api):
     names = (await _kinds(api))["names"]
 

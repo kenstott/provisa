@@ -225,8 +225,8 @@ async def test_deprovisioning_something_absent_is_not_an_error(monkeypatch, conf
 
 @pytest.mark.asyncio
 async def test_readiness_wait_gives_up_with_the_last_thing_it_saw(monkeypatch, configured):
-    async def never_ready(_self, _url, **_kw):
-        raise httpx.ConnectError("connection refused")
+    async def never_ready(_self, url, **_kw):
+        raise httpx.ConnectError("connection refused", request=httpx.Request("GET", url))
 
     monkeypatch.setattr(httpx.AsyncClient, "get", never_ready)
     with pytest.raises(prov.IsolatedProvisioningError) as excinfo:

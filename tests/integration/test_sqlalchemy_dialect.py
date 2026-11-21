@@ -130,28 +130,21 @@ class TestEntryPointRegistration:
         """provisa+http:// creates an engine without error."""
         from sqlalchemy import create_engine
 
-        # This will raise if the entry point is not registered
-        try:
-            engine = create_engine(
-                "provisa+http://admin:pw@localhost:8001",
-                module=__import__("provisa_client.dbapi", fromlist=["dbapi"]),
-            )
-            assert engine.dialect.name == "provisa"
-        except Exception as exc:
-            # If the dialect isn't installed, the test is inconclusive but not a failure
-            pytest.skip(f"provisa_client not installed as entry point: {exc}")
+        # Raises if the entry point is not registered: the container lanes install provisa-client.
+        engine = create_engine(
+            "provisa+http://admin:pw@localhost:8001",
+            module=__import__("provisa_client.dbapi", fromlist=["dbapi"]),
+        )
+        assert engine.dialect.name == "provisa"
 
     def test_dialect_registered_for_https(self):
         from sqlalchemy import create_engine
 
-        try:
-            engine = create_engine(
-                "provisa+https://admin:pw@localhost:8001",
-                module=__import__("provisa_client.dbapi", fromlist=["dbapi"]),
-            )
-            assert engine.dialect.name == "provisa"
-        except Exception as exc:
-            pytest.skip(f"provisa_client not installed as entry point: {exc}")
+        engine = create_engine(
+            "provisa+https://admin:pw@localhost:8001",
+            module=__import__("provisa_client.dbapi", fromlist=["dbapi"]),
+        )
+        assert engine.dialect.name == "provisa"
 
 
 # ---------------------------------------------------------------------------

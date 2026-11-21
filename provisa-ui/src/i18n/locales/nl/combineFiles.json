@@ -1,0 +1,32 @@
+{
+  "combineFiles": {
+    "globLabel": "Of bestanden die overeenkomen met",
+    "globPlaceholder": "complaints_2026_*.csv",
+    "globHint": "Een glob over de bestanden van de bron, als één tabel of één per bestand.",
+    "modeLabel": "Hoe de bestanden worden geregistreerd",
+    "perFile": "Eén tabel per bestand",
+    "combine": "Combineren tot één tabel",
+    "checking": "Bestanden controleren…",
+    "noMatch": "Geen bestand komt overeen met deze glob.",
+    "unmatched": "Geen bestand gevonden voor {{tables}}.",
+    "matched_one": "{{count}} bestand komt overeen met {{glob}}",
+    "matched_other": "{{count}} bestanden komen overeen met {{glob}}",
+    "sharedColumns": "Gedeelde kolommen: {{columns}}",
+    "noSharedColumns": "Ze delen geen kolom.",
+    "differHeading": "De kolommen van deze bestanden verschillen, dus ze kunnen geen tabel vormen. Laat ze weg of typ een glob die ze niet omvat:",
+    "differ": "{{file}} {{how}}",
+    "lacks": "mist {{columns}}",
+    "adds": "voegt {{columns}} toe",
+    "differUnreadable": "{{file}} kon niet worden gelezen: {{error}}",
+    "extra": "De glob {{glob}} komt ook overeen met {{files}}, die u niet hebt gekozen.",
+    "includeExtra": "Deze ook opnemen",
+    "extraUnconfirmed": "Neem de bestanden op die de glob ook omvat, of typ een glob die alleen de gewenste bestanden omvat.",
+    "nameLabel": "Naam van de nieuwe tabel",
+    "namePlaceholder": "complaints",
+    "nameRequired": "Geef de nieuwe tabel een naam.",
+    "notRegistrable": "Deze bestanden kunnen niet als één tabel worden geregistreerd.",
+    "sourceFileColumnLabel": "Kolom voor bronbestand",
+    "sourceFileColumnPlaceholder": "source_file",
+    "sourceFileColumnHint": "Optioneel: een kolom met het bestand waaruit elke rij komt."
+  }
+}

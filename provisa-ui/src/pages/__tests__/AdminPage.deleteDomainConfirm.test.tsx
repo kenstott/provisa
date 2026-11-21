@@ -91,7 +91,7 @@ describe("Admin > Domains: deleting a domain", () => {
 
   it("deletes on confirm", async () => {
     const dialog = await openConfirmation();
-    fireEvent.click(within(dialog).getByRole("button", { name: "Confirm" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Delete" }));
     await waitFor(() => expect(deleteDomain).toHaveBeenCalledWith("sales"));
     await waitFor(() => expect(refetch).toHaveBeenCalled());
   });

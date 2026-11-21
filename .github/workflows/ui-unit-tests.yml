@@ -2,11 +2,11 @@ name: UI Unit Tests
 
 # provisa-ui's type check and its vitest suite: no server, no containers, no secrets. Until this
 # workflow they ran only on a maintainer's machine, so a type error or a failing component test
-# reached main unseen by CI (the Playwright workflows are release-branch and on demand).
+# reached main unseen by CI (the Playwright workflows run on dispatch).
 
 on:
   push:
-    branches: [main, 'release/**']
+    branches: [main]
   pull_request:
   workflow_dispatch:
 

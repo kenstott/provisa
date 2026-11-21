@@ -17,8 +17,7 @@ pinned to it WITH it, because a visitor's account exists only inside that enviro
 is in ``retire_environment`` itself, so the delete door, a merge that retires its source and the
 expiry sweep are the same act.
 
-The scenarios run here on a SQLite platform plane, and unchanged on PostgreSQL in
-``tests/integration/test_environment_retire_guarded_pg.py``.
+The scenarios run on a PostgreSQL platform plane.
 """
 
 # Requirements: REQ-1918, REQ-1596, REQ-1542, REQ-1523
@@ -331,6 +330,7 @@ async def test_the_delete_door_answers_with_each_dependent(admin):
                 "kind": "membership",
                 "id": "viv",
                 "name": "viv",
+                "label": "viv",
                 "via": ["user_org_memberships.env_name"],
             }
         ],
@@ -408,3 +408,23 @@ async def test_the_environments_listing_says_which_expired_rows_are_kept_and_why
     kept = {e["name"]: e["expired_kept_by"] for e in answer["environments"]}
     assert kept["portal"] == {"membership": 1}
     assert kept["staging"] == {} and kept["prod"] == {}
+
+
+async def test_each_dependent_of_an_environment_is_labelled_as_its_page_names_it(admin):
+    # REQ-2240: the dialog names each dependent by its label -- a member by who they are, an
+    # invitation by whom it is addressed to, an environment by its name.
+    await _pin(admin, "viv", "staging")
+    await _invite(admin, "tok", "staging", email="guest@example.com")
+    async with admin.acquire() as conn:
+        await conn.execute_core(
+            insert(environments).values(
+                org_id=ORG, name="feature-x", parent="staging", data_mode="inherit"
+            )
+        )
+    with pytest.raises(EnvironmentInUse) as err:
+        await _retire(admin, "staging")
+    assert [(d.as_dict()["kind"], d.as_dict()["label"]) for d in err.value.dependents] == [
+        ("membership", "viv"),
+        ("invitation", "guest@example.com"),
+        ("environment", "feature-x"),
+    ]

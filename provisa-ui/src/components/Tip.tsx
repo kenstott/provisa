@@ -255,7 +255,11 @@ export function TipSurface({
           arrowSize={8}
           offset={8}
           multiline
-          w={card ? TIP_MAX_WIDTH : undefined}
+          // In place, the floating element is laid out inside the target's parent, and with no
+          // width of its own it takes that parent's: a narrow control bar wrapped "Fullscreen"
+          // one letter per line (the surface breaks anywhere). It takes its text's width on one
+          // line instead, wrapping only past TIP_MAX_WIDTH, as a hint in a portal does.
+          w={card ? TIP_MAX_WIDTH : inPlace ? "max-content" : undefined}
           maw={TIP_MAX_WIDTH}
           classNames={{ tooltip: card ? "tip-surface tip-surface--card" : "tip-surface" }}
           data-testid={testId}

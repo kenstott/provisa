@@ -46,20 +46,20 @@ import {
   fetchOrgStatus,
   redeemInvite,
 } from "../api/admin";
-import type { OrgReservation, PlanOffer } from "../api/billing";
+import type { CheckoutSession, OrgReservation, PlanOffer } from "../api/billing";
 import { useCheckoutAppearance } from "../api/checkoutAppearance";
 import {
-  BillingError,
+  checkoutReturnUrl,
+  clearCheckoutReturn,
   fetchCatalog,
   fetchMyReservation,
-  openCheckout,
+  readCheckoutReturn,
   reconcileCheckout,
-  startEgressSubscription,
   startPlanCheckout,
 } from "../api/billing";
+import { CheckoutModal } from "../components/CheckoutModal";
 import { useAuth } from "../context/AuthContext";
 import { orgOrigin } from "../lib/authHost";
-import { OrgWelcomePage } from "./OrgWelcomePage";
 import { forgetInvite, pendingInvite } from "../lib/pendingInvite";
 import { signOut } from "../lib/session";
 import { formatMoney, planName } from "../lib/planDisplay";
@@ -81,10 +81,18 @@ export function OnboardOrgPage() {
   // before the first page renders. `orgOrigin` is null only where the host names no org (a desktop
   // install has no per-org address); there the header IS the binding and the in-app route is the
   // whole navigation.
-  const enterOrg = (orgId: string, path: string) => {
+  //
+  // Binds the new org and refreshes identity, so its grant resolves before the page entered offers
+  // links that need it (the welcome's /team and /security/roles), then enters the org at `path`.
+  // The refresh is what lifts the membership gate, and the shell opens on the URL shown then. An
+  // in-app route is therefore taken first: taken after, the shell had already opened at `/`, whose
+  // landing (the role's first page, REQ-1327) replaced it. A document load leaves after the refresh.
+  const enterOrg = async (orgId: string, path: string) => {
     const address = orgOrigin(orgId);
+    if (!address) navigate(path);
+    selectOrg(orgId);
+    await refresh();
     if (address) window.location.assign(`${address}${path}`);
-    else navigate(path);
   };
   // REQ-1616: someone arriving with an invitation still in hand came here to join, not to create an
   // org, and if the redemption is refused it is the join form they need to be looking at.
@@ -95,8 +103,8 @@ export function OnboardOrgPage() {
   // REQ-1043/REQ-1067: dedicated federation engine, chosen at creation. Only where nothing is sold —
   // on a commerce deploy the lane comes with the plan (REQ-1510), so it is not a separate choice.
   const [isolatedEngine, setIsolatedEngine] = useState(false);
-  // REQ-1514: the priced plans, and the one being bought. The checkout overlay states only the
-  // first tier's unit price, which is zero on every plan, so the terms are shown here instead.
+  // REQ-1514: the priced plans, and the one being bought. The terms are stated here, before the
+  // checkout opens.
   const [plans, setPlans] = useState<PlanOffer[] | null>(null);
   // REQ-1566: whether this account is still owed a free evaluation. Until the catalog answers,
   // no trial is claimed — promising free days and then billing on day one is the failure this
@@ -117,11 +125,17 @@ export function OnboardOrgPage() {
   const [invite, setInvite] = useState(() => pendingInvite() ?? "");
   const spentHeldInvite = useRef(false);
   const [error, setError] = useState<string | null>(null);
-  // "creating" is the org create itself; "provisioning" is only reached after a checkout closed,
-  // which is what lets the two say different things about payment on a commerce deploy.
-  const [phase, setPhase] = useState<
-    "form" | "creating" | "checkout" | "provisioning" | "joining" | "welcome"
-  >("form");
+  // REQ-1476: the checkout this page load returns from. Read once, before anything renders; the
+  // address is cleared and the purchase picked up by the effect below.
+  const [checkoutReturn] = useState(readCheckoutReturn);
+  const handledReturn = useRef(false);
+  // "creating" is the org create itself; "provisioning" is reached on the return from a paid
+  // checkout, which is what lets the two say different things about payment on a commerce deploy.
+  const [phase, setPhase] = useState<"form" | "creating" | "checkout" | "provisioning" | "joining">(
+    checkoutReturn === null ? "form" : "provisioning",
+  );
+  // The checkout open in the modal, and the org it is for.
+  const [checkout, setCheckout] = useState<CheckoutSession | null>(null);
   // REQ-1476: a reservation this account left behind — the id is held, so the way back in is the
   // checkout it abandoned, not a second create.
   const [reservation, setReservation] = useState<OrgReservation | null>(null);
@@ -214,9 +228,7 @@ export function OnboardOrgPage() {
     setPhase("joining");
     try {
       const { org_id } = await redeemInvite(token);
-      selectOrg(org_id);
-      await refresh();
-      enterOrg(org_id, "/query");
+      await enterOrg(org_id, "/");
     } catch (err) {
       setError(err instanceof Error ? err.message : t("onboardOrg.joinFailed"));
       setPhase("form");
@@ -250,9 +262,7 @@ export function OnboardOrgPage() {
     setPhase("joining");
     try {
       const { org_id } = await acceptAutoJoin(orgId);
-      selectOrg(org_id);
-      await refresh();
-      enterOrg(org_id, "/query");
+      await enterOrg(org_id, "/");
     } catch (err) {
       setError(err instanceof Error ? err.message : t("onboardOrg.joinFailed"));
       setPhase("form");
@@ -283,85 +293,49 @@ export function OnboardOrgPage() {
       }
     }
     if (state !== "ready") throw new Error(t("onboardOrg.provisionTimeout"));
-    // Bind the new org + refresh identity so the org_admin grant resolves BEFORE the welcome
-    // screen offers links into /team (user_management) and /security/roles (access_config).
-    selectOrg(orgId);
-    await refresh();
   };
 
-  // REQ-1476: the org leaves awaiting_checkout when the purchase binds to it — normally through the
-  // webhook, and through reconcile when that has not arrived. Both read the same purchase, and the
-  // store publishes it some seconds after the overlay closes, so a reconcile that finds no
-  // subscription yet is the race and not the answer: keep asking until one of the two lands.
-  const settleCheckout = async (orgId: string) => {
-    let state = (await fetchOrgStatus(orgId)).provisioning_state;
-    for (let i = 0; i < 60 && state === "awaiting_checkout"; i++) {
-      await new Promise((r) => setTimeout(r, 2000));
-      try {
-        state = (await reconcileCheckout(orgId)).state;
-      } catch (err) {
-        if (!(err instanceof BillingError) || err.code !== "billing.no_subscription_found")
-          throw err;
-        state = (await fetchOrgStatus(orgId)).provisioning_state;
-      }
-    }
-    if (state === "awaiting_checkout") throw new Error(t("onboardOrg.checkoutNotSettled"));
-    return state;
-  };
-
-  // REQ-1476: the subscription is what builds the org, so the checkout overlay is the rest of the
-  // create. The webhook normally provisions before the overlay closes; reconcile covers the case
-  // where it has not arrived, and the poll then runs the same way for both.
+  // REQ-1476: the subscription is what builds the org, so the checkout is the rest of the create.
+  // It opens in a modal on this page and, once paid, Stripe navigates back here with its session
+  // id; the org rides the return address because nothing else on the reloaded page names it.
   const runCheckout = async (orgId: string, chosen: string) => {
     setPhase("checkout");
-    const url = await startPlanCheckout(orgId, chosen, window.location.href, appearance);
-    await openCheckout(
-      url,
-      () => {
-        void (async () => {
-          setPhase("provisioning");
-          try {
-            await waitForReady(orgId, await settleCheckout(orgId));
-          } catch (err) {
-            setError(err instanceof Error ? err.message : t("onboardOrg.createFailed"));
-            setPhase("form");
-            return;
-          }
-          // REQ-1482: the transfer subscription is a second checkout — one Lemon Squeezy variant
-          // carries one usage-based price, and the plan's is the active hour. Ordered after the org
-          // is built, which is when its billing row exists to bind the subscription to. A failure
-          // here is reported over the welcome screen: the org is provisioned and the create is done.
-          try {
-            const egress = await startEgressSubscription(orgId, window.location.href, appearance);
-            await openCheckout(egress, () => {
-              // The webhook binds the subscription; nothing on this page reads it.
-            });
-            // REQ-1276: the create is finished, so it lands on the org's own host — the welcome is
-            // read at `{org}.provisa.dev`, which is the address the org answers at from here on.
-            enterOrg(orgId, "/welcome");
-          } catch (err) {
-            // Stay on the control plane instead: the welcome is shown here, under what failed,
-            // because a document load to the org host would take the report with it.
-            setError(err instanceof Error ? err.message : t("onboardOrg.egressCheckoutFailed"));
-            setPhase("welcome");
-          }
-        })();
-      },
-      () => {
-        // REQ-1476: closing the overlay abandons the checkout, not the org — the id stays reserved
-        // until it expires. Come back to the form holding that reservation, so the way on is the
-        // resume it offers; re-entering the same id would be refused as taken.
-        void (async () => {
-          setPhase("form");
-          try {
-            setReservation(await fetchMyReservation());
-          } catch (err) {
-            setError(err instanceof Error ? err.message : t("onboardOrg.createFailed"));
-          }
-        })();
-      },
-    );
+    setCheckout(await startPlanCheckout(orgId, chosen, checkoutReturnUrl(orgId), appearance));
   };
+
+  // REQ-1476: closing the checkout abandons it, not the org — the id stays reserved until it
+  // expires. Come back to the form holding that reservation, so the way on is the resume it
+  // offers; re-entering the same id would be refused as taken.
+  const abandonCheckout = async () => {
+    setCheckout(null);
+    setPhase("form");
+    try {
+      setReservation(await fetchMyReservation());
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t("onboardOrg.createFailed"));
+    }
+  };
+
+  // REQ-1476: the return from a paid checkout. The org leaves awaiting_checkout when the purchase
+  // binds to it — normally through the webhook, and through reconcile, which reads the session
+  // Stripe named, when that has not arrived. The poll then runs the same way for both.
+  useEffect(() => {
+    if (checkoutReturn === null || handledReturn.current) return;
+    handledReturn.current = true;
+    clearCheckoutReturn();
+    const { orgId, sessionId } = checkoutReturn;
+    void (async () => {
+      try {
+        if (orgId === null) throw new Error(t("onboardOrg.checkoutReturnNoOrg"));
+        const { state } = await reconcileCheckout(orgId, sessionId);
+        await waitForReady(orgId, state);
+        await enterOrg(orgId, "/welcome");
+      } catch (err) {
+        setError(err instanceof Error ? err.message : t("onboardOrg.createFailed"));
+        setPhase("form");
+      }
+    })();
+  });
 
   const handleCreate = async (e: FormEvent) => {
     e.preventDefault();
@@ -389,7 +363,7 @@ export function OnboardOrgPage() {
         return;
       }
       await waitForReady(id, created.provisioning_state);
-      enterOrg(id, "/welcome");
+      await enterOrg(id, "/welcome");
       return;
     } catch (err) {
       if (err instanceof OrgError && err.code === "orgs.auto_join_breadth_unacknowledged") {
@@ -422,29 +396,12 @@ export function OnboardOrgPage() {
     setPhase("joining");
     try {
       const { org_id } = await redeemInvite(invite.trim());
-      selectOrg(org_id);
-      await refresh();
-      enterOrg(org_id, "/query");
+      await enterOrg(org_id, "/");
     } catch (err) {
       setError(err instanceof Error ? err.message : t("onboardOrg.joinFailed"));
       setPhase("form");
     }
   };
-
-  if (phase === "welcome") {
-    // Reached only when the create finished with something to report — the success path is a
-    // document load to the org's own host, which is where this same page is normally read.
-    return (
-      <Box maw={560} mx="auto" my={80} data-testid="onboard-org-welcome">
-        {error && (
-          <Alert color="red" mb="lg" data-testid="onboard-welcome-error">
-            {error}
-          </Alert>
-        )}
-        <OrgWelcomePage />
-      </Box>
-    );
-  }
 
   return (
     <Box maw={480} mx="auto" my={80} data-testid="onboard-org-page">
@@ -633,9 +590,8 @@ export function OnboardOrgPage() {
                   }}
                 />
               </FormField>
-              {/* REQ-1514: what each plan actually costs and caps. The checkout overlay renders a
-                    variant by its first tier's unit price, which is zero on every plan, and says
-                    nothing of the hourly rate, the source cap, or the transfer allowance. */}
+              {/* REQ-1514: what each plan actually costs and caps, stated before the checkout
+                    opens: the hourly rate, the source cap and the transfer allowance. */}
               {plans && (
                 <FormField size="full">
                   <Radio.Group
@@ -836,6 +792,7 @@ export function OnboardOrgPage() {
           )}
         </Stack>
       )}
+      <CheckoutModal session={checkout} onClose={() => void abandonCheckout()} />
     </Box>
   );
 }

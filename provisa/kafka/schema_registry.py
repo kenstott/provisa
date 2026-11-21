@@ -22,6 +22,7 @@ from dataclasses import dataclass
 
 import httpx
 
+from provisa.security import sandbox_egress  # REQ-2006
 from provisa.kafka.source import (
     KafkaColumn,
     ValueFormat,
@@ -53,7 +54,9 @@ class SchemaRegistryClient:  # REQ-147, REQ-150
 
     async def get_latest_schema(self, subject: str) -> SchemaInfo:
         """Fetch the latest schema for a subject."""
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(
+            event_hooks=sandbox_egress.http_event_hooks()
+        ) as client:  # REQ-2006
             resp = await client.get(
                 f"{self._url}/subjects/{subject}/versions/latest",
             )
@@ -69,14 +72,18 @@ class SchemaRegistryClient:  # REQ-147, REQ-150
 
     async def get_subjects(self) -> list[str]:
         """List all registered subjects."""
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(
+            event_hooks=sandbox_egress.http_event_hooks()
+        ) as client:  # REQ-2006
             resp = await client.get(f"{self._url}/subjects")
             resp.raise_for_status()
             return resp.json()
 
     async def check_compatibility(self, subject: str, schema_str: str) -> bool:
         """Check if a schema is compatible with the latest version."""
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(
+            event_hooks=sandbox_egress.http_event_hooks()
+        ) as client:  # REQ-2006
             resp = await client.post(
                 f"{self._url}/compatibility/subjects/{subject}/versions/latest",
                 json={"schema": schema_str},

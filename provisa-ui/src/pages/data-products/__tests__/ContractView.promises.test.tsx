@@ -32,6 +32,7 @@ const promise = (id: number, rules: ProductDqRule[]): ProductDqEntry => ({
   rules,
   latest_outcome: "pass",
   latest_run_at: null,
+  failing_checks: [],
 });
 const rule = (check_type: string, column_name: string, args: Record<string, unknown> = {}) => ({
   check_type,

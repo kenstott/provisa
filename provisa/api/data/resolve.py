@@ -184,7 +184,9 @@ def build_statement(
             f"({', '.join(key_columns)}); the address gives {len(address.key)} value(s)"
         )
     registered_name = meta.original_table_name or meta.table_name
-    if as_of is not None and registered_name not in bitemporal:
+    from provisa.compiler.view_expand import view_key
+
+    if as_of is not None and view_key(meta.schema_name, registered_name) not in bitemporal:
         raise AddressError(
             f"table {address.table!r} keeps no history (it has no bitemporal mode), so it "
             "cannot be resolved as of a point in time"

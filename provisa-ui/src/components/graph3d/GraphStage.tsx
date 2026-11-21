@@ -13,7 +13,11 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Stage3D, type CameraCommand } from "../../pages/tables/profile3d/Stage3D";
+import {
+  Stage3D,
+  type CameraCommand,
+  type ViewControls,
+} from "../../pages/tables/profile3d/Stage3D";
 import { useLazyScene } from "../../pages/tables/profile3d/useLazyScene";
 import type { GraphData, LayoutKind, NodeType } from "./graphModel";
 import type { GraphHover, GraphScene } from "./graphScene";
@@ -60,6 +64,7 @@ export function GraphStage({
   command,
   exportName,
   testId,
+  controls,
   bare = false,
 }: {
   s: StageState;
@@ -67,7 +72,8 @@ export function GraphStage({
   /** What the view's exports are named after (the graph and its view). */
   exportName: string;
   testId: string;
-  /** A glance only (a card): no export or hint (Stage3D). */
+  controls: ViewControls;
+  /** A glance only (a card): no controls or hint (Stage3D). */
   bare?: boolean;
 }) {
   const { t } = useTranslation();
@@ -148,6 +154,7 @@ export function GraphStage({
       exportable={scene}
       exportName={exportName}
       testId={testId}
+      controls={controls}
       bare={bare}
       flat={s.flat}
       legend={<GraphLegend graph={s.graph} />}

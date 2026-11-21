@@ -1,7 +1,7 @@
 {
   "relationshipRow": {
-    "autoTrackedTitle": "FK制約から自動追跡",
-    "fkBadge": "FK",
+    "fkBadge": "FK から",
+    "fkBadgeTitle": "ソースの外部キーから作成されました",
     "yes": "はい",
     "no": "いいえ",
     "none": "—",
@@ -32,7 +32,6 @@
     "materializeCheckbox": "マテリアライズ",
     "excludeFromCypher": "Cypherから除外",
     "sqlName": "SQL 名",
-    "autoTracked": "自動追跡",
     "cardinalityWarning": "警告: このJOINが親ごとに複数行を返す場合、最初の値のみが使用されます。",
     "toggleDetails": "リレーションシップ詳細の表示切替",
     "junctionBadge": "プロパティ",
@@ -44,6 +43,32 @@
     "parameterNotFed": "渡さない",
     "sameEntity": "同一エンティティ",
     "sameEntityHint": "結合する行は同じものです: 1 つの用語が両テーブルに紐づき、キーで 1:1 に結合",
-    "cardinalityOneToOne": "一対一"
+    "cardinalityOneToOne": "一対一",
+    "resolverNote": "コードリゾルバー {{resolver}} の一部です。一致ビューと 3 つのリレーションシップはまとめて変更・廃止されます。",
+    "changeResolver": "コードリゾルバーを変更",
+    "retireResolver": "コードリゾルバーを廃止",
+    "retireResolverTitle": "コードリゾルバー {{resolver}} を廃止しますか？",
+    "retireResolverConsequence": "一致ビューと 3 つのリレーションシップがまとめて廃止されます。名前は使用済みのまま残ります。",
+    "queryLinks": {
+      "heading": "クエリ",
+      "tableMissing": "クエリリンクを利用できません: このリレーションシップが指すテーブル {{ids}} は登録済みテーブルに含まれていません。",
+      "tablesUnread": "クエリリンクを利用できません: 登録済みテーブルを読み取れませんでした ({{error}})。",
+      "cypher": "{{name}} を Cypher で読む",
+      "sql": "{{name}} を SQL で読む",
+      "sparql": "{{name}} を SPARQL で読む",
+      "graphql": "{{name}} を GraphQL で読む",
+      "rest": "{{name}} を REST で読む",
+      "grpc": "{{name}} を gRPC で読む",
+      "jsonapi": "{{name}} を JSON:API で読む",
+      "surfaces": {
+        "cypher": "Cypher",
+        "sql": "SQL",
+        "sparql": "SPARQL",
+        "graphql": "GraphQL",
+        "rest": "REST",
+        "grpc": "gRPC",
+        "jsonapi": "JSON:API"
+      }
+    }
   }
 }

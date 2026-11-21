@@ -37,7 +37,7 @@ import {
   submitRegisterAndExpectListed,
   submitSourceAndExpectListed,
   FORM_FIELD,
-  removeTestSources,
+  retireTestSourcesTables,
 } from "./source-to-query-helpers";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
@@ -142,10 +142,15 @@ function useSource(source: string, testBudgetMs: number): void {
 
 test.describe("source to query through the UI: generic RDBMS types (REQ-1671)", () => {
   test.afterEach(async () => {
-    await removeTestSources();
-    // Every source this test started comes down, also after a failure; a `down` that fails is
-    // a container left holding the runner's memory, so it fails the test loudly.
-    for (const source of started.splice(0)) provision("down", source);
+    // Every source this test started comes down, also after a failure -- and also when retiring
+    // the test's tables throws: run 43775788692 kept cockroachdb's and sqlserver's containers from
+    // their failed tests to the end of the lane, under SAP HANA, until 166 MiB were free. A `down`
+    // that fails is a container left holding the runner's memory, so it fails the test loudly.
+    try {
+      await retireTestSourcesTables();
+    } finally {
+      for (const source of started.splice(0)) provision("down", source);
+    }
   });
 
   test("mariadb: add the source, register a table, query it on the SQL page", async ({ page }) => {

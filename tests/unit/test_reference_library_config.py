@@ -7,39 +7,56 @@
 # NOTICE: Use of this software for training artificial intelligence or
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
-"""REQ-2185: a configuration declares the reference library's retrieval setting."""
+
+"""REQ-2185 (ONE RETRIEVAL, NO SETTING): the reference library has one retrieval, so nothing
+declares, stores or serves a retrieval setting."""
+
+import inspect
+from pathlib import Path
 
 import pytest
-from pydantic import ValidationError
 
-from provisa.core.models import ProvisaConfig, ReferenceLibraryConfig
+from provisa.api.admin import reference_library_router as router
+from provisa.core import models, org_settings
+from provisa.reference_library import retrieve
 
-_ROLES = [{"id": "admin", "description": "admin", "capabilities": [], "domain_access": ["*"]}]
-
-_BASE = {"sources": [], "domains": [], "tables": []}
-
-
-def test_the_retrieval_setting_validates_and_defaults_to_passage():
-    assert ReferenceLibraryConfig().retrieval == "passage"
-    assert ReferenceLibraryConfig(retrieval="graph").retrieval == "graph"
+ROOT = Path(__file__).resolve().parents[2]
 
 
-def test_an_invalid_retrieval_is_a_validation_error():
-    with pytest.raises(ValidationError):
-        ReferenceLibraryConfig(retrieval="vector")
+def test_a_configuration_declares_no_library_retrieval():
+    assert "reference_library" not in models.ProvisaConfig.model_fields
+    assert not hasattr(models, "ReferenceLibraryConfig")
 
 
-def test_provisa_config_declares_reference_library():
-    config = ProvisaConfig.model_validate(
-        {**_BASE, "roles": _ROLES, "reference_library": {"retrieval": "graph"}}
-    )
-    assert config.reference_library.retrieval == "graph"
-    assert "reference_library" in config.model_fields_set
-    assert (
-        "reference_library"
-        not in ProvisaConfig.model_validate({**_BASE, "roles": _ROLES}).model_fields_set
-    )
-    with pytest.raises(ValidationError):
-        ProvisaConfig.model_validate(
-            {**_BASE, "roles": _ROLES, "reference_library": {"retrieval": "x"}}
+def test_an_org_holds_no_library_retrieval_setting():
+    assert "reference_library" not in org_settings.ORG_OVERRIDABLE_KEYS
+
+
+async def test_an_org_cannot_be_given_a_library_retrieval_setting():
+    with pytest.raises(ValueError, match="not org-overridable: reference_library"):
+        await org_settings.write_org_overrides(
+            None,  # type: ignore[arg-type]  # refused before the store is reached
+            {"reference_library": {"retrieval": "graph"}},
+            updated_by="admin",
         )
+
+
+def test_retrieval_takes_no_choice_of_retrieval():
+    assert "retrieval" not in inspect.signature(retrieve.retrieve_with_neighbours).parameters
+    for gone in ("PASSAGE", "GRAPH", "RETRIEVALS", "SETTING", "retrieval_setting"):
+        assert not hasattr(retrieve, gone), gone
+
+
+def test_the_admin_api_serves_no_library_settings():
+    paths = {getattr(r, "path", "") for r in router.router.routes}
+    assert "/admin/reference-library/settings" not in paths
+    assert not hasattr(router, "get_settings") and not hasattr(router, "put_settings")
+
+
+def test_no_demo_declares_a_library_retrieval():
+    declared = [
+        p.relative_to(ROOT).as_posix()
+        for p in sorted((ROOT / "demo").rglob("*.yaml"))
+        if "reference_library:" in p.read_text(encoding="utf-8")
+    ]
+    assert declared == []

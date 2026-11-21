@@ -14,7 +14,7 @@
 // that set the layers and the layout. A layer the data has nothing in is not offered. A snippet
 // (a term's page, a product's panel) is the same view with only its 2D/3D and depth controls.
 // (Amended 2026-11-07, WHAT THE GRAPH DRAWS:) the depth control is "Hops from <focus>", counted
-// from the focus alone; Related tables draws the tables related to those drawn, one step, in 3D;
+// from the focus alone (amended 2026-11-12: each hop a step between terms, then All); Related tables draws the tables related to those drawn, one step, in 3D;
 // a table's columns tied to no term drawn fold into one node; Reset view folds every table back.
 
 import { useContext, useEffect, useMemo, useState } from "react";
@@ -24,7 +24,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { SummaryMultiSelect } from "./SummaryMultiSelect";
 import { AttractionSlider } from "../../pages/tables/profile3d/Attraction";
 import { ATTRACTION_MAX, ATTRACTION_MIN } from "../../pages/tables/profile3d/attractionState";
-import { GridToggle } from "../../pages/tables/profile3d/GridToggle";
+import { Tip } from "../Tip";
 import { ResetSettingsButton } from "../../pages/tables/profile3d/ResetSettingsButton";
 import {
   chosenNow,
@@ -32,7 +32,7 @@ import {
   useGraphSettings,
   type GraphKey,
 } from "../../pages/tables/profile3d/graphSettings";
-import { matchesSearch, searchItems } from "../../lib/searchItems";
+import { matchesSearch, searchItems, type SearchGroups } from "../../lib/searchItems";
 import { ClampedDetail } from "../../pages/data-products/ClampedDetail";
 import type { CameraCommand } from "../../pages/tables/profile3d/Stage3D";
 import { ExpandButton } from "../../pages/tables/profile3d/Expandable3D";
@@ -63,7 +63,7 @@ import {
 import type { GraphHover } from "./graphScene";
 import { GraphStage, type StageState } from "./GraphStage";
 import { LaneStage } from "./LaneStage";
-import { laneDiagram, type LanePath } from "./laneDiagram";
+import { laneDiagram } from "./laneDiagram";
 import { DimensionToggle } from "./DimensionToggle";
 import { LayoutToggle } from "./LayoutToggle";
 import { kindKey } from "./nodeLook";
@@ -87,8 +87,17 @@ const BESIDE_FILTERS: ReadonlySet<LayerId> = new Set(["columns", "related"]);
  * amended 2026-11-07), so neither is read for it. */
 const NOT_IN_2D: ReadonlySet<LayerId> = new Set(["related", "lineage"]);
 
-/** The depths a focus can be read to, in hops. */
-const DEPTHS = [1, 2, 3, 4];
+/** The layers a term drawn brings with it, whatever the hop (REQ-2174, amended 2026-11-12): read
+ * while chosen though the opening read, nearer the focus, found nothing in them. */
+const GROUNDING: ReadonlySet<LayerId> = new Set(["columns", "data"]);
+
+/** The depths a focus can be read to, in steps between terms; Infinity is All, the connected part
+ * to its end (REQ-2174, amended 2026-11-12). */
+const DEPTHS = [1, 2, 3, 4, Infinity];
+
+/** A depth as the control and the remembered scope hold it: All as "all". */
+const depthValue = (d: number) => (d === Infinity ? "all" : String(d));
+const depthOf = (v: string) => (v === "all" ? Infinity : Number(v));
 
 export function GraphExplorer({
   data,
@@ -156,6 +165,8 @@ export function GraphExplorer({
     /** REQ-2143: ``data`` is the overview -- the domains with their counts -- and picking a domain
      * narrows the graph to it. */
     overview?: boolean;
+    /** Told the tables expanded: the page reads a table's columns beyond those it read. */
+    onExpanded?: (tables: ReadonlySet<string>) => void;
   };
   /** REQ-1723: the navbar's checked domains (useViewDomains), null for no narrowing. The graph
    * holds only what is in them; its own domain filter chooses among them, narrowing further and
@@ -199,7 +210,8 @@ export function GraphExplorer({
     orphans: true as boolean,
     rotate: false as boolean,
     attraction: 1 as number,
-    grid: true as boolean,
+    // The floor grid is not drawn until the reader turns Grid on (REQ-2239, amended 2026-11-13).
+    grid: false as boolean,
     // REQ-2174: drawn in 2D, laid out flat through a face-on camera.
     flat: opensFlat as boolean,
     // REQ-2174: auto opens in the preset's own layout, else Force; else the reader's Force or Layered.
@@ -310,6 +322,8 @@ export function GraphExplorer({
       if (!next.delete(id)) next.add(id);
       return next;
     });
+  const onExpanded = query?.onExpanded;
+  useEffect(() => onExpanded?.(expanded), [onExpanded, expanded]);
   const [frame, setFrame] = useState(0);
   // A product's graph shows the rest of the model whenever its focus is anything but the product.
   const showsRest = home !== null && !(focus.length === 1 && focus[0] === home);
@@ -330,7 +344,7 @@ export function GraphExplorer({
       new Set(
         [...layers].filter(
           (l) =>
-            offered.has(l) &&
+            (offered.has(l) || GROUNDING.has(l)) &&
             (l !== "ownerTables" || layers.has("columns")) &&
             !(flat && NOT_IN_2D.has(l)),
         ),
@@ -364,7 +378,7 @@ export function GraphExplorer({
     narrowed.sensitivities,
     searchItems(search ?? ""),
     flat,
-    depth,
+    depthValue(depth),
   ]);
   useEffect(() => {
     if (!onScope) return;
@@ -378,9 +392,9 @@ export function GraphExplorer({
       boolean,
       string[],
       string[],
-      string[],
+      SearchGroups,
       boolean,
-      number,
+      string,
     ];
     onScope({
       layers: new Set(l),
@@ -393,7 +407,7 @@ export function GraphExplorer({
       search: items,
       lanes,
       focus: own,
-      depth: hops,
+      depth: depthOf(hops),
     });
   }, [onScope, scopeKey, own]);
 
@@ -405,12 +419,6 @@ export function GraphExplorer({
     const id = search === undefined && filters.focus.length === 1 ? filters.focus[0] : null;
     return id === null ? null : (data.nodes.find((n) => n.id === id) ?? null);
   }, [search, filters.focus, data]);
-  // REQ-2174 (amended 2026-11-07): in 2D a product's hops run along the lanes (laneDiagram).
-  const lanePath: LanePath | null = useMemo(
-    () => (flat && focusNode?.type === "product" ? { focus: focusNode.id, depth } : null),
-    [flat, focusNode, depth],
-  );
-
   // What the drawing reads of ``query``: the page rebuilds the object on each render, and a drawing
   // redrawn on every render of the page loses its layout (the 2D lanes are laid out anew).
   const queried = query !== undefined;
@@ -431,12 +439,12 @@ export function GraphExplorer({
     // Under a query the domains, edge types and statuses are its own: ``data`` is what they keep.
     // Tags are judged here: a column or a table carries its own.
     // The focus the query itself states (a term's snippet's) is read as its neighbourhood: it
-    // prunes nothing more here. A product's query reads all of its tables, so its hops are counted
-    // here (REQ-2174, amended 2026-11-07); in 2D along the lanes, so nothing is pruned before them.
+    // prunes nothing more here. A product's hops are counted here too (REQ-2174, amended
+    // 2026-11-07), in 2D as in 3D, a step between terms (amended 2026-11-12).
     const own = (f: string) => f === queryOwn && !f.startsWith("p:");
     const narrowing = {
       ...filters,
-      focus: matched ?? (lanePath ? [] : filters.focus.filter((f) => !own(f))),
+      focus: matched ?? filters.focus.filter((f) => !own(f)),
       ...(queried
         ? { domains: [], edgeTypes: [], hiddenStatuses: [], tags: narrowed.tags, sensitivities: [] }
         : narrowed),
@@ -471,7 +479,6 @@ export function GraphExplorer({
     orphans,
     search,
     lateral,
-    lanePath,
   ]);
   // REQ-2174 (amended 2026-11-07): in 3D a table's columns tied to no term drawn are one node.
   const folded = useMemo(
@@ -485,8 +492,8 @@ export function GraphExplorer({
   const layeredPossible = useMemo(() => openingLayout(folded).layeredPossible, [folded]);
   // REQ-2174: in 2D the graph is a lane diagram (laneDiagram.ts), laid out by ELK as it is drawn.
   const lanes = useMemo(
-    () => (flat ? laneDiagram(shown, data, expanded, lanePath) : null),
-    [flat, shown, data, expanded, lanePath],
+    () => (flat ? laneDiagram(shown, data, expanded) : null),
+    [flat, shown, data, expanded],
   );
   const drawn = lanes?.graph ?? folded;
   const at = useMemo(
@@ -566,9 +573,12 @@ export function GraphExplorer({
       </Text>
       <SegmentedControl
         size="xs"
-        value={String(depth)}
-        onChange={(v) => setDepth(Number(v))}
-        data={DEPTHS.map((d) => ({ value: String(d), label: String(d) }))}
+        value={depthValue(depth)}
+        onChange={(v) => setDepth(depthOf(v))}
+        data={DEPTHS.map((d) => ({
+          value: depthValue(d),
+          label: d === Infinity ? t("graph3d.hopsAll") : String(d),
+        }))}
         aria-label={hopsLabel}
         data-testid={`${testId}-depth`}
       />
@@ -595,6 +605,11 @@ export function GraphExplorer({
       {t("graph3d.restOfModel")}
     </Chip>
   );
+  // Reset view: the camera back to its resting view, and every table folded back.
+  const resetView = () => {
+    move("reset", null);
+    setExpanded(new Set());
+  };
   const stage = query?.notice ? (
     <div className="p3d-stage g3d-empty" data-testid={`${testId}-over-budget`}>
       <Text size="sm" c="dimmed">
@@ -616,6 +631,7 @@ export function GraphExplorer({
       setHover={setHover}
       onMore={toggleExpanded}
       command={command}
+      opensOn={focusNode?.id ?? null}
       testId={`${testId}-lanes`}
       bare={snippet}
     />
@@ -625,6 +641,12 @@ export function GraphExplorer({
       command={command}
       exportName={preset === exportName ? exportName : `${exportName}-${preset}`}
       testId={`${testId}-stage`}
+      controls={{
+        testId,
+        onReset: resetView,
+        rotate: { value: rotate, onChange: setRotate },
+        grid: { value: grid, onChange: setGrid },
+      }}
       bare={snippet}
     />
   );
@@ -667,31 +689,31 @@ export function GraphExplorer({
               onChange={(l) => save("layout", l)}
               testId={testId}
             />
-            <Chip size="xs" checked={rotate} onChange={setRotate} data-testid={`${testId}-rotate`}>
-              {t("profile3d.rotate")}
-            </Chip>
-            <GridToggle value={grid} onChange={setGrid} testId={testId} />
-            <Chip
-              size="xs"
-              checked={lateral}
-              onChange={(on) => save("lateral", on)}
-              data-testid={`${testId}-lateral`}
-            >
-              {t("graph3d.lateral")}
-            </Chip>
+            {/* REQ-2174 (THE TOGGLE IS CALLED ASSOCIATIONS): the term links that rank nothing.
+                The hint is on a span round the chip: the chip's own input is hidden, so the
+                pointer never enters it. */}
+            <Tip text={t("graph3d.lateralHelp")}>
+              <span>
+                <Chip
+                  size="xs"
+                  checked={lateral}
+                  onChange={(on) => save("lateral", on)}
+                  data-testid={`${testId}-lateral`}
+                >
+                  {t("graph3d.lateral")}
+                </Chip>
+              </span>
+            </Tip>
           </>
         )}
-        <Button
-          size="xs"
-          variant="default"
-          onClick={() => {
-            move("reset", null);
-            setExpanded(new Set());
-          }}
-          data-testid={`${testId}-reset`}
-        >
-          {t("profile3d.resetView")}
-        </Button>
+        {/* REQ-2239: in 3D, Reset view is in the canvas's controls (Stage3D). The lane diagram's
+            stays here: it folds every table back as well as fitting, where its canvas's Fit fits
+            the whole image only. */}
+        {flat && (
+          <Button size="xs" variant="default" onClick={resetView} data-testid={`${testId}-reset`}>
+            {t("profile3d.resetView")}
+          </Button>
+        )}
         {!flat && layout === "force" && (
           <AttractionSlider value={attraction} onChange={setAttraction} testId={testId} />
         )}
@@ -894,13 +916,18 @@ function GraphDetail({
   const node = graph.nodes.find((n) => n.id === selected);
   const name = (id: string) => graph.nodes.find((n) => n.id === id)?.label ?? id;
   const links = node ? edgesOf(graph, node.id) : [];
-  // A table whose columns fold into it, or whose columns tied to no term are one node (REQ-2174,
-  // amended 2026-11-07), shows them on asking.
-  const hasColumns =
-    node?.type === "table" &&
-    (folds
-      ? data.nodes.some((n) => n.type === "column" && n.parent === node.id)
-      : expanded.has(node.id) || graph.nodes.some((n) => n.folded && n.parent === node.id));
+  // A table expands to its other columns, offered only when it has columns beyond those drawn:
+  // those its graph read (folded into it, or one node of those tied to no term; REQ-2174, amended
+  // 2026-11-07), or those its read counted (a term's graph reads only the columns its terms
+  // reach). Expanded, it collapses them.
+  const hasColumns = node?.type === "table" && (expanded.has(node.id) || hasMore(node));
+  function hasMore(table: GraphNode): boolean {
+    const of = (g: GraphData) => g.nodes.filter((n) => n.parent === table.id && !n.folded);
+    if (graph.nodes.some((n) => n.folded && n.parent === table.id)) return true;
+    const drawnColumns = of(graph).filter((n) => n.type === "column").length;
+    const read = folds ? of(data).filter((n) => n.type === "column").length : 0;
+    return Math.max(read, table.columns ?? 0) > drawnColumns;
+  }
   // Each kind drawn, named as its look shows it, with how many.
   const counts = useMemo(() => {
     const by = new Map<string, { key: string; type: string; count: number }>();
@@ -957,7 +984,8 @@ function GraphDetail({
                   data-testid={`${testId}-link-${e.id}`}
                 >
                   <span className="p3d-row-name is-wrap">
-                    {e.a === node.id ? "→" : "←"}{"\u00a0"}
+                    {e.a === node.id ? "→" : "←"}
+                    {"\u00a0"}
                     <BreakableName name={name(other)} />
                     <small>{e.label ?? t(`graph3d.edge_${e.kind}`)}</small>
                   </span>

@@ -1,7 +1,7 @@
 {
   "nodeContextMenu": {
     "excludeTooltip": "このノードをクエリから除外します",
-    "excludeDisabledTooltip": "主キーが設定されていません — 除外できません",
+    "excludeDisabledTooltip": "除外できません: 主キーが設定されていません",
     "excludeFromQuery": "クエリから除外",
     "excludeCount": "{{count}}個のノードを除外",
     "unfixPosition": "位置の固定を解除",

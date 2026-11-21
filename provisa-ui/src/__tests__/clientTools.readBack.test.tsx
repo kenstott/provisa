@@ -270,16 +270,16 @@ describe("read-back of a page that keeps its state in its URL", () => {
 
   it("reads the ontology graph's controls back", async () => {
     const graph = { flat: true, layout: "layered" };
-    open("/admin/ontology", { panel: "graph", term: null, graph });
+    open("/context/ontology", { panel: "graph", term: null, graph });
     const state = { panel: "graph", graph: { flat: true } };
-    expect((await readBack("/admin/ontology", state, WAIT)).shown).toBe(true);
-    const out = await readBack("/admin/ontology", { graph: { flat: false } }, WAIT);
+    expect((await readBack("/context/ontology", state, WAIT)).shown).toBe(true);
+    const out = await readBack("/context/ontology", { graph: { flat: false } }, WAIT);
     expect(out).toMatchObject({ shown: false, difference: "the graph shows flat true, not false" });
   });
 
   it("reads a term the glossary does not hold as not opened", async () => {
-    open("/admin/ontology", { panel: "terms", term: 9, termName: null });
-    const out = await readBack("/admin/ontology", { term: 9 }, WAIT);
+    open("/context/ontology", { panel: "terms", term: 9, termName: null });
+    const out = await readBack("/context/ontology", { term: 9 }, WAIT);
     expect(out).toMatchObject({ shown: false, difference: "the glossary has no term 9" });
   });
 

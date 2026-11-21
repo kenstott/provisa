@@ -37,6 +37,7 @@ from provisa.api.admin._platform_guard import require_deployment_settings
 from provisa.api.admin.secret_redaction import redact_per_provider  # REQ-1575
 from provisa.api.errors import ApiError
 from provisa.core.database import Database
+from provisa.api.engine_error_names import client_text
 
 router = APIRouter(tags=["admin"])
 
@@ -223,7 +224,7 @@ async def send_test_mail(request: Request):  # REQ-1576
         )
         # 200 with the transport's message, not a 500: the request itself succeeded -- it asked a
         # question and got an answer, and the answer is what the page renders.
-        return {"success": False, "error": str(exc)}
+        return {"success": False, "error": client_text(str(exc))}
     await record(
         _admin_db(),
         MailAttempt(

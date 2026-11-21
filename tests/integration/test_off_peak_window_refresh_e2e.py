@@ -32,7 +32,6 @@ import pytest
 import yaml
 
 from tests.embedded_pg import DATABASE, PASSWORD, ROLE, start_local_postgres
-from tests.helpers import registered_id, release_field
 
 pytestmark = [pytest.mark.integration]
 
@@ -155,14 +154,13 @@ def test_a_load_protected_refresh_waits_for_the_off_peak_window(server, source_p
         f'port: {source_pg.port}, database: "{DATABASE}", username: "{ROLE}", '
         f'password: "{PASSWORD}", changeSignal: "ttl", cacheTtl: 5}})',
     )
-    registered = _mutate(
+    _mutate(
         server,
         'registerTable(input: {sourceId: "shop_pg", domainId: "shop", schemaName: "public", '
         'tableName: "orders", columns: ['
         '{name: "id", visibleTo: ["org_admin"], dataType: "integer", isPrimaryKey: true}, '
         '{name: "name", visibleTo: ["org_admin"], dataType: "varchar"}]})',
     )
-    _mutate(server, release_field(registered_id(registered["message"])))
     opens, window = _window()
     _mutate(
         server,

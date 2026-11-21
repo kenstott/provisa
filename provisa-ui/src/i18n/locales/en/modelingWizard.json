@@ -210,7 +210,7 @@
       "description": "Draft description",
       "notCreatedTitle": "Recorded, not created",
       "ruleNotCreated": "Business vault rule \"{{rule}}\": recorded in its table's description; build it as a view over these tables.",
-      "draftNote": "Each description is a first draft for a steward to revise in Registered Tables.",
+      "draftNote": "Each description is a first draft for a steward to revise on the Tables page.",
       "create": "Create",
       "nameRequired": "Give every table a name.",
       "nameTaken": "Two tables have the same name. Give each its own."
@@ -219,8 +219,8 @@
       "created_one": "Created {{count}} table",
       "created_other": "Created {{count}} tables",
       "stopped": "Stopped at {{name}}",
-      "draftNote": "Their descriptions are first drafts: revise them in Registered Tables.",
-      "oneWay": "The wizard only creates. Change these tables in Registered Tables or the entity/fact form; the wizard does not regenerate them.",
+      "draftNote": "Their descriptions are first drafts: revise them on the Tables page.",
+      "oneWay": "The wizard only creates. Change these tables on the Tables page or in the entity/fact form; the wizard does not regenerate them.",
       "relatesTo": "related to {{tables}}",
       "status": {
         "created": "Created",

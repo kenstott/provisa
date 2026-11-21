@@ -17,7 +17,7 @@ by the caller's grants instead:
 - Every caller is answered what the role the request acts as is SERVED: the tables and columns
   of its compiled context, from the one narrowing the Flight and MCP catalogs use
   (``flight.catalog.role_visibility``). There is no second notion of what a role may see.
-- A table in no compiled context -- a draft, or one saved since the last schema build -- has its
+- A table in no compiled context -- a withdrawn one, or one saved since the last schema build -- has its
   stored columns tested by the rule the compile applies (``security.visibility.visible_tables``,
   i.e. ``rights.column_served``), so a table is answered from the moment it is saved.
 - No capability widens it (REQ-2152): ``table_registration`` or a right that governs how columns
@@ -81,7 +81,7 @@ class CatalogScope:
     def answered_columns(self, table: dict) -> set[str] | None:
         """The columns of ``table`` (as :meth:`stored_columns` takes it) the caller is answered;
         None = all of them. A table the last build compiled is answered from the acting role's
-        context; one it did not -- a draft, or one saved since -- from its stored columns."""
+        context; one it did not -- a withdrawn one, or one saved since -- from its stored columns."""
         if self.whole:
             return None
         if table["id"] in self.compiled:
@@ -121,6 +121,7 @@ def catalog_scope(info: Any) -> CatalogScope:
     from provisa.api.app import state
     from provisa.api.flight.catalog import role_visibility
     from provisa.security.rights import acting_claims, capabilities_for_claims
+    from provisa.security.selected_domains import narrowed
 
     context = info.context
     request = context.get("request") if isinstance(context, dict) else context.request
@@ -148,7 +149,7 @@ def catalog_scope(info: Any) -> CatalogScope:
         # No auth provider: no right is enforced, but the catalog is the one the roles the request
         # names (X-Provisa-Role, the role picker's selection) carry and reach.
         caps = capabilities_for_claims(acting_claims(identity), getattr(state, "roles", {}))
-        reach = _acting_reach(identity, state)
+        reach = narrowed(_acting_reach(identity, state))  # REQ-2253
     else:
         caps = _resolved_capabilities(identity, state)
         reach = allowed_domains_request(request)
@@ -162,13 +163,38 @@ def catalog_scope(info: Any) -> CatalogScope:
         subjects=_subjects(state, role) if role else (),
     )
     if role is None:
-        return scope  # no acting role: served nothing, drafts included
-    drafts = {
+        return _within_selection(scope, state)  # no acting role: served nothing
+    # REQ-1921: a withdrawn table is answered by its stored columns only to a role that may
+    # preview it -- one holding table registration reaching its domain.
+    from provisa.security.rights import registers_tables_in
+
+    withdrawn = {
         table["id"]: served
-        for table in state.role_build_inputs["draft_tables"]
-        if (served := scope.stored_columns(table))
+        for table in state.role_build_inputs["withdrawn_tables"]
+        if registers_tables_in(state.roles[role], state.roles, table["domain_id"])
+        and (served := scope.stored_columns(table))
     }
-    return dataclasses.replace(scope, served={**drafts, **scope.served})
+    return _within_selection(
+        dataclasses.replace(scope, served={**withdrawn, **scope.served}), state
+    )
+
+
+def _within_selection(scope: CatalogScope, state: Any) -> CatalogScope:
+    """``scope`` serving only the tables of the domains selected in the domain filter, under an
+    AI-assisted call (REQ-2253); its reach is already narrowed (``allowed_domains_request``)."""
+    from provisa.security.selected_domains import current
+
+    selected = current()
+    if selected is None:
+        return scope
+    domain_of = {
+        t["id"]: t["domain_id"]
+        for t in [*state.tables, *state.role_build_inputs["withdrawn_tables"]]
+    }
+    return dataclasses.replace(
+        scope,
+        served={tid: cols for tid, cols in scope.served.items() if domain_of[tid] in selected},
+    )
 
 
 def _acting_reach(identity: Any, state: Any) -> frozenset[str] | None:

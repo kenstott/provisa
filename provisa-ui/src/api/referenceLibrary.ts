@@ -123,9 +123,31 @@ export interface LibraryCitation {
   state: "current" | "drifted";
 }
 
+/** A tag's definition, or a tag on an object, citing the document or one of its sections. */
+export interface LibraryTagCitation {
+  section_heading: string | null;
+  section_page: number | null;
+  text_sha256: string;
+  cited_by: string | null;
+  cited_at: string;
+  state: "current" | "drifted" | "broken";
+  needs_review: boolean;
+}
+
+export interface LibraryTagCitedBy extends LibraryTagCitation {
+  tag_id: string;
+}
+
+export interface LibraryAssignmentCitedBy extends LibraryTagCitedBy {
+  object_type: string;
+  object_key: string;
+}
+
 export interface LibraryCitedBy {
   terms: LibraryCitation[];
   drifted: number;
+  tags: LibraryTagCitedBy[];
+  tag_assignments: LibraryAssignmentCitedBy[];
 }
 
 export async function fetchCitedBy(id: number): Promise<LibraryCitedBy> {
@@ -178,23 +200,4 @@ export async function reembedLibrary(): Promise<ReembedOutcome> {
 
 export async function removeLibraryDocument(id: number): Promise<void> {
   await ok(await fetch(`${BASE}/${id}`, send("DELETE")), "Remove document");
-}
-
-/** How an assistant's question is answered from the library (GRAPH RETRIEVAL): the passages
- *  nearest it, or those and the passages the glossary terms its walk reaches cite. */
-export type Retrieval = "passage" | "graph";
-
-const SETTINGS = `${API_BASE}/admin/reference-library/settings`;
-
-export async function fetchRetrieval(): Promise<Retrieval> {
-  const body = await ok<{ retrieval: Retrieval }>(await fetch(SETTINGS), "Library retrieval");
-  return body.retrieval;
-}
-
-export async function saveRetrieval(retrieval: Retrieval): Promise<Retrieval> {
-  const body = await ok<{ retrieval: Retrieval }>(
-    await fetch(SETTINGS, send("PUT", { retrieval })),
-    "Library retrieval",
-  );
-  return body.retrieval;
 }

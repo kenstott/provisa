@@ -81,7 +81,7 @@ def _state(monkeypatch, secret_to: tuple[str, ...]):
         {
             "id": _READER,
             "description": "t",
-            "parents": ["developer"],
+            "parents": ["data_writer"],
             "capabilities": ["usage", "query_development", "command_execution", "full_results"],
             "domain_access": ["*"],
         }
@@ -108,7 +108,8 @@ def _state(monkeypatch, secret_to: tuple[str, ...]):
         gql_object_cols={},
         rls_rules=[],
         metrics=[],
-        draft_tables=[],
+        withdrawn_tables=[],
+        withdrawn_relationships=[],
     )
     monkeypatch.setattr(st, "tables", tables, raising=False)
     return st
@@ -157,7 +158,7 @@ async def test_a_star_reads_only_the_columns_the_role_is_served(monkeypatch):
 
 
 async def test_a_grant_to_an_ancestor_reaches_the_child(monkeypatch):
-    _state(monkeypatch, ("developer",))
+    _state(monkeypatch, ("data_writer",))
     governed = await _govern('SELECT "secret" FROM "fx"."orders"', _READER)
     assert "secret" in governed
 

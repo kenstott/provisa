@@ -28,7 +28,7 @@ const cys = vi.hoisted(() => ({
 }));
 vi.mock("cytoscape", () => {
   const cytoscape = (options: unknown) => {
-    // cytoscape("layout", "elk"): the ELK layout is registered.
+    // cytoscape("layout", name): an extension is registered.
     if (typeof options === "string") return true;
     const container = (options as { container: HTMLElement }).container;
     container.appendChild(document.createElement("canvas"));
@@ -43,6 +43,8 @@ vi.mock("cytoscape", () => {
       filter: () => none,
     };
     return {
+      // The element it draws in, as cytoscape's own container() gives it (a fit reads it).
+      container: () => container,
       on: vi.fn(),
       layout: () => {
         let stop: (() => void) | null = null;
@@ -60,6 +62,8 @@ vi.mock("cytoscape", () => {
         };
       },
       nodes: () => none,
+      // The lanes preset reads the lines to place the term lane: none drawn here.
+      edges: () => none,
       elements: () => none,
       getElementById: () => ({ ...none, position: () => 0 }),
       add: vi.fn(),
@@ -78,7 +82,6 @@ vi.mock("cytoscape", () => {
   };
   return { default: Object.assign(cytoscape, { use: vi.fn() }) };
 });
-vi.mock("cytoscape-elk", () => ({ default: vi.fn() }));
 
 import { LaneStage } from "../LaneStage";
 

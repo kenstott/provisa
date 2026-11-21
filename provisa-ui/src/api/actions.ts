@@ -78,6 +78,9 @@ export interface TrackedFunction {
   contract?: StatementContract;
   // REQ-2168: the command's name per language.
   languageBindings?: Record<string, LanguageBinding>;
+  // REQ-1986: whether a source operation that reads rows is also exposed as a parameterized
+  // table derived from it; null for a function with no table form.
+  exposedAsTable?: boolean | null;
 }
 
 /** What a statement command's statement declares (REQ-2001), as the server derived it. */
@@ -158,6 +161,8 @@ export async function saveFunction(
     writesTable?: string | null;
     // REQ-2168: the command's name per language.
     languageBindings?: Record<string, LanguageBinding>;
+    // REQ-1986: left out, the server keeps it, or at registration takes its default.
+    exposedAsTable?: boolean;
   },
   /** The name of the command saved over (an update), or null for a new one (a create, which
    *  refuses a name that exists). */

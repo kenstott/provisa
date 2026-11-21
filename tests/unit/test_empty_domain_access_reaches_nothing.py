@@ -81,6 +81,7 @@ def _role(domain_access: list[str], *capabilities: str) -> dict:
         "description": "Test role.",
         "capabilities": list(capabilities),
         "domain_access": domain_access,
+        "acting_chain": ["r"],  # REQ-2188: as the build records it
     }
 
 
@@ -264,7 +265,8 @@ def test_an_empty_list_gets_a_match_nothing_row_filter(multi_domain):
         domain_id=META_DOMAIN_ID,
     )
     gov = build_governance_context("r", RLSContext.empty(), {}, ctx, _tables(), _role([]))
-    assert gov.rls_rules[100] == rule_of("id IN (-1)")
+    # REQ-1921: nor a withdrawn table's row, which only its domain's stewards read.
+    assert gov.rls_rules[100] == rule_of("(id IN (-1)) AND (NOT withdrawn)")
 
 
 def test_single_domain_mode_sees_every_data_table(single_domain):
@@ -448,7 +450,8 @@ def _built_roles(monkeypatch, roles: list[dict]) -> Any:
         gql_object_cols={},
         rls_rules=[],
         metrics=[],
-        draft_tables=[],  # REQ-1921: none out of service
+        withdrawn_tables=[],
+        withdrawn_relationships=[],
     )
     return state
 
@@ -568,7 +571,8 @@ def test_the_build_itself_drops_a_stale_surface(multi_domain, monkeypatch):
         gql_object_cols={},
         rls_rules=[],
         metrics=[],
-        draft_tables=[],  # REQ-1921: none out of service
+        withdrawn_tables=[],
+        withdrawn_relationships=[],
     )
     assert appmod.state.roles["r"]["domain_access"] == []
     for surface in (state.schemas, state.contexts, state.rls_contexts, state.proto_files):

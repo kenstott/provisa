@@ -70,7 +70,11 @@ def is_reference(value: str) -> bool:
 async def plain_text_credentials(conn: Any) -> list[tuple[str, dict]]:
     from provisa.core.schema_org import sources
 
-    rows = (await conn.execute_core(select(sources.c.id, sources.c.password_ref))).fetchall()
+    rows = (
+        await conn.execute_core(
+            select(sources.c.id, sources.c.password_ref).where(sources.c.retired.is_(False))
+        )
+    ).fetchall()
     return [
         (f"source:{sid}", {"source": sid, "field": "password"})
         for sid, stored in rows
@@ -146,7 +150,11 @@ async def unbounded_roles(conn: Any) -> list[tuple[str, dict]]:
         if reaches_all_domains(access)
     ]
     # A source's empty allowed_domains is every domain (rights.domains_added).
-    held = (await conn.execute_core(select(sources.c.id, sources.c.allowed_domains))).fetchall()
+    held = (
+        await conn.execute_core(
+            select(sources.c.id, sources.c.allowed_domains).where(sources.c.retired.is_(False))
+        )
+    ).fetchall()
     out += [
         (f"source:{sid}", {"source": sid, "allowed_domains": list(allowed or [])})
         for sid, allowed in held

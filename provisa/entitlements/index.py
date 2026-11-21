@@ -26,6 +26,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 from provisa.compiler import naming
+from provisa.judgments.bases import BASIS_ID
 from provisa.security.rights import Capability
 
 if TYPE_CHECKING:
@@ -58,6 +59,12 @@ SEMANTIC_LISTS = frozenset({"domains", *LIST_OF.values()})
 #: The kinds the data plane reads: a role that reads data uses them.
 _DATA_PLANE = SEMANTIC_LISTS
 
+#: The kinds of objects outside the names table an owner capability is scoped by (REQ-2219,
+#: OWNER KINDS): a glossary term, named ``domain.term``, and a judgment basis, named by its id.
+GLOSSARY_TERMS = "glossary_terms"
+JUDGMENT_BASES = "judgment_bases"
+_OWNED_KINDS = frozenset({GLOSSARY_TERMS, JUDGMENT_BASES})
+
 #: The other kinds, each with the capabilities that read it (REQ-2219: a list for a kind no
 #: scoped capability of the role uses is flagged).
 _READ_BY: dict[str, frozenset[str]] = {
@@ -72,6 +79,8 @@ _READ_BY: dict[str, frozenset[str]] = {
     ),
     "roles": frozenset({"user_management", "assign_entitlements"}),
     "regions": frozenset({"platform_settings", "cross_org"}),
+    GLOSSARY_TERMS: frozenset({Capability.TERM_OWNER.value}),
+    JUDGMENT_BASES: frozenset({Capability.JUDGMENT_BASIS_OWNER.value}),
 }
 
 #: The capabilities of the data plane, each scoped to one kind (REQ-2219, THE ENTITLEMENT MODEL:
@@ -85,8 +94,15 @@ DATA_PLANE_CAPABILITIES: dict[str, tuple[str, frozenset[str]]] = {
 }
 
 #: Capabilities scoped by a semantic kind through a Provisa-held row of their own: a product's
-#: creator holds data_product_rw on it (``provisa.entitlements.store.record_product_creator``).
-_SCOPED_BY_ROW: dict[str, str] = {"data_product_rw": LIST_OF[DATA_PRODUCT]}
+#: creator holds data_product_rw on it (``provisa.entitlements.store.record_product_creator``);
+#: the owners of products and relationships, and a domain's steward, hold a row of their
+#: capability on what they own (REQ-2219, OWNER KINDS).
+_SCOPED_BY_ROW: dict[str, str] = {
+    Capability.DATA_PRODUCT_RW.value: LIST_OF[DATA_PRODUCT],
+    Capability.DATA_PRODUCT_OWNER.value: LIST_OF[DATA_PRODUCT],
+    Capability.RELATIONSHIP_OWNER.value: LIST_OF[RELATIONSHIP],
+    Capability.DOMAIN_STEWARD.value: "domains",
+}
 
 
 def capability_scopes() -> dict[str, str | None]:
@@ -125,6 +141,62 @@ class IndexedObject:
     target_table_id: int | None = None
 
 
+def term_paths(name: str, domains: Iterable[str]) -> tuple[tuple[str, ...], ...]:
+    """The spellings a ``domain.term`` identifier selects a glossary term by, lower-cased: one per
+    domain of the term (REQ-2219, OWNER KINDS), the term as its SQL-name form
+    (:func:`provisa.compiler.naming.ontology_name`). An enterprise-wide term (domains ``["*"]``),
+    or one with no domain (REQ-1591: an unscoped term belongs to no domain either), is spelled
+    under ``*``, which only an identifier's ``*`` matches. A term whose name has no SQL-name form
+    has no spelling, so no identifier names it."""
+    term = naming.ontology_name(name)
+    if term is None:
+        return ()
+    spelled = {WILDCARD if d == WILDCARD else naming.domain_to_sql_name(d).lower() for d in domains}
+    return tuple((d, term) for d in sorted(spelled or {WILDCARD}))
+
+
+def selects_term(identifier: str, name: str, domains: Iterable[str]) -> bool:
+    """Whether a glossary_terms ``identifier`` selects the term ``name`` in ``domains``."""
+    return matches(identifier, term_paths(name, domains))
+
+
+def identifier_problem(kind: str, identifier: str) -> str | None:
+    """Why ``identifier`` cannot name an object of ``kind``, or None. A term is named
+    ``domain.term``, an asterisk allowed at either level, or ``*`` for every term; a judgment
+    basis by its id, or ``*`` for every basis (REQ-2219, OWNER KINDS). Every other kind's
+    identifiers are checked against what exists (:func:`check_lists`)."""
+    if kind == GLOSSARY_TERMS and identifier != WILDCARD:
+        segments = identifier.split(".")
+        if len(segments) != 2 or not all(segments):
+            return f"{identifier!r} is not a glossary term: a term is named domain.term"
+    if kind == JUDGMENT_BASES and identifier != WILDCARD and not BASIS_ID.match(identifier):
+        return f"{identifier!r} is not a judgment basis id"
+    return None
+
+
+@dataclass(frozen=True)
+class OwnedObjects:
+    """The objects outside the names table a list can name: each glossary term's spellings
+    (:func:`term_paths`) and every judgment basis id."""
+
+    terms: tuple[tuple[str, ...], ...]
+    bases: frozenset[str]
+
+
+def owned_objects(terms: Iterable[tuple[str, Iterable[str]]], bases: Iterable[str]) -> OwnedObjects:
+    """``terms`` as (name, domain ids) and ``bases`` as ids, as lists are checked against them."""
+    return OwnedObjects(
+        tuple(path for name, domains in terms for path in term_paths(name, domains)),
+        frozenset(bases),
+    )
+
+
+def _owned_known(kind: str, identifier: str, owned: OwnedObjects) -> bool:
+    if kind == GLOSSARY_TERMS:
+        return matches(identifier, owned.terms)
+    return identifier in owned.bases
+
+
 @dataclass(frozen=True)
 class Finding:
     """A flag on a list (REQ-2219: flagged, never silently ignored)."""
@@ -151,6 +223,19 @@ def matches(identifier: str, paths: Iterable[tuple[str, ...]]) -> bool:
     return any(
         len(wanted) <= len(path) and all(w in (WILDCARD, s) for w, s in zip(wanted, path))
         for path in paths
+    )
+
+
+def covers(identifier: str, other: str) -> bool:
+    """Whether ``identifier`` selects everything ``other`` selects."""
+    return matches(identifier, (_segments(other),))
+
+
+def overlaps(identifier: str, other: str) -> bool:
+    """Whether some object could be selected by both ``identifier`` and ``other``."""
+    return all(
+        a == b or WILDCARD in (a, b)
+        for a, b in zip(_segments(identifier), _segments(other), strict=False)
     )
 
 
@@ -287,10 +372,12 @@ def check_lists(
     role: Mapping[str, Any],
     lists: Mapping[str, EffectiveList],
     model_index: ObjectIndex,
+    owned: OwnedObjects,
 ) -> list[Finding]:
     """The flags on a person's lists for ``role_id``: an identifier naming nothing in the model,
     and a list for a kind the role uses nothing of. ``model_index`` is the whole model's: an
-    object outside the role still exists, and is simply out of its reach."""
+    object outside the role still exists, and is simply out of its reach. ``owned`` holds the
+    glossary terms and judgment bases, which the names table does not."""
     findings: list[Finding] = []
     capabilities = set(role.get("capabilities") or ())
     has_data_plane = bool(role.get("domain_access"))
@@ -313,13 +400,15 @@ def check_lists(
                 )
             )
             continue
-        if kind not in SEMANTIC_LISTS:
+        if kind not in SEMANTIC_LISTS and kind not in _OWNED_KINDS:
             continue
         kinds = None if kind == "domains" else {k for k, v in LIST_OF.items() if v == kind}
         for identifier in listed.identifiers:
             if identifier == WILDCARD:
                 continue
-            if kinds is None:
+            if kind in _OWNED_KINDS:
+                known = _owned_known(kind, identifier, owned)
+            elif kinds is None:
                 known = _segments(identifier)[0] in domains
             else:
                 known = any(
@@ -333,7 +422,7 @@ def check_lists(
                         kind,
                         identifier,
                         f"{identifier!r} in {kind!r} for role {role_id!r} names nothing "
-                        "in the names table",
+                        + ("the org holds" if kind in _OWNED_KINDS else "in the names table"),
                     )
                 )
     return findings

@@ -55,14 +55,14 @@ const POLICY_SECTIONS = {
   schemaName: "public",
   tableName: "policy_sections",
   alias: null,
-  draft: false,
+  withdrawn: false,
   columns: [col("section_id", "varchar"), col("body", "text")],
 };
 // One value per hook across renders: a fresh array each render reruns the form's effects.
 const TABLES = {
   tables: [
     POLICY_SECTIONS,
-    { ...POLICY_SECTIONS, id: 22, tableName: "draft_policy_sections", draft: true },
+    { ...POLICY_SECTIONS, id: 22, tableName: "withdrawn_policy_sections", withdrawn: true },
     { ...POLICY_SECTIONS, id: 23, domainId: "finance", tableName: "ledger" },
     {
       ...POLICY_SECTIONS,
@@ -276,9 +276,11 @@ describe("FindTermsDialog", () => {
     });
     fireEvent.click(screen.getByTestId("find-terms-start"));
     await waitFor(() =>
-      expect(api.startScan).toHaveBeenCalledWith({ url: "https://x.example.com/records.html" }, [
-        "sales",
-      ]),
+      expect(api.startScan).toHaveBeenCalledWith(
+        { url: "https://x.example.com/records.html" },
+        ["sales"],
+        null,
+      ),
     );
     await waitFor(() => expect(api.fetchScan).toHaveBeenCalledWith(8));
   });
@@ -287,7 +289,9 @@ describe("FindTermsDialog", () => {
     api.startScan.mockResolvedValue({ scan: { ...SCAN, id: 9 }, document: DOC });
     open();
     fireEvent.click(await screen.findByTestId("find-terms-rescan-7"));
-    await waitFor(() => expect(api.startScan).toHaveBeenCalledWith({ document_id: 4 }, ["sales"]));
+    await waitFor(() =>
+      expect(api.startScan).toHaveBeenCalledWith({ document_id: 4 }, ["sales"], null),
+    );
   });
 
   // REQ-2115: a scan runs and spends the model's budget, so Polly starts one only on the user's yes.
@@ -413,7 +417,7 @@ describe("FindTermsDialog", () => {
     expect(screen.queryByTestId("find-terms-progress-7")).toBeNull();
   });
 
-  it("cancels a running scan and shows that it stopped", async () => {
+  it("stops a running scan and shows that it stopped", async () => {
     api.fetchScans.mockResolvedValue([RUNNING]);
     api.fetchScan.mockResolvedValue({ scan: RUNNING, drafts: [] });
     api.cancelScan.mockResolvedValue({
@@ -421,7 +425,13 @@ describe("FindTermsDialog", () => {
     });
     open();
     fireEvent.click(await screen.findByTestId("find-terms-open-7"));
-    fireEvent.click(await screen.findByTestId("find-terms-cancel"));
+    // The button that halts the scan says Stop; "Cancel" is for leaving a form with nothing changed.
+    const stop = await screen.findByTestId("find-terms-cancel");
+    expect(stop).toHaveTextContent("Stop");
+    expect(stop).toHaveAccessibleName("Stop");
+    fireEvent.mouseEnter(stop);
+    expect(await screen.findByRole("tooltip")).toHaveTextContent("Stop the scan");
+    fireEvent.click(stop);
     await waitFor(() => expect(api.cancelScan).toHaveBeenCalledWith(7));
     expect(await screen.findByTestId("find-terms-failed")).toHaveTextContent(
       "The scan stopped: cancelled by ada",
@@ -485,7 +495,9 @@ describe("FindTermsDialog", () => {
     await choose("find-terms-term-column", "term (varchar)");
     await choose("find-terms-definition-column", "meaning (text)");
     fireEvent.click(screen.getByTestId("find-terms-start"));
-    await waitFor(() => expect(api.startScan).toHaveBeenCalledWith({ table: terms }, ["sales"]));
+    await waitFor(() =>
+      expect(api.startScan).toHaveBeenCalledWith({ table: terms }, ["sales"], null),
+    );
     await waitFor(() => expect(api.fetchScan).toHaveBeenCalledWith(11));
   });
 
@@ -505,9 +517,9 @@ describe("FindTermsDialog", () => {
     ).toBeInTheDocument();
     await choose("find-terms-table-domain", "sales");
     fireEvent.click(screen.getByTestId("find-terms-table"));
-    // A draft is in no role's schema, and a table of another domain is not offered.
+    // A withdrawn table is in no role's schema, and a table of another domain is not offered.
     expect(
-      screen.queryByRole("option", { name: "draft_policy_sections", hidden: true }),
+      screen.queryByRole("option", { name: "withdrawn_policy_sections", hidden: true }),
     ).toBeNull();
     expect(screen.queryByRole("option", { name: "ledger", hidden: true })).toBeNull();
     await choose("find-terms-table", "policy_sections");
@@ -515,7 +527,7 @@ describe("FindTermsDialog", () => {
     await choose("find-terms-text-column", "body (text)");
     fireEvent.click(screen.getByTestId("find-terms-start"));
     await waitFor(() =>
-      expect(api.startScan).toHaveBeenCalledWith({ table: TABLE_SOURCE }, ["sales"]),
+      expect(api.startScan).toHaveBeenCalledWith({ table: TABLE_SOURCE }, ["sales"], null),
     );
   });
 
@@ -529,7 +541,7 @@ describe("FindTermsDialog", () => {
     expect(row).not.toHaveTextContent("Removed from the library");
     fireEvent.click(screen.getByTestId("find-terms-rescan-9"));
     await waitFor(() =>
-      expect(api.startScan).toHaveBeenCalledWith({ table: TABLE_SOURCE }, ["sales"]),
+      expect(api.startScan).toHaveBeenCalledWith({ table: TABLE_SOURCE }, ["sales"], null),
     );
   });
 

@@ -217,13 +217,8 @@ def debezium_connector(tenant_db):
     debezium_pg_host = os.environ.get("DEBEZIUM_PG_HOST", "postgres")
     debezium_pg_port = int(os.environ.get("DEBEZIUM_PG_PORT", "5432"))
 
-    # Reachability probe only: skip if the Connect REST API is genuinely down.
-    # Any other failure (registration error, connector not RUNNING) must fail loudly.
-    try:
-        httpx.get(f"{DEBEZIUM_URL}/connectors", timeout=5)
-    except httpx.HTTPError as exc:
-        pytest.skip(f"Debezium Connect not reachable at {DEBEZIUM_URL}: {exc}")
-
+    # Debezium Connect's readiness is the debezium_server fixture's wait (injected by the
+    # requires_debezium marker); an unreachable API fails the registration below.
     _register_connector(
         pg_host=debezium_pg_host,
         pg_port=debezium_pg_port,

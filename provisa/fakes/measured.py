@@ -178,7 +178,8 @@ async def _measure_table(
     """Each of ``faked`` (column -> (kind, family)) of table ``reg``, measured."""
     from provisa.core.environments import org_schema
     from provisa.core.request_context import current_env
-    from provisa.profiler.run import PROFILE_ROLE, _governed, resolve_target
+    from provisa.core.parameters import not_read_reason
+    from provisa.profiler.run import PROFILE_ROLE, _governed, not_read_whole, resolve_target
     from provisa.profiler.statement import _ident, qualified
     from provisa.synthetic.plan import DatasetRefused
     from provisa.synthetic.run import read_profile
@@ -186,9 +187,22 @@ async def _measure_table(
     out: dict[str, Measured] = {}
     env = current_env.get()
     schema = org_schema(org_id, env)
-    target = resolve_target(state, reg["id"], reg["table_name"], {})
-    exposed = {c.physical: c.name for c in target.columns}
-    table = qualified(target.pgwire_name)
+    # REQ-1986: a table that requires parameters is never read whole. Asked of its metadata
+    # first: what a profile run holds of it still measures a column, what only the table's rows
+    # could measure is refused by name.
+    unread = not_read_whole(state, reg["id"], reg["table_name"])
+    if unread is None:
+        target = resolve_target(state, reg["id"], reg["table_name"], {})
+        exposed = {c.physical: c.name for c in target.columns}
+        table = qualified(target.pgwire_name)
+    else:
+        p2s = state.contexts[PROFILE_ROLE].physical_to_sql
+        exposed = {column: name for (tid, column), name in p2s.items() if tid == reg["id"]}
+        table = ""  # never read
+
+    def unread_refusal(column: str) -> Measured:
+        assert unread is not None
+        return Measured(refused=f"{column}: the table {not_read_reason(unread.parameters)}")
 
     runs: dict[str | None, Any] = {}
 
@@ -248,6 +262,9 @@ async def _measure_table(
             if found is not None and found[1].frequencies:
                 out[column] = from_profile(column, kind, found[1], found[0])
                 continue
+            if unread is not None:
+                out[column] = unread_refusal(column)
+                continue
             value = f"CAST(x.{_ident(name)} AS TEXT)"
             _names, rows = await _governed(
                 f"SELECT {value} AS v, COUNT(*) AS n FROM {table} x GROUP BY {value}"
@@ -261,6 +278,9 @@ async def _measure_table(
                 refused=f"{column}: {kind.column} is not readable by {PROFILE_ROLE}, so the "
                 f"difference cannot be measured"
             )
+            continue
+        if unread is not None:
+            out[column] = unread_refusal(column)
             continue
         quantiles = await difference_quantiles(table, name, other, faked[column][1])
         out[column] = from_distance(column, kind, quantiles)

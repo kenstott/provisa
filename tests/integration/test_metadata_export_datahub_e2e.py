@@ -30,10 +30,12 @@ import pytest
 
 from provisa.api.metadata_export.datahub import (
     PROVISA_ACTOR,
+    DataHubExport,
     data_product_urn,
     glossary_term_urn,
     role_node_urn,
 )
+from provisa.core.models import MetadataExportTarget
 from tests.integration.metadata_export_server import (
     CLASS_TERM,
     DOMAIN,
@@ -189,6 +191,26 @@ async def _provisa_assigns_its_terms_attributed_to_its_actor(published: dict) ->
 
 # One test, one DataHub: the heavy-service fixture starts GMS for a test and removes it after, so
 # every check reads the catalog the one production publish wrote.
+async def _the_glossary_listing_scrolls_to_every_term(published: dict) -> None:
+    """REQ-2247: list_glossary scrolls the search index, a page per term here, to every term.
+    The index is written after the aspect, so the listing is read until both terms are in it."""
+    reader = DataHubExport(
+        MetadataExportTarget(id="dh", provider="datahub", endpoint=_gms(), timeout_seconds=30)
+    )
+    reader.glossary_page_size = 1
+    deadline = time.monotonic() + 120
+    while True:
+        terms = {t.name: t for t in await reader.list_glossary()}
+        if {GLOSSARY_TERM, CLASS_TERM} <= set(terms) or time.monotonic() >= deadline:
+            break
+        await asyncio.sleep(2)
+    customer = terms[GLOSSARY_TERM]
+    assert customer.definition == GLOSSARY_DEFINITION
+    assert customer.ref == glossary_term_urn(ORG, GLOSSARY_TERM)
+    assert customer.broader == ()
+    assert CLASS_TERM in terms
+
+
 async def test_datahub_holds_what_the_production_publish_sent():
     async with published_server(ORG) as client:
         await approve_terms(client)
@@ -203,5 +225,6 @@ async def test_datahub_holds_what_the_production_publish_sent():
         _the_view_carries_its_column_lineage,
         _the_glossary_term_lands_under_the_org_node,
         _provisa_assigns_its_terms_attributed_to_its_actor,
+        _the_glossary_listing_scrolls_to_every_term,
     ):
         await check(published)

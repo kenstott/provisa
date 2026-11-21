@@ -19,6 +19,9 @@
     "linked": "The column now means {{term}}.",
     "keyColumn": "The column keeps its Class term: a key column's meaning is its Class term.",
     "markedPii": "It is marked PII.",
-    "maskOffered": "Suggested mask: {{mask}}. Add it in the column's masks."
+    "maskOffered": "Suggested mask: {{mask}}. Add it in the column's masks.",
+    "tooFewTitle": "Too few values to classify",
+    "tooFewNote": "These columns held too few values in the run's sample to say what they hold. That is not the same as matching no kind.",
+    "tooFew": "{{column}}: {{count}} values in the sample, too few to classify."
   }
 }

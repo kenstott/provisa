@@ -222,11 +222,12 @@ fi
 
 # The firebase provider needs the firebase-admin SDK (the [firebase] extra, not a
 # base dependency). Without it, _load_and_build → FirebaseAuthProvider raises
-# ImportError and the backend never boots. Install it on demand for the firebase lane.
+# ImportError and the backend never boots. Synced from uv.lock on demand for the firebase lane,
+# as every start path installs (never pip from PyPI, whose Linux torch is the CUDA build).
 if [ "$IDP" = "firebase" ] && [ -d "$SCRIPT_DIR/.venv" ]; then
   if ! "$SCRIPT_DIR/.venv/bin/python" -c "import firebase_admin" 2>/dev/null; then
     echo "Installing firebase-admin for the firebase IDP lane..."
-    "$SCRIPT_DIR/.venv/bin/pip" install -e "$SCRIPT_DIR[firebase]" -q
+    (cd "$SCRIPT_DIR" && UV_PROJECT_ENVIRONMENT=.venv uv sync --locked --inexact --no-install-project --extra firebase) || exit 1
   fi
 fi
 

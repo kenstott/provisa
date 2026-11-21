@@ -67,6 +67,8 @@ jobs:
   build-macos-core:
     name: Build macOS Core DMG (${{ needs.metadata.outputs.channel }})
     runs-on: macos-15
+    permissions:
+      contents: write   # attaches the DuckDB extensions asset to the draft release
     # These finish in 9-30 minutes; a stall would otherwise sit on a macOS runner for the
     # 6-hour default (run 32152155205 hung 4h in Build DMG). Notarization is its own job below.
     timeout-minutes: 45
@@ -123,9 +125,11 @@ jobs:
           path: packaging/macos/dist/stage-core.tar
           retention-days: 7
 
-      # A *-dist artifact: the publish leg attaches it to the release beside the DMGs. First launch
-      # of the Core DMG downloads it from there (or reads it beside the installer, air-gapped).
+      # First launch of the Core DMG downloads this from the release (or reads it beside the
+      # installer, air-gapped). A release attaches it to the draft directly; a dry run keeps it in
+      # the run, its only home.
       - name: Upload the DuckDB extensions asset
+        if: ${{ !inputs.publish }}
         uses: actions/upload-artifact@v4
         with:
           name: macos-duckdb-extensions-dist
@@ -133,8 +137,17 @@ jobs:
             packaging/macos/dist/${{ needs.metadata.outputs.duckdb_extensions_name }}
             packaging/macos/dist/${{ needs.metadata.outputs.duckdb_extensions_name }}.sha256
           if-no-files-found: error
-          retention-days: 7
+          retention-days: 1
           compression-level: 0
+
+      - name: Attach the DuckDB extensions asset to the draft release
+        if: inputs.publish
+        uses: ./.github/actions/attach-release-assets
+        with:
+          tag: ${{ inputs.version }}
+          files: |
+            packaging/macos/dist/${{ needs.metadata.outputs.duckdb_extensions_name }}
+            packaging/macos/dist/${{ needs.metadata.outputs.duckdb_extensions_name }}.sha256
 
   build-macos-container:
     name: Build macOS Container DMG (${{ needs.metadata.outputs.channel }})
@@ -290,14 +303,17 @@ jobs:
   # Each DMG above is built and signed, not notarized: Apple's notary queue is not ours to wait
   # on inside a build (alpha.508's Obs DMG waited 44 minutes and the build's limit cancelled it,
   # and rerunning rebuilt the DMG). This job notarizes and staples the four DMGs under its own
-  # limit and uploads them as the macos-<x>-dist artifacts the publish leg attaches. Re-run it
+  # limit and attaches them to the draft release (a dry run keeps them as macos-<x>-dist artifacts). Re-run it
   # alone with "Re-run failed jobs", or by hand with notarize-macos.yml.
   notarize:
     name: Notarize macOS DMGs
     needs: [metadata, build-macos-core, build-macos-container, build-macos-obs, build-macos-demo]
     uses: ./.github/workflows/notarize-macos.yml
+    permissions:
+      contents: write   # attaches the notarized DMGs to the draft release
     with:
       version: ${{ inputs.version }}
+      publish: ${{ inputs.publish }}
     secrets:
       APPLE_NOTARYTOOL_APPLE_ID: ${{ secrets.APPLE_NOTARYTOOL_APPLE_ID }}
       APPLE_NOTARYTOOL_PASSWORD: ${{ secrets.APPLE_NOTARYTOOL_PASSWORD }}

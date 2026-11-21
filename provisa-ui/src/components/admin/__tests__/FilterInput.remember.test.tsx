@@ -114,3 +114,13 @@ describe("a list's search box", () => {
     expect(screen.getByTestId("page-value")).toHaveTextContent("orders");
   });
 });
+
+describe("a list's search box's hint", () => {
+  it("says the search reads the web-search syntax, on hover", async () => {
+    render(<Page />);
+    fireEvent.mouseEnter(box());
+    expect(await screen.findByRole("tooltip")).toHaveTextContent(
+      'Uses Google search syntax: every word must match; put or between alternatives; -word excludes; "quotes" keep a phrase together.',
+    );
+  });
+});

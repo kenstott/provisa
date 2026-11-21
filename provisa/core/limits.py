@@ -32,6 +32,7 @@ REQUEST_TRANSPORTS = (
     "odata",  # REQ-2193
     "sql_http",
     "cypher_http",
+    "sparql_http",
     "pgwire",
     "flight",
     "bolt",
@@ -87,6 +88,8 @@ _HTTP_ROUTE_TRANSPORT = (
     ("/data/rest", "rest"),
     ("/data/jsonapi", "jsonapi"),
     ("/data/odata", "odata"),  # REQ-2193
+    # REQ-2135: SPARQL over HTTP, a transport of its own like SQL and Cypher over HTTP.
+    ("/data/sparql", "sparql_http"),
 )
 
 # The audit surface a statement arrives under -> its transport. "airport" is the DuckDB airport

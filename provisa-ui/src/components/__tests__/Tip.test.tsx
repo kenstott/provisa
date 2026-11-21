@@ -343,3 +343,24 @@ describe("Tip", () => {
     });
   });
 });
+
+// REQ-2239 (maintainer, 2026-11-11): a graph control's hint is drawn in place, inside the narrow
+// control bar, so that it shows in full screen. Its width is then not the bar's: it takes the
+// width of its text on one line ("Fullscreen" was drawn one letter per line), wrapping only past
+// the hint's widest. jsdom lays nothing out, so this holds the width rule the browser applies.
+describe("Tip drawn in place", () => {
+  it("is as wide as its text on one line, not as wide as what holds it", async () => {
+    render(
+      <div style={{ width: 30 }}>
+        <Tip text="Vollbildmodus beenden" position="right" named inPlace>
+          <ActionIcon aria-label="Vollbildmodus beenden">f</ActionIcon>
+        </Tip>
+      </div>,
+    );
+    fireEvent.mouseEnter(screen.getByLabelText("Vollbildmodus beenden"));
+    const tip = await screen.findByRole("tooltip");
+    expect(tip.style.width).toBe("max-content");
+    // Wrapping only past the widest a hint takes (TIP_MAX_WIDTH, 340px: Mantine writes rem).
+    expect(tip.style.maxWidth).toContain(`${340 / 16}rem`);
+  });
+});

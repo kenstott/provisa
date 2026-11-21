@@ -63,7 +63,7 @@ def server():
             "roles": [
                 {
                     "id": "itest_analyst",
-                    "parents": ["developer"],
+                    "parents": ["developer", "data_writer"],
                     "description": "Test role.",
                     "capabilities": reads,
                     "domain_access": ["*"],
