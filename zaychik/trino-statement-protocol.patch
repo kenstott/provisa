@@ -440,10 +440,10 @@ index a72f64d..faa6353 100644
          new String(Base64.getDecoder().decode(token), StandardCharsets.UTF_8).split(":");
 diff --git a/src/main/java/ru/raiffeisen/trino/arrow/flight/sql/producer/TrinoArrowColumn.java b/src/main/java/ru/raiffeisen/trino/arrow/flight/sql/producer/TrinoArrowColumn.java
 new file mode 100644
-index 0000000..016a0db
+index 0000000..ff2adcc
 --- /dev/null
 +++ b/src/main/java/ru/raiffeisen/trino/arrow/flight/sql/producer/TrinoArrowColumn.java
-@@ -0,0 +1,375 @@
+@@ -0,0 +1,431 @@
 +package ru.raiffeisen.trino.arrow.flight.sql.producer;
 +
 +import com.fasterxml.jackson.annotation.JsonInclude;
@@ -476,6 +476,7 @@ index 0000000..016a0db
 +import org.apache.arrow.vector.TinyIntVector;
 +import org.apache.arrow.vector.VarBinaryVector;
 +import org.apache.arrow.vector.VarCharVector;
++import org.apache.arrow.vector.complex.ListVector;
 +import org.apache.arrow.vector.types.DateUnit;
 +import org.apache.arrow.vector.types.FloatingPointPrecision;
 +import org.apache.arrow.vector.types.TimeUnit;
@@ -497,6 +498,7 @@ index 0000000..016a0db
 +import java.time.ZoneOffset;
 +import java.time.temporal.ChronoUnit;
 +import java.util.Base64;
++import java.util.Collections;
 +import java.util.List;
 +import java.util.Map;
 +import java.util.Set;
@@ -514,7 +516,14 @@ index 0000000..016a0db
 + *   <li>{@value #ENCODING_KEY}: how the field holds a value: {@code arrow} (the Arrow type is the
 + *       value), {@code text} (Utf8, the protocol's text of a scalar Trino has no Arrow type for:
 + *       time with time zone, the intervals, json, uuid, ipaddress) or {@code json} (Utf8, the
-+ *       protocol's JSON of the value: array, map, row and any other type).
++ *       protocol's JSON of the value: map, row, an array of a type Arrow has no type for, and any
++ *       other type).
++ * </ul>
++ *
++ * <p>An array whose element type has an Arrow type is an Arrow list of it ({@code arrow}), nested
++ * as deep as the array is: a reader writes it as an array, never as the protocol's JSON text.
++ *
++ * <ul>
 + * </ul>
 + *
 + * <p>Temporal values are microseconds. A value with more fractional digits than six is rounded to
@@ -561,6 +570,10 @@ index 0000000..016a0db
 +    void write(FieldVector vector, int row, Object value);
 +  }
 +
++  /** A Trino type's Arrow form: its Arrow type, its child fields (a list's element), how a value
++   * is written, and the field's encoding. */
++  private record Form(ArrowType type, List<Field> children, Writer writer, String encoding) {}
++
 +  private final Field field;
 +  private final Writer writer;
 +
@@ -575,11 +588,17 @@ index 0000000..016a0db
 +
 +  /** Writes {@code value} (null included) into {@code vector} at {@code row}. */
 +  void write(FieldVector vector, int row, Object value) {
++    write(writer, vector, row, value);
++  }
++
++  private static void write(Writer writer, FieldVector vector, int row, Object value) {
 +    if (value == null) {
 +      if (vector instanceof BaseFixedWidthVector fixed) {
 +        fixed.setNull(row);
 +      } else if (vector instanceof BaseVariableWidthVector variable) {
 +        variable.setNull(row);
++      } else if (vector instanceof ListVector list) {
++        list.setNull(row);
 +      }
 +      // A NullVector holds nulls only: its value count is set with the batch's row count.
 +      return;
@@ -589,7 +608,50 @@ index 0000000..016a0db
 +
 +  static TrinoArrowColumn of(Column column) {
 +    ClientTypeSignature signature = column.getTypeSignature();
++    Form form = form(signature);
++    Map<String, String> metadata =
++        Map.of(
++            TYPE_KEY, column.getType(),
++            SIGNATURE_KEY, signatureJson(signature),
++            ENCODING_KEY, form.encoding());
++    Field field =
++        new Field(
++            column.getName(), new FieldType(true, form.type(), null, metadata), form.children());
++    return new TrinoArrowColumn(field, form.writer());
++  }
++
++  /** An array of {@code element}: an Arrow list when the element has an Arrow type, else null
++   * (the array is then the protocol's JSON). Each element is written at the list's next child
++   * position, a null element as a null in the child vector. */
++  private static Form arrayForm(ClientTypeSignature signature) {
++    Form element = form(signature.getArguments().get(0).getTypeSignature());
++    if (!ENCODING_ARROW.equals(element.encoding())) {
++      return null;
++    }
++    Field item = new Field("item", new FieldType(true, element.type(), null), element.children());
++    Writer elementWriter = element.writer();
++    Writer writer =
++        (v, r, x) -> {
++          ListVector list = (ListVector) v;
++          List<?> items = (List<?>) x;
++          int start = list.startNewValue(r);
++          FieldVector child = list.getDataVector();
++          for (int i = 0; i < items.size(); i++) {
++            write(elementWriter, child, start + i, items.get(i));
++          }
++          list.endValue(r, items.size());
++        };
++    return new Form(ArrowType.List.INSTANCE, List.of(item), writer, ENCODING_ARROW);
++  }
++
++  private static Form form(ClientTypeSignature signature) {
 +    String rawType = signature.getRawType();
++    if ("array".equals(rawType)) {
++      Form array = arrayForm(signature);
++      if (array != null) {
++        return array;
++      }
++    }
 +    ArrowType arrowType;
 +    Writer writer;
 +    String encoding = ENCODING_ARROW;
@@ -672,13 +734,7 @@ index 0000000..016a0db
 +        }
 +      }
 +    }
-+    Map<String, String> metadata =
-+        Map.of(
-+            TYPE_KEY, column.getType(),
-+            SIGNATURE_KEY, signatureJson(signature),
-+            ENCODING_KEY, encoding);
-+    Field field = new Field(column.getName(), new FieldType(true, arrowType, null, metadata), null);
-+    return new TrinoArrowColumn(field, writer);
++    return new Form(arrowType, Collections.emptyList(), writer, encoding);
 +  }
 +
 +  private static long longArgument(ClientTypeSignature signature, int index) {
@@ -1490,10 +1546,10 @@ index 0000000..c867693
 +}
 diff --git a/src/test/java/ru/raiffeisen/trino/arrow/flight/sql/producer/TrinoArrowColumnTest.java b/src/test/java/ru/raiffeisen/trino/arrow/flight/sql/producer/TrinoArrowColumnTest.java
 new file mode 100644
-index 0000000..4c79d92
+index 0000000..19f4a11
 --- /dev/null
 +++ b/src/test/java/ru/raiffeisen/trino/arrow/flight/sql/producer/TrinoArrowColumnTest.java
-@@ -0,0 +1,217 @@
+@@ -0,0 +1,343 @@
 +package ru.raiffeisen.trino.arrow.flight.sql.producer;
 +
 +import io.trino.client.ClientTypeSignature;
@@ -1507,6 +1563,7 @@ index 0000000..4c79d92
 +import org.apache.arrow.vector.FieldVector;
 +import org.apache.arrow.vector.TimeStampMicroVector;
 +import org.apache.arrow.vector.VarCharVector;
++import org.apache.arrow.vector.complex.ListVector;
 +import org.apache.arrow.vector.types.TimeUnit;
 +import org.apache.arrow.vector.types.pojo.ArrowType;
 +import org.apache.arrow.vector.types.pojo.Field;
@@ -1703,6 +1760,131 @@ index 0000000..4c79d92
 +    assertEquals(
 +        "{\"1\":[\"NaN\",\"Infinity\",0.1,null],\"2\":[\"-Infinity\",0.1]}",
 +        TrinoArrowColumn.protocolJson(map));
++  }
++
++  // -- arrays: an Arrow list of the element's Arrow type, nested as deep as the array ----------
++
++  private static ClientTypeSignature arrayOf(ClientTypeSignature element) {
++    return type("array", ClientTypeSignatureParameter.ofType(element));
++  }
++
++  /** The column's vector after writing {@code values} at rows 0.., as Arrow reads it back. */
++  private static List<Object> written(TrinoArrowColumn column, List<?> values) {
++    try (BufferAllocator allocator = new RootAllocator();
++        FieldVector vector = column.field().createVector(allocator)) {
++      vector.allocateNew();
++      for (int i = 0; i < values.size(); i++) {
++        column.write(vector, i, values.get(i));
++      }
++      vector.setValueCount(values.size());
++      List<Object> out = new java.util.ArrayList<>();
++      for (int i = 0; i < values.size(); i++) {
++        Object v = vector.getObject(i);
++        out.add(v == null ? null : v.toString());
++      }
++      return out;
++    }
++  }
++
++  @Test
++  void arrayOfAnArrowTypeIsAnArrowList() {
++    for (Map.Entry<String, ArrowType> e :
++        Map.of(
++                "integer", (ArrowType) new ArrowType.Int(32, true),
++                "bigint", new ArrowType.Int(64, true),
++                "double", new ArrowType.FloatingPoint(org.apache.arrow.vector.types.FloatingPointPrecision.DOUBLE),
++                "varchar", ArrowType.Utf8.INSTANCE)
++            .entrySet()) {
++      Field field =
++          TrinoArrowColumn.of(new Column("a", "array(" + e.getKey() + ")", arrayOf(type(e.getKey()))))
++              .field();
++      assertEquals(ArrowType.List.INSTANCE, field.getType(), e.getKey());
++      assertEquals(e.getValue(), field.getChildren().get(0).getType(), e.getKey());
++      assertEquals("arrow", field.getMetadata().get(TrinoArrowColumn.ENCODING_KEY), e.getKey());
++      assertEquals("array(" + e.getKey() + ")", field.getMetadata().get(TrinoArrowColumn.TYPE_KEY));
++    }
++  }
++
++  @Test
++  void arrayValuesWithNullElementsANullArrayAndAnEmptyArray() {
++    TrinoArrowColumn ints = TrinoArrowColumn.of(new Column("a", "array(integer)", arrayOf(type("integer"))));
++    assertEquals(
++        Arrays.asList("[1,2,3]", "[-7,null,42]", null, "[]", "[null]"),
++        written(
++            ints,
++            Arrays.asList(
++                List.of(1, 2, 3), Arrays.asList(-7, null, 42), null, List.of(), Arrays.asList((Object) null))));
++    TrinoArrowColumn bigints = TrinoArrowColumn.of(new Column("a", "array(bigint)", arrayOf(type("bigint"))));
++    assertEquals(List.of("[4,9]"), written(bigints, List.of(List.of(4L, 9L))));
++    TrinoArrowColumn doubles = TrinoArrowColumn.of(new Column("a", "array(double)", arrayOf(type("double"))));
++    assertEquals(
++        Arrays.asList("[4.0,6.5,3.6875]", null),
++        written(doubles, Arrays.asList(List.of(4.0, 6.5, 3.6875), null)));
++    TrinoArrowColumn texts =
++        TrinoArrowColumn.of(new Column("a", "array(varchar)", arrayOf(type("varchar", precision(2147483647)))));
++    assertEquals(
++        List.of("[\"cat\",\"fat\",null]"),
++        written(texts, List.of(Arrays.asList("cat", "fat", null))));
++  }
++
++  @Test
++  void nestedArrayIsAListOfLists() {
++    TrinoArrowColumn nested =
++        TrinoArrowColumn.of(
++            new Column("a", "array(array(integer))", arrayOf(arrayOf(type("integer")))));
++    Field field = nested.field();
++    assertEquals(ArrowType.List.INSTANCE, field.getType());
++    assertEquals(ArrowType.List.INSTANCE, field.getChildren().get(0).getType());
++    assertEquals(
++        new ArrowType.Int(32, true), field.getChildren().get(0).getChildren().get(0).getType());
++    assertEquals(
++        Arrays.asList("[[1],[2,null]]", "[null,[]]", null),
++        written(
++            nested,
++            Arrays.asList(
++                List.of(List.of(1), Arrays.asList(2, null)),
++                Arrays.asList(null, List.of()),
++                null)));
++  }
++
++  @Test
++  void arrayOfTemporalsIsMicrosecond() {
++    TrinoArrowColumn stamps =
++        TrinoArrowColumn.of(
++            new Column("a", "array(timestamp(9))", arrayOf(type("timestamp", precision(9)))));
++    assertEquals(
++        new ArrowType.Timestamp(TimeUnit.MICROSECOND, null),
++        stamps.field().getChildren().get(0).getType());
++    try (BufferAllocator allocator = new RootAllocator();
++        FieldVector vector = stamps.field().createVector(allocator)) {
++      vector.allocateNew();
++      stamps.write(vector, 0, List.of("2024-01-02 03:04:05.123456500"));
++      vector.setValueCount(1);
++      assertEquals(
++          1704164645123456L,
++          ((TimeStampMicroVector) ((ListVector) vector).getDataVector()).get(0));
++    }
++  }
++
++  @Test
++  void arrayOfATypeWithoutArrowTypeIsItsProtocolJson() {
++    for (ClientTypeSignature element :
++        List.of(
++            type("uuid"),
++            type("map", ClientTypeSignatureParameter.ofType(type("varchar")), ClientTypeSignatureParameter.ofType(type("double"))),
++            arrayOf(type("json")))) {
++      TrinoArrowColumn column = TrinoArrowColumn.of(new Column("a", "array(x)", arrayOf(element)));
++      assertEquals(ArrowType.Utf8.INSTANCE, column.field().getType(), element.toString());
++      assertEquals("json", column.field().getMetadata().get(TrinoArrowColumn.ENCODING_KEY));
++    }
++  }
++
++  @Test
++  void arrayOfUnknownIsAListOfNulls() {
++    TrinoArrowColumn column =
++        TrinoArrowColumn.of(new Column("a", "array(unknown)", arrayOf(type("unknown"))));
++    assertEquals(ArrowType.Null.INSTANCE, column.field().getChildren().get(0).getType());
++    assertEquals(List.of("[null,null]"), written(column, List.of(Arrays.asList(null, null))));
 +  }
 +
 +  @Test
