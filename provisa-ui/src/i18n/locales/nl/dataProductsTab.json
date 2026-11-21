@@ -87,7 +87,6 @@
     "graphqlQueriesEmpty": "Geen bevraagbare tabellen of relaties",
     "graphqlQueryAria": "Voorbeeld-GraphQL-query voor {{table}} uitvoeren",
     "sqlQueryAria": "Voorbeeld-SQL-query voor {{table}} uitvoeren",
-    "cypherQueryAria": "Voorbeeld-Cypher-query voor {{type}} uitvoeren",
     "grpcQueryAria": "Voorbeeld-gRPC-aanroep voor {{table}} uitvoeren",
     "jsonapiQueryAria": "Voorbeeld-JSON:API-verzoek voor {{table}} uitvoeren",
     "openApiQueryAria": "Voorbeeld-REST-verzoek voor {{table}} uitvoeren",
@@ -97,7 +96,6 @@
         "customProperties": "Aangepaste eigenschappen",
         "relatedTables": "Gerelateerde tabellen",
         "relationships": "Relaties",
-        "lineage": "Lineage",
         "inputPorts": "Invoerpoorten",
         "dataQuality": "Datakwaliteit"
       },
@@ -107,18 +105,21 @@
       "dqRulesTitle": "Kwaliteitsregels — {{table}}",
       "dqRulesEmpty": "Het contract definieert geen controles",
       "relatedTablesEmpty": "Geen gerelateerde tabellen",
-      "relatedTablesHint": "Bereikbaar vanuit de tabellen van dit product via een goedgekeurde relatie, maar (nog) geen onderdeel ervan.",
+      "relatedTablesHint": "Bereikbaar vanuit de tabellen van dit product via een goedgekeurde relatie, maar er nog geen deel van.",
       "relationshipsEmpty": "Geen relaties tussen de tabellen van dit product",
       "lineageEmpty": "Geen lineage",
       "lineageLoading": "Lineage laden…",
-      "lineageHint": "Kolomlineagegrafiek met de tabellen van dit product als gepubliceerd endpoint, plus elke upstreamtabel waaruit ze zijn afgeleid. Alleen ter informatie — vereist de capability view_governance.",
+      "lineageTitle": "Kolom-lineage: waar dit product vandaan komt",
+      "lineageHint": "Elke kolom die dit product publiceert en de invoerkolom waar die vandaan komt, met elke stap ertussen. Vereist de capability view_governance.",
       "outputPortsHint": "Het bevraagbare oppervlak van dit product: de lidtabellen en opdrachten. Voorbeeldquery's voor elk staan onder Toegangspatronen.",
       "customPropertiesEmpty": "Geen aangepaste eigenschappen",
-      "lineageLaneUpstream": "Stroomopwaarts, stap {{n}}",
-      "lineageLaneDownstream": "Stroomafwaarts, stap {{n}}"
+      "lineageLaneTables": "Tabellen van dit product",
+      "lineageLaneInputs": "Invoer",
+      "lineageLaneUpstream": "Upstream, stap {{n}} voorbij de invoer",
+      "inputsLineageLink": "Kolom-lineage bekijken"
     },
     "readOnly": "Alleen-lezen",
-    "readOnlyHint": "Je hebt alleen data_product_read — een org_admin kan data_product_rw toekennen om te bewerken.",
+    "readOnlyHint": "Alleen data_product_read is beschikbaar. Een org_admin kan data_product_rw toekennen om te bewerken.",
     "relatedTermsConcept": "concept",
     "status_draft": "Ontwerp",
     "status_live": "Actief",
@@ -131,15 +132,15 @@
     "successorHint": "De tabellen, views en commando's gaan over naar de opvolger, een product in hetzelfde domein.",
     "reasonLabel": "Reden",
     "publish": "Publiceren",
-    "publishHint": "Dit ontwerp actief maken: het wordt aangeboden aan afnemers en catalogi.",
+    "publishHint": "Dit concept live zetten en aanbieden aan afnemers en catalogi.",
     "deprecate": "Als verouderd markeren",
-    "deprecateHint": "Dit actieve product markeren als uitfaserend: het blijft in gebruik, met een reden en een optionele geplande buitengebruikstelling.",
+    "deprecateHint": "Dit live product markeren als uitfaserend. Het blijft in gebruik, met een reden en een optionele geplande uitfasering.",
     "deprecateTitle": "'{{product}}' als verouderd markeren",
     "retire": "Buiten gebruik stellen",
-    "retireHint": "Dit product buiten gebruik stellen: de tabellen, views en commando's gaan over naar een opvolger in het domein.",
+    "retireHint": "Dit product buiten gebruik stellen. De tabellen, views en opdrachten gaan over naar een opvolger in het domein.",
     "retireTitle": "'{{product}}' buiten gebruik stellen",
     "retireMoves": "Leden die overgaan: {{members}}",
-    "retireNoMembers": "Het heeft geen leden: een opvolger is optioneel.",
+    "retireNoMembers": "Het heeft geen leden, dus een opvolger is optioneel.",
     "restore": "Herstellen",
     "restoreHint": "De veroudering (terug naar actief) of de buitengebruikstelling (terug naar ontwerp) ongedaan maken.",
     "toReview": "Te beoordelen",
@@ -177,9 +178,6 @@
       "versionLabel": "Contractversie",
       "statusLabel": "Contractstatus",
       "descriptionLabel": "Waarvoor het dient",
-      "columnsLabel": "Kolommen",
-      "columnsHelp": "Een kolom verwijderen, of het type ervan wijzigen, vraagt een nieuwe versie.",
-      "requiredLabel": "Nooit null",
       "slaLabel": "Serviceniveaus",
       "slaProperty": "Eigenschap",
       "slaValue": "Waarde",
@@ -211,7 +209,56 @@
         "check_removed": "Kwaliteitscontrole {{subject}} verwijderd",
         "check_changed": "Kwaliteitscontrole {{subject}} gewijzigd",
         "description_changed": "Beschrijving gewijzigd",
-        "terms_changed": "Voorwaarden gewijzigd: {{subject}}"
+        "terms_changed": "Voorwaarden gewijzigd: {{subject}}",
+        "field_masked": "Veld {{subject}} gemaskeerd ({{after}})",
+        "field_unmasked": "Veld {{subject}} niet meer gemaskeerd",
+        "row_rule_added": "Rijregel toegevoegd: {{subject}}",
+        "row_rule_removed": "Rijregel verwijderd: {{subject}}",
+        "data_level_changed": "Dataniveau gewijzigd van {{before}} naar {{after}}",
+        "dq_results_changed": "Kwaliteitsresultaten gewijzigd van {{before}} naar {{after}}",
+        "profiles_changed": "Profielen gewijzigd van {{before}} naar {{after}}",
+        "duration_changed": "Duur gewijzigd van {{before}} naar {{after}}",
+        "terms_of_use_changed": "Gebruiksvoorwaarden gewijzigd: {{subject}}"
+      },
+      "howToUse": {
+        "column": {
+          "surface": "Interface",
+          "address": "Adres",
+          "how": "Hoe het wordt gebruikt",
+          "link": "Voorbeeld"
+        },
+        "surface": {
+          "pgwire": "PostgreSQL",
+          "flight-sql": "Arrow Flight SQL",
+          "grpc": "gRPC",
+          "graphql": "GraphQL",
+          "rest": "REST",
+          "openapi": "OpenAPI",
+          "jsonapi": "JSON:API",
+          "sparql": "SPARQL"
+        },
+        "how": {
+          "pgwire": "Elke PostgreSQL-client, zoals psql of DBeaver. Database {{database}}, schema {{schema}}.",
+          "flight-sql": "Elke Arrow Flight SQL-client, zoals het ADBC-stuurprogramma. Database {{database}}, schema {{schema}}.",
+          "grpc": "Elke gRPC-client, op de service {{service}}, met de metadata authorization: Bearer <token>.",
+          "graphql": "Elke GraphQL-client: POST een query op deze tabel, met de header Authorization: Bearer <token>.",
+          "rest": "Elke HTTP-client: GET dit adres, met de header Authorization: Bearer <token>.",
+          "openapi": "Alleen de beschrijving van deze tabel: laad die in Swagger UI, Postman of een clientgenerator.",
+          "jsonapi": "Elke JSON:API-client: GET dit adres, met de header Authorization: Bearer <token>.",
+          "sparql": "Elke SPARQL 1.1-client: POST een query op de klasse van deze tabel, met de header Authorization: Bearer <token>."
+        },
+        "access": {
+          "granted": "Werkt pas nadat toegang is verleend, door {{approvers}}.",
+          "noApprover": "Werkt pas nadat toegang is verleend, door een houder van {{roles}}. Dit contract noemt geen goedkeurder.",
+          "undeclared": "Werkt pas nadat toegang is verleend. Dit contract noemt geen rol of goedkeurder."
+        },
+        "ask": {
+          "approvers": "Vraag {{approvers}} om toegang",
+          "roles": "Vraag een houder van {{roles}} om toegang",
+          "nobody": "Dit contract noemt niemand die u kunt vragen"
+        },
+        "open": "Voorbeeld openen",
+        "openAria": "Het voorbeeld {{surface}} voor {{table}} openen"
       },
       "loadError": "De contracten konden niet worden gelezen: {{error}}",
       "notExported": "{{member}} heeft geen geëxporteerd contract",
@@ -259,47 +306,13 @@
         "versions": "Versies & wijzigingen",
         "roles": "Rollen",
         "history": "Versiegeschiedenis"
-      },
-      "howToUse": {
-        "column": {
-          "surface": "Interface",
-          "address": "Adres",
-          "how": "Hoe het wordt gebruikt",
-          "link": "Voorbeeld"
-        },
-        "surface": {
-          "pgwire": "PostgreSQL",
-          "flight-sql": "Arrow Flight SQL",
-          "grpc": "gRPC",
-          "graphql": "GraphQL",
-          "rest": "REST",
-          "openapi": "OpenAPI",
-          "jsonapi": "JSON:API",
-          "sparql": "SPARQL"
-        },
-        "how": {
-          "pgwire": "Elke PostgreSQL-client, zoals psql of DBeaver. Database {{database}}, schema {{schema}}.",
-          "flight-sql": "Elke Arrow Flight SQL-client, zoals het ADBC-stuurprogramma. Database {{database}}, schema {{schema}}.",
-          "grpc": "Elke gRPC-client, op de service {{service}}, met de metadata authorization: Bearer <token>.",
-          "graphql": "Elke GraphQL-client: POST een query op deze tabel, met de header Authorization: Bearer <token>.",
-          "rest": "Elke HTTP-client: GET dit adres, met de header Authorization: Bearer <token>.",
-          "openapi": "Alleen de beschrijving van deze tabel: laad die in Swagger UI, Postman of een clientgenerator.",
-          "jsonapi": "Elke JSON:API-client: GET dit adres, met de header Authorization: Bearer <token>.",
-          "sparql": "Elke SPARQL 1.1-client: POST een query op de klasse van deze tabel, met de header Authorization: Bearer <token>."
-        },
-        "access": {
-          "granted": "Werkt pas nadat toegang is verleend, door {{approvers}}.",
-          "noApprover": "Werkt pas nadat toegang is verleend, door een houder van {{roles}}. Dit contract noemt geen goedkeurder.",
-          "undeclared": "Werkt pas nadat toegang is verleend. Dit contract noemt geen rol of goedkeurder."
-        },
-        "ask": {
-          "approvers": "Vraag {{approvers}} om toegang",
-          "roles": "Vraag een houder van {{roles}} om toegang",
-          "nobody": "Dit contract noemt niemand die u kunt vragen"
-        },
-        "open": "Voorbeeld openen",
-        "openAria": "Het voorbeeld {{surface}} voor {{table}} openen"
       }
-    }
+    },
+    "detailPanel": "Detail van het dataproduct",
+    "tagFacetLabel": "Tags",
+    "tagFacetPlaceholder": "Filteren op tag",
+    "noMatch": "Geen dataproducten voldoen aan de filters",
+    "domainFacetLabel": "Domeinen",
+    "domainFacetPlaceholder": "Filteren op domein"
   }
 }

@@ -25,14 +25,13 @@ from tests.unit.test_cypher_cache_before_route import graph  # noqa: F401
 async def test_a_read_missing_a_required_parameter_is_a_400_naming_it(graph, monkeypatch):  # noqa: F811
     from provisa.api.rest.cypher_router import CypherRequest, cypher_query
     from provisa.compiler.nf_extractor import apply_dropped_tables
-    from provisa.core.parameters import missing_reason
     from provisa.pgwire import _pipeline
 
     async def _govern(sql, role_id, **kw):
         # The pipeline's own refusal of the read (a parameterized table, no value given).
         apply_dropped_tables(
             "SELECT 1 FROM assignments_by_breed",
-            {"assignments_by_breed": missing_reason(["breed_name"])},
+            {"assignments_by_breed": ["breed_name"]},
         )
 
     monkeypatch.setattr(_pipeline, "_govern_and_route_compiled", _govern)
@@ -44,6 +43,6 @@ async def test_a_read_missing_a_required_parameter_is_a_400_naming_it(graph, mon
 
     assert response.status_code == 400, response.body
     body = json.loads(bytes(response.body))
-    assert body["code"] == "cypher.parameter_required"
+    assert body["code"] == "data.parameter_required"
     assert body["params"]["table"] == "assignments_by_breed"
     assert "assignments_by_breed" in body["detail"] and "breed_name" in body["detail"]

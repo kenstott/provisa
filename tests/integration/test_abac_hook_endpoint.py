@@ -102,7 +102,7 @@ def _build_schema():
         domains=[{"id": "default", "description": "Default"}],
         source_types={"test-pg": "postgresql"},
     )
-    return generate_schema(si), build_context(si), role
+    return generate_schema(si), build_context(si), role, tables
 
 
 def _orders_field(schema) -> str:
@@ -125,7 +125,7 @@ async def client_field():
     from provisa.compiler.rls import RLSContext
     from provisa.executor.pool import SourcePool
 
-    schema, ctx, role = _build_schema()
+    schema, ctx, role, tables = _build_schema()
     field_name = _orders_field(schema)
 
     source_pool = SourcePool()
@@ -149,6 +149,8 @@ async def client_field():
         st.contexts = {"admin": ctx}
         st.rls_contexts = {"admin": RLSContext.empty()}
         st.roles = {"admin": role}
+        # Governance serves a role the columns of the registry a server loads (visible_to).
+        st.tables = tables
         st.source_pools = source_pool
         st.source_types = {"test-pg": "postgresql"}
         st.source_dialects = {"test-pg": "postgres"}

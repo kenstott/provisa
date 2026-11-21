@@ -87,7 +87,6 @@
     "graphqlQueriesEmpty": "Nenhuma tabela ou relacionamento consultável",
     "graphqlQueryAria": "Executar consulta GraphQL de exemplo para {{table}}",
     "sqlQueryAria": "Executar consulta SQL de exemplo para {{table}}",
-    "cypherQueryAria": "Executar consulta Cypher de exemplo para {{type}}",
     "grpcQueryAria": "Executar chamada gRPC de exemplo para {{table}}",
     "jsonapiQueryAria": "Executar requisição JSON:API de exemplo para {{table}}",
     "openApiQueryAria": "Executar requisição REST de exemplo para {{table}}",
@@ -97,7 +96,6 @@
         "customProperties": "Propriedades personalizadas",
         "relatedTables": "Tabelas relacionadas",
         "relationships": "Relacionamentos",
-        "lineage": "Linhagem",
         "inputPorts": "Portas de entrada",
         "dataQuality": "Qualidade de dados"
       },
@@ -107,18 +105,21 @@
       "dqRulesTitle": "Regras de qualidade — {{table}}",
       "dqRulesEmpty": "O contrato não define verificações",
       "relatedTablesEmpty": "Nenhuma tabela relacionada",
-      "relatedTablesHint": "Alcançáveis a partir das tabelas deste produto por um relacionamento aprovado, mas (ainda) não fazem parte dele.",
+      "relatedTablesHint": "Alcançável a partir das tabelas deste produto por meio de um relacionamento aprovado, mas ainda não faz parte dele.",
       "relationshipsEmpty": "Nenhum relacionamento entre as tabelas deste produto",
       "lineageEmpty": "Sem linhagem",
       "lineageLoading": "Carregando linhagem…",
-      "lineageHint": "Grafo de linhagem de colunas mostrando as tabelas deste produto como o endpoint publicado, mais toda tabela upstream usada para derivá-las. Somente informativo — requer a capacidade view_governance.",
+      "lineageTitle": "Linhagem de colunas: de onde vem este produto",
+      "lineageHint": "Cada coluna que este produto publica e a coluna de entrada de onde ela vem, com cada etapa intermediária. Requer a capacidade view_governance.",
       "outputPortsHint": "A superfície consultável deste produto: suas tabelas membro e seus comandos. Consultas de exemplo para cada uma estão em Padrões de acesso.",
       "customPropertiesEmpty": "Nenhuma propriedade personalizada",
-      "lineageLaneUpstream": "A montante, salto {{n}}",
-      "lineageLaneDownstream": "A jusante, salto {{n}}"
+      "lineageLaneTables": "Tabelas deste produto",
+      "lineageLaneInputs": "Entradas",
+      "lineageLaneUpstream": "Upstream, salto {{n}} além das entradas",
+      "inputsLineageLink": "Ver linhagem de colunas"
     },
     "readOnly": "Somente leitura",
-    "readOnlyHint": "Você tem apenas data_product_read — um org_admin pode conceder data_product_rw para editar.",
+    "readOnlyHint": "Você tem apenas data_product_read. Um org_admin pode conceder data_product_rw para editar.",
     "relatedTermsConcept": "conceito",
     "status_draft": "Rascunho",
     "status_live": "Ativo",
@@ -131,15 +132,15 @@
     "successorHint": "Suas tabelas, views e comandos passam para o sucessor, um produto do mesmo domínio.",
     "reasonLabel": "Motivo",
     "publish": "Publicar",
-    "publishHint": "Tornar este rascunho ativo: ele é oferecido aos consumidores e aos catálogos.",
+    "publishHint": "Publicar este rascunho e oferecê-lo a consumidores e catálogos.",
     "deprecate": "Marcar obsoleto",
-    "deprecateHint": "Marcar este produto ativo como em saída: ele fica em serviço, com um motivo e uma retirada prevista opcional.",
+    "deprecateHint": "Marcar este produto publicado como em descontinuação. Ele continua em serviço, com um motivo e uma desativação planejada opcional.",
     "deprecateTitle": "Marcar '{{product}}' como obsoleto",
     "retire": "Retirar",
-    "retireHint": "Retirar este produto de serviço: suas tabelas, views e comandos passam para um sucessor do seu domínio.",
+    "retireHint": "Tirar este produto de serviço. Suas tabelas, exibições e comandos passam para um sucessor no seu domínio.",
     "retireTitle": "Retirar '{{product}}'",
     "retireMoves": "Membros que passam: {{members}}",
-    "retireNoMembers": "Não tem membros: o sucessor é opcional.",
+    "retireNoMembers": "Ele não tem membros, então um sucessor é opcional.",
     "restore": "Restaurar",
     "restoreHint": "Desfazer a obsolescência (volta a ativo) ou a retirada (volta a rascunho).",
     "toReview": "Para revisão",
@@ -177,9 +178,6 @@
       "versionLabel": "Versão do contrato",
       "statusLabel": "Status do contrato",
       "descriptionLabel": "Para que serve",
-      "columnsLabel": "Colunas",
-      "columnsHelp": "Remover uma coluna, ou mudar seu tipo, exige uma nova versão.",
-      "requiredLabel": "Nunca nulo",
       "slaLabel": "Níveis de serviço",
       "slaProperty": "Propriedade",
       "slaValue": "Valor",
@@ -211,7 +209,56 @@
         "check_removed": "Verificação de qualidade {{subject}} removida",
         "check_changed": "Verificação de qualidade {{subject}} alterada",
         "description_changed": "Descrição alterada",
-        "terms_changed": "Termos alterados: {{subject}}"
+        "terms_changed": "Termos alterados: {{subject}}",
+        "field_masked": "Campo {{subject}} mascarado ({{after}})",
+        "field_unmasked": "Campo {{subject}} não está mais mascarado",
+        "row_rule_added": "Regra de linha adicionada: {{subject}}",
+        "row_rule_removed": "Regra de linha removida: {{subject}}",
+        "data_level_changed": "Nível dos dados alterado de {{before}} para {{after}}",
+        "dq_results_changed": "Resultados de qualidade alterados de {{before}} para {{after}}",
+        "profiles_changed": "Perfis alterados de {{before}} para {{after}}",
+        "duration_changed": "Duração alterada de {{before}} para {{after}}",
+        "terms_of_use_changed": "Termos de uso alterados: {{subject}}"
+      },
+      "howToUse": {
+        "column": {
+          "surface": "Interface",
+          "address": "Endereço",
+          "how": "Como é usado",
+          "link": "Exemplo"
+        },
+        "surface": {
+          "pgwire": "PostgreSQL",
+          "flight-sql": "Arrow Flight SQL",
+          "grpc": "gRPC",
+          "graphql": "GraphQL",
+          "rest": "REST",
+          "openapi": "OpenAPI",
+          "jsonapi": "JSON:API",
+          "sparql": "SPARQL"
+        },
+        "how": {
+          "pgwire": "Qualquer cliente PostgreSQL, como psql ou DBeaver. Banco de dados {{database}}, esquema {{schema}}.",
+          "flight-sql": "Qualquer cliente Arrow Flight SQL, como o driver ADBC. Banco de dados {{database}}, esquema {{schema}}.",
+          "grpc": "Qualquer cliente gRPC, no serviço {{service}}, com os metadados authorization: Bearer <token>.",
+          "graphql": "Qualquer cliente GraphQL: envie por POST uma consulta sobre esta tabela, com o cabeçalho Authorization: Bearer <token>.",
+          "rest": "Qualquer cliente HTTP: GET neste endereço, com o cabeçalho Authorization: Bearer <token>.",
+          "openapi": "Apenas a descrição desta tabela: carregue-a no Swagger UI, no Postman ou em um gerador de clientes.",
+          "jsonapi": "Qualquer cliente JSON:API: GET neste endereço, com o cabeçalho Authorization: Bearer <token>.",
+          "sparql": "Qualquer cliente SPARQL 1.1: envie por POST uma consulta sobre a classe desta tabela, com o cabeçalho Authorization: Bearer <token>."
+        },
+        "access": {
+          "granted": "Só funciona depois que o acesso é concedido, por {{approvers}}.",
+          "noApprover": "Só funciona depois que o acesso é concedido, por um titular de {{roles}}. Este contrato não indica nenhum aprovador.",
+          "undeclared": "Só funciona depois que o acesso é concedido. Este contrato não indica nenhum papel nem aprovador."
+        },
+        "ask": {
+          "approvers": "Pedir acesso a {{approvers}}",
+          "roles": "Pedir acesso a um titular de {{roles}}",
+          "nobody": "Este contrato não indica a quem pedir"
+        },
+        "open": "Abrir exemplo",
+        "openAria": "Abrir o exemplo de {{surface}} para {{table}}"
       },
       "loadError": "Não foi possível ler os contratos: {{error}}",
       "notExported": "{{member}} não tem contrato exportado",
@@ -259,47 +306,13 @@
         "versions": "Versões e alterações",
         "roles": "Funções",
         "history": "Histórico de versões"
-      },
-      "howToUse": {
-        "column": {
-          "surface": "Interface",
-          "address": "Endereço",
-          "how": "Como é usado",
-          "link": "Exemplo"
-        },
-        "surface": {
-          "pgwire": "PostgreSQL",
-          "flight-sql": "Arrow Flight SQL",
-          "grpc": "gRPC",
-          "graphql": "GraphQL",
-          "rest": "REST",
-          "openapi": "OpenAPI",
-          "jsonapi": "JSON:API",
-          "sparql": "SPARQL"
-        },
-        "how": {
-          "pgwire": "Qualquer cliente PostgreSQL, como psql ou DBeaver. Banco de dados {{database}}, esquema {{schema}}.",
-          "flight-sql": "Qualquer cliente Arrow Flight SQL, como o driver ADBC. Banco de dados {{database}}, esquema {{schema}}.",
-          "grpc": "Qualquer cliente gRPC, no serviço {{service}}, com os metadados authorization: Bearer <token>.",
-          "graphql": "Qualquer cliente GraphQL: envie por POST uma consulta sobre esta tabela, com o cabeçalho Authorization: Bearer <token>.",
-          "rest": "Qualquer cliente HTTP: GET neste endereço, com o cabeçalho Authorization: Bearer <token>.",
-          "openapi": "Apenas a descrição desta tabela: carregue-a no Swagger UI, no Postman ou em um gerador de clientes.",
-          "jsonapi": "Qualquer cliente JSON:API: GET neste endereço, com o cabeçalho Authorization: Bearer <token>.",
-          "sparql": "Qualquer cliente SPARQL 1.1: envie por POST uma consulta sobre a classe desta tabela, com o cabeçalho Authorization: Bearer <token>."
-        },
-        "access": {
-          "granted": "Só funciona depois que o acesso é concedido, por {{approvers}}.",
-          "noApprover": "Só funciona depois que o acesso é concedido, por um titular de {{roles}}. Este contrato não indica nenhum aprovador.",
-          "undeclared": "Só funciona depois que o acesso é concedido. Este contrato não indica nenhum papel nem aprovador."
-        },
-        "ask": {
-          "approvers": "Pedir acesso a {{approvers}}",
-          "roles": "Pedir acesso a um titular de {{roles}}",
-          "nobody": "Este contrato não indica a quem pedir"
-        },
-        "open": "Abrir exemplo",
-        "openAria": "Abrir o exemplo de {{surface}} para {{table}}"
       }
-    }
+    },
+    "detailPanel": "Detalhe do produto de dados",
+    "tagFacetLabel": "Tags",
+    "tagFacetPlaceholder": "Filtrar por tag",
+    "noMatch": "Nenhum produto de dados corresponde aos filtros",
+    "domainFacetLabel": "Domínios",
+    "domainFacetPlaceholder": "Filtrar por domínio"
   }
 }

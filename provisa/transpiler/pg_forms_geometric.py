@@ -40,10 +40,13 @@ refused by name, as is a value of more digits than that integer holds."""
 
 from __future__ import annotations
 
+import itertools
 import re
 from collections.abc import Callable
 from dataclasses import dataclass, replace
 
+import sqlglot
+from sqlglot import exp
 from sqlglot.dialects.trino import Trino
 from sqlglot.tokens import TokenType
 
@@ -281,7 +284,8 @@ def _float_text(e: Engine, value: str) -> str:
         f"WHEN _p - 1 < -4 OR _p - 1 >= 15 THEN substr(_d, 1, 1) || "
         f"CASE WHEN {e.length.format('_d')} > 1 THEN '.' || substr(_d, 2) ELSE '' END || 'e' || "
         "CASE WHEN _p - 1 < 0 THEN '-' ELSE '+' END || "
-        f"{e.lpad.format(e.text.format('abs(_p - 1)'), 2)} "
+        # At least two digits: an lpad to 2 would cut 308 to 30.
+        f"CASE WHEN abs(_p - 1) < 10 THEN '0' ELSE '' END || {e.text.format('abs(_p - 1)')} "
         f"WHEN _p <= 0 THEN '0.' || {e.lpad.format(chr(39) * 2, '-_p')} || _d "
         f"WHEN {e.length.format('_d')} <= _p THEN {e.rpad.format('_d', '_p')} "
         "ELSE substr(_d, 1, _p) || '.' || substr(_d, _p + 1) END"
@@ -1633,12 +1637,21 @@ def _circle_poly(e: Engine, f: str, n: str = "n") -> str:
         ),
         "','",
     )
+    # geo_ops.c sizes the polygon in an int before it allocates: 40 bytes and 16 a point. Past
+    # INT_MAX it is 54000; past MaxAllocSize (1 GB - 1) palloc's XX000, naming the size.
+    size = f"(40 + 16 * {e.bigint.format(n)})"
+    alloc = "XX000: invalid memory alloc request size"
+    if e is not CLICKHOUSE:  # ClickHouse's throwIf takes a constant message, so no size
+        alloc += f" ' || {e.text.format(size)} || '"
+    built = e.raises.format(
+        f"{size} > 2147483647",
+        "54000: too many points requested",
+        e.raises.format(f"{size} > 1073741823", alloc, f"'(' || {text} || ')'"),
+    )
     return e.raises.format(
         f"abs(_a[3]) <= {_FUZZ}",
         "0A000: cannot convert circle with radius zero to polygon",
-        e.raises.format(
-            f"{n} < 2", "22023: must request at least 2 points", f"'(' || {text} || ')'"
-        ),
+        e.raises.format(f"{n} < 2", "22023: must request at least 2 points", built),
     )
 
 
@@ -2062,17 +2075,218 @@ def around(sql: str, wrap: Callable[[str], str]) -> str:
     return head + wrap(statement)
 
 
+#: What DuckDB evaluates whenever it evaluates the node holding it (a list function's list, not its
+#: lambda): a name reached from a run's body through these alone is computed whenever the body is.
+_EVALUATED = (
+    exp.Paren,
+    exp.Bracket,
+    exp.Add,
+    exp.Sub,
+    exp.Mul,
+    exp.Div,
+    exp.IntDiv,
+    exp.Mod,
+    exp.Neg,
+    exp.Abs,
+    exp.Sqrt,
+    exp.Greatest,
+    exp.Least,
+    exp.DPipe,
+    exp.Array,
+    exp.Struct,
+    exp.PropertyEQ,
+    exp.EQ,
+    exp.NEQ,
+    exp.LT,
+    exp.LTE,
+    exp.GT,
+    exp.GTE,
+    exp.Cast,
+    exp.TryCast,
+    exp.Length,
+    exp.Typeof,
+    exp.StructExtract,
+    exp.Like,
+    exp.Not,
+    exp.Transform,
+    exp.ArrayFilter,
+)
+
+
+def _named(node: exp.Expr) -> tuple[str, exp.Expr, exp.Expr] | None:
+    """(name, value, body) of DuckDB's let, ``list_transform([value], name -> body)[1]``."""
+    if not isinstance(node, exp.Bracket) or len(node.expressions) != 1:
+        return None
+    at, call = node.expressions[0], node.this
+    if not (isinstance(at, exp.Literal) and not at.is_string and at.this == "0"):
+        return None  # sqlglot holds DuckDB's [1] as offset 0
+    if not isinstance(call, exp.Transform):
+        return None
+    items, fn = call.this, call.expression
+    if not (isinstance(items, exp.Array) and len(items.expressions) == 1):
+        return None
+    if not (isinstance(fn, exp.Lambda) and len(fn.expressions) == 1):
+        return None
+    return fn.expressions[0].name, items.expressions[0], fn.this
+
+
+def _raises(node: exp.Expr) -> bool:
+    return any(isinstance(n, exp.Anonymous) and n.name.lower() == "error" for n in node.walk())
+
+
+def _evaluated_name(
+    body: exp.Expr, taken: set[str]
+) -> tuple[exp.Expr, str, exp.Expr, exp.Expr] | None:
+    """The first let DuckDB evaluates whenever it evaluates ``body`` (:data:`_EVALUATED`), not
+    inside a lambda of its own: (the let, its name, value, body). One whose value raises is left in
+    place, so a refusal is raised in the order the form wrote it."""
+    named = _named(body)
+    if named is not None:
+        name, value, _ = named
+        return None if name in taken or _raises(value) else (body, *named)
+    if not isinstance(body, _EVALUATED):
+        return None
+    for key, held in body.args.items():
+        if isinstance(body, (exp.Transform, exp.ArrayFilter)) and key != "this":
+            continue  # the lambda: evaluated once for each item, if any
+        for child in held if isinstance(held, list) else [held]:
+            if isinstance(child, exp.Expr):
+                found = _evaluated_name(child, taken)
+                if found is not None:
+                    return found
+    return None
+
+
+def _read_from(node: exp.Expr, fields: dict[str, exp.Expr]) -> exp.Expr:
+    """``node`` with each name of ``fields`` it reads replaced by its field: a lambda's parameter is
+    a bare identifier, a column is not; a lambda binding the name again keeps it."""
+    if isinstance(node, exp.Lambda):
+        bound = {p.name for p in node.expressions}
+        node.set("this", _read_from(node.this, {k: v for k, v in fields.items() if k not in bound}))
+        return node
+    if (
+        isinstance(node, exp.Identifier)
+        and node.name in fields
+        and type(node.parent) is not exp.Column
+    ):
+        return fields[node.name].copy()
+    for key, held in list(node.args.items()):
+        if isinstance(held, exp.Expr):
+            node.set(key, _read_from(held, fields))
+        elif isinstance(held, list):
+            node.set(key, [_read_from(c, fields) if isinstance(c, exp.Expr) else c for c in held])
+    return node
+
+
+def _pipelined(sql: str) -> str:
+    """A DuckDB statement with each run of names a pipeline. DuckDB 2.0 keeps a list lambda's body
+    twice, the bound argument and its bind data's copy (1.5 moved it), so a body nested n lambdas
+    deep is held 2^n times: poly_contain's form, a name inside a name thirteen deep, bound in 3.7GB
+    where 1.5.5 took 106MB. A run -- a name whose body is the next name, or holds one it always
+    evaluates -- is one stage to a name, each stage's lambda over the list the stage before
+    answered, beside it rather than inside: the names so far ride in a struct, read by field. Each
+    value is computed once, in the run's order, where it was before."""
+    tree = sqlglot.parse_one(sql, read="duckdb")
+    prefix = "_run"
+    while prefix in sql:
+        prefix += "_"
+    stages = itertools.count(1)
+
+    def lam(body: exp.Expr, name: str) -> exp.Lambda:
+        return exp.Lambda(this=body, expressions=[exp.to_identifier(name)], colon=True)
+
+    def struct(fields: list[tuple[str, exp.Expr]]) -> exp.Struct:
+        return exp.Struct(
+            expressions=[
+                exp.PropertyEQ(this=exp.Literal.string(k), expression=v) for k, v in fields
+            ]
+        )
+
+    def rewritten(node: exp.Expr) -> exp.Expr:
+        named = _named(node)
+        if named is None:
+            for key, held in list(node.args.items()):
+                if isinstance(held, exp.Expr):
+                    node.set(key, rewritten(held))
+                elif isinstance(held, list):
+                    node.set(key, [rewritten(c) if isinstance(c, exp.Expr) else c for c in held])
+            return node
+        run: list[tuple[str, exp.Expr]] = []
+        body: exp.Expr = node
+        while named is not None and named[0] not in {n for n, _ in run}:
+            run.append((named[0], named[1]))
+            body = named[2]
+            named = _named(body)
+        while (found := _evaluated_name(body, {n for n, _ in run})) is not None:
+            let, name, value, rest = found
+            run.append((name, value))
+            if let is body:
+                body = rest
+            else:
+                let.replace(rest)
+        run = [(n, rewritten(v)) for n, v in run]
+        body = rewritten(body)
+        if len(run) == 1:
+            ((name, value),) = run
+            return exp.Bracket(
+                this=exp.Transform(this=exp.Array(expressions=[value]), expression=lam(body, name)),
+                expressions=[exp.Literal.number(0)],
+            )
+        names = [n for n, _ in run]
+        (first, first_value), (second, second_value) = run[0], run[1]
+        stage: exp.Expr = exp.Transform(
+            this=exp.Array(expressions=[first_value]),
+            expression=lam(
+                struct([(first, exp.to_identifier(first)), (second, second_value)]), first
+            ),
+        )
+
+        def fields(row: str, upto: int) -> dict[str, exp.Expr]:
+            return {
+                n: exp.func("struct_extract", exp.to_identifier(row), exp.Literal.string(n))
+                for n in names[:upto]
+            }
+
+        for at in range(2, len(run)):
+            row = f"{prefix}{next(stages)}"
+            held = fields(row, at)
+            name, value = run[at]
+            kept = [(n, held[n].copy()) for n in names[:at]]
+            stage = exp.Transform(
+                this=stage, expression=lam(struct([*kept, (name, _read_from(value, held))]), row)
+            )
+        row = f"{prefix}{next(stages)}"
+        return exp.Bracket(
+            this=exp.Transform(
+                this=stage, expression=lam(_read_from(body, fields(row, len(run))), row)
+            ),
+            expressions=[exp.Literal.number(0)],
+        )
+
+    return rewritten(tree).sql(dialect="duckdb")
+
+
 def planned(sql: str, dialect: str) -> str:
     """A statement holding a shape's form, as its engine plans it in seconds. Trino's analysis of a
     lambda grows with how deep it is nested, minutes for a helper inside a helper: each helper is a
     routine the statement defines. A ClickHouse one is planned by its old analyzer: the new one takes
     most of a minute over the deepest forms, the old one about a second (24.3: close_sb 45.9s and
-    1.3s), with the same answers. A form is known by its check of a shape's letters."""
+    1.3s), with the same answers. A DuckDB one has each run of names a pipeline (:func:`_pipelined`):
+    its deepest forms bound in gigabytes. A form is known by its check of a shape's letters."""
     if dialect == "trino":
         return _defined(sql)
-    if dialect != "clickhouse" or f"'{_NOT_FINITE}'" not in sql or "SETTINGS" in sql.upper():
+    if f"'{_NOT_FINITE}'" not in sql:
         return sql
-    return f"{sql.rstrip().rstrip(';')} SETTINGS allow_experimental_analyzer = 0"
+    if dialect == "duckdb":
+        return _pipelined(sql)
+    if dialect != "clickhouse" or "SETTINGS" in sql.upper():
+        return sql
+    # A shape's text is read into doubles by toFloat64, which reads '0.3' a unit off its nearest
+    # double unless the precise parser reads it: float8in's double is the nearest.
+    return (
+        f"{sql.rstrip().rstrip(';')} SETTINGS allow_experimental_analyzer = 0, "
+        "precise_float_parsing = 1"
+    )
 
 
 def forms(e: Engine) -> dict[tuple[str, str], str]:
@@ -2081,3 +2295,131 @@ def forms(e: Engine) -> dict[tuple[str, str], str]:
         (r.name, ", ".join(p.split(":")[0] for p in r.params.split(", "))): _form(e, r)
         for r in ROWS
     }
+
+
+# --- measures: written for an engine whose old table has no form of them ---------------------------
+
+
+def _in_order(e: Engine, values: str) -> str:
+    """The sum of a list of doubles from 0.0, each added in turn, as a loop of float8_pl adds."""
+    if e.name == "clickhouse":
+        return f"arrayFold((_s, _t) -> _s + _t, {values}, toFloat64(0))"
+    return e.sum_of.format(values)
+
+
+def _path_area(e: Engine, f: str) -> str:
+    """path_area: NULL of an open path; else half the absolute of a loop that adds x_i * y_j and
+    takes y_i * x_j, j the next point, the last's the first."""
+    n = _half(e, e.size.format("_a"))
+    j = f"((_i + 1) % {n})"
+    terms = e.map.format(
+        e.upto.format(n),
+        "_i",
+        _list(
+            e,
+            f"_a[2 * _i + 1] * _a[2 * {j} + 2]",
+            f"-(_a[2 * _i + 2] * _a[2 * {j} + 1])",
+        ),
+    )
+    area = f"abs({_in_order(e, e.flatten.format(terms))}) / 2.0"
+    return f"CASE WHEN {_is_open(e, 'a')} THEN NULL ELSE {_double(e, area, f)} END"
+
+
+def _path_length(e: Engine, f: str) -> str:
+    """path_length: point_dt of each point and the one before it, from the second point; a closed
+    path's first point and its last first."""
+    n = _half(e, e.size.format("_a"))
+    kept = e.filter.format(e.upto.format(n), "_i", f"_i > 0 OR {_is_closed(e, 'a')}")
+    before = f"(CASE WHEN _i = 0 THEN {n} - 1 ELSE _i - 1 END)"
+    lengths = e.map.format(
+        kept,
+        "_i",
+        _dist(
+            e,
+            (f"_a[2 * {before} + 1]", f"_a[2 * {before} + 2]"),
+            ("_a[2 * _i + 1]", "_a[2 * _i + 2]"),
+        ),
+    )
+    return _double(e, _in_order(e, lengths), f)
+
+
+def _inverse_slope(e: Engine, a: tuple[str, str], b: tuple[str, str], f: str) -> str:
+    """point_invsl: of a vertical line 0, of a horizontal one infinite."""
+    finite = f"({a[0]} - {b[0]}) / ({b[1]} - {a[1]})"
+    return (
+        f"CASE WHEN {_fp_eq(a[0], b[0])} THEN 0.0 WHEN {_fp_eq(a[1], b[1])} THEN {e.infinity} "
+        f"ELSE {_double(e, finite, f)} END"
+    )
+
+
+def _line_perp(e: Engine, f: str) -> str:
+    """line_perp: of a line with no A or no B, whether the other has no B or no A; else whether
+    A1 * A2 / (B1 * B2) is -1."""
+    a1, b1, a2, b2 = "_a[1]", "_a[2]", "_b[1]", "_b[2]"
+    ratio = _double(e, f"({a1} * {a2}) / ({b1} * {b2})", f)
+    return (
+        f"CASE WHEN {_fp_zero(a1)} THEN {_fp_zero(b2)} WHEN {_fp_zero(a2)} THEN {_fp_zero(b1)} "
+        f"WHEN {_fp_zero(b1)} THEN {_fp_zero(a2)} WHEN {_fp_zero(b2)} THEN {_fp_zero(a1)} "
+        f"ELSE {_fp_eq(ratio, _MINUS)} END"
+    )
+
+
+def _measures() -> tuple[Row, ...]:
+    """The measures of a shape geo_ops.c answers, each by its own row's name (PostgreSQL's
+    function, as pg_proc names it); a row of ``ROWS`` that answers the same, under its name."""
+    rows = {r.name: r for r in ROWS}
+    p0, p1 = _xy("_a"), _xy("_a", 3)
+    q0, q1 = _xy("_b"), _xy("_b", 3)
+    return (
+        Row(
+            "box_area", "a:box", 2, lambda e, f: _double(e, "(_a[1] - _a[3]) * (_a[2] - _a[4])", f)
+        ),
+        Row("circle_area", "a:circle", 2, lambda e, f: _double(e, "(_a[3] * _a[3]) * pi()", f)),
+        Row("path_area", "a:path", 2, _path_area),
+        replace(rows["point_of_circle"], name="circle_center"),
+        rows["box_diagonal"],
+        Row("box_height", "a:box", 2, lambda e, f: _double(e, "_a[2] - _a[4]", f)),
+        Row("box_width", "a:box", 2, lambda e, f: _double(e, "_a[1] - _a[3]", f)),
+        Row("circle_radius", "a:circle", 2, lambda e, f: _double(e, "_a[3]", f)),
+        Row("path_isclosed", "a:path", 1, lambda e, _: _is_closed(e, "a")),
+        Row("path_isopen", "a:path", 1, lambda e, _: _is_open(e, "a")),
+        rows["point_horiz"],
+        rows["point_vert"],
+        Row("line_horizontal", "a:line", 1, lambda e, _: _fp_zero("_a[1]")),
+        Row("line_vertical", "a:line", 1, lambda e, _: _fp_zero("_a[2]")),
+        Row(
+            "line_parallel",
+            "a:line, b:line",
+            1,
+            lambda e, _: f"NOT ({_at(e, _meet(e, '_a', '_b'), 1)} = 1)",
+        ),
+        Row("line_perp", "a:line, b:line", 1, _line_perp),
+        Row("lseg_horizontal", "a:lseg", 1, lambda e, _: _fp_eq(p0[1], p1[1])),
+        Row("lseg_vertical", "a:lseg", 1, lambda e, _: _fp_eq(p0[0], p1[0])),
+        Row(
+            "lseg_parallel",
+            "a:lseg, b:lseg",
+            1,
+            lambda e, f: _fp_eq(_slope(e, p0, p1, f), _slope(e, q0, q1, f)),
+        ),
+        Row(
+            "lseg_perp",
+            "a:lseg, b:lseg",
+            1,
+            lambda e, f: _fp_eq(_slope(e, p0, p1, f), _inverse_slope(e, q0, q1, f)),
+        ),
+        Row("lseg_length", "a:lseg", 2, lambda e, f: _double(e, _dist(e, p0, p1), f)),
+        Row("path_length", "a:path", 2, _path_length),
+        replace(rows["circle_contain_pt"], name="pt_contained_circle", params="b:point, a:circle"),
+        replace(rows["poly_contain_pt"], name="pt_contained_poly", params="b:point, a:polygon"),
+    )
+
+
+#: The measures ``ROWS`` has no row of: an engine's form of each is written from these where its
+#: old table has none (provisa.transpiler.polyfill.geometric: ClickHouse's).
+MEASURES = _measures()
+
+
+def measure_form(e: Engine, row: Row) -> tuple[str, tuple[str, ...]]:
+    """A measure's form on ``e``, and its parameters' names in the order a call gives them."""
+    return _form(e, row), tuple(p.split(":")[0] for p in row.params.split(", "))

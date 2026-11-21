@@ -34,9 +34,11 @@ from fastapi import APIRouter, Request
 from pydantic import BaseModel
 
 from provisa.api.admin.capabilities import has_capability_request
+from provisa.api.admin.roles_router import require_roles_definable
 from provisa.api.errors import ApiError
 from provisa.core.models import ProvisaConfig
 from provisa.security.rights import Capability
+from provisa.import_shared.refused import ImportRefused
 from provisa.import_shared.upload import DDN, HASURA_V2, UploadError, staged_upload
 from provisa.import_shared.warnings import WarningCollector, in_report_order
 
@@ -54,6 +56,7 @@ SECTION_RIGHTS: dict[str, tuple[str, ...]] = {
     "regions": (_C.PLATFORM_SETTINGS.value, _C.CROSS_ORG.value),
     "sources": (_C.SOURCE_REGISTRATION.value,),
     "kafka_sources": (_C.SOURCE_REGISTRATION.value,),
+    "connectors": (_C.SOURCE_REGISTRATION.value,),  # REQ-2221
     "domains": (_C.ORG_SETTINGS.value,),
     "roles": (_C.USER_MANAGEMENT.value,),
     "data_products": (_C.DATA_PRODUCT_RW.value,),
@@ -107,7 +110,30 @@ def _require_an_import_right(request: Request) -> None:
 
 def _require_section_rights(request: Request, config: ProvisaConfig) -> None:
     """Refuse an apply declaring an object whose own right the caller lacks, naming each."""
-    declared = _declared_sections(config)
+    _require_rights_of(request, _declared_sections(config))
+
+
+def _require_section_rights_as_written(request: Request, raw: dict) -> None:
+    """REQ-1557: the same refusal, asked of the document as written, before anything in it is
+    resolved: its sections as the loader will read them (``config_loader.sections_as_written``)."""
+    from provisa.core.config_loader import sections_as_written
+
+    written = sections_as_written(raw)
+    _require_rights_of(
+        request,
+        [
+            section
+            for section in SECTION_RIGHTS
+            if (
+                (written.get("naming") or {}).get("rules")
+                if section == "naming"
+                else written.get(section)
+            )
+        ],
+    )
+
+
+def _require_rights_of(request: Request, declared: list[str]) -> None:
     missing = sorted(
         {r for s in declared for r in SECTION_RIGHTS[s] if not has_capability_request(request, r)}
     )
@@ -200,10 +226,30 @@ class ImportApplyRequest(BaseModel):
     # An import is always a merge into what the org already has (REQ-1919): what the imported
     # model does not mention is not the import's to remove.
     config_yaml: str
+    # REQ-2222: run the whole model build, report what it would change, and save nothing.
+    dry_run: bool = False
+
+
+class ImportSectionChanges(BaseModel):  # REQ-2222
+    add: list[str]
+    change: list[dict[str, Any]]  # {item, fields}: field names only, a value may be a credential
+    remove: list[str]
+
+
+class ImportDryRunReport(BaseModel):  # REQ-2222
+    """What an apply of this config would do, read from the store before the rollback."""
+
+    changes: bool
+    unchanged: int
+    sections: dict[str, ImportSectionChanges]
+    unreachable_change_feeds: list[str]
+    # What an apply does beyond the model build that a dry run does not exercise.
+    not_run: list[str]
 
 
 class ImportApplyResponse(BaseModel):
     summary: ImportSummary
+    dry_run: ImportDryRunReport | None = None  # REQ-2222: set by a dry run, which saved nothing
 
 
 def _decode(content_b64: str) -> bytes:
@@ -289,6 +335,11 @@ async def preview_import(req: ImportPreviewRequest, request: Request) -> ImportP
         flavor, config, collector, discovered = _convert(req)
     except UploadError as exc:
         raise ApiError(400, "import.bad_upload", str(exc)) from exc
+    except ImportRefused as exc:
+        # A file outside the upload, or a permission filter value with no SQL literal: by name.
+        refused = ApiError(400, exc.code, str(exc))
+        refused.params = dict(exc.params)
+        raise refused from exc
     except ValueError as exc:
         # A malformed metadata document is the administrator's input, not a server fault.
         raise ApiError(400, "import.conversion_failed", f"conversion failed: {exc}") from exc
@@ -342,7 +393,10 @@ async def _require_residency_of_import(request: Request, conn, config: ProvisaCo
     from provisa.security.residency import CREATED, ResidencyRefused
 
     held_sources = {
-        r.id: r.region for r in (await conn.execute_core(select(sources.c.id, sources.c.region)))
+        r.id: r.region
+        for r in await conn.execute_core(
+            select(sources.c.id, sources.c.region).where(sources.c.retired.is_(False))  # REQ-2248
+        )
     }
     t = registered_tables
     held_tables = {
@@ -374,11 +428,38 @@ async def _require_residency_of_import(request: Request, conn, config: ProvisaCo
         ) from refused
 
 
+async def _dry_run_report(config: ProvisaConfig) -> ImportDryRunReport:  # REQ-2222
+    """The dry run's report, or the model's refusal by name: a build's refusals are ValueErrors
+    (a contract's is its own type), and a constraint the store holds names itself."""
+    from sqlalchemy.exc import IntegrityError
+
+    from provisa.api.apply_dry_run import NOT_RUN, dry_run_configuration
+    from provisa.dq.contract import ContractError
+
+    try:
+        outcome = await dry_run_configuration(config)
+    except (ValueError, ContractError) as refused:
+        raise ApiError(
+            400, "import.refused", str(refused), refusal=type(refused).__name__
+        ) from refused
+    except IntegrityError as refused:
+        # The driver's own message: the statement's parameters, which may be credentials, are not.
+        raise ApiError(
+            400, "import.refused", str(refused.orig), refusal=type(refused).__name__
+        ) from refused
+    return ImportDryRunReport(
+        **outcome.changes,
+        unreachable_change_feeds=outcome.unreachable_change_feeds,
+        not_run=list(NOT_RUN),
+    )
+
+
 @router.post("/apply", response_model=ImportApplyResponse)
 async def apply_import(req: ImportApplyRequest, request: Request) -> ImportApplyResponse:
     """Apply the approved config to the acting org as an explicit one-time seed: it adds and
     updates what the config declares and removes nothing (REQ-1919). The settled config→org
-    sequence (``app_loaders.apply_configuration``), not a second loader."""
+    sequence (``app_loaders.apply_configuration``), not a second loader. With ``dry_run`` the
+    same rights are asked and the same build runs, in a transaction rolled back (REQ-2222)."""
     _require_an_import_right(request)  # REQ-1327
     from provisa.api.app import state
     from provisa.api.app_loaders import apply_configuration
@@ -390,10 +471,19 @@ async def apply_import(req: ImportApplyRequest, request: Request) -> ImportApply
         raise ApiError(400, "import.bad_yaml", f"config is not valid YAML: {exc}") from exc
     if not isinstance(raw, dict):
         raise ApiError(400, "import.bad_yaml", "config must be a YAML mapping")
+    # REQ-1557: the caller's rights, then the document's references, before anything in it is
+    # resolved.
+    from provisa.core.config_loader import invalid_text
+    from provisa.core.env_reference_guard import refuse_entered
+
     try:
+        _require_section_rights_as_written(request, raw)
+        refuse_entered(raw)
         config = parse_config_dict(raw)
     except ValueError as exc:
-        raise ApiError(400, "import.invalid_config", f"config is not valid: {exc}") from exc
+        raise ApiError(
+            400, "import.invalid_config", f"config is not valid: {invalid_text(exc, raw)}"
+        ) from exc
     except KeyError as exc:
         # A reference the deployment cannot resolve, such as a handler URL's environment variable
         # the report named to set before applying (REQ-417): the administrator's to supply.
@@ -414,7 +504,14 @@ async def apply_import(req: ImportApplyRequest, request: Request) -> ImportApply
             raise ApiError(403, "import.sensitive_data_required", refusal(changes))
 
     async with state.model_db.acquire() as conn:
+        # REQ-1327/REQ-1337: an imported role passes what the role forms ask, and carries only
+        # rights its importer holds.
+        await require_roles_definable(conn, request, config)
         await _require_residency_of_import(request, conn, config)  # REQ-1921
+    if req.dry_run:  # REQ-2222
+        return ImportApplyResponse(
+            summary=_summarize(config), dry_run=await _dry_run_report(config)
+        )
     await apply_configuration(config)
 
     log.info(

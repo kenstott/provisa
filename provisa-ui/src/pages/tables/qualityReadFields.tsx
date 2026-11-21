@@ -16,6 +16,7 @@ import type { TFunction } from "i18next";
 import { useDqContract } from "../../hooks/useAdminQueries";
 import type { DqContract, QualityChecker, UniqueConstraint } from "../../types/admin";
 import type { DetailField } from "../../components/detail/DetailFields";
+import { detailHref } from "../../components/list/useDetailParam";
 
 // What the Quality tab reads of a table's stored settings, under the edit controls' own labels.
 
@@ -141,7 +142,7 @@ export function checkersField(t: TFunction, checkers: QualityChecker[]): DetailF
             {checkers.map((c) => (
               <Table.Tr key={c.tableId} data-testid={`table-read-checker-${c.tableId}`}>
                 <Table.Td>
-                  <Anchor component={Link} to={`/tables?table=${c.tableId}`} size="sm">
+                  <Anchor component={Link} to={detailHref("tables", c.tableId)} size="sm">
                     {c.tableName}
                   </Anchor>
                 </Table.Td>

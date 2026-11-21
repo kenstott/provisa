@@ -1,7 +1,7 @@
 {
   "relationshipRow": {
-    "autoTrackedTitle": "Автоматически отслеживается по ограничению FK",
-    "fkBadge": "FK",
+    "fkBadge": "Из FK",
+    "fkBadgeTitle": "Создано из внешнего ключа в источнике",
     "yes": "Да",
     "no": "Нет",
     "none": "—",
@@ -32,7 +32,6 @@
     "materializeCheckbox": "Материализовать",
     "excludeFromCypher": "Исключить из Cypher",
     "sqlName": "Имя SQL",
-    "autoTracked": "Отслеживается автоматически",
     "cardinalityWarning": "Внимание: если это соединение возвращает более одной строки на родителя, будет использовано только первое значение.",
     "toggleDetails": "Показать/скрыть детали связи",
     "junctionBadge": "св-ва",
@@ -44,6 +43,30 @@
     "parameterNotFed": "Не передаётся",
     "sameEntity": "Одна сущность",
     "sameEntityHint": "Соединяемые строки — одно и то же: один термин у обеих таблиц, связь 1:1 по ключам",
-    "cardinalityOneToOne": "один-к-одному"
+    "cardinalityOneToOne": "один-к-одному",
+    "resolverNote": "Часть резолвера кода {{resolver}}. Его представление совпадений и три связи изменяются и выводятся из обращения вместе.",
+    "changeResolver": "Изменить резолвер кода",
+    "retireResolver": "Вывести резолвер кода из обращения",
+    "retireResolverTitle": "Вывести резолвер кода {{resolver}} из обращения?",
+    "retireResolverConsequence": "Его представление совпадений и три связи выводятся из обращения вместе. Их имена остаются занятыми.",
+    "queryLinks": {
+      "heading": "Запросить",
+      "cypher": "Прочитать {{name}} в Cypher",
+      "sql": "Прочитать {{name}} в SQL",
+      "sparql": "Прочитать {{name}} в SPARQL",
+      "graphql": "Прочитать {{name}} в GraphQL",
+      "rest": "Прочитать {{name}} в REST",
+      "grpc": "Прочитать {{name}} в gRPC",
+      "jsonapi": "Прочитать {{name}} в JSON:API",
+      "surfaces": {
+        "cypher": "Cypher",
+        "sql": "SQL",
+        "sparql": "SPARQL",
+        "graphql": "GraphQL",
+        "rest": "REST",
+        "grpc": "gRPC",
+        "jsonapi": "JSON:API"
+      }
+    }
   }
 }

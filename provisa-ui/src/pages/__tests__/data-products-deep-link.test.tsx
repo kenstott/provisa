@@ -13,6 +13,7 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor, fireEvent } from "../../test-utils/render";
+import { useLocation, useNavigate } from "react-router-dom";
 
 // REQ-2127: the list and the panel core are read from the meta domain; the reads are held by
 // their own tests (productCore.test.ts).
@@ -40,7 +41,7 @@ vi.mock("../../components/graph3d/OntologyGraph", () => ({
 vi.mock("../../context/AuthContext", () => ({
   useAuth: () => ({
     role: { id: "admin", capabilities: [] },
-    selectedRoles: [{ id: "admin" }],
+    selectedRoles: [{ id: "admin", effectiveCapabilities: [], domain_access: [] }],
     availableRoles: [],
   }),
 }));
@@ -115,7 +116,8 @@ vi.mock("../../hooks/useDataProductMutations", () => ({
   useCreateDataProduct: () => ({ createDataProduct: vi.fn(), loading: false }),
   useUpdateDataProduct: () => ({ updateDataProduct: vi.fn(), loading: false }),
   useDeleteDataProduct: () => ({ deleteDataProduct: vi.fn(), loading: false }),
-  useSaveDataContract: () => ({ saveDataContract: vi.fn(), loading: false }),
+  useDeleteDataProducts: () => vi.fn(),
+  useSetDataProductMembers: () => ({ setDataProductMembers: vi.fn(), loading: false }),
   useDataProductFindings: () => ({ findings: FINDINGS, refetch: vi.fn(), error: undefined }),
   useDataProductStatus: () => ({
     publish: vi.fn(),
@@ -135,16 +137,20 @@ vi.mock("../../hooks/useAdminQueries", async (importOriginal) => ({
   useUpdateTable: () => ({ updateTable: vi.fn(), loading: false }),
 }));
 
-import { DataProductsPage, EXPANDED_STORAGE_KEY } from "../DataProductsPage";
-import { storageKey as scopedKey } from "../../lib/browserStorage";
+import { DataProductsPage } from "../DataProductsPage";
+import { getStored, setStored } from "../../lib/browserStorage";
+import { TEST_VIEWER } from "../../test-setup";
+
+// REQ-2260: the product left open, remembered for the viewer.
+const REMEMBERED = `detail.${TEST_VIEWER}.products`;
 
 describe("the Data Products list's search", () => {
-  it("lists the products matching any word of the search", async () => {
+  it("lists the products matching every word of the search, or either side of or", async () => {
     render(<DataProductsPage />, { initialEntries: ["/data-products"] });
     await waitFor(() =>
       expect(screen.getByTestId("data-products-row-pet_health")).toBeInTheDocument(),
     );
-    fireEvent.change(screen.getByTestId("filter-input"), { target: { value: "pet invoices" } });
+    fireEvent.change(screen.getByTestId("filter-input"), { target: { value: "pet or invoices" } });
     expect(screen.getByTestId("data-products-row-pet_health")).toBeInTheDocument();
     expect(screen.queryByTestId("data-products-row-workforce_ops")).toBeNull();
   });
@@ -176,7 +182,7 @@ describe("Data Products deep link (REQ-1659)", () => {
   });
 
   it("opens the product named by ?product= ahead of the remembered row", async () => {
-    localStorage.setItem(scopedKey(EXPANDED_STORAGE_KEY), "pet_health");
+    setStored(REMEMBERED, "pet_health");
     render(<DataProductsPage />, { initialEntries: ["/data-products?product=workforce_ops"] });
     await waitFor(() => expect(screen.getByTestId("data-product-detail")).toBeInTheDocument());
     expect(screen.getByTestId("detail-panel")).toHaveTextContent("workforce_ops");
@@ -197,9 +203,60 @@ describe("Data Products deep link (REQ-1659)", () => {
     );
     fireEvent.click(screen.getByTestId("data-products-row-pet_health"));
     await waitFor(() => expect(screen.getByTestId("detail-panel")).toHaveTextContent("pet_health"));
-    expect(localStorage.getItem(scopedKey(EXPANDED_STORAGE_KEY))).toBe("pet_health");
+    expect(getStored(REMEMBERED)).toBe("pet_health");
     fireEvent.click(screen.getByTestId("data-products-row-pet_health"));
     await waitFor(() => expect(screen.queryByTestId("detail-panel")).not.toBeInTheDocument());
-    expect(localStorage.getItem(scopedKey(EXPANDED_STORAGE_KEY))).toBeNull();
+    expect(getStored(REMEMBERED)).toBeNull();
+  });
+});
+
+// The page's address as the router holds it, and the browser's Back.
+function Where() {
+  const location = useLocation();
+  const navigate = useNavigate();
+  return (
+    <>
+      <output data-testid="where">{location.search}</output>
+      <button onClick={() => navigate(-1)}>history-back</button>
+    </>
+  );
+}
+
+describe("Data Products panel in the URL (REQ-2241) beside bulk selection (REQ-2240)", () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  it("opening a product writes ?product=, and Back closes it", async () => {
+    render(
+      <>
+        <DataProductsPage />
+        <Where />
+      </>,
+      { initialEntries: ["/data-products"] },
+    );
+    fireEvent.click(await screen.findByTestId("data-products-row-pet_health"));
+    await waitFor(() =>
+      expect(screen.getByTestId("where")).toHaveTextContent("?product=pet_health"),
+    );
+    expect(screen.getByTestId("detail-panel")).toHaveTextContent("pet_health");
+    fireEvent.click(screen.getByText("history-back"));
+    await waitFor(() => expect(screen.queryByTestId("detail-panel")).not.toBeInTheDocument());
+    expect(screen.getByTestId("where")).toBeEmptyDOMElement();
+  });
+
+  it("ticking a row's checkbox selects it without opening its panel", async () => {
+    render(
+      <>
+        <DataProductsPage />
+        <Where />
+      </>,
+      { initialEntries: ["/data-products"] },
+    );
+    fireEvent.click(await screen.findByTestId("list-select-pet_health"));
+    expect(screen.getByTestId("list-select-pet_health")).toBeChecked();
+    expect(screen.getByTestId("data-products-bulk")).toBeInTheDocument();
+    expect(screen.queryByTestId("detail-panel")).not.toBeInTheDocument();
+    expect(screen.getByTestId("where")).toBeEmptyDOMElement();
   });
 });

@@ -1,0 +1,610 @@
+tool: dbeaver
+version: 25.1.4
+captured: '2026-11-04'
+method: 'By hand: dbeaver 25.1.4 on macOS, through the recording proxy (capture.py serve), following the
+  steps in browse.'
+browse:
+- 'New connection: PostgreSQL, host 127.0.0.1, port 55492, database bitools, user bi_dbeaver'
+- Connect; expand Databases > bitools > Schemas > conformance
+- Expand Tables, then each table's Columns, Constraints, Foreign Keys and Indexes
+- Expand Views, Materialized Views, Functions, Sequences and Data types
+- Open each table's editor (Properties, DDL tabs)
+- Open Database > Session Manager (Tools > Session Manager); refresh it once
+- Open the connection's Dashboard and leave it open for 30 seconds
+- Disconnect
+statements:
+- id: 1
+  protocol: extended
+  sql: SET extra_float_digits = 3
+- id: 2
+  protocol: extended
+  sql: SET application_name = 'PostgreSQL JDBC Driver'
+- id: 3
+  protocol: extended
+  sql: SET application_name = 'DBeaver 25.1.4 - Main <{{database}}>'
+- id: 4
+  protocol: extended
+  sql: SELECT current_schema(),session_user
+- id: 5
+  protocol: extended
+  sql: |-
+    SELECT n.oid,n.*,d.description FROM pg_catalog.pg_namespace n
+    LEFT OUTER JOIN pg_catalog.pg_description d ON d.objoid=n.oid AND d.objsubid=0 AND d.classoid='pg_namespace'::regclass
+     ORDER BY nspname
+- id: 6
+  protocol: extended
+  sql: SELECT n.nspname = ANY(current_schemas(true)), n.nspname, t.typname FROM pg_catalog.pg_type t JOIN
+    pg_catalog.pg_namespace n ON t.typnamespace = n.oid WHERE t.oid = $1
+  params:
+  - type: 23
+    value: '1034'
+- id: 7
+  protocol: extended
+  sql: SELECT typinput='pg_catalog.array_in'::regproc as is_array, typtype, typname, pg_type.oid   FROM
+    pg_catalog.pg_type   LEFT JOIN (select ns.oid as nspoid, ns.nspname, r.r           from pg_namespace
+    as ns           join ( select s.r, (current_schemas(false))[s.r] as nspname                    from
+    generate_series(1, array_upper(current_schemas(false), 1)) as s(r) ) as r          using ( nspname
+    )        ) as sp     ON sp.nspoid = typnamespace  WHERE pg_type.oid = $1  ORDER BY sp.r, pg_type.oid
+    DESC
+  params:
+  - type: 20
+    value: '1034'
+- id: 8
+  protocol: extended
+  sql: SHOW search_path
+- id: 9
+  protocol: extended
+  sql: SELECT db.oid,db.* FROM pg_catalog.pg_database db WHERE datname=$1
+  params:
+  - type: 1043
+    value: '{{database}}'
+- id: 10
+  protocol: extended
+  sql: select * from pg_catalog.pg_settings where name=$1
+  params:
+  - type: 1043
+    value: standard_conforming_strings
+- id: 11
+  protocol: extended
+  sql: select string_agg(word, ',') from pg_catalog.pg_get_keywords() where word <> ALL ('{a,abs,absolute,action,ada,add,admin,after,all,allocate,alter,always,and,any,are,array,as,asc,asensitive,assertion,assignment,asymmetric,at,atomic,attribute,attributes,authorization,avg,before,begin,bernoulli,between,bigint,binary,blob,boolean,both,breadth,by,c,call,called,cardinality,cascade,cascaded,case,cast,catalog,catalog_name,ceil,ceiling,chain,char,char_length,character,character_length,character_set_catalog,character_set_name,character_set_schema,characteristics,characters,check,checked,class_origin,clob,close,coalesce,cobol,code_units,collate,collation,collation_catalog,collation_name,collation_schema,collect,column,column_name,command_function,command_function_code,commit,committed,condition,condition_number,connect,connection_name,constraint,constraint_catalog,constraint_name,constraint_schema,constraints,constructors,contains,continue,convert,corr,corresponding,count,covar_pop,covar_samp,create,cross,cube,cume_dist,current,current_collation,current_date,current_default_transform_group,current_path,current_role,current_time,current_timestamp,current_transform_group_for_type,current_user,cursor,cursor_name,cycle,data,date,datetime_interval_code,datetime_interval_precision,day,deallocate,dec,decimal,declare,default,defaults,deferrable,deferred,defined,definer,degree,delete,dense_rank,depth,deref,derived,desc,describe,descriptor,deterministic,diagnostics,disconnect,dispatch,distinct,domain,double,drop,dynamic,dynamic_function,dynamic_function_code,each,element,else,end,end-exec,equals,escape,every,except,exception,exclude,excluding,exec,execute,exists,exp,external,extract,false,fetch,filter,final,first,float,floor,following,for,foreign,fortran,found,free,from,full,function,fusion,g,general,get,global,go,goto,grant,granted,group,grouping,having,hierarchy,hold,hour,identity,immediate,implementation,in,including,increment,indicator,initially,inner,inout,input,insensitive,insert,instance,instantiable,int,integer,intersect,intersection,interval,into,invoker,is,isolation,join,k,key,key_member,key_type,language,large,last,lateral,leading,left,length,level,like,ln,local,localtime,localtimestamp,locator,lower,m,map,match,matched,max,maxvalue,member,merge,message_length,message_octet_length,message_text,method,min,minute,minvalue,mod,modifies,module,month,more,multiset,mumps,name,names,national,natural,nchar,nclob,nesting,new,next,no,none,normalize,normalized,not,"null",nullable,nullif,nulls,number,numeric,object,octet_length,octets,of,old,on,only,open,option,options,or,order,ordering,ordinality,others,out,outer,output,over,overlaps,overlay,overriding,pad,parameter,parameter_mode,parameter_name,parameter_ordinal_position,parameter_specific_catalog,parameter_specific_name,parameter_specific_schema,partial,partition,pascal,path,percent_rank,percentile_cont,percentile_disc,placing,pli,position,power,preceding,precision,prepare,preserve,primary,prior,privileges,procedure,public,range,rank,read,reads,real,recursive,ref,references,referencing,regr_avgx,regr_avgy,regr_count,regr_intercept,regr_r2,regr_slope,regr_sxx,regr_sxy,regr_syy,relative,release,repeatable,restart,result,return,returned_cardinality,returned_length,returned_octet_length,returned_sqlstate,returns,revoke,right,role,rollback,rollup,routine,routine_catalog,routine_name,routine_schema,row,row_count,row_number,rows,savepoint,scale,schema,schema_name,scope_catalog,scope_name,scope_schema,scroll,search,second,section,security,select,self,sensitive,sequence,serializable,server_name,session,session_user,set,sets,similar,simple,size,smallint,some,source,space,specific,specific_name,specifictype,sql,sqlexception,sqlstate,sqlwarning,sqrt,start,state,statement,static,stddev_pop,stddev_samp,structure,style,subclass_origin,submultiset,substring,sum,symmetric,system,system_user,table,table_name,tablesample,temporary,then,ties,time,timestamp,timezone_hour,timezone_minute,to,top_level_count,trailing,transaction,transaction_active,transactions_committed,transactions_rolled_back,transform,transforms,translate,translation,treat,trigger,trigger_catalog,trigger_name,trigger_schema,trim,true,type,uescape,unbounded,uncommitted,under,union,unique,unknown,unnamed,unnest,update,upper,usage,user,user_defined_type_catalog,user_defined_type_code,user_defined_type_name,user_defined_type_schema,using,value,values,var_pop,var_samp,varchar,varying,view,when,whenever,where,width_bucket,window,with,within,without,work,write,year,zone}'::text[])
+- id: 12
+  protocol: extended
+  sql: SELECT version()
+- id: 13
+  protocol: extended
+  sql: SELECT * FROM pg_catalog.pg_enum WHERE 1<>1 LIMIT 1
+- id: 14
+  protocol: extended
+  sql: SELECT reltype FROM pg_catalog.pg_class WHERE 1<>1 LIMIT 1
+- id: 15
+  protocol: extended
+  sql: "SELECT t.oid,t.*,c.relkind,format_type(nullif(t.typbasetype, 0), t.typtypmod) as base_type_name,\
+    \ d.description\nFROM pg_catalog.pg_type t\nLEFT OUTER JOIN pg_catalog.pg_type et ON et.oid=t.typelem\
+    \ \nLEFT OUTER JOIN pg_catalog.pg_class c ON c.oid=t.typrelid\nLEFT OUTER JOIN pg_catalog.pg_description\
+    \ d ON t.oid=d.objoid\nWHERE t.typname IS NOT NULL\nAND (c.relkind IS NULL OR c.relkind = 'c') AND\
+    \ (et.typcategory IS NULL OR et.typcategory <> 'C')"
+- id: 16
+  protocol: extended
+  sql: SELECT * FROM pg_catalog.pg_enum
+- id: 17
+  protocol: extended
+  sql: SET application_name = 'DBeaver 25.1.4 - Metadata <{{database}}>'
+- id: 18
+  protocol: extended
+  sql: "SELECT c.oid,c.*,d.description,pg_catalog.pg_get_expr(c.relpartbound, c.oid) as partition_expr,\
+    \  pg_catalog.pg_get_partkeydef(c.oid) as partition_key \nFROM pg_catalog.pg_class c\nLEFT OUTER JOIN\
+    \ pg_catalog.pg_description d ON d.objoid=c.oid AND d.objsubid=0 AND d.classoid='pg_class'::regclass\n\
+    WHERE c.relnamespace=$1 AND c.relkind not in ('i','I','c')"
+  params:
+  - type: 20
+    value: '{{oid:pg_namespace:conformance}}'
+- id: 19
+  protocol: extended
+  sql: |-
+    select c.oid,pg_catalog.pg_total_relation_size(c.oid) as total_rel_size,pg_catalog.pg_relation_size(c.oid) as rel_size
+    FROM pg_class c
+    WHERE c.relnamespace=$1
+  params:
+  - type: 20
+    value: '{{oid:pg_namespace:conformance}}'
+- id: 20
+  protocol: extended
+  sql: |-
+    SELECT c.relname,a.*,pg_catalog.pg_get_expr(ad.adbin, ad.adrelid, true) as def_value,dsc.description,dep.objid
+    FROM pg_catalog.pg_attribute a
+    INNER JOIN pg_catalog.pg_class c ON (a.attrelid=c.oid)
+    LEFT OUTER JOIN pg_catalog.pg_attrdef ad ON (a.attrelid=ad.adrelid AND a.attnum = ad.adnum)
+    LEFT OUTER JOIN pg_catalog.pg_description dsc ON (c.oid=dsc.objoid AND a.attnum = dsc.objsubid)
+    LEFT OUTER JOIN pg_depend dep on dep.refobjid = a.attrelid AND dep.deptype = 'i' and dep.refobjsubid = a.attnum and dep.classid = dep.refclassid
+    WHERE NOT a.attisdropped AND c.relkind not in ('i','I','c') AND c.oid=$1
+    ORDER BY a.attnum
+  params:
+  - type: 20
+    value: '{{oid:pg_class:conformance.bi_customer}}'
+- id: 21
+  protocol: extended
+  sql: |-
+    SELECT c.oid,c.*,t.relname as tabrelname,rt.relnamespace as refnamespace,d.description, case when c.contype='c' then "substring"(pg_get_constraintdef(c.oid), 7) else null end consrc_copy
+    FROM pg_catalog.pg_constraint c
+    INNER JOIN pg_catalog.pg_class t ON t.oid=c.conrelid
+    LEFT OUTER JOIN pg_catalog.pg_class rt ON rt.oid=c.confrelid
+    LEFT OUTER JOIN pg_catalog.pg_description d ON d.objoid=c.oid AND d.objsubid=0 AND d.classoid='pg_constraint'::regclass
+    WHERE c.conrelid=$1
+    ORDER BY c.oid
+  params:
+  - type: 20
+    value: '{{oid:pg_class:conformance.bi_customer}}'
+- id: 22
+  protocol: extended
+  sql: |-
+    SELECT i.*,i.indkey as keys,c.relname,c.relnamespace,c.relam,c.reltablespace,tc.relname as tabrelname,dsc.description,pg_catalog.pg_get_expr(i.indpred, i.indrelid) as pred_expr,pg_catalog.pg_get_expr(i.indexprs, i.indrelid, true) as expr,pg_catalog.pg_relation_size(i.indexrelid) as index_rel_size,pg_catalog.pg_stat_get_numscans(i.indexrelid) as index_num_scans
+    FROM pg_catalog.pg_index i
+    INNER JOIN pg_catalog.pg_class c ON c.oid=i.indexrelid
+    INNER JOIN pg_catalog.pg_class tc ON tc.oid=i.indrelid
+    LEFT OUTER JOIN pg_catalog.pg_description dsc ON i.indexrelid=dsc.objoid
+    WHERE  i.indrelid=$1 ORDER BY tabrelname, c.relname
+  params:
+  - type: 20
+    value: '{{oid:pg_class:conformance.bi_customer}}'
+- id: 23
+  protocol: extended
+  sql: SELECT n.nspname = ANY(current_schemas(true)), n.nspname, t.typname FROM pg_catalog.pg_type t JOIN
+    pg_catalog.pg_namespace n ON t.typnamespace = n.oid WHERE t.oid = $1
+  params:
+  - type: 23
+    value: '22'
+- id: 24
+  protocol: extended
+  sql: SELECT typinput='pg_catalog.array_in'::regproc as is_array, typtype, typname, pg_type.oid   FROM
+    pg_catalog.pg_type   LEFT JOIN (select ns.oid as nspoid, ns.nspname, r.r           from pg_namespace
+    as ns           join ( select s.r, (current_schemas(false))[s.r] as nspname                    from
+    generate_series(1, array_upper(current_schemas(false), 1)) as s(r) ) as r          using ( nspname
+    )        ) as sp     ON sp.nspoid = typnamespace  WHERE pg_type.oid = $1  ORDER BY sp.r, pg_type.oid
+    DESC
+  params:
+  - type: 20
+    value: '22'
+- id: 25
+  protocol: extended
+  sql: SELECT n.nspname = ANY(current_schemas(true)), n.nspname, t.typname FROM pg_catalog.pg_type t JOIN
+    pg_catalog.pg_namespace n ON t.typnamespace = n.oid WHERE t.oid = $1
+  params:
+  - type: 23
+    value: '30'
+- id: 26
+  protocol: extended
+  sql: SELECT typinput='pg_catalog.array_in'::regproc as is_array, typtype, typname, pg_type.oid   FROM
+    pg_catalog.pg_type   LEFT JOIN (select ns.oid as nspoid, ns.nspname, r.r           from pg_namespace
+    as ns           join ( select s.r, (current_schemas(false))[s.r] as nspname                    from
+    generate_series(1, array_upper(current_schemas(false), 1)) as s(r) ) as r          using ( nspname
+    )        ) as sp     ON sp.nspoid = typnamespace  WHERE pg_type.oid = $1  ORDER BY sp.r, pg_type.oid
+    DESC
+  params:
+  - type: 20
+    value: '30'
+- id: 27
+  protocol: extended
+  sql: "SELECT am.oid,am.* FROM pg_catalog.pg_am am \nORDER BY am.oid"
+- id: 28
+  protocol: extended
+  sql: |-
+    SELECT c.relname,a.*,pg_catalog.pg_get_expr(ad.adbin, ad.adrelid, true) as def_value,dsc.description,dep.objid
+    FROM pg_catalog.pg_attribute a
+    INNER JOIN pg_catalog.pg_class c ON (a.attrelid=c.oid)
+    LEFT OUTER JOIN pg_catalog.pg_attrdef ad ON (a.attrelid=ad.adrelid AND a.attnum = ad.adnum)
+    LEFT OUTER JOIN pg_catalog.pg_description dsc ON (c.oid=dsc.objoid AND a.attnum = dsc.objsubid)
+    LEFT OUTER JOIN pg_depend dep on dep.refobjid = a.attrelid AND dep.deptype = 'i' and dep.refobjsubid = a.attnum and dep.classid = dep.refclassid
+    WHERE NOT a.attisdropped AND c.relkind not in ('i','I','c') AND c.oid=$1
+    ORDER BY a.attnum
+  params:
+  - type: 20
+    value: '{{oid:pg_class:conformance.bi_order}}'
+- id: 29
+  protocol: extended
+  sql: |-
+    SELECT c.oid,c.*,t.relname as tabrelname,rt.relnamespace as refnamespace,d.description, case when c.contype='c' then "substring"(pg_get_constraintdef(c.oid), 7) else null end consrc_copy
+    FROM pg_catalog.pg_constraint c
+    INNER JOIN pg_catalog.pg_class t ON t.oid=c.conrelid
+    LEFT OUTER JOIN pg_catalog.pg_class rt ON rt.oid=c.confrelid
+    LEFT OUTER JOIN pg_catalog.pg_description d ON d.objoid=c.oid AND d.objsubid=0 AND d.classoid='pg_constraint'::regclass
+    WHERE c.conrelid=$1
+    ORDER BY c.oid
+  params:
+  - type: 20
+    value: '{{oid:pg_class:conformance.bi_order}}'
+- id: 30
+  protocol: extended
+  sql: |-
+    SELECT i.*,i.indkey as keys,c.relname,c.relnamespace,c.relam,c.reltablespace,tc.relname as tabrelname,dsc.description,pg_catalog.pg_get_expr(i.indpred, i.indrelid) as pred_expr,pg_catalog.pg_get_expr(i.indexprs, i.indrelid, true) as expr,pg_catalog.pg_relation_size(i.indexrelid) as index_rel_size,pg_catalog.pg_stat_get_numscans(i.indexrelid) as index_num_scans
+    FROM pg_catalog.pg_index i
+    INNER JOIN pg_catalog.pg_class c ON c.oid=i.indexrelid
+    INNER JOIN pg_catalog.pg_class tc ON tc.oid=i.indrelid
+    LEFT OUTER JOIN pg_catalog.pg_description dsc ON i.indexrelid=dsc.objoid
+    WHERE  i.indrelid=$1 ORDER BY tabrelname, c.relname
+  params:
+  - type: 20
+    value: '{{oid:pg_class:conformance.bi_order}}'
+- id: 31
+  protocol: extended
+  sql: |-
+    SELECT c.relname,a.*,pg_catalog.pg_get_expr(ad.adbin, ad.adrelid, true) as def_value,dsc.description,dep.objid
+    FROM pg_catalog.pg_attribute a
+    INNER JOIN pg_catalog.pg_class c ON (a.attrelid=c.oid)
+    LEFT OUTER JOIN pg_catalog.pg_attrdef ad ON (a.attrelid=ad.adrelid AND a.attnum = ad.adnum)
+    LEFT OUTER JOIN pg_catalog.pg_description dsc ON (c.oid=dsc.objoid AND a.attnum = dsc.objsubid)
+    LEFT OUTER JOIN pg_depend dep on dep.refobjid = a.attrelid AND dep.deptype = 'i' and dep.refobjsubid = a.attnum and dep.classid = dep.refclassid
+    WHERE NOT a.attisdropped AND c.relkind not in ('i','I','c') AND c.oid=$1
+    ORDER BY a.attnum
+  params:
+  - type: 20
+    value: '{{oid:pg_class:conformance.probe_identity}}'
+- id: 32
+  protocol: extended
+  sql: |-
+    SELECT c.oid,c.*,t.relname as tabrelname,rt.relnamespace as refnamespace,d.description, case when c.contype='c' then "substring"(pg_get_constraintdef(c.oid), 7) else null end consrc_copy
+    FROM pg_catalog.pg_constraint c
+    INNER JOIN pg_catalog.pg_class t ON t.oid=c.conrelid
+    LEFT OUTER JOIN pg_catalog.pg_class rt ON rt.oid=c.confrelid
+    LEFT OUTER JOIN pg_catalog.pg_description d ON d.objoid=c.oid AND d.objsubid=0 AND d.classoid='pg_constraint'::regclass
+    WHERE c.conrelid=$1
+    ORDER BY c.oid
+  params:
+  - type: 20
+    value: '{{oid:pg_class:conformance.probe_identity}}'
+- id: 33
+  protocol: extended
+  sql: |-
+    SELECT i.*,i.indkey as keys,c.relname,c.relnamespace,c.relam,c.reltablespace,tc.relname as tabrelname,dsc.description,pg_catalog.pg_get_expr(i.indpred, i.indrelid) as pred_expr,pg_catalog.pg_get_expr(i.indexprs, i.indrelid, true) as expr,pg_catalog.pg_relation_size(i.indexrelid) as index_rel_size,pg_catalog.pg_stat_get_numscans(i.indexrelid) as index_num_scans
+    FROM pg_catalog.pg_index i
+    INNER JOIN pg_catalog.pg_class c ON c.oid=i.indexrelid
+    INNER JOIN pg_catalog.pg_class tc ON tc.oid=i.indrelid
+    LEFT OUTER JOIN pg_catalog.pg_description dsc ON i.indexrelid=dsc.objoid
+    WHERE  i.indrelid=$1 ORDER BY tabrelname, c.relname
+  params:
+  - type: 20
+    value: '{{oid:pg_class:conformance.probe_identity}}'
+- id: 34
+  protocol: extended
+  sql: |-
+    SELECT c.relname,a.*,pg_catalog.pg_get_expr(ad.adbin, ad.adrelid, true) as def_value,dsc.description,dep.objid
+    FROM pg_catalog.pg_attribute a
+    INNER JOIN pg_catalog.pg_class c ON (a.attrelid=c.oid)
+    LEFT OUTER JOIN pg_catalog.pg_attrdef ad ON (a.attrelid=ad.adrelid AND a.attnum = ad.adnum)
+    LEFT OUTER JOIN pg_catalog.pg_description dsc ON (c.oid=dsc.objoid AND a.attnum = dsc.objsubid)
+    LEFT OUTER JOIN pg_depend dep on dep.refobjid = a.attrelid AND dep.deptype = 'i' and dep.refobjsubid = a.attnum and dep.classid = dep.refclassid
+    WHERE NOT a.attisdropped AND c.relkind not in ('i','I','c') AND c.oid=$1
+    ORDER BY a.attnum
+  params:
+  - type: 20
+    value: '{{oid:pg_class:conformance.types_fixture}}'
+- id: 35
+  protocol: extended
+  sql: |-
+    SELECT c.oid,c.*,t.relname as tabrelname,rt.relnamespace as refnamespace,d.description, case when c.contype='c' then "substring"(pg_get_constraintdef(c.oid), 7) else null end consrc_copy
+    FROM pg_catalog.pg_constraint c
+    INNER JOIN pg_catalog.pg_class t ON t.oid=c.conrelid
+    LEFT OUTER JOIN pg_catalog.pg_class rt ON rt.oid=c.confrelid
+    LEFT OUTER JOIN pg_catalog.pg_description d ON d.objoid=c.oid AND d.objsubid=0 AND d.classoid='pg_constraint'::regclass
+    WHERE c.conrelid=$1
+    ORDER BY c.oid
+  params:
+  - type: 20
+    value: '{{oid:pg_class:conformance.types_fixture}}'
+- id: 36
+  protocol: extended
+  sql: |-
+    SELECT i.*,i.indkey as keys,c.relname,c.relnamespace,c.relam,c.reltablespace,tc.relname as tabrelname,dsc.description,pg_catalog.pg_get_expr(i.indpred, i.indrelid) as pred_expr,pg_catalog.pg_get_expr(i.indexprs, i.indrelid, true) as expr,pg_catalog.pg_relation_size(i.indexrelid) as index_rel_size,pg_catalog.pg_stat_get_numscans(i.indexrelid) as index_num_scans
+    FROM pg_catalog.pg_index i
+    INNER JOIN pg_catalog.pg_class c ON c.oid=i.indexrelid
+    INNER JOIN pg_catalog.pg_class tc ON tc.oid=i.indrelid
+    LEFT OUTER JOIN pg_catalog.pg_description dsc ON i.indexrelid=dsc.objoid
+    WHERE  i.indrelid=$1 ORDER BY tabrelname, c.relname
+  params:
+  - type: 20
+    value: '{{oid:pg_class:conformance.types_fixture}}'
+- id: 37
+  protocol: extended
+  sql: |-
+    SELECT p.oid as poid,p.*,pg_catalog.pg_get_expr(p.proargdefaults, 0) as arg_defaults,d.description
+    FROM pg_catalog.pg_proc p
+    LEFT OUTER JOIN pg_catalog.pg_description d ON d.objoid=p.oid and d.classoid='pg_proc'::regclass  AND d.objsubid = 0
+    WHERE p.pronamespace=$1
+    ORDER BY p.proname
+  params:
+  - type: 20
+    value: '{{oid:pg_namespace:conformance}}'
+- id: 38
+  protocol: extended
+  sql: SELECT i.*,c.relnamespace FROM pg_catalog.pg_inherits i,pg_catalog.pg_class c WHERE i.inhrelid=$1
+    AND c.oid=i.inhparent ORDER BY i.inhseqno
+  params:
+  - type: 20
+    value: '{{oid:pg_class:conformance.bi_customer}}'
+- id: 39
+  protocol: extended
+  sql: SELECT DISTINCT connamespace FROM pg_catalog.pg_constraint WHERE confrelid=$1
+  params:
+  - type: 20
+    value: '{{oid:pg_class:conformance.bi_customer}}'
+- id: 40
+  protocol: extended
+  sql: |-
+    SELECT c.relname,a.*,pg_catalog.pg_get_expr(ad.adbin, ad.adrelid, true) as def_value,dsc.description,dep.objid
+    FROM pg_catalog.pg_attribute a
+    INNER JOIN pg_catalog.pg_class c ON (a.attrelid=c.oid)
+    LEFT OUTER JOIN pg_catalog.pg_attrdef ad ON (a.attrelid=ad.adrelid AND a.attnum = ad.adnum)
+    LEFT OUTER JOIN pg_catalog.pg_description dsc ON (c.oid=dsc.objoid AND a.attnum = dsc.objsubid)
+    LEFT OUTER JOIN pg_depend dep on dep.refobjid = a.attrelid AND dep.deptype = 'i' and dep.refobjsubid = a.attnum and dep.classid = dep.refclassid
+    WHERE NOT a.attisdropped AND c.relkind not in ('i','I','c') AND c.relnamespace=$1
+    ORDER BY a.attnum
+  params:
+  - type: 20
+    value: '{{oid:pg_namespace:conformance}}'
+- id: 41
+  protocol: extended
+  sql: |-
+    SELECT c.oid,c.*,t.relname as tabrelname,rt.relnamespace as refnamespace,d.description, case when c.contype='c' then "substring"(pg_get_constraintdef(c.oid), 7) else null end consrc_copy
+    FROM pg_catalog.pg_constraint c
+    INNER JOIN pg_catalog.pg_class t ON t.oid=c.conrelid
+    LEFT OUTER JOIN pg_catalog.pg_class rt ON rt.oid=c.confrelid
+    LEFT OUTER JOIN pg_catalog.pg_description d ON d.objoid=c.oid AND d.objsubid=0 AND d.classoid='pg_constraint'::regclass
+    WHERE t.relnamespace=$1
+    ORDER BY c.oid
+  params:
+  - type: 20
+    value: '{{oid:pg_namespace:conformance}}'
+- id: 42
+  protocol: extended
+  sql: SELECT i.*,c.relnamespace FROM pg_catalog.pg_inherits i,pg_catalog.pg_class c WHERE i.inhrelid=$1
+    AND c.oid=i.inhparent ORDER BY i.inhseqno
+  params:
+  - type: 20
+    value: '{{oid:pg_class:conformance.bi_order}}'
+- id: 43
+  protocol: extended
+  sql: "SELECT a.oid,a.*,pd.description FROM pg_catalog.pg_roles a \nleft join pg_catalog.pg_shdescription\
+    \ pd on a.oid = pd.objoid\nORDER BY a.rolname"
+- id: 44
+  protocol: extended
+  sql: "SELECT t.oid,t.*,pg_tablespace_location(t.oid) loc\nFROM pg_catalog.pg_tablespace t \nORDER BY\
+    \ t.oid"
+- id: 45
+  protocol: extended
+  sql: "SELECT c.oid,c.* FROM pg_catalog.pg_collation c \nORDER BY c.oid"
+- id: 46
+  protocol: extended
+  sql: SELECT bc.* FROM conformance.bi_customer AS bc
+- id: 47
+  protocol: extended
+  sql: 'SELECT c.oid, a.attnum, a.attname, c.relname, n.nspname, a.attnotnull OR (t.typtype = ''d'' AND
+    t.typnotnull), a.attidentity != '''' OR pg_catalog.pg_get_expr(d.adbin, d.adrelid) LIKE ''%nextval(%''
+    FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON (c.relnamespace = n.oid) JOIN pg_catalog.pg_attribute
+    a ON (c.oid = a.attrelid) JOIN pg_catalog.pg_type t ON (a.atttypid = t.oid) LEFT JOIN pg_catalog.pg_attrdef
+    d ON (d.adrelid = a.attrelid AND d.adnum = a.attnum) JOIN (SELECT {{oid:pg_class:conformance.bi_customer}}
+    AS oid , 1 AS attnum UNION ALL SELECT {{oid:pg_class:conformance.bi_customer}}, 2 UNION ALL SELECT
+    {{oid:pg_class:conformance.bi_customer}}, 3) vals ON (c.oid = vals.oid AND a.attnum = vals.attnum) '
+- id: 48
+  protocol: extended
+  sql: SELECT DISTINCT connamespace FROM pg_catalog.pg_constraint WHERE confrelid=$1
+  params:
+  - type: 20
+    value: '{{oid:pg_class:conformance.bi_order}}'
+- id: 49
+  protocol: extended
+  sql: SELECT bo.* FROM conformance.bi_order AS bo
+- id: 50
+  protocol: extended
+  sql: 'SELECT c.oid, a.attnum, a.attname, c.relname, n.nspname, a.attnotnull OR (t.typtype = ''d'' AND
+    t.typnotnull), a.attidentity != '''' OR pg_catalog.pg_get_expr(d.adbin, d.adrelid) LIKE ''%nextval(%''
+    FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON (c.relnamespace = n.oid) JOIN pg_catalog.pg_attribute
+    a ON (c.oid = a.attrelid) JOIN pg_catalog.pg_type t ON (a.atttypid = t.oid) LEFT JOIN pg_catalog.pg_attrdef
+    d ON (d.adrelid = a.attrelid AND d.adnum = a.attnum) JOIN (SELECT {{oid:pg_class:conformance.bi_order}}
+    AS oid , 1 AS attnum UNION ALL SELECT {{oid:pg_class:conformance.bi_order}}, 2 UNION ALL SELECT {{oid:pg_class:conformance.bi_order}},
+    3 UNION ALL SELECT {{oid:pg_class:conformance.bi_order}}, 4) vals ON (c.oid = vals.oid AND a.attnum
+    = vals.attnum) '
+- id: 51
+  protocol: extended
+  sql: SELECT i.*,c.relnamespace FROM pg_catalog.pg_inherits i,pg_catalog.pg_class c WHERE i.inhrelid=$1
+    AND c.oid=i.inhparent ORDER BY i.inhseqno
+  params:
+  - type: 20
+    value: '{{oid:pg_class:conformance.probe_identity}}'
+- id: 52
+  protocol: extended
+  sql: SELECT DISTINCT connamespace FROM pg_catalog.pg_constraint WHERE confrelid=$1
+  params:
+  - type: 20
+    value: '{{oid:pg_class:conformance.probe_identity}}'
+- id: 53
+  protocol: extended
+  sql: SELECT pi2.* FROM conformance.probe_identity AS pi2
+- id: 54
+  protocol: extended
+  sql: 'SELECT c.oid, a.attnum, a.attname, c.relname, n.nspname, a.attnotnull OR (t.typtype = ''d'' AND
+    t.typnotnull), a.attidentity != '''' OR pg_catalog.pg_get_expr(d.adbin, d.adrelid) LIKE ''%nextval(%''
+    FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON (c.relnamespace = n.oid) JOIN pg_catalog.pg_attribute
+    a ON (c.oid = a.attrelid) JOIN pg_catalog.pg_type t ON (a.atttypid = t.oid) LEFT JOIN pg_catalog.pg_attrdef
+    d ON (d.adrelid = a.attrelid AND d.adnum = a.attnum) JOIN (SELECT {{oid:pg_class:conformance.probe_identity}}
+    AS oid , 1 AS attnum UNION ALL SELECT {{oid:pg_class:conformance.probe_identity}}, 2) vals ON (c.oid
+    = vals.oid AND a.attnum = vals.attnum) '
+- id: 55
+  protocol: extended
+  sql: SELECT i.*,c.relnamespace FROM pg_catalog.pg_inherits i,pg_catalog.pg_class c WHERE i.inhrelid=$1
+    AND c.oid=i.inhparent ORDER BY i.inhseqno
+  params:
+  - type: 20
+    value: '{{oid:pg_class:conformance.types_fixture}}'
+- id: 56
+  protocol: extended
+  sql: SELECT DISTINCT connamespace FROM pg_catalog.pg_constraint WHERE confrelid=$1
+  params:
+  - type: 20
+    value: '{{oid:pg_class:conformance.types_fixture}}'
+- id: 57
+  protocol: extended
+  sql: SELECT tf.* FROM conformance.types_fixture AS tf
+- id: 58
+  protocol: extended
+  sql: 'SELECT c.oid, a.attnum, a.attname, c.relname, n.nspname, a.attnotnull OR (t.typtype = ''d'' AND
+    t.typnotnull), a.attidentity != '''' OR pg_catalog.pg_get_expr(d.adbin, d.adrelid) LIKE ''%nextval(%''
+    FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON (c.relnamespace = n.oid) JOIN pg_catalog.pg_attribute
+    a ON (c.oid = a.attrelid) JOIN pg_catalog.pg_type t ON (a.atttypid = t.oid) LEFT JOIN pg_catalog.pg_attrdef
+    d ON (d.adrelid = a.attrelid AND d.adnum = a.attnum) JOIN (SELECT {{oid:pg_class:conformance.types_fixture}}
+    AS oid , 1 AS attnum UNION ALL SELECT {{oid:pg_class:conformance.types_fixture}}, 2 UNION ALL SELECT
+    {{oid:pg_class:conformance.types_fixture}}, 3 UNION ALL SELECT {{oid:pg_class:conformance.types_fixture}},
+    4 UNION ALL SELECT {{oid:pg_class:conformance.types_fixture}}, 5 UNION ALL SELECT {{oid:pg_class:conformance.types_fixture}},
+    6 UNION ALL SELECT {{oid:pg_class:conformance.types_fixture}}, 7 UNION ALL SELECT {{oid:pg_class:conformance.types_fixture}},
+    8 UNION ALL SELECT {{oid:pg_class:conformance.types_fixture}}, 9 UNION ALL SELECT {{oid:pg_class:conformance.types_fixture}},
+    10 UNION ALL SELECT {{oid:pg_class:conformance.types_fixture}}, 11 UNION ALL SELECT {{oid:pg_class:conformance.types_fixture}},
+    12 UNION ALL SELECT {{oid:pg_class:conformance.types_fixture}}, 13 UNION ALL SELECT {{oid:pg_class:conformance.types_fixture}},
+    14 UNION ALL SELECT {{oid:pg_class:conformance.types_fixture}}, 15 UNION ALL SELECT {{oid:pg_class:conformance.types_fixture}},
+    16 UNION ALL SELECT {{oid:pg_class:conformance.types_fixture}}, 17 UNION ALL SELECT {{oid:pg_class:conformance.types_fixture}},
+    18 UNION ALL SELECT {{oid:pg_class:conformance.types_fixture}}, 19 UNION ALL SELECT {{oid:pg_class:conformance.types_fixture}},
+    20 UNION ALL SELECT {{oid:pg_class:conformance.types_fixture}}, 21 UNION ALL SELECT {{oid:pg_class:conformance.types_fixture}},
+    22 UNION ALL SELECT {{oid:pg_class:conformance.types_fixture}}, 23 UNION ALL SELECT {{oid:pg_class:conformance.types_fixture}},
+    24 UNION ALL SELECT {{oid:pg_class:conformance.types_fixture}}, 25 UNION ALL SELECT {{oid:pg_class:conformance.types_fixture}},
+    26 UNION ALL SELECT {{oid:pg_class:conformance.types_fixture}}, 27 UNION ALL SELECT {{oid:pg_class:conformance.types_fixture}},
+    28 UNION ALL SELECT {{oid:pg_class:conformance.types_fixture}}, 29 UNION ALL SELECT {{oid:pg_class:conformance.types_fixture}},
+    30 UNION ALL SELECT {{oid:pg_class:conformance.types_fixture}}, 31 UNION ALL SELECT {{oid:pg_class:conformance.types_fixture}},
+    32) vals ON (c.oid = vals.oid AND a.attnum = vals.attnum) '
+- id: 59
+  protocol: extended
+  sql: SELECT n.nspname = ANY(current_schemas(true)), n.nspname, t.typname FROM pg_catalog.pg_type t JOIN
+    pg_catalog.pg_namespace n ON t.typnamespace = n.oid WHERE t.oid = $1
+  params:
+  - type: 23
+    value: '1186'
+- id: 60
+  protocol: extended
+  sql: SELECT typinput='pg_catalog.array_in'::regproc as is_array, typtype, typname, pg_type.oid   FROM
+    pg_catalog.pg_type   LEFT JOIN (select ns.oid as nspoid, ns.nspname, r.r           from pg_namespace
+    as ns           join ( select s.r, (current_schemas(false))[s.r] as nspname                    from
+    generate_series(1, array_upper(current_schemas(false), 1)) as s(r) ) as r          using ( nspname
+    )        ) as sp     ON sp.nspoid = typnamespace  WHERE pg_type.oid = $1  ORDER BY sp.r, pg_type.oid
+    DESC
+  params:
+  - type: 20
+    value: '1186'
+- id: 61
+  protocol: extended
+  sql: SELECT n.nspname = ANY(current_schemas(true)), n.nspname, t.typname FROM pg_catalog.pg_type t JOIN
+    pg_catalog.pg_namespace n ON t.typnamespace = n.oid WHERE t.oid = $1
+  params:
+  - type: 23
+    value: '3802'
+- id: 62
+  protocol: extended
+  sql: SELECT typinput='pg_catalog.array_in'::regproc as is_array, typtype, typname, pg_type.oid   FROM
+    pg_catalog.pg_type   LEFT JOIN (select ns.oid as nspoid, ns.nspname, r.r           from pg_namespace
+    as ns           join ( select s.r, (current_schemas(false))[s.r] as nspname                    from
+    generate_series(1, array_upper(current_schemas(false), 1)) as s(r) ) as r          using ( nspname
+    )        ) as sp     ON sp.nspoid = typnamespace  WHERE pg_type.oid = $1  ORDER BY sp.r, pg_type.oid
+    DESC
+  params:
+  - type: 20
+    value: '3802'
+- id: 63
+  protocol: extended
+  sql: SELECT n.nspname = ANY(current_schemas(true)), n.nspname, t.typname FROM pg_catalog.pg_type t JOIN
+    pg_catalog.pg_namespace n ON t.typnamespace = n.oid WHERE t.oid = $1
+  params:
+  - type: 23
+    value: '869'
+- id: 64
+  protocol: extended
+  sql: SELECT typinput='pg_catalog.array_in'::regproc as is_array, typtype, typname, pg_type.oid   FROM
+    pg_catalog.pg_type   LEFT JOIN (select ns.oid as nspoid, ns.nspname, r.r           from pg_namespace
+    as ns           join ( select s.r, (current_schemas(false))[s.r] as nspname                    from
+    generate_series(1, array_upper(current_schemas(false), 1)) as s(r) ) as r          using ( nspname
+    )        ) as sp     ON sp.nspoid = typnamespace  WHERE pg_type.oid = $1  ORDER BY sp.r, pg_type.oid
+    DESC
+  params:
+  - type: 20
+    value: '869'
+- id: 65
+  protocol: extended
+  sql: SELECT n.nspname = ANY(current_schemas(true)), n.nspname, t.typname FROM pg_catalog.pg_type t JOIN
+    pg_catalog.pg_namespace n ON t.typnamespace = n.oid WHERE t.oid = $1
+  params:
+  - type: 23
+    value: '650'
+- id: 66
+  protocol: extended
+  sql: SELECT typinput='pg_catalog.array_in'::regproc as is_array, typtype, typname, pg_type.oid   FROM
+    pg_catalog.pg_type   LEFT JOIN (select ns.oid as nspoid, ns.nspname, r.r           from pg_namespace
+    as ns           join ( select s.r, (current_schemas(false))[s.r] as nspname                    from
+    generate_series(1, array_upper(current_schemas(false), 1)) as s(r) ) as r          using ( nspname
+    )        ) as sp     ON sp.nspoid = typnamespace  WHERE pg_type.oid = $1  ORDER BY sp.r, pg_type.oid
+    DESC
+  params:
+  - type: 20
+    value: '650'
+- id: 67
+  protocol: extended
+  sql: SELECT n.nspname = ANY(current_schemas(true)), n.nspname, t.typname FROM pg_catalog.pg_type t JOIN
+    pg_catalog.pg_namespace n ON t.typnamespace = n.oid WHERE t.oid = $1
+  params:
+  - type: 23
+    value: '829'
+- id: 68
+  protocol: extended
+  sql: SELECT typinput='pg_catalog.array_in'::regproc as is_array, typtype, typname, pg_type.oid   FROM
+    pg_catalog.pg_type   LEFT JOIN (select ns.oid as nspoid, ns.nspname, r.r           from pg_namespace
+    as ns           join ( select s.r, (current_schemas(false))[s.r] as nspname                    from
+    generate_series(1, array_upper(current_schemas(false), 1)) as s(r) ) as r          using ( nspname
+    )        ) as sp     ON sp.nspoid = typnamespace  WHERE pg_type.oid = $1  ORDER BY sp.r, pg_type.oid
+    DESC
+  params:
+  - type: 20
+    value: '829'
+- id: 69
+  protocol: extended
+  sql: SET application_name = 'DBeaver 25.1.4 - View sessions'
+- id: 70
+  protocol: extended
+  sql: SELECT sa.* FROM pg_catalog.pg_stat_activity sa
+- id: 71
+  protocol: extended
+  sql: "SELECT c.oid,c.*,d.description,pg_catalog.pg_get_expr(c.relpartbound, c.oid) as partition_expr,\
+    \  pg_catalog.pg_get_partkeydef(c.oid) as partition_key \nFROM pg_catalog.pg_class c\nLEFT OUTER JOIN\
+    \ pg_catalog.pg_description d ON d.objoid=c.oid AND d.objsubid=0 AND d.classoid='pg_class'::regclass\n\
+    WHERE c.relnamespace=$1 AND c.relkind not in ('i','I','c') AND relname=$2"
+  params:
+  - type: 20
+    value: '11'
+  - type: 1043
+    value: pg_stat_activity
+- id: 72
+  protocol: extended
+  sql: |-
+    SELECT c.relname,a.*,pg_catalog.pg_get_expr(ad.adbin, ad.adrelid, true) as def_value,dsc.description,dep.objid
+    FROM pg_catalog.pg_attribute a
+    INNER JOIN pg_catalog.pg_class c ON (a.attrelid=c.oid)
+    LEFT OUTER JOIN pg_catalog.pg_attrdef ad ON (a.attrelid=ad.adrelid AND a.attnum = ad.adnum)
+    LEFT OUTER JOIN pg_catalog.pg_description dsc ON (c.oid=dsc.objoid AND a.attnum = dsc.objsubid)
+    LEFT OUTER JOIN pg_depend dep on dep.refobjid = a.attrelid AND dep.deptype = 'i' and dep.refobjsubid = a.attnum and dep.classid = dep.refclassid
+    WHERE NOT a.attisdropped AND c.relkind not in ('i','I','c') AND c.oid=$1
+    ORDER BY a.attnum
+  params:
+  - type: 20
+    value: '12222'
+- id: 73
+  protocol: extended
+  sql: |-
+    SELECT
+        (SELECT count(*) AS "Active" FROM pg_catalog.pg_stat_activity sa WHERE state='active'),
+        (SELECT count(*) AS "Idle" FROM pg_catalog.pg_stat_activity sa WHERE state='idle'),
+        (SELECT count(*) AS "Total" FROM pg_catalog.pg_stat_activity sa WHERE state IS NOT NULL)
+- id: 74
+  protocol: extended
+  sql: |-
+    SELECT
+        (SELECT sum(xact_commit) + sum(xact_rollback) AS "Total" FROM pg_stat_database),
+        (SELECT sum(xact_commit) AS "Commit" FROM pg_stat_database),
+        (SELECT sum(xact_rollback) AS "Rollback" FROM pg_stat_database)
+- id: 75
+  protocol: extended
+  sql: |-
+    SELECT
+        (SELECT sum(blks_read) as "Read" FROM pg_stat_database),
+        (SELECT sum(blks_hit) as "Hits" FROM pg_stat_database)

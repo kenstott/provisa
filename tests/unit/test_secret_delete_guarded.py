@@ -16,8 +16,7 @@ environment of the org the row sits, or among the org's own rows in the platform
 each one, and nothing is removed. The search reads stored text only: it resolves nothing and
 reads no secret's value.
 
-The scenarios run here on PostgreSQL control planes, and again through a served instance in
-``tests/integration/test_secret_delete_guarded_pg.py``.
+The scenarios run on PostgreSQL control planes.
 """
 
 # Requirements: REQ-1918, REQ-1558
@@ -242,7 +241,7 @@ def test_every_binary_column_is_accounted_for():
     decrypted = set(secret_references.SEARCHED_DECRYPTED)
     not_searched = set(secret_references.NOT_SEARCHED)
     assert decrypted == {("api_sources", "auth"), ("org_secrets", "value_enc")}
-    assert len(not_searched) == 14 and not (decrypted & not_searched)
+    assert len(not_searched) == 15 and not (decrypted & not_searched)
     assert decrypted | not_searched == binary
     for metadata in (schema_org.metadata, schema_admin.metadata):
         for table in metadata.tables.values():

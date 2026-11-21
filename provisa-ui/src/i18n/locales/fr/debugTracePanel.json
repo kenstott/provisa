@@ -27,6 +27,8 @@
     "permit": "Autoriser",
     "revoke": "Révoquer",
     "noHintRoles": "Aucun rôle n'est autorisé à utiliser l'indication.",
-    "loadFailed": "Impossible de charger les paramètres du traçage de débogage"
+    "loadFailed": "Impossible de charger les paramètres du traçage de débogage",
+    "introPlatform": "Par défaut, le traçage enregistre un span par requête. Le traçage de débogage ajoute un span par étape du pipeline et par appel à la source, avec le texte SQL. Il ajoute de la charge : activez-le pour une organisation entière pendant une durée définie ; il se désactive de lui-même à la fin de cette durée. Le traçage d'un rôle ou d'une source nommés revient à l'administrateur de cette organisation.",
+    "introOrg": "Par défaut, le traçage enregistre un span par requête. Le traçage de débogage ajoute un span par étape du pipeline et par appel à la source, avec le texte SQL. Il ajoute de la charge : activez-le pour un rôle ou une source pendant une durée définie ; il se désactive de lui-même à la fin de cette durée."
   }
 }

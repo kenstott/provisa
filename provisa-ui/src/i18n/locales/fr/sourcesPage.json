@@ -8,7 +8,7 @@
     "backToList": "Retour à la liste",
     "backToSource": "Retour à la source",
     "panelNewSource": "Nouvelle source",
-    "title": "Sources de données",
+    "title": "Sources",
     "loading": "Chargement des sources...",
     "filterPlaceholder": "Filtrer par ID ou type de source…",
     "addSource": "+ Source",
@@ -41,9 +41,12 @@
     "nextPage": "Page suivante",
     "lastPage": "Dernière page",
     "purposeTitle": "À quoi servent les sources de données",
-    "purposeBody": "Une source est une connexion enregistrée vers un système qui détient des données : base de données, entrepôt, stockage de fichiers, API. L'enregistrer permet à Provisa de lire ses schémas et de l'interroger dans le même langage que toute autre source, sans copier les données où que ce soit.",
+    "purposeBody": "Une source est une connexion enregistrée à un système qui contient des données, comme une base de données, un entrepôt de données, un stockage de fichiers ou une API. Provisa peut alors lire les schémas de ce système et l'interroger dans le même langage que n'importe quelle autre source, sans copier les données.",
     "purposeAdd": "Ajouter une source n'enregistre aucune table en soi. Utilisez Découvrir sur la ligne pour parcourir ses schémas et enregistrer les tables que vous voulez gouverner.",
     "purposeAria": "À propos des sources de données",
-    "registrationMissing": "{{list}} ne contient aucun enregistrement pour la source {{source}}."
+    "registrationMissing": "{{list}} ne contient aucun enregistrement pour la source {{source}}.",
+    "duplicateCredentialsNote": "Les identifiants de {{source}} ne sont pas copiés : saisissez-les ici, ou une référence de secret.",
+    "withdrawn": "Retirée",
+    "withdrawnTitle": "Hors production : aucune de ses tables n'est servie à aucun rôle tant qu'elle n'est pas remise"
   }
 }

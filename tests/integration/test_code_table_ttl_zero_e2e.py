@@ -19,7 +19,6 @@ import httpx
 import pytest
 import yaml
 
-from tests.helpers import registered_id, release_field
 from tests.integration.test_code_table_mutations_e2e import _ADMIN, _archive, _config
 
 pytestmark = [pytest.mark.integration, pytest.mark.local_platform]
@@ -103,12 +102,11 @@ def test_a_code_table_with_a_landing_ttl_of_0_is_read_live(server):
         f'{{name: "{n}", visibleTo: ["{_ADMIN}"], dataType: "{t}"}}'
         for n, t in (("id", "bigint"), ("status", "text"), ("total", "double"), ("region", "text"))
     )
-    registered = _admin(
+    _admin(
         server,
         'registerTable(input: {sourceId: "shop-src", domainId: "shop", schemaName: "default", '
         f'tableName: "orders", cacheTtl: 0, columns: [{columns}]}})',
     )
-    _admin(server, release_field(registered_id(registered["message"])))
     response = httpx.post(
         f"{server.base_url}/data/sql",
         json={"sql": "SELECT id, status FROM orders ORDER BY id"},

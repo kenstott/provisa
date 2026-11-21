@@ -33,7 +33,11 @@ CREATE TABLE IF NOT EXISTS mv_build_state (
     materialized_definition_version TEXT,
     materialized_input_version      TEXT,
     snapshot_id     TEXT,
-    index_state     JSONB   -- REQ-2015: the indexes its standing landing asked for, as a replica's
+    index_state     JSONB,  -- REQ-2015: the indexes its standing landing asked for, as a replica's
+    -- REQ-2249: a view kept by its code resolver's @change function: the cursor stored after its
+    -- last successful apply (JSON; NULL = none yet) and when it was last rebuilt whole.
+    change_cursor     TEXT,
+    change_rebuilt_at TIMESTAMPTZ
 );
 
 CREATE TABLE IF NOT EXISTS mv_refresh_log (

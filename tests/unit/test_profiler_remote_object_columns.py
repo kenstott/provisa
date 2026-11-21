@@ -75,6 +75,7 @@ def _state() -> SimpleNamespace:
     }
     ctx = SimpleNamespace(
         tables={"pets": pets, "visits": visits},
+        parameters={},  # REQ-1986: neither table requires a parameter
         # The org admin sees every registered column, the object fields among them.
         physical_to_sql={
             (tid, c.column_name): c.column_name for tid, cs in column_types.items() for c in cs

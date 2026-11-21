@@ -2,6 +2,9 @@
   "common": {
     "loading": "בטעינה...",
     "cancel": "ביטול",
+    "stop": "עצור",
+    "stopped": "הופסקה",
+    "stopQuery": "עצירת השאילתה",
     "save": "שמירה",
     "delete": "מחיקה",
     "confirm": "אישור",
@@ -44,12 +47,16 @@
     "yes": "כן",
     "no": "לא",
     "none": "—",
-    "expandUser": "הצגת שיוכים עבור {{username}}",
+    "expandUser": "הרחבת השיוכים עבור {{username}}",
     "deleteUser": "מחיקת החשבון של {{username}}",
     "assignmentsHeading": "שיוכי תפקיד:דומיין",
     "noAssignments": "אין שיוכים",
     "removeAssignment": "הסרת השיוך {{role}}:{{domain}}",
     "roleLabel": "תפקיד",
+    "rolesLabel": "תפקידים",
+    "rolesPlaceholder": "יש לבחור תפקיד אחד או יותר",
+    "addList": "הוספת רשימה",
+    "removeList": "הסרת הרשימה",
     "domainLabel": "דומיין",
     "untilLabel": "עד",
     "untilPlaceholder": "ללא תאריך סיום",
@@ -58,7 +65,6 @@
     "noExpiry": "ללא תאריך סיום",
     "neverUsed": "אף פעם",
     "allDomains": "* (כל הדומיינים)",
-    "add": "הוספה",
     "createHeading": "יצירת משתמש",
     "username": "שם משתמש",
     "usernameRequired": "שם משתמש *",
@@ -98,6 +104,6 @@
   },
   "pageError": {
     "title": "לא ניתן היה להציג דף זה",
-    "body": "אירעה שגיאה בעת העיבוד. שאר האפליקציה עדיין פועלת: עברו לדף אחר או טענו דף זה מחדש."
+    "body": "אירעה שגיאה בעת העיבוד. שאר האפליקציה ממשיכה לעבוד, לכן אפשר לעבור לדף אחר או לטעון את הדף הזה מחדש."
   }
 }

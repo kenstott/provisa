@@ -338,6 +338,23 @@ STATEMENTS: tuple[str, ...] = (
     """SELECT d @> '{"a":1}' FROM (VALUES ('{"a":1,"b":2}'::jsonb), ('{"a":2}'::jsonb)) t(d)""",
     """SELECT d ? 'a' FROM (VALUES ('{"a":1}'::jsonb), ('["a"]'::jsonb), ('1'::jsonb)) t(d)""",
     """SELECT jsonb_set(d, '{a}', '9') FROM (VALUES ('{"a":1,"b":2}'::jsonb)) t(d)""",
+    # a step the rows hold, of a stated type: a text a key, whatever it spells; an integer an index
+    *(
+        f"SELECT {cast_} {op} k::text FROM (VALUES (1, 'a'), (2, 'b'), (3, '$.b'), (4, 'nope')) "
+        "t(n, k) ORDER BY n"
+        for cast_ in (f"{_DOC}::json", f"{_DOC}::jsonb")
+        for op in ("->", "->>")
+    ),
+    *(
+        f"SELECT {cast_} {op} i::int FROM (VALUES (1, 0), (2, 3), (3, -1), (4, 9)) t(n, i) "
+        "ORDER BY n"
+        for cast_ in (f"{_LIST}::json", f"{_LIST}::jsonb")
+        for op in ("->", "->>")
+    ),
+    """SELECT '{"1":2}'::jsonb -> i::int, '{"1":2}'::jsonb -> i::text FROM (VALUES (1)) t(i)""",
+    f"SELECT {_DOC}::jsonb -> k::text -> 'z' ->> i::int FROM (VALUES ('a', 1)) t(k, i)",
+    # a step of no stated type: the engine's own -> where it reads the column's type
+    f"SELECT {_LIST}::jsonb -> i FROM (VALUES (1), (9)) t(i)",
 )
 
 

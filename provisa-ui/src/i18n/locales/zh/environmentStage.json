@@ -1,0 +1,8 @@
+{
+  "environmentStage": {
+    "production": "生产",
+    "preprod": "预生产",
+    "test": "测试",
+    "development": "开发"
+  }
+}

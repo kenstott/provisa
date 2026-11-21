@@ -10,8 +10,9 @@
 
 """GraphQL mutation + tracked-action execution for /data/graphql (REQ-205, REQ-360).
 
-Writable-column checks, action relationship resolution/filtering, and the direct
-mutation execute path (never the engine). Extracted from endpoint.py; leaf module.
+Writable-column checks, action relationship resolution/filtering (the related rows read through
+the one governed pipeline as the caller), and the mutation execute path. Extracted from
+endpoint.py; leaf module.
 """
 
 from __future__ import annotations
@@ -37,83 +38,120 @@ log = logging.getLogger(__name__)
 _ACTION_FILTER_ARGS = {"where", "order_by", "limit", "offset"}
 
 
+#: The response key the related rows carry their join key under, and the variable their parents'
+#: keys are bound to, in the read of a relationship's table (:func:`_related_rows`).
+_JOIN_KEY = "_provisa_join_key"
+_JOIN_KEYS_VARIABLE = "_provisa_join_keys"
+
+
+async def _related_rows(  # REQ-001, REQ-361, REQ-1176
+    sel, join_meta, src_values: list, ctx, state, role_id: str, variables: dict | None
+) -> list[dict]:
+    """The rows of a relationship's table that the parents' keys match, read as ``role_id`` reads
+    any query: the related table's own root field, compiled from the selection the caller wrote,
+    then the ONE pipeline (``_govern_and_route_compiled`` -> ``_execute_plan``), so the role's
+    visibility, row rules and masks hold. Each row carries its join key under ``_JOIN_KEY``."""
+    import json
+
+    from graphql import FieldNode as _FieldNode
+    from graphql import OperationDefinitionNode, SelectionSetNode, parse
+
+    from provisa.compiler.directives import NO_CACHE_HINT
+    from provisa.compiler.sql_gen import compile_query
+    from provisa.executor.json_encoders import graphql_field, result_batches
+    from provisa.executor.serialize import JsonNumber
+    from provisa.pgwire._pipeline import _execute_plan, _govern_and_route_compiled
+
+    tgt = join_meta.target
+    # The join column as the role's schema names it. One the role is not shown has no such name:
+    # it goes to the compiler as it is, and the pipeline refuses it as on any query.
+    key_field = ctx.physical_to_gql.get(
+        (tgt.table_id, join_meta.target_column), join_meta.target_column
+    )
+    document = parse(
+        f"{{ {tgt.field_name}(where: {{{key_field}: {{in: ${_JOIN_KEYS_VARIABLE}}}}})"
+        f" {{ {_JOIN_KEY}: {key_field} }} }}"
+    )
+    operation = document.definitions[0]
+    assert isinstance(operation, OperationDefinitionNode)
+    root = operation.selection_set.selections[0]
+    assert isinstance(root, _FieldNode) and root.selection_set is not None
+    # The key first, then what the caller selected of the related rows, as the caller wrote it.
+    root.selection_set = SelectionSetNode(
+        selections=(*root.selection_set.selections, *sel.selection_set.selections)
+    )
+    (compiled,) = compile_query(
+        document, ctx, {**(variables or {}), _JOIN_KEYS_VARIABLE: src_values}
+    )
+    plan = await _govern_and_route_compiled(
+        compiled.sql,
+        role_id,
+        exec_params=compiled.params or None,
+        state=state,
+        cache_hint=NO_CACHE_HINT,
+        compiled=compiled,
+        sdl_joins=True,
+    )
+    result = await _execute_plan(plan, state)
+    answer = graphql_field(result_batches(result), compiled.columns, compiled.result_limit)
+    # The answer's own JSON, a number inside it kept as the text it was written as (REQ-1867).
+    return json.loads(answer.body, parse_float=JsonNumber)
+
+
 async def _resolve_action_relationships(  # REQ-361, REQ-362
     rows: list[dict],
     selection_set,
     return_type_name: str,
     ctx,
     state,
+    role_id: str,
+    variables: dict | None,
 ) -> list[dict]:
-    """Batch-resolve nested relationship fields on action result rows."""
+    """Batch-resolve nested relationship fields on action result rows, each relationship's rows
+    read as the caller's role through the one governed pipeline (:func:`_related_rows`)."""
+    from collections import defaultdict
+
     from graphql import FieldNode as _FieldNode
-    from provisa.executor.serialize import result_records
 
     for sel in selection_set.selections:
         if not isinstance(sel, _FieldNode):
             continue
-        rel_field = sel.name.value
-        join_key = (return_type_name, rel_field)
+        join_key = (return_type_name, sel.name.value)
         if join_key not in ctx.joins:
             continue
 
         join_meta = ctx.joins[join_key]
         src_col = join_meta.source_column
-        tgt_col = join_meta.target_column
-        tgt = join_meta.target
-
-        nested_cols = []
-        if sel.selection_set:
-            for ns in sel.selection_set.selections:
-                if isinstance(ns, _FieldNode):
-                    nested_cols.append(ns.name.value)
+        rel_field = sel.alias.value if sel.alias else sel.name.value
         _is_singular = join_meta.cardinality in ("many-to-one", "one-to-one")
-        if not nested_cols:
-            for r in rows:
-                r[rel_field] = None if _is_singular else []
-            continue
 
         src_values = list({r[src_col] for r in rows if r.get(src_col) is not None})
-        if not src_values or not state.source_pools.has(tgt.source_id):
+        if not sel.selection_set or not src_values:
+            # No parent holds a key: there is no related row to read.
             for r in rows:
                 r[rel_field] = None if _is_singular else []
             continue
 
-        select_cols = list({tgt_col} | set(nested_cols))
-        col_list = ", ".join(f'"{c}"' for c in select_cols)
-        placeholders = ", ".join(f"${i + 1}" for i in range(len(src_values)))
-        sql = (
-            f'SELECT {col_list} FROM "{tgt.schema_name}"."{tgt.table_name}"'
-            f' WHERE "{tgt_col}" IN ({placeholders})'
-        )
-        result = await state.source_pools.execute(tgt.source_id, sql, src_values)
-        rel_rows = result_records(result)
+        matched: dict = defaultdict(list)
+        for child in await _related_rows(
+            sel, join_meta, src_values, ctx, state, role_id, variables
+        ):
+            matched[child.pop(_JOIN_KEY)].append(child)
 
         if join_meta.cardinality == "many-to-one":
-            rel_index = {rr[tgt_col]: {k: rr[k] for k in nested_cols if k in rr} for rr in rel_rows}
             for r in rows:
-                r[rel_field] = rel_index.get(r.get(src_col))
+                found = matched.get(r.get(src_col))
+                r[rel_field] = found[-1] if found else None
         elif join_meta.cardinality == "one-to-one":
             # Same physical shape as one-to-many (matched by the target's join key, which may
             # collect several physical rows), but the field is singular: take the head of the
             # matched rows, per spec, rather than assuming a single physical match.
-            from collections import defaultdict
-
-            rel_index_head: dict = defaultdict(list)
-            for rr in rel_rows:
-                child = {k: rr[k] for k in nested_cols if k in rr}
-                rel_index_head[rr[tgt_col]].append(child)
             for r in rows:
-                matches = rel_index_head.get(r.get(src_col), [])
-                r[rel_field] = matches[0] if matches else None
+                found = matched.get(r.get(src_col))
+                r[rel_field] = found[0] if found else None
         elif join_meta.cardinality == "one-to-many":
-            from collections import defaultdict
-
-            rel_index_multi: dict = defaultdict(list)
-            for rr in rel_rows:
-                child = {k: rr[k] for k in nested_cols if k in rr}
-                rel_index_multi[rr[tgt_col]].append(child)
             for r in rows:
-                r[rel_field] = rel_index_multi.get(r.get(src_col), [])
+                r[rel_field] = matched.get(r.get(src_col), [])
         else:
             raise ValueError(f"unhandled relationship cardinality {join_meta.cardinality!r}")
 
@@ -227,7 +265,7 @@ async def _execute_action_field(  # REQ-205, REQ-208, REQ-209, REQ-360, REQ-869
             field_name, bind_named_args(field_name, args, state, role_id), state, role_id
         )
         rows = await _maybe_resolve_relationships(
-            rows, field_node, fn.get("returns", ""), ctx, state
+            rows, field_node, fn.get("returns", ""), ctx, state, role_id, variables
         )
         return _apply_action_filters(rows, filter_args, field_name)
 
@@ -237,7 +275,7 @@ async def _execute_action_field(  # REQ-205, REQ-208, REQ-209, REQ-360, REQ-869
             field_name, bind_named_args(field_name, args, state, role_id), state, role_id
         )
         rows = await _maybe_resolve_relationships(
-            rows, field_node, wh.get("returns", ""), ctx, state
+            rows, field_node, wh.get("returns", ""), ctx, state, role_id, variables
         )
         return _apply_action_filters(rows, filter_args, field_name)
 
@@ -246,7 +284,9 @@ async def _execute_action_field(  # REQ-205, REQ-208, REQ-209, REQ-360, REQ-869
     )
 
 
-async def _maybe_resolve_relationships(rows, field_node, returns_str: str, ctx, state) -> list:
+async def _maybe_resolve_relationships(
+    rows, field_node, returns_str: str, ctx, state, role_id, variables: dict | None
+) -> list:
     """Resolve nested relationship fields on action rows if ctx and return type are known."""
     if not ctx or not rows or not field_node.selection_set or not returns_str:
         return rows
@@ -261,7 +301,7 @@ async def _maybe_resolve_relationships(rows, field_node, returns_str: str, ctx, 
             break
     if return_type_name:
         rows = await _resolve_action_relationships(
-            rows, field_node.selection_set, return_type_name, ctx, state
+            rows, field_node.selection_set, return_type_name, ctx, state, role_id, variables
         )
     return rows
 

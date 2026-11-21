@@ -373,7 +373,11 @@ def model_name_rows(  # REQ-194
                     tm.catalog_name,
                     tm.source_id,
                     f"source {tm.source_id}",
-                    scope=("catalog",),
+                    # Only a catalog named after its source is an address that source takes; a
+                    # catalog it is pinned to is shared by design and asks no uniqueness.
+                    scope=("catalog",)
+                    if naming.is_own_catalog(tm.catalog_name, tm.source_id)
+                    else (),
                 )
             )
         rows.extend(_table_rows(ctx, tm, t, sql_names.get(tm.table_id)))
@@ -482,7 +486,9 @@ def _column_rows(ctx: CompilationContext, tm: TableMeta, t: Mapping) -> list[Nam
         gql = ctx.physical_to_gql.get((tm.table_id, physical))
         if sql is not None:
             out.append(row("sql", sql, ("sql_column", str(tm.table_id))))
-        if gql is not None:
+        # A field pointing at a registered type is a relationship, not data: the schema builds no
+        # column field for it (schema_inputs._build_column_fields), so it holds no name there.
+        if gql is not None and (tm.table_id, physical) not in ctx.gql_governed_object_cols:
             out.append(row("graphql_field", gql, ("graphql_type_field", tm.type_name)))
             out.append(row("cypher_property", naming.apply_cql_property(gql)))
             out.append(
@@ -545,7 +551,14 @@ def _command_rows(commands: Iterable[Mapping]) -> list[NameRow]:
         label = f"command {c['name']}"
         out.append(
             NameRow(
-                "command", c["name"], "graphql_field", c["field"], c["name"], label, scope=(root,)
+                "command",
+                c["name"],
+                "graphql_field",
+                c["field"],
+                c["name"],
+                label,
+                domain_id=c.get("domain") or "",
+                scope=(root,),
             )
         )
         out.append(
@@ -605,7 +618,14 @@ def build_model_names(
     for c in [*si.functions, *si.webhooks]:
         field_name = binding_name(c, "graphql")
         if field_name is not None:
-            commands.append({"name": c["name"], "kind": c.get("kind"), "field": field_name})
+            commands.append(
+                {
+                    "name": c["name"],
+                    "kind": c.get("kind"),
+                    "field": field_name,
+                    "domain": c.get("domain_id"),
+                }
+            )
     enums = {
         pg_name: [v.value for v in enum_type.values.values()]
         for pg_name, enum_type in si.enum_types.items()

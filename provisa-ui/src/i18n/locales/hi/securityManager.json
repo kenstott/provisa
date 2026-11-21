@@ -5,7 +5,8 @@
       "encryption": "एन्क्रिप्शन",
       "authentication": "प्रमाणीकरण",
       "localUsers": "स्थानीय उपयोगकर्ता",
-      "secrets": "सीक्रेट"
+      "secrets": "सीक्रेट",
+      "secretsService": "सीक्रेट सेवा"
     }
   }
 }

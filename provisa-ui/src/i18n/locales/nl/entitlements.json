@@ -1,0 +1,143 @@
+{
+  "entitlements": {
+    "kind": {
+      "domains": "Domeinen",
+      "tables": "Tabellen",
+      "columns": "Kolommen",
+      "metrics": "Metrieken",
+      "relationships": "Relaties",
+      "commands": "Opdrachten",
+      "data_products": "Dataproducten",
+      "sources": "Bronnen",
+      "environments": "Omgevingen",
+      "roles": "Rollen",
+      "regions": "Regio's"
+    },
+    "origin": {
+      "idp": "Identiteitsprovider",
+      "provisa": "Ingesteld in Provisa",
+      "role": "Rolstandaard"
+    },
+    "finding": {
+      "unknown_identifier": "{{identifier}} in {{kind}} verwijst naar niets in het model.",
+      "unused_kind": "Deze rol gebruikt geen {{kind}}, dus die lijst selecteert niets."
+    },
+    "picker": {
+      "everything": "Alles, inclusief wat later wordt toegevoegd",
+      "typedLabel": "Items",
+      "typedPlaceholder": "Typ een item en druk op Enter",
+      "noObjects": "Het model bevat nog niets van deze soort.",
+      "otherValues": "Ook vermeld",
+      "removeValue": "{{value}} verwijderen",
+      "domains": {
+        "label": "Domeinen",
+        "search": "Domeinen zoeken"
+      },
+      "tables": {
+        "label": "Tabellen",
+        "search": "Tabellen van de gekozen domeinen zoeken",
+        "searchAll": "Alle tabellen zoeken",
+        "chooseAbove": "De gekozen domeinen hebben geen tabellen"
+      },
+      "columns": {
+        "label": "Kolommen",
+        "search": "Kolommen van de gekozen tabellen zoeken",
+        "chooseAbove": "Kies tabellen om hun kolommen te tonen"
+      },
+      "noMatch": "Geen resultaten",
+      "more": "{{shown}} van {{total}} getoond. Typ om te verfijnen.",
+      "unknownValue": "Het model bevat dit niet. Het blijft bewaard tot u het verwijdert."
+    },
+    "people": {
+      "placeholder": "Zoeken op naam of e-mail",
+      "typedEmail": "{{email}} (wacht op de eerste aanmelding)",
+      "typeMore": "Typ minstens twee tekens",
+      "noneFound": "Niemand gevonden. Typ een volledig e-mailadres om toegang te verlenen."
+    },
+    "form": {
+      "personLabel": "Persoon",
+      "personHint": "Wie zich nog niet heeft aangemeld, kan toegang krijgen via e-mail.",
+      "roleLabel": "Rol",
+      "rolePlaceholder": "Selecteer een rol",
+      "kindLabel": "Soort",
+      "kindPlaceholder": "Selecteer een soort",
+      "entriesLabel": "Items",
+      "entriesHelp": "Wat deze persoon mag bereiken van wat de rol toestaat. Een domein of tabel die is gekozen zonder iets eronder geselecteerd, omvat alles daarin. Een lege lijst bereikt niets van dit soort.",
+      "endsOnLabel": "Eindigt op",
+      "endsOnHint": "Laat leeg om de lijst te houden tot die wordt beëindigd.",
+      "reasonLabel": "Reden",
+      "reasonHint": "Vastgelegd bij de wijziging, voor wie de toegang controleert.",
+      "noRoles": "Deze persoon heeft geen rol die u beheert."
+    },
+    "person": {
+      "help": "Wat deze persoon via elke roltoewijzing mag bereiken, lijst per soort. Een lijst van de identiteitsprovider gaat voor en wordt daar gewijzigd.",
+      "roleLabel": "Roltoewijzing",
+      "rolePlaceholder": "Selecteer een rol",
+      "roleHint": "Rollen met lijsten ingesteld in Provisa staan bovenaan.",
+      "roleWithLists": "{{role}} (lijsten ingesteld)",
+      "readOnly": "Elke lijst van deze toewijzing komt van de identiteitsprovider: die wordt daar gewijzigd en is hier alleen-lezen.",
+      "grantEnded": "Voor deze hele toewijzing is een einddatum verstreken: niets hieronder wordt bereikt.",
+      "colKind": "Soort",
+      "colEntries": "Items",
+      "colOrigin": "Herkomst",
+      "colEnds": "Eindigt",
+      "noLists": "Geen lijsten: deze toewijzing bereikt alles wat de rol toestaat.",
+      "nothing": "Niets",
+      "everything": "Alles",
+      "more": "+{{count}} meer",
+      "endedHint": "Beëindigd door een verstreken einddatum",
+      "superseded": "Vervangen: {{entries}}",
+      "supersededHint": "De lijst die deze heeft vervangen",
+      "setBy": "Ingesteld door {{who}}: {{reason}}",
+      "editList": "Lijst {{kind}} bewerken",
+      "endList": "Lijst {{kind}} beëindigen",
+      "addList": "Lijst toevoegen",
+      "endPrompt": "Lijst {{kind}} beëindigen. De standaard van de rol geldt weer.",
+      "endButton": "Lijst beëindigen",
+      "noRoles": "Deze persoon heeft geen rol die u beheert.",
+      "roleNotHeld": "{{role}} (niet meer toegewezen; lijsten ingesteld)"
+    },
+    "grants": {
+      "heading": "Toegangsverleningen",
+      "help": "Verleen een persoon toegang binnen een rol, per soort. Wie zich nog niet heeft aangemeld, krijgt dit via e-mail en de verlening gaat in bij de eerste aanmelding.",
+      "grantButton": "Toegang verlenen",
+      "saved": "Toegang opgeslagen voor rol {{role}}.",
+      "savedPending": "Opgeslagen. De verlening wacht tot {{email}} zich aanmeldt.",
+      "pendingHeading": "Wacht op aanmelding",
+      "colEmail": "E-mail",
+      "colRole": "Rol",
+      "colKind": "Soort",
+      "colEntries": "Items",
+      "colEnds": "Eindigt",
+      "colReason": "Reden",
+      "colActions": "Acties",
+      "noPending": "Er wachten geen verleningen.",
+      "endPrompt": "Verlening {{kind}} voor {{email}} in rol {{role}} beëindigen.",
+      "endButton": "Beëindigen"
+    },
+    "roleHeld": "{{role}} · {{origins}}",
+    "roleOrigin": {
+      "provisa": "Toegewezen in Provisa",
+      "default_assignment": "Standaardtoewijzing",
+      "idp": "Identiteitsprovider"
+    },
+    "expiry": {
+      "heading": "Einddatums",
+      "none": "Geen einddatums: deze toewijzing duurt tot ze wordt beëindigd.",
+      "colEndsOn": "Eindigt op",
+      "colEnds": "Wat eindigt",
+      "colReason": "Reden",
+      "wholeGrant": "De hele toewijzing",
+      "everyCapability": "Elke mogelijkheid",
+      "capability": "{{capability}}",
+      "everywhere": "{{what}} overal",
+      "on": "{{what}} op {{entries}}",
+      "passed": "Verlopen",
+      "noReason": "—",
+      "extend": "Verlengen",
+      "extendPrompt": "Verplaats het einde van de lijst {{kind}}, nu {{date}}.",
+      "newDateLabel": "Nieuwe einddatum",
+      "newDateHint": "De items van de lijst blijven zoals ze zijn."
+    }
+  }
+}

@@ -70,7 +70,7 @@
     "spentStatus": "已全數兌換",
     "memberPanel": "成員詳情",
     "resizeMemberPanel": "調整成員面板大小",
-    "expandMemberPanel": "展開成員面板",
+    "expandMemberPanel": "放大成員面板",
     "restoreMemberPanel": "還原成員面板",
     "closeMemberPanel": "關閉成員面板",
     "backToMembers": "返回成員列表",
@@ -90,6 +90,9 @@
       "saveEdit": "儲存 {{name}}",
       "cancelEdit": "取消編輯",
       "remove": "移除 {{name}}"
-    }
+    },
+    "localUsersHeading": "本機使用者",
+    "attributesTab": "屬性",
+    "accessTab": "存取"
   }
 }

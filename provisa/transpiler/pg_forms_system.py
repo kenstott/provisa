@@ -192,16 +192,24 @@ OF_A_STORED_VALUE = frozenset(
 
 def _regexp_refused(engine: _Engine) -> str:
     """What this form cannot answer as PostgreSQL does, whose search keeps its place in the text: an
-    anchor, a pattern that matches nothing at all, a replacement of more than a group's number."""
+    anchor, a pattern that matches nothing at all, a replacement of more than a group's number.
+
+    The simple ``^`` anchor is included for DuckDB (which emits Provisa's own 0A000 refusal) but
+    excluded for Trino and ClickHouse: commit 1850a660e7 changed those MATRIX entries from
+    "refused" to "error", so their engines now raise their own error for a ``^``-anchored pattern
+    on the 5-arg form.  The 4-arg DuckDB-only Macro guards ``^`` inline anyway, but the 5-arg
+    form uses this function for all three engines, so the distinction is engine-scoped here."""
     has = engine.contains.format
 
     def text(value: str) -> str:
         reads_escapes = engine is _CLICKHOUSE_ENGINE
         return _quoted(value.replace("\\", "\\\\") if reads_escapes else value)
 
+    # Trino and ClickHouse: no '^' guard — let the engine return its own error (REQ-2167).
+    caret = () if engine in (_TRINO_ENGINE, _CLICKHOUSE_ENGINE) else (has("pattern", "'^'"),)
     return " OR ".join(
         (
-            has("pattern", "'^'"),
+            *caret,
             *(has("pattern", text("\\" + anchor)) for anchor in "AbBmMyYZ"),
             has("replacement", text("\\&")),
             has("replacement", text("\\\\")),

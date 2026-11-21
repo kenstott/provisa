@@ -150,4 +150,75 @@ describe("ProfileClassificationsModal", () => {
     render(<ProfileClassificationsModal tableId={7} tableName="customers" onClose={vi.fn()} />);
     expect(await screen.findByTestId("classifications-none")).toBeInTheDocument();
   });
+
+  // A column whose sample held too few non-null values is said so in words, apart from the
+  // suggestions: it is not a column that matched no kind.
+  it("says which columns had too few values to classify, apart from those matching no kind", async () => {
+    api.fetchProfileRun.mockResolvedValue({
+      runs: [],
+      classifications: [],
+      columns: [
+        { column_name: "note", classification: "too_few_values", classification_values: 3 },
+        { column_name: "code", classification: "no_kind", classification_values: 500 },
+        { column_name: "opened", classification: null, classification_values: null },
+      ],
+    });
+    render(<ProfileClassificationsModal tableId={7} tableName="customers" onClose={vi.fn()} />);
+    expect(await screen.findByTestId("classification-too-few-note")).toHaveTextContent(
+      "note: 3 values in the sample, too few to classify.",
+    );
+    expect(screen.getByText("Too few values to classify")).toBeInTheDocument();
+    expect(screen.queryByTestId("classification-too-few-code")).toBeNull();
+    expect(screen.queryByTestId("classification-too-few-opened")).toBeNull();
+    expect(screen.getByTestId("classifications-none")).toBeInTheDocument();
+  });
+
+  it("shows no too-few section when every tested column had enough values", async () => {
+    api.fetchProfileRun.mockResolvedValue({
+      runs: [],
+      classifications: [SSN],
+      columns: [{ column_name: "tax_id", classification: "matched", classification_values: 500 }],
+    });
+    render(<ProfileClassificationsModal tableId={7} tableName="customers" onClose={vi.fn()} />);
+    expect(await screen.findByTestId("classification-suggestion-0")).toBeInTheDocument();
+    expect(screen.queryByTestId("classifications-too-few")).toBeNull();
+  });
+
+  it("says too few values for a masked or pii column whose row shows its shape only", async () => {
+    const shapeOnly = {
+      run_id: "r1",
+      data_type: "varchar",
+      null_share: 0,
+      distinct_ratio: 1,
+      length_min: 1,
+      length_max: 9,
+      min_value: null,
+      max_value: null,
+      mean: null,
+      row_count: null,
+    };
+    api.fetchProfileRun.mockResolvedValue({
+      runs: [],
+      classifications: [],
+      columns: [
+        {
+          ...shapeOnly,
+          column_name: "email",
+          classification: "too_few_values",
+          classification_values: 3,
+        },
+        {
+          ...shapeOnly,
+          column_name: "ssn",
+          classification: "too_few_values",
+          classification_values: 0,
+        },
+      ],
+    });
+    render(<ProfileClassificationsModal tableId={7} tableName="customers" onClose={vi.fn()} />);
+    expect(await screen.findByTestId("classification-too-few-email")).toHaveTextContent(
+      "email: 3 values in the sample, too few to classify.",
+    );
+    expect(screen.getByTestId("classification-too-few-ssn")).toBeInTheDocument();
+  });
 });

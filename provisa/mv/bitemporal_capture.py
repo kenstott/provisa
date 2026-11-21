@@ -124,11 +124,11 @@ def log_mv(
         target_catalog_qualified=catalog_qualified,
         target_table=f"{row['table_name']}__versions_{table.table_id}",
         refresh_interval=refresh_interval,
-        enabled=not row.get("draft", False),  # REQ-1921: a draft table's log is not captured
+        enabled=not row["withdrawn"],  # REQ-1921: a withdrawn table's log is not captured
         sql=sql,
         semantic_sql=sql,
         region=row.get("region"),
-        read_tables=read_table_names(sql),
+        read_tables=read_table_names(sql, {}),  # the whole table: it calls no command
         expose_in_sdl=False,
         status=MVStatus.STALE,
         bitemporal=log_spec(table),
@@ -137,7 +137,7 @@ def log_mv(
 
 def register_logs(state: Any, tables: list[dict], refresh_interval: int) -> None:
     """Register the version log of every table updated in place among ``tables`` (the rows this
-    build loaded, draft ones among them), with the refresh interval and allowed lateness its
+    build loaded, withdrawn ones among them), with the refresh interval and allowed lateness its
     table's row holds for it (``mv_refresh_interval``, ``mv_allowed_lateness``; the interval
     ``refresh_interval`` when the row names none), and drop the log of a table no longer
     captured."""

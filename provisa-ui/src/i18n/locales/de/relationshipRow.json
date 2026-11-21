@@ -1,7 +1,7 @@
 {
   "relationshipRow": {
-    "autoTrackedTitle": "Automatisch aus FK-Constraint übernommen",
-    "fkBadge": "FK",
+    "fkBadge": "Aus FK",
+    "fkBadgeTitle": "Aus einem Fremdschlüssel in der Quelle erstellt",
     "yes": "Ja",
     "no": "Nein",
     "none": "—",
@@ -32,7 +32,6 @@
     "materializeCheckbox": "Materialisieren",
     "excludeFromCypher": "Aus Cypher ausschließen",
     "sqlName": "SQL-Name",
-    "autoTracked": "Automatisch erfasst",
     "cardinalityWarning": "Warnung: Liefert dieser Join mehr als eine Zeile pro Elternzeile, wird nur der erste Wert verwendet.",
     "toggleDetails": "Beziehungsdetails ein-/ausblenden",
     "junctionBadge": "Eig.",
@@ -44,6 +43,30 @@
     "parameterNotFed": "Nicht übergeben",
     "sameEntity": "Dieselbe Entität",
     "sameEntityHint": "Die verbundenen Zeilen sind dasselbe Ding: ein Begriff verankert beide Tabellen, 1:1 über Schlüssel",
-    "cardinalityOneToOne": "1:1"
+    "cardinalityOneToOne": "1:1",
+    "resolverNote": "Teil des Code-Resolvers {{resolver}}. Seine Treffer-Sicht und seine drei Beziehungen werden gemeinsam geändert und stillgelegt.",
+    "changeResolver": "Code-Resolver ändern",
+    "retireResolver": "Code-Resolver stilllegen",
+    "retireResolverTitle": "Code-Resolver {{resolver}} stilllegen?",
+    "retireResolverConsequence": "Seine Treffer-Sicht und seine drei Beziehungen werden gemeinsam stillgelegt. Ihre Namen bleiben vergeben.",
+    "queryLinks": {
+      "heading": "Abfragen",
+      "cypher": "{{name}} in Cypher lesen",
+      "sql": "{{name}} in SQL lesen",
+      "sparql": "{{name}} in SPARQL lesen",
+      "graphql": "{{name}} in GraphQL lesen",
+      "rest": "{{name}} in REST lesen",
+      "grpc": "{{name}} in gRPC lesen",
+      "jsonapi": "{{name}} in JSON:API lesen",
+      "surfaces": {
+        "cypher": "Cypher",
+        "sql": "SQL",
+        "sparql": "SPARQL",
+        "graphql": "GraphQL",
+        "rest": "REST",
+        "grpc": "gRPC",
+        "jsonapi": "JSON:API"
+      }
+    }
   }
 }

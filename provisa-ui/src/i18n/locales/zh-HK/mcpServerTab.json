@@ -1,6 +1,6 @@
 {
   "mcpServerTab": {
-    "intro": "Model Context Protocol (MCP) 伺服器向外部 AI 代理提供受治理的目錄探索及 SQL 執行。每次呼叫均按呼叫者的角色治理 — 伺服器絕不會預設為管理員。",
+    "intro": "Model Context Protocol（MCP）伺服器向外部 AI 代理程式開放受治理的目錄探索和 SQL 執行。每次呼叫都受呼叫者的角色約束，伺服器絕不會預設使用 admin。",
     "loading": "正在載入…",
     "statusLabel": "狀態",
     "statusEnabled": "已啟用",
@@ -8,9 +8,11 @@
     "endpointLabel": "端點",
     "transportLabel": "傳輸方式",
     "stdioRoleLabel": "已繫結的 stdio 角色",
-    "stdioRoleNone": "尚未設定 — stdio 呼叫需要 <code>{{envVar}}</code>",
+    "stdioRoleNone": "未設定；stdio 呼叫需要 <code>{{envVar}}</code>",
+    "principalLabel": "本機主體",
+    "principalNone": "尚未設定 — 在 <code>{{envVar}}</code> 指定主體之前，本機呼叫會被拒絕",
     "maxRowsLabel": "列數上限 (run_sql)",
-    "enableHint": "MCP 伺服器須明確啟用。將 <code>{{enableEnvVar}}</code> 環境變數設為連接埠並重新啟動服務即可啟用。如使用本機 stdio 傳輸，亦須將 <code>{{roleEnvVar}}</code> 設為一個 provisa 角色。",
+    "enableHint": "MCP 伺服器須明確啟用。將 <code>{{enableEnvVar}}</code> 環境變數設為連接埠並重新啟動服務即可啟用。如使用本機 stdio 傳輸，亦須將 <code>{{roleEnvVar}}</code> 設為一個 provisa 角色，並將 <code>{{principalEnvVar}}</code> 設為這些呼叫所代表的主體（用戶 ID）。",
     "toolsHeading": "公開的工具",
     "colTool": "工具",
     "colDescription": "描述"

@@ -19,6 +19,7 @@ import pytest
 from provisa.core import secrets_runtime
 from provisa.core.request_context import session_vars_for
 from provisa.core.secrets import resolve_role_constant
+from tests.rules import rule_of
 
 
 class _Vault:
@@ -73,4 +74,4 @@ def test_a_meta_role_inlines_each_members_constant_resolved(monkeypatch, vault):
 
     assert _inlined(
         "tenant = current_setting('provisa.tenant')", {"tenant": "${secret:tenant}"}
-    ) == ("tenant = 'acme-7'")
+    ) == rule_of("tenant = 'acme-7'")

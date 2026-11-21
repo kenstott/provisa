@@ -55,7 +55,7 @@ class InstanceApiError(Exception):
 def _client(instance_url: str, username: str, password: str) -> httpx.Client:
     return httpx.Client(
         base_url=resolve_secrets(instance_url).rstrip("/"),
-        auth=(resolve_secrets(username), resolve_secrets(password)),
+        auth=(resolve_secrets(username), resolve_secrets(password, credential=True)),
         headers={"Accept": "application/json"},
         timeout=_TIMEOUT,
     )

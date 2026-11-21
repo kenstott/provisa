@@ -19,8 +19,22 @@ import duckdb
 import pytest
 import sqlglot
 
-from provisa.core.env_changes import overlay_sql
+from provisa.core.env_changes import overlay
 from provisa.pgwire.kept_mutations import _reads
+
+
+def overlay_sql(
+    base: str, log: str, key: list[str], columns: list[str], log_filter: str | None = None
+) -> str:
+    """The overlay (an AST) of ``base`` with the change log ``log``, as the text DuckDB runs."""
+    applied = overlay(
+        sqlglot.parse_one(base, read="postgres"),
+        (log,),
+        key,
+        columns,
+        None if log_filter is None else sqlglot.parse_one(log_filter, read="postgres"),
+    )
+    return applied.sql(dialect="postgres")
 
 
 def _log(con: duckdb.DuckDBPyConnection, versions: list[tuple]) -> None:

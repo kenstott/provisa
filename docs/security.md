@@ -108,15 +108,17 @@ The layers stack. A role with domain access, row filters and masked columns has 
 
 A role holds capabilities, and a capability opens a feature: querying, registering sources, editing the glossary, managing data quality checks. What the feature then reads or changes is limited by the role's grants. No capability reaches past them, and no role is a superuser. Bypassing relationship governance is a capability too, held by the standard Modeler role, and high-security mode ignores it.
 
-Provisa ships standard roles, from Viewer up to Org admin, and you build your own roles as children of them. [Access Model](access-model.md#capabilities) lists each standard role and what it adds.
+Provisa ships standard roles, from Viewer up to Org admin, and you build your own roles as children of them. Each standard role does one job. Developer authors the model and writes no data; Data writer writes data; Member admin manages members and their roles. [Access Model](access-model.md#capabilities) lists each standard role and what it adds.
+
+You may hold several roles, and by default you act with their union. What you may do in an environment comes only from the roles assigned to you there, so production is restricted by assigning narrower roles in it. [Environments](environments.md#authorization) shows how.
 
 ### Role Inheritance
 
-A role names its parents on the Security page under "Inherits from", and it may have several. It holds the union of its own capabilities and every ancestor's. Grants and residency are unions over the ancestors as well, so a column, metric, function or webhook granted to an ancestor is granted to the child.
+A role names its parents on the Security page under "Inherits from", and it may have several. It holds what it is given intersected with the union of what its parents hold, for capabilities, domains and regions alike, so a child can only narrow its parents. Saving a right no parent holds is refused by name. Grants are not narrowed: a column, metric, function or webhook granted to an ancestor is granted to the child.
 
-Domain reach does not pass down. Each role states its own reach, either ALL domains or a list, and its inherited capabilities apply within that reach. You can give a role reach only to domains you reach yourself.
+You can give a role reach only to domains you reach yourself.
 
-A role's own row rule for a table stands. When it has none, the rules of its ancestors for that table are combined with OR. A parent with no rule contributes nothing, so adding a parent never lifts a row rule. A role with no rule anywhere in its ancestry reads every row.
+Row rules narrow too. A role's rows are its own rule AND its parents' rules combined with OR. A parent with no rule stands for every row, so a role with no rule anywhere in its ancestry reads every row.
 
 Rate limits, row limits and session variables are properties. A role's own value is used; failing that, the first ancestor that sets one supplies it. The search is depth-first, in the order the parents are declared.
 
@@ -182,7 +184,7 @@ Rights and data follow only the roles the request acts as. Holding a role is not
 
 Named derived roles enter as qualifiers. A qualifier has no rights, domain access, masks or row filters of its own, so it is no member of the meta-role's rights. As a member with no masks it would unmask every column, and as one reading no table it would end every OR of row filters. It enters only the grants: a grant or mask entry naming `region__eu` reaches a request that names that qualifier alongside a granted role.
 
-An MCP agent never acts beyond the roles it was given. A remote agent names only roles its token's principal holds. A local stdio agent names only roles within the set pinned in `mcp.role` (`PROVISA_MCP_ROLE`), and acts as that set when it names none; any other role is refused by name.
+An MCP agent never acts beyond the roles it was given. A remote agent names only roles its token's principal holds. A local stdio agent names only roles within the set pinned in `mcp.role` (`PROVISA_MCP_ROLE`), and acts as that set when it names none; any other role is refused by name. A local agent acts for the principal named in `mcp.principal` (`PROVISA_MCP_PRINCIPAL`), the user id a sign-in token carries for that person, so that person's entitlements narrow the pinned role exactly as they narrow the same person's queries on any other client. A local MCP server whose configuration names no principal refuses every call, naming the setting; one that names a principal who is not in the org refuses every call too.
 
 An agent asks which role it acts as with the MCP tool `describe_role`. The answer is that role and what it is for (a meta-role with each of its members), and the roles the agent may switch to, each with its description. It never carries a row rule, mask, grant or condition. Provisa never tells an agent why a result was narrowed, and a result carries no "filtered" flag, because a role's data is its whole view, and a reason for what is missing would invite probing for it.
 
@@ -432,7 +434,7 @@ Rows are kept for good. Provisa has no retention setting and never purges the lo
 
 ## Redaction
 
-What Provisa records about its own work passes through one list of redaction rules before it is written anywhere. Text a rule matches is replaced with `[REDACTED:<rule>]`, naming the rule that matched.
+What Provisa records about its own work, and every error text it sends a client, passes through one list of redaction rules before it is written anywhere. In Provisa's logs, spans and audit trail, text a rule matches is replaced with `[REDACTED:<rule>]`, naming the rule that matched. A client receives the bare marker `[REDACTED]`. It names no rule and no variable, so you can't learn which secret a word you sent matches.
 
 The list has four parts:
 
@@ -443,6 +445,12 @@ The list has four parts:
 
 A rule is either a named regular expression or a named `${secret:NAME}` / `${env:NAME}` reference, which matches the value the reference resolves to. A reference that does not resolve is logged at `ERROR` by name and shown as unresolved; the other rules still apply. Values shorter than four characters are not matched.
 
+In a sandbox, and on a server of many organizations, your organization's rules cannot use `${env:NAME}`. Saving one is refused with `redaction.server_reference`. Use `${secret:NAME}` from your organization's vault instead. The deployment's own organization keeps `${env:NAME}`.
+
+Your organization's patterns are checked when you save them. Provisa refuses a pattern that uses a back reference, lookaround, an atomic group, a possessive repeat or a conditional (`redaction.pattern_unsupported`). It also refuses one that nests a repeat inside an unbounded repeat, or puts alternatives that can begin with the same character inside an unbounded repeat (`redaction.pattern_backtracks`). A pattern that compiles too large is refused with `redaction.pattern_too_large`. The deployment's rules keep the full regular-expression syntax.
+
+At run time, your patterns go through a matcher that never backtracks. Each search has a step limit that grows with the length of the text. Should a pattern exceed it, the whole text is withheld and replaced by that rule's marker. Provisa logs the rule by name at `ERROR`, once, and `GET /admin/redaction` lists it under `exceeded`. One organization's pattern therefore can't stall the writing of another organization's records.
+
 Provisa is not responsible for knowing every sensitive format. The built-ins cover common shapes; an organization adds patterns for its own formats, such as employee numbers, account identifiers or internal hostnames. Redaction is best effort: a value written in a shape no rule describes passes through.
 
 The rules are on the **Org Secrets** page, under **Redaction rules**. The page lists the built-ins, the deployment's rules (editable with `platform_settings`), the organization's rules, the automatic rule's secrets by name only, and any reference that does not resolve. The rules are loaded when the server starts and when an organization's runtime is built, and reloaded when the model or the settings change and when an organization secret is stored or removed.
@@ -452,9 +460,10 @@ The list applies at every exit Provisa writes:
 - every span, as one redacted copy handed to every exporter, and the recent-spans view;
 - every log record in Provisa's OpenTelemetry log pipeline, and every line a logging handler writes, standard output and container logs included;
 - the audit log's query text, before it is hashed and encrypted, so neither the text nor its hash discloses a matched value; and the administrative trail's detail;
-- the error messages a client receives over HTTP, pgwire, gRPC, Arrow Flight and MCP.
+- the error messages a client receives over HTTP, pgwire, gRPC, Arrow Flight, MCP and Bolt. An error inside a successful answer, such as a GraphQL `errors` list in a 200 response or a subscription's last frame, is redacted the same way as one in a 400 response;
+- the text Provisa sends a model, such as a prompt or an embedding input, which carries the bare marker.
 
-Telemetry and client errors are not tied to one organization when they are written, so they are redacted by every organization's rules together. Two errors are passed through unredacted: an HTTP error body larger than 1 MiB, and the error of an Arrow Flight stream that fails after it has started sending.
+Your organization's rules apply only to text your organization produced: its spans, log records, audit entries and administrative trail, and what its requests send to clients and models. Some records come from no organization, such as a line written at startup. Those get the built-in patterns, the deployment's rules and every secret value Provisa holds, so no secret is written out for lack of an organization. Two errors are passed through unredacted: an HTTP error body larger than 1 MiB, and the error of an Arrow Flight stream that fails after it has started sending.
 
 A federated source keeps its own logs, which Provisa does not write and cannot reach. Records a source makes of the statements Provisa sends it are that source's to protect.
 
@@ -556,7 +565,7 @@ A `—` in the table means the protocol has no username field to pair a password
 
 ### Personal access tokens
 
-A personal access token is a long-lived bearer secret you mint for a client that can't do an interactive login: a script, a BI tool, a driver. It carries its own org and role, and every surface checks it with the same validator, so no surface needs to know what one is.
+A personal access token is a long-lived bearer secret you mint for a client that can't do an interactive login: a script, a BI tool, a driver. It carries its own org and its scopes, the roles it may act as, and every surface checks it with the same validator, so no surface needs to know what one is. It acts only as a scope its owner still holds: with no role named it acts as the first of them, and naming any other role is refused like any role not held.
 
 On the wire it is `provisa_pat_` followed by 43 URL-safe base64 characters. The prefix is what sends a presented secret to the token store instead of the identity provider, and it makes a leaked token easy to find in logs and repositories.
 

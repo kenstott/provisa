@@ -126,6 +126,8 @@ services:
   trino:
     restart: unless-stopped
     image: trinodb/trino:481
+    # jvm.config's -Xmx (the jvm_heap_gb setting) stays below this limit: an 8G heap in a 7g
+    # container let the cgroup kill the coordinator mid-run.
     mem_limit: 7g
     ports:
       - "${PROVISA_STORE_BIND_IP:?the address the stores publish on: 127.0.0.1 alone, or the node private address its peers dial}:${TRINO_PORT:-8080}:8080"
@@ -187,6 +189,8 @@ services:
   trino-worker:
     restart: unless-stopped
     image: trinodb/trino:481
+    # The coordinator's limit: the worker mounts the same jvm.config.
+    mem_limit: 7g
     entrypoint: ["/etc/trino/worker/entrypoint.sh"]
     volumes:
       - ${PROVISA_TRINO_ETC_HOST:-./trino}/etc/worker/config.properties:/etc/trino/config.properties:ro

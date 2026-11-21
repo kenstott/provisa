@@ -44,6 +44,7 @@ from typing import TYPE_CHECKING, Any
 
 import httpx
 
+from provisa.core.http_failure import describe_http_failure
 from provisa.api.metadata_export.provider import (
     AssetError,
     AssetRefStub,
@@ -52,6 +53,7 @@ from provisa.api.metadata_export.provider import (
 )
 from provisa.api.metadata_export.model import junction_payload
 from provisa.api.metadata_export.registry import register_provider
+from provisa.security import sandbox_egress  # REQ-2006: held to public destinations
 
 if TYPE_CHECKING:
     from provisa.api.metadata_export.model import (
@@ -77,6 +79,13 @@ CLUSTER = "provisa"
 # JSON document. Purview's schema is Atlas's, so the same field carries them there.
 GOVERNANCE_ATTRIBUTE = "userDescription"
 
+# REQ-2261: the environment a table was published from and its stage, so a catalog can tell
+# production assets from others. They ride Atlas's ``customAttributes`` map (the entity's
+# user-defined properties), which needs no typedef: a provisa_* typedef that already exists is
+# never updated, so a typed attribute added later would be dropped by every existing Atlas.
+ENVIRONMENT_ATTRIBUTE = "provisaEnvironment"
+STAGE_ATTRIBUTE = "provisaStage"
+
 # The Entra scope Purview's data-plane accepts. Purview does not take a Graph token; this is
 # the resource id its Atlas endpoint authenticates against.
 PURVIEW_SCOPE = "https://purview.azure.net/.default"
@@ -101,6 +110,8 @@ class AtlasEntity:  # REQ-1069
     # (REQ-1389: Provisa's own term assignments beside a steward's).
     append_relationships: dict[str, Any] = field(default_factory=dict)
     remove_relationships: dict[str, Any] = field(default_factory=dict)
+    # Atlas's user-defined string properties on the entity (REQ-2261).
+    custom_attributes: dict[str, str] = field(default_factory=dict)
 
     def payload(self) -> dict[str, Any]:
         body: dict[str, Any] = {
@@ -110,6 +121,8 @@ class AtlasEntity:  # REQ-1069
         }
         if self.classifications:
             body["classifications"] = self.classifications
+        if self.custom_attributes:
+            body["customAttributes"] = self.custom_attributes
         if self.relationships:
             body["relationshipAttributes"] = self.relationships
         if self.append_relationships:
@@ -117,6 +130,16 @@ class AtlasEntity:  # REQ-1069
         if self.remove_relationships:
             body["removeRelationshipAttributes"] = self.remove_relationships
         return body
+
+
+def environment_attributes(snapshot: MetadataSnapshot) -> dict[str, str]:  # REQ-2261
+    """The environment and its stage as custom attributes; none without an environment."""
+    if snapshot.environment is None:
+        return {}
+    return {
+        ENVIRONMENT_ATTRIBUTE: snapshot.environment.name,
+        STAGE_ATTRIBUTE: snapshot.environment.stage,
+    }
 
 
 def _qualified(*parts: str) -> str:
@@ -593,6 +616,7 @@ def to_native_entities(snapshot: MetadataSnapshot) -> list[AtlasEntity]:  # REQ-
                 attributes=attributes,
                 classifications=_classifications(snapshot, table.ref.fqn()),
                 relationships={"source": {"guid": source_guids[table.ref.parts[0]]}},
+                custom_attributes=environment_attributes(snapshot),
             )
         )
         for column in table.columns:
@@ -750,6 +774,7 @@ def to_entities(snapshot: MetadataSnapshot) -> list[AtlasEntity]:
                 classifications=_classifications(snapshot, table.ref.fqn()),
                 # A view is Provisa's own, read from no source: it has no database container.
                 relationships={} if table.is_view else {"db": {"guid": db_guids[source_id]}},
+                custom_attributes=environment_attributes(snapshot),
             )
         )
         for column in table.columns:
@@ -1159,7 +1184,10 @@ class AtlasExport(MetadataExport):  # REQ-1069
                         resp.raise_for_status()
             except httpx.HTTPError as exc:
                 result.errors.append(
-                    AssetError(asset=entity.asset, message=f"classification merge: {exc}")
+                    AssetError(
+                        asset=entity.asset,
+                        message=f"classification merge: {describe_http_failure(exc)}",
+                    )
                 )
 
     async def publish(self, snapshot: MetadataSnapshot) -> PublishResult:
@@ -1167,7 +1195,10 @@ class AtlasExport(MetadataExport):  # REQ-1069
         if snapshot.glossary_terms or self._departed_terms(snapshot):
             # REQ-1387: the glossary publishes even when no entity does — an abstract term
             # is user vocabulary, not physical binding, and exists without a data product.
-            async with httpx.AsyncClient(timeout=self._config.timeout_seconds) as client:
+            async with httpx.AsyncClient(
+                timeout=self._config.timeout_seconds,
+                event_hooks=sandbox_egress.endpoint_event_hooks(),
+            ) as client:
                 headers = await self._headers(client)
                 await self._publish_glossary(client, headers, snapshot, result)
         return result
@@ -1359,7 +1390,10 @@ class AtlasExport(MetadataExport):  # REQ-1069
             glossary_guid = await self._ensure_glossary(client, headers, snapshot.org_id, result)
         except httpx.HTTPError as exc:
             result.errors.append(
-                AssetError(asset=AssetRefStub(GLOSSARY_NAME), message=f"glossary: {exc}")
+                AssetError(
+                    asset=AssetRefStub(GLOSSARY_NAME),
+                    message=f"glossary: {describe_http_failure(exc)}",
+                )
             )
             return
         result.published["glossary"] = 1
@@ -1377,7 +1411,7 @@ class AtlasExport(MetadataExport):  # REQ-1069
                 result.errors.append(
                     AssetError(
                         asset=AssetRefStub(term.semantic_uri),
-                        message=f"glossary term: {exc}",
+                        message=f"glossary term: {describe_http_failure(exc)}",
                     )
                 )
                 continue
@@ -1467,7 +1501,7 @@ class AtlasExport(MetadataExport):  # REQ-1069
             try:
                 await self._sync_assignments(client, headers, term_guid, entities, result)
             except httpx.HTTPError as exc:
-                message = str(exc)
+                message = describe_http_failure(exc)
                 if isinstance(exc, httpx.HTTPStatusError):
                     # Atlas's errorCode and message are in the body; the status line alone
                     # does not say which guid or check it refused.
@@ -1585,7 +1619,7 @@ class AtlasExport(MetadataExport):  # REQ-1069
                 result.errors.append(
                     AssetError(
                         asset=AssetRefStub(f"term:{from_id}"),
-                        message=f"term relations: {exc}",
+                        message=f"term relations: {describe_http_failure(exc)}",
                     )
                 )
 
@@ -1605,7 +1639,9 @@ class AtlasExport(MetadataExport):  # REQ-1069
             # for what is a model state.
             return result
         defs = classification_defs(snapshot)
-        async with httpx.AsyncClient(timeout=self._config.timeout_seconds) as client:
+        async with httpx.AsyncClient(
+            timeout=self._config.timeout_seconds, event_hooks=sandbox_egress.endpoint_event_hooks()
+        ) as client:
             headers = await self._headers(client)
             await self._ensure_type_system(client, headers)
             entities = await self._canonicalize_identity(client, headers, entities, result)
@@ -1624,7 +1660,7 @@ class AtlasExport(MetadataExport):  # REQ-1069
                         AssetError(
                             asset=AssetRefStub("classificationDefs"),
                             message=(
-                                f"classification typedefs: {exc}. Governance signals were not "
+                                f"classification typedefs: {describe_http_failure(exc)}. Governance signals were not "
                                 "published; every asset was."
                             ),
                         )
@@ -1778,8 +1814,14 @@ class AtlasExport(MetadataExport):  # REQ-1069
                 # It stands in the catalog: what the bulk still sends refers to it there.
                 refused[entity.guid] = guid
                 continue
-            live_attributes = fetch.json().get("entity", {}).get("attributes") or {}
+            live_entity = fetch.json().get("entity", {})
+            live_attributes = live_entity.get("attributes") or {}
             entity.attributes = {**live_attributes, **entity.attributes}
+            # REQ-2261: the update replaces the custom-attribute map too; a steward's keys stand.
+            entity.custom_attributes = {
+                **(live_entity.get("customAttributes") or {}),
+                **entity.custom_attributes,
+            }
             sent.append(entity)
         remap_references(sent, refused)
         return sent
@@ -1788,7 +1830,9 @@ class AtlasExport(MetadataExport):  # REQ-1069
         # A freshly-started Atlas can reset a connection moments after its own Docker
         # healthcheck passes (Tomcat still settling under QEMU emulation) — retry
         # transport-level failures a few times before treating the service as down.
-        async with httpx.AsyncClient(timeout=self._config.timeout_seconds) as client:
+        async with httpx.AsyncClient(
+            timeout=self._config.timeout_seconds, event_hooks=sandbox_egress.endpoint_event_hooks()
+        ) as client:
             headers = await self._headers(client)
             response = await self._get_with_retry(client, headers)
         response.raise_for_status()

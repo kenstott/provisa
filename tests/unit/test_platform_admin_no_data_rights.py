@@ -17,6 +17,8 @@ control-plane-only capability set schema.sql seeds.
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
 import yaml
 
@@ -70,6 +72,10 @@ class _RecordingConn:
 
     async def upsert(self, _table, values, **_kw):
         self.upserts.append(values)
+
+    async def execute_core(self, _statement):
+        # A role not yet stored: an upsert reads it first to keep narrowed defaults (REQ-2219).
+        return SimpleNamespace(fetchone=lambda: None)
 
 
 @pytest.mark.asyncio

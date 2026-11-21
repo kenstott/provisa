@@ -13,7 +13,7 @@
 // screenshot (2026-10-31), which the area-derived row width stacked one under another.
 
 import { describe, expect, it } from "vitest";
-import { packDomains } from "../components/erd/sections/erd-layout";
+import { packDomains } from "../components/provisa-graph/arrange";
 import type { CyInstance } from "../components/graph/cytoscape-types";
 
 type Box = { id: string; w: number; h: number };

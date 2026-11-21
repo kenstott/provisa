@@ -212,9 +212,10 @@ def test_a_numeric_is_listed_and_read_as_the_model_declares_it_on_every_surface(
         assert stated.schema.field("q").type == pa.decimal128(12, 6)
         assert stated.column("q").to_pylist() == [Decimal("4.166667"), Decimal("0.083333")]
 
-        # HTTP answers JSON, which has no decimal: the value, as a number.
+        # HTTP answers JSON, which has no decimal: a sized numeric is the string of its exact
+        # digits (REQ-1867, amended 2026-11-02).
         answered = _post(http_port, "/data/sql", {"sql": _QUERY, "role": "org_admin"})
-        assert [row["amount"] for row in answered["data"]["sql"]] == [12.5, 0.25]
+        assert [row["amount"] for row in answered["data"]["sql"]] == ["12.50", "0.25"]
 
         # The model's size for the column changes: the next read is typed by the new declaration.
         _declare_amount(http_port, "numeric(18,3)")

@@ -106,8 +106,9 @@ describe("a 3D network graph drawn flat for an SVG", () => {
     expect(scene.canVector).toBe(true);
     const flat = scene.vector();
     expect([flat.width, flat.height]).toEqual([800, 600]);
-    // Two terms, the KIND_OF edge's rod and its arrowhead (a term edge runs one way).
-    expect(flat.shapes).toHaveLength(4);
+    // Two terms, the KIND_OF edge's arrowhead (a term edge runs one way) and its rod drawn dashed
+    // (REQ-2174, amended 2026-11-07: a term link is dashed): three dashes over this one's run.
+    expect(flat.shapes).toHaveLength(6);
     for (const s of flat.shapes) {
       expect(s.points.length).toBeGreaterThanOrEqual(3);
       // On the stage; a shape reaching past its edge is clipped by the SVG's own box.

@@ -13,7 +13,7 @@
 The worker is started under ``sandbox-exec`` with a profile that denies everything, then allows:
 reading the directories named (the code, the runtime, the host program) and the system's own
 libraries; writing nothing but ``/dev/null``; running only its runtime; and connecting only to its
-worker socket and to the egress proxy on loopback. A host without ``sandbox-exec`` refuses the
+worker socket, to the egress proxy on loopback, and to the minted-token listener (REQ-2226). A host without ``sandbox-exec`` refuses the
 worker by name (:class:`SandboxUnavailable`)."""
 
 # Requirements: REQ-1984, REQ-1993
@@ -47,7 +47,12 @@ def _quote(text: str) -> str:
 
 
 def profile(
-    *, executable: Path, read: Sequence[Path], socket_path: Path | None, proxy_port: int
+    *,
+    executable: Path,
+    read: Sequence[Path],
+    socket_path: Path | None,
+    proxy_port: int,
+    connect_ports: Sequence[int] = (),
 ) -> str:
     """The sandbox profile for one worker (or, with no ``socket_path``, one run of a reader)."""
     readable = [os.path.realpath(p) for p in (*read, executable.parent)]
@@ -76,6 +81,7 @@ def profile(
             if socket_path is not None
             else []
         ),
+        *(f'  (remote ip "localhost:{port}")' for port in connect_ports),
         f'  (remote ip "localhost:{proxy_port}"))',
     ]
     return "\n".join(lines) + "\n"
@@ -88,9 +94,16 @@ def confined_argv(
     read: Sequence[Path],
     socket_path: Path | None,
     proxy_port: int,
+    connect_ports: Sequence[int] = (),
 ) -> list[str]:
     """``argv`` run under the sandbox."""
     if not SANDBOX_EXEC.is_file():
         raise SandboxUnavailable(f"{SANDBOX_EXEC} is not on this host")
-    text = profile(executable=executable, read=read, socket_path=socket_path, proxy_port=proxy_port)
+    text = profile(
+        executable=executable,
+        read=read,
+        socket_path=socket_path,
+        proxy_port=proxy_port,
+        connect_ports=connect_ports,
+    )
     return [str(SANDBOX_EXEC), "-p", text, *argv]

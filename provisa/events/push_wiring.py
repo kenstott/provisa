@@ -299,9 +299,9 @@ async def wire_push_listeners(*, state: Any, log: Any) -> list[LongLived]:
     starts listeners for tables that don't have one yet. Returns the tasks started THIS call
     (empty on a pure re-wire where every push table already has a listener).
 
-    REQ-1921: a listener whose table is no longer wired is stopped. That covers a table set
-    as draft (it leaves ``fetch_tables``), a deleted one, and a change stream whose signal no
-    longer opts in. Every schema rebuild re-runs this, so a table that goes draft stops landing
+    REQ-1921: a listener whose table is no longer wired is stopped. That covers a table
+    withdrawn (it leaves ``fetch_tables``), a deleted one, and a change stream whose signal no
+    longer opts in. Every schema rebuild re-runs this, so a table that is withdrawn stops landing
     there."""
     db = getattr(state, "model_db", None)
     engine = getattr(state, "federation_engine", None)
@@ -767,7 +767,7 @@ async def _wire_pipeline(
 
 async def _settle_pipelines(state: Any, engine: Any, wired: set[str], *, log: Any) -> None:
     """After a wiring pass on a SingleStore store: forget and drop the pipelines of tables no
-    longer wired (draft, deleted, retired), only in this org and region's replicas schema, and keep
+    longer wired (withdrawn, deleted, retired), only in this org and region's replicas schema, and keep
     the region's batch poll scheduled while any pipeline lands (REQ-990, REQ-1922)."""
     import asyncio
 
@@ -855,8 +855,8 @@ def _schedule_batch_poll(state: Any, store: Any, schema: str, delays: dict, *, o
 
 
 async def _stop_unwired(state: Any, wired: set[str], *, log: Any, timeout: float = 10.0) -> None:
-    """Stop every running listener whose node is not in ``wired`` (REQ-1921): its table went
-    draft, was deleted, or no longer opts into its change feed. The disconnect flag lets a
+    """Stop every running listener whose node is not in ``wired`` (REQ-1921): its table was
+    withdrawn, was deleted, or no longer opts into its change feed. The disconnect flag lets a
     listener between events flush its partial batch and exit; the cancel ends one blocked
     waiting for the next event. A later wire starts it again if its table comes back."""
     handles = state.push_listener_handles
@@ -879,7 +879,7 @@ async def _stop_unwired(state: Any, wired: set[str], *, log: Any, timeout: float
         if not await handle.wait(timeout):
             log.warning("push listener %s did not stop within %.0fs", node, timeout)
         log.info(
-            "push listener stopped for %s: its table is no longer wired (draft, deleted, or "
+            "push listener stopped for %s: its table is no longer wired (withdrawn, deleted, or "
             "its change feed is off)",
             node,
         )

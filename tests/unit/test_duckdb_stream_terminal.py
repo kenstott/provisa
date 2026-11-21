@@ -237,31 +237,16 @@ async def test_run_builds_its_rows_off_the_event_loop(runtime, monkeypatch):
     assert loop_thread not in built_on
 
 
-@pytest.fixture
-def single_threaded_runtime(runtime):
-    """The runtime with its engine on one thread, for the tests of an error met mid-stream.
-
-    DuckDB 1.5.5/1.5.6 race when the error is met while a streamed batch is fetched with more than
-    one engine thread: the task that hits the error interrupts its sibling pipelines, and about
-    1.6% of the time under load the fetch reports that internal ``INTERRUPT Error: Interrupted!``
-    instead of the error itself (no ``interrupt()`` call involved; 0/1200 with ``threads = 1``).
-    These tests check how Provisa answers the error DuckDB reports, so they read on one thread
-    until DuckDB fixes the race. The client-facing mis-answer is tracked in
-    https://github.com/kenstott/provisa/issues/324 (upstream DuckDB issue: see there)."""
-    runtime._con.execute("SET threads = 1")
-    return runtime
-
-
-#: The row the engine raises PostgreSQL's own error on (pg_error.raising): past what DuckDB
-#: computes when the statement is run (about 128K rows), so it is met only as a batch is read.
-_LATE = 400_000
+#: The row the engine raises PostgreSQL's own error on (pg_error.raising): far enough that the
+#: first batches are read before it. DuckDB's threads run ahead of the reader, so at 400,000 rows
+#: about one read in thirteen under load met the error before its first batch.
+_LATE = 2_000_000
 _LATE_ERROR = (
     f"select case when x = {_LATE} then error('postgresql-error 22012: division by zero') "
     f"else x end as v from range({_LATE + 1}) t(x)"
 )
 
 
-@pytest.mark.usefixtures("single_threaded_runtime")
 @pytest.mark.parametrize("face", ["rows", "arrow_batches"])
 def test_run_sync_raises_postgresqls_error_met_in_a_later_batch(runtime, face):
     """DuckDB's reader meets the engine's error only as it produces the batch that holds it, as
@@ -280,7 +265,6 @@ def test_run_sync_raises_postgresqls_error_met_in_a_later_batch(runtime, face):
     assert runtime.run_sync("select 42 as y").rows == [(42,)]
 
 
-@pytest.mark.usefixtures("single_threaded_runtime")
 def test_run_sync_raises_any_other_engine_error_as_duckdb_raises_it(runtime):
     """As the exception DuckDB raises for the same error met as the statement is run, so its
     SQLSTATE is known (pgwire.server._sqlstate_of)."""
@@ -289,3 +273,14 @@ def test_run_sync_raises_any_other_engine_error_as_duckdb_raises_it(runtime):
     assert next(read)
     with pytest.raises(duckdb.InvalidInputException, match="Invalid Input Error: no$"):
         list(read)
+
+
+def test_run_arrow_stream_reads_its_batches_lazily(runtime):
+    """REQ-986: the Arrow transport's stream is pulled batch by batch, so opening it computes no
+    more than DuckDB runs to start the statement: an engine error in a later batch is met only as
+    that batch is read, after the first full batch has been handed over."""
+    schema, batches = runtime.run_arrow_stream(_LATE_ERROR)
+    assert schema.names == ["v"]
+    assert next(batches).num_rows == _ARROW_STREAM_BATCH_ROWS
+    with pytest.raises(OSError, match="postgresql-error 22012: division by zero"):
+        list(batches)

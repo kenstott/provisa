@@ -39,14 +39,23 @@ LIST_SETTINGS = frozenset({ACTING_ROLES_VAR})
 _SETTING_NAME = re.compile(r"^provisa\.([A-Za-z0-9_]+)$")
 
 
-def setting_name(node: exp.Expression) -> str | None:
+def setting_name(node: exp.Expr) -> str | None:  # pyright: ignore[reportPrivateImportUsage]
     """The variable ``current_setting('provisa.<name>')`` reads, or None for any other term. A
-    cast the column's type put round the term (REQ-1686) is seen through."""
+    cast the column's type put round the term (REQ-1686) is seen through. The two-argument form
+    ``current_setting('provisa.<name>', true)`` (missing_ok) is treated the same as the one-argument
+    form: both resolve to the value or NULL."""
     term = node.this if isinstance(node, exp.Cast) else node
     if not isinstance(term, exp.Anonymous) or term.name.lower() != "current_setting":
         return None
     arguments = term.expressions
     if not arguments or not isinstance(arguments[0], exp.Literal):
+        return None
+    # Accept the missing_ok two-argument form: current_setting('provisa.x', true).
+    if len(arguments) == 2:
+        second = arguments[1]
+        if not (isinstance(second, exp.Boolean) and second.this is True):
+            return None
+    elif len(arguments) != 1:
         return None
     match = _SETTING_NAME.match(arguments[0].name)
     return None if match is None else match.group(1)
@@ -59,7 +68,7 @@ def _value(term: exp.Expression, text: str) -> exp.Expression:
     )
 
 
-def expand_list_settings(tree: exp.Expression, session_vars: dict[str, str]) -> None:
+def expand_list_settings(tree: exp.Expr, session_vars: dict[str, str]) -> None:  # pyright: ignore[reportPrivateImportUsage]
     """Replace, in place, each list variable a bound IN list reads with one literal per value."""
     for node in list(tree.find_all(exp.In)):
         expanded: list[exp.Expression] = []
@@ -76,7 +85,7 @@ def expand_list_settings(tree: exp.Expression, session_vars: dict[str, str]) -> 
             node.set("expressions", expanded)
 
 
-def resolve_session_terms(tree: exp.Expression, session_vars: dict[str, str]) -> exp.Expression:
+def resolve_session_terms(tree: exp.Expr, session_vars: dict[str, str]) -> exp.Expr:  # pyright: ignore[reportPrivateImportUsage]
     """``tree`` with every ``current_setting`` term a literal, NULL when unbound: for a predicate
     run where the function does not exist (the model store, on any backend)."""
     expand_list_settings(tree, session_vars)

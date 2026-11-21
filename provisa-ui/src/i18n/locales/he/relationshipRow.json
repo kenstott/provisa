@@ -1,7 +1,7 @@
 {
   "relationshipRow": {
-    "autoTrackedTitle": "נעקב אוטומטית מאילוץ FK",
-    "fkBadge": "FK",
+    "fkBadge": "מ-FK",
+    "fkBadgeTitle": "נוצר ממפתח זר במקור",
     "yes": "כן",
     "no": "לא",
     "none": "—",
@@ -32,7 +32,6 @@
     "materializeCheckbox": "מטריאליזציה",
     "excludeFromCypher": "החרגה מ-Cypher",
     "sqlName": "שם SQL",
-    "autoTracked": "מעקב אוטומטי",
     "cardinalityWarning": "אזהרה: אם ה-JOIN הזה מחזיר יותר משורה אחת לכל הורה, רק הערך הראשון ישמש.",
     "toggleDetails": "הצגה/הסתרה של פרטי הקשר",
     "junctionBadge": "מאפ'",
@@ -44,6 +43,30 @@
     "parameterNotFed": "לא מוזן",
     "sameEntity": "אותה ישות",
     "sameEntityHint": "השורות שהוא מחבר הן אותו דבר: מונח אחד מעגן את שתי הטבלאות, 1:1 לפי מפתחות",
-    "cardinalityOneToOne": "אחד-לאחד"
+    "cardinalityOneToOne": "אחד-לאחד",
+    "resolverNote": "חלק ממפענח הקוד {{resolver}}. תצוגת ההתאמות שלו ושלושת הקשרים שלו משתנים ומוצאים משימוש יחד.",
+    "changeResolver": "שינוי מפענח קוד",
+    "retireResolver": "הוצאת מפענח קוד משימוש",
+    "retireResolverTitle": "להוציא משימוש את מפענח הקוד {{resolver}}?",
+    "retireResolverConsequence": "תצוגת ההתאמות שלו ושלושת הקשרים שלו מוצאים משימוש יחד. השמות שלהם נשארים תפוסים.",
+    "queryLinks": {
+      "heading": "שאילתה",
+      "cypher": "קריאת {{name}} ב-Cypher",
+      "sql": "קריאת {{name}} ב-SQL",
+      "sparql": "קריאת {{name}} ב-SPARQL",
+      "graphql": "קריאת {{name}} ב-GraphQL",
+      "rest": "קריאת {{name}} ב-REST",
+      "grpc": "קריאת {{name}} ב-gRPC",
+      "jsonapi": "קריאת {{name}} ב-JSON:API",
+      "surfaces": {
+        "cypher": "Cypher",
+        "sql": "SQL",
+        "sparql": "SPARQL",
+        "graphql": "GraphQL",
+        "rest": "REST",
+        "grpc": "gRPC",
+        "jsonapi": "JSON:API"
+      }
+    }
   }
 }

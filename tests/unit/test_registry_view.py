@@ -82,7 +82,7 @@ async def test_every_source_is_its_row_and_builtins_stay_out(monkeypatch):
     async def _list_all(conn):
         return rows
 
-    monkeypatch.setattr("provisa.core.repositories.source.list_all", _list_all)
+    monkeypatch.setattr("provisa.core.repositories.source.list_in_production", _list_all)
     out = {s.id: s for s in await registry_view.registered_sources(state)}
     assert set(out) == {"cfg_pg", "ui_mongo"}  # the file-only source does not exist
     # The row wins over the file's declaration of the same id: an admin's edit governs.
@@ -115,6 +115,7 @@ async def test_registered_tables_carry_the_settings_their_rows_hold(monkeypatch)
             "dq_contract": None,
             "query_template": None,
             "landing_filter": None,
+            "read_wait": None,
             "role_ttl": {},  # REQ-1907
             "pagination": None,  # REQ-318: the table sets no paging
             "replicate": None,
@@ -151,6 +152,7 @@ async def test_registered_tables_carry_the_settings_their_rows_hold(monkeypatch)
             "dq_contract": None,
             "query_template": None,
             "landing_filter": None,
+            "read_wait": None,
             "role_ttl": {},  # REQ-1907
             "pagination": None,  # REQ-318: the table sets no paging
             "replicate": None,

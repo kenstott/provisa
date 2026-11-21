@@ -271,3 +271,6 @@ def test_a_restart_setting_is_pending_on_every_worker_and_in_force_after_the_res
         assert errors == []
     finally:
         relaunched.stop()
+        # Restore the module-scoped launch so later tests in this module can still reach it.
+        launch.start()
+        launch.wait_all_ready(timeout=300)

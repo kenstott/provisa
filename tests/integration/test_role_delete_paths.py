@@ -145,7 +145,9 @@ def test_a_parent_is_refused_on_both_entry_points_then_goes_after_its_heir(serve
         # those it may not.
         assert refusal["params"] == {
             "role": parent,
-            "dependents": [{"kind": "role", "id": heir, "name": heir, "via": ["roles.parents"]}],
+            "dependents": [
+                {"kind": "role", "id": heir, "name": heir, "label": heir, "via": ["roles.parents"]}
+            ],
         }, refusal
         assert {parent, heir} <= _role_ids(c)
 

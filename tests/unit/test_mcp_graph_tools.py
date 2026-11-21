@@ -21,6 +21,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from provisa.api.mcp import tools
+from tests.unit.mcp_local_principal import act_for
 from tests.unit.test_mcp_server import _FakeJobStore, _make_state
 
 
@@ -100,6 +101,17 @@ def test_a_junction_backed_edge_keeps_its_junction_and_scalars_add_nothing():
 
 #: The caller a tool call is made for: its graph session is the one it runs in (REQ-2176).
 _PRINCIPAL = ("ada", ["analyst"])
+
+
+@pytest.fixture(autouse=True)
+def _no_stored_ai_keys(monkeypatch):
+    """Listing the tools asks whether the organization has a Jev key (REQ-1395); the states
+    here hold no model store to ask, so the organization is said to have stored none."""
+
+    async def stored(_db):
+        return {}
+
+    monkeypatch.setattr("provisa.core.org_secrets.read_org_api_keys", stored)
 
 
 @pytest.fixture(autouse=True)
@@ -261,10 +273,12 @@ def test_the_render_timeout_is_an_operator_setting_with_a_floor():
     )
 
 
-async def test_the_server_s_render_graph_answers_an_mcp_png_image(renderer):
+async def test_the_server_s_render_graph_answers_an_mcp_png_image(renderer, monkeypatch):
     from provisa.api.mcp.server import build_mcp_server
 
-    mcp = build_mcp_server(_make_state())
+    state = _make_state()
+    act_for(monkeypatch, state)  # REQ-1105: a local call acts for the principal named
+    mcp = build_mcp_server(state)
     elements = tools.cytoscape_elements([{"r": PLACED}])
     with patch("subprocess.run", MagicMock(return_value=_Done())):
         content = await mcp.call_tool("render_graph", {"elements": elements, "theme": "dark"})
@@ -300,7 +314,7 @@ async def test_generate_explore_queries_answers_all_nine_surfaces_under_the_call
     seen: dict = {}
 
     async def fake_run_nl_job(
-        job_id, question, role, app_state, job_store, llm, strict=False, *, deliver
+        job_id, question, role, app_state, job_store, llm, strict=False, *, deliver, scope
     ):
         seen["role"] = role
         job = await job_store.get(job_id)

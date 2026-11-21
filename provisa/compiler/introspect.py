@@ -91,7 +91,6 @@ def introspect_tables(  # REQ-008, REQ-393, REQ-421
     conn: TrinoConnection | None,
     registered_tables: list[dict],
     sources: dict[str, dict],
-    physical_table_map: dict[str, str] | None = None,
 ) -> dict[int, list[ColumnMetadata]]:
     """Bulk-build column metadata for all registered tables.
 
@@ -103,8 +102,6 @@ def introspect_tables(  # REQ-008, REQ-393, REQ-421
         conn: Trino connection, or None (unused — types come from the store).
         registered_tables: list of dicts from table_repo.list_all().
         sources: {source_id: source_dict} for catalog name lookup.
-        physical_table_map: {virtual_table_name: physical_table_name} for
-            Kafka topics where multiple virtual tables map to one physical table.
 
     Returns:
         {table_id: [ColumnMetadata]}.

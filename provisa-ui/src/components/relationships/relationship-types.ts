@@ -27,6 +27,18 @@ export interface Candidate {
   confidence: number;
   reasoning: string;
   suggested_name?: string;
+  /** Where it came from: a run's suggestions are `run:<id>`. */
+  scope?: string | null;
+  /** One of its tables requires a parameter, so it is never read: no values were compared. */
+  reduced_information?: boolean;
+}
+
+/** The name a suggestion's relationship takes when accepted: the one suggested, else one made from
+ *  the columns it joins: what a decision table's Apply sends with an accepted proposal. */
+export function candidateName(c: Candidate, tableNameById: Record<string, string>): string {
+  const srcTable = tableNameById[c.source_table_id] ?? String(c.source_table_id);
+  const tgtTable = tableNameById[c.target_table_id] ?? String(c.target_table_id);
+  return c.suggested_name || `${srcTable}-${c.source_column}-to-${tgtTable}`;
 }
 
 export const EMPTY_FORM = {
@@ -35,7 +47,7 @@ export const EMPTY_FORM = {
   sourceDomain: "",
   sourceTableId: "",
   sourceColumn: "",
-  targetType: "table" as "table" | "function",
+  targetType: "table" as "table" | "function" | "resolver",
   targetDomain: "",
   targetTableId: "",
   targetColumn: "",
@@ -60,6 +72,14 @@ export const EMPTY_FORM = {
   viaLabelSource: "",
   // REQ-2099: the target's parameters this edge feeds, each from a source column.
   parameters: [] as RelationshipParameter[],
+  // REQ-2249: a code resolver relating the two tables, and its columns carrying each one's key.
+  resolver: "",
+  sourceMatch: "",
+  targetMatch: "",
+  // REQ-2249: its landed matches kept by the resolver's @change function, rebuilt whole every
+  // rebuildEvery seconds ("" = not given).
+  incremental: false,
+  rebuildEvery: "",
 };
 
 export type RelForm = typeof EMPTY_FORM;
@@ -76,4 +96,21 @@ export function relationshipTargetLabel(
   return tDomain && tDomain !== sDomain
     ? `${tDomain}.${r.targetTableName}.${r.targetColumn}`
     : `${r.targetTableName}.${r.targetColumn}`;
+}
+
+/** REQ-2249: whether a command has a code resolver's shape: a code @query taking exactly two
+ * tables and returning columns. The server checks it again, with the keys, on save. */
+export function isCodeResolver(f: {
+  implKind?: string;
+  kind: string;
+  arguments: { argKind?: string }[];
+  outputColumns?: unknown[] | null;
+}): boolean {
+  return (
+    f.implKind === "code_command" &&
+    f.kind === "query" &&
+    f.arguments.length === 2 &&
+    f.arguments.every((a) => a.argKind === "table_ref") &&
+    (f.outputColumns?.length ?? 0) > 0
+  );
 }

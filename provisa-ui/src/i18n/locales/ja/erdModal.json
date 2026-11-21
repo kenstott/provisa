@@ -34,6 +34,7 @@
     "focusDomains": "ドメイン: {{names}}",
     "focusTables": "テーブル: {{names}}",
     "focusMissing": "見つかりません: {{names}}",
-    "showAll": "すべて表示"
+    "showAll": "すべて表示",
+    "showWithdrawn": "取り下げ中を表示"
   }
 }

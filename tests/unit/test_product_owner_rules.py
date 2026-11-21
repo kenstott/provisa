@@ -55,6 +55,7 @@ from provisa.security.row_filters import (
     with_owner_grant,
 )
 from tests.unit.gate_identity import serve_every_column
+from tests.rules import holds
 
 _META_TABLE_ID = 9001
 _TERMS_TABLE_ID = 9002
@@ -102,7 +103,7 @@ class _Runtime:
             "model_write_rules": model_write_rules(
                 resolved, tables, [r["id"] for r in folded if r.get("owner_held")]
             ),
-            "physical_table_map": {"data_products": "data_products_meta"},
+            "physical_table_map": {("provisa-admin", "data_products"): "data_products_meta"},
         }
 
 
@@ -557,7 +558,7 @@ def test_a_terms_rule_is_read_through_its_definition_view():
     state = types.SimpleNamespace(
         role_build_inputs={
             "model_write_rules": {("a", "glossary_terms", "U"): "status = 'draft'"},
-            "physical_table_map": {"_terms": "_terms_ontology"},
+            "physical_table_map": {("provisa-admin", "_terms"): "_terms_ontology"},
         },
         meta_roles={},
         roles={"a": {"id": "a", "capabilities": ["glossary_rw"], "session_vars": {}}},
@@ -594,7 +595,7 @@ async def test_a_set_of_two_owners_edits_what_either_owns(plane):
         "acting_chain": ["pets_team", "sales_team"],
     }
     rule = acting_model_rule(plane, "meta:pets_team+sales_team", "data_products", "U")
-    assert rule is not None and "current_setting('provisa.acting_roles')" in rule.predicate
+    assert rule is not None and holds(rule.predicate, "current_setting('provisa.acting_roles')")
     assert rule.session_vars["acting_roles"] == "pets_team,sales_team"
 
 

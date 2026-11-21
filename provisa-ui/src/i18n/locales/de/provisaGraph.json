@@ -1,0 +1,27 @@
+{
+  "provisaGraph": {
+    "legend": "Legende",
+    "hint": "Ziehen zum Verschieben · Scrollen zum Bewegen · Strg/⌘ + Scrollen zum Zoomen",
+    "layingOut": "Wird angeordnet…",
+    "type": {
+      "product": "Datenprodukt",
+      "source": "Quelle",
+      "domain": "Domäne",
+      "group": "Gruppe",
+      "table": "Tabelle",
+      "view": "Sicht",
+      "relation": "Externe Tabelle",
+      "junction": "Verbindungstabelle",
+      "column": "Spalte",
+      "term": "Begriff",
+      "concept": "Konzept",
+      "class": "Klasse",
+      "property": "Eigenschaft",
+      "command": "Befehl",
+      "checker": "Qualitätsprüfung",
+      "profile": "Profil",
+      "tag": "Tag",
+      "more": "Mehr"
+    }
+  }
+}

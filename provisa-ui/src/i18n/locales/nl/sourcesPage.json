@@ -2,13 +2,13 @@
   "sourcesPage": {
     "detailPanel": "Brondetails",
     "resizeDetail": "Formaat van het detailpaneel wijzigen",
-    "expandDetail": "Paneel uitvouwen",
+    "expandDetail": "Paneel vergroten",
     "restoreDetail": "Paneel herstellen",
     "closeDetail": "Detailpaneel sluiten",
     "backToList": "Terug naar de lijst",
     "backToSource": "Terug naar de bron",
     "panelNewSource": "Nieuwe bron",
-    "title": "Databronnen",
+    "title": "Bronnen",
     "loading": "Bronnen laden...",
     "filterPlaceholder": "Filteren op bron-ID of type…",
     "addSource": "+ Bron",
@@ -41,9 +41,12 @@
     "nextPage": "Volgende pagina",
     "lastPage": "Laatste pagina",
     "purposeTitle": "Waar databronnen voor zijn",
-    "purposeBody": "Een bron is één geregistreerde verbinding met een systeem dat gegevens bevat — een database, een warehouse, een bestandsopslag, een API. Registreren stelt Provisa in staat de schema's ervan te lezen en het te bevragen in dezelfde taal als elke andere bron, zonder de gegevens ergens naartoe te kopiëren.",
+    "purposeBody": "Een bron is één geregistreerde verbinding met een systeem dat data bevat, zoals een database, een datawarehouse, een bestandsopslag of een API. Provisa kan dan de schema's van dat systeem lezen en het in dezelfde taal bevragen als elke andere bron, zonder kopie van de data.",
     "purposeAdd": "Een bron toevoegen registreert op zichzelf geen tabellen. Gebruik Discover op de rij om de schema's te doorzoeken en de tabellen te registreren die u onder governance wilt brengen.",
     "purposeAria": "Over databronnen",
-    "registrationMissing": "{{list}} bevat geen registratie voor bron {{source}}."
+    "registrationMissing": "{{list}} bevat geen registratie voor bron {{source}}.",
+    "duplicateCredentialsNote": "De inloggegevens van {{source}} worden niet gekopieerd: voer ze hier in, of een verwijzing naar een secret.",
+    "withdrawn": "Teruggetrokken",
+    "withdrawnTitle": "Buiten productie: geen van haar tabellen bedient een rol totdat ze wordt teruggezet"
   }
 }

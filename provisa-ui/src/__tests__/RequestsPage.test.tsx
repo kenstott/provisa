@@ -153,12 +153,12 @@ describe("RequestsPage — a request is decided by the domains it touches", () =
     await i18n.changeLanguage("en");
   });
 
-  it("finds the requests matching any word of the search", async () => {
+  it("finds the requests matching every word of the search, or either side of or", async () => {
     serve(() => json({}));
     page();
     await row(1);
     // "3" is request 3's id, "me" the requester of 2 (and 6): request 1 and 4 match neither.
-    fireEvent.change(screen.getByTestId("filter-input"), { target: { value: "3 me" } });
+    fireEvent.change(screen.getByTestId("filter-input"), { target: { value: "3 or me" } });
     expect(screen.getByTestId("requests-waiting-2")).toBeInTheDocument();
     expect(screen.getByTestId("requests-waiting-3")).toBeInTheDocument();
     expect(screen.queryByTestId("requests-waiting-1")).toBeNull();

@@ -817,7 +817,7 @@ export REQUESTS_CA_BUNDLE=/path/to/your/proxy-ca.pem
 | `PG_PASSWORD` | | סיסמת PostgreSQL |
 | `PROVISA_CONFIG` | `config/provisa.yaml` | נתיב לקובץ תצורה |
 | `PROVISA_REDIRECT_ENABLED` | `false` | הפעל הפניית תוצאות גדולות ל-S3 |
-| `PROVISA_REDIRECT_THRESHOLD` | `1000` | סף ספירת שורות עבור הפניה |
+| `PROVISA_REDIRECT_THRESHOLD` | `100000` | סף ספירת שורות עבור הפניה |
 | `PROVISA_REDIRECT_BUCKET` | `provisa-results` | bucket‏ S3 |
 | `PROVISA_REDIRECT_ENDPOINT` | | URL נקודת קצה תואם-S3 |
 | `PROVISA_REDIRECT_TTL` | `3600` | TTL‏ URL חתום מראש (שניות) |

@@ -85,4 +85,4 @@ class TestChatVendorHonorsOrgOverride:  # REQ-1349, REQ-1797
         )
         ok, reason = await chat_mod._llm_configured(_state(tenant_db))
         assert ok is False
-        assert "OPENAI_API_KEY" in reason
+        assert reason == "openai has no API key. Add one under Admin, AI Models."

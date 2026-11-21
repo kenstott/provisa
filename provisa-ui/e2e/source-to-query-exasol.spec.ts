@@ -28,11 +28,11 @@ import {
   openSourcesForm,
   pickSchemaAndTable,
   runSqlOnPage,
-  releaseDraftTables,
+  expectRegisteredLive,
   submitRegister,
   submitSourceAndExpectListed,
   FORM_FIELD,
-  removeTestSources,
+  retireTestSourcesTables,
 } from "./source-to-query-helpers";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
@@ -93,9 +93,12 @@ test.describe("source to query through the UI: exasol (REQ-1731, REQ-1763)", () 
   });
 
   test.afterAll(async () => {
-    await removeTestSources();
-    provision("down", ["exasol"]);
-    if (fs.existsSync(E2E_EXASOL_FINGERPRINT_FILE)) fs.rmSync(E2E_EXASOL_FINGERPRINT_FILE);
+    try {
+      await retireTestSourcesTables();
+    } finally {
+      provision("down", ["exasol"]);
+      if (fs.existsSync(E2E_EXASOL_FINGERPRINT_FILE)) fs.rmSync(E2E_EXASOL_FINGERPRINT_FILE);
+    }
   });
 
   test("exasol: add the source, register a table, query it on the SQL page", async ({ page }) => {
@@ -133,7 +136,7 @@ test.describe("source to query through the UI: exasol (REQ-1731, REQ-1763)", () 
     const row = page.locator(".data-table tbody tr").filter({ hasText: sourceId }).first();
     await expect(row).toBeVisible({ timeout: 120000 });
     // REQ-1921: registered through the admin, it starts as draft; released, it is read.
-    await releaseDraftTables(page, { sourceId });
+    await expectRegisteredLive(page, { sourceId });
 
     const res = await page.request.post("/admin/graphql", {
       data: { query: "{ tables { sourceId dqDataset } }" },

@@ -73,14 +73,8 @@ def _boot() -> WorkerBoot:
                 # pgwire signs a password session in as this role (its client names no role).
                 "default_role": _ROLE,
             },
-            "roles": [
-                {
-                    "id": tenancy.MEMBER_ROLE,
-                    "description": "Test role.",
-                    "capabilities": ["query_development"],
-                    "domain_access": ["*"],
-                }
-            ],
+            # tenancy.MEMBER_ROLE (analyst) is a standard role (REQ-2155): Provisa defines it, and a
+            # config that declares it is refused at load (ReservedRoleRedefined).
             "tables": [
                 {
                     "source_id": "sales-pg",

@@ -16,9 +16,16 @@ $RepoRoot  = Split-Path -Parent (Split-Path -Parent $ScriptDir)
 # Pins (overridable). nerdctl-full is the containerd/nerdctl bundle installed into
 # the Provisa WSL2 distro.
 $NerdctlVersion = if ($env:NERDCTL_VERSION) { $env:NERDCTL_VERSION } else { '2.2.2' }
-$RootfsUrl = if ($env:ROOTFS_URL) { $env:ROOTFS_URL } else {
-  'https://cloud-images.ubuntu.com/wsl/jammy/current/ubuntu-jammy-wsl-amd64-ubuntu22.04lts.rootfs.tar.gz'
+# The WSL base rootfs is pinned (dated URL + sha256) in rootfs.pin; release-windows.yml
+# caches the file on the same pin. The checksum is verified on every use.
+$RootfsPin = @{}
+foreach ($line in Get-Content (Join-Path $ScriptDir 'rootfs.pin')) {
+  if ($line -match '^\s*(url|sha256)\s*=\s*(\S+)\s*$') { $RootfsPin[$Matches[1]] = $Matches[2] }
 }
+if (-not $RootfsPin['url'] -or -not $RootfsPin['sha256']) { throw 'rootfs.pin must define url and sha256' }
+$RootfsUrl    = $RootfsPin['url']
+$RootfsSha256 = $RootfsPin['sha256']
+$RootfsCache  = Join-Path $ScriptDir 'rootfs-cache'
 
 Write-Host '[build-container] Preparing build directory...' -ForegroundColor Cyan
 $BuildDir = Join-Path $ScriptDir 'build-container'
@@ -85,8 +92,19 @@ Write-Host "[build-container] Downloading $NerdctlArchive..." -ForegroundColor C
 Invoke-WebRequest -Uri $NerdctlUrl -OutFile (Join-Path $BuildDir $NerdctlArchive) -UseBasicParsing
 
 # -- WSL base rootfs -----------------------------------------------------------
-Write-Host '[build-container] Downloading WSL base rootfs...' -ForegroundColor Cyan
-Invoke-WebRequest -Uri $RootfsUrl -OutFile (Join-Path $BuildDir 'rootfs.tar.gz') -UseBasicParsing
+$RootfsCached = Join-Path $RootfsCache (Split-Path -Leaf $RootfsUrl)
+if (Test-Path $RootfsCached) {
+  Write-Host "[build-container] Using cached WSL base rootfs $RootfsCached" -ForegroundColor Cyan
+} else {
+  Write-Host "[build-container] Downloading WSL base rootfs $RootfsUrl..." -ForegroundColor Cyan
+  New-Item -ItemType Directory -Path $RootfsCache -Force | Out-Null
+  Invoke-WebRequest -Uri $RootfsUrl -OutFile $RootfsCached -UseBasicParsing
+}
+$ActualSha256 = (Get-FileHash -Algorithm SHA256 -Path $RootfsCached).Hash.ToLowerInvariant()
+if ($ActualSha256 -ne $RootfsSha256.ToLowerInvariant()) {
+  throw "sha256 mismatch for $RootfsCached`: expected $RootfsSha256, got $ActualSha256"
+}
+Copy-Item $RootfsCached (Join-Path $BuildDir 'rootfs.tar.gz')
 
 # -- Inno Setup ----------------------------------------------------------------
 Write-Host '[build-container] Installing Inno Setup...' -ForegroundColor Cyan

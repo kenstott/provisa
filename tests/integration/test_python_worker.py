@@ -183,8 +183,11 @@ def test_dependencies_are_installed_from_the_lockfile_and_imported_in_the_sandbo
         )
         archive.writestr(
             "rates/rates.py",
+            "from typing import TypedDict\n\n"
             "import six\n\n"
-            "def versions() -> list[dict]:\n"
+            "class Version(TypedDict):\n"
+            "    six: str\n\n"
+            "def versions() -> list[Version]:\n"
             '    """@table"""\n'
             '    return [{"six": six.__version__}]\n',
         )

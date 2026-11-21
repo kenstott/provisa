@@ -9,7 +9,7 @@
 // permission from the copyright holder.
 
 import { test, expect, type Page } from "./coverage";
-import type { Request } from "@playwright/test";
+import type { Request, Response } from "@playwright/test";
 import { addLateralEdge } from "./ontology-lateral-edge";
 
 /**
@@ -41,10 +41,43 @@ async function nextRead(page: Page, match: (query: string) => boolean, act: () =
 /** The view's read: the Ontology operation, not the OntologyCount read it makes first. */
 const ontologyRead = (q: string) => /^query Ontology[\s({]/.test(q);
 
+/** A hop of a search's neighbourhood, read after its root by the ids the hop before reached
+ * (REQ-2143): its number, or null for any other read. */
+const hopNumber = (q: string) => {
+  const m = /^query OntologyHop(\d+)[\s({]/.exec(q);
+  return m === null ? null : Number(m[1]);
+};
+
+/** Every governed GraphQL read answered from now on whose query satisfies ``match``, with its
+ * answer, in the order asked; ``stop`` ends the collecting. */
+function collectReads(page: Page, match: (query: string) => boolean) {
+  const answered: Promise<{ query: string; data: Record<string, unknown> }>[] = [];
+  const listener = (response: Response) => {
+    const request = response.request();
+    if (new URL(request.url()).pathname !== "/data/graphql" || request.method() !== "POST") return;
+    const query = (request.postDataJSON() as { query?: string } | null)?.query ?? "";
+    if (!match(query)) return;
+    answered.push(
+      response.json().then((body: { data?: Record<string, unknown>; errors?: unknown }) => {
+        expect(response.status(), "the read is answered").toBe(200);
+        expect(body.errors, "the read is answered without errors").toBeUndefined();
+        return { query, data: body.data ?? {} };
+      }),
+    );
+  };
+  page.on("response", listener);
+  return {
+    stop: async () => {
+      page.off("response", listener);
+      return Promise.all(answered);
+    },
+  };
+}
+
 /** The Ontology View filtered (Taxonomy's two edge types, Unconnected off): the query it read and its
  * answer. One root: the terms, each with the edges leaving it. */
 async function filteredView(page: Page) {
-  await page.goto("/admin/ontology");
+  await page.goto("/context/ontology");
   await expect(page.getByTestId("glossary-search")).toBeVisible({ timeout: 90_000 });
   await page.getByTestId("glossary-ontology-toggle").click();
   await expect(page.locator('[data-testid="ontology-stage"][data-ready]')).toBeVisible({
@@ -121,28 +154,42 @@ test.describe("Open as query", () => {
   test("a searched view's query states its search and neighbourhood, and run answers what it read", async ({
     page,
   }) => {
-    await page.goto("/admin/ontology");
+    await page.goto("/context/ontology");
     await expect(page.getByTestId("glossary-search")).toBeVisible({ timeout: 90_000 });
     await page.getByTestId("glossary-ontology-toggle").click();
     await expect(page.locator('[data-testid="ontology-stage"][data-ready]')).toBeVisible({
       timeout: 60_000,
     });
-    // REQ-2143: the search is the query's root filter, its neighbourhood read nested with it.
+    // REQ-2143: the search is the query's root filter, read first; its neighbourhood is then read
+    // a hop at a time, each hop by the ids the one before reached. "clinic" has a neighbourhood
+    // whatever else the org holds: the config makes it PART_OF referral, and this suite's
+    // beforeEach relates it to specialty.
+    const hops = collectReads(page, (q) => hopNumber(q) !== null);
     const viewed = await nextRead(
       page,
       (q) => ontologyRead(q) && q.includes("ilike"),
-      () => page.getByTestId("glossary-search").fill("species"),
+      () => page.getByTestId("glossary-search").fill("clinic"),
     );
-    expect(viewed.query).toContain('ilike: "%species%"');
+    expect(viewed.query).toContain('ilike: "%clinic%"');
     const terms = (viewed.data as { _terms: { name: string }[] })._terms;
-    expect(terms.map((t) => t.name)).toContain("species");
+    expect(terms.map((t) => t.name)).toContain("clinic");
+
+    // Open as query is offered once the search's reads are in: what it opens is what they read.
+    await expect(page.getByTestId("ontology-open-as-query")).toBeEnabled({ timeout: 60_000 });
+    const hopReads = (await hops.stop()).sort(
+      (a, b) => (hopNumber(a.query) as number) - (hopNumber(b.query) as number),
+    );
+    expect(hopReads.length, "the search's neighbourhood is read past its root").toBeGreaterThan(0);
+    expect(hopReads.map((r) => hopNumber(r.query))).toEqual(hopReads.map((_, i) => i + 1));
 
     await page.getByTestId("ontology-open-as-query").click();
     await page.getByTestId("ontology-open-as-graphql").click();
     await page.waitForURL("**/query", { timeout: 60_000 });
+    // REQ-2136: the view opens as one query -- its root, the search in its filter, and each hop it
+    // read under _termsHop<n> -- and run, it answers what the view read and drew from.
     const run = await nextRead(
       page,
-      (q) => q === viewed.query,
+      (q) => ontologyRead(q) && q.includes("ilike") && q.includes("_termsHop1:"),
       async () => {
         await expect(page.locator(".graphiql-execute-button")).toBeEnabled({ timeout: 60_000 });
         await expect(page.locator(".graphiql-query-editor")).toContainText("query Ontology", {
@@ -151,7 +198,14 @@ test.describe("Open as query", () => {
         await page.locator(".graphiql-execute-button").click();
       },
     );
-    expect(run.data).toEqual(viewed.data);
+    expect(run.query).toContain('ilike: "%clinic%"');
+    const answered = run.data as Record<string, unknown>;
+    const root = viewed.data as Record<string, unknown>;
+    expect(Object.keys(answered).sort()).toEqual(
+      [...Object.keys(root), ...hopReads.map((_, i) => `_termsHop${i + 1}`)].sort(),
+    );
+    for (const field of Object.keys(root)) expect(answered[field]).toEqual(root[field]);
+    hopReads.forEach((hop, i) => expect(answered[`_termsHop${i + 1}`]).toEqual(hop.data._terms));
   });
 
   test("its one Cypher pattern, run on the Cypher page, answers the same terms and edges", async ({

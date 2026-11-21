@@ -24,6 +24,28 @@ if TYPE_CHECKING:
     from provisa.core.database import Database
 
 
+async def join_connector(
+    source_id: str, source_type: str, mapping: dict
+) -> "MutationResult | None":
+    """REQ-2221: a source created from a connector the model offers: joined to the host its
+    operator runs, ``mapping`` filled in as a built source's. None when ``mapping`` names no
+    connector or the join succeeded; else the refusal."""
+    from provisa.api.admin.types import MutationResult
+    from provisa.api.app import state
+    from provisa.codesource import remote_sources
+    from provisa.codesource.bundle import BundleRefused
+
+    if "connector_join" not in mapping:
+        return None
+    try:
+        await remote_sources.join_connector(state, source_id, source_type, mapping)
+    except BundleRefused as refused:
+        return MutationResult(
+            success=False, message=str(refused), code=refused.code, params=refused.params
+        )
+    return None
+
+
 async def record_code(source_id: str, source_type: str, mapping: dict) -> "MutationResult | None":
     """Prepare a code source being saved and record its content hash in ``mapping`` (in place).
     None when it is not a code source or it is ready; else the refusal."""
@@ -35,6 +57,13 @@ async def record_code(source_id: str, source_type: str, mapping: dict) -> "Mutat
 
     if source_type not in CODE_SOURCE_TYPES:
         return None
+    if "connector_join" in mapping:  # REQ-2221: taken at create (join_connector), never kept
+        return MutationResult(
+            success=False,
+            message="A connector is joined when its source is created",
+            code="codesource.connector_join_on_create",
+            params={"source": source_id},
+        )
     forget(source_id)  # whatever was prepared for an earlier save of it
     if mapping.get("mode") != "built":
         mapping.pop("content_hash", None)  # pinned afresh: the code as it is now

@@ -311,6 +311,16 @@ def test_a_concurrency_limit_of_zero_is_refused(settings_plane):
 # --- redirect: where large results are written (the deployment's object store) -------------------
 
 
+def test_the_default_redirect_threshold_is_one_hundred_thousand_rows():
+    """REQ-029 (amended 2026-11-08): 1,000 rows was too few to write a file for."""
+    from provisa.core.settings_catalog_redirect import DECLARED
+    from provisa.executor.redirect import DEFAULT_THRESHOLD
+
+    declared = next(s for s in DECLARED if s.key == "redirect.threshold")
+    assert declared.default == 100000
+    assert DEFAULT_THRESHOLD == 100000
+
+
 def test_the_redirect_store_follows_the_stored_values(settings_plane, monkeypatch):
     from provisa.encryption import runtime
     from provisa.executor.redirect import DEFAULT_THRESHOLD, DEFAULT_TTL, RedirectConfig

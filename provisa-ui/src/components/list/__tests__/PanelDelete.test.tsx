@@ -105,11 +105,26 @@ async function startDelete(user: ReturnType<typeof userEvent.setup>) {
   await user.click(screen.getByTestId("row-orders"));
   await user.click(screen.getByTestId("delete"));
   const dialog = await screen.findByRole("dialog");
-  await user.click(within(dialog).getByRole("button", { name: "Confirm" }));
+  await user.click(within(dialog).getByRole("button", { name: "Delete" }));
   await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
 }
 
 describe("PanelDelete (REQ-2198)", () => {
+  it("confirms with Delete, a filled red button the size of the Cancel beside it", async () => {
+    const user = userEvent.setup();
+    render(<Page onDelete={vi.fn(async () => undefined)} />);
+    await user.click(screen.getByTestId("row-orders"));
+    await user.click(screen.getByTestId("delete"));
+    const dialog = await screen.findByRole("dialog");
+    const confirm = within(dialog).getByRole("button", { name: "Delete" });
+    expect(confirm).toHaveAttribute("data-variant", "filled");
+    expect(confirm).toHaveAttribute("data-size", "sm");
+    expect(within(dialog).getByRole("button", { name: "Cancel" })).toHaveAttribute(
+      "data-size",
+      "sm",
+    );
+  });
+
   it("while the delete runs: spinner, panel locked, row marked and not clickable", async () => {
     const user = userEvent.setup();
     const del = slowDelete();
@@ -250,7 +265,7 @@ describe("PanelDelete beneath its row (REQ-2198)", () => {
     render(<ExpandPage onDelete={del.run} />);
     await user.click(screen.getByTestId("delete"));
     await user.click(
-      within(await screen.findByRole("dialog")).getByRole("button", { name: "Confirm" }),
+      within(await screen.findByRole("dialog")).getByRole("button", { name: "Delete" }),
     );
 
     await waitFor(() => expect(screen.getByTestId("description")).toBeDisabled());
@@ -268,7 +283,7 @@ describe("PanelDelete beneath its row (REQ-2198)", () => {
     render(<ExpandPage onDelete={del.run} />);
     await user.click(screen.getByTestId("delete"));
     await user.click(
-      within(await screen.findByRole("dialog")).getByRole("button", { name: "Confirm" }),
+      within(await screen.findByRole("dialog")).getByRole("button", { name: "Delete" }),
     );
     await act(async () => del.settle().reject("refused by the server"));
 
@@ -307,7 +322,7 @@ describe("PanelDelete beneath its row (REQ-2198)", () => {
     expect(control).toHaveTextContent("Delete");
     await user.click(control);
     const dialog = await screen.findByRole("dialog");
-    await user.click(within(dialog).getByRole("button", { name: "Confirm" }));
+    await user.click(within(dialog).getByRole("button", { name: "Delete" }));
     await waitFor(() => expect(del.run).toHaveBeenCalledTimes(1));
     expect(control).toBeDisabled();
     expect(control).toHaveAttribute("aria-busy", "true");

@@ -11,7 +11,8 @@
 """Locator for the bundled DuckDB extension blobs.
 
 The blobs live under ``_ext/<raw_duckdb_version>/<platform>/<name>.duckdb_extension`` (the exact layout
-DuckDB's ``extension_directory`` expects). ``provisa.federation.duckdb_extensions`` reads ``ext_root()``
+DuckDB's ``extension_directory`` expects). Each platform has its own wheel, holding that platform's
+tree alone. ``provisa.federation.duckdb_extensions`` reads ``ext_root()``
 to stage the running platform's binaries offline — no ``extensions.duckdb.org`` round trip.
 """
 
@@ -19,7 +20,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-__version__ = "0.1.0"
+__version__ = "0.2.2"
 
 
 def ext_root() -> Path:

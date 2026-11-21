@@ -11,6 +11,7 @@
     "reachLiveOn": "仅在 {{engines}} 上实时",
     "reachNone": "此引擎无法访问",
     "categories": {
+      "Connectors": "您组织的连接器",
       "Subscriptions": "订阅",
       "RDBMS": "RDBMS",
       "Cloud DW": "云数据仓库",

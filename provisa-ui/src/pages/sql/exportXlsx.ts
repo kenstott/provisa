@@ -18,8 +18,8 @@
 // filter/sort/group choices, and the type each column was written as. An exported sheet outlives
 // the screen it came from, so the construction travels with it.
 
-import writeXlsxFile from "write-excel-file";
-import type { Row, SheetData } from "write-excel-file";
+import writeXlsxFile from "write-excel-file/universal";
+import type { CellObject } from "write-excel-file/universal";
 import { parseInstant } from "./formatCell";
 import { columnLabel } from "../../lib/columnKeys";
 
@@ -44,6 +44,10 @@ export interface XlsxLabels {
 }
 
 export type CellType = "number" | "date" | "text";
+
+/** A row as this module writes it: every cell is a typed cell object or empty, never a bare value. */
+export type Row = (CellObject | null)[];
+export type SheetData = Row[];
 
 const DATE_TIME_FORMAT = "yyyy-mm-dd hh:mm:ss";
 const DATE_FORMAT = "yyyy-mm-dd";
@@ -151,11 +155,10 @@ export async function buildXlsxBlob(
 ): Promise<Blob> {
   const data = dataSheet(columns, rows);
   const prov = provenanceSheet(provenance, columns, rows, labels);
-  return writeXlsxFile([data, prov], {
-    sheets: [labels.dataSheet, labels.provenanceSheet],
-    columns: [widths(data), widths(prov)],
-    stickyRowsCount: 1,
-  });
+  return writeXlsxFile([
+    { data, sheet: labels.dataSheet, columns: widths(data), stickyRowsCount: 1 },
+    { data: prov, sheet: labels.provenanceSheet, columns: widths(prov), stickyRowsCount: 1 },
+  ]).toBlob();
 }
 
 export async function downloadXlsx(

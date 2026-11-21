@@ -17,7 +17,7 @@ command is bound to it, the delete is refused naming each one and nothing is rem
 may go, its remote-registration rows and its tag assignments go with it.
 """
 
-# Requirements: REQ-1918, REQ-1919, REQ-014
+# Requirements: REQ-1918, REQ-1919, REQ-014, REQ-2248
 
 from __future__ import annotations
 
@@ -97,7 +97,7 @@ async def _count(db: Database, table) -> int:
 
 async def _source_ids(db: Database) -> set[str]:
     async with db.acquire() as conn:
-        return {r[0] for r in (await conn.execute_core(select(sources.c.id))).fetchall()}
+        return {r["id"] for r in await source_repo.list_all(conn)}
 
 
 async def test_a_source_with_a_table_or_a_command_is_refused_naming_each(plane):
@@ -114,13 +114,25 @@ async def test_a_source_with_a_table_or_a_command_is_refused_naming_each(plane):
     assert await _count(plane, registered_tables) == 1  # its table was NOT taken with it
 
 
-async def test_a_source_nothing_is_registered_against_goes_with_its_registration_rows(plane):
+async def test_a_source_nothing_is_registered_against_is_retired_keeping_its_registration_rows(
+    plane,
+):
+    """REQ-2248 (amended 2026-11-15): the delete retires the source; nothing is removed -- its
+    registration rows and its tag are kept with it, under the key it is retired at."""
     async with plane.acquire() as conn:
         assert await source_repo.delete(conn, "api") is True
         assert await source_repo.delete(conn, "api") is False
+        [retired] = await source_repo.list_all(conn, retired=True)
     assert "api" not in await _source_ids(plane)
-    assert await _count(plane, api_sources) == 0 and await _count(plane, api_endpoints) == 0
-    assert await _count(plane, tag_assignments) == 0
+    assert retired["retired_id"] == "api"
+    async with plane.acquire() as conn:
+        assert (await conn.execute_core(select(api_sources.c.id))).scalar_one() == retired["id"]
+        assert (await conn.execute_core(select(api_endpoints.c.source_id))).scalar_one() == retired[
+            "id"
+        ]
+        assert (
+            await conn.execute_core(select(tag_assignments.c.source_id))
+        ).scalar_one() == retired["id"]
 
 
 async def test_the_source_goes_once_its_table_and_command_have(plane):

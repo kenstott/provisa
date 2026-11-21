@@ -34,6 +34,7 @@
     "focusDomains": "Domeinen: {{names}}",
     "focusTables": "Tabellen: {{names}}",
     "focusMissing": "Niet gevonden: {{names}}",
-    "showAll": "Alles tonen"
+    "showAll": "Alles tonen",
+    "showWithdrawn": "Teruggetrokken tonen"
   }
 }

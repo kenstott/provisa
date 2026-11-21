@@ -357,6 +357,7 @@ _SCAN_TABLES = (
     "reference_document_domains",
     "reference_passages",
     "reference_document_tags",  # REQ-2208: the tags on its documents and their sections
+    "reference_citations",  # REQ-2208: the citations of its documents and their sections
     "glossary_term_scans",
     "glossary_term_drafts",
 )

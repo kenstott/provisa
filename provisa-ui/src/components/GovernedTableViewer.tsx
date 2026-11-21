@@ -101,10 +101,11 @@ export function GovernedTableViewer({
   const { page, pageSize, sorts, activeFilters: filters, groupBy } = grid;
   const canRun = requiredParamsSatisfied(table, paramValues);
 
-  // REQ-1921: where a page comes from. A table in service is read by the statement the viewer
-  // writes, sent as any statement is. A DRAFT is read by no statement a caller sends: the
-  // viewer sends its choices to the admin preview and the server writes the statement. Either
-  // way one page is one call, and the grid above it is the same.
+  // REQ-1921: where a page comes from. A table in production is read by the statement the viewer
+  // writes, sent as any statement is. A WITHDRAWN table (itself, or through its source) is read by
+  // no statement a caller sends: the viewer sends its choices to the admin preview and the server
+  // writes the statement. Either way one page is one call, and the grid above it is the same.
+  const withdrawn = table.withdrawn || table.sourceWithdrawn;
   const readPage = (
     params: Record<string, string>,
     pageNo: number,
@@ -117,8 +118,13 @@ export function GovernedTableViewer({
     redirect?: ResultRedirect;
   }> => {
     if (!role) return Promise.resolve({ columns: [], rows: [], error: "No active role" });
-    if (!table.draft) {
-      return runSql(pagedViewerSql(table, params, filters, sorts, groupBy, pageNo, size), role);
+    if (!withdrawn) {
+      return runSql(
+        pagedViewerSql(table, params, filters, sorts, groupBy, pageNo, size),
+        role,
+        false,
+        true,
+      );
     }
     return previewTable(
       table.id,
@@ -212,8 +218,8 @@ export function GovernedTableViewer({
         label: t("tablePreview.provParams"),
         value: supplied.map(([k, v]) => `${k} = ${v}`).join("\n"),
       });
-    if (table.draft) {
-      // A draft's rows were read by the admin preview from these choices; the server wrote the
+    if (withdrawn) {
+      // A withdrawn table's rows were read by the admin preview from these choices; the server wrote the
       // statement. What was sent is recorded as it was sent.
       entries.push({
         label: t("tablePreview.provStatement"),
@@ -302,15 +308,13 @@ export function GovernedTableViewer({
           <Loader size="sm" />
           <Text size="sm">{result.error}</Text>
         </Group>
-      ) : result?.redirect ? (
-        <ResultRedirectNotice redirect={result.redirect} />
       ) : result?.error ? (
         <Alert color="red" data-testid="table-preview-error">
           <pre style={{ margin: 0, whiteSpace: "pre-wrap", fontFamily: "monospace" }}>
             {result.error}
           </pre>
         </Alert>
-      ) : result != null && result.columns.length === 0 ? (
+      ) : result != null && !result.redirect && result.columns.length === 0 ? (
         // REQ-1436: only a relation with no projection at all gets bare text. An empty PAGE keeps
         // the grid: replacing it took the header row away, and with it the filter inputs, so a
         // filter that matched nothing could no longer be cleared.
@@ -321,6 +325,11 @@ export function GovernedTableViewer({
         <div style={{ flex: 1, overflow: "hidden", opacity: loading ? 0.6 : 1 }}>
           <ResultsGrid
             grid={grid}
+            // A result written to the results store keeps the toolbar (page size, page, filters):
+            // the notice stands where the rows would be, so the reader can narrow and run again.
+            notice={
+              result.redirect ? <ResultRedirectNotice redirect={result.redirect} /> : undefined
+            }
             totalRowCount={result.rows.length}
             provenance={provenanceFor(activeParams)}
             fetchAllRows={fetchAllRows}

@@ -27,6 +27,7 @@
           "odata": "OData",
           "sql_http": "SQL sobre HTTP",
           "cypher_http": "Cypher sobre HTTP",
+          "sparql_http": "SPARQL sobre HTTP",
           "pgwire": "Protocolo PostgreSQL",
           "flight": "Arrow Flight",
           "bolt": "Bolt",
@@ -38,6 +39,12 @@
       "max_query_complexity": {
         "label": "Complexidade máxima de consulta",
         "help": "A maior pontuação de complexidade que uma instrução pode ter, para todos os papéis. Um papel pode definir um limite próprio, mais baixo. Deixe sem valor para não limitar."
+      }
+    },
+    "sparql": {
+      "query_timeout": {
+        "label": "Tempo limite de consultas SPARQL",
+        "help": "Quanto tempo uma consulta SPARQL pode ser executada antes de ser abandonada: uma prévia, uma busca de classes do Wikidata e cada carga da réplica de uma tabela SPARQL. Um endpoint público pode interromper uma consulta antes pelo próprio limite (o do Wikidata é de 60 segundos)."
       }
     },
     "sampling": {
@@ -193,7 +200,7 @@
       },
       "hot_threshold": {
         "label": "Limite de tabela movimentada",
-        "help": "Quantas instruções governadas uma tabela precisa receber dentro da janela de tabela movimentada antes de ser replicada, para que as leituras seguintes venham da sua réplica."
+        "help": "Quantas instruções governadas uma tabela precisa receber dentro da janela de tabelas movimentadas antes de ser replicada, para que as leituras seguintes venham da sua réplica."
       },
       "hot_interval": {
         "label": "Janela de tabela movimentada",
@@ -246,8 +253,8 @@
         }
       },
       "role_grant_notice_days": {
-        "label": "Aviso antes do fim de uma atribuição de função",
-        "help": "Quantos dias antes de uma atribuição de função expirar, ou ser removida por falta de uso, o titular e os administradores da organização recebem um e-mail."
+        "label": "Aviso antes que uma concessão de função ou suas entradas terminem",
+        "help": "Quantos dias antes que uma concessão de função, ou uma de suas entradas de direito, termine, ou que a concessão seja removida por falta de uso, o titular e os administradores da organização recebem um e-mail."
       }
     },
     "server": {
@@ -271,6 +278,10 @@
         "label": "Porta do protocolo PostgreSQL",
         "help": "A porta em que o servidor do protocolo PostgreSQL escuta; 0 o mantém desativado. Requer reinicialização; pede confirmação antes de salvar porque abre ou fecha um listener."
       },
+      "minted_pgwire_port": {
+        "label": "Porta wire do PostgreSQL para tokens emitidos",
+        "help": "A porta que o sandbox de uma fonte de código pode alcançar para ler a tabela que lhe foi dada, e o endereço informado a um host remoto. Aceita apenas tokens emitidos para uma chamada; 0 a mantém desligada, e um comando que recebe uma tabela é então recusado. Reinicialização necessária; protegida porque abre ou fecha um listener."
+      },
       "bolt_port": {
         "label": "Porta Bolt",
         "help": "A porta em que o servidor Bolt (Neo4j) escuta; 0 o mantém desativado. Requer reinicialização; pede confirmação antes de salvar porque abre ou fecha um listener."
@@ -286,6 +297,12 @@
       "node_url": {
         "label": "Endereço deste nó",
         "help": "O endereço em que os clientes alcançam este nó. A interface de um coordenador o lista como nó de dados quando a região não lista nenhum. O inicializador o define para cada nó; sem ele, o nó não é listado."
+      }
+    },
+    "embedding": {
+      "hub_endpoint": {
+        "label": "Endereço do hub do Hugging Face",
+        "help": "O hub do Hugging Face de onde um modelo de embeddings local é baixado, como um espelho dentro da sua rede. Aplica-se ao próximo download de modelo."
       }
     },
     "tls": {
@@ -591,6 +608,14 @@
         "label": "Função local do MCP",
         "help": "A função com a qual as chamadas MCP locais (stdio) são executadas; enquanto não for definida, essas chamadas são recusadas. Pede confirmação antes de salvar porque concede o acesso dessa função a qualquer pessoa que possa iniciar o cliente local."
       },
+      "principal": {
+        "label": "Principal local do MCP",
+        "help": "O principal (ID de usuário) em nome de quem as chamadas MCP locais (stdio) agem, ao lado da função local; os direitos dessa pessoa restringem a função. Até que seja definido, essas chamadas são recusadas. Protegido porque age com o acesso dessa pessoa para qualquer um que possa iniciar o cliente local."
+      },
+      "tools": {
+        "label": "Ferramentas MCP listadas",
+        "help": "As ferramentas listadas para um cliente MCP cujo endereço não indica nenhum modo (tools=full ou tools=sip no endereço). full lista todas as ferramentas; sip lista as ferramentas para encontrar, descrever, consultar e ler métricas, mais uma ferramenta que adiciona os outros grupos quando o cliente pede. Qualquer ferramenta pode ser chamada em ambos os modos, conforme os direitos de quem chama permitirem."
+      },
       "external_url": {
         "label": "Endereço externo do MCP",
         "help": "O endereço do MCP exibido aos usuários quando a implantação está atrás de um proxy."
@@ -670,7 +695,7 @@
     "logs": {
       "allowed_roots": {
         "label": "Diretórios dos quais arquivos de log podem ser lidos",
-        "help": "Os diretórios em que os arquivos de uma fonte Logs podem estar, depois de seguidos seus links; por padrão /var/log. Adicione um, como ~/Library/Logs, para ler em tabelas os arquivos do próprio servidor que estejam nele. Um servidor de muitas organizações não lê nenhum arquivo de log próprio, seja o que for que esta configuração diga."
+        "help": "Os diretórios em que os arquivos de uma fonte Logs podem estar, depois de seguidos os links; por padrão /var/log. Adicione um, como ~/Library/Logs, para ler em tabelas os arquivos do próprio servidor que estão nele. Uma organização sandbox, e em um servidor com muitas organizações todas exceto a da própria implantação, não lê nenhum arquivo do próprio servidor fora da sua própria pasta, exceto os que as fontes da sua demo nomeiam, independentemente desta configuração."
       },
       "preview_lines": {
         "label": "Linhas lidas para achar as colunas de um log",
@@ -698,7 +723,7 @@
       },
       "download_roots": {
         "label": "Diretórios dos quais arquivos de fontes podem ser baixados",
-        "help": "Os diretórios dos quais o arquivo de uma fonte CSV ou Parquet pode ser baixado pelo seu caminho neste servidor, depois de seguidos os seus links; nenhum por padrão. Adicione um para que um steward possa copiar um arquivo dentro dele para a pasta da organização. Um servidor de muitas organizações não copia nenhum arquivo próprio, diga o que disser esta configuração."
+        "help": "Os diretórios dos quais o arquivo de uma fonte CSV ou Parquet pode ser baixado pelo seu caminho neste servidor, depois de seguidos os links; nenhum por padrão. Adicione um para permitir que um steward copie um arquivo que está nele para a pasta da organização. Uma organização sandbox, e em um servidor com muitas organizações todas exceto a da própria implantação, não copia nenhum arquivo do próprio servidor fora da sua própria pasta, exceto os que as fontes da sua demo nomeiam, independentemente desta configuração."
       }
     },
     "polly": {
@@ -801,7 +826,7 @@
     "graph": {
       "depth_limit": {
         "label": "Caminho de grafo mais profundo",
-        "help": "O máximo de saltos que um caminho de comprimento variável do Cypher ou um caminho de propriedades do SPARQL percorre quando a consulta não define seu próprio limite. Um resultado cortado nessa profundidade indica isso."
+        "help": "O máximo de saltos que um caminho de comprimento variável do Cypher ou um property path do SPARQL percorre quando a consulta não define um limite próprio. Um caminho Cypher não repete nenhum relacionamento e, se fosse além, falha com um erro explícito; um resultado SPARQL cortado nesta profundidade informa que foi cortado. Muito grande por padrão (1000)."
       },
       "union_limit": {
         "label": "Máximo de predicados que um predicado variável abrange",
@@ -820,6 +845,10 @@
       "duckdb_threads": {
         "label": "Threads do DuckDB da fonte de código",
         "help": "As threads em que o DuckDB de uma fonte de código responde às suas instruções."
+      },
+      "health_poll_interval": {
+        "label": "Intervalo de verificação de integridade do conector",
+        "help": "Com que frequência cada processo do Provisa pergunta ao host de um conector pelo seu estado e mostra o resultado na origem. Um host reiniciado é detetado na verificação seguinte, que executa novamente a sua função on-start."
       }
     },
     "config": {
@@ -850,6 +879,18 @@
       "default_ttl": {
         "label": "Duração padrão das exibições materializadas",
         "help": "Por quanto tempo uma exibição materializada é usada antes de ser atualizada, quando não define uma duração própria. Requer reinicialização."
+      }
+    },
+    "parameters": {
+      "max_calls_per_statement": {
+        "label": "Chamadas por instrução a uma tabela parametrizada",
+        "help": "O máximo de chamadas que uma instrução faz a uma tabela parametrizada. Cada valor que uma instrução dá a um parâmetro é uma chamada à origem: cada valor de uma lista IN, cada ramo de um OR, cada chave distinta de um join. Uma instrução que precise de mais é recusada."
+      }
+    },
+    "subscriptions": {
+      "max_sinks_per_principal": {
+        "label": "Sinks do Kafka em execução por pessoa",
+        "help": "Quantos sinks do Kafka uma pessoa pode ter em execução ao mesmo tempo. Um pedido para iniciar outro é recusado até que um dos seus pare."
       }
     }
   }

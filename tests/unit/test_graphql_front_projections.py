@@ -123,20 +123,29 @@ def _run(con, sql: str, params=()) -> tuple[list[str], list[list]]:
     return [d[0] for d in cursor.description], [list(r) for r in cursor.fetchall()]
 
 
-def _graphql_answer(con, text: str) -> list[dict]:
+def _graphql_answers(con, text: str) -> dict[str, list[dict]]:
+    """Each root field of ``text`` its answer."""
     golden, _cg, _schema, ctx, _lm = _model()
-    document = parse(text)
-    (root,) = compile_query(document, ctx, None)
-    physical = lower_to_catalog_physical(
-        expand_view_refs(
-            make_semantic_sql(embed_params_comment(root.sql, root.params), ctx),
-            golden._view_sql(_META),
-        ),
-        ctx,
-    )
-    _cols, rows = _run(con, physical, root.params)
-    own = [tuple(golden._compared(v) for v in r) for r in rows]
-    return serialize_rows(own, root.columns, root.root_field)["data"][root.root_field]
+    out: dict[str, list[dict]] = {}
+    for root in compile_query(parse(text), ctx, None):
+        physical = lower_to_catalog_physical(
+            expand_view_refs(
+                make_semantic_sql(embed_params_comment(root.sql, root.params), ctx),
+                golden._view_sql(_META),
+            ),
+            ctx,
+        )
+        _cols, rows = _run(con, physical, root.params)
+        own = [tuple(golden._compared(v) for v in r) for r in rows]
+        out[root.root_field] = serialize_rows(own, root.columns, root.root_field)["data"][
+            root.root_field
+        ]
+    return out
+
+
+def _graphql_answer(con, text: str) -> list[dict]:
+    (answer,) = _graphql_answers(con, text).values()
+    return answer
 
 
 def _cypher(text: str, projection: str) -> str:
@@ -342,3 +351,64 @@ def test_as_nodes_a_level_with_its_own_limit_is_refused_by_name():
         lower_read(parse(text), ctx, lm, None, NODES)
     # GraphQL-shaped, the level keeps its own limit.
     assert "LIMIT 1" in _cypher(text, GRAPHQL)
+
+
+def _hollow(value) -> bool:
+    """Null, an empty list, or an object whose every field is hollow: no value of its own."""
+    if isinstance(value, dict):
+        return all(_hollow(v) for v in value.values())
+    return value is None or value == []
+
+
+def _hollow_elements(value, path: str = "") -> list[str]:
+    """The path of every hollow list element or object in ``value``: a joined row that is not
+    there, answered as if it were."""
+    out: list[str] = []
+    if isinstance(value, dict):
+        for k, v in value.items():
+            if isinstance(v, dict) and v and _hollow(v):
+                out.append(f"{path}.{k}")
+            out += _hollow_elements(v, f"{path}.{k}")
+    elif isinstance(value, list):
+        for i, el in enumerate(value):
+            if isinstance(el, dict) and _hollow(el):
+                out.append(f"{path}[{i}]")
+            out += _hollow_elements(el, f"{path}[{i}]")
+    return out
+
+
+@pytest.mark.parametrize(
+    "key",
+    [
+        "ontology: ontology+data search= hidden= edges= domains=",
+        "ontology: ontology+data search= hidden= edges= domains=sales",
+    ],
+)
+def test_a_term_with_no_table_in_the_domain_read_has_no_tables(glossary, key):
+    # J1218: the Taxonomy preset's lanes name each class table's data product, a list under the
+    # term's tables. Under a domain filter the tables are joined (a lateral join) and a term with
+    # none in the domain was answered one table of nulls: the UI drew it as "null.null", IS-joined
+    # to every term. "customer" grounds no table; "party" grounds customers, in sales.
+    terms = {t["name"]: t for t in _graphql_answer(glossary, _READS[key])}
+    assert terms["customer"]["tables"] == []
+    assert [g["id"] for g in terms["party"]["tables"]] == [100]
+    assert terms["party"]["tables"][0]["dataProductTables"] == []
+
+
+@pytest.mark.parametrize("key", sorted(_READS))
+def test_no_ontology_read_answers_a_list_element_of_nulls(glossary, key):
+    # J1218: every relation the Ontology View reads -- a domain-filtered one joined, with a list
+    # nested in it -- answers a row that is not there as no element, never one of nulls.
+    assert _hollow_elements(_graphql_answers(glossary, _READS[key])) == []
+
+
+def test_a_joined_list_s_typename_and_nested_list_are_absent_with_its_row(glossary):
+    # J1218: under a filtered (joined) to-many, a value the row does not hold -- __typename, a list
+    # nested in it -- is null when no row joined, so the encoder answers no element.
+    text = (
+        'query { _terms: on_terms { name tables(where: { domainId: { in: ["sales"] } }) '
+        "{ __typename id dataProductTables { dataProduct { id } } } } }"
+    )
+    terms = {t["name"]: t for t in _graphql_answer(glossary, text)}
+    assert terms["customer"]["tables"] == []
+    assert [g["id"] for g in terms["party"]["tables"]] == [100]

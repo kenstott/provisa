@@ -423,6 +423,22 @@ class TestGrpcQueryExecution:
         state.source_pools = source_pool
         state.source_types = {"test-pg": "postgresql"}
         state.source_dialects = {"test-pg": "postgres"}
+        # REQ-870: governance column visibility (V003) reads state.tables; a bare MagicMock
+        # resolves no columns for the role, refusing every column reference.
+        state.tables = [
+            {
+                "id": 1,
+                "source_id": "test-pg",
+                "domain_id": "default",
+                "schema_name": "public",
+                "table_name": "orders",
+                "columns": [
+                    {"column_name": "id", "data_type": "integer", "visible_to": ["admin"]},
+                    {"column_name": "region", "data_type": "varchar", "visible_to": ["admin"]},
+                    {"column_name": "amount", "data_type": "numeric", "visible_to": ["admin"]},
+                ],
+            }
+        ]
         state.masking_rules = {}
         state.mv_registry = MagicMock()
         state.mv_registry.get_fresh.return_value = []

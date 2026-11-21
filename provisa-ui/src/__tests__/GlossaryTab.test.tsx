@@ -179,6 +179,7 @@ const REVENUE: GlossaryTermSummary = {
   id: 1,
   name: "Revenue",
   definition: "Money in.",
+  calculation_method: null,
   is_abstract: false,
   deprecated: false,
   ref_count: 1,
@@ -200,6 +201,7 @@ const CHURN: GlossaryTermSummary = {
   id: 2,
   name: "Churn",
   definition: null,
+  calculation_method: null,
   is_abstract: true,
   deprecated: false,
   ref_count: 0,
@@ -221,6 +223,7 @@ const MARGIN: GlossaryTermSummary = {
   id: 3,
   name: "Margin",
   definition: null,
+  calculation_method: null,
   is_abstract: false,
   deprecated: true,
   ref_count: 0,
@@ -244,6 +247,7 @@ const DANGLING: GlossaryTermSummary = {
   id: 4,
   name: "Orphan Concept",
   definition: "Declared but wired to nothing physical.",
+  calculation_method: null,
   is_abstract: true,
   deprecated: false,
   ref_count: 0,
@@ -280,6 +284,7 @@ const REVENUE_DETAIL: GlossaryTermDetail = {
   experts: [{ user_id: "u1", kind: "expert" }],
   tags: [],
   pending_on: [],
+  iri: null,
 };
 
 const CHURN_DETAIL: GlossaryTermDetail = {
@@ -290,6 +295,7 @@ const CHURN_DETAIL: GlossaryTermDetail = {
   experts: [],
   tags: [],
   pending_on: [],
+  iri: null,
 };
 
 // No refs, no relationships: the one fixture where delete is actually enabled.
@@ -301,6 +307,7 @@ const MARGIN_DETAIL: GlossaryTermDetail = {
   experts: [],
   tags: [],
   pending_on: [],
+  iri: null,
 };
 
 // Mantine Select in jsdom: floating-ui hides the detached dropdown (all rects are 0),
@@ -325,7 +332,7 @@ const save = () => fireEvent.click(screen.getByTestId("glossary-edit-save"));
 describe("GlossaryTab", () => {
   beforeEach(() => {
     mockFindings.mockResolvedValue([]);
-    mockHistory.mockResolvedValue(null);
+    mockHistory.mockResolvedValue({ retired_in: null, as_of: null, columns: [], tables: [] });
     mockList.mockReset();
     mockFetchTerm.mockReset();
     mockUpdate.mockReset();
@@ -441,12 +448,13 @@ describe("GlossaryTab", () => {
 
   it("says when the model's history holds no retirement of a retired term", async () => {
     mockFetchTerm.mockResolvedValue({ ...REVENUE_DETAIL, retired: true, status: "retired" });
-    mockHistory.mockResolvedValue(null);
+    mockHistory.mockResolvedValue({ retired_in: null, as_of: null, columns: [], tables: [] });
     render(<GlossaryTab />);
     fireEvent.click(await screen.findByTestId("glossary-item-1"));
     expect(await screen.findByTestId("glossary-applied-none")).toHaveTextContent(
-      t("serverErrors.glossary.no_retirement_history"),
+      t("glossaryTab.noRetirementHistory"),
     );
+    expect(screen.queryByTestId("glossary-applied-history")).not.toBeInTheDocument();
   });
 
   it("flags a dangling concept (no path to a term naming data) in red", async () => {
@@ -541,9 +549,11 @@ describe("GlossaryTab", () => {
     const fields = within(read)
       .getAllByRole("term")
       .map((dt) => [dt.textContent, dt.nextElementSibling?.textContent]);
+    // The edit form's fields in its order, then what the term has that the form does not set.
     expect(fields).toEqual([
       ["Name", "Margin"],
       ["Definition", t("glossaryTab.hoverNoDefinition")],
+      [t("glossaryTab.excludeFromExportLabel"), "No"],
       ["Domains", "finance, sales"],
       // Grounded in neither a table nor a column.
       ["Role", "Concept"],
@@ -557,7 +567,6 @@ describe("GlossaryTab", () => {
       ["Reason", "—"],
       ["By", "—"],
       ["Planned retirement", "—"],
-      [t("glossaryTab.excludeFromExportLabel"), "No"],
     ]);
     const tags = within(read).getByText("Tags").nextElementSibling as HTMLElement;
     expect(within(tags).getByTestId("tag-control-term-3")).toBeInTheDocument();
@@ -567,7 +576,7 @@ describe("GlossaryTab", () => {
     fireEvent.click(screen.getByTestId("glossary-item-1"));
     await waitFor(() =>
       expect(
-        within(screen.getByTestId("glossary-read-fields")).getAllByRole("definition")[2],
+        within(screen.getByTestId("glossary-read-fields")).getByText("Domains").nextElementSibling,
       ).toHaveTextContent("All domains (enterprise)"),
     );
   });
@@ -612,14 +621,17 @@ describe("GlossaryTab", () => {
   });
 
   it("drafts a definition with the AI button into the form without saving it", async () => {
-    mockGenerate.mockResolvedValue("Money earned from sales.");
+    mockGenerate.mockResolvedValue({
+      definition: "Money earned from sales.",
+      tables_without_samples: [],
+    });
     render(<GlossaryTab />);
 
     fireEvent.click(await screen.findByTestId("glossary-item-1"));
     await edit();
 
     fireEvent.click(screen.getByTestId("description-field-generate"));
-    await waitFor(() => expect(mockGenerate).toHaveBeenCalledWith(1));
+    await waitFor(() => expect(mockGenerate).toHaveBeenCalledWith(1, null));
 
     // The draft lands in the form only; Save sends it.
     const input = within(screen.getByTestId("glossary-definition-input")).getByRole("textbox");
@@ -753,7 +765,7 @@ describe("GlossaryTab", () => {
   });
 
   it("bulk-generates definitions and shows a count notification", async () => {
-    mockBulkDefinitions.mockResolvedValue({ generated: 3 });
+    mockBulkDefinitions.mockResolvedValue({ generated: 3, tables_without_samples: [] });
     render(<GlossaryTab />);
     await screen.findByTestId("glossary-item-1");
 

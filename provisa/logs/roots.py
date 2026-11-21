@@ -5,14 +5,15 @@
 """Where a Logs source may read (REQ-1996). The maintainer's ruling: an operator setting
 ``logs.allowed_roots``, by default ``["/var/log"]``, lists the directories a glob may resolve
 into; a glob, or a file it matches, that resolves outside them after following symlinks is
-refused by name; on the multi-organisation SaaS plane a server-local log path is refused
-entirely, by name.
+refused by name. A held organization (``sandbox_egress.held``: a sandbox org on any install, every
+org but the deployment's own on a server of many) reads no log file on the server's own disk
+outside its own folder (REQ-1997, through ``source_uploads.require_own_disk``).
 
-Two reads of log files of a many-organisation server's own are allowed (REQ-2049), each still only
-inside the allowed roots: a demo bundle's seeding run (the bundle build's throwaway sandbox tier),
-and a sandbox-tier demo org -- a demo's template or a sandbox of it -- reading its own demo's
-files, inside that demo's directory and nowhere else: a demo's logs are its own source, read live
-from its bundle."""
+Two reads of log files outside a held org's folder are allowed, each still only inside the
+allowed roots: a demo bundle's seeding run (REQ-2049: the bundle build's throwaway sandbox tier),
+and the files a demo's own Logs source declares -- its glob, and each file the glob matches --
+read by that demo's orgs (``sandbox_egress.declared_location``, as for every other place a demo's
+source names): a demo's logs are its own source, read live from its bundle."""
 
 from __future__ import annotations
 
@@ -20,7 +21,6 @@ import os
 import re
 
 from provisa.core import settings_registry
-from provisa.core.secrets_providers import many_organisations
 
 _WILDCARD = re.compile(r"[*?\[]")
 
@@ -41,31 +41,27 @@ def _inside(path: str, roots: list[str]) -> bool:
     return any(path == root or path.startswith(root.rstrip(os.sep) + os.sep) for root in roots)
 
 
-def _own_demos(path: str) -> bool:
-    """Whether ``path`` is inside the directory of the demo the bound org is (a sandbox-tier
-    template or sandbox), once its symlinks are followed."""
-    from provisa.core.demo_bundles import own_demo_directory
-    from provisa.core.request_context import current_org
-
-    directory = own_demo_directory(current_org.get())
-    if directory is None:
-        return False
-    return _inside(os.path.realpath(os.path.expanduser(path)), [os.path.realpath(directory)])
-
-
-def _refuse_on_saas(path: str) -> None:
+def _refuse_if_held(path: str) -> None:
+    """Refuse ``path`` for a held org when it is outside the org's folder and its demo does not
+    declare it (REQ-1997), unless it is a seeding run's (REQ-2049)."""
     from provisa.core.demo_bundles import seeding_run
+    from provisa.core.source_uploads import LocalPathRefused, require_own_disk
 
-    if many_organisations() and not seeding_run() and not _own_demos(path):
+    if seeding_run():
+        return
+    try:
+        require_own_disk(path)
+    except LocalPathRefused as exc:
         raise LogPathRefused(
-            f"{path}: a server that holds many organizations reads no log file of its own"
-        )
+            f"{path}: this organization reads no log file on the server's own disk outside its "
+            "own folder"
+        ) from exc
 
 
 def checked_glob(glob: str) -> str:
     """``glob`` with ``~`` expanded, when the directory it starts from resolves inside an
-    allowed root; refused by name otherwise, and always on a server of many organizations."""
-    _refuse_on_saas(glob)
+    allowed root; refused by name otherwise, and for a held org outside its own folder."""
+    _refuse_if_held(glob)
     expanded = os.path.expanduser(glob)
     if not os.path.isabs(expanded):
         raise LogPathRefused(f"{glob}: name the files by their full path")
@@ -83,9 +79,9 @@ def checked_glob(glob: str) -> str:
 
 
 def checked_file(path: str) -> str:
-    """``path`` resolved, when it is inside an allowed root once its symlinks are followed;
-    refused by name otherwise."""
-    _refuse_on_saas(path)
+    """``path`` resolved, when it is inside an allowed root once its symlinks are followed (and,
+    for a held org, inside its own folder); refused by name otherwise."""
+    _refuse_if_held(path)
     real = os.path.realpath(path)
     roots = allowed_roots()
     if not _inside(real, roots):

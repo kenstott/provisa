@@ -160,6 +160,10 @@ class RelPattern:
     #: An inline property map on the relationship, as its node's is (``property_text``).
     properties: dict[str, Any] = field(default_factory=dict)
     property_text: dict[str, str] = field(default_factory=dict)
+    #: A variable-length relationship's inline property map (``-[:T* {k: v}]->``): the value each
+    #: relationship the walk takes holds under each key, so every hop is filtered by it (REQ-348).
+    #: A fixed relationship's map is ``properties`` instead, its WHERE condition.
+    every_hop: dict[str, CypherExpr] = field(default_factory=dict)
     #: A path expression between the two nodes in place of ``types`` and the hop bounds (REQ-2135):
     #: what a SPARQL property path or a GQL quantified path pattern parses into.
     path: PathExpr | None = None

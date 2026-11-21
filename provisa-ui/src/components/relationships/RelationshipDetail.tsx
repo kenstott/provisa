@@ -25,7 +25,11 @@ import { JunctionPanel } from "./JunctionPanel";
 import { ParametersPanel } from "./ParametersPanel";
 import { PanelActions } from "../list/SplitPane";
 import { PanelDelete } from "../list/PanelDelete";
+import { PanelDuplicate } from "../list/PanelDuplicate";
 import { Tip } from "../Tip";
+import { RelationshipQueryLinks } from "./RelationshipQueryLinks";
+import { relationshipQueryRef } from "./relationshipQueries";
+import { useRelationshipSurfaces } from "./useRelationshipSurfaces";
 
 interface RelationshipDetailProps {
   rel: Relationship;
@@ -33,6 +37,8 @@ interface RelationshipDetailProps {
   setEditingRel: (f: RelForm | null) => void;
   canManage: boolean;
   onStartEdit: () => void;
+  /** Opens the create form filled from this relationship, under a new id. */
+  onDuplicate: () => void;
   /** Opens the form that creates this relationship's reverse; absent while it cannot be offered. */
   onReverse?: () => void;
   /** REQ-2198: resolves once the relationship is deleted and the list read again (PanelDelete). */
@@ -45,6 +51,12 @@ interface RelationshipDetailProps {
   functions: TrackedFunction[];
   tableDomainById: Record<string, string>;
   domainsEnabled: boolean;
+  /** REQ-2249: opens the form of the code resolver set ``set`` this relationship is part of. */
+  onChangeResolver?: (set: string) => void;
+  /** REQ-2249: retires the code resolver set ``set``, all of it. */
+  onRetireResolver?: (set: string) => Promise<boolean | void>;
+  /** REQ-2252: the acting roles, whose names the relationship's query links use; null while none. */
+  actingRole: string | null;
 }
 
 export function RelationshipDetail({
@@ -53,6 +65,7 @@ export function RelationshipDetail({
   setEditingRel,
   canManage,
   onStartEdit,
+  onDuplicate,
   onReverse,
   onDelete,
   onEditSave,
@@ -62,13 +75,55 @@ export function RelationshipDetail({
   functions,
   tableDomainById,
   domainsEnabled,
+  onChangeResolver,
+  onRetireResolver,
+  actingRole,
 }: RelationshipDetailProps) {
   const { t } = useTranslation();
+  const surfaces = useRelationshipSurfaces(actingRole);
+  const queryRef = relationshipQueryRef(r, tables);
+  // REQ-2249: one of a code resolver set's objects is changed and retired with the set.
+  const set = r.codeResolver ?? null;
 
   return (
     <>
+      {set !== null && (
+        <Text fz="sm" c="dimmed" mb="md" data-testid="relationship-detail-resolver-note">
+          {t("relationshipRow.resolverNote", { resolver: set })}
+        </Text>
+      )}
+      {canManage && editingRel === null && set !== null && (
+        <PanelActions>
+          <fieldset className="panel-action-set">
+            <Group gap="sm">
+              <Tip text={t("relationshipRow.changeResolver")} named>
+                <ActionIcon
+                  aria-label={t("relationshipRow.changeResolver")}
+                  disabled={!onChangeResolver}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onChangeResolver?.(set);
+                  }}
+                  data-testid="relationship-detail-change-resolver"
+                >
+                  <Pencil size={14} />
+                </ActionIcon>
+              </Tip>
+              <PanelDelete
+                itemKey={set}
+                title={t("relationshipRow.retireResolverTitle", { resolver: set })}
+                consequence={t("relationshipRow.retireResolverConsequence")}
+                ariaLabel={t("relationshipRow.retireResolver")}
+                confirmLabel={t("relationshipRow.retireResolver")}
+                testId="relationship-detail-retire-resolver"
+                onDelete={() => (onRetireResolver ? onRetireResolver(set) : Promise.resolve(false))}
+              />
+            </Group>
+          </fieldset>
+        </PanelActions>
+      )}
       {/* While the form is open the panel's head is the form's: its Save and Cancel. */}
-      {canManage && editingRel === null && (
+      {canManage && editingRel === null && set === null && (
         <PanelActions>
           <fieldset className="panel-action-set">
             <Group gap="sm">
@@ -95,6 +150,11 @@ export function RelationshipDetail({
                   <ArrowLeftRight size={14} />
                 </ActionIcon>
               </Tip>
+              <PanelDuplicate
+                name={String(r.id)}
+                onDuplicate={onDuplicate}
+                testId="relationship-detail-duplicate"
+              />
               <PanelDelete
                 itemKey={r.id}
                 title={t("relationshipRow.deleteTitle", { id: r.id })}
@@ -106,6 +166,15 @@ export function RelationshipDetail({
             </Group>
           </fieldset>
         </PanelActions>
+      )}
+      {!editingRel && queryRef !== null && (
+        <RelationshipQueryLinks
+          rel={queryRef}
+          name={String(r.id)}
+          heading={t("relationshipRow.queryLinks.heading")}
+          surfaces={surfaces}
+          testIdPrefix="relationship-detail"
+        />
       )}
       {!editingRel ? (
         <RelationshipRead

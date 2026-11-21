@@ -13,40 +13,20 @@
 Names must be valid GraphQL identifiers: [_A-Za-z][_0-9A-Za-z]*.
 """
 
-# Requirements: REQ-154, REQ-155, REQ-156, REQ-157, REQ-194, REQ-195, REQ-411, REQ-412, REQ-416
+# Requirements: REQ-154, REQ-155, REQ-156, REQ-157, REQ-194, REQ-195, REQ-411, REQ-412, REQ-416, REQ-1327
 
 import functools
 import re
 from collections.abc import Callable, Mapping
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any
+
+from provisa.core.inflection import plural, singular
+from provisa.core.request_context import acting_org_overrides
 
 if TYPE_CHECKING:
     from types import SimpleNamespace
 
-    from inflect import Word
-    from inflect import engine as _Engine
-
     from provisa.core.models import Source
-
-# inflect's import + engine() build costs ~0.8s. Lazy-load it so that cost is paid ONCE on first
-# pluralization (schema generation), never at module import — keeps the desktop/demo cold start
-# instant (import is otherwise ~1.6s, dominated by inflect). Behaviour is identical; just deferred.
-_inflect: "_Engine | None" = None
-
-
-def _engine() -> "_Engine":
-    global _inflect
-    if _inflect is None:
-        import inflect
-
-        _inflect = inflect.engine()
-    return _inflect
-
-
-# inflect applies the generic consonant+y -> ies rule to any word, but these are actor-reference
-# particles (treated_by, created_by, owned_by), not countable nouns — "by" pluralizes to "bys",
-# never "bies".
-_PLURAL_OVERRIDES = {"by": "bys"}
 
 
 _VERB_PREFIXES = frozenset(
@@ -69,7 +49,7 @@ _VERB_PREFIXES = frozenset(
 
 
 def rel_field_name(target_field_name: str, cardinality: str) -> str:  # REQ-194, REQ-415
-    """Build {noun}_{modifiers} relationship field name with library-based pluralization.
+    """Build {noun}_{modifiers} relationship field name with dictionary-based pluralization.
 
     Handles camelCase (OpenAPI operation IDs) and strips leading verb prefixes
     so findPetsByStatus → pet_by_status (many-to-one).
@@ -101,23 +81,8 @@ def _rel_words(target_field_name: str, cardinality: str) -> str:
         noun, modifiers = parts[-1], parts[:-1]
     else:
         noun, modifiers = parts[0], parts[1:]
-    eng = _engine()
-    if cardinality == "one-to-many":
-        if noun in _PLURAL_OVERRIDES:
-            noun = _PLURAL_OVERRIDES[noun]
-        else:
-            singular = eng.singular_noun(cast("Word", noun))
-            if singular is False:
-                # noun is singular — pluralize it
-                noun = eng.plural_noun(cast("Word", noun)) or noun
-            elif singular.endswith("s") and not noun.endswith("ies"):
-                # inflect returned a false singular ending in 's' (e.g. address→addres) — force plural
-                noun = eng.plural_noun(cast("Word", noun)) or noun
-            # else: genuinely plural (e.g. inquiries, orders) — leave as-is
-    else:
-        singular = eng.singular_noun(cast("Word", noun))
-        if singular:
-            noun = singular
+    # REQ-194: the head noun takes its dictionary number; a word the dictionary lacks stays as written.
+    noun = plural(noun) if cardinality == "one-to-many" else singular(noun)
     if not verb_was_stripped and len(parts) > 1:
         words = [*modifiers, noun]
     else:
@@ -126,7 +91,7 @@ def _rel_words(target_field_name: str, cardinality: str) -> str:
 
 
 def junction_field_name(  # REQ-1586
-    label_source: str,
+    label_source: str | None,
     cardinality: str,
     *,
     type_value: str | None = None,
@@ -164,6 +129,38 @@ def junction_field_name(  # REQ-1586
     return rel_field_name(re.sub(r"[^A-Za-z0-9]+", "_", label).strip("_"), cardinality)
 
 
+def relationship_field_name(  # REQ-194, REQ-351, REQ-1586
+    cardinality: str,
+    *,
+    target_field_name: str,
+    graphql_alias: str | None = None,
+    via_label_source: str | None = None,
+    via_type_value: str | None = None,
+    via_table_name: str | None = None,
+    cypher_alias: str | None = None,
+) -> str:
+    """The GraphQL field a relationship is served under: the field a steward pinned
+    (``graphql_alias``), else a junction-backed edge's nominated label (:func:`junction_field_name`),
+    else the field of the table it reaches -- ``target_field_name``, that table's own GraphQL field
+    name (:func:`generate_name`: its alias, else its name under the naming rules) without any system
+    schema prefix -- in the cardinality's number (:func:`rel_field_name`).
+
+    The one rule: the schema build serves this name and ``core.relationship_names`` stores it, so
+    the stored name and the served field are always the same."""
+    if graphql_alias:
+        return graphql_alias
+    if via_table_name is not None or via_label_source:
+        # A junction's nomination is required: junction_field_name refuses a missing one.
+        return junction_field_name(
+            via_label_source,
+            cardinality,
+            type_value=via_type_value,
+            via_table_name=via_table_name,
+            cypher_alias=cypher_alias,
+        )
+    return rel_field_name(target_field_name, cardinality)
+
+
 def ontology_name(term_name: str) -> str | None:  # REQ-2163
     """The name a term gives its Class table or its Property column in the ontology schema: its
     words, lower-cased and joined by underscores ("customer account" is ``customer_account``).
@@ -173,6 +170,9 @@ def ontology_name(term_name: str) -> str | None:  # REQ-2163
     return name if re.fullmatch(r"[a-z][a-z0-9_]*", name) else None
 
 
+# Pure string -> string, and asked for every column of every table each role's schema and context
+# name (a schema rebuild and a role's compile): a repeated name is answered from the memo.
+@functools.lru_cache(maxsize=65536)
 def _to_pascal_case(name: str) -> str:
     """Convert snake_case or kebab-case to PascalCase.
 
@@ -202,6 +202,7 @@ def to_pascal_case(name: str) -> str:  # REQ-194
     return _to_pascal_case(name)
 
 
+@functools.lru_cache(maxsize=65536)
 def _to_camel_case(name: str) -> str:
     """Convert snake_case or kebab-case to camelCase."""
     pascal = _to_pascal_case(name)
@@ -232,9 +233,9 @@ def semantic_relation_names(domain_id: str, semantic: str) -> tuple[str, str]:  
 def stored_relation_names(domain_id: str, schema_name: str, table_name: str) -> list[str]:
     """The qualified names a statement gives a registered table through its stored table name:
     ``domain.table`` and ``schema.table`` (e.g. ``meta.registered_tables``,
-    ``public.registered_tables``). Served and draft tables alike are named by this one rule —
+    ``public.registered_tables``). Served and withdrawn tables alike are named by this one rule —
     governance resolves a served table under these names (``build_governance_context``) and a
-    draft is refused as draft under the same ones (REQ-1921)."""
+    view over a withdrawn one is refused naming it under the same ones (REQ-1921)."""
     if not table_name:
         return []
     names = []
@@ -299,6 +300,14 @@ def _to_snake_case(name: str) -> str:
 def source_to_catalog(source_id: str) -> str:  # REQ-471
     """Convert a source ID to the engine catalog name (hyphens → underscores)."""
     return source_id.replace("-", "_")
+
+
+def lowered_catalog(source_catalogs: Mapping[str, str] | None, source_id: str) -> str:  # REQ-1266
+    """The catalog a statement's reference to a table of ``source_id`` is lowered under: the org's
+    name for the source in ``source_catalogs`` (org- and environment-prefixed, REQ-1266/1529), else
+    the source's base catalog name -- the one rule the compilation context names a table's catalog
+    by (``compiler.context``), so a lowered statement is read back under the same name."""
+    return (source_catalogs or {}).get(source_id) or source_to_catalog(source_id)
 
 
 #: The kinds of object an engine keeps to reach a source live, each named ``<kind>_<catalog>``:
@@ -413,6 +422,15 @@ def org_prefixed_catalog(
     return f"org_{org_id}__{base_catalog}"
 
 
+def is_own_catalog(catalog: str, source_id: str) -> bool:  # REQ-194
+    """Whether ``catalog`` is the one named after ``source_id`` (:func:`source_to_catalog`, in the
+    forms :func:`org_prefixed_catalog` gives it), so the source holds that address alone. Otherwise
+    the source is pinned to a catalog it shares by design: the control plane's, a materialize
+    store's or a fixed warehouse's."""
+    base = source_to_catalog(source_id)
+    return catalog == base or (catalog.startswith("org_") and catalog.endswith(f"__{base}"))
+
+
 # REQ-195: Hasura v2 / DDN literals map to internal presets.
 #   hasura-default  → snake_case   graphql-default → camelCase
 #   graphql (DDN namingConvention) → camelCase
@@ -488,30 +506,54 @@ def mutation_style(convention: str) -> str:  # REQ-411, REQ-412
     return "camel"  # apollo_graphql
 
 
+# REQ-1327: the deployment's conventions: what an org with no convention of its own inherits. An
+# org's own convention is never written here; it is read below from the settings rows of the org
+# the compile is bound to.
 _gql_convention: str = "apollo_graphql"
 _sql_convention: str = "snake"
 
 
 def configure(gql: str = "apollo_graphql", sql: str = "snake") -> None:  # REQ-471
+    """Set the deployment's conventions, the base every org without its own inherits."""
     global _gql_convention, _sql_convention
     _gql_convention = normalize_convention(gql)
     _sql_convention = normalize_convention(sql)
 
 
-def active_gql_convention() -> str:  # REQ-471
-    return _gql_convention
+def _org_naming() -> dict:
+    return acting_org_overrides().get("naming") or {}
+
+
+def active_gql_convention() -> str:  # REQ-471, REQ-1327
+    """The GraphQL convention of the org this compile is bound to, else the deployment's."""
+    own = _org_naming().get("convention")
+    return normalize_convention(own) if own else _gql_convention
+
+
+def active_sql_convention() -> str:  # REQ-1327
+    """The SQL convention of the org this compile is bound to, else the deployment's."""
+    own = _org_naming().get("sql_convention")
+    return normalize_convention(own) if own else _sql_convention
 
 
 def active_sql_form() -> str:  # REQ-2190
     """The output form of the SQL convention in force, as :func:`_canonical_convention` names it."""
-    return _canonical_convention(_sql_convention)
+    return _canonical_convention(active_sql_convention())
 
 
 _GQL_NAME_RE = re.compile(r"^[_A-Za-z][_0-9A-Za-z]*$")
 
 
 def apply_gql_name(name: str, override: str | None = None) -> str:  # REQ-194, REQ-411, REQ-412
-    converted = apply_convention(name, override or _gql_convention)
+    return _gql_name(name, override or active_gql_convention())
+
+
+@functools.lru_cache(maxsize=65536)
+def _gql_name(name: str, convention: str) -> str:
+    """:func:`apply_gql_name` under ``convention``: pure, so a repeated name is answered from the
+    memo (see :func:`_to_pascal_case`). The org's convention is resolved by the caller and is part
+    of the key, so one org's answer is never served to another (REQ-1327)."""
+    converted = apply_convention(name, convention)
     if _GQL_NAME_RE.match(converted):
         return converted
     # apply_convention only re-cases an already-valid identifier — a raw external name (a CSV/API
@@ -529,7 +571,7 @@ def apply_gql_name(name: str, override: str | None = None) -> str:  # REQ-194, R
 
 
 def apply_sql_name(name: str, override: str | None = None) -> str:  # REQ-194
-    return apply_convention(name, override or _sql_convention)
+    return apply_convention(name, override or active_sql_convention())
 
 
 def apply_cql_label(name: str) -> str:  # REQ-471
@@ -542,6 +584,7 @@ def apply_cql_property(name: str) -> str:  # REQ-471
     return apply_gql_name(name)
 
 
+@functools.lru_cache(maxsize=65536)
 def apply_convention(name: str, convention: str) -> str:  # REQ-471
     """Apply a naming convention preset to a name. Returns name unchanged when already correct."""
     canon = _canonical_convention(convention)

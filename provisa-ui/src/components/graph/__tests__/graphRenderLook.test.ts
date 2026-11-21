@@ -12,30 +12,18 @@
 
 // The MCP server's render_graph draws with the graph page's own stylesheet and layouts
 // (graph-render/src/draw.ts imports them). What it adds is the background each theme draws on,
-// which must be the page's own: the --bg the transparent graph canvas sits on.
+// which must be the page's own: the graph tokens' canvas the Cypher graph is painted in.
 
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { BACKGROUND, LAYOUTS } from "../../../../graph-render/src/look";
 import { LAYOUT_OPTIONS } from "../canvas/canvas-types";
-import { ERD_ELK_LAYOUT } from "../../erd/erd-layout-options";
-
-const tokens = readFileSync(resolve(__dirname, "../../../theme/tokens.css"), "utf8");
-
-function pageBackground(scheme: "light" | "dark"): string {
-  const at = tokens.indexOf(`:root[data-mantine-color-scheme="${scheme}"] {`);
-  expect(at, scheme).toBeGreaterThan(-1);
-  const block = tokens.slice(at, tokens.indexOf("}", at));
-  const bg = /--bg:\s*(#[0-9a-fA-F]{6});/.exec(block);
-  expect(bg, `${scheme} --bg`).not.toBeNull();
-  return bg![1].toLowerCase();
-}
+import { ERD_ELK_LAYOUT } from "../../provisa-graph/presets";
+import { graphTokens } from "../../provisa-graph/tokens";
 
 describe("what render_graph draws on and with", () => {
   it("draws each theme on the page's own background", () => {
-    expect(BACKGROUND.light).toBe(pageBackground("light"));
-    expect(BACKGROUND.dark).toBe(pageBackground("dark"));
+    expect(BACKGROUND.light).toBe(graphTokens(false).canvas);
+    expect(BACKGROUND.dark).toBe(graphTokens(true).canvas);
   });
 
   it("lays out with the graph page's force and hierarchy, and the ERD's ELK", () => {

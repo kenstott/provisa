@@ -64,12 +64,14 @@ from provisa.core.schema_org import (
     user_attributes,
     user_directory,
     user_idp_attributes,
+    user_idp_roles,
 )
 from provisa.core.schema_org import metadata as org_metadata
 from provisa.core.schema_org import roles, user_role_assignments
 from provisa.transpiler.metadata_settings import CLIENT_ROLE
 from tests.integration.test_auth_integration import _FirebaseLikeProvider
 from tests.served_config import served_config
+from tests.integration.signin_tables import SIGN_IN_TABLES
 
 pytestmark = [pytest.mark.integration, pytest.mark.deployment_org("root")]
 
@@ -87,17 +89,7 @@ _ORG_SCHEMAS = {
     "sandbox": "test_orglife_sandbox",
 }
 
-# user_directory and user_idp_attributes: every authenticated request mirrors the caller's identity,
-# and what its identity provider said, into the bound org's tenant plane (REQ-1439, REQ-1383) before
-# it is handled (AuthMiddleware._upsert_profile).
-_TENANT_TABLES = [
-    roles,
-    user_role_assignments,
-    admin_audit_log,
-    user_directory,
-    user_attributes,
-    user_idp_attributes,
-]
+_TENANT_TABLES = [*SIGN_IN_TABLES, admin_audit_log, user_attributes]
 
 
 def _lay_out_query_audit_log(conn) -> None:
@@ -739,6 +731,10 @@ def test_account_deletion_leaves_orgs_and_tombstones_references(planes):  # REQ-
             conn.execute(
                 insert(user_idp_attributes).values(user_id=who, name="email", value=f"{who}@x")
             )
+            # REQ-2219: the role claims his identity provider sent at sign-in.
+            conn.execute(
+                insert(user_idp_roles).values(user_id=who, role_id="analyst", domain_id="*")
+            )
         conn.execute(
             insert(query_audit_log).values(
                 user_id="bob",
@@ -806,9 +802,9 @@ def test_account_deletion_leaves_orgs_and_tombstones_references(planes):  # REQ-
     assert _rows(planes.sync, _ORG_SCHEMAS["acme"], select(query_audit_log.c.user_id)) == [
         (tombstone,)
     ]
-    # Nothing in the org still says who he was (REQ-1312): his directory entry, attributes and
-    # provider claims are gone with him; alice's are untouched.
-    for table in (user_directory, user_attributes, user_idp_attributes):
+    # Nothing in the org still says who he was (REQ-1312): his directory entry, attributes,
+    # provider claims and provider role claims are gone with him; alice's are untouched.
+    for table in (user_directory, user_attributes, user_idp_attributes, user_idp_roles):
         assert _rows(planes.sync, _ORG_SCHEMAS["acme"], select(table.c.user_id)) == [("alice",)]
 
 

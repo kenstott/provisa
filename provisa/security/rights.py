@@ -64,6 +64,9 @@ class Capability(str, Enum):  # REQ-042, REQ-060
     CREATE_VIEW = "create_view"
     COLUMN_GRANT = "column_grant"
     USER_MANAGEMENT = "user_management"
+    # REQ-2219: set a principal's entitlement lists, per role grant and kind. Scoped by the roles
+    # kind: roles [dev] reaches dev and the roles with dev as an ancestor.
+    ASSIGN_ENTITLEMENTS = "assign_entitlements"
     MASKING_CONFIG = "masking_config"
     VIEW_GOVERNANCE = (
         "view_governance"  # REQ-1134: see meta GOVERNANCE columns (visible_to, masks, grants)
@@ -131,11 +134,21 @@ class Capability(str, Enum):  # REQ-042, REQ-060
     # rw of a role named in a product's Owner field, held to that product by a generated row rule.
     DATA_PRODUCT_READ = "data_product_read"
     DATA_PRODUCT_RW = "data_product_rw"
+    # REQ-2219, OWNER KINDS: owning is a capability of its own, each scoped by the kind it owns
+    # (provisa.entitlements.index.capability_scopes): a data product, a relationship, a domain (its
+    # steward), a glossary term (named domain.term) and a judgment basis (named by its id).
+    DATA_PRODUCT_OWNER = "data_product_owner"
+    RELATIONSHIP_OWNER = "relationship_owner"
+    DOMAIN_STEWARD = "domain_steward"
+    TERM_OWNER = "term_owner"
+    JUDGMENT_BASIS_OWNER = "judgment_basis_owner"
     # REQ-2155: data quality's own rights, so managing checks no longer needs TABLE_REGISTRATION.
     # DQ_READ reads check definitions and results; DQ_RW manages checks, expectations and
     # promises (REQ-2157).
     DQ_READ = "dq_read"
     DQ_RW = "dq_rw"
+    # REQ-2229: send OpenLineage run events to the receiver, for a tool's service account.
+    LINEAGE_REPORT = "lineage_report"
     IGNORE_RELATIONSHIPS = "ignore_relationships"
     WRITE = "write"  # REQ-868: global mutation-execute capability (alias EXECUTE_MUTATION)
     # The right the wire surfaces read off a role's list by name. A member here so that the
@@ -146,6 +159,9 @@ class Capability(str, Enum):  # REQ-042, REQ-060
     # beside the domain ownership the edit needs anyway. Exists only when the platform declares
     # regions; region is never an access dimension.
     DATA_RESIDENCY = "data_residency"
+    # REQ-870: run the commands the role is assigned, in the domains it lists. Alone it reads no
+    # data (reads_data). The read-only catalog commands of meta stay under CATALOG_READ.
+    COMMAND_EXECUTION = "command_execution"
 
 
 # REQ-1132: the system domains and the capability that holds each, THE list every other reads.
@@ -210,6 +226,52 @@ def normalized_reach(domains: Iterable[str]) -> list[str]:
 # platform_admin.
 PLATFORM_ADMIN_ROLE = "platform_admin"
 ORG_ADMIN_ROLE = "org_admin"
+#: A meta-role's id: this prefix, then its members joined by ``+`` (security/meta_role.py).
+META_PREFIX = "meta:"
+
+
+def is_meta_role_id(role_id: str | None) -> bool:
+    """Whether ``role_id`` names a meta-role (REQ-2188)."""
+    return bool(role_id) and str(role_id).startswith(META_PREFIX)
+
+
+def members_of(role_id: str) -> tuple[str, ...]:  # REQ-2188
+    """The roles ``role_id`` names: a meta-role's, from its id (meta_role.meta_role_id), else
+    itself. For a caller that holds no runtime: a session variable bound at a transport's edge."""
+    if not role_id.startswith(META_PREFIX):
+        return (role_id,)
+    return tuple(role_id[len(META_PREFIX) :].split("+"))
+
+
+def _preview_right_reach(role: dict, roles: dict[str, dict]) -> set[str]:  # REQ-1921
+    """The domains ``role`` holds the right a withdrawn table is previewed by: table
+    registration, the right withdrawing and putting it back needs. Held as every
+    right is: by the role, a role it inherits from, or a member of a meta role (``acting_chain``,
+    REQ-2188), each paired with the domains of the role carrying it (REQ-1944,
+    :func:`domain_access_for_capability`). The one place the right is named."""
+    return domain_access_for_capability(
+        role["acting_chain"], roles, Capability.TABLE_REGISTRATION.value
+    )
+
+
+def registers_tables_in(role: dict, roles: dict[str, dict], domain_id: str) -> bool:  # REQ-1921
+    """Whether ``role`` (a built role, state.roles) holds table registration reaching
+    ``domain_id``: a withdrawn table of that domain may be previewed by it."""
+    reach = _preview_right_reach(role, roles)
+    return bool(reach) and reaches_domain(sorted(reach), domain_id)
+
+
+def withdrawn_reach(role: dict, roles: dict[str, dict]) -> frozenset[str] | None:  # REQ-1921
+    """The domains whose withdrawn tables ``role`` may preview: those it holds table
+    registration in (:func:`registers_tables_in`); None for every data domain, empty for none."""
+    reach = _preview_right_reach(role, roles)
+    if not reach:
+        return frozenset()
+    if reaches_all_domains(sorted(reach)):
+        return None
+    return frozenset(reach)
+
+
 DEVELOPER_ROLE = "developer"
 ANALYST_ROLE = "analyst"
 #: The standard role every role builds on (provisa/core/standard_roles.yaml).
@@ -313,7 +375,9 @@ def domain_access_for_claims(  # REQ-1530
     out: set[str] = set()
     for role_id in role_ids_from_claims(claims):
         role = (roles or {}).get(role_id)
-        if role is None:
+        if role is None or command_only(
+            role.get("capabilities")
+        ):  # REQ-870: its reach is commands'
             continue
         access = role.get("domain_access")
         if access is None:
@@ -399,6 +463,23 @@ def reaches_domain(domain_access: Iterable[str] | None, domain_id: str) -> bool:
     return reaches_all_domains(domain_access) or domain_id in (domain_access or ())
 
 
+def reads_data(capabilities: Iterable[str] | None) -> bool:
+    """Whether a role holding ``capabilities`` reads data: a right other than running commands.
+    A role with no capabilities reads nothing, and nor does one holding only command_execution,
+    whose domains are where its commands run (REQ-870)."""
+    return bool(set(capabilities or ()) - {Capability.COMMAND_EXECUTION.value})
+
+
+def command_only(capabilities: Iterable[str] | None) -> bool:
+    """Whether ``capabilities`` are command_execution and nothing else (REQ-870)."""
+    return set(capabilities or ()) == {Capability.COMMAND_EXECUTION.value}
+
+
+#: On a meta-role only: the domains its commands run in, the reach of the members holding
+#: command_execution (security/meta_role.py). Each member's right stays paired with its own reach.
+COMMAND_DOMAIN_ACCESS = "command_domain_access"
+
+
 def lists_data_domain(domain_access: Iterable[str] | None) -> bool:
     """Whether ``domain_access`` names a data domain or ``"*"``: what a system domain added for its
     capability does not make a role that lists no domain a role with a data surface."""
@@ -471,7 +552,7 @@ def served_roles(  # REQ-2152
     return frozenset(
         role_id
         for role_id, definition in roles.items()
-        if definition["capabilities"]  # REQ-2155: a role with no capabilities reads nothing
+        if reads_data(definition["capabilities"])  # REQ-2155, REQ-870
         and column_served(
             {"id": role_id},
             domain_id,
@@ -611,6 +692,51 @@ def unknown_capabilities(capabilities: Iterable[str] | None) -> list[str]:  # RE
     return sorted({c for c in (capabilities or ()) if c not in known})
 
 
+class OrgAdminGrantError(Exception):
+    """An org administrator's role was granted by someone who does not hold every right it carries
+    (REQ-1327)."""
+
+    def __init__(self, role_id: str, missing: Iterable[str]):
+        self.role_id = role_id
+        self.missing = sorted(missing)
+        super().__init__(
+            f"role {role_id!r} is granted only by a holder of every right it carries; the granter "
+            "lacks: " + ", ".join(self.missing)
+        )
+
+
+def org_admin_rights_missing(
+    org_admin_capabilities: Iterable[str] | None, held: Iterable[str]
+) -> set[str]:  # REQ-1327
+    """The rights of org_admin that ``held`` lacks: empty when ``held`` is an org_admin's.
+
+    REQ-1327 (amended 2026-11-16): deleting an organization and granting org_admin are an
+    org_admin's acts; user_management alone allows neither. Holding org_admin is read as rights
+    (REQ-1337): every right the org_admin role carries in that org. The platform administrator
+    (``cross_org``) keeps an org's lifecycle and the appointment of its admins, so it lacks nothing.
+    """
+    caps = set(held)
+    if Capability.CROSS_ORG.value in caps:
+        return set()
+    return set(org_admin_capabilities or ()) - caps
+
+
+def admin_role_grant_missing(
+    role_capabilities: Iterable[str] | None, granter_capabilities: Iterable[str]
+) -> set[str]:  # REQ-1327
+    """The rights a granter lacks to confer an org administrator's role: empty when it may.
+
+    An org administrator's role is one carrying ``user_management`` -- read off its rights, never
+    its name (REQ-1337), as the platform's invitation of an org's admin is. Granting org_admin is
+    an org_admin's act (REQ-1327, amended 2026-11-16), so such a role is conferred only by a holder
+    of every right it carries, or by the platform (``cross_org``), which appoints an org's admins.
+    """
+    rights = set(role_capabilities or ())
+    if Capability.USER_MANAGEMENT.value not in rights:
+        return set()
+    return org_admin_rights_missing(rights, granter_capabilities)
+
+
 class PlatformRoleGrantError(Exception):
     """A role carrying platform rights was granted by someone who does not hold them."""
 
@@ -636,11 +762,19 @@ def check_role_grant(  # REQ-1337
     deployment, which they do not hold. A role carrying no platform right passes for any granter:
     whether the granter may manage users at all is the calling surface's gate, not this one.
 
-    Raises :class:`PlatformRoleGrantError` naming the rights the granter lacks.
+    REQ-1327: an org administrator's role (one carrying user_management, org_admin among them) is
+    granted only by a holder of every right it carries, or by a holder of ``cross_org``;
+    user_management alone does not confer org_admin (:func:`admin_role_grant_missing`).
+
+    Raises :class:`PlatformRoleGrantError` or :class:`OrgAdminGrantError` naming the rights the
+    granter lacks.
     """
     missing = platform_rights_in(role_capabilities) - set(granter_capabilities)
     if missing:
         raise PlatformRoleGrantError(role_id, missing)
+    lacking = admin_role_grant_missing(role_capabilities, granter_capabilities)
+    if lacking:
+        raise OrgAdminGrantError(role_id, lacking)
 
 
 def carries_platform_right(role_id: str, roles: dict[str, dict] | None) -> bool:  # REQ-1337
@@ -712,6 +846,11 @@ def has_capability(
 # The meta views whose ROWS describe registered tables/columns and are therefore subject to the
 # REQ-1132 row-level neighbourhood scoping. Each maps to the meta-view columns that carry the
 # DESCRIBED tables' ids, so the row filter is "<column> IN (<reachable table ids>)" for each.
+#: REQ-1921: the meta view holding a withdrawn table's row (``withdrawn`` true), which a role
+#: holding table registration in its domain reads and no other role does (compiler/stage2;
+#: :func:`withdrawn_reach`).
+WITHDRAWN_ROWS_VIEW = "registered_tables_meta"
+
 META_ROW_SCOPED_VIEWS: dict[str, tuple[str, ...]] = {
     "registered_tables_meta": ("id",),
     "table_columns_meta": ("table_id",),
@@ -724,6 +863,24 @@ META_ROW_SCOPED_VIEWS: dict[str, tuple[str, ...]] = {
     "table_keys": ("table_id", "referenced_table_id"),
     # REQ-194: a name is read where the table it names (or the table holding it) is.
     "model_names_meta": ("table_id",),
+}
+#: REQ-2208 (THE TAGS REPORT): the relations of tags on objects, each (domain, relation). A row is
+#: read exactly when the tag admin reads that assignment (api.admin.schema_query.
+#: _readable_assignments): by the domains of its object and the right to read a row rule, a role's
+#: definition or a metric (compiler.stage2.tag_row_predicate), never by the table scope above.
+TAG_ROW_VIEWS: frozenset[tuple[str, str]] = frozenset(
+    {(META_DOMAIN_ID, "tag_instances"), (OPS_DOMAIN_ID, "tags_report")}
+)
+#: REQ-2208 (decision 2026-11-13): the relations connecting tags, library documents and sections,
+#: and objects, each (domain, relation) to whether its rows may name an object. A row is read where
+#: its document is, as a library document is (its ``read_document_domains``); a row naming an object
+#: (its ``object_key`` set) is read only where the tag on that object is too, by the tags report's
+#: rule (compiler.stage2.library_row_predicate).
+LIBRARY_ROW_VIEWS: dict[tuple[str, str], bool] = {
+    (META_DOMAIN_ID, "library_documents"): False,
+    (META_DOMAIN_ID, "tag_citations"): True,
+    (META_DOMAIN_ID, "section_tags"): False,
+    (META_DOMAIN_ID, "policy_coverage"): True,
 }
 #: REQ-2190: the pg_catalog and information_schema views, each a row's expressions naming the
 #: tables it is about; a row about none is every role's (provisa.transpiler.metadata_views).
@@ -772,7 +929,7 @@ SQL_ONLY_TABLES |= SQL_CATALOG_TABLES
 def lists_table(table: dict) -> bool:
     """Whether every role of the org lists ``table``: it holds a listed column (REQ-2153), in a
     data domain."""
-    if table.get("domain_id") in SYSTEM_DOMAINS or table.get("draft"):
+    if table.get("domain_id") in SYSTEM_DOMAINS or table.get("withdrawn"):
         return False
     return any(c.get("scope") == SCOPE_LISTED for c in table.get("columns") or [])
 

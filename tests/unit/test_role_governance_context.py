@@ -44,6 +44,7 @@ from provisa.pgwire import governed_plan
 from provisa.pgwire.governed_plan import governance_reader, role_governance
 from provisa.security.rights import SQL_CATALOG_TABLES
 from tests.role_state import RoleState
+from tests.rules import rules_of
 
 _TABLES = [
     {
@@ -339,7 +340,7 @@ def test_a_context_built_for_one_action_or_region_stays_the_callers_to_fill():
     """action_governance and region_rows build a GovernanceContext of their own, for one read."""
     governance = GovernanceContext()
     governance.rls_rules[1] = "TRUE"
-    assert governance.rls_rules == {1: "TRUE"}
+    assert governance.rls_rules == rules_of({1: "TRUE"})
 
 
 def test_the_graph_surfaces_check_and_the_pipeline_read_one_context(builds, monkeypatch):

@@ -20,11 +20,12 @@ it. System-tag immutability is enforced at the mutation layer.
 # Requirements: REQ-1373, REQ-1375, REQ-1377
 
 import datetime as _dt
+from collections.abc import Sequence
 
-from provisa.core import model_change
+from provisa.core import model_change, model_uri
 from typing import TYPE_CHECKING
 
-from sqlalchemy import delete as _delete, func, select
+from sqlalchemy import delete as _delete, func, select, update
 
 from provisa.core.models import (
     LIBRARY_TAG_OBJECT_TYPES,
@@ -38,12 +39,17 @@ from provisa.core.models import (
     TagParamValue,
     base_tag_id,
 )
-from provisa.core.repositories.integrity import Dependent, ObjectRef, guard, remove_parts
+from provisa.core.repositories import retirement
+from provisa.core.repositories.integrity import Dependent, ObjectRef, guard
+from provisa.reference_library import citations
 from provisa.core.schema_org import (
     glossary_terms,
+    metrics,
     reference_document_tags,
     registered_tables,
+    relationships,
     rls_rules,
+    table_columns,
     tag_assignments,
     tag_param_values,
     tags,
@@ -64,6 +70,9 @@ def _code_tag_row(tag: Tag) -> dict:
         "expires_policy": tag.expires_policy,
         "param_policy": tag.param_policy,
         "sensitive": tag.sensitive,
+        "requires_citation": tag.requires_citation,
+        "required": tag.required,
+        "allowed_domains": list(tag.allowed_domains),
     }
 
 
@@ -75,7 +84,11 @@ def _user_tag_row(row) -> dict:
 
 async def upsert(conn: "Connection", tag: Tag) -> None:  # REQ-1373, REQ-1919
     """Create the tag, or replace its definition."""
-    model_change.name("upsert", "tag", tag.id)  # REQ-1524
+    model_change.name("upsert", model_change.uri(model_uri.tag_uri, tag.id))  # REQ-1524
+    # REQ-2248: a retired tag keeps its id; a save under it would bring it back.
+    held = (await conn.execute_core(select(tags.c.retired).where(tags.c.id == tag.id))).fetchone()
+    if held is not None and held.retired:
+        raise retirement.RetiredNameTaken("tag", tag.id)
     await conn.upsert(
         tags,
         {
@@ -87,6 +100,9 @@ async def upsert(conn: "Connection", tag: Tag) -> None:  # REQ-1373, REQ-1919
             "expires_policy": tag.expires_policy,
             "param_policy": tag.param_policy,
             "sensitive": tag.sensitive,
+            "requires_citation": tag.requires_citation,  # REQ-2208
+            "required": tag.required,  # REQ-2208 (THE TAGS REPORT)
+            "allowed_domains": list(tag.allowed_domains),  # REQ-2208 (A TAG IS OFFERED BY DOMAIN)
         },
         index_elements=["id"],
         update_columns=[
@@ -96,6 +112,9 @@ async def upsert(conn: "Connection", tag: Tag) -> None:  # REQ-1373, REQ-1919
             "expires_policy",
             "param_policy",
             "sensitive",
+            "requires_citation",
+            "required",
+            "allowed_domains",
         ],
     )
 
@@ -115,10 +134,17 @@ async def get(conn: "Connection", tag_id: str) -> dict | None:
     return _user_tag_row(row) if row is not None else None
 
 
-async def list_all(conn: "Connection") -> list[dict]:
-    result = await conn.execute_core(select(tags).order_by(tags.c.id))
+async def list_all(conn: "Connection", *, retired: bool = False) -> list[dict]:
+    """Every tag in service: the code-defined ones, then the user tags. ``retired`` lists the
+    retired user tags instead (REQ-2248), with who, when and why; a code-defined tag is never
+    retired."""
+    result = await conn.execute_core(
+        select(tags).where(tags.c.retired.is_(retired)).order_by(tags.c.id)
+    )
     reserved = SYSTEM_TAG_IDS + DERIVED_TAG_IDS
     user_rows = [_user_tag_row(r) for r in result.fetchall() if r._mapping["id"] not in reserved]
+    if retired:
+        return user_rows
     return [_code_tag_row(t) for t in SYSTEM_TAGS + DERIVED_TAGS] + user_rows
 
 
@@ -136,31 +162,48 @@ class TagDeleteRefused(Exception):  # REQ-1384
         super().__init__(f"Tag {tag_id!r} is still referred to by: {named}")
 
 
-async def delete(conn: "Connection", tag_id: str) -> bool:  # REQ-1918, REQ-1384
-    """Delete a user tag: THE delete, for every surface. False when there is no such tag.
+async def delete(  # REQ-1918, REQ-1384, REQ-2248
+    conn: "Connection", tag_id: str, *, reason: str | None = None
+) -> bool:
+    """Delete a user tag: THE delete, for every surface. It RETIRES the tag (REQ-2248): the row,
+    its id, its assignments and its parameter values are kept, the tag marked retired with
+    ``reason``, the acting person and the time. False when there is no such tag, or it is
+    retired already.
 
-    A tag takes its assignments and its parameter values with it (REQ-1918): they are its
-    parts, removed here because no foreign key carries them — system tags are code-defined with
-    no row to reference. A row filter attached to the tag blocks it (REQ-1384,
-    :class:`TagDeleteRefused`): removing the filter with the tag would widen what the filter's
-    role reads. How many objects lose the tag is :func:`assignment_count`, for the confirmation
-    shown before a tag that carries a policy is deleted. One transaction.
+    A row filter attached to the tag blocks it (REQ-1384, :class:`TagDeleteRefused`). How many
+    objects carry the tag is :func:`assignment_count`, for the confirmation shown before a tag
+    that carries a policy is deleted. One transaction.
     """
-    # The base id, not tag_id: a parameterized tag's assignments are stored in "{tag}:{value}"
-    # form, so matching on tag_id would leave every one of them orphaned (REQ-1467).
-    model_change.name("delete", "tag", tag_id)  # REQ-1524
+    # The base id, not tag_id: a parameterized tag is stored under its base (REQ-1467).
+    model_change.name("retire", model_change.uri(model_uri.tag_uri, tag_id))  # REQ-1524
     base = base_tag_id(tag_id)
     ref = ObjectRef("tag", base)
     async with conn.transaction():
-        found = await conn.execute_core(select(tags.c.id).where(tags.c.id == base))
-        if found.fetchone() is None:
+        found = (
+            await conn.execute_core(select(tags.c.retired).where(tags.c.id == base))
+        ).fetchone()
+        if found is None or found.retired:
             return False
         blocking = await guard(conn, ref)
         if blocking:
             raise TagDeleteRefused(base, blocking)
-        await remove_parts(conn, ref)
-        await conn.execute_core(_delete(tags).where(tags.c.id == base))
+        await conn.execute_core(
+            update(tags).where(tags.c.id == base).values(**retirement.values(reason))
+        )
     return True
+
+
+async def restore(conn: "Connection", tag_id: str) -> bool:  # REQ-2248
+    """Restore a retired tag: the same tag, its retirement cleared, served again with the
+    assignments it kept. False when there is no such tag, or it is not retired."""
+    model_change.name("restore", model_change.uri(model_uri.tag_uri, tag_id))  # REQ-1524
+    base = base_tag_id(tag_id)
+    done = await conn.execute_core(
+        update(tags)
+        .where(tags.c.id == base, tags.c.retired.is_(True))
+        .values(**retirement.cleared())
+    )
+    return done.rowcount == 1
 
 
 async def assignment_count(conn: "Connection", tag_id: str) -> int:
@@ -209,7 +252,7 @@ async def assign(  # REQ-1377, REQ-1919
 ) -> None:
     """Put the tag on the object, or change that assignment. REQ-2094: its why is stamped with
     who decided it, when and on what evidence when the tag or its why changes."""
-    model_change.name("assign", "tag", assignment.tag_id)  # REQ-1524
+    model_change.name("assign", model_change.uri(model_uri.tag_uri, assignment.tag_id))  # REQ-1524
     why = await _stamped_why(conn, assignment)
     await conn.upsert(
         _held_in(assignment.object_type),
@@ -313,14 +356,150 @@ async def unassign(
     it (:func:`_held_in`); left out, the model's."""
     # Matched on the base id so removing "the entity tag" from a column succeeds whether the
     # caller names the parameter or not; (base_tag_id, object_key) is unique, so it is exact.
-    model_change.name("unassign", "tag", tag_id)  # REQ-1524
+    model_change.name("unassign", model_change.uri(model_uri.tag_uri, tag_id))  # REQ-1524
     held_in = _held_in(object_type or "")
     result = await conn.execute_core(
         _delete(held_in).where(
             (held_in.c.base_tag_id == base_tag_id(tag_id)) & (held_in.c.object_key == object_key)
         )
     )
-    return (result.rowcount or 0) > 0
+    removed = (result.rowcount or 0) > 0
+    if removed:  # REQ-2208: its citations go with the assignment
+        await citations.uncite_all(conn, citations.TAG_ASSIGNMENT, base_tag_id(tag_id), object_key)
+    return removed
+
+
+# ---------------------------------------------------------------------------
+# Citations of the reference library (REQ-2208)
+# ---------------------------------------------------------------------------
+
+
+class CitationTargetNotFound(LookupError):  # REQ-2208
+    """The tag, or the assignment, a citation is to be made on or taken off is not there."""
+
+
+async def _require_tag(conn: "Connection", tag_id: str) -> str:
+    if await get(conn, tag_id) is None:
+        raise CitationTargetNotFound(f"Tag {tag_id!r} not found")
+    return base_tag_id(tag_id)
+
+
+async def _require_assignment(conn: "Connection", assignment: TagAssignment) -> tuple[str, str]:
+    held_in = _held_in(assignment.object_type)
+    key = (assignment.base_tag_id(), assignment.object_key())
+    found = await conn.execute_core(
+        select(held_in.c.id).where(
+            (held_in.c.base_tag_id == key[0]) & (held_in.c.object_key == key[1])
+        )
+    )
+    if found.fetchone() is None:
+        raise CitationTargetNotFound(f"Tag {assignment.tag_id!r} is not assigned to {key[1]}")
+    return key
+
+
+async def cite_definition(  # REQ-2208
+    conn: "Connection", tag_id: str, place: "citations.Place", cited_by: str | None
+) -> "citations.Citation":
+    """The tag's definition cites ``place`` (the section that defines it); a system tag's too."""
+    model_change.name("cite", model_change.uri(model_uri.tag_uri, tag_id))  # REQ-1524
+    base = await _require_tag(conn, tag_id)
+    return await citations.cite(conn, citations.TAG, base, "", place, cited_by)
+
+
+async def uncite_definition(  # REQ-2208
+    conn: "Connection", tag_id: str, place: "citations.Place"
+) -> bool:
+    model_change.name("uncite", model_change.uri(model_uri.tag_uri, tag_id))  # REQ-1524
+    base = await _require_tag(conn, tag_id)
+    return await citations.uncite(conn, citations.TAG, base, "", place)
+
+
+async def cite_assignment(  # REQ-2208
+    conn: "Connection", assignment: TagAssignment, place: "citations.Place", cited_by: str | None
+) -> "citations.Citation":
+    """The assignment cites ``place``: what traces or confirms the tag on that object."""
+    model_change.name("cite", model_change.uri(model_uri.tag_uri, assignment.tag_id))  # REQ-1524
+    base, key = await _require_assignment(conn, assignment)
+    return await citations.cite(conn, citations.TAG_ASSIGNMENT, base, key, place, cited_by)
+
+
+async def uncite_assignment(  # REQ-2208
+    conn: "Connection", assignment: TagAssignment, place: "citations.Place"
+) -> bool:
+    model_change.name("uncite", model_change.uri(model_uri.tag_uri, assignment.tag_id))  # REQ-1524
+    base, key = await _require_assignment(conn, assignment)
+    return await citations.uncite(conn, citations.TAG_ASSIGNMENT, base, key, place)
+
+
+async def _replace_citations(
+    conn: "Connection",
+    citer: str,
+    base: str,
+    key: str,
+    places: "Sequence[citations.Place]",
+    cited_by: str | None,
+) -> None:
+    """``citer``'s citations are exactly ``places``: a place not cited yet is cited, one cited that
+    ``places`` leaves out is uncited, and one already cited is left as it is, with the text hash
+    and state it was recorded with (only citing it again, a confirmation, records it anew)."""
+    held = {
+        citations.citation_key(c)
+        for c in (await citations.of_citers(conn, citer, [base])).get((base, key), [])
+    }
+    wanted = {p.key(): p for p in places}
+    for cite_key, place in wanted.items():
+        if cite_key not in held:
+            await citations.cite(conn, citer, base, key, place, cited_by)
+    for cite_key in held - wanted.keys():
+        await citations.uncite_key(conn, citer, base, key, cite_key)
+
+
+async def replace_assignment_citations(  # REQ-2208
+    conn: "Connection",
+    assignment: TagAssignment,
+    places: "Sequence[citations.Place]",
+    cited_by: str | None,
+) -> None:
+    """The assignment cites exactly ``places`` (:func:`_replace_citations`). The caller holds the
+    transaction that writes the assignment with them."""
+    model_change.name("cite", model_change.uri(model_uri.tag_uri, assignment.tag_id))  # REQ-1524
+    base, key = await _require_assignment(conn, assignment)
+    await _replace_citations(conn, citations.TAG_ASSIGNMENT, base, key, places, cited_by)
+
+
+async def replace_definition_citations(  # REQ-2208
+    conn: "Connection",
+    tag_id: str,
+    places: "Sequence[citations.Place]",
+    cited_by: str | None,
+) -> None:
+    """The tag's definition cites exactly ``places`` (:func:`_replace_citations`). The caller holds
+    the transaction that writes the tag with them."""
+    model_change.name("cite", model_change.uri(model_uri.tag_uri, tag_id))  # REQ-1524
+    base = await _require_tag(conn, tag_id)
+    await _replace_citations(conn, citations.TAG, base, "", places, cited_by)
+
+
+async def definition_citations(  # REQ-2208
+    conn: "Connection",
+) -> "dict[str, list[citations.Citation]]":
+    """Each tag's definition citations, by base tag id, each with its state."""
+    found = await citations.of_citers(conn, citations.TAG)
+    return {tag: cited for (tag, _key), cited in found.items() if tag is not None}
+
+
+async def assignment_citations(  # REQ-2208
+    conn: "Connection",
+) -> "dict[tuple[str, str], list[citations.Citation]]":
+    """Each assignment's citations, by (base tag id, object key), each with its state."""
+    found = await citations.of_citers(conn, citations.TAG_ASSIGNMENT)
+    return {(tag, key): cited for (tag, key), cited in found.items() if tag is not None}
+
+
+def citation_gap(tag_row: dict | None, cited: "list[citations.Citation]") -> bool:  # REQ-2208
+    """Whether an assignment of the tag lacks the citation its tag requires: a gap, reported
+    and never refused."""
+    return bool(tag_row and tag_row.get("requires_citation")) and not cited
 
 
 # ---------------------------------------------------------------------------
@@ -378,8 +557,49 @@ async def delete_param_value(conn: "Connection", tag_id: str, value: str) -> boo
     return (result.rowcount or 0) > 0
 
 
+def _in_service() -> list:
+    """REQ-2248: an assignment in effect: neither its tag nor the table, column, relationship or
+    metric it is on is retired. A retired object's assignments are kept, and not applied."""
+    retired_column = (
+        select(table_columns.c.id)
+        .where(
+            table_columns.c.table_id == tag_assignments.c.table_id,
+            table_columns.c.column_name == tag_assignments.c.column_name,
+            table_columns.c.retired.is_(True),
+        )
+        .exists()
+    )
+    # The query this filters joins registered_tables itself: an alias keeps this read its own.
+    retired_table = registered_tables.alias("retired_table")
+    return [
+        ~select(tags.c.id)
+        .where(tags.c.id == tag_assignments.c.base_tag_id, tags.c.retired.is_(True))
+        .exists(),
+        ~select(retired_table.c.id)
+        .where(
+            retired_table.c.id == tag_assignments.c.table_id,
+            retired_table.c.retired.is_(True),
+        )
+        .exists(),
+        ~retired_column,
+        ~select(relationships.c.id)
+        .where(
+            relationships.c.id == tag_assignments.c.relationship_id,
+            relationships.c.retired.is_(True),
+        )
+        .exists(),
+        ~select(metrics.c.name)
+        .where(
+            tag_assignments.c.object_key == "metric:" + metrics.c.name,
+            metrics.c.retired.is_(True),
+        )
+        .exists(),
+    ]
+
+
 async def list_assignments(conn: "Connection") -> list[dict]:
-    """All assignments, with the qualified table address joined in for table/column targets, the
+    """All assignments in effect (REQ-2248: not of a retired tag, nor on a retired object), with
+    the qualified table address joined in for table/column targets, the
     term's name for a term (REQ-2145) and the rule's role, target and rights for a row rule
     (REQ-2208).
 
@@ -409,6 +629,7 @@ async def list_assignments(conn: "Connection") -> list[dict]:
         .join(glossary_terms, tag_assignments.c.term_id == glossary_terms.c.id, isouter=True)
         .join(rls_rules, tag_assignments.c.rls_rule_id == rls_rules.c.id, isouter=True)
         .join(rule_table, rls_rules.c.table_id == rule_table.c.id, isouter=True)
+        .where(*_in_service())
         .order_by(tag_assignments.c.tag_id, tag_assignments.c.object_key)
     )
     rows = []

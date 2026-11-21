@@ -2,8 +2,8 @@
   "redactionTab": {
     "panelTitle": "Règles d'expurgation",
     "loading": "Chargement…",
-    "intro": "Le texte correspondant à ces règles est remplacé par [REDACTED:<rule>] avant de quitter Provisa : dans les traces et journaux exportés, la sortie des conteneurs, le journal d'audit et les messages d'erreur renvoyés aux clients. Les secrets propres à l'organisation sont expurgés automatiquement.",
-    "bestEffort": "L'expurgation est faite au mieux. Les motifs intégrés sont un jeu de départ, pas une garantie : ajoutez ici des motifs pour les formats sensibles propres à votre organisation. Les journaux propres à une source sont hors de portée de Provisa.",
+    "intro": "Le texte correspondant à ces règles est remplacé avant de quitter Provisa : dans les traces et logs exportés, la sortie des conteneurs, le journal d'audit et chaque message d'erreur renvoyé à un client, y compris dans une réponse réussie. Un client reçoit [REDACTED], qui ne nomme aucune règle. Les logs, les traces et le journal d'audit conservent [REDACTED:<rule>]. Les secrets propres de l'organisation sont masqués automatiquement.",
+    "bestEffort": "L'expurgation se fait au mieux. Les motifs intégrés ne sont qu'un ensemble de départ : ajoutez ici des motifs pour les formats sensibles propres à votre organisation. Les journaux propres d'une source sont hors de portée de Provisa.",
     "unresolved": "Ces règles de référence ne se résolvent pas et n'expurgent rien : {{names}}",
     "orgTitle": "Règles de cette organisation",
     "deploymentTitle": "Règles du déploiement (toutes les organisations)",

@@ -417,7 +417,7 @@ Esses cabeçalhos implementam redirecionamento controlado pelo cliente.
 | Variável de ambiente | Padrão | Propósito |
 | --------- | --------- | --------- |
 | `PROVISA_REDIRECT_ENABLED` | `false` | Habilita redirecionamento por limite no lado do servidor |
-| `PROVISA_REDIRECT_THRESHOLD` | `1000` | Limite padrão de contagem de linhas |
+| `PROVISA_REDIRECT_THRESHOLD` | `100000` | Limite padrão de contagem de linhas |
 | `PROVISA_REDIRECT_FORMAT` | `parquet` | Formato de redirecionamento padrão |
 | `PROVISA_REDIRECT_BUCKET` | `provisa-results` | Nome do bucket S3 |
 | `PROVISA_REDIRECT_ENDPOINT` | | URL de endpoint compatível com S3 |

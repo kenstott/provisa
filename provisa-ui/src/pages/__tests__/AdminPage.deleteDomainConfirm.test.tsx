@@ -57,6 +57,9 @@ vi.mock("../../api/admin", async (orig) => ({
   fetchSettings: vi.fn(async () => ({
     naming: { use_domains: true },
     names: { clash_policy: "refuse" },
+    // REQ-1327: the org's sample size and remote row limit, which the Domains tab edits.
+    sampling: { default_sample_size: 100 },
+    graphql_remote: { max_rows: 1000 },
     federation: { enabled: false, subgraph_name: "provisa", role: null },
   })),
 }));
@@ -88,7 +91,7 @@ describe("Admin > Domains: deleting a domain", () => {
 
   it("deletes on confirm", async () => {
     const dialog = await openConfirmation();
-    fireEvent.click(within(dialog).getByRole("button", { name: "Confirm" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Delete" }));
     await waitFor(() => expect(deleteDomain).toHaveBeenCalledWith("sales"));
     await waitFor(() => expect(refetch).toHaveBeenCalled());
   });

@@ -9,12 +9,12 @@
     "assignmentsSourceClaims": "トークンクレーム",
     "assignmentsSourceProvisa": "Provisa（ローカル割り当て）",
     "trustUpstream": "上流プロキシのIDヘッダーを信頼する",
-    "allowSimpleAuth": "シンプル認証を許可（本番環境ガード — ユーザー名/パスワードの有効化に必要）",
+    "allowSimpleAuth": "シンプル認証を許可(本番用の保護。ユーザー名/パスワードを有効にするには必須)",
     "saveButton": "認証設定を保存",
     "loading": "読み込み中…",
     "saved": "保存しました。",
     "savedRestartRequired": "保存しました。適用するにはサービスを再起動してください。",
-    "secretOnFile": "保存済み — 変更しない場合は空欄のまま",
+    "secretOnFile": "保存済み。変更しない場合は空欄のままにしてください。",
     "secretNotSet": "未設定",
     "allowRegistration": "ユーザーが自分でアカウントを作成できるようにする"
   }

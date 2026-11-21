@@ -1,0 +1,15 @@
+{
+  "yourData": {
+    "title": "Sus datos",
+    "loading": "Leyendo las tablas recién registradas…",
+    "openQuery": "Abrir en el explorador de consultas",
+    "otherWays": "Otras formas de acceder a esta tabla",
+    "graphql": "Consulta GraphQL",
+    "pgwire": "Cadena de conexión para un cliente SQL (pgwire)",
+    "sql": "SQL",
+    "rest": "REST",
+    "mcp": "Llamada a herramienta MCP",
+    "copy": "Copiar {{what}}",
+    "close": "Cerrar"
+  }
+}

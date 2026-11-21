@@ -103,7 +103,7 @@ def _mv(name):
         refresh_interval=600,
         debounce_quiet=0.0,
         debounce_max_delay=None,
-        product_id=None,  # REQ-2133
+        product_ids=[],  # REQ-2133
         hold_on_failing_checks=False,  # REQ-2133
         table_id=None,  # REQ-2133
     )

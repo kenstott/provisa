@@ -16,7 +16,7 @@ This module formalizes what schema_gen already does and adds validation.
 
 from __future__ import annotations
 
-from provisa.security.rights import META_DOMAIN_ID, column_served, reaches_domain
+from provisa.security.rights import META_DOMAIN_ID, column_served, command_only, reaches_domain
 
 # Requirements: REQ-001, REQ-038, REQ-039, REQ-042, REQ-263, REQ-363
 
@@ -24,6 +24,8 @@ from provisa.security.rights import META_DOMAIN_ID, column_served, reaches_domai
 def visible_tables(tables: list[dict], role: dict) -> list[dict]:  # REQ-039, REQ-042, REQ-363
     """The tables ``role`` is served, each with the columns it is served — by the one rule the
     schema build and SQL governance read (:func:`provisa.security.rights.column_served`)."""
+    if command_only(role.get("capabilities")):
+        return []  # REQ-870: its domains are where its commands run
     result = []
     for table in tables:
         reaches = reaches_domain(role["domain_access"], table["domain_id"])

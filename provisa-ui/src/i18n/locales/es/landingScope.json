@@ -8,6 +8,13 @@
     "argumentsNotJson": "JSON no válido",
     "argumentsNotObject": "Indique un objeto JSON de nombres y valores de argumentos",
     "readFilter": "Filtro de carga",
-    "readArguments": "Argumentos fijos"
+    "readArguments": "Argumentos fijos",
+    "readWaitLabel": "Lectura antes de la primera carga",
+    "readWaitHelp": "Lo que hace una lectura mientras no se ha cargado nada de esta tabla. De forma predeterminada espera lo que permita la solicitud; también puede esperar un tiempo propio o devolver cero filas con las columnas de la tabla e iniciar la carga.",
+    "readWaitRequest": "Esperar hasta el tiempo de espera de la solicitud",
+    "readWaitTimed": "Esperar hasta un tiempo definido",
+    "readWaitNoRows": "Devolver cero filas e iniciar la carga",
+    "readWaitSeconds": "Espera (segundos)",
+    "readWaitUpTo": "Espera hasta {{seconds}} s"
   }
 }

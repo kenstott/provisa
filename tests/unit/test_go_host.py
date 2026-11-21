@@ -38,7 +38,7 @@ from provisa.golang.build import (
     import_path,
     requirements,
 )
-from provisa.golang.reader import ensure_reader, read_code
+from provisa.golang.reader import SERVICES, SERVICES_MODULE, ensure_reader, read_code
 from provisa.runtime_deps.code_runtimes import RUNTIMES, CodeRuntimeResolver
 
 pytestmark = pytest.mark.unit
@@ -86,6 +86,45 @@ def _start(binary: Path) -> w.Worker:
     started = w.Worker("go-src", "h", command)
     started.start()
     return started
+
+
+def test_a_go_host_runs_lifecycle_functions_as_ordinary_calls(toolchain, tmp_path):
+    """REQ-2221: the front calls @on-start with the setup values as one mapping argument, and
+    @health with none; Go decodes the mapping into the function's map parameter."""
+    code = tmp_path / "code"
+    code.mkdir()
+    (code / "go.mod").write_text("module example.com/life\n\ngo 1.23\n")
+    (code / "life.go").write_text(
+        textwrap.dedent(
+            """
+            package life
+
+            import "context"
+
+            var region string
+
+            // Connect.
+            //
+            // @on-start
+            func Connect(ctx context.Context, values map[string]string) error {
+                region = values["region"]
+                return nil
+            }
+
+            // Check.
+            //
+            // @health
+            func Check() (string, error) { return "ok in " + region, nil }
+            """
+        )
+    )
+    manifest = _manifest(toolchain, code, tmp_path)
+    worker = _start(_build(toolchain, code, manifest, tmp_path / "bin" / "host"))
+    try:
+        worker.command("Connect", [{"region": "eu"}], ["values"])
+        assert worker.command("Check", [], []) == "ok in eu"
+    finally:
+        worker.stop()
 
 
 @pytest.fixture(scope="module")
@@ -243,8 +282,12 @@ def test_a_panic_a_yielded_error_and_a_value_with_no_form_fail_the_call_by_name(
             // @command
             func Channel() any { return make(chan int) }
 
+            type BigRow struct {
+                N any `json:"n"`
+            }
+
             // @table
-            func Big() []map[string]any { return []map[string]any{{"n": uint64(1 << 63)}} }
+            func Big() []BigRow { return []BigRow{{uint64(1 << 63)}} }
             """
         )
     )
@@ -260,7 +303,7 @@ def test_a_panic_a_yielded_error_and_a_value_with_no_form_fail_the_call_by_name(
             next(stream)
         with pytest.raises(w.CodeFailed, match="a chan int has no form a row or a value can take"):
             started.command("Channel", [])
-        # A loose row is sent whole, as the wire's JSON: an integer beyond its range by its digits.
+        # A loose field is sent as the wire's JSON: an integer beyond its range by its digits.
         assert list(started.rows("Big", "table", [], **_read_of(manifest, "Big"))) == [
             [{"n": 2**63}]
         ]
@@ -297,6 +340,7 @@ def test_the_build_joins_the_hosts_module_and_the_codes(tmp_path, fixture_manife
     }
     assert [" ".join(w) for w in directives(module, "replace")] == [
         f"example.com/orders => {code}",
+        f"{SERVICES_MODULE} => {SERVICES}",  # Provisa's, in every build (REQ-2106)
         f"example.com/dep => {(code / 'vendored' / 'dep').resolve()}",
     ]
     sums = (into / "go.sum").read_text().splitlines()

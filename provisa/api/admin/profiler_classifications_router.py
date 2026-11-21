@@ -29,7 +29,7 @@ A decision is the steward's: it needs ``sensitive_data`` in the table's own doma
 in its domains; org_admin, in every one). The kinds are listed for a holder of ``sensitive_data``
 or ``org_settings``, and enabled or disabled by a holder of ``org_settings`` alone. A scan is run
 and read by those who may register tables in the table's own domain -- it is asked for while
-registering a table, a draft as well as one in service -- and shows hints only on the columns the
+registering a table, a withdrawn one as well as one in service -- and shows hints only on the columns the
 caller is served.
 """
 
@@ -47,8 +47,9 @@ from provisa.api.admin.capabilities import (
     require_capability_request,
 )
 from provisa.api.admin.profiler_router import _db, _jsonable, _member
-from provisa.api.admin.table_read import table_for_steward
+from provisa.api.admin.table_read import refuse_unparameterized, table_for_steward
 from provisa.api.errors import ApiError
+from provisa.api.engine_error_names import client_value
 
 router = APIRouter(prefix="/admin", tags=["admin", "profiler"])
 
@@ -302,7 +303,7 @@ def _scan_doc(scan: dict) -> dict:
         "finishedAt": None if scan["finished_at"] is None else scan["finished_at"].isoformat(),
         "sampledRows": scan["sampled_rows"],
         "scannedColumns": scan["scanned_columns"],
-        "error": scan["error"],
+        "error": client_value(scan["error"]),
     }
 
 
@@ -312,7 +313,9 @@ async def start_sensitive_scan(request: Request, table_id: int) -> dict:
     from provisa.core.connection_loop import spawn_background
     from provisa.profiler import hints
 
-    table_for_steward(request, state, table_id)
+    # REQ-1986: a table that requires parameters has no rows to scan; refused from its metadata
+    # before a scan is recorded.
+    refuse_unparameterized(table_for_steward(request, state, table_id))
     async with _db().acquire() as conn:
         scan_id = await hints.start(conn, table_id, _caller(request))
         scan = await hints.latest_scan(conn, table_id)

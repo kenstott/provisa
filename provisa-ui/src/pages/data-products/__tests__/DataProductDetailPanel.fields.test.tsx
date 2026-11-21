@@ -12,7 +12,7 @@
 // them, an empty one as "—".
 
 import { describe, it, expect, vi } from "vitest";
-import { render, screen, within } from "../../../test-utils/render";
+import { fireEvent, render, screen, within } from "../../../test-utils/render";
 import { DataProductDetailPanel } from "../DataProductDetailPanel";
 import type { DataProduct } from "../../../types/admin";
 import { lifecycleProps } from "./lifecycleProps";
@@ -50,8 +50,8 @@ function fields(p: DataProduct): [string, string][] {
       canEdit={false}
       canDelete={false}
       owner
+      seesConsumers
       lineageLoading={false}
-      contractsVersion={0}
       lineageError=""
       lineageGraph={null}
       onEdit={vi.fn()}
@@ -59,8 +59,11 @@ function fields(p: DataProduct): [string, string][] {
       {...lifecycleProps()}
     />,
   );
+  // The values are in the header's Details, closed at first.
+  fireEvent.click(screen.getByTestId(`data-product-card-details-${p.id}-toggle`));
   return within(screen.getByTestId(`data-product-read-${p.id}`))
-    .getAllByRole("term")
+    // Opened just now: its open transition has not run in the test's document.
+    .getAllByRole("term", { hidden: true })
     .map((dt) => [dt.textContent ?? "", dt.nextElementSibling?.textContent ?? ""]);
 }
 

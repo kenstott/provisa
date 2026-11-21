@@ -28,6 +28,7 @@ from provisa.security.inheritance import right_not_in_parents
 from provisa.security.rights import (
     DEPLOYMENT_GRANTER,
     Capability,
+    OrgAdminGrantError,
     PlatformRoleGrantError,
     check_role_grant,
     platform_rights_in,
@@ -199,6 +200,48 @@ def require_role_grantable(  # REQ-1337
             role=role_id,
             rights=exc.missing,
         ) from exc
+    except OrgAdminGrantError as exc:
+        raise org_admin_refusal(exc.missing) from exc
+
+
+def require_roles_removable(request: Request, role_ids: Iterable[str]) -> None:  # REQ-1337
+    """Raise 403 unless the caller may remove every role in ``role_ids``: each read against its
+    resolved capabilities in the org the request acts in, so no role name is tested."""
+    from provisa.api.app import state
+
+    for role_id in role_ids:
+        require_role_grantable(
+            request, role_id, (state.roles.get(role_id) or {}).get("capabilities")
+        )
+
+
+async def require_held_roles_removable(request: Request, model_db, user_id: str) -> None:
+    """Raise 403 unless the caller may remove every role ``user_id`` holds in force in the org
+    whose model database is ``model_db``.
+
+    REQ-1327 (amended 2026-11-16): removing a person from an organization removes every role they
+    hold there, so it asks what removing each would ask; a holder of user_management alone cannot
+    remove an organization's administrators that way either.
+    """
+    from sqlalchemy import select
+
+    from provisa.auth.role_grants import in_force
+    from provisa.core.schema_org import user_role_assignments as t
+
+    async with model_db.acquire() as conn:
+        rows = (
+            await conn.execute_core(
+                select(t.c.role_id).where(t.c.user_id == user_id, in_force()).distinct()
+            )
+        ).fetchall()
+    require_roles_removable(request, [r[0] for r in rows])
+
+
+def org_admin_refusal(missing: Iterable[str]) -> ApiError:  # REQ-1327
+    """The 403 for an act that is an org_admin's (deleting the org, granting org_admin) asked by
+    a caller lacking ``missing`` of org_admin's rights: user_management alone allows neither."""
+    right = ", ".join(sorted(missing))
+    return ApiError(403, "platform.right_required", f"{right} capability required", right=right)
 
 
 def role_definition_problem(  # REQ-042, REQ-1337, REQ-1530

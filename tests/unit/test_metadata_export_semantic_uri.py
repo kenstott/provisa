@@ -25,6 +25,7 @@ from provisa.api.metadata_export.atlas import to_entities
 from provisa.api.metadata_export.builder import build_snapshot
 from provisa.api.metadata_export.datahub import to_proposals
 from provisa.api.metadata_export.openlineage import to_events
+from tests.unit.product_members import with_members
 from provisa.core.models import (
     Cardinality,
     Column,
@@ -47,7 +48,6 @@ def _config(**kwargs) -> ProvisaConfig:
                 domain_id="sales",
                 schema_name="public",
                 table_name="orders",
-                product_id="prod",
                 alias="Order",
                 columns=[
                     Column(name="id", data_type="integer", visible_to=["admin"]),
@@ -63,6 +63,8 @@ def _config(**kwargs) -> ProvisaConfig:
         "roles": [],
     }
     base.update(kwargs)
+    # REQ-1634: every table is a member of "prod", so it publishes.
+    base["data_products"] = with_members(base.get("data_products", []), {"prod": base["tables"]})
     return ProvisaConfig(**base)
 
 
@@ -114,7 +116,6 @@ def test_relationship_uri_anchors_at_source_table():
                 domain_id="sales",
                 schema_name="public",
                 table_name="customers",
-                product_id="prod",
                 columns=[Column(name="id", data_type="integer", visible_to=["admin"])],
             )
         ],
@@ -151,7 +152,6 @@ def test_uri_segments_are_percent_encoded():
                 domain_id="sales ops",
                 schema_name="public",
                 table_name="order lines",
-                product_id="prod",
                 columns=[Column(name="id", data_type="integer", visible_to=["admin"])],
             )
         ],

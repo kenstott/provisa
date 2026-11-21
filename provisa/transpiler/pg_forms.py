@@ -316,15 +316,7 @@ TRINO_CIDR_ABBREV = (
 _CENTS = "CAST(round((value) * 100, 0) AS BIGINT)"
 _WIDE_CENTS = f"CAST({_CENTS} AS HUGEINT)"
 
-MONEY_TEXT = (
-    f"CASE WHEN {_CENTS} < 0 THEN '-' ELSE '' END || '$' || "
-    f"format('{{:,}}', abs({_WIDE_CENTS}) // 100) || '.' || "
-    f"printf('%02d', CAST(abs({_WIDE_CENTS}) % 100 AS INTEGER))"
-)
-TRINO_MONEY_TEXT = (
-    "CASE WHEN value < 0 THEN '-' ELSE '' END || "
-    "format('$%,.2f', abs(CAST(value AS DECIMAL(19,2))))"
-)
+#: money's text form is the polyfill grid's row (provisa.transpiler.polyfill.money).
 MONEY_BYTES = f"unhex(printf('%016x', {_CENTS}))"
 TRINO_MONEY_BYTES = f"to_big_endian_64({_CENTS})"
 
@@ -550,31 +542,49 @@ def _finite_angle(answer: str) -> str:
     return f"CASE WHEN IS_NAN({_X}) THEN {_X} WHEN IS_INF({_X}) THEN {_OUT_OF_DOMAIN} ELSE {answer} END"
 
 
-_ANGLE = f"ABS({_X} % 360.0)"
-#: The angle folded to 0..180, and to the first quadrant.
-_HALF = f"CASE WHEN {_ANGLE} > 180.0 THEN 360.0 - {_ANGLE} ELSE {_ANGLE} END"
-_QUADRANT = f"CASE WHEN {_HALF} > 90.0 THEN 180.0 - {_HALF} ELSE {_HALF} END"
-_FIRST_SIGN = (
-    f"(CASE WHEN {_X} % 360.0 < 0 THEN -1.0 ELSE 1.0 END) * "
-    f"(CASE WHEN {_ANGLE} > 180.0 THEN -1.0 ELSE 1.0 END)"
-)
-_SECOND_SIGN = f"(CASE WHEN {_HALF} > 90.0 THEN -1.0 ELSE 1.0 END)"
-_COT_45 = _ratio(f"({_cosd_q1('45.0')})", f"({_sind_q1('45.0')})")
-_TAN_45 = _ratio(f"({_sind_q1('45.0')})", f"({_cosd_q1('45.0')})")
-SIND = _finite_angle(f"({_FIRST_SIGN}) * ({held('_d', _QUADRANT, _sind_q1('_d'))})")
-COSD = _finite_angle(f"({_SECOND_SIGN}) * ({held('_d', _QUADRANT, _cosd_q1('_d'))})")
-TAND = _finite_angle(
-    f"({_FIRST_SIGN}) * {_SECOND_SIGN} * "
-    + held("_d", _QUADRANT, _ratio(_ratio(_sind_q1("_d"), _cosd_q1("_d")), _TAN_45))
-)
-#: dcotd: a minus zero is forced to a plain zero, as the function does.
-COTD = _finite_angle(
-    f"(CASE WHEN {_X} % 360.0 = 0 AND ATAN2({_X} % 360.0, -1.0) < 0 THEN -1.0 ELSE 1.0 END) * "
-    f"({_FIRST_SIGN}) * {_SECOND_SIGN} * "
-    f"CASE WHEN {_QUADRANT} = 0 THEN CAST('Infinity' AS DOUBLE PRECISION) ELSE "
-    + held("_d", _QUADRANT, _ratio(_ratio(_cosd_q1("_d"), _sind_q1("_d")), _COT_45))
-    + " END + 0.0"
-)
+def degree_answers(angle: str, minus_zero: bool = False) -> dict[str, str]:
+    """sind, cosd, tand and cotd of a finite angle, by ``angle``, its text as C's fmod(x, 360.0)
+    reads it (sign kept, a minus zero kept): each is folded into the first quadrant. ``minus_zero``:
+    a minus zero is folded as itself, as float.c's negation of a negative angle leaves it (sind of
+    -0 is -0), and tand's minus zero is a plain zero."""
+    whole = (
+        f"CASE WHEN {angle} < 0 THEN -{angle} ELSE {angle} END" if minus_zero else f"ABS({angle})"
+    )
+    # The angle folded to 0..180, and to the first quadrant.
+    half = f"CASE WHEN {whole} > 180.0 THEN 360.0 - {whole} ELSE {whole} END"
+    quadrant = f"CASE WHEN {half} > 90.0 THEN 180.0 - {half} ELSE {half} END"
+    first_sign = (
+        f"(CASE WHEN {angle} < 0 THEN -1.0 ELSE 1.0 END) * "
+        f"(CASE WHEN {whole} > 180.0 THEN -1.0 ELSE 1.0 END)"
+    )
+    second_sign = f"(CASE WHEN {half} > 90.0 THEN -1.0 ELSE 1.0 END)"
+    cot_45 = _ratio(f"({_cosd_q1('45.0')})", f"({_sind_q1('45.0')})")
+    tan_45 = _ratio(f"({_sind_q1('45.0')})", f"({_cosd_q1('45.0')})")
+    return {
+        "sind": f"({first_sign}) * ({held('_d', quadrant, _sind_q1('_d'))})",
+        "cosd": f"({second_sign}) * ({held('_d', quadrant, _cosd_q1('_d'))})",
+        # dtand forces a minus zero to a plain zero, as dcotd does.
+        "tand": (
+            f"({first_sign}) * {second_sign} * "
+            + held("_d", quadrant, _ratio(_ratio(_sind_q1("_d"), _cosd_q1("_d")), tan_45))
+            + (" + 0.0" if minus_zero else "")
+        ),
+        # dcotd: a minus zero is forced to a plain zero, as the function does.
+        "cotd": (
+            f"(CASE WHEN {angle} = 0 AND ATAN2({angle}, -1.0) < 0 THEN -1.0 ELSE 1.0 END) * "
+            f"({first_sign}) * {second_sign} * "
+            f"CASE WHEN {quadrant} = 0 THEN CAST('Infinity' AS DOUBLE PRECISION) ELSE "
+            + held("_d", quadrant, _ratio(_ratio(_cosd_q1("_d"), _sind_q1("_d")), cot_45))
+            + " END + 0.0"
+        ),
+    }
+
+
+_DEGREES = degree_answers(f"{_X} % 360.0")
+SIND = _finite_angle(_DEGREES["sind"])
+COSD = _finite_angle(_DEGREES["cosd"])
+TAND = _finite_angle(_DEGREES["tand"])
+COTD = _finite_angle(_DEGREES["cotd"])
 _UNIT_RANGE = f"{_X} < -1.0 OR {_X} > 1.0"
 ASIND = (
     f"CASE WHEN IS_NAN({_X}) THEN {_X} WHEN {_UNIT_RANGE} THEN {_OUT_OF_DOMAIN} "
@@ -1132,7 +1142,9 @@ TIME_TIMETZ = _zoned_time("value", "date_part('timezone', now())")
 INTERVAL_TIME = held(
     "_t",
     f"{_micros('value')} % {_USECS_PER_DAY}",
-    f"{_MIDNIGHT} + to_microseconds(CASE WHEN _t < 0 THEN _t + {_USECS_PER_DAY} ELSE _t END)",
+    # BIGINT: to_microseconds takes it alone, and a NULL interval's micros are a DOUBLE on 2.0.
+    f"{_MIDNIGHT} + to_microseconds(CAST(CASE WHEN _t < 0 THEN _t + {_USECS_PER_DAY} ELSE _t END "
+    "AS BIGINT))",
 )
 TIME_INTERVAL = "to_microseconds(epoch_us(value))"
 #: A date's or a timestamp's infinity, which the engine's casts between them do not keep.
@@ -1146,7 +1158,9 @@ def _keeping_infinity(value: str, sql_type: str, answer: str) -> str:
 
 _CLOCK = "to_microseconds(epoch_us(t))"
 DATETIME_PL = _keeping_infinity("d", "TIMESTAMP", f"CAST(d AS TIMESTAMP) + {_CLOCK}")
-_ZONED_MICROS = "to_microseconds(epoch_us(CAST(t AS TIME)) - date_part('timezone', t) * 1000000)"
+# BIGINT: on a NULL TIMETZ DuckDB 2.0 takes date_part's DOUBLE overload, and to_microseconds
+# takes a BIGINT alone.
+_ZONED_MICROS = "to_microseconds(CAST(epoch_us(CAST(t AS TIME)) - date_part('timezone', t) * 1000000 AS BIGINT))"
 #: The date and the clock read at the time's own offset.
 DATETIMETZ_PL = _keeping_infinity(
     "d", "TIMESTAMPTZ", f"timezone('UTC', CAST(d AS TIMESTAMP) + {_ZONED_MICROS})"

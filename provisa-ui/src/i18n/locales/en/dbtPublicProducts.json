@@ -1,0 +1,23 @@
+{
+  "dbtPublicProducts": {
+    "modeLabel": "What to register",
+    "modeTables": "Pick tables",
+    "modeProducts": "Public models as data products",
+    "intro_one": "Every public model with an enforced contract is registered as a table, and {{count}} data product is created as a draft for a steward to review.",
+    "intro_other": "Every public model with an enforced contract is registered as a table, and {{count}} data products are created as drafts for a steward to review.",
+    "none": "No model in this manifest is public with an enforced contract.",
+    "groupProduct": "Data product {{id}} (dbt group)",
+    "projectProduct": "Data product {{id}} (the whole project)",
+    "exists": "A data product named {{id}} already exists. Rename or remove it to register these models.",
+    "owner": "Owner: {{owner}}",
+    "ownerRole": "owner role {{role}}",
+    "tests": "Tests: {{tests}}",
+    "version": "Version {{version}}",
+    "columns": "Promised columns: {{columns}}",
+    "required": "required",
+    "alreadyRegistered": "already registered",
+    "ungrouped": "Not in any group, so not registered here: {{models}}. Pick them as tables instead.",
+    "confirm_one": "Register and create {{count}} draft product",
+    "confirm_other": "Register and create {{count}} draft products"
+  }
+}

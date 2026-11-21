@@ -25,6 +25,9 @@ from collections.abc import Callable
 
 import sqlglot.expressions as exp
 
+from provisa.transpiler.pg_syntax import TO_CHAR_TEMPLATE
+from provisa.transpiler.to_char import plain_strftime
+
 _T, _C = "trino", "clickhouse"
 _ENGINES = {"trino": _T, "presto": _T, "athena": _T, "clickhouse": _C}
 _ANY = None
@@ -57,9 +60,6 @@ _READ_AS_HELD: dict[str, frozenset[str]] = {
 
 #: What both engines refuse: its name, and the said types of the overloads refused (None for all).
 _ON_BOTH: dict[str, frozenset[str] | None] = {
-    # An oid is held as a bigint (provisa.transpiler.pg_held_types); this call of one, and int8's
-    # below, were replayed refused, and stay so.
-    "nameconcatoid": _OID,
     # numeric's exact digits, which an engine's double or 38-digit decimal does not reach; and
     # the scale of the value it picked, or a time's digits, which an engine's type evens out.
     "max": _NUMERIC | {"time"},
@@ -83,15 +83,15 @@ _ON_BOTH: dict[str, frozenset[str] | None] = {
     "exploding_generate_series": _NUMERIC,
     "generate_series": _NUMERIC,
     "rand": _NUMERIC,
-    # No form, and nothing the engine has answers as PostgreSQL does.
+    # No form, and nothing the engine has answers as PostgreSQL does. (ClickHouse's pg_size_pretty
+    # of a value the statement says is an integer is polyfill.server's row.)
     "pg_size_pretty": _ANY,
     "pg_sleep": _ANY,
     "setseed": _ANY,
     "pg_replication_origin_xact_setup": _ANY,
     "pg_sleep_for": _ANY,
     "pg_sleep_until": _ANY,
-    # An interval is no value of these engines.
-    "age": _ANY,
+    # An interval is no value of these engines. age is the polyfill grid's row (polyfill.server).
     "make_interval": _ANY,
     "time_from_parts": _ANY,
     "make_timestamptz": _ANY,
@@ -99,12 +99,10 @@ _ON_BOTH: dict[str, frozenset[str] | None] = {
     # A set of rows, a bit string, or a function of the server.
     "regexp_matches": _ANY,
     "regexp_split_to_table": _ANY,
-    "regexp_instr": _ANY,
     "bit_count": _ANY,
     "get_bit": _ANY,
     "getbit": _ANY,
     "set_bit": _ANY,
-    "overlay": _ANY,
     "like_escape": _ANY,
     "format": _ANY,
     "normalize": _ANY,
@@ -116,8 +114,6 @@ _ON_BOTH: dict[str, frozenset[str] | None] = {
     "char": _ANY,
     "make_timestamp": _ANY,
     "timestamp_from_parts": _ANY,
-    "string_to_array": _ANY,
-    "regexp_split_to_array": _ANY,
     "in_range": _CLOCKS,
     "date_part": frozenset({"time"}),
     "extract": frozenset({"time"}),
@@ -133,13 +129,7 @@ _ON_BOTH: dict[str, frozenset[str] | None] = {
     "row_security_active": _ANY,
     "set_config": _ANY,
     "regclass": _ANY,
-    "varchar": _ANY,
-    "bit": _ANY,
-    "int2": _JSON,
-    "int4": _JSON,
-    "int8": _JSON | _OID,
     "float4": _JSON,
-    "float8": _JSON,
     # bytes, which the engine's own string function reads as text.
     "substr": _BYTES,
     "substring": _BYTES,
@@ -161,8 +151,9 @@ _MOST_ARGUMENTS = {
     "timestamp_trunc": 2,
     "date_trunc": 2,
 }
-#: A ClickHouse pattern of nothing is its error; PostgreSQL's answer is the value.
-_NOT_EMPTY = frozenset({"replace", "trim", "btrim", "ltrim", "rtrim"})
+#: A ClickHouse pattern (the second argument) of nothing is its error; PostgreSQL's answer is the
+#: value. A replacement of nothing is a deletion ClickHouse writes as PostgreSQL does.
+_NOT_EMPTY = frozenset({"replace", "trim"})
 PLAIN_PARTS = frozenset({"year", "quarter", "month", "day", "hour", "minute", "dow", "doy"})
 #: The formats whose every element a dialect's own format writes as PostgreSQL's does.
 _PLAIN_FORMAT = re.compile(r"(?:%[YmdHiMSs]|[-/: T])+")
@@ -180,7 +171,23 @@ _NAMED = {
     "overlaps_timestamp": "overlaps",
 }
 _ON: dict[str, dict[str, frozenset[str] | None]] = {
-    _T: {"gcd": _ANY, "lcm": _ANY},
+    _T: {
+        "gcd": _ANY,
+        "lcm": _ANY,
+        # ClickHouse's forms of these are the polyfill grid's rows (polyfill.regex, polyfill.texts,
+        # polyfill.numbers). An oid is held as a bigint (provisa.transpiler.pg_held_types).
+        "regexp_instr": _ANY,
+        "regexp_split_to_array": _ANY,
+        "overlay": _ANY,
+        "string_to_array": _ANY,
+        "varchar": _ANY,
+        "nameconcatoid": _OID,
+        "int2": _JSON,
+        "int4": _JSON,
+        "int8": _JSON | _OID,
+        "float8": _JSON,
+        "bit": _ANY,  # ClickHouse's is polyfill.bits' row
+    },
     _C: {
         "gcd": _NUMERIC,
         "lcm": _NUMERIC,
@@ -191,10 +198,9 @@ _ON: dict[str, dict[str, frozenset[str] | None]] = {
         "to_timestamp": _NUMBERS,
         "unix_to_time": _NUMBERS,
         "length": _BYTES,
-        "translate": _ANY,
         "concat_ws": _NUMBERS,
-        # A time of day beside a date: toTime64 is no function of the server replayed, only of the
-        # embedded engine, so these would reach it to fail.
+        # A time of day where no grid row reads the call (polyfill.clocks holds a time as its
+        # microseconds; a row answers a date and a time, and overlaps of times it reads).
         "datetime_pl": _TIME,
         "timedate_pl": _TIME,
         "timestamp": _TIME,
@@ -231,8 +237,15 @@ def _is_empty(value: exp.Expr) -> bool:
 
 
 def _plain_format(node: exp.TimeToStr, engine: str) -> bool:
+    """Whether the engine's format of to_char's template writes PostgreSQL's text. sqlglot's
+    strftime text of a template no longer tells YYYY from a literal %Y, nor SS twice from SSSS, so
+    the template the statement wrote is read (pg_syntax keeps it): its strftime form must be the
+    one sqlglot wrote."""
     written = node.args.get("format")
     if not isinstance(written, exp.Literal):
+        return False
+    template = node.meta.get(TO_CHAR_TEMPLATE)
+    if template is None or plain_strftime(template) != written.this:
         return False
     if engine == _C and "%M" in written.this:  # a month's name there, and a minute here
         return False
@@ -248,6 +261,8 @@ def _plain_part(part: exp.Expr, engine: str) -> bool:
         return True
     if isinstance(literal, exp.Literal):
         return literal.this.lower() in PLAIN_PARTS
+    if isinstance(literal, exp.Var) and literal.name.lower() in PLAIN_PARTS:
+        return True  # extract(hour from c): its part a keyword, not a text
     return engine != _C
 
 
@@ -263,7 +278,7 @@ def refused_call(
         return None
     name, args = call
     said = {type_name.split("(")[0] for type_name in map(said_type, args) if type_name}
-    if engine == _C and name in _NOT_EMPTY and any(_is_empty(arg) for arg in args[1:]):
+    if engine == _C and name in _NOT_EMPTY and len(args) > 1 and _is_empty(args[1]):
         return name
     if isinstance(node, exp.TimeToStr) and not _plain_format(node, engine):
         return "to_char"

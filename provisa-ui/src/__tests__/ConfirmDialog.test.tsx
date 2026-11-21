@@ -109,4 +109,58 @@ describe("ConfirmDialog", () => {
     fireEvent.keyDown(dialog, { key: "Escape", code: "Escape" });
     await waitFor(() => expect(screen.queryByText("Delete this item?")).not.toBeInTheDocument());
   });
+
+  describe("the confirm is the shared destructive button (maintainer 2026-11-12)", () => {
+    it("is filled red, white-lettered, the size of the Cancel beside it", async () => {
+      renderDialog();
+      openDialog();
+      const confirm = await screen.findByRole("button", { name: t("common.confirm") });
+      const cancel = screen.getByRole("button", { name: t("common.cancel") });
+      expect(confirm).toHaveAttribute("data-variant", "filled");
+      expect(confirm).toHaveAttribute("data-size", "sm");
+      expect(confirm.getAttribute("style") ?? "").toContain("red");
+      expect(cancel).toHaveAttribute("data-variant", "default");
+      expect(cancel).toHaveAttribute("data-size", confirm.getAttribute("data-size"));
+    });
+
+    it("says what it does where the caller gives the word", async () => {
+      render(
+        <ConfirmDialog {...defaultProps} confirmLabel={t("common.delete")}>
+          {(open) => <button onClick={open}>Open Dialog</button>}
+        </ConfirmDialog>,
+      );
+      openDialog();
+      expect(await screen.findByRole("button", { name: t("common.delete") })).toHaveAttribute(
+        "data-variant",
+        "filled",
+      );
+    });
+  });
+
+  // REQ-413: an action that destroys nothing (Accept all) asks through the same dialog, with a
+  // confirm that is not the red destructive button.
+  describe("the non-destructive form", () => {
+    it("confirms with a filled button that is not red, and runs the action", async () => {
+      render(
+        <ConfirmDialog {...defaultProps} destructive={false} confirmLabel="Accept all">
+          {(open) => <button onClick={open}>Open Dialog</button>}
+        </ConfirmDialog>,
+      );
+      openDialog();
+      const confirm = await screen.findByRole("button", { name: "Accept all" });
+      expect(confirm).toHaveAttribute("data-tone", "confirm");
+      expect(confirm).toHaveAttribute("data-variant", "filled");
+      expect(confirm).toHaveAttribute("data-size", "sm");
+      expect(confirm.getAttribute("style") ?? "").not.toContain("red");
+      fireEvent.click(confirm);
+      await waitFor(() => expect(defaultProps.onConfirm).toHaveBeenCalledTimes(1));
+    });
+
+    it("keeps the destructive form by default", async () => {
+      renderDialog();
+      openDialog();
+      const confirm = await screen.findByRole("button", { name: t("common.confirm") });
+      expect(confirm).toHaveAttribute("data-tone", "destructive");
+    });
+  });
 });

@@ -58,6 +58,19 @@ async function shows(locator: Locator, refused: string[], timeout: number) {
   }
 }
 
+/** Opens the panel's `section` row: every row but Offers starts closed, and a closed row's content
+ * is not mounted (Related, its commands and graph, always; every row under reduced motion).
+ * Details, the product's own fields, is the header's row. */
+async function openSection(page: Page, section: string) {
+  const toggle = page.getByTestId(
+    section === "details"
+      ? `data-product-card-details-${PRODUCT}-toggle`
+      : `data-product-row-${section}-${PRODUCT}-toggle`,
+  );
+  await toggle.click();
+  await expect(toggle).toHaveAttribute("aria-expanded", "true");
+}
+
 test.describe("a data product's panel and graph, read from the meta domain", () => {
   // The first navigation compiles the page's chunks and the panel's reads run after the list's.
   test.setTimeout(180_000);
@@ -77,21 +90,25 @@ test.describe("a data product's panel and graph, read from the meta domain", () 
     await page.goto(`/data-products?product=${PRODUCT}`);
     await shows(page.getByTestId(`data-product-detail-${PRODUCT}`), refused, 90_000);
 
-    // The product's own fields (the SQL read of its row).
+    // The product's own fields (the SQL read of its row), in the Details row, which starts closed.
+    await openSection(page, "details");
     await expect(page.getByTestId(`data-product-read-${PRODUCT}`)).toContainText("Pet Health", {
       timeout: 60_000,
     });
-    // Its members, its command, and its checkers with the table each scans (the nested read).
+    // Its members and its checkers with the table each scans (the nested read), in Quality.
+    await openSection(page, "quality");
     const ports = page.getByTestId(`data-product-detail-tables-${PRODUCT}`);
     await expect(ports).toContainText("pet-store.pets");
     await expect(ports).toContainText("pet-store.vets");
     await expect(ports).not.toContainText("pets_quality");
-    await expect(page.getByTestId(`data-product-detail-commands-${PRODUCT}`)).toContainText(
-      "add_pet",
-    );
     const dq = page.getByTestId(`data-product-detail-dq-tables-${PRODUCT}`);
     await expect(dq).toContainText("pets_quality");
     await expect(dq).toContainText("scans pet-store.pets");
+    // Its command, in Related.
+    await openSection(page, "related");
+    await expect(page.getByTestId(`data-product-detail-commands-${PRODUCT}`)).toContainText(
+      "add_pet",
+    );
 
     // The GraphQL the panel ran, replayed as the same role, answers the same.
     const sent = await panelRead;
@@ -108,12 +125,13 @@ test.describe("a data product's panel and graph, read from the meta domain", () 
     expect(await replay.json()).toEqual(answered);
   });
 
-  test("the panel's graph loads in view, and expands to the whole ontology on the product", async ({
+  test("the panel's graph loads in view, and expands to the product's own graph", async ({
     page,
   }) => {
     const refused = recordRefusals(page);
     await page.goto(`/data-products?product=${PRODUCT}`);
     await shows(page.getByTestId(`data-product-detail-${PRODUCT}`), refused, 90_000);
+    await openSection(page, "related");
     const kg = page.getByTestId("graph-panel");
     await kg.scrollIntoViewIfNeeded();
     // data-ready: three.js has loaded and the scene is drawn.
@@ -125,14 +143,27 @@ test.describe("a data product's panel and graph, read from the meta domain", () 
     await expect(legend).toContainText("data product");
     await expect(legend).toContainText("table");
     await expect(page.getByTestId("graph-panel-depth")).toBeVisible();
+    // REQ-2174 (amended 2026-11-07): its hops are named by the product they count from, and it
+    // opens at 1 hop with Related tables on.
+    await expect(page.getByTestId("graph-panel-depth-label")).toHaveText("Hops from Pet Health");
+    await expect(
+      page.getByTestId("graph-panel-depth").getByRole("radio", { name: "1" }),
+    ).toBeChecked();
+    await expect(page.getByTestId("graph-panel-related")).toBeChecked();
     await expect(page.getByTestId("graph-panel-layers-menu")).toHaveCount(0);
 
     await page.getByTestId("graph-panel-expand").click();
     await shows(page.locator('[data-testid="graph3d-stage"][data-ready]'), refused, 60_000);
-    // The whole ontology, the product selected, on its Ontology preset.
+    // REQ-2174 (amended 2026-11-09, A PRODUCT OPENS ON ITSELF): the product alone -- its tables,
+    // their columns and the terms grounded on them -- selected, with the rest of the model on
+    // asking. (Amended 2026-11-12, A HOP IS A STEP BETWEEN TERMS:) that grounding comes with the
+    // product at any hop count, so the expanded graph opens at 1 hop.
     await expect(page.getByTestId("graph3d-detail")).toContainText("Pet Health");
-    const expanded = page.getByTestId("graph3d");
-    await expect(expanded.getByRole("radio", { name: "Ontology" })).toBeChecked();
+    await expect(page.getByTestId("graph3d-depth-label")).toHaveText("Hops from Pet Health");
+    await expect(
+      page.getByTestId("graph3d-depth").getByRole("radio", { name: "1" }),
+    ).toBeChecked();
+    await expect(page.getByTestId("graph3d-rest")).not.toBeChecked();
   });
 
   test("the Product map draws every product", async ({ page }) => {

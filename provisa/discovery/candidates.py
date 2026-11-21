@@ -15,11 +15,11 @@
 from __future__ import annotations
 
 import uuid
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import delete as _delete, insert, select, update
+from sqlalchemy import delete as _delete, select, update
 
-from provisa.core.schema_org import relationship_candidates, relationships
+from provisa.core.schema_org import registered_tables, relationship_candidates
 from provisa.discovery.analyzer import RelationshipCandidate
 
 if TYPE_CHECKING:
@@ -68,20 +68,36 @@ async def store_candidates(
     return ids
 
 
-async def list_pending(conn: "Connection") -> list[dict]:  # REQ-018, REQ-167
-    """List all candidates with status='suggested'."""
+async def list_pending(conn: "Connection", state: Any) -> list[dict]:  # REQ-018, REQ-167
+    """List all candidates with status='suggested'. ``reduced_information`` (REQ-413, REQ-1986):
+    one of its tables requires a parameter and is not kept for good, so it is never read and no
+    values were compared; said from the model as it is now (``state``: which tables are kept for
+    good), beside the note its reasoning carries."""
+    from provisa.discovery.gather import tables_never_read
+
     result = await conn.execute_core(
         select(relationship_candidates)
         .where(relationship_candidates.c.status == "suggested")
         .order_by(relationship_candidates.c.confidence.desc())
     )
-    return [dict(r._mapping) for r in result.fetchall()]
+    found = [dict(r._mapping) for r in result.fetchall()]
+    ends = {c["source_table_id"] for c in found} | {c["target_table_id"] for c in found}
+    never_read = await tables_never_read(state, conn, sorted(ends)) if ends else set()
+    for c in found:
+        c["reduced_information"] = bool({c["source_table_id"], c["target_table_id"]} & never_read)
+    return found
 
 
 async def accept(
     conn: "Connection", candidate_id: int, rel_id: str | None = None
-) -> dict:  # REQ-019, REQ-020
-    """Accept a candidate: mark accepted and create a relationship."""
+) -> dict:  # REQ-019, REQ-020, REQ-413
+    """Accept a candidate: mark it accepted and register its relationship through the existing
+    derivation (:func:`provisa.core.repositories.relationship.upsert`), which marks the referring
+    column a foreign key. No column is marked a primary or alternate key (REQ-413)."""
+    from provisa.core.models import Cardinality, Relationship
+    from provisa.core import relationship_naming
+    from provisa.core.repositories import relationship as relationship_repo
+
     async with conn.transaction():
         result = await conn.execute_core(
             select(relationship_candidates).where(
@@ -94,6 +110,42 @@ async def accept(
             raise ValueError(f"Candidate {candidate_id} not found or not in suggested status")
         row = dict(found._mapping)
 
+        tables = {
+            int(r.id): r
+            for r in (
+                await conn.execute_core(
+                    select(
+                        registered_tables.c.id,
+                        registered_tables.c.alias,
+                        registered_tables.c.table_name,
+                    ).where(
+                        registered_tables.c.id.in_([row["source_table_id"], row["target_table_id"]])
+                    )
+                )
+            ).fetchall()
+        }
+        source, target = tables[int(row["source_table_id"])], tables[int(row["target_table_id"])]
+        suggested = row.get("suggested_name") or f"disc-{uuid.uuid4().hex[:12]}"
+        # REQ-415: a generated name is told apart from the names already registered; one a person
+        # typed is never changed, and refused when taken. The run's result sends each proposal
+        # with the name it shows, its suggested name: that name is the generated one, not typed.
+        (named,) = await relationship_naming.unique_names(
+            conn,
+            [
+                relationship_naming.Generated(
+                    rel_id=rel_id or suggested,
+                    id_typed=bool(rel_id) and rel_id != row.get("suggested_name"),
+                    source_table_id=int(row["source_table_id"]),
+                    target_table_id=int(row["target_table_id"]),
+                    source_column=row["source_column"],
+                    target_column=row["target_column"],
+                    cardinality=row["cardinality"],
+                    target_name=target.alias or target.table_name,
+                    target_table=target.table_name,
+                )
+            ],
+        )
+        name = named.rel_id
         await conn.execute_core(
             update(relationship_candidates)
             .where(
@@ -102,21 +154,23 @@ async def accept(
             )
             .values(status="accepted")
         )
-
-        rel_id = rel_id or row.get("suggested_name") or f"disc-{uuid.uuid4().hex[:12]}"
-        await conn.execute_core(
-            insert(relationships).values(
-                id=rel_id,
-                source_table_id=row["source_table_id"],
-                target_table_id=row["target_table_id"],
+        await relationship_repo.upsert(
+            conn,
+            Relationship(
+                id=name,
+                source_table_id=source.alias or source.table_name,
+                target_table_id=target.alias or target.table_name,
                 source_column=row["source_column"],
                 target_column=row["target_column"],
-                cardinality=row["cardinality"],
-            )
+                cardinality=Cardinality(row["cardinality"]),
+                alias=named.alias,
+                graphql_alias=named.graphql_alias,
+            ),
+            derive_target_key=False,
         )
 
     return {
-        "relationship_id": rel_id,
+        "relationship_id": name,
         "source_table_id": row["source_table_id"],
         "target_table_id": row["target_table_id"],
         "source_column": row["source_column"],
@@ -133,6 +187,22 @@ async def clear_rejections(conn: "Connection") -> int:  # REQ-167
     return result.rowcount or 0
 
 
+async def mark_accepted(conn: "Connection", candidate_id: int) -> None:  # REQ-413
+    """Mark a many-to-many candidate accepted: accepting it made or joined a shared dimension
+    (:mod:`provisa.discovery.dimension`), whose relationships end at the dimension, so none is
+    registered for the pair itself."""
+    result = await conn.execute_core(
+        update(relationship_candidates)
+        .where(
+            relationship_candidates.c.id == candidate_id,
+            relationship_candidates.c.status == "suggested",
+        )
+        .values(status="accepted")
+    )
+    if (result.rowcount or 0) == 0:
+        raise ValueError(f"Candidate {candidate_id} not found or not in suggested status")
+
+
 async def reject(conn: "Connection", candidate_id: int, reason: str) -> None:  # REQ-167
     """Reject a candidate with a reason."""
     result = await conn.execute_core(
@@ -145,3 +215,17 @@ async def reject(conn: "Connection", candidate_id: int, reason: str) -> None:  #
     )
     if (result.rowcount or 0) == 0:
         raise ValueError(f"Candidate {candidate_id} not found or not in suggested status")
+
+
+async def withdraw(conn: "Connection", ids: list[int]) -> int:  # REQ-413
+    """Remove suggestions a discovery run stored and no longer shows (a later answer of the same
+    run turned the pair the other way); one a person has decided is left as it is."""
+    if not ids:
+        return 0
+    result = await conn.execute_core(
+        _delete(relationship_candidates).where(
+            relationship_candidates.c.id.in_(ids),
+            relationship_candidates.c.status == "suggested",
+        )
+    )
+    return result.rowcount or 0

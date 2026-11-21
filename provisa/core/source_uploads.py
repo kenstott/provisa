@@ -11,7 +11,13 @@ folder is, seen by every node (one shared mount), kept until the source goes. Th
 streamed to disk a chunk at a time, never held in memory, into a temporary file beside its place
 that then takes that place in one rename: a reader sees the old file or the new one, never part
 of either. A file larger than the operator's limit (``sources.max_upload_bytes``) is refused,
-naming the limit, and nothing of it is kept."""
+naming the limit, and nothing of it is kept.
+
+The own-disk rule (REQ-1997) is here too, one check for every source type. In a held organization
+(``sandbox_egress.held``: a sandbox org on any install, and every org but the deployment's own on
+a server of many organizations) a source's location on the server's own disk is refused, where
+the source is saved and where the location is opened, unless it is inside that organization's
+folder or is one its demo declares (the operator's own, ``sandbox_egress.declared_location``)."""
 
 # Requirements: REQ-1997, REQ-2191
 from __future__ import annotations
@@ -23,6 +29,8 @@ import shutil
 import uuid
 from collections.abc import AsyncIterator
 from pathlib import Path
+from typing import Any
+from urllib.parse import unquote
 
 from provisa.core import org_files, settings_registry
 
@@ -136,3 +144,157 @@ def remove(source_id: str, org_id: str | None = None) -> None:
     here = org_files.org_root(org_id) / _AREA / _segment(source_id, "source")
     if here.exists():
         shutil.rmtree(here)
+
+
+# --- the own-disk rule (REQ-1997) -------------------------------------------------------------
+
+#: Every source type whose ``path`` can name a place on the server's own disk: the upload types'
+#: file, a ``files`` source's directory or glob, a lake table's location, an OpenAPI source's
+#: specification and a gRPC source's proto file.
+PATH_TYPES = UPLOAD_TYPES | {"files", "iceberg", "delta_lake", "openapi", "grpc_remote"}
+
+#: How an OpenAPI source's path names a specification that is no location (a brand's shipped one,
+#: REQ-1923; a ServiceNow companion's, REQ-1954).
+_SPEC_MARKERS = ("brand:", "servicenow:")
+
+#: Where a source of any type can name a file besides its path: ``(field, key)``, the key of a
+#: bag (None for the field itself). A BigQuery service-account file, a SharePoint certificate,
+#: a gRPC source's import directories, a sentinel marker (REQ-1148).
+_OTHER_LOCATIONS: tuple[tuple[str, str | None], ...] = (
+    ("sentinel_path", None),
+    ("federation_hints", "credentials_path"),
+    ("federation_hints", "import_paths"),
+    ("mapping", "certificate_path"),
+)
+
+_REMOTE = re.compile(r"^([A-Za-z][A-Za-z0-9+.-]*)://([^/?#]+)")
+
+
+class LocalPathRefused(PermissionError):
+    """A held org's source names a place on the server's own disk outside the org's folder."""
+
+    code = "sources.local_path_refused"
+
+    def __init__(self, path: str) -> None:
+        super().__init__(
+            f"This organization's sources read no file on the server's own disk outside its own "
+            f"folder; {path!r} is one. Upload the file, or name it as {{files}}/... or by a "
+            "remote address"
+        )
+        self.path = path
+        self.params = {"path": path}
+
+
+def on_own_disk(location: str) -> bool:
+    """Whether ``location`` can be read from this server's disk: anything but a remote address
+    written whole (``scheme://host/...``, the scheme not ``file``). An address with a ``..``
+    segment is one too: a reader that takes it for a path climbs out of where it started."""
+    found = _REMOTE.match(location)
+    if found is None or found.group(1).lower() == "file" or found.group(2) in (".", ".."):
+        return True
+    return ".." in re.split(r"[/\\]", location)
+
+
+def _disk_paths(location: str) -> list[str]:
+    """``location`` as the paths a reader may open for it: as written, without a ``file:``
+    prefix and its authority, and with its percent escapes read."""
+    path = location
+    if path[:5].lower() == "file:":
+        path = path[5:]
+        if path.startswith("//"):
+            path = "/" + path[2:].partition("/")[2]
+    return sorted({path, unquote(path)})
+
+
+def _inside(real: str, root: str) -> bool:
+    return real == root or real.startswith(root + os.sep)
+
+
+def require_own_disk(location: str | None, org_id: str | None = None) -> None:
+    """Refuse, by name, a held org's ``location`` on the server's own disk unless it is inside
+    the org's folder (through no ``..`` or symbolic link out of it) or its demo declares it. A
+    remote location, and any org that is not held, has nothing to check here. ``org_id`` is the
+    bound org when None."""
+    from provisa.core.request_context import current_org
+    from provisa.core.secrets import resolve_secrets
+    from provisa.security import sandbox_egress
+
+    org = org_id if org_id is not None else current_org.get(None)
+    if not location or not sandbox_egress.held(org):
+        return
+    assert org is not None
+    # The place read is the resolved one (a path may be written as a secret reference); the one
+    # named in the refusal is the one written.
+    resolved = str(resolve_secrets(location))
+    if not on_own_disk(resolved):
+        return
+    if org_files.is_org_path(resolved):
+        try:
+            org_files.resolve_path(resolved, org)
+        except org_files.OrgPathRefused as exc:
+            raise LocalPathRefused(location) from exc
+        return
+    root = os.path.realpath(org_files.folder(org))
+    for path in _disk_paths(resolved):
+        real = os.path.realpath(path)
+        if not _inside(real, root) and not sandbox_egress.declared_location(org, real):
+            raise LocalPathRefused(location)
+
+
+def locations(source_type: str, fields: dict[str, Any]) -> list[str]:
+    """Every location a source of ``source_type`` names that could be on the server's own disk,
+    as written: its path, when its type reads one (:data:`PATH_TYPES`), the files its other
+    fields name (:data:`_OTHER_LOCATIONS`), the place its file is downloaded from, its code
+    directory and a Logs source's glob."""
+    found: list[str] = []
+    path = fields.get("path")
+    if source_type in PATH_TYPES and isinstance(path, str) and path:
+        if not (source_type == "openapi" and path.startswith(_SPEC_MARKERS)):
+            found.append(path)
+    for field, key in _OTHER_LOCATIONS:
+        value = fields.get(field)
+        if key is not None:
+            value = value.get(key) if isinstance(value, dict) else None
+        if isinstance(value, str) and value:
+            # A gRPC source's import directories are kept as one comma-separated text.
+            found.extend(value.split(",") if key == "import_paths" else [value])
+        elif isinstance(value, (list, tuple)):
+            found.extend(v for v in value if isinstance(v, str) and v)
+    # A CSV or Parquet source's download_from (REQ-2113) and a code source's directory
+    # (REQ-2121): each read from where it names, by source_downloads.checked_mount and
+    # codesource.source.checked_directory.
+    download = fields.get("download_from")
+    if isinstance(download, str) and download:
+        found.append(download)
+    mapping = fields.get("mapping")
+    code = mapping.get("code") if isinstance(mapping, dict) else None
+    if isinstance(code, dict) and code.get("kind") == "directory":
+        directory = code.get("path")
+        if isinstance(directory, str) and directory:
+            found.append(directory)
+    # A Logs source's glob (REQ-1996), read by logs.roots.checked_glob and checked_file.
+    glob = mapping.get("glob") if source_type == "logs" and isinstance(mapping, dict) else None
+    if isinstance(glob, str) and glob:
+        found.append(glob)
+    return found
+
+
+def real_locations(source_type: str, fields: dict[str, Any]) -> frozenset[str]:
+    """The real paths of the places on this server's disk a source names: what a demo's own
+    source declares (``sandbox_egress.set_demo_destinations``)."""
+    from provisa.core.secrets import resolve_secrets
+
+    real: set[str] = set()
+    for location in locations(source_type, fields):
+        resolved = str(resolve_secrets(location))
+        if on_own_disk(resolved) and not org_files.is_org_path(resolved):
+            real.update(os.path.realpath(path) for path in _disk_paths(resolved))
+    return frozenset(real)
+
+
+def require_source_own_disk(
+    source_type: str, fields: dict[str, Any], org_id: str | None = None
+) -> None:
+    """:func:`require_own_disk` for every location a source names (:func:`locations`)."""
+    for location in locations(source_type, fields):
+        require_own_disk(location, org_id)

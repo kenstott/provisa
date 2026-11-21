@@ -31,6 +31,7 @@ from provisa.api.rest import cypher_session
 from provisa.compiler import temp_tables
 from provisa.ephemeral import seam
 from tests.unit.ephemeral_harness import Session
+from tests.unit.mcp_local_principal import bound_principal
 from tests.unit.test_buffered_auto_threshold import _ControlPlane
 from tests.unit.test_cache_before_route import pipe  # noqa: F401  (the shared pipeline fixture)
 from tests.unit.test_cypher_cache_before_route import _CYPHER, _assert_no_route_work, graph  # noqa: F401
@@ -96,10 +97,18 @@ async def test_mcps_clear_tool_ends_the_session_for_every_client(served, ended):
     assert body == {"labels": [], "types": [], "empty": True}
 
 
-async def test_a_local_caller_is_the_anonymous_principal_and_a_remote_one_its_identity():
+async def test_a_local_caller_is_the_principal_its_operator_named_and_a_remote_one_its_identity(
+    monkeypatch,
+):
+    """REQ-1105: a local call runs as the principal the operator named, never as no one."""
     from provisa.api.mcp import server
 
-    assert server._call_principal(SimpleNamespace()) == (graph_session.ANONYMOUS, [])
+    monkeypatch.delenv("PROVISA_MCP_PRINCIPAL", raising=False)
+    with pytest.raises(PermissionError, match=r"mcp\.principal \(PROVISA_MCP_PRINCIPAL\)"):
+        server._call_principal(SimpleNamespace())
+    local = bound_principal(monkeypatch, "grace", ("analyst",))
+    local.derived_roles = {}
+    assert server._call_principal(SimpleNamespace()) == ("grace", ["analyst"])
     identity = SimpleNamespace(user_id="ada", roles=["analyst"], derived_roles={"steward": ""})
     token = server._request_identity.set(identity)
     try:

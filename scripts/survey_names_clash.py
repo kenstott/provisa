@@ -10,8 +10,9 @@
 
 """Offline survey (REQ-194): which shipped models would the names table refuse under the default
 clash policy. Builds each config's whole-model context from its DECLARED tables and columns (no
-server, no source introspection), then runs the names-table build. A table with no declared
-columns is counted and left out: its columns come from introspection.
+server, no source introspection) plus the control-plane source boot adds, each source under the
+catalog boot gives it, then runs the names-table build. A table with no declared columns is counted
+and left out: its columns come from introspection.
 
 usage: survey_names_clash.py [config.yaml ...]   (default: every shipped config)
 exit 1 when any model is refused or fails to load."""
@@ -23,10 +24,13 @@ import re
 import sys
 from collections import defaultdict
 from pathlib import Path
+from types import SimpleNamespace
+from typing import Any
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
+from provisa.api.app_loaders import catalog_name_for_source  # noqa: E402
 from provisa.compiler import naming  # noqa: E402
 from provisa.compiler.context import build_context  # noqa: E402
 from provisa.compiler.introspect import ColumnMetadata  # noqa: E402
@@ -37,9 +41,24 @@ from provisa.compiler.names_table import (  # noqa: E402
 from provisa.compiler.schema_types import SchemaInput  # noqa: E402
 from provisa.executor.write_capability import table_write_ops  # noqa: E402
 from provisa.core.config_loader import parse_config_dict, read_config_with_includes  # noqa: E402
+from provisa.core.models import Column, Table  # noqa: E402
+from provisa.core.request_context import current_org  # noqa: E402
+from provisa.security.rights import SYSTEM_DOMAINS, Capability  # noqa: E402
 
 _ENV = re.compile(r"\$\{env:([A-Za-z0-9_]+)\}")
 _SECRET = re.compile(r"\$\{secret:([A-Za-z0-9_.-]+)\}")
+
+#: Boot's state as catalog_name_for_source reads it for the default org on the native tier.
+_BOOT: Any = SimpleNamespace(federation_engine=None, org_id="survey")
+#: The control-plane source startup_seed registers in every org, with one of its meta tables.
+_ADMIN_SOURCE = "provisa-admin"
+_ADMIN_TABLE = Table(
+    source_id=_ADMIN_SOURCE,
+    domain_id="meta",
+    schema_name="meta",
+    table_name="registered_tables",
+    columns=[Column(name="id", data_type="integer", visible_to=[])],
+)
 
 
 def default_configs() -> list[Path]:
@@ -63,12 +82,24 @@ def _declare_env(path: Path) -> None:
         )
 
 
+def source_catalogs(cfg) -> dict[str, str]:
+    """The catalog each source is read under, as boot sets ``state.source_catalogs``."""
+    token = current_org.set(_BOOT.org_id)
+    try:
+        catalogs = {s.id: catalog_name_for_source(_BOOT, s.type.value, s.id) for s in cfg.sources}
+    finally:
+        current_org.reset(token)
+    catalogs[_ADMIN_SOURCE] = naming.source_to_catalog(_ADMIN_SOURCE)
+    return catalogs
+
+
 def model_input(cfg) -> tuple[SchemaInput, int]:
-    domains = [d.model_dump() for d in cfg.domains]
+    domains = [*(d.model_dump() for d in cfg.domains), {"id": _ADMIN_TABLE.domain_id}]
     tables, col_types, skipped = [], {}, 0
     ids: dict[str, int] = {}
     sources = {s.id: (s.type.value if hasattr(s.type, "value") else s.type) for s in cfg.sources}
-    for tbl in cfg.tables:
+    sources[_ADMIN_SOURCE] = "postgresql"
+    for tbl in (_ADMIN_TABLE, *cfg.tables):
         if not tbl.columns:
             skipped += 1
             continue
@@ -103,7 +134,12 @@ def model_input(cfg) -> tuple[SchemaInput, int]:
                 "via_table_id": ids.get(r.via_table) if r.via_table else None,
             }
         )
-    role = {"id": "__model__", "domain_access": ["*"], "capabilities": []}
+    # The role boot builds the whole-model context for (_rebuild_schemas): system domains included.
+    role = {
+        "id": "__model__",
+        "domain_access": ["*", *SYSTEM_DOMAINS],
+        "capabilities": [Capability.VIEW_GOVERNANCE.value],
+    }
     for t in tables:
         for c in t["columns"]:
             c["visible_to"] = [role["id"]]
@@ -115,9 +151,8 @@ def model_input(cfg) -> tuple[SchemaInput, int]:
         role=role,
         domains=domains,
         domain_prefix=cfg.naming.domain_prefix,
-        source_types={
-            s.id: s.type.value if hasattr(s.type, "value") else s.type for s in cfg.sources
-        },
+        source_types=sources,
+        source_catalogs=source_catalogs(cfg),
         functions=[f.model_dump() for f in cfg.functions],
         webhooks=[w.model_dump() for w in cfg.webhooks],
     )
@@ -138,6 +173,7 @@ def survey(path: Path) -> dict:
     try:
         table = build_model_names(ctx, si, "refuse")
         out["warnings"] = table.warnings
+        out["catalogs"] = {r.object_id: r.name for r in table.rows if r.object_kind == "source"}
     except NamesClashRefused as refused:
         out["clashes"] = refused.clashes
         try:

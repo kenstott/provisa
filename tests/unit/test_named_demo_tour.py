@@ -115,8 +115,8 @@ _PROFILE_GRAPHS = set(
     )
 )
 # REQ-2201: the page the glossary's Find terms opens on, and the Reference library page.
-_GLOSSARY_PAGE = "/admin/ontology"
-_LIBRARY_PAGE = "/admin/reference-library"
+_GLOSSARY_PAGE = "/context/ontology"
+_LIBRARY_PAGE = "/context/documents"
 # The page each surface's step runs on.
 _SURFACE_PAGES = {"api": "/openapi", "jsonapi": "/jsonapi", "grpc": "/grpc", "cypher": "/graph"}
 
@@ -262,7 +262,7 @@ def _check_steps(home: Path, steps: list[dict]) -> None:
     from provisa.api.demo_templates import demo_scans
 
     scanned = set(demo_scans(home))
-    terms = {t["name"] for t in config.get("glossary_terms", [])}
+    terms = {t["name"].strip().lower() for t in config.get("glossary_terms", [])}  # as stored
     products = {p["id"] for p in config.get("data_products", [])}
     tables = {f"{t['source_id']}.{config_table_name(t)}" for t in config["tables"]}
     profiled = {
@@ -864,6 +864,29 @@ def test_each_surface_s_call_on_the_demo_is_accepted():
 
 
 @pytest.mark.parametrize("path", TOURS, ids=[p.parent.name for p in TOURS])
+def test_a_demo_writes_its_term_names_in_lower_case_and_the_tour_names_one_it_has(path):
+    """REQ-1844: every term name in the catalog is lower case. The glossary list marks each row
+    data-glossary-term=<stored name>, and the tour clicks the row by that exact string, so a step
+    that spells its term other than as stored never finds the row and the page waits forever. The
+    demo's config and tour write the names as stored, so none is upper case, and each term step
+    names a term the config declares."""
+    config = yaml.safe_load((path.parent / "config.yaml").read_text())
+    declared = config.get("glossary_terms") or []
+    written = [t["name"] for t in declared]
+    written += [e["to"] for t in declared for e in t.get("edges") or []]
+    steps = yaml.safe_load(path.read_text())["steps"]
+    written += [s["term"] for s in steps if "term" in s]
+    upper = [n for n in written if n != n.strip().lower()]
+    assert not upper, f"{path.parent.name}: term names not in lower case: {upper}"
+    names = {t["name"] for t in declared}
+    for step in steps:
+        if "term" in step:
+            assert step["term"] in names, (
+                f"{path.parent.name}: step {step['key']}: {step['term']!r}"
+            )
+
+
+@pytest.mark.parametrize("path", TOURS, ids=[p.parent.name for p in TOURS])
 def test_every_tour_ends_on_a_landing_page_the_ui_has(path):
     """The last step's "Look around on my own" leaves the visitor on the page the demo names:
     one the app routes, with the right its gate needs."""
@@ -884,9 +907,9 @@ def test_the_setup_status_carries_the_demo_s_landing_page():
 
 @pytest.mark.parametrize("path", TOURS, ids=[p.parent.name for p in TOURS])
 def test_a_demo_names_its_fields_as_its_sandbox_does(path):
-    """domain_prefix is deployment-wide (org_settings: not org-overridable): a sandbox's schema is
-    built with the sandbox tier's naming, which prefixes each domain (config/provisa-install-base),
-    not the demo's own. A demo that turned it off had examples and Cypher its sandbox refused."""
+    """A sandbox's schema prefixes each domain as the sandbox tier's naming does
+    (config/provisa-install-base). A demo that turned it off had examples and Cypher its sandbox
+    refused, so a demo states the tier's value."""
     base = yaml.safe_load((_REPO / "config" / "provisa-install-base.yaml").read_text())
     config = yaml.safe_load((path.parent / "config.yaml").read_text())
     assert config["naming"]["domain_prefix"] == base["naming"]["domain_prefix"], path.parent.name
@@ -988,7 +1011,7 @@ _RULE = (
     "https://www.ecfr.gov/api/versioner/v1/full/2026-10-15/title-31.xml?part=1010&section=1010.311"
 )
 _GLOSSARY = {"route": _GLOSSARY_PAGE, "capability": "glossary_read"}
-_LIBRARY = {"route": _LIBRARY_PAGE, "capability": "glossary_rw"}
+_LIBRARY = {"route": _LIBRARY_PAGE, "capability": "glossary_read"}
 
 
 @pytest.fixture
