@@ -18,7 +18,7 @@
     "cargoNone": "沒有 Cargo 登錄庫。crate 來自 crates.io。",
     "add_cargo": "新增 Cargo 登錄庫",
     "gitTitle": "Git 主機",
-    "gitHelp": "程式碼資料來源取得 Git 程式碼及 Git 依賴的主機。",
+    "gitHelp": "程式碼數據來源擷取 Git 程式碼和 Git 相依項目的主機。",
     "gitNone": "沒有 Git 主機。",
     "add_git": "新增 Git 主機",
     "npmAddress": "登錄庫 URL",

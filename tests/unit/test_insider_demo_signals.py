@@ -294,9 +294,16 @@ def _governed_violations(sql: str) -> list:
         relationships=relationships,
         source_types={s["id"]: s["type"] for s in config["sources"]},
     )
-    views = {t["table_name"]: t["view_sql"] for t in tables if "view_sql" in t}
+    from provisa.compiler.view_expand import view_key
+    from provisa.mv.view_read import view_names
+
+    views = {
+        view_key(t["schema_name"], t["table_name"]): t["view_sql"]
+        for t in tables
+        if "view_sql" in t
+    }
     return validate_sql(
-        expand_view_refs(sql, views, mark=True),
+        expand_view_refs(sql, views, mark=True, names=view_names(views, gov.table_map)),
         ctx,
         gov,
         role,

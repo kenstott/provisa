@@ -17,8 +17,9 @@ types the source reports. inspections.permit_id refers to building_permits.permi
 neighborhood is shared by the budget, the permits and both complaints files.
 
 The model is an OpenAI-compatible endpoint served by this test on the loopback: it records every
-request and answers with the relationships a reader of those files would name, each only when its
-two columns are compared in the request, one of them at a confidence under the threshold.
+call and answers each listed table pair with the relationships a reader of those files would name
+between its two tables, or "none" (REQ-413, amended 2026-11-18), one of them at a confidence under
+the threshold.
 
 A run over the five tables measures every pair it proposes on the files' own values, read as the
 person who started it: inspections.permit_id is contained in building_permits.permit_id, a key,
@@ -46,7 +47,16 @@ import httpx
 import pytest
 import yaml
 
-from provisa.discovery.context import KEY_SCORE, SHARED_CEILING, measured_score
+from provisa.discovery.context import (
+    KEY_SCORE,
+    PAIRS_HEADER,
+    CONTAINED_AT,
+    SHARED_CEILING,
+    TABLES_HEADER,
+    Scoring,
+    measured_score,
+)
+from provisa.discovery.runner import NOT_NAMED
 from tests.helpers import registered_id
 from tests.smoke import test_main_is_startable as smoke
 from tests.smoke.test_main_is_startable import REPO, Instance
@@ -57,7 +67,7 @@ pytestmark = [pytest.mark.integration, pytest.mark.isolated, pytest.mark.local_p
 _HEADERS = {"X-Provisa-Role": "org_admin"}
 _VENDOR = "files-test-endpoint"
 _MODEL = "fake-relationship-model"
-#: The limits of the model the maintainer ran (claude-fable-5-2), so the windows are his.
+#: The limits of the model the maintainer ran (claude-fable-5-2), so the calls are his.
 _LIMITS = {"input_tokens": 1_000_000, "output_tokens": 128_000}
 _DOMAIN = "city-files"
 _SOURCE = "drop-test"
@@ -74,26 +84,21 @@ _ANSWERS = [
 ]
 
 
-def _windows(prompt: str) -> list[list[dict]]:
-    """The windows of a request, as it sent them."""
-    lines = prompt.split("\n")
-    return [json.loads(lines[i + 1]) for i, line in enumerate(lines) if line.startswith("## ")]
+def _call_listing(prompt: str) -> tuple[list[dict], list[dict]]:
+    """The tables and the numbered table pairs a call lists."""
+    tables = json.loads(prompt.split(TABLES_HEADER, 1)[1].split("\n" + PAIRS_HEADER, 1)[0])
+    return tables, json.loads(prompt.split(PAIRS_HEADER, 1)[1])
 
 
-def _compared(prompt: str) -> dict[tuple[str, str], tuple[int, dict]]:
-    """Every compared column of a request, by (table name, column): its table's id and context."""
-    out: dict[tuple[str, str], tuple[int, dict]] = {}
-    for window in _windows(prompt):
-        for block in window:
-            table = block["table"]
-            for column in block["compared_columns"]:
-                out[(table["name"], column["name"])] = (int(table["id"]), column)
-    return out
+def _compared(prompt: str) -> dict[tuple[str, str], dict]:
+    """Every comparable column of a call, by (table name, column): its context."""
+    tables, _ = _call_listing(prompt)
+    return {(t["name"], c["name"]): c for t in tables for c in t["comparable_columns"]}
 
 
 class _Endpoint:
-    """An OpenAI-compatible endpoint: it records each request and answers with those of
-    :data:`_ANSWERS` whose two columns the request compares."""
+    """An OpenAI-compatible endpoint: it records each call and answers each listed table pair
+    with those of :data:`_ANSWERS` between its two tables, or "none"."""
 
     def __init__(self) -> None:
         self.prompts: list[str] = []
@@ -104,22 +109,29 @@ class _Endpoint:
                 body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
                 prompt = body["messages"][-1]["content"]
                 endpoint.prompts.append(prompt)
-                compared = _compared(prompt)
+                _, pairs = _call_listing(prompt)
                 answer = [
                     {
-                        "source_table_id": compared[(st, sc)][0],
-                        "source_column": sc,
-                        "target_table_id": compared[(tt, tc)][0],
-                        "target_column": tc,
-                        "cardinality": "many-to-one",
-                        "confidence": confidence,
-                        "reasoning": f"{st}.{sc} names {tt}.{tc}",
-                        "suggested_name": named[0]
-                        if named
-                        else f"{st}-{sc}-{tt}".replace("_", "-"),
+                        "pair": pair["pair"],
+                        "column_pairs": [
+                            {
+                                "source_table": st,
+                                "source_column": sc,
+                                "target_table": tt,
+                                "target_column": tc,
+                                "cardinality": "many-to-one",
+                                "confidence": confidence,
+                                "reasoning": f"{st}.{sc} names {tt}.{tc}",
+                                "suggested_name": named[0]
+                                if named
+                                else f"{st}-{sc}-{tt}".replace("_", "-"),
+                            }
+                            for st, sc, tt, tc, confidence, *named in _ANSWERS
+                            if {st, tt} == {pair["source"], pair["target"]} and st != tt
+                        ]
+                        or "none",
                     }
-                    for st, sc, tt, tc, confidence, *named in _ANSWERS
-                    if (st, sc) in compared and (tt, tc) in compared
+                    for pair in pairs
                 ]
                 payload = json.dumps(
                     {
@@ -298,22 +310,28 @@ def _candidates(inst: Instance) -> list[dict]:
 
 
 def _proposals(inst: Instance, run_id: int) -> list[dict]:
-    """Every proposal of the run no reviewer has decided, the highest score first."""
+    """Every proposal of the run no reviewer has decided, the highest score first, but the column
+    pairs the model was asked about and did not name, each scored zero (REQ-413, amended
+    2026-11-18): those are counted on their own (``zero_scored``)."""
     listed = _ok(
         httpx.get(
             f"{inst.url}/admin/discover/runs/{run_id}/proposals", headers=_HEADERS, timeout=60
         )
     )
     assert listed["threshold"] == 0.7
-    return listed["proposals"]
+    return [r for r in listed["proposals"] if r.get("reasoning") != NOT_NAMED]
 
 
 def _scope(**sets: Any) -> dict:
     """A run as the dialog sends it by default: Key value overlap chosen, with its settings."""
     return {
         "kinds": ["foreign_keys", "semantics", "key_values"],
+        "threshold": 0.7,
+        "samples_per_column": 5,
         "measure_cutoff": 0.2,
         "sample_size": 10_000,
+        "contained_at": CONTAINED_AT,
+        "shared_ceiling": SHARED_CEILING,
         "vendor": _VENDOR,
         "model": _MODEL,
         **sets,
@@ -347,8 +365,9 @@ def test_the_files_register_with_the_types_their_source_reports(files):
 def test_a_run_over_the_files_suggests_their_key_and_lists_all_it_read(
     instance: Instance, endpoint: _Endpoint, files
 ):
-    """The five tables alone: the JSON file's permit_id and the Parquet file's are text columns
-    of one request, the key relationship is suggested, and what the model rated low is kept."""
+    """The five tables alone: every table pair of them is listed in one call, with the JSON
+    file's permit_id and the Parquet file's, the key relationship is suggested, and what the model
+    rated low is kept."""
     before = len(endpoint.prompts)
     run = _run(instance, _scope(source_tables=sorted(files.values())))
     prompts = endpoint.prompts[before:]
@@ -362,11 +381,15 @@ def test_a_run_over_the_files_suggests_their_key_and_lists_all_it_read(
     assert (report["source_tables"], report["target_tables"]) == (5, 5)
     assert report["target_same_as_source"] is True and report["tables_not_read"] == 0
 
-    # One request per type group; the text one holds both permit columns and every neighborhood.
-    # The files' date and timestamp columns are in no group (REQ-413): no request asks about them.
-    groups = [p.split("type group '", 1)[1].split("'", 1)[0] for p in prompts]
-    assert sorted(groups) == ["text", "whole_number"]
-    (text,) = [p for p in prompts if "type group 'text'" in p]
+    # One call lists every table pair; it holds both permit columns and every neighborhood. The
+    # files' date and timestamp columns are in no group (REQ-413): no call lists them.
+    (text,) = prompts
+    _, pairs = _call_listing(text)
+    assert {frozenset({p["source"], p["target"]}) for p in pairs} >= {
+        frozenset({"inspections", "building_permits"}),
+        frozenset({"complaints_2026_08", "budget_2026__budget"}),
+    }
+    assert report["semantics"]["unanswered"] == []
     compared = _compared(text)
     for table, column in (
         ("inspections", "permit_id"),
@@ -376,9 +399,9 @@ def test_a_run_over_the_files_suggests_their_key_and_lists_all_it_read(
         ("complaints_2026_08", "neighborhood"),
         ("complaints_2026_09", "neighborhood"),
     ):
-        assert compared[(table, column)][1]["classes"] == ["unknown"], (table, column)
-    assert compared[("inspections", "permit_id")][1]["sample_values"][0].startswith("BP-")
-    assert compared[("building_permits", "permit_id")][1]["sample_values"][0].startswith("BP-")
+        assert compared[(table, column)]["classes"] == ["unknown"], (table, column)
+    assert compared[("inspections", "permit_id")]["sample_values"][0].startswith("BP-")
+    assert compared[("building_permits", "permit_id")]["sample_values"][0].startswith("BP-")
     # The request says what a confidence states and where a suggestion is kept.
     assert "A relationship is suggested at 0.7 or more" in text
 
@@ -386,7 +409,8 @@ def test_a_run_over_the_files_suggests_their_key_and_lists_all_it_read(
     # suggestion, admitted on matching key values.
     semantics = report["semantics"]
     assert (semantics["proposed"], semantics["suggested"]) == (5, 1)
-    assert semantics["below_threshold"] == 4 and semantics["invalid"] == 0
+    assert semantics["below_threshold"] - semantics["zero_scored"] == 4
+    assert semantics["invalid"] == 0
     assert semantics["scored"] == 0 and semantics["scored_below_threshold"] == 0
     mine = [c for c in _candidates(instance) if c["scope"] == f"run:{run['id']}"]
     suggested = {_edge(files, c): c["confidence"] for c in mine}
@@ -395,14 +419,15 @@ def test_a_run_over_the_files_suggests_their_key_and_lists_all_it_read(
     # Nothing read is dropped: one table of the run's proposals, the highest score (the
     # measure's) first, each with the model's confidence beside it and why it is not suggested.
     listed = _proposals(instance, run["id"])
-    address_score = measured_score(75 / 215, 75 / 128, True)
+    address_score = measured_score(75 / 215, 75 / 128, True, Scoring(CONTAINED_AT, SHARED_CEILING))
     assert [
         (_edge(files, r), r["confidence"], r["score"], r["cardinality"], r["reason"])
         for r in listed
     ] == [
         # 60 inspections, each of a different permit, all 60 among the 128 permits.
         (_PERMIT, 0.55, KEY_SCORE, "one-to-one", None),
-        # Six neighborhoods on every side, repeated in each file: a key of none.
+        # Six neighborhoods on every side, repeated in each file: a key of none. Scored alike,
+        # they keep the order the call lists their tables in (by name).
         *(
             (
                 (table, "neighborhood", "budget_2026__budget", "neighborhood"),
@@ -411,7 +436,7 @@ def test_a_run_over_the_files_suggests_their_key_and_lists_all_it_read(
                 "many-to-many",
                 "below_threshold",
             )
-            for table in ("complaints_2026_08", "complaints_2026_09", "building_permits")
+            for table in ("building_permits", "complaints_2026_08", "complaints_2026_09")
         ),
         # 75 of the complaints' 215 addresses are among the permits' 128, each permit's own.
         (_ADDRESS, 0.4, address_score, "many-to-one", "below_threshold"),
@@ -419,7 +444,12 @@ def test_a_run_over_the_files_suggests_their_key_and_lists_all_it_read(
     by_edge = {_edge(files, r): r for r in listed}
     assert [_edge(files, r) for r in listed if r["admitted_on_key_values"]] == [_PERMIT]
     assert (semantics["measured"], semantics["admitted"]) == (5, 1)
-    assert report["key_values"] == {"cutoff": 0.2, "sample_size": 10_000}
+    assert report["key_values"] == {
+        "cutoff": 0.2,
+        "sample_size": 10_000,
+        "contained_at": CONTAINED_AT,
+        "shared_ceiling": SHARED_CEILING,
+    }
     permit = by_edge[_PERMIT]["measure"]
     assert (permit["source_in_target"], permit["source"]["values"]) == (60, 60)
     assert permit["target"]["values"] == 128 and permit["target"]["distinct"] is True
@@ -475,7 +505,7 @@ def test_a_run_over_the_files_suggests_their_key_and_lists_all_it_read(
 def test_a_run_over_other_domains_says_which_and_compares_none_of_the_files(
     instance: Instance, endpoint: _Endpoint, files
 ):
-    """The demo's own two domains: none of the five tables is in any request, and the result
+    """The demo's own two domains: none of the five tables is in any call, and the result
     names the domains it compared, so a table outside them is plain."""
     before = len(endpoint.prompts)
     run = _run(instance, _scope(source_domains=["pet-store", "shelter"]))
@@ -495,16 +525,14 @@ def test_a_run_over_other_domains_says_which_and_compares_none_of_the_files(
 def test_a_run_over_every_domain_reads_the_files_key_among_the_other_tables(
     instance: Instance, endpoint: _Endpoint, files
 ):
-    """All three domains, with the limits of a model that holds a whole type group in one request:
-    the permit columns share the text request with every other text column, and every proposal is
-    read again. What the first run's reviewer decided shows: the accepted ones are registered and
-    cannot be decided, the one marked keeps its decision and cannot be decided, and the other
-    neighborhood pairs, a key of no table, are scored under the threshold again."""
+    """All three domains, with the limits of a model that holds every table pair in one call: the
+    permit columns share the call with every other table's, and every proposal is read again. What the first run's reviewer decided holds: the accepted ones are registered and the one
+    marked keeps its decision, so none of them is listed, and the other neighborhood pairs, a
+    key of no table, are scored under the threshold again."""
     before = len(endpoint.prompts)
     run = _run(instance, _scope(source_domains=["pet-store", "shelter", _DOMAIN]))
     prompts = endpoint.prompts[before:]
-    (text,) = [p for p in prompts if "type group 'text'" in p]
-    compared = _compared(text)
+    compared = {key for p in prompts for key in _compared(p)}
     assert ("inspections", "permit_id") in compared and (
         "building_permits",
         "permit_id",
@@ -517,13 +545,10 @@ def test_a_run_over_every_domain_reads_the_files_key_among_the_other_tables(
         for r in _proposals(instance, run["id"])
         if r["kind"] == "semantics"
     }
+    # REQ-413 (amended 2026-11-18): a pair registered since (the key and the address) and one
+    # marked not to be recommended again keep that decision and are not listed; the other
+    # neighborhood pairs are scored under the threshold again.
     assert read == {
-        _PERMIT: ("existing", False),
-        # Marked not to be recommended again: it keeps that decision and is not measured anew.
-        ("building_permits", "neighborhood", "budget_2026__budget", "neighborhood"): (
-            "rejected",
-            False,
-        ),
         ("complaints_2026_08", "neighborhood", "budget_2026__budget", "neighborhood"): (
             "below_threshold",
             True,
@@ -532,6 +557,4 @@ def test_a_run_over_every_domain_reads_the_files_key_among_the_other_tables(
             "below_threshold",
             True,
         ),
-        # Rated 0.4 again, and registered since: said as registered, not to be accepted twice.
-        _ADDRESS: ("existing", False),
     }

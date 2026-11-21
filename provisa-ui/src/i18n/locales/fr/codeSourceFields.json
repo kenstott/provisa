@@ -48,7 +48,7 @@
     "directoryHint": "Un répertoire parmi ceux que l’opérateur autorise. Il est lu sur place : la requête suivante lit toute modification.",
     "chooseFolder": "Choisir un dossier",
     "folderKept": "Enregistrer compresse ce dossier et l’envoie à nouveau.",
-    "folderAgain": "Ce navigateur ne peut pas conserver le dossier : choisissez-le à nouveau pour envoyer une copie plus récente.",
+    "folderAgain": "Ce navigateur ne peut pas conserver le dossier : choisissez-le de nouveau pour envoyer une copie plus récente.",
     "editor": "Éditeur",
     "openInVscode": "Ouvrir dans VS Code",
     "secrets": "Secrets",

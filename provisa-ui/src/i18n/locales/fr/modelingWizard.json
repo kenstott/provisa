@@ -210,7 +210,7 @@
       "description": "Brouillon de description",
       "notCreatedTitle": "Consigné, non créé",
       "ruleNotCreated": "Règle du business vault « {{rule}} » : consignée dans la description de sa table ; construisez-la comme vue sur ces tables.",
-      "draftNote": "Chaque description est un premier brouillon qu'un intendant révisera dans Tables enregistrées.",
+      "draftNote": "Chaque description est un premier brouillon qu'un intendant révisera sur la page Tables.",
       "create": "Créer",
       "nameRequired": "Donnez un nom à chaque table.",
       "nameTaken": "Deux tables portent le même nom. Donnez-en un propre à chacune."
@@ -219,8 +219,8 @@
       "created_one": "{{count}} table créée",
       "created_other": "{{count}} tables créées",
       "stopped": "Arrêté à {{name}}",
-      "draftNote": "Leurs descriptions sont des premiers brouillons : révisez-les dans Tables enregistrées.",
-      "oneWay": "L'assistant ne fait que créer. Modifiez ces tables dans Tables enregistrées ou dans le formulaire entité/fait ; l'assistant ne les régénère pas.",
+      "draftNote": "Leurs descriptions sont des premiers brouillons : révisez-les sur la page Tables.",
+      "oneWay": "L'assistant ne fait que créer. Modifiez ces tables sur la page Tables ou dans le formulaire entité/fait ; l'assistant ne les régénère pas.",
       "relatesTo": "relié à {{tables}}",
       "status": {
         "created": "Créée",

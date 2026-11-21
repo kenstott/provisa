@@ -1,10 +1,10 @@
 {
   "mailTab": {
     "loading": "Laden…",
-    "intro": "De mailserver waarlangs deze deployment platformberichten verstuurt — uitnodigingen en andere meldingen. Elk transport dat de build kent, wordt getoond; een transport dat een pakket nodig heeft, noemt dat.",
+    "intro": "De mailserver via welke deze deployment uitnodigingen en andere platformberichten verstuurt. Elk transport dat de build kent, staat erbij; een transport dat een pakket nodig heeft, noemt dat.",
     "providerLabel": "Transport",
-    "providerRequires": "{{label}} — installeer {{library}}",
-    "secretOnFile": "Er is een credential opgeslagen — typ om te vervangen",
+    "providerRequires": "{{label}} ({{library}} installeren)",
+    "secretOnFile": "Er is een referentie vastgelegd. Typ om die te vervangen.",
     "secretNotSet": "Niet ingesteld",
     "fromAddressLabel": "Afzenderadres",
     "fromAddressHelp": "Het adres dat ontvangers zien. De meeste transports vereisen dat dit een geverifieerde afzender is.",
@@ -12,7 +12,7 @@
     "baseUrlHelp": "Het adres waarnaar links in een bericht wijzen, zoals een uitnodigingslink.",
     "timeoutLabel": "Time-out (seconden)",
     "save": "Mailinstellingen opslaan",
-    "saved": "Mailinstellingen opgeslagen — verzenden via {{provider}}.",
+    "saved": "Mailinstellingen opgeslagen. Verzenden via {{provider}}.",
     "testTitle": "Een testbericht verzenden",
     "testIntro": "Verzendt via het geconfigureerde transport, met dezelfde credentials als een uitnodiging, en legt de poging hieronder vast.",
     "testRecipient": "Verzenden naar",

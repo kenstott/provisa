@@ -182,7 +182,7 @@ describe("TagCitations", () => {
   it("lists a citation as a link to its document, and removes it", async () => {
     render(<TagCitations citations={[current]} {...props()} />);
     const row = screen.getByTestId("cites-row-3-h:Scope");
-    expect(within(row).getByRole("link")).toHaveAttribute("href", "/library?document=3");
+    expect(within(row).getByRole("link")).toHaveAttribute("href", "/context/documents?document=3");
     expect(row).toHaveTextContent("Data Policy · Scope");
     expect(within(row).queryByTestId("citation-state-drifted")).toBeNull();
     expect(within(row).queryByText(t("tagCitations.confirm"))).toBeNull();
@@ -287,7 +287,7 @@ describe("TagControl: one form for an assignment and its citations", () => {
     render(<TagControl objectType="table" tableId={7} />);
     fireEvent.click(screen.getByTestId("tag-pill-finance"));
     const link = await screen.findByTestId("tag-definition-link-finance");
-    expect(link).toHaveAttribute("href", "/library?document=3");
+    expect(link).toHaveAttribute("href", "/context/documents?document=3");
     expect(link).toHaveTextContent("Data Policy · Scope");
     expect(
       within(screen.getByTestId("tag-defined-by-finance")).getByTestId(

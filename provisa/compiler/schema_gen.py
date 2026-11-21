@@ -49,8 +49,7 @@ from provisa.compiler.naming import (
     domain_to_sql_name,
     generate_name,
     refuse_taken_sql_addresses,
-    junction_field_name,
-    rel_field_name,
+    relationship_field_name,
     SYSTEM_SCHEMA_GQL_PREFIX,
     system_schema_names,
     to_type_name,
@@ -676,8 +675,10 @@ def _add_computed_relationship_field(
         return None
     # REQ-194: named as a table relationship is — its GraphQL alias, else for the table it
     # reaches (here the one the function returns) and its cardinality.
-    field_key = rel.get("graphql_alias") or rel_field_name(
-        unprefixed_field_name(ret_table.field_name, ret_table.domain_id), rel["cardinality"]
+    field_key = relationship_field_name(
+        rel["cardinality"],
+        target_field_name=unprefixed_field_name(ret_table.field_name, ret_table.domain_id),
+        graphql_alias=rel.get("graphql_alias"),
     )
     fields[field_key] = GraphQLField(GraphQLList(GraphQLNonNull(gql_types[ret_table.table_id])))
     return field_key
@@ -703,8 +704,10 @@ def _where_relationships(  # REQ-2136
             target_where = where_types.get(target.table_id) if target else None
             if target is None or target_where is None:
                 continue
-            name = rel.get("graphql_alias") or rel_field_name(
-                unprefixed_field_name(target.field_name, target.domain_id), rel["cardinality"]
+            name = relationship_field_name(
+                rel["cardinality"],
+                target_field_name=unprefixed_field_name(target.field_name, target.domain_id),
+                graphql_alias=rel.get("graphql_alias"),
             )
             out[name] = GraphQLInputField(target_where)
         return out
@@ -728,23 +731,21 @@ def _add_standard_relationship_field(
     cardinality = rel["cardinality"]
     # REQ-1586: a junction-backed edge is named for its nomination, not for the table it reaches —
     # several such edges can share one target and would otherwise collapse onto one field.
-    if rel.get("graphql_alias"):
-        field_name = rel["graphql_alias"]
-    elif rel.get("via_table_id"):
+    via_table_name = None
+    if rel.get("via_table_id"):
         via = table_lookup.get(rel["via_table_id"])
         if not via:
             return None
-        field_name = junction_field_name(
-            rel["via_label_source"],
-            cardinality,
-            type_value=rel.get("via_type_value"),
-            via_table_name=via.table_name,
-            cypher_alias=rel.get("alias"),
-        )
-    else:
-        field_name = rel_field_name(
-            unprefixed_field_name(target.field_name, target.domain_id), cardinality
-        )
+        via_table_name = via.table_name
+    field_name = relationship_field_name(
+        cardinality,
+        target_field_name=unprefixed_field_name(target.field_name, target.domain_id),
+        graphql_alias=rel.get("graphql_alias"),
+        via_label_source=rel.get("via_label_source"),
+        via_type_value=rel.get("via_type_value"),
+        via_table_name=via_table_name,
+        cypher_alias=rel.get("alias"),
+    )
     if cardinality in ("many-to-one", "one-to-one"):
         # REQ-1163: a related relation that has versions takes its time-travel arguments here too.
         travel: dict[str, GraphQLArgument] = {}
@@ -803,6 +804,8 @@ def _make_object_type_fields(
             fields, ops_traversal_targets, gql_types, where_types, order_by_types, distinct_enums
         )
 
+    # REQ-1929: a relationship never hides a column -- one named for a column's field is refused.
+    column_fields = set(info.gql_fields)
     # field -> (relationship id, computed?) for the relationships of this type.
     held: dict[str, tuple[str, bool]] = {}
     for rel in visible_rels:
@@ -819,6 +822,10 @@ def _make_object_type_fields(
             )
         if name is None:
             continue
+        if name in column_fields:
+            from provisa.compiler.context import RelationshipHidesColumn
+
+            raise RelationshipHidesColumn(info.type_name, name, rel["id"])
         computed = bool(fn_name)
         holder = held.get(name)
         if holder is not None and (computed or holder[1]):
@@ -1160,6 +1167,7 @@ def generate_schema(
             enum_types=si.enum_types,
             object_type_registry=_object_type_registry,
             governed_gql_types=si.governed_gql_types or None,
+            masked=si.masked_columns,
         )
 
     table_lookup: dict[int, _TableInfo] = {t.table_id: t for t in tables}

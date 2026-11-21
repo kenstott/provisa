@@ -36,10 +36,9 @@ export const RUN_POLL_MS = 1000;
 export const RUNS_READ = 20;
 
 /** The suggestions of a run waiting for a decision: its undecided proposals that are its
- *  suggestions (none of its rules left them out, or one waits from an earlier run). */
+ *  suggestions (none of its rules left them out). */
 export function waitingCount(proposals: readonly RunProposal[]): number {
-  return proposals.filter((p) => p.decidable && (p.reason === null || p.reason === "pending"))
-    .length;
+  return proposals.filter((p) => p.decidable && p.reason === null).length;
 }
 
 export interface DiscoveryRunState {
@@ -59,7 +58,8 @@ export interface DiscoveryRunState {
   /** Read the latest runs from the server: one still going is shown. */
   refresh: () => Promise<void>;
   /** Start a run; a refusal is thrown with the server's words. */
-  start: (scope: DiscoveryScope) => Promise<void>;
+  /** Start a run within ``domains``, the navbar filter's selection (null: no narrowing). */
+  start: (scope: DiscoveryScope, domains: ReadonlySet<string> | null) => Promise<void>;
   /** Stop the run after the request in flight; what was found is kept. */
   stop: (runId: number) => Promise<void>;
   /** Show the latest run in the dialog. */
@@ -184,8 +184,8 @@ export function useDiscoveryRun(onStored: () => void): DiscoveryRunState {
     void count(endedId);
   }, [endedId, reads, count]);
 
-  const start = useCallback(async (scope: DiscoveryScope) => {
-    const started = await startDiscoveryRun(scope);
+  const start = useCallback(async (scope: DiscoveryScope, domains: ReadonlySet<string> | null) => {
+    const started = await startDiscoveryRun(scope, domains);
     setError("");
     setRun(started);
     setGoing((runs) => withGoing(runs, started));

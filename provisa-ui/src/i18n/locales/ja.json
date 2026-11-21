@@ -53,6 +53,10 @@
     "noAssignments": "割り当てがありません",
     "removeAssignment": "割り当て {{role}}:{{domain}} を削除",
     "roleLabel": "ロール",
+    "rolesLabel": "ロール",
+    "rolesPlaceholder": "1 つ以上のロールを選択",
+    "addList": "リストを追加",
+    "removeList": "このリストを削除",
     "domainLabel": "ドメイン",
     "untilLabel": "期限",
     "untilPlaceholder": "終了日なし",
@@ -61,7 +65,6 @@
     "noExpiry": "終了日なし",
     "neverUsed": "なし",
     "allDomains": "*（すべてのドメイン）",
-    "add": "追加",
     "createHeading": "ユーザー作成",
     "username": "ユーザー名",
     "usernameRequired": "ユーザー名 *",
@@ -101,6 +104,6 @@
   },
   "pageError": {
     "title": "このページを表示できませんでした",
-    "body": "描画中にエラーが発生しました。アプリの他の部分は引き続き使えます。別のページに移動するか、このページを再読み込みしてください。"
+    "body": "レンダリング中に失敗しました。アプリの他の部分は引き続き動作するため、別のページに移動するか、このページを再読み込みしてください。"
   }
 }

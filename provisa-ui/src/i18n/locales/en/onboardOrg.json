@@ -21,7 +21,7 @@
     "emailRuleLabel": "Allowed email rule (optional)",
     "emailRuleDesc": "A regular expression an invitee's email must match to join, e.g. \"@acme\\.com$\". Leave blank to allow any email.",
     "autoJoinLabel": "Auto-join matching accounts",
-    "autoJoinDesc": "Any new account whose email matches the rule above joins with the role below, with no invite.",
+    "autoJoinDesc": "Any new account whose verified email matches the rule above joins with the role below, with no invite.",
     "autoJoinRoleLabel": "Default role for auto-joined accounts",
     "autoJoinRoleDesc": "The role granted on auto-join, e.g. a read-only \"analyst\".",
     "autoJoinBreadthTitle": "This rule reaches past your domain",

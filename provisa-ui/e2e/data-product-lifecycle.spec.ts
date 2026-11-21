@@ -39,6 +39,13 @@ async function admin(page: Page, query: string, variables: Record<string, unknow
   return body.data;
 }
 
+/** Opens the panel's Details row, where the product's fields and status are read. */
+async function openDetails(page: Page) {
+  const toggle = page.getByTestId(`data-product-card-details-${PRODUCT}-toggle`);
+  await toggle.click();
+  await expect(toggle).toHaveAttribute("aria-expanded", "true");
+}
+
 test.describe("a data product's lifecycle", () => {
   // The first navigation compiles the page's chunks; each status change waits out a rebuild.
   test.setTimeout(TEST_LIMIT);
@@ -73,6 +80,9 @@ test.describe("a data product's lifecycle", () => {
     const badge = page.getByTestId(`data-products-status-${PRODUCT}`);
     const status = page.getByTestId(`data-product-status-${PRODUCT}`);
     await expect(badge).toHaveText("Draft", { timeout: 90_000 });
+    // The panel's Details row starts closed (its content is mounted only while open, under reduced
+    // motion): it is opened before its status is read, and stays open as it was left.
+    await openDetails(page);
     await expect(status).toHaveText("Draft");
 
     // A new product with no members, owner or description is To review.

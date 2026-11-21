@@ -1,7 +1,7 @@
 {
   "nlPage": {
     "guideTitle": "Cómo escribir una buena pregunta",
-    "guideDesc": "Esta herramienta genera consultas directamente a partir de su esquema — no razona sobre texto libre ni conocimiento general. Formule su pregunta como una composición de las tablas, campos y relaciones que existen en sus datos.",
+    "guideDesc": "Esta herramienta genera consultas a partir de su esquema. No razona sobre texto libre ni conocimiento general, así que formule su pregunta en términos de las tablas, campos y relaciones de sus datos.",
     "guideRuleNames": "Use los nombres de sus entidades, no sinónimos ({{entity}}, no {{synonym}})",
     "guideRuleFilters": "Especifique filtros, agrupaciones y agregaciones como lo haría en una consulta",
     "guideRuleSchema": "Si un campo o una relación no está en su esquema, no se puede consultar",
@@ -24,8 +24,8 @@
     "strictModeTooltip": "Toda la generación se basa estrictamente en la expresión GraphQL: primero se genera GraphQL y se valida contra el esquema, luego se compila a SQL y después a Cypher. Desactivado: SQL, GraphQL y Cypher se generan cada uno de forma independiente como la consulta más cercana a la pregunta.",
     "strictLocked": "Este rol solo puede usar relaciones aprobadas",
     "questionTooltip": "Pregunte en lenguaje natural usando sus propios nombres de tablas, columnas y relaciones. Intro envía; Mayús+Intro añade una línea.",
-    "generateTooltip": "Genera una consulta para cada superficie —GraphQL, SQL y Cypher— a partir de esta pregunta, usando el esquema que su rol actual puede ver.",
-    "mcpChatTooltip": "Entrega esta pregunta al asistente MCP, que explora el catálogo y ejecuta la consulta por usted en lugar de solo generarla.",
+    "generateTooltip": "Genera consultas GraphQL, SQL y Cypher a partir de esta pregunta, usando el esquema que puede ver su rol actual.",
+    "mcpChatTooltip": "Envía esta pregunta al asistente MCP, que explora el catálogo y ejecuta la consulta por usted.",
     "questionHelpTitle": "Formular la pregunta",
     "strictHelpTitle": "Generación estricta",
     "generateHelpTitle": "Qué produce Generar",

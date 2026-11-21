@@ -42,6 +42,7 @@ function row(onDelete: () => void) {
     saving: null,
     problem: "",
     tables: [],
+    refetchTables: () => Promise.resolve(),
     functions: [],
     tableDomainById: {},
     domainsEnabled: true,

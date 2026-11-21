@@ -19,6 +19,7 @@ import { render, screen, fireEvent, waitFor, within } from "../../test-utils/ren
 import { MaskListEditor } from "../MaskListEditor";
 import {
   filledTemplate,
+  isTextType,
   maskValueOf,
   moved,
   newMaskList,
@@ -91,7 +92,15 @@ const ROLES = [
   { id: "contractor", label: "contractor" },
 ];
 
-function Editor({ initial, seen }: { initial: MaskEntry[]; seen?: (m: MaskEntry[]) => void }) {
+function Editor({
+  initial,
+  seen,
+  dataType = "varchar",
+}: {
+  initial: MaskEntry[];
+  seen?: (m: MaskEntry[]) => void;
+  dataType?: string | null;
+}) {
   const [value, setValue] = useState(initial);
   return (
     <MaskListEditor
@@ -101,6 +110,7 @@ function Editor({ initial, seen }: { initial: MaskEntry[]; seen?: (m: MaskEntry[
         setValue(next);
       }}
       roleOptions={ROLES}
+      dataType={dataType}
     />
   );
 }
@@ -341,5 +351,59 @@ describe("a regex entry's common masks and the universal dialect", () => {
       "^(.{2}).*(.{3})$",
     );
     expect(filledTemplate("^[0-9]{3}(.{{first}})$", { first: 1 })).toBe("^[0-9]{3}(.{1})$");
+  });
+});
+
+// REQ-2131: a constant mask on a column that is not text reads as NULL, so only NULL is saved.
+describe("a constant mask on a non-text column", () => {
+  it("knows the text types, sizes and case aside", () => {
+    expect(isTextType("varchar(255)")).toBe(true);
+    expect(isTextType("TEXT")).toBe(true);
+    expect(isTextType("String")).toBe(true);
+    expect(isTextType("integer")).toBe(false);
+    expect(isTextType("numeric(10,2)")).toBe(false);
+    expect(isTextType("date")).toBe(false);
+  });
+
+  it("says a NULL constant on an integer column reads as NULL, with no value to type", async () => {
+    render(
+      <Editor
+        initial={[{ to: null, mask: { type: "constant", value: null } }]}
+        dataType="integer"
+      />,
+    );
+    expect(await screen.findByTestId("mask-list-reads-null-0")).toHaveTextContent(
+      en.maskList.readsNull,
+    );
+    expect(screen.queryByRole("textbox", { name: en.maskList.value })).toBeNull();
+  });
+
+  it("flags a value other than NULL on a numeric column, which a save refuses", async () => {
+    render(
+      <Editor
+        initial={[{ to: null, mask: { type: "constant", value: "0" } }]}
+        dataType="numeric(10,2)"
+      />,
+    );
+    expect(await screen.findByText(en.maskList.notTextConstant)).toBeInTheDocument();
+    const input = screen.getByRole("textbox", { name: en.maskList.value });
+    fireEvent.change(input, { target: { value: "" } });
+    expect(await screen.findByTestId("mask-list-reads-null-0")).toBeInTheDocument();
+  });
+
+  it("keeps a text column's constant value as typed", async () => {
+    render(
+      <Editor initial={[{ to: null, mask: { type: "constant", value: "***" } }]} dataType="text" />,
+    );
+    expect(screen.getByRole("textbox", { name: en.maskList.value })).toHaveValue("***");
+    expect(screen.queryByText(en.maskList.notTextConstant)).toBeNull();
+    expect(screen.queryByTestId("mask-list-reads-null-0")).toBeNull();
+  });
+
+  it("shows the value field while the column's type is not yet chosen", async () => {
+    render(
+      <Editor initial={[{ to: null, mask: { type: "constant", value: null } }]} dataType={null} />,
+    );
+    expect(screen.getByRole("textbox", { name: en.maskList.value })).toBeInTheDocument();
   });
 });

@@ -1,6 +1,6 @@
 {
   "referenceLibrary": {
-    "title": "Bibliotheek",
+    "title": "Documenten",
     "why": "Waarom: de documenten die uw gegevens hun betekenis geven",
     "filterPlaceholder": "Documenten filteren",
     "colIndex": "Indexstatus",
@@ -47,7 +47,7 @@
     "byFile": "Bestand",
     "byUrl": "URL",
     "file": "Bestand",
-    "fileHelp": "Een PDF-, Word- (.docx), HTML-, Markdown-, eCFR-XML- (.xml) of tekstbestand.",
+    "fileHelp": "Een PDF-, Word- (.docx), Excel- (.xlsx), HTML-, Markdown-, eCFR XML- (.xml) of platte-tekstbestand.",
     "url": "URL",
     "urlHelp": "Een http(s)-adres. Het document wordt nu opgehaald en opnieuw bij elke vernieuwing.",
     "fieldTitle": "Titel",

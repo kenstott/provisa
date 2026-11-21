@@ -26,13 +26,18 @@ pending there for the product's owner, and a cancel is applied at once as the ma
 Where an identity provider holds access (``auth.assignments_source: claims``) there is no local
 default: a request with no hook to go to is refused.
 
+AN EXPIRY IS A CANCEL (REQ-2219). The expiry run sends the expiring-soon and expired events
+(:func:`expiry_event`) and "cancel this grant, expired" (:func:`expiry_cancel`) to the same hook,
+each naming the grant or the dated entry that reaches its date, with an id the same on every
+send.
+
 WHAT A DECISION DOES. Where Provisa holds access, an accepted bid is applied as an ordinary admin
 grant of exactly what was bid, attributed to the decider (provisa.core.offer_grant), and an
 accepted cancel as the matching removal. Where an identity provider holds it, the decision only
 updates the request's status: the grant arrives as claims once that system makes it.
 """
 
-# Requirements: REQ-2180
+# Requirements: REQ-2180, REQ-2219
 
 from __future__ import annotations
 
@@ -177,6 +182,79 @@ def cancel_payload(bid: Mapping[str, Any], *, request_id: str, reason: str) -> d
         "kind": "cancel",
         "reason": reason,
         "cancels": bid["request_id"],
+    }
+
+
+# -- expiry through the hook (REQ-2219, AN EXPIRY IS A CANCEL THROUGH THE HOOK) ---------------------
+
+#: Who a removal the expiry run applies is attributed to.
+EXPIRY = "expiry"
+#: The cancel's reason when what it cancels reached its date.
+EXPIRED_REASON = "expired"
+
+ExpiryEvent = Literal["expiring_soon", "expired"]
+
+
+@dataclass(frozen=True)
+class Expiring:
+    """What reaches its date, as the hook names it: a role grant (``domain`` set) or one dated
+    entry of a grant (``rule`` and ``ends`` set: what it ends, per capability or ``*``)."""
+
+    principal: str
+    role_id: str
+    ends_at: datetime
+    domain: str | None = None
+    rule: str | None = None
+    ends: Mapping[str, tuple[str, ...]] | None = None
+    reason: str | None = None
+
+    def named(self) -> tuple[str, dict[str, Any]]:
+        """The key the payload names it under, and what it names."""
+        if self.domain is not None:
+            return "grant", {
+                "principal": self.principal,
+                "role": self.role_id,
+                "domain": self.domain,
+            }
+        assert self.rule is not None and self.ends is not None, "an entry is named by its rule"
+        return "entry", {
+            "principal": self.principal,
+            "role": self.role_id,
+            "rule": self.rule,
+            "ends": {capability: sorted(ids) for capability, ids in sorted(self.ends.items())},
+        }
+
+
+def _expiry_id(kind: str, what: Expiring) -> str:
+    """A payload's id, the same every time the run sends it for ``what`` at its date, so a repeat
+    is harmless."""
+    label, named = what.named()
+    key = json.dumps([kind, label, named, what.ends_at.isoformat()], sort_keys=True)
+    return uuid.uuid5(uuid.NAMESPACE_URL, f"provisa-expiry:{key}").hex
+
+
+def expiry_event(event: ExpiryEvent, what: Expiring) -> dict[str, Any]:
+    """The expiring-soon or expired event for ``what``, as the outbound hook carries it."""
+    label, named = what.named()
+    return {
+        "id": _expiry_id(event, what),
+        "kind": event,
+        label: named,
+        "ends_at": what.ends_at.isoformat(),
+        "reason": what.reason,
+    }
+
+
+def expiry_cancel(what: Expiring) -> dict[str, Any]:
+    """ "Cancel this grant, expired": the cancel of ``what``, which reached its date, as the
+    outbound hook carries any cancel."""
+    label, named = what.named()
+    return {
+        "id": _expiry_id("cancel", what),
+        "kind": "cancel",
+        "reason": EXPIRED_REASON,
+        label: named,
+        "ends_at": what.ends_at.isoformat(),
     }
 
 

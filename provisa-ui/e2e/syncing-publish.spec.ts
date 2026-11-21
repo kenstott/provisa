@@ -12,7 +12,7 @@ import { test, expect } from "./coverage";
 import type { Page, Route } from "@playwright/test";
 
 /**
- * REQ-2247, REQ-1074: publishing from the Syncing page, driven end to end in a browser.
+ * REQ-2247, REQ-1074: publishing from the Context Sync page, driven end to end in a browser.
  *
  * The Syncing endpoints are stubbed so the run does not depend on the e2e org holding the
  * premium entitlement (REQ-1073) or on a catalog being reachable from the test host. What the
@@ -127,7 +127,7 @@ async function stubSyncing(
  * the 5s default an `expect` would allow.
  */
 async function openPage(page: Page) {
-  await page.goto("/admin/syncing");
+  await page.goto("/context/sync");
   await expect(page.getByTestId("syncing-row-marquez")).toBeVisible({ timeout: 60000 });
 }
 

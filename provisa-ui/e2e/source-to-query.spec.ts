@@ -795,8 +795,11 @@ test.describe("source to query through the UI, extra RDBMS coverage (REQ-1732)",
   });
 
   test.afterAll(async () => {
-    await retireTestSourcesTables();
-    provisionExtraSources("down");
+    try {
+      await retireTestSourcesTables();
+    } finally {
+      provisionExtraSources("down");
+    }
   });
 
   // mysql itself had zero coverage — mariadb/tidb (MySQL wire-compatible siblings) were already

@@ -48,7 +48,7 @@
     "directoryHint": "Een map binnen de mappen die de beheerder toestaat. Hij wordt ter plekke gelezen, dus de volgende query leest elke wijziging.",
     "chooseFolder": "Map kiezen",
     "folderKept": "Opslaan zipt deze map en verstuurt hem opnieuw.",
-    "folderAgain": "Deze browser kan de map niet bewaren: kies hem opnieuw om een nieuwere kopie te versturen.",
+    "folderAgain": "Deze browser kan de map niet bewaren, dus kies hem opnieuw om een nieuwere kopie te sturen.",
     "editor": "Editor",
     "openInVscode": "Openen in VS Code",
     "secrets": "Secrets",

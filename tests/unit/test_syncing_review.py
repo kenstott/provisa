@@ -137,7 +137,7 @@ def entry(surface, monkeypatch):  # noqa: F811 - the imported fixture, requested
     catalog = _Catalog(_catalog_values())
     _stub_publish(monkeypatch, catalog)
     monkeypatch.setattr(sync_mod, "build_snapshot", lambda config, **kwargs: _snapshot())
-    monkeypatch.setattr(mod, "metadata_export", lambda target: catalog)
+    monkeypatch.setattr(mod, "catalog_reader", lambda target: catalog)
     surface.catalog = catalog
     return surface
 
@@ -281,13 +281,12 @@ async def test_values_the_catalog_does_not_hold_are_not_differences(entry):
 @pytest.mark.asyncio
 async def test_a_provider_that_does_not_read_is_refused_by_name(entry, monkeypatch):
     import provisa.api.admin.syncing_router as mod
-    from provisa.api.metadata_export.provider import CatalogReadNotSupported
+    from provisa.api.catalog_import import GlossaryListingUnsupported
 
-    class _NoRead(_Catalog):
-        async def read(self, snapshot):
-            raise CatalogReadNotSupported("atlas")
+    def _refuse(target):
+        raise GlossaryListingUnsupported("atlas")
 
-    monkeypatch.setattr(mod, "metadata_export", lambda target: _NoRead({}))
+    monkeypatch.setattr(mod, "catalog_reader", _refuse)
     with pytest.raises(ApiError) as caught:
         await _review()
     assert caught.value.status_code == 400
@@ -307,7 +306,7 @@ async def test_a_refused_read_is_a_named_502_never_an_empty_review(entry, monkey
                 "403", request=request, response=httpx.Response(403, request=request)
             )
 
-    monkeypatch.setattr(mod, "metadata_export", lambda target: _Refused({}))
+    monkeypatch.setattr(mod, "catalog_reader", lambda target: _Refused({}))
     with pytest.raises(ApiError) as caught:
         await _review()
     assert caught.value.status_code == 502

@@ -6,7 +6,7 @@
     "signInTitle": "Iniciar sesión",
     "firstLoginHeading": "Configurar esta implementación",
     "firstLoginTitle": "Este es el primer inicio de sesión",
-    "firstLoginBody": "Nadie administra esta implementación todavía. Quien inicie sesión primero se convierte en el administrador de la plataforma — con control total sobre organizaciones, usuarios y orígenes de datos. Elija un método de inicio de sesión abajo para reclamarlo.",
+    "firstLoginBody": "Nadie administra todavía este despliegue. Quien inicie sesión primero se convierte en el administrador de la plataforma, con control total sobre organizaciones, usuarios y orígenes de datos. Elija abajo un método de inicio de sesión para reclamarlo.",
     "signInWithGoogle": "Iniciar sesión con Google",
     "signInWithGithub": "Iniciar sesión con GitHub",
     "signInWithMicrosoft": "Iniciar sesión con Microsoft",
@@ -36,9 +36,9 @@
     "signInWithSso": "Iniciar sesión con inicio de sesión único",
     "samlSignInFailed": "El inicio de sesión único no se completó. Inténtelo de nuevo o consulte a su administrador.",
     "sandboxBuildingTitle": "Creando su sandbox…",
-    "sandboxBuildingBody": "Preparando una copia privada de los datos de ejemplo solo para usted; puede tardar un par de minutos.",
+    "sandboxBuildingBody": "Preparando una copia privada de los datos de ejemplo para usted. Puede tardar un par de minutos.",
     "sandboxTryTitle": "Pruebe Provisa gratis",
-    "sandboxTryBody": "Explore toda la plataforma con datos de ejemplo, sin tarjeta de crédito. Su sandbox es temporal: desaparece al cerrar sesión.",
+    "sandboxTryBody": "Explore la plataforma completa con datos de ejemplo. Sin tarjeta de crédito. Su sandbox es temporal y desaparece al cerrar sesión.",
     "sandboxHeading": "Pruebe Provisa"
   }
 }

@@ -28,6 +28,7 @@ from types import SimpleNamespace
 import pytest
 
 from provisa.api.data import hydration
+from provisa.federation.replica_address import ReplicaRoutes
 
 pytestmark = pytest.mark.asyncio
 
@@ -63,6 +64,7 @@ def _state(tables):
         api_sources={"neo": SimpleNamespace(base_url="http://neo")},
         tenant_db=_Db(),
         tables=tables,
+        replica_routes=ReplicaRoutes(),
     )
 
 
@@ -80,8 +82,14 @@ async def test_a_row_level_table_is_not_filled_as_an_api_cache_table(monkeypatch
     monkeypatch.setattr(hydration, "_hydrate_collection", _collection)
     state = _state(
         [
-            {"table_name": "bench_order_node", "source_id": "neo", "row_materialize": True},
             {
+                "id": 1,
+                "table_name": "bench_order_node",
+                "source_id": "neo",
+                "row_materialize": True,
+            },
+            {
+                "id": 2,
                 "table_name": "bench_placed_edge",
                 "source_id": "neo",
                 "row_materialize": False,

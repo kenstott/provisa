@@ -91,6 +91,9 @@ def jsonapi(
     include_keys: dict[str, list[str]],
     extra: dict[str, str],
     warnings: list[dict] | None,
+    include_fields: dict[str, list[str]] | None = None,
+    include_names: dict[str, tuple[str, dict[str, str]]] | None = None,
+    single: bool = False,
 ) -> bytes:
     rows, truncated = oracle.serialize_rows(oracle.arrow_rows(list(batches)), columns)
     return dumps(
@@ -111,6 +114,9 @@ def jsonapi(
             base_path=f"/data/jsonapi/{domain_id}/{table_name}",
             extra=extra,
             warnings=warnings,
+            include_fields=include_fields,
+            include_names=include_names,
+            single=single,
         )
     )
 

@@ -1,6 +1,6 @@
 {
   "proposalsTable": {
-    "intro": "Uma linha marcada é aceita ao aplicar. As linhas com pontuação de pelo menos o limite começam marcadas. Uma linha sem nenhuma caixa marcada fica indecisa.",
+    "intro": "Uma linha marcada é aceita quando você aplica. Linhas com pontuação igual ou acima do limite começam marcadas. Uma linha sem nenhuma caixa marcada fica indefinida.",
     "colScore": "Pontuação",
     "colConfidence": "Confiança",
     "colJev": "Jev",
@@ -27,17 +27,11 @@
       "invalid_shape": "Não é um relacionamento na forma pedida: falta um campo ou ele tem a forma errada",
       "unknown_column": "Cita uma tabela ou coluna que a solicitação não comparou",
       "not_comparable": "As duas colunas têm classes diferentes, então não são comparadas",
-      "below_threshold": "Pontuação abaixo dos {{threshold}}% com que uma sugestão é mantida.",
+      "below_threshold": "Pontuou abaixo dos {{threshold}}% a partir dos quais uma sugestão é mantida.",
       "same_column": "De uma coluna para ela mesma",
-      "primary_key_to_primary_key": "Chave primária para chave primária",
-      "both_repeating": "Os valores se repetem nos dois lados, então nenhum é o lado um",
       "existing": "Já registrada",
-      "pending": "Já aguardando entre as sugestões",
       "rejected": "Rejeitada antes",
-      "matches_foreign_key": "Igual a uma chave estrangeira encontrada nesta execução",
-      "out_of_scope": "Fora das tabelas de origem e destino escolhidas",
-      "weaker": "Uma proposta mais forte das mesmas duas colunas foi mantida",
-      "many_to_many": "Nenhuma das colunas é uma chave"
+      "out_of_scope": "Fora das tabelas de origem e destino escolhidas"
     },
     "threshold": "Marcar a partir de",
     "thresholdHint": "Seu próprio limite, guardado para suas próximas execuções.",
@@ -63,7 +57,10 @@
     },
     "dimensionMade": "Aceitar cria a dimensão compartilhada {{name}}, à qual as duas colunas se juntam.",
     "dimensionJoined": "Aceitar junta as duas colunas à dimensão compartilhada {{name}}.",
+    "through": "Através de {{table}}.",
     "twoDimensions": "Suas colunas já se juntam a duas dimensões compartilhadas diferentes, então não pode ser aceita.",
-    "admittedOnKeyValues": "Admitido porque os valores-chave correspondem nos dados; a medida é exibida ao lado da confiança do modelo."
+    "admittedOnKeyValues": "Admitido porque os valores-chave correspondem nos dados; a medida é exibida ao lado da confiança do modelo.",
+    "hiddenByFilter_one": "{{count}} linha está oculta pelo filtro.",
+    "hiddenByFilter_other": "{{count}} linhas estão ocultas pelo filtro."
   }
 }

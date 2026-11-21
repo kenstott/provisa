@@ -92,8 +92,8 @@ from provisa.api.admin.types import (
 )
 
 from provisa.api.admin.schema_helpers import (
-    _dataset_ownership_conflict,
     _domain_table_conflict,
+    table_domain_refusal,
     _get_pool,
     _rebuild_schemas,
 )
@@ -127,7 +127,7 @@ from provisa.api.admin._landing_ttl import (  # REQ-1907, REQ-826
     row_materialize_save_refusal,
 )
 from provisa.api.admin._table_ops import _build_columns_for_input, column_field_refusal
-from provisa.security.masking import MaskUnreachable
+from provisa.security.masking import MaskConstantNotText, MaskUnreachable
 from provisa.api.admin._fake_guard import FakeRefusedSave as _FakeRefusedSave
 from provisa.api.admin import schema_mutation_ops as _ops
 
@@ -156,6 +156,7 @@ from provisa.api.admin.schema_common import (  # noqa: E402
     restart_source_server,
     _remove_view_mv,
     _expand_wikipedia_if_needed,
+    _preset_wikidata_if_needed,
     google_workspace_refusal,
     excel_hints_refusal,
     logs_refusal,
@@ -1497,6 +1498,7 @@ async def _record_request_decision(
     involved, reach, user_id = await _request_decision_scope(info, req)
     await rule.record(
         await _get_pool(),
+        org_id=_resolve_admin_context(info),
         action=action,
         request=req,
         actor=user_id,
@@ -3196,6 +3198,10 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 _wikipedia_refusal = _expand_wikipedia_if_needed(input)
                 if _wikipedia_refusal is not None:
                     return _wikipedia_refusal
+                # REQ-1923: a Wikidata source is the SPARQL source at the query service.
+                _wikidata_refusal = _preset_wikidata_if_needed(input)
+                if _wikidata_refusal is not None:
+                    return _wikidata_refusal
                 # REQ-1923: a Google Workspace source's settings are checked before it exists.
                 _workspace_refusal = google_workspace_refusal(
                     input
@@ -3613,6 +3619,10 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             _wikipedia_refusal = _expand_wikipedia_if_needed(input)
             if _wikipedia_refusal is not None:
                 return _wikipedia_refusal
+            # REQ-1923: an edited Wikidata source keeps its preset.
+            _wikidata_refusal = _preset_wikidata_if_needed(input)
+            if _wikidata_refusal is not None:
+                return _wikidata_refusal
             _workspace_refusal = google_workspace_refusal(
                 input
             ) or await google_workspace_organisation_refusal(input)  # REQ-1923
@@ -4594,6 +4604,10 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
     async def register_table(
         self, info: StrawberryInfo, input: TableInput
     ) -> MutationResult:  # REQ-013, REQ-016, REQ-252, REQ-366, REQ-413, REQ-432, REQ-433, REQ-434
+        # REQ-1531: a registration naming no domain is refused by name, before its right is asked.
+        _no_domain = table_domain_refusal(input.domain_id, input.table_name)
+        if _no_domain is not None:
+            return _no_domain
         require_capability(info, "table_registration", domain_id=input.domain_id)
         return await _ops.register_table(info, input)
 
@@ -4738,6 +4752,10 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             require_table_save,
         )
 
+        # REQ-1531: a table stays in a domain; a save naming none is refused by name.
+        _no_domain = table_domain_refusal(input.domain_id, input.table_name)
+        if _no_domain is not None:
+            return _no_domain
         _governance_sets = governance_sets(info, input)  # REQ-1958: of the input as sent
         _editor, input = await require_table_save(info, input)  # REQ-1944
         from provisa.api.admin._table_ops import land_transform_view
@@ -4785,9 +4803,14 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             async with pool.acquire() as conn:
                 _conn = cast("Connection", conn)
                 async with _conn.transaction():
-                    from provisa.api.admin.domain_guard import require_current_domain
+                    from provisa.api.admin.domain_guard import (
+                        require_current_domain,
+                        require_move_rules,
+                    )
 
                     await require_current_domain(info, _conn, model)  # REQ-1531
+                    # REQ-1531: a move to another domain checks the table's row rules again.
+                    _moved_from = await require_move_rules(info, _conn, model)
                     from provisa.api.admin._parameter_guard import source_parameter_refusal
 
                     _param_refusal = await source_parameter_refusal(_conn, model)  # REQ-1986
@@ -4856,13 +4879,6 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     )
                     if _conflict:
                         raise TableSaveRefused(MutationResult(success=False, message=_conflict))
-                    _owner_conflict = await _dataset_ownership_conflict(
-                        _conn, model.source_id, model.table_name, model.domain_id
-                    )
-                    if _owner_conflict:
-                        raise TableSaveRefused(
-                            MutationResult(success=False, message=_owner_conflict)
-                        )
                     # REQ-1907/REQ-318: an update does not take cache_ttl / row_materialize / pagination
                     # -- they are saved through updateTableCache / updateTablePaging -- so the upsert
                     # keeps the stored values; role_ttl and replicate likewise unless the input
@@ -5023,6 +5039,13 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                         table_id = await table_repo.upsert(
                             _conn, model, declared=await registration_keys(model)
                         )
+                        if _moved_from is not None and table_id is not None:
+                            from provisa.api.admin.domain_guard import (
+                                review_moved_relationships,
+                            )
+
+                            # REQ-1531: and its relationships, once it sits in the new domain.
+                            await review_moved_relationships(_conn, table_id)
                     except glossary_repo.TermIsClass as _class:
                         # REQ-2141: a column named for a class term is not claimed by it; REQ-2152: only
                         # the tables the caller reads are named.
@@ -5060,6 +5083,20 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                                     "table": model.table_name,
                                     "column": _mask.column,
                                     "entries": _mask.entries,
+                                },
+                            )
+                        )
+                    except MaskConstantNotText as _const:
+                        # REQ-2131: a constant other than NULL on a non-text column reads as NULL; not saved.
+                        raise TableSaveRefused(
+                            MutationResult(
+                                success=False,
+                                message=str(_const),
+                                code="schema.mask_constant_not_text",
+                                params={
+                                    "table": model.table_name,
+                                    "column": _const.column,
+                                    "type": _const.data_type,
                                 },
                             )
                         )
@@ -5224,22 +5261,6 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         elif not input.materialize:
             _remove_view_mv(input.table_name)
         await _rebuild_schemas()
-        # REQ-1742: graphql_remote_router.py's/grpc_remote_router.py's own one-shot registration
-        # flows call reconcile_landed_tables() right after _rebuild_schemas() — the pass that
-        # actually creates a replicated table's replica in the store (REQ-846/932). update_table
-        # (this mutation) never did, so a replica that didn't converge for any reason at
-        # registration time (e.g. a transient failure, or state not yet fully committed) had no
-        # other path to ever catch up — every later grant/edit through this mutation left it
-        # permanently stuck. Idempotent (a matching replica is kept), so calling it
-        # unconditionally here is safe for every table type.
-        try:
-            from provisa.api.app import state as _state
-
-            await _state.federation_engine.reconcile_landed_tables()
-        except Exception:
-            logging.getLogger(__name__).warning(
-                "Landed-table reconcile failed after update_table", exc_info=True
-            )
         # Materialize + wire a (re)materialized view immediately — FRESH now, not STALE-until-restart.
         if input.view_sql and input.materialize and not _stored_withdrawn:
             from provisa.api.admin.schema_common import activate_view_mv

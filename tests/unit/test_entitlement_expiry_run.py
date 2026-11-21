@@ -26,8 +26,13 @@ import pytest
 from sqlalchemy import insert, select
 
 from provisa.auth import role_grants
-from provisa.core import settings_catalog
-from provisa.core.schema_org import admin_audit_log, user_directory, user_role_assignments
+from provisa.core import offer_hooks, settings_catalog
+from provisa.core.schema_org import (
+    admin_audit_log,
+    entitlements,
+    user_directory,
+    user_role_assignments,
+)
 from provisa.entitlements import expiry_run, store
 from provisa.entitlements.lists import ExpiryRule, HeldEntitlements
 from tests.pg_control_plane import ORG
@@ -98,12 +103,12 @@ async def test_the_run_emits_each_event_into_the_trail_once(control_plane, thres
     soon = await _rule(db, "alice", _NOW + timedelta(days=3))
     passed = await _rule(db, "bob", _NOW - timedelta(hours=1))
     await _rule(db, "carol", _NOW + timedelta(days=30))
-    first = await expiry_run.run(db, ORG, _NOW)
+    first = await expiry_run.run(db, ORG, _NOW, None)
     assert (len(first.expiring), len(first.expired)) == (1, 1)
     assert await _trail(db) == sorted(
         [(expiry_run.EXPIRING_SOON, "alice", soon), (expiry_run.EXPIRED, "bob", passed)]
     )
-    again = await expiry_run.run(db, ORG, _NOW)
+    again = await expiry_run.run(db, ORG, _NOW, None)
     assert (again.expiring, again.expired) == ([], [])
     assert len(await _trail(db)) == 2
 
@@ -111,9 +116,9 @@ async def test_the_run_emits_each_event_into_the_trail_once(control_plane, thres
 async def test_the_one_setting_is_the_entries_threshold(control_plane, threshold):
     db = control_plane.org()
     await _rule(db, "alice", _NOW + timedelta(days=10))
-    assert (await expiry_run.run(db, ORG, _NOW)).expiring == []
+    assert (await expiry_run.run(db, ORG, _NOW, None)).expiring == []
     threshold["value"] = 14
-    assert len((await expiry_run.run(db, ORG, _NOW)).expiring) == 1
+    assert len((await expiry_run.run(db, ORG, _NOW, None)).expiring) == 1
 
 
 async def test_a_rule_that_passes_after_its_expiring_soon_event_is_then_expired(
@@ -121,8 +126,8 @@ async def test_a_rule_that_passes_after_its_expiring_soon_event_is_then_expired(
 ):
     db = control_plane.org()
     key = await _rule(db, "alice", _NOW + timedelta(days=1))
-    await expiry_run.run(db, ORG, _NOW)
-    await expiry_run.run(db, ORG, _NOW + timedelta(days=2))
+    await expiry_run.run(db, ORG, _NOW, None)
+    await expiry_run.run(db, ORG, _NOW + timedelta(days=2), None)
     assert await _trail(db) == sorted(
         [(expiry_run.EXPIRING_SOON, "alice", key), (expiry_run.EXPIRED, "alice", key)]
     )
@@ -134,7 +139,7 @@ async def test_a_withdrawn_rule_emits_nothing(control_plane, threshold):
     async with db.acquire() as conn:
         [rule] = (await store.load_held(conn))["alice"].expiries
         await store.withdraw_expiry(conn, rule, "alice", set_by="admin", reason="renewed")
-    run = await expiry_run.run(db, ORG, _NOW + timedelta(days=2))
+    run = await expiry_run.run(db, ORG, _NOW + timedelta(days=2), None)
     assert (run.expiring, run.expired) == ([], [])
 
 
@@ -274,7 +279,29 @@ async def test_the_one_run_sweeps_the_grants_and_records_the_entries(control_pla
     monkeypatch.setattr(type(state), "model_db", property(lambda s: db))
     config = SimpleNamespace(multitenancy=False, mail=SimpleNamespace(provider=""))
     monkeypatch.setattr(state, "config", config, raising=False)
+
+    async def _settings(db):  # the org configures no request hook
+        return {}
+
+    monkeypatch.setattr("provisa.core.org_settings.resolve_org_config", _settings)
+    reloaded: list = []
+    monkeypatch.setattr(
+        type(state),
+        "held_entitlements",
+        property(lambda s: None, lambda s, held: reloaded.append(held)),
+    )
+    # REQ-2219: a removed grant recomputes its holder's effective rows from the org's runtime.
+    # The model store above stands in for that runtime's, so the recompute is recorded here.
+    recomputed: list[str] = []
+
+    async def _write_person(conn, state, principal, now=None):
+        recomputed.append(principal)
+        return 0
+
+    monkeypatch.setattr("provisa.entitlements.effective_store.write_person", _write_person)
     outcome = await expiry_run.run_org("acme")
+    assert recomputed == ["ada"]
+    assert list(reloaded[-1]) == ["bob"]  # the runtime reads the store as the run left it
     assert [(g.user_id, g.role_id) for g in outcome.grants.expired] == [("ada", "org_admin")]
     assert [d.rule.rule_key for d in outcome.entries.expired] == [entry]
     async with db.acquire() as conn:
@@ -297,9 +324,15 @@ async def test_notices_go_wherever_mail_is_configured_single_org_included(
         calls.append(f"sweep notify={notify}")
         return role_grants.Sweep([], [], [], [])
 
-    async def _run(db, org_id, now):
+    async def _run(db, org_id, now, hook):
         calls.append("run")
         return expiry_run.Run([], [])
+
+    async def _announce(db, org_id, swept, now, hook):
+        return ()
+
+    async def _settings(db):
+        return {}
 
     async def _tell(db, org_id, outcome):
         calls.append("told")
@@ -307,6 +340,8 @@ async def test_notices_go_wherever_mail_is_configured_single_org_included(
     monkeypatch.setattr(expiry_run, "sweep", _sweep)
     monkeypatch.setattr(expiry_run, "run", _run)
     monkeypatch.setattr(expiry_run, "_tell", _tell)
+    monkeypatch.setattr(expiry_run, "announce_grants", _announce)
+    monkeypatch.setattr("provisa.core.org_settings.resolve_org_config", _settings)
     state = app_module.state
     monkeypatch.setattr(type(state), "model_db", property(lambda s: object()))
     config = SimpleNamespace(multitenancy=False, mail=SimpleNamespace(provider=provider))
@@ -331,3 +366,216 @@ def test_each_org_runs_on_the_scheduler_once():
     expiry_run.register_org(scheduler, "acme")  # pyright: ignore[reportArgumentType]
     expiry_run.register_org(scheduler, "acme")  # pyright: ignore[reportArgumentType]
     assert added == ["entitlements:expiry_run:org_acme"]
+
+
+# -- REQ-2219, AN EXPIRY IS A CANCEL THROUGH THE HOOK (amended 2026-11-11, settled 2026-11-19) -----
+
+_HOOK = offer_hooks.HookTarget(url="https://decide.example.com/requests", secret="s3cret")
+
+
+@pytest.fixture
+def posted(monkeypatch) -> dict:
+    """What reaches the hook, and a switch that makes it refuse."""
+    out: dict = {"bodies": [], "refuse": False}
+
+    async def _deliver(target, body):
+        assert target == _HOOK
+        if out["refuse"]:
+            raise offer_hooks.HookFailed("the request hook answered 503")
+        out["bodies"].append(body)
+
+    monkeypatch.setattr(offer_hooks, "deliver", _deliver)
+    return out
+
+
+async def _listed(db, principal="alice", kind="tables", ids=("finance.revenue", "finance.costs")):
+    async with db.acquire() as conn:
+        await store.set_list(conn, principal, "viewer", kind, ids, set_by="admin", reason="setup")
+
+
+async def _list_rule(db, principal, ends_at, ids=("finance.costs",), kind="tables") -> str:
+    async with db.acquire() as conn:
+        return await store.add_expiry(
+            conn,
+            principal,
+            "viewer",
+            ends_at,
+            {"*": ids},
+            set_by="admin",
+            reason="contract ends",
+            list_kind=kind,
+        )
+
+
+async def _held(db, principal="alice"):
+    async with db.acquire() as conn:
+        return (await store.load_held(conn)).get(principal, HeldEntitlements())
+
+
+async def _provisa_rows(db, principal="alice"):
+    async with db.acquire() as conn:
+        rows = await conn.execute_core(
+            select(entitlements)
+            .where(entitlements.c.principal == principal, entitlements.c.source == "provisa")
+            .order_by(entitlements.c.valid_from, entitlements.c.id)
+        )
+        return rows.fetchall()
+
+
+async def test_an_expired_entry_provisa_holds_is_removed_and_sent_as_event_and_cancel(
+    control_plane, threshold, posted
+):
+    db = control_plane.org()
+    await _listed(db)
+    key = await _list_rule(db, "alice", _NOW - timedelta(minutes=5))
+    run = await expiry_run.run(db, ORG, _NOW, _HOOK)
+    assert [d.rule.rule_key for d in run.removed] == [key] and run.failed == ()
+    [kept] = [x for x in (await _held(db)).lists if x.kind == "tables"]
+    assert kept.identifiers == ("finance.revenue",)
+    assert (await _held(db)).expiries == ()
+    last = (await _provisa_rows(db))[-1]
+    assert (last.set_by, list(last.identifiers)) == (offer_hooks.EXPIRY, ["finance.revenue"])
+    event, cancel = posted["bodies"]
+    assert (event["kind"], cancel["kind"], cancel["reason"]) == ("expired", "cancel", "expired")
+    entry = {
+        "principal": "alice",
+        "role": "viewer",
+        "rule": key,
+        "ends": {"*": ["finance.costs"]},
+    }
+    assert event["entry"] == entry and cancel["entry"] == entry
+    assert event["id"] != cancel["id"]
+    async with db.acquire() as conn:
+        [row] = (await conn.execute_core(select(admin_audit_log))).fetchall()
+    assert (row.action, row.detail["held_by"]) == (expiry_run.EXPIRED, "provisa")
+    again = await expiry_run.run(db, ORG, _NOW, _HOOK)
+    assert (again.expired, again.removed, len(posted["bodies"])) == ([], (), 2)
+
+
+async def test_expiring_soon_is_sent_to_the_hook_once(control_plane, threshold, posted):
+    db = control_plane.org()
+    await _listed(db)
+    key = await _list_rule(db, "alice", _NOW + timedelta(days=2))
+    await expiry_run.run(db, ORG, _NOW, _HOOK)
+    await expiry_run.run(db, ORG, _NOW, _HOOK)
+    [event] = posted["bodies"]
+    assert (event["kind"], event["entry"]["rule"]) == ("expiring_soon", key)
+    assert len((await _held(db)).expiries) == 1
+
+
+async def test_with_no_hook_an_expired_entry_provisa_holds_is_removed_at_once(
+    control_plane, threshold, posted
+):
+    db = control_plane.org()
+    await _listed(db)
+    await _list_rule(db, "alice", _NOW - timedelta(minutes=5))
+    run = await expiry_run.run(db, ORG, _NOW, None)
+    assert len(run.removed) == 1 and posted["bodies"] == []
+    [kept] = [x for x in (await _held(db)).lists if x.kind == "tables"]
+    assert kept.identifiers == ("finance.revenue",)
+    assert (await _provisa_rows(db))[-1].set_by == offer_hooks.EXPIRY
+
+
+async def test_a_rule_naming_capabilities_ends_no_list_and_stays(control_plane, threshold, posted):
+    db = control_plane.org()
+    await _rule(db, "alice", _NOW - timedelta(minutes=5))
+    run = await expiry_run.run(db, ORG, _NOW, _HOOK)
+    assert len(run.expired) == 1 and run.removed == ()
+    assert len((await _held(db)).expiries) == 1
+    assert [b["kind"] for b in posted["bodies"]] == ["expired", "cancel"]
+
+
+async def _idp_holds(db, principal="alice"):
+    async with db.acquire() as conn:
+        await store.mirror_idp(conn, principal, {"viewer": {"tables": ("finance.costs",)}})
+
+
+@pytest.mark.parametrize("hook", [_HOOK, None])
+async def test_an_expired_entry_the_identity_provider_holds_only_goes_to_the_hook(
+    control_plane, threshold, posted, hook
+):
+    db = control_plane.org()
+    await _idp_holds(db)
+    await _listed(db)
+    key = await _list_rule(db, "alice", _NOW - timedelta(minutes=5))
+    before = len(await _provisa_rows(db))
+    run = await expiry_run.run(db, ORG, _NOW, hook)
+    assert [d.rule.rule_key for d in run.expired] == [key] and run.removed == ()
+    assert len(await _provisa_rows(db)) == before
+    assert [r.rule_key for r in (await _held(db)).expiries] == [key]
+    expected = ["expired", "cancel"] if hook is not None else []
+    assert [b["kind"] for b in posted["bodies"]] == expected
+    async with db.acquire() as conn:
+        [row] = (await conn.execute_core(select(admin_audit_log))).fetchall()
+    assert (row.action, row.detail["held_by"]) == (expiry_run.EXPIRED, "idp")
+
+
+async def test_a_send_the_hook_refuses_is_sent_again_on_the_next_run(
+    control_plane, threshold, posted
+):
+    db = control_plane.org()
+    await _idp_holds(db)
+    await _list_rule(db, "alice", _NOW - timedelta(minutes=5))
+    await _listed(db, "bob")
+    await _list_rule(db, "bob", _NOW - timedelta(minutes=5))
+    posted["refuse"] = True
+    refused = await expiry_run.run(db, ORG, _NOW, _HOOK)
+    assert len(refused.failed) == 2 and all("503" in f for f in refused.failed)
+    assert refused.removed == ()
+    async with db.acquire() as conn:
+        assert (await conn.execute_core(select(admin_audit_log))).fetchall() == []
+    # What Provisa holds is removed at once all the same; the rule stays open to be sent again.
+    bob = await _held(db, "bob")
+    assert [x.identifiers for x in bob.lists if x.kind == "tables"] == [("finance.revenue",)]
+    assert len(bob.expiries) == 1
+    posted["refuse"] = False
+    again = await expiry_run.run(db, ORG, _NOW, _HOOK)
+    assert again.failed == () and [d.principal for d in again.removed] == ["bob"]
+    assert [(b["kind"], b["entry"]["principal"]) for b in posted["bodies"]] == [
+        ("expired", "alice"),
+        ("cancel", "alice"),
+        ("expired", "bob"),
+        ("cancel", "bob"),
+    ]
+    assert (await _held(db, "bob")).expiries == ()
+
+
+async def test_a_grant_is_sent_as_expiring_soon_once_and_as_expired_with_its_cancel(
+    control_plane, threshold, posted
+):
+    db = control_plane.org()
+    async with db.acquire() as conn:
+        await conn.execute_core(
+            insert(user_role_assignments).values(
+                [
+                    {
+                        "user_id": "ada",
+                        "role_id": "viewer",
+                        "domain_id": "*",
+                        "expires_at": _NOW - timedelta(minutes=1),
+                    },
+                    {
+                        "user_id": "bob",
+                        "role_id": "viewer",
+                        "domain_id": "sales",
+                        "expires_at": _NOW + timedelta(days=2),
+                    },
+                ]
+            )
+        )
+    swept = await role_grants.sweep(db, org_id=ORG, notify=False)
+    assert [g.user_id for g in swept.expired] == ["ada"]
+    assert await expiry_run.announce_grants(db, ORG, swept, _NOW, _HOOK) == ()
+    assert (
+        await expiry_run.announce_grants(db, ORG, role_grants.Sweep([], [], [], []), _NOW, _HOOK)
+        == ()
+    )
+    soon, expired, cancel = posted["bodies"]
+    assert (soon["kind"], soon["grant"]) == (
+        "expiring_soon",
+        {"principal": "bob", "role": "viewer", "domain": "sales"},
+    )
+    assert (expired["kind"], cancel["kind"]) == ("expired", "cancel")
+    assert (
+        expired["grant"] == cancel["grant"] == {"principal": "ada", "role": "viewer", "domain": "*"}
+    )

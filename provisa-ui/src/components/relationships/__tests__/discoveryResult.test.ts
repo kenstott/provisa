@@ -211,14 +211,14 @@ describe("discoveryResultLines", () => {
   it("counts what was left out, by kind", () => {
     const lines = found(
       report({
-        removed: { same_column: 1, primary_key_to_primary_key: 0, matches_foreign_key: 2 },
+        removed: { same_column: 1, existing: 0, out_of_scope: 2 },
         semantics: { ...SEMANTICS, suggested: 1, invalid: 1 },
       }),
       t,
     );
     expect(lines[lines.length - 1]).toBe(
       "Not suggested: not naming two compared columns (1), from a column to itself (1), " +
-        "matching a foreign key found in this run (2).",
+        "outside the chosen tables (2).",
     );
   });
 
@@ -326,7 +326,7 @@ describe("discoveryResultLines", () => {
   it("counts what scored under the threshold and the other reasons, Jev's apart", () => {
     const lines = found(
       report({
-        removed: { weaker: 2 },
+        removed: { rejected: 2 },
         semantics: {
           ...SEMANTICS,
           suggested: 3,
@@ -347,7 +347,7 @@ describe("discoveryResultLines", () => {
     expect(lines[lines.length - 1]).toBe(
       "Not suggested: scored less than 70% (4), " +
         "between columns of different classes (5), " +
-        "repeating a pair of columns a stronger proposal was kept for (2).",
+        "rejected before (2).",
     );
   });
 });

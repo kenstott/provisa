@@ -8,7 +8,7 @@
     "never": "Ao vivo se possível",
     "always": "Sempre",
     "hot": "Hot-{{threshold}}",
-    "neverWithLoadProtection": "'Ao vivo se possível' não pode ser combinado com a proteção de carga: uma tabela protegida contra carga nunca é lida ao vivo.",
+    "neverWithLoadProtection": "Ao vivo se possível não pode ser combinado com proteção de carga, porque uma tabela com proteção de carga nunca é lida ao vivo.",
     "scheduled": "Sempre, origem lida apenas por agendamento",
     "helpScheduled": "Sempre, origem lida apenas por agendamento: as leituras vêm sempre da réplica e uma consulta nunca provoca a leitura da origem; o agendador atualiza a réplica na janela fora de pico, pelo TTL do cache ou pela sonda de alterações, e pelo menos um dos três é obrigatório."
   }

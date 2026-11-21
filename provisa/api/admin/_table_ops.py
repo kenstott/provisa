@@ -269,8 +269,9 @@ async def _graphql_columns_for_input(
 
     from provisa.api.admin._graphql_table_registration import (
         columns_to_register,
+        drop_pending,
+        hold_pending,
         registered_column_names,
-        remember_table,
         source_offer,
     )
     from provisa.api.admin.types import MutationResult
@@ -280,6 +281,7 @@ async def _graphql_columns_for_input(
 
     if input.source_id not in getattr(state, "graphql_remote_sources", {}):
         return None
+    drop_pending(input.source_id, input.table_name)
     picked = {c.name for c in chosen if c.native_filter_type is None}
     if picked:
         stored = await registered_column_names(
@@ -340,7 +342,8 @@ async def _graphql_columns_for_input(
             code="schema.table_not_readable",
             params={"table": input.table_name, "reason": "; ".join(reasons)},
         )
-    await remember_table(state, reg, input.table_name, fitted)
+    # REQ-1929: stored, and held by this process, with the registration's transaction.
+    hold_pending(reg, input.table_name, fitted)
     _OMITTED_FIELDS[(input.source_id, input.table_name)] = omitted
     return columns, None
 

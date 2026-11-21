@@ -261,7 +261,7 @@ def test_a_visitor_reads_what_the_demo_shows_its_admin_and_runs_as_its_own_roles
 ):
     """A demo names its own roles (data_steward, a keeper), never the sandbox role. Its visitor
     holds the sandbox role, which inherits what data_steward is granted (REQ-2155), and the demo's
-    own roles, so its tour can run as each (weblogs: its analyst; test_weblogs_bundle_e2e, run
+    own roles, so its tour can run as each (weblogs: its analyst; its bundle walk, run
     38596957161)."""
     import yaml
 

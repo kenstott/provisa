@@ -196,7 +196,7 @@ const CHECKS: Record<string, Check> = {
   "/tables": checkPage,
   "/relationships": checkPage,
   "/data-products": checkPage,
-  "/admin/ontology": checkPage,
+  "/context/ontology": checkPage,
 };
 
 /** How often the screen is read while the page takes in what it was handed. */

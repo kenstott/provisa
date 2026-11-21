@@ -62,6 +62,31 @@ class SetupInvalid(ValueError):
         self.field = field
 
 
+def check_setup(
+    label: str, fields: tuple[SetupField, ...], given: dict[str, str] | None
+) -> dict[str, str]:
+    """The setup values a brand's source is added with: each field's value as given, or its
+    default. Raises :class:`SetupInvalid` naming the field for a missing or malformed value, and
+    for a value given to a field the brand does not ask for. Shared by the GraphQL and OpenAPI
+    brands (provisa.openapi.brands)."""
+    given = {k: v.strip() for k, v in (given or {}).items()}
+    known = {f.name for f in fields}
+    unknown = sorted(set(given) - known)
+    if unknown:
+        raise SetupInvalid(label, unknown[0], f"setup takes no {unknown[0]!r}")
+    values = {}
+    for field in fields:
+        value = given.get(field.name) or field.default
+        if not value:
+            raise SetupInvalid(label, field.name, f"setup needs {field.name!r}")
+        if not re.fullmatch(field.pattern, value):
+            raise SetupInvalid(
+                label, field.name, f"{field.name} {value!r} is not of the form {field.pattern}"
+            )
+        values[field.name] = value
+    return values
+
+
 @dataclass(frozen=True)
 class Brand:
     id: str  # the value the source picker sends and the source row records
@@ -106,27 +131,8 @@ class Brand:
         return {"type": "bearer", "token": token}
 
     def setup(self, given: dict[str, str] | None) -> dict[str, str]:
-        """The setup values a source is added with: each field's value as given, or its default.
-        Raises :class:`SetupInvalid` naming the field for a missing or malformed value, and for
-        a value given to a field the brand does not ask for."""
-        given = {k: v.strip() for k, v in (given or {}).items()}
-        known = {f.name for f in self.setup_fields}
-        unknown = sorted(set(given) - known)
-        if unknown:
-            raise SetupInvalid(self.label, unknown[0], f"setup takes no {unknown[0]!r}")
-        values = {}
-        for field in self.setup_fields:
-            value = given.get(field.name) or field.default
-            if not value:
-                raise SetupInvalid(self.label, field.name, f"setup needs {field.name!r}")
-            if not re.fullmatch(field.pattern, value):
-                raise SetupInvalid(
-                    self.label,
-                    field.name,
-                    f"{field.name} {value!r} is not of the form {field.pattern}",
-                )
-            values[field.name] = value
-        return values
+        """The setup values a source is added with (:func:`check_setup`)."""
+        return check_setup(self.label, self.setup_fields, given)
 
     def endpoint(self, setup: dict[str, str]) -> str:
         """The endpoint of a source added with ``setup`` (as :meth:`setup` returns it)."""

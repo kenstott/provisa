@@ -25,7 +25,7 @@
     "leaveOrg": "Verlaten",
     "leaveHelp": "Verlaten verwijdert de toegang tot die organisatie. Wie de enige organisatiebeheerder is, moet eerst iemand anders promoveren.",
     "patHeading": "Persoonlijke toegangstokens",
-    "patHelp": "Een persoonlijk toegangstoken meldt u aan vanuit tools die geen browser kunnen openen — psql, een Neo4j-client, een Arrow Flight- of gRPC-client, een MCP-client of een script. Het handelt als u, binnen deze organisatie.",
+    "patHelp": "Een persoonlijk toegangstoken meldt je aan vanuit tools die geen browser kunnen openen, zoals psql, een Neo4j-client, een Arrow Flight- of gRPC-client, een MCP-client of een script. Het handelt namens jou, in deze organisatie.",
     "patName": "Naam",
     "patExpiresInDays": "Verloopt over (dagen)",
     "patIssue": "Token aanmaken",

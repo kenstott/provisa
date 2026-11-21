@@ -49,7 +49,7 @@ import { AddRelationshipForm } from "../components/relationships/AddRelationship
 import { RelationshipRow } from "../components/relationships/RelationshipRow";
 import { RelationshipDetail } from "../components/relationships/RelationshipDetail";
 import { SplitPane } from "../components/list/SplitPane";
-import { useDetailParam } from "../components/list/useDetailParam";
+import { useRememberedDetail } from "../components/list/useDetailParam";
 import { ListTable, ListHead, ListEmpty, ListItems } from "../components/list/ListTable";
 import { useListSortGroup, pageItems, type ListColumn } from "../components/list/useListSortGroup";
 import {
@@ -73,7 +73,7 @@ export function RelationshipsPage() {
   const { relationships: rels, loading: relsLoading, refetch: refetchRels } = useRelationships();
   // What the ERD draws, the system's own relationships too (REQ-2187: a line opens its panel here).
   const { relationships: allRels } = useAllRelationships();
-  const { tables, loading: tablesLoading } = useTables();
+  const { tables, loading: tablesLoading, refetch: refetchTables } = useTables();
   // REQ-2187: the ERD in the list's place, its state in the URL.
   const erd = useErdView();
   const { upsertRelationship } = useUpsertRelationship();
@@ -89,7 +89,11 @@ export function RelationshipsPage() {
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState<RelForm>(EMPTY_FORM);
   // REQ-2241: `?relationship=<id>` (a graph's link, lib/entityHref) is the open relationship's panel.
-  const detail = useDetailParam("relationships");
+  // REQ-2260: and the one left open is open again on coming back.
+  const detail = useRememberedDetail(
+    "relationships",
+    relsLoading ? null : rels.map((r) => String(r.id)),
+  );
   const expanded = detail.id;
   const setExpanded = (id: string | null) => (id === null ? detail.close() : detail.open(id));
   const { open: openDetail, close: closeDetail } = detail;
@@ -370,9 +374,11 @@ export function RelationshipsPage() {
   const refreshDiscovery = discovery.refresh;
   const handleApplied = useCallback(() => {
     void refetchRels();
+    // An accepted proposal can register tables and always adds relationships over them.
+    void refetchTables();
     load();
     void refreshDiscovery();
-  }, [load, refetchRels, refreshDiscovery]);
+  }, [load, refetchRels, refetchTables, refreshDiscovery]);
 
   // The form's values for a relationship, as its edit form holds them.
   const formOf = useCallback(
@@ -680,6 +686,7 @@ export function RelationshipsPage() {
       saving={saving}
       problem={saveProblem}
       tables={tables}
+      refetchTables={refetchTables}
       functions={functions}
       actingRole={actingRoles}
       tableDomainById={tableDomainById}

@@ -6,7 +6,7 @@
     "signInTitle": "Entrar",
     "firstLoginHeading": "Configurar esta implantação",
     "firstLoginTitle": "Este é o primeiro login",
-    "firstLoginBody": "Ninguém administra esta implantação ainda. Quem entrar primeiro se torna o administrador da plataforma — com controle total sobre organizações, usuários e fontes de dados. Escolha um método de login abaixo para assumir.",
+    "firstLoginBody": "Ninguém administra esta implantação ainda. Quem entrar primeiro se torna o administrador da plataforma, com controle total sobre organizações, usuários e fontes de dados. Escolha um método de login abaixo para reivindicá-la.",
     "signInWithGoogle": "Entrar com Google",
     "signInWithGithub": "Entrar com GitHub",
     "signInWithMicrosoft": "Entrar com Microsoft",
@@ -36,9 +36,9 @@
     "signInWithSso": "Entrar com login único (SSO)",
     "samlSignInFailed": "O login único (SSO) não foi concluído. Tente novamente ou fale com o administrador.",
     "sandboxBuildingTitle": "Criando sua sandbox…",
-    "sandboxBuildingBody": "Preparando uma cópia privada dos dados de exemplo só para você — isso pode levar alguns minutos.",
+    "sandboxBuildingBody": "Preparando uma cópia privada dos dados de exemplo para você. Isso pode levar alguns minutos.",
     "sandboxTryTitle": "Experimente o Provisa grátis",
-    "sandboxTryBody": "Explore a plataforma completa com dados de exemplo — sem cartão de crédito. Sua sandbox é temporária: ela desaparece quando você sai.",
+    "sandboxTryBody": "Explore a plataforma completa com dados de exemplo. Sem cartão de crédito. Seu sandbox é temporário e desaparece quando você sai.",
     "sandboxHeading": "Experimente o Provisa"
   }
 }

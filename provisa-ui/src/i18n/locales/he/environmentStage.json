@@ -1,0 +1,8 @@
+{
+  "environmentStage": {
+    "production": "ייצור",
+    "preprod": "טרום-ייצור",
+    "test": "בדיקות",
+    "development": "פיתוח"
+  }
+}

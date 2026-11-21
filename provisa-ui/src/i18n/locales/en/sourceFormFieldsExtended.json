@@ -105,6 +105,8 @@
     "accessToken": "Access token",
     "accessTokenHint": "Stored in the secrets vault. A ${secret:NAME} or ${env:NAME} reference is also accepted.",
     "brandNamespaceHint": "Prefix of this source's table names. Leave blank for the default.",
+    "brandBaseUrl": "Base URL",
+    "brandBaseUrlHint": "The address of your instance, such as https://catalog.example.com. Its API is called here, and its OpenAPI description is read from it.",
     "shopifyStore": "Store name",
     "shopifyStoreHint": "The part of your store's admin address before .myshopify.com, such as my-store.",
     "shopifyApiVersion": "API version",
@@ -228,6 +230,7 @@
     "qbRefreshTokenHint": "Lets Provisa read the company. Sign in with QuickBooks to get one, or paste one from Intuit's OAuth 2.0 Playground with the Accounting scope. QuickBooks replaces it each time it is used, and Provisa keeps the newest one. A new one entered here replaces the one kept when you save.",
     "qbSignIn": "Sign in with QuickBooks",
     "qbSignedIn": "Signed in to company {{realm}}. Save the source to keep it.",
-    "qbSignInFailed": "The sign-in could not be completed."
+    "qbSignInFailed": "The sign-in could not be completed.",
+    "wikidataEndpointHint": "The Wikidata query service. No credential; tables refresh from it daily."
   }
 }

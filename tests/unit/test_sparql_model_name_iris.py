@@ -144,7 +144,7 @@ def test_a_table_the_model_reads_through_a_view_is_named_by_its_registered_name(
 
     si = dataclasses.replace(
         _schema_input("domains", None, "LegalName", "legal_name"),
-        physical_table_map={"domains": "domains_meta"},
+        physical_table_map={("pg", "domains"): "domains_meta"},
     )
     lm = CypherLabelMap.from_schema(build_context(si), domain_access=["*"])
     vocab = _vocab(lm)

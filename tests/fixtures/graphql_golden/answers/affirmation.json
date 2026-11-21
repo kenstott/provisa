@@ -1,0 +1,44 @@
+[
+ {
+  "answered": false,
+  "ordered": true,
+  "origin": "demo:affirmation/1-break-queue.graphql",
+  "reads": [
+   "broker",
+   "custody",
+   "desk",
+   "ems",
+   "matcher",
+   "oms"
+  ],
+  "root_field": "p__viewBreakQueue"
+ },
+ {
+  "answered": false,
+  "ordered": true,
+  "origin": "demo:affirmation/2-breaks-by-broker.graphql",
+  "reads": [
+   "broker",
+   "custody",
+   "desk",
+   "ems",
+   "matcher",
+   "oms"
+  ],
+  "root_field": "p__viewBreakQueueGroupBy"
+ },
+ {
+  "answered": false,
+  "ordered": true,
+  "origin": "demo:affirmation/3-trade-status.graphql",
+  "reads": [
+   "broker",
+   "custody",
+   "desk",
+   "ems",
+   "matcher",
+   "oms"
+  ],
+  "root_field": "p__viewTradeStatus"
+ }
+]

@@ -65,6 +65,9 @@ async def test_a_caller_without_user_management_is_refused_everywhere(past_gate)
         router.change_password("u1", router.ChangePasswordBody(password="p"), req),
         router.list_assignments("u1", req),
         router.add_assignment("u1", body, req),
+        router.grant_access(
+            "u1", router.AccessBody(role_ids=["analyst"], domain_id="d"), req
+        ),  # REQ-2155
         router.remove_assignment("u1", 1, req),
         router.list_attributes("u1", req),
         router.set_attribute("u1", "region", router.AttributeBody(value="eu"), req),

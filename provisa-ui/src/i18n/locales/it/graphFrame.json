@@ -19,7 +19,7 @@
     "run": "Esegui",
     "removeFromFavorites": "Rimuovi dai preferiti",
     "addToFavorites": "Aggiungi ai preferiti",
-    "autoImputeOn": "Imputazione automatica delle relazioni ATTIVA — fare clic per disabilitare",
+    "autoImputeOn": "L'inferenza automatica delle relazioni è attiva. Fare clic per disattivarla.",
     "autoImputeOff": "Imputa automaticamente le relazioni tra i nodi visibili",
     "groupTooltip": "Raggruppa i nodi per attributo (doppio clic su un contorno per comprimere; doppio clic sul nodo compresso per espandere)",
     "groupPlaceholder": "⬡ gruppo",

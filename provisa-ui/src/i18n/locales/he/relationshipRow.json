@@ -51,11 +51,24 @@
     "retireResolverConsequence": "תצוגת ההתאמות שלו ושלושת הקשרים שלו מוצאים משימוש יחד. השמות שלהם נשארים תפוסים.",
     "queryLinks": {
       "heading": "שאילתה",
+      "tableMissing": "קישורי השאילתה אינם זמינים: הטבלה {{ids}} שהקשר הזה מציין אינה ברשימת הטבלאות הרשומות.",
+      "tablesUnread": "קישורי השאילתה אינם זמינים: לא ניתן היה לקרוא את הטבלאות הרשומות ({{error}}).",
       "cypher": "קריאת {{name}} ב-Cypher",
       "sql": "קריאת {{name}} ב-SQL",
       "sparql": "קריאת {{name}} ב-SPARQL",
       "graphql": "קריאת {{name}} ב-GraphQL",
-      "jsonapi": "קריאת {{name}} ב-JSON:API"
+      "rest": "קריאת {{name}} ב-REST",
+      "grpc": "קריאת {{name}} ב-gRPC",
+      "jsonapi": "קריאת {{name}} ב-JSON:API",
+      "surfaces": {
+        "cypher": "Cypher",
+        "sql": "SQL",
+        "sparql": "SPARQL",
+        "graphql": "GraphQL",
+        "rest": "REST",
+        "grpc": "gRPC",
+        "jsonapi": "JSON:API"
+      }
     }
   }
 }

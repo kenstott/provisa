@@ -24,7 +24,7 @@ from __future__ import annotations
 import json
 import logging
 import secrets
-from collections.abc import Iterable, Iterator
+from collections.abc import Iterable, Iterator, Mapping
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass
@@ -77,15 +77,17 @@ class _StatementHot:
         pk_column: str,
         rows: list[dict],
         column_names: list[str],
+        column_types: Mapping[str, str],
         whole: bool,
     ) -> Any:
         """The rows to substitute for ``tn`` in this statement, held for the next one when
         :meth:`holds` and ``whole`` — the rows are all of the table's rows, fetched with no
         arguments. Rows fetched with arguments (a parameterized fetch, a filter pushed to the
         source) answer this statement only: held as the table's rows they would be served to a
-        statement that asked for other ones."""
+        statement that asked for other ones. ``column_types``: each column's registered type
+        (:func:`_registered_types`), which the VALUES CTE casts its literals to."""
         if not (whole and self.holds(tn)):
-            return InlineRows(rows, column_names)
+            return InlineRows(rows, column_names, column_types=column_types)
         from provisa.cache.hot_tables import HotTableEntry
 
         entry = HotTableEntry(
@@ -96,6 +98,7 @@ class _StatementHot:
             pk_column=pk_column,
             rows=rows,
             column_names=column_names,
+            column_types=column_types,
             is_api=True,
         )
         self._mgr.hold(entry)
@@ -154,9 +157,16 @@ def api_answered_from_replica(state, table: dict) -> bool:
     endpoint: it never expires and its replica has landed here (``_kept_for_good``) -- a demo's
     declared rows, such as a Stripe source's. Refused (``ReplicaNotLanded``, naming it) when it
     never expires, its source's rows are declared and it has not landed: its rows are the declared
-    ones, and the live service is never asked for them."""
-    if not _is_api_table(state, table) or not _never_expires(state, table):
+    ones, and the live service is never asked for them.
+
+    REQ-030, REQ-826: any other API table the operator's setting puts on its replica (the
+    published routes floor it: Always, load_protected, or promoted and serving) is answered from
+    it too, when it has a whole copy (no parameter): the read backstop waits on its build and
+    routing reads the replica (a Wikidata class table, replicate Always)."""
+    if not _is_api_table(state, table):
         return False
+    if not _never_expires(state, table):
+        return table["id"] in state.replica_routes.floored and not is_parameterized(table)
     if _kept_for_good(state, table):
         return True
     from provisa.federation.declared_replica_rows import declares_rows
@@ -179,6 +189,17 @@ def _sql_name(name: str) -> str:
     from provisa.compiler.naming import apply_sql_name
 
     return apply_sql_name(name)
+
+
+def _registered_types(table: dict) -> dict[str, str]:
+    """Each column of the registered ``table`` and its registered type, under the name it is
+    registered with and the SQL name a statement's rows carry for it: the type a VALUES CTE casts
+    the column's literals to (REQ-232), so a jsonb, numeric or date value is not read as text."""
+    types: dict[str, str] = {}
+    for c in table["columns"]:
+        types[c["column_name"]] = c["data_type"]
+        types[_sql_name(c["column_name"])] = c["data_type"]
+    return types
 
 
 def is_native_read(table: dict, types: dict[str, str], state: Any) -> bool:
@@ -356,6 +377,53 @@ async def _join_keys(join, ctx, role_id: str) -> list:
     return [row[0] for row in result.rows]
 
 
+def fed_join_parameters(state, table_ids: Iterable[int], sql: str) -> set[str]:
+    """REQ-2099: the parameter columns a statement joins over a relationship that feeds them --
+    the relationship joins on the target's parameter column, the statement reads both of its ends
+    and equates that column with the relationship's source column, and the target is a code table
+    or a Qdrant search, which the feed reads. The materialize stage feeds them (``_feed_of``), each
+    call given every parameter the relationship feeds from one source row; binding the join's
+    column alone would give the target that one parameter, the rest unasked."""
+    import sqlglot
+    import sqlglot.expressions as exp
+
+    from provisa.codesource.table import is_code_table
+    from provisa.compiler.naming import apply_sql_name
+    from provisa.core.parameters import NF_PREFIX
+    from provisa.qdrant.table import is_search
+
+    if NF_PREFIX not in sql:
+        return set()
+    ids = set(table_ids)
+    types = getattr(state, "source_types", None) or {}
+    targets = {t["id"]: t for t in (getattr(state, "tables", None) or []) if t.get("id") in ids}
+    joins: dict[str, str] = {}
+    for rel in getattr(state, "relationships", None) or []:
+        target = targets.get(rel.get("target_table_id"))
+        column = rel.get("target_column") or ""
+        if (
+            rel["parameters"]
+            and target is not None
+            and rel["source_table_id"] in ids
+            and column.startswith(NF_PREFIX)
+            and column[len(NF_PREFIX) :] in rel["parameters"]
+            and (is_code_table(target, types) or is_search(target, types))
+        ):
+            joins[column.lower()] = apply_sql_name(rel["source_column"]).lower()
+    if not joins:
+        return set()
+    fed: set[str] = set()
+    for eq in sqlglot.parse_one(sql, dialect="postgres").find_all(exp.EQ):
+        left, right = eq.left, eq.right
+        if not (isinstance(left, exp.Column) and isinstance(right, exp.Column)):
+            continue
+        for parameter, other in ((left, right), (right, left)):
+            name = parameter.name.lower()
+            if joins.get(name) == other.name.lower():
+                fed.add(parameter.name)
+    return fed
+
+
 async def bind_statement(
     sql: str,
     params: list | None,
@@ -374,6 +442,9 @@ async def bind_statement(
     from provisa.core.parameter_binding import CALLS_SETTING
 
     table_ids = tuple(table_ids)
+    # REQ-2099: a join over a relationship that feeds the target's parameters is the feed's, not
+    # a join key's: the feed gives every fed parameter together, one set a source row.
+    parameters = parameters - fed_join_parameters(state, table_ids, sql)
     typed = {
         name: ir_type
         for columns in ctx.native_filter_columns.values()
@@ -665,7 +736,15 @@ async def _land_per_statement(
     answer = _naming_the_source(source_id, answer)
     cache_loc = cache_location(source_id, resolved_cache_catalog(engine), org_cache_schema(state))
     if ttl == 0:
-        await _answer_live(tn, state, cache_loc, cache_rewrites, values_cte_entries, answer)
+        await _answer_live(
+            tn,
+            state,
+            cache_loc,
+            cache_rewrites,
+            values_cte_entries,
+            answer,
+            _registered_types(table),
+        )
         return
     cache_tbl = cache_table_name(source_id, f"pipeline:{tn}", key)
     if table_known_live(cache_loc, cache_tbl):
@@ -692,18 +771,26 @@ class _LiveRead:
 
 
 async def _answer_live(
-    tn: str, state, cache_loc, cache_rewrites: dict, values_cte_entries: dict, answer
+    tn: str,
+    state,
+    cache_loc,
+    cache_rewrites: dict,
+    values_cte_entries: dict,
+    answer,
+    registered: Mapping[str, str],
 ) -> None:
     """A TTL-0 read (REQ-1986): inlined when its rows are within the large-result threshold
-    (``redirect.threshold``), else landed in a scratch table of this statement alone."""
+    (``redirect.threshold``), else landed in a scratch table of this statement alone. Inlined,
+    a column keeps its ``registered`` type (:func:`_registered_types`) where the table registers
+    it: the landing type of an API column is a projection of it (a jsonb column lands as text)."""
     from provisa.api_source.engine_cache import ensure_cache_schema
     from provisa.executor.redirect import RedirectConfig
 
     read = await answer()
     if len(read.rows) <= RedirectConfig.from_env().threshold:
-        values_cte_entries[tn] = InlineRows(
-            read.rows, [name for name, _ in read.columns], column_types=dict(read.columns)
-        )
+        names = [name for name, _ in read.columns]
+        types = {name: registered.get(name, landed) for name, landed in read.columns}
+        values_cte_entries[tn] = InlineRows(read.rows, names, column_types=types)
         log.warning("[MAT] live %s: %d rows inline", tn, len(read.rows))
         return
     scratch = _STATEMENT_SCRATCH.get()
@@ -946,7 +1033,7 @@ def _lookup_grpc_remote_table(state, table_name: str):
 
 
 async def _promote_joined_from_fills(
-    state, ep, tn, hot, col_names, meta_cols, cache_loc, hot_threshold
+    state, ep, tn, hot, col_names, meta_cols, cache_loc, hot_threshold, column_types
 ) -> None:
     """Read a joined API table's fills from the store and hold them in the hot tier for the next
     request's Values CTE. Best effort: the hot copy is an optimization of a later request, and
@@ -962,6 +1049,7 @@ async def _promote_joined_from_fills(
                 pk_column=col_names[0] if col_names else "id",
                 rows=rows,
                 column_names=col_names,
+                column_types=column_types,
                 whole=True,
             )
             log.warning(
@@ -1148,7 +1236,9 @@ async def _mat_gql_remote_table(
         )
         # Inline THIS query only — never held by the hot tier: a parameterized fetch is keyed by
         # its arg, so holding it as the table's rows would serve one arg's rows for another.
-        values_cte_entries[tn] = InlineRows(gql_rows, col_names)
+        values_cte_entries[tn] = InlineRows(
+            gql_rows, col_names, column_types=_registered_types(registration)
+        )
         return
 
     async def _fetch() -> tuple[list[dict], bool]:
@@ -1171,7 +1261,15 @@ async def _mat_gql_remote_table(
             rows, _cut = await _fetch()
             return _LiveRead(rows=rows, columns=_land_columns(col_objs))
 
-        await _answer_live(tn, state, gql_cache_loc, cache_rewrites, values_cte_entries, _answer)
+        await _answer_live(
+            tn,
+            state,
+            gql_cache_loc,
+            cache_rewrites,
+            values_cte_entries,
+            _answer,
+            _registered_types(registration),
+        )
         return
 
     # Cache hit — only trust in-process table_known_live
@@ -1209,6 +1307,7 @@ async def _mat_gql_remote_table(
             pk_column=col_names[0] if col_names else "id",
             rows=gql_rows,
             column_names=col_names,
+            column_types=_registered_types(registration),
             # A fetch with variables, or a cut answer (REQ-1350), is not the table's rows.
             whole=not variables and not cut,
         )
@@ -1317,7 +1416,15 @@ async def _mat_grpc_remote_table(
             rows = await _fetch()
             return _LiveRead(rows=rows, columns=_land_columns(_columns(rows)))
 
-        await _answer_live(tn, state, cache_loc, cache_rewrites, values_cte_entries, _answer)
+        await _answer_live(
+            tn,
+            state,
+            cache_loc,
+            cache_rewrites,
+            values_cte_entries,
+            _answer,
+            _registered_types(registration),
+        )
         return
 
     with state.federation_engine.isolated_sync() as _c:
@@ -1349,6 +1456,7 @@ async def _mat_grpc_remote_table(
             pk_column=col_names[0] if col_names else "id",
             rows=rows,
             column_names=col_names,
+            column_types=_registered_types(registration),
             whole=not nf_args,
         )
         values_cte_entries[tn] = entry
@@ -1488,6 +1596,7 @@ def _mat_store_rows(
     values_cte_entries: dict,
     all_ep_col_names: list | None = None,
     *,
+    column_types: Mapping[str, str],
     whole: bool,
 ) -> None:
     """ALWAYS persist rows to the materialization store (the durable source of truth), then inline a
@@ -1524,6 +1633,7 @@ def _mat_store_rows(
             # names are snake_case. Raw camelCase keys would silently inline NULL.
             rows=_snake_rows,
             column_names=hot_col_names,
+            column_types=column_types,
             whole=whole,
         )
         values_cte_entries[tn] = entry
@@ -1628,7 +1738,15 @@ async def _mat_api_ep_table(
         async def _answer() -> _LiveRead:
             return read
 
-        await _answer_live(tn, state, _cache_loc, cache_rewrites, values_cte_entries, _answer)
+        await _answer_live(
+            tn,
+            state,
+            _cache_loc,
+            cache_rewrites,
+            values_cte_entries,
+            _answer,
+            _registered_types(registration),
+        )
         return
 
     # Priority 2: the engine cache hit
@@ -1644,7 +1762,15 @@ async def _mat_api_ep_table(
         if whole and hot.holds(tn):
             spawn_background(
                 _promote_joined_from_fills(
-                    state, ep, tn, hot, col_names, _META_COLS, _cache_loc, _hot_threshold
+                    state,
+                    ep,
+                    tn,
+                    hot,
+                    col_names,
+                    _META_COLS,
+                    _cache_loc,
+                    _hot_threshold,
+                    _registered_types(registration),
                 )
             )
         return
@@ -1664,7 +1790,15 @@ async def _mat_api_ep_table(
         if whole and hot.holds(tn):
             spawn_background(
                 _promote_joined_from_fills(
-                    state, ep, tn, hot, col_names, _META_COLS, _cache_loc, _hot_threshold
+                    state,
+                    ep,
+                    tn,
+                    hot,
+                    col_names,
+                    _META_COLS,
+                    _cache_loc,
+                    _hot_threshold,
+                    _registered_types(registration),
                 )
             )
         return
@@ -1718,6 +1852,7 @@ async def _mat_api_ep_table(
         cache_rewrites,
         values_cte_entries,
         all_ep_col_names=all_ep_col_names,
+        column_types=_registered_types(registration),
         # A cut answer (REQ-1350) is the rows this statement asked for, never the table's.
         whole=whole and not cut,
     )

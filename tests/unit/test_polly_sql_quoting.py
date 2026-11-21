@@ -107,7 +107,7 @@ class TestTheChatQuotesWhatItHandsOn:
 
         monkeypatch.setattr(chat.mcp_tools, "run_sql", _run_sql)
         result = await chat._execute_tool(
-            object(), "analyst", "run_sql", {"sql": "select order from sales"}
+            object(), "analyst", "run_sql", {"sql": "select order from sales"}, scope=None
         )
         assert seen["sql"] == 'SELECT "order" FROM "sales"'
         assert "sql_note" not in result
@@ -125,7 +125,7 @@ class TestTheChatQuotesWhatItHandsOn:
 
         monkeypatch.setattr(chat.mcp_tools, "run_sql", _run_sql)
         result = await chat._execute_tool(
-            object(), "analyst", "run_sql", {"sql": "select from where"}
+            object(), "analyst", "run_sql", {"sql": "select from where"}, scope=None
         )
         assert seen["sql"] == "select from where"
         assert "could not be read" in result["sql_note"]

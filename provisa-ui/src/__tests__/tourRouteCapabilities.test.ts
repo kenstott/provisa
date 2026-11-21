@@ -108,7 +108,7 @@ describe("guided tour route gates", () => {
   // route table above — is what decides whether a viewer is shown a page. If it disagrees with the
   // gate, the tour either walks into NotAuthorized and hangs, or hides a page the viewer could see.
   // REQ-1590: a step may name a STRICTER right than its route's gate when what it points at is not
-  // on the page for everyone the route admits. /admin/ontology opens to a reader, but the glossary
+  // on the page for everyone the route admits. /context/ontology opens to a reader, but the glossary
   // step highlights the AI-generation buttons, which only a curator is shown. The right named must
   // still carry the viewer through the gate, which is what this map records — and the seeds grant
   // glossary_rw only alongside glossary_read.

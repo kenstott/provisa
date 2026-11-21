@@ -25,7 +25,7 @@
     "partial": "{{failed}} מתוך {{count}} בקשה נכשלה, ולכן התוצאה חלקית.",
     "partial_other": "{{failed}} מתוך {{count}} בקשות נכשלו, ולכן התוצאה חלקית.",
     "semanticsNoneProposed": "סמנטיקה: אין. המודל לא הציע קשרים.",
-    "semanticsBelowThreshold": "סמנטיקה: אין. כל ההצעות קיבלו ציון מתחת ל-{{threshold}}% שממנו הצעה נשמרת.",
+    "semanticsBelowThreshold": "סמנטיקה: אין. כל ההצעות קיבלו ציון נמוך מ-{{threshold}}%, הסף שממנו הצעה נשמרת.",
     "semanticsFiltered": "סמנטיקה: אין. כל הצעה הושמטה, מהסיבות שלהלן.",
     "split": "בקשה {{count}} פוצלה לשניים ונשלחה שוב.",
     "split_other": "{{count}} בקשות פוצלו לשניים ונשלחו שוב.",
@@ -35,23 +35,17 @@
     "jevBelow_other": "Jev נתן ל-{{count}} הצעות ציון מתחת ל-{{threshold}}%. כל ציון מוצג לצד הציון של המודל, שהוא הקובע.",
     "scoringFailed": "Jev לא הצליח לדרג את ההצעות של בקשה {{count}}, ולכן נשמר להן הביטחון של המודל.",
     "scoringFailed_other": "Jev לא הצליח לדרג את ההצעות של {{count}} בקשות, ולכן נשמר להן הביטחון של המודל.",
-    "failedRequest": "עבור עמודות מסוג {{group}}: {{message}}",
+    "failedRequest": "עבור עמודות {{group}}: {{message}}",
     "leftOut": "לא הוצעו: {{list}}.",
     "leftOutItem": "{{label}} ({{count}})",
     "removed": {
-      "below_threshold": "קיבלו ציון נמוך מ-{{threshold}}%",
+      "below_threshold": "קיבל ציון נמוך מ-{{threshold}}%",
       "invalid": "אינן מציינות שתי עמודות שהושוו",
       "not_comparable": "בין עמודות ממחלקות שונות",
       "same_column": "מעמודה לעצמה",
-      "primary_key_to_primary_key": "ממפתח ראשי למפתח ראשי",
-      "both_repeating": "ערכים חוזרים בשני הצדדים",
       "existing": "כבר רשומות",
-      "pending": "כבר ממתינות",
       "rejected": "נדחו בעבר",
-      "matches_foreign_key": "תואמות מפתח זר שנמצא בהרצה זו",
-      "out_of_scope": "מחוץ לטבלאות שנבחרו",
-      "weaker": "חוזרות על זוג עמודות שעבורו נשמרה הצעה חזקה יותר",
-      "many_to_many": "כשאף אחת מהעמודות אינה מפתח"
+      "out_of_scope": "מחוץ לטבלאות שנבחרו"
     }
   }
 }

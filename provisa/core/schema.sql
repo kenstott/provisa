@@ -329,6 +329,9 @@ ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS hot BOOLEAN;
 ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS promotions JSONB NOT NULL DEFAULT '[]';
 ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS query_template TEXT;
 ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS relay_pagination BOOLEAN;
+ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS mv_rebuild_every INTEGER;
+ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS code_resolver TEXT;
+ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT now();
 
 CREATE TABLE IF NOT EXISTS table_columns (
     id          SERIAL PRIMARY KEY,
@@ -544,6 +547,7 @@ ALTER TABLE relationships ADD COLUMN IF NOT EXISTS status_by TEXT;
 ALTER TABLE relationships ADD COLUMN IF NOT EXISTS status_at TIMESTAMPTZ;
 ALTER TABLE relationships ADD COLUMN IF NOT EXISTS hide_target_meta BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE relationships ADD COLUMN IF NOT EXISTS parameters JSONB NOT NULL DEFAULT '{}';
+ALTER TABLE relationships ADD COLUMN IF NOT EXISTS code_resolver TEXT;
 
 -- Migration: add materialize columns if missing
 DO $$ BEGIN
@@ -706,6 +710,32 @@ ALTER TABLE entitlement_expiries ADD COLUMN IF NOT EXISTS list_kind TEXT;
 CREATE INDEX IF NOT EXISTS entitlement_expiries_principal_idx
     ON entitlement_expiries (principal, role_id);
 
+-- REQ-2219: ops.entitlements and ops.entitlement_expiries are subscribable, as ops.requests is.
+-- Every change of either table is reported on its schema's own channel
+-- (subscriptions.pg_provider.schema_channel, named for the table) with the row's id only; the
+-- subscription reads the row back through the governed pipeline as the subscriber.
+CREATE OR REPLACE FUNCTION provisa_notify_entitlement_rows()
+RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE
+  rid bigint;
+BEGIN
+  rid := CASE WHEN TG_OP = 'DELETE' THEN OLD.id ELSE NEW.id END;
+  PERFORM pg_notify(
+    'provisa_' || TG_TABLE_NAME || '_' || substr(md5(TG_TABLE_SCHEMA), 1, 12),
+    json_build_object('op', lower(TG_OP), 'row', json_build_object('id', rid))::text
+  );
+  RETURN CASE WHEN TG_OP = 'DELETE' THEN OLD ELSE NEW END;
+END;
+$$;
+DROP TRIGGER IF EXISTS provisa_sub_entitlements ON entitlements;
+CREATE TRIGGER provisa_sub_entitlements
+AFTER INSERT OR UPDATE OR DELETE ON entitlements
+FOR EACH ROW EXECUTE FUNCTION provisa_notify_entitlement_rows();
+DROP TRIGGER IF EXISTS provisa_sub_entitlement_expiries ON entitlement_expiries;
+CREATE TRIGGER provisa_sub_entitlement_expiries
+AFTER INSERT OR UPDATE OR DELETE ON entitlement_expiries
+FOR EACH ROW EXECUTE FUNCTION provisa_notify_entitlement_rows();
+
 -- REQ-2219, ONE API, THREE WAYS TO USE IT: a list granted by typed email to a person not yet seen.
 -- Append-only, keyed by (email, role_id, kind): the last row is the grant's state. outcome is NULL
 -- while it waits, and ended, attached or refused once it does not; principal names whom a sign-in
@@ -725,6 +755,28 @@ CREATE TABLE IF NOT EXISTS entitlement_pending (
     recorded_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS entitlement_pending_email_idx ON entitlement_pending (email);
+
+-- REQ-2219: one effective row per person, role and capability, computed after precedence and
+-- within the ceiling. bits is the mask over the role's schema, in hex, for a data-plane capability
+-- (NULL for one with no mask); model_version is the version of the bit positions it is over
+-- (provisa.entitlements.mask.index_version); expansion is the identifiers it covers (NULL for an
+-- unscoped capability, held wherever the role is). Append-only as the source rows are: a change
+-- appends a row whose valid_from ends the one before it; ``removed`` ends it with none. Derived
+-- state, written from the source rows: it advances no config stamp.
+CREATE TABLE IF NOT EXISTS effective_entitlements (
+    id             BIGSERIAL PRIMARY KEY,
+    principal      TEXT NOT NULL,
+    role_id        TEXT NOT NULL,
+    capability     TEXT NOT NULL,
+    bits           TEXT,
+    model_version  TEXT NOT NULL,
+    expansion      JSONB,
+    removed        BOOLEAN NOT NULL DEFAULT FALSE,
+    valid_from     TIMESTAMPTZ NOT NULL DEFAULT now(),
+    recorded_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS effective_entitlements_principal_idx
+    ON effective_entitlements (principal, role_id, capability);
 
 CREATE TABLE IF NOT EXISTS rls_rules (
     id          SERIAL PRIMARY KEY,
@@ -1060,9 +1112,12 @@ CREATE TABLE IF NOT EXISTS glossary_terms (
     -- provisa/ontology_import): the term's own IRI when imported as a new term, or the IRI of the
     -- imported concept a steward aligned with it as the same entity. Curator work, like a definition.
     iri             TEXT,
-    tenant_id       UUID,
-    UNIQUE (name)
+    -- REQ-1591 (amended 2026-11-18): a name is unique only within a domain, and a term's domains
+    -- are derived from its refs (glossary.term_domains), so no table constraint can state it; the
+    -- create and rename paths refuse a name already held in one of the term's domains.
+    tenant_id       UUID
 );
+ALTER TABLE glossary_terms DROP CONSTRAINT IF EXISTS glossary_terms_name_key;  -- REQ-1591
 ALTER TABLE glossary_terms ADD COLUMN IF NOT EXISTS retired BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE glossary_terms ADD COLUMN IF NOT EXISTS calculation_method TEXT;  -- REQ-2243
 ALTER TABLE glossary_terms ADD COLUMN IF NOT EXISTS export_excluded BOOLEAN NOT NULL DEFAULT FALSE;
@@ -1167,6 +1222,18 @@ CREATE TABLE IF NOT EXISTS glossary_term_statements (
     UNIQUE (term_id, ordinal)
 );
 
+-- REQ-2247: the catalogs a term was sourced from, one row a catalog: the catalog entry's id, the
+-- catalog's own id for its term (an OpenMetadata entity id, a DataHub URN) and when it was taken.
+CREATE TABLE IF NOT EXISTS glossary_term_sources (
+    id          SERIAL PRIMARY KEY,
+    term_id     INTEGER NOT NULL REFERENCES glossary_terms(id) ON DELETE CASCADE,
+    catalog     TEXT NOT NULL,
+    catalog_ref TEXT NOT NULL,
+    sourced_at  TIMESTAMPTZ NOT NULL,
+    tenant_id   UUID,
+    UNIQUE (term_id, catalog)
+);
+
 -- People who can answer questions about the term or who authored its definition.
 CREATE TABLE IF NOT EXISTS glossary_term_experts (
     id        SERIAL PRIMARY KEY,
@@ -1228,6 +1295,8 @@ CREATE TABLE IF NOT EXISTS mv_build_state (
     change_rebuilt_at TIMESTAMPTZ
 );
 ALTER TABLE mv_build_state ADD COLUMN IF NOT EXISTS index_state JSONB;
+ALTER TABLE mv_build_state ADD COLUMN IF NOT EXISTS change_cursor TEXT;
+ALTER TABLE mv_build_state ADD COLUMN IF NOT EXISTS change_rebuilt_at TIMESTAMPTZ;
 
 -- REQ-1317: governed metric definitions — named aggregates with query-time grain.
 -- from_fact marks a metric auto-registered from a fact spec's measure (REQ-1320).
@@ -1367,6 +1436,19 @@ CREATE TABLE IF NOT EXISTS openlineage_run_datasets (
     column_lineage    JSONB NOT NULL DEFAULT '{}',
     CONSTRAINT openlineage_run_datasets_key UNIQUE
         (job_namespace, job_name, run_id, direction, dataset_namespace, dataset_name)
+);
+
+-- REQ-2263: each dataset's latest schema, documentation and ownership facet any OpenLineage event
+-- carried, with the run and event time it came from. One row per dataset and facet.
+CREATE TABLE IF NOT EXISTS openlineage_dataset_facets (
+    dataset_namespace TEXT NOT NULL,
+    dataset_name      TEXT NOT NULL,
+    facet             TEXT NOT NULL CONSTRAINT openlineage_dataset_facets_facet_check
+                      CHECK (facet IN ('schema', 'documentation', 'ownership')),
+    payload           JSONB NOT NULL,
+    run_id            TEXT NOT NULL,
+    event_time        TIMESTAMPTZ NOT NULL,
+    PRIMARY KEY (dataset_namespace, dataset_name, facet)
 );
 
 -- REQ-2125: the governed table each checker table's contract scans, as the model build resolved
@@ -1715,6 +1797,8 @@ ALTER TABLE tracked_functions ADD COLUMN IF NOT EXISTS output_columns JSONB;
 ALTER TABLE tracked_functions ADD COLUMN IF NOT EXISTS requires_approval BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE tracked_functions ADD COLUMN IF NOT EXISTS writes_table TEXT;
 ALTER TABLE tracked_functions ADD COLUMN IF NOT EXISTS language_bindings JSONB NOT NULL DEFAULT '{}';
+ALTER TABLE tracked_functions ADD COLUMN IF NOT EXISTS source_type TEXT;
+ALTER TABLE tracked_functions ADD COLUMN IF NOT EXISTS exposed_as_table BOOLEAN;
 
 -- Tracked webhooks exposed as GraphQL mutations (REQ-211)
 CREATE TABLE IF NOT EXISTS tracked_webhooks (
@@ -2240,6 +2324,9 @@ CREATE TABLE IF NOT EXISTS user_directory (
     user_id      TEXT PRIMARY KEY,
     display_name TEXT,
     email        TEXT,
+    -- REQ-2219 (amended 2026-11-18): whether the identity provider verified this address at the
+    -- person's latest sign-in; only a verified address names this person in a write by email.
+    email_verified BOOLEAN NOT NULL DEFAULT FALSE,
     email_opt_in BOOLEAN NOT NULL DEFAULT TRUE,
     -- REQ-413: the score from which a discovery run's proposals start ticked, the person's own.
     discovery_threshold DOUBLE PRECISION NOT NULL DEFAULT 0.7,
@@ -2247,9 +2334,26 @@ CREATE TABLE IF NOT EXISTS user_directory (
     discovery_key_values BOOLEAN NOT NULL DEFAULT TRUE,
     discovery_measure_cutoff DOUBLE PRECISION NOT NULL DEFAULT 0.2,
     discovery_sample_size INTEGER NOT NULL DEFAULT 10000,
+    -- REQ-413 (amended 2026-11-18): the share of values in a key target at which a pair is a key
+    -- relationship, the most a pair scores when neither side is a key, the sample values shown
+    -- per column: the person's own, each set in the discover dialog.
+    discovery_contained_at DOUBLE PRECISION NOT NULL DEFAULT 0.95,
+    discovery_shared_ceiling DOUBLE PRECISION NOT NULL DEFAULT 0.6,
+    discovery_samples_per_column INTEGER NOT NULL DEFAULT 5,
+    -- REQ-413: the filter on a run's Score column, the person's own: JSON; NULL when cleared.
+    discovery_score_filter TEXT DEFAULT '{"op": "ge", "a": "10"}',
     updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 ALTER TABLE user_directory ADD COLUMN IF NOT EXISTS email_opt_in BOOLEAN NOT NULL DEFAULT TRUE;
+ALTER TABLE user_directory ADD COLUMN IF NOT EXISTS email_verified BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE user_directory ADD COLUMN IF NOT EXISTS discovery_threshold DOUBLE PRECISION NOT NULL DEFAULT 0.7;
+ALTER TABLE user_directory ADD COLUMN IF NOT EXISTS discovery_key_values BOOLEAN NOT NULL DEFAULT TRUE;
+ALTER TABLE user_directory ADD COLUMN IF NOT EXISTS discovery_measure_cutoff DOUBLE PRECISION NOT NULL DEFAULT 0.2;
+ALTER TABLE user_directory ADD COLUMN IF NOT EXISTS discovery_sample_size INTEGER NOT NULL DEFAULT 10000;
+ALTER TABLE user_directory ADD COLUMN IF NOT EXISTS discovery_contained_at DOUBLE PRECISION NOT NULL DEFAULT 0.95;
+ALTER TABLE user_directory ADD COLUMN IF NOT EXISTS discovery_shared_ceiling DOUBLE PRECISION NOT NULL DEFAULT 0.6;
+ALTER TABLE user_directory ADD COLUMN IF NOT EXISTS discovery_samples_per_column INTEGER NOT NULL DEFAULT 5;
+ALTER TABLE user_directory ADD COLUMN IF NOT EXISTS discovery_score_filter TEXT DEFAULT '{"op": "ge", "a": "10"}';
 
 -- REQ-1382: attributes the org records for a member, beside what their identity provider
 -- supplies. Bound as session variables (current_setting('provisa.<name>')); where the provider

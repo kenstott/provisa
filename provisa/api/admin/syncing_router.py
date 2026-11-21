@@ -40,6 +40,7 @@ from pydantic import ValidationError
 from provisa.api.admin._guards import require_active_org_id
 from provisa.api.admin._platform_guard import require_org_settings
 from provisa.api.errors import ApiError
+from provisa.api.catalog_import import GlossaryListingUnsupported, catalog_reader
 from provisa.api.metadata_export import metadata_export
 from provisa.api.metadata_export.provider import PublishResult
 from provisa.api.metadata_export.registry import beta_providers, registered_providers
@@ -411,7 +412,6 @@ async def _entry_differences(org_id: str, entry: CatalogConnection) -> tuple[Any
     import httpx
 
     from provisa.api.admin import syncing_review
-    from provisa.api.metadata_export.provider import CatalogReadNotSupported
     from provisa.api.metadata_export.publishing import entry_snapshot
     from provisa.api.metadata_export.sync_values import provisa_values
     from provisa.core.http_failure import describe_http_failure
@@ -430,10 +430,13 @@ async def _entry_differences(org_id: str, entry: CatalogConnection) -> tuple[Any
         )
     snapshot = await entry_snapshot(org_id, list(entry.domains), entry.role)
     try:
-        theirs = await metadata_export(entry.export_target()).read(snapshot)
-    except CatalogReadNotSupported as exc:
+        theirs = await catalog_reader(entry.export_target()).read(snapshot)
+    except GlossaryListingUnsupported as exc:
         raise ApiError(
-            400, "syncing.read_not_supported", str(exc), provider=entry.provider
+            400,
+            "syncing.read_not_supported",
+            f"catalog provider {entry.provider!r} is not supported for reading yet",
+            provider=entry.provider,
         ) from exc
     except httpx.HTTPError as exc:
         raise ApiError(

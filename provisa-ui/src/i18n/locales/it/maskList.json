@@ -13,6 +13,8 @@
     "replace": "Sostituzione",
     "value": "Valore costante",
     "valuePlaceholder": "Valore (vuoto per NULL)",
+    "readsNull": "Letto come NULL: questa colonna non è di testo, quindi una maschera costante può essere solo NULL.",
+    "notTextConstant": "Questa colonna non è di testo: una maschera costante viene letta come NULL, quindi si può salvare solo NULL (vuoto).",
     "precision": "Precisione",
     "year": "Anno",
     "month": "Mese",

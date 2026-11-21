@@ -11,7 +11,9 @@
 """PostgreSQL's hash functions and aggregate state functions on an engine that is not DuckDB
 (REQ-2171, AN ANSWER THAT DIFFERS IS REFUSED): the statements of hash_corpus and aggregate_corpus,
 written as Provisa writes them for the engine and run there, against PostgreSQL 17's recorded
-answers. tests/unit/pgwire/test_pg_hash_forms.py proves the same on DuckDB."""
+answers. tests/unit/pgwire/test_pg_hash_forms.py proves the same on DuckDB. A statement
+conformance-functions measures on the engine is not replayed here
+(tests/integration/replay_coverage.py)."""
 
 # Requirements: REQ-2167, REQ-2171
 
@@ -28,6 +30,7 @@ import sqlglot
 from provisa.transpiler.metadata_facts import CatalogFacts
 from provisa.transpiler.metadata_functions import expand
 from provisa.transpiler.transpile import transpile
+from tests.integration.replay_coverage import ENGINES, remaining
 from tests.unit.pgwire.aggregate_corpus import same_answer, server_statements
 from tests.unit.pgwire.pg17_aggregate_answers import RECORDED as STATES
 from tests.unit.pgwire.pg17_hash_answers import RECORDED as HASHES
@@ -49,15 +52,19 @@ def _function(sql: str) -> str:
     return sql.split("(")[0].removeprefix("SELECT ").strip('"').removeprefix('pg_catalog."')
 
 
-#: The statements of each function, since one engine takes minutes over all of them.
-_BY_FUNCTION: dict[str, list[str]] = {}
-for _sql in HASHES:
-    _BY_FUNCTION.setdefault(_function(_sql), []).append(_sql)
+#: Each engine's statements of each function that conformance-functions does not measure there,
+#: since one engine takes minutes over all of them.
+_BY_FUNCTION: dict[str, dict[str, list[str]]] = {engine: {} for engine in ENGINES}
+for _engine in ENGINES:
+    for _sql in remaining("hashes", _engine, HASHES):
+        _BY_FUNCTION[_engine].setdefault(_function(_sql), []).append(_sql)
+#: Each engine's state and index statements that conformance-functions does not measure there.
+_STATES = {engine: remaining("hashes", engine, STATES) for engine in ENGINES}
 
 
 def _check_hashes(run: Callable[[str], Any], dialect: str, function: str) -> None:
     wrong = {}
-    for sql in _BY_FUNCTION[function]:
+    for sql in _BY_FUNCTION[dialect][function]:
         want = HASHES[sql][1]
         try:
             got = run(transpile(sql, dialect))
@@ -77,7 +84,8 @@ def _report(wrong: dict[str, Any]) -> str:
 
 def _check_states(run: Callable[[str], Any], dialect: str) -> None:
     wrong = {}
-    for sql, want in STATES.items():
+    for sql in _STATES[dialect]:
+        want = STATES[sql]
         try:
             got = run(_written(sql, dialect))
         except Exception as raised:  # noqa: BLE001 -- the engine's refusal is the answer compared
@@ -88,7 +96,7 @@ def _check_states(run: Callable[[str], Any], dialect: str) -> None:
 
 
 @pytest.mark.requires_trino
-@pytest.mark.parametrize("function", sorted(_BY_FUNCTION))
+@pytest.mark.parametrize("function", sorted(_BY_FUNCTION["trino"]))
 def test_hashes_on_trino(trino_conn, function: str):
     def run(sql: str) -> Any:
         cursor = trino_conn.cursor()
@@ -122,7 +130,7 @@ def _clickhouse() -> Callable[[str], Any]:
 
 
 @pytest.mark.requires_clickhouse
-@pytest.mark.parametrize("function", sorted(_BY_FUNCTION))
+@pytest.mark.parametrize("function", sorted(_BY_FUNCTION["clickhouse"]))
 def test_hashes_on_clickhouse(function: str):
     _check_hashes(_clickhouse(), "clickhouse", function)
 

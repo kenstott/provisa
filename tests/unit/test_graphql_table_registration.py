@@ -299,3 +299,80 @@ async def test_a_refresh_remaps_the_registered_tables_and_adds_no_column(state):
     assert [c["name"] for c in tables[0]["columns"]] == ["id"]
     assert tables[0]["domain_id"] == "sales"
     assert tables[0]["registered_name"] == "shop__orders"
+
+
+async def _build_context_from_the_control_plane(state):
+    """The model as stored -- tables, their columns in service, relationships -- built as a
+    rebuild builds it, for a role that sees every column."""
+    from provisa.compiler import naming as _naming
+    from provisa.compiler.context import build_context
+    from provisa.compiler.schema_gen import SchemaInput
+    from provisa.core.repositories import relationship as rel_repo
+    from tests.unit.test_group_by import _col
+
+    _naming.configure(gql="snake")
+    async with state.tenant_db.acquire() as conn:
+        tables = await table_repo.list_all(conn)
+        rels = await rel_repo.list_all(conn)
+    return build_context(
+        SchemaInput(
+            tables=[
+                {
+                    **t,
+                    "columns": [{**c, "visible_to": ["analyst"]} for c in t["columns"]],
+                    "write_ops": [],
+                    "write_returns_rows": False,
+                    "write_refused_forms": [],
+                }
+                for t in tables
+            ],
+            relationships=rels,
+            column_types={
+                t["id"]: [_col(c["column_name"], c["data_type"], True) for c in t["columns"]]
+                for t in tables
+            },
+            naming_rules=[],
+            role={"id": "analyst", "capabilities": [], "domain_access": ["*"]},
+            domains=[{"id": "sales", "description": "Sales"}],
+        )
+    )
+
+
+@respx.mock
+async def test_a_stored_relationship_takes_the_nested_column_it_rides_on(state):
+    """REQ-1929 (A STORED RELATIONSHIP TAKES ITS NESTED COLUMN): orders registered alone keeps
+    customer as a column; once customers is registered the relationship over it is stored, and
+    the column leaves orders -- stored and in this process -- so the model builds with the
+    relationship and no column of its name. The other columns are untouched."""
+    _mock_schema()
+    offered = await registration.source_offer(state, "shop")
+    assert "customer" in {n for n, _, _ in registration.offered_columns(*offered, "shop__orders")}
+    await _register(state, "shop__orders", "id", "total", "customer_id", "customer")
+    assert "customer" in await registration.registered_column_names(
+        state, "shop", "graphql", "shop__orders"
+    )
+    await _register(state, "shop__customers", "id", "name")
+
+    assert await registration.sync_detected_relationships(state, "shop") == 1
+
+    assert await registration.registered_column_names(state, "shop", "graphql", "shop__orders") == {
+        "id",
+        "total",
+        "customer_id",
+    }
+    held = next(
+        t for t in state.graphql_remote_sources["shop"]["tables"] if t["sql_name"] == "shop__orders"
+    )
+    assert [c["name"] for c in held["columns"]] == ["id", "total", "customerId"]
+    async with state.tenant_db.acquire() as conn:
+        orders = await table_repo.get_by_name(conn, "shop", "graphql", "shop__orders")
+    assert {c["column_name"]: c["visible_to"] for c in orders["columns"]} == {
+        "id": ["analyst"],
+        "total": ["analyst"],
+        "customer_id": ["analyst"],
+    }
+    ctx = await _build_context_from_the_control_plane(state)
+    assert any(field == "customer" for (_type, field) in ctx.joins)
+    # Synced again, nothing is stored again and nothing more leaves.
+    assert await registration.sync_detected_relationships(state, "shop") == 0
+    assert len(held["columns"]) == 3

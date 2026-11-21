@@ -140,6 +140,15 @@ beforeEach(() => {
   });
 });
 
+// Maintainer 2026-11-18: the page title is "Sources", not "Data Sources".
+describe("the Sources page title", () => {
+  it("reads Sources", async () => {
+    render(<SourcesPage />);
+    const title = await screen.findByTestId("page-title");
+    expect(within(title).getByRole("heading", { level: 2 })).toHaveTextContent(/^Sources$/);
+  });
+});
+
 describe("the Sources list's search", () => {
   it("lists the sources matching every word of the search, or either side of or", async () => {
     SOURCES = [

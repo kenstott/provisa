@@ -74,7 +74,7 @@ export const INPUT_ROUTES: ReadonlySet<string> = new Set([
   "/tables",
   "/relationships",
   "/data-products",
-  "/admin/ontology",
+  "/context/ontology",
   "/explore",
 ]);
 

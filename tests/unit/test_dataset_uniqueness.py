@@ -4,68 +4,66 @@
 # This source code is licensed under the Business Source License 1.1
 # found in the LICENSE file in the root directory of this source tree.
 
-"""REQ-433: first-come dataset ownership — a physical table claimed by one domain
-cannot be registered by another (normalized name, per source)."""
+"""REQ-433 (amended 2026-11-20): names are unique per domain. First-come ownership of a source
+table is withdrawn: the name checked is (domain, effective table name), and the same name may be
+used in another domain."""
+
+# Requirements: REQ-433
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock
+import types
 
 import pytest
 
-from provisa.api.admin.schema_helpers import _dataset_ownership_conflict, _normalize_dataset_name
+from provisa.api.admin import schema_helpers
 
 pytestmark = [pytest.mark.asyncio(loop_scope="session")]
 
 
-class _Conn:
-    def __init__(self, rows):
-        self._rows = rows
+async def test_first_come_ownership_is_gone():
+    """REQ-433 amended 2026-11-20: no (source, table name) claim is checked."""
+    assert not hasattr(schema_helpers, "_dataset_ownership_conflict")
+
+
+# --- names are unique per domain ----------------------------------------------------------------
+
+
+class _Rows:
+    def __init__(self, row):
+        self._row = row
+
+    def fetchone(self):
+        return self._row
+
+
+class _NameConn:
+    """Answers the (domain, effective name) query with the rows held in that domain."""
+
+    def __init__(self, held: dict[tuple[str, str], tuple[str, str]]):
+        self.held = held
 
     async def execute_core(self, stmt):
-        res = MagicMock()
-        res.fetchall.return_value = self._rows
-        return res
+        params = stmt.compile().params
+        domain = next(v for k, v in params.items() if k.startswith("domain_id"))
+        name = next(v for k, v in params.items() if k.startswith("coalesce"))
+        hit = self.held.get((domain, name))
+        return _Rows(
+            None if hit is None else types.SimpleNamespace(source_id=hit[0], schema_name=hit[1])
+        )
 
 
-def _rows(*pairs):
-    return [MagicMock(domain_id=d, table_name=t) for d, t in pairs]
+async def test_a_second_table_of_the_same_name_in_one_domain_is_refused():
+    conn = _NameConn({("pet-store", "beer"): ("pg", "public")})
+    refused = await schema_helpers._domain_table_conflict(
+        conn, "pet-store", "beer", "wikidata", "wd"
+    )
+    assert refused is not None and "already used in domain 'pet-store'" in refused
 
 
-class TestNormalization:
-    async def test_camel_and_snake_normalize_equal(self):
-        assert _normalize_dataset_name("MyTable") == _normalize_dataset_name("my_table")
-        assert _normalize_dataset_name("orderItems") == "order_items"
-
-
-class TestOwnershipConflict:
-    async def test_unclaimed_table_no_conflict(self):
-        conn = _Conn([])
-        assert await _dataset_ownership_conflict(conn, "pg", "orders", "sales") is None
-
-    async def test_same_domain_reregister_allowed(self):
-        conn = _Conn(_rows(("sales", "orders")))
-        assert await _dataset_ownership_conflict(conn, "pg", "orders", "sales") is None
-
-    async def test_different_domain_rejected(self):
-        conn = _Conn(_rows(("sales", "orders")))
-        msg = await _dataset_ownership_conflict(conn, "pg", "orders", "finance")
-        assert msg is not None
-        assert "already claimed by domain 'sales'" in msg
-
-    async def test_normalized_variant_cross_domain_rejected(self):
-        # "MyTable" (finance attempt) collides with claimed "my_table" (sales).
-        conn = _Conn(_rows(("sales", "my_table")))
-        msg = await _dataset_ownership_conflict(conn, "pg", "MyTable", "finance")
-        assert msg is not None
-
-    async def test_virtual_provisa_views_exempt(self):
-        # __derived__ is a shared virtual source — many domains hold views there.
-        conn = _Conn(_rows(("sales", "revenue")))
-        assert await _dataset_ownership_conflict(conn, "__derived__", "revenue", "finance") is None
-
-    async def test_different_source_no_conflict(self):
-        # The query is scoped to source_id; a same-named table on another source is
-        # never returned by the fetch, so no conflict.
-        conn = _Conn([])
-        assert await _dataset_ownership_conflict(conn, "pg2", "orders", "finance") is None
+async def test_the_same_name_in_another_domain_is_not_refused():
+    conn = _NameConn({("pet-store", "beer"): ("pg", "public")})
+    assert (
+        await schema_helpers._domain_table_conflict(conn, "brewery", "beer", "wikidata", "wd")
+        is None
+    )

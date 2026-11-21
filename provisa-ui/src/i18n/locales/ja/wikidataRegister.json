@@ -1,0 +1,14 @@
+{
+  "wikidataRegister": {
+    "starters": "スターターテーブル",
+    "startersHint": "結合用の参照テーブルです。それぞれにカラムがあります。説明、型、エイリアスは後で各テーブルで調整します。",
+    "startersPlaceholder": "スターターテーブルを選択",
+    "customLabel": "カスタムテーブル",
+    "customNone": "カスタムテーブルなし",
+    "customSparql": "SPARQL クエリ",
+    "classNotUsed": "クラスを選んで「このクラスを使用」を押すか、「カスタムテーブルなし」を選んでください。",
+    "columnsReading": "クエリの SELECT からカラムを読み取っています…",
+    "nothingChosen": "登録するスターターテーブルまたはカスタムテーブルを選んでください。",
+    "columns": "カラム: {{columns}}"
+  }
+}

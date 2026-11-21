@@ -250,8 +250,9 @@ def test_no_writer_takes_an_origin():
 async def test_a_term_derived_from_a_column_is_created_once(plane):
     """Nobody declared it: it exists because a column refers to it, and records no origin."""
     async with plane.acquire() as conn:
-        first = await glossary_repo._find_or_create_term(conn, "email address")
-        again = await glossary_repo._find_or_create_term(conn, "email address")
+        # REQ-1591: a derived term is found by name within its column's table's domain
+        first = await glossary_repo._find_or_create_term(conn, "email address", "sales")
+        again = await glossary_repo._find_or_create_term(conn, "email address", "sales")
     assert first == again
     (row,) = await _rows(plane, glossary_terms, glossary_terms.c.name == "email address")
     assert "origin" not in row

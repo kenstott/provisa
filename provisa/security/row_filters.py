@@ -35,6 +35,7 @@ from typing import Any
 
 import sqlglot.expressions as exp
 
+from provisa.core.models import ADMIN_SOURCE_ID
 from provisa.compiler.rls import Rule, all_of, any_of, as_rule, read_rule_row
 
 
@@ -251,7 +252,7 @@ def acting_model_rule(state: Any, role_id: str, table: str, right: str) -> Any: 
         return None
     rules = inputs["model_write_rules"]
     registered = {v: k for k, v in _ONTOLOGY_MODEL_TABLES.items()}.get(table, table)
-    view = inputs["physical_table_map"].get(registered)
+    view = inputs["physical_table_map"].get((ADMIN_SOURCE_ID, registered))
     rw = MODEL_RW_RIGHTS.get(table)
 
     def only_read(role: dict) -> bool:

@@ -31,7 +31,7 @@ class TestHasuraV2Style:
         assert _o2m_alias("category", hasura_v2_style=True) == "categories"
 
     def test_already_singular_m2o_unchanged(self):
-        # inflect returns False for an already-singular noun; alias falls back to input.
+        # An already-singular noun is its own singular (REQ-194).
         assert _m2o_alias("user", hasura_v2_style=True) == "user"
 
     def test_already_plural_o2m_unchanged(self):
