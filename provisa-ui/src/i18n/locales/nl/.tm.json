@@ -11190,5 +11190,6 @@
   "nl/yourData.json::yourData.pgwire": "Connection string for a SQL client (pgwire)",
   "nl/yourData.json::yourData.rest": "REST",
   "nl/yourData.json::yourData.sql": "SQL",
-  "nl/yourData.json::yourData.title": "Your data"
+  "nl/yourData.json::yourData.title": "Your data",
+  "nl/serverErrors.json::serverErrors.schema.table_state_from_function": "Table '{{table}}' is derived from the function '{{name}}' and has its release state: it is not withdrawn or put back on its own"
 }

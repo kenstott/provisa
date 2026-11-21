@@ -559,6 +559,7 @@
       "incremental_no_change": "La source de code n'a aucune fonction @change pour {{table}}. Déclarez-en une avec @change table={{table}}.",
       "incremental_needs_rebuild_every": "{{table}} est maintenue de façon incrémentale ; elle est donc reconstruite entièrement selon une horloge. Indiquez la fréquence, en secondes, dans « Reconstruction complète toutes les ».",
       "table_derived_from_function": "La table '{{name}}' est dérivée d'une fonction : elle est supprimée en désactivant la table de la fonction, et ses colonnes et paramètres se modifient sur la fonction",
+      "table_state_from_function": "La table '{{table}}' est dérivée de la fonction '{{name}}' et en a l'état de publication : elle n'est ni retirée ni remise en service seule",
       "table_withdrawn": "Table {{table}} retirée",
       "table_put_back": "Table {{table}} remise en service",
       "source_withdrawn": "Source {{source}} retirée",
