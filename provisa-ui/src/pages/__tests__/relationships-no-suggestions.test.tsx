@@ -45,6 +45,7 @@ const REGISTERED = {
 };
 const RELS = { relationships: [REGISTERED], loading: false, refetch: vi.fn() };
 const TABLES = {
+  refetch: () => Promise.resolve(),
   tables: [
     {
       id: 1,

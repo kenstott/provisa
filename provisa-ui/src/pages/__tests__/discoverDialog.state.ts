@@ -34,7 +34,7 @@ export const REGISTERED = [
   table(5, "crm", "contacts"),
   table(4, "meta", "registered_tables"),
 ];
-export const TABLES = { tables: REGISTERED, loading: false };
+export const TABLES = { tables: REGISTERED, loading: false, refetch: () => Promise.resolve() };
 export const AUTH = { capabilities: ["create_relationship"] };
 // The Domains picker has shop, crm and files ticked and meta not: the dialog offers only those
 // (REQ-2253) and its source domains start as those of them holding a table.

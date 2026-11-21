@@ -832,7 +832,9 @@
       "not_bulk_approvable": "Seuls les brouillons définis et ancrés sont approuvés ensemble ; pas : {{terms}}.",
       "term_ids_required": "Indiquez les termes à approuver.",
       "impact_action": "Aucun aperçu n'existe pour cette action.",
-      "impact_table_required": "Une liaison nomme une table, ou l'une de ses colonnes."
+      "impact_table_required": "Une liaison nomme une table, ou l'une de ses colonnes.",
+      "name_taken": "Un terme nommé '{{name}}' existe déjà dans le domaine {{domain}}. Choisissez un autre nom ou placez le terme dans un autre domaine.",
+      "name_taken_unscoped": "Un terme nommé '{{name}}' existe déjà sans domaine : il s'applique donc à tous les domaines. Choisissez un autre nom."
     },
     "table": {
       "requires_parameters": "La table {{table}} ne peut être ni comptée ni profilée : elle exige {{parameters}}. Donnez une valeur à chacun pour lire ses lignes."

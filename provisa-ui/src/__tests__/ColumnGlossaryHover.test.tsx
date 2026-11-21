@@ -60,7 +60,7 @@ const REVENUE_DETAIL: GlossaryTermDetail = {
       domain_id: "pet-store",
     },
   ],
-  edges_out: [{ term_id: 2, rel_type: "KIND_OF", name: "Income" }],
+  edges_out: [{ term_id: 2, rel_type: "KIND_OF", name: "Income", domains: [] }],
   edges_in: [],
   experts: [{ user_id: "alice", kind: "expert" }],
   tags: [],

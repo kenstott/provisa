@@ -832,7 +832,9 @@
       "not_bulk_approvable": "Alleen gedefinieerde, verankerde ontwerpen worden samen goedgekeurd; niet: {{terms}}.",
       "term_ids_required": "Noem de goed te keuren termen.",
       "impact_action": "Voor die actie bestaat geen voorbeeld.",
-      "impact_table_required": "Een koppeling noemt een tabel, of een van zijn kolommen."
+      "impact_table_required": "Een koppeling noemt een tabel, of een van zijn kolommen.",
+      "name_taken": "Er bestaat al een term met de naam '{{name}}' in domein {{domain}}. Kies een andere naam of plaats de term in een ander domein.",
+      "name_taken_unscoped": "Er bestaat al een term met de naam '{{name}}' zonder domein, die dus in elk domein geldt. Kies een andere naam."
     },
     "table": {
       "requires_parameters": "De tabel {{table}} kan niet worden geteld of geprofileerd: ze vereist {{parameters}}. Geef elk een waarde om de rijen te lezen."

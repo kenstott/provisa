@@ -855,8 +855,8 @@ glossary_terms = Table(
     Column("status_at", DateTime(timezone=True)),
     # REQ-2237: the IRI of the imported concept the term is (schema.sql).
     Column("iri", Text),
+    # REQ-1591: no unique name; a name is unique only within a domain (schema.sql).
     Column("tenant_id", Uuid),
-    UniqueConstraint("name"),
 )
 
 # Physical ref = (table_id, column_name): the stable column identity — table_columns.id is
