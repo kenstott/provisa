@@ -27242,7 +27242,7 @@ Maintainer 2026-11-20. Governance catalogs are live branded sources, so their me
 
 **Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
 
-Maintainer 2026-11-20. Access review. Provisa produces an access review, on demand and on a schedule, listing each member with their roles, entitlements and last use, grouped by the domain whose owner reviews them. The owner confirms or revokes each row; a revocation takes effect at once, and every confirmation and revocation is recorded with who made it, when and why. The scheduled review is exported to the operator's chosen destination.
+Maintainer 2026-11-20. Access review. Provisa produces an access review, on demand and on a schedule, listing each member with their roles, entitlements and last use, grouped by the domain whose owner reviews them. The owner confirms or revokes each row; a revocation takes effect at once, and every confirmation and revocation is recorded with who made it, when and why. The scheduled review is exported to the operator's chosen destination. (Amended 2026-11-21 by the maintainer. The operator chooses a signed webhook as the destination of a scheduled review, a URL and a secret, posted after each scheduled review and signed as the offer hook signs its requests. Roles a member holds only through the identity provider claims or a role mapping are listed read-only with their source, since Provisa holds no grant of them to revoke.)
 
 **Code:** —
 
