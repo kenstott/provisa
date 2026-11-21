@@ -117,3 +117,16 @@ def test_a_trino_error_ends_its_message_before_the_query_id():
     )
     error = from_engine(raised)
     assert (error.sqlstate, str(error)) == ("42601", 'invalid option "user"')
+
+
+def test_postgres_subscripts_the_refused_options_in_parentheses():
+    written = _written("{host,NULL}", 1417, "postgres")
+    assert "END)[1]" in written
+    assert "END[1]" not in written
+    sqlglot.parse_one(written, read="postgres")
+
+
+def test_clickhouse_null_element_does_not_assume_not_null_on_the_element():
+    written = _written("{host,NULL}", 1417, "clickhouse")
+    assert "assumeNotNull(COALESCE(_o, ''))" in written
+    assert "assumeNotNull(_o)" not in written

@@ -1658,7 +1658,7 @@ def _catalog_objects(a: _Answers) -> None:
     # list is 42601 invalid option, whatever its value. A server (1417) takes the libpq names, a
     # user mapping (1418) user and password; any other catalog takes none.
     _server_options = ", ".join(f"'{n}'" for n in FDW_SERVER_OPTIONS)
-    _option = "SPLIT_PART(_o, '=', 1)"
+    _option = "SPLIT_PART(COALESCE(_o, ''), '=', 1)"
     _invalid = (
         f"NOT (({_option} IN ({_server_options}) AND catalog = 1417) "
         f"OR ({_option} IN ('user', 'password') AND catalog = 1418))"
@@ -1672,7 +1672,7 @@ def _catalog_objects(a: _Answers) -> None:
         "CASE WHEN ARRAY_SIZE(ARRAY_FILTER(options, _o -> _o IS NULL)) > 0 THEN "
         + raising("0A000", "'postgresql_fdw_validator of a NULL option has no form here'")
         + f" WHEN ARRAY_SIZE({_refused}) > 0 THEN "
-        + raising("42601", f"'invalid option \"' || SPLIT_PART({_refused}[1], '=', 1) || '\"'")
+        + raising("42601", f"'invalid option \"' || SPLIT_PART(({_refused})[1], '=', 1) || '\"'")
         + " ELSE true END",
     )
     a.strict(
