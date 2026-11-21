@@ -41312,7 +41312,8 @@
     '
   since: 2026-07
 - id: REQ-1250
-  status: proposed
+  status: complete
+  since: 2026-11
   group: 13. Multi-Tenancy & Organizations
   category: Org Membership
   feature: organizations-membership
@@ -91803,7 +91804,8 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     And no network request is made'
 - id: REQ-2165
   value: 'Export your governed graph as Turtle or N-Triples and load it into any triple store you already run.'
-  status: in-progress
+  status: complete
+  since: 2026-11
   target: 2027-Q1
   group: 3. Source Registration & Data Modeling
   category: Business Glossary & Ontology
@@ -97991,7 +97993,8 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     domains, relations on either end or status sets that time. The Glossary''s recent-change sort orders by
     it.'
 - id: REQ-2260
-  status: proposed
+  status: complete
+  since: 2026-11
   target: 2026-Q4
   group: 10. UI & Admin Surfaces
   category: UI

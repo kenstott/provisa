@@ -13366,7 +13366,7 @@ During account creation, a Firebase user without an org invite may CREATE A NEW 
 
 ### REQ-1250 · Org Membership {#REQ-1250}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** structural
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** structural
 
 Org membership is pull-based via org_join_requests, the inverse of org_invites. New registry table org_join_requests(user_id, org_id, status, requested_at, decided_by, decided_at) is added to REGISTRY_TABLES in provisa/core/schema_admin.py. Per-org visibility flag orgs.open_to_requests: if False (invite_only, the default), admission requests are silently rejected (no signal that the request was received, to avoid org-name enumeration). If True (open_to_requests), requests are logged pending admin approval. Requesters must be Firebase-authenticated. Anti-abuse: at most one open request per (user, org); rate-limited per requester; stale requests auto-expire (same TTL as org_invites).
 
@@ -26046,7 +26046,7 @@ Redacted log export: an operator can export the server's recent logs as one plai
 
 ### REQ-2165 · Business Glossary & Ontology {#REQ-2165}
 
-**Status:** ⚙ in-progress · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
 
 Bulk RDF export of the governed graph, the counterpart of the Neo4j export ([REQ-392](#REQ-392)), so a customer who already runs a triple store (Jena, GraphDB, Stardog or another) uses it with Provisa's data: we work with what you have. Scope is the whole graph, a domain or a class. The export carries the ontology schema ([REQ-2163](#REQ-2163)'s RDFS/OWL/SKOS: classes, sub-classes, properties with domain and range, labels and definitions) together with the instances, so the receiving store's reasoner and tools work from the first load. It is governed: it contains exactly what the exporting role may read, masks applied, through the one pipeline. Two forms: a file (Turtle, or N-Triples streamed for large exports) and a direct load into a running store over the SPARQL 1.1 Graph Store HTTP Protocol, reporting triples loaded and failures as the Neo4j export does. It accepts as_recorded (and as_of where a valid time is mapped), so an export can be reproduced exactly later. (Amended 2026-11-20 by the maintainer. A domain- or class-scoped export carries every ontology axiom the exporting role may read, not only the axioms about terms in the scope.)
 
@@ -27174,7 +27174,7 @@ Maintainer 2026-11-19. The context layer (documents, ontology, glossary, metrics
 
 ### REQ-2260 · UI {#REQ-2260}
 
-**Status:** 💡 proposed · **Priority:** MUST · **Type:** ui
+**Status:** ✅ complete · **Priority:** MUST · **Type:** ui
 
 Maintainer 2026-11-20. Every list page that opens an item's detail (Sources, Tables, Relationships, Context pages, Derived, Products, Security and the rest) remembers which item's detail was open. Returning to the page by any route (its navigation link, the back button, another page's link without a target) reopens that detail, scrolled to its item, and the address shows it as when it was opened. Closing the detail clears what is remembered for that page. A link that names an item opens that item instead. An item that no longer exists or the viewer can no longer read is not reopened and its memory is cleared. What is remembered is per viewer in that browser, kept across reloads and sign-ins on it, and never shared with other viewers or devices.
 
