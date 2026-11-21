@@ -686,3 +686,48 @@ async def test_a_table_no_function_derives_is_withdrawn_as_before(state, plane, 
     said = await _set_table_withdrawn(info, plain, True, None)
     assert (said.success, said.code) == (True, "schema.table_withdrawn")
     assert await _withdrawn(plane, plain)
+
+
+async def _region(plane, table_id: int) -> str | None:
+    async with plane.acquire() as conn:
+        return (
+            await conn.execute_core(
+                select(registered_tables.c.region).where(registered_tables.c.id == table_id)
+            )
+        ).scalar_one()
+
+
+@pytest.mark.asyncio
+async def test_a_derived_table_is_not_moved_to_another_region_on_its_own(state, plane, withdrawing):
+    """REQ-1986: the derived table has its function's region: setTableRegion refuses it by name."""
+    from provisa.api.admin.schema_mutation import _set_table_region
+
+    derived, _ = await _exposed_pet(plane)
+    info = types.SimpleNamespace(context={"request": _request()})
+    said = await _set_table_region(info, derived, None)
+    assert (said.success, said.code) == (False, "schema.table_region_from_function")
+    assert said.params == {"table": "getPetById", "name": "get_pet"}
+
+
+@pytest.mark.asyncio
+async def test_a_table_update_carrying_a_region_refuses_a_derived_table(state, plane):
+    from provisa.api.admin._table_settings import TableSaveRefused, save_carried_region
+
+    derived, _ = await _exposed_pet(plane)
+    info = types.SimpleNamespace(context={"request": _request()})
+    inp = types.SimpleNamespace(table_name="getPetById", region="eu")
+    async with plane.acquire() as conn:
+        with pytest.raises(TableSaveRefused) as refused:
+            await save_carried_region(info, conn, inp, derived, stored_region=None)
+    assert refused.value.result.code == "schema.table_region_from_function"
+
+
+@pytest.mark.asyncio
+async def test_a_table_no_function_derives_is_moved_as_before(state, plane, withdrawing):
+    from provisa.api.admin.schema_mutation import _set_table_region
+
+    await _exposed_pet(plane)
+    plain = await _table(plane, "openapi", "findPetsByTags")
+    info = types.SimpleNamespace(context={"request": _request()})
+    said = await _set_table_region(info, plain, None)
+    assert (said.success, said.code) == (True, "schema.table_region_set")

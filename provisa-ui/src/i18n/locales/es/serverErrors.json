@@ -560,6 +560,7 @@
       "incremental_needs_rebuild_every": "{{table}} se mantiene de forma incremental, por lo que se recompila completa por reloj. Indique cada cuánto, en segundos, en «Recompilación completa cada».",
       "table_derived_from_function": "La tabla '{{name}}' se deriva de una función: se elimina desactivando la tabla de la función, y sus columnas y parámetros se editan en la función",
       "table_state_from_function": "La tabla '{{table}}' se deriva de la función '{{name}}' y tiene su estado de publicación: no se retira ni se restablece por sí sola",
+      "table_region_from_function": "La tabla '{{table}}' se deriva de la función '{{name}}' y tiene su región: no se traslada por sí sola a otra región",
       "table_withdrawn": "Tabla {{table}} retirada",
       "table_put_back": "Tabla {{table}} restablecida",
       "source_withdrawn": "Origen {{source}} retirado",

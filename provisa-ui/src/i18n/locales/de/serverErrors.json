@@ -560,6 +560,7 @@
       "incremental_needs_rebuild_every": "{{table}} wird inkrementell gepflegt und daher nach Zeitplan vollständig neu aufgebaut. Legen Sie unter „Vollständiger Neuaufbau alle“ fest, wie oft (in Sekunden).",
       "table_derived_from_function": "Die Tabelle '{{name}}' ist von einer Funktion abgeleitet: Sie wird entfernt, indem die Tabelle der Funktion ausgeschaltet wird, und ihre Spalten und Parameter werden an der Funktion bearbeitet",
       "table_state_from_function": "Die Tabelle '{{table}}' ist von der Funktion '{{name}}' abgeleitet und hat deren Freigabestatus: Sie wird nicht für sich allein zurückgezogen oder wieder eingesetzt",
+      "table_region_from_function": "Die Tabelle '{{table}}' ist von der Funktion '{{name}}' abgeleitet und hat deren Region: Sie wird nicht für sich allein in eine andere Region verschoben",
       "table_withdrawn": "Tabelle {{table}} zurückgezogen",
       "table_put_back": "Tabelle {{table}} wieder in Betrieb genommen",
       "source_withdrawn": "Quelle {{source}} zurückgezogen",

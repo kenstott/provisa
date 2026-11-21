@@ -11192,5 +11192,6 @@
   "es/yourData.json::yourData.sql": "SQL",
   "es/yourData.json::yourData.title": "Your data",
   "glossaryTab.json::glossaryTab.tablesWithoutSamples": "No sample values were read from: {{tables}}.",
-  "es/serverErrors.json::serverErrors.schema.table_state_from_function": "Table '{{table}}' is derived from the function '{{name}}' and has its release state: it is not withdrawn or put back on its own"
+  "es/serverErrors.json::serverErrors.schema.table_state_from_function": "Table '{{table}}' is derived from the function '{{name}}' and has its release state: it is not withdrawn or put back on its own",
+  "es/serverErrors.json::serverErrors.schema.table_region_from_function": "Table '{{table}}' is derived from the function '{{name}}' and has its region: it is not moved to another region on its own"
 }

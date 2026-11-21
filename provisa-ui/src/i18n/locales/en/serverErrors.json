@@ -560,6 +560,7 @@
       "incremental_needs_rebuild_every": "{{table}} is kept incrementally, so it is rebuilt whole on a clock. Set how often, in seconds, in \"Whole rebuild every\".",
       "table_derived_from_function": "Table '{{name}}' is derived from a function: it is removed by turning off the function's table, and its columns and parameters are edited on the function",
       "table_state_from_function": "Table '{{table}}' is derived from the function '{{name}}' and has its release state: it is not withdrawn or put back on its own",
+      "table_region_from_function": "Table '{{table}}' is derived from the function '{{name}}' and has its region: it is not moved to another region on its own",
       "table_withdrawn": "Table {{table}} withdrawn",
       "table_put_back": "Table {{table}} put back",
       "source_withdrawn": "Source {{source}} withdrawn",

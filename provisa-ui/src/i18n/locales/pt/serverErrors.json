@@ -560,6 +560,7 @@
       "incremental_needs_rebuild_every": "{{table}} é mantida de forma incremental, portanto é recompilada por inteiro por relógio. Defina a frequência, em segundos, em \"Recompilação completa a cada\".",
       "table_derived_from_function": "A tabela '{{name}}' é derivada de uma função: é removida desativando a tabela da função, e as suas colunas e parâmetros são editados na função",
       "table_state_from_function": "A tabela '{{table}}' é derivada da função '{{name}}' e tem o seu estado de publicação: não é retirada nem reposta por si só",
+      "table_region_from_function": "A tabela '{{table}}' é derivada da função '{{name}}' e tem a sua região: não é movida sozinha para outra região",
       "table_withdrawn": "Tabela {{table}} retirada",
       "table_put_back": "Tabela {{table}} reposta",
       "source_withdrawn": "Fonte {{source}} retirada",

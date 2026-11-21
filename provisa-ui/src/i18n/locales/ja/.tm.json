@@ -11191,5 +11191,6 @@
   "ja/yourData.json::yourData.rest": "REST",
   "ja/yourData.json::yourData.sql": "SQL",
   "ja/yourData.json::yourData.title": "Your data",
-  "ja/serverErrors.json::serverErrors.schema.table_state_from_function": "Table '{{table}}' is derived from the function '{{name}}' and has its release state: it is not withdrawn or put back on its own"
+  "ja/serverErrors.json::serverErrors.schema.table_state_from_function": "Table '{{table}}' is derived from the function '{{name}}' and has its release state: it is not withdrawn or put back on its own",
+  "ja/serverErrors.json::serverErrors.schema.table_region_from_function": "Table '{{table}}' is derived from the function '{{name}}' and has its region: it is not moved to another region on its own"
 }
