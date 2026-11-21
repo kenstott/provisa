@@ -11,7 +11,7 @@
     "error": "Error",
     "expand": "Expand",
     "enlarge": "Enlarge",
-    "exitFullScreen": "Exit full screen",
+    "exitFullScreen": "Restore size",
     "collapse": "Collapse",
     "unpinHint": "Unpin (unpin to allow sorting)",
     "pinToTop": "Pin to top",

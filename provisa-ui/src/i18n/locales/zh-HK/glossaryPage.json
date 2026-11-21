@@ -1,0 +1,25 @@
+{
+  "glossaryPage": {
+    "title": "詞彙表",
+    "intro": "貴機構已批准的詞彙及其含義。",
+    "search": "搜尋詞彙",
+    "searchPlaceholder": "搜尋名稱和定義",
+    "domainFilter": "領域",
+    "domainFilterPlaceholder": "所有領域",
+    "sort": "排序",
+    "sortName": "A–Z",
+    "sortRecent": "最近更改",
+    "letterBar": "跳至字母",
+    "otherLetter": "#",
+    "alsoCalled": "又稱",
+    "kindOf": "屬於",
+    "kinds": "子類",
+    "seeAlso": "另見",
+    "allDomains": "所有領域",
+    "loadFailed": "無法載入詞彙表：{{message}}",
+    "empty": "尚未有已批准的詞彙。",
+    "noMatch": "沒有相符的詞彙。",
+    "count_one": "{{count}} 個詞彙",
+    "count_other": "{{count}} 個詞彙"
+  }
+}

@@ -213,11 +213,13 @@ ways; `zaychik/trino-statement-protocol.patch` and `executor/trino_flight.py` cl
    Python client rounds it. A date is read from the protocol's text (proleptic Gregorian), not
    through `java.sql.Date`.
 2. **Types JDBC could not map** (`JAVA_OBJECT`/`OTHER`: map, row, uuid, json, ipaddress, the
-   intervals; also arrays and time with time zone): Utf8 holding the protocol's text (scalars) or
-   JSON (structural), `trino.encoding` saying which. `trino_rows` decodes them with the Trino
-   client's own value mappers (`trino.mapper`), so a nested value is the Python value the client
-   gave (`NamedRowTuple`, `UUID`, `relativedelta`, ...). A REAL is read as the shortest decimal of
-   the float, as the protocol writes it.
+   intervals; also time with time zone): Utf8 holding the protocol's text (scalars) or JSON
+   (structural), `trino.encoding` saying which. An array of a type Arrow has is an Arrow list of
+   it, nested as deep as the array (`trino.encoding` `arrow`), so pgwire writes PostgreSQL's
+   `{...}` from it; an array of a type Arrow lacks is JSON with the rest.
+   `trino_rows` decodes them with the Trino client's own value mappers (`trino.mapper`), so a
+   nested value is the Python value the client gave (`NamedRowTuple`, `UUID`, `relativedelta`,
+   ...). A REAL is read as the shortest decimal of the float, as the protocol writes it.
 3. **Session**: every Flight statement is a Trino session of its own. Its `source` (the org),
    catalog, schema and session properties (the FTE hints, the caller's hints,
    `query_max_execution_time`) travel in the `x-provisa-trino-context` call header and reach

@@ -577,7 +577,9 @@ async def read_stored_views(sql: str, state: Any, gov: "GovernanceContext") -> s
     columns its stored table holds, and an output computed from a column masked for the reader is
     masked as that column is (:func:`transform_view_rules.reader_rows`). The reference stays
     inside, so optimization answers it from the stored table as for every reader; a reader whose
-    rules narrow none of the view's inputs is left reading it as it is. Applied to the governed
+    rules narrow none of the view's inputs reads its rows as they are. Every reader reads the
+    view's own columns only: the input columns its build keeps are offered to none, and a
+    statement naming one is refused. Applied to the governed
     statement, as a row rule is: Provisa's own read of the kept columns, which no reader is
     offered."""
     views = _stored_views(state)
@@ -587,6 +589,7 @@ async def read_stored_views(sql: str, state: Any, gov: "GovernanceContext") -> s
     from sqlglot import exp  # noqa: PLC0415
 
     from provisa.mv.transform_view_rules import (  # noqa: PLC0415
+        RULE_INPUT_PREFIX,
         filters_rows,
         reader_rows,
         stored_rule_inputs,
@@ -597,6 +600,10 @@ async def read_stored_views(sql: str, state: Any, gov: "GovernanceContext") -> s
     commands = view_commands(state)
     definitions = _definitions(state.view_sql_map, state)
     tree = sqlglot.parse_one(sql, read="postgres")
+    for column in tree.find_all(exp.Column):
+        if column.name.startswith(RULE_INPUT_PREFIX):
+            # The input columns a build keeps for row rules are no column of any view.
+            raise PermissionError(f"[V003] Column {column.name!r} is not visible to this role")
     changed = False
     names = view_names(views, gov.table_map)
     for node in list(tree.find_all(exp.Table)):
@@ -626,8 +633,6 @@ async def read_stored_views(sql: str, state: Any, gov: "GovernanceContext") -> s
             commands,
             held,
         )
-        if read is None:
-            continue
         alias = node.alias_or_name
         node.replace(exp.Subquery(this=read, alias=exp.TableAlias(this=exp.to_identifier(alias))))
         changed = True

@@ -79,10 +79,10 @@
       },
       "step2": {
         "title": "Register a source",
-        "description": "➕ New connections start with this button: PostgreSQL, Snowflake, MongoDB, a REST API, a CSV, and the rest of the 80 connectors."
+        "description": "➕ New connections start with this button: PostgreSQL, Snowflake, MongoDB, a REST API, a CSV, and the rest of the 82 connectors."
       },
       "step3": {
-        "title": "80 source types, 14 categories",
+        "title": "82 source types, 14 categories",
         "description": "One picker lists every type, grouped by category: <strong>Subscriptions, RDBMS, Cloud DW, Analytics, Data Lake, NoSQL, Code Resolvers, Graph, File, API, Streaming, Enterprise, Data Quality, Other</strong>. Search by name or alias, or narrow with the category chips. Each type shows its logo and a reach icon: ⚡ read live in place, or a copy icon where Provisa reads a refreshed replica.<p>Pick one, fill the connection, Save.</p>"
       },
       "stepBuildSource": {
@@ -548,15 +548,23 @@
       },
       "insiderIntro": {
         "title": "Insider review at a bank",
-        "description": "Northgate Partners, an invented bank, keeps a watch list of the deals it is working on. It wants to know whether anyone is sending deal-sensitive or customer data out of the bank. <strong>bank</strong> is its database: the watch list, the employees and their mail, and the customers and who read their records. Every name and record here is generated."
+        "description": "Northgate Partners, an invented bank, keeps a watch list of the deals it is working on. It wants to know whether anyone is sending deal-sensitive or customer data out of the bank. The answer reads three systems at once. <strong>bank</strong> is its Postgres database: the employees and their desks, the customers and who read their records. Every name and record here is generated."
+      },
+      "insiderWorkbook": {
+        "title": "The control room's workbook",
+        "description": "<strong>control_room</strong> is an Excel workbook the control room keeps itself. Each sheet is a table: the deals in discussion, who was brought over the wall for each, the deals' counterparties, and which deals each message is screened against. Provisa reads the file where it lies."
+      },
+      "insiderMailSource": {
+        "title": "The bank's mail",
+        "description": "<strong>mail</strong> is the bank's Microsoft 365 mail, every employee's mailbox, in the same message and recipient tables a Google Workspace source gives. This demo reaches no real tenant: the mailbox ships with the demo as the source's stored copy, which never refreshes."
       },
       "insiderWatchList": {
         "title": "The watch list",
-        "description": "<strong>deal</strong> is the control room's watch list, with each deal's company, the names it goes by, its ticker, its project code name and whether it is public yet. It is the most restricted table here. The control room reads it, a deal team only its own deal, and a first-level reviewer never."
+        "description": "<strong>deal</strong> is the watch list, the workbook's sheet of deals, with each deal's company, the names it goes by, its ticker, its project code name and whether it is public yet. It is the most restricted table here. The control room reads it, a deal team only its own deal, and a first-level reviewer never."
       },
       "insiderMail": {
         "title": "The mail",
-        "description": "<strong>message</strong> holds the employees' outbound mail, with who sent it, when, and how many recipients were outside the bank or at a personal address."
+        "description": "<strong>messages</strong> holds the employees' sent mail from Microsoft 365, each message in its sender's mailbox, with who sent it, when, and its text. Its recipients are in <strong>message_recipients</strong>; the bank's staff list and the personal mail providers in Postgres tell inside, outside and personal addresses apart."
       },
       "insiderMatch": {
         "title": "Every message against every deal",

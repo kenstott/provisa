@@ -46,6 +46,7 @@
       "existing": "bereits registriert",
       "rejected": "zuvor abgelehnt",
       "out_of_scope": "außerhalb der gewählten Tabellen"
-    }
+    },
+    "keyNames": "Schlüsselnamen und -typen: {{found}} gefunden, {{count}} vorgeschlagen."
   }
 }

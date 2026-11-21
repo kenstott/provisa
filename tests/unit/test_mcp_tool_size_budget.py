@@ -20,7 +20,9 @@ from scripts.mcp_tool_size import estimate_tokens, mcp_tool_sizes
 
 # Total serialized characters of tools/list. Set a little above the measured size (43,777 chars,
 # 88 tools, 2026-11-13). Raise it only deliberately, for a tool or text worth its cost.
-BUDGET_CHARS = 45_000
+# Raised from 45_000 deliberately: the six tag-edit tools (assign, unassign, cite and uncite for
+# an assignment and for a definition) add 3,167 chars, condensed to the least a model needs.
+BUDGET_CHARS = 48_000
 
 
 async def test_tool_definitions_fit_the_budget(monkeypatch):

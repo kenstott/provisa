@@ -114,17 +114,16 @@ def test_dictionary_noun_without_other_plural_unchanged(word):
     assert naming._rel_words(word, "many-to-one") == word
 
 
-@pytest.mark.parametrize(("one", "many"), [("fct_ordr", "fct_ordrs"), ("lineitm", "lineitms")])
-def test_word_outside_dictionary_takes_rule_form(one, many):
-    assert naming._rel_words(one, "one-to-many") == many
-    assert naming._rel_words(many, "one-to-many") == many
-    assert naming._rel_words(many, "many-to-one") == one
-    assert naming._rel_words(one, "many-to-one") == one
+# REQ-194 (amended 2026-11-20): a word in neither the dictionary nor the supplement stays as written.
+@pytest.mark.parametrize("word", ["fct_ordr", "fct_ordrs", "lineitm", "lineitms"])
+def test_word_outside_dictionary_stays_as_written(word):
+    for rel_type in ("one-to-many", "many-to-one"):
+        assert naming._rel_words(word, rel_type) == word
 
 
-def test_out_of_dictionary_cypher_and_glossary_take_rule_singular():
-    assert relationship_names.derive_cypher_alias("ordrs_id", "many-to-one") == "BELONGS_TO_ORDR"
-    assert glossary.table_concept("fct_ordrs") == "fct ordr"
+def test_out_of_dictionary_cypher_and_glossary_stay_as_written():
+    assert relationship_names.derive_cypher_alias("ordrs_id", "many-to-one") == "BELONGS_TO_ORDRS"
+    assert glossary.table_concept("fct_ordrs") == "fct ordrs"
 
 
 def test_helper_preserves_case():
@@ -132,7 +131,7 @@ def test_helper_preserves_case():
 
     assert inflection.plural("Address") == "Addresses"
     assert inflection.singular("LOSSES") == "LOSS"
-    assert inflection.plural("Ordr") == "Ordrs"
+    assert inflection.plural("Ordr") == "Ordr"
 
 
 # REQ-194 (amended 2026-11-18): where the dictionary lists more than one form with no ranking

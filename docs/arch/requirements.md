@@ -302,7 +302,7 @@ Per-role rate limits configurable in `provisa.yaml`: max requests per second, ma
 
 **Code:** `provisa/api/`
 
-**Tests:** `tests/unit/test_rate_limiting.py`, `tests/integration/test_rate_limiting_integration.py`, `provisa-ui/e2e/security-rate-limiting.spec.ts`
+**Tests:** `tests/unit/test_rate_limiting.py`, `tests/integration/test_rate_limiting_integration.py`
 
 **Docs:** [security.md](../security.md)
 
@@ -316,7 +316,7 @@ The NL query service (`POST /query/nl`) has an independent rate limit configurab
 
 **Code:** `provisa/nl/`
 
-**Tests:** `tests/unit/test_rate_limiting.py`, `tests/integration/test_rate_limiting_integration.py`, `provisa-ui/e2e/security-rate-limiting.spec.ts`
+**Tests:** `tests/unit/test_rate_limiting.py`, `tests/integration/test_rate_limiting_integration.py`
 
 **Docs:** [api-reference.md](../api-reference.md), [architecture.md](../architecture.md), [security.md](../security.md)
 
@@ -386,7 +386,7 @@ The gRPC approval hook maintains a single persistent channel per Provisa instanc
 
 **Code:** `provisa/auth/approval_hook.py`
 
-**Tests:** `tests/integration/test_audit_auth_integration.py`, `tests/unit/test_abac_hook_extended.py`, `tests/unit/test_approval_hook.py`, `provisa-ui/e2e/security-rate-limiting.spec.ts`
+**Tests:** `tests/integration/test_audit_auth_integration.py`, `tests/unit/test_abac_hook_extended.py`, `tests/unit/test_approval_hook.py`
 
 **Docs:** [remote-schemas.md](../remote-schemas.md), [security.md](../security.md)
 
@@ -440,7 +440,7 @@ SET LOCAL scopes app.tenant_id to the current database transaction. When the tra
 
 **Code:** `provisa/auth/middleware.py`
 
-**Tests:** `tests/e2e/test_security.py`, `tests/unit/test_tenancy_requirements.py`, `tests/integration/test_security_integration_extra.py`, `provisa-ui/e2e/security-rate-limiting.spec.ts`
+**Tests:** `tests/e2e/test_security.py`, `tests/unit/test_tenancy_requirements.py`, `tests/integration/test_security_integration_extra.py`, `tests/integration/test_demo_http_surfaces_e2e.py`
 
 ### REQ-596 · Audit Logging {#REQ-596}
 
@@ -610,7 +610,7 @@ Source registration is privileged; validates connection, calls Trino dynamic cat
 
 **Code:** `provisa/core/`
 
-**Tests:** `tests/integration/test_introspect.py`, `tests/integration/test_schema_gen.py`, `tests/unit/test_core_registration.py`, `tests/unit/test_source_registration_validation.py`, `provisa-ui/e2e/registration-admin.spec.ts`
+**Tests:** `tests/integration/test_introspect.py`, `tests/integration/test_schema_gen.py`, `tests/unit/test_core_registration.py`, `tests/unit/test_source_registration_validation.py`, `tests/steps/steps_registration_governance.py`
 
 **Docs:** [admin-graphql.md](../admin-graphql.md), [admin.md](../admin.md), [api-reference.md](../api-reference.md)
 
@@ -624,7 +624,7 @@ Source registration does not expose data: no table is queryable until explicitly
 
 **Code:** `provisa/core/`
 
-**Tests:** `tests/integration/test_schema_gen.py`, `tests/integration/test_introspect.py`, `tests/unit/test_core_registration.py`, `provisa-ui/e2e/registration-admin.spec.ts`
+**Tests:** `tests/integration/test_schema_gen.py`, `tests/integration/test_introspect.py`, `tests/unit/test_core_registration.py`, `tests/integration/test_config_reload_schema_rename.py`
 
 **Docs:** [admin-graphql.md](../admin-graphql.md)
 
@@ -1006,7 +1006,7 @@ The SQLAlchemy dialect introspects table and column metadata via `POST /data/gra
 
 **Code:** `provisa/compiler/`, `provisa/security/`
 
-**Tests:** `tests/unit/test_visibility.py`, `tests/unit/test_enforcement_metadata.py`, `tests/integration/test_registration_governance_integration.py`, `provisa-ui/e2e/registration-admin.spec.ts`
+**Tests:** `tests/unit/test_visibility.py`, `tests/unit/test_enforcement_metadata.py`, `tests/integration/test_registration_governance_integration.py`
 
 **Docs:** [python-client.md](../python-client.md), [security.md](../security.md)
 
@@ -1110,7 +1110,7 @@ Auto-generate GQL relationships from FK constraints in database schema introspec
 
 **Code:** `provisa/compiler/introspect.py`
 
-**Tests:** `tests/unit/test_discovery_requirements.py`, `tests/integration/test_registration_governance_integration.py`, `provisa-ui/e2e/registration-admin.spec.ts`
+**Tests:** `tests/unit/test_discovery_requirements.py`, `tests/integration/test_registration_governance_integration.py`
 
 ### REQ-414 · Registration & Governance {#REQ-414}
 
@@ -1122,7 +1122,7 @@ Demo/install example schema must include at least one FK relationship to exercis
 
 **Code:** `demo/files/create_demo_files.py`
 
-**Tests:** `tests/e2e/test_installer.py`, `tests/unit/test_core_registration.py`, `tests/integration/test_registration_governance_integration.py`, `provisa-ui/e2e/registration-admin.spec.ts`
+**Tests:** `tests/e2e/test_installer.py`, `tests/unit/test_core_registration.py`, `tests/integration/test_registration_governance_integration.py`, `tests/integration/test_demo_http_surfaces_e2e.py`
 
 **Docs:** [cli.md](../cli.md)
 
@@ -1184,7 +1184,7 @@ A datasource may be associated with multiple domains. Any domain owner may regis
 
 **Code:** `provisa/api/admin/schema_helpers.py`, `provisa/api/admin/schema_mutation.py`, `provisa/api/admin/schema_mutation_ops.py`, `provisa/core/schema_org.py`, `provisa-ui/src/pages/tables/RegisterTableForm.tsx`, `provisa-ui/src/pages/TablesPage.tsx`
 
-**Tests:** `tests/unit/test_dataset_uniqueness.py`, `provisa-ui/e2e/registration-admin.spec.ts`
+**Tests:** `tests/unit/test_dataset_uniqueness.py`
 
 ### REQ-434 · Registration & Governance {#REQ-434}
 
@@ -1350,7 +1350,7 @@ The UI calls one availableSchemas endpoint and one availableTables endpoint. Bac
 
 **Code:** `provisa/api/admin/schema.py`, `provisa/api/admin/introspect.py`
 
-**Tests:** `tests/integration/test_introspect.py`, `tests/unit/test_available_tables.py`, `tests/unit/test_core_registration.py`, `provisa-ui/e2e/security-rate-limiting.spec.ts`
+**Tests:** `tests/integration/test_introspect.py`, `tests/unit/test_available_tables.py`, `tests/unit/test_core_registration.py`
 
 ### REQ-639 · Registration & Governance {#REQ-639}
 
@@ -1486,7 +1486,7 @@ Neo4j table registration includes a query preview step. On submission, Provisa e
 
 **Code:** `provisa/neo4j/`, `provisa/sparql/`, `provisa/api_source/`
 
-**Tests:** `tests/integration/test_direct_exec.py`, `tests/integration/test_neo4j_exec.py`, `tests/unit/test_cypher_graph_fns.py`, `tests/unit/test_neo4j_normalizers.py`, `tests/unit/test_neo4j_preview.py`, `provisa-ui/e2e/registration-admin.spec.ts`
+**Tests:** `tests/integration/test_direct_exec.py`, `tests/integration/test_neo4j_exec.py`, `tests/unit/test_cypher_graph_fns.py`, `tests/unit/test_neo4j_normalizers.py`, `tests/unit/test_neo4j_preview.py`, `tests/steps/steps_query_api_sources_neo4j_sparql.py`
 
 **Docs:** [sources.md](../sources.md)
 
@@ -1596,7 +1596,7 @@ Remote schema introspection is re-run on demand via an "Refresh Schema" admin mu
 
 **Code:** `provisa/graphql_remote/`
 
-**Tests:** `tests/integration/test_graphql_execution.py`, `tests/integration/test_graphql_remote_integration.py`, `tests/integration/test_graphql_remote_source.py`, `tests/unit/test_graphql_remote_introspect.py`, `tests/unit/test_graphql_remote_mapper.py`, `tests/unit/test_remote_adapter_contract.py`, `tests/unit/test_schema_service.py`, `provisa-ui/e2e/registration-admin.spec.ts`
+**Tests:** `tests/integration/test_graphql_execution.py`, `tests/integration/test_graphql_remote_integration.py`, `tests/integration/test_graphql_remote_source.py`, `tests/unit/test_graphql_remote_introspect.py`, `tests/unit/test_graphql_remote_mapper.py`, `tests/unit/test_remote_adapter_contract.py`, `tests/unit/test_schema_service.py`
 
 **Docs:** [remote-schemas.md](../remote-schemas.md)
 
@@ -1732,7 +1732,7 @@ Spec refresh is triggered on demand via an admin mutation. On refresh, existing 
 
 **Code:** `provisa/openapi/`
 
-**Tests:** `tests/unit/test_openapi_loader.py`, `tests/integration/test_openapi_source.py`, `provisa-ui/e2e/registration-admin.spec.ts`
+**Tests:** `tests/unit/test_openapi_loader.py`, `tests/integration/test_openapi_source.py`, `tests/steps/steps_openapi_auto_registration_connector.py`
 
 **Docs:** [remote-schemas.md](../remote-schemas.md)
 
@@ -1844,7 +1844,7 @@ Proto schema refresh is triggered on demand via an admin mutation. On refresh, P
 
 **Code:** `provisa/grpc_remote/`
 
-**Tests:** `tests/integration/test_grpc_execution.py`, `tests/unit/test_grpc_remote_loader.py`, `tests/unit/test_remote_adapter_contract.py`, `tests/unit/test_schema_service.py`, `provisa-ui/e2e/registration-admin.spec.ts`
+**Tests:** `tests/integration/test_grpc_execution.py`, `tests/unit/test_grpc_remote_loader.py`, `tests/unit/test_remote_adapter_contract.py`, `tests/unit/test_schema_service.py`, `tests/steps/steps_grpc_remote_schema_connector_req_322_329.py`
 
 **Docs:** [remote-schemas.md](../remote-schemas.md)
 
@@ -1858,7 +1858,7 @@ A new `ingest` source type allows external services (OTEL Collector, Fluentd, cu
 
 **Code:** `provisa/ingest/`
 
-**Tests:** `tests/unit/test_ingest_ddl.py`, `tests/unit/test_ingest_router.py`, `tests/integration/test_ingest_push_integration.py`, `provisa-ui/e2e/infrastructure.spec.ts`
+**Tests:** `tests/unit/test_ingest_ddl.py`, `tests/unit/test_ingest_router.py`, `tests/integration/test_ingest_push_integration.py`, `tests/integration/test_demo_http_surfaces_e2e.py`
 
 **Docs:** [sources.md](../sources.md)
 
@@ -1910,7 +1910,7 @@ The ingest endpoint accepts a single JSON object or a JSON array of objects per 
 
 **Code:** `provisa/ingest/`
 
-**Tests:** `tests/unit/test_ingest_ddl.py`, `tests/unit/test_ingest_router.py`, `tests/integration/test_ingest_push_integration.py`, `provisa-ui/e2e/infrastructure.spec.ts`
+**Tests:** `tests/unit/test_ingest_ddl.py`, `tests/unit/test_ingest_router.py`, `tests/integration/test_ingest_push_integration.py`, `tests/integration/test_demo_http_surfaces_e2e.py`
 
 **Docs:** [sources.md](../sources.md)
 
@@ -1924,7 +1924,7 @@ Ingest tables are subscribable via the standard SSE endpoint (`GET /data/subscri
 
 **Code:** `provisa/ingest/`
 
-**Tests:** `tests/unit/test_ingest_ddl.py`, `tests/unit/test_ingest_router.py`, `tests/integration/test_ingest_push_integration.py`, `provisa-ui/e2e/infrastructure.spec.ts`
+**Tests:** `tests/unit/test_ingest_ddl.py`, `tests/unit/test_ingest_router.py`, `tests/integration/test_ingest_push_integration.py`
 
 ### REQ-337 · Ingest Sources — Governed HTTP Push Receiver (REQ-331–337) {#REQ-337}
 
@@ -2314,7 +2314,7 @@ Remote schema source registrations (GraphQL, gRPC, OpenAPI) accept a `relationsh
 
 **Code:** `provisa/graphql_remote/mapper.py`, `provisa/api/admin/graphql_remote_router.py`, `provisa/api/admin/grpc_remote_router.py`, `provisa/api/admin/openapi_router.py`
 
-**Tests:** `tests/integration/test_graphql_execution.py`, `tests/integration/test_graphql_remote_source.py`, `tests/unit/test_graphql_remote_mapper.py`, `tests/unit/test_remote_adapter_contract.py`, `tests/unit/test_schema_service.py`, `provisa-ui/e2e/registration-admin.spec.ts`
+**Tests:** `tests/integration/test_graphql_execution.py`, `tests/integration/test_graphql_remote_source.py`, `tests/unit/test_graphql_remote_mapper.py`, `tests/unit/test_remote_adapter_contract.py`, `tests/unit/test_schema_service.py`, `tests/integration/test_demo_http_surfaces_e2e.py`
 
 ### REQ-599 · GraphQL Remote Schema Connector (REQ-307–313) {#REQ-599}
 
@@ -2720,7 +2720,7 @@ Webhook-backed mutations: an external HTTP endpoint called as a GraphQL mutation
 
 **Code:** `provisa/compiler/`, `provisa/executor/`, `provisa/webhooks/`
 
-**Tests:** `tests/e2e/test_mutations.py`, `tests/integration/test_compiler_integration.py`, `tests/unit/test_actions.py`, `tests/unit/test_function_gen.py`, `provisa-ui/e2e/registration-admin.spec.ts`
+**Tests:** `tests/e2e/test_mutations.py`, `tests/integration/test_compiler_integration.py`, `tests/unit/test_actions.py`, `tests/unit/test_function_gen.py`
 
 **Docs:** [api-reference.md](../api-reference.md), [sources.md](../sources.md)
 
@@ -2776,7 +2776,7 @@ Naming convention changes (global, source, or table level) reflected immediately
 
 **Code:** `provisa/compiler/sql_gen.py`
 
-**Tests:** `tests/e2e/test_naming_reload.py`, `tests/integration/test_schema_gen.py`, `tests/unit/test_schema_service.py`, `tests/unit/test_sql_gen.py`, `provisa-ui/e2e/registration-admin.spec.ts`
+**Tests:** `tests/e2e/test_naming_reload.py`, `tests/integration/test_schema_gen.py`, `tests/unit/test_schema_service.py`, `tests/unit/test_sql_gen.py`
 
 **Docs:** [admin-graphql.md](../admin-graphql.md), [admin.md](../admin.md), [api-reference.md](../api-reference.md)
 
@@ -2864,7 +2864,7 @@ Provisa exposes a `POST /query/cypher` endpoint that accepts a Cypher SELECT que
 
 **Code:** `provisa/cypher/`
 
-**Tests:** `tests/integration/test_cypher_router_api.py`, `tests/integration/test_cypher_endpoint.py`, `tests/unit/test_cypher_graph_fns.py`, `tests/unit/test_cypher_parser.py`, `tests/unit/test_cypher_translator.py`, `tests/unit/test_cypher_tck_comparison.py`, `tests/unit/test_cypher_tck_equality.py`, `tests/unit/test_cypher_tck_lists.py`, `tests/unit/test_cypher_tck_maps.py`, `tests/unit/test_cypher_tck_precedence.py`, `tests/unit/test_cypher_tck_quantifiers.py`, `tests/unit/test_cypher_tck_temporal.py`, `tests/unit/test_sql_to_cypher.py`, `provisa-ui/e2e/cypher-api.spec.ts`
+**Tests:** `tests/integration/test_cypher_router_api.py`, `tests/integration/test_cypher_endpoint.py`, `tests/unit/test_cypher_graph_fns.py`, `tests/unit/test_cypher_parser.py`, `tests/unit/test_cypher_translator.py`, `tests/unit/test_cypher_tck_comparison.py`, `tests/unit/test_cypher_tck_equality.py`, `tests/unit/test_cypher_tck_lists.py`, `tests/unit/test_cypher_tck_maps.py`, `tests/unit/test_cypher_tck_precedence.py`, `tests/unit/test_cypher_tck_quantifiers.py`, `tests/unit/test_cypher_tck_temporal.py`, `tests/unit/test_sql_to_cypher.py`
 
 **Docs:** [api-reference.md](../api-reference.md), [cypher.md](../cypher.md), [remote-schemas.md](../remote-schemas.md)
 
@@ -2980,7 +2980,7 @@ Provisa exposes a `POST /query/nl` endpoint accepting a natural language questio
 
 **Code:** `provisa/nl/`
 
-**Tests:** `tests/unit/test_nl_loop.py`, `tests/unit/test_nl_runner.py`, `tests/integration/test_nl_endpoint.py`, `provisa-ui/e2e/cypher-api.spec.ts`
+**Tests:** `tests/unit/test_nl_loop.py`, `tests/unit/test_nl_runner.py`, `tests/integration/test_nl_endpoint.py`
 
 **Docs:** [api-reference.md](../api-reference.md)
 
@@ -3220,7 +3220,7 @@ GraphQL queries with multiple root fields are compiled into separate SQL queries
 
 **Code:** `provisa/api/data/sdl.py`
 
-**Tests:** `tests/integration/test_schema_gen.py`, `tests/unit/test_compiler_requirements.py`, `tests/unit/test_schema_service.py`, `provisa-ui/e2e/cypher-api.spec.ts`
+**Tests:** `tests/integration/test_schema_gen.py`, `tests/unit/test_compiler_requirements.py`, `tests/unit/test_schema_service.py`, `tests/integration/test_demo_http_surfaces_e2e.py`
 
 **Docs:** [api-reference.md](../api-reference.md)
 
@@ -3566,7 +3566,7 @@ Cypher write endpoints return the number of rows affected (rows inserted for CRE
 
 **Code:** `provisa/api/rest/cypher_router.py`
 
-**Tests:** `tests/e2e/test_mutations.py`, `tests/unit/test_cypher_translator.py`, `tests/unit/test_sql_to_cypher.py`, `tests/integration/test_cypher_endpoint.py`, `provisa-ui/e2e/cypher-write-affected-rows.spec.ts`
+**Tests:** `tests/e2e/test_mutations.py`, `tests/unit/test_cypher_translator.py`, `tests/unit/test_sql_to_cypher.py`, `tests/integration/test_cypher_endpoint.py`, `tests/integration/test_demo_http_surfaces_e2e.py`
 
 **Docs:** [cypher.md](../cypher.md)
 
@@ -3596,7 +3596,7 @@ Single-source queries route to direct RDBMS connection; SQLGlot transpiles to ta
 
 **Code:** `provisa/executor/`, `provisa/transpiler/`
 
-**Tests:** `tests/e2e/test_routing.py`, `tests/integration/test_direct_exec.py`, `tests/integration/test_execution_routing.py`, `tests/unit/test_routing.py`, `provisa-ui/e2e/execution-routing.spec.ts`
+**Tests:** `tests/e2e/test_routing.py`, `tests/integration/test_direct_exec.py`, `tests/integration/test_execution_routing.py`, `tests/unit/test_routing.py`
 
 **Docs:** [architecture.md](../architecture.md), [pgwire.md](../pgwire.md), [sources.md](../sources.md)
 
@@ -3610,7 +3610,7 @@ Cross-source queries route to Trino; SQLGlot transpiles to Trino SQL. Target: 30
 
 **Code:** `provisa/executor/`, `provisa/transpiler/`
 
-**Tests:** `tests/unit/test_routing.py`, `tests/e2e/test_routing.py`, `tests/integration/test_execution_routing.py`, `provisa-ui/e2e/execution-routing.spec.ts`
+**Tests:** `tests/unit/test_routing.py`, `tests/e2e/test_routing.py`, `tests/integration/test_execution_routing.py`
 
 **Docs:** [architecture.md](../architecture.md), [deployment.md](../deployment.md), [pgwire.md](../pgwire.md), [sources.md](../sources.md)
 
@@ -3624,7 +3624,7 @@ Large results above threshold redirect to blob storage with presigned URL and TT
 
 **Code:** `provisa/executor/`, `provisa/transpiler/`, `provisa/executor/redirect.py`, `provisa/api/data/endpoint.py`
 
-**Tests:** `tests/e2e/test_large_result.py`, `tests/e2e/test_routing.py`, `tests/integration/test_direct_exec.py`, `tests/integration/test_execution_routing.py`, `tests/unit/test_redirect_s3.py`, `tests/unit/test_routing.py`, `provisa-ui/e2e/execution-routing.spec.ts`, `tests/unit/test_redirect_request_floor.py`
+**Tests:** `tests/e2e/test_large_result.py`, `tests/e2e/test_routing.py`, `tests/integration/test_direct_exec.py`, `tests/integration/test_execution_routing.py`, `tests/unit/test_redirect_s3.py`, `tests/unit/test_routing.py`, `tests/unit/test_redirect_request_floor.py`
 
 **Docs:** [api-reference.md](../api-reference.md), [architecture.md](../architecture.md), [deployment.md](../deployment.md)
 
@@ -3652,7 +3652,7 @@ Steward routing override configurable per table/view for edge cases where defaul
 
 **Code:** `provisa/executor/`, `provisa/transpiler/`
 
-**Tests:** `tests/e2e/test_routing.py`, `tests/integration/test_direct_exec.py`, `tests/integration/test_execution_routing.py`, `tests/unit/test_routing.py`, `provisa-ui/e2e/execution-routing.spec.ts`
+**Tests:** `tests/e2e/test_routing.py`, `tests/integration/test_direct_exec.py`, `tests/integration/test_execution_routing.py`, `tests/unit/test_routing.py`
 
 **Docs:** [architecture.md](../architecture.md)
 
@@ -3972,7 +3972,7 @@ All data responses include cache status headers: `X-Provisa-Cache: HIT|MISS` on 
 
 **Code:** `provisa/cache/middleware.py`
 
-**Tests:** `tests/unit/test_cache_headers_requirements.py`, `tests/unit/test_http_cache_opt_in.py`, `tests/unit/test_misc_requirements.py`, `tests/unit/test_cache_headers_requirements.py`, `tests/integration/test_execution_routing.py`, `provisa-ui/e2e/security-rate-limiting.spec.ts`
+**Tests:** `tests/unit/test_cache_headers_requirements.py`, `tests/unit/test_http_cache_opt_in.py`, `tests/unit/test_misc_requirements.py`, `tests/unit/test_cache_headers_requirements.py`, `tests/integration/test_execution_routing.py`, `tests/integration/test_demo_http_surfaces_e2e.py`
 
 **Docs:** [api-reference.md](../api-reference.md)
 
@@ -4086,7 +4086,7 @@ Arrow buffer via gRPC Arrow Flight endpoint; Trino produces Arrow natively.
 
 **Code:** `provisa/executor/`
 
-**Tests:** `tests/unit/test_formats.py`, `tests/integration/test_output_formats.py`, `provisa-ui/e2e/execution-routing.spec.ts`
+**Tests:** `tests/unit/test_formats.py`, `tests/integration/test_output_formats.py`
 
 **Docs:** [remote-schemas.md](../remote-schemas.md)
 
@@ -4100,7 +4100,7 @@ Client-controlled redirect via `X-Provisa-Redirect-Format` and `X-Provisa-Redire
 
 **Code:** `provisa/executor/`, `provisa/executor/redirect.py`
 
-**Tests:** `tests/e2e/test_large_result.py`, `tests/integration/test_blob_upload.py`, `tests/unit/test_redirect.py`, `provisa-ui/e2e/execution-routing.spec.ts`, `tests/unit/test_redirect_request_floor.py`
+**Tests:** `tests/e2e/test_large_result.py`, `tests/integration/test_blob_upload.py`, `tests/unit/test_redirect.py`, `tests/unit/test_redirect_request_floor.py`
 
 **Docs:** [api-reference.md](../api-reference.md), [architecture.md](../architecture.md), [deployment.md](../deployment.md)
 
@@ -4180,7 +4180,7 @@ Arrow Flight server (port 8815) streams record batches via gRPC. Full security p
 
 **Code:** `provisa/api/flight/`
 
-**Tests:** `tests/integration/test_arrow_flight_integration.py`, `tests/unit/test_flight_server_helpers.py`, `tests/unit/test_zaychik_flight_unit.py`, `provisa-ui/e2e/execution-routing.spec.ts`
+**Tests:** `tests/integration/test_arrow_flight_integration.py`, `tests/unit/test_flight_server_helpers.py`, `tests/unit/test_zaychik_flight_unit.py`
 
 **Docs:** [api-reference.md](../api-reference.md), [architecture.md](../architecture.md), [deployment.md](../deployment.md), [python-client.md](../python-client.md)
 
@@ -5982,7 +5982,7 @@ The `GET /health` (or `HEAD /health`) and `GET /setup/status` endpoints are alwa
 
 **Code:** `provisa/api/app.py`
 
-**Tests:** `tests/e2e/test_health_checks.py`, `tests/integration/test_infra.py`, `tests/unit/test_infra_requirements.py`, `provisa-ui/e2e/infrastructure.spec.ts`
+**Tests:** `tests/e2e/test_health_checks.py`, `tests/integration/test_infra.py`, `tests/unit/test_infra_requirements.py`, `tests/integration/test_demo_http_surfaces_e2e.py`
 
 **Docs:** [admin.md](../admin.md), [api-reference.md](../api-reference.md)
 
@@ -6522,7 +6522,7 @@ Subscriptions via Server-Sent Events (SSE) -- `GET /data/subscribe/<table>` endp
 
 **Code:** `provisa/compiler/`, `provisa/scheduler/`
 
-**Tests:** `tests/unit/test_upsert_distinct_on.py`, `tests/unit/test_column_presets.py`, `tests/integration/test_mutation_parity_integration.py`, `provisa-ui/e2e/infrastructure.spec.ts`
+**Tests:** `tests/unit/test_upsert_distinct_on.py`, `tests/unit/test_column_presets.py`, `tests/integration/test_mutation_parity_integration.py`, `tests/integration/test_demo_http_surfaces_e2e.py`
 
 **Docs:** [api-reference.md](../api-reference.md)
 
@@ -6564,7 +6564,7 @@ REST endpoint auto-generation -- for each root query field, generate `GET /data/
 
 **Code:** `provisa/compiler/`, `provisa/scheduler/`
 
-**Tests:** `tests/e2e/test_query_pipeline.py`, `tests/integration/test_rest_endpoints.py`, `tests/unit/test_column_presets.py`, `tests/unit/test_upsert_distinct_on.py`, `provisa-ui/e2e/infrastructure.spec.ts`
+**Tests:** `tests/e2e/test_query_pipeline.py`, `tests/integration/test_rest_endpoints.py`, `tests/unit/test_column_presets.py`, `tests/unit/test_upsert_distinct_on.py`, `tests/integration/test_demo_http_surfaces_e2e.py`
 
 ### REQ-621 · Hasura Migration Converters {#REQ-621}
 
@@ -6958,7 +6958,7 @@ Neo4j export endpoint accepts graph nodes and edges via POST /data/neo4j-export,
 
 **Code:** `provisa/api/rest/cypher_router.py`
 
-**Tests:** `provisa-ui/e2e/neo4j-docker-export.spec.ts`, `tests/unit/test_neo4j_export.py`
+**Tests:** `tests/integration/test_demo_http_surfaces_e2e.py`, `tests/unit/test_neo4j_export.py`
 
 ### REQ-714 · Neo4j Export {#REQ-714}
 
@@ -6970,7 +6970,7 @@ Nodes are MERGE'd into Neo4j using _provisa_id as the deduplication key, with la
 
 **Code:** `provisa/api/rest/cypher_router.py`
 
-**Tests:** `provisa-ui/e2e/neo4j-docker-export.spec.ts`, `tests/unit/test_neo4j_export.py`
+**Tests:** `tests/integration/test_demo_http_surfaces_e2e.py`, `tests/unit/test_neo4j_export.py`
 
 ### REQ-715 · Neo4j Export {#REQ-715}
 
@@ -6982,7 +6982,7 @@ Node properties are written to Neo4j using SET n += {...} with Cypher literal en
 
 **Code:** `provisa/api/rest/cypher_router.py`
 
-**Tests:** `provisa-ui/e2e/neo4j-docker-export.spec.ts`, `tests/unit/test_neo4j_export.py`
+**Tests:** `tests/integration/test_demo_http_surfaces_e2e.py`, `tests/unit/test_neo4j_export.py`
 
 ### REQ-716 · Neo4j Export {#REQ-716}
 
@@ -6994,7 +6994,7 @@ Edges are MERGE'd by matching source and target nodes on _provisa_id, with relat
 
 **Code:** `provisa/api/rest/cypher_router.py`
 
-**Tests:** `provisa-ui/e2e/neo4j-docker-export.spec.ts`, `tests/unit/test_neo4j_export.py`
+**Tests:** `tests/integration/test_demo_http_surfaces_e2e.py`, `tests/unit/test_neo4j_export.py`
 
 ### REQ-717 · Neo4j Export {#REQ-717}
 
@@ -7006,7 +7006,7 @@ Neo4j export endpoint uses HTTP Basic authentication via Authorization header (b
 
 **Code:** `provisa/api/rest/cypher_router.py`
 
-**Tests:** `provisa-ui/e2e/neo4j-docker-export.spec.ts`, `tests/unit/test_neo4j_export.py`
+**Tests:** `tests/integration/test_demo_http_surfaces_e2e.py`, `tests/unit/test_neo4j_export.py`
 
 ### REQ-718 · Neo4j Export {#REQ-718}
 
@@ -7018,7 +7018,7 @@ Connection errors to Neo4j return HTTP 502; timeouts return 504; authentication 
 
 **Code:** `provisa/api/rest/cypher_router.py`
 
-**Tests:** `provisa-ui/e2e/neo4j-docker-export.spec.ts`, `tests/unit/test_neo4j_export.py`
+**Tests:** `tests/integration/test_demo_http_surfaces_e2e.py`, `tests/unit/test_neo4j_export.py`
 
 ### REQ-719 · Neo4j Export {#REQ-719}
 
@@ -7030,7 +7030,7 @@ Neo4j export endpoint returns {imported: N, errors: [...]} structure, allowing p
 
 **Code:** `provisa/api/rest/cypher_router.py`
 
-**Tests:** `provisa-ui/e2e/neo4j-docker-export.spec.ts`, `tests/unit/test_neo4j_export.py`
+**Tests:** `tests/integration/test_demo_http_surfaces_e2e.py`, `tests/unit/test_neo4j_export.py`
 
 ### REQ-720 · Neo4j Export {#REQ-720}
 
@@ -7042,7 +7042,7 @@ E2E export flow batches nodes and edges separately to avoid transaction timeouts
 
 **Code:** `provisa/api/rest/cypher_router.py`
 
-**Tests:** `provisa-ui/e2e/neo4j-docker-export.spec.ts`, `tests/unit/test_neo4j_export.py`
+**Tests:** `tests/integration/test_demo_http_surfaces_e2e.py`, `tests/unit/test_neo4j_export.py`
 
 ## 4. Source Connectors
 
@@ -7372,7 +7372,7 @@ Cypher graph variables (nodes, edges, paths) returned in the RETURN clause are s
 
 **Code:** `provisa/gql/assembler.py`, `provisa/gql/graph_rewriter.py`
 
-**Tests:** `tests/unit/test_cypher_assembler.py`, `tests/unit/test_cypher_graph_rewriter.py`, `tests/integration/test_cypher_integration_extra.py`, `provisa-ui/e2e/cypher-api.spec.ts`
+**Tests:** `tests/unit/test_cypher_assembler.py`, `tests/unit/test_cypher_graph_rewriter.py`, `tests/integration/test_cypher_integration_extra.py`, `tests/integration/test_demo_http_surfaces_e2e.py`
 
 **Docs:** [cypher.md](../cypher.md)
 
@@ -7386,7 +7386,7 @@ Cypher graph variables (nodes, edges, paths) returned in the RETURN clause are s
 
 **Code:** `provisa/gql/translator.py`
 
-**Tests:** `tests/unit/test_cypher_translator_paths.py`, `provisa-ui/e2e/cypher-variable-length-path.spec.ts`, `tests/integration/test_cypher_integration_extra.py`
+**Tests:** `tests/unit/test_cypher_translator_paths.py`, `tests/integration/test_demo_http_surfaces_e2e.py`, `tests/integration/test_cypher_integration_extra.py`
 
 ### REQ-752 · Cypher Query Frontend (Phase AU) {#REQ-752}
 
@@ -7410,7 +7410,7 @@ Path object RETURN (e.g., `RETURN p`) emits a JSON_OBJECT with `nodes` (array of
 
 **Code:** `provisa/gql/translator.py`, `provisa/gql/graph_rewriter.py`
 
-**Tests:** `tests/unit/test_cypher_translator_exprs.py`, `provisa-ui/e2e/cypher-variable-length-path.spec.ts`, `tests/integration/test_cypher_integration_extra.py`
+**Tests:** `tests/unit/test_cypher_translator_exprs.py`, `tests/integration/test_demo_http_surfaces_e2e.py`, `tests/integration/test_cypher_integration_extra.py`
 
 ### REQ-754 · Cypher Query Frontend (Phase AU) {#REQ-754}
 
@@ -7686,7 +7686,7 @@ OPTIONAL MATCH chains (e.g., `OPTIONAL MATCH (a)-[r1]->(b) OPTIONAL MATCH (b)-[r
 
 **Code:** `provisa/gql/translator.py`
 
-**Tests:** `provisa-ui/e2e/cypher-breed-filter.spec.ts`, `tests/unit/test_cypher_frontend.py`, `tests/integration/test_cypher_integration_extra.py`
+**Tests:** `tests/integration/test_demo_http_surfaces_e2e.py`, `tests/unit/test_cypher_frontend.py`, `tests/integration/test_cypher_integration_extra.py`
 
 ### REQ-777 · Cypher Query Frontend (Phase AU) {#REQ-777}
 
@@ -7698,7 +7698,7 @@ UNION ALL queries (e.g., `MATCH (n) RETURN ... UNION ALL MATCH (m) RETURN ...`) 
 
 **Code:** `provisa/gql/translator.py`
 
-**Tests:** `provisa-ui/e2e/cypher-union-all-email.spec.ts`, `tests/unit/test_cypher_frontend.py`, `tests/integration/test_cypher_integration_extra.py`
+**Tests:** `tests/integration/test_demo_http_surfaces_e2e.py`, `tests/unit/test_cypher_frontend.py`, `tests/integration/test_cypher_integration_extra.py`
 
 ### REQ-778 · Cypher Query Frontend (Phase AU) {#REQ-778}
 
@@ -7710,7 +7710,7 @@ UNION ALL queries (e.g., `MATCH (n) RETURN ... UNION ALL MATCH (m) RETURN ...`) 
 
 **Code:** `provisa/api/rest/cypher_router.py`, `provisa/api/data/endpoint.py`
 
-**Tests:** `provisa-ui/e2e/cypher-breed-filter.spec.ts`, `provisa-ui/e2e/cypher-variable-length-path.spec.ts`, `provisa-ui/e2e/cypher-union-all-email.spec.ts`, `tests/unit/test_cypher_frontend.py`, `tests/integration/test_cypher_integration_extra.py`
+**Tests:** `tests/integration/test_demo_http_surfaces_e2e.py`, `tests/unit/test_cypher_frontend.py`, `tests/integration/test_cypher_integration_extra.py`
 
 ## 10. UI & Admin Surfaces
 
@@ -7874,7 +7874,7 @@ GET /data/graph-schema endpoint returns the current graph schema including all n
 
 **Code:** `provisa/api/data/endpoint.py`
 
-**Tests:** `provisa-ui/e2e/neo4j-docker-export.spec.ts`, `tests/unit/test_neo4j_cypher_endpoint.py`
+**Tests:** `tests/integration/test_demo_http_surfaces_e2e.py`, `tests/unit/test_neo4j_cypher_endpoint.py`
 
 ### REQ-793 · Neo4j Export {#REQ-793}
 
@@ -7886,7 +7886,7 @@ POST /data/cypher endpoint accepts parameterless Cypher queries and returns row 
 
 **Code:** `provisa/api/rest/cypher_router.py`
 
-**Tests:** `provisa-ui/e2e/neo4j-docker-export.spec.ts`, `tests/unit/test_neo4j_cypher_endpoint.py`
+**Tests:** `tests/integration/test_demo_http_surfaces_e2e.py`, `tests/unit/test_neo4j_cypher_endpoint.py`
 
 ### REQ-794 · Neo4j Export {#REQ-794}
 
@@ -7898,7 +7898,7 @@ Query result values are introspected for node and edge structures. Nodes are ide
 
 **Code:** `provisa/api/rest/cypher_router.py`
 
-**Tests:** `provisa-ui/e2e/neo4j-docker-export.spec.ts`, `tests/unit/test_neo4j_cypher_endpoint.py`
+**Tests:** `tests/integration/test_demo_http_surfaces_e2e.py`, `tests/unit/test_neo4j_cypher_endpoint.py`
 
 ### REQ-795 · Neo4j Export {#REQ-795}
 
@@ -7910,7 +7910,7 @@ POST /data/neo4j-export endpoint accepts edge-only requests (empty nodes array) 
 
 **Code:** `provisa/api/rest/cypher_router.py`
 
-**Tests:** `provisa-ui/e2e/neo4j-docker-export.spec.ts`, `tests/unit/test_neo4j_cypher_endpoint.py`
+**Tests:** `tests/integration/test_demo_http_surfaces_e2e.py`, `tests/unit/test_neo4j_cypher_endpoint.py`
 
 ### REQ-796 · Neo4j Export {#REQ-796}
 
@@ -7922,7 +7922,7 @@ X-Role header (e.g., "DEV") grants access to /data/cypher and /data/graph-schema
 
 **Code:** `provisa/api/rest/cypher_router.py`, `provisa/api/data/endpoint.py`
 
-**Tests:** `provisa-ui/e2e/neo4j-docker-export.spec.ts`, `tests/unit/test_neo4j_cypher_endpoint.py`
+**Tests:** `tests/integration/test_demo_http_surfaces_e2e.py`, `tests/unit/test_neo4j_cypher_endpoint.py`
 
 ### REQ-797 · Neo4j Export {#REQ-797}
 
@@ -7934,7 +7934,7 @@ E2E neo4j export validates exported graph integrity: node and relationship count
 
 **Code:** `provisa/api/rest/cypher_router.py`
 
-**Tests:** `provisa-ui/e2e/neo4j-docker-export.spec.ts`, `tests/unit/test_neo4j_cypher_endpoint.py`
+**Tests:** `tests/integration/test_demo_http_surfaces_e2e.py`, `tests/unit/test_neo4j_cypher_endpoint.py`
 
 ## 5. Query Languages, Compilation & Operations
 
@@ -10652,7 +10652,7 @@ The SPA static server routing is deterministic and driven by the browser Sec-Fet
 
 **Code:** `provisa/ui_server.py`
 
-**Tests:** `provisa-ui/e2e/infrastructure.spec.ts`, `tests/e2e/test_health_checks.py`, `tests/unit/test_ui_server_routing.py`
+**Tests:** `tests/e2e/test_health_checks.py`, `tests/unit/test_ui_server_routing.py`
 
 ### REQ-1007 · Multi-Tier Deployment {#REQ-1007}
 
@@ -12412,7 +12412,7 @@ Per-role query limits complement per-role request-rate limits ([REQ-369](#REQ-36
 
 **Code:** `provisa/compiler/complexity.py`, `provisa/compiler/limits.py`, `provisa/pgwire/_pipeline.py`, `provisa/api/data/endpoint.py`, `provisa/core/settings_catalog.py`, `provisa/core/models.py`
 
-**Tests:** `tests/unit/test_query_limits.py`, `tests/unit/test_hasura_api_limits.py`, `tests/integration/test_complexity_guard_every_surface.py`, `provisa-ui/src/pages/__tests__/SecurityPage.roleLimits.test.tsx`, `provisa-ui/e2e/security-query-limits.spec.ts`
+**Tests:** `tests/unit/test_query_limits.py`, `tests/unit/test_hasura_api_limits.py`, `tests/integration/test_complexity_guard_every_surface.py`, `provisa-ui/src/pages/__tests__/SecurityPage.roleLimits.test.tsx`
 
 **Docs:** [security.md](../security.md)
 
@@ -19496,9 +19496,9 @@ provisa-ui/e2e/demo-source-containers.ts hardcoded its Docker Compose project pr
 
 **Use case:** Running multiple isolated core-lane e2e suites concurrently on one host (this session's own fanned-out multi-agent verification workflow) must not have them collide on shared Docker fixture identity, only on genuinely shared host resources (memory/CPU), which is a separate, expected constraint to budget around rather than eliminate.
 
-**Code:** `provisa-ui/e2e/demo-source-containers.ts`, `provisa-ui/e2e/neo4j-container.ts`
+**Code:** `provisa-ui/e2e/demo-source-containers.ts`
 
-**Tests:** `provisa-ui/e2e/source-to-query.spec.ts`, `provisa-ui/e2e/neo4j-docker-export.spec.ts`
+**Tests:** `provisa-ui/e2e/source-to-query.spec.ts`, `tests/integration/test_demo_http_surfaces_e2e.py`
 
 ## 4. Source Connectors
 
@@ -21354,7 +21354,7 @@ One rule governs the deletion of every kind of object. An object has parts and d
 
 **Code:** `provisa/core/repositories/integrity.py`
 
-**Tests:** `tests/unit/test_model_store_guard.py`, `tests/integration/test_model_store_guard_pg.py`
+**Tests:** `tests/unit/test_model_store_guard.py`
 
 ## 11. Platform, Infrastructure & Delivery
 
@@ -21442,7 +21442,7 @@ A source's write operations are registered as commands one at a time, the way it
 
 **Code:** `provisa/executor/source_operation.py`, `provisa/executor/function_dispatch.py`, `provisa/api/admin/actions_router.py`, `provisa/api/data/action_exec.py`, `provisa/api/data/table_written.py`, `provisa/pgwire/_pipeline.py`
 
-**Tests:** `tests/unit/test_source_operation_commands.py`, `tests/unit/test_replica_build_after_write.py`, `provisa-ui/src/__tests__/CommandFormFields.test.tsx`, `provisa-ui/e2e/source-operation-commands.spec.ts`
+**Tests:** `tests/unit/test_source_operation_commands.py`, `tests/unit/test_replica_build_after_write.py`, `provisa-ui/src/__tests__/CommandFormFields.test.tsx`, `tests/integration/test_demo_http_surfaces_e2e.py`
 
 **Docs:** [commands.md](../commands.md), [remote-schemas.md](../remote-schemas.md), [security.md](../security.md)
 
@@ -21518,7 +21518,7 @@ Command calls take bind parameters and column references as arguments. Today a r
 
 **Status:** ⚙ in-progress · **Priority:** MUST · **Type:** behavioral
 
-GraphQL is the canonical API, and gRPC, JSON:API and OpenAPI are derived from it. Everything a surface offers a role -- tables, columns, relationships, aggregates, filter arguments and commands -- comes from that role's compiled GraphQL schema: each role's gRPC .proto, its OpenAPI spec with the REST routes it describes, and its JSON:API resources are generated from that schema, as REST already is ([REQ-256](#REQ-256)). The decision of what a role is offered (assignment, domain, kind, name, column visibility) is made once, in the role's GraphQL schema. No surface keeps visibility or naming logic of its own: whatever GraphQL offers a role, every other surface offers under its own wire conventions, and nothing more. COMMANDS: the other surfaces derive their command operations from the role's GraphQL command fields, never from the raw command list ([REQ-1156](#REQ-1156)). A field on Query, a query-kind command, is a read: REST `GET` with the same where, order_by, limit and offset parameters tables take; a gRPC RPC returning rows; a JSON:API read under its conventions for non-resource operations. A field on Mutation is a write: REST `POST`, a gRPC RPC, and a JSON:API write. Arguments and return types follow the GraphQL field. A command a role's GraphQL schema does not offer is not offered on any other surface. Every call is still checked by the one command admission in the executor, as defence in depth. NAMES follow each API's own conventions. GraphQL names are translated by one deterministic function per surface: proto3 style for gRPC (PascalCase messages, services and RPCs; snake_case fields), JSON:API's member-name conventions, and the REST surface's path and parameter conventions for OpenAPI. Two GraphQL names that would collide after translation are refused at schema build, with an error naming both. gRPC field numbers stay stable across regenerations ([REQ-1903](#REQ-1903)). (Amended 2026-10-03, THE DERIVATION IS THE CONTRACT, NOT NECESSARILY THE EXECUTION PATH:) gRPC, JSON:API and OpenAPI are derived from GraphQL in what they offer, in their names and in their shapes. A surface may compile a request straight to semantic SQL as an optimization, as gRPC table reads do, provided it produces the same semantic SQL as the equivalent GraphQL request would, and so the same governed result. That equivalence is held by a test for each optimized path, which compares the two lowerings. (Amended 2026-11-16, REST AND GRPC READ A ROW'S RELATIONSHIPS NESTED, AS GRAPHQL DOES:) Maintainer 2026-11-16. Every surface reads a row with its relationships nested, as the GraphQL it is derived from does. REST's fields parameter takes dot-paths through relationships (building_permit.permit_id), the form its node includes already take; gRPC's read_mask takes relationship paths and the response fills the relationship's field the proto already declares; JSON:API uses include with fields per type. The NL page derives its gRPC, JSON:API and OpenAPI panels from the GraphQL with the relationships nested in each surface's own form, so each panel shows a request its real endpoint accepts and the nested data it returns. (Amended 2026-11-18, JSON:API INCLUDED FIELDS AND DOTTED INCLUDES ON ROW READS; A GRPC FIELD PER RELATIONSHIP:) Maintainer 2026-11-18. A JSON:API row read honours fields[<type>] for included resources and dotted includes that go more than one relationship deep, as a group-by read already does. In gRPC each relationship has its own field on the row message, named by its GraphQL relationship name, so a read_mask path names the relationship itself and every relationship to the same table can be read; field numbers stay stable for fields that already exist. (Amended 2026-11-18, A JSON:API READ AND ITS INCLUDES NEED NO PRIMARY KEY; THEY FOLLOW APPROVED RELATIONSHIPS:) Maintainer 2026-11-18 ('pk should be irrelevant. it should just work on approved relationships'). No JSON:API read or include is refused because a table declares no primary key. An include follows the approved relationship, and an included resource's id is the value of the column that relationship points at. A root resource's id is its primary key where one is declared; otherwise the column an approved relationship points at; otherwise its position in the response. (Amended 2026-11-18, A ONE-TO-MANY INCLUDE NEVER COLLAPSES ITS RESOURCES:) Lead 2026-11-18, refining the no-primary-key rule so no row is lost: an included resource reached by a many-to-one relationship is identified by the column that relationship points at; one reached by a one-to-many relationship is identified by its primary key where one is declared, otherwise by its position among its parent's included resources, so every child row stays a resource of its own. (Amended 2026-11-18, A ONE-TO-MANY INCLUDE'S POSITION ID CARRIES ITS PARENT'S ID:) Lead 2026-11-18, making the one-to-many rule exact: an included resource with no declared primary key, reached by a one-to-many relationship, has the id '<parent id>:<n>', n its 0-based position among that parent's included resources (a ':' or '\\' in the parent id escaped), so children of different parents never share an id; resource linkage uses the same ids. (Amended 2026-11-18, A REAL IDENTIFIER WHERE ONE EXISTS; NO SINGLE-RESOURCE LOOKUP WHERE NONE DOES:) Maintainer 2026-11-18 ('if graphql can do it, why can't other apis'; 'i think not offering it is better for that scenario'). Reads and includes never require a key. A root resource's id is, in order: its declared primary key; otherwise the column an approved relationship points at; otherwise a column named id; otherwise its position in the response. A single-resource lookup (GET /<type>/<id>) is offered only for a type whose id is a real identifier (one of the first three), never a position; for a type identified only by position the lookup is not offered, in the API and its spec. (Amended 2026-11-19, A RELATIONSHIP NEVER HIDES A COLUMN; A NAME CLASH IS REFUSED:) Maintainer 2026-11-19. Registering a source does not add a nested object as a column when the same field is offered as a relationship. Any other clash between a column and a relationship of one table, after a surface's name translation, is refused by name when the model is built, on every surface including GraphQL; a relationship never silently hides a column. (Amended 2026-11-19, A STORED RELATIONSHIP TAKES ITS NESTED COLUMN:) Maintainer 2026-11-19. When a relationship over a remote nested object is stored after both tables were registered one at a time, the nested column it rides on leaves the registered table, as it does when the whole source is mapped at once, so the relationship and a column never share a name. (Amended 2026-11-19, A COLUMN IN USE REFUSES THE REGISTRATION:) Maintainer 2026-11-19. When the nested column a relationship would take is used by a view, metric or row filter, registering the table is refused, naming what uses it, and nothing is written.
+GraphQL is the canonical API, and gRPC, JSON:API and OpenAPI are derived from it. Everything a surface offers a role -- tables, columns, relationships, aggregates, filter arguments and commands -- comes from that role's compiled GraphQL schema: each role's gRPC .proto, its OpenAPI spec with the REST routes it describes, and its JSON:API resources are generated from that schema, as REST already is ([REQ-256](#REQ-256)). The decision of what a role is offered (assignment, domain, kind, name, column visibility) is made once, in the role's GraphQL schema. No surface keeps visibility or naming logic of its own: whatever GraphQL offers a role, every other surface offers under its own wire conventions, and nothing more. COMMANDS: the other surfaces derive their command operations from the role's GraphQL command fields, never from the raw command list ([REQ-1156](#REQ-1156)). A field on Query, a query-kind command, is a read: REST `GET` with the same where, order_by, limit and offset parameters tables take; a gRPC RPC returning rows; a JSON:API read under its conventions for non-resource operations. A field on Mutation is a write: REST `POST`, a gRPC RPC, and a JSON:API write. Arguments and return types follow the GraphQL field. A command a role's GraphQL schema does not offer is not offered on any other surface. Every call is still checked by the one command admission in the executor, as defence in depth. NAMES follow each API's own conventions. GraphQL names are translated by one deterministic function per surface: proto3 style for gRPC (PascalCase messages, services and RPCs; snake_case fields), JSON:API's member-name conventions, and the REST surface's path and parameter conventions for OpenAPI. Two GraphQL names that would collide after translation are refused at schema build, with an error naming both. gRPC field numbers stay stable across regenerations ([REQ-1903](#REQ-1903)). (Amended 2026-10-03, THE DERIVATION IS THE CONTRACT, NOT NECESSARILY THE EXECUTION PATH:) gRPC, JSON:API and OpenAPI are derived from GraphQL in what they offer, in their names and in their shapes. A surface may compile a request straight to semantic SQL as an optimization, as gRPC table reads do, provided it produces the same semantic SQL as the equivalent GraphQL request would, and so the same governed result. That equivalence is held by a test for each optimized path, which compares the two lowerings. (Amended 2026-11-16, REST AND GRPC READ A ROW'S RELATIONSHIPS NESTED, AS GRAPHQL DOES:) Maintainer 2026-11-16. Every surface reads a row with its relationships nested, as the GraphQL it is derived from does. REST's fields parameter takes dot-paths through relationships (building_permit.permit_id), the form its node includes already take; gRPC's read_mask takes relationship paths and the response fills the relationship's field the proto already declares; JSON:API uses include with fields per type. The NL page derives its gRPC, JSON:API and OpenAPI panels from the GraphQL with the relationships nested in each surface's own form, so each panel shows a request its real endpoint accepts and the nested data it returns. (Amended 2026-11-18, JSON:API INCLUDED FIELDS AND DOTTED INCLUDES ON ROW READS; A GRPC FIELD PER RELATIONSHIP:) Maintainer 2026-11-18. A JSON:API row read honours fields[<type>] for included resources and dotted includes that go more than one relationship deep, as a group-by read already does. In gRPC each relationship has its own field on the row message, named by its GraphQL relationship name, so a read_mask path names the relationship itself and every relationship to the same table can be read; field numbers stay stable for fields that already exist. (Amended 2026-11-18, A JSON:API READ AND ITS INCLUDES NEED NO PRIMARY KEY; THEY FOLLOW APPROVED RELATIONSHIPS:) Maintainer 2026-11-18 ('pk should be irrelevant. it should just work on approved relationships'). No JSON:API read or include is refused because a table declares no primary key. An include follows the approved relationship, and an included resource's id is the value of the column that relationship points at. A root resource's id is its primary key where one is declared; otherwise the column an approved relationship points at; otherwise its position in the response. (Amended 2026-11-18, A ONE-TO-MANY INCLUDE NEVER COLLAPSES ITS RESOURCES:) Lead 2026-11-18, refining the no-primary-key rule so no row is lost: an included resource reached by a many-to-one relationship is identified by the column that relationship points at; one reached by a one-to-many relationship is identified by its primary key where one is declared, otherwise by its position among its parent's included resources, so every child row stays a resource of its own. (Amended 2026-11-18, A ONE-TO-MANY INCLUDE'S POSITION ID CARRIES ITS PARENT'S ID:) Lead 2026-11-18, making the one-to-many rule exact: an included resource with no declared primary key, reached by a one-to-many relationship, has the id '<parent id>:<n>', n its 0-based position among that parent's included resources (a ':' or '\\' in the parent id escaped), so children of different parents never share an id; resource linkage uses the same ids. (Amended 2026-11-18, A REAL IDENTIFIER WHERE ONE EXISTS; NO SINGLE-RESOURCE LOOKUP WHERE NONE DOES:) Maintainer 2026-11-18 ('if graphql can do it, why can't other apis'; 'i think not offering it is better for that scenario'). Reads and includes never require a key. A root resource's id is, in order: its declared primary key; otherwise the column an approved relationship points at; otherwise a column named id; otherwise its position in the response. A single-resource lookup (GET /<type>/<id>) is offered only for a type whose id is a real identifier (one of the first three), never a position; for a type identified only by position the lookup is not offered, in the API and its spec. (Amended 2026-11-19, A RELATIONSHIP NEVER HIDES A COLUMN; A NAME CLASH IS REFUSED:) Maintainer 2026-11-19. Registering a source does not add a nested object as a column when the same field is offered as a relationship. Any other clash between a column and a relationship of one table, after a surface's name translation, is refused by name when the model is built, on every surface including GraphQL; a relationship never silently hides a column. (Amended 2026-11-19, A STORED RELATIONSHIP TAKES ITS NESTED COLUMN:) Maintainer 2026-11-19. When a relationship over a remote nested object is stored after both tables were registered one at a time, the nested column it rides on leaves the registered table, as it does when the whole source is mapped at once, so the relationship and a column never share a name. (Amended 2026-11-19, A COLUMN IN USE REFUSES THE REGISTRATION:) Maintainer 2026-11-19. When the nested column a relationship would take is used by a view, metric or row filter, registering the table is refused, naming what uses it, and nothing is written. (Amended 2026-11-21 by the maintainer. A Query-kind command read over REST or JSON:API is lowered to the role's GraphQL command field and runs through the one SQL pipeline, so its filtering, ordering, paging and governance match GraphQL. The REST read is GET on the command and takes the table parameters filter, orderBy, limit and offset plus the declared arguments; a Mutation-kind command stays POST. JSON:API serves commands at /data/jsonapi/<domain>/commands/<name>, GET to read and POST to write.) (Amended again 2026-11-21 by the maintainer. A JSON:API command answers its rows under meta.rows, and a POST takes its arguments in the body meta, since a command row is not a resource. The name commands is reserved: a table named commands is refused by name at registration, so the command path never shadows a table.)
 
 **Use case:** An operator who assigns a command to a role, hides a column, or moves an object to another domain changes what every API offers in one place, and no surface can offer what another surface hides.
 
@@ -23690,7 +23690,7 @@ A MongoDB source can be reached by a connection string, so a MongoDB Atlas clust
 
 **Status:** ⚙ in-progress · **Priority:** MUST · **Type:** behavioral
 
-A table declares its parameters: the values a caller passes to the source to read the table. Each parameter has a name, a type, and how it reaches the source: a path parameter or a query parameter of an OpenAPI operation, an argument of a remote GraphQL field, a field of a gRPC request, or an argument of a source's native query (a MongoDB pipeline, [REQ-1980](#REQ-1980); a Cosmos DB query, [REQ-1982](#REQ-1982)). Each parameter is optional or required. It is required when the source requires it, or when a steward has made it required for this table. A parameter the source requires is required for good; a steward can make an optional parameter required, and can make it optional again. Registration records every parameter the source describes, the optional ones included, with whether the source requires it. One rule holds for every source kind and every surface: a read of the table that leaves a required parameter without a value is refused before anything is sent to the source, and the refusal names the table and the parameter. GraphQL marks a required parameter's argument non-null. The admin API reads and sets the steward's switch per parameter. The table page has a Parameters section listing each parameter with its type, how it reaches the source, and the switch, which is on and locked where the source requires the parameter. (Amended 2026-10-23, a parameterized table keeps nothing unless it says so:) A parameterized table -- any table that declares a parameter (an OpenAPI/REST argument, a code function's parameter, a Qdrant search's query, a GraphQL- or gRPC-remote argument, a Cosmos DB partition key) -- has a TTL of 0 unless the table itself sets cache_ttl: it is fetched live for each statement and handed to that statement alone (inlined as a VALUES CTE, or landed in a scratch table dropped when the statement ends; the engine still runs the statement), and nothing it answers is reused by another statement. It does not take its source's TTL, the organisation's response-cache default or an endpoint's TTL. A table that sets cache_ttl keeps the answer to each set of arguments for it, and a statement asking the same arguments within it reuses that answer. A table with no parameter keeps the chain: its own TTL, else its source's, else the organisation's default, else (for an API endpoint) the endpoint's. One resolver decides it for every landing surface (pipeline and native-query tables, OpenAPI/REST endpoints and the fills a compiled GraphQL read fetches for them, GraphQL-remote and gRPC-remote tables); GraphQL-remote keeps for that TTL rather than a fixed 300 seconds. A join's parent keys are still fetched in one batched call per statement; at a TTL of 0 the next statement fetches them again, and a statement reads only the fills it fetched itself, never another statement's. (Amended 2026-11-03, The picker marks parameterized tables:) Maintainer 2026-11-03: Register Table's table picker shows which tables take required parameters (a single-record lookup such as a GraphQL root field with a required id) apart from those that list rows with none: the parameterized ones carry an icon naming their required parameters, or are listed in a group of their own, so a steward is not surprised by a required filter after picking. (Amended 2026-11-16, A PARAMETERIZED TABLE STAYS A TABLE; ITS LIMITS ARE STATED IN ITS METADATA:) Maintainer 2026-11-16 ('keep as parameterized tables but strengthen metadata and discovery functions to account for limitations'), after weighing a function form. A table that requires a parameter stays a table: the parameter is a WHERE condition or a join condition in SQL and an argument in GraphQL, and relationships, row rules and masks apply to it as to any table. What it cannot do is stated in its metadata, where every client and every part of the product reads it before reading the table: that it requires parameters, which ones and of what type, and that it therefore gives no row count, no profile and no sample without them. The meta schema, the catalogs the SQL and graph clients read, and the table's page show it. Every function of the product that counts, profiles, samples or scans a table (discovery, the profiler, data quality checks, statistics, previews) asks that metadata first and takes its stated reduced path for such a table; none finds out by trying the read ([REQ-413](#REQ-413) for discovery). (Amended 2026-11-16, AN OPAQUE PARAMETER IS BOUND BY EQUALITY ONLY:) Maintainer 2026-11-16 ('parameterized tables exist because they represent what seems to be an opaque filter (we don't really know the logic behind it)'; 'the where clause should only accept an eq'; 'agree' to the points here). A parameter that is an input to the source's call (a path, query, GraphQL or gRPC argument) is opaque: the product does not know what the source does with it. A statement can only bind it to a value: by equality with one value, by a finite list of values, or by a join's equality with another table's column, each value being one call to the source and the results unioned, up to a cap on calls per statement that is an operator setting with its settings field (its default is not settled). Any other condition on it (a range, a pattern, an inequality, a test for null) is refused naming the parameter and saying it takes a value by equality. It must be bound on every branch of the condition: a statement that leaves it unbound on one branch of an OR is refused. Every other column of the table is a result column and takes any condition, applied after the call. The parameter's column in the result repeats the value that was asked; it is never assumed to be an attribute of the rows returned. The table's metadata says, for each parameter, whether it is opaque or a real column of the table that the source requires a value for (a partition key, a column value), whose meaning is known. (Amended 2026-11-16, A PARAMETERIZED OPERATION IS ALWAYS A FUNCTION; A TABLE ONLY WHERE NO PLAIN LIST EXISTS:) Maintainer 2026-11-16. This narrows A PARAMETERIZED TABLE STAYS A TABLE: its first sentence, that such a table always stays a table, is [SUPERSEDED by this amendment]; the rest of it and AN OPAQUE PARAMETER IS BOUND BY EQUALITY ONLY hold for every parameterized table that exists. Every operation of a source that requires a parameter is a function: its parameters are its arguments, it returns its rows, and it is always kept. A parameterized table is added for it, as a view of that function, only as a help to clients that read tables and cannot call a function (BI tools above all): when the operation returns objects of a type that no operation without a required parameter returns. Where a plain list of the same type exists, that list is the table, it is the one counted, profiled and discovered, and no parameterized table is created beside it. Whether two operations return the same type is read from the source's own schema, never guessed from column names. A steward may add the parameterized table for an operation that did not get one. (Amended 2026-11-16, THE PARAMETERIZED TABLE IS AN ATTRIBUTE OF ITS FUNCTION:) Maintainer 2026-11-16. Whether a function is also exposed as a parameterized table is an attribute of the function, changed where the function is edited; the table is derived from the function while the attribute is on and is never registered on its own, so it cannot differ from the function's parameters or columns. This replaces the last sentence of A PARAMETERIZED OPERATION IS ALWAYS A FUNCTION (a steward may add the table) [SUPERSEDED by this amendment]. The attribute's value when the function is registered follows that amendment's rule: on when no operation without a required parameter returns the same type, off otherwise. It is set once: a plain list of the same type registered later does not change it, since that would remove a table in use. Turning it off is refused while a relationship, a row rule, a data product or another live object refers to the derived table, naming what refers to it, as deleting a table is. (Amended 2026-11-16, EQUALITY ON A PARAMETER ASSIGNS ITS VALUE:) Maintainer 2026-11-16 ('EQ means the value is assigned to the param'). An equality on an opaque parameter is not a comparison made against rows: it assigns the value to the parameter for the call. The returned rows are not filtered by it again. Two different values assigned to the same parameter on one branch are a conflict and are refused naming the parameter; they are not an empty result. (Amended 2026-11-16, A NEGATED ASSIGNMENT IS AN ERROR:) Maintainer 2026-11-16. IN on an opaque parameter assigns as equality does, one call for each value. NOT IN, not-equal, and any negation of an equality or of an IN on a parameter assign nothing and are an error: the statement is refused naming the parameter, never answered as if the condition were absent and never answered empty. (Amended 2026-11-16, POINTS SETTLED BEFORE BUILDING:) Maintainer 2026-11-16: the cap on calls per statement defaults to 1000; and two operations without a required parameter that return the same type both stay tables, the rule deciding only whether a parameterized operation also gets a table. Lead 2026-11-16, each following from the rules above: (1) the derived table has a table row of its own, since every reference is keyed on one, but the function's attribute alone creates and removes it and its parameters and columns are not editable on the table; (2) turning the attribute off is refused while a relationship, a row rule, a data product or another live object refers to the table, the function's own reference to what it returns not counting; (3) a function whose table is off returns the plain list's type in GraphQL, so its field is unchanged; (4) a join assigns a parameter only when it is on the parameter itself, never on a result column presumed to be it; (5) rows of a parameterized table that were kept (a kept-for-good table, a synthetic environment) hold the asked value as an ordinary stored column, and conditions on that stored column are ordinary filters; (6) a source whose operations have no named return type cannot be compared, so each of its parameterized operations gets its table. (Amended 2026-11-16, THE DERIVED TABLE SHARES ITS FUNCTION'S STATE AND IS EDITED ONLY THROUGH IT:) Lead 2026-11-16, consequences of the table being an attribute of its function. The derived table has its function's release state: released with it, never a draft of its own, since a draft table would leave a released function unreadable. It is not deleted, and its columns and parameters are not edited, on the table itself: only through its function. Turning the switch off, or deleting the function, is refused while a relationship, view, metric, row rule, data-product membership or write grant refers to the derived table, naming each; glossary references and tags the product made itself do not block it. A parameter is bound under its own name and under its alias alike. (Amended 2026-11-20, A FEEDING RELATIONSHIP IS NOT A JOIN KEY:) Maintainer 2026-11-20. When a statement equates a parameter column with the source column of a relationship that feeds that table ([REQ-2099](#REQ-2099)), the relationship's feed supplies the parameter rather than a per-row join key. The feed is one batched read per statement, not per-row calls, so parameters.max_calls_per_statement does not apply to it.
+A table declares its parameters: the values a caller passes to the source to read the table. Each parameter has a name, a type, and how it reaches the source: a path parameter or a query parameter of an OpenAPI operation, an argument of a remote GraphQL field, a field of a gRPC request, or an argument of a source's native query (a MongoDB pipeline, [REQ-1980](#REQ-1980); a Cosmos DB query, [REQ-1982](#REQ-1982)). Each parameter is optional or required. It is required when the source requires it, or when a steward has made it required for this table. A parameter the source requires is required for good; a steward can make an optional parameter required, and can make it optional again. Registration records every parameter the source describes, the optional ones included, with whether the source requires it. One rule holds for every source kind and every surface: a read of the table that leaves a required parameter without a value is refused before anything is sent to the source, and the refusal names the table and the parameter. GraphQL marks a required parameter's argument non-null. The admin API reads and sets the steward's switch per parameter. The table page has a Parameters section listing each parameter with its type, how it reaches the source, and the switch, which is on and locked where the source requires the parameter. (Amended 2026-10-23, a parameterized table keeps nothing unless it says so:) A parameterized table -- any table that declares a parameter (an OpenAPI/REST argument, a code function's parameter, a Qdrant search's query, a GraphQL- or gRPC-remote argument, a Cosmos DB partition key) -- has a TTL of 0 unless the table itself sets cache_ttl: it is fetched live for each statement and handed to that statement alone (inlined as a VALUES CTE, or landed in a scratch table dropped when the statement ends; the engine still runs the statement), and nothing it answers is reused by another statement. It does not take its source's TTL, the organisation's response-cache default or an endpoint's TTL. A table that sets cache_ttl keeps the answer to each set of arguments for it, and a statement asking the same arguments within it reuses that answer. A table with no parameter keeps the chain: its own TTL, else its source's, else the organisation's default, else (for an API endpoint) the endpoint's. One resolver decides it for every landing surface (pipeline and native-query tables, OpenAPI/REST endpoints and the fills a compiled GraphQL read fetches for them, GraphQL-remote and gRPC-remote tables); GraphQL-remote keeps for that TTL rather than a fixed 300 seconds. A join's parent keys are still fetched in one batched call per statement; at a TTL of 0 the next statement fetches them again, and a statement reads only the fills it fetched itself, never another statement's. (Amended 2026-11-03, The picker marks parameterized tables:) Maintainer 2026-11-03: Register Table's table picker shows which tables take required parameters (a single-record lookup such as a GraphQL root field with a required id) apart from those that list rows with none: the parameterized ones carry an icon naming their required parameters, or are listed in a group of their own, so a steward is not surprised by a required filter after picking. (Amended 2026-11-16, A PARAMETERIZED TABLE STAYS A TABLE; ITS LIMITS ARE STATED IN ITS METADATA:) Maintainer 2026-11-16 ('keep as parameterized tables but strengthen metadata and discovery functions to account for limitations'), after weighing a function form. A table that requires a parameter stays a table: the parameter is a WHERE condition or a join condition in SQL and an argument in GraphQL, and relationships, row rules and masks apply to it as to any table. What it cannot do is stated in its metadata, where every client and every part of the product reads it before reading the table: that it requires parameters, which ones and of what type, and that it therefore gives no row count, no profile and no sample without them. The meta schema, the catalogs the SQL and graph clients read, and the table's page show it. Every function of the product that counts, profiles, samples or scans a table (discovery, the profiler, data quality checks, statistics, previews) asks that metadata first and takes its stated reduced path for such a table; none finds out by trying the read ([REQ-413](#REQ-413) for discovery). (Amended 2026-11-16, AN OPAQUE PARAMETER IS BOUND BY EQUALITY ONLY:) Maintainer 2026-11-16 ('parameterized tables exist because they represent what seems to be an opaque filter (we don't really know the logic behind it)'; 'the where clause should only accept an eq'; 'agree' to the points here). A parameter that is an input to the source's call (a path, query, GraphQL or gRPC argument) is opaque: the product does not know what the source does with it. A statement can only bind it to a value: by equality with one value, by a finite list of values, or by a join's equality with another table's column, each value being one call to the source and the results unioned, up to a cap on calls per statement that is an operator setting with its settings field (its default is not settled). Any other condition on it (a range, a pattern, an inequality, a test for null) is refused naming the parameter and saying it takes a value by equality. It must be bound on every branch of the condition: a statement that leaves it unbound on one branch of an OR is refused. Every other column of the table is a result column and takes any condition, applied after the call. The parameter's column in the result repeats the value that was asked; it is never assumed to be an attribute of the rows returned. The table's metadata says, for each parameter, whether it is opaque or a real column of the table that the source requires a value for (a partition key, a column value), whose meaning is known. (Amended 2026-11-16, A PARAMETERIZED OPERATION IS ALWAYS A FUNCTION; A TABLE ONLY WHERE NO PLAIN LIST EXISTS:) Maintainer 2026-11-16. This narrows A PARAMETERIZED TABLE STAYS A TABLE: its first sentence, that such a table always stays a table, is [SUPERSEDED by this amendment]; the rest of it and AN OPAQUE PARAMETER IS BOUND BY EQUALITY ONLY hold for every parameterized table that exists. Every operation of a source that requires a parameter is a function: its parameters are its arguments, it returns its rows, and it is always kept. A parameterized table is added for it, as a view of that function, only as a help to clients that read tables and cannot call a function (BI tools above all): when the operation returns objects of a type that no operation without a required parameter returns. Where a plain list of the same type exists, that list is the table, it is the one counted, profiled and discovered, and no parameterized table is created beside it. Whether two operations return the same type is read from the source's own schema, never guessed from column names. A steward may add the parameterized table for an operation that did not get one. (Amended 2026-11-16, THE PARAMETERIZED TABLE IS AN ATTRIBUTE OF ITS FUNCTION:) Maintainer 2026-11-16. Whether a function is also exposed as a parameterized table is an attribute of the function, changed where the function is edited; the table is derived from the function while the attribute is on and is never registered on its own, so it cannot differ from the function's parameters or columns. This replaces the last sentence of A PARAMETERIZED OPERATION IS ALWAYS A FUNCTION (a steward may add the table) [SUPERSEDED by this amendment]. The attribute's value when the function is registered follows that amendment's rule: on when no operation without a required parameter returns the same type, off otherwise. It is set once: a plain list of the same type registered later does not change it, since that would remove a table in use. Turning it off is refused while a relationship, a row rule, a data product or another live object refers to the derived table, naming what refers to it, as deleting a table is. (Amended 2026-11-16, EQUALITY ON A PARAMETER ASSIGNS ITS VALUE:) Maintainer 2026-11-16 ('EQ means the value is assigned to the param'). An equality on an opaque parameter is not a comparison made against rows: it assigns the value to the parameter for the call. The returned rows are not filtered by it again. Two different values assigned to the same parameter on one branch are a conflict and are refused naming the parameter; they are not an empty result. (Amended 2026-11-16, A NEGATED ASSIGNMENT IS AN ERROR:) Maintainer 2026-11-16. IN on an opaque parameter assigns as equality does, one call for each value. NOT IN, not-equal, and any negation of an equality or of an IN on a parameter assign nothing and are an error: the statement is refused naming the parameter, never answered as if the condition were absent and never answered empty. (Amended 2026-11-16, POINTS SETTLED BEFORE BUILDING:) Maintainer 2026-11-16: the cap on calls per statement defaults to 1000; and two operations without a required parameter that return the same type both stay tables, the rule deciding only whether a parameterized operation also gets a table. Lead 2026-11-16, each following from the rules above: (1) the derived table has a table row of its own, since every reference is keyed on one, but the function's attribute alone creates and removes it and its parameters and columns are not editable on the table; (2) turning the attribute off is refused while a relationship, a row rule, a data product or another live object refers to the table, the function's own reference to what it returns not counting; (3) a function whose table is off returns the plain list's type in GraphQL, so its field is unchanged; (4) a join assigns a parameter only when it is on the parameter itself, never on a result column presumed to be it; (5) rows of a parameterized table that were kept (a kept-for-good table, a synthetic environment) hold the asked value as an ordinary stored column, and conditions on that stored column are ordinary filters; (6) a source whose operations have no named return type cannot be compared, so each of its parameterized operations gets its table. (Amended 2026-11-16, THE DERIVED TABLE SHARES ITS FUNCTION'S STATE AND IS EDITED ONLY THROUGH IT:) Lead 2026-11-16, consequences of the table being an attribute of its function. The derived table has its function's release state: released with it, never a draft of its own, since a draft table would leave a released function unreadable. It is not deleted, and its columns and parameters are not edited, on the table itself: only through its function. Turning the switch off, or deleting the function, is refused while a relationship, view, metric, row rule, data-product membership or write grant refers to the derived table, naming each; glossary references and tags the product made itself do not block it. A parameter is bound under its own name and under its alias alike. (Amended 2026-11-20, A FEEDING RELATIONSHIP IS NOT A JOIN KEY:) Maintainer 2026-11-20. When a statement equates a parameter column with the source column of a relationship that feeds that table ([REQ-2099](#REQ-2099)), the relationship's feed supplies the parameter rather than a per-row join key. The feed is one batched read per statement, not per-row calls, so parameters.max_calls_per_statement does not apply to it. (Amended 2026-11-21 by the maintainer. A table derived from a function shares its function release state, region included: it is not withdrawn, put back or moved to another region on its own, and each is refused by name.)
 
 **Use case:** An OpenAPI operation takes an optional region query parameter, and without it returns every region's rows, millions of them. A steward makes region required on the table; from then on an analyst's SQL query without a region condition is refused, naming the table and region, and the GraphQL field's region argument is non-null. The operation's id path parameter is shown locked on, because the source requires it.
 
@@ -24536,7 +24536,7 @@ A feature demo, data profiling: The built-in Data Profiler ([REQ-1934](#REQ-1934
 
 **Code:** —
 
-**Tests:** `tests/unit/test_profile_carry.py`, `tests/unit/test_demo_template_profiles.py`, `tests/integration/test_profiling_sandbox_e2e.py`
+**Tests:** `tests/unit/test_profile_carry.py`, `tests/unit/test_demo_template_profiles.py`, `tests/integration/test_profiling_demo.py`, `tests/integration/test_sandbox_visitor_walk.py`
 
 ### REQ-2053 · UI {#REQ-2053}
 
@@ -27002,7 +27002,7 @@ Maintainer 2026-11-11: a glossary term may carry its calculation method beside i
 
 **Status:** ⚙ in-progress · **Priority:** MUST · **Type:** ui
 
-Maintainer 2026-11-12: three pairs of words each mean one thing, in every label, tooltip and accessible name of the UI. Show and Hide: the thing is drawn or not drawn at all, and nothing stands in for it (a layer of a graph, a grid, a legend, the rest of the model). Expand and Collapse: the thing stays on screen as a summary or as its parent, and its contents open in place (a table's columns, a section, a tree row, a list row's detail); collapsed, the summary or parent is still shown. Enlarge and Full screen: the size of a view (opening a graph in the large view, the full-screen control); a change of size is never called expand. Fold and unfold are not used. A table's columns in a graph are therefore expanded and collapsed, as the ERD already says. (Amended 2026-11-12, STOP, AND THE GROUP NAMED DERIVED:) Maintainer 2026-11-12: a button that stops an operation in progress says Stop, not Cancel; Cancel is kept for leaving a form or dialog with nothing changed. The top navigation group holding Views, Metrics, Commands and Lineage is named Derived, not Model: model keeps its two other meanings, the whole declared model and an entity or fact added with + Model.
+Maintainer 2026-11-12: three pairs of words each mean one thing, in every label, tooltip and accessible name of the UI. Show and Hide: the thing is drawn or not drawn at all, and nothing stands in for it (a layer of a graph, a grid, a legend, the rest of the model). Expand and Collapse: the thing stays on screen as a summary or as its parent, and its contents open in place (a table's columns, a section, a tree row, a list row's detail); collapsed, the summary or parent is still shown. Enlarge and Full screen: the size of a view (opening a graph in the large view, the full-screen control); a change of size is never called expand. Fold and unfold are not used. A table's columns in a graph are therefore expanded and collapsed, as the ERD already says. (Amended 2026-11-12, STOP, AND THE GROUP NAMED DERIVED:) Maintainer 2026-11-12: a button that stops an operation in progress says Stop, not Cancel; Cancel is kept for leaving a form or dialog with nothing changed. The top navigation group holding Views, Metrics, Commands and Lineage is named Derived, not Model: model keeps its two other meanings, the whole declared model and an entity or fact added with + Model. (Amended 2026-11-21 by the maintainer decisions of 2026-11-13. The schema panel toggle reads Hide schema panel and Show schema panel, since it draws the panel or not. Leaving an enlarged view reads Restore size, in the graph frame and the ER diagram alike. The observability tab's close control reads Close.)
 
 **Code:** —
 
@@ -27114,7 +27114,7 @@ Maintainer 2026-11-18 ('all AI assisted features should narrow their concerns to
 
 **Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
 
-Maintainer 2026-11-19 ('create a req to have pgwire-calcite bundle loaded once and then ref'd at runtime by other pgwire-* servers'). The pgwire-calcite runtime (CPython, the pgwire_calcite package, the JRE and the jars every adapter uses, such as calcite-core, linq4j and avatica) is installed once per engine version and cached by that version. Each pgwire adapter is a pack holding its own jars, its model.json and, optionally, adapter-specific Python packages; the pack names the runtime version it requires, and a pack whose runtime version is absent is refused at start, naming the version. The launcher builds the classpath from the runtime's jars plus the pack's jars, and the Python path from the runtime plus the pack's extras. The runtime and the packs are released separately, and the standalone installers install a runtime plus one pack. Provisa's bundle resolution ([REQ-956](#REQ-956)) resolves the runtime, then the source's pack, each cached by version. Each source still runs in its own process. A Python-only change to pgwire-calcite ships as a new runtime with the packs unchanged. (Amended 2026-11-19, RUNTIME AND PACKS SHARE THE ENGINE VERSION; ASKAMERICA MOVES FIRST:) Maintainer 2026-11-19. Every engine release ships the runtime and every pack at the same engine version; a pack whose contents did not change is re-stamped with the new runtime pin. The full per-adapter bundles stop with the first pack release, and nothing is tagged at that version until the AskAmerica engine's installer reads the runtime and the govdata pack. The govdata catalog cache is regenerated by the maintainer before any bundle release. (Amended 2026-11-20 by the maintainer. A pack names a compatible runtime line (major.minor, or a runtime ABI number in runtime.json), not an exact runtime version; it starts the newest installed runtime on that line, so a runtime release ships with the packs unchanged. Homebrew and Scoop ship one runtime formula plus one formula per pack that depends on it. A jar present in both the runtime and a pack is refused at start and also at pack build time.) (Amended 2026-11-20 by the maintainer. A pack records the runtime jar names it was built against, and start refuses a runtime on its line that lacks any of them, naming the missing jar.) (Amended 2026-11-20 by the maintainer, superseding the 2026-11-19 rule that the maintainer regenerates the govdata catalog cache. Each engine release builds the govdata catalog cache by a live walk in CI, keyed by the engine release, inside the govdata pack's build; the walk fails the release on a gap; no committed cache file and no manual step remain.)
+Maintainer 2026-11-19 ('create a req to have pgwire-calcite bundle loaded once and then ref'd at runtime by other pgwire-* servers'). The pgwire-calcite runtime (CPython, the pgwire_calcite package, the JRE and the jars every adapter uses, such as calcite-core, linq4j and avatica) is installed once per engine version and cached by that version. Each pgwire adapter is a pack holding its own jars, its model.json and, optionally, adapter-specific Python packages; the pack names the runtime version it requires, and a pack whose runtime version is absent is refused at start, naming the version. The launcher builds the classpath from the runtime's jars plus the pack's jars, and the Python path from the runtime plus the pack's extras. The runtime and the packs are released separately, and the standalone installers install a runtime plus one pack. Provisa's bundle resolution ([REQ-956](#REQ-956)) resolves the runtime, then the source's pack, each cached by version. Each source still runs in its own process. A Python-only change to pgwire-calcite ships as a new runtime with the packs unchanged. (Amended 2026-11-19, RUNTIME AND PACKS SHARE THE ENGINE VERSION; ASKAMERICA MOVES FIRST:) Maintainer 2026-11-19. Every engine release ships the runtime and every pack at the same engine version; a pack whose contents did not change is re-stamped with the new runtime pin. The full per-adapter bundles stop with the first pack release, and nothing is tagged at that version until the AskAmerica engine's installer reads the runtime and the govdata pack. The govdata catalog cache is regenerated by the maintainer before any bundle release. (Amended 2026-11-20 by the maintainer. A pack names a compatible runtime line (major.minor, or a runtime ABI number in runtime.json), not an exact runtime version; it starts the newest installed runtime on that line, so a runtime release ships with the packs unchanged. Homebrew and Scoop ship one runtime formula plus one formula per pack that depends on it. A jar present in both the runtime and a pack is refused at start and also at pack build time.) (Amended 2026-11-20 by the maintainer. A pack records the runtime jar names it was built against, and start refuses a runtime on its line that lacks any of them, naming the missing jar.) (Amended 2026-11-20 by the maintainer, superseding the 2026-11-19 rule that the maintainer regenerates the govdata catalog cache. Each engine release builds the govdata catalog cache by a live walk in CI, keyed by the engine release, inside the govdata pack's build; the walk fails the release on a gap; no committed cache file and no manual step remain.) (Amended 2026-11-21 by the maintainer. A table a pack declares that has no data yet is refused by name. It is left out of discovery and registration, and a query naming it is refused with a message that it has no data yet, never answered with the engine error.)
 
 **Code:** —
 
@@ -27200,7 +27200,7 @@ Maintainer 2026-11-20. Every environment declares its stage: production, preprod
 
 **Status:** 💡 proposed · **Priority:** MUST · **Type:** ui
 
-Maintainer 2026-11-20. Registering a source and then its tables ends with a step to relate them: beside Close, a Create relationships action appears when at least one table was just registered and the user holds create_relationship. It opens the existing relationship discovery scoped to the tables just registered, proposing candidates from the source's declared foreign keys, from matching key names and types among the new tables, and from joins between the new tables and tables already in the model, across sources. Every candidate, declared foreign keys included, waits for review: each shows its cardinality and why it was proposed, and is accepted, edited or skipped; accepted ones follow the normal relationship approval rules. Done returns to the source with the count of relationships created.
+Maintainer 2026-11-20. Registering a source and then its tables ends with a step to relate them: beside Close, a Create relationships action appears when at least one table was just registered and the user holds create_relationship. It opens the existing relationship discovery scoped to the tables just registered, proposing candidates from the source's declared foreign keys, from matching key names and types among the new tables, and from joins between the new tables and tables already in the model, across sources. Every candidate, declared foreign keys included, waits for review: each shows its cardinality and why it was proposed, and is accepted, edited or skipped; accepted ones follow the normal relationship approval rules. Done returns to the source with the count of relationships created. (Amended 2026-11-21 by the maintainer. Editing a candidate before accepting it covers its name and its cardinality, in a per-row edit dialog.)
 
 **Code:** —
 
@@ -27242,7 +27242,7 @@ Maintainer 2026-11-20. Governance catalogs are live branded sources, so their me
 
 **Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
 
-Maintainer 2026-11-20. Access review. Provisa produces an access review, on demand and on a schedule, listing each member with their roles, entitlements and last use, grouped by the domain whose owner reviews them. The owner confirms or revokes each row; a revocation takes effect at once, and every confirmation and revocation is recorded with who made it, when and why. The scheduled review is exported to the operator's chosen destination.
+Maintainer 2026-11-20. Access review. Provisa produces an access review, on demand and on a schedule, listing each member with their roles, entitlements and last use, grouped by the domain whose owner reviews them. The owner confirms or revokes each row; a revocation takes effect at once, and every confirmation and revocation is recorded with who made it, when and why. The scheduled review is exported to the operator's chosen destination. (Amended 2026-11-21 by the maintainer. The operator chooses a signed webhook as the destination of a scheduled review, a URL and a secret, posted after each scheduled review and signed as the offer hook signs its requests. Roles a member holds only through the identity provider claims or a role mapping are listed read-only with their source, since Provisa holds no grant of them to revoke.)
 
 **Code:** —
 

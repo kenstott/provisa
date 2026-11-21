@@ -79,10 +79,10 @@
       },
       "step2": {
         "title": "Registra una sorgente",
-        "description": "➕ Le nuove connessioni iniziano da questo pulsante: PostgreSQL, Snowflake, MongoDB, un'API REST, un CSV e il resto dei 80 connettori."
+        "description": "➕ Le nuove connessioni iniziano da questo pulsante: PostgreSQL, Snowflake, MongoDB, un'API REST, un CSV e il resto dei 82 connettori."
       },
       "step3": {
-        "title": "80 tipi di fonte, 14 categorie",
+        "title": "82 tipi di fonte, 14 categorie",
         "description": "Un selettore elenca ogni tipo, raggruppato per categoria: <strong>Abbonamenti, RDBMS, Data warehouse cloud, Analytics, Data lake, NoSQL, Resolver di codice, Grafi, File, API, Streaming, Enterprise, Qualità dei dati, Altro</strong>. Cerchi per nome o alias, oppure restringa con i chip di categoria. Ogni tipo mostra il proprio logo e un'icona di portata: ⚡ lettura diretta sul posto, oppure un'icona di copia dove Provisa legge una replica aggiornata.<p>Ne scelga uno, compili la connessione e salvi.</p>"
       },
       "stepBuildSource": {
@@ -548,15 +548,23 @@
       },
       "insiderIntro": {
         "title": "Revisione insider in una banca",
-        "description": "Northgate Partners, una banca inventata, tiene una watch list delle operazioni su cui lavora. Vuole sapere se qualcuno sta inviando all'esterno della banca dati sensibili sulle operazioni o dati dei clienti. <strong>bank</strong> è il suo database: la watch list, i dipendenti e la loro posta, e i clienti e chi ha letto i loro record. Ogni nome e record qui è generato."
+        "description": "Northgate Partners, una banca inventata, tiene una watch list delle operazioni su cui lavora. Vuole sapere se qualcuno sta inviando all'esterno della banca dati sensibili sulle operazioni o dati dei clienti. La risposta legge tre sistemi insieme. <strong>bank</strong> è il suo database Postgres: i dipendenti e i loro desk, e i clienti e chi ha letto i loro record. Ogni nome e record qui è generato."
+      },
+      "insiderWorkbook": {
+        "title": "La cartella di lavoro della control room",
+        "description": "<strong>control_room</strong> è una cartella di lavoro Excel che la control room tiene da sé. Ogni foglio è una tabella: le operazioni in discussione, chi è stato portato oltre il muro per ciascuna, le controparti delle operazioni e con quali operazioni viene confrontato ogni messaggio. Provisa legge il file dove si trova."
+      },
+      "insiderMailSource": {
+        "title": "La posta della banca",
+        "description": "<strong>mail</strong> è la posta Microsoft 365 della banca, la casella di ogni dipendente, nelle stesse tabelle di messaggi e destinatari fornite da una sorgente Google Workspace. Questa demo non raggiunge alcun tenant reale: la casella arriva con la demo come copia memorizzata della sorgente, che non si aggiorna mai."
       },
       "insiderWatchList": {
         "title": "La lista di sorveglianza",
-        "description": "<strong>deal</strong> è la watch list della control room, con l'azienda di ogni operazione, i nomi con cui è nota, il suo ticker, il nome in codice del progetto e se è già pubblica. È la tabella più riservata qui. La control room la legge, un team dell'operazione solo la propria operazione, e un revisore di primo livello mai."
+        "description": "<strong>deal</strong> è la watch list, il foglio delle operazioni della cartella di lavoro, con l'azienda di ogni operazione, i nomi con cui è nota, il suo ticker, il nome in codice del progetto e se è già pubblica. È la tabella più riservata qui. La control room la legge, un team dell'operazione solo la propria operazione, e un revisore di primo livello mai."
       },
       "insiderMail": {
         "title": "La posta",
-        "description": "<strong>message</strong> contiene la posta in uscita dei dipendenti, con mittente, data e quanti destinatari erano esterni alla banca o a un indirizzo personale."
+        "description": "<strong>messages</strong> contiene la posta inviata dai dipendenti da Microsoft 365, ogni messaggio nella casella del suo mittente, con chi lo ha inviato, quando e il suo testo. I suoi destinatari sono in <strong>message_recipients</strong>; l'elenco del personale della banca e i provider di posta personale in Postgres distinguono gli indirizzi interni, esterni e personali."
       },
       "insiderMatch": {
         "title": "Ogni messaggio contro ogni operazione",

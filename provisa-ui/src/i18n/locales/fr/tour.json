@@ -79,10 +79,10 @@
       },
       "step2": {
         "title": "Enregistrer une source",
-        "description": "➕ Les nouvelles connexions démarrent avec ce bouton : PostgreSQL, Snowflake, MongoDB, une API REST, un CSV, et le reste des 80 connecteurs."
+        "description": "➕ Les nouvelles connexions démarrent avec ce bouton : PostgreSQL, Snowflake, MongoDB, une API REST, un CSV, et le reste des 82 connecteurs."
       },
       "step3": {
-        "title": "80 types de source, 14 catégories",
+        "title": "82 types de source, 14 catégories",
         "description": "Un sélecteur liste chaque type, groupé par catégorie : <strong>Abonnements, RDBMS, Entrepôt de données cloud, Analytique, Data lake, NoSQL, Resolvers de code, Graphes, Fichiers, API, Streaming, Entreprise, Qualité des données, Autres</strong>. Cherchez par nom ou alias, ou filtrez avec les pastilles de catégorie. Chaque type affiche son logo et une icône de portée : ⚡ lu en direct sur place, ou une icône de copie lorsque Provisa lit une réplique rafraîchie.<p>Choisissez-en un, renseignez la connexion, enregistrez.</p>"
       },
       "stepBuildSource": {
@@ -548,15 +548,23 @@
       },
       "insiderIntro": {
         "title": "Revue d'initiés dans une banque",
-        "description": "Northgate Partners, une banque inventée, tient une liste de surveillance des opérations sur lesquelles elle travaille. Elle veut savoir si quelqu'un envoie hors de la banque des données sensibles liées aux opérations ou des données clients. <strong>bank</strong> est sa base de données : la liste de surveillance, les employés et leurs e-mails, ainsi que les clients et qui a lu leurs dossiers. Chaque nom et chaque dossier ici sont générés."
+        "description": "Northgate Partners, une banque inventée, tient une liste de surveillance des opérations sur lesquelles elle travaille. Elle veut savoir si quelqu'un envoie hors de la banque des données sensibles liées aux opérations ou des données clients. La réponse lit trois systèmes à la fois. <strong>bank</strong> est sa base de données Postgres : les employés et leurs desks, ainsi que les clients et qui a lu leurs dossiers. Chaque nom et chaque dossier ici sont générés."
+      },
+      "insiderWorkbook": {
+        "title": "Le classeur de la salle de contrôle",
+        "description": "<strong>control_room</strong> est un classeur Excel que la salle de contrôle tient elle-même. Chaque feuille est une table : les opérations en discussion, qui a été mis de l'autre côté de la muraille pour chacune, les contreparties des opérations et les opérations auxquelles chaque message est confronté. Provisa lit le fichier là où il se trouve."
+      },
+      "insiderMailSource": {
+        "title": "Les e-mails de la banque",
+        "description": "<strong>mail</strong> est la messagerie Microsoft 365 de la banque, la boîte de chaque employé, dans les mêmes tables de messages et de destinataires que fournit une source Google Workspace. Cette démo n'atteint aucun tenant réel : la boîte est livrée avec la démo comme copie stockée de la source, qui ne s'actualise jamais."
       },
       "insiderWatchList": {
         "title": "La liste de surveillance",
-        "description": "<strong>deal</strong> est la liste de surveillance de la salle de contrôle, avec l'entreprise de chaque opération, les noms sous lesquels elle est connue, son ticker, son nom de code de projet et si elle est déjà publique. C'est la table la plus restreinte ici. La salle de contrôle la lit, une équipe d'opération seulement sa propre opération, et un réviseur de premier niveau jamais."
+        "description": "<strong>deal</strong> est la liste de surveillance, la feuille des opérations du classeur, avec l'entreprise de chaque opération, les noms sous lesquels elle est connue, son ticker, son nom de code de projet et si elle est déjà publique. C'est la table la plus restreinte ici. La salle de contrôle la lit, une équipe d'opération seulement sa propre opération, et un réviseur de premier niveau jamais."
       },
       "insiderMail": {
         "title": "Le courrier",
-        "description": "<strong>message</strong> contient les e-mails sortants des employés, avec l'expéditeur, la date et le nombre de destinataires extérieurs à la banque ou à une adresse personnelle."
+        "description": "<strong>messages</strong> contient les e-mails envoyés par les employés depuis Microsoft 365, chaque message dans la boîte de son expéditeur, avec qui l'a envoyé, quand et son texte. Ses destinataires sont dans <strong>message_recipients</strong> ; la liste du personnel de la banque et les fournisseurs de messagerie personnelle dans Postgres distinguent les adresses internes, externes et personnelles."
       },
       "insiderMatch": {
         "title": "Chaque message face à chaque opération",

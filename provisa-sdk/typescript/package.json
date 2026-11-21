@@ -1,0 +1,24 @@
+{
+  "name": "@provisa/sdk",
+  "version": "0.0.0",
+  "description": "Optional typed wrappers for a Provisa Node code source: each marks a function as the JSDoc tag it stands for.",
+  "license": "BUSL-1.1",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "default": "./index.js"
+    }
+  },
+  "types": "./index.d.ts",
+  "files": [
+    "index.js",
+    "index.d.ts",
+    "services.d.ts",
+    "bin/check.js"
+  ],
+  "bin": {
+    "provisa-sdk": "./bin/check.js"
+  }
+}

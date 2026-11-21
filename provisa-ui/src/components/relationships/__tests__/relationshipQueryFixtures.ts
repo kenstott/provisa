@@ -82,6 +82,7 @@ export function reader(clientColumns: string[] = ["id", "name"]): MetaReader {
             { name: "id", type: scalar("Int") },
             { name: "customerId", type: scalar("Int") },
             { name: "client", type: object("SalesClients") },
+            { name: "tagged", type: list("SalesTags") },
           ],
         },
         {
@@ -274,7 +275,7 @@ export const tagged = (): Relationship =>
     targetTableName: "tags",
     sourceColumn: "id",
     targetColumn: "id",
-    graphqlAlias: null,
+    graphqlAlias: "tagged",
     physicalName: null,
     computedCypherAlias: "TAGGED",
     cypherType: "TAGGED",
