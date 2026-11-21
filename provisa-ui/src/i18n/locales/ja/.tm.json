@@ -2560,7 +2560,7 @@
   "ja/erdModal.json::erdModal.edgeRoutingBezier": "Curved edges",
   "ja/erdModal.json::erdModal.edgeRoutingLabel": "Edge routing",
   "ja/erdModal.json::erdModal.edgeRoutingTaxi": "Right-angle edges",
-  "ja/erdModal.json::erdModal.exitFullscreen": "Exit full screen",
+  "ja/erdModal.json::erdModal.exitFullscreen": "Restore size",
   "ja/erdModal.json::erdModal.expandAll": "Expand all",
   "ja/erdModal.json::erdModal.fitAll": "Fit all",
   "ja/erdModal.json::erdModal.focus": "Focus",
