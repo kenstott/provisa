@@ -568,6 +568,7 @@
       "table_not_withdrawn": "A tabela {{table}} não está retirada: só se repõe uma tabela retirada. Para mover para outra região uma tabela em produção, defina a sua região.",
       "source_not_withdrawn": "A fonte {{source}} não está retirada: só se repõe uma fonte retirada. Para mudar a sua região, defina a sua região.",
       "put_back_needs_region": "Repor {{object}} indica uma região: indique uma, ou nenhuma para nenhuma região.",
+      "table_domain_required": "A tabela '{{table}}' não indica nenhum domínio: toda tabela é registrada em um domínio",
       "mask_constant_not_text": "Uma máscara constante em uma coluna que não é de texto é lida como NULL; só é possível salvar NULL: {{column}} ({{type}})"
     },
     "secrets": {
@@ -617,9 +618,9 @@
     },
     "sparql": {
       "columns_not_inferred": "Não foi possível inferir colunas: a sondagem não retornou linhas e nenhuma variável SELECT foi encontrada.",
-      "no_select_variables": "A consulta não nomeia variáveis SELECT (SELECT * ou não é uma consulta SELECT): suas colunas não podem ser lidas dela",
       "probe_failed": "Falha na sondagem do endpoint SPARQL: {{error}}",
-      "source_not_found": "Fonte SPARQL '{{source_id}}' não encontrada"
+      "source_not_found": "Fonte SPARQL '{{source_id}}' não encontrada",
+      "no_select_variables": "A consulta não nomeia variáveis SELECT (SELECT * ou não é uma consulta SELECT): suas colunas não podem ser lidas dela"
     },
     "subscribe": {
       "avro_topic_without_registry": "O tópico '{{topic}}' contém mensagens Avro e sua origem não indica nenhum registro de esquemas para lê-las: defina a URL do registro de esquemas da origem",
@@ -832,7 +833,9 @@
       "not_bulk_approvable": "Só rascunhos definidos e ancorados são aprovados em conjunto; não: {{terms}}.",
       "term_ids_required": "Indique os termos a aprovar.",
       "impact_action": "Não há pré-visualização para essa ação.",
-      "impact_table_required": "Uma vinculação nomeia uma tabela ou uma das suas colunas."
+      "impact_table_required": "Uma vinculação nomeia uma tabela ou uma das suas colunas.",
+      "name_taken": "Já existe um termo chamado '{{name}}' no domínio {{domain}}. Escolha outro nome ou coloque o termo em outro domínio.",
+      "name_taken_unscoped": "Já existe um termo chamado '{{name}}' sem domínio, que portanto alcança todos os domínios. Escolha outro nome."
     },
     "table": {
       "requires_parameters": "A tabela {{table}} não pode ser contada nem perfilada: exige {{parameters}}. Dê um valor a cada um para ler as suas linhas."

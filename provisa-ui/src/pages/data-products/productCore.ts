@@ -26,6 +26,7 @@ import { COLUMN_FACTS, TABLE_FACTS, TERM_FACTS } from "../../components/graph3d/
 import { catalogTableName, quoteIdent, tableSqlRef } from "../../naming";
 import type { DataProduct } from "../../types/admin";
 import type { LifecycleStatus } from "../../types/lifecycle";
+import { pipedDomains } from "../../components/admin/termLabel";
 
 /** The product row's own fields, as data_products_meta names them. */
 export const PRODUCT_FIELDS = [
@@ -55,7 +56,8 @@ type ProductRow = Record<Field<(typeof PRODUCT_FIELDS)[number]>, unknown>;
 
 // With the facts the graph's hover card and detail panel give a term (REQ-2174).
 const TERM: Selection = {
-  fields: [...new Set([...TERM_FACTS.fields, "is_abstract", "live"])],
+  // REQ-1591: term_domains (|a|b|) tells two same-named terms apart where they are listed.
+  fields: [...new Set([...TERM_FACTS.fields, "is_abstract", "live", "term_domains"])],
   rels: TERM_FACTS.rels,
 };
 
@@ -171,8 +173,14 @@ export interface CoreTerm {
   definition: string | null;
   isAbstract: boolean;
   live: boolean;
+  termDomains?: string | null;
   status?: string | null;
   experts?: { userId: string; kind: string }[] | null;
+}
+
+/** A product term as a term label reads it: its name and its domains (REQ-1591). */
+export function asNamed(term: CoreTerm): { id: number; name: string; domains: string[] } {
+  return { id: term.id, name: term.name, domains: pipedDomains(term.termDomains) };
 }
 
 export interface CoreTable {

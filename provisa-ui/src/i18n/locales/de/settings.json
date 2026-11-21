@@ -41,12 +41,6 @@
         "help": "Der höchste Komplexitätswert, den eine Anweisung haben darf, für jede Rolle. Eine Rolle kann eine eigene, niedrigere Grenze setzen. Leer lassen für keine Grenze."
       }
     },
-    "sparql": {
-      "query_timeout": {
-        "label": "SPARQL-Abfrage-Timeout",
-        "help": "Wie lange eine SPARQL-Abfrage laufen darf, bevor sie aufgegeben wird: eine Vorschau, eine Wikidata-Klassensuche und jedes Laden des Replikats einer SPARQL-Tabelle. Ein öffentlicher Endpunkt kann eine Abfrage durch sein eigenes Limit früher beenden (bei Wikidata 60 Sekunden)."
-      }
-    },
     "sampling": {
       "default_sample_size": {
         "label": "Standard-Stichprobengröße",
@@ -297,12 +291,6 @@
       "node_url": {
         "label": "Adresse dieses Knotens",
         "help": "Die Adresse, unter der Clients diesen Knoten erreichen. Die Oberfläche eines Koordinators führt ihn als Datenknoten auf, wenn die Region keinen aufführt. Der Launcher setzt sie für jeden Knoten; ist sie nicht gesetzt, wird der Knoten nicht aufgeführt."
-      }
-    },
-    "embedding": {
-      "hub_endpoint": {
-        "label": "Adresse des Hugging Face Hub",
-        "help": "Der Hugging Face Hub, von dem ein lokales Embedding-Modell heruntergeladen wird, etwa ein Spiegel in Ihrem Netzwerk. Gilt ab dem nächsten Modell-Download."
       }
     },
     "tls": {
@@ -849,6 +837,10 @@
       "health_poll_interval": {
         "label": "Abfrageintervall für den Connector-Zustand",
         "help": "Wie oft jeder Provisa-Prozess den Host eines Connectors nach seinem Zustand fragt und das Ergebnis an der Quelle anzeigt. Ein neu gestarteter Host wird bei der nächsten Abfrage erkannt, wodurch seine On-Start-Funktion erneut ausgeführt wird."
+      },
+      "worker_idle_timeout": {
+        "label": "Leerlauf-Timeout für Code-Worker",
+        "help": "Wie lange der Worker einer Code-Quelle oder der Preflight-Worker einer Organisation ungenutzt bleiben darf, bevor Provisa seinen Prozess beendet. Der nächste Aufruf startet einen neuen."
       }
     },
     "config": {
@@ -887,10 +879,22 @@
         "help": "Die Höchstzahl der Aufrufe, die eine Anweisung an eine parametrisierte Tabelle richtet. Jeder Wert, den eine Anweisung einem Parameter gibt, ist ein Aufruf der Quelle: jeder Wert einer IN-Liste, jeder Zweig eines OR, jeder eindeutige Schlüssel eines Joins. Eine Anweisung, die mehr benötigt, wird abgelehnt."
       }
     },
+    "embedding": {
+      "hub_endpoint": {
+        "label": "Adresse des Hugging Face Hub",
+        "help": "Der Hugging Face Hub, von dem ein lokales Embedding-Modell heruntergeladen wird, etwa ein Spiegel in Ihrem Netzwerk. Gilt ab dem nächsten Modell-Download."
+      }
+    },
     "subscriptions": {
       "max_sinks_per_principal": {
         "label": "Laufende Kafka-Sinks pro Person",
         "help": "Wie viele Kafka-Sinks eine Person gleichzeitig laufen lassen darf. Eine Anfrage, einen weiteren zu starten, wird abgelehnt, bis einer ihrer Sinks stoppt."
+      }
+    },
+    "sparql": {
+      "query_timeout": {
+        "label": "SPARQL-Abfrage-Timeout",
+        "help": "Wie lange eine SPARQL-Abfrage laufen darf, bevor sie aufgegeben wird: eine Vorschau, eine Wikidata-Klassensuche und jedes Laden des Replikats einer SPARQL-Tabelle. Ein öffentlicher Endpunkt kann eine Abfrage durch sein eigenes Limit früher beenden (bei Wikidata 60 Sekunden)."
       }
     }
   }

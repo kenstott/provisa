@@ -121,7 +121,7 @@ const EXPECTED: Record<string, { to: string; state: Record<string, unknown> }> =
   },
   rest: {
     to: "/openapi",
-    state: { openApiUrl: "GET /data/rest/sales__clients?limit=25", autoRun: true },
+    state: { openApiUrl: "GET /data/rest/sales/customers?limit=25", autoRun: true },
   },
   grpc: {
     to: "/grpc",

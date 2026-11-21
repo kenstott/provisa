@@ -45,6 +45,7 @@ from provisa.api_source.openapi_endpoint import normalize_op_id
 from provisa.core.models import DERIVED_SOURCE_ID
 from provisa.api.admin.types import (
     ImplicitMeasureType,
+    MutationResult,
     RegisteredTableType,
     RoleTtlType,
     UniqueConstraintType,
@@ -678,40 +679,17 @@ async def _domain_table_conflict(  # REQ-432
     return None
 
 
-def _normalize_dataset_name(name: str) -> str:
-    """Snake-case + lowercase normalization for dataset ownership comparison (REQ-433)."""
-    from provisa.compiler.naming import apply_sql_name
-
-    return apply_sql_name(name, "snake").lower()
-
-
-async def _dataset_ownership_conflict(  # REQ-433
-    conn, source_id: str, table_name: str, domain_id: str
-) -> str | None:
-    """Return an error if this dataset is already claimed by a DIFFERENT domain (REQ-433).
-
-    First-come ownership: a physical dataset — identified by (source_id, normalized
-    table name) — may be registered by only one domain. Re-registration by the owning
-    domain is allowed. Virtual Provisa views (``__derived__``) are exempt: they are not
-    datasource claims and many domains legitimately share that source id.
-    """
-    if source_id == DERIVED_SOURCE_ID:
-        return None
+def table_domain_refusal(domain_id: str | None, table_name: str) -> "MutationResult | None":
+    """REQ-1531/REQ-433: a table registration names its domain, refused by name when it does not
+    (the table repository refuses it again at the write: every path)."""
     from provisa.core import domain_policy
 
-    target_domain = domain_policy.resolve_domain_id(domain_id)
-    norm = _normalize_dataset_name(table_name)
-    _res = await conn.execute_core(
-        select(registered_tables.c.domain_id, registered_tables.c.table_name).where(
-            registered_tables.c.source_id == source_id
+    try:
+        domain_policy.table_domain_id(domain_id, table_name)
+    except domain_policy.TableDomainRequired as refused:
+        return MutationResult(
+            success=False, message=str(refused), code=refused.code, params={"table": table_name}
         )
-    )
-    for r in _res.fetchall():
-        if _normalize_dataset_name(r.table_name) == norm and r.domain_id != target_domain:
-            return (
-                f"Table {table_name!r} on source {source_id!r} is already claimed by "
-                f"domain {r.domain_id!r} (first-come ownership)."
-            )
     return None
 
 

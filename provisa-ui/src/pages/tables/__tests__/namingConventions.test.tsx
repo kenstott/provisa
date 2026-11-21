@@ -40,6 +40,7 @@ async function offered(conventions: string[]): Promise<string[]> {
       setEditingTable={vi.fn()}
       isView={false}
       relationships={[]}
+      domainChoices={[]}
     />,
     { mocks: [listed(conventions)] },
   );

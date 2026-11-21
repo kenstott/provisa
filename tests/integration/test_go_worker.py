@@ -112,6 +112,9 @@ def trail(monkeypatch) -> list[dict]:
             rows.append(dict(stmt.compile().params))
 
     class Db:
+        # A handle built without a model plane: record_admin_action compares no org (REQ-2087).
+        model = None
+
         @asynccontextmanager
         async def acquire(self):
             yield Conn()

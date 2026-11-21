@@ -22,17 +22,17 @@
       "embedding_library_missing": "嵌入模型 {{model}} 使用 {{provider}} 提供者，需要 {{extra}} 擴充套件（模組 {{module}} 未安裝）：pip install 'provisa[{{extra}}]'。"
     },
     "ai": {
-      "key_required": "{{vendor}} 沒有金鑰。請在 管理 > AI 模型 中設定。",
-      "vendor_uses_server_credentials": "{{vendor}} 透過伺服器本身的憑證存取，而此伺服器上的組織不會使用這些憑證。請在 管理 > AI 模型 中選擇接受金鑰的供應商或 AI 端點。",
+      "endpoint_address_from_server": "AI 端點 {{vendor}} 從伺服器環境取得位址，而此伺服器上的組織不會使用伺服器環境。請在 管理 > AI 模型 中為其設定您自己的位址。",
       "endpoint_key_from_server": "AI 端點 {{vendor}} 從伺服器環境取得金鑰，而此伺服器上的組織不會使用伺服器環境。請在 管理 > AI 模型 中為其設定您自己的金鑰。",
       "endpoint_key_unset": "AI 端點 {{vendor}} 沒有金鑰：{{field}} 未設定。",
-      "endpoint_address_from_server": "AI 端點 {{vendor}} 從伺服器環境取得位址，而此伺服器上的組織不會使用伺服器環境。請在 管理 > AI 模型 中為其設定您自己的位址。",
+      "key_required": "{{vendor}} 沒有金鑰。請在 管理 > AI 模型 中設定。",
       "local_server_from_environment": "{{vendor}} 透過伺服器本身的位址存取，而此伺服器上的組織不會使用該位址。請在 管理 > AI 模型 中以您自己的位址宣告一個 AI 端點。",
       "server_environment_sets": "此處無法呼叫 {{vendor}}：伺服器環境設定了 {{variable}}，其用戶端會為每個組織傳送它。",
+      "vector_model_address_from_server": "嵌入模型 {{vendor}} 從伺服器環境取得位址，而此伺服器上的組織不會使用伺服器環境。請在 管理 > AI 模型 中為其設定您自己的位址。",
       "vector_model_key_from_server": "嵌入模型 {{vendor}} 從伺服器環境取得金鑰，而此伺服器上的組織不會使用伺服器環境。請在 管理 > AI 模型 中為其設定您自己的金鑰。",
       "vector_model_key_unset": "嵌入模型 {{vendor}} 沒有金鑰：{{field}} 未設定。",
-      "vector_model_address_from_server": "嵌入模型 {{vendor}} 從伺服器環境取得位址，而此伺服器上的組織不會使用伺服器環境。請在 管理 > AI 模型 中為其設定您自己的位址。",
-      "vector_model_local_server": "嵌入模型 {{vendor}} 透過伺服器本身的位址存取，而此伺服器上的組織不會使用該位址。請在 管理 > AI 模型 中為其設定您自己的位址。"
+      "vector_model_local_server": "嵌入模型 {{vendor}} 透過伺服器本身的位址存取，而此伺服器上的組織不會使用該位址。請在 管理 > AI 模型 中為其設定您自己的位址。",
+      "vendor_uses_server_credentials": "{{vendor}} 透過伺服器本身的憑證存取，而此伺服器上的組織不會使用這些憑證。請在 管理 > AI 模型 中選擇接受金鑰的供應商或 AI 端點。"
     },
     "api": {
       "answer_cut": "{{table}} 的回應在 max_pages={{max_pages}} 處被截斷（{{rows}} 列）：API 還有更多資料。請提高端點的 max_pages 或頁面大小以讀取全部資料。",
@@ -174,13 +174,14 @@
     },
     "discovery": {
       "adapter_missing_discover_schema": "「{{source_type}}」的配接器未實作 discover_schema",
+      "answer_unreadable": "模型的回答中沒有可讀取的清單。",
       "cassandra_discovery_unsupported": "Cassandra 結構描述探索需要即時 CQL 工作階段，但目前不可用。請為此數據來源手動定義欄位。",
       "database_not_connected": "數據庫未連線",
+      "decided_both_ways": "一項提議只能被接受或不再推薦，不能兩者兼有。",
       "domain_id_required": "領域範圍需要 domain_id",
       "elasticsearch_index_hint_required": "Elasticsearch 探索需要「index」提示。",
       "elasticsearch_mapping_failed": "無法讀取索引「{{index}}」的 Elasticsearch 對應：{{error}}",
       "endpoint_already_registered": "端點已註冊：{{error}}",
-      "decided_both_ways": "一項提議只能被接受或不再推薦，不能兩者兼有。",
       "model_has_no_room": "模型 {{model}} 無法容納一個請求：{{reason}}",
       "model_incomplete": "所選模型需同時指明其供應商和模型。",
       "no_adapter_for_source_type": "數據來源類型「{{source_type}}」沒有已註冊的配接器",
@@ -201,8 +202,7 @@
       "target_tables_not_read": "所選目標表（{{count}} 個）都不會被讀取：探索會略過系統域的表和已停用的表。",
       "target_tables_outside_domains": "所選目標表不在域篩選器中選定的域內：{{names}}。",
       "unknown_source_type": "未知的數據來源類型：{{type}}",
-      "vendor_unknown": "{{vendor}} 在此處不列出模型；請輸入模型名稱。",
-      "answer_unreadable": "模型的回答中沒有可讀取的清單。"
+      "vendor_unknown": "{{vendor}} 在此處不列出模型；請輸入模型名稱。"
     },
     "llm": {
       "request_failed": "對模型的請求失敗：{{reason}}",
@@ -568,6 +568,7 @@
       "table_not_withdrawn": "表 {{table}} 未撤下：只有已撤下的表才能恢復。要將生產中的表移到另一個區域，請設定其區域。",
       "source_not_withdrawn": "來源 {{source}} 未撤下：只有已撤下的來源才能恢復。要更改其區域，請設定其區域。",
       "put_back_needs_region": "恢復 {{object}} 需指定一個區域：請給出一個區域，無區域則不給出。",
+      "table_domain_required": "表 '{{table}}' 未指定域：每個表都註冊在一個域中",
       "mask_constant_not_text": "非文字欄上的常數遮罩讀取為 NULL；只能儲存 NULL：{{column}} ({{type}})"
     },
     "secrets": {
@@ -617,9 +618,9 @@
     },
     "sparql": {
       "columns_not_inferred": "無法推斷欄位：探測未傳回任何資料列，亦找不到 SELECT 變數。",
-      "no_select_variables": "查詢沒有指定 SELECT 變數（SELECT * 或不是 SELECT 查詢）：無法從中讀取其欄位",
       "probe_failed": "SPARQL 端點探測失敗：{{error}}",
-      "source_not_found": "找不到 SPARQL 數據來源「{{source_id}}」"
+      "source_not_found": "找不到 SPARQL 數據來源「{{source_id}}」",
+      "no_select_variables": "查詢沒有指定 SELECT 變數（SELECT * 或不是 SELECT 查詢）：無法從中讀取其欄位"
     },
     "subscribe": {
       "avro_topic_without_registry": "主題「{{topic}}」包含 Avro 訊息，但其資料來源未指定用於讀取的綱要註冊表：請設定資料來源的綱要註冊表 URL",
@@ -832,7 +833,9 @@
       "not_bulk_approvable": "只有已定義且已錨定的草稿術語才能一起批准；以下不符合：{{terms}}。",
       "term_ids_required": "請指定要批准的術語。",
       "impact_action": "此操作沒有預覽。",
-      "impact_table_required": "綁定指定一張表或其中的一欄。"
+      "impact_table_required": "綁定指定一張表或其中的一欄。",
+      "name_taken": "域 {{domain}} 中已存在名為 '{{name}}' 的術語。請選擇其他名稱，或將該術語放入其他域。",
+      "name_taken_unscoped": "已存在名為 '{{name}}' 且不屬於任何域的術語，它適用於所有域。請選擇其他名稱。"
     },
     "table": {
       "requires_parameters": "無法對資料表 {{table}} 計數或產生概要：它需要 {{parameters}}。請為每個參數提供值以讀取其資料列。"

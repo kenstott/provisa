@@ -172,7 +172,7 @@ describe("the relationship detail panel", () => {
     expect(opened()).toEqual({
       to: "/openapi",
       state: {
-        openApiUrl: "GET /data/rest/sales__orders?fields=id,customerId,client&limit=25",
+        openApiUrl: "GET /data/rest/sales/orders?fields=id,customerId,client&limit=25",
         autoRun: true,
       },
     });
